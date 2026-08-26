@@ -81,6 +81,8 @@ Turning a model off removes it from the next `llm-pi-ai` sync — it disappears 
 
 You can pre-select while signed out; the family applies on the next sign-in. **Sync model list** rewrites the live routes from the current selection.
 
+Grok 4.6 thinking depth is **low / medium / high / xhigh**. Grok 4.5 is **low / medium / high** (no xhigh). Reasoning cannot be turned off; if you leave it unset the API uses **high**. Grok 4 has no depth control. Codex keeps **off / minimal / low / medium / high / xhigh**.
+
 ## Quota
 
 After sign-in, each account card shows official remaining quota.

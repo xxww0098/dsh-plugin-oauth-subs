@@ -81,6 +81,8 @@ DeepSeek Harness（调用面）
 
 未登录也可以先勾选，登录后再同步。**同步到模型列表** 会按当前勾选重写路由。
 
+Grok 4.6 思考深度为 **low / medium / high / xhigh**。Grok 4.5 为 **low / medium / high**（没有 xhigh）。思考不能关掉；不选时上游默认 **high**。Grok 4 没有深度选项。Codex 仍是 **off / minimal / low / medium / high / xhigh**。
+
 ## 额度
 
 登录后，设置页账号卡片会显示官方额度。
