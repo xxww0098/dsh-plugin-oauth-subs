@@ -29,13 +29,15 @@ test('maps ultra effort to max and strips pro mode', () => {
   assert.deepEqual(out.reasoning, { effort: 'max', summary: 'auto' })
 })
 
-test('drops prompt_cache_options and default service_tier', () => {
+test('drops public-only fields and default service_tier', () => {
   const out = normalizeCodexResponsesBody({
     model: 'gpt-5.5',
     service_tier: 'default',
+    max_output_tokens: 128000,
     prompt_cache_options: { mode: 'explicit' },
   })
   assert.equal(out.service_tier, undefined)
+  assert.equal(out.max_output_tokens, undefined)
   assert.equal(out.prompt_cache_options, undefined)
 })
 
