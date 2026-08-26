@@ -43,7 +43,8 @@ test('buildProviders only emits logged-in families with openai-responses', () =>
     medium: 'medium',
     high: 'high',
   })
-  assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4').reasoningEfforts, undefined)
+  assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4').reasoningEfforts, false)
+  assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4.6').maxTokens, 500_000)
   assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-5.5').reasoningEfforts.off, null)
   const none = buildProviders({ prefix: 'oauth', origin: 'http://127.0.0.1:8318', loggedIn: { codex: false, grok: false } })
   assert.deepEqual(Object.keys(none), [])
