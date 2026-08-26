@@ -1,0 +1,7 @@
+node_modules
+*.log
+auth.json
+proxy-key
+fast-mode.json
+models.json
+.DS_Store

@@ -1,0 +1,58 @@
+{
+  "name": "dsh-plugin-oauth-subs",
+  "version": "0.0.1",
+  "description": "ChatGPT Codex and xAI Grok subscription OAuth for DeepSeek Harness — PKCE / device-code login, local Responses proxy, llm-pi-ai sync. Extracted from Hermes Agent, shaped like dsh-plugin-cpa-local.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xxww0098/dsh-plugin-oauth-subs.git"
+  },
+  "bugs": {
+    "url": "https://github.com/xxww0098/dsh-plugin-oauth-subs/issues"
+  },
+  "homepage": "https://github.com/xxww0098/dsh-plugin-oauth-subs#readme",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ]
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "README.zh.md"
+  ],
+  "scripts": {
+    "test": "node --test 'test/*.test.mjs'"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh-plugin",
+    "oauth",
+    "chatgpt",
+    "codex",
+    "grok",
+    "xai",
+    "pkce"
+  ],
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1"
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.1"
+  }
+}

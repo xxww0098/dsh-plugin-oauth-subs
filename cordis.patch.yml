@@ -1,0 +1,11 @@
+# Bundle self-activation patch. `dsh plugin --profile web add` picks this up
+# via package.json `dsh.bundle.patch`. The client half needs no row of its
+# own — dsh-client-modules scans every live loader entry for a `dsh.client`
+# declaration and serves the ./client export.
+- insert:
+    - id: oauth-subs
+      name: dsh-plugin-oauth-subs
+      config:
+        port: 8318
+        provider: oauth
+        grokLogin: device
