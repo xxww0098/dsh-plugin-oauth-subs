@@ -45,16 +45,16 @@ test('applyContextMode rewrites only the model id', () => {
 
 test('applyFastMode peels -900k then -fast before the wire', () => {
   assert.deepEqual(
-    applyFastMode({ model: 'gpt-5.6-sol-900k', input: 'hi' }, { defaultOn: false }),
+    applyFastMode({ model: 'gpt-5.6-sol-900k', input: 'hi' }),
     { model: 'gpt-5.6-sol', input: 'hi' },
   )
   assert.deepEqual(
-    applyFastMode({ model: 'gpt-5.6-sol-900k-fast' }, { defaultOn: false }),
+    applyFastMode({ model: 'gpt-5.6-sol-900k-fast' }),
     { model: 'gpt-5.6-sol', service_tier: 'priority' },
   )
   assert.deepEqual(
-    applyFastMode({ model: 'gpt-5.6-sol-900k' }, { defaultOn: true }),
-    { model: 'gpt-5.6-sol', service_tier: 'priority' },
+    applyFastMode({ model: 'gpt-5.6-sol-900k' }),
+    { model: 'gpt-5.6-sol' },
   )
 })
 

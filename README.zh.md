@@ -73,9 +73,11 @@ DeepSeek Harness（调用面）
 
 设置 → OAuth 订阅 会列出 Codex 与 Grok 的全部目录（含 `-fast` 与 `-900k` 条目）。每一行是独立开关。每个系列有 **全选** / **全关**。
 
-默认全部开启，**900K 除外**。ChatGPT Codex 对 GPT-5.4 和 GPT-5.6 Sol / Terra / Luna 标称 272K，但这四个模型实际可到约 900K。选 `gpt-5.6-sol-900k`（以及 Terra / Luna / 5.4 对应项）即可开启。`-900k` 只在本机目录里，发给上游前会剥掉。GPT-5.5 和 GPT-5.4 Mini 仍是 272K。
+默认全部开启，**900K 除外**。选带 **Fast** 的条目（`gpt-5.6-sol-fast`、`grok-4.6-fast`）才会走 Priority Processing。`-fast` 只在本机目录里，发给上游前会剥掉并加上 `service_tier: "priority"`。Codex 系列没有 Fast 条目。
 
-900K 更耗额度。会话确实需要大上下文再打开。
+ChatGPT Codex 对 GPT-5.4 和 GPT-5.6 Sol / Terra / Luna 标称 272K，但这四个模型实际可到约 900K。选 `gpt-5.6-sol-900k`（以及 Terra / Luna / 5.4 对应项）即可开启。`-900k` 只在本机目录里，发给上游前会剥掉。GPT-5.5 和 GPT-5.4 Mini 仍是 272K。
+
+900K 和 Fast 都更耗额度。会话确实需要再打开。
 
 关掉的模型不会写入下一次 `llm-pi-ai` 同步，DeepSeek Harness 的模型列表里也就看不到。选择保存在 `models.json`。以后目录新增的普通模型默认是开的；新增的 900K 条目默认关闭。
 
@@ -110,7 +112,6 @@ ChatGPT / Codex Plus、Pro 可能有银行的 5 小时重置次数。还有剩�
 | `provider` | `oauth` | 同步到 DSH 的路由 ID 前缀（`oauth-codex` / `oauth-grok`） |
 | `dataDir` | profile 数据目录 | `auth.json`、`models.json` 与 `proxy-key` 位置 |
 | `grokLogin` | `device` | `device` 或 `pkce` |
-| `fastMode` | `false` | GPT 旗舰与 Grok 4.6 的默认 Fast / Priority Processing |
 
 ## 开发
 

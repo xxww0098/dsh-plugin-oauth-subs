@@ -60,7 +60,6 @@ test('proxy peels -fast and injects service_tier on GPT; strips it on Codex', as
     port: 0,
     apiKey: 'secret-key',
     fetchFn,
-    fastMode: true,
     tokens: {
       codex: { session: async () => ({ accessToken: 'codex-tok', accountId: 'acct' }) },
       grok: { session: async () => ({ accessToken: 'grok-tok' }) },
@@ -87,7 +86,7 @@ test('proxy peels -fast and injects service_tier on GPT; strips it on Codex', as
     await fetch(`http://127.0.0.1:${port}/grok/v1/responses`, {
       method: 'POST',
       headers,
-      body: '{"model":"grok-4.6"}',
+      body: '{"model":"grok-4.6-fast"}',
     })
     assert.deepEqual(seen[2], { model: 'grok-4.6', service_tier: 'priority' })
 

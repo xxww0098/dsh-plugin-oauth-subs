@@ -73,9 +73,11 @@ Login, token refresh, chat, and quota use one official client identity: Codex pa
 
 Settings → OAuth subs lists every Codex and Grok catalog id, including `-fast` and `-900k` siblings. Each row is an on/off checkbox. **All on** / **All off** apply per family.
 
-Default is all on except **900K**. ChatGPT Codex advertises 272K for GPT-5.4 and GPT-5.6 Sol / Terra / Luna, but those four slugs accept ~900K. Pick `gpt-5.6-sol-900k` (and the Terra / Luna / 5.4 twins) to opt in. The `-900k` suffix is host-side only — the proxy strips it before the upstream request. GPT-5.5 and GPT-5.4 Mini stay at 272K.
+Default is all on except **900K**. Pick a **Fast** sibling (`gpt-5.6-sol-fast`, `grok-4.6-fast`) for Priority Processing. The `-fast` suffix is host-side only — the proxy strips it and sends `service_tier: "priority"`. Codex-series models have no Fast sibling.
 
-900K spends quota faster. Leave it off unless the session actually needs the large window.
+ChatGPT Codex advertises 272K for GPT-5.4 and GPT-5.6 Sol / Terra / Luna, but those four slugs accept ~900K. Pick `gpt-5.6-sol-900k` (and the Terra / Luna / 5.4 twins) to opt in. The `-900k` suffix is host-side only — the proxy strips it before the upstream request. GPT-5.5 and GPT-5.4 Mini stay at 272K.
+
+900K and Fast both spend quota faster. Leave them off unless the session needs them.
 
 Turning a model off removes it from the next `llm-pi-ai` sync — it disappears from the Harness picker. Choices persist in `models.json`. A catalog id added later stays on until you turn it off (900K ids stay off until you turn them on).
 
@@ -110,7 +112,6 @@ ChatGPT / Codex Plus and Pro may bank extra 5-hour resets. When the account has 
 | `provider` | `oauth` | llm-pi-ai route prefix (`oauth-codex` / `oauth-grok`) |
 | `dataDir` | profile data dir | `auth.json`, `models.json`, and `proxy-key` |
 | `grokLogin` | `device` | `device` or `pkce` |
-| `fastMode` | `false` | Default Fast / Priority Processing for GPT flagships and Grok 4.6 |
 
 ## Develop
 

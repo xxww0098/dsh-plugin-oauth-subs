@@ -17,7 +17,6 @@ test('snapshot reports logged-out accounts and empty providers', async () => {
   const snap = await controller.snapshot()
   assert.equal(snap.accounts.codex.loggedIn, false)
   assert.equal(snap.accounts.grok.loggedIn, false)
-  assert.equal(snap.fast.on, false)
   assert.deepEqual(snap.providers, [])
   assert.equal(snap.catalog.length, 2)
   assert.equal(snap.catalog.every((row) => row.models.every((model) => model.enabled === !model.large)), true)
@@ -67,20 +66,6 @@ test('dispatchManage maps unknown routes to 404', async () => {
   })
   const result = await dispatchManage(controller, 'POST', '/v0/oauth/nope', {})
   assert.equal(result.status, 404)
-})
-
-test('dispatchManage toggles Fast on|off', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
-  const controller = new AuthController({
-    authPath: join(dir, 'auth.json'),
-    prefix: 'oauth',
-    origin: () => 'http://127.0.0.1:8318',
-  })
-  const on = await dispatchManage(controller, 'POST', '/v0/oauth/fast', { on: true })
-  assert.equal(on.body.note, 'fast')
-  assert.equal(on.body.serviceTier, 'priority')
-  const snap = await controller.snapshot()
-  assert.equal(snap.fast.on, true)
 })
 
 test('dispatchManage refreshes quota on POST /quota', async () => {

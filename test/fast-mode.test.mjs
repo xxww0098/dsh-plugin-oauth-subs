@@ -1,10 +1,6 @@
 import assert from 'node:assert/strict'
-import { mkdtemp } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { test } from 'node:test'
 import {
-  FastSwitch,
   applyFastMode,
   isCodexSeries,
   modelSupportsFastMode,
@@ -34,26 +30,26 @@ test('peelFastSuffix only strips host-side -fast on eligible bases', () => {
 
 test('applyFastMode injects priority, peels suffix, strips Codex service_tier', () => {
   assert.deepEqual(
-    applyFastMode({ model: 'gpt-5.5', input: 'hi' }, { defaultOn: true }),
+    applyFastMode({ model: 'gpt-5.5', input: 'hi' }),
+    { model: 'gpt-5.5', input: 'hi' },
+  )
+  assert.deepEqual(
+    applyFastMode({ model: 'gpt-5.5-fast', input: 'hi' }),
     { model: 'gpt-5.5', input: 'hi', service_tier: 'priority' },
   )
   assert.deepEqual(
-    applyFastMode({ model: 'gpt-5.5-fast', input: 'hi' }, { defaultOn: false }),
-    { model: 'gpt-5.5', input: 'hi', service_tier: 'priority' },
-  )
-  assert.deepEqual(
-    applyFastMode({ model: 'gpt-5.5', service_tier: 'default' }, { defaultOn: true }),
+    applyFastMode({ model: 'gpt-5.5', service_tier: 'default' }),
     { model: 'gpt-5.5', service_tier: 'default' },
   )
   assert.deepEqual(
-    applyFastMode({ model: 'gpt-5.3-codex', service_tier: 'priority' }, { defaultOn: true }),
+    applyFastMode({ model: 'gpt-5.3-codex', service_tier: 'priority' }),
     { model: 'gpt-5.3-codex' },
   )
   assert.deepEqual(
     applyFastMode({ model: 'grok-4', service_tier: 'priority' }),
     { model: 'grok-4' },
   )
-  assert.equal(applyFastMode({ model: 'gpt-5.5' }, { defaultOn: false }).service_tier, undefined)
+  assert.equal(applyFastMode({ model: 'gpt-5.5' }).service_tier, undefined)
 })
 
 test('withFastVariants adds a Fast sibling only for eligible models', () => {
@@ -71,17 +67,4 @@ test('withFastVariants adds a Fast sibling only for eligible models', () => {
     'grok-4.6-fast',
     'grok-4',
   ])
-})
-
-test('FastSwitch persists on/off', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'oauth-fast-'))
-  const path = join(dir, 'fast-mode.json')
-  const first = new FastSwitch({ path, initial: false })
-  await first.ready
-  assert.equal(first.status().note, 'normal')
-  await first.set(true)
-  assert.equal(first.status().serviceTier, 'priority')
-  const second = new FastSwitch({ path, initial: false })
-  await second.ready
-  assert.equal(second.enabled(), true)
 })

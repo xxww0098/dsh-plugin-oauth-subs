@@ -14,7 +14,6 @@ test('Config is a Standard Schema that fills defaults', () => {
   assert.equal(result.value.port, 8318)
   assert.equal(result.value.bind, '127.0.0.1')
   assert.equal(result.value.grokLogin, 'device')
-  assert.equal(result.value.fastMode, false)
 })
 
 test('Config rejects an unknown grokLogin', () => {
