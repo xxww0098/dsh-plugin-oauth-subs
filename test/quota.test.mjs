@@ -272,6 +272,15 @@ test('QuotaStore fetches Grok billing and does not fail the card if user probe 4
   assert.equal(seen[0]['x-xai-token-auth'], 'xai-grok-cli')
 })
 
+test('parseGrokBilling maps SuperGrokPro user enum to SuperGrok Heavy', () => {
+  const parsed = parseGrokBilling({
+    config: { creditUsagePercent: 45 },
+  }, {
+    cliUser: { subscriptionTier: 'SuperGrokPro', hasGrokCodeAccess: true },
+  })
+  assert.equal(parsed.planType, 'SuperGrok Heavy')
+})
+
 test('parseGrokBilling maps numeric subscription_tier the way JWT does', () => {
   const parsed = parseGrokBilling({
     config: { subscription_tier: 4, creditUsagePercent: 10 },
