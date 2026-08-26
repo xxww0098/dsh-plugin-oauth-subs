@@ -90,6 +90,13 @@ test('proxy peels -fast and injects service_tier on GPT; strips it on Codex', as
       body: '{"model":"grok-4.6"}',
     })
     assert.deepEqual(seen[2], { model: 'grok-4.6', service_tier: 'priority' })
+
+    await fetch(`http://127.0.0.1:${port}/codex/v1/responses`, {
+      method: 'POST',
+      headers,
+      body: '{"model":"gpt-5.6-sol-900k-fast"}',
+    })
+    assert.deepEqual(seen[3], { model: 'gpt-5.6-sol', service_tier: 'priority' })
   } finally {
     await proxy.close()
   }

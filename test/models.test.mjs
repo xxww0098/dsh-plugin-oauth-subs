@@ -49,6 +49,8 @@ test('syncHarnessModels unsets owned routes then sets the live catalog', async (
   assert.deepEqual(result.routes[0].models.includes('gpt-5.5'), true)
   assert.deepEqual(result.routes[0].models.includes('gpt-5.5-fast'), true)
   assert.equal(result.routes[0].models.includes('gpt-5.3-codex-fast'), false)
+  assert.equal(result.routes[0].models.includes('gpt-5.6-sol-900k'), true)
+  assert.equal(result.routes[0].models.includes('gpt-5.5-900k'), false)
 })
 
 test('filterProviders keeps only selected keys', () => {
@@ -58,11 +60,15 @@ test('filterProviders keeps only selected keys', () => {
   assert.deepEqual(filtered['oauth-grok'].models.map((m) => m.id), ['grok-4'])
 })
 
-test('catalogProviders always lists both families with Fast siblings', () => {
+test('catalogProviders always lists both families with Fast and 900K siblings', () => {
   const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
   const keys = catalogKeys(catalog)
   assert.equal(keys.includes('oauth-codex/gpt-5.5'), true)
   assert.equal(keys.includes('oauth-codex/gpt-5.5-fast'), true)
+  assert.equal(keys.includes('oauth-codex/gpt-5.6-sol-900k'), true)
+  assert.equal(keys.includes('oauth-codex/gpt-5.4-900k'), true)
+  assert.equal(keys.includes('oauth-codex/gpt-5.5-900k'), false)
+  assert.equal(keys.includes('oauth-codex/gpt-5.4-mini-900k'), false)
   assert.equal(keys.includes('oauth-grok/grok-4.6'), true)
   assert.equal(keys.includes('oauth-grok/grok-4.6-fast'), true)
   const described = describeCatalog(catalog, {
@@ -70,31 +76,41 @@ test('catalogProviders always lists both families with Fast siblings', () => {
     loggedIn: { codex: true, grok: false },
   })
   const gpt = described.find((row) => row.family === 'codex').models.find((m) => m.id === 'gpt-5.5')
+  const large = described.find((row) => row.family === 'codex').models.find((m) => m.id === 'gpt-5.6-sol-900k')
   const grok = described.find((row) => row.family === 'grok')
   assert.equal(gpt.enabled, true)
+  assert.equal(large.large, true)
+  assert.equal(large.enabled, false)
   assert.equal(grok.loggedIn, false)
   assert.equal(grok.models.find((m) => m.id === 'grok-4').enabled, false)
 })
 
-test('ModelSwitch persists disabled keys and defaults new models on', async () => {
+test('ModelSwitch persists disabled keys and defaults 900K off', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-models-'))
   const path = join(dir, 'models.json')
   const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
   const first = new ModelSwitch({ path })
   await first.ready
-  assert.equal(first.selectedForSync(catalog), undefined)
+  const initial = first.selectedForSync(catalog)
+  assert.equal(initial.includes('oauth-codex/gpt-5.5'), true)
+  assert.equal(initial.includes('oauth-codex/gpt-5.6-sol-900k'), false)
   await first.toggle('oauth-codex/gpt-5.5-fast', false, catalog)
   assert.equal(first.status(catalog).selected.includes('oauth-codex/gpt-5.5-fast'), false)
   assert.equal(first.status(catalog).selected.includes('oauth-codex/gpt-5.5'), true)
+  await first.toggle('oauth-codex/gpt-5.6-sol-900k', true, catalog)
+  assert.equal(first.status(catalog).selected.includes('oauth-codex/gpt-5.6-sol-900k'), true)
   const raw = JSON.parse(await readFile(path, 'utf8'))
-  assert.deepEqual(raw.disabled, ['oauth-codex/gpt-5.5-fast'])
+  assert.equal(raw.disabled.includes('oauth-codex/gpt-5.5-fast'), true)
+  assert.equal(raw.enabled.includes('oauth-codex/gpt-5.6-sol-900k'), true)
   const second = new ModelSwitch({ path })
   await second.ready
   assert.equal(second.selectedForSync(catalog).includes('oauth-codex/gpt-5.5-fast'), false)
+  assert.equal(second.selectedForSync(catalog).includes('oauth-codex/gpt-5.6-sol-900k'), true)
   await second.setFamily('grok', false, catalog)
   assert.equal(second.status(catalog).disabled.some((key) => key.startsWith('oauth-grok/')), true)
   await second.setAll(true, catalog)
   assert.equal(second.selectedForSync(catalog), undefined)
+  assert.equal(second.status(catalog).selected.includes('oauth-codex/gpt-5.4-900k'), true)
 })
 
 test('syncHarnessModels honors a persisted selected subset', async () => {

@@ -20,8 +20,9 @@ test('snapshot reports logged-out accounts and empty providers', async () => {
   assert.equal(snap.fast.on, false)
   assert.deepEqual(snap.providers, [])
   assert.equal(snap.catalog.length, 2)
-  assert.equal(snap.catalog.every((row) => row.models.every((model) => model.enabled)), true)
+  assert.equal(snap.catalog.every((row) => row.models.every((model) => model.enabled === !model.large)), true)
   assert.equal(snap.selected.includes('oauth-codex/gpt-5.5'), true)
+  assert.equal(snap.selected.includes('oauth-codex/gpt-5.6-sol-900k'), false)
 })
 
 test('sync after a stored session writes llm-pi-ai providers', async () => {
