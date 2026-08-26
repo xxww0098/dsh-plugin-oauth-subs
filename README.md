@@ -32,9 +32,10 @@ pnpm dsh web --patch ./cordis.patch.yml
 | ChatGPT Codex | PKCE on `localhost:1455` (falls back to `1457`); paste-callback supported | `app_EMoamEEZ73f0CkXaXp7hrann` | `chatgpt.com/backend-api/codex/responses` |
 | xAI Grok | **Device-code (default)**; PKCE on `127.0.0.1:56121` as fallback | `b1a00492-073a-47ea-816f-4c329264a828` | `api.x.ai/v1/responses` |
 
-Already signed in on this machine via Codex CLI or Hermes? Use **Import local session**:
+Already signed in on this machine via Codex CLI, Grok CLI, or Hermes? Use **Import local session**:
 
 - `~/.codex/auth.json`
+- `~/.grok/auth.json`
 - `~/.hermes/auth.json`
 
 Tokens live at `<profile>/data/dsh-plugin-oauth-subs/auth.json` with mode `0600`. Enabled-model choices live in `models.json` next to it.

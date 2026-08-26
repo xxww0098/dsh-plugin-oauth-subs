@@ -32,9 +32,10 @@ pnpm dsh web --patch ./cordis.patch.yml
 | ChatGPT Codex | PKCE，回环 `localhost:1455`（占用则 `1457`），可粘贴回调 | `app_EMoamEEZ73f0CkXaXp7hrann` | `chatgpt.com/backend-api/codex/responses` |
 | xAI Grok | **设备码（默认）**；PKCE 回环 `127.0.0.1:56121` 作备选 | `b1a00492-073a-47ea-816f-4c329264a828` | `api.x.ai/v1/responses` |
 
-已在本机登录过 Codex CLI 或 Hermes 时，点 **导入本机会话**：
+已在本机登录过 Codex CLI、Grok CLI 或 Hermes 时，点 **导入本机会话**：
 
 - `~/.codex/auth.json`
+- `~/.grok/auth.json`
 - `~/.hermes/auth.json`
 
 令牌写在 profile 数据目录 `data/dsh-plugin-oauth-subs/auth.json`，权限 `0600`。开启/关闭的模型写在同目录的 `models.json`。
