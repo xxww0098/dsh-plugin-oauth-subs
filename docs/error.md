@@ -185,11 +185,23 @@ x-client-request-id: <prompt_cache_key>
 failover，而本插件是单账号；且对 `rate_limit_exceeded` 做 1s/4s 退避重试只会拖延错误上报。
 本次事故也没有这个签名。等出现证据再做。
 
-### 未修（待定）
+### 目录漂移（0.0.14 已修）
 
-实测真实接口发现、本次未改动的目录漂移：
+实测真实接口发现的目录漂移，本次事故排查时记录、在 0.0.14 一并对齐：
 
-- `CODEX_REASONING` 仍向所有模型暴露 `minimal`，但当前所有 Codex 模型均以 400 拒绝
-  （`Unsupported value: 'minimal' is not supported`）。
-- `CODEX_MODELS` 仍列 `gpt-5.3-codex`，该模型对 ChatGPT 账号已下线
-  （`not supported when using Codex with a ChatGPT account`）。`gpt-5.3-codex-spark` 仍有效。
+- `CODEX_REASONING` 曾向所有模型暴露 `minimal`，而所有 Codex 模型均以 400 拒绝
+  （`Unsupported value: 'minimal' is not supported`）。已移除。
+- `CODEX_MODELS` 曾列 `gpt-5.3-codex`，该模型对 ChatGPT 账号已下线
+  （`not supported when using Codex with a ChatGPT account`）。已移除；`gpt-5.3-codex-spark` 保留。
+- `-ultra` 别名：目录把 `ultra` 列进 `supported_reasoning_levels`，但 Responses API 对
+  Sol / Terra / Luna 一律 400（`Invalid value: 'ultra'`）——那是 Codex CLI 客户端侧的多智能体
+  委派（`multi_agent_version`），不是 wire 上的 effort。别名只能退化成 `max`，与直接选 `max`
+  完全等价，已整体删除。
+- `-fast` 曾按 `gpt-` 前缀发放，而 `gpt-5.4-mini` 与 `gpt-5.3-codex-spark` 的 `service_tiers`
+  为空。改为逐模型读目录。
+- 大窗口曾写死 900K，实际是 Sol / Terra / Luna 872K、gpt-5.4 1M。改为逐模型。
+- `/codex/v1/models` 缺 `client_version` 查询参数，必返 400。已补。
+
+根因是同一批模型事实在四个文件里各抄了一份（第五份是 `models.js` 里重写的
+`withPickerVariants`，而三个 `with*Variants` 是死代码）。0.0.14 把事实收进 `lib/codex.js`
+一张表，其余模块查 `codexModel()`。

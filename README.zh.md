@@ -60,12 +60,12 @@ DeepSeek Harness（调用面）
 
 | 模型 | Fast |
 |---|---|
-| GPT 旗舰（`gpt-5.5`、`gpt-5.4`、`gpt-5.6-sol` 等） | 可以。设置页开关，或在模型列表选带 `-fast` 的条目。 |
-| Codex 系列（`gpt-5.3-codex`、`gpt-5.3-codex-spark`） | 不行。Codex Responses API 不接受 `service_tier`，代理会剥掉。 |
+| GPT-5.6 Sol / Terra / Luna、GPT-5.5、GPT-5.4 | 可以。在模型列表选带 `-fast` 的条目。 |
+| GPT-5.4 Mini、GPT-5.3 Codex Spark | 不行。它们目录里的 `service_tiers` 是空的，不会生成 `-fast` 条目。 |
 | Grok 4.6 | 可以。 |
-| 更早的 Grok | 不行。 |
+| 更早的 Grok | 不行。xAI Responses API 不接受该字段，代理会剥掉。 |
 
-默认关闭。开启后大约快 1.5 倍，用量大约 2.5 倍。选 Codex 系列模型时开关无效，代理会剥掉该字段。
+默认关闭。在 `gpt-5.6-luna` 上实测：**输出 88.3 对 57.5 token/秒，1.54 倍**，与目录标称的 "1.5x speed, increased usage" 吻合。提升只在生成吞吐上——首 token 时间和缓存命中不受影响。
 
 登录、刷新令牌、对话和额度走同一套官方客户端身份：Codex 为成对的 `originator: codex_cli_rs` 与 `User-Agent: codex_cli_rs/<version>`；Grok 为 `x-xai-token-auth: xai-grok-cli` 与 `User-Agent: grok-cli/<version>`。不模拟浏览器 TLS 指纹。
 
@@ -73,19 +73,17 @@ DeepSeek Harness（调用面）
 
 设置 → OAuth 订阅 会列出 Codex 与 Grok 的全部目录（含 `-fast` 与 `-900k` 条目）。每一行是独立开关。每个系列有 **全选** / **全关**。
 
-默认全部开启，**900K 除外**。选带 **Fast** 的条目（`gpt-5.6-sol-fast`、`grok-4.6-fast`）才会走 Priority Processing。`-fast` 只在本机目录里，发给上游前会剥掉并加上 `service_tier: "priority"`。Codex 系列没有 Fast 条目。
+默认全部开启，**900K 除外**。选带 **Fast** 的条目（`gpt-5.6-sol-fast`、`grok-4.6-fast`）才会走 Priority Processing。`-fast` 只在本机目录里，发给上游前会剥掉并加上 `service_tier: "priority"`。GPT-5.4 Mini 和 GPT-5.3 Codex Spark 没有 Fast 条目。
 
-ChatGPT Codex 对 GPT-5.4 和 GPT-5.6 Sol / Terra / Luna 标称 272K，但这四个模型实际可到约 900K。选 `gpt-5.6-sol-900k`（以及 Terra / Luna / 5.4 对应项）即可开启。`-900k` 只在本机目录里，发给上游前会剥掉。GPT-5.5 和 GPT-5.4 Mini 仍是 272K。
+GPT-5.6 Sol / Terra / Luna 实际可到 **872K**，GPT-5.4 可到 **1M**，都远超默认窗口。选 `gpt-5.6-sol-900k`（以及 Terra / Luna / 5.4 对应项）即可开启——`-900k` 只是一个稳定的本机 id，真实上限逐模型不同，发给上游前会剥掉。GPT-5.5、GPT-5.4 Mini 和 Spark 没有大窗口条目。
 
-900K、Fast、Ultra 都更耗额度。Ultra 默认关闭，会话确实需要多 agent 再打开。
+900K 和 Fast 都更耗额度。
 
 关掉的模型不会写入下一次 `llm-pi-ai` 同步，DeepSeek Harness 的模型列表里也就看不到。选择保存在 `models.json`。以后目录新增的普通模型默认是开的；新增的 900K 条目默认关闭。
 
 未登录也可以先勾选，登录后再同步。**同步到模型列表** 会按当前勾选重写路由。
 
-Grok 4.6 思考深度为 **low / medium / high / xhigh**。Grok 4.5 为 **low / medium / high**（没有 xhigh）。思考不能关掉；不选时上游默认 **high**。Grok 4 没有深度选项。Codex 的 GPT-5.6 Sol / Terra / Luna 在 **off / minimal / low / medium / high / xhigh** 之上还有 **max**。更早的 Codex 模型最高到 **xhigh**。
-
-DeepSeek Harness 的推理等级没有 **ultra**。GPT-5.6 **Ultra** 是单独的模型（`gpt-5.6-sol-ultra`，默认关闭）。代理会剥掉后缀并向 Codex 发送 `reasoning.effort: "ultra"`。
+Grok 4.6 思考深度为 **low / medium / high / xhigh**。Grok 4.5 为 **low / medium / high**（没有 xhigh）。思考不能关掉；不选时上游默认 **high**。Grok 4 没有深度选项。Codex 的 GPT-5.6 Sol / Terra / Luna 在 **low / medium / high / xhigh** 之上还有 **max**。其余 Codex 模型最高到 **xhigh**。不提供 `minimal`：所有 Codex 模型都拒绝该取值。
 
 在 DeepSeek Harness **会话**里点模型名称 → **推理等级** 设置，不在「设置 → 模型」。安装或改目录后点一次 **同步到模型列表**。
 

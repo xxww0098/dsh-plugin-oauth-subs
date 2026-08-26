@@ -2,23 +2,24 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
   applyFastMode,
-  isCodexSeries,
   modelSupportsFastMode,
   peelFastSuffix,
-  withFastVariants,
 } from '../lib/fast-mode.js'
 
-test('GPT flagships support Fast; Codex-series and older Grok do not', () => {
+test('Fast follows each catalog row service_tiers, plus Grok 4.6', () => {
   assert.equal(modelSupportsFastMode('gpt-5.5'), true)
   assert.equal(modelSupportsFastMode('openai/gpt-5.4'), true)
-  assert.equal(modelSupportsFastMode('o3-mini'), true)
+  assert.equal(modelSupportsFastMode('gpt-5.6-luna'), true)
+  assert.equal(modelSupportsFastMode('gpt-5.6-sol-900k'), true)
   assert.equal(modelSupportsFastMode('grok-4.6'), true)
   assert.equal(modelSupportsFastMode('x-ai/grok-4.6-latest'), true)
-  assert.equal(modelSupportsFastMode('gpt-5.3-codex'), false)
+  // empty `service_tiers` upstream
+  assert.equal(modelSupportsFastMode('gpt-5.4-mini'), false)
   assert.equal(modelSupportsFastMode('gpt-5.3-codex-spark'), false)
+  // not served to ChatGPT accounts at all
+  assert.equal(modelSupportsFastMode('gpt-5.3-codex'), false)
   assert.equal(modelSupportsFastMode('grok-4'), false)
   assert.equal(modelSupportsFastMode('grok-4-fast-reasoning'), false)
-  assert.equal(isCodexSeries('gpt-5.3-codex'), true)
 })
 
 test('peelFastSuffix only strips host-side -fast on eligible bases', () => {
@@ -26,6 +27,8 @@ test('peelFastSuffix only strips host-side -fast on eligible bases', () => {
   assert.deepEqual(peelFastSuffix('grok-4.6-fast'), { model: 'grok-4.6', requestedFast: true })
   assert.deepEqual(peelFastSuffix('grok-4-fast-reasoning'), { model: 'grok-4-fast-reasoning', requestedFast: false })
   assert.deepEqual(peelFastSuffix('gpt-5.3-codex-fast'), { model: 'gpt-5.3-codex-fast', requestedFast: false })
+  assert.deepEqual(peelFastSuffix('gpt-5.4-mini-fast'), { model: 'gpt-5.4-mini-fast', requestedFast: false })
+  assert.deepEqual(peelFastSuffix('gpt-5.6-sol-900k-fast'), { model: 'gpt-5.6-sol-900k', requestedFast: true })
 })
 
 test('applyFastMode injects priority, peels suffix, strips Codex service_tier', () => {
@@ -50,21 +53,4 @@ test('applyFastMode injects priority, peels suffix, strips Codex service_tier', 
     { model: 'grok-4' },
   )
   assert.equal(applyFastMode({ model: 'gpt-5.5' }).service_tier, undefined)
-})
-
-test('withFastVariants adds a Fast sibling only for eligible models', () => {
-  const catalog = withFastVariants([
-    { id: 'gpt-5.5', name: 'GPT-5.5' },
-    { id: 'gpt-5.3-codex', name: 'GPT-5.3 Codex' },
-    { id: 'grok-4.6', name: 'Grok 4.6' },
-    { id: 'grok-4', name: 'Grok 4' },
-  ])
-  assert.deepEqual(catalog.map((row) => row.id), [
-    'gpt-5.5',
-    'gpt-5.5-fast',
-    'gpt-5.3-codex',
-    'grok-4.6',
-    'grok-4.6-fast',
-    'grok-4',
-  ])
 })

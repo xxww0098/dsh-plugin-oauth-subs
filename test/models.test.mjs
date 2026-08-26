@@ -49,7 +49,6 @@ test('buildProviders only emits logged-in families with openai-responses', () =>
   assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-5.5').reasoningEfforts.max, undefined)
   assert.deepEqual(both['oauth-codex'].models.find((model) => model.id === 'gpt-5.6-sol').reasoningEfforts, {
     off: null,
-    minimal: 'minimal',
     low: 'low',
     medium: 'medium',
     high: 'high',
@@ -58,8 +57,7 @@ test('buildProviders only emits logged-in families with openai-responses', () =>
   })
   assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-5.6-sol-fast').reasoningEfforts.max, 'max')
   assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-5.6-sol-900k').reasoningEfforts.max, 'max')
-  assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-5.6-sol-ultra').reasoningEfforts.max, 'max')
-  assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-5.5-ultra'), undefined)
+  assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-5.6-sol-ultra'), undefined)
   const none = buildProviders({ prefix: 'oauth', origin: 'http://127.0.0.1:8318', loggedIn: { codex: false, grok: false } })
   assert.deepEqual(Object.keys(none), [])
 })
@@ -83,12 +81,14 @@ test('syncHarnessModels unsets owned routes then sets the live catalog', async (
   const set = ops[0].mutations.filter((row) => row.op === 'set')
   assert.equal(set.length, 1)
   assert.deepEqual(set[0].path, ['providers', 'oauth-codex'])
-  assert.deepEqual(result.routes[0].models.includes('gpt-5.3-codex'), true)
+  assert.equal(result.routes[0].models.includes('gpt-5.3-codex'), false)
+  assert.equal(result.routes[0].models.includes('gpt-5.3-codex-spark'), true)
+  assert.equal(result.routes[0].models.includes('gpt-5.4-mini-fast'), false)
   assert.deepEqual(result.routes[0].models.includes('gpt-5.5'), true)
   assert.deepEqual(result.routes[0].models.includes('gpt-5.5-fast'), true)
   assert.equal(result.routes[0].models.includes('gpt-5.3-codex-fast'), false)
   assert.equal(result.routes[0].models.includes('gpt-5.6-sol-900k'), true)
-  assert.equal(result.routes[0].models.includes('gpt-5.6-sol-ultra'), true)
+  assert.equal(result.routes[0].models.includes('gpt-5.6-sol-ultra'), false)
   assert.equal(result.routes[0].models.includes('gpt-5.5-900k'), false)
 })
 
@@ -105,8 +105,7 @@ test('catalogProviders always lists both families with Fast and 900K siblings', 
   assert.equal(keys.includes('oauth-codex/gpt-5.5'), true)
   assert.equal(keys.includes('oauth-codex/gpt-5.5-fast'), true)
   assert.equal(keys.includes('oauth-codex/gpt-5.6-sol-900k'), true)
-  assert.equal(keys.includes('oauth-codex/gpt-5.6-sol-ultra'), true)
-  assert.equal(keys.includes('oauth-codex/gpt-5.5-ultra'), false)
+  assert.equal(keys.includes('oauth-codex/gpt-5.6-sol-ultra'), false)
   assert.equal(keys.includes('oauth-codex/gpt-5.4-900k'), true)
   assert.equal(keys.includes('oauth-codex/gpt-5.5-900k'), false)
   assert.equal(keys.includes('oauth-codex/gpt-5.4-mini-900k'), false)
@@ -118,13 +117,10 @@ test('catalogProviders always lists both families with Fast and 900K siblings', 
   })
   const gpt = described.find((row) => row.family === 'codex').models.find((m) => m.id === 'gpt-5.5')
   const large = described.find((row) => row.family === 'codex').models.find((m) => m.id === 'gpt-5.6-sol-900k')
-  const ultra = described.find((row) => row.family === 'codex').models.find((m) => m.id === 'gpt-5.6-sol-ultra')
   const grok = described.find((row) => row.family === 'grok')
   assert.equal(gpt.enabled, true)
   assert.equal(large.large, true)
   assert.equal(large.enabled, false)
-  assert.equal(ultra.ultra, true)
-  assert.equal(ultra.enabled, false)
   assert.equal(grok.loggedIn, false)
   assert.equal(grok.models.find((m) => m.id === 'grok-4').enabled, false)
 })
@@ -138,7 +134,6 @@ test('ModelSwitch persists disabled keys and defaults 900K off', async () => {
   const initial = first.selectedForSync(catalog)
   assert.equal(initial.includes('oauth-codex/gpt-5.5'), true)
   assert.equal(initial.includes('oauth-codex/gpt-5.6-sol-900k'), false)
-  assert.equal(initial.includes('oauth-codex/gpt-5.6-sol-ultra'), false)
   await first.toggle('oauth-codex/gpt-5.5-fast', false, catalog)
   assert.equal(first.status(catalog).selected.includes('oauth-codex/gpt-5.5-fast'), false)
   assert.equal(first.status(catalog).selected.includes('oauth-codex/gpt-5.5'), true)

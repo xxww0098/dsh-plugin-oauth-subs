@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { applyFastMode } from '../lib/fast-mode.js'
 import { normalizeCodexResponsesBody } from '../lib/codex-request.js'
 
 test('lifts developer/system input into required instructions', () => {
@@ -21,10 +20,10 @@ test('defaults instructions when none are present', () => {
   assert.equal(out.instructions, 'You are a helpful assistant.')
 })
 
-test('maps ultra effort to max and strips pro mode', () => {
+test('strips pro mode and leaves the effort alone', () => {
   const out = normalizeCodexResponsesBody({
     model: 'gpt-5.6-sol',
-    reasoning: { effort: 'ultra', mode: 'pro', summary: 'auto' },
+    reasoning: { effort: 'max', mode: 'pro', summary: 'auto' },
   })
   assert.deepEqual(out.reasoning, { effort: 'max', summary: 'auto' })
 })
@@ -39,13 +38,4 @@ test('drops public-only fields and default service_tier', () => {
   assert.equal(out.service_tier, undefined)
   assert.equal(out.max_output_tokens, undefined)
   assert.equal(out.prompt_cache_options, undefined)
-})
-
-test('Ultra alias becomes max on the Codex wire', () => {
-  const out = normalizeCodexResponsesBody(applyFastMode({
-    model: 'gpt-5.6-sol-ultra',
-    reasoning: { effort: 'high', summary: 'auto' },
-  }))
-  assert.equal(out.model, 'gpt-5.6-sol')
-  assert.equal(out.reasoning.effort, 'max')
 })

@@ -1,17 +1,16 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
-  CODEX_LARGE_CONTEXT,
   applyContextMode,
+  codexLargeContext,
   isCodex900kBase,
   isLargeContextId,
   peelContextSuffix,
-  withContextVariants,
 } from '../lib/context-mode.js'
 import { applyFastMode } from '../lib/fast-mode.js'
 import { withPickerVariants } from '../lib/models.js'
 
-test('only gpt-5.4 and gpt-5.6 Sol/Terra/Luna get a 900K variant', () => {
+test('only gpt-5.4 and gpt-5.6 Sol/Terra/Luna get a large-context variant', () => {
   assert.equal(isCodex900kBase('gpt-5.6-sol'), true)
   assert.equal(isCodex900kBase('gpt-5.6-terra'), true)
   assert.equal(isCodex900kBase('gpt-5.6-luna'), true)
@@ -58,35 +57,33 @@ test('applyFastMode peels -900k then -fast before the wire', () => {
   )
 })
 
-test('withContextVariants inserts 900K after eligible bases only', () => {
-  const catalog = withContextVariants([
-    { id: 'gpt-5.6-sol', name: 'GPT-5.6 Sol', contextWindow: 272_000 },
-    { id: 'gpt-5.5', name: 'GPT-5.5', contextWindow: 272_000 },
-    { id: 'gpt-5.4-mini', name: 'GPT-5.4 Mini', contextWindow: 272_000 },
-  ])
-  assert.deepEqual(catalog.map((row) => row.id), [
-    'gpt-5.6-sol',
-    'gpt-5.6-sol-900k',
-    'gpt-5.5',
-    'gpt-5.4-mini',
-  ])
-  assert.equal(catalog[1].contextWindow, CODEX_LARGE_CONTEXT)
-  assert.equal(catalog[1].name, 'GPT-5.6 Sol 900K')
+test('codexLargeContext reports each row max_context_window', () => {
+  assert.equal(codexLargeContext('gpt-5.6-sol'), 872_000)
+  assert.equal(codexLargeContext('gpt-5.6-terra'), 872_000)
+  assert.equal(codexLargeContext('gpt-5.6-luna'), 872_000)
+  assert.equal(codexLargeContext('gpt-5.4'), 1_000_000)
+  assert.equal(codexLargeContext('gpt-5.5'), undefined)
+  assert.equal(codexLargeContext('gpt-5.4-mini'), undefined)
+  assert.equal(codexLargeContext('gpt-5.3-codex-spark'), undefined)
 })
 
-test('withPickerVariants order is base, 900K, Ultra, Fast', () => {
+test('withPickerVariants order is base, large context, Fast', () => {
   const catalog = withPickerVariants([
     { id: 'gpt-5.6-sol', name: 'GPT-5.6 Sol' },
-    { id: 'gpt-5.5', name: 'GPT-5.5' },
-    { id: 'gpt-5.3-codex', name: 'GPT-5.3 Codex' },
+    { id: 'gpt-5.4', name: 'GPT-5.4' },
+    { id: 'gpt-5.4-mini', name: 'GPT-5.4 Mini' },
   ])
   assert.deepEqual(catalog.map((row) => row.id), [
     'gpt-5.6-sol',
     'gpt-5.6-sol-900k',
-    'gpt-5.6-sol-ultra',
     'gpt-5.6-sol-fast',
-    'gpt-5.5',
-    'gpt-5.5-fast',
-    'gpt-5.3-codex',
+    'gpt-5.4',
+    'gpt-5.4-900k',
+    'gpt-5.4-fast',
+    'gpt-5.4-mini',
   ])
+  assert.equal(catalog[1].name, 'GPT-5.6 Sol 872K')
+  assert.equal(catalog[1].contextWindow, 872_000)
+  assert.equal(catalog[4].name, 'GPT-5.4 1M')
+  assert.equal(catalog[4].contextWindow, 1_000_000)
 })

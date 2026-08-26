@@ -60,12 +60,12 @@ It is **Priority Processing** (`service_tier: "priority"`), not a different mode
 
 | Model | Fast |
 |---|---|
-| GPT flagships (`gpt-5.5`, `gpt-5.4`, `gpt-5.6-sol`, …) | Yes. Settings toggle, or pick the `-fast` sibling in the model list. |
-| Codex series (`gpt-5.3-codex`, `gpt-5.3-codex-spark`) | No. The Codex Responses API rejects `service_tier`; the proxy strips it. |
+| GPT-5.6 Sol / Terra / Luna, GPT-5.5, GPT-5.4 | Yes. Pick the `-fast` sibling in the model list. |
+| GPT-5.4 Mini, GPT-5.3 Codex Spark | No. Their catalog rows carry an empty `service_tiers`, so no `-fast` sibling exists. |
 | Grok 4.6 | Yes (`service_tier: "priority"`). |
-| Older Grok ids | No. |
+| Older Grok ids | No. The xAI Responses API rejects the field; the proxy strips it. |
 
-Default is off. Fast is quicker (~1.5×) and spends more (~2.5×). Codex-series models ignore the switch; the proxy strips the field.
+Default is off. Measured on `gpt-5.6-luna`: **88.3 against 57.5 output tokens per second — 1.54×**, matching the catalog's "1.5x speed, increased usage". The gain is on generation throughput only: time to first token and prompt caching are unchanged.
 
 Login, token refresh, chat, and quota use one official client identity: Codex pairs `originator: codex_cli_rs` with `User-Agent: codex_cli_rs/<version>`; Grok sends `x-xai-token-auth: xai-grok-cli` and `User-Agent: grok-cli/<version>`. No TLS fingerprint impersonation.
 
@@ -73,19 +73,17 @@ Login, token refresh, chat, and quota use one official client identity: Codex pa
 
 Settings → OAuth subs lists every Codex and Grok catalog id, including `-fast` and `-900k` siblings. Each row is an on/off checkbox. **All on** / **All off** apply per family.
 
-Default is all on except **900K**. Pick a **Fast** sibling (`gpt-5.6-sol-fast`, `grok-4.6-fast`) for Priority Processing. The `-fast` suffix is host-side only — the proxy strips it and sends `service_tier: "priority"`. Codex-series models have no Fast sibling.
+Default is all on except **900K**. Pick a **Fast** sibling (`gpt-5.6-sol-fast`, `grok-4.6-fast`) for Priority Processing. The `-fast` suffix is host-side only — the proxy strips it and sends `service_tier: "priority"`. GPT-5.4 Mini and GPT-5.3 Codex Spark have no Fast sibling.
 
-ChatGPT Codex advertises 272K for GPT-5.4 and GPT-5.6 Sol / Terra / Luna, but those four slugs accept ~900K. Pick `gpt-5.6-sol-900k` (and the Terra / Luna / 5.4 twins) to opt in. The `-900k` suffix is host-side only — the proxy strips it before the upstream request. GPT-5.5 and GPT-5.4 Mini stay at 272K.
+GPT-5.6 Sol / Terra / Luna accept **872K** and GPT-5.4 accepts **1M**, well past their default window. Pick `gpt-5.6-sol-900k` (and the Terra / Luna / 5.4 twins) to opt in — the `-900k` suffix is a stable host-side id even though the real ceiling is per-model, and the proxy strips it before the upstream request. GPT-5.5, GPT-5.4 Mini and Spark have no large variant.
 
-900K, Fast, and Ultra all spend quota faster. Leave Ultra off unless the session needs multi-agent.
+Both 900K and Fast spend quota faster.
 
 Turning a model off removes it from the next `llm-pi-ai` sync — it disappears from the Harness picker. Choices persist in `models.json`. A catalog id added later stays on until you turn it off (900K ids stay off until you turn them on).
 
 You can pre-select while signed out; the family applies on the next sign-in. **Sync model list** rewrites the live routes from the current selection.
 
-Grok 4.6 thinking depth is **low / medium / high / xhigh**. Grok 4.5 is **low / medium / high** (no xhigh). Reasoning cannot be turned off; if you leave it unset the API uses **high**. Grok 4 has no depth control. Codex GPT-5.6 Sol / Terra / Luna add **max** on top of **off / minimal / low / medium / high / xhigh**. Older Codex models stop at **xhigh**.
-
-DeepSeek Harness has no `ultra` reasoning level. GPT-5.6 **Ultra** is a separate picker model (`gpt-5.6-sol-ultra`, off by default). The proxy peels the suffix and sends `reasoning.effort: "ultra"` to Codex.
+Grok 4.6 thinking depth is **low / medium / high / xhigh**. Grok 4.5 is **low / medium / high** (no xhigh). Reasoning cannot be turned off; if you leave it unset the API uses **high**. Grok 4 has no depth control. Codex GPT-5.6 Sol / Terra / Luna add **max** on top of **low / medium / high / xhigh**. Other Codex models stop at **xhigh**. `minimal` is not offered: every Codex model rejects it.
 
 Set the level in the DeepSeek Harness session model menu → **Reasoning**. It is not on Settings → Models. After installing or changing the catalog, click **Sync model list**.
 
