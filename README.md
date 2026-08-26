@@ -84,7 +84,7 @@ After sign-in, each account card shows official remaining quota.
 | Subscription | Endpoint | Display |
 |---|---|---|
 | ChatGPT Codex | `chatgpt.com/backend-api/wham/usage` | Plan badge (Plus / Pro / Team …) plus 5-hour + weekly windows, **remaining** percent and reset time |
-| ChatGPT Codex reset | `…/wham/rate-limit-reset-credits` + `/consume` | Banked 5-hour reset count; confirm button on the Codex card |
+| ChatGPT Codex reset | `…/wham/rate-limit-reset-credits` + `/consume` | Banked 5-hour reset count and expiry; confirm button on the Codex card |
 | xAI Grok | `cli-chat-proxy.grok.com/v1/billing?format=credits` plus `/v1/user?include=subscription` | Plan badge (SuperGrok / X Premium+ …) plus period usage, prepaid balance, product split |
 
 Quota refreshes about once a minute, or immediately from **Refresh quota**. A failed read does not block chat.
@@ -93,7 +93,7 @@ After sign-in the account title shows a **Plan** badge. Codex reads JWT `chatgpt
 
 Bars interpolate green → yellow → red with remaining percent (`hsl(remaining × 1.2, 78%, 38%)`).
 
-ChatGPT / Codex Plus and Pro may bank extra 5-hour resets. When the account has unused credits, the Codex card shows **Reset quota · N left**. Confirm, then the plugin `POST`s `chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume` with `{ redeem_request_id }` plus `idempotencyKey`. Grok has no equivalent.
+ChatGPT / Codex Plus and Pro may bank extra 5-hour resets. When the account has unused credits, the Codex card shows **Reset quota · N left** plus when that credit expires. Confirm, then the plugin `POST`s `chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume` with `{ redeem_request_id }` plus `idempotencyKey`. Grok has no equivalent.
 
 ## Options
 

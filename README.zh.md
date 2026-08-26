@@ -84,7 +84,7 @@ DeepSeek Harness（调用面）
 | 订阅 | 接口 | 显示 |
 |---|---|---|
 | ChatGPT Codex | `chatgpt.com/backend-api/wham/usage` | 套餐等级（Plus / Pro / Team …）+ 5 小时窗口 + 每周窗口，展示**剩余**百分比和重置时间 |
-| ChatGPT Codex 重置 | `…/wham/rate-limit-reset-credits` 与 `/consume` | 银行的 5 小时重置次数；Codex 卡片上的确认按钮 |
+| ChatGPT Codex 重置 | `…/wham/rate-limit-reset-credits` 与 `/consume` | 银行的 5 小时重置次数和过期时间；Codex 卡片上的确认按钮 |
 | xAI Grok | `cli-chat-proxy.grok.com/v1/billing?format=credits`，并读 `/v1/user?include=subscription` | 套餐等级（SuperGrok / X Premium+ …）+ 本周期用量、预付余额、产品分项 |
 
 额度约每分钟刷新一次，也可点卡片上的 **刷新额度**。读失败不影响对话。
@@ -93,7 +93,7 @@ DeepSeek Harness（调用面）
 
 进度条按剩余百分比从绿过渡到黄再到红（`hsl(剩余 × 1.2, 78%, 38%)`）。
 
-ChatGPT / Codex Plus、Pro 可能有银行的 5 小时重置次数。还有剩余次数时，Codex 卡片显示 **重置额度 · 剩 N 次**。确认后插件会 `POST` `chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume`，请求体为 `{ redeem_request_id }`，并带 `idempotencyKey`。Grok 没有对应能力。
+ChatGPT / Codex Plus、Pro 可能有银行的 5 小时重置次数。还有剩余次数时，Codex 卡片显示 **重置额度 · 剩 N 次**，并标出该次重置何时过期。确认后插件会 `POST` `chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume`，请求体为 `{ redeem_request_id }`，并带 `idempotencyKey`。Grok 没有对应能力。
 
 ## 配置
 

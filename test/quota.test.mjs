@@ -53,9 +53,21 @@ test('parseCodexUsage maps 5h + weekly remaining', () => {
   assert.equal(parsed.rows[0].kind, 'primary')
   assert.equal(parsed.rows[0].remainingPercent, 72)
   assert.equal(parsed.rows[0].windowMinutes, 300)
+  assert.ok(parsed.rows[0].resetAt > Date.now())
   assert.equal(parsed.rows[1].kind, 'weekly')
   assert.equal(parsed.rows[1].remainingPercent, 54)
   assert.equal(parsed.rows[1].resetAt, 1_770_000_000_000)
+})
+
+test('parseCodexUsage reads resets_at and seconds_until_reset aliases', () => {
+  const parsed = parseCodexUsage({
+    rate_limit: {
+      primary_window: { used_percent: 10, resets_at: '2099-01-02T00:00:00Z' },
+      secondary_window: { used_percent: 20, seconds_until_reset: 86_400 },
+    },
+  })
+  assert.equal(parsed.rows[0].resetAt, Date.parse('2099-01-02T00:00:00Z'))
+  assert.ok(parsed.rows[1].resetAt > Date.now() + 80_000_000)
 })
 
 test('parseResetCredits reads available_count and skips redeemed/expired', () => {
@@ -80,6 +92,15 @@ test('parseResetCredits reads available_count and skips redeemed/expired', () =>
   assert.equal(isAvailableResetCredit(parsed.credits[0]), true)
   assert.equal(isAvailableResetCredit(parsed.credits[1]), false)
   assert.equal(parsed.nextExpiresAt, Date.parse('2099-06-25T08:30:00Z'))
+})
+
+test('parseResetCredits uses payload expires_at when credit rows omit it', () => {
+  const parsed = parseResetCredits({
+    available_count: 1,
+    expires_at: '2099-08-01T12:00:00Z',
+  })
+  assert.equal(parsed.availableCount, 1)
+  assert.equal(parsed.nextExpiresAt, Date.parse('2099-08-01T12:00:00Z'))
 })
 
 test('parseResetCredits derives count from credits when available_count is missing', () => {
@@ -170,6 +191,7 @@ test('QuotaStore fetches Codex usage + reset credits and caches', async () => {
   assert.equal(first.planLabel, 'Pro')
   assert.equal(first.rows[0].remainingPercent, 90)
   assert.equal(first.resetCredits.availableCount, 2)
+  assert.ok(first.resetCredits.nextExpiresAt > Date.now())
   assert.equal(second.status, 'ready')
 })
 
