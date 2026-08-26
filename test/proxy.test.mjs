@@ -66,6 +66,38 @@ test('proxy requires the local bearer and forwards Codex Responses', async () =>
   }
 })
 
+test('proxy asks upstream for SSE when the body streams', async () => {
+  const seen = []
+  const fetchFn = async (url, init) => {
+    seen.push(init.headers)
+    return new Response('{"id":"resp"}', { status: 200, headers: { 'content-type': 'application/json' } })
+  }
+  const proxy = createProxy({
+    port: 0,
+    apiKey: 'secret-key',
+    fetchFn,
+    tokens: {
+      codex: { session: async () => ({ accessToken: 'codex-tok', accountId: 'acct' }) },
+      grok: { session: async () => { throw new Error('not logged in') } },
+    },
+  })
+  const server = await proxy.listen()
+  const { port } = server.address()
+  try {
+    const post = (body) => fetch(`http://127.0.0.1:${port}/codex/v1/responses`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer secret-key', 'content-type': 'application/json' },
+      body,
+    })
+    await post('{"model":"gpt-5.3-codex","stream":true}')
+    assert.equal(seen[0].accept, 'text/event-stream')
+    await post('{"model":"gpt-5.3-codex"}')
+    assert.equal(seen[1].accept, 'application/json')
+  } finally {
+    await proxy.close()
+  }
+})
+
 test('proxy peels -fast and injects service_tier on GPT; strips it on Codex', async () => {
   const seen = []
   const fetchFn = async (url, init) => {
