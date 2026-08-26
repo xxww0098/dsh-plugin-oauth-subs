@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, stat } from 'node:fs/promises'
+import { chmod, mkdtemp, readFile, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -34,4 +34,28 @@ test('saveSession writes atomically with mode 0600 and preserves siblings', asyn
 test('loadStore returns empty for a missing file', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
   assert.deepEqual(await loadStore(join(dir, 'missing.json')), {})
+})
+
+test('saveSession creates its credential directory with mode 0700', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const privateDir = join(dir, 'private')
+  await saveSession('codex', { accessToken: 'a', refreshToken: 'r', expiresAt: 1 }, join(privateDir, 'auth.json'))
+  assert.equal((await stat(privateDir)).mode & 0o777, 0o700)
+})
+
+test('loadStore rejects credentials exposed to other users', { skip: process.platform === 'win32' }, async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const path = join(dir, 'auth.json')
+  await writeFile(path, '{"codex":{"accessToken":"a","refreshToken":"r","expiresAt":1}}')
+  await chmod(path, 0o644)
+  await assert.rejects(loadStore(path), /group or other users/)
+})
+
+test('loadStore rejects a symbolic-link credential path', { skip: process.platform === 'win32' }, async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const target = join(dir, 'target.json')
+  const path = join(dir, 'auth.json')
+  await writeFile(target, '{"codex":{"accessToken":"a","refreshToken":"r","expiresAt":1}}', { mode: 0o600 })
+  await symlink(target, path)
+  await assert.rejects(loadStore(path), /symbolic link/)
 })

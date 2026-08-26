@@ -3,7 +3,7 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { AuthController, dispatchManage } from '../lib/controller.js'
+import { AuthController } from '../lib/controller.js'
 import { saveSession } from '../lib/store.js'
 
 test('snapshot reports logged-out accounts and empty providers', async () => {
@@ -50,26 +50,15 @@ test('sync after a stored session writes llm-pi-ai providers', async () => {
   const result = await controller.sync()
   assert.equal(result.routes[0].provider, 'oauth-grok')
   assert.equal(ops[0].target, 'llm-pi-ai')
-  const status = await dispatchManage(controller, 'GET', '/v0/oauth/status', {})
-  assert.equal(status.body.accounts.grok.account, 'grok-user')
-  assert.equal(status.body.accounts.grok.quota.status, 'ready')
-  assert.equal(status.body.accounts.grok.quota.planType, 'SuperGrok')
-  assert.equal(status.body.accounts.grok.quota.planLabel, 'SuperGrok')
-  assert.equal(status.body.accounts.grok.quota.rows[0].remainingPercent, 90)
+  const status = await controller.snapshot()
+  assert.equal(status.accounts.grok.account, 'grok-user')
+  assert.equal(status.accounts.grok.quota.status, 'ready')
+  assert.equal(status.accounts.grok.quota.planType, 'SuperGrok')
+  assert.equal(status.accounts.grok.quota.planLabel, 'SuperGrok')
+  assert.equal(status.accounts.grok.quota.rows[0].remainingPercent, 90)
 })
 
-test('dispatchManage maps unknown routes to 404', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
-  const controller = new AuthController({
-    authPath: join(dir, 'auth.json'),
-    prefix: 'oauth',
-    origin: () => 'http://127.0.0.1:8318',
-  })
-  const result = await dispatchManage(controller, 'POST', '/v0/oauth/nope', {})
-  assert.equal(result.status, 404)
-})
-
-test('dispatchManage refreshes quota on POST /quota', async () => {
+test('controller refreshes quota', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
   const authPath = join(dir, 'auth.json')
   await saveSession('codex', {
@@ -94,15 +83,15 @@ test('dispatchManage refreshes quota on POST /quota', async () => {
       }), { status: 200 })
     },
   })
-  const result = await dispatchManage(controller, 'POST', '/v0/oauth/quota', { provider: 'codex' })
-  assert.equal(result.body.status, 'ready')
-  assert.equal(result.body.planType, 'plus')
-  assert.equal(result.body.planLabel, 'Plus')
-  assert.equal(result.body.rows[0].remainingPercent, 60)
-  assert.equal(result.body.resetCredits.availableCount, 0)
+  const result = await controller.refreshQuota('codex')
+  assert.equal(result.status, 'ready')
+  assert.equal(result.planType, 'plus')
+  assert.equal(result.planLabel, 'Plus')
+  assert.equal(result.rows[0].remainingPercent, 60)
+  assert.equal(result.resetCredits.availableCount, 0)
 })
 
-test('dispatchManage consumes Codex reset on POST /quota/reset', async () => {
+test('controller consumes Codex reset', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
   const authPath = join(dir, 'auth.json')
   await saveSession('codex', {
@@ -133,27 +122,24 @@ test('dispatchManage consumes Codex reset on POST /quota/reset', async () => {
       }), { status: 200 })
     },
   })
-  const result = await dispatchManage(controller, 'POST', '/v0/oauth/quota/reset', { provider: 'codex' })
-  assert.equal(result.status, 200)
-  assert.equal(result.body.status, 'ready')
-  assert.equal(result.body.resetCredits.availableCount, 1)
-  assert.equal(result.body.rows[0].remainingPercent, 92)
+  const result = await controller.consumeReset('codex')
+  assert.equal(result.status, 'ready')
+  assert.equal(result.resetCredits.availableCount, 1)
+  assert.equal(result.rows[0].remainingPercent, 92)
   assert.equal(typeof posts[0].redeem_request_id, 'string')
 })
 
-test('dispatchManage rejects Grok quota reset', async () => {
+test('controller rejects Grok quota reset', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
   const controller = new AuthController({
     authPath: join(dir, 'auth.json'),
     prefix: 'oauth',
     origin: () => 'http://127.0.0.1:8318',
   })
-  const result = await dispatchManage(controller, 'POST', '/v0/oauth/quota/reset', { provider: 'grok' })
-  assert.equal(result.status, 400)
-  assert.match(result.body.error, /Codex/)
+  await assert.rejects(controller.consumeReset('grok'), /Codex/)
 })
 
-test('dispatchManage toggles models and sync uses the persisted set', async () => {
+test('controller toggles models and sync uses the persisted set', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
   const authPath = join(dir, 'auth.json')
   await saveSession('codex', {
@@ -175,18 +161,16 @@ test('dispatchManage toggles models and sync uses the persisted set', async () =
       return new Response(JSON.stringify({ plan_type: 'plus', rate_limit: { primary_window: { used_percent: 1 } } }), { status: 200 })
     },
   })
-  const off = await dispatchManage(controller, 'POST', '/v0/oauth/models', { key: 'oauth-codex/gpt-5.5-fast', on: false })
-  assert.equal(off.status, 200)
-  assert.equal(off.body.catalog.find((row) => row.family === 'codex').models.find((m) => m.id === 'gpt-5.5-fast').enabled, false)
-  assert.equal(off.body.catalog.find((row) => row.family === 'codex').models.find((m) => m.id === 'gpt-5.5').enabled, true)
+  const off = await controller.setModels({ key: 'oauth-codex/gpt-5.5-fast', on: false })
+  assert.equal(off.catalog.find((row) => row.family === 'codex').models.find((m) => m.id === 'gpt-5.5-fast').enabled, false)
+  assert.equal(off.catalog.find((row) => row.family === 'codex').models.find((m) => m.id === 'gpt-5.5').enabled, true)
   const last = ops.at(-1)
   const set = last.mutations.filter((row) => row.op === 'set')
   assert.equal(set.length, 1)
   assert.equal(set[0].value.models.some((model) => model.id === 'gpt-5.5-fast'), false)
   assert.equal(set[0].value.models.some((model) => model.id === 'gpt-5.5'), true)
-  const familyOff = await dispatchManage(controller, 'POST', '/v0/oauth/models', { family: 'codex', on: false })
-  assert.equal(familyOff.body.selected.some((key) => key.startsWith('oauth-codex/')), false)
+  const familyOff = await controller.setModels({ family: 'codex', on: false })
+  assert.equal(familyOff.selected.some((key) => key.startsWith('oauth-codex/')), false)
   const empty = ops.at(-1).mutations.filter((row) => row.op === 'set')
   assert.equal(empty.length, 0)
 })
-

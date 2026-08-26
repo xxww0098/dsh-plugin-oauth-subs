@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile } from 'node:fs/promises'
+import { chmod, mkdtemp, readFile, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -145,6 +145,7 @@ test('ModelSwitch persists disabled keys and defaults 900K off', async () => {
   await first.toggle('oauth-codex/gpt-5.6-sol-900k', true, catalog)
   assert.equal(first.status(catalog).selected.includes('oauth-codex/gpt-5.6-sol-900k'), true)
   const raw = JSON.parse(await readFile(path, 'utf8'))
+  assert.equal((await stat(path)).mode & 0o777, 0o600)
   assert.equal(raw.disabled.includes('oauth-codex/gpt-5.5-fast'), true)
   assert.equal(raw.enabled.includes('oauth-codex/gpt-5.6-sol-900k'), true)
   const second = new ModelSwitch({ path })
@@ -156,6 +157,26 @@ test('ModelSwitch persists disabled keys and defaults 900K off', async () => {
   await second.setAll(true, catalog)
   assert.equal(second.selectedForSync(catalog), undefined)
   assert.equal(second.status(catalog).selected.includes('oauth-codex/gpt-5.4-900k'), true)
+})
+
+test('ModelSwitch rejects a symbolic-link settings path', { skip: process.platform === 'win32' }, async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-models-'))
+  const target = join(dir, 'target.json')
+  const path = join(dir, 'models.json')
+  await writeFile(target, '{"disabled":[],"enabled":[]}', { mode: 0o600 })
+  await symlink(target, path)
+  const models = new ModelSwitch({ path })
+  await assert.rejects(models.ready, /symbolic link/)
+})
+
+test('ModelSwitch still accepts a readable legacy 0644 settings file', { skip: process.platform === 'win32' }, async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-models-'))
+  const path = join(dir, 'models.json')
+  await writeFile(path, '{"disabled":["oauth-codex/gpt-5.5"],"enabled":[]}')
+  await chmod(path, 0o644)
+  const models = new ModelSwitch({ path })
+  await models.ready
+  assert.equal(models.disabled.has('oauth-codex/gpt-5.5'), true)
 })
 
 test('syncHarnessModels honors a persisted selected subset', async () => {

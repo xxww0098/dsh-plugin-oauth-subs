@@ -112,7 +112,6 @@ ChatGPT / Codex Plus and Pro may bank extra 5-hour resets. When the account has 
 | Option | Default | Notes |
 |---|---|---|
 | `port` | `8318` | Loopback proxy port |
-| `bind` | `127.0.0.1` | Listen address |
 | `provider` | `oauth` | llm-pi-ai route prefix (`oauth-codex` / `oauth-grok`) |
 | `dataDir` | profile data dir | `auth.json`, `models.json`, and `proxy-key` |
 | `grokLogin` | `device` | `device` or `pkce` |

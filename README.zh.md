@@ -112,7 +112,6 @@ ChatGPT / Codex Plus、Pro 可能有银行的 5 小时重置次数。还有剩�
 | 选项 | 默认 | 说明 |
 |---|---|---|
 | `port` | `8318` | 本机代理端口 |
-| `bind` | `127.0.0.1` | 监听地址 |
 | `provider` | `oauth` | 同步到 DSH 的路由 ID 前缀（`oauth-codex` / `oauth-grok`） |
 | `dataDir` | profile 数据目录 | `auth.json`、`models.json` 与 `proxy-key` 位置 |
 | `grokLogin` | `device` | `device` 或 `pkce` |

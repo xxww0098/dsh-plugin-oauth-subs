@@ -103,3 +103,17 @@ test('OAuthFlowManager rejects a mismatched pasted state', async () => {
   attempt.cancel()
   await assert.rejects(attempt.waitCode(), /cancelled/)
 })
+
+test('OAuthFlowManager rejects a bare code without state proof', async () => {
+  const flows = new OAuthFlowManager()
+  const attempt = await flows.start('codex', {
+    callbackPath: '/auth/callback',
+    listen: { host: '127.0.0.1', ports: [0] },
+    timeoutMs: 5_000,
+    buildAuthorizeUrl: () => 'https://example.test/authorize',
+  })
+  assert.throws(() => attempt.manual('abc123'), /no authorization code/)
+  assert.throws(() => attempt.manual('code=abc123'), /state mismatch/)
+  attempt.cancel()
+  await assert.rejects(attempt.waitCode(), /cancelled/)
+})

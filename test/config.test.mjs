@@ -12,7 +12,7 @@ test('Config is a Standard Schema that fills defaults', () => {
   assert.equal('then' in result, false)
   assert.equal(result.issues, undefined)
   assert.equal(result.value.port, 8318)
-  assert.equal(result.value.bind, '127.0.0.1')
+  assert.equal(result.value.bind, undefined)
   assert.equal(result.value.grokLogin, 'device')
 })
 
