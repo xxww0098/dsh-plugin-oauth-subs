@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { request as httpRequest } from 'node:http'
 import { test } from 'node:test'
-import { createProxy } from '../lib/proxy.js'
+import { createProxy, describeError, hasOutputEvent, STREAM_ATTEMPTS } from '../lib/proxy.js'
 import { CODEX_API_URL } from '../lib/codex.js'
 
 function rawRequest(port, { method = 'GET', path = '/', headers = {}, body } = {}) {
@@ -347,4 +347,198 @@ test('proxy skips upstream work after a disconnect during token loading', async 
   } finally {
     await proxy.close()
   }
+})
+
+// --- upstream stream resilience -------------------------------------------
+// The 2026-08-26 incident: every failed Codex stream carried `response.created`
+// and no output event, and the proxy ended the client response cleanly, which
+// llm-pi-ai reports as "stream ended before a terminal response event".
+
+const SSE = { 'content-type': 'text/event-stream' }
+const sse = (...events) => events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join('')
+const CREATED = { type: 'response.created', response: { id: 'r1' } }
+const DELTA = { type: 'response.output_text.delta', delta: 'hi' }
+const DONE = { type: 'response.completed', response: { id: 'r1' } }
+
+function streamingUpstream(chunks, { failAfter } = {}) {
+  return new Response(new ReadableStream({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(new TextEncoder().encode(chunk))
+      if (failAfter === undefined) controller.close()
+      else setTimeout(() => controller.error(Object.assign(new Error('terminated'), { code: 'UND_ERR_SOCKET' })), failAfter)
+    },
+  }), { status: 200, headers: SSE })
+}
+
+async function withProxy(fetchFn, run) {
+  const proxy = createProxy({
+    port: 0,
+    apiKey: 'secret-key',
+    fetchFn,
+    tokens: {
+      codex: { session: async () => ({ accessToken: 'codex-tok', accountId: 'acct' }) },
+      grok: { session: async () => { throw new Error('not logged in') } },
+    },
+  })
+  const server = await proxy.listen()
+  const logs = []
+  const consoleError = console.error
+  console.error = (...args) => logs.push(args.join(' '))
+  try {
+    return await run(server.address().port, logs)
+  } finally {
+    console.error = consoleError
+    await proxy.close()
+  }
+}
+
+const post = (port, body = { model: 'gpt-5.6-luna', stream: true, input: [] }) => fetch(`http://127.0.0.1:${port}/codex/v1/responses`, {
+  method: 'POST',
+  headers: { authorization: 'Bearer secret-key', 'content-type': 'application/json' },
+  body: JSON.stringify(body),
+})
+
+test('a stream that ends carrying only the preamble is retried, and the client sees one clean stream', async () => {
+  let calls = 0
+  const fetchFn = async () => {
+    calls += 1
+    return calls === 1
+      ? streamingUpstream([sse(CREATED)])
+      : streamingUpstream([sse(CREATED, DELTA, DONE)])
+  }
+  await withProxy(fetchFn, async (port) => {
+    const response = await post(port)
+    const text = await response.text()
+    assert.equal(calls, 2, 'the dead first attempt must be retried')
+    assert.equal(response.status, 200)
+    assert.equal(text.match(/response\.created/g).length, 1, 'the retried preamble must not reach the client twice')
+    assert.match(text, /response\.completed/)
+  })
+})
+
+test('a genuine response.failed is forwarded, never retried away', async () => {
+  let calls = 0
+  const fetchFn = async () => {
+    calls += 1
+    return streamingUpstream([sse(CREATED, { type: 'response.failed', response: { error: { code: 'server_error', message: 'boom' } } })])
+  }
+  await withProxy(fetchFn, async (port) => {
+    const text = await (await post(port)).text()
+    assert.equal(calls, 1, 'a terminal error event is an answer, not a transport fault')
+    assert.match(text, /response\.failed/)
+  })
+})
+
+test('a break after output has been committed reaches the client as a broken stream, not a clean end', async () => {
+  let calls = 0
+  const fetchFn = async () => {
+    calls += 1
+    return streamingUpstream([sse(CREATED, DELTA)], { failAfter: 10 })
+  }
+  await withProxy(fetchFn, async (port, logs) => {
+    const response = await post(port)
+    await assert.rejects(response.text(), 'a clean EOF here reads as a completed response')
+    assert.equal(calls, 1, 'committed bytes cannot be replayed, so no retry')
+    assert.match(logs.join('\n'), /failed mid-response.*terminated.*committed=true/s)
+  })
+})
+
+test('exhausting the retries answers with a real error instead of a silent EOF', async () => {
+  let calls = 0
+  const fetchFn = async () => { calls += 1; return streamingUpstream([sse(CREATED)]) }
+  await withProxy(fetchFn, async (port) => {
+    const response = await post(port)
+    assert.equal(calls, STREAM_ATTEMPTS)
+    assert.equal(response.status, 502)
+    assert.match((await response.json()).error, /failed 3 times.*no output events/s)
+  })
+})
+
+test('a pre-header fetch fault is retried too', async () => {
+  let calls = 0
+  const fetchFn = async () => {
+    calls += 1
+    if (calls === 1) throw new TypeError('fetch failed', { cause: Object.assign(new Error('other side closed'), { code: 'UND_ERR_SOCKET' }) })
+    return streamingUpstream([sse(CREATED, DELTA, DONE)])
+  }
+  await withProxy(fetchFn, async (port) => {
+    assert.match(await (await post(port)).text(), /response\.completed/)
+    assert.equal(calls, 2)
+  })
+})
+
+test('a client disconnect during the silent window stops the proxy instead of retrying', async () => {
+  let calls = 0
+  const fetchFn = async (_url, init) => {
+    calls += 1
+    return new Response(new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(sse(CREATED)))
+        init.signal.addEventListener('abort', () => controller.error(init.signal.reason ?? new Error('aborted')), { once: true })
+      },
+    }), { status: 200, headers: SSE })
+  }
+  await withProxy(fetchFn, async (port) => {
+    const abort = new AbortController()
+    const inflight = fetch(`http://127.0.0.1:${port}/codex/v1/responses`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer secret-key', 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'gpt-5.6-luna', stream: true, input: [] }),
+      signal: abort.signal,
+    }).then((r) => r.text())
+    await new Promise((resolve) => setTimeout(resolve, 60))
+    abort.abort()
+    await assert.rejects(inflight)
+    await new Promise((resolve) => setTimeout(resolve, 120))
+    assert.equal(calls, 1, 'a disconnected client must not trigger upstream retries')
+  })
+})
+
+test('non-streaming responses bypass the gate untouched', async () => {
+  await withProxy(async () => new Response('{"id":"resp","object":"response"}', { status: 200, headers: { 'content-type': 'application/json' } }), async (port) => {
+    const response = await post(port, { model: 'gpt-5.6-luna', stream: false, input: [] })
+    assert.equal(response.status, 200)
+    assert.deepEqual(await response.json(), { id: 'resp', object: 'response' })
+  })
+})
+
+test('hasOutputEvent treats only the preamble as retryable', () => {
+  assert.equal(hasOutputEvent(sse(CREATED)), false)
+  assert.equal(hasOutputEvent(sse(CREATED, { type: 'response.in_progress' })), false)
+  assert.equal(hasOutputEvent(sse(CREATED, DELTA)), true)
+  assert.equal(hasOutputEvent(sse(CREATED, { type: 'response.failed' })), true)
+  assert.equal(hasOutputEvent(''), false)
+})
+
+test('describeError unwraps the undici cause behind "fetch failed"', () => {
+  const error = new TypeError('fetch failed', { cause: Object.assign(new Error('other side closed'), { code: 'UND_ERR_SOCKET' }) })
+  assert.equal(describeError(error), 'fetch failed: UND_ERR_SOCKET')
+  assert.equal(describeError(new Error('plain')), 'plain')
+})
+
+test('a streamed body that never looked like an SSE preamble is forwarded, not retried', async () => {
+  let calls = 0
+  const fetchFn = async () => {
+    calls += 1
+    return new Response('{"id":"resp"}', { status: 200, headers: { 'content-type': 'application/json' } })
+  }
+  await withProxy(fetchFn, async (port) => {
+    const response = await post(port)
+    assert.equal(calls, 1, 'an unrecognised body is the upstream answer, not a fault')
+    assert.equal(await response.text(), '{"id":"resp"}')
+  })
+})
+
+test('a streamed 200 with an empty body is retried', async () => {
+  let calls = 0
+  const fetchFn = async () => {
+    calls += 1
+    return calls === 1
+      ? new Response(new ReadableStream({ start: (c) => c.close() }), { status: 200, headers: SSE })
+      : streamingUpstream([sse(CREATED, DELTA, DONE)])
+  }
+  await withProxy(fetchFn, async (port) => {
+    assert.match(await (await post(port)).text(), /response\.completed/)
+    assert.equal(calls, 2)
+  })
 })
