@@ -83,7 +83,7 @@ ChatGPT Codex 对 GPT-5.4 和 GPT-5.6 Sol / Terra / Luna 标称 272K，但这四
 
 未登录也可以先勾选，登录后再同步。**同步到模型列表** 会按当前勾选重写路由。
 
-Grok 4.6 思考深度为 **low / medium / high / xhigh**。Grok 4.5 为 **low / medium / high**（没有 xhigh）。思考不能关掉；不选时上游默认 **high**。Grok 4 没有深度选项。Codex 仍是 **off / minimal / low / medium / high / xhigh**。
+Grok 4.6 思考深度为 **low / medium / high / xhigh**。Grok 4.5 为 **low / medium / high**（没有 xhigh）。思考不能关掉；不选时上游默认 **high**。Grok 4 没有深度选项。Codex 的 GPT-5.6 Sol / Terra / Luna 在 **off / minimal / low / medium / high / xhigh** 之上还有 **max**。更早的 Codex 模型最高到 **xhigh**。
 
 在 DeepSeek Harness **会话**里点模型名称 → **推理等级** 设置，不在「设置 → 模型」。安装或改目录后点一次 **同步到模型列表**。
 

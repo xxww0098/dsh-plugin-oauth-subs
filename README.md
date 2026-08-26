@@ -83,7 +83,7 @@ Turning a model off removes it from the next `llm-pi-ai` sync — it disappears 
 
 You can pre-select while signed out; the family applies on the next sign-in. **Sync model list** rewrites the live routes from the current selection.
 
-Grok 4.6 thinking depth is **low / medium / high / xhigh**. Grok 4.5 is **low / medium / high** (no xhigh). Reasoning cannot be turned off; if you leave it unset the API uses **high**. Grok 4 has no depth control. Codex keeps **off / minimal / low / medium / high / xhigh**.
+Grok 4.6 thinking depth is **low / medium / high / xhigh**. Grok 4.5 is **low / medium / high** (no xhigh). Reasoning cannot be turned off; if you leave it unset the API uses **high**. Grok 4 has no depth control. Codex GPT-5.6 Sol / Terra / Luna add **max** on top of **off / minimal / low / medium / high / xhigh**. Older Codex models stop at **xhigh**.
 
 Set the level in the DeepSeek Harness session model menu → **Reasoning**. It is not on Settings → Models. After installing or changing the catalog, click **Sync model list**.
 
