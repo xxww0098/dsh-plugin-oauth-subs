@@ -1,7 +1,7 @@
 {
   "name": "dsh-plugin-oauth-subs",
   "version": "0.0.1",
-  "description": "ChatGPT Codex and xAI Grok subscription OAuth for DeepSeek Harness — PKCE / device-code login, local Responses proxy, llm-pi-ai sync. Extracted from Hermes Agent, shaped like dsh-plugin-cpa-local.",
+  "description": "ChatGPT Codex and xAI Grok subscription OAuth for DeepSeek Harness — PKCE / device-code login, local Responses proxy, llm-pi-ai sync.",
   "license": "MIT",
   "repository": {
     "type": "git",

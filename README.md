@@ -4,7 +4,7 @@
 
 Use a **ChatGPT / Codex subscription** and an **xAI Grok subscription** inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). Official OAuth, no API keys.
 
-The authorization protocol is extracted from [Hermes Agent](https://github.com/NousResearch/hermes-agent). The plugin shape follows [dsh-plugin-cpa-local](https://github.com/xxww0098/dsh-plugin-cpa-local): a loopback Responses proxy plus `llm-pi-ai` route sync. Scaffolding matches [First plugin](https://deepseek-harness.github.io/deepseek-harness/develop/basic/).
+A loopback Responses proxy plus `llm-pi-ai` route sync.
 
 ## Install
 
@@ -30,7 +30,7 @@ pnpm dsh web --patch ./cordis.patch.yml
 | Provider | Flow | Client | Upstream |
 |---|---|---|---|
 | ChatGPT Codex | PKCE on `localhost:1455` (falls back to `1457`); paste-callback supported | `app_EMoamEEZ73f0CkXaXp7hrann` | `chatgpt.com/backend-api/codex/responses` |
-| xAI Grok | **Device-code (default, Hermes)**; PKCE on `127.0.0.1:56121` as fallback | `b1a00492-073a-47ea-816f-4c329264a828` | `api.x.ai/v1/responses` |
+| xAI Grok | **Device-code (default)**; PKCE on `127.0.0.1:56121` as fallback | `b1a00492-073a-47ea-816f-4c329264a828` | `api.x.ai/v1/responses` |
 
 Already signed in on this machine via Codex CLI or Hermes? Use **Import local session**:
 
@@ -55,7 +55,7 @@ This is not a second LLM adapter. After you close Settings, DSH still calls the 
 
 ## Fast mode
 
-Same switch as Hermes `/fast`. It is **Priority Processing** (`service_tier: "priority"`), not a different model family.
+It is **Priority Processing** (`service_tier: "priority"`), not a different model family.
 
 | Model | Fast |
 |---|---|
@@ -78,7 +78,7 @@ You can pre-select while signed out; the family applies on the next sign-in. **S
 
 ## Quota
 
-After sign-in, each account card shows official remaining quota. Parsers follow [cockpit-tools](https://github.com/jlcodes99/cockpit-tools).
+After sign-in, each account card shows official remaining quota.
 
 | Subscription | Endpoint | Display |
 |---|---|---|
@@ -92,7 +92,7 @@ After sign-in the account title shows a **Plan** badge. Codex reads JWT `chatgpt
 
 Bars interpolate green → yellow → red with remaining percent (`hsl(remaining × 1.2, 78%, 38%)`).
 
-ChatGPT / Codex Plus and Pro may bank extra 5-hour resets. When the account has unused credits, the Codex card shows **Reset quota · N left**. Confirm, then the plugin `POST`s `chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume` with `{ redeem_request_id }` (cockpit-tools) plus `idempotencyKey`. Grok has no equivalent.
+ChatGPT / Codex Plus and Pro may bank extra 5-hour resets. When the account has unused credits, the Codex card shows **Reset quota · N left**. Confirm, then the plugin `POST`s `chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume` with `{ redeem_request_id }` plus `idempotencyKey`. Grok has no equivalent.
 
 ## Options
 

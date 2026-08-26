@@ -4,7 +4,7 @@
 
 把 **ChatGPT / Codex 订阅** 和 **xAI Grok 订阅** 接到 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。登录走官方 OAuth，不需要 API Key。
 
-协议从 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 抽出；插件形态对齐 [dsh-plugin-cpa-local](https://github.com/xxww0098/dsh-plugin-cpa-local)：本机 Responses 代理 + `llm-pi-ai` 路由同步。开发约定见 [第一个插件](https://deepseek-harness.github.io/deepseek-harness/develop/basic/)。
+本机 Responses 代理 + `llm-pi-ai` 路由同步。
 
 ## 安装
 
@@ -30,7 +30,7 @@ pnpm dsh web --patch ./cordis.patch.yml
 | 提供商 | 流程 | 客户端 | 上游 |
 |---|---|---|---|
 | ChatGPT Codex | PKCE，回环 `localhost:1455`（占用则 `1457`），可粘贴回调 | `app_EMoamEEZ73f0CkXaXp7hrann` | `chatgpt.com/backend-api/codex/responses` |
-| xAI Grok | **设备码（默认，Hermes）**；PKCE 回环 `127.0.0.1:56121` 作备选 | `b1a00492-073a-47ea-816f-4c329264a828` | `api.x.ai/v1/responses` |
+| xAI Grok | **设备码（默认）**；PKCE 回环 `127.0.0.1:56121` 作备选 | `b1a00492-073a-47ea-816f-4c329264a828` | `api.x.ai/v1/responses` |
 
 已在本机登录过 Codex CLI 或 Hermes 时，点 **导入本机会话**：
 
@@ -55,7 +55,7 @@ DeepSeek Harness（调用面）
 
 ## Fast 模式
 
-对应 Hermes 的 `/fast`。本质是 **Priority Processing**（请求里写 `service_tier: "priority"`），不是换一个模型族。
+本质是 **Priority Processing**（请求里写 `service_tier: "priority"`），不是换一个模型族。
 
 | 模型 | Fast |
 |---|---|
@@ -78,7 +78,7 @@ DeepSeek Harness（调用面）
 
 ## 额度
 
-登录后，设置页账号卡片会显示官方额度。解析对齐 [cockpit-tools](https://github.com/jlcodes99/cockpit-tools)。
+登录后，设置页账号卡片会显示官方额度。
 
 | 订阅 | 接口 | 显示 |
 |---|---|---|
@@ -92,7 +92,7 @@ DeepSeek Harness（调用面）
 
 进度条按剩余百分比从绿过渡到黄再到红（`hsl(剩余 × 1.2, 78%, 38%)`）。
 
-ChatGPT / Codex Plus、Pro 可能有银行的 5 小时重置次数。还有剩余次数时，Codex 卡片显示 **重置额度 · 剩 N 次**。确认后插件会 `POST` `chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume`，请求体为 cockpit-tools 的 `{ redeem_request_id }`，并带 `idempotencyKey`。Grok 没有对应能力。
+ChatGPT / Codex Plus、Pro 可能有银行的 5 小时重置次数。还有剩余次数时，Codex 卡片显示 **重置额度 · 剩 N 次**。确认后插件会 `POST` `chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume`，请求体为 `{ redeem_request_id }`，并带 `idempotencyKey`。Grok 没有对应能力。
 
 ## 配置
 

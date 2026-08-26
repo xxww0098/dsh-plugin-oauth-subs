@@ -73,7 +73,7 @@ test('withFastVariants adds a Fast sibling only for eligible models', () => {
   ])
 })
 
-test('FastSwitch persists on/off like Hermes /fast', async () => {
+test('FastSwitch persists on/off', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-fast-'))
   const path = join(dir, 'fast-mode.json')
   const first = new FastSwitch({ path, initial: false })

@@ -23,7 +23,7 @@ function jwtId() {
   return `${header}.${body}.x`
 }
 
-test('codexFlow builds the Hermes / Codex CLI authorize URL', () => {
+test('codexFlow builds the Codex CLI authorize URL', () => {
   const pkce = createPkce()
   const url = new URL(codexFlow.buildAuthorizeUrl({
     redirectUri: 'http://localhost:1455/auth/callback',

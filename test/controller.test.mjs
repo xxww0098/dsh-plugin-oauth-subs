@@ -68,7 +68,7 @@ test('dispatchManage maps unknown routes to 404', async () => {
   assert.equal(result.status, 404)
 })
 
-test('dispatchManage toggles Fast like Hermes /fast on|off', async () => {
+test('dispatchManage toggles Fast on|off', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
   const controller = new AuthController({
     authPath: join(dir, 'auth.json'),

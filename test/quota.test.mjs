@@ -13,7 +13,7 @@ import {
 import { CODEX_RESET_CONSUME_URL, CODEX_RESET_CREDITS_URL, CODEX_USAGE_URL } from '../lib/codex.js'
 import { GROK_BILLING_URL } from '../lib/grok.js'
 
-test('asNumber reads val wrappers the way cockpit-tools does', () => {
+test('asNumber reads val wrappers', () => {
   assert.equal(asNumber(12), 12)
   assert.equal(asNumber('8.5'), 8.5)
   assert.equal(asNumber({ val: 40 }), 40)
@@ -33,7 +33,7 @@ test('creditBagAmounts fills used/remaining from the other two', () => {
   })
 })
 
-test('parseCodexUsage maps 5h + weekly remaining like cockpit-tools', () => {
+test('parseCodexUsage maps 5h + weekly remaining', () => {
   const parsed = parseCodexUsage({
     plan_type: 'plus',
     rate_limit: {
@@ -97,7 +97,7 @@ test('parseResetCredits derives count from credits when available_count is missi
   assert.equal(parsed.nextExpiresAt, future * 1000)
 })
 
-test('consumeResetBody matches cockpit redeem_request_id plus CLI idempotencyKey', () => {
+test('consumeResetBody matches redeem_request_id plus CLI idempotencyKey', () => {
   assert.deepEqual(consumeResetBody('req-1'), {
     redeem_request_id: 'req-1',
     idempotencyKey: 'req-1',
@@ -191,7 +191,7 @@ test('QuotaStore keeps Codex usage if reset-credits 404s', async () => {
   assert.equal(quota.resetCredits.availableCount, 0)
 })
 
-test('QuotaStore consume posts cockpit redeem body then refreshes usage', async () => {
+test('QuotaStore consume posts redeem body then refreshes usage', async () => {
   const posts = []
   let available = 2
   const fetchFn = async (url, init) => {
