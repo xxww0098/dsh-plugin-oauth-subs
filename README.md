@@ -9,7 +9,7 @@ The authorization protocol is extracted from [Hermes Agent](https://github.com/N
 ## Install
 
 ```sh
-dsh plugin --profile web add /absolute/path/to/dsh-plugin-oauth-subs
+dsh plugin --profile web add https://github.com/xxww0098/dsh-plugin-oauth-subs
 dsh web
 ```
 
