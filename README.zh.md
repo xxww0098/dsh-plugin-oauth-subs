@@ -77,13 +77,15 @@ DeepSeek Harness（调用面）
 
 ChatGPT Codex 对 GPT-5.4 和 GPT-5.6 Sol / Terra / Luna 标称 272K，但这四个模型实际可到约 900K。选 `gpt-5.6-sol-900k`（以及 Terra / Luna / 5.4 对应项）即可开启。`-900k` 只在本机目录里，发给上游前会剥掉。GPT-5.5 和 GPT-5.4 Mini 仍是 272K。
 
-900K 和 Fast 都更耗额度。会话确实需要再打开。
+900K、Fast、Ultra 都更耗额度。Ultra 默认关闭，会话确实需要多 agent 再打开。
 
 关掉的模型不会写入下一次 `llm-pi-ai` 同步，DeepSeek Harness 的模型列表里也就看不到。选择保存在 `models.json`。以后目录新增的普通模型默认是开的；新增的 900K 条目默认关闭。
 
 未登录也可以先勾选，登录后再同步。**同步到模型列表** 会按当前勾选重写路由。
 
 Grok 4.6 思考深度为 **low / medium / high / xhigh**。Grok 4.5 为 **low / medium / high**（没有 xhigh）。思考不能关掉；不选时上游默认 **high**。Grok 4 没有深度选项。Codex 的 GPT-5.6 Sol / Terra / Luna 在 **off / minimal / low / medium / high / xhigh** 之上还有 **max**。更早的 Codex 模型最高到 **xhigh**。
+
+DeepSeek Harness 的推理等级没有 **ultra**。GPT-5.6 **Ultra** 是单独的模型（`gpt-5.6-sol-ultra`，默认关闭）。代理会剥掉后缀并向 Codex 发送 `reasoning.effort: "ultra"`。
 
 在 DeepSeek Harness **会话**里点模型名称 → **推理等级** 设置，不在「设置 → 模型」。安装或改目录后点一次 **同步到模型列表**。
 

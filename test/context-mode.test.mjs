@@ -74,15 +74,16 @@ test('withContextVariants inserts 900K after eligible bases only', () => {
   assert.equal(catalog[1].name, 'GPT-5.6 Sol 900K')
 })
 
-test('withPickerVariants order is base, 900K, Fast', () => {
+test('withPickerVariants order is base, 900K, Ultra, Fast', () => {
   const catalog = withPickerVariants([
-    { id: 'gpt-5.6-sol', name: 'GPT-5.6 Sol', contextWindow: 272_000 },
-    { id: 'gpt-5.5', name: 'GPT-5.5', contextWindow: 272_000 },
-    { id: 'gpt-5.3-codex', name: 'GPT-5.3 Codex', contextWindow: 272_000 },
+    { id: 'gpt-5.6-sol', name: 'GPT-5.6 Sol' },
+    { id: 'gpt-5.5', name: 'GPT-5.5' },
+    { id: 'gpt-5.3-codex', name: 'GPT-5.3 Codex' },
   ])
   assert.deepEqual(catalog.map((row) => row.id), [
     'gpt-5.6-sol',
     'gpt-5.6-sol-900k',
+    'gpt-5.6-sol-ultra',
     'gpt-5.6-sol-fast',
     'gpt-5.5',
     'gpt-5.5-fast',

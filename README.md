@@ -77,13 +77,15 @@ Default is all on except **900K**. Pick a **Fast** sibling (`gpt-5.6-sol-fast`, 
 
 ChatGPT Codex advertises 272K for GPT-5.4 and GPT-5.6 Sol / Terra / Luna, but those four slugs accept ~900K. Pick `gpt-5.6-sol-900k` (and the Terra / Luna / 5.4 twins) to opt in. The `-900k` suffix is host-side only — the proxy strips it before the upstream request. GPT-5.5 and GPT-5.4 Mini stay at 272K.
 
-900K and Fast both spend quota faster. Leave them off unless the session needs them.
+900K, Fast, and Ultra all spend quota faster. Leave Ultra off unless the session needs multi-agent.
 
 Turning a model off removes it from the next `llm-pi-ai` sync — it disappears from the Harness picker. Choices persist in `models.json`. A catalog id added later stays on until you turn it off (900K ids stay off until you turn them on).
 
 You can pre-select while signed out; the family applies on the next sign-in. **Sync model list** rewrites the live routes from the current selection.
 
 Grok 4.6 thinking depth is **low / medium / high / xhigh**. Grok 4.5 is **low / medium / high** (no xhigh). Reasoning cannot be turned off; if you leave it unset the API uses **high**. Grok 4 has no depth control. Codex GPT-5.6 Sol / Terra / Luna add **max** on top of **off / minimal / low / medium / high / xhigh**. Older Codex models stop at **xhigh**.
+
+DeepSeek Harness has no `ultra` reasoning level. GPT-5.6 **Ultra** is a separate picker model (`gpt-5.6-sol-ultra`, off by default). The proxy peels the suffix and sends `reasoning.effort: "ultra"` to Codex.
 
 Set the level in the DeepSeek Harness session model menu → **Reasoning**. It is not on Settings → Models. After installing or changing the catalog, click **Sync model list**.
 
