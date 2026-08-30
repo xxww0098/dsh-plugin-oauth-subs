@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { request as httpRequest } from 'node:http'
 import { test } from 'node:test'
-import { createProxy, describeError, hasOutputEvent, STREAM_ATTEMPTS } from '../lib/proxy.js'
+import { createProxy, describeError, hasOutputEvent, STREAM_ATTEMPTS, codexCacheSessionId } from '../lib/proxy.js'
 import { CODEX_API_URL } from '../lib/codex.js'
 
 function rawRequest(port, { method = 'GET', path = '/', headers = {}, body } = {}) {
@@ -541,4 +541,13 @@ test('a streamed 200 with an empty body is retried', async () => {
     assert.match(await (await post(port)).text(), /response\.completed/)
     assert.equal(calls, 2)
   })
+})
+
+test('codexCacheSessionId sanitizes and clips instead of dropping the key', () => {
+  assert.equal(codexCacheSessionId('session-cache-1'), 'session-cache-1')
+  assert.equal(codexCacheSessionId('session 772f7f3a/foo'), 'session-772f7f3a-foo')
+  const long = `session-${'a'.repeat(80)}`
+  assert.equal(codexCacheSessionId(long).length, 64)
+  assert.equal(codexCacheSessionId(''), undefined)
+  assert.equal(codexCacheSessionId(null), undefined)
 })

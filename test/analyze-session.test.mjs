@@ -56,6 +56,9 @@ test('usage is taken once per turn/step from assistant/message, not the usage ch
   assert.ok(Math.abs(report.weightedCacheHit - 800 / 920) < 1e-9)
   assert.equal(report.zeroCacheCount, 1)
   assert.equal(report.zeroCacheAfterWarmup, 0)
+  assert.equal(report.affinityMissCount, 0)
+  assert.equal(report.calls[0].kind, 'cold_start')
+  assert.equal(report.calls[1].kind, 'delta')
   assert.equal(report.healthy, true)
   assert.match(formatReport(report), /HEALTHY/)
 })
@@ -73,8 +76,60 @@ test('a later zero-cache call is a cache affinity regression', () => {
   ])
   const report = analyzeSession(text)
   assert.equal(report.zeroCacheAfterWarmup, 1)
+  assert.equal(report.affinityMissCount, 1)
+  assert.equal(report.calls[1].kind, 'affinity_miss')
   assert.equal(report.healthy, false)
   assert.match(report.verdict, /regression/)
+})
+
+test('compaction rewrite is not an affinity miss', () => {
+  const text = sessionJsonl([
+    {
+      type: 'assistant/message',
+      data: { turn: 1, step: 1, usage: { inputTokens: 20, outputTokens: 1, cacheReadTokens: 800 } },
+      time: 10,
+    },
+    { type: 'compaction/prune', data: { shadowedTokenCount: 50 }, time: 15 },
+    {
+      type: 'assistant/message',
+      data: { turn: 1, step: 2, usage: { inputTokens: 60, outputTokens: 1, cacheReadTokens: 0 } },
+      time: 20,
+    },
+    {
+      type: 'assistant/message',
+      data: { turn: 1, step: 3, usage: { inputTokens: 5, outputTokens: 1, cacheReadTokens: 55 } },
+      time: 30,
+    },
+  ])
+  const report = analyzeSession(text)
+  assert.equal(report.calls[1].kind, 'compaction')
+  assert.equal(report.affinityMissCount, 0)
+  assert.equal(report.compactionCallCount, 1)
+  assert.equal(report.zeroCacheAfterWarmup, 1)
+  assert.equal(report.healthy, true)
+  assert.match(formatReport(report), /HEALTHY/)
+})
+
+test('request/header rebuild is not an affinity miss', () => {
+  const text = sessionJsonl([
+    { type: 'request/header', data: { reason: 'initial', header: { config: { provider: 'oauth-codex' } } }, time: 1 },
+    {
+      type: 'assistant/message',
+      data: { turn: 1, step: 1, usage: { inputTokens: 10, outputTokens: 1, cacheReadTokens: 900 } },
+      time: 10,
+    },
+    { type: 'request/header', data: { reason: 'change', header: { config: { provider: 'oauth-codex' } } }, time: 15 },
+    {
+      type: 'assistant/message',
+      data: { turn: 1, step: 2, usage: { inputTokens: 100, outputTokens: 1, cacheReadTokens: 0 } },
+      time: 20,
+    },
+  ])
+  const report = analyzeSession(text)
+  assert.equal(report.calls[1].kind, 'rebuild')
+  assert.equal(report.affinityMissCount, 0)
+  assert.equal(report.rebuildCallCount, 1)
+  assert.equal(report.healthy, true)
 })
 
 test('tool timeouts are recorded without being treated as transport faults', () => {

@@ -41,14 +41,16 @@ x-client-request-id: <prompt_cache_key>
 
 ### 运行时验收（2026-08-30 关闭）
 
-- 证据：`session-772f7f3a-332c-4e0c-bff1-6074123474e3`（SkillStar，plan 模式，标题「极简模式快速开关 Agent 技能」）。
-- 模型：`oauth-codex` / `gpt-5.6-terra-fast`，`reasoningEffort: max`，`maxTokens: 128000`，`contextWindow: 258000`。
-- 42 次 `assistant/message`（按 turn+step 去重），未缓存 157,118，缓存读取 3,384,832，输出 15,864。时长 504.5s。
-- 加权命中率 **95.6%**。零缓存仅 1 次（step 1 冷启动），warmup 之后为 0。TRANSPORT 故障 0。
-- 9 次工具超时（glob / read），不计入缓存亲和回归。
-- 对照 2026-08-26 事故：命中 27.4%、47/90 零缓存、缺失 `session-id` / `x-client-request-id`。
-- 结论：0.0.14 的缓存亲和修复在真实长会话上生效。诊断：`node scripts/analyze-session.mjs path/to/session.jsonl`。
-- 健康规则：加权命中 ≥80%，warmup 后零缓存为 0，且无 TRANSPORT。
+- 证据：完整 `session-772f7f3a-332c-4e0c-bff1-6074123474e3`（SkillStar，标题「极简模式快速开关 Agent 技能」），含子代理 `2e1afbbc-…`。
+- 模型：`oauth-codex` / `gpt-5.6-terra-fast`，`reasoningEffort: max`，窗口 258000。
+- 主会话 211 次调用、71 分钟：未缓存 1,370,864，缓存读取 30,068,480，输出 121,278。
+- 加权命中 **95.6%**，前缀复用中位数 **99.6%**，亲和丢失 **0**，TRANSPORT 0。
+- 子代理 17 次调用，命中 91.0%，复用中位 99.0%，亲和丢失 0。
+- 热身后的一次零缓存（step 55，168,767 未缓存）发生在 `request/header reason=change` 且退出 plan 之后，是前缀重建，不是分片走丢；step 56 立刻 99.2% 命中、168,448 缓存读取。
+- 另外 9 次命中下跌与 `compaction/prune` 或 `compaction/start` 对齐（合计约 330k 未缓存）。压缩后下一拍同样回到 ~99% 复用。
+- 未缓存构成：增量工具输出 860k，压缩 330k，plan 重建 169k，冷启动 12k，亲和丢失 0。
+- 健康规则改为：加权命中 ≥80%，**亲和丢失为 0**，且无 TRANSPORT。压缩 / 适配器重建造成的零缓存不再判失败。
+- 诊断：`node scripts/analyze-session.mjs path/to/session.jsonl`。
 
 ## 2026-08-26：并发子代理全线 `stream ended before a terminal response event`
 

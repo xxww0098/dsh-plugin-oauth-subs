@@ -60,18 +60,22 @@ This is not a second LLM adapter. After you close Settings, DSH still calls the 
 
 The proxy is the cache-affinity and stream-retry path. Two contracts matter on a long Codex turn:
 
-1. **Cache shard.** A legal Codex `prompt_cache_key` (≤64 chars) is forwarded as both `session-id` and `x-client-request-id`. Missing those headers used to scatter the same session across shards.
+1. **Cache shard.** A Codex `prompt_cache_key` is forwarded as both `session-id` and `x-client-request-id`. Keys are sanitized to `[A-Za-z0-9._:-]` and clipped to 64 characters instead of dropped — a too-long session id must still pin the shard.
 2. **Commit gate.** A silent pre-output break is retried before headers are committed, so llm-pi-ai does not see a clean EOF and fire five TRANSPORT retries.
 
-Acceptance on a real 42-call `gpt-5.6-terra-fast` session (`session-772f7f3a-…`, 2026-08-30):
+Acceptance on the full `session-772f7f3a-…` SkillStar turn (`oauth-codex` / `gpt-5.6-terra-fast`, 211 calls, 71 min):
 
 | | 2026-08-26 incident | After 0.0.14 affinity headers |
 |---|---|---|
 | Weighted cache hit | 27.4% | **95.6%** |
-| Zero-cache calls | 47 / 90 | 1 / 42 (cold start only) |
+| Prefix reuse (median) | — | **99.6%** |
+| Affinity misses | 47 / 90 zero-cache | **0** |
+| Prefix rewrites | — | 1 adapter rebuild + 9 compaction |
 | TRANSPORT faults | 29 | 0 |
 
-Healthy rule: weighted hit ≥ **80%**, no zero-cache after step 1, no TRANSPORT. Details: [docs/error.md](docs/error.md).
+The remaining uncached tokens are almost all new tool output (`delta`) plus expected prefix rewrites: leaving plan mode (step 55, 169k) and DSH compaction (330k). The next call after each rewrite reused ~99%. That is not a shard miss.
+
+Healthy rule: weighted hit ≥ **80%**, **zero affinity misses**, no TRANSPORT. Compaction / `request/header` rebuild zeros do not fail the session. Details: [docs/error.md](docs/error.md).
 
 ## Diagnose a session
 
@@ -83,7 +87,7 @@ node scripts/analyze-session.mjs --json path/to/session.jsonl
 node scripts/analyze-session.mjs --fail-below 80 path/to/session.jsonl
 ```
 
-The analyzer reads `assistant/message` usage once per turn+step (the later `assistant/chunk` usage event is a duplicate). Tool timeouts are listed separately from TRANSPORT. Import as `dsh-plugin-oauth-subs/analyze-session`.
+The analyzer reads `assistant/message` usage once per turn+step (the later `assistant/chunk` usage event is a duplicate). It labels each call `cold_start` / `delta` / `compaction` / `rebuild` / `affinity_miss` so a compacted session is not flagged as a shard regression. Tool timeouts are listed separately from TRANSPORT. Import as `dsh-plugin-oauth-subs/analyze-session`.
 
 ## Fast mode
 

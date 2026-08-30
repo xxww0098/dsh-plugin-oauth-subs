@@ -16,7 +16,7 @@ When a user reports slow Codex turns or a flood of `stream ended before a termin
 node scripts/analyze-session.mjs path/to/session.jsonl
 ```
 
-A healthy long session after warmup should stay above **80%** weighted cache hit, with zero later `cacheReadTokens: 0` calls. Record regressions in `docs/error.md`.
+A healthy long session should stay above **80%** weighted cache hit with **zero affinity misses**. Compaction and `request/header` rebuilds rewrite the prefix and are labeled separately — do not file those as shard regressions. Record true affinity misses in `docs/error.md`.
 
 ## Layout
 

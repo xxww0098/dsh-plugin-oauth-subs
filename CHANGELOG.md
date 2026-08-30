@@ -3,7 +3,9 @@
 ## 0.0.15
 
 - Add `scripts/analyze-session.mjs` to score a DeepSeek Harness `session.jsonl` for Codex cache affinity, token spend, tool errors, and transport faults.
-- Close the 2026-08-26 cache-affinity runtime acceptance: a 42-call `gpt-5.6-terra-fast` session through `oauth-codex` hit **95.6%** weighted cache (1 zero-cache call, the cold start) with no transport faults.
+- Classify each call as `cold_start` / `delta` / `compaction` / `rebuild` / `affinity_miss`, so compaction and leaving plan mode are not reported as shard misses.
+- Close the 2026-08-26 cache-affinity runtime acceptance on the full 211-call `gpt-5.6-terra-fast` session: **95.6%** weighted hit, **99.6%** median prefix reuse, **0** affinity misses, 0 TRANSPORT.
+- Clip and sanitize `prompt_cache_key` to 64 `[A-Za-z0-9._:-]` characters instead of dropping the affinity headers.
 - Document the analyzer and the reliability contract in the README.
 - Add GitHub Actions CI (`npm test` on Node 22).
 

@@ -60,18 +60,22 @@ DeepSeek Harness（调用面）
 
 代理负责缓存亲和与流重试。长 Codex 会话里有两条契约：
 
-1. **缓存分片。** 合法的 Codex `prompt_cache_key`（≤64 字符）会同时写成 `session-id` 和 `x-client-request-id`。缺这两个头时，同一会话会被打散到不同缓存分片。
+1. **缓存分片。** Codex 的 `prompt_cache_key` 会同时写成 `session-id` 和 `x-client-request-id`。键会被清洗成 `[A-Za-z0-9._:-]` 并裁到 64 字符，而不是直接丢掉——会话 id 过长时仍然要钉在同一分片。
 2. **提交门。** 产出内容之前的静默断流会在响应头提交前重试，避免 llm-pi-ai 把干净 EOF 当成 TRANSPORT 连重试 5 次。
 
-真实 42 次调用的 `gpt-5.6-terra-fast` 会话验收（`session-772f7f3a-…`，2026-08-30）：
+完整 `session-772f7f3a-…` SkillStar 会话验收（`oauth-codex` / `gpt-5.6-terra-fast`，211 次调用，71 分钟）：
 
 | | 2026-08-26 事故 | 0.0.14 亲和头之后 |
 |---|---|---|
 | 加权缓存命中 | 27.4% | **95.6%** |
-| 零缓存调用 | 47 / 90 | 1 / 42（仅冷启动） |
+| 前缀复用（中位） | — | **99.6%** |
+| 亲和丢失 | 47 / 90 零缓存 | **0** |
+| 前缀改写 | — | 1 次适配器重建 + 9 次压缩 |
 | TRANSPORT 故障 | 29 | 0 |
 
-健康规则：加权命中 ≥ **80%**，step 1 之后不再出现零缓存，且无 TRANSPORT。细节见 [docs/error.md](docs/error.md)。
+剩下的未缓存几乎都是新的工具输出（`delta`），加上预期的前缀改写：退出 plan（step 55，169k）和 DSH 压缩（330k）。每次改写后的下一拍复用约 99%。这不是分片走丢。
+
+健康规则：加权命中 ≥ **80%**，**亲和丢失为 0**，且无 TRANSPORT。压缩 / `request/header` 重建造成的零缓存不会判失败。细节见 [docs/error.md](docs/error.md)。
 
 ## 诊断会话
 
@@ -83,7 +87,7 @@ node scripts/analyze-session.mjs --json path/to/session.jsonl
 node scripts/analyze-session.mjs --fail-below 80 path/to/session.jsonl
 ```
 
-分析器按 turn+step 只计一次 `assistant/message` 的 usage（后面的 `assistant/chunk` usage 是重复记账）。工具超时与 TRANSPORT 分开统计。也可 `import` `dsh-plugin-oauth-subs/analyze-session`。
+分析器按 turn+step 只计一次 `assistant/message` 的 usage（后面的 `assistant/chunk` usage 是重复记账）。每步会标 `cold_start` / `delta` / `compaction` / `rebuild` / `affinity_miss`，避免把压缩会话误判成分片回归。工具超时与 TRANSPORT 分开统计。也可 `import` `dsh-plugin-oauth-subs/analyze-session`。
 
 ## Fast 模式
 
