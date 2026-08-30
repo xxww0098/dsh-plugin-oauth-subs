@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.31
+
+- Drop the “one card per account” helper line on provider pages.
+
 ## 0.0.30
 
 - Account plan sits after the email. No “套餐 / Plan” label.
