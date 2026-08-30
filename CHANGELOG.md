@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.16
+
+- Checking a model syncs it into the Harness picker immediately. The leftover **Sync model list** button is gone. Hint copy is one line.
+
 ## 0.0.15
 
 - Codex reset credits refresh the **weekly** window, not the 5-hour window.
