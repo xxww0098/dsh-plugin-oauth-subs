@@ -5,7 +5,7 @@
 
 import { OAuthFlowManager } from './flow.js'
 import { DeviceFlowManager } from './grok/device-flow.js'
-import { deleteSession, getSession, publicSession, saveSession } from './store.js'
+import { deleteSession, getSession, listAccounts, publicSession, saveSession, switchAccount } from './store.js'
 import {
   codexFlow,
   exchangeCodexCode,
@@ -32,6 +32,7 @@ import {
 } from './models.js'
 import { TokenManager } from './tokens.js'
 import { QuotaStore } from './quota.js'
+import { fetchLatest, localUpdateInfo } from '../utils/update.js'
 
 export class AuthController {
   constructor({ authPath, prefix, origin, settings, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs }) {
@@ -70,6 +71,7 @@ export class AuthController {
       }),
     }
     this.quota = new QuotaStore({ tokens: this.tokens, fetchFn, ttlMs: quotaTtlMs })
+    this.fetchFn = fetchFn
   }
 
   claim(provider) {
@@ -118,6 +120,10 @@ export class AuthController {
     if (loggedIn.grok) await this.quota.ensure('grok')
     else this.quota.clear('grok')
     const enabledKeys = this.models.enabledKeys(catalog)
+    const [codexAccounts, grokAccounts] = await Promise.all([
+      listAccounts('codex', this.authPath),
+      listAccounts('grok', this.authPath),
+    ])
     return {
       origin,
       grokLogin: this.grokLogin,
@@ -125,9 +131,10 @@ export class AuthController {
       providers: describeProviders(providers),
       selected: enabledKeys,
       accounts: {
-        codex: await this.status('codex'),
-        grok: await this.status('grok'),
+        codex: { ...(await this.status('codex')), activeId: codexAccounts.find((row) => row.active)?.id, accounts: codexAccounts },
+        grok: { ...(await this.status('grok')), activeId: grokAccounts.find((row) => row.active)?.id, accounts: grokAccounts },
       },
+      update: localUpdateInfo(),
     }
   }
 
@@ -137,6 +144,20 @@ export class AuthController {
     }
     const [codex, grok] = await Promise.all([this.quota.refresh('codex'), this.quota.refresh('grok')])
     return { codex, grok }
+  }
+
+  async checkUpdate() {
+    try {
+      return await fetchLatest({ fetchFn: this.fetchFn, platform: process.platform })
+    } catch (error) {
+      return {
+        ...localUpdateInfo(),
+        status: 'error',
+        error: error instanceof Error ? error.message : String(error),
+        latest: undefined,
+        assets: [],
+      }
+    }
   }
 
   async consumeReset(provider) {
@@ -217,14 +238,24 @@ export class AuthController {
     this.devices.pending(provider)?.cancel()
   }
 
-  async logout(provider) {
+  async logout(provider, id) {
     this.claim(provider)
     this.flows.pending(provider)?.cancel()
     this.devices.pending(provider)?.cancel()
-    await deleteSession(provider, this.authPath)
+    await deleteSession(provider, this.authPath, id)
     this.lastError.delete(provider)
     this.quota.clear(provider)
     this.onAuthChanged?.(provider)
+    if (await getSession(provider, this.authPath)) void this.quota.refresh(provider)
+  }
+
+  async switchAccount(provider, id) {
+    await switchAccount(provider, id, this.authPath)
+    this.lastError.delete(provider)
+    this.quota.clear(provider)
+    this.onAuthChanged?.(provider)
+    void this.quota.refresh(provider)
+    return this.snapshot()
   }
 
   async importFrom(provider) {

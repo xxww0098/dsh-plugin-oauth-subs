@@ -50,7 +50,7 @@ x-client-request-id: <prompt_cache_key>
 - 另外 9 次命中下跌与 `compaction/prune` 或 `compaction/start` 对齐（合计约 330k 未缓存）。压缩后下一拍同样回到 ~99% 复用。
 - 未缓存构成：增量工具输出 860k，压缩 330k，plan 重建 169k，冷启动 12k，亲和丢失 0。
 - 健康规则改为：加权命中 ≥80%，**亲和丢失为 0**，且无 TRANSPORT。压缩 / 适配器重建造成的零缓存不再判失败。
-- 诊断：`node scripts/analyze-session.mjs path/to/session.jsonl`。
+- 诊断：`node --experimental-strip-types scripts/analyze-session.ts path/to/session.jsonl`。
 
 ### 前缀稳定（0.0.15，分析之后落地的优化）
 

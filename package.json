@@ -43,9 +43,9 @@
     "README.zh.md"
   ],
   "scripts": {
-    "build": "tsc && mkdir -p lib/ui && cp src/ui/client.js lib/ui/client.js",
-    "test": "npm run build && node --test 'test/*.test.mjs'",
-    "analyze": "node scripts/analyze-session.mjs"
+    "build": "tsc && tsc -p tsconfig.ui.json",
+    "test": "npm run build && node --experimental-strip-types --test 'test/*.test.ts'",
+    "analyze": "node --experimental-strip-types scripts/analyze-session.ts"
   },
   "keywords": [
     "deepseek-harness",

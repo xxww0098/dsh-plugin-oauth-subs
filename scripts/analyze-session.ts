@@ -2,9 +2,9 @@
 /**
  * Diagnose a DeepSeek Harness session.jsonl for oauth-subs cache affinity.
  *
- *   node scripts/analyze-session.mjs path/to/session.jsonl
- *   node scripts/analyze-session.mjs --json path/to/session.jsonl
- *   node scripts/analyze-session.mjs --fail-below 80 path/to/session.jsonl
+ *   node --experimental-strip-types scripts/analyze-session.ts path/to/session.jsonl
+ *   node --experimental-strip-types scripts/analyze-session.ts --json path/to/session.jsonl
+ *   node --experimental-strip-types scripts/analyze-session.ts --fail-below 80 path/to/session.jsonl
  */
 
 import { readFile } from 'node:fs/promises'
@@ -30,7 +30,7 @@ function parseArgs(argv) {
 async function main() {
   const args = parseArgs(process.argv.slice(2))
   if (!args.path) {
-    console.error('usage: node scripts/analyze-session.mjs [--json] [--fail-below N] <session.jsonl>')
+    console.error('usage: node --experimental-strip-types scripts/analyze-session.ts [--json] [--fail-below N] <session.jsonl>')
     process.exit(2)
   }
   const text = await readFile(args.path, 'utf8')

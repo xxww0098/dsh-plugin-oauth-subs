@@ -15,7 +15,7 @@ dsh plugin --profile web add https://github.com/xxww0098/dsh-plugin-oauth-subs
 dsh web
 ```
 
-打开 **设置 → OAuth 订阅**。也可以用 `cordis.patch.yml` 手动挂载：
+打开 **设置 → OAuth 订阅**。四个页签：**Codex**、**Grok**、**模型**、**关于**。每个系列可登录多个账号，点一行切换。对话和额度走当前账号。**关于** 里有 GitHub 仓库链接，并按 Windows / macOS / Linux 检查最新发布。也可以用 `cordis.patch.yml` 手动挂载：
 
 ```yaml
 - insert:
@@ -40,7 +40,7 @@ pnpm dsh web --patch ./cordis.patch.yml
 - `~/.grok/auth.json`
 - `~/.hermes/auth.json`
 
-令牌写在 profile 数据目录 `data/dsh-plugin-oauth-subs/auth.json`，权限 `0600`。开启/关闭的模型写在同目录的 `models.json`。
+令牌写在 profile 数据目录 `data/dsh-plugin-oauth-subs/auth.json`，权限 `0600`。每个系列的多个账号存在这个文件的保险库里；旧的单会话文件仍能读。开启/关闭的模型写在同目录的 `models.json`。
 
 ## 工作原理
 
@@ -95,8 +95,8 @@ src/
 
 ```sh
 npm run analyze -- path/to/session.jsonl
-node scripts/analyze-session.mjs --json path/to/session.jsonl
-node scripts/analyze-session.mjs --fail-below 80 path/to/session.jsonl
+node --experimental-strip-types scripts/analyze-session.ts --json path/to/session.jsonl
+node --experimental-strip-types scripts/analyze-session.ts --fail-below 80 path/to/session.jsonl
 ```
 
 分析器按 turn+step 只计一次 `assistant/message` 的 usage（后面的 `assistant/chunk` usage 是重复记账）。每步会标 `cold_start` / `delta` / `compaction` / `rebuild` / `affinity_miss`，避免把压缩会话误判成分片回归。工具错误会分成 `host_timeout` / `cascade_abort` / `invalid`，与 TRANSPORT 分开。glob/grep 的 30s 预算在 `dsh-tool-fs-search` 上，本代理加不长。也可 `import` `dsh-plugin-oauth-subs/analyze-session`。
@@ -118,7 +118,7 @@ node scripts/analyze-session.mjs --fail-below 80 path/to/session.jsonl
 
 ## 模型选择
 
-设置 → OAuth 订阅 会列出 Codex 与 Grok 的全部目录（含 `-fast` 与 `-900k` 条目）。每一行是独立开关。每个系列有 **全选** / **全关**。
+设置 → OAuth 订阅 → **模型** 会列出 Codex 与 Grok 的全部目录（含 `-fast` 与 `-900k` 条目）。每一行是独立开关。每个系列有 **全选** / **全关**。
 
 默认全部开启，**900K 除外**。选带 **Fast** 的条目（`gpt-5.6-sol-fast`、`grok-4.6-fast`）才会走 Priority Processing。`-fast` 只在本机目录里，发给上游前会剥掉并加上 `service_tier: "priority"`。GPT-5.4 Mini 和 GPT-5.3 Codex Spark 没有 Fast 条目。
 
@@ -150,7 +150,7 @@ Grok 4.6 思考深度为 **low / medium / high / xhigh**。Grok 4.5 为 **low / 
 
 进度条按剩余百分比从绿过渡到黄再到红（`hsl(剩余 × 1.2, 78%, 38%)`）。
 
-ChatGPT / Codex Plus、Pro 可能有银行的周窗口重置券。还有剩余券时，Codex 卡片里会嵌一套 **重置额度** 框，**每张券一颗按钮**，标着这张券何时过期。点 **重置** 会打开 DeepSeek Harness 的风险确认弹窗（警告图标、勾选确认，再点确认）。确认后插件会 `POST` `chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume`，请求体为 `{ redeem_request_id }`，并带 `idempotencyKey`。消耗的是 **周额度窗口**。Grok 没有对应能力。
+ChatGPT / Codex Plus、Pro 可能有银行的周窗口重置券。还有剩余券时，Codex 卡片里会嵌一套 **重置券** 框，**每张券一颗按钮**，标着这张券何时过期。点 **重置** 会打开 DeepSeek Harness 的风险确认弹窗（警告图标、勾选确认，再点确认）。确认后插件会 `POST` `chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume`，请求体为 `{ redeem_request_id }`，并带 `idempotencyKey`。消耗的是 **周额度窗口**。Grok 没有对应能力。
 
 ## 配置
 

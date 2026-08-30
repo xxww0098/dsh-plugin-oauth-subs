@@ -81,12 +81,14 @@ function registerRpc(ctx, controller) {
       login: (payload) => controller.login(payload?.provider, payload?.mode),
       manual: (payload) => controller.manual(payload?.provider, payload?.input),
       cancel: (payload) => controller.cancel(payload?.provider),
-      logout: (payload) => controller.logout(payload?.provider),
+      logout: (payload) => controller.logout(payload?.provider, payload?.id),
+      switch: (payload) => controller.switchAccount(payload?.provider, payload?.id),
       import: (payload) => controller.importFrom(payload?.provider),
       sync: (payload) => controller.sync(payload?.selected),
       models: (payload) => controller.setModels(payload ?? {}),
       quota: (payload) => controller.refreshQuota(payload?.provider),
       reset: (payload) => controller.consumeReset(payload?.provider),
+      update: () => controller.checkUpdate(),
     }
     return rpc.handle('/oauth-subs-auth', async (endpoint, payload) => {
       const fn = methods[endpoint]
@@ -200,3 +202,10 @@ export {
 } from './utils/context-mode.js'
 export { parseCodexUsage, parseGrokBilling, parseResetCredits, QuotaStore } from './oauth/quota.js'
 export { formatPlanLabel, CODEX_PLAN_NAMES } from './oauth/plan.js'
+export {
+  REPO_URL,
+  REPO_SLUG,
+  installedVersion,
+  fetchLatest,
+  localUpdateInfo,
+} from './utils/update.js'

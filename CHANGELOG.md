@@ -2,7 +2,12 @@
 
 ## 0.0.16
 
+- Settings is three tabs: **Codex**, **Grok**, **Models**.
+- Multiple accounts per family. Sign in again to add; click a row to switch; logout removes that account only. Chat and quota use the active account. Legacy single-session `auth.json` files still load.
 - Checking a model syncs it into the Harness picker immediately. The leftover **Sync model list** button is gone. Hint copy is one line.
+- Codex reset box title is **重置券** (was 重置额度).
+- Settings adds an **About** tab: GitHub repo link, installed version, and a win/mac/linux update check against the latest GitHub release.
+- Source is TypeScript throughout: Settings UI (`src/ui/client.ts`), tests, and the analyze CLI. Runtime `lib/` is compiled.
 
 ## 0.0.15
 

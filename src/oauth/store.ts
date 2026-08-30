@@ -72,6 +72,50 @@ function assertSessionShape(provider, value) {
   }
 }
 
+export function accountIdOf(provider, session) {
+  if (!session || typeof session !== 'object') return `${provider}-account`
+  if (provider === 'codex') {
+    const id = session.emailAddress || session.accountId
+    if (typeof id === 'string' && id.trim()) return id.trim()
+  } else if (typeof session.account === 'string' && session.account.trim()) {
+    return session.account.trim()
+  }
+  if (typeof session.refreshToken === 'string' && session.refreshToken.length >= 8) {
+    return `${provider}-${session.refreshToken.slice(-8)}`
+  }
+  return `${provider}-account`
+}
+
+function isSessionEntry(value) {
+  return value && typeof value === 'object' && typeof value.accessToken === 'string'
+}
+
+function isVaultEntry(value) {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    && value.accounts && typeof value.accounts === 'object' && !Array.isArray(value.accounts)
+    && !isSessionEntry(value)
+}
+
+export function asVault(provider, entry) {
+  if (entry === undefined) return { activeId: undefined, accounts: {} }
+  if (isVaultEntry(entry)) {
+    const accounts = {}
+    for (const [rawId, session] of Object.entries(entry.accounts)) {
+      if (!isSessionEntry(session)) continue
+      const id = typeof rawId === 'string' && rawId.trim() ? rawId.trim() : accountIdOf(provider, session)
+      accounts[id] = session
+    }
+    const requested = typeof entry.activeId === 'string' ? entry.activeId : undefined
+    const activeId = requested && accounts[requested] ? requested : Object.keys(accounts)[0]
+    return { activeId, accounts }
+  }
+  if (isSessionEntry(entry)) {
+    const id = accountIdOf(provider, entry)
+    return { activeId: id, accounts: { [id]: entry } }
+  }
+  throw new Error(`oauth-subs auth store: entry "${provider}" is not an object; fix or delete the store file`)
+}
+
 function parseStore(text, path) {
   let parsed
   try {
@@ -83,7 +127,14 @@ function parseStore(text, path) {
     throw new Error(`oauth-subs auth store at ${path} must be a JSON object keyed by provider; fix or delete the file`)
   }
   for (const provider of PROVIDER_IDS) {
-    if (parsed[provider] !== undefined) assertSessionShape(provider, parsed[provider])
+    if (parsed[provider] === undefined) continue
+    if (isVaultEntry(parsed[provider])) {
+      for (const [id, session] of Object.entries(parsed[provider].accounts ?? {})) {
+        assertSessionShape(`${provider}:${id}`, session)
+      }
+    } else {
+      assertSessionShape(provider, parsed[provider])
+    }
   }
   return parsed
 }
@@ -114,24 +165,62 @@ async function serialize(path, action) {
 }
 
 export async function getSession(provider, path) {
-  return (await loadStore(path))[provider]
+  const vault = asVault(provider, (await loadStore(path))[provider])
+  if (!vault.activeId) return undefined
+  return vault.accounts[vault.activeId]
+}
+
+export async function listAccounts(provider, path) {
+  const vault = asVault(provider, (await loadStore(path))[provider])
+  return Object.entries(vault.accounts)
+    .map(([id, session]) => ({
+      id,
+      active: id === vault.activeId,
+      ...publicSession(provider, session),
+    }))
+    .sort((left, right) => Number(right.active) - Number(left.active) || left.id.localeCompare(right.id))
 }
 
 export async function saveSession(provider, session, path) {
   const file = path ?? authFilePath()
   return serialize(file, async () => {
     const store = await loadStore(file)
-    store[provider] = session
+    const vault = asVault(provider, store[provider])
+    const id = accountIdOf(provider, session)
+    vault.accounts[id] = session
+    vault.activeId = id
+    store[provider] = vault
     await writeStore(store, file)
   })
 }
 
-export async function deleteSession(provider, path) {
+export async function switchAccount(provider, id, path) {
+  if (typeof id !== 'string' || !id.trim()) throw new Error(`${provider} account id is required`)
   const file = path ?? authFilePath()
   return serialize(file, async () => {
     const store = await loadStore(file)
-    if (store[provider] === undefined) return
-    delete store[provider]
+    const vault = asVault(provider, store[provider])
+    const key = id.trim()
+    if (!vault.accounts[key]) throw new Error(`${provider} account ${key} is not signed in`)
+    vault.activeId = key
+    store[provider] = vault
+    await writeStore(store, file)
+  })
+}
+
+export async function deleteSession(provider, path, id) {
+  const file = path ?? authFilePath()
+  return serialize(file, async () => {
+    const store = await loadStore(file)
+    const vault = asVault(provider, store[provider])
+    const target = typeof id === 'string' && id.trim() ? id.trim() : vault.activeId
+    if (!target || !vault.accounts[target]) return
+    delete vault.accounts[target]
+    if (vault.activeId === target) {
+      vault.activeId = Object.keys(vault.accounts)[0]
+    }
+    if (!vault.activeId) delete store[provider]
+    else store[provider] = vault
     await writeStore(store, file)
   })
 }

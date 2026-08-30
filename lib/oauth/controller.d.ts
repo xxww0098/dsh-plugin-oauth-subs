@@ -59,6 +59,24 @@ export declare class AuthController {
         selected: any;
         accounts: {
             codex: {
+                activeId: string;
+                accounts: ({
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    id: string;
+                    active: boolean;
+                })[];
                 detail?: any;
                 quota: any;
                 account: any;
@@ -69,6 +87,24 @@ export declare class AuthController {
                 loggedIn: boolean;
                 busy: any;
             } | {
+                activeId: string;
+                accounts: ({
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    id: string;
+                    active: boolean;
+                })[];
                 detail?: any;
                 quota: any;
                 account: any;
@@ -80,6 +116,24 @@ export declare class AuthController {
                 busy: any;
             };
             grok: {
+                activeId: string;
+                accounts: ({
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    id: string;
+                    active: boolean;
+                })[];
                 detail?: any;
                 quota: any;
                 account: any;
@@ -90,6 +144,24 @@ export declare class AuthController {
                 loggedIn: boolean;
                 busy: any;
             } | {
+                activeId: string;
+                accounts: ({
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    id: string;
+                    active: boolean;
+                })[];
                 detail?: any;
                 quota: any;
                 account: any;
@@ -101,8 +173,44 @@ export declare class AuthController {
                 busy: any;
             };
         };
+        update: {
+            version: string;
+            platform: string;
+            repo: string;
+            repoSlug: string;
+        };
     }>;
     refreshQuota(provider: any): Promise<any>;
+    checkUpdate(): Promise<{
+        version: string;
+        status: string;
+        latest: {
+            tag: string;
+            name: any;
+            url: any;
+            publishedAt: any;
+        };
+        assets: {
+            platform: string;
+            current: boolean;
+            name: any;
+            url: any;
+            size: any;
+            generic: boolean;
+        }[];
+        platform: string;
+        repo: string;
+        repoSlug: string;
+    } | {
+        status: string;
+        error: string;
+        latest: any;
+        assets: any[];
+        version: string;
+        platform: string;
+        repo: string;
+        repoSlug: string;
+    }>;
     consumeReset(provider: any): Promise<any>;
     login(provider: any, mode: any): Promise<{
         authorizeUrl: any;
@@ -121,7 +229,146 @@ export declare class AuthController {
     completeDevice(provider: any, attempt: any): Promise<void>;
     manual(provider: any, input: any): Promise<void>;
     cancel(provider: any): Promise<void>;
-    logout(provider: any): Promise<void>;
+    logout(provider: any, id: any): Promise<void>;
+    switchAccount(provider: any, id: any): Promise<{
+        origin: any;
+        grokLogin: any;
+        catalog: {
+            provider: string;
+            displayName: any;
+            family: string;
+            loggedIn: boolean;
+            models: any;
+        }[];
+        providers: {
+            provider: string;
+            api: any;
+            models: any;
+        }[];
+        selected: any;
+        accounts: {
+            codex: {
+                activeId: string;
+                accounts: ({
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    id: string;
+                    active: boolean;
+                })[];
+                detail?: any;
+                quota: any;
+                account: any;
+                planType: any;
+                planLabel: any;
+                expiresAt: any;
+                scopes?: undefined;
+                loggedIn: boolean;
+                busy: any;
+            } | {
+                activeId: string;
+                accounts: ({
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    id: string;
+                    active: boolean;
+                })[];
+                detail?: any;
+                quota: any;
+                account: any;
+                planType: any;
+                planLabel: any;
+                scopes: any;
+                expiresAt: any;
+                loggedIn: boolean;
+                busy: any;
+            };
+            grok: {
+                activeId: string;
+                accounts: ({
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    id: string;
+                    active: boolean;
+                })[];
+                detail?: any;
+                quota: any;
+                account: any;
+                planType: any;
+                planLabel: any;
+                expiresAt: any;
+                scopes?: undefined;
+                loggedIn: boolean;
+                busy: any;
+            } | {
+                activeId: string;
+                accounts: ({
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    id: string;
+                    active: boolean;
+                })[];
+                detail?: any;
+                quota: any;
+                account: any;
+                planType: any;
+                planLabel: any;
+                scopes: any;
+                expiresAt: any;
+                loggedIn: boolean;
+                busy: any;
+            };
+        };
+        update: {
+            version: string;
+            platform: string;
+            repo: string;
+            repoSlug: string;
+        };
+    }>;
     importFrom(provider: any): Promise<{
         source: string;
         account: {
@@ -156,6 +403,24 @@ export declare class AuthController {
         selected: any;
         accounts: {
             codex: {
+                activeId: string;
+                accounts: ({
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    id: string;
+                    active: boolean;
+                })[];
                 detail?: any;
                 quota: any;
                 account: any;
@@ -166,6 +431,24 @@ export declare class AuthController {
                 loggedIn: boolean;
                 busy: any;
             } | {
+                activeId: string;
+                accounts: ({
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    id: string;
+                    active: boolean;
+                })[];
                 detail?: any;
                 quota: any;
                 account: any;
@@ -177,6 +460,24 @@ export declare class AuthController {
                 busy: any;
             };
             grok: {
+                activeId: string;
+                accounts: ({
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    id: string;
+                    active: boolean;
+                })[];
                 detail?: any;
                 quota: any;
                 account: any;
@@ -187,6 +488,24 @@ export declare class AuthController {
                 loggedIn: boolean;
                 busy: any;
             } | {
+                activeId: string;
+                accounts: ({
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    id: string;
+                    active: boolean;
+                })[];
                 detail?: any;
                 quota: any;
                 account: any;
@@ -197,6 +516,12 @@ export declare class AuthController {
                 loggedIn: boolean;
                 busy: any;
             };
+        };
+        update: {
+            version: string;
+            platform: string;
+            repo: string;
+            repoSlug: string;
         };
     }>;
     sync(selected: any): Promise<{

@@ -15,7 +15,7 @@ dsh plugin --profile web add https://github.com/xxww0098/dsh-plugin-oauth-subs
 dsh web
 ```
 
-Open **Settings → OAuth subs**. Or mount the bundle patch by hand:
+Open **Settings → OAuth subs**. Four tabs: **Codex**, **Grok**, **Models**, **About**. Sign in more than once per family; click a row to switch. Chat and quota use the active account. **About** links the GitHub repo and checks the latest release for Windows, macOS, and Linux. Or mount the bundle patch by hand:
 
 ```yaml
 - insert:
@@ -40,7 +40,7 @@ Already signed in on this machine via Codex CLI, Grok CLI, or Hermes? Use **Impo
 - `~/.grok/auth.json`
 - `~/.hermes/auth.json`
 
-Tokens live at `<profile>/data/dsh-plugin-oauth-subs/auth.json` with mode `0600`. Enabled-model choices live in `models.json` next to it.
+Tokens live at `<profile>/data/dsh-plugin-oauth-subs/auth.json` with mode `0600`. Multiple accounts per family sit in that file as a vault; a legacy single-session file still loads. Enabled-model choices live in `models.json` next to it.
 
 ## How it works
 
@@ -95,8 +95,8 @@ Export the DSH `session.jsonl` (or unzip the session archive) and score it:
 
 ```sh
 npm run analyze -- path/to/session.jsonl
-node scripts/analyze-session.mjs --json path/to/session.jsonl
-node scripts/analyze-session.mjs --fail-below 80 path/to/session.jsonl
+node --experimental-strip-types scripts/analyze-session.ts --json path/to/session.jsonl
+node --experimental-strip-types scripts/analyze-session.ts --fail-below 80 path/to/session.jsonl
 ```
 
 The analyzer reads `assistant/message` usage once per turn+step (the later `assistant/chunk` usage event is a duplicate). It labels each call `cold_start` / `delta` / `compaction` / `rebuild` / `affinity_miss` so a compacted session is not flagged as a shard regression. Tool errors are split into `host_timeout` / `cascade_abort` / `invalid` and are not TRANSPORT. glob/grep's 30s budget lives on `dsh-tool-fs-search`, not this proxy — this plugin cannot raise it. Import as `dsh-plugin-oauth-subs/analyze-session`.
@@ -118,7 +118,7 @@ Login, token refresh, chat, and quota use one official client identity: Codex pa
 
 ## Models
 
-Settings → OAuth subs lists every Codex and Grok catalog id, including `-fast` and `-900k` siblings. Each row is an on/off checkbox. **All on** / **All off** apply per family.
+Settings → OAuth subs → **Models** lists every Codex and Grok catalog id, including `-fast` and `-900k` siblings. Each row is an on/off checkbox. **All on** / **All off** apply per family.
 
 Default is all on except **900K**. Pick a **Fast** sibling (`gpt-5.6-sol-fast`, `grok-4.6-fast`) for Priority Processing. The `-fast` suffix is host-side only — the proxy strips it and sends `service_tier: "priority"`. GPT-5.4 Mini and GPT-5.3 Codex Spark have no Fast sibling.
 
