@@ -26,10 +26,55 @@ import {
   parseCliPoll,
   unwrapEnvelope,
 } from '../lib/oauth/glm/index.js'
+import { normalizeGlmChatBody } from '../lib/oauth/glm/request.js'
 import { fetchGlmQuota, mergeGlmToolUsage, parseGlmQuota } from '../lib/oauth/quota.js'
 import { buildProviders } from '../lib/oauth/models.js'
 import { AuthController } from '../lib/oauth/controller.js'
 import { accountIdOf, listAccounts, publicSession, replaceAccountId, saveSession } from '../lib/oauth/store.js'
+
+test('normalizeGlmChatBody remaps DSH developer roles to system', () => {
+  const out = normalizeGlmChatBody({
+    model: 'glm-5.3-flash',
+    messages: [
+      { role: 'developer', content: 'You are DSH.\n\n# AGENTS.md' },
+      { role: 'user', content: 'hello' },
+    ],
+  })
+  assert.deepEqual(out.messages, [
+    { role: 'system', content: 'You are DSH.\n\n# AGENTS.md' },
+    { role: 'user', content: 'hello' },
+  ])
+  assert.equal(out.model, 'glm-5.3-flash')
+})
+
+test('normalizeGlmChatBody keeps system / user / assistant / tool and tool ids', () => {
+  const messages = [
+    { role: 'system', content: 'You are GLM.' },
+    { role: 'user', content: 'run it' },
+    { role: 'assistant', content: null, tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'ls', arguments: '{}' } }] },
+    { role: 'tool', tool_call_id: 'call_1', content: 'ok' },
+  ]
+  const out = normalizeGlmChatBody({ model: 'glm-5.3', messages })
+  assert.deepEqual(out.messages, messages)
+})
+
+test('normalizeGlmChatBody maps unknown instructional roles to system and leaves input-only bodies', () => {
+  const out = normalizeGlmChatBody({
+    messages: [
+      { role: 'instruction', content: 'be brief' },
+      { role: 'user', content: 'go' },
+    ],
+  })
+  assert.equal(out.messages[0].role, 'system')
+  assert.equal(out.messages[1].role, 'user')
+
+  const inputOnly = {
+    model: 'glm-5.3',
+    input: [{ role: 'developer', content: 'sys' }, { role: 'user', content: 'go' }],
+  }
+  assert.equal(normalizeGlmChatBody(inputOnly), inputOnly)
+  assert.equal(inputOnly.input[0].role, 'developer')
+})
 
 test('unwrapEnvelope accepts ZCode code 0 and biz code 200', () => {
   assert.equal(unwrapEnvelope({ code: 0, data: { ok: true } }, 'x').ok, true)

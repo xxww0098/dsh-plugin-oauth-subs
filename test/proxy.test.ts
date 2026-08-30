@@ -240,6 +240,72 @@ test('proxy peels -fast and injects Codex Priority; never sets Grok service_tier
   }
 })
 
+test('proxy GLM chat hop remaps developer; Codex and Grok keep theirs', async () => {
+  const seen = []
+  const fetchFn = async (url, init) => {
+    seen.push({ url: String(url), body: JSON.parse(String(init.body)) })
+    return new Response('{"id":"ok"}', { status: 200, headers: { 'content-type': 'application/json' } })
+  }
+  const proxy = createProxy({
+    port: 0,
+    apiKey: 'secret-key',
+    fetchFn,
+    tokens: {
+      glm: { session: async () => ({ accessToken: 'id.secret', region: 'zai' }) },
+      grok: { session: async () => ({ accessToken: 'grok-tok' }) },
+      codex: { session: async () => ({ accessToken: 'codex-tok', accountId: 'acct' }) },
+    },
+  })
+  const server = await proxy.listen()
+  const { port } = server.address()
+  const headers = { authorization: 'Bearer secret-key', 'content-type': 'application/json' }
+  try {
+    const glm = await fetch(`http://127.0.0.1:${port}/glm/v1/chat/completions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: 'glm-5.3-flash',
+        messages: [
+          { role: 'developer', content: 'You are DSH.\n\n# AGENTS.md' },
+          { role: 'user', content: 'hello' },
+        ],
+      }),
+    })
+    assert.equal(glm.status, 200)
+    assert.deepEqual(seen[0].body.messages, [
+      { role: 'system', content: 'You are DSH.\n\n# AGENTS.md' },
+      { role: 'user', content: 'hello' },
+    ])
+
+    const grok = await fetch(`http://127.0.0.1:${port}/grok/v1/responses`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: 'grok-4.6',
+        messages: [{ role: 'developer', content: 'sys' }],
+        input: [{ role: 'developer', content: 'sys' }],
+      }),
+    })
+    assert.equal(grok.status, 200)
+    assert.equal(seen[1].body.messages[0].role, 'developer')
+    assert.equal(seen[1].body.input[0].role, 'developer')
+
+    const codex = await fetch(`http://127.0.0.1:${port}/codex/v1/responses`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: 'gpt-5.3-codex',
+        messages: [{ role: 'developer', content: 'sys' }],
+        input: [{ role: 'user', content: 'go' }],
+      }),
+    })
+    assert.equal(codex.status, 200)
+    assert.equal(seen[2].body.messages[0].role, 'developer')
+  } finally {
+    await proxy.close()
+  }
+})
+
 test('proxy health remains public and the removed HTTP management plane stays unreachable', async () => {
   const proxy = createProxy({
     port: 0,

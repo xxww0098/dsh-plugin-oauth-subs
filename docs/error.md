@@ -34,6 +34,35 @@ cannot start list.
 
 - `npm test`：`openaiToAntigravity` 对 tool content 为 JSON 数组字符串、真实数组、JSON 对象字符串、普通字符串、null/空；连续两条 tool → 两个 parts；复现 400 的数组 fixture 不再发出 `"functionResponse":[` 或 `"response":[`。
 
+## 2026-08-30：GLM 首轮 400 `1214 角色信息不正确`
+
+### 现象
+
+DSH web，新会话第一轮（1 round / 1 step），模型 GLM-5.3-Flash Max。注入 AGENTS.md、CLAUDE.md、`@deepseek-ai/dsh-system-prompt` 后：
+
+```
+本轮运行失败 400: {"code":"1214","message":"角色信息不正确"}
+INVALID_REQUEST
+```
+
+### 证据
+
+- 本插件 `POST /glm/v1/chat/completions` → `glmCodingUrl`（`api.z.ai` / `open.bigmodel.cn` `/api/coding/paas/v4/chat/completions`），`rewriteUpstreamBody('glm')` 只跑 `applyFastMode`，`messages` 原样转发。
+- DSH / llm-pi-ai 系统提示走 OpenAI `role: "developer"`。Zhipu Coding Plan Chat Completions 只认 `system` / `user` / `assistant` / `tool`。`developer` 就是 1214。
+- 公开复现：openclaw#23115、openai/codex#9612。
+
+### 根因
+
+代理层（本插件）。GLM hop 没有把 instructional 角色收成 Zhipu 允许的四个。Codex Responses 自己吃 `developer`；Grok / Antigravity / Kiro 不走这条 chat/completions 改写。
+
+### 修复
+
+`src/oauth/glm/request.ts` `normalizeGlmChatBody`：有 `messages` 时，`developer` 以及其它未知 instructional 角色 → `system`。`system` / `user` / `assistant` / `tool` 不动；`tool_calls` / `tool_call_id` 原样。只有 `input`、没有 `messages` 的 body 不改。`rewriteUpstreamBody` 仅 `family === 'glm'` 调用。
+
+### 验证
+
+- `npm test`：DSH 形 `developer`+user → `system`+user；已是 `system` 不变；`tool` 仍是 `tool`；Codex / Grok body 的 `developer` 不被这条改写。无 live Zhipu 调用。
+
 ## 2026-08-30：勾选 GLM / Antigravity / Kiro 不写 settings.yaml
 
 ### 现象
