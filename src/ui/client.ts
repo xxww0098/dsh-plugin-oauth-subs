@@ -110,7 +110,6 @@ window.__ModuleLoader__.load({
         cycle: '本周期',
         prepaid: '预付余额',
         grokCode: 'Grok Code',
-        plan: '套餐',
         modelsTitle: '模型',
         modelsHint: '勾选即同步。Fast 更快更耗额度；900K 大上下文，默认关。',
         modelsOn: '已开启 {n}',
@@ -208,7 +207,6 @@ window.__ModuleLoader__.load({
         cycle: 'This period',
         prepaid: 'Prepaid',
         grokCode: 'Grok Code',
-        plan: 'Plan',
         modelsTitle: 'Models',
         modelsHint: 'Check to sync. Fast is faster and spends more. 900K is the large window, off by default.',
         modelsOn: '{n} on',
@@ -682,11 +680,6 @@ window.__ModuleLoader__.load({
       return h('button', { type, onClick, disabled, className: classes.join(' ') }, label)
     }
 
-    function PlanBadge({ t, label }) {
-      if (!label) return null
-      return h('span', { className: 'osubs-badge' }, h('i', null, t.plan), label)
-    }
-
     // LobeHub mono SVG paths from @lobehub/icons-static-svg@1.94.0
     // https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/{codex,grok,zai,github}.svg
     const TAB_ICONS = {
@@ -988,10 +981,10 @@ window.__ModuleLoader__.load({
           h('div', { className: 'osubs-acct-main' },
             h('div', { className: 'osubs-acct-row' },
               h('span', { className: 'osubs-mono' }, row.account || row.id),
+              planLabel && h('span', { className: 'osubs-tag' }, planLabel),
               row.active && h('span', { className: 'osubs-tag' }, t.inUse),
               id === 'glm' && row.region && h('span', { className: 'osubs-tag' }, regionLabel(row.region)),
             ),
-            planLabel && h(PlanBadge, { t, label: planLabel }),
           ),
           h('div', { className: 'osubs-actions', onClick: (event) => event.stopPropagation() },
             !row.active && h(Button, { size: 'sm', onClick: () => onSwitch(id, row.id), label: t.switchTo }),

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.30
+
+- Account plan sits after the email. No “套餐 / Plan” label.
+
 ## 0.0.29
 
 - Model picker checkboxes and All/None stay disabled until that family is signed in.
