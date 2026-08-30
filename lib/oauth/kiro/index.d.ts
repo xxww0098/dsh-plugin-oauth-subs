@@ -76,6 +76,8 @@ export declare function kiroUsageHeaders(session: any): {
     'amz-sdk-invocation-id': `${string}-${string}-${string}-${string}-${string}`;
     'amz-sdk-request': string;
 };
+/** Portal + token exchange both register origin only; KiroIDE still lands on `/oauth/callback`. */
+export declare function kiroSocialRedirectUri(redirectUri: any): string;
 export declare function kiroSocialFlow(): {
     listen: {
         host: string;
