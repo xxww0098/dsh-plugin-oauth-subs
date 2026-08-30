@@ -28,11 +28,11 @@ cannot start list.
 
 ### 修复
 
-`asGeminiStruct`：已是普通对象则原样作为 `response`；数组 / 标量 / 非 JSON 字符串包成 `{ result: ... }`。连续 `role: tool` 合成一条 user content 的多个 `functionResponse` parts，绝不把 `functionResponse` 或 `response` 写成 JSON 数组。`functionCall.args` 同样是 Struct，一并包裹。
+`functionResponsePayload`（只用于 tool 结果，不用 `typeof === 'object'` 当 Struct）：普通对象原样作为 `response`；数组 / `JSON.parse` 出的 null / number / bool 包成 `{ result: … }`；非 JSON 字符串仍走原来的 `{ text: value }`。连续 `role: tool` 合成一条 user content 的多个 `functionResponse` parts。绝不把 `functionResponse` 或 `response` 写成 JSON 数组。`functionCall.args` 仍走 `tryJson`。
 
 ### 验证
 
-- `npm test`：字符串 / 对象 / 数组 / JSON 数组字符串；连续两条 tool → 两个 parts；复现 400 的数组 content fixture 不再发出 `"functionResponse":[` 或 `"response":[`。
+- `npm test`：`openaiToAntigravity` 对 tool content 为 JSON 数组字符串、真实数组、JSON 对象字符串、普通字符串、null/空；连续两条 tool → 两个 parts；复现 400 的数组 fixture 不再发出 `"functionResponse":[` 或 `"response":[`。
 
 ## 2026-08-30：勾选 GLM / Antigravity / Kiro 不写 settings.yaml
 

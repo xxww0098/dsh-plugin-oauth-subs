@@ -42,7 +42,7 @@ import {
   parseAntigravityPlistVersion,
   parseAntigravityVersionText,
 } from '../lib/oauth/antigravity/index.js'
-import { antigravityToOpenai, asGeminiStruct, openaiToAntigravity } from '../lib/oauth/antigravity/request.js'
+import { antigravityToOpenai, functionResponsePayload, openaiToAntigravity } from '../lib/oauth/antigravity/request.js'
 import { createProxy } from '../lib/oauth/proxy.js'
 
 const FORBIDDEN = ['IDE_UNSPECIFIED', 'dsh-plugin', 'DeepSeek', 'CLIProxy', 'undici', 'node-fetch']
@@ -286,8 +286,8 @@ function assertSingularFunctionWire(contents) {
       if (part.functionResponse) {
         assert.equal(Array.isArray(part.functionResponse), false, 'functionResponse must be an object')
         assert.equal(typeof part.functionResponse, 'object')
-        assert.equal(Array.isArray(part.functionResponse.response), false, 'functionResponse.response must be a Struct')
-        assert.equal(part.functionResponse.response && typeof part.functionResponse.response === 'object', true)
+        const response = part.functionResponse.response
+        assert.equal(response !== null && typeof response === 'object' && !Array.isArray(response), true, 'functionResponse.response must be a plain object')
       }
       if (part.functionCall) {
         assert.equal(Array.isArray(part.functionCall), false, 'functionCall must be an object')
@@ -301,19 +301,53 @@ function assertSingularFunctionWire(contents) {
   assert.equal(json.includes('"response":['), false)
 }
 
-test('asGeminiStruct wraps arrays and strings so response is never a list', () => {
-  assert.deepEqual(asGeminiStruct('plain tool output'), { result: 'plain tool output' })
-  assert.deepEqual(asGeminiStruct({ ok: true, n: 1 }), { ok: true, n: 1 })
-  assert.deepEqual(asGeminiStruct([{ type: 'text', text: 'a' }, { type: 'text', text: 'b' }]), {
-    result: [{ type: 'text', text: 'a' }, { type: 'text', text: 'b' }],
+function toolResponseOf(content) {
+  const body = openaiToAntigravity({
+    model: 'gemini-3.7-flash-high',
+    messages: [{ role: 'tool', name: 'Read', content }],
+  }, { projectId: 'p' })
+  const part = body.request.contents[0].parts[0]
+  assertSingularFunctionWire(body.request.contents)
+  return part.functionResponse
+}
+
+test('functionResponsePayload wraps non-plain-objects; non-JSON strings stay { text }', () => {
+  assert.deepEqual(functionResponsePayload({ ok: true }), { ok: true })
+  assert.deepEqual(functionResponsePayload([{ type: 'text', text: 'a' }]), {
+    result: [{ type: 'text', text: 'a' }],
   })
-  assert.deepEqual(asGeminiStruct('[{"path":"a.ts"}]'), { result: [{ path: 'a.ts' }] })
-  assert.deepEqual(asGeminiStruct('{"already":"object"}'), { already: 'object' })
-  assert.deepEqual(asGeminiStruct(''), {})
-  assert.deepEqual(asGeminiStruct(null), {})
+  assert.deepEqual(functionResponsePayload('[{"path":"a.ts"}]'), { result: [{ path: 'a.ts' }] })
+  assert.deepEqual(functionResponsePayload('{"already":"object"}'), { already: 'object' })
+  assert.deepEqual(functionResponsePayload('plain tool output'), { text: 'plain tool output' })
+  assert.deepEqual(functionResponsePayload('null'), { result: null })
+  assert.deepEqual(functionResponsePayload('42'), { result: 42 })
+  assert.deepEqual(functionResponsePayload('true'), { result: true })
+  assert.deepEqual(functionResponsePayload(''), {})
+  assert.deepEqual(functionResponsePayload(null), {})
 })
 
-test('tool results become singular functionResponse objects, arrays wrapped', () => {
+test('openaiToAntigravity tool content: JSON array string, array, object string, plain string, null/empty', () => {
+  assert.deepEqual(toolResponseOf('["a.ts","b.ts"]'), {
+    name: 'Read',
+    response: { result: ['a.ts', 'b.ts'] },
+  })
+  assert.deepEqual(toolResponseOf([{ type: 'text', text: 'hit 1' }, { type: 'text', text: 'hit 2' }]), {
+    name: 'Read',
+    response: { result: [{ type: 'text', text: 'hit 1' }, { type: 'text', text: 'hit 2' }] },
+  })
+  assert.deepEqual(toolResponseOf('{"stdout":"ok","files":2}'), {
+    name: 'Read',
+    response: { stdout: 'ok', files: 2 },
+  })
+  assert.deepEqual(toolResponseOf('file a contents'), {
+    name: 'Read',
+    response: { text: 'file a contents' },
+  })
+  assert.deepEqual(toolResponseOf(null), { name: 'Read', response: {} })
+  assert.deepEqual(toolResponseOf(''), { name: 'Read', response: {} })
+})
+
+test('consecutive tool messages become multiple functionResponse parts', () => {
   const body = openaiToAntigravity({
     model: 'gemini-3.7-flash-high',
     messages: [
@@ -323,7 +357,7 @@ test('tool results become singular functionResponse objects, arrays wrapped', ()
         content: null,
         tool_calls: [
           { id: 'call_1', type: 'function', function: { name: 'Read', arguments: '{"path":"a.ts"}' } },
-          { id: 'call_2', type: 'function', function: { name: 'Grep', arguments: '["src"]' } },
+          { id: 'call_2', type: 'function', function: { name: 'Grep', arguments: '{"q":"src"}' } },
         ],
       },
       { role: 'tool', tool_call_id: 'call_1', name: 'Read', content: 'file a contents' },
@@ -339,40 +373,16 @@ test('tool results become singular functionResponse objects, arrays wrapped', ()
   const [user, model, tools] = body.request.contents
   assert.equal(user.role, 'user')
   assert.equal(model.role, 'model')
-  assert.equal(model.parts.length, 2)
   assert.deepEqual(model.parts[0].functionCall, { name: 'Read', args: { path: 'a.ts' } })
-  assert.deepEqual(model.parts[1].functionCall, { name: 'Grep', args: { result: ['src'] } })
-
-  assert.equal(tools.role, 'user')
+  assert.deepEqual(model.parts[1].functionCall, { name: 'Grep', args: { q: 'src' } })
   assert.equal(tools.parts.length, 2)
   assert.deepEqual(tools.parts[0].functionResponse, {
     name: 'Read',
-    response: { result: 'file a contents' },
+    response: { text: 'file a contents' },
   })
   assert.deepEqual(tools.parts[1].functionResponse, {
     name: 'Grep',
     response: { result: [{ type: 'text', text: 'hit 1' }, { type: 'text', text: 'hit 2' }] },
-  })
-  assertSingularFunctionWire(body.request.contents)
-})
-
-test('object tool content stays the response Struct; JSON array string is wrapped', () => {
-  const body = openaiToAntigravity({
-    model: 'gemini-3.7-flash-high',
-    messages: [
-      { role: 'tool', name: 'Read', content: { stdout: 'ok', files: 2 } },
-      { role: 'tool', name: 'Glob', content: '["a.ts","b.ts"]' },
-    ],
-  }, { projectId: 'p' })
-  const turn = body.request.contents[0]
-  assert.equal(turn.parts.length, 2)
-  assert.deepEqual(turn.parts[0].functionResponse, {
-    name: 'Read',
-    response: { stdout: 'ok', files: 2 },
-  })
-  assert.deepEqual(turn.parts[1].functionResponse, {
-    name: 'Glob',
-    response: { result: ['a.ts', 'b.ts'] },
   })
   assertSingularFunctionWire(body.request.contents)
 })

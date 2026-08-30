@@ -9,33 +9,46 @@ function trimmed(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined
 }
 
-function parseJsonish(value) {
-  if (Array.isArray(value) || (value && typeof value === 'object')) return value
-  if (typeof value !== 'string' || !value.trim()) return undefined
+function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function tryJson(value) {
+  if (value && typeof value === 'object') return value
+  if (typeof value !== 'string' || !value.trim()) return {}
   try {
     return JSON.parse(value)
   } catch {
-    return value
+    return { text: value }
   }
 }
 
 /**
- * Gemini `FunctionResponse.response` / `FunctionCall.args` are protobuf Structs.
- * A JSON array (or scalar) on that field is 400 INVALID_ARGUMENT:
- * "Proto field is not repeating, cannot start list."
+ * Gemini `FunctionResponse.response` is a singular protobuf Struct.
+ * Arrays / null / number / bool must be wrapped or cloudcode-pa returns 400:
+ * "Unknown name \"response\" … Proto field is not repeating, cannot start list."
  */
-export function asGeminiStruct(value) {
-  const parsed = parseJsonish(value)
-  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed
-  if (parsed === undefined) return {}
-  return { result: parsed }
+export function functionResponsePayload(value) {
+  if (isPlainObject(value)) return value
+  if (typeof value === 'string') {
+    if (!value.trim()) return {}
+    try {
+      const parsed = JSON.parse(value)
+      if (isPlainObject(parsed)) return parsed
+      return { result: parsed }
+    } catch {
+      return { text: value }
+    }
+  }
+  if (value == null) return {}
+  return { result: value }
 }
 
 function functionResponsePart(message) {
   return {
     functionResponse: {
       name: trimmed(message?.name) ?? 'tool',
-      response: asGeminiStruct(message?.content),
+      response: functionResponsePayload(message?.content),
     },
   }
 }
@@ -44,7 +57,7 @@ function isFunctionResponseTurn(content) {
   return content?.role === 'user'
     && Array.isArray(content.parts)
     && content.parts.length > 0
-    && content.parts.every((part) => part?.functionResponse && typeof part.functionResponse === 'object' && !Array.isArray(part.functionResponse))
+    && content.parts.every((part) => isPlainObject(part?.functionResponse))
 }
 
 function imagePart(url) {
@@ -112,7 +125,7 @@ export function openaiToAntigravity(payload, { projectId, sessionId } = {}) {
       for (const call of message.tool_calls) {
         const name = trimmed(call?.function?.name)
         if (!name) continue
-        parts.push({ functionCall: { name, args: asGeminiStruct(call.function?.arguments) } })
+        parts.push({ functionCall: { name, args: tryJson(call.function?.arguments) } })
       }
     }
     parts.push(...partsFromContent(message?.content))
