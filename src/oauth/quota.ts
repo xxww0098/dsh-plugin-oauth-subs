@@ -215,10 +215,24 @@ export function parseResetCredits(payload) {
 }
 
 function publicResetCredits(value) {
-  if (!value) return { availableCount: 0 }
+  if (!value) return { availableCount: 0, credits: [] }
+  const available = (value.credits ?? []).filter(isAvailableResetCredit).map((credit) => ({
+    id: credit.id,
+    expiresAt: credit.expiresAt,
+  }))
+  const nextExpiresAt = value.nextExpiresAt
+  let credits = available
+  if (credits.length === 0 && (value.availableCount ?? 0) > 0) {
+    const count = Math.max(0, Math.round(value.availableCount))
+    credits = Array.from({ length: count }, (_, index) => ({
+      id: `available-${index + 1}`,
+      expiresAt: nextExpiresAt,
+    }))
+  }
   return {
-    availableCount: value.availableCount ?? 0,
-    ...(value.nextExpiresAt === undefined ? {} : { nextExpiresAt: value.nextExpiresAt }),
+    availableCount: value.availableCount ?? credits.length,
+    credits,
+    ...(nextExpiresAt === undefined ? {} : { nextExpiresAt }),
   }
 }
 

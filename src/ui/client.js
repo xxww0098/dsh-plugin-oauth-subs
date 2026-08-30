@@ -44,10 +44,14 @@ window.__ModuleLoader__.load({
         quotaRefresh: '刷新额度',
         quotaLoading: '正在读取额度…',
         quotaFailed: '额度读取失败',
-        quotaReset: '重置额度',
+        quotaReset: '重置',
+        quotaResetBank: '重置额度',
+        quotaResetHint: '每张券过期时间不同，按钮按券单独渲染。点一次消耗一张，刷新 5 小时窗口。',
         quotaResetLeft: '重置额度 · 剩 {n} 次',
-        quotaResetConfirm: '确认重置 Codex 5 小时额度？将消耗 1 次银行重置次数（剩余 {n} 次）。',
+        quotaResetConfirm: '确认重置 Codex 5 小时额度？将消耗这张重置券（{n} 过期）。',
         quotaResetBusy: '正在重置…',
+        quotaResetEmpty: '没有可用的重置券。',
+        quotaResetExpires: '{n} 过期',
         leftPercent: '剩余 {n}%',
         resetMinutes: '{n} 分钟后重置',
         resetHours: '{n} 小时后重置',
@@ -100,10 +104,14 @@ window.__ModuleLoader__.load({
         quotaRefresh: 'Refresh quota',
         quotaLoading: 'Reading quota…',
         quotaFailed: 'Could not read quota',
-        quotaReset: 'Reset quota',
+        quotaReset: 'Reset',
+        quotaResetBank: 'Reset credits',
+        quotaResetHint: 'Each credit expires on its own clock. One button per credit; spending one refreshes the 5-hour window.',
         quotaResetLeft: 'Reset quota · {n} left',
-        quotaResetConfirm: 'Reset the Codex 5-hour window? This spends 1 banked reset ({n} remaining).',
+        quotaResetConfirm: 'Reset the Codex 5-hour window? This spends the credit that expires {n}.',
         quotaResetBusy: 'Resetting…',
+        quotaResetEmpty: 'No reset credits left.',
+        quotaResetExpires: 'Expires {n}',
         leftPercent: '{n}% left',
         resetMinutes: 'resets in {n} min',
         resetHours: 'resets in {n} h',
@@ -170,6 +178,11 @@ window.__ModuleLoader__.load({
       if (hours < 48) return fill(labels.hours, hours)
       const days = Math.round(hours / 24)
       if (days < 14) return fill(labels.days, days)
+      return formatStamp(resetAt)
+    }
+
+    function formatStamp(resetAt) {
+      if (typeof resetAt !== 'number' || resetAt <= 0) return ''
       try {
         return new Date(resetAt).toLocaleString(undefined, {
           month: 'short',
@@ -337,6 +350,23 @@ window.__ModuleLoader__.load({
 .osubs-qrow-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 12px; }
 .osubs-bar { height: 6px; border-radius: 99px; background: var(--osubs-hair); overflow: hidden; }
 .osubs-bar > i { display: block; height: 100%; border-radius: 99px; transform-origin: left center; transition: transform 340ms cubic-bezier(.2,.8,.2,1), background-color 240ms ease; }
+.osubs-qbox {
+  display: flex; flex-direction: column; gap: 10px;
+  margin-top: 2px; padding: 12px;
+  border: 1px solid var(--osubs-line); border-radius: 10px;
+  background: var(--osubs-fill);
+}
+.osubs-qbox-head { display: flex; flex-direction: column; gap: 4px; }
+.osubs-reset-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+  min-height: 44px; padding: 8px 10px;
+  border: 1px solid var(--osubs-line); border-radius: 8px;
+  background: color-mix(in oklab, #fff 40%, transparent);
+}
+.osubs-reset-meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.osubs-reset-when { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; }
+.osubs-reset-rel { font-size: 11px; color: var(--osubs-muted); }
 
 .osubs-family { display: flex; flex-direction: column; gap: 10px; }
 .osubs-family + .osubs-family { padding-top: 18px; border-top: 1px solid var(--osubs-hair); }
@@ -437,40 +467,77 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function QuotaBlock({ t, quota, onRefresh, onReset }) {
-      const [busy, setBusy] = useState(false)
-      if (!quota || quota.status === 'idle') return null
-      const rows = Array.isArray(quota.rows) ? quota.rows : []
-      const available = quota.resetCredits?.availableCount ?? 0
-      const expires = formatReset(quota.resetCredits?.nextExpiresAt, t, 'expires')
-      const canReset = available > 0 && typeof onReset === 'function'
-      const confirmReset = async () => {
-        if (!canReset || busy) return
-        if (typeof window !== 'undefined' && !window.confirm(fill(t.quotaResetConfirm, available))) return
-        setBusy(true)
+    function resetCreditRows(quota) {
+      const bank = quota?.resetCredits
+      if (!bank) return []
+      if (Array.isArray(bank.credits) && bank.credits.length > 0) return bank.credits
+      const count = bank.availableCount ?? 0
+      if (count <= 0) return []
+      return Array.from({ length: count }, (_, index) => ({
+        id: `available-${index + 1}`,
+        expiresAt: bank.nextExpiresAt,
+      }))
+    }
+
+    function QuotaResetBox({ t, quota, onReset }) {
+      const [busyId, setBusyId] = useState(null)
+      const credits = resetCreditRows(quota)
+      if (typeof onReset !== 'function') return null
+      const spend = async (credit) => {
+        if (busyId) return
+        const when = formatStamp(credit.expiresAt) || formatReset(credit.expiresAt, t, 'expires') || '—'
+        if (typeof window !== 'undefined' && !window.confirm(fill(t.quotaResetConfirm, when))) return
+        setBusyId(credit.id ?? 'reset')
         try {
-          await onReset()
+          await onReset(credit)
         } finally {
-          setBusy(false)
+          setBusyId(null)
         }
       }
+      return h('div', { className: 'osubs-qbox' },
+        h('div', { className: 'osubs-qbox-head' },
+          h('span', { className: 'osubs-eyebrow' }, t.quotaResetBank),
+          h('p', { className: 'osubs-hint' }, t.quotaResetHint),
+        ),
+        credits.length === 0
+          ? h('p', { className: 'osubs-note' }, t.quotaResetEmpty)
+          : credits.map((credit, index) => {
+            const stamp = formatStamp(credit.expiresAt)
+            const relative = formatReset(credit.expiresAt, t, 'expires')
+            const key = credit.id ?? `credit-${index}`
+            const busy = busyId !== null
+            return h('div', { className: 'osubs-reset-row', key },
+              h('div', { className: 'osubs-reset-meta' },
+                h('span', { className: 'osubs-reset-when' },
+                  stamp ? fill(t.quotaResetExpires, stamp) : t.quotaReset,
+                ),
+                relative && relative !== stamp && h('span', { className: 'osubs-reset-rel' }, relative),
+              ),
+              h(Button, {
+                size: 'sm',
+                disabled: busy,
+                onClick: () => spend(credit),
+                label: busyId === key ? t.quotaResetBusy : t.quotaReset,
+              }),
+            )
+          }),
+      )
+    }
+
+    function QuotaBlock({ t, quota, onRefresh, onReset }) {
+      if (!quota || quota.status === 'idle') return null
+      const rows = Array.isArray(quota.rows) ? quota.rows : []
       return h('div', { className: 'osubs-quota' },
         h('div', { className: 'osubs-quota-head' },
           h('span', { className: 'osubs-eyebrow' }, t.quota),
           h('div', { className: 'osubs-actions' },
-            canReset && h(Button, {
-              size: 'sm',
-              disabled: busy,
-              onClick: confirmReset,
-              label: busy ? t.quotaResetBusy : fill(t.quotaResetLeft, available),
-            }),
             h(Button, { size: 'sm', onClick: onRefresh, label: t.quotaRefresh }),
           ),
         ),
-        canReset && expires && h('span', { className: 'osubs-note', style: { marginTop: -6, textAlign: 'right' } }, expires),
         quota.status === 'loading' && rows.length === 0 && h('p', { className: 'osubs-hint' }, t.quotaLoading),
         quota.status === 'error' && rows.length === 0 && h('p', { className: 'osubs-hint osubs-bad' }, `${t.quotaFailed}${quota.error ? ` · ${quota.error}` : ''}`),
         rows.map((row) => h(QuotaRow, { t, row, key: row.key })),
+        h(QuotaResetBox, { t, quota, onReset }),
         quota.hasGrokCodeAccess === true && h('p', { className: 'osubs-note' }, t.grokCode),
       )
     }

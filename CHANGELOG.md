@@ -2,6 +2,7 @@
 
 ## 0.0.15
 
+- Redesign Codex reset-quota UI: nest a credit box inside the ChatGPT Codex card and render one reset button per credit, keyed to that credit’s expiry instead of a lumped “N left” control. The snapshot now forwards each available credit (`id`, `expiresAt`).
 - Restructure the source tree into `src/oauth/{codex,grok}`, `src/ui`, and `src/utils`. Host code is TypeScript; Settings UI stays React. Compiled output lives in `lib/`. Binding conventions: `AGENTS.md`. Recurring faults still go in `docs/error.md`.
 
 - Add `scripts/analyze-session.mjs` to score a DeepSeek Harness `session.jsonl` for Codex cache affinity, token spend, tool errors, and transport faults.

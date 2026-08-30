@@ -114,6 +114,7 @@ export declare class QuotaStore {
         resetCredits: {
             nextExpiresAt?: any;
             availableCount: any;
+            credits: any;
         };
     };
     clear(provider: any): void;
