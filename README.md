@@ -40,7 +40,7 @@ pnpm dsh web --patch ./cordis.patch.yml
 | AWS Kiro · Enterprise / IdC | Same device code against the org Start URL | issued at login | `https://oidc.{region}.amazonaws.com` |
 | AWS Kiro · Entra / Azure AD | Paste refresh token; public-client `refresh_token` grant | your Entra client id | `*.microsoftonline.com` token endpoint |
 | AWS Kiro · API key | Paste `ksk_…` | — | Bearer, no refresh |
-| Google Antigravity | Google OAuth on `localhost:51121/oauth-callback`; paste-callback supported | `1071006060591-…apps.googleusercontent.com` | `cloudcode-pa.googleapis.com/v1internal:streamGenerateContent` |
+| Google Antigravity | Google OAuth on `localhost:51121/oauth-callback`; paste-callback supported | `1071006060591-…apps.googleusercontent.com` | `daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent` (hub; prod is IDE fallback) |
 
 Already signed in on this machine via Codex CLI, Grok CLI, Hermes, ZCode Desktop, Kiro IDE, kiro.rs, Antigravity CLI, or CLIProxyAPI? Use **Import local session**:
 
@@ -131,7 +131,7 @@ On Codex it is **Priority Processing**, not a different model family. The proxy 
 
 ChatGPT Codex often echoes `created=auto` / `completed=default` even when Priority is requested — that echo is not a confirmation (openai/codex#14204). A 2026-08-26 Luna run measured 88.3 vs 57.5 tok/s (1.54×); a 2026-08-30 interleaved rerun did not reproduce a stable lift (mean 1.33×, pair ratios 1.90 then 0.93). Throughput-only; TTFT and cache are unchanged.
 
-Login, token refresh, chat, and quota use one official client identity: Codex pairs `originator: codex_cli_rs` with `User-Agent: codex_cli_rs/<version>`; Grok sends `x-xai-token-auth: xai-grok-cli` and `User-Agent: grok-cli/<version>`. GLM uses ZCode's CLI poll: global `provider: zai` (client `client_P8X5CMWmlaRO9gyO-KSqtg`, then `api.z.ai/api/auth/z/login` to mint `id.secret`); China `provider: bigmodel` (`bigmodel.cn/login`, poll JWT is the Coding Plan bearer). Chat and quota hop as **ZCode Desktop 3.10.1** (`User-Agent: ZCode/3.10.1 ai-sdk/anthropic/3.0.81`, `X-ZCode-App-Version`, `X-ZCode-Agent: glm`, `Referer` / `X-Title: Z Code`) to `api.z.ai` or `open.bigmodel.cn` `/api/coding/paas/v4`. CLI init/poll against `zcode.z.ai` stays a CLI-shaped `ZCode/3.10.1` identity. No TLS fingerprint impersonation.
+Login, token refresh, chat, and quota use one official client identity: Codex pairs `originator: codex_cli_rs` with `User-Agent: codex_cli_rs/<version>`; Grok sends `x-xai-token-auth: xai-grok-cli` and `User-Agent: grok-cli/<version>`. GLM uses ZCode's CLI poll: global `provider: zai` (client `client_P8X5CMWmlaRO9gyO-KSqtg`, then `api.z.ai/api/auth/z/login` to mint `id.secret`); China `provider: bigmodel` (`bigmodel.cn/login`, poll JWT is the Coding Plan bearer). Chat and quota hop as **ZCode Desktop 3.10.1** (`User-Agent: ZCode/3.10.1 ai-sdk/anthropic/3.0.81`, `X-ZCode-App-Version`, `X-ZCode-Agent: glm`, `Referer` / `X-Title: Z Code`) to `api.z.ai` or `open.bigmodel.cn` `/api/coding/paas/v4`. CLI init/poll against `zcode.z.ai` stays a CLI-shaped `ZCode/3.10.1` identity. Antigravity chat / loadCodeAssist hop as `antigravity/hub/<ver> <os>/<arch>` (installed **Antigravity.app** or **2.11.0**) to **daily-cloudcode-pa** with body `ideType: ANTIGRAVITY` and User-Agent only. No TLS fingerprint impersonation.
 
 ## Models
 

@@ -1,5 +1,72 @@
 # 错误记录
 
+## 2026-08-30：Antigravity 聊天打了 IDE 的 prod Cloud Code，不是 hub daily
+
+### 现象
+
+插件把 `loadCodeAssist` / `generateContent` / `streamGenerateContent` 打到 `https://cloudcode-pa.googleapis.com`。那是 **Antigravity IDE.app** 的 `--cloud_code_endpoint`（`--subclient_type ide`），不是要模仿的 **Antigravity.app / hub**。
+
+### 证据
+
+用户本机 Mac，`/Applications/Antigravity.app` 2.11.0，`~/Library/Logs/Antigravity/main.log` 最近一次 spawn（2026-08-30 15:35）。身份相关 flag（不含 csrf / host_bridge token）：
+
+- `--standalone --override_ide_name antigravity --subclient_type hub --override_ide_version 2.11.0 --override_user_agent_name antigravity`
+- `--api_server_url https://generativelanguage.googleapis.com`（Gemini API，不是 coding hop）
+- `--cloud_code_endpoint https://daily-cloudcode-pa.googleapis.com`
+- AutoUpdater latest **2.11.0**
+
+同会话 `language_server.log` 实际 POST：
+
+- `https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist`
+- `https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels`
+
+该分钟没有聊天，没有 `streamGenerateContent` 行；coding RPC 按同一 `--cloud_code_endpoint` 推断为 **daily**。对照：Antigravity IDE.app 走 `--subclient_type ide --cloud_code_endpoint https://cloudcode-pa.googleapis.com`，不要模仿。
+
+### 根因
+
+代理层。0.0.38 把 CLIProxyAPI 的 prod `cloudcode-pa` 当默认 API host；只有 `onboardUser` 打 daily。hub UA（`antigravity/hub/…`）配 IDE 主机，和官方 Antigravity.app 不一致。
+
+### 修复（0.0.40）
+
+- 默认 Cloud Code = `https://daily-cloudcode-pa.googleapis.com`。
+- `loadCodeAssist` / `fetchAvailableModels` / `generateContent` / `streamGenerateContent` 先打 daily。`onboardUser` 本来就是 daily，不动。
+- daily 传输失败或 5xx 才回落 prod `cloudcode-pa`（IDE/prod fallback，不是 hub 默认）。4xx 不回落。
+- UA 仍是 `antigravity/hub/<ver> {os}/{arch}`（`--subclient_type hub` + `--override_ide_version` + `--override_user_agent_name antigravity`）。版本优先 Antigravity.app 2.11.0，不读 IDE.app 2.5.5。
+- 聊天头只有 User-Agent；body `ideType: ANTIGRAVITY`。DSH 入站 `/antigravity/v1/chat/completions` 仍是本机 openai-completions；上游是 daily `v1internal:generateContent` / `streamGenerateContent`。
+- 不把 csrf / host_bridge token 写进代码或文档。
+
+### 验证
+
+- `npm test`：hub RPC URL 锁在 `daily-cloudcode-pa`；登录 / 聊天 happy path 不打 prod；daily 503 才回落 prod；403 不回落；UA 仍是 hub 形。
+
+## 2026-08-30：Antigravity 指纹版本停在 2.9.1，不像现网桌面
+
+### 现象
+
+`antigravityVersion()` 永远返回 `ANTIGRAVITY_FALLBACK_VERSION = '2.9.1'`，不读本机官方桌面。cloudcode-pa 聊天 / loadCodeAssist 的 UA 是 `antigravity/hub/2.9.1 <os>/<arch>`。用户本机 Mac 官方客户端是 **Antigravity.app 2.11.0**（`com.google.antigravity`）。同机还有 **Antigravity IDE.app 2.5.5**（`com.google.antigravity-ide`），不能拿来当 UA 版本。
+
+### 证据
+
+- 本机 `/Applications/Antigravity.app` `CFBundleShortVersionString` **2.11.0**。
+- `/Applications/Antigravity IDE.app` 是 2.5.5，忽略。
+- 官方 language_server 的 protobuf `ClientMetadata.ide_type` 是 `ANTIGRAVITY`；UA 运行时格式化（日志 `Request User-Agent to %s`），不是写死的 `hub/2.9.1`。
+- CLIProxyAPI `AntigravityRequestUserAgent` 形状仍是 `antigravity/hub/{ver} {os}/{arch}`。官方 Manager 聊天 hop **不**发 `Client-Metadata` / `x-goog-api-client`。
+- SkillStar `crates/skillstar-usage/src/cloud_code.rs` `detect_ide_version`：macOS 读 `Antigravity.app` Info.plist，Windows `LocalAppData\Programs\antigravity\Antigravity.exe` FileVersion，linux `antigravity --version`。
+
+### 根因
+
+代理层（本插件）。0.0.38 抄了 CLIProxyAPI 的 hub UA + `ideType: ANTIGRAVITY`，但版本只留了 CLIProxyAPI 的 2.9.1 地板，没有读官方 Antigravity.app。
+
+### 修复（0.0.40）
+
+- 地板改为 **2.11.0**（当前官方桌面）。
+- `antigravityVersion()` 优先本机 Antigravity.app 短版本（同上 SkillStar 三端探测），读不到再用 2.11.0。**不**读 Antigravity IDE.app。
+- 保持 hub UA、`ideType: ANTIGRAVITY`、聊天头只有 User-Agent。不把 OAuth client secret 从二进制再抄一遍（插件已有官方 client id）。
+
+### 验证
+
+- `npm test`：地板 2.11.0；plist / CLI / FileVersion 解析；UA 匹配 `antigravity/hub/<ver> darwin/arm64`（或本机 platform）；UA 无 `dsh-plugin`；chat 头无 `Client-Metadata` / `x-goog-api-client`。
+
 ## 2026-08-30：GLM 对话/额度带第三方 UA，拿不到 ZCode 1.5 倍额度
 
 ### 现象

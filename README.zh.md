@@ -40,7 +40,7 @@ pnpm dsh web --patch ./cordis.patch.yml
 | AWS Kiro · Enterprise / IdC | 同一设备码，打组织自己的 Start URL | 登录时签发 | `https://oidc.{region}.amazonaws.com` |
 | AWS Kiro · Entra / Azure AD | 粘贴 refresh token；public client `refresh_token` grant | 你的 Entra client id | `*.microsoftonline.com` token 端点 |
 | AWS Kiro · API key | 粘贴 `ksk_…` | — | Bearer，不刷新 |
-| Google Antigravity | Google OAuth，回环 `localhost:51121/oauth-callback`，可粘贴回调 | `1071006060591-…apps.googleusercontent.com` | `cloudcode-pa.googleapis.com/v1internal:streamGenerateContent` |
+| Google Antigravity | Google OAuth，回环 `localhost:51121/oauth-callback`，可粘贴回调 | `1071006060591-…apps.googleusercontent.com` | `daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent`（hub；prod 仅 IDE 回落） |
 
 已在本机登录过 Codex CLI、Grok CLI、Hermes、ZCode Desktop、Kiro IDE、kiro.rs、Antigravity CLI 或 CLIProxyAPI 时，点 **导入本机会话**：
 
@@ -131,7 +131,7 @@ Codex 上本质是 **Priority Processing**，不是换一个模型族。代理�
 
 ChatGPT Codex 即使请求了 Priority，回显也经常是 `created=auto` / `completed=default`——这不能当确认（openai/codex#14204）。2026-08-26 Luna 曾测到 88.3 对 57.5 tok/s（1.54 倍）；2026-08-30 交错复测没有稳定提升（均值 1.33 倍，成对比 1.90 再 0.93）。提升只在生成吞吐上——首 token 时间和缓存命中不受影响。
 
-登录、刷新令牌、对话和额度走同一套官方客户端身份：Codex 为成对的 `originator: codex_cli_rs` 与 `User-Agent: codex_cli_rs/<version>`；Grok 为 `x-xai-token-auth: xai-grok-cli` 与 `User-Agent: grok-cli/<version>`。GLM 走 ZCode CLI 轮询：国际站 `provider: zai`（client `client_P8X5CMWmlaRO9gyO-KSqtg`，再 `api.z.ai/api/auth/z/login` 换长期 `id.secret`）；国内站 `provider: bigmodel`（`bigmodel.cn/login`，poll JWT 直接当 Coding Plan 密钥）。对话和额度按 **ZCode Desktop 3.10.1** 指纹发出（`User-Agent: ZCode/3.10.1 ai-sdk/anthropic/3.0.81`、`X-ZCode-App-Version`、`X-ZCode-Agent: glm`、`Referer` / `X-Title: Z Code`），打 `api.z.ai` 或 `open.bigmodel.cn` 的 `/api/coding/paas/v4`。`zcode.z.ai` 上的 CLI init/poll 仍用 CLI 形态的 `ZCode/3.10.1`。不模拟浏览器 TLS 指纹。
+登录、刷新令牌、对话和额度走同一套官方客户端身份：Codex 为成对的 `originator: codex_cli_rs` 与 `User-Agent: codex_cli_rs/<version>`；Grok 为 `x-xai-token-auth: xai-grok-cli` 与 `User-Agent: grok-cli/<version>`。GLM 走 ZCode CLI 轮询：国际站 `provider: zai`（client `client_P8X5CMWmlaRO9gyO-KSqtg`，再 `api.z.ai/api/auth/z/login` 换长期 `id.secret`）；国内站 `provider: bigmodel`（`bigmodel.cn/login`，poll JWT 直接当 Coding Plan 密钥）。对话和额度按 **ZCode Desktop 3.10.1** 指纹发出（`User-Agent: ZCode/3.10.1 ai-sdk/anthropic/3.0.81`、`X-ZCode-App-Version`、`X-ZCode-Agent: glm`、`Referer` / `X-Title: Z Code`），打 `api.z.ai` 或 `open.bigmodel.cn` 的 `/api/coding/paas/v4`。`zcode.z.ai` 上的 CLI init/poll 仍用 CLI 形态的 `ZCode/3.10.1`。Antigravity 对话 / loadCodeAssist 走 `antigravity/hub/<ver> <os>/<arch>`（本机 **Antigravity.app** 短版本，否则 **2.11.0**），打 **daily-cloudcode-pa**，body `ideType: ANTIGRAVITY`，头里只有 User-Agent。不模拟浏览器 TLS 指纹。
 
 ## 模型选择
 
