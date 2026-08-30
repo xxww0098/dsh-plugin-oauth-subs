@@ -1,5 +1,44 @@
 # 错误记录
 
+## 2026-08-30：Antigravity 聊天打了 IDE 的 prod Cloud Code，不是 hub daily
+
+### 现象
+
+插件把 `loadCodeAssist` / `generateContent` / `streamGenerateContent` 打到 `https://cloudcode-pa.googleapis.com`。那是 **Antigravity IDE.app** 的 `--cloud_code_endpoint`（`--subclient_type ide`），不是要模仿的 **Antigravity.app / hub**。
+
+### 证据
+
+用户本机 Mac，`/Applications/Antigravity.app` 2.11.0，`~/Library/Logs/Antigravity/main.log` 最近一次 spawn（2026-08-30 15:35）。身份相关 flag（不含 csrf / host_bridge token）：
+
+- `--standalone --override_ide_name antigravity --subclient_type hub --override_ide_version 2.11.0 --override_user_agent_name antigravity`
+- `--api_server_url https://generativelanguage.googleapis.com`（Gemini API，不是 coding hop）
+- `--cloud_code_endpoint https://daily-cloudcode-pa.googleapis.com`
+- AutoUpdater latest **2.11.0**
+
+同会话 `language_server.log` 实际 POST：
+
+- `https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist`
+- `https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels`
+
+该分钟没有聊天，没有 `streamGenerateContent` 行；coding RPC 按同一 `--cloud_code_endpoint` 推断为 **daily**。对照：Antigravity IDE.app 走 `--subclient_type ide --cloud_code_endpoint https://cloudcode-pa.googleapis.com`，不要模仿。
+
+### 根因
+
+代理层。0.0.38 把 CLIProxyAPI 的 prod `cloudcode-pa` 当默认 API host；只有 `onboardUser` 打 daily。hub UA（`antigravity/hub/…`）配 IDE 主机，和官方 Antigravity.app 不一致。
+
+### 修复（0.0.40）
+
+- 默认 Cloud Code = `https://daily-cloudcode-pa.googleapis.com`。
+- `loadCodeAssist` / `fetchAvailableModels` / `generateContent` / `streamGenerateContent` 先打 daily。`onboardUser` 本来就是 daily，不动。
+- daily 传输失败或 5xx 才回落 prod `cloudcode-pa`（IDE/prod fallback，不是 hub 默认）。4xx 不回落。
+- UA 仍是 `antigravity/hub/<ver> {os}/{arch}`（`--subclient_type hub` + `--override_ide_version` + `--override_user_agent_name antigravity`）。版本优先 Antigravity.app 2.11.0，不读 IDE.app 2.5.5。
+- 聊天头只有 User-Agent；body `ideType: ANTIGRAVITY`。DSH 入站 `/antigravity/v1/chat/completions` 仍是本机 openai-completions；上游是 daily `v1internal:generateContent` / `streamGenerateContent`。
+- 不把 csrf / host_bridge token 写进代码或文档。
+
+### 验证
+
+- `npm test`：hub RPC URL 锁在 `daily-cloudcode-pa`；登录 / 聊天 happy path 不打 prod；daily 503 才回落 prod；403 不回落；UA 仍是 hub 形。
+
 ## 2026-08-30：Antigravity 指纹版本停在 2.9.1，不像现网桌面
 
 ### 现象

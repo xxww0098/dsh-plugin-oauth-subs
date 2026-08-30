@@ -2,7 +2,7 @@
 
 ## 0.0.40
 
-- Antigravity fingerprint version is the installed official **Antigravity.app** short version, or **2.11.0** when that app is missing. Still `antigravity/hub/<ver> <os>/<arch>` + `ideType: ANTIGRAVITY`. Chat/loadCodeAssist stay User-Agent only. Does not use Antigravity IDE.app 2.5.5.
+- Antigravity mimics **Antigravity.app / hub**, not Antigravity IDE.app. Cloud Code default is `https://daily-cloudcode-pa.googleapis.com` (`loadCodeAssist`, `fetchAvailableModels`, `generateContent`, `streamGenerateContent`). Prod `cloudcode-pa` is an IDE fallback only when daily fails (5xx / transport). Fingerprint version is the installed Antigravity.app short version, or **2.11.0**. UA stays `antigravity/hub/<ver> <os>/<arch>` + `ideType: ANTIGRAVITY`. Chat/loadCodeAssist stay User-Agent only.
 
 ## 0.0.39
 

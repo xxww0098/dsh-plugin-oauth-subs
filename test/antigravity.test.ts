@@ -9,14 +9,19 @@ import { catalogProviders } from '../lib/oauth/models.js'
 import { importAntigravityAuth } from '../lib/oauth/import-auth.js'
 import { formatPlanLabel } from '../lib/oauth/plan.js'
 import {
+  ANTIGRAVITY_API_URL,
   ANTIGRAVITY_CLIENT_ID,
+  ANTIGRAVITY_DAILY_API_URL,
   ANTIGRAVITY_FALLBACK_VERSION,
+  ANTIGRAVITY_GENERATE_URL,
   ANTIGRAVITY_GOOG_API_CLIENT_UA,
   ANTIGRAVITY_LOAD_CODE_ASSIST_URL,
   ANTIGRAVITY_MAC_APP_PLIST,
   ANTIGRAVITY_MODELS,
+  ANTIGRAVITY_MODELS_URL,
   ANTIGRAVITY_NODE_API_CLIENT_UA,
   ANTIGRAVITY_ONBOARD_USER_URL,
+  ANTIGRAVITY_PROD_API_URL,
   ANTIGRAVITY_STREAM_URL,
   antigravityChatHeaders,
   antigravityFlow,
@@ -142,7 +147,27 @@ test('request UA is CLIProxyAPI hub shape and never the plugin name', () => {
   assert.equal(ua.includes('2.5.5'), false)
 })
 
-test('fingerprint is one Antigravity IDE identity on loadCodeAssist, onboardUser, and chat', () => {
+test('hub Cloud Code RPCs use daily, not IDE prod', () => {
+  assert.equal(ANTIGRAVITY_API_URL, 'https://daily-cloudcode-pa.googleapis.com')
+  assert.equal(ANTIGRAVITY_DAILY_API_URL, ANTIGRAVITY_API_URL)
+  assert.equal(ANTIGRAVITY_PROD_API_URL, 'https://cloudcode-pa.googleapis.com')
+  assert.equal(ANTIGRAVITY_LOAD_CODE_ASSIST_URL, 'https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist')
+  assert.equal(ANTIGRAVITY_MODELS_URL, 'https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels')
+  assert.equal(ANTIGRAVITY_GENERATE_URL, 'https://daily-cloudcode-pa.googleapis.com/v1internal:generateContent')
+  assert.equal(ANTIGRAVITY_STREAM_URL, 'https://daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse')
+  assert.equal(ANTIGRAVITY_ONBOARD_USER_URL, 'https://daily-cloudcode-pa.googleapis.com/v1internal:onboardUser')
+  for (const url of [
+    ANTIGRAVITY_LOAD_CODE_ASSIST_URL,
+    ANTIGRAVITY_MODELS_URL,
+    ANTIGRAVITY_GENERATE_URL,
+    ANTIGRAVITY_STREAM_URL,
+  ]) {
+    assert.equal(url.startsWith('https://daily-cloudcode-pa.googleapis.com/'), true)
+    assert.equal(url.startsWith('https://cloudcode-pa.googleapis.com/'), false)
+  }
+})
+
+test('fingerprint is one Antigravity hub identity on loadCodeAssist, onboardUser, and chat', () => {
   const load = antigravityLoadCodeAssistHeaders('tok')
   const onboard = antigravityOnboardUserHeaders('tok')
   const chat = antigravityChatHeaders({ accessToken: 'tok', projectId: 'proj' })
@@ -187,7 +212,37 @@ test('login discovers project via loadCodeAssist and stores it', async () => {
   const load = seen.find((row) => row.url === ANTIGRAVITY_LOAD_CODE_ASSIST_URL)
   assert.equal(load.headers['user-agent'], antigravityRequestUserAgent())
   assert.equal(JSON.parse(load.body).metadata.ideType, 'ANTIGRAVITY')
+  assert.equal(load.url, 'https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist')
+  assert.equal(seen.some((row) => String(row.url).startsWith('https://cloudcode-pa.googleapis.com/')), false)
   assertCleanIdentity(load)
+})
+
+test('hub 5xx on daily falls back to IDE prod; 4xx does not', async () => {
+  const seen = []
+  const fetchFn = async (url) => {
+    seen.push(String(url))
+    if (String(url) === ANTIGRAVITY_LOAD_CODE_ASSIST_URL) return new Response('busy', { status: 503 })
+    if (String(url) === `${ANTIGRAVITY_PROD_API_URL}/v1internal:loadCodeAssist`) {
+      return jsonResponse({ cloudaicompanionProject: 'from-prod' })
+    }
+    throw new Error(`unexpected ${url}`)
+  }
+  const found = await fetchAntigravityProject({ accessToken: 'acc', fetchFn })
+  assert.equal(found.projectId, 'from-prod')
+  assert.deepEqual(seen, [
+    ANTIGRAVITY_LOAD_CODE_ASSIST_URL,
+    `${ANTIGRAVITY_PROD_API_URL}/v1internal:loadCodeAssist`,
+  ])
+
+  const denied = []
+  await assert.rejects(() => fetchAntigravityProject({
+    accessToken: 'acc',
+    fetchFn: async (url) => {
+      denied.push(String(url))
+      return new Response('no', { status: 403 })
+    },
+  }), /HTTP 403/)
+  assert.deepEqual(denied, [ANTIGRAVITY_LOAD_CODE_ASSIST_URL])
 })
 
 test('empty loadCodeAssist falls back to daily onboardUser', async () => {
@@ -207,6 +262,10 @@ test('empty loadCodeAssist falls back to daily onboardUser', async () => {
   }
   const found = await fetchAntigravityProject({ accessToken: 'acc', fetchFn, sleep: async () => undefined })
   assert.equal(found.projectId, 'cogent-snow-4mnnp')
+  assert.deepEqual(seen.map((row) => row.url), [
+    'https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist',
+    'https://daily-cloudcode-pa.googleapis.com/v1internal:onboardUser',
+  ])
   const onboard = seen.find((row) => row.url === ANTIGRAVITY_ONBOARD_USER_URL)
   assert.equal(onboard.headers['user-agent'].includes(ANTIGRAVITY_NODE_API_CLIENT_UA), true)
   assert.equal(onboard.headers['x-goog-api-client'], ANTIGRAVITY_GOOG_API_CLIENT_UA)
@@ -302,7 +361,7 @@ test('import reads the official CLI token file and CLIProxyAPI auth json', async
   assert.equal(fromProxy.session.projectId, 'proj-proxy')
 })
 
-test('proxy translates OpenAI chat to cloudcode-pa with the same fingerprint', async () => {
+test('proxy translates OpenAI chat to daily-cloudcode-pa with the same fingerprint', async () => {
   const seen = []
   const fetchFn = async (url, init) => {
     seen.push({ url: String(url), headers: init.headers, body: String(init.body) })
@@ -339,7 +398,9 @@ test('proxy translates OpenAI chat to cloudcode-pa with the same fingerprint', a
     assert.equal(ok.status, 200)
     const payload = await ok.json()
     assert.equal(payload.choices[0].message.content, 'ok')
-    assert.equal(seen[0].url, ANTIGRAVITY_STREAM_URL.replace('streamGenerateContent?alt=sse', 'generateContent'))
+    assert.equal(seen[0].url, ANTIGRAVITY_GENERATE_URL)
+    assert.equal(seen[0].url, 'https://daily-cloudcode-pa.googleapis.com/v1internal:generateContent')
+    assert.equal(seen.some((row) => String(row.url).startsWith('https://cloudcode-pa.googleapis.com/')), false)
     assert.equal(seen[0].headers['user-agent'], antigravityRequestUserAgent())
     const body = JSON.parse(seen[0].body)
     assert.equal(body.project, 'cogent-snow-4mnnp')
