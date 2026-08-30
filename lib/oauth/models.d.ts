@@ -25,6 +25,8 @@ export declare function catalogProviders({ prefix, origin }: {
 }): {};
 export declare function catalogKeys(providers: any): any[];
 export declare function familyOfProvider(provider: any): string;
+export declare function familyOfKey(key: any): string;
+export declare function familyCatalogKeys(catalog: any, family: any): any[];
 export declare function describeCatalog(providers: any, { enabledKeys, loggedIn }?: {}): {
     provider: string;
     displayName: any;
@@ -65,6 +67,13 @@ export declare class ModelSwitch {
         disabled: any[];
         allOn: boolean;
     }>;
+    /**
+     * Leftover 全关: every *current* catalog key for a signed-in family is
+     * off (often after a catalog shrink left stale ids in `disabled`).
+     * Enable the current keys so login/sync can write the DSH route.
+     * Does not resurrect retired ids or opt-in `-900k` rows.
+     */
+    recoverEmptyLoggedInFamilies(catalog: any, loggedIn: any): Promise<boolean>;
     setAll(on: any, catalog: any): Promise<{
         selected: any[];
         disabled: any[];
