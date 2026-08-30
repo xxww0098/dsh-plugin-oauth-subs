@@ -4160,7 +4160,7 @@ export declare class AuthController {
             repoSlug: string;
         };
     }>;
-    sync(selected: any): Promise<{
+    sync(selected: any, options?: {}): Promise<{
         routes: {
             provider: string;
             api: any;

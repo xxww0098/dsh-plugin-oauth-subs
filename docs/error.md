@@ -1,5 +1,34 @@
 # 错误记录
 
+## 2026-08-30：GLM 模型勾选 0/3，settings.yaml 没有 oauth-glm
+
+### 现象
+
+本机 DSH web profile，插件 0.0.33。设置 → 模型 → **OAuth · GLM** 显示 **已开启 0 / 3**（GLM-5.3、GLM-5.3-Flash、GLM-5-Turbo 全未勾）。用户勾选或点全选，DSH 里仍然没有这条路由。
+
+### 证据
+
+- `auth.json` `glm.activeId = zcode@bigmodel`，vault 里有 BigModel 会话（已登录）。
+- `~/.dsh/profiles/web/data/dsh-plugin-oauth-subs/models.json` 的 `disabled` 含全部当前 GLM key：`oauth-glm/glm-5.3`、`oauth-glm/glm-5.3-flash`、`oauth-glm/glm-5-turbo`，外加旧 6 模型目录残留 `glm-4.7` / `glm-5` / `glm-5.1` / `glm-5.2`。
+- `~/.dsh/settings.yaml` `llm-pi-ai.providers` 只有 `oauth-codex` 和 `oauth-grok`，**没有 `oauth-glm`**。
+
+### 根因
+
+`syncHarnessModels` 只给「已登录且至少有一条当前目录 key 开启」的系列写路由。`selectedForSync` + `filterProviders` 在当前三条全在 `disabled` 时丢掉 `oauth-glm`，mutate 先 unset 再也不 set。旧目录 6 行时的全关把后来仍在目录里的三条也写进了 `disabled`；全选必须打开**当前** id，不能只翻残留 key。登录后的 `sync()` 不会把「空选择器 / 残留全关」当成要恢复的状态，已登录 GLM 会卡在 0/3 且没有 DSH 路由。勾选本身（`toggle` / `setFamily`）对当前 catalog key 是有效的；锁到登录（`catalog[].loggedIn`）在 vault session 下应为 true，不是这次的阻断点。
+
+### 修复（0.0.38）
+
+- `setFamily(true)` 只 enable 当前 catalog id；`disabled` 里的退役 id 保持不动、不复活。
+- 登录 / 启动 `sync()`：某系列已登录且当前 catalog key 全关时，视为残留全关，打开当前 key 再写入 `providers.oauth-glm`（`api openai`，`baseURL` origin `/glm/v1`，`compat.thinkingFormat openai`）。不复活退役 id。选择器里主动全关仍会 unset 路由（`setModels` 不走恢复）。
+- snapshot `catalog` GLM `loggedIn: true` 当 `getSession('glm')` 是 vault 账号。
+
+### 验证
+
+- `npm test`：GLM 已登录 + 当前 key 全在 disabled → toggle `glm-5.3` → mutate 含 `oauth-glm` 且只有 `glm-5.3`。
+- `setFamily('glm', true)` 打开 5.3 / Flash / Turbo，`disabled` 仍可留着 `glm-4.7`。
+- `sync()` 在当前 GLM key 全关时恢复三条并写入路由。
+- 选择器全关 GLM 仍 unset `oauth-glm`。
+
 ## 2026-08-30：Antigravity 第三方包装指纹不一致会被 Google 封
 
 ### 现象
