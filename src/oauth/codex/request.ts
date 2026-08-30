@@ -92,6 +92,10 @@ export function normalizeCodexResponsesBody(payload) {
   if (next.service_tier === 'fast') next.service_tier = 'priority'
   if (next.service_tier === 'default' || next.service_tier === 'auto') delete next.service_tier
 
+  // ChatGPT Codex Responses 400 unless store is false (Codex CLI sets this
+  // false on every non-Azure request).
+  next.store = false
+
   // gpt-5.6 rejects prompt_cache_retention / prompt_cache_options (Codex #39397).
   delete next.prompt_cache_options
   delete next.prompt_cache_retention

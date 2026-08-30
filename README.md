@@ -106,26 +106,25 @@ The analyzer reads `assistant/message` usage once per turn+step (the later `assi
 
 ## Fast mode
 
-It is **Priority Processing** (`service_tier: "priority"`), not a different model family.
+On Codex it is **Priority Processing**, not a different model family. The proxy peels host-side `-fast` and asks the ChatGPT Codex backend the same way Codex CLI 0.149+ does: body `service_tier: "priority"` plus header `x-codex-routing-hint: model=<id>;tier=priority`. `store` is forced `false` (the subscription Responses API 400s otherwise).
 
 | Model | Fast |
 |---|---|
 | GPT-5.6 Sol / Terra / Luna, GPT-5.5, GPT-5.4 | Yes. Pick the `-fast` sibling in the model list. |
-| GPT-5.4 Mini, GPT-5.3 Codex Spark | No. Their catalog rows carry an empty `service_tiers`, so no `-fast` sibling exists. |
-| Grok 4.6 | Yes (`service_tier: "priority"`). |
-| Older Grok ids | No. The xAI Responses API rejects the field; the proxy strips it. |
+| GPT-5.4 Mini, GPT-5.3 Codex Spark | No. Their catalog rows carry an empty `service_tiers`, so no `-fast` sibling exists. A stale `*-fast` id is peeled locally instead of forwarded. |
+| Grok | No. Grok 4.6 accepts `service_tier: "priority"` on the wire but a 2026-08-30 interleaved run showed no speed gain (83.34 vs 82.80 tok/s, ratio 0.994). Older ids reject the field; the proxy strips it. |
 
-Default is off. Measured on `gpt-5.6-luna`: **88.3 against 57.5 output tokens per second — 1.54×**, matching the catalog's "1.5x speed, increased usage". The gain is on generation throughput only: time to first token and prompt caching are unchanged.
+ChatGPT Codex often echoes `created=auto` / `completed=default` even when Priority is requested — that echo is not a confirmation (openai/codex#14204). A 2026-08-26 Luna run measured 88.3 vs 57.5 tok/s (1.54×); a 2026-08-30 interleaved rerun did not reproduce a stable lift (mean 1.33×, pair ratios 1.90 then 0.93). Throughput-only; TTFT and cache are unchanged.
 
 Login, token refresh, chat, and quota use one official client identity: Codex pairs `originator: codex_cli_rs` with `User-Agent: codex_cli_rs/<version>`; Grok sends `x-xai-token-auth: xai-grok-cli` and `User-Agent: grok-cli/<version>`. GLM uses ZCode's CLI poll: global `provider: zai` (client `client_P8X5CMWmlaRO9gyO-KSqtg`, then `api.z.ai/api/auth/z/login` to mint `id.secret`); China `provider: zcode` (`bigmodel.cn/login`, poll JWT is the Coding Plan bearer). Chat hits `/api/coding/paas/v4` on `api.z.ai` or `open.bigmodel.cn`. No TLS fingerprint impersonation.
 
 ## Models
 
-Settings → OAuth subs → **Models** lists every Codex, Grok, and GLM catalog id, including `-fast` and `-900k` siblings. Each row is an on/off checkbox. **All on** / **All off** apply per family.
+Settings → OAuth subs → **Models** lists every Codex, Grok, and GLM catalog id, including Codex `-fast` and `-900k` siblings. Each row is an on/off checkbox. **All on** / **All off** apply per family.
 
 GLM is three Coding Plan models: **GLM-5.3** (text), **GLM-5.3-Flash** (image + text), **GLM-5-Turbo** (text). Flash is the only multimodal row — text-only GLM models do not advertise image input to the Harness picker.
 
-Default is all on except **900K**. Pick a **Fast** sibling (`gpt-5.6-sol-fast`, `grok-4.6-fast`) for Priority Processing. The `-fast` suffix is host-side only — the proxy strips it and sends `service_tier: "priority"`. GPT-5.4 Mini and GPT-5.3 Codex Spark have no Fast sibling.
+Default is all on except **900K**. Pick a Codex **Fast** sibling (`gpt-5.6-sol-fast`) for Priority Processing. The `-fast` suffix is host-side only — the proxy strips it and sends `service_tier: "priority"` plus `x-codex-routing-hint`. Grok has no Fast sibling. GPT-5.4 Mini and GPT-5.3 Codex Spark have no Fast sibling; a leftover `gpt-5.4-mini-fast` is peeled to `gpt-5.4-mini`.
 
 GPT-5.6 Sol / Terra / Luna accept **872K** and GPT-5.4 accepts **1M**, well past their default window. Pick `gpt-5.6-sol-900k` (and the Terra / Luna / 5.4 twins) to opt in — the `-900k` suffix is a stable host-side id even though the real ceiling is per-model, and the proxy strips it before the upstream request. GPT-5.5, GPT-5.4 Mini and Spark have no large variant.
 

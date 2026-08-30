@@ -6,7 +6,7 @@
 
 import { createServer } from 'node:http'
 import { once } from 'node:events'
-import { CODEX_API_URL, CODEX_CLIENT_VERSION, CODEX_MODELS, CODEX_MODELS_URL, codexUpstreamHeaders } from './codex/index.js'
+import { CODEX_API_URL, CODEX_CLIENT_VERSION, CODEX_MODELS, CODEX_MODELS_URL, codexRoutingHint, codexUpstreamHeaders } from './codex/index.js'
 import { GROK_API_URL, GROK_MODELS, grokAffinityHeaders, grokUpstreamHeaders } from './grok/index.js'
 import { GLM_MODELS, glmCodingUrl, glmUpstreamHeaders } from './glm/index.js'
 import { applyFastMode } from '../utils/fast-mode.js'
@@ -146,7 +146,10 @@ function rewriteUpstreamBody(buffer, family) {
     : undefined
   if (cacheSessionId) next.prompt_cache_key = cacheSessionId
   else if (pinCache) delete next.prompt_cache_key
-  return { body: Buffer.from(JSON.stringify(next)), cacheSessionId, stream: next.stream === true }
+  const routingHint = family === 'codex'
+    ? codexRoutingHint(typeof next.model === 'string' ? next.model : '', next.service_tier)
+    : undefined
+  return { body: Buffer.from(JSON.stringify(next)), cacheSessionId, stream: next.stream === true, routingHint }
 }
 
 function abortOnDisconnect(request, response) {
@@ -330,7 +333,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
 
 async function forward(request, response, { url, session, headersOf, fetchFn, family, maxRequestBodyBytes, signal }) {
   const raw = await readBody(request, maxRequestBodyBytes)
-  const { body, cacheSessionId, stream } = rewriteUpstreamBody(raw, family)
+  const { body, cacheSessionId, stream, routingHint } = rewriteUpstreamBody(raw, family)
   const headers = {
     ...headersOf(session),
     'content-type': request.headers['content-type'] ?? 'application/json',
@@ -339,6 +342,7 @@ async function forward(request, response, { url, session, headersOf, fetchFn, fa
       'session-id': cacheSessionId,
       'x-client-request-id': cacheSessionId,
     } : {}),
+    ...(family === 'codex' && routingHint ? { 'x-codex-routing-hint': routingHint } : {}),
     ...(family === 'grok' ? grokAffinityHeaders(cacheSessionId) : {}),
   }
 

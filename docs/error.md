@@ -1,5 +1,43 @@
 # 错误记录
 
+## 2026-08-30：Grok Fast 无加速；Codex Fast 只靠 body 字段，回显一直是 default
+
+### 现象
+
+用户本机 Mac，本地插件代理 `127.0.0.1:8318`，ChatGPT Pro + Grok X Premium+。交错 default 与 `-fast`，同一 prompt（整数 1–180），`reasoning.effort` low，`stream` true。Codex 请求体必须是 list `input` + `store: false`（string input 先 400，再 400 “Store must be set to false”）。
+
+**Grok 4.6**
+
+- Echo：default → `service_tier` `default`；`-fast` → created 和 completed 都是 `priority`（字段线上被接受）。
+- 吞吐：default 81.20 / 85.48 tok/s（均值 83.34）；fast 85.08 / 80.51（均值 82.80，比 0.994）。无加速。
+- 探针：POST grok-4.5 带 body `service_tier=priority` → HTTP 200，echo `default`（插件剥掉，符合设计）。
+
+**Codex gpt-5.6-luna**
+
+- 插件剥掉 `-fast`（model echo 是 `gpt-5.6-luna`）。
+- Echo：created=`auto`，completed=`default`，default 和 `-fast` 两边一样。从未出现 `priority`。
+- 吞吐：default 37.79 / 54.74（均值 46.27）；fast 71.76 / 51.08（均值 61.42，比 1.33）。成对比 1.90× 然后 0.93×，不是稳定的 Priority 提升。
+- 探针：`gpt-5.4-mini-fast` → HTTP 400 `The 'gpt-5.4-mini-fast' model is not supported when using Codex with a ChatGPT account.` 不合格 `-fast` 没剥掉，上游看到假 id。
+
+README 曾写 Luna Fast 88.3 vs 57.5 tok/s（1.54×，2026-08-26）。今晚没复现。`fast-mode.json` 磁盘上是 `{on:false}`（旧 UI 开关），后缀剥离不读这个文件。
+
+### 根因
+
+1. **Grok**：xAI Responses 接受 Grok 4.6 的 `priority`，但不给吞吐。继续挂 `-fast` 是撒谎。
+2. **Codex**：插件只写了 body `service_tier: "priority"`。Codex CLI 0.149+（openai/codex#37345）还会发 `x-codex-routing-hint: model=<id>;tier=priority`，ChatGPT 订阅路径 `store` 必须是 `false`。回显 `auto`/`default` 本身不是失败判据（openai/codex#14204 官方也说 ChatGPT 鉴权下 `response.service_tier` 不可靠），但缺 hint 时请求形状和 CLI 不一致。Plus 账号上 CLI 带 hint 的对照（#32191）同样 echo `default`、吞吐无差；本机 Pro 今晚也没稳定 1.5×。
+3. **不合格 `-fast`**：`peelFastSuffix` 只在 `fastTier` 为真时剥后缀，mini / 过期 id 原样转发。
+
+### 修复（0.0.26）
+
+- 删掉 Grok Fast：目录、选择器、Settings 文案、README 不再出现 `grok-*-fast`。代理永不给 Grok 写 `service_tier`。残留 `grok-4.6-fast` 只剥后缀。
+- Codex 合格 `-fast`：剥后缀 + `service_tier: "priority"` + `x-codex-routing-hint: model=<id>;tier=priority`，并强制 `store: false`。客户端身份跟到 `codex_cli_rs/0.151.0`。
+- 不合格 Codex `-fast`（mini / Spark / 过期 id）本地剥掉，不再把假 id 转给上游。
+- 保留 Codex `-fast` 选择器行：目录仍标 Fast，CLI 仍这样请求。文档不再把 2026-08-26 的 1.54× 写成当前事实；回显 `default`/`auto` 不能当 Priority 成功判据。
+
+### 验证
+
+- `npm test`：Grok 无 `-fast` 行；`grok-4.6-fast` / `gpt-5.4-mini-fast` 剥后缀且不带 `service_tier`；Codex `-fast` 请求带 `priority`、`store: false`、`x-codex-routing-hint=model=…;tier=priority`。
+
 ## 2026-08-30：Codex Pro 徽章没区分 5x / 20x
 
 ### 现象
