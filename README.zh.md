@@ -15,7 +15,7 @@ dsh plugin --profile web add https://github.com/xxww0098/dsh-plugin-oauth-subs
 dsh web
 ```
 
-打开 **设置 → OAuth 订阅**。也可以用 `cordis.patch.yml` 手动挂载：
+打开 **设置 → OAuth 订阅**。页签：**Codex**、**Grok**、**智谱 GLM**、**模型**、**关于**。每个系列可登录多个账号，点一行切换。对话和额度走当前账号。**GLM** 走 ZCode 的浏览器 OAuth（无 PKCE），登录后签发 Coding Plan 的长期 `id.secret` 密钥。**关于** 里有 GitHub 仓库链接，并按 Windows / macOS / Linux 检查最新发布。也可以用 `cordis.patch.yml` 手动挂载：
 
 ```yaml
 - insert:
@@ -40,7 +40,7 @@ pnpm dsh web --patch ./cordis.patch.yml
 - `~/.grok/auth.json`
 - `~/.hermes/auth.json`
 
-令牌写在 profile 数据目录 `data/dsh-plugin-oauth-subs/auth.json`，权限 `0600`。开启/关闭的模型写在同目录的 `models.json`。
+令牌写在 profile 数据目录 `data/dsh-plugin-oauth-subs/auth.json`，权限 `0600`。每个系列的多个账号存在这个文件的保险库里；旧的单会话文件仍能读。开启/关闭的模型写在同目录的 `models.json`。
 
 ## 工作原理
 
@@ -95,8 +95,8 @@ src/
 
 ```sh
 npm run analyze -- path/to/session.jsonl
-node scripts/analyze-session.mjs --json path/to/session.jsonl
-node scripts/analyze-session.mjs --fail-below 80 path/to/session.jsonl
+node --experimental-strip-types scripts/analyze-session.ts --json path/to/session.jsonl
+node --experimental-strip-types scripts/analyze-session.ts --fail-below 80 path/to/session.jsonl
 ```
 
 分析器按 turn+step 只计一次 `assistant/message` 的 usage（后面的 `assistant/chunk` usage 是重复记账）。每步会标 `cold_start` / `delta` / `compaction` / `rebuild` / `affinity_miss`，避免把压缩会话误判成分片回归。工具错误会分成 `host_timeout` / `cascade_abort` / `invalid`，与 TRANSPORT 分开。glob/grep 的 30s 预算在 `dsh-tool-fs-search` 上，本代理加不长。也可 `import` `dsh-plugin-oauth-subs/analyze-session`。
@@ -114,11 +114,11 @@ node scripts/analyze-session.mjs --fail-below 80 path/to/session.jsonl
 
 默认关闭。在 `gpt-5.6-luna` 上实测：**输出 88.3 对 57.5 token/秒，1.54 倍**，与目录标称的 "1.5x speed, increased usage" 吻合。提升只在生成吞吐上——首 token 时间和缓存命中不受影响。
 
-登录、刷新令牌、对话和额度走同一套官方客户端身份：Codex 为成对的 `originator: codex_cli_rs` 与 `User-Agent: codex_cli_rs/<version>`；Grok 为 `x-xai-token-auth: xai-grok-cli` 与 `User-Agent: grok-cli/<version>`。不模拟浏览器 TLS 指纹。
+登录、刷新令牌、对话和额度走同一套官方客户端身份：Codex 为成对的 `originator: codex_cli_rs` 与 `User-Agent: codex_cli_rs/<version>`；Grok 为 `x-xai-token-auth: xai-grok-cli` 与 `User-Agent: grok-cli/<version>`。GLM 用 ZCode 公开 client `client_P8X5CMWmlaRO9gyO-KSqtg` 和 CLI 轮询流（`zcode.z.ai/api/v1/oauth/cli/init` → 浏览器授权 → poll → `api.z.ai/api/auth/z/login` → 长期 `id.secret` 密钥）。不模拟浏览器 TLS 指纹。
 
 ## 模型选择
 
-设置 → OAuth 订阅 会列出 Codex 与 Grok 的全部目录（含 `-fast` 与 `-900k` 条目）。每一行是独立开关。每个系列有 **全选** / **全关**。
+设置 → OAuth 订阅 → **模型** 会列出 Codex 与 Grok 的全部目录（含 `-fast` 与 `-900k` 条目）。每一行是独立开关。每个系列有 **全选** / **全关**。
 
 默认全部开启，**900K 除外**。选带 **Fast** 的条目（`gpt-5.6-sol-fast`、`grok-4.6-fast`）才会走 Priority Processing。`-fast` 只在本机目录里，发给上游前会剥掉并加上 `service_tier: "priority"`。GPT-5.4 Mini 和 GPT-5.3 Codex Spark 没有 Fast 条目。
 
@@ -128,11 +128,11 @@ GPT-5.6 Sol / Terra / Luna 实际可到 **872K**，GPT-5.4 可到 **1M**，都�
 
 关掉的模型不会写入下一次 `llm-pi-ai` 同步，DeepSeek Harness 的模型列表里也就看不到。选择保存在 `models.json`。以后目录新增的普通模型默认是开的；新增的 900K 条目默认关闭。
 
-未登录也可以先勾选，登录后再同步。**同步到模型列表** 会按当前勾选重写路由。
+未登录也可以先勾选，登录后再同步。勾选会立刻按当前选择重写路由。
 
 Grok 4.6 思考深度为 **low / medium / high / xhigh**。Grok 4.5 为 **low / medium / high**（没有 xhigh）。思考不能关掉；不选时上游默认 **high**。Grok 4 没有深度选项。Codex 的 GPT-5.6 Sol / Terra / Luna 在 **low / medium / high / xhigh** 之上还有 **max**。其余 Codex 模型最高到 **xhigh**。不提供 `minimal`：所有 Codex 模型都拒绝该取值。
 
-在 DeepSeek Harness **会话**里点模型名称 → **推理等级** 设置，不在「设置 → 模型」。安装或改目录后点一次 **同步到模型列表**。
+在 DeepSeek Harness **会话**里点模型名称 → **推理等级** 设置，不在「设置 → 模型」。登录、退出、勾选都会自动同步。
 
 ## 额度
 
@@ -143,6 +143,7 @@ Grok 4.6 思考深度为 **low / medium / high / xhigh**。Grok 4.5 为 **low / 
 | ChatGPT Codex | `chatgpt.com/backend-api/wham/usage` | 套餐等级（Plus / Pro / Team …）+ 5 小时窗口 + 每周窗口，展示**剩余**百分比和重置时间 |
 | ChatGPT Codex 重置 | `…/wham/rate-limit-reset-credits` 与 `/consume` | 银行的周窗口重置券和过期时间；Codex 卡片上按券各一颗确认按钮 |
 | xAI Grok | `cli-chat-proxy.grok.com/v1/billing?format=credits`，并读 `/v1/user?include=subscription` | 套餐等级（SuperGrok / X Premium+ …）+ 本周期用量、预付余额、产品分项 |
+| 智谱 GLM | `api.z.ai/api/monitor/usage/quota/limit` | 套餐徽章（Lite / Pro / Max）+ Coding Plan 积分窗口 |
 
 额度约每分钟刷新一次，也可点卡片上的 **刷新额度**。读失败不影响对话。
 
@@ -150,14 +151,14 @@ Grok 4.6 思考深度为 **low / medium / high / xhigh**。Grok 4.5 为 **low / 
 
 进度条按剩余百分比从绿过渡到黄再到红（`hsl(剩余 × 1.2, 78%, 38%)`）。
 
-ChatGPT / Codex Plus、Pro 可能有银行的周窗口重置券。还有剩余券时，Codex 卡片里会嵌一套 **重置额度** 框，**每张券一颗按钮**，标着这张券何时过期。点 **重置** 会打开 DeepSeek Harness 的风险确认弹窗（警告图标、勾选确认，再点确认）。确认后插件会 `POST` `chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume`，请求体为 `{ redeem_request_id }`，并带 `idempotencyKey`。消耗的是 **周额度窗口**。Grok 没有对应能力。
+ChatGPT / Codex Plus、Pro 可能有银行的周窗口重置券。还有剩余券时，Codex 卡片里会嵌一套 **重置券** 框，**每张券一颗按钮**，标着这张券何时过期。点 **重置** 会打开 DeepSeek Harness 的风险确认弹窗（警告图标、勾选确认，再点确认）。确认后插件会 `POST` `chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume`，请求体为 `{ redeem_request_id }`，并带 `idempotencyKey`。消耗的是 **周额度窗口**。Grok 没有对应能力。
 
 ## 配置
 
 | 选项 | 默认 | 说明 |
 |---|---|---|
 | `port` | `8318` | 本机代理端口 |
-| `provider` | `oauth` | 同步到 DSH 的路由 ID 前缀（`oauth-codex` / `oauth-grok`） |
+| `provider` | `oauth` | 同步到 DSH 的路由 ID 前缀（`oauth-codex` / `oauth-grok` / `oauth-glm`） |
 | `dataDir` | profile 数据目录 | `auth.json`、`models.json` 与 `proxy-key` 位置 |
 | `grokLogin` | `device` | `device` 或 `pkce` |
 

@@ -15,7 +15,7 @@ dsh plugin --profile web add https://github.com/xxww0098/dsh-plugin-oauth-subs
 dsh web
 ```
 
-Open **Settings → OAuth subs**. Or mount the bundle patch by hand:
+Open **Settings → OAuth subs**. Tabs: **Codex**, **Grok**, **GLM**, **Models**, **About**. Sign in more than once per family; click a row to switch. Chat and quota use the active account. **GLM** uses ZCode's browser OAuth (no PKCE) and mints a durable Coding Plan key. **About** links the GitHub repo and checks the latest release for Windows, macOS, and Linux. Or mount the bundle patch by hand:
 
 ```yaml
 - insert:
@@ -40,7 +40,7 @@ Already signed in on this machine via Codex CLI, Grok CLI, or Hermes? Use **Impo
 - `~/.grok/auth.json`
 - `~/.hermes/auth.json`
 
-Tokens live at `<profile>/data/dsh-plugin-oauth-subs/auth.json` with mode `0600`. Enabled-model choices live in `models.json` next to it.
+Tokens live at `<profile>/data/dsh-plugin-oauth-subs/auth.json` with mode `0600`. Multiple accounts per family sit in that file as a vault; a legacy single-session file still loads. Enabled-model choices live in `models.json` next to it.
 
 ## How it works
 
@@ -95,8 +95,8 @@ Export the DSH `session.jsonl` (or unzip the session archive) and score it:
 
 ```sh
 npm run analyze -- path/to/session.jsonl
-node scripts/analyze-session.mjs --json path/to/session.jsonl
-node scripts/analyze-session.mjs --fail-below 80 path/to/session.jsonl
+node --experimental-strip-types scripts/analyze-session.ts --json path/to/session.jsonl
+node --experimental-strip-types scripts/analyze-session.ts --fail-below 80 path/to/session.jsonl
 ```
 
 The analyzer reads `assistant/message` usage once per turn+step (the later `assistant/chunk` usage event is a duplicate). It labels each call `cold_start` / `delta` / `compaction` / `rebuild` / `affinity_miss` so a compacted session is not flagged as a shard regression. Tool errors are split into `host_timeout` / `cascade_abort` / `invalid` and are not TRANSPORT. glob/grep's 30s budget lives on `dsh-tool-fs-search`, not this proxy — this plugin cannot raise it. Import as `dsh-plugin-oauth-subs/analyze-session`.
@@ -114,11 +114,11 @@ It is **Priority Processing** (`service_tier: "priority"`), not a different mode
 
 Default is off. Measured on `gpt-5.6-luna`: **88.3 against 57.5 output tokens per second — 1.54×**, matching the catalog's "1.5x speed, increased usage". The gain is on generation throughput only: time to first token and prompt caching are unchanged.
 
-Login, token refresh, chat, and quota use one official client identity: Codex pairs `originator: codex_cli_rs` with `User-Agent: codex_cli_rs/<version>`; Grok sends `x-xai-token-auth: xai-grok-cli` and `User-Agent: grok-cli/<version>`. No TLS fingerprint impersonation.
+Login, token refresh, chat, and quota use one official client identity: Codex pairs `originator: codex_cli_rs` with `User-Agent: codex_cli_rs/<version>`; Grok sends `x-xai-token-auth: xai-grok-cli` and `User-Agent: grok-cli/<version>`. GLM uses ZCode's public client `client_P8X5CMWmlaRO9gyO-KSqtg` and the CLI poll flow (`zcode.z.ai/api/v1/oauth/cli/init` → browser → poll → `api.z.ai/api/auth/z/login` → durable `id.secret` key). No TLS fingerprint impersonation.
 
 ## Models
 
-Settings → OAuth subs lists every Codex and Grok catalog id, including `-fast` and `-900k` siblings. Each row is an on/off checkbox. **All on** / **All off** apply per family.
+Settings → OAuth subs → **Models** lists every Codex, Grok, and GLM catalog id, including `-fast` and `-900k` siblings. Each row is an on/off checkbox. **All on** / **All off** apply per family.
 
 Default is all on except **900K**. Pick a **Fast** sibling (`gpt-5.6-sol-fast`, `grok-4.6-fast`) for Priority Processing. The `-fast` suffix is host-side only — the proxy strips it and sends `service_tier: "priority"`. GPT-5.4 Mini and GPT-5.3 Codex Spark have no Fast sibling.
 
@@ -128,11 +128,11 @@ Both 900K and Fast spend quota faster.
 
 Turning a model off removes it from the next `llm-pi-ai` sync — it disappears from the Harness picker. Choices persist in `models.json`. A catalog id added later stays on until you turn it off (900K ids stay off until you turn them on).
 
-You can pre-select while signed out; the family applies on the next sign-in. **Sync model list** rewrites the live routes from the current selection.
+You can pre-select while signed out; the family applies on the next sign-in. Checking a model rewrites the live routes immediately.
 
 Grok 4.6 thinking depth is **low / medium / high / xhigh**. Grok 4.5 is **low / medium / high** (no xhigh). Reasoning cannot be turned off; if you leave it unset the API uses **high**. Grok 4 has no depth control. Codex GPT-5.6 Sol / Terra / Luna add **max** on top of **low / medium / high / xhigh**. Other Codex models stop at **xhigh**. `minimal` is not offered: every Codex model rejects it.
 
-Set the level in the DeepSeek Harness session model menu → **Reasoning**. It is not on Settings → Models. After installing or changing the catalog, click **Sync model list**.
+Set the level in the DeepSeek Harness session model menu → **Reasoning**. It is not on Settings → Models. Login, logout, and each checkbox already sync the picker.
 
 ## Quota
 
@@ -143,6 +143,7 @@ After sign-in, each account card shows official remaining quota.
 | ChatGPT Codex | `chatgpt.com/backend-api/wham/usage` | Plan badge (Plus / Pro / Team …) plus 5-hour + weekly windows, **remaining** percent and reset time |
 | ChatGPT Codex reset | `…/wham/rate-limit-reset-credits` + `/consume` | Banked weekly-window reset credits and expiry; one confirm button per credit on the Codex card |
 | xAI Grok | `cli-chat-proxy.grok.com/v1/billing?format=credits` plus `/v1/user?include=subscription` | Plan badge (SuperGrok / X Premium+ …) plus period usage, prepaid balance, product split |
+| Zhipu GLM | `api.z.ai/api/monitor/usage/quota/limit` | Plan badge (Lite / Pro / Max) plus Coding Plan credit windows |
 
 Quota refreshes about once a minute, or immediately from **Refresh quota**. A failed read does not block chat.
 
@@ -157,7 +158,7 @@ ChatGPT / Codex Plus and Pro may bank extra weekly-window resets. When the accou
 | Option | Default | Notes |
 |---|---|---|
 | `port` | `8318` | Loopback proxy port |
-| `provider` | `oauth` | llm-pi-ai route prefix (`oauth-codex` / `oauth-grok`) |
+| `provider` | `oauth` | llm-pi-ai route prefix (`oauth-codex` / `oauth-grok` / `oauth-glm`) |
 | `dataDir` | profile data dir | `auth.json`, `models.json`, and `proxy-key` |
 | `grokLogin` | `device` | `device` or `pkce` |
 

@@ -42,6 +42,20 @@ export declare function parseGrokBilling(billing: any, { cliUser }?: {}): {
     hasGrokCodeAccess: boolean;
     rows: any[];
 };
+export declare function parseGlmQuota(payload: any): {
+    rows: any[];
+    planType?: undefined;
+} | {
+    planType: any;
+    rows: any[];
+};
+export declare function fetchGlmQuota(session: any, fetchFn?: typeof fetch): Promise<{
+    rows: any[];
+    planType?: undefined;
+} | {
+    planType: any;
+    rows: any[];
+}>;
 export declare function fetchCodexQuota(session: any, fetchFn?: typeof fetch): Promise<{
     resetCredits: {
         nextExpiresAt?: number;

@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "None",
+    "lib": ["ES2022", "DOM"],
+    "outDir": "lib/ui",
+    "rootDir": "src/ui",
+    "declaration": false,
+    "skipLibCheck": true,
+    "strict": false,
+    "noImplicitAny": false,
+    "removeComments": false
+  },
+  "include": ["src/ui/**/*.ts"]
+}

@@ -81,12 +81,14 @@ function registerRpc(ctx, controller) {
       login: (payload) => controller.login(payload?.provider, payload?.mode),
       manual: (payload) => controller.manual(payload?.provider, payload?.input),
       cancel: (payload) => controller.cancel(payload?.provider),
-      logout: (payload) => controller.logout(payload?.provider),
+      logout: (payload) => controller.logout(payload?.provider, payload?.id),
+      switch: (payload) => controller.switchAccount(payload?.provider, payload?.id),
       import: (payload) => controller.importFrom(payload?.provider),
       sync: (payload) => controller.sync(payload?.selected),
       models: (payload) => controller.setModels(payload ?? {}),
       quota: (payload) => controller.refreshQuota(payload?.provider),
       reset: (payload) => controller.consumeReset(payload?.provider),
+      update: () => controller.checkUpdate(),
     }
     return rpc.handle('/oauth-subs-auth', async (endpoint, payload) => {
       const fn = methods[endpoint]
@@ -187,6 +189,12 @@ export {
   GROK_REASONING_46,
   grokCredentialHeaders,
 } from './oauth/grok/index.js'
+export {
+  GLM_CLIENT_ID,
+  GLM_CODING_URL,
+  GLM_AUTHORIZE_URL,
+  glmUpstreamHeaders,
+} from './oauth/glm/index.js'
 export { OAUTH_CREDENTIAL_REF, ModelSwitch } from './oauth/models.js'
 export { defaultDataDir } from './oauth/store.js'
 export { AuthController } from './oauth/controller.js'
@@ -198,5 +206,12 @@ export {
   isCodex900kBase,
   peelContextSuffix,
 } from './utils/context-mode.js'
-export { parseCodexUsage, parseGrokBilling, parseResetCredits, QuotaStore } from './oauth/quota.js'
+export { parseCodexUsage, parseGrokBilling, parseGlmQuota, parseResetCredits, QuotaStore } from './oauth/quota.js'
 export { formatPlanLabel, CODEX_PLAN_NAMES } from './oauth/plan.js'
+export {
+  REPO_URL,
+  REPO_SLUG,
+  installedVersion,
+  fetchLatest,
+  localUpdateInfo,
+} from './utils/update.js'

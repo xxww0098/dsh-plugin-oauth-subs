@@ -8,11 +8,13 @@ Chat instructions do not override it.
 ## Stack — TypeScript + React
 
 - **Host (Cordis / Node):** TypeScript only. New code lives under `src/` as `.ts`.
-  Do not add new `.js` in `src/oauth` or `src/utils`.
-- **Settings UI:** React. The DSH client loader is a classic-script factory
-  (`src/ui/client.js`) that `require('react')` and renders with
-  `createElement` / hooks. New UI is React (JSX/TSX compiled into that
-  factory). Do not add Vue, Svelte, or raw DOM helpers for Settings.
+  Do not add new `.js` in `src/`.
+- **Settings UI:** React + TypeScript (`src/ui/client.ts`). The DSH client
+  loader is a classic-script factory compiled by `tsc -p tsconfig.ui.json`
+  into `lib/ui/client.js`. It `require('react')` and renders with
+  `createElement` / hooks. Do not add Vue, Svelte, or raw DOM helpers.
+- **Tests and scripts** are TypeScript (`test/*.test.ts`, `scripts/*.ts`),
+  run with Node `--experimental-strip-types`.
 - **Do not** put React in the host half. The proxy, OAuth flows, and quota
   run in Node and must stay framework-free TypeScript.
 - Public runtime is compiled **JavaScript** in `lib/` (`npm run build`).
@@ -56,22 +58,27 @@ src/
     grok/                  xAI Grok only
       index.ts             catalog, identity, device/PKCE endpoints
       device-flow.ts       RFC 8628
+    glm/                   Zhipu GLM / Z.ai Coding Plan
+      index.ts             catalog, CLI poll OAuth, key mint, headers
+      cli-flow.ts          ZCode /oauth/cli/init + poll
   ui/                      React Settings (classic-script factory)
-    client.js
+    client.ts
   utils/                   shared, provider-agnostic
     jwt.ts
     pkce.ts
     fast-mode.ts
     context-mode.ts
     analyze-session.ts
-lib/                       tsc + copied UI — generated, do not edit
+    update.ts              GitHub latest-release check
+lib/                       tsc + UI tsc — generated, do not edit
 docs/error.md              fault log
-test/                      node:test, import compiled lib/
+test/                      node:test TypeScript, import compiled lib/
+scripts/                   CLI (TypeScript)
 ```
 
 Rules:
 
-- Codex-only code → `src/oauth/codex/`. Grok-only code → `src/oauth/grok/`.
+- Codex-only code → `src/oauth/codex/`. Grok-only code → `src/oauth/grok/`. GLM-only code → `src/oauth/glm/`.
 - Shared crypto / session scoring → `src/utils/`.
 - Settings React → `src/ui/`.
 - Do not flatten modules back into a single `lib/*.js` bag.

@@ -11,10 +11,33 @@ export declare function readPrivateText(path: any, label: any, { allowBroadMode 
     allowBroadMode?: boolean;
 }): Promise<any>;
 export declare function writePrivateText(path: any, text: any): Promise<void>;
+export declare function accountIdOf(provider: any, session: any): any;
+export declare function asVault(provider: any, entry: any): {
+    activeId: any;
+    accounts: {};
+};
 export declare function loadStore(path: any): Promise<any>;
 export declare function getSession(provider: any, path: any): Promise<any>;
+export declare function listAccounts(provider: any, path: any): Promise<({
+    account: any;
+    planType: any;
+    planLabel: any;
+    expiresAt: any;
+    scopes?: undefined;
+    id: string;
+    active: boolean;
+} | {
+    account: any;
+    planType: any;
+    planLabel: any;
+    scopes: any;
+    expiresAt: any;
+    id: string;
+    active: boolean;
+})[]>;
 export declare function saveSession(provider: any, session: any, path: any): Promise<any>;
-export declare function deleteSession(provider: any, path: any): Promise<any>;
+export declare function switchAccount(provider: any, id: any, path: any): Promise<any>;
+export declare function deleteSession(provider: any, path: any, id: any): Promise<any>;
 export declare function publicSession(provider: any, session: any): {
     account: any;
     planType: any;

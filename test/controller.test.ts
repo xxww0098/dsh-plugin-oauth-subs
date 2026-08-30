@@ -18,10 +18,13 @@ test('snapshot reports logged-out accounts and empty providers', async () => {
   assert.equal(snap.accounts.codex.loggedIn, false)
   assert.equal(snap.accounts.grok.loggedIn, false)
   assert.deepEqual(snap.providers, [])
-  assert.equal(snap.catalog.length, 2)
+  assert.equal(snap.catalog.length, 3)
   assert.equal(snap.catalog.every((row) => row.models.every((model) => model.enabled === !model.large)), true)
   assert.equal(snap.selected.includes('oauth-codex/gpt-5.5'), true)
   assert.equal(snap.selected.includes('oauth-codex/gpt-5.6-sol-900k'), false)
+  assert.equal(typeof snap.update.version, 'string')
+  assert.equal(snap.update.repoSlug, 'xxww0098/dsh-plugin-oauth-subs')
+  assert.equal(['win', 'mac', 'linux'].includes(snap.update.platform), true)
 })
 
 test('sync after a stored session writes llm-pi-ai providers', async () => {
@@ -172,4 +175,37 @@ test('controller toggles models and sync uses the persisted set', async () => {
   assert.equal(familyOff.selected.some((key) => key.startsWith('oauth-codex/')), false)
   const empty = ops.at(-1).mutations.filter((row) => row.op === 'set')
   assert.equal(empty.length, 0)
+})
+
+test('controller lists Codex accounts and switchAccount changes the active session', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const authPath = join(dir, 'auth.json')
+  await saveSession('codex', {
+    accessToken: 'a1', refreshToken: 'r1', expiresAt: Date.now() + 60 * 60_000, emailAddress: 'one@x',
+  }, authPath)
+  await saveSession('codex', {
+    accessToken: 'a2', refreshToken: 'r2', expiresAt: Date.now() + 60 * 60_000, emailAddress: 'two@x',
+  }, authPath)
+  const controller = new AuthController({
+    authPath,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+    fetchFn: async (url) => {
+      if (String(url).includes('rate-limit-reset-credits')) {
+        return new Response(JSON.stringify({ available_count: 0 }), { status: 200 })
+      }
+      return new Response(JSON.stringify({ plan_type: 'plus', rate_limit: { primary_window: { used_percent: 1 } } }), { status: 200 })
+    },
+  })
+  const first = await controller.snapshot()
+  assert.equal(first.accounts.codex.activeId, 'two@x')
+  assert.equal(first.accounts.codex.accounts.length, 2)
+  const switched = await controller.switchAccount('codex', 'one@x')
+  assert.equal(switched.accounts.codex.activeId, 'one@x')
+  assert.equal(switched.accounts.codex.account, 'one@x')
+  await controller.logout('codex', 'one@x')
+  const after = await controller.snapshot()
+  assert.equal(after.accounts.codex.activeId, 'two@x')
+  assert.equal(after.accounts.codex.accounts.length, 1)
 })

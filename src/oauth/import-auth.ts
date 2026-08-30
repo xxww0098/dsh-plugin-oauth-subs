@@ -14,6 +14,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { codexProfileClaims, codexSession } from './codex/index.js'
 import { GROK_CLIENT_ID, grokSession } from './grok/index.js'
+import { glmSession } from './glm/index.js'
 import { decodeJwtPayload } from '../utils/jwt.js'
 
 const GROK_TOKEN_ENDPOINT = 'https://auth.x.ai/oauth2/token'
@@ -286,4 +287,39 @@ export async function importGrokAuth(paths = grokAuthSearchPaths()) {
     }
   }
   throw new Error(`no Grok session found in ${tried.join(' or ')}`)
+}
+
+function glmKeyFromZcodeConfig(raw) {
+  const providers = raw?.provider ?? raw?.providers ?? raw
+  if (!providers || typeof providers !== 'object') return undefined
+  for (const [key, value] of Object.entries(providers)) {
+    if (!/zai|glm|coding.?plan|bigmodel/i.test(key)) continue
+    const options = value?.options ?? value
+    const apiKey = options?.apiKey ?? options?.api_key ?? value?.apiKey
+    if (typeof apiKey === 'string' && apiKey.includes('.')) return apiKey
+  }
+  return undefined
+}
+
+export function glmAuthSearchPaths() {
+  return [
+    homeFile('.zcode', 'cli', 'config.json'),
+    homeFile('.zcode', 'config.json'),
+  ]
+}
+
+export async function importGlmAuth(paths = glmAuthSearchPaths()) {
+  const tried = []
+  for (const path of paths) {
+    tried.push(path)
+    const raw = await readJson(path)
+    if (raw === undefined) continue
+    const apiKey = glmKeyFromZcodeConfig(raw)
+    if (!apiKey) continue
+    return {
+      session: glmSession({ accessToken: apiKey, account: 'zcode', region: 'zai' }),
+      source: path,
+    }
+  }
+  throw new Error(`no GLM / ZCode session found in ${tried.join(' or ')}`)
 }

@@ -46,3 +46,16 @@ export declare function importGrokAuth(paths?: string[]): Promise<{
     };
     source: string;
 }>;
+export declare function glmAuthSearchPaths(): string[];
+export declare function importGlmAuth(paths?: string[]): Promise<{
+    session: {
+        zcodeJwt?: any;
+        planType?: any;
+        accessToken: string;
+        refreshToken: string;
+        expiresAt: number;
+        account: any;
+        region: string;
+    };
+    source: string;
+}>;

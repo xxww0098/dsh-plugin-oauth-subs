@@ -1,16 +1,34 @@
 /**
  * Browser half. Registers the "OAuth 订阅" settings section.
  *
- * DSH client-modules serves this file as a classic script and requires the
+ * DSH client-modules serves the compiled classic script and requires the
  * `__ModuleLoader__.load` handoff (id = package name). Shared requires are
  * only `react` plus the shell table; everything else stays inlined.
  */
+
+interface ModuleLoader {
+  load: (mod: { id: string; factory: (require: (id: string) => any) => unknown }) => void
+}
+
+interface Window {
+  __ModuleLoader__: ModuleLoader
+}
+
+type ReactLike = {
+  createElement: (...args: any[]) => any
+  useCallback: (fn: any, deps?: any[]) => any
+  useEffect: (fn: () => any, deps?: any[]) => void
+  useState: <T>(initial: T | (() => T)) => [T, (next: T | ((prev: T) => T)) => void]
+}
+
+type Copy = Record<string, string>
+
 window.__ModuleLoader__.load({
   id: 'dsh-plugin-oauth-subs',
   factory: (require) => {
-    const module = { exports: {} }
+    const module = { exports: {} as { name?: string; inject?: string[]; apply?: (ctx: any) => void } }
     const exports = module.exports
-    const { createElement: h, useCallback, useEffect, useState } = require('react')
+    const { createElement: h, useCallback, useEffect, useState } = require('react') as ReactLike
 
     function tryHost(id) {
       try { return require(id) } catch { return undefined }
@@ -21,12 +39,18 @@ window.__ModuleLoader__.load({
     const name = 'dsh-plugin-oauth-subs-client'
     const inject = ['slots', 'connection']
 
-    const COPY = {
+    const COPY: { zh: Copy; en: Copy } = {
       zh: {
         nav: 'OAuth 订阅',
         codexTitle: 'ChatGPT Codex',
         grokTitle: 'xAI Grok',
+        glmTitle: '智谱 GLM',
         login: '登录',
+        addAccount: '添加账号',
+        switchTo: '切换',
+        inUse: '使用中',
+        noAccounts: '还没有登录账号',
+        accountsHint: '可登录多个账号。点一行切换；当前账号用于对话和额度。',
         pkce: 'PKCE 登录',
         device: '设备码登录',
         import: '导入本机会话',
@@ -35,7 +59,6 @@ window.__ModuleLoader__.load({
         paste: '粘贴回调地址',
         pastePlaceholder: 'http://localhost:1455/auth/callback?code=…&state=…',
         submitPaste: '提交',
-        sync: '同步到模型列表',
         loggedOut: '未登录',
         loggedIn: '已登录',
         busy: '等待授权…',
@@ -49,9 +72,9 @@ window.__ModuleLoader__.load({
         quotaLoading: '正在读取额度…',
         quotaFailed: '额度读取失败',
         quotaReset: '重置',
-        quotaResetBank: '重置额度',
+        quotaResetBank: '重置券',
         quotaResetHint: '每张券过期时间不同，按钮按券单独渲染。点一次消耗一张，刷新周额度窗口。',
-        quotaResetLeft: '重置额度 · 剩 {n} 次',
+        quotaResetLeft: '重置券 · 剩 {n} 次',
         quotaResetWarnTitle: '警告',
         quotaResetConfirm: '将消耗这张重置券（{n} 过期），并立即刷新 Codex 周额度窗口。此操作无法撤销。',
         quotaResetAck: '我已了解风险，确认消耗这张重置券',
@@ -76,19 +99,46 @@ window.__ModuleLoader__.load({
         grokCode: 'Grok Code',
         plan: '套餐',
         modelsTitle: '模型',
-        modelsHint: '勾选要同步到 DeepSeek Harness 的模型。Fast 是 Priority Processing，实测 1.54 倍输出速度，更耗额度；900K 是大上下文，默认关闭。思考深度在会话里点模型名称 → 推理等级。关闭后从模型列表移除。未登录的系列会在登录后生效。',
+        modelsHint: '勾选即同步。Fast 更快更耗额度；900K 大上下文，默认关。',
         modelsOn: '已开启 {n}',
         modelsAll: '全选',
         modelsNone: '全关',
         modelsNeedLogin: '登录后同步',
         fastTag: 'Fast',
         largeTag: '900K',
+        aboutTitle: '关于',
+        repo: '仓库',
+        repoOpen: '打开仓库',
+        installed: '当前版本',
+        latest: '最新版本',
+        os: '系统',
+        checkUpdate: '检查更新',
+        checking: '正在检查…',
+        updateReady: '有新版本 {n}',
+        updateCurrent: '已是最新',
+        updateAhead: '本地版本领先发布',
+        updateUnknown: 'GitHub 没有可用的版本号',
+        updateError: '检查失败',
+        download: '下载',
+        platformWin: 'Windows',
+        platformMac: 'macOS',
+        platformLinux: 'Linux',
+        thisOs: '本机',
+        platformAny: '通用包',
+        published: '发布于 {n}',
+        releasePage: '打开发布页',
       },
       en: {
         nav: 'OAuth subs',
         codexTitle: 'ChatGPT Codex',
         grokTitle: 'xAI Grok',
+        glmTitle: 'Zhipu GLM',
         login: 'Sign in',
+        addAccount: 'Add account',
+        switchTo: 'Switch',
+        inUse: 'In use',
+        noAccounts: 'No accounts yet',
+        accountsHint: 'Sign in more than once. Click a row to switch. The active account is used for chat and quota.',
         pkce: 'PKCE sign-in',
         device: 'Device-code sign-in',
         import: 'Import local session',
@@ -97,7 +147,6 @@ window.__ModuleLoader__.load({
         paste: 'Paste callback URL',
         pastePlaceholder: 'http://localhost:1455/auth/callback?code=…&state=…',
         submitPaste: 'Submit',
-        sync: 'Sync model list',
         loggedOut: 'Signed out',
         loggedIn: 'Signed in',
         busy: 'Waiting for authorization…',
@@ -138,13 +187,34 @@ window.__ModuleLoader__.load({
         grokCode: 'Grok Code',
         plan: 'Plan',
         modelsTitle: 'Models',
-        modelsHint: 'Enable models to sync into DeepSeek Harness. Fast is Priority Processing, measured at 1.54x output speed and heavier on quota. 900K is the large Codex window, off by default. Set thinking depth in the session model menu → Reasoning. Disabled models leave the picker. Families that are signed out apply on the next sign-in.',
+        modelsHint: 'Check to sync. Fast is faster and spends more. 900K is the large window, off by default.',
         modelsOn: '{n} on',
         modelsAll: 'All on',
         modelsNone: 'All off',
         modelsNeedLogin: 'Syncs after sign-in',
         fastTag: 'Fast',
         largeTag: '900K',
+        aboutTitle: 'About',
+        repo: 'Repository',
+        repoOpen: 'Open repo',
+        installed: 'Installed',
+        latest: 'Latest',
+        os: 'OS',
+        checkUpdate: 'Check for updates',
+        checking: 'Checking…',
+        updateReady: 'Update available {n}',
+        updateCurrent: 'Up to date',
+        updateAhead: 'Local version is ahead of the latest release',
+        updateUnknown: 'GitHub did not return a version',
+        updateError: 'Update check failed',
+        download: 'Download',
+        platformWin: 'Windows',
+        platformMac: 'macOS',
+        platformLinux: 'Linux',
+        thisOs: 'This machine',
+        platformAny: 'Universal',
+        published: 'Published {n}',
+        releasePage: 'Open release',
       },
     }
 
@@ -153,7 +223,7 @@ window.__ModuleLoader__.load({
       return lang.toLowerCase().startsWith('zh') ? 'zh' : 'en'
     }
 
-    function callRpc(rpc, method, payload) {
+    function callRpc(rpc, method, payload?) {
       if (rpc && typeof rpc.call === 'function') {
         return Promise.resolve(rpc.call('/oauth-subs-auth', method, payload ?? {})).then((result) => {
           if (result && typeof result === 'object' && 'ok' in result) {
@@ -326,6 +396,42 @@ window.__ModuleLoader__.load({
   padding: 16px 18px 18px;
   border: 1px solid var(--osubs-line); border-radius: 14px;
 }
+.osubs-tabs {
+  display: flex; gap: 4px; padding: 4px;
+  border: 1px solid var(--osubs-line); border-radius: 12px;
+  background: var(--osubs-fill);
+}
+.osubs-tab {
+  flex: 1 1 0; height: 36px; padding: 0 12px;
+  border: 0; border-radius: 9px;
+  background: transparent; color: inherit;
+  font: inherit; font-size: 12px; font-weight: 500; line-height: 1;
+  cursor: pointer;
+}
+.osubs-tab--on { background: var(--osubs-fill-2); font-weight: 600; }
+.osubs-tab:focus-visible { outline: 2px solid var(--osubs-ring); outline-offset: 1px; }
+.osubs-about { display: flex; flex-direction: column; gap: 12px; }
+.osubs-kv { display: grid; gap: 8px; }
+.osubs-kv-row {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+}
+.osubs-dl {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+  padding: 10px 12px;
+  border: 1px solid var(--osubs-line); border-radius: 10px;
+}
+.osubs-dl--on { border-color: var(--osubs-edge); background: var(--osubs-fill); }
+.osubs-acct {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; flex-wrap: wrap; width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--osubs-line); border-radius: 10px;
+  background: transparent; color: inherit; font: inherit; text-align: left;
+  cursor: pointer;
+}
+.osubs-acct--on { border-color: var(--osubs-edge); background: var(--osubs-fill); }
+.osubs-acct-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.osubs-acct-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .osubs-grid { display: grid; gap: 16px; align-items: start; grid-template-columns: repeat(auto-fit, minmax(min(290px, 100%), 1fr)); }
 
 .osubs-status { display: inline-flex; align-items: center; gap: 6px; flex: none; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--osubs-muted); }
@@ -484,8 +590,6 @@ window.__ModuleLoader__.load({
 .osubs-model:has(input:focus-visible) { outline: 2px solid var(--osubs-ring); outline-offset: -1px; }
 .osubs-model input { flex: none; width: 14px; height: 14px; margin: 0; accent-color: currentColor; cursor: pointer; }
 .osubs-model > span { flex: 1 1 auto; font-size: 12.5px; overflow-wrap: anywhere; }
-
-.osubs-foot { display: flex; justify-content: flex-end; align-items: center; gap: 12px; flex-wrap: wrap; }
 
 @keyframes osubs-pulse { 0%, 100% { opacity: 1 } 50% { opacity: .3 } }
 @media (prefers-reduced-motion: reduce) { .osubs *, .osubs *::before { animation: none !important; transition: none !important; } }
@@ -759,11 +863,12 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function ProviderCard({ t, id, title, account, pending, onLogin, onImport, onLogout, onCancel, onManual, onRefreshQuota, onResetQuota }) {
+    function ProviderCard({ t, id, title, account, pending, onLogin, onImport, onLogout, onCancel, onManual, onSwitch, onRefreshQuota, onResetQuota }) {
       const [paste, setPaste] = useState('')
-      const loggedIn = Boolean(account?.loggedIn)
+      const roster = Array.isArray(account?.accounts) ? account.accounts : []
+      const loggedIn = Boolean(account?.loggedIn) || roster.length > 0
       const busy = Boolean(account?.busy)
-      const status = loggedIn ? t.loggedIn : busy ? t.busy : t.loggedOut
+      const status = busy ? t.busy : loggedIn ? t.loggedIn : t.loggedOut
       const planLabel = loggedIn ? planOf(account) : ''
       return h('section', { className: 'osubs-card' },
         h('header', { style: { display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' } },
@@ -772,12 +877,38 @@ window.__ModuleLoader__.load({
               h('h3', { style: { fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' } }, title),
               planLabel && h(PlanBadge, { t, label: planLabel }),
             ),
+            h('p', { className: 'osubs-hint' }, t.accountsHint),
           ),
           h('span', {
             className: `osubs-status${loggedIn ? ' osubs-status--on' : busy ? ' osubs-status--busy' : ''}`,
           }, status),
         ),
-        account?.account && h('p', { className: 'osubs-mono' }, account.account),
+        roster.length === 0 && !busy && h('p', { className: 'osubs-note' }, t.noAccounts),
+        roster.map((row) => h('div', {
+          key: row.id,
+          className: `osubs-acct${row.active ? ' osubs-acct--on' : ''}`,
+          role: 'button',
+          tabIndex: 0,
+          onClick: () => { if (!row.active) onSwitch(id, row.id) },
+          onKeyDown: (event) => {
+            if ((event.key === 'Enter' || event.key === ' ') && !row.active) {
+              event.preventDefault()
+              onSwitch(id, row.id)
+            }
+          },
+        },
+          h('div', { className: 'osubs-acct-main' },
+            h('div', { className: 'osubs-acct-row' },
+              h('span', { className: 'osubs-mono' }, row.account || row.id),
+              row.active && h('span', { className: 'osubs-tag' }, t.inUse),
+              row.planLabel && h(PlanBadge, { t, label: row.planLabel }),
+            ),
+          ),
+          h('div', { className: 'osubs-actions', onClick: (event) => event.stopPropagation() },
+            !row.active && h(Button, { size: 'sm', onClick: () => onSwitch(id, row.id), label: t.switchTo }),
+            h(Button, { size: 'sm', onClick: () => onLogout(id, row.id), label: t.logout }),
+          ),
+        )),
         account?.detail && h('p', { className: 'osubs-hint osubs-bad' }, `${t.error}: ${account.detail}`),
         pending?.userCode && h('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
           h('span', { className: 'osubs-eyebrow' }, t.userCode),
@@ -790,11 +921,10 @@ window.__ModuleLoader__.load({
           rel: 'noreferrer',
         }, t.openUrl),
         h('div', { className: 'osubs-actions' },
-          !loggedIn && !busy && h(Button, { variant: 'primary', onClick: () => onLogin(id), label: t.login }),
-          id === 'grok' && !loggedIn && !busy && h(Button, { onClick: () => onLogin(id, 'pkce'), label: t.pkce }),
-          !loggedIn && h(Button, { onClick: () => onImport(id), label: t.import }),
+          !busy && h(Button, { variant: 'primary', onClick: () => onLogin(id), label: loggedIn ? t.addAccount : t.login }),
+          id === 'grok' && !busy && h(Button, { onClick: () => onLogin(id, 'pkce'), label: t.pkce }),
+          !busy && h(Button, { onClick: () => onImport(id), label: t.import }),
           busy && h(Button, { onClick: () => onCancel(id), label: t.cancel }),
-          loggedIn && h(Button, { onClick: () => onLogout(id), label: t.logout }),
         ),
         busy && pending?.mode === 'pkce' && h('form', {
           onSubmit: (event) => {
@@ -872,11 +1002,93 @@ window.__ModuleLoader__.load({
       )
     }
 
+    function platformLabel(t, id) {
+      if (id === 'win') return t.platformWin
+      if (id === 'mac') return t.platformMac
+      return t.platformLinux
+    }
+
+    function statusLabel(t, update) {
+      if (!update) return ''
+      if (update.status === 'update') return fill(t.updateReady, update.latest?.tag || update.latest?.name || '')
+      if (update.status === 'current') return t.updateCurrent
+      if (update.status === 'ahead') return t.updateAhead
+      if (update.status === 'unknown') return t.updateUnknown
+      if (update.status === 'error') return `${t.updateError}${update.error ? ` · ${update.error}` : ''}`
+      return ''
+    }
+
+    function AboutPanel({ t, local, update, busy, onCheck }) {
+      const repo = local?.repo || update?.repo || 'https://github.com/xxww0098/dsh-plugin-oauth-subs'
+      const slug = local?.repoSlug || update?.repoSlug || 'xxww0098/dsh-plugin-oauth-subs'
+      const version = local?.version || update?.version || '—'
+      const host = local?.platform || update?.platform
+      const assets = Array.isArray(update?.assets) ? update.assets : []
+      const latest = update?.latest
+      const tone = update?.status === 'update' ? 'osubs-warn' : update?.status === 'error' ? 'osubs-bad' : ''
+      return h('section', { className: 'osubs-card' },
+        h('header', { style: { display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' } },
+          h('h3', { style: { fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' } }, t.aboutTitle),
+          h(Button, { size: 'sm', onClick: onCheck, disabled: busy, label: busy ? t.checking : t.checkUpdate }),
+        ),
+        h('div', { className: 'osubs-about' },
+          h('div', { className: 'osubs-kv' },
+            h('div', { className: 'osubs-kv-row' },
+              h('span', { className: 'osubs-eyebrow' }, t.repo),
+              h('a', { className: 'osubs-link', href: repo, target: '_blank', rel: 'noreferrer' }, slug),
+            ),
+            h('div', { className: 'osubs-kv-row' },
+              h('span', { className: 'osubs-eyebrow' }, t.installed),
+              h('span', { className: 'osubs-mono' }, version),
+            ),
+            h('div', { className: 'osubs-kv-row' },
+              h('span', { className: 'osubs-eyebrow' }, t.os),
+              h('span', null, `${platformLabel(t, host)}${host ? ` · ${t.thisOs}` : ''}`),
+            ),
+            latest?.tag && h('div', { className: 'osubs-kv-row' },
+              h('span', { className: 'osubs-eyebrow' }, t.latest),
+              h('a', { className: 'osubs-link', href: latest.url, target: '_blank', rel: 'noreferrer' }, latest.tag),
+            ),
+            latest?.publishedAt && h('p', { className: 'osubs-note' }, fill(t.published, latest.publishedAt.replace('T', ' ').replace(/Z$/, ' UTC'))),
+            update?.status && h('p', { className: `osubs-hint${tone ? ` ${tone}` : ''}` }, statusLabel(t, update)),
+          ),
+          assets.map((row) => h('div', {
+            key: row.platform,
+            className: `osubs-dl${row.current ? ' osubs-dl--on' : ''}`,
+          },
+            h('div', { className: 'osubs-acct-main' },
+              h('div', { className: 'osubs-acct-row' },
+                h('span', { style: { fontSize: 13, fontWeight: 600 } }, platformLabel(t, row.platform)),
+                row.current && h('span', { className: 'osubs-tag' }, t.thisOs),
+                row.generic && h('span', { className: 'osubs-tag' }, t.platformAny),
+              ),
+              h('span', { className: 'osubs-note' }, row.name),
+            ),
+            h('a', {
+              className: 'osubs-link',
+              href: row.url,
+              target: '_blank',
+              rel: 'noreferrer',
+            }, t.download),
+          )),
+          latest?.url && assets.length === 0 && h('a', {
+            className: 'osubs-link',
+            href: latest.url,
+            target: '_blank',
+            rel: 'noreferrer',
+          }, t.releasePage),
+        ),
+      )
+    }
+
     function SettingsSection({ rpc, close: _close }) {
       const t = COPY[localeOf()]
       const [snap, setSnap] = useState(null)
       const [pending, setPending] = useState({})
       const [error, setError] = useState('')
+      const [tab, setTab] = useState('codex')
+      const [update, setUpdate] = useState(null)
+      const [updateBusy, setUpdateBusy] = useState(false)
 
       const refresh = useCallback(async () => {
         if (rpc === undefined) return
@@ -904,11 +1116,31 @@ window.__ModuleLoader__.load({
               window.open(result.authorizeUrl, '_blank', 'noopener')
             }
           }
+          if (method === 'logout' || method === 'cancel') {
+            setPending((current) => ({ ...current, [payload.provider]: undefined }))
+          }
+          if (method === 'update') {
+            setUpdate(result)
+            return result
+          }
           await refresh()
         } catch (caught) {
           setError(caught instanceof Error ? caught.message : String(caught))
         }
       }
+
+      const checkUpdate = async () => {
+        setUpdateBusy(true)
+        try {
+          await run('update', {})
+        } finally {
+          setUpdateBusy(false)
+        }
+      }
+
+      useEffect(() => {
+        if (tab === 'about' && update === null && !updateBusy) void checkUpdate()
+      }, [tab])
 
       if (rpc === undefined) {
         return h('p', { className: 'osubs-hint' }, t.noRpc)
@@ -922,28 +1154,59 @@ window.__ModuleLoader__.load({
         pending: pending[id],
         onLogin: (provider, mode) => run('login', { provider, mode }),
         onImport: (provider) => run('import', { provider }),
-        onLogout: (provider) => run('logout', { provider }),
+        onLogout: (provider, accountId) => run('logout', { provider, id: accountId }),
         onCancel: (provider) => run('cancel', { provider }),
         onManual: (provider, input) => run('manual', { provider, input }),
+        onSwitch: (provider, accountId) => run('switch', { provider, id: accountId }),
         onRefreshQuota: (provider) => run('quota', { provider }),
         onResetQuota: id === 'codex' ? (provider) => run('reset', { provider }) : undefined,
       })
 
       return h('div', { className: 'osubs' },
         error && h('p', { className: 'osubs-hint osubs-bad' }, error),
-        h('div', { className: 'osubs-grid' },
-          card('codex', t.codexTitle),
-          card('grok', t.grokTitle),
+        h('div', { className: 'osubs-tabs', role: 'tablist' },
+          h('button', {
+            type: 'button', role: 'tab', 'aria-selected': tab === 'codex',
+            className: `osubs-tab${tab === 'codex' ? ' osubs-tab--on' : ''}`,
+            onClick: () => setTab('codex'),
+          }, t.codexTitle),
+          h('button', {
+            type: 'button', role: 'tab', 'aria-selected': tab === 'grok',
+            className: `osubs-tab${tab === 'grok' ? ' osubs-tab--on' : ''}`,
+            onClick: () => setTab('grok'),
+          }, t.grokTitle),
+          h('button', {
+            type: 'button', role: 'tab', 'aria-selected': tab === 'glm',
+            className: `osubs-tab${tab === 'glm' ? ' osubs-tab--on' : ''}`,
+            onClick: () => setTab('glm'),
+          }, t.glmTitle),
+          h('button', {
+            type: 'button', role: 'tab', 'aria-selected': tab === 'models',
+            className: `osubs-tab${tab === 'models' ? ' osubs-tab--on' : ''}`,
+            onClick: () => setTab('models'),
+          }, t.modelsTitle),
+          h('button', {
+            type: 'button', role: 'tab', 'aria-selected': tab === 'about',
+            className: `osubs-tab${tab === 'about' ? ' osubs-tab--on' : ''}`,
+            onClick: () => setTab('about'),
+          }, t.aboutTitle),
         ),
-        h(ModelPicker, {
+        tab === 'codex' && card('codex', t.codexTitle),
+        tab === 'grok' && card('grok', t.grokTitle),
+        tab === 'glm' && card('glm', t.glmTitle),
+        tab === 'models' && h(ModelPicker, {
           t,
           catalog: snap?.catalog,
           onToggle: (key, on) => run('models', { key, on }),
           onFamily: (family, on) => run('models', { family, on }),
         }),
-        h('div', { className: 'osubs-foot' },
-          h(Button, { variant: 'primary', onClick: () => run('sync', {}), label: t.sync }),
-        ),
+        tab === 'about' && h(AboutPanel, {
+          t,
+          local: snap?.update,
+          update,
+          busy: updateBusy,
+          onCheck: checkUpdate,
+        }),
       )
     }
 
