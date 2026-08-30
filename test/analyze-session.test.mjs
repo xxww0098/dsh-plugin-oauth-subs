@@ -143,6 +143,7 @@ test('tool timeouts are recorded without being treated as transport faults', () 
       data: {
         name: 'glob',
         isError: true,
+        args: { pattern: '*', path: '/repo' },
         content: [{ type: 'text', text: 'Error: tool call timed out after 30000ms' }],
       },
     },
@@ -150,7 +151,70 @@ test('tool timeouts are recorded without being treated as transport faults', () 
   const report = analyzeSession(text)
   assert.equal(report.toolErrors.length, 1)
   assert.equal(report.toolErrors[0].name, 'glob')
+  assert.equal(report.toolErrors[0].cause, 'host_timeout')
+  assert.equal(report.toolErrors[0].timeoutMs, 30000)
+  assert.equal(report.toolErrors[0].pattern, '*')
+  assert.equal(report.toolErrors[0].path, '/repo')
+  assert.equal(report.toolErrors[0].step, 1)
+  assert.equal(report.toolCauseCounts.host_timeout, 1)
   assert.equal(report.transportFaults.length, 0)
+  assert.equal(report.healthy, true)
+})
+
+test('sibling abort after a host timeout is cascade, not transport', () => {
+  const text = sessionJsonl([
+    {
+      type: 'assistant/message',
+      data: { turn: 1, step: 2, usage: { inputTokens: 10, outputTokens: 1, cacheReadTokens: 90 } },
+    },
+    {
+      type: 'tool/code-dispatch',
+      data: {
+        name: 'glob',
+        isError: true,
+        args: { pattern: 'docs/**', path: '/repo' },
+        content: [{ type: 'text', text: 'Error: glob was aborted before completion (tool timeout or caller cancellation)' }],
+      },
+    },
+    {
+      type: 'tool/code-dispatch',
+      data: {
+        name: 'read',
+        isError: true,
+        args: { file_path: '/repo/package.json' },
+        content: [{ type: 'text', text: 'Error: read aborted' }],
+      },
+    },
+  ])
+  const report = analyzeSession(text)
+  assert.equal(report.toolErrors[0].cause, 'cascade_abort')
+  assert.equal(report.toolErrors[1].cause, 'cascade_abort')
+  assert.equal(report.toolErrors[1].path, '/repo/package.json')
+  assert.equal(report.toolCauseCounts.cascade_abort, 2)
+  assert.equal(report.transportFaults.length, 0)
+  assert.equal(report.healthy, true)
+})
+
+test('ripgrep parse failures are invalid args, not host timeouts', () => {
+  const text = sessionJsonl([
+    {
+      type: 'assistant/message',
+      data: { turn: 1, step: 3, usage: { inputTokens: 10, outputTokens: 1, cacheReadTokens: 90 } },
+    },
+    {
+      type: 'tool/code-dispatch',
+      data: {
+        name: 'grep',
+        isError: true,
+        args: { pattern: '<Settings|describe("Settings', path: '/repo/src' },
+        content: [{ type: 'text', text: 'Error: grep pattern rejected by ripgrep: rg: regex parse error:\n    (?:<Settings|describe("Settings)\n    ^\nerror: unclosed group' }],
+      },
+    },
+  ])
+  const report = analyzeSession(text)
+  assert.equal(report.toolErrors[0].cause, 'invalid')
+  assert.equal(report.toolCauseCounts.invalid, 1)
+  assert.match(formatReport(report), /host-timeout 0  cascade 0  invalid 1/)
   assert.equal(report.healthy, true)
 })
 

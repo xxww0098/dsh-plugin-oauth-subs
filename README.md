@@ -88,7 +88,7 @@ node scripts/analyze-session.mjs --json path/to/session.jsonl
 node scripts/analyze-session.mjs --fail-below 80 path/to/session.jsonl
 ```
 
-The analyzer reads `assistant/message` usage once per turn+step (the later `assistant/chunk` usage event is a duplicate). It labels each call `cold_start` / `delta` / `compaction` / `rebuild` / `affinity_miss` so a compacted session is not flagged as a shard regression. Tool timeouts are listed separately from TRANSPORT. Import as `dsh-plugin-oauth-subs/analyze-session`.
+The analyzer reads `assistant/message` usage once per turn+step (the later `assistant/chunk` usage event is a duplicate). It labels each call `cold_start` / `delta` / `compaction` / `rebuild` / `affinity_miss` so a compacted session is not flagged as a shard regression. Tool errors are split into `host_timeout` / `cascade_abort` / `invalid` and are not TRANSPORT. glob/grep's 30s budget lives on `dsh-tool-fs-search`, not this proxy — this plugin cannot raise it. Import as `dsh-plugin-oauth-subs/analyze-session`.
 
 ## Fast mode
 

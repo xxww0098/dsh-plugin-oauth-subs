@@ -88,7 +88,7 @@ node scripts/analyze-session.mjs --json path/to/session.jsonl
 node scripts/analyze-session.mjs --fail-below 80 path/to/session.jsonl
 ```
 
-分析器按 turn+step 只计一次 `assistant/message` 的 usage（后面的 `assistant/chunk` usage 是重复记账）。每步会标 `cold_start` / `delta` / `compaction` / `rebuild` / `affinity_miss`，避免把压缩会话误判成分片回归。工具超时与 TRANSPORT 分开统计。也可 `import` `dsh-plugin-oauth-subs/analyze-session`。
+分析器按 turn+step 只计一次 `assistant/message` 的 usage（后面的 `assistant/chunk` usage 是重复记账）。每步会标 `cold_start` / `delta` / `compaction` / `rebuild` / `affinity_miss`，避免把压缩会话误判成分片回归。工具错误会分成 `host_timeout` / `cascade_abort` / `invalid`，与 TRANSPORT 分开。glob/grep 的 30s 预算在 `dsh-tool-fs-search` 上，本代理加不长。也可 `import` `dsh-plugin-oauth-subs/analyze-session`。
 
 ## Fast 模式
 

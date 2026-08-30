@@ -9,7 +9,7 @@
 - Stabilize the Codex input prefix: strip a duplicate leading developer/system, and park extra plan/header text at the **suffix** so conversation history can still cache.
 - Fall back to `session_id` when `prompt_cache_key` is missing or illegal; write the clipped key back into the request body; drop an unusable key rather than forwarding it.
 - Strip `prompt_cache_retention` / `prompt_cache_options` (gpt-5.6 returns 400; Codex #39397).
-- Document the analyzer and the reliability contract in the README.
+- Classify tool errors as `host_timeout` / `cascade_abort` / `invalid`. glob/grep 30s is `dsh-tool-fs-search`, not this proxy; sibling `read aborted` is a host `Promise.all` cascade. Do not treat them as TRANSPORT.
 - Add GitHub Actions CI (`npm test` on Node 22).
 
 ## 0.0.14

@@ -69,6 +69,34 @@ Codex 按 `instructions` 再 `input` 的最长前缀匹配缓存。DSH / llm-pi-
 
 验证：`test/codex-request.test.mjs`（剥重、后缀停放、不提升对话中段的 developer）与 `test/proxy.test.mjs`（session_id 回退、body 回写、retention 剥离、Grok 不继承亲和头）。
 
+### 工具超时不在本插件（2026-08-30）
+
+完整验收会话 `session-772f7f3a-…` 有 12 条 `tool/code-dispatch isError`，**0** 条 TRANSPORT：
+
+| 条数 | 工具 | 原因 | 签名 |
+|---|---|---|---|
+| 7 | glob | `host_timeout` | `Error: tool call timed out after 30000ms` |
+| 3 | glob / read | `cascade_abort` | `glob was aborted…` / `read aborted` / `resolve aborted` |
+| 1 | read | `cascade_abort` | 与 glob 同一 `Promise.all` |
+| 1 | grep | `invalid` | ripgrep `unclosed group` |
+
+这不是代理掐的。oauth-subs 是 Responses 回环代理，**不跑** glob / read / grep。DSH 宿主把 `glob` / `grep` 交给 `@deepseek-ai/dsh-tool-fs-search`，工具定义上的 `timeoutMs` 默认 **30000**，由 `@deepseek-ai/dsh-tool-call-timeout-policy` 在 `tools/execute` 上落地成上面那句错误。`read` 本身不声明预算；它被掐是因为模型用 `Promise.all` 把 glob 和 read 绑在一起，glob 到点后宿主取消同组调用。
+
+本插件里能看到的超时全不是这条路径：
+
+- `lib/oauth-flow.js`：登录
+- `lib/quota.js`：配额拉取
+- `COMMIT_DEADLINE_MS`（120s）：SSE 提交门
+- `abortOnDisconnect`：只有 llm-pi-ai 断开代理连接时才 abort 上游
+
+TRANSPORT=0 也排除了「代理把 LLM 流掐掉 → 工具被取消」这条耦合。
+
+不要在 oauth-subs 里加 `toolTimeoutMs`，也不要在代理层重试 glob。用户补丁目前到不了挂载模型可见工具的代理平面（[deepseek-harness#4484](https://github.com/deepseek-ai/deepseek-harness/discussions/4484)）。要加长预算，改 `dsh-tool-fs-search` 的 `timeoutMs`，或等 DSH 让补丁能打到 agent-preset。
+
+另外：fs-search 的 glob 在 pattern **不含 `/`** 时按任意深度的 basename 匹配。会话里 `*`、`vitest.config.*` 都会扫整棵 SkillStar 树（含 ignored，不含 VCS），外置卷 `/Volumes/Acasis` 上 30s 很容易打满。
+
+分析器把这三类分开记，不判健康失败。
+
 ## 2026-08-26：并发子代理全线 `stream ended before a terminal response event`
 
 ### 现象
