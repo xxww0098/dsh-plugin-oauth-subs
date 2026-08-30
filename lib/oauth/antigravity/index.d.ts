@@ -1,11 +1,12 @@
 /**
- * Google Antigravity (cloudcode-pa) OAuth + chat fingerprint.
+ * Google Antigravity (hub / Antigravity.app) OAuth + chat fingerprint.
  *
  * Official desktop to mimic (2026-08-30 Mac): Antigravity.app 2.11.0
- * (`com.google.antigravity`). Ignore Antigravity IDE.app 2.5.5
- * (`com.google.antigravity-ide`). language_server uses protobuf
- * ClientMetadata.ide_type ANTIGRAVITY; the request UA is formatted at
- * runtime. Shape is CLIProxyAPI AntigravityRequestUserAgent:
+ * (`com.google.antigravity`, `--subclient_type hub`). Ignore
+ * Antigravity IDE.app 2.5.5 (`--subclient_type ide`). Hub
+ * `--cloud_code_endpoint` is daily-cloudcode-pa; IDE uses prod
+ * cloudcode-pa. language_server uses protobuf ClientMetadata.ide_type
+ * ANTIGRAVITY. UA shape is CLIProxyAPI AntigravityRequestUserAgent:
  *   antigravity/hub/<ver> <os>/<arch>
  * Chat / loadCodeAssist: User-Agent only — no Client-Metadata /
  * x-goog-api-client. Body metadata: { ideType: 'ANTIGRAVITY' }.
@@ -18,13 +19,21 @@ export declare const ANTIGRAVITY_CALLBACK_PATH = "/oauth-callback";
 export declare const ANTIGRAVITY_AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 export declare const ANTIGRAVITY_TOKEN_URL = "https://oauth2.googleapis.com/token";
 export declare const ANTIGRAVITY_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo?alt=json";
-export declare const ANTIGRAVITY_API_URL = "https://cloudcode-pa.googleapis.com";
+/** Hub default — Antigravity.app `--cloud_code_endpoint`. */
 export declare const ANTIGRAVITY_DAILY_API_URL = "https://daily-cloudcode-pa.googleapis.com";
+/** IDE / prod Cloud Code. Only used if daily fails. */
+export declare const ANTIGRAVITY_PROD_API_URL = "https://cloudcode-pa.googleapis.com";
+export declare const ANTIGRAVITY_API_URL = "https://daily-cloudcode-pa.googleapis.com";
 export declare const ANTIGRAVITY_API_VERSION = "v1internal";
-export declare const ANTIGRAVITY_LOAD_CODE_ASSIST_URL = "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist";
-export declare const ANTIGRAVITY_ONBOARD_USER_URL = "https://daily-cloudcode-pa.googleapis.com/v1internal:onboardUser";
-export declare const ANTIGRAVITY_GENERATE_URL = "https://cloudcode-pa.googleapis.com/v1internal:generateContent";
-export declare const ANTIGRAVITY_STREAM_URL = "https://cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse";
+export declare const ANTIGRAVITY_LOAD_CODE_ASSIST_URL: string;
+export declare const ANTIGRAVITY_MODELS_URL: string;
+export declare const ANTIGRAVITY_ONBOARD_USER_URL: string;
+export declare const ANTIGRAVITY_GENERATE_URL: string;
+export declare const ANTIGRAVITY_STREAM_URL: string;
+/** Daily first, then IDE prod. onboardUser stays daily-only. */
+export declare function antigravityCloudCodeFallbacks(url: any): string[];
+/** POST a hub Cloud Code RPC: daily, then IDE prod on transport / 5xx. */
+export declare function fetchAntigravityCloudCode(url: any, init: any, fetchFn?: typeof fetch): Promise<Response>;
 export declare const ANTIGRAVITY_SCOPE: string;
 /**
  * Current official Antigravity.app short version when the desktop app
