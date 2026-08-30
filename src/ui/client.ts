@@ -62,7 +62,6 @@ window.__ModuleLoader__.load({
         switchTo: '切换',
         inUse: '使用中',
         noAccounts: '还没有登录账号',
-        accountsHint: '每个账号一张卡片，额度各自显示。点卡片切换当前对话账号。',
         pkce: 'PKCE 登录',
         device: '设备码登录',
         import: '导入本机会话',
@@ -159,7 +158,6 @@ window.__ModuleLoader__.load({
         switchTo: 'Switch',
         inUse: 'In use',
         noAccounts: 'No accounts yet',
-        accountsHint: 'One card per account, each with its own quota. Click a card to switch the chat account.',
         pkce: 'PKCE sign-in',
         device: 'Device-code sign-in',
         import: 'Import local session',
@@ -1012,11 +1010,8 @@ window.__ModuleLoader__.load({
       const busy = Boolean(account?.busy)
       const status = busy ? t.busy : loggedIn ? t.loggedIn : t.loggedOut
       return h('section', { className: 'osubs-card' },
-        h('header', { style: { display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' } },
-          h('div', { style: { display: 'flex', flexDirection: 'column', gap: 7, flex: '1 1 180px' } },
-            h('h3', { style: { fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' } }, title),
-            h('p', { className: 'osubs-hint' }, t.accountsHint),
-          ),
+        h('header', { style: { display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' } },
+          h('h3', { style: { fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' } }, title),
           h('span', {
             className: `osubs-status${loggedIn ? ' osubs-status--on' : busy ? ' osubs-status--busy' : ''}`,
           }, status),
