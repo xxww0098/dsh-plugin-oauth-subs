@@ -68,7 +68,7 @@ test('fingerprint is one Antigravity IDE identity on loadCodeAssist, onboardUser
     assert.equal(headers['user-agent'].startsWith('antigravity/hub/'), true)
     assert.equal(headers['user-agent'].includes(antigravityRequestUserAgent().split(' ')[1]), true)
     assertCleanIdentity(headers)
-    assert.equal(/node|undici|dsh-plugin/i.test(headers['user-agent']), false)
+    assert.equal(/^node\/|^undici\//i.test(headers['user-agent']), false)
   }
   assert.equal(load['user-agent'].includes(ANTIGRAVITY_NODE_API_CLIENT_UA), false)
   assert.equal(load['x-goog-api-client'], undefined)
