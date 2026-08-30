@@ -19,13 +19,20 @@ export declare const KIRO_USAGE_VERSION = "0.9.2";
 export declare const KIRO_NEVER_EXPIRES = 8640000000000000;
 export declare const KIRO_DEFAULT_REGION = "us-east-1";
 export declare const KIRO_CONTEXT_WINDOW = 200000;
+export declare const KIRO_LARGE_CONTEXT = 1000000;
+export declare const KIRO_GPT_CONTEXT = 272000;
+export declare const KIRO_DEEPSEEK_CONTEXT = 128000;
+export declare const KIRO_QWEN_CONTEXT = 256000;
 export declare const KIRO_MAX_TOKENS = 64000;
+export declare const KIRO_VISION_INPUT: readonly string[];
+export declare const KIRO_TEXT_INPUT: readonly string[];
 export declare const KIRO_METHODS: readonly string[];
 export declare const KIRO_USAGE_REGIONS: readonly string[];
+/** Kiro generateAssistantResponse ids (dots). Matches kiro.dev/docs/models, minus Auto. */
 export declare const KIRO_MODELS: readonly {
-    id: string;
-    name: string;
-    contextWindow: number;
+    id: any;
+    name: any;
+    contextWindow: any;
     maxTokens: number;
     input: readonly string[];
 }[];

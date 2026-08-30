@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.39
+
+- Kiro catalog matches [kiro.dev/docs/models](https://kiro.dev/docs/models/) (no Auto): GPT-5.6 Sol / Terra / Luna, Claude Opus 5 / 4.8 / 4.7 / 4.6 / 4.5, Claude Sonnet 5 / 4.6 / 4.5 / 4, Claude Haiku 4.5, DeepSeek 3.2, MiniMax M2.5 / M2.1, GLM-5, Qwen3 Coder Next. Drop the non-existent Sonnet 4.8 row. Native ids (`claude-opus-5`, `claude-sonnet-4.6`).
+
 ## 0.0.38
 
 - **Antigravity** family tab (after Kiro, before Models): Google OAuth loopback, multiple accounts, import from the official CLI token file or CLIProxyAPI `antigravity-*.json`. Chat goes through the local OpenAI hop to `cloudcode-pa` `generateContent` / `streamGenerateContent`. Catalog is the live cloudcode-pa list (Claude / Gemini / GPT-OSS). One official Antigravity IDE fingerprint for login, loadCodeAssist, onboardUser, refresh, and every chat request. String `ideType: ANTIGRAVITY`. Empty `project_id` is rejected before generateContent.

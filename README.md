@@ -135,7 +135,9 @@ Login, token refresh, chat, and quota use one official client identity: Codex pa
 
 ## Models
 
-Settings → OAuth subs → **Models** lists every Codex, Grok, and GLM catalog id, including Codex `-fast` and `-900k` siblings. Each row is an on/off checkbox. **All on** / **All off** apply per family.
+Settings → OAuth subs → **Models** lists every Codex, Grok, GLM, **Kiro**, and Antigravity catalog id, including Codex `-fast` and `-900k` siblings. Each row is an on/off checkbox. **All on** / **All off** apply per family.
+
+Kiro follows [kiro.dev/docs/models](https://kiro.dev/docs/models/) (no Auto router): GPT-5.6 Sol / Terra / Luna, Claude Opus 5 / 4.8 / 4.7 / 4.6 / 4.5, Claude Sonnet 5 / 4.6 / 4.5 / 4, Claude Haiku 4.5, DeepSeek 3.2, MiniMax M2.5 / M2.1, GLM-5, Qwen3 Coder Next. Ids are Kiro native (`claude-opus-5`, `claude-sonnet-4.6`, `gpt-5.6-sol`). Claude and GPT-5.6 advertise image input; the open-weight rows are text.
 
 GLM is three Coding Plan models: **GLM-5.3** (text), **GLM-5.3-Flash** (image + text), **GLM-5-Turbo** (text). Flash is the only multimodal row — text-only GLM models do not advertise image input to the Harness picker.
 
