@@ -22,7 +22,12 @@ export declare const GLM_BUSINESS_LOGIN_URL = "https://api.z.ai/api/auth/z/login
 export declare const GLM_BIZ_BASE = "https://api.z.ai";
 export declare const GLM_CODING_URL = "https://api.z.ai/api/coding/paas/v4/chat/completions";
 export declare const GLM_QUOTA_URL = "https://api.z.ai/api/monitor/usage/quota/limit";
+export declare const GLM_TOOL_USAGE_URL = "https://api.z.ai/api/monitor/usage/tool-usage";
+export declare const GLM_USERINFO_URL = "https://chat.z.ai/api/oauth/userinfo";
+export declare const GLM_BIGMODEL_USERINFO_URL = "https://open.bigmodel.cn/api/biz/customer/getCustomerInfo";
 export declare const GLM_KEY_NAME = "dsh-plugin-oauth-subs";
+/** CLI / site ids. Never show these as the account name on the card. */
+export declare const GLM_APP_ACCOUNTS: readonly string[];
 export declare const GLM_USER_AGENT = "dsh-plugin-oauth-subs/0.0.22";
 export declare const GLM_NEVER_EXPIRES = 8640000000000000;
 export declare const GLM_CONTEXT_WINDOW = 128000;
@@ -76,6 +81,7 @@ export declare const GLM_MODELS: readonly ({
     reasoningEfforts: boolean;
     input: readonly string[];
 })[];
+export { GLM_BOOST_HINT, GLM_BOOST_LABEL, glmCardBoost } from './boost.js';
 export declare const GLM_PLAN_NAMES: Readonly<{
     lite: "Lite";
     pro: "Pro";
@@ -91,6 +97,11 @@ export declare function glmCliProvider(region: any): "zai" | "bigmodel";
 export declare function glmPlanLabel(raw: any): any;
 export declare function glmCodingUrl(region?: string): "https://api.z.ai/api/coding/paas/v4/chat/completions" | "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions";
 export declare function glmQuotaUrl(region?: string): "https://api.z.ai/api/monitor/usage/quota/limit" | "https://open.bigmodel.cn/api/monitor/usage/quota/limit";
+export declare function glmToolUsageUrl(region?: string): "https://api.z.ai/api/monitor/usage/tool-usage" | "https://open.bigmodel.cn/api/monitor/usage/tool-usage";
+export declare function glmUserinfoUrl(region?: string): "https://chat.z.ai/api/oauth/userinfo" | "https://open.bigmodel.cn/api/biz/customer/getCustomerInfo";
+export declare function isGlmAppAccount(value: any): boolean;
+export declare function pickGlmHumanAccount(...candidates: any[]): string;
+export declare function accountFromJwt(token: any): string;
 export declare function glmBizBase(region?: string): "https://open.bigmodel.cn" | "https://api.z.ai";
 export declare function glmUpstreamHeaders(session: any): {
     authorization: string;
@@ -163,23 +174,30 @@ export declare function glmSession({ accessToken, account, accountId, planType, 
 }): {
     zcodeJwt?: any;
     planType?: any;
+    region: string;
+    account?: string;
     accessToken: string;
     refreshToken: string;
     expiresAt: number;
-    account: any;
-    region: string;
 };
+export declare function fetchGlmUserinfo(source: any, { fetchFn, region }?: {
+    fetchFn?: typeof fetch;
+}): Promise<string>;
+export declare function resolveGlmIdentity(source: any, { fetchFn }?: {
+    fetchFn?: typeof fetch;
+}): Promise<string>;
+export declare function displayGlmAccount(session: any): string;
 export declare function completeGlmCli(ready: any, { fetchFn, region }?: {
     fetchFn?: typeof fetch;
     region?: string;
 }): Promise<{
     zcodeJwt?: any;
     planType?: any;
+    region: string;
+    account?: string;
     accessToken: string;
     refreshToken: string;
     expiresAt: number;
-    account: any;
-    region: string;
 }>;
 export declare function refreshGlm(session: any): Promise<any>;
 export declare function isGlmPermanentRefreshError(): boolean;

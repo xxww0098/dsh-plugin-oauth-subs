@@ -7,7 +7,7 @@ import { OAuthFlowManager } from './flow.js'
 import { DeviceFlowManager } from './grok/device-flow.js'
 import { GlmCliFlowManager } from './glm/cli-flow.js'
 import { KiroIdcFlowManager } from './kiro/idc-flow.js'
-import { accountIdOf, deleteSession, getAccountSession, getSession, listStoredSessions, publicSession, saveSession, switchAccount } from './store.js'
+import { accountIdOf, deleteSession, getAccountSession, getSession, listStoredSessions, publicSession, replaceAccountId, saveSession, switchAccount } from './store.js'
 import {
   codexFlow,
   exchangeCodexCode,
@@ -26,7 +26,9 @@ import {
   glmSession,
   isGlmPermanentRefreshError,
   normalizeGlmRegion,
+  pickGlmHumanAccount,
   refreshGlm,
+  resolveGlmIdentity,
 } from './glm/index.js'
 import {
   BUILDER_ID_START_URL,
@@ -173,6 +175,7 @@ export class AuthController {
 
   async snapshot() {
     await this.models.ready
+    await this.#resolveGlmIdentities()
     const loggedIn = await this.loggedIn()
     const origin = this.origin()
     const catalog = catalogProviders({ prefix: this.prefix, origin })
@@ -276,6 +279,23 @@ export class AuthController {
         apply: { status: 'none' },
       }
     }
+  }
+
+  async #resolveGlmIdentities() {
+    const rows = await listStoredSessions('glm', this.authPath)
+    await Promise.all(rows.map(async (row) => {
+      if (pickGlmHumanAccount(row.session?.account)) return
+      const account = await resolveGlmIdentity(row.session, { fetchFn: this.fetchFn }).catch(() => undefined)
+      if (!account || account === row.session.account) return
+      const next = { ...row.session, account }
+      const nextId = accountIdOf('glm', next)
+      if (nextId !== row.id) {
+        await replaceAccountId('glm', row.id, next, this.authPath)
+        this.quota.clear('glm', row.id)
+      } else {
+        await saveSession('glm', next, this.authPath, { activate: false })
+      }
+    }))
   }
 
   async #hydrateSession(provider, session) {

@@ -256,6 +256,7 @@ test('importGlmAuth reads ~/.zcode/v2/config.json and sets region from the provi
   assert.equal(result.source, v2Path)
   assert.equal(result.session.accessToken, 'bm-coding-plan-fixture')
   assert.equal(result.session.region, 'bigmodel')
+  assert.notEqual(result.session.account, 'zcode')
 })
 
 test('importGrokAuth lists both paths when nothing is found', async () => {

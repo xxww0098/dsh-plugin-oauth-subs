@@ -6,21 +6,24 @@ import { test } from 'node:test'
 import {
   GLM_CLIENT_ID,
   GLM_CLI_INIT_URL,
+  accountFromJwt,
   completeGlmCli,
+  displayGlmAccount,
   glmCliInit,
   glmCliProvider,
   glmCodingUrl,
   glmQuotaUrl,
   glmSession,
+  isGlmAppAccount,
   normalizeGlmRegion,
   parseCliInit,
   parseCliPoll,
   unwrapEnvelope,
 } from '../lib/oauth/glm/index.js'
-import { parseGlmQuota } from '../lib/oauth/quota.js'
+import { fetchGlmQuota, mergeGlmToolUsage, parseGlmQuota } from '../lib/oauth/quota.js'
 import { buildProviders } from '../lib/oauth/models.js'
 import { AuthController } from '../lib/oauth/controller.js'
-import { accountIdOf, listAccounts, saveSession } from '../lib/oauth/store.js'
+import { accountIdOf, listAccounts, publicSession, replaceAccountId, saveSession } from '../lib/oauth/store.js'
 
 test('unwrapEnvelope accepts ZCode code 0 and biz code 200', () => {
   assert.equal(unwrapEnvelope({ code: 0, data: { ok: true } }, 'x').ok, true)
@@ -189,6 +192,206 @@ test('parseGlmQuota maps credit windows and plan level', () => {
   assert.equal(parsed.rows[1].kind, 'weekly')
 })
 
+test('parseGlmQuota kinds screenshot-like CREDIT_LIMIT plus weekly and MCP', () => {
+  const parsed = parseGlmQuota({
+    code: 200,
+    success: true,
+    data: {
+      level: 'lite',
+      limits: [
+        { type: 'CREDIT_LIMIT', unit: 3, number: 5, usage: 2000, currentValue: 0, remaining: 2000, percentage: 0 },
+        { type: 'CREDIT_LIMIT', unit: 3, number: 5, usage: 2000, currentValue: 880, remaining: 1120, percentage: 44 },
+        { type: 'CREDIT_LIMIT', unit: 6, number: 1, usage: 10_000, currentValue: 4400, remaining: 5600, percentage: 44 },
+        {
+          type: 'TIME_LIMIT',
+          unit: 5,
+          number: 1,
+          usage: 1000,
+          currentValue: 0,
+          remaining: 1000,
+          percentage: 0,
+          usageDetails: [
+            { modelCode: 'search-prime', usage: 0 },
+            { modelCode: 'web-reader', usage: 0 },
+            { modelCode: 'zread', usage: 0 },
+          ],
+        },
+      ],
+    },
+  })
+  assert.equal(parsed.planType, 'Lite')
+  assert.deepEqual(parsed.rows.map((row) => row.kind), ['primary', 'weekly', 'mcp'])
+  assert.equal(parsed.rows[0].used, 880)
+  assert.equal(parsed.rows[0].total, 2000)
+  assert.equal(parsed.rows[0].remainingPercent, 56)
+  assert.equal(parsed.rows[1].total, 10_000)
+  assert.equal(parsed.rows[2].product, 'ZCode MCP')
+  assert.equal(parsed.rows[2].used, 0)
+  assert.equal(parsed.rows[2].total, 1000)
+  assert.equal(parsed.rows.some((row) => row.kind === 'cycle'), false)
+})
+
+test('mergeGlmToolUsage fills MCP when quota/limit only has credit windows', () => {
+  const credits = parseGlmQuota({
+    data: {
+      level: 'lite',
+      limits: [
+        { type: 'CREDIT_LIMIT', unit: 3, number: 5, usage: 2000, currentValue: 0 },
+        { type: 'CREDIT_LIMIT', unit: 6, number: 1, usage: 10_000, currentValue: 1200 },
+      ],
+    },
+  })
+  assert.deepEqual(credits.rows.map((row) => row.kind), ['primary', 'weekly'])
+  const merged = mergeGlmToolUsage(credits, {
+    data: {
+      list: [{
+        type: 'TIME_LIMIT',
+        name: 'ZCode MCP',
+        usage: 1000,
+        currentValue: 12,
+        remaining: 988,
+        usageDetails: [{ modelCode: 'web-reader', usage: 12 }],
+      }],
+    },
+  })
+  assert.deepEqual(merged.rows.map((row) => row.kind), ['primary', 'weekly', 'mcp'])
+  assert.equal(merged.rows[2].used, 12)
+})
+
+test('completeGlmCli for BigModel without poll email reads JWT email', async () => {
+  const token = jwt({ email: 'cn@bigmodel.cn', preferred_username: 'cn@bigmodel.cn' })
+  const session = await completeGlmCli(
+    { ready: true, oauthAccess: 'oauth', zcodeJwt: token, accountId: 'zcode' },
+    { fetchFn: async (url) => { throw new Error(`unexpected ${url}`) }, region: 'bigmodel' },
+  )
+  assert.equal(session.accessToken, token)
+  assert.equal(session.account, 'cn@bigmodel.cn')
+  assert.equal(isGlmAppAccount(session.account), false)
+})
+
+test('completeGlmCli for BigModel without poll email reads userinfo', async () => {
+  const token = jwt({ sub: 'zcode', user_id: 'zcode' })
+  const calls = []
+  const session = await completeGlmCli(
+    { ready: true, oauthAccess: 'oauth', zcodeJwt: token, accountId: 'zcode' },
+    {
+      fetchFn: async (url) => {
+        calls.push(String(url))
+        if (String(url).includes('getCustomerInfo')) {
+          return json({ code: 200, data: { email: 'from-userinfo@bigmodel.cn', customerName: 'zcode' } })
+        }
+        throw new Error(`unexpected ${url}`)
+      },
+      region: 'bigmodel',
+    },
+  )
+  assert.equal(session.account, 'from-userinfo@bigmodel.cn')
+  assert.ok(calls.some((href) => href.includes('open.bigmodel.cn')))
+})
+
+test('publicSession never returns zcode for a GLM vault row', () => {
+  const token = jwt({ email: 'live@bigmodel.cn' })
+  const stale = {
+    accessToken: token,
+    refreshToken: token,
+    expiresAt: 1,
+    account: 'zcode',
+    region: 'bigmodel',
+    zcodeJwt: token,
+  }
+  const pub = publicSession('glm', stale)
+  assert.equal(pub.account, 'live@bigmodel.cn')
+  assert.notEqual(pub.account, 'zcode')
+  assert.equal(displayGlmAccount({ account: 'zcode', accessToken: 'plain-key' }), undefined)
+  assert.equal(publicSession('glm', {
+    accessToken: 'plain-key',
+    refreshToken: 'plain-key',
+    expiresAt: 1,
+    account: 'zcode',
+    region: 'bigmodel',
+  }).account, undefined)
+  assert.equal(accountFromJwt(token), 'live@bigmodel.cn')
+})
+
+test('snapshot rewrites a zcode@bigmodel vault to the JWT email', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const path = join(dir, 'auth.json')
+  const token = jwt({ email: 'rewrite@bigmodel.cn' })
+  await saveSession('glm', {
+    accessToken: token,
+    refreshToken: token,
+    expiresAt: Date.now() + 1e15,
+    account: 'zcode',
+    region: 'bigmodel',
+    zcodeJwt: token,
+  }, path)
+  assert.equal(accountIdOf('glm', { account: 'zcode', region: 'bigmodel' }), 'zcode@bigmodel')
+  const controller = new AuthController({
+    authPath: path,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+    fetchFn: async (url) => {
+      if (String(url).includes('/quota/limit') || String(url).includes('/tool-usage')) {
+        return json({ code: 200, data: { level: 'lite', limits: [] } })
+      }
+      throw new Error(`unexpected ${url}`)
+    },
+  })
+  const snap = await controller.snapshot()
+  assert.equal(snap.accounts.glm.account, 'rewrite@bigmodel.cn')
+  assert.equal(snap.accounts.glm.accounts[0].account, 'rewrite@bigmodel.cn')
+  assert.equal(snap.accounts.glm.accounts[0].id, 'rewrite@bigmodel.cn@bigmodel')
+  const roster = await listAccounts('glm', path)
+  assert.equal(roster[0].id, 'rewrite@bigmodel.cn@bigmodel')
+  assert.equal(roster.some((row) => row.id === 'zcode@bigmodel' || row.account === 'zcode'), false)
+})
+
+test('replaceAccountId moves the vault key without dropping the session', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const path = join(dir, 'auth.json')
+  const session = glmSession({ accessToken: 'a.b', account: 'zcode', region: 'bigmodel' })
+  await saveSession('glm', { ...session, account: 'zcode' }, path)
+  const next = { ...session, account: 'moved@bigmodel.cn' }
+  await replaceAccountId('glm', 'zcode@bigmodel', next, path)
+  const roster = await listAccounts('glm', path)
+  assert.equal(roster.length, 1)
+  assert.equal(roster[0].id, 'moved@bigmodel.cn@bigmodel')
+  assert.equal(roster[0].account, 'moved@bigmodel.cn')
+})
+
+test('fetchGlmQuota asks tool-usage when MCP is missing from quota/limit', async () => {
+  const calls = []
+  const parsed = await fetchGlmQuota(
+    { accessToken: 'key', region: 'bigmodel' },
+    async (url) => {
+      calls.push(String(url))
+      if (String(url).includes('/quota/limit')) {
+        return json({
+          data: {
+            level: 'lite',
+            limits: [
+              { type: 'CREDIT_LIMIT', unit: 3, number: 5, usage: 2000, currentValue: 0 },
+              { type: 'CREDIT_LIMIT', unit: 6, number: 1, usage: 10_000, currentValue: 100 },
+            ],
+          },
+        })
+      }
+      if (String(url).includes('/tool-usage')) {
+        return json({
+          data: {
+            limits: [{ type: 'TIME_LIMIT', usage: 400, currentValue: 0, remaining: 400, name: 'mcp tools' }],
+          },
+        })
+      }
+      throw new Error(`unexpected ${url}`)
+    },
+  )
+  assert.ok(calls.some((href) => href.includes('open.bigmodel.cn/api/monitor/usage/quota/limit')))
+  assert.ok(calls.some((href) => href.includes('open.bigmodel.cn/api/monitor/usage/tool-usage')))
+  assert.deepEqual(parsed.rows.map((row) => row.kind), ['primary', 'weekly', 'mcp'])
+})
+
 test('catalog includes GLM as openai chat completions', () => {
   const providers = buildProviders({
     prefix: 'oauth',
@@ -287,6 +490,12 @@ test('controller useKey stores a pasted GLM key on the chosen region', async () 
   assert.equal(roster[0].region, 'bigmodel')
   assert.equal(roster[0].account, 'api-key')
 })
+
+function jwt(payload) {
+  const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url')
+  const body = Buffer.from(JSON.stringify(payload)).toString('base64url')
+  return `${header}.${body}.sig`
+}
 
 function json(body) {
   return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })

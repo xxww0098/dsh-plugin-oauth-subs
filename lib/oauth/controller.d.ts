@@ -41,7 +41,7 @@ export declare class AuthController {
     } | {
         detail?: any;
         quota: any;
-        account: any;
+        account: string;
         planType: any;
         planLabel: any;
         region: string;
@@ -112,7 +112,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -175,7 +175,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -212,7 +212,7 @@ export declare class AuthController {
                 })[];
                 detail?: any;
                 quota: any;
-                account: any;
+                account: string;
                 planType: any;
                 planLabel: any;
                 region: string;
@@ -238,7 +238,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -301,7 +301,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -365,7 +365,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -428,7 +428,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -465,7 +465,7 @@ export declare class AuthController {
                 })[];
                 detail?: any;
                 quota: any;
-                account: any;
+                account: string;
                 planType: any;
                 planLabel: any;
                 region: string;
@@ -491,7 +491,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -554,7 +554,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -618,7 +618,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -681,7 +681,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -718,7 +718,7 @@ export declare class AuthController {
                 })[];
                 detail?: any;
                 quota: any;
-                account: any;
+                account: string;
                 planType: any;
                 planLabel: any;
                 region: string;
@@ -744,7 +744,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -807,7 +807,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -871,7 +871,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -934,7 +934,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -971,7 +971,7 @@ export declare class AuthController {
                 })[];
                 detail?: any;
                 quota: any;
-                account: any;
+                account: string;
                 planType: any;
                 planLabel: any;
                 region: string;
@@ -997,7 +997,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -1060,7 +1060,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -1124,7 +1124,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -1187,7 +1187,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -1224,7 +1224,7 @@ export declare class AuthController {
                 })[];
                 detail?: any;
                 quota: any;
-                account: any;
+                account: string;
                 planType: any;
                 planLabel: any;
                 region: string;
@@ -1250,7 +1250,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -1313,7 +1313,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -1507,7 +1507,7 @@ export declare class AuthController {
             methodLabel?: undefined;
             scopes?: undefined;
         } | {
-            account: any;
+            account: string;
             planType: any;
             planLabel: any;
             region: string;
@@ -1573,7 +1573,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -1636,7 +1636,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -1673,7 +1673,7 @@ export declare class AuthController {
                 })[];
                 detail?: any;
                 quota: any;
-                account: any;
+                account: string;
                 planType: any;
                 planLabel: any;
                 region: string;
@@ -1699,7 +1699,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -1762,7 +1762,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -1826,7 +1826,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -1889,7 +1889,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -1926,7 +1926,7 @@ export declare class AuthController {
                 })[];
                 detail?: any;
                 quota: any;
-                account: any;
+                account: string;
                 planType: any;
                 planLabel: any;
                 region: string;
@@ -1952,7 +1952,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -2015,7 +2015,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -2079,7 +2079,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -2142,7 +2142,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -2179,7 +2179,7 @@ export declare class AuthController {
                 })[];
                 detail?: any;
                 quota: any;
-                account: any;
+                account: string;
                 planType: any;
                 planLabel: any;
                 region: string;
@@ -2205,7 +2205,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -2268,7 +2268,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -2332,7 +2332,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -2395,7 +2395,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -2432,7 +2432,7 @@ export declare class AuthController {
                 })[];
                 detail?: any;
                 quota: any;
-                account: any;
+                account: string;
                 planType: any;
                 planLabel: any;
                 region: string;
@@ -2458,7 +2458,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -2521,7 +2521,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -2585,7 +2585,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -2648,7 +2648,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -2685,7 +2685,7 @@ export declare class AuthController {
                 })[];
                 detail?: any;
                 quota: any;
-                account: any;
+                account: string;
                 planType: any;
                 planLabel: any;
                 region: string;
@@ -2711,7 +2711,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -2774,7 +2774,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -2842,7 +2842,7 @@ export declare class AuthController {
             methodLabel?: undefined;
             scopes?: undefined;
         } | {
-            account: any;
+            account: string;
             planType: any;
             planLabel: any;
             region: string;
@@ -2903,7 +2903,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -2966,7 +2966,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -3003,7 +3003,7 @@ export declare class AuthController {
                 })[];
                 detail?: any;
                 quota: any;
-                account: any;
+                account: string;
                 planType: any;
                 planLabel: any;
                 region: string;
@@ -3029,7 +3029,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -3092,7 +3092,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -3156,7 +3156,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -3219,7 +3219,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -3256,7 +3256,7 @@ export declare class AuthController {
                 })[];
                 detail?: any;
                 quota: any;
-                account: any;
+                account: string;
                 planType: any;
                 planLabel: any;
                 region: string;
@@ -3282,7 +3282,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -3345,7 +3345,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -3409,7 +3409,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -3472,7 +3472,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -3509,7 +3509,7 @@ export declare class AuthController {
                 })[];
                 detail?: any;
                 quota: any;
-                account: any;
+                account: string;
                 planType: any;
                 planLabel: any;
                 region: string;
@@ -3535,7 +3535,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -3598,7 +3598,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -3662,7 +3662,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -3725,7 +3725,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -3762,7 +3762,7 @@ export declare class AuthController {
                 })[];
                 detail?: any;
                 quota: any;
-                account: any;
+                account: string;
                 planType: any;
                 planLabel: any;
                 region: string;
@@ -3788,7 +3788,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -3851,7 +3851,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -3915,7 +3915,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -3978,7 +3978,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -4015,7 +4015,7 @@ export declare class AuthController {
                 })[];
                 detail?: any;
                 quota: any;
-                account: any;
+                account: string;
                 planType: any;
                 planLabel: any;
                 region: string;
@@ -4041,7 +4041,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -4104,7 +4104,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;

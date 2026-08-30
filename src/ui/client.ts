@@ -136,6 +136,11 @@ window.__ModuleLoader__.load({
         primary: '5 小时',
         weekly: '每周',
         cycle: '本周期',
+        glmPrimary: '5 小时剩余',
+        glmWeekly: '每周剩余',
+        glmMcp: 'ZCode MCP',
+        glmBoost: '150%配额',
+        glmBoostHint: 'ZCode 登录使用享 150%配额',
         prepaid: '预付余额',
         grokCode: 'Grok Code',
         modelsTitle: '模型',
@@ -265,6 +270,11 @@ window.__ModuleLoader__.load({
         primary: '5-hour',
         weekly: 'Weekly',
         cycle: 'This period',
+        glmPrimary: '5-hour remaining',
+        glmWeekly: 'Weekly remaining',
+        glmMcp: 'ZCode MCP',
+        glmBoost: '150% quota',
+        glmBoostHint: 'ZCode session: 150% quota',
         prepaid: 'Prepaid',
         grokCode: 'Grok Code',
         modelsTitle: 'Models',
@@ -449,6 +459,18 @@ window.__ModuleLoader__.load({
         || formatPlanLabel(account?.quota?.planType || account?.planType, family)
     }
 
+    function isGlmAppIdentity(value) {
+      if (typeof value !== 'string' || !value.trim()) return false
+      return /^(zcode|zai|bigmodel|glm)(@|$)/i.test(value.trim())
+    }
+
+    function identityOf(row, family) {
+      const account = typeof row?.account === 'string' ? row.account.trim() : ''
+      if (account && !isGlmAppIdentity(account)) return account
+      if (family === 'glm') return ''
+      return account || row?.id || ''
+    }
+
     const STYLE_ID = 'dsh-oauth-subs-style'
 
     const CSS = `
@@ -624,6 +646,7 @@ window.__ModuleLoader__.load({
   background: var(--osubs-fill-2); color: color-mix(in oklab, currentColor 75%, transparent);
   font-size: 10px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; line-height: 1.4;
 }
+.osubs-tag--plain { text-transform: none; letter-spacing: .02em; }
 
 .osubs-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; overflow-wrap: anywhere; }
 .osubs-hint { font-size: 12px; line-height: 1.55; color: var(--osubs-muted); }
@@ -831,7 +854,14 @@ window.__ModuleLoader__.load({
       }, h(TabIcon, { name: icon }))
     }
 
-    function rowLabel(row, t) {
+    function rowLabel(row, t, family) {
+      if (family === 'glm') {
+        if (row.kind === 'primary') return t.glmPrimary
+        if (row.kind === 'weekly') return t.glmWeekly
+        if (row.kind === 'mcp' || (row.kind === 'product' && /mcp|zread|web.?search/i.test(row.product ?? ''))) {
+          return t.glmMcp
+        }
+      }
       if (row.kind === 'product' && row.product) return row.product
       if (row.kind === 'primary') {
         const minutes = row.windowMinutes
@@ -844,10 +874,11 @@ window.__ModuleLoader__.load({
       if (row.kind === 'weekly') return t.weekly
       if (row.kind === 'cycle') return t.cycle
       if (row.kind === 'prepaid') return t.prepaid
+      if (row.kind === 'mcp') return t.glmMcp
       return row.kind ?? t.quota
     }
 
-    function QuotaRow({ t, row }) {
+    function QuotaRow({ t, row, family }) {
       if (row.kind === 'prepaid') {
         return h('div', { className: 'osubs-qrow-head' },
           h('span', { style: { color: 'var(--osubs-muted)' } }, t.prepaid),
@@ -863,7 +894,7 @@ window.__ModuleLoader__.load({
       const reset = formatReset(row.resetAt, t)
       return h('div', { className: 'osubs-qrow' },
         h('div', { className: 'osubs-qrow-head' },
-          h('span', { style: { color: 'var(--osubs-muted)' } }, rowLabel(row, t)),
+          h('span', { style: { color: 'var(--osubs-muted)' } }, rowLabel(row, t, family)),
           h('span', { style: { color, fontWeight: 500 } },
             amount ? `${amount} · ` : '',
             remaining === undefined ? '' : fill(t.leftPercent, remaining),
@@ -1052,7 +1083,7 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function QuotaBlock({ t, quota, onRefresh, onReset }) {
+    function QuotaBlock({ t, quota, onRefresh, onReset, family }) {
       if (!quota || quota.status === 'idle') return null
       const rows = Array.isArray(quota.rows) ? quota.rows : []
       const hasUsage = rows.some((row) => (
@@ -1068,10 +1099,11 @@ window.__ModuleLoader__.load({
             h(Button, { size: 'sm', onClick: onRefresh, label: t.quotaRefresh }),
           ),
         ),
+        family === 'glm' && h('p', { className: 'osubs-note' }, t.glmBoostHint),
         quota.status === 'loading' && rows.length === 0 && h('p', { className: 'osubs-hint' }, t.quotaLoading),
         quota.status === 'error' && !hasUsage && h('p', { className: 'osubs-hint osubs-bad' }, `${t.quotaFailed}${quota.error ? ` · ${quota.error}` : ''}`),
         quota.status === 'ready' && !hasUsage && h('p', { className: 'osubs-hint' }, t.quotaUnknown),
-        rows.map((row) => h(QuotaRow, { t, row, key: row.key })),
+        rows.map((row) => h(QuotaRow, { t, row, family, key: row.key })),
         h(QuotaResetBox, { t, quota, onReset }),
       )
     }
@@ -1096,11 +1128,12 @@ window.__ModuleLoader__.load({
         h('div', { className: 'osubs-acct-head' },
           h('div', { className: 'osubs-acct-main' },
             h('div', { className: 'osubs-acct-row' },
-              h('span', { className: 'osubs-mono' }, row.account || row.id),
+              h('span', { className: 'osubs-mono' }, identityOf(row, id)),
               planLabel && h('span', { className: 'osubs-tag' }, planLabel),
               row.active && h('span', { className: 'osubs-tag' }, t.inUse),
               id === 'glm' && row.region && h('span', { className: 'osubs-tag' }, regionLabel(row.region)),
               id === 'kiro' && row.methodLabel && h('span', { className: 'osubs-tag' }, row.methodLabel),
+              id === 'glm' && h('span', { className: 'osubs-tag osubs-tag--plain' }, t.glmBoost),
             ),
           ),
           h('div', { className: 'osubs-actions', onClick: (event) => event.stopPropagation() },
@@ -1111,6 +1144,7 @@ window.__ModuleLoader__.load({
         h('div', { onClick: (event) => event.stopPropagation() },
           h(QuotaBlock, {
             t,
+            family: id,
             quota,
             onRefresh: () => onRefreshQuota(id, row.id),
             onReset: id === 'codex' && onResetQuota ? () => onResetQuota(id, row.id) : undefined,
