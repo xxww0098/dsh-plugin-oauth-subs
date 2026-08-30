@@ -7,6 +7,7 @@ export declare const OAUTH_CREDENTIAL_REF = "DSH_OAUTH_SUBS_API_KEY";
 export { CODEX_REASONING_EFFORTS };
 export declare function isOptInKey(key: any): boolean;
 export declare function modelKey(provider: any, id: any): string;
+export declare const FAMILY_IDS: readonly string[];
 export declare function ownedProviderIds(prefix: any): string[];
 export declare function withPickerVariants(models: any): any[];
 export declare function buildProviders({ prefix, origin, loggedIn }: {

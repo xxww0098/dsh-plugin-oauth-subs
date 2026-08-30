@@ -22,6 +22,7 @@ export declare class AuthController {
         codex: boolean;
         grok: boolean;
         glm: boolean;
+        antigravity: boolean;
     }>;
     status(provider: any): Promise<{
         detail?: any;
@@ -336,6 +337,136 @@ export declare class AuthController {
                 busy: any;
             };
             glm: {
+                activeId: string;
+                accounts: ({
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    id: string;
+                    active: boolean;
+                })[];
+                detail?: any;
+                quota: any;
+                account: any;
+                planType: any;
+                planLabel: any;
+                expiresAt: any;
+                region?: undefined;
+                scopes?: undefined;
+                loggedIn: boolean;
+                busy: any;
+            } | {
+                activeId: string;
+                accounts: ({
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    id: string;
+                    active: boolean;
+                })[];
+                detail?: any;
+                quota: any;
+                account: any;
+                planType: any;
+                planLabel: any;
+                region: string;
+                expiresAt: any;
+                scopes?: undefined;
+                loggedIn: boolean;
+                busy: any;
+            } | {
+                activeId: string;
+                accounts: ({
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    id: string;
+                    active: boolean;
+                })[];
+                detail?: any;
+                quota: any;
+                account: any;
+                planType: any;
+                planLabel: any;
+                scopes: any;
+                expiresAt: any;
+                region?: undefined;
+                loggedIn: boolean;
+                busy: any;
+            };
+            antigravity: {
                 activeId: string;
                 accounts: ({
                     quota: any;
@@ -1004,6 +1135,136 @@ export declare class AuthController {
                 loggedIn: boolean;
                 busy: any;
             };
+            antigravity: {
+                activeId: string;
+                accounts: ({
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    id: string;
+                    active: boolean;
+                })[];
+                detail?: any;
+                quota: any;
+                account: any;
+                planType: any;
+                planLabel: any;
+                expiresAt: any;
+                region?: undefined;
+                scopes?: undefined;
+                loggedIn: boolean;
+                busy: any;
+            } | {
+                activeId: string;
+                accounts: ({
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    id: string;
+                    active: boolean;
+                })[];
+                detail?: any;
+                quota: any;
+                account: any;
+                planType: any;
+                planLabel: any;
+                region: string;
+                expiresAt: any;
+                scopes?: undefined;
+                loggedIn: boolean;
+                busy: any;
+            } | {
+                activeId: string;
+                accounts: ({
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    id: string;
+                    active: boolean;
+                })[];
+                detail?: any;
+                quota: any;
+                account: any;
+                planType: any;
+                planLabel: any;
+                scopes: any;
+                expiresAt: any;
+                region?: undefined;
+                loggedIn: boolean;
+                busy: any;
+            };
         };
         update: {
             version: string;
@@ -1013,7 +1274,7 @@ export declare class AuthController {
         };
     }>;
     importFrom(provider: any): Promise<{
-        source: string;
+        source: any;
         account: {
             account: any;
             planType: any;
@@ -1315,6 +1576,136 @@ export declare class AuthController {
                 busy: any;
             };
             glm: {
+                activeId: string;
+                accounts: ({
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    id: string;
+                    active: boolean;
+                })[];
+                detail?: any;
+                quota: any;
+                account: any;
+                planType: any;
+                planLabel: any;
+                expiresAt: any;
+                region?: undefined;
+                scopes?: undefined;
+                loggedIn: boolean;
+                busy: any;
+            } | {
+                activeId: string;
+                accounts: ({
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    id: string;
+                    active: boolean;
+                })[];
+                detail?: any;
+                quota: any;
+                account: any;
+                planType: any;
+                planLabel: any;
+                region: string;
+                expiresAt: any;
+                scopes?: undefined;
+                loggedIn: boolean;
+                busy: any;
+            } | {
+                activeId: string;
+                accounts: ({
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    id: string;
+                    active: boolean;
+                })[];
+                detail?: any;
+                quota: any;
+                account: any;
+                planType: any;
+                planLabel: any;
+                scopes: any;
+                expiresAt: any;
+                region?: undefined;
+                loggedIn: boolean;
+                busy: any;
+            };
+            antigravity: {
                 activeId: string;
                 accounts: ({
                     quota: any;
