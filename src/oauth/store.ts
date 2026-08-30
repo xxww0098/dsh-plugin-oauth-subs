@@ -12,7 +12,7 @@ import { homedir } from 'node:os'
 import { formatPlanLabel } from './plan.js'
 import { kiroAccountId, kiroMethodLabel } from './kiro/index.js'
 
-export const PROVIDER_IDS = Object.freeze(['codex', 'grok', 'glm', 'kiro'])
+export const PROVIDER_IDS = Object.freeze(['codex', 'grok', 'glm', 'kiro', 'antigravity'])
 
 export function defaultDataDir() {
   return join(homedir(), '.dsh', 'plugins', 'oauth-subs')

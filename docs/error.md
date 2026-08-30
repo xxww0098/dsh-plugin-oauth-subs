@@ -1,5 +1,43 @@
 # 错误记录
 
+## 2026-08-30：Antigravity 第三方包装指纹不一致会被 Google 封
+
+### 现象
+
+第三方 Antigravity 包装用 Google OAuth 登录后，cloudcode-pa 对聊天返回 403 / 账号被拦。decolua/9router#1226：OAuth / loadCodeAssist 走 `IDE_UNSPECIFIED` / `PLATFORM_UNSPECIFIED` / `GEMINI` 字符串，聊天却走数字枚举 `ideType: 9` + `User-Agent: antigravity/…`。Google 按官方 IDE 指纹拦不一致的客户端。
+
+### 证据
+
+- decolua/9router#1226（第三方包装混用未指定字符串与数字 chat 头）。
+- CLIProxyAPI 当前 `internal/auth/antigravity` + `internal/misc/antigravity_version.go`（main @ f0de1d0）：
+  - 短 UA：`antigravity/hub/<version> <os>/<arch>`（userinfo、loadCodeAssist、generateContent）
+  - 长 UA：短 UA + ` google-api-nodejs-client/10.3.0`（仅 onboardUser）
+  - `X-Goog-Api-Client: gl-node/22.21.1`（仅 onboardUser；不是旧的 `google-cloud-sdk vscode_cloudshelleditor/0.1`）
+  - loadCodeAssist metadata：`{"ideType":"ANTIGRAVITY"}` 字符串，不是 `IDE_UNSPECIFIED`，也不是数字 `9`
+  - onboardUser metadata：`ide_type` / `ide_version` / `ide_name: antigravity`
+  - 聊天体：`userAgent: "antigravity"` + 必填 `project`
+- 本插件没有公开的 Antigravity 额度 API；卡片照常画，额度块保持 idle。
+
+### 根因
+
+控制面和聊天面必须是**同一套**官方 Antigravity IDE 身份。混用 Gemini CLI / `google-api-nodejs-client` 默认 UA / `dsh-plugin` / `CLIProxyAPI` / Node undici 默认 UA，或 OAuth 用未指定枚举而聊天用数字 `ideType: 9`，都会被当成第三方包装。空 `project` 的 generateContent 是 403 / 封号风险。
+
+### 修复（0.0.38）
+
+本插件只认一种编码，控制面和聊天共用：
+
+1. 产品名永远是 Antigravity IDE。UA 家族是 `antigravity/hub/<version> <os>/<arch>`，版本下限 2.9.1（Cloud Code 拒 < 2.9.0）。
+2. metadata 用 CLIProxyAPI 现网的**字符串** `ANTIGRAVITY`，不用 `IDE_UNSPECIFIED` / `PLATFORM_UNSPECIFIED` / `GEMINI`，也不改成数字 `ideType: 9`。数字枚举（`9` = ANTIGRAVITY，`pluginType: 2` = GEMINI，platform 1–5）是另一套官方形状；现网 CLIProxyAPI 控制面仍发字符串，混用两套才是 #1226 的炸点。
+3. onboardUser 额外带 Node helper UA + `X-Goog-Api-Client: gl-node/22.21.1`，与 CLIProxyAPI 一致；不把这套头抄到 loadCodeAssist（CLIProxyAPI 测试断言那边为空）。
+4. OAuth client_id / secret / scopes / `http://localhost:<port>/oauth-callback` 来自 CLIProxyAPI constants（就是官方安装应用客户端）。`access_type=offline` + `prompt=consent`。
+5. session 必存 `projectId`；generateContent 缺 project 直接 403，不上游。
+6. refresh 用同一 client_id/secret；刷新后指纹不变。
+7. 不发明 `~/.zcode` 式路径。导入只认官方 CLI `~/.gemini/antigravity-cli/antigravity-oauth-token` 和 CLIProxyAPI `~/.cli-proxy-api/antigravity-*.json`。
+
+### 验证
+
+- `npm test`：loadCodeAssist / onboardUser / generateContent 的 UA 都是 `antigravity/hub/`；metadata 含 `ANTIGRAVITY`；零 `IDE_UNSPECIFIED`、`dsh-plugin`、`DeepSeek`、`CLIProxy`、Node 默认 UA。
+
 ## 2026-08-30：Kiro 对话不是 OpenAI
 
 ### 现象

@@ -46,6 +46,8 @@ window.__ModuleLoader__.load({
         grokTitle: 'xAI Grok',
         glmTitle: '智谱 GLM',
         kiroTitle: 'AWS Kiro',
+        antigravityTitle: 'Antigravity',
+        antigravityPastePlaceholder: 'http://localhost:51121/oauth-callback?code=…&state=…',
         login: '登录',
         addAccount: '添加账号',
         glmLoginZai: '连接 Z.ai 继续使用',
@@ -173,6 +175,8 @@ window.__ModuleLoader__.load({
         grokTitle: 'xAI Grok',
         glmTitle: 'Zhipu GLM',
         kiroTitle: 'AWS Kiro',
+        antigravityTitle: 'Antigravity',
+        antigravityPastePlaceholder: 'http://localhost:51121/oauth-callback?code=…&state=…',
         login: 'Sign in',
         addAccount: 'Add account',
         glmLoginZai: 'Continue with Z.ai',
@@ -791,12 +795,13 @@ window.__ModuleLoader__.load({
     }
 
     // LobeHub mono SVG paths from @lobehub/icons-static-svg@1.94.0
-    // https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/{codex,grok,zai,kiro,github}.svg
+    // https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/{codex,grok,zai,kiro,antigravity,github}.svg
     const TAB_ICONS = {
       codex: { d: 'M8.086.457a6.105 6.105 0 013.046-.415c1.333.153 2.521.72 3.564 1.7a.117.117 0 00.107.029c1.408-.346 2.762-.224 4.061.366l.063.03.154.076c1.357.703 2.33 1.77 2.918 3.198.278.679.418 1.388.421 2.126a5.655 5.655 0 01-.18 1.631.167.167 0 00.04.155 5.982 5.982 0 011.578 2.891c.385 1.901-.01 3.615-1.183 5.14l-.182.22a6.063 6.063 0 01-2.934 1.851.162.162 0 00-.108.102c-.255.736-.511 1.364-.987 1.992-1.199 1.582-2.962 2.462-4.948 2.451-1.583-.008-2.986-.587-4.21-1.736a.145.145 0 00-.14-.032c-.518.167-1.04.191-1.604.185a5.924 5.924 0 01-2.595-.622 6.058 6.058 0 01-2.146-1.781c-.203-.269-.404-.522-.551-.821a7.74 7.74 0 01-.495-1.283 6.11 6.11 0 01-.017-3.064.166.166 0 00.008-.074.115.115 0 00-.037-.064 5.958 5.958 0 01-1.38-2.202 5.196 5.196 0 01-.333-1.589 6.915 6.915 0 01.188-2.132c.45-1.484 1.309-2.648 2.577-3.493.282-.188.55-.334.802-.438.286-.12.573-.22.861-.304a.129.129 0 00.087-.087A6.016 6.016 0 015.635 2.31C6.315 1.464 7.132.846 8.086.457zm-.804 7.85a.848.848 0 00-1.473.842l1.694 2.965-1.688 2.848a.849.849 0 001.46.864l1.94-3.272a.849.849 0 00.007-.854l-1.94-3.393zm5.446 6.24a.849.849 0 000 1.695h4.848a.849.849 0 000-1.696h-4.848z', clip: true },
       grok: { d: 'M9.27 15.29l7.978-5.897c.391-.29.95-.177 1.137.272.98 2.369.542 5.215-1.41 7.169-1.951 1.954-4.667 2.382-7.149 1.406l-2.711 1.257c3.889 2.661 8.611 2.003 11.562-.953 2.341-2.344 3.066-5.539 2.388-8.42l.006.007c-.983-4.232.242-5.924 2.75-9.383.06-.082.12-.164.179-.248l-3.301 3.305v-.01L9.267 15.292M7.623 16.723c-2.792-2.67-2.31-6.801.071-9.184 1.761-1.763 4.647-2.483 7.166-1.425l2.705-1.25a7.808 7.808 0 00-1.829-1A8.975 8.975 0 005.984 5.83c-2.533 2.536-3.33 6.436-1.962 9.764 1.022 2.487-.653 4.246-2.34 6.022-.599.63-1.199 1.259-1.682 1.925l7.62-6.815' },
       zai: { d: 'M12.105 2L9.927 4.953H.653L2.83 2h9.276zM23.254 19.048L21.078 22h-9.242l2.174-2.952h9.244zM24 2L9.264 22H0L14.736 2H24z' },
       kiro: { d: 'M4.594 6.677C6.67-2.226 18.746-2.211 21.16 6.632c.353 1.297 1.725 7.582-1.673 13.747-1.545 2.797-5.841 5.49-6.99 1.883C8.6 25.477 3.315 24.1 5.789 18.609l-.318.143c-3.57 1.305-3.863-1.208-3.173-2.513.45-.84.727-1.335.937-1.897.353-.975.458-1.568.593-2.498.27-1.837.277-3.607.765-5.167zm8.37.01a.92.92 0 00-.81.428c-.217.323-.33.825-.33 1.462 0 .705.15 1.89 1.14 1.89h.008c.757 0 1.214-.705 1.214-1.89 0-.622-.127-1.125-.367-1.455a1.014 1.014 0 00-.855-.435zm4.08 0a.92.92 0 00-.81.428c-.217.323-.33.825-.33 1.462 0 .705.15 1.89 1.14 1.89h.008c.757 0 1.215-.705 1.215-1.89 0-.622-.128-1.125-.368-1.455a1.014 1.014 0 00-.855-.435z' },
+      antigravity: { d: 'M21.751 22.607c1.34 1.005 3.35.335 1.508-1.508C17.73 15.74 18.904 1 12.037 1 5.17 1 6.342 15.74.815 21.1c-2.01 2.009.167 2.511 1.507 1.506 5.192-3.517 4.857-9.714 9.715-9.714 4.857 0 4.522 6.197 9.714 9.715z', clip: true },
       github: { d: 'M12 0c6.63 0 12 5.276 12 11.79-.001 5.067-3.29 9.567-8.175 11.187-.6.118-.825-.25-.825-.56 0-.398.015-1.665.015-3.242 0-1.105-.375-1.813-.81-2.181 2.67-.295 5.475-1.297 5.475-5.822 0-1.297-.465-2.344-1.23-3.169.12-.295.54-1.503-.12-3.125 0 0-1.005-.324-3.3 1.209a11.32 11.32 0 00-3-.398c-1.02 0-2.04.133-3 .398-2.295-1.518-3.3-1.209-3.3-1.209-.66 1.622-.24 2.83-.12 3.125-.765.825-1.23 1.887-1.23 3.169 0 4.51 2.79 5.527 5.46 5.822-.345.294-.66.81-.765 1.577-.69.31-2.415.81-3.495-.973-.225-.354-.9-1.223-1.845-1.209-1.005.015-.405.56.015.781.51.28 1.095 1.327 1.23 1.666.24.663 1.02 1.93 4.035 1.385 0 .988.015 1.916.015 2.196 0 .31-.225.664-.825.56C3.303 21.374-.003 16.867 0 11.791 0 5.276 5.37 0 12 0z' },
       models: { d: 'M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z' },
     }
@@ -1390,7 +1395,7 @@ window.__ModuleLoader__.load({
             h(Button, { type: 'submit', variant: 'primary', label: t.kiroRefreshGo }),
           ),
         ),
-        busy && pending?.mode === 'pkce' && h('form', {
+        busy && (pending?.mode === 'pkce' || pending?.mode === 'oauth') && h('form', {
           onSubmit: (event) => {
             event.preventDefault()
             onManual(id, paste)
@@ -1401,7 +1406,7 @@ window.__ModuleLoader__.load({
             className: 'osubs-input',
             value: paste,
             onChange: (event) => setPaste(event.target.value),
-            placeholder: t.pastePlaceholder,
+            placeholder: id === 'antigravity' ? t.antigravityPastePlaceholder : t.pastePlaceholder,
             'aria-label': t.paste,
           }),
           h(Button, { type: 'submit', variant: 'primary', label: t.submitPaste }),
@@ -1620,6 +1625,7 @@ window.__ModuleLoader__.load({
             h(Tab, { id: 'grok', label: t.grokTitle, current: tab, onSelect: setTab, icon: 'grok' }),
             h(Tab, { id: 'glm', label: t.glmTitle, current: tab, onSelect: setTab, icon: 'zai' }),
             h(Tab, { id: 'kiro', label: t.kiroTitle, current: tab, onSelect: setTab, icon: 'kiro' }),
+            h(Tab, { id: 'antigravity', label: t.antigravityTitle, current: tab, onSelect: setTab, icon: 'antigravity' }),
             h(Tab, { id: 'models', label: t.modelsTitle, current: tab, onSelect: setTab, icon: 'models' }),
             h(Tab, { id: 'about', label: t.aboutTitle, current: tab, onSelect: setTab, icon: 'github' }),
           ),
@@ -1630,6 +1636,7 @@ window.__ModuleLoader__.load({
           tab === 'grok' && card('grok', t.grokTitle),
           tab === 'glm' && card('glm', t.glmTitle),
           tab === 'kiro' && card('kiro', t.kiroTitle),
+          tab === 'antigravity' && card('antigravity', t.antigravityTitle),
           tab === 'models' && h(ModelPicker, {
             t,
             catalog: snap?.catalog,

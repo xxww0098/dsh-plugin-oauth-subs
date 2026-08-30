@@ -57,6 +57,20 @@ export declare function glmKeyFromZcodeConfig(raw: any): {
     region: any;
 };
 export declare function glmAuthSearchPaths(): string[];
+export declare function antigravityAuthSearchPaths(): string[];
+export declare function importAntigravityAuth({ paths, fetchFn }?: {
+    fetchFn?: typeof fetch;
+}): Promise<{
+    session: {
+        planType?: any;
+        accessToken: any;
+        refreshToken: any;
+        expiresAt: number;
+        account: string;
+        projectId: any;
+    };
+    source: any;
+}>;
 export declare function importGlmAuth(paths?: string[]): Promise<{
     session: {
         zcodeJwt?: any;

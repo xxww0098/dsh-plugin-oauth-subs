@@ -3,9 +3,9 @@
  *
  * A Cordis plugin (export apply + inject + Config) that:
  *   1. runs a loopback OpenAI Responses proxy on 127.0.0.1:<port>
- *   2. drives ChatGPT Codex PKCE, xAI Grok device-code / PKCE, and
- *      Zhipu GLM Z.ai / BigModel CLI-poll, and AWS Kiro (Social / Builder ID /
- *      IdC / Entra / API key) logins
+ *   2. drives ChatGPT Codex PKCE, xAI Grok device-code / PKCE,
+ *      Zhipu GLM Z.ai / BigModel CLI-poll, AWS Kiro (Social / Builder ID /
+ *      IdC / Entra / API key), and Google Antigravity logins
  *   3. syncs logged-in catalogs into llm-pi-ai
  *
  * The client half (Settings > OAuth 订阅) is discovered from package.json
@@ -31,6 +31,7 @@ export { CODEX_CLIENT_ID, CODEX_AUTHORIZE_URL, CODEX_TOKEN_URL, CODEX_API_URL, C
 export { GROK_CLIENT_ID, GROK_DISCOVERY_URL, GROK_API_URL, GROK_USER_AGENT, GROK_LARGE_CONTEXT, GROK_REASONING_45, GROK_REASONING_46, grokCredentialHeaders, } from './oauth/grok/index.js';
 export { GLM_CLIENT_ID, GLM_CODING_URL, GLM_AUTHORIZE_URL, glmUpstreamHeaders, } from './oauth/glm/index.js';
 export { KIRO_PORTAL_URL, KIRO_MODELS, kiroUsageHeaders, kiroSession, } from './oauth/kiro/index.js';
+export { ANTIGRAVITY_CLIENT_ID, ANTIGRAVITY_API_URL, ANTIGRAVITY_STREAM_URL, antigravityRequestUserAgent, antigravityChatHeaders, } from './oauth/antigravity/index.js';
 export { OAUTH_CREDENTIAL_REF, ModelSwitch } from './oauth/models.js';
 export { defaultDataDir } from './oauth/store.js';
 export { AuthController } from './oauth/controller.js';

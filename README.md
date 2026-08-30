@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml/badge.svg)](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml)
 
-Use a **ChatGPT / Codex**, **xAI Grok**, **Zhipu GLM**, or **AWS Kiro** subscription inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). Official OAuth, plus Kiro API keys.
+Use a **ChatGPT / Codex**, **xAI Grok**, **Zhipu GLM**, **AWS Kiro**, or **Google Antigravity** subscription inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). Official OAuth, plus Kiro API keys.
 
 A loopback Responses proxy plus `llm-pi-ai` route sync.
 
@@ -15,7 +15,7 @@ dsh plugin --profile web add https://github.com/xxww0098/dsh-plugin-oauth-subs
 dsh web
 ```
 
-Open **Settings → OAuth subs**. Icon tabs stay pinned at the top: Codex, Grok, **Z.ai (GLM)**, **Kiro**, Models, About. Sign in more than once per family; **one card per account, each with its own quota**. Click a card to switch the chat account. **GLM** matches ZCode's welcome screen: **Z.ai (global)** and **BigModel (China)** OAuth, plus paste-an-API-key. **Kiro** stacks Social / GitHub / Google, Builder ID, Enterprise IdC, Entra / Azure AD, and `ksk_` keys. **About** links the GitHub repo. Check for updates compares GitHub latest and, when newer, runs `dsh plugin --profile web update dsh-plugin-oauth-subs`. Restart `dsh web` to load the new module. Or mount the bundle patch by hand:
+Open **Settings → OAuth subs**. Icon tabs stay pinned at the top: Codex, Grok, **Z.ai (GLM)**, **Kiro**, **Antigravity**, Models, About. Sign in more than once per family; **one card per account, each with its own quota**. Click a card to switch the chat account. **GLM** matches ZCode's welcome screen: **Z.ai (global)** and **BigModel (China)** OAuth, plus paste-an-API-key. **Kiro** stacks Social / GitHub / Google, Builder ID, Enterprise IdC, Entra / Azure AD, and `ksk_` keys. **Antigravity** is Google login like the official IDE. **About** links the GitHub repo. Check for updates compares GitHub latest and, when newer, runs `dsh plugin --profile web update dsh-plugin-oauth-subs`. Restart `dsh web` to load the new module. Or mount the bundle patch by hand:
 
 ```yaml
 - insert:
@@ -40,8 +40,9 @@ pnpm dsh web --patch ./cordis.patch.yml
 | AWS Kiro · Enterprise / IdC | Same device code against the org Start URL | issued at login | `https://oidc.{region}.amazonaws.com` |
 | AWS Kiro · Entra / Azure AD | Paste refresh token; public-client `refresh_token` grant | your Entra client id | `*.microsoftonline.com` token endpoint |
 | AWS Kiro · API key | Paste `ksk_…` | — | Bearer, no refresh |
+| Google Antigravity | Google OAuth on `localhost:51121/oauth-callback`; paste-callback supported | `1071006060591-…apps.googleusercontent.com` | `cloudcode-pa.googleapis.com/v1internal:streamGenerateContent` |
 
-Already signed in on this machine via Codex CLI, Grok CLI, Hermes, ZCode Desktop, Kiro IDE, or kiro.rs? Use **Import local session**:
+Already signed in on this machine via Codex CLI, Grok CLI, Hermes, ZCode Desktop, Kiro IDE, kiro.rs, Antigravity CLI, or CLIProxyAPI? Use **Import local session**:
 
 - `~/.codex/auth.json`
 - `~/.grok/auth.json`
@@ -50,6 +51,8 @@ Already signed in on this machine via Codex CLI, Grok CLI, Hermes, ZCode Desktop
 - `credentials.json` (kiro.rs CWD dump)
 - `~/.kiro/credentials.json`
 - `~/.aws/sso/cache/kiro-auth-token.json`
+- `~/.gemini/antigravity-cli/antigravity-oauth-token`
+- `~/.cli-proxy-api/antigravity-*.json`
 
 Tokens live at `<profile>/data/dsh-plugin-oauth-subs/auth.json` with mode `0600`. Multiple accounts per family sit in that file as a vault; a legacy single-session file still loads. Enabled-model choices live in `models.json` next to it.
 
@@ -62,6 +65,7 @@ Settings (control plane)
 DeepSeek Harness (call plane)
   └─ llm-pi-ai
        └─ http://127.0.0.1:8318/{codex,grok}/v1/responses
+       └─ http://127.0.0.1:8318/{glm,antigravity}/v1/chat/completions
             └─ refreshed subscription bearer against upstream
 ```
 
@@ -73,7 +77,9 @@ Stack, module tree, and the `docs/error.md` rule are in [AGENTS.md](AGENTS.md). 
 src/
   oauth/codex/     Codex catalog, identity, Responses body
   oauth/grok/      Grok catalog, identity, device-code
+  oauth/kiro/      Kiro Social / Builder ID / IdC / Entra / API key
   oauth/           proxy, PKCE, quota, models
+  oauth/antigravity/ Google OAuth + cloudcode-pa fingerprint
   ui/              React Settings (classic-script factory)
   utils/           jwt, pkce, fast/context, session analyzer
 ```
@@ -159,6 +165,7 @@ After sign-in, each account card shows official remaining quota.
 | ChatGPT Codex reset | `…/wham/rate-limit-reset-credits` + `/consume` | Banked weekly-window reset credits and expiry; one confirm button per credit on the Codex card |
 | xAI Grok | `cli-chat-proxy.grok.com/v1/billing?format=credits` plus `/v1/user?include=subscription` | Plan badge (SuperGrok / X Premium+ …) plus period usage, prepaid balance, product split |
 | Zhipu GLM | `api.z.ai` or `open.bigmodel.cn` `monitor/usage/quota/limit` | Plan badge (Lite / Pro / Max) plus Coding Plan credit windows; host follows the active account |
+| Google Antigravity | none (no public quota API) | Card still renders; quota block stays idle |
 
 Quota refreshes about once a minute, or immediately from **Refresh quota**. A failed read does not block chat.
 
@@ -173,7 +180,7 @@ ChatGPT / Codex Plus and Pro may bank extra weekly-window resets. When the accou
 | Option | Default | Notes |
 |---|---|---|
 | `port` | `8318` | Loopback proxy port |
-| `provider` | `oauth` | llm-pi-ai route prefix (`oauth-codex` / `oauth-grok` / `oauth-glm`) |
+| `provider` | `oauth` | llm-pi-ai route prefix (`oauth-codex` / `oauth-grok` / `oauth-glm` / `oauth-antigravity`) |
 | `dataDir` | profile data dir | `auth.json`, `models.json`, and `proxy-key` |
 | `grokLogin` | `device` | `device` or `pkce` |
 
