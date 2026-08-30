@@ -5,6 +5,8 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import {
   OAUTH_CREDENTIAL_REF,
+  HARNESS_COMPLETIONS_API,
+  HARNESS_RESPONSES_API,
   ModelSwitch,
   buildProviders,
   catalogKeys,
@@ -13,14 +15,50 @@ import {
   filterProviders,
   modelKey,
   ownedProviderIds,
+  peekPiAiProviders,
   syncHarnessModels,
 } from '../lib/oauth/models.js'
+import { KIRO_MODELS } from '../lib/oauth/kiro/index.js'
+
+const DSH_APIS = new Set(['openai-completions', 'openai-responses', 'anthropic-messages'])
+
+function createPiAiSettings(initialProviders = {}) {
+  const section = { providers: structuredClone(initialProviders) }
+  const ops = []
+  return {
+    ops,
+    section,
+    get(name) {
+      if (name !== 'llm-pi-ai') return undefined
+      return structuredClone(section)
+    },
+    async mutate(target, mutations) {
+      if (target !== 'llm-pi-ai') throw new Error(`unknown settings namespace ${target}`)
+      const next = { providers: { ...section.providers } }
+      for (const row of mutations) {
+        const key = row.path?.[1]
+        if (row.path?.[0] !== 'providers' || typeof key !== 'string') throw new Error('bad path')
+        if (row.op === 'unset') {
+          delete next.providers[key]
+        } else if (row.op === 'set') {
+          if (!DSH_APIS.has(row.value?.api)) {
+            throw new Error(`llm-pi-ai: provider "${key}" api must be openai-completions | openai-responses | anthropic-messages`)
+          }
+          next.providers[key] = structuredClone(row.value)
+        }
+      }
+      section.providers = next.providers
+      ops.push({ target, mutations })
+    },
+  }
+}
 
 const GLM_CURRENT = ['oauth-glm/glm-5.3', 'oauth-glm/glm-5.3-flash', 'oauth-glm/glm-5-turbo']
 const GLM_STALE = ['oauth-glm/glm-4.7', 'oauth-glm/glm-5', 'oauth-glm/glm-5.1', 'oauth-glm/glm-5.2']
 
-test('buildProviders only emits logged-in families with openai-responses', () => {
+test('buildProviders only emits logged-in families with DSH api ids', () => {
   const both = buildProviders({ prefix: 'oauth', origin: 'http://127.0.0.1:8318', loggedIn: { codex: true, grok: true } })
+  assert.equal(both['oauth-codex'].api, HARNESS_RESPONSES_API)
   assert.equal(both['oauth-codex'].api, 'openai-responses')
   assert.equal(both['oauth-codex'].apiKeyEnv, OAUTH_CREDENTIAL_REF)
   assert.equal(both['oauth-codex'].baseURL, 'http://127.0.0.1:8318/codex/v1')
@@ -56,6 +94,15 @@ test('buildProviders only emits logged-in families with openai-responses', () =>
   assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-5.6-sol-ultra'), undefined)
   const none = buildProviders({ prefix: 'oauth', origin: 'http://127.0.0.1:8318', loggedIn: { codex: false, grok: false } })
   assert.deepEqual(Object.keys(none), [])
+  const chat = buildProviders({
+    prefix: 'oauth',
+    origin: 'http://127.0.0.1:8318',
+    loggedIn: { glm: true, kiro: true, antigravity: true },
+  })
+  assert.equal(chat['oauth-glm'].api, HARNESS_COMPLETIONS_API)
+  assert.equal(chat['oauth-kiro'].api, HARNESS_COMPLETIONS_API)
+  assert.equal(chat['oauth-antigravity'].api, HARNESS_COMPLETIONS_API)
+  assert.equal(chat['oauth-codex'], undefined)
 })
 
 test('syncHarnessModels unsets owned routes then sets the live catalog', async () => {
@@ -247,4 +294,90 @@ test('Antigravity catalog is cloudcode-pa Claude / Gemini / GPT-OSS', () => {
   assert.equal(rows.some((model) => model.id === 'gpt-oss-120b-medium'), true)
   assert.deepEqual(rows.find((model) => model.id === 'gpt-oss-120b-medium').input, ['text'])
   assert.equal(catalog['oauth-antigravity'].compat.supportsReasoningEffort, true)
+})
+
+test('logged-in GLM 3/3 persist writes oauth-glm and a subsequent get shows it', async () => {
+  const settings = createPiAiSettings({ 'oauth-codex': { api: 'openai-responses', models: [{ id: 'gpt-5.5' }] } })
+  const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://127.0.0.1:8318' })
+  const selected = catalogKeys(catalog).filter((key) => key.startsWith('oauth-glm/'))
+  assert.deepEqual(selected, GLM_CURRENT)
+  const result = await syncHarnessModels({
+    settings,
+    prefix: 'oauth',
+    origin: 'http://127.0.0.1:8318',
+    loggedIn: { glm: true },
+    selected,
+  })
+  const set = settings.ops[0].mutations.filter((row) => row.op === 'set')
+  const glm = set.find((row) => row.path[1] === 'oauth-glm')
+  assert.equal(glm.value.api, HARNESS_COMPLETIONS_API)
+  assert.equal(glm.value.baseURL, 'http://127.0.0.1:8318/glm/v1')
+  assert.equal(glm.value.compat.thinkingFormat, 'openai')
+  assert.deepEqual(glm.value.models.map((model) => model.id), ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
+  assert.deepEqual(result.routes.find((row) => row.provider === 'oauth-glm').models, ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
+  const stored = await peekPiAiProviders(settings)
+  assert.equal(stored['oauth-glm'].api, 'openai-completions')
+  assert.deepEqual(stored['oauth-glm'].models.map((model) => model.id), ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
+  assert.equal(stored['oauth-codex'], undefined)
+})
+
+test('logged-in Antigravity with leftover disabled keys still sets the enabled model', async () => {
+  const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://127.0.0.1:8318' })
+  const agKeys = catalogKeys(catalog).filter((key) => key.startsWith('oauth-antigravity/'))
+  const keep = 'oauth-antigravity/gemini-3.7-flash-high'
+  const settings = createPiAiSettings()
+  const result = await syncHarnessModels({
+    settings,
+    prefix: 'oauth',
+    origin: 'http://127.0.0.1:8318',
+    loggedIn: { antigravity: true },
+    selected: [keep],
+  })
+  assert.equal(agKeys.length, 13)
+  const stored = await peekPiAiProviders(settings)
+  assert.equal(stored['oauth-antigravity'].api, HARNESS_COMPLETIONS_API)
+  assert.deepEqual(stored['oauth-antigravity'].models.map((model) => model.id), ['gemini-3.7-flash-high'])
+  assert.deepEqual(result.routes.find((row) => row.provider === 'oauth-antigravity').models, ['gemini-3.7-flash-high'])
+})
+
+test('logged-in Kiro persist writes oauth-kiro with the kiro.dev catalog', async () => {
+  const settings = createPiAiSettings()
+  const result = await syncHarnessModels({
+    settings,
+    prefix: 'oauth',
+    origin: 'http://127.0.0.1:8318',
+    loggedIn: { kiro: true },
+  })
+  const stored = await peekPiAiProviders(settings)
+  assert.equal(stored['oauth-kiro'].api, HARNESS_COMPLETIONS_API)
+  assert.deepEqual(stored['oauth-kiro'].models.map((model) => model.id), KIRO_MODELS.map((model) => model.id))
+  assert.deepEqual(result.routes.find((row) => row.provider === 'oauth-kiro').models, KIRO_MODELS.map((model) => model.id))
+})
+
+test('syncHarnessModels rejects a silent drop after mutate', async () => {
+  const settings = {
+    async mutate() {},
+    get() {
+      return { providers: {} }
+    },
+  }
+  await assert.rejects(
+    syncHarnessModels({
+      settings,
+      prefix: 'oauth',
+      origin: 'http://127.0.0.1:8318',
+      loggedIn: { glm: true },
+    }),
+    /did not persist providers\.oauth-glm/,
+  )
+})
+
+test('bare api openai is refused by the DSH union and leaves the store unchanged', async () => {
+  const settings = createPiAiSettings({ 'oauth-codex': { api: 'openai-responses', models: [{ id: 'gpt-5.5' }] } })
+  await assert.rejects(settings.mutate('llm-pi-ai', [
+    { op: 'unset', path: ['providers', 'oauth-codex'] },
+    { op: 'set', path: ['providers', 'oauth-glm'], value: { api: 'openai', models: [{ id: 'glm-5.3' }] } },
+  ]), /openai-completions/)
+  assert.equal(settings.section.providers['oauth-codex'].api, 'openai-responses')
+  assert.equal(settings.section.providers['oauth-glm'], undefined)
 })

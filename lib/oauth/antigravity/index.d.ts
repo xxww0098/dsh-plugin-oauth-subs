@@ -30,6 +30,18 @@ export declare const ANTIGRAVITY_MODELS_URL: string;
 export declare const ANTIGRAVITY_ONBOARD_USER_URL: string;
 export declare const ANTIGRAVITY_GENERATE_URL: string;
 export declare const ANTIGRAVITY_STREAM_URL: string;
+/** SkillStar `antigravity_quota_groups` — label + model ids, first match wins per bar. */
+export declare const ANTIGRAVITY_QUOTA_GROUPS: readonly ({
+    label: string;
+    identifiers: readonly string[];
+    labelFromModel?: undefined;
+} | {
+    label: string;
+    identifiers: readonly string[];
+    labelFromModel: boolean;
+})[];
+/** Daily hub first, then IDE prod — same order as chat / loadCodeAssist. */
+export declare function antigravityFetchModelsUrls(): string[];
 /** Daily first, then IDE prod. onboardUser stays daily-only. */
 export declare function antigravityCloudCodeFallbacks(url: any): string[];
 /** POST a hub Cloud Code RPC: daily, then IDE prod on transport / 5xx. */
@@ -118,6 +130,19 @@ export declare function antigravityRequestUserAgent(): string;
 export declare function antigravityOnboardUserUserAgent(): string;
 export declare function antigravityLoadCodeAssistMetadata(): {
     ideType: string;
+};
+/** SkillStar loadCodeAssist body: metadata.ideType plus optional project / duetProject. */
+export declare function antigravityLoadCodeAssistBody(projectId: any): {
+    metadata: {
+        ideType: string;
+    };
+    cloudaicompanionProject?: undefined;
+} | {
+    metadata: {
+        duetProject: string;
+        ideType: string;
+    };
+    cloudaicompanionProject: string;
 };
 export declare function antigravityControlPlaneMetadata(): {
     ide_type: string;

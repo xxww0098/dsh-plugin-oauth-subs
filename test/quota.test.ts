@@ -7,6 +7,8 @@ import {
   consumeResetBody,
   creditBagAmounts,
   isAvailableResetCredit,
+  parseAntigravityModelQuota,
+  parseAntigravityPaidCredits,
   parseCodexUsage,
   parseGrokBilling,
   parseResetCredits,
@@ -15,6 +17,15 @@ import { CODEX_RESET_CONSUME_URL, CODEX_RESET_CREDITS_URL, CODEX_USAGE_URL } fro
 import { GROK_BILLING_URL, GROK_CREDITS_URL } from '../lib/oauth/grok/index.js'
 import { GLM_QUOTA_URL, GLM_TOOL_USAGE_URL, GLM_USER_AGENT } from '../lib/oauth/glm/index.js'
 import { GROK_WEB_EMPTY_FRAME, decodeGrokCreditsFrame } from '../lib/oauth/grok/credits-frame.js'
+import {
+  ANTIGRAVITY_DAILY_API_URL,
+  ANTIGRAVITY_LOAD_CODE_ASSIST_URL,
+  ANTIGRAVITY_PROD_API_URL,
+  antigravityFetchModelsUrls,
+  antigravityLoadCodeAssistBody,
+  antigravityRequestUserAgent,
+  antigravitySession,
+} from '../lib/oauth/antigravity/index.js'
 
 test('asNumber reads val wrappers', () => {
   assert.equal(asNumber(12), 12)
@@ -516,4 +527,169 @@ test('QuotaStore uses grok.com credits when CLI billing omits the weekly percent
   const credits = seen.find((row) => row.url === GROK_CREDITS_URL)
   assert.equal(credits.method, 'POST')
   assert.deepEqual(Buffer.from(credits.body), GROK_WEB_EMPTY_FRAME)
+})
+
+const SKILLSTAR_ANTIGRAVITY_MODELS = {
+  models: {
+    'claude-sonnet-4-6': {
+      displayName: 'Claude Sonnet 4.6',
+      quotaInfo: { remainingFraction: 0.25 },
+    },
+    'gemini-3.1-pro-high': {
+      quotaInfo: { remainingFraction: '75%' },
+    },
+    'gemini-2.5-flash': {
+      quota_info: { remaining_fraction: 1.0 },
+    },
+    'gemini-3.1-flash-image': {
+      displayName: 'Gemini 3.1 Flash Image',
+      quotaInfo: { remainingFraction: 0.5 },
+    },
+  },
+}
+
+test('parseAntigravityModelQuota groups SkillStar remainingFraction 0.25 / 75% / 1.0', () => {
+  const parsed = parseAntigravityModelQuota(SKILLSTAR_ANTIGRAVITY_MODELS)
+  assert.equal(parsed.rows.length, 4)
+  assert.equal(parsed.rows[0].kind, 'product')
+  assert.equal(parsed.rows[0].product, 'Claude/GPT')
+  assert.equal(parsed.rows[0].remainingPercent, 25)
+  assert.equal(parsed.rows[0].usedPercent, 75)
+  assert.equal(parsed.rows[1].product, 'Gemini 3.1 Pro Series')
+  assert.equal(parsed.rows[1].remainingPercent, 75)
+  assert.equal(parsed.rows[1].usedPercent, 25)
+  assert.equal(parsed.rows[2].product, 'Gemini 2.5 Flash')
+  assert.equal(parsed.rows[2].remainingPercent, 100)
+  assert.equal(parsed.rows[2].usedPercent, 0)
+  assert.equal(parsed.rows[3].product, 'Gemini 3.1 Flash Image')
+  assert.equal(parsed.rows[3].remainingPercent, 50)
+  assert.equal(parsed.rows[3].usedPercent, 50)
+})
+
+test('parseAntigravityModelQuota uses resetTime as remaining 0 and min of group', () => {
+  const parsed = parseAntigravityModelQuota({
+    models: {
+      'claude-sonnet-4-6': { quotaInfo: { remainingFraction: 0.4 } },
+      'claude-opus-4-6-thinking': { quotaInfo: { resetTime: '2099-01-01T00:00:00Z' } },
+    },
+  })
+  assert.equal(parsed.rows.length, 1)
+  assert.equal(parsed.rows[0].product, 'Claude/GPT')
+  assert.equal(parsed.rows[0].remainingPercent, 0)
+  assert.equal(parsed.rows[0].usedPercent, 100)
+})
+
+test('parseAntigravityPaidCredits reads paidTier.availableCredits', () => {
+  const rows = parseAntigravityPaidCredits({
+    paidTier: {
+      availableCredits: [
+        { creditType: 'PROMO', creditAmount: '12.5' },
+        { credit_type: 'empty' },
+      ],
+    },
+  })
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].kind, 'prepaid')
+  assert.equal(rows[0].remaining, 12.5)
+})
+
+test('QuotaStore fetches Antigravity model groups from daily hub, not IDE prod', async () => {
+  const later = Date.now() + 60 * 60_000
+  const session = antigravitySession({
+    accessToken: 'ag-tok',
+    refreshToken: 'ag-rt',
+    expiresAt: later,
+    account: 'a@x',
+    projectId: 'proj-1',
+    planType: 'STANDARD TIER',
+  })
+  const seen = []
+  const fetchFn = async (url, init) => {
+    seen.push({
+      url: String(url),
+      method: init?.method,
+      headers: init?.headers,
+      body: init?.body,
+    })
+    if (String(url) === ANTIGRAVITY_LOAD_CODE_ASSIST_URL) {
+      return new Response(JSON.stringify({
+        currentTier: { id: 'STANDARD TIER' },
+        cloudaicompanionProject: 'proj-1',
+      }), { status: 200 })
+    }
+    if (String(url) === antigravityFetchModelsUrls()[0]) {
+      return new Response(JSON.stringify(SKILLSTAR_ANTIGRAVITY_MODELS), { status: 200 })
+    }
+    throw new Error(`unexpected ${url}`)
+  }
+  const store = new QuotaStore({
+    fetchFn,
+    tokens: { antigravity: { session: async () => session } },
+  })
+  const quota = await store.refresh('antigravity')
+  assert.equal(quota.status, 'ready')
+  assert.notEqual(quota.status, 'idle')
+  assert.equal(quota.planType, 'STANDARD TIER')
+  assert.equal(quota.rows.length, 4)
+  assert.equal(quota.rows[0].product, 'Claude/GPT')
+  assert.equal(quota.rows[0].remainingPercent, 25)
+  assert.equal(seen[0].url, ANTIGRAVITY_LOAD_CODE_ASSIST_URL)
+  assert.equal(seen[0].url.startsWith(ANTIGRAVITY_DAILY_API_URL), true)
+  assert.deepEqual(JSON.parse(seen[0].body), antigravityLoadCodeAssistBody('proj-1'))
+  assert.equal(seen[0].headers['user-agent'], antigravityRequestUserAgent())
+  assert.equal(seen[1].url, antigravityFetchModelsUrls()[0])
+  assert.equal(seen[1].url.startsWith(ANTIGRAVITY_DAILY_API_URL), true)
+  assert.deepEqual(JSON.parse(seen[1].body), { project: 'proj-1' })
+  assert.equal(seen[1].headers['user-agent'], antigravityRequestUserAgent())
+  assert.equal(seen.some((row) => row.url.startsWith(ANTIGRAVITY_PROD_API_URL)), false)
+  assert.equal(JSON.stringify(seen).includes('dsh-plugin'), false)
+})
+
+test('QuotaStore Antigravity load 400 with cached project retries without project', async () => {
+  const later = Date.now() + 60 * 60_000
+  const session = antigravitySession({
+    accessToken: 'ag-tok', refreshToken: 'ag-rt', expiresAt: later, account: 'a@x', projectId: 'stale-proj',
+  })
+  const loads = []
+  const fetchFn = async (url, init) => {
+    if (String(url) === ANTIGRAVITY_LOAD_CODE_ASSIST_URL) {
+      const body = JSON.parse(init.body)
+      loads.push(body)
+      if (body.cloudaicompanionProject) {
+        return new Response('Bad Request', { status: 400 })
+      }
+      return new Response(JSON.stringify({ cloudaicompanionProject: 'fresh-proj' }), { status: 200 })
+    }
+    if (String(url) === antigravityFetchModelsUrls()[0]) {
+      assert.deepEqual(JSON.parse(init.body), { project: 'fresh-proj' })
+      return new Response(JSON.stringify(SKILLSTAR_ANTIGRAVITY_MODELS), { status: 200 })
+    }
+    throw new Error(`unexpected ${url}`)
+  }
+  const store = new QuotaStore({
+    fetchFn,
+    tokens: { antigravity: { session: async () => session } },
+  })
+  const quota = await store.refresh('antigravity')
+  assert.equal(quota.status, 'ready')
+  assert.equal(loads.length, 2)
+  assert.equal(loads[0].cloudaicompanionProject, 'stale-proj')
+  assert.equal(loads[1].cloudaicompanionProject, undefined)
+  assert.equal(quota.rows[0].remainingPercent, 25)
+})
+
+test('QuotaStore Antigravity fetch failure is error, not idle empty', async () => {
+  const later = Date.now() + 60 * 60_000
+  const session = antigravitySession({
+    accessToken: 'ag-tok', refreshToken: 'ag-rt', expiresAt: later, account: 'a@x', projectId: 'proj-1',
+  })
+  const store = new QuotaStore({
+    fetchFn: async () => new Response('nope', { status: 500 }),
+    tokens: { antigravity: { session: async () => session } },
+  })
+  const quota = await store.refresh('antigravity')
+  assert.equal(quota.status, 'error')
+  assert.notEqual(quota.status, 'idle')
+  assert.equal(quota.rows.length, 0)
+  assert.match(quota.error, /loadCodeAssist|HTTP 500/)
 })

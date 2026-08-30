@@ -18,6 +18,15 @@ import {
 
 export const OAUTH_CREDENTIAL_REF = 'DSH_OAUTH_SUBS_API_KEY'
 
+/**
+ * DSH llm-pi-ai `api` is a closed union (`openai-completions` |
+ * `openai-responses` | `anthropic-messages`). Bare `openai` is refused
+ * and the whole section write is dropped, so Codex/Grok stay and GLM /
+ * Kiro / Antigravity never land in settings.yaml.
+ */
+export const HARNESS_RESPONSES_API = 'openai-responses'
+export const HARNESS_COMPLETIONS_API = 'openai-completions'
+
 export { CODEX_REASONING_EFFORTS }
 
 export function isOptInKey(key) {
@@ -85,7 +94,7 @@ export function buildProviders({ prefix, origin, loggedIn }) {
   if (loggedIn.codex) {
     providers[`${prefix}-codex`] = {
       displayName: 'OAuth · ChatGPT Codex',
-      api: 'openai-responses',
+      api: HARNESS_RESPONSES_API,
       apiKeyEnv: OAUTH_CREDENTIAL_REF,
       baseURL: `${origin}/codex/v1`,
       models: withPickerVariants(CODEX_MODELS).map(toHarnessModel),
@@ -94,7 +103,7 @@ export function buildProviders({ prefix, origin, loggedIn }) {
   if (loggedIn.grok) {
     providers[`${prefix}-grok`] = {
       displayName: 'OAuth · Grok',
-      api: 'openai-responses',
+      api: HARNESS_RESPONSES_API,
       apiKeyEnv: OAUTH_CREDENTIAL_REF,
       baseURL: `${origin}/grok/v1`,
       models: withPickerVariants(GROK_MODELS).map(toHarnessModel),
@@ -103,7 +112,7 @@ export function buildProviders({ prefix, origin, loggedIn }) {
   if (loggedIn.glm) {
     providers[`${prefix}-glm`] = {
       displayName: 'OAuth · GLM',
-      api: 'openai',
+      api: HARNESS_COMPLETIONS_API,
       apiKeyEnv: OAUTH_CREDENTIAL_REF,
       baseURL: `${origin}/glm/v1`,
       // Localhost is not api.z.ai, so pi-ai would guess OpenAI and drop
@@ -118,7 +127,7 @@ export function buildProviders({ prefix, origin, loggedIn }) {
   if (loggedIn.kiro) {
     providers[`${prefix}-kiro`] = {
       displayName: 'OAuth · Kiro',
-      api: 'openai',
+      api: HARNESS_COMPLETIONS_API,
       apiKeyEnv: OAUTH_CREDENTIAL_REF,
       baseURL: `${origin}/kiro/v1`,
       models: KIRO_MODELS.map(toHarnessModel),
@@ -127,7 +136,7 @@ export function buildProviders({ prefix, origin, loggedIn }) {
   if (loggedIn.antigravity) {
     providers[`${prefix}-antigravity`] = {
       displayName: 'OAuth · Antigravity',
-      api: 'openai',
+      api: HARNESS_COMPLETIONS_API,
       apiKeyEnv: OAUTH_CREDENTIAL_REF,
       baseURL: `${origin}/antigravity/v1`,
       compat: {
@@ -363,17 +372,48 @@ export function filterProviders(providers, selected) {
   }))
 }
 
+/** `undefined` when the host has no readable settings.get; `{}` when the section is empty. */
+export async function peekPiAiProviders(settings) {
+  if (settings == null || typeof settings.get !== 'function') return undefined
+  try {
+    const raw = await settings.get('llm-pi-ai')
+    if (raw == null || typeof raw !== 'object') return {}
+    const providers = raw.providers
+    if (providers == null || typeof providers !== 'object' || Array.isArray(providers)) return {}
+    return providers
+  } catch {
+    return undefined
+  }
+}
+
+async function assertPersistedProviders(settings, expectedIds) {
+  const providers = await peekPiAiProviders(settings)
+  if (providers === undefined) return
+  for (const id of expectedIds) {
+    const row = providers[id]
+    if (!row || !Array.isArray(row.models) || row.models.length === 0) {
+      throw new Error(`llm-pi-ai did not persist providers.${id}`)
+    }
+  }
+}
+
 export async function syncHarnessModels({ settings, prefix, origin, loggedIn, selected }) {
   const routePrefix = String(prefix ?? '').trim()
   if (!routePrefix) throw new Error('Harness route prefix cannot be empty')
   const providers = filterProviders(buildProviders({ prefix: routePrefix, origin, loggedIn }), selected)
   const owned = ownedProviderIds(routePrefix)
-  await settings.mutate('llm-pi-ai', [
-    ...owned.map((provider) => ({ op: 'unset', path: ['providers', provider] })),
-    ...Object.entries(providers).map(([provider, value]) => ({
-      op: 'set', path: ['providers', provider], value,
-    })),
-  ])
+  try {
+    await settings.mutate('llm-pi-ai', [
+      ...owned.map((provider) => ({ op: 'unset', path: ['providers', provider] })),
+      ...Object.entries(providers).map(([provider, value]) => ({
+        op: 'set', path: ['providers', provider], value,
+      })),
+    ])
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    throw new Error(`llm-pi-ai mutate failed: ${detail}`)
+  }
+  await assertPersistedProviders(settings, Object.keys(providers))
   return {
     routes: Object.entries(providers).map(([provider, value]) => ({
       provider,

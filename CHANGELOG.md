@@ -3,6 +3,8 @@
 ## 0.0.40
 
 - Antigravity mimics **Antigravity.app / hub**, not Antigravity IDE.app. Cloud Code default is `https://daily-cloudcode-pa.googleapis.com` (`loadCodeAssist`, `fetchAvailableModels`, `generateContent`, `streamGenerateContent`). Prod `cloudcode-pa` is an IDE fallback only when daily fails (5xx / transport). Fingerprint version is the installed Antigravity.app short version, or **2.11.0**. UA stays `antigravity/hub/<ver> <os>/<arch>` + `ideType: ANTIGRAVITY`. Chat/loadCodeAssist stay User-Agent only.
+- Antigravity logged-in cards fetch SkillStar model-group quota bars (`loadCodeAssist` + `fetchAvailableModels` remainingFraction) on the same daily hub host. Failed reads show the existing quota-failed hint instead of an empty idle stub. No GLM 150% pill on this family.
+- GLM / Kiro / Antigravity declare DSH `api: openai-completions` (local chat-completions hops). Bare `api: openai` is refused by llm-pi-ai's schema, so picker 全选 never wrote `providers.oauth-glm` / `oauth-antigravity` / `oauth-kiro`. Codex / Grok stay `openai-responses`. Mutate failures surface in the Settings RPC; a post-write `get` asserts the provider key landed.
 
 ## 0.0.39
 

@@ -4,6 +4,14 @@
  */
 import { CODEX_REASONING_EFFORTS } from './codex/index.js';
 export declare const OAUTH_CREDENTIAL_REF = "DSH_OAUTH_SUBS_API_KEY";
+/**
+ * DSH llm-pi-ai `api` is a closed union (`openai-completions` |
+ * `openai-responses` | `anthropic-messages`). Bare `openai` is refused
+ * and the whole section write is dropped, so Codex/Grok stay and GLM /
+ * Kiro / Antigravity never land in settings.yaml.
+ */
+export declare const HARNESS_RESPONSES_API = "openai-responses";
+export declare const HARNESS_COMPLETIONS_API = "openai-completions";
 export { CODEX_REASONING_EFFORTS };
 export declare function isOptInKey(key: any): boolean;
 export declare function modelKey(provider: any, id: any): string;
@@ -82,6 +90,8 @@ export declare class ModelSwitch {
     }>;
 }
 export declare function filterProviders(providers: any, selected: any): any;
+/** `undefined` when the host has no readable settings.get; `{}` when the section is empty. */
+export declare function peekPiAiProviders(settings: any): Promise<any>;
 export declare function syncHarnessModels({ settings, prefix, origin, loggedIn, selected }: {
     settings: any;
     prefix: any;

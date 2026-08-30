@@ -46,6 +46,23 @@ export const ANTIGRAVITY_ONBOARD_USER_URL = cloudCodeUrl(ANTIGRAVITY_DAILY_API_U
 export const ANTIGRAVITY_GENERATE_URL = cloudCodeUrl(ANTIGRAVITY_API_URL, 'generateContent')
 export const ANTIGRAVITY_STREAM_URL = cloudCodeUrl(ANTIGRAVITY_API_URL, 'streamGenerateContent', '?alt=sse')
 
+/** SkillStar `antigravity_quota_groups` — label + model ids, first match wins per bar. */
+export const ANTIGRAVITY_QUOTA_GROUPS = Object.freeze([
+  { label: 'Claude/GPT', identifiers: Object.freeze(['claude-sonnet-4-6', 'claude-opus-4-6-thinking', 'gpt-oss-120b-medium']) },
+  { label: 'Gemini 3.1 Pro Series', identifiers: Object.freeze(['gemini-3.1-pro-high', 'gemini-3.1-pro-low']) },
+  { label: 'Gemini 3 Pro', identifiers: Object.freeze(['gemini-3-pro-high', 'gemini-3-pro-low']) },
+  { label: 'Gemini 2.5 Flash', identifiers: Object.freeze(['gemini-2.5-flash', 'gemini-2.5-flash-thinking']) },
+  { label: 'Gemini 2.5 Flash Lite', identifiers: Object.freeze(['gemini-2.5-flash-lite']) },
+  { label: 'Gemini 2.5 CU', identifiers: Object.freeze(['rev19-uic3-1p']) },
+  { label: 'Gemini 3 Flash', identifiers: Object.freeze(['gemini-3-flash']) },
+  { label: 'gemini-3.1-flash-image', identifiers: Object.freeze(['gemini-3.1-flash-image']), labelFromModel: true },
+])
+
+/** Daily hub first, then IDE prod — same order as chat / loadCodeAssist. */
+export function antigravityFetchModelsUrls() {
+  return antigravityCloudCodeFallbacks(ANTIGRAVITY_MODELS_URL)
+}
+
 /** Daily first, then IDE prod. onboardUser stays daily-only. */
 export function antigravityCloudCodeFallbacks(url) {
   const href = String(url)
@@ -264,6 +281,16 @@ export function antigravityLoadCodeAssistMetadata() {
   return { ideType: 'ANTIGRAVITY' }
 }
 
+/** SkillStar loadCodeAssist body: metadata.ideType plus optional project / duetProject. */
+export function antigravityLoadCodeAssistBody(projectId) {
+  const pid = trimmed(projectId)
+  if (!pid) return { metadata: antigravityLoadCodeAssistMetadata() }
+  return {
+    metadata: { ...antigravityLoadCodeAssistMetadata(), duetProject: pid },
+    cloudaicompanionProject: pid,
+  }
+}
+
 export function antigravityControlPlaneMetadata() {
   return {
     ide_type: 'ANTIGRAVITY',
@@ -338,7 +365,7 @@ function trimmed(value) {
 
 export function extractCloudaicompanionProject(data) {
   if (!data || typeof data !== 'object') return undefined
-  for (const key of ['cloudaicompanionProject', 'projectId', 'project']) {
+  for (const key of ['cloudaicompanionProject', 'cloudaicompanionProjectId', 'projectId', 'project']) {
     const value = data[key]
     if (typeof value === 'string' && value.trim()) return value.trim()
     if (value && typeof value === 'object' && typeof value.id === 'string' && value.id.trim()) {
