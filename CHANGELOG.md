@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.24
+
+- Settings tabs are brand icons (LobeHub `@lobehub/icons`): Codex, Grok, **Z.ai** for 智谱 GLM, a grid for Models, GitHub for About. Hover still shows the name.
+
 ## 0.0.23
 
 - Settings: **one card per account**. Email, plan, switch/logout, and (for the active account) quota plus Codex reset credits live in that box. Family header no longer repeats the plan badge.
