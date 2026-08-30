@@ -61,6 +61,9 @@ src/
     glm/                   Zhipu GLM Coding Plan (Z.ai global + BigModel China)
       index.ts             catalog, CLI poll OAuth, key mint, headers
       cli-flow.ts          ZCode /oauth/cli/init + poll (`zai` / `bigmodel`)
+    antigravity/           Google Antigravity (cloudcode-pa)
+      index.ts             catalog, identity, Google OAuth, fingerprint
+      request.ts           OpenAI chat ↔ generateContent
   ui/                      React Settings (classic-script factory)
     client.ts
   utils/                   shared, provider-agnostic
@@ -78,14 +81,14 @@ scripts/                   CLI (TypeScript)
 
 Rules:
 
-- Codex-only code → `src/oauth/codex/`. Grok-only code → `src/oauth/grok/`. GLM-only code → `src/oauth/glm/`.
+- Codex-only code → `src/oauth/codex/`. Grok-only code → `src/oauth/grok/`. GLM-only code → `src/oauth/glm/`. Antigravity-only code → `src/oauth/antigravity/`.
 - Shared crypto / session scoring → `src/utils/`.
 - Settings React → `src/ui/`.
 - Do not flatten modules back into a single `lib/*.js` bag.
 
 ## Adding a new OAuth family
 
-A family is one top-level tab (Codex / Grok / GLM today) plus its own
+A family is one top-level tab (Codex / Grok / GLM / Antigravity today) plus its own
 `src/oauth/<id>/` module. Do not piggyback a new vendor onto an existing
 tab. Follow this checklist in one PR.
 
@@ -140,7 +143,7 @@ into `TAB_ICONS`.
   the page heading.
 
 ```text
-[ Codex ] [ Grok ] [ Z.ai ] [ New ] [ ▦ ] [ GitHub ]
+[ Codex ] [ Grok ] [ Z.ai ] [ Antigravity ] [ New ] [ ▦ ] [ GitHub ]
 ```
 
 ### Settings — one account, one card

@@ -203,3 +203,13 @@ test('GLM catalog is three models with official input types; Codex stays image-c
   assert.deepEqual(described.models.find((model) => model.id === 'glm-5.3-flash').input, ['text', 'image'])
   assert.deepEqual(described.models.find((model) => model.id === 'glm-5.3').input, ['text'])
 })
+
+test('Antigravity catalog is cloudcode-pa Claude / Gemini / GPT-OSS', () => {
+  const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
+  const rows = catalog['oauth-antigravity'].models
+  assert.equal(rows.some((model) => model.id === 'claude-sonnet-4-6'), true)
+  assert.equal(rows.some((model) => model.id === 'gemini-pro-agent'), true)
+  assert.equal(rows.some((model) => model.id === 'gpt-oss-120b-medium'), true)
+  assert.deepEqual(rows.find((model) => model.id === 'gpt-oss-120b-medium').input, ['text'])
+  assert.equal(catalog['oauth-antigravity'].compat.supportsReasoningEffort, true)
+})

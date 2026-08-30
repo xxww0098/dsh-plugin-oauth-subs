@@ -15,7 +15,7 @@ dsh plugin --profile web add https://github.com/xxww0098/dsh-plugin-oauth-subs
 dsh web
 ```
 
-打开 **设置 → OAuth 订阅**。顶栏五个图标页签：Codex、Grok、**Z.ai（智谱 GLM）**、模型、关于。每个系列可登录多个账号，**每个账号一张卡片，额度各自显示**；点卡片切换当前对话账号。**GLM** 与 ZCode 欢迎页一样，分 **Z.ai（全球）** 和 **BigModel（中国）** 两套 OAuth，也可粘贴 API key。登录后签发 Coding Plan 密钥。**关于** 里有 GitHub 仓库链接。检查更新会对比 GitHub 最新版，有新版本时跑 `dsh plugin --profile web update dsh-plugin-oauth-subs`。重启 `dsh web` 后才会加载新模块。也可以用 `cordis.patch.yml` 手动挂载：
+打开 **设置 → OAuth 订阅**。顶栏六个图标页签：Codex、Grok、**Z.ai（智谱 GLM）**、**Antigravity**、模型、关于。每个系列可登录多个账号，**每个账号一张卡片，额度各自显示**；点卡片切换当前对话账号。**GLM** 与 ZCode 欢迎页一样，分 **Z.ai（全球）** 和 **BigModel（中国）** 两套 OAuth，也可粘贴 API key。**Antigravity** 是和官方 IDE 一样的 Google 登录。**关于** 里有 GitHub 仓库链接。检查更新会对比 GitHub 最新版，有新版本时跑 `dsh plugin --profile web update dsh-plugin-oauth-subs`。重启 `dsh web` 后才会加载新模块。也可以用 `cordis.patch.yml` 手动挂载：
 
 ```yaml
 - insert:
@@ -35,13 +35,16 @@ pnpm dsh web --patch ./cordis.patch.yml
 | xAI Grok | **设备码（默认）**；PKCE 回环 `127.0.0.1:56121` 作备选 | `b1a00492-073a-47ea-816f-4c329264a828` | `api.x.ai/v1/responses` |
 | 智谱 GLM · Z.ai（全球） | ZCode CLI 轮询，`provider: zai`，再换发 `id.secret` | `client_P8X5CMWmlaRO9gyO-KSqtg` | `api.z.ai/api/coding/paas/v4` |
 | 智谱 GLM · BigModel（中国） | 同一 CLI 轮询，`provider: bigmodel`，poll JWT 即密钥 | `zcode` | `open.bigmodel.cn/api/coding/paas/v4` |
+| Google Antigravity | Google OAuth，回环 `localhost:51121/oauth-callback`，可粘贴回调 | `1071006060591-…apps.googleusercontent.com` | `cloudcode-pa.googleapis.com/v1internal:streamGenerateContent` |
 
-已在本机登录过 Codex CLI、Grok CLI、Hermes 或 ZCode Desktop 时，点 **导入本机会话**：
+已在本机登录过 Codex CLI、Grok CLI、Hermes、ZCode Desktop、Antigravity CLI 或 CLIProxyAPI 时，点 **导入本机会话**：
 
 - `~/.codex/auth.json`
 - `~/.grok/auth.json`
 - `~/.hermes/auth.json`
 - `~/.zcode/v2/config.json`（ZCode Desktop；旧路径 `~/.zcode/cli/config.json` / `~/.zcode/config.json` 仍读）
+- `~/.gemini/antigravity-cli/antigravity-oauth-token`
+- `~/.cli-proxy-api/antigravity-*.json`
 
 令牌写在 profile 数据目录 `data/dsh-plugin-oauth-subs/auth.json`，权限 `0600`。每个系列的多个账号存在这个文件的保险库里；旧的单会话文件仍能读。开启/关闭的模型写在同目录的 `models.json`。
 
@@ -54,6 +57,7 @@ pnpm dsh web --patch ./cordis.patch.yml
 DeepSeek Harness（调用面）
   └─ llm-pi-ai
        └─ http://127.0.0.1:8318/{codex,grok}/v1/responses
+       └─ http://127.0.0.1:8318/{glm,antigravity}/v1/chat/completions
             └─ 使用刷新后的订阅令牌访问上游
 ```
 
@@ -66,6 +70,7 @@ src/
   oauth/codex/     Codex 目录、身份、Responses 请求体
   oauth/grok/      Grok 目录、身份、设备码
   oauth/           代理、PKCE、额度、模型
+  oauth/antigravity/ Google OAuth + cloudcode-pa 指纹
   ui/              React 设置页（classic-script factory）
   utils/           jwt、pkce、fast/context、会话分析器
 ```
@@ -151,6 +156,7 @@ GLM-5.3 与 GLM-5.3-Flash 的思考深度为 **low / high / max**（默认 **max
 | ChatGPT Codex 重置 | `…/wham/rate-limit-reset-credits` 与 `/consume` | 银行的周窗口重置券和过期时间；Codex 卡片上按券各一颗确认按钮 |
 | xAI Grok | `cli-chat-proxy.grok.com/v1/billing?format=credits`，并读 `/v1/user?include=subscription` | 套餐等级（SuperGrok / X Premium+ …）+ 本周期用量、预付余额、产品分项 |
 | 智谱 GLM | `api.z.ai` 或 `open.bigmodel.cn` 的 `monitor/usage/quota/limit` | 套餐徽章（Lite / Pro / Max）+ Coding Plan 积分窗口；站点随当前账号 |
+| Google Antigravity | 无公开额度接口 | 卡片照常渲染，额度块保持空闲 |
 
 额度约每分钟刷新一次，也可点卡片上的 **刷新额度**。读失败不影响对话。
 
@@ -165,7 +171,7 @@ ChatGPT / Codex Plus、Pro 可能有银行的周窗口重置券。还有剩余�
 | 选项 | 默认 | 说明 |
 |---|---|---|
 | `port` | `8318` | 本机代理端口 |
-| `provider` | `oauth` | 同步到 DSH 的路由 ID 前缀（`oauth-codex` / `oauth-grok` / `oauth-glm`） |
+| `provider` | `oauth` | 同步到 DSH 的路由 ID 前缀（`oauth-codex` / `oauth-grok` / `oauth-glm` / `oauth-antigravity`） |
 | `dataDir` | profile 数据目录 | `auth.json`、`models.json` 与 `proxy-key` 位置 |
 | `grokLogin` | `device` | `device` 或 `pkce` |
 

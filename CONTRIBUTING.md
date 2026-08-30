@@ -27,6 +27,7 @@ A healthy long session should stay above **80%** weighted cache hit with **zero 
 | `src/oauth/proxy.ts` | Loopback Responses proxy, cache-affinity headers, stream commit gate |
 | `src/oauth/codex/` | Codex catalog, identity, Responses body (prefix stabilize) |
 | `src/oauth/grok/` | Grok catalog, identity, device-code flow |
+| `src/oauth/antigravity/` | Antigravity catalog, Google OAuth, cloudcode-pa fingerprint |
 | `src/ui/client.ts` | Settings UI (React classic-script, compiled to `lib/ui/client.js`) |
 | `src/utils/analyze-session.ts` | Session.jsonl scoring |
 | `docs/error.md` | Recurring faults and the acceptance that closed them |

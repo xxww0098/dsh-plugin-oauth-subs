@@ -6,6 +6,7 @@
 import { CODEX_MODELS, CODEX_REASONING_EFFORTS } from './codex/index.js'
 import { GROK_MODELS } from './grok/index.js'
 import { GLM_MODELS } from './glm/index.js'
+import { ANTIGRAVITY_MODELS } from './antigravity/index.js'
 import { modelSupportsFastMode } from '../utils/fast-mode.js'
 import { readPrivateText, writePrivateText } from './store.js'
 import {
@@ -26,8 +27,10 @@ export function modelKey(provider, id) {
   return `${provider}/${id}`
 }
 
+export const FAMILY_IDS = Object.freeze(['codex', 'grok', 'glm', 'antigravity'])
+
 export function ownedProviderIds(prefix) {
-  return [`${prefix}-codex`, `${prefix}-grok`, `${prefix}-glm`]
+  return FAMILY_IDS.map((id) => `${prefix}-${id}`)
 }
 
 function harnessInput(model) {
@@ -111,6 +114,19 @@ export function buildProviders({ prefix, origin, loggedIn }) {
       models: GLM_MODELS.map(toHarnessModel),
     }
   }
+  if (loggedIn.antigravity) {
+    providers[`${prefix}-antigravity`] = {
+      displayName: 'OAuth · Antigravity',
+      api: 'openai',
+      apiKeyEnv: OAUTH_CREDENTIAL_REF,
+      baseURL: `${origin}/antigravity/v1`,
+      compat: {
+        supportsReasoningEffort: true,
+        thinkingFormat: 'openai',
+      },
+      models: ANTIGRAVITY_MODELS.map(toHarnessModel),
+    }
+  }
   return providers
 }
 
@@ -123,7 +139,7 @@ export function describeProviders(providers) {
 }
 
 export function catalogProviders({ prefix, origin }) {
-  return buildProviders({ prefix, origin, loggedIn: { codex: true, grok: true, glm: true } })
+  return buildProviders({ prefix, origin, loggedIn: { codex: true, grok: true, glm: true, antigravity: true } })
 }
 
 export function catalogKeys(providers) {
@@ -136,6 +152,7 @@ export function familyOfProvider(provider) {
   if (String(provider).endsWith('-codex')) return 'codex'
   if (String(provider).endsWith('-grok')) return 'grok'
   if (String(provider).endsWith('-glm')) return 'glm'
+  if (String(provider).endsWith('-antigravity')) return 'antigravity'
   return String(provider)
 }
 
@@ -264,7 +281,7 @@ export class ModelSwitch {
   }
 
   async setFamily(family, on, catalog) {
-    if (family !== 'codex' && family !== 'grok' && family !== 'glm') throw new Error('family must be codex, grok, or glm')
+    if (!FAMILY_IDS.includes(family)) throw new Error('family must be codex, grok, glm, or antigravity')
     for (const key of catalogKeys(catalog)) {
       const provider = key.slice(0, key.indexOf('/'))
       if (familyOfProvider(provider) !== family) continue

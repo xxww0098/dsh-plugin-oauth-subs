@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.34
+
+- Settings adds an **Antigravity** family tab (before Models): Google OAuth loopback, multiple accounts, import from the official CLI token file or CLIProxyAPI `antigravity-*.json`. Chat goes through the local OpenAI hop to `cloudcode-pa` `generateContent` / `streamGenerateContent`. Catalog is the live cloudcode-pa list (Claude / Gemini / GPT-OSS), not Vertex-direct names.
+- One official Antigravity IDE fingerprint for login, loadCodeAssist, onboardUser, refresh, and every chat request. String `ideType: ANTIGRAVITY` (not `IDE_UNSPECIFIED`). Empty `project_id` is rejected before generateContent.
+
 ## 0.0.33
 
 - Drop Grok Fast. Grok 4.6 accepted `service_tier: "priority"` on the wire but a 2026-08-30 interleaved run showed no speed gain (ratio 0.994). No `grok-*-fast` picker row, no Priority field on xAI. A stale `grok-4.6-fast` id is peeled to `grok-4.6`.

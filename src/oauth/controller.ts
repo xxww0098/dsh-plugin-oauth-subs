@@ -27,7 +27,14 @@ import {
   normalizeGlmRegion,
   refreshGlm,
 } from './glm/index.js'
-import { importCodexAuth, importGrokAuth, importGlmAuth } from './import-auth.js'
+import {
+  antigravityFlow,
+  ANTIGRAVITY_PREEMPT_MS,
+  exchangeAntigravityCode,
+  isAntigravityPermanentRefreshError,
+  refreshAntigravity,
+} from './antigravity/index.js'
+import { importAntigravityAuth, importCodexAuth, importGrokAuth, importGlmAuth } from './import-auth.js'
 import {
   buildProviders,
   catalogProviders,
@@ -89,6 +96,16 @@ export class AuthController {
         isPermanent: isGlmPermanentRefreshError,
         onRemoved: () => this.onAuthChanged?.('glm'),
       }),
+      antigravity: new TokenManager({
+        displayName: 'Antigravity',
+        preemptMs: ANTIGRAVITY_PREEMPT_MS,
+        load: () => getSession('antigravity', this.authPath),
+        save: (session) => saveSession('antigravity', session, this.authPath),
+        remove: () => deleteSession('antigravity', this.authPath),
+        refresh: (session) => refreshAntigravity(session, fetchFn),
+        isPermanent: isAntigravityPermanentRefreshError,
+        onRemoved: () => this.onAuthChanged?.('antigravity'),
+      }),
     }
     this.quota = new QuotaStore({ tokens: this.tokens, fetchFn, ttlMs: quotaTtlMs })
     this.fetchFn = fetchFn
@@ -105,6 +122,7 @@ export class AuthController {
       codex: (await getSession('codex', this.authPath)) !== undefined,
       grok: (await getSession('grok', this.authPath)) !== undefined,
       glm: (await getSession('glm', this.authPath)) !== undefined,
+      antigravity: (await getSession('antigravity', this.authPath)) !== undefined,
     }
   }
 
@@ -143,11 +161,14 @@ export class AuthController {
     else this.quota.clear('grok')
     if (loggedIn.glm) await this.#ensureAccountQuota('glm')
     else this.quota.clear('glm')
+    if (loggedIn.antigravity) await this.#ensureAccountQuota('antigravity')
+    else this.quota.clear('antigravity')
     const enabledKeys = this.models.enabledKeys(catalog)
-    const [codexAccounts, grokAccounts, glmAccounts] = await Promise.all([
+    const [codexAccounts, grokAccounts, glmAccounts, antigravityAccounts] = await Promise.all([
       this.#accountsWithQuota('codex'),
       this.#accountsWithQuota('grok'),
       this.#accountsWithQuota('glm'),
+      this.#accountsWithQuota('antigravity'),
     ])
     return {
       origin,
@@ -159,13 +180,14 @@ export class AuthController {
         codex: { ...(await this.status('codex')), activeId: codexAccounts.find((row) => row.active)?.id, accounts: codexAccounts },
         grok: { ...(await this.status('grok')), activeId: grokAccounts.find((row) => row.active)?.id, accounts: grokAccounts },
         glm: { ...(await this.status('glm')), activeId: glmAccounts.find((row) => row.active)?.id, accounts: glmAccounts },
+        antigravity: { ...(await this.status('antigravity')), activeId: antigravityAccounts.find((row) => row.active)?.id, accounts: antigravityAccounts },
       },
       update: localUpdateInfo(),
     }
   }
 
   async refreshQuota(provider, accountId) {
-    if (provider === 'codex' || provider === 'grok' || provider === 'glm') {
+    if (provider === 'codex' || provider === 'grok' || provider === 'glm' || provider === 'antigravity') {
       const rows = await this.#liveAccounts(provider)
       const targets = accountId
         ? rows.filter((row) => row.id === accountId)
@@ -177,12 +199,13 @@ export class AuthController {
       const active = rows.find((row) => row.active)
       return this.quota.peek(provider, active?.id)
     }
-    const [codex, grok, glm] = await Promise.all([
+    const [codex, grok, glm, antigravity] = await Promise.all([
       this.refreshQuota('codex'),
       this.refreshQuota('grok'),
       this.refreshQuota('glm'),
+      this.refreshQuota('antigravity'),
     ])
-    return { codex, grok, glm }
+    return { codex, grok, glm, antigravity }
   }
 
   async consumeReset(provider, accountId) {
@@ -275,6 +298,12 @@ export class AuthController {
       void this.completeGlm(attempt)
       return { authorizeUrl: attempt.authorizeUrl, mode: 'cli', region }
     }
+    if (provider === 'antigravity') {
+      const attempt = await this.flows.start('antigravity', antigravityFlow)
+      const claim = this.claim('antigravity')
+      void this.completePkce('antigravity', attempt, claim)
+      return { authorizeUrl: attempt.authorizeUrl, redirectUri: attempt.redirectUri, mode: 'oauth' }
+    }
     if (provider === 'codex') {
       const attempt = await this.flows.start('codex', codexFlow)
       const claim = this.claim('codex')
@@ -305,7 +334,9 @@ export class AuthController {
       const code = await attempt.waitCode()
       const session = provider === 'codex'
         ? await exchangeCodexCode(code, attempt.pkce.verifier, attempt.redirectUri)
-        : await exchangeGrokCode(code, attempt.pkce.verifier, attempt.redirectUri, attempt.pkce.challenge)
+        : provider === 'antigravity'
+          ? await exchangeAntigravityCode(code, attempt.redirectUri, { fetchFn: this.fetchFn })
+          : await exchangeGrokCode(code, attempt.pkce.verifier, attempt.redirectUri, attempt.pkce.challenge)
       if (this.claims.get(provider) !== claim) return
       await saveSession(provider, session, this.authPath)
       this.lastError.delete(provider)
@@ -406,7 +437,9 @@ export class AuthController {
       ? await importCodexAuth()
       : provider === 'glm'
         ? await importGlmAuth()
-        : await importGrokAuth()
+        : provider === 'antigravity'
+          ? await importAntigravityAuth({ fetchFn: this.fetchFn })
+          : await importGrokAuth()
     this.claim(provider)
     this.flows.pending(provider)?.cancel()
     this.devices.pending(provider)?.cancel()
@@ -425,7 +458,7 @@ export class AuthController {
       await this.models.setEnabled(payload.selected, catalog)
     } else if (typeof payload.key === 'string') {
       await this.models.toggle(payload.key, payload.on !== false, catalog)
-    } else if (payload.family === 'codex' || payload.family === 'grok' || payload.family === 'glm') {
+    } else if (payload.family === 'codex' || payload.family === 'grok' || payload.family === 'glm' || payload.family === 'antigravity') {
       await this.models.setFamily(payload.family, payload.on !== false, catalog)
     } else if (typeof payload.all === 'boolean') {
       await this.models.setAll(payload.all, catalog)

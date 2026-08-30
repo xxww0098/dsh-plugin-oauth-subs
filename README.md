@@ -15,7 +15,7 @@ dsh plugin --profile web add https://github.com/xxww0098/dsh-plugin-oauth-subs
 dsh web
 ```
 
-Open **Settings → OAuth subs**. Five icon tabs: Codex, Grok, **Z.ai (GLM)**, Models, About. Sign in more than once per family; **one card per account, each with its own quota**. Click a card to switch the chat account. **GLM** matches ZCode's welcome screen: **Z.ai (global)** and **BigModel (China)** OAuth, plus paste-an-API-key. **About** links the GitHub repo. Check for updates compares GitHub latest and, when newer, runs `dsh plugin --profile web update dsh-plugin-oauth-subs`. Restart `dsh web` to load the new module. Or mount the bundle patch by hand:
+Open **Settings → OAuth subs**. Six icon tabs: Codex, Grok, **Z.ai (GLM)**, **Antigravity**, Models, About. Sign in more than once per family; **one card per account, each with its own quota**. Click a card to switch the chat account. **GLM** matches ZCode's welcome screen: **Z.ai (global)** and **BigModel (China)** OAuth, plus paste-an-API-key. **Antigravity** is Google login like the official IDE. **About** links the GitHub repo. Check for updates compares GitHub latest and, when newer, runs `dsh plugin --profile web update dsh-plugin-oauth-subs`. Restart `dsh web` to load the new module. Or mount the bundle patch by hand:
 
 ```yaml
 - insert:
@@ -35,13 +35,16 @@ pnpm dsh web --patch ./cordis.patch.yml
 | xAI Grok | **Device-code (default)**; PKCE on `127.0.0.1:56121` as fallback | `b1a00492-073a-47ea-816f-4c329264a828` | `api.x.ai/v1/responses` |
 | Zhipu GLM · Z.ai (global) | ZCode CLI poll, `provider: zai`, then mint `id.secret` | `client_P8X5CMWmlaRO9gyO-KSqtg` | `api.z.ai/api/coding/paas/v4` |
 | Zhipu GLM · BigModel (China) | Same CLI poll, `provider: bigmodel`; poll JWT is the bearer | `zcode` | `open.bigmodel.cn/api/coding/paas/v4` |
+| Google Antigravity | Google OAuth on `localhost:51121/oauth-callback`; paste-callback supported | `1071006060591-…apps.googleusercontent.com` | `cloudcode-pa.googleapis.com/v1internal:streamGenerateContent` |
 
-Already signed in on this machine via Codex CLI, Grok CLI, Hermes, or ZCode Desktop? Use **Import local session**:
+Already signed in on this machine via Codex CLI, Grok CLI, Hermes, ZCode Desktop, Antigravity CLI, or CLIProxyAPI? Use **Import local session**:
 
 - `~/.codex/auth.json`
 - `~/.grok/auth.json`
 - `~/.hermes/auth.json`
 - `~/.zcode/v2/config.json` (ZCode Desktop; also older `~/.zcode/cli/config.json` / `~/.zcode/config.json`)
+- `~/.gemini/antigravity-cli/antigravity-oauth-token`
+- `~/.cli-proxy-api/antigravity-*.json`
 
 Tokens live at `<profile>/data/dsh-plugin-oauth-subs/auth.json` with mode `0600`. Multiple accounts per family sit in that file as a vault; a legacy single-session file still loads. Enabled-model choices live in `models.json` next to it.
 
@@ -54,6 +57,7 @@ Settings (control plane)
 DeepSeek Harness (call plane)
   └─ llm-pi-ai
        └─ http://127.0.0.1:8318/{codex,grok}/v1/responses
+       └─ http://127.0.0.1:8318/{glm,antigravity}/v1/chat/completions
             └─ refreshed subscription bearer against upstream
 ```
 
@@ -66,6 +70,7 @@ src/
   oauth/codex/     Codex catalog, identity, Responses body
   oauth/grok/      Grok catalog, identity, device-code
   oauth/           proxy, PKCE, quota, models
+  oauth/antigravity/ Google OAuth + cloudcode-pa fingerprint
   ui/              React Settings (classic-script factory)
   utils/           jwt, pkce, fast/context, session analyzer
 ```
@@ -151,6 +156,7 @@ After sign-in, each account card shows official remaining quota.
 | ChatGPT Codex reset | `…/wham/rate-limit-reset-credits` + `/consume` | Banked weekly-window reset credits and expiry; one confirm button per credit on the Codex card |
 | xAI Grok | `cli-chat-proxy.grok.com/v1/billing?format=credits` plus `/v1/user?include=subscription` | Plan badge (SuperGrok / X Premium+ …) plus period usage, prepaid balance, product split |
 | Zhipu GLM | `api.z.ai` or `open.bigmodel.cn` `monitor/usage/quota/limit` | Plan badge (Lite / Pro / Max) plus Coding Plan credit windows; host follows the active account |
+| Google Antigravity | none (no public quota API) | Card still renders; quota block stays idle |
 
 Quota refreshes about once a minute, or immediately from **Refresh quota**. A failed read does not block chat.
 
@@ -165,7 +171,7 @@ ChatGPT / Codex Plus and Pro may bank extra weekly-window resets. When the accou
 | Option | Default | Notes |
 |---|---|---|
 | `port` | `8318` | Loopback proxy port |
-| `provider` | `oauth` | llm-pi-ai route prefix (`oauth-codex` / `oauth-grok` / `oauth-glm`) |
+| `provider` | `oauth` | llm-pi-ai route prefix (`oauth-codex` / `oauth-grok` / `oauth-glm` / `oauth-antigravity`) |
 | `dataDir` | profile data dir | `auth.json`, `models.json`, and `proxy-key` |
 | `grokLogin` | `device` | `device` or `pkce` |
 

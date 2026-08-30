@@ -3,8 +3,8 @@
  *
  * A Cordis plugin (export apply + inject + Config) that:
  *   1. runs a loopback OpenAI Responses proxy on 127.0.0.1:<port>
- *   2. drives ChatGPT Codex PKCE, xAI Grok device-code / PKCE, and
- *      Zhipu GLM Z.ai / BigModel CLI-poll logins
+ *   2. drives ChatGPT Codex PKCE, xAI Grok device-code / PKCE,
+ *      Zhipu GLM Z.ai / BigModel CLI-poll, and Google Antigravity logins
  *   3. syncs logged-in catalogs into llm-pi-ai
  *
  * The client half (Settings > OAuth 订阅) is discovered from package.json
@@ -199,6 +199,13 @@ export {
   GLM_AUTHORIZE_URL,
   glmUpstreamHeaders,
 } from './oauth/glm/index.js'
+export {
+  ANTIGRAVITY_CLIENT_ID,
+  ANTIGRAVITY_API_URL,
+  ANTIGRAVITY_STREAM_URL,
+  antigravityRequestUserAgent,
+  antigravityChatHeaders,
+} from './oauth/antigravity/index.js'
 export { OAUTH_CREDENTIAL_REF, ModelSwitch } from './oauth/models.js'
 export { defaultDataDir } from './oauth/store.js'
 export { AuthController } from './oauth/controller.js'
