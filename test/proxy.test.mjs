@@ -551,3 +551,118 @@ test('codexCacheSessionId sanitizes and clips instead of dropping the key', () =
   assert.equal(codexCacheSessionId(''), undefined)
   assert.equal(codexCacheSessionId(null), undefined)
 })
+
+async function captureCodex(run) {
+  const seen = []
+  const fetchFn = async (_url, init) => {
+    seen.push({ headers: init.headers, body: JSON.parse(init.body.toString()) })
+    return new Response('{"id":"resp"}', { status: 200, headers: { 'content-type': 'application/json' } })
+  }
+  const proxy = createProxy({
+    port: 0,
+    apiKey: 'secret-key',
+    fetchFn,
+    tokens: {
+      codex: { session: async () => ({ accessToken: 'codex-tok', accountId: 'acct' }) },
+      grok: { session: async () => ({ accessToken: 'grok-tok' }) },
+    },
+  })
+  const server = await proxy.listen()
+  const { port } = server.address()
+  const headers = { authorization: 'Bearer secret-key', 'content-type': 'application/json' }
+  try {
+    await run({ port, headers, seen })
+  } finally {
+    await proxy.close()
+  }
+}
+
+test('proxy falls back to session_id and writes the clipped cache key back into the body', async () => {
+  await captureCodex(async ({ port, headers, seen }) => {
+    await fetch(`http://127.0.0.1:${port}/codex/v1/responses`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ model: 'gpt-5.6-terra', session_id: 'sess-from-dsh' }),
+    })
+    assert.equal(seen[0].headers['session-id'], 'sess-from-dsh')
+    assert.equal(seen[0].headers['x-client-request-id'], 'sess-from-dsh')
+    assert.equal(seen[0].body.prompt_cache_key, 'sess-from-dsh')
+
+    await fetch(`http://127.0.0.1:${port}/codex/v1/responses`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: 'gpt-5.6-terra',
+        prompt_cache_key: '   ',
+        session_id: 'sess-from-dsh',
+      }),
+    })
+    assert.equal(seen[1].headers['session-id'], 'sess-from-dsh')
+    assert.equal(seen[1].body.prompt_cache_key, 'sess-from-dsh')
+
+    const long = `session-${'a'.repeat(80)}`
+    await fetch(`http://127.0.0.1:${port}/codex/v1/responses`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ model: 'gpt-5.6-terra', prompt_cache_key: long }),
+    })
+    assert.equal(seen[2].headers['session-id'].length, 64)
+    assert.equal(seen[2].body.prompt_cache_key.length, 64)
+    assert.equal(seen[2].body.prompt_cache_key, seen[2].headers['session-id'])
+    assert.equal(seen[2].body.prompt_cache_key, long.replace(/[^A-Za-z0-9._:-]/g, '-').slice(0, 64))
+  })
+})
+
+test('proxy drops an unusable Codex cache key rather than forwarding it', async () => {
+  await captureCodex(async ({ port, headers, seen }) => {
+    await fetch(`http://127.0.0.1:${port}/codex/v1/responses`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ model: 'gpt-5.6-terra', prompt_cache_key: '   ' }),
+    })
+    assert.equal(seen[0].headers['session-id'], undefined)
+    assert.equal(seen[0].headers['x-client-request-id'], undefined)
+    assert.equal(seen[0].body.prompt_cache_key, undefined)
+  })
+})
+
+test('proxy parks extra leading developer and strips prompt_cache_retention on the way through', async () => {
+  await captureCodex(async ({ port, headers, seen }) => {
+    await fetch(`http://127.0.0.1:${port}/codex/v1/responses`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: 'gpt-5.6-terra',
+        instructions: 'You are DSH.',
+        prompt_cache_key: 'session-cache-1',
+        prompt_cache_retention: '24h',
+        input: [
+          { role: 'developer', content: 'You are DSH.\n\nPlan: toggle all skills.' },
+          { role: 'user', content: [{ type: 'input_text', text: 'hi' }] },
+          { role: 'assistant', content: [{ type: 'output_text', text: 'ok' }] },
+        ],
+      }),
+    })
+    assert.equal(seen[0].body.instructions, 'You are DSH.')
+    assert.equal(seen[0].body.prompt_cache_retention, undefined)
+    assert.equal(seen[0].body.prompt_cache_key, 'session-cache-1')
+    assert.equal(seen[0].body.input[0].role, 'user')
+    assert.equal(seen[0].body.input[1].role, 'assistant')
+    assert.equal(seen[0].body.input[2].role, 'developer')
+    assert.deepEqual(seen[0].body.input[2].content, [{ type: 'input_text', text: 'Plan: toggle all skills.' }])
+    assert.equal(seen[0].headers['session-id'], 'session-cache-1')
+  })
+})
+
+test('Grok does not inherit Codex cache-affinity headers from session_id', async () => {
+  await captureCodex(async ({ port, headers, seen }) => {
+    await fetch(`http://127.0.0.1:${port}/grok/v1/responses`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ model: 'grok-4.6', session_id: 'sess-from-dsh', prompt_cache_key: 'k1' }),
+    })
+    assert.equal(seen[0].headers['session-id'], undefined)
+    assert.equal(seen[0].headers['x-client-request-id'], undefined)
+    assert.equal(seen[0].body.prompt_cache_key, 'k1')
+  })
+})

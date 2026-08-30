@@ -23,6 +23,7 @@ A healthy long session should stay above **80%** weighted cache hit with **zero 
 | Path | Owns |
 | --- | --- |
 | `lib/proxy.js` | Loopback Responses proxy, cache-affinity headers, stream commit gate |
+| `lib/codex-request.js` | Codex body shaping: lift instructions, stabilize input prefix, strip gpt-5.6-rejected fields |
 | `lib/codex.js` / `lib/grok.js` | Catalog, identity headers, OAuth endpoints |
 | `lib/client.js` | Settings UI (classic script, `__ModuleLoader__`) |
 | `lib/analyze-session.js` | Session.jsonl scoring |

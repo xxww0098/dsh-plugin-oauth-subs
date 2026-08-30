@@ -52,6 +52,23 @@ x-client-request-id: <prompt_cache_key>
 - 健康规则改为：加权命中 ≥80%，**亲和丢失为 0**，且无 TRANSPORT。压缩 / 适配器重建造成的零缓存不再判失败。
 - 诊断：`node scripts/analyze-session.mjs path/to/session.jsonl`。
 
+### 前缀稳定（0.0.15，分析之后落地的优化）
+
+亲和头修好之后，插件还能动的是 **input 前缀**，不是再分类一次压缩。
+
+Codex 按 `instructions` 再 `input` 的最长前缀匹配缓存。DSH / llm-pi-ai 会把 system 既放在 `instructions` 又放在 `input[0]` developer。退出 plan 或 `request/header reason=change` 时，多出来的 developer（plan dump、header 重建）如果留在 `input` 开头，会把已经缓存的对话前缀顶掉——step 55 的 168,767 未缓存就是这个形状：`plan/mode active:false` 紧挨着 header 重建。
+
+`lib/codex-request.js` 现在：
+
+1. 剥掉与 `instructions` 重复的 leading developer/system。
+2. 把多出来的 leading 文本挪到 `input` **末尾**（对话历史仍从 `input[0]` 开始）。模型还能读到 plan，前缀可以继续命中。
+3. `lib/proxy.js` 在 `prompt_cache_key` 缺失或清洗后为空时回退 `session_id`；裁过的键写回请求体；无法使用的键直接删除，避免 Codex 400。
+4. 转发前删除 `prompt_cache_retention` / `prompt_cache_options`（gpt-5.6，Codex #39397）。
+
+压缩本身（~330k）和 DSH 改写 system（38,775 → 36,433 字符）仍然会冷写前缀，插件不能冻结 DSH 的 system。能保住的是 **instructions 不变时的对话历史**。
+
+验证：`test/codex-request.test.mjs`（剥重、后缀停放、不提升对话中段的 developer）与 `test/proxy.test.mjs`（session_id 回退、body 回写、retention 剥离、Grok 不继承亲和头）。
+
 ## 2026-08-26：并发子代理全线 `stream ended before a terminal response event`
 
 ### 现象
