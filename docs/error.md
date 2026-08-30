@@ -1,5 +1,36 @@
 # 错误记录
 
+## 2026-08-30：智谱 GLM 模型清单错了，缺 Flash，且全部标成图文
+
+### 现象
+
+- 设置 → 模型 → OAuth · GLM 显示 6 条：GLM-5.3、GLM-5.1、GLM-5 Turbo、GLM-5.2、GLM-5、GLM-4.7。
+- 没有 **GLM-5.3-Flash**（Coding Plan 已放量，原生多模态，图文输入）。
+- `toHarnessModel` 把所有系列的 `input` 写死成 `['text', 'image']`。GLM-5.3 / GLM-5-Turbo 官方是纯文本，贴图会打到不认 image_url 的模型上。
+
+### 根因
+
+0.0.16 加 GLM 时按当时 Coding Plan 抄了 5.3/5.2/5.1/5/5-turbo/4.7。Flash 2026-08-26 才上 Coding Plan，目录没跟上。pi-ai 的 `input` 字段决定 Harness 能不能贴图，不能全家共用。
+
+官方输入：
+
+| 模型 | id | 输入 | 窗口 |
+|---|---|---|---|
+| GLM-5.3 | `glm-5.3` | 文本 | 1M / 128K |
+| GLM-5.3-Flash | `glm-5.3-flash` | 视频、图像、文本、文件（pi-ai 只接线 `text`+`image`） | 1M / 128K |
+| GLM-5-Turbo | `glm-5-turbo` | 文本 | 200K / 128K |
+
+### 修复（0.0.20）
+
+`GLM_MODELS` 只留这三行，带各自的 `input`。`toHarnessModel` 读目录而不再写死图文。设置页 GLM 行标 **文本** / **图文**。
+
+### 验证
+
+- catalog ids 正好是 `glm-5.3` / `glm-5.3-flash` / `glm-5-turbo`。
+- Flash `input` 含 `image`；5.3 与 Turbo 只有 `text`。
+- Codex / Grok 默认仍是 `text`+`image`。
+- `npm test` 全绿。
+
 ## 2026-08-30：智谱 GLM 只有一条 OAuth，国内 BigModel 登不进去
 
 ### 现象

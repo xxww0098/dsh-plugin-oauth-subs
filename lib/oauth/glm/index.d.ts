@@ -23,21 +23,32 @@ export declare const GLM_BIZ_BASE = "https://api.z.ai";
 export declare const GLM_CODING_URL = "https://api.z.ai/api/coding/paas/v4/chat/completions";
 export declare const GLM_QUOTA_URL = "https://api.z.ai/api/monitor/usage/quota/limit";
 export declare const GLM_KEY_NAME = "dsh-plugin-oauth-subs";
-export declare const GLM_USER_AGENT = "dsh-plugin-oauth-subs/0.0.19";
+export declare const GLM_USER_AGENT = "dsh-plugin-oauth-subs/0.0.20";
 export declare const GLM_NEVER_EXPIRES = 8640000000000000;
 export declare const GLM_CONTEXT_WINDOW = 128000;
 export declare const GLM_LARGE_CONTEXT = 1000000;
+export declare const GLM_TURBO_CONTEXT = 200000;
+/** Text-only GLM rows. Flash is the one multimodal Coding Plan model. */
+export declare const GLM_TEXT_INPUT: readonly string[];
+export declare const GLM_VISION_INPUT: readonly string[];
 export declare const GLM_REGIONS: readonly string[];
 export declare const GLM_CLI_PROVIDERS: Readonly<{
     zai: "zai";
     bigmodel: "zcode";
 }>;
+/**
+ * Coding Plan catalog shown in Settings. Three rows only:
+ * GLM-5.3 and GLM-5-Turbo are text; GLM-5.3-Flash is the natively
+ * multimodal model (image + text). Official Flash also takes video/file;
+ * llm-pi-ai / pi-ai only wire `text` and `image`.
+ */
 export declare const GLM_MODELS: readonly {
     id: string;
     name: string;
     contextWindow: number;
     maxTokens: number;
     reasoningEfforts: boolean;
+    input: readonly string[];
 }[];
 export declare const GLM_PLAN_NAMES: Readonly<{
     lite: "Lite";

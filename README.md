@@ -123,6 +123,8 @@ Login, token refresh, chat, and quota use one official client identity: Codex pa
 
 Settings → OAuth subs → **Models** lists every Codex, Grok, and GLM catalog id, including `-fast` and `-900k` siblings. Each row is an on/off checkbox. **All on** / **All off** apply per family.
 
+GLM is three Coding Plan models: **GLM-5.3** (text), **GLM-5.3-Flash** (image + text), **GLM-5-Turbo** (text). Flash is the only multimodal row — text-only GLM models do not advertise image input to the Harness picker.
+
 Default is all on except **900K**. Pick a **Fast** sibling (`gpt-5.6-sol-fast`, `grok-4.6-fast`) for Priority Processing. The `-fast` suffix is host-side only — the proxy strips it and sends `service_tier: "priority"`. GPT-5.4 Mini and GPT-5.3 Codex Spark have no Fast sibling.
 
 GPT-5.6 Sol / Terra / Luna accept **872K** and GPT-5.4 accepts **1M**, well past their default window. Pick `gpt-5.6-sol-900k` (and the Terra / Luna / 5.4 twins) to opt in — the `-900k` suffix is a stable host-side id even though the real ceiling is per-model, and the proxy strips it before the upstream request. GPT-5.5, GPT-5.4 Mini and Spark have no large variant.

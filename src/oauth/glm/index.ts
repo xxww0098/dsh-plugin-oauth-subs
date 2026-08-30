@@ -26,10 +26,14 @@ export const GLM_BIZ_BASE = 'https://api.z.ai'
 export const GLM_CODING_URL = 'https://api.z.ai/api/coding/paas/v4/chat/completions'
 export const GLM_QUOTA_URL = 'https://api.z.ai/api/monitor/usage/quota/limit'
 export const GLM_KEY_NAME = 'dsh-plugin-oauth-subs'
-export const GLM_USER_AGENT = 'dsh-plugin-oauth-subs/0.0.19'
+export const GLM_USER_AGENT = 'dsh-plugin-oauth-subs/0.0.20'
 export const GLM_NEVER_EXPIRES = 8.64e15
 export const GLM_CONTEXT_WINDOW = 128_000
 export const GLM_LARGE_CONTEXT = 1_000_000
+export const GLM_TURBO_CONTEXT = 200_000
+/** Text-only GLM rows. Flash is the one multimodal Coding Plan model. */
+export const GLM_TEXT_INPUT = Object.freeze(['text'])
+export const GLM_VISION_INPUT = Object.freeze(['text', 'image'])
 
 export const GLM_REGIONS = Object.freeze(['zai', 'bigmodel'])
 export const GLM_CLI_PROVIDERS = Object.freeze({
@@ -37,13 +41,16 @@ export const GLM_CLI_PROVIDERS = Object.freeze({
   bigmodel: 'zcode',
 })
 
+/**
+ * Coding Plan catalog shown in Settings. Three rows only:
+ * GLM-5.3 and GLM-5-Turbo are text; GLM-5.3-Flash is the natively
+ * multimodal model (image + text). Official Flash also takes video/file;
+ * llm-pi-ai / pi-ai only wire `text` and `image`.
+ */
 export const GLM_MODELS = Object.freeze([
-  { id: 'glm-5.3', name: 'GLM-5.3', contextWindow: GLM_LARGE_CONTEXT, maxTokens: 128_000, reasoningEfforts: false },
-  { id: 'glm-5.2', name: 'GLM-5.2', contextWindow: GLM_LARGE_CONTEXT, maxTokens: 128_000, reasoningEfforts: false },
-  { id: 'glm-5.1', name: 'GLM-5.1', contextWindow: 200_000, maxTokens: 128_000, reasoningEfforts: false },
-  { id: 'glm-5', name: 'GLM-5', contextWindow: 200_000, maxTokens: 128_000, reasoningEfforts: false },
-  { id: 'glm-5-turbo', name: 'GLM-5 Turbo', contextWindow: 128_000, maxTokens: 64_000, reasoningEfforts: false },
-  { id: 'glm-4.7', name: 'GLM-4.7', contextWindow: 200_000, maxTokens: 128_000, reasoningEfforts: false },
+  { id: 'glm-5.3', name: 'GLM-5.3', contextWindow: GLM_LARGE_CONTEXT, maxTokens: 128_000, reasoningEfforts: false, input: GLM_TEXT_INPUT },
+  { id: 'glm-5.3-flash', name: 'GLM-5.3-Flash', contextWindow: GLM_LARGE_CONTEXT, maxTokens: 128_000, reasoningEfforts: false, input: GLM_VISION_INPUT },
+  { id: 'glm-5-turbo', name: 'GLM-5-Turbo', contextWindow: GLM_TURBO_CONTEXT, maxTokens: 128_000, reasoningEfforts: false, input: GLM_TEXT_INPUT },
 ])
 
 export const GLM_PLAN_NAMES = Object.freeze({
