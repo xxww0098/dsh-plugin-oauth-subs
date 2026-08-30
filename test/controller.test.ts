@@ -23,7 +23,7 @@ async function glmController({ dir, models, ops = [] }) {
   const authPath = join(dir, 'auth.json')
   await saveSession('glm', glmSession({
     accessToken: 'glm-token',
-    account: 'zcode',
+    account: 'dev@x',
     region: 'bigmodel',
   }), authPath)
   const controller = new AuthController({
@@ -178,7 +178,8 @@ test('snapshot marks GLM catalog loggedIn for a vault account', async () => {
   const snap = await controller.snapshot()
   const glm = snap.catalog.find((row) => row.family === 'glm')
   assert.equal(snap.accounts.glm.loggedIn, true)
-  assert.equal(snap.accounts.glm.activeId, 'zcode@bigmodel')
+  assert.equal(snap.accounts.glm.activeId, 'dev@x@bigmodel')
+  assert.equal(snap.accounts.glm.account, 'dev@x')
   assert.equal(glm.loggedIn, true)
   assert.equal(glm.models.length, 3)
 })
