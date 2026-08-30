@@ -81,6 +81,7 @@ export declare const GLM_MODELS: readonly ({
     reasoningEfforts: boolean;
     input: readonly string[];
 })[];
+export { GLM_BOOST_HINT, GLM_BOOST_LABEL, glmCardBoost } from './boost.js';
 export declare const GLM_PLAN_NAMES: Readonly<{
     lite: "Lite";
     pro: "Pro";

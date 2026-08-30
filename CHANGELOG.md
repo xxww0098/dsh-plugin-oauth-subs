@@ -4,6 +4,7 @@
 
 - GLM Settings card no longer shows CLI app ids (`zcode` / `zai` / `bigmodel` / `glm`) as the account name. Identity is email (or another human claim) from the poll payload, the poll JWT / access token, or ZCode’s userinfo (`chat.z.ai/api/oauth/userinfo`, BigModel `getCustomerInfo`). Existing `zcode@bigmodel` vaults are rewritten on snapshot when an email is available.
 - GLM quota is three remaining bars like ZCode Coding Plan: **5 小时剩余** / **每周剩余** / **ZCode MCP**. `parseGlmQuota` maps `CREDIT_LIMIT`/`TOKENS_LIMIT` `unit`+`number` (5h / weekly) and `TIME_LIMIT` / tool-usage MCP instead of dumping unknown windows as **本周期**.
+- GLM logged-in account card shows a **150%配额** / **150% quota** pill (ZCode Coding Plan 1.5× boost). Codex / Grok cards do not.
 
 ## 0.0.33
 

@@ -75,6 +75,8 @@ export const GLM_MODELS = Object.freeze([
   { id: 'glm-5-turbo', name: 'GLM-5-Turbo', contextWindow: GLM_TURBO_CONTEXT, maxTokens: 128_000, reasoningEfforts: false, input: GLM_TEXT_INPUT },
 ])
 
+export { GLM_BOOST_HINT, GLM_BOOST_LABEL, glmCardBoost } from './boost.js'
+
 export const GLM_PLAN_NAMES = Object.freeze({
   lite: 'Lite',
   pro: 'Pro',
