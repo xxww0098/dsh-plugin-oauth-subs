@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.32
+
+- AGENTS.md: checklist for a new OAuth family (tab icon, one card per account, design rules).
+
 ## 0.0.31
 
 - Drop the “one card per account” helper line on provider pages.
