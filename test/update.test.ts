@@ -5,6 +5,7 @@ import {
   classifyAsset,
   compareVersions,
   fetchLatest,
+  formatPublishedAt,
   hostPlatform,
   pickDownloads,
   pluginUpdateArgs,
@@ -31,6 +32,14 @@ test('compareVersions orders semver tags', () => {
   assert.equal(compareVersions('v0.0.16', '0.0.15') > 0, true)
   assert.equal(compareVersions('0.0.15', 'v0.0.15'), 0)
   assert.equal(compareVersions('0.0.14', '0.0.15') < 0, true)
+})
+
+test('formatPublishedAt converts GitHub UTC to Asia/Shanghai', () => {
+  assert.equal(formatPublishedAt('2026-08-30T15:37:53Z'), '2026-08-30 23:37:53')
+  assert.equal(formatPublishedAt('2026-08-30T16:00:00.000Z'), '2026-08-31 00:00:00')
+  assert.equal(formatPublishedAt('2026-08-30T00:00:00+08:00'), '2026-08-30 00:00:00')
+  assert.equal(formatPublishedAt(''), undefined)
+  assert.equal(formatPublishedAt(undefined), undefined)
 })
 
 test('pickDownloads ignores a generic zip', () => {
@@ -72,6 +81,7 @@ test('fetchLatest compares installed version against GitHub latest', async () =>
   assert.equal(update.status, 'update')
   assert.equal(update.platform, 'mac')
   assert.equal(update.latest.tag, 'v0.0.15')
+  assert.equal(update.latest.publishedAt, '2026-08-30 20:18:09')
   assert.equal(update.assets.length, 0)
   const ahead = await fetchLatest({ fetchFn, current: '0.0.16', platform: 'linux' })
   assert.equal(ahead.status, 'ahead')

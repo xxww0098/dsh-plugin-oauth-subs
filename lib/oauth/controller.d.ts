@@ -1130,7 +1130,7 @@ export declare class AuthController {
             tag: string;
             name: any;
             url: any;
-            publishedAt: any;
+            publishedAt: string;
         };
         assets: {
             platform: string;
@@ -1155,7 +1155,7 @@ export declare class AuthController {
             tag: string;
             name: any;
             url: any;
-            publishedAt: any;
+            publishedAt: string;
         };
         assets: {
             platform: string;
@@ -1180,7 +1180,7 @@ export declare class AuthController {
             tag: string;
             name: any;
             url: any;
-            publishedAt: any;
+            publishedAt: string;
         };
         assets: {
             platform: string;
