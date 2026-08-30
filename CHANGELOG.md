@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.29
+
+- Model picker checkboxes and All/None stay disabled until that family is signed in.
+
 ## 0.0.28
 
 - Model picker no longer shows 文本 / 图文 input tags.
