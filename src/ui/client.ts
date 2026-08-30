@@ -137,7 +137,6 @@ window.__ModuleLoader__.load({
         platformWin: 'Windows',
         platformMac: 'macOS',
         platformLinux: 'Linux',
-        thisOs: '本机',
         published: '发布于 {n}',
         releasePage: '打开发布页',
       },
@@ -238,7 +237,6 @@ window.__ModuleLoader__.load({
         platformWin: 'Windows',
         platformMac: 'macOS',
         platformLinux: 'Linux',
-        thisOs: 'This machine',
         published: 'Published {n}',
         releasePage: 'Open release',
       },
@@ -457,11 +455,17 @@ window.__ModuleLoader__.load({
 .osubs-tab--on { background: var(--osubs-fill-2); }
 .osubs-tab:focus-visible { outline: 2px solid var(--osubs-ring); outline-offset: 1px; }
 .osubs-tab-icon { width: 18px; height: 18px; display: block; flex: none; }
-.osubs-about { display: flex; flex-direction: column; gap: 12px; }
-.osubs-kv { display: grid; gap: 8px; }
+.osubs-about { display: flex; flex-direction: column; gap: 12px; font-size: 13px; line-height: 1.45; }
+.osubs-about .osubs-link,
+.osubs-about .osubs-hint,
+.osubs-about .osubs-note { font-size: inherit; font-family: inherit; }
+.osubs-kv { display: grid; gap: 10px; }
 .osubs-kv-row {
-  display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  font-size: 13px; line-height: 1.45;
 }
+.osubs-kv-row > :first-child { color: var(--osubs-muted); flex: none; }
+.osubs-kv-row > :last-child { text-align: right; }
 .osubs-acct {
   display: flex; flex-direction: column; gap: 12px; width: 100%;
   padding: 14px 16px 16px;
@@ -1222,19 +1226,19 @@ window.__ModuleLoader__.load({
         h('div', { className: 'osubs-about' },
           h('div', { className: 'osubs-kv' },
             h('div', { className: 'osubs-kv-row' },
-              h('span', { className: 'osubs-eyebrow' }, t.repo),
+              h('span', null, t.repo),
               h('a', { className: 'osubs-link', href: repo, target: '_blank', rel: 'noreferrer' }, slug),
             ),
             h('div', { className: 'osubs-kv-row' },
-              h('span', { className: 'osubs-eyebrow' }, t.installed),
-              h('span', { className: 'osubs-mono' }, version),
+              h('span', null, t.installed),
+              h('span', null, version),
             ),
             h('div', { className: 'osubs-kv-row' },
-              h('span', { className: 'osubs-eyebrow' }, t.os),
-              h('span', null, `${platformLabel(t, host)}${host ? ` · ${t.thisOs}` : ''}`),
+              h('span', null, t.os),
+              h('span', null, platformLabel(t, host)),
             ),
             latest?.tag && h('div', { className: 'osubs-kv-row' },
-              h('span', { className: 'osubs-eyebrow' }, t.latest),
+              h('span', null, t.latest),
               h('a', { className: 'osubs-link', href: latest.url, target: '_blank', rel: 'noreferrer' }, latest.tag),
             ),
             latest?.publishedAt && h('p', { className: 'osubs-note' }, fill(t.published, latest.publishedAt.replace('T', ' ').replace(/Z$/, ' UTC'))),
