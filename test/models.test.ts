@@ -25,7 +25,7 @@ test('buildProviders only emits logged-in families with openai-responses', () =>
   assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4.6').contextWindow, 500_000)
   assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4.6-fast'), undefined)
   assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4.5').contextWindow, 500_000)
-  assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4').contextWindow, 256_000)
+  assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4'), undefined)
   assert.deepEqual(both['oauth-grok'].models.find((model) => model.id === 'grok-4.6').reasoningEfforts, {
     low: 'low',
     medium: 'medium',
@@ -37,7 +37,6 @@ test('buildProviders only emits logged-in families with openai-responses', () =>
     medium: 'medium',
     high: 'high',
   })
-  assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4').reasoningEfforts, false)
   assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4.6').maxTokens, 500_000)
   assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-5.5').reasoningEfforts.off, null)
   assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-5.5').reasoningEfforts.max, undefined)
@@ -88,9 +87,9 @@ test('syncHarnessModels unsets owned routes then sets the live catalog', async (
 
 test('filterProviders keeps only selected keys', () => {
   const providers = buildProviders({ prefix: 'oauth', origin: 'http://x', loggedIn: { codex: true, grok: true } })
-  const filtered = filterProviders(providers, [modelKey('oauth-grok', 'grok-4')])
+  const filtered = filterProviders(providers, [modelKey('oauth-grok', 'grok-4.5')])
   assert.equal(filtered['oauth-codex'], undefined)
-  assert.deepEqual(filtered['oauth-grok'].models.map((m) => m.id), ['grok-4'])
+  assert.deepEqual(filtered['oauth-grok'].models.map((m) => m.id), ['grok-4.5'])
 })
 
 test('catalogProviders always lists both families with Fast and 900K siblings', () => {
@@ -104,6 +103,7 @@ test('catalogProviders always lists both families with Fast and 900K siblings', 
   assert.equal(keys.includes('oauth-codex/gpt-5.5-900k'), false)
   assert.equal(keys.includes('oauth-codex/gpt-5.4-mini-900k'), false)
   assert.equal(keys.includes('oauth-grok/grok-4.6'), true)
+  assert.equal(keys.includes('oauth-grok/grok-4'), false)
   assert.equal(keys.includes('oauth-grok/grok-4.6-fast'), false)
   const described = describeCatalog(catalog, {
     enabledKeys: ['oauth-codex/gpt-5.5'],
@@ -116,7 +116,8 @@ test('catalogProviders always lists both families with Fast and 900K siblings', 
   assert.equal(large.large, true)
   assert.equal(large.enabled, false)
   assert.equal(grok.loggedIn, false)
-  assert.equal(grok.models.find((m) => m.id === 'grok-4').enabled, false)
+  assert.equal(grok.models.find((m) => m.id === 'grok-4.5').enabled, false)
+  assert.equal(grok.models.find((m) => m.id === 'grok-4'), undefined)
 })
 
 test('ModelSwitch persists disabled keys and defaults 900K off', async () => {

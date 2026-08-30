@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.37
+
+- Drop Grok 4 from the catalog. Picker and `/grok/v1/models` keep Grok 4.6 and Grok 4.5.
+
 ## 0.0.36
 
 - About “发布于” uses China time (`Asia/Shanghai`), not UTC.
