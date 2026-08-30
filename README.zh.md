@@ -2,6 +2,8 @@
 
 简体中文 | [English](README.md)
 
+[![CI](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml/badge.svg)](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml)
+
 把 **ChatGPT / Codex 订阅** 和 **xAI Grok 订阅** 接到 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。登录走官方 OAuth，不需要 API Key。
 
 本机 Responses 代理 + `llm-pi-ai` 路由同步。
@@ -53,6 +55,35 @@ DeepSeek Harness（调用面）
 ```
 
 本插件不是第二套 LLM 适配器。设置页关闭后，DSH 仍通过 `llm-pi-ai` 调本机代理。代理只监听回环地址，并用本地凭证 `DSH_OAUTH_SUBS_API_KEY` 鉴权。
+
+## 可靠性
+
+代理负责缓存亲和与流重试。长 Codex 会话里有两条契约：
+
+1. **缓存分片。** 合法的 Codex `prompt_cache_key`（≤64 字符）会同时写成 `session-id` 和 `x-client-request-id`。缺这两个头时，同一会话会被打散到不同缓存分片。
+2. **提交门。** 产出内容之前的静默断流会在响应头提交前重试，避免 llm-pi-ai 把干净 EOF 当成 TRANSPORT 连重试 5 次。
+
+真实 42 次调用的 `gpt-5.6-terra-fast` 会话验收（`session-772f7f3a-…`，2026-08-30）：
+
+| | 2026-08-26 事故 | 0.0.14 亲和头之后 |
+|---|---|---|
+| 加权缓存命中 | 27.4% | **95.6%** |
+| 零缓存调用 | 47 / 90 | 1 / 42（仅冷启动） |
+| TRANSPORT 故障 | 29 | 0 |
+
+健康规则：加权命中 ≥ **80%**，step 1 之后不再出现零缓存，且无 TRANSPORT。细节见 [docs/error.md](docs/error.md)。
+
+## 诊断会话
+
+导出 DSH 的 `session.jsonl`（或解压会话压缩包）后打分：
+
+```sh
+npm run analyze -- path/to/session.jsonl
+node scripts/analyze-session.mjs --json path/to/session.jsonl
+node scripts/analyze-session.mjs --fail-below 80 path/to/session.jsonl
+```
+
+分析器按 turn+step 只计一次 `assistant/message` 的 usage（后面的 `assistant/chunk` usage 是重复记账）。工具超时与 TRANSPORT 分开统计。也可 `import` `dsh-plugin-oauth-subs/analyze-session`。
 
 ## Fast 模式
 
@@ -117,5 +148,8 @@ ChatGPT / Codex Plus、Pro 可能有银行的 5 小时重置次数。还有剩�
 ## 开发
 
 ```sh
-node --test 'test/*.test.mjs'
+npm test
+npm run analyze -- path/to/session.jsonl
 ```
+
+见 [CONTRIBUTING.md](CONTRIBUTING.md)。

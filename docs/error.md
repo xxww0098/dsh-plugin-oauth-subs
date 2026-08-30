@@ -39,10 +39,16 @@ x-client-request-id: <prompt_cache_key>
 - `git diff --check`：通过。
 - 完整测试当时为 89/90 通过；唯一失败是并行安全加固新增的“token 加载期间客户端断连”测试，与缓存亲和修复无关。
 
-### 待完成的运行时验收
+### 运行时验收（2026-08-30 关闭）
 
-源代码修复尚不能证明本地已安装副本生效。更新本地 DSH profile 中安装的插件并重启宿主后，
-应使用同一长会话复测，确认连续调用不再频繁出现 0 缓存，并记录新的加权命中率。
+- 证据：`session-772f7f3a-332c-4e0c-bff1-6074123474e3`（SkillStar，plan 模式，标题「极简模式快速开关 Agent 技能」）。
+- 模型：`oauth-codex` / `gpt-5.6-terra-fast`，`reasoningEffort: max`，`maxTokens: 128000`，`contextWindow: 258000`。
+- 42 次 `assistant/message`（按 turn+step 去重），未缓存 157,118，缓存读取 3,384,832，输出 15,864。时长 504.5s。
+- 加权命中率 **95.6%**。零缓存仅 1 次（step 1 冷启动），warmup 之后为 0。TRANSPORT 故障 0。
+- 9 次工具超时（glob / read），不计入缓存亲和回归。
+- 对照 2026-08-26 事故：命中 27.4%、47/90 零缓存、缺失 `session-id` / `x-client-request-id`。
+- 结论：0.0.14 的缓存亲和修复在真实长会话上生效。诊断：`node scripts/analyze-session.mjs path/to/session.jsonl`。
+- 健康规则：加权命中 ≥80%，warmup 后零缓存为 0，且无 TRANSPORT。
 
 ## 2026-08-26：并发子代理全线 `stream ended before a terminal response event`
 

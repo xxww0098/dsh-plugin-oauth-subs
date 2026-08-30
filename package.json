@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-oauth-subs",
-  "version": "0.0.14",
+  "version": "0.0.15",
   "description": "ChatGPT Codex and xAI Grok subscription OAuth for DeepSeek Harness — PKCE / device-code login, local Responses proxy, llm-pi-ai sync.",
   "license": "MIT",
   "repository": {
@@ -16,6 +16,7 @@
   "exports": {
     ".": "./lib/index.js",
     "./client": "./lib/client.js",
+    "./analyze-session": "./lib/analyze-session.js",
     "./package.json": "./package.json"
   },
   "dsh": {
@@ -32,12 +33,14 @@
   },
   "files": [
     "lib",
+    "scripts",
     "cordis.patch.yml",
     "README.md",
     "README.zh.md"
   ],
   "scripts": {
-    "test": "node --test 'test/*.test.mjs'"
+    "test": "node --test 'test/*.test.mjs'",
+    "analyze": "node scripts/analyze-session.mjs"
   },
   "keywords": [
     "deepseek-harness",

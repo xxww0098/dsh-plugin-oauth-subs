@@ -2,6 +2,8 @@
 
 [简体中文](README.zh.md) | English
 
+[![CI](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml/badge.svg)](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml)
+
 Use a **ChatGPT / Codex subscription** and an **xAI Grok subscription** inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). Official OAuth, no API keys.
 
 A loopback Responses proxy plus `llm-pi-ai` route sync.
@@ -53,6 +55,35 @@ DeepSeek Harness (call plane)
 ```
 
 This is not a second LLM adapter. After you close Settings, DSH still calls the loopback proxy through `llm-pi-ai`. The proxy binds loopback only and checks the local credential `DSH_OAUTH_SUBS_API_KEY`.
+
+## Reliability
+
+The proxy is the cache-affinity and stream-retry path. Two contracts matter on a long Codex turn:
+
+1. **Cache shard.** A legal Codex `prompt_cache_key` (≤64 chars) is forwarded as both `session-id` and `x-client-request-id`. Missing those headers used to scatter the same session across shards.
+2. **Commit gate.** A silent pre-output break is retried before headers are committed, so llm-pi-ai does not see a clean EOF and fire five TRANSPORT retries.
+
+Acceptance on a real 42-call `gpt-5.6-terra-fast` session (`session-772f7f3a-…`, 2026-08-30):
+
+| | 2026-08-26 incident | After 0.0.14 affinity headers |
+|---|---|---|
+| Weighted cache hit | 27.4% | **95.6%** |
+| Zero-cache calls | 47 / 90 | 1 / 42 (cold start only) |
+| TRANSPORT faults | 29 | 0 |
+
+Healthy rule: weighted hit ≥ **80%**, no zero-cache after step 1, no TRANSPORT. Details: [docs/error.md](docs/error.md).
+
+## Diagnose a session
+
+Export the DSH `session.jsonl` (or unzip the session archive) and score it:
+
+```sh
+npm run analyze -- path/to/session.jsonl
+node scripts/analyze-session.mjs --json path/to/session.jsonl
+node scripts/analyze-session.mjs --fail-below 80 path/to/session.jsonl
+```
+
+The analyzer reads `assistant/message` usage once per turn+step (the later `assistant/chunk` usage event is a duplicate). Tool timeouts are listed separately from TRANSPORT. Import as `dsh-plugin-oauth-subs/analyze-session`.
 
 ## Fast mode
 
@@ -117,5 +148,8 @@ ChatGPT / Codex Plus and Pro may bank extra 5-hour resets. When the account has 
 ## Develop
 
 ```sh
-node --test 'test/*.test.mjs'
+npm test
+npm run analyze -- path/to/session.jsonl
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
