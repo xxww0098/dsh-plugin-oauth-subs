@@ -10,14 +10,24 @@ function jwt(payload) {
   return `${header}.${body}.x`
 }
 
-test('formatPlanLabel maps Codex slugs to Plus / Pro / Team', () => {
+test('formatPlanLabel maps Codex slugs to Plus / Pro 20x / Pro 5x / Team', () => {
   assert.equal(formatPlanLabel('plus'), 'Plus')
-  assert.equal(formatPlanLabel('PRO'), 'Pro')
+  assert.equal(formatPlanLabel('PRO'), 'Pro 20x')
   assert.equal(formatPlanLabel('chatgpt_plus'), 'Plus')
+  assert.equal(formatPlanLabel('pro'), 'Pro 20x')
+  assert.equal(formatPlanLabel('chatgpt_pro'), 'Pro 20x')
+  assert.equal(formatPlanLabel('prolite'), 'Pro 5x')
+  assert.equal(formatPlanLabel('pro_lite'), 'Pro 5x')
+  assert.equal(formatPlanLabel('chatgpt_prolite'), 'Pro 5x')
+  assert.equal(formatPlanLabel('pro_5x'), 'Pro 5x')
+  assert.equal(formatPlanLabel('pro_20x'), 'Pro 20x')
   assert.equal(formatPlanLabel('team'), 'Team')
   assert.equal(formatPlanLabel('enterprise'), 'Enterprise')
   assert.equal(formatPlanLabel('free_trial'), 'Free')
   assert.equal(formatPlanLabel('go'), 'Go')
+  assert.equal(formatPlanLabel('pro', 'glm'), 'Pro')
+  assert.equal(formatPlanLabel('coding_pro', 'glm'), 'Pro')
+  assert.equal(formatPlanLabel('lite', 'glm'), 'Lite')
 })
 
 test('formatPlanLabel maps Grok numeric tiers and aliases', () => {

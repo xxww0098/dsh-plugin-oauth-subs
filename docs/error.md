@@ -1,5 +1,23 @@
 # 错误记录
 
+## 2026-08-30：Codex Pro 徽章没区分 5x / 20x
+
+### 现象
+
+设置页 Codex 账号卡只显示 **套餐 Pro**。ChatGPT Pro 已拆成 $100 Pro 5x 和 $200 Pro 20x，看不出是哪一档。
+
+### 根因
+
+JWT / usage 的 slug：`$200` 仍是 `pro`，`$100` 是 `prolite`（openai/codex#29243）。`formatPlanLabel` 把两者都画成 Pro。
+
+### 修复（0.0.25）
+
+`pro` → **Pro 20x**，`prolite` → **Pro 5x**。GLM 的 `pro` 仍显示 Pro。
+
+### 验证
+
+- `npm test`：`formatPlanLabel('pro') === 'Pro 20x'`，`formatPlanLabel('prolite') === 'Pro 5x'`，`formatPlanLabel('pro', 'glm') === 'Pro'`。
+
 ## 2026-08-30：多个账号挤在一条横条里，额度和身份拆开
 
 ### 现象

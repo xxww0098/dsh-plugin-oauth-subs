@@ -234,7 +234,7 @@ export async function deleteSession(provider, path, id) {
 export function publicSession(provider, session) {
   if (session === undefined) return undefined
   const planType = session.planType
-  const planLabel = formatPlanLabel(planType)
+  const planLabel = formatPlanLabel(planType, provider)
   if (provider === 'codex') {
     return {
       account: session.emailAddress ?? session.accountId,

@@ -1,7 +1,7 @@
 /**
  * Pretty-print ChatGPT / Codex plan_type and Grok subscription_tier for the
  * Settings card. Raw slugs stay on the wire (`plus`, numeric JWT tier);
- * the UI shows Plus / SuperGrok / X Premium+.
+ * the UI shows Plus / Pro 20x / Pro 5x / SuperGrok / X Premium+.
  */
 
 import { GROK_TIER_NAMES } from './grok/index.js'
@@ -15,8 +15,20 @@ export const CODEX_PLAN_NAMES = Object.freeze({
   chatgpt_go: 'Go',
   plus: 'Plus',
   chatgpt_plus: 'Plus',
-  pro: 'Pro',
-  chatgpt_pro: 'Pro',
+  // $200 Pro = 20× Plus Codex usage. $100 Pro Lite = 5×. JWT/usage slug is
+  // `pro` vs `prolite` (openai/codex#29243, help article 9793128).
+  pro: 'Pro 20x',
+  chatgpt_pro: 'Pro 20x',
+  pro20x: 'Pro 20x',
+  pro_20x: 'Pro 20x',
+  chatgpt_pro_20x: 'Pro 20x',
+  prolite: 'Pro 5x',
+  pro_lite: 'Pro 5x',
+  chatgpt_prolite: 'Pro 5x',
+  chatgpt_pro_lite: 'Pro 5x',
+  pro5x: 'Pro 5x',
+  pro_5x: 'Pro 5x',
+  chatgpt_pro_5x: 'Pro 5x',
   team: 'Team',
   chatgpt_team: 'Team',
   business: 'Business',
@@ -62,7 +74,7 @@ function compactOf(value) {
   return slugOf(value).replace(/_/g, '')
 }
 
-export function formatPlanLabel(raw) {
+export function formatPlanLabel(raw, family) {
   if (raw === undefined || raw === null) return undefined
   if (typeof raw === 'number' && Number.isInteger(raw)) {
     return GROK_TIER_NAMES[raw] ?? String(raw)
@@ -75,8 +87,15 @@ export function formatPlanLabel(raw) {
   }
   const slug = slugOf(trimmed)
   const compact = compactOf(trimmed)
-  if (CODEX_PLAN_NAMES[slug]) return CODEX_PLAN_NAMES[slug]
-  if (GLM_PLAN_NAMES[slug]) return GLM_PLAN_NAMES[slug]
+  if (family === 'glm') {
+    if (GLM_PLAN_NAMES[slug]) return GLM_PLAN_NAMES[slug]
+    if (GLM_PLAN_NAMES[compact]) return GLM_PLAN_NAMES[compact]
+  }
+  if (family !== 'glm' && family !== 'grok') {
+    if (CODEX_PLAN_NAMES[slug]) return CODEX_PLAN_NAMES[slug]
+    if (CODEX_PLAN_NAMES[compact]) return CODEX_PLAN_NAMES[compact]
+  }
+  if (GLM_PLAN_NAMES[slug] && family !== 'codex') return GLM_PLAN_NAMES[slug]
   if (GROK_PLAN_ALIASES[slug]) return GROK_PLAN_ALIASES[slug]
   if (GROK_PLAN_ALIASES[compact]) return GROK_PLAN_ALIASES[compact]
   const known = Object.values(GROK_TIER_NAMES)

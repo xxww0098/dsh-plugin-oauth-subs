@@ -154,7 +154,7 @@ After sign-in, each account card shows official remaining quota.
 
 Quota refreshes about once a minute, or immediately from **Refresh quota**. A failed read does not block chat.
 
-After sign-in the account title shows a **Plan** badge. Codex reads JWT `chatgpt_plan_type` and usage `plan_type`. Grok reads JWT `tier` and billing / user `subscription_tier`.
+After sign-in the account title shows a **Plan** badge. Codex reads JWT `chatgpt_plan_type` and usage `plan_type` (`pro` → **Pro 20x** / $200, `prolite` → **Pro 5x** / $100). Grok reads JWT `tier` and billing / user `subscription_tier`.
 
 Bars interpolate green → yellow → red with remaining percent (`hsl(remaining × 1.2, 78%, 38%)`).
 

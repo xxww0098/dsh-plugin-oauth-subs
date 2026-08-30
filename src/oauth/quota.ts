@@ -460,7 +460,7 @@ export function parseGlmQuota(payload) {
   const root = payload?.data && typeof payload.data === 'object' ? payload.data : payload
   if (!root || typeof root !== 'object') return { rows: [] }
   const items = root.list ?? root.limits ?? root.items ?? root.quotaLimits ?? root.quota_limits
-  const planType = formatPlanLabel(pickPlanRaw(root.level, root.planType, root.plan, root.subscriptionLevel))
+  const planType = formatPlanLabel(pickPlanRaw(root.level, root.planType, root.plan, root.subscriptionLevel), 'glm')
   const rows = []
   for (const item of Array.isArray(items) ? items : []) {
     if (!item || typeof item !== 'object') continue
@@ -637,12 +637,12 @@ export async function fetchGrokQuota(session, fetchFn = fetch) {
   }
 }
 
-function publicQuota(entry) {
+function publicQuota(entry, provider) {
   if (!entry) return { status: 'idle' }
   return {
     status: entry.status,
     planType: entry.planType,
-    planLabel: formatPlanLabel(entry.planType),
+    planLabel: formatPlanLabel(entry.planType, provider),
     subscriptionStatus: entry.subscriptionStatus,
     hasGrokCodeAccess: entry.hasGrokCodeAccess,
     updatedAt: entry.updatedAt,
@@ -662,7 +662,7 @@ export class QuotaStore {
   }
 
   peek(provider) {
-    return publicQuota(this.cache.get(provider))
+    return publicQuota(this.cache.get(provider), provider)
   }
 
   clear(provider) {
@@ -673,11 +673,11 @@ export class QuotaStore {
   async ensure(provider) {
     const cached = this.cache.get(provider)
     if (cached && Date.now() - cached.updatedAt < this.ttlMs) {
-      return publicQuota(cached)
+      return publicQuota(cached, provider)
     }
     if (cached && cached.status === 'ready') {
       void this.refresh(provider)
-      return publicQuota(cached)
+      return publicQuota(cached, provider)
     }
     return this.refresh(provider)
   }
@@ -747,7 +747,7 @@ export class QuotaStore {
         resetCredits: parsed.resetCredits ?? { availableCount: 0 },
       }
       this.cache.set(provider, entry)
-      return publicQuota(entry)
+      return publicQuota(entry, provider)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       const entry = {
@@ -761,7 +761,7 @@ export class QuotaStore {
         resetCredits: previous?.resetCredits ?? { availableCount: 0 },
       }
       this.cache.set(provider, entry)
-      return publicQuota(entry)
+      return publicQuota(entry, provider)
     }
   }
 }
