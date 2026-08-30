@@ -1,5 +1,47 @@
 # 错误记录
 
+## 2026-08-30：Grok 缓存命中率卡在 ~70%，热身后反复出现 512 token 块
+
+### 现象
+
+- 环境：本地 DSH + `dsh-plugin-oauth-subs` 0.0.16，模型 `oauth-grok` / `grok-4.6-fast`。
+- 证据：SkillStar 会话 `session-68aec6a7-25e0-476a-86e2-9bceff327f13`（标题「修复 GitHub Trees API 403 WARN」）。
+- 27 次模型调用。多数步骤前缀复用中位 ~99%，但 step 8 / 10 / 15 / 20 的 `cacheReadTokens` **正好是 512**，未缓存输入 58k–96k，命中率 < 1%。
+- 下一拍立刻回到 ~99% 复用，说明前缀本身没坏，只是这一拍没打到写过缓存的那台机器。
+- 加权命中被这四次错分片拉到 80% 上下（诊断台截图约 70%），对照 8/26 Codex 事故几乎没改善。亲和丢失若只认 `cacheReadTokens === 0` 会记成 0，512 块被误判成 `prefix_break`。
+
+### 根因
+
+xAI 的 prompt cache **按服务器分片**。Chat Completions 用 HTTP 头 `x-grok-conv-id` 做粘性路由；Responses API 等价字段是请求体 `prompt_cache_key`。缓存粒度是 **512 token 一块**。不带粘性标识时，负载均衡把同一会话打到不同机器：那台机器上只有一段全局可见的系统前缀（一块 = 512），对话历史全部 miss。
+
+0.0.16 的代理只给 **Codex** 派生亲和头（`session-id` / `x-client-request-id`），并且有意不把这两颗头抄给 Grok（Codex 后端才认）。Grok 路径上：
+
+1. 不发送 `x-grok-conv-id`。
+2. 不从 `session_id` 回填 `prompt_cache_key`。
+3. 分析器要求 `cacheReadTokens === 0` 才算亲和丢失，所以 512 块被当成前缀改写。
+
+这和 8/26 Codex 事故是同一类故障（少了分片钉），只是 xAI 的错分片签名不是零缓存，而是一整块 512。
+
+外部对照：xAI 文档 *Maximizing Cache Hits*（`x-grok-conv-id` / `prompt_cache_key` 等价、缺了就换机器）；OpenCode [#35033](https://github.com/anomalyco/opencode/issues/35033)；Hermes [#22705](https://github.com/NousResearch/hermes-agent/issues/22705)。
+
+### 修复（0.0.17）
+
+`src/oauth/proxy.ts` 对 Grok 也从 `prompt_cache_key` || `session_id` 派生同一套清洗键（`[A-Za-z0-9._:-]`，裁到 64）：
+
+1. 写回请求体 `prompt_cache_key`（Responses API 文档字段）。
+2. 发送 `x-grok-conv-id`（负载均衡粘性路由；grok-cli 网关认这颗头）。
+3. **仍然不**发送 Codex 的 `session-id` / `x-client-request-id`。
+
+`src/oauth/grok/index.ts` 的 `grokAffinityHeaders()` 是唯一出口。分析器把「复用 < 10%」标成 `affinity_miss`，不再要求缓存读取必须为 0。
+
+### 验证
+
+- `test/proxy.test.ts`：Grok 带 `prompt_cache_key` / 回退 `session_id` / 过长裁剪 / 空键删除；Codex 路径仍无 `x-grok-conv-id`。
+- `test/analyze-session.test.ts`：512 块 + 复用 < 10% → `affinity_miss`，下一拍 `delta`。
+- `npm test` 全绿。
+
+装上 0.0.17 后，同一条 Grok 长会话不应再出现「512 块 + 下一拍 99%」的错分片锯齿。健康规则不变：加权命中 ≥ 80%，亲和丢失 0，无 TRANSPORT。
+
 ## 2026-08-26：本地 DSH Codex 缓存命中率异常偏低
 
 ### 现象

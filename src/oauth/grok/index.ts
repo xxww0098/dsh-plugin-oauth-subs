@@ -276,3 +276,12 @@ export function grokUpstreamHeaders(session) {
     ...grokCredentialHeaders(),
   }
 }
+
+/**
+ * xAI sticky-routes prompt cache by `x-grok-conv-id`. Codex `session-id` /
+ * `x-client-request-id` are ignored on this backend and must not be copied.
+ */
+export function grokAffinityHeaders(cacheSessionId) {
+  if (typeof cacheSessionId !== 'string' || cacheSessionId.length === 0) return {}
+  return { 'x-grok-conv-id': cacheSessionId }
+}

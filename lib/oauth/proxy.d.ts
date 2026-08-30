@@ -7,9 +7,10 @@ export declare const MAX_REQUEST_BODY_BYTES: number;
 /** Upstream attempts before the client is told the stream failed. */
 export declare const STREAM_ATTEMPTS = 3;
 /**
- * Codex cache-affinity headers only accept 1–64 of [A-Za-z0-9._:-].
- * Sanitize and clip instead of dropping the key — a too-long session id
- * must still pin the shard.
+ * Codex `session-id` / `x-client-request-id` and xAI `x-grok-conv-id` /
+ * `prompt_cache_key` all need a stable shard pin. Sanitize to
+ * 1–64 of [A-Za-z0-9._:-] instead of dropping the key — a too-long
+ * DSH session id must still stick.
  */
 export declare function codexCacheSessionId(key: any): string;
 /** undici reports socket faults as a bare "fetch failed"; the cause carries the reason. */

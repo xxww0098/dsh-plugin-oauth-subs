@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.17
+
+- Grok cache affinity. The proxy now sticky-routes xAI prompt cache: sanitized `prompt_cache_key` (falling back to `session_id`) is written back into the Responses body and sent as `x-grok-conv-id`. Codex `session-id` / `x-client-request-id` stay Codex-only — they do nothing on this backend.
+- Analyzer: a later call with prefix reuse < 10% is an affinity miss even when xAI reports a 512-token block (wrong-shard signature), not a prefix rewrite.
+
 ## 0.0.16
 
 - Settings is three tabs: **Codex**, **Grok**, **Models**.

@@ -71,9 +71,10 @@ src/
 
 代理负责缓存亲和与流重试。长 Codex 会话里有两条契约：
 
-1. **缓存分片。** Codex 的 `prompt_cache_key` 会同时写成 `session-id` 和 `x-client-request-id`。键会被清洗成 `[A-Za-z0-9._:-]` 并裁到 64 字符，而不是直接丢掉——会话 id 过长时仍然要钉在同一分片。键缺失或非法时回退 `session_id`。裁过的键会写回请求体，避免 Codex 对超过 64 字符的值返回 400。
-2. **稳定前缀。** Codex 按 `instructions` 再 `input` 的最长前缀匹配缓存。重复的 leading developer/system 会剥掉；多出来的 plan / header 文本停到 **input 末尾**，对话前缀才能继续命中。`prompt_cache_retention` 会删掉（gpt-5.6 拒绝该字段）。
-3. **提交门。** 产出内容之前的静默断流会在响应头提交前重试，避免 llm-pi-ai 把干净 EOF 当成 TRANSPORT 连重试 5 次。
+1. **缓存分片（Codex）。** Codex 的 `prompt_cache_key` 会同时写成 `session-id` 和 `x-client-request-id`。键会被清洗成 `[A-Za-z0-9._:-]` 并裁到 64 字符，而不是直接丢掉——会话 id 过长时仍然要钉在同一分片。键缺失或非法时回退 `session_id`。裁过的键会写回请求体，避免 Codex 对超过 64 字符的值返回 400。
+2. **缓存分片（Grok）。** xAI 的 prompt cache **按服务器分片**。代理把同一套清洗键写回 Responses 的 `prompt_cache_key`，并发送 `x-grok-conv-id`。Codex 的 `session-id` / `x-client-request-id` 不会抄过去——这端不认。热身后复用 < 10%（包括 xAI 错分片时返回的 512 token 块）算亲和丢失。
+3. **稳定前缀。** Codex 按 `instructions` 再 `input` 的最长前缀匹配缓存。重复的 leading developer/system 会剥掉；多出来的 plan / header 文本停到 **input 末尾**，对话前缀才能继续命中。`prompt_cache_retention` 会删掉（gpt-5.6 拒绝该字段）。
+4. **提交门。** 产出内容之前的静默断流会在响应头提交前重试，避免 llm-pi-ai 把干净 EOF 当成 TRANSPORT 连重试 5 次。
 
 完整 `session-772f7f3a-…` SkillStar 会话验收（`oauth-codex` / `gpt-5.6-terra-fast`，211 次调用，71 分钟）：
 

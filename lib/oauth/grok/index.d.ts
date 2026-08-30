@@ -135,3 +135,12 @@ export declare function grokUpstreamHeaders(session: any): {
     'x-xai-token-auth': string;
     accept: string;
 };
+/**
+ * xAI sticky-routes prompt cache by `x-grok-conv-id`. Codex `session-id` /
+ * `x-client-request-id` are ignored on this backend and must not be copied.
+ */
+export declare function grokAffinityHeaders(cacheSessionId: any): {
+    'x-grok-conv-id'?: undefined;
+} | {
+    'x-grok-conv-id': string;
+};

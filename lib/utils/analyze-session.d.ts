@@ -8,8 +8,9 @@
  *
  * Zero-cache after warmup is NOT automatically an affinity miss. Compaction
  * and a request/header rebuild rewrite the prompt prefix; the next call is a
- * cold write of the new prefix. Affinity miss = zero cache with no such
- * rewrite while the previous prompt should have hit.
+ * cold write of the new prefix. Affinity miss = reuse < 10% (including xAI's
+ * 512-token block on the wrong shard) with no such rewrite, while the previous
+ * prompt should have hit.
  */
 export declare const CACHE_KINDS: Readonly<{
     cold_start: "cold_start";

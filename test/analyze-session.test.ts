@@ -233,3 +233,33 @@ test('stream-ended signatures are transport faults', () => {
   assert.equal(report.transportFaults.length, 1)
   assert.equal(report.healthy, false)
 })
+
+test('a later Grok 512-token block with <10% reuse is an affinity miss, not a prefix rewrite', () => {
+  const text = sessionJsonl([
+    {
+      type: 'request/header',
+      data: { header: { config: { provider: 'oauth-grok', model: 'grok-4.6-fast' } } },
+    },
+    {
+      type: 'assistant/message',
+      data: { turn: 1, step: 7, usage: { inputTokens: 7250, outputTokens: 10, cacheReadTokens: 46464 } },
+      time: 10,
+    },
+    {
+      type: 'assistant/message',
+      data: { turn: 1, step: 8, usage: { inputTokens: 57900, outputTokens: 10, cacheReadTokens: 512 } },
+      time: 20,
+    },
+    {
+      type: 'assistant/message',
+      data: { turn: 1, step: 9, usage: { inputTokens: 4094, outputTokens: 10, cacheReadTokens: 58368 } },
+      time: 30,
+    },
+  ])
+  const report = analyzeSession(text)
+  assert.equal(report.calls[1].kind, 'affinity_miss')
+  assert.equal(report.calls[2].kind, 'delta')
+  assert.equal(report.affinityMissCount, 1)
+  assert.equal(report.healthy, false)
+  assert.match(report.verdict, /regression/)
+})

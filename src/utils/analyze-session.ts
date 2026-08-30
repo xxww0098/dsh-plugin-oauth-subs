@@ -8,8 +8,9 @@
  *
  * Zero-cache after warmup is NOT automatically an affinity miss. Compaction
  * and a request/header rebuild rewrite the prompt prefix; the next call is a
- * cold write of the new prefix. Affinity miss = zero cache with no such
- * rewrite while the previous prompt should have hit.
+ * cold write of the new prefix. Affinity miss = reuse < 10% (including xAI's
+ * 512-token block on the wrong shard) with no such rewrite, while the previous
+ * prompt should have hit.
  */
 
 const STREAM_ENDED = /stream ended before a terminal response event/i
@@ -255,7 +256,9 @@ export function annotateCacheCalls(calls, events) {
       kind = CACHE_KINDS.rebuild
     } else if (reuse !== null && reuse < 0.5 && rebuilt) {
       kind = CACHE_KINDS.rebuild
-    } else if (call.cacheReadTokens === 0 && (reuse === null || reuse < 0.1)) {
+    } else if (reuse !== null && reuse < 0.1) {
+      kind = CACHE_KINDS.affinity_miss
+    } else if (call.cacheReadTokens === 0 && reuse === null) {
       kind = CACHE_KINDS.affinity_miss
     } else if (reuse !== null && reuse < 0.85) {
       kind = CACHE_KINDS.prefix_break

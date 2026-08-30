@@ -93,6 +93,9 @@ npm run analyze -- path/to/session.jsonl
 
 Healthy long Codex session: weighted cache hit ≥ 80%, **zero** affinity
 misses, no TRANSPORT. Compaction / plan rebuild zeros are not shard misses.
+Grok uses `x-grok-conv-id` + body `prompt_cache_key`, not Codex
+`session-id` headers; a later 512-token cache block with <10% reuse is an
+affinity miss (wrong xAI shard), not a prefix rewrite.
 `Error: tool call timed out after 30000ms` is `dsh-tool-fs-search`, not
 this proxy — record it in `docs/error.md`, do not add `toolTimeoutMs` here.
 
