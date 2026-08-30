@@ -9,6 +9,7 @@ import { once } from 'node:events'
 import { CODEX_API_URL, CODEX_CLIENT_VERSION, CODEX_MODELS, CODEX_MODELS_URL, codexRoutingHint, codexUpstreamHeaders } from './codex/index.js'
 import { GROK_API_URL, GROK_MODELS, grokAffinityHeaders, grokUpstreamHeaders } from './grok/index.js'
 import { GLM_MODELS, glmCodingUrl, glmUpstreamHeaders } from './glm/index.js'
+import { normalizeGlmChatBody } from './glm/request.js'
 import { KIRO_MODELS } from './kiro/index.js'
 import {
   ANTIGRAVITY_GENERATE_URL,
@@ -148,7 +149,11 @@ function rewriteUpstreamBody(buffer, family) {
     throw new RequestError(400, 'request body must contain a JSON object')
   }
   const fast = applyFastMode(payload)
-  const next = family === 'codex' ? normalizeCodexResponsesBody(fast) : fast
+  const next = family === 'codex'
+    ? normalizeCodexResponsesBody(fast)
+    : family === 'glm'
+      ? normalizeGlmChatBody(fast)
+      : fast
   const pinCache = family === 'codex' || family === 'grok'
   const cacheSessionId = pinCache
     ? (codexCacheSessionId(next.prompt_cache_key) || codexCacheSessionId(next.session_id))
