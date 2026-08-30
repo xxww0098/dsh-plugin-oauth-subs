@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.30
+
+- GLM **导入本机会话** reads ZCode Desktop `~/.zcode/v2/config.json` (coding-plan / start-plan keys; skip empty `builtin:` API-key rows; prefer a non-JWT Coding Plan key). Encrypted `~/.zcode/v2/credentials.json` is not required.
+- BigModel CLI init posts `{ provider: "bigmodel" }`. The 0.0.19 `zcode` id now 500s on `zcode.z.ai/api/v1/oauth/cli/init`. Authorize URL is still `bigmodel.cn/login`.
+
 ## 0.0.29
 
 - Model picker checkboxes and All/None stay disabled until that family is signed in.

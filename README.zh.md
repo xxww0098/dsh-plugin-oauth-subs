@@ -34,13 +34,14 @@ pnpm dsh web --patch ./cordis.patch.yml
 | ChatGPT Codex | PKCE，回环 `localhost:1455`（占用则 `1457`），可粘贴回调 | `app_EMoamEEZ73f0CkXaXp7hrann` | `chatgpt.com/backend-api/codex/responses` |
 | xAI Grok | **设备码（默认）**；PKCE 回环 `127.0.0.1:56121` 作备选 | `b1a00492-073a-47ea-816f-4c329264a828` | `api.x.ai/v1/responses` |
 | 智谱 GLM · Z.ai（全球） | ZCode CLI 轮询，`provider: zai`，再换发 `id.secret` | `client_P8X5CMWmlaRO9gyO-KSqtg` | `api.z.ai/api/coding/paas/v4` |
-| 智谱 GLM · BigModel（中国） | 同一 CLI 轮询，`provider: zcode`，poll JWT 即密钥 | `zcode` | `open.bigmodel.cn/api/coding/paas/v4` |
+| 智谱 GLM · BigModel（中国） | 同一 CLI 轮询，`provider: bigmodel`，poll JWT 即密钥 | `zcode` | `open.bigmodel.cn/api/coding/paas/v4` |
 
-已在本机登录过 Codex CLI、Grok CLI 或 Hermes 时，点 **导入本机会话**：
+已在本机登录过 Codex CLI、Grok CLI、Hermes 或 ZCode Desktop 时，点 **导入本机会话**：
 
 - `~/.codex/auth.json`
 - `~/.grok/auth.json`
 - `~/.hermes/auth.json`
+- `~/.zcode/v2/config.json`（ZCode Desktop；旧路径 `~/.zcode/cli/config.json` / `~/.zcode/config.json` 仍读）
 
 令牌写在 profile 数据目录 `data/dsh-plugin-oauth-subs/auth.json`，权限 `0600`。每个系列的多个账号存在这个文件的保险库里；旧的单会话文件仍能读。开启/关闭的模型写在同目录的 `models.json`。
 
@@ -117,7 +118,7 @@ node --experimental-strip-types scripts/analyze-session.ts --fail-below 80 path/
 
 默认关闭。在 `gpt-5.6-luna` 上实测：**输出 88.3 对 57.5 token/秒，1.54 倍**，与目录标称的 "1.5x speed, increased usage" 吻合。提升只在生成吞吐上——首 token 时间和缓存命中不受影响。
 
-登录、刷新令牌、对话和额度走同一套官方客户端身份：Codex 为成对的 `originator: codex_cli_rs` 与 `User-Agent: codex_cli_rs/<version>`；Grok 为 `x-xai-token-auth: xai-grok-cli` 与 `User-Agent: grok-cli/<version>`。GLM 走 ZCode CLI 轮询：国际站 `provider: zai`（client `client_P8X5CMWmlaRO9gyO-KSqtg`，再 `api.z.ai/api/auth/z/login` 换长期 `id.secret`）；国内站 `provider: zcode`（`bigmodel.cn/login`，poll JWT 直接当 Coding Plan 密钥）。对话分别打 `api.z.ai` 与 `open.bigmodel.cn` 的 `/api/coding/paas/v4`。不模拟浏览器 TLS 指纹。
+登录、刷新令牌、对话和额度走同一套官方客户端身份：Codex 为成对的 `originator: codex_cli_rs` 与 `User-Agent: codex_cli_rs/<version>`；Grok 为 `x-xai-token-auth: xai-grok-cli` 与 `User-Agent: grok-cli/<version>`。GLM 走 ZCode CLI 轮询：国际站 `provider: zai`（client `client_P8X5CMWmlaRO9gyO-KSqtg`，再 `api.z.ai/api/auth/z/login` 换长期 `id.secret`）；国内站 `provider: bigmodel`（`bigmodel.cn/login`，poll JWT 直接当 Coding Plan 密钥）。对话分别打 `api.z.ai` 与 `open.bigmodel.cn` 的 `/api/coding/paas/v4`。不模拟浏览器 TLS 指纹。
 
 ## 模型选择
 

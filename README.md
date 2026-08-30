@@ -34,13 +34,14 @@ pnpm dsh web --patch ./cordis.patch.yml
 | ChatGPT Codex | PKCE on `localhost:1455` (falls back to `1457`); paste-callback supported | `app_EMoamEEZ73f0CkXaXp7hrann` | `chatgpt.com/backend-api/codex/responses` |
 | xAI Grok | **Device-code (default)**; PKCE on `127.0.0.1:56121` as fallback | `b1a00492-073a-47ea-816f-4c329264a828` | `api.x.ai/v1/responses` |
 | Zhipu GLM · Z.ai (global) | ZCode CLI poll, `provider: zai`, then mint `id.secret` | `client_P8X5CMWmlaRO9gyO-KSqtg` | `api.z.ai/api/coding/paas/v4` |
-| Zhipu GLM · BigModel (China) | Same CLI poll, `provider: zcode`; poll JWT is the bearer | `zcode` | `open.bigmodel.cn/api/coding/paas/v4` |
+| Zhipu GLM · BigModel (China) | Same CLI poll, `provider: bigmodel`; poll JWT is the bearer | `zcode` | `open.bigmodel.cn/api/coding/paas/v4` |
 
-Already signed in on this machine via Codex CLI, Grok CLI, or Hermes? Use **Import local session**:
+Already signed in on this machine via Codex CLI, Grok CLI, Hermes, or ZCode Desktop? Use **Import local session**:
 
 - `~/.codex/auth.json`
 - `~/.grok/auth.json`
 - `~/.hermes/auth.json`
+- `~/.zcode/v2/config.json` (ZCode Desktop; also older `~/.zcode/cli/config.json` / `~/.zcode/config.json`)
 
 Tokens live at `<profile>/data/dsh-plugin-oauth-subs/auth.json` with mode `0600`. Multiple accounts per family sit in that file as a vault; a legacy single-session file still loads. Enabled-model choices live in `models.json` next to it.
 
@@ -117,7 +118,7 @@ It is **Priority Processing** (`service_tier: "priority"`), not a different mode
 
 Default is off. Measured on `gpt-5.6-luna`: **88.3 against 57.5 output tokens per second — 1.54×**, matching the catalog's "1.5x speed, increased usage". The gain is on generation throughput only: time to first token and prompt caching are unchanged.
 
-Login, token refresh, chat, and quota use one official client identity: Codex pairs `originator: codex_cli_rs` with `User-Agent: codex_cli_rs/<version>`; Grok sends `x-xai-token-auth: xai-grok-cli` and `User-Agent: grok-cli/<version>`. GLM uses ZCode's CLI poll: global `provider: zai` (client `client_P8X5CMWmlaRO9gyO-KSqtg`, then `api.z.ai/api/auth/z/login` to mint `id.secret`); China `provider: zcode` (`bigmodel.cn/login`, poll JWT is the Coding Plan bearer). Chat hits `/api/coding/paas/v4` on `api.z.ai` or `open.bigmodel.cn`. No TLS fingerprint impersonation.
+Login, token refresh, chat, and quota use one official client identity: Codex pairs `originator: codex_cli_rs` with `User-Agent: codex_cli_rs/<version>`; Grok sends `x-xai-token-auth: xai-grok-cli` and `User-Agent: grok-cli/<version>`. GLM uses ZCode's CLI poll: global `provider: zai` (client `client_P8X5CMWmlaRO9gyO-KSqtg`, then `api.z.ai/api/auth/z/login` to mint `id.secret`); China `provider: bigmodel` (`bigmodel.cn/login`, poll JWT is the Coding Plan bearer). Chat hits `/api/coding/paas/v4` on `api.z.ai` or `open.bigmodel.cn`. No TLS fingerprint impersonation.
 
 ## Models
 

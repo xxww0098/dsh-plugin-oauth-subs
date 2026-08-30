@@ -1,5 +1,69 @@
 # 错误记录
 
+## 2026-08-30：GLM「导入本机会话」是空操作
+
+### 现象
+
+设置页智谱 GLM → **导入本机会话**。本机已用 ZCode Desktop 登录 BigModel Coding Plan，按钮点了没反应。插件 0.0.24。
+
+### 证据
+
+本机 `~/.zcode/cli/config.json` 与 `~/.zcode/config.json` 都不存在。活会话在 **`~/.zcode/v2/config.json`**（`provider` 下）：
+
+- `builtin:bigmodel-coding-plan`.options.apiKey 非空（Coding Plan 密钥，站点 BigModel）
+- `builtin:bigmodel-start-plan`.options.apiKey 是 JWT
+- `builtin:zai-coding-plan` / `builtin:bigmodel` / `builtin:zai` 的 apiKey 为空
+- `~/.zcode/v2/credentials.json` 是 `enc:v1:…`，不必解密
+
+同一份 `glmKeyFromZcodeConfig` 对着 v2 文件能选出 `builtin:bigmodel-coding-plan`，region `bigmodel`。
+
+### 根因
+
+`glmAuthSearchPaths` 只扫了旧 CLI 路径，没扫 Desktop `v2/config.json`。解析本身已经会跳过空 apiKey。
+
+### 修复（0.0.30）
+
+搜索路径加上 `~/.zcode/v2/config.json`（放在最前）。多把钥匙时优先 coding-plan / start-plan，且非 JWT 的 Coding Plan 密钥压过 JWT。不读加密 credentials。
+
+### 验证
+
+- `glmAuthSearchPaths()[0]` 以 `.zcode/v2/config.json` 结尾。
+- 夹具 `importGlmAuth` 读 v2 文件，session.region 为 `bigmodel`，token 是 coding-plan 那把。
+- `npm test` 全绿。
+
+## 2026-08-30：BigModel OAuth 登录线上 500
+
+### 现象
+
+设置页 **连接 BigModel 继续使用** 立刻失败。插件 0.0.24。
+
+### 证据
+
+2026-08-30 对 `POST https://zcode.z.ai/api/v1/oauth/cli/init`：
+
+| body | 结果 |
+|---|---|
+| `{provider:"zai"}` | HTTP 200，`flow_id` + `authorize_url`（连打会 429） |
+| `{provider:"zcode"}` | HTTP 500 `{"code":1000,"msg":"something went wrong"}`（复现两次） |
+| `{provider:"bigmodel"}` | HTTP 200，`flow_id` + `authorize_url`，授权页 `bigmodel.cn/login` |
+
+0.0.19 把国内站改成 `zcode` 时写过「ZCode 内部 id 是 `zcode`」。今晚这条已经 500。
+
+### 根因
+
+`GLM_CLI_PROVIDERS.bigmodel` 仍发 `zcode`。init API 现在要 `bigmodel`。
+
+### 修复（0.0.30）
+
+`GLM_CLI_PROVIDERS.bigmodel = 'bigmodel'`。region 别名 `zcode` → `bigmodel` 仍留给导入路径上的 provider 名。`GLM_BIGMODEL_APP_ID` 仍是 `zcode`（授权 URL 的 app_id）。
+
+### 验证
+
+- `glmCliProvider('bigmodel') === 'bigmodel'`。
+- `glmCliInit({ region: 'bigmodel' })` body `provider` 为 `bigmodel`。
+- 线上再打一次 init：HTTP 200，authorize host `bigmodel.cn`，path `/login`。
+- `npm test` 全绿。
+
 ## 2026-08-30：多账号额度只显示当前账号
 
 ### 现象
