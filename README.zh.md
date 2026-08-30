@@ -123,6 +123,8 @@ node --experimental-strip-types scripts/analyze-session.ts --fail-below 80 path/
 
 设置 → OAuth 订阅 → **模型** 会列出 Codex 与 Grok 的全部目录（含 `-fast` 与 `-900k` 条目）。每一行是独立开关。每个系列有 **全选** / **全关**。
 
+GLM 只显示三个 Coding Plan 模型：**GLM-5.3**（文本）、**GLM-5.3-Flash**（图文）、**GLM-5-Turbo**（文本）。只有 Flash 是多模态；纯文本行不会向 Harness 声明 image 输入。
+
 默认全部开启，**900K 除外**。选带 **Fast** 的条目（`gpt-5.6-sol-fast`、`grok-4.6-fast`）才会走 Priority Processing。`-fast` 只在本机目录里，发给上游前会剥掉并加上 `service_tier: "priority"`。GPT-5.4 Mini 和 GPT-5.3 Codex Spark 没有 Fast 条目。
 
 GPT-5.6 Sol / Terra / Luna 实际可到 **872K**，GPT-5.4 可到 **1M**，都远超默认窗口。选 `gpt-5.6-sol-900k`（以及 Terra / Luna / 5.4 对应项）即可开启——`-900k` 只是一个稳定的本机 id，真实上限逐模型不同，发给上游前会剥掉。GPT-5.5、GPT-5.4 Mini 和 Spark 没有大窗口条目。

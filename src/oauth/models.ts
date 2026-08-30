@@ -30,13 +30,18 @@ export function ownedProviderIds(prefix) {
   return [`${prefix}-codex`, `${prefix}-grok`, `${prefix}-glm`]
 }
 
+function harnessInput(model) {
+  if (Array.isArray(model.input) && model.input.length > 0) return [...model.input]
+  return ['text', 'image']
+}
+
 function toHarnessModel(model) {
   const row = {
     id: model.id,
     name: model.name,
     contextWindow: model.contextWindow,
     maxTokens: model.maxTokens,
-    input: ['text', 'image'],
+    input: harnessInput(model),
   }
   if (model.reasoningEfforts && typeof model.reasoningEfforts === 'object') {
     row.reasoningEfforts = { ...model.reasoningEfforts }
@@ -146,6 +151,7 @@ export function describeCatalog(providers, { enabledKeys, loggedIn } = {}) {
           enabled: enabled === null ? !isOptInKey(key) : enabled.has(key),
           fast: String(model.id).endsWith('-fast'),
           large: isLargeContextKey(key),
+          input: Array.isArray(model.input) ? [...model.input] : ['text', 'image'],
         }
       }),
     }

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.20
+
+- GLM catalog is three Coding Plan models: **GLM-5.3** (text), **GLM-5.3-Flash** (image + text), **GLM-5-Turbo** (text). Drop GLM-5.2 / 5.1 / 5 / 4.7. Flash is the missing multimodal row. `llm-pi-ai` `input` is no longer hardcoded `['text', 'image']` for every family — text-only GLM rows stay text so the Harness picker will not offer image paste on them. Turbo window is 200K / 128K out.
+
 ## 0.0.19
 
 - GLM has two OAuth buttons, matching ZCode's welcome screen: **Z.ai (全球)** and **BigModel (中国)**. CLI init now sends ZCode's internal provider ids (`zai` / `zcode`). Chat and quota follow the active account's region (`api.z.ai` vs `open.bigmodel.cn`).

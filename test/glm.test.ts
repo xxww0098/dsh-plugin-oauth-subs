@@ -197,7 +197,15 @@ test('catalog includes GLM as openai chat completions', () => {
   })
   assert.equal(providers['oauth-glm'].api, 'openai')
   assert.equal(providers['oauth-glm'].baseURL, 'http://127.0.0.1:8318/glm/v1')
-  assert.ok(providers['oauth-glm'].models.some((model) => model.id === 'glm-5.3'))
+  const ids = providers['oauth-glm'].models.map((model) => model.id)
+  assert.deepEqual(ids, ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
+  assert.deepEqual(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.3').input, ['text'])
+  assert.deepEqual(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.3-flash').input, ['text', 'image'])
+  assert.deepEqual(providers['oauth-glm'].models.find((model) => model.id === 'glm-5-turbo').input, ['text'])
+  assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.3-flash').name, 'GLM-5.3-Flash')
+  assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5-turbo').name, 'GLM-5-Turbo')
+  assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5-turbo').contextWindow, 200_000)
+  assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.2'), undefined)
 })
 
 test('Z.ai and BigModel accounts can coexist in the glm vault', async () => {

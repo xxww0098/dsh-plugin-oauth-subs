@@ -119,6 +119,8 @@ window.__ModuleLoader__.load({
         modelsNeedLogin: '登录后同步',
         fastTag: 'Fast',
         largeTag: '900K',
+        inputTextTag: '文本',
+        inputImageTag: '图文',
         aboutTitle: '关于',
         repo: '仓库',
         repoOpen: '打开仓库',
@@ -220,6 +222,8 @@ window.__ModuleLoader__.load({
         modelsNeedLogin: 'Syncs after sign-in',
         fastTag: 'Fast',
         largeTag: '900K',
+        inputTextTag: 'Text',
+        inputImageTag: 'Image',
         aboutTitle: 'About',
         repo: 'Repository',
         repoOpen: 'Open repo',
@@ -1064,7 +1068,7 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function ModelRow({ t, model, onToggle }) {
+    function ModelRow({ t, model, onToggle, showInput }) {
       return h('label', { className: 'osubs-model' },
         h('input', {
           type: 'checkbox',
@@ -1074,12 +1078,16 @@ window.__ModuleLoader__.load({
         h('span', null, model.name),
         model.large && h('span', { className: 'osubs-tag' }, t.largeTag),
         model.fast && h('span', { className: 'osubs-tag' }, t.fastTag),
+        showInput && model.input?.includes('image') && h('span', { className: 'osubs-tag' }, t.inputImageTag),
+        showInput && Array.isArray(model.input) && !model.input.includes('image') && h('span', { className: 'osubs-tag' }, t.inputTextTag),
       )
     }
 
     function ModelFamily({ t, group, onToggle, onFamily }) {
       const models = Array.isArray(group.models) ? group.models : []
       const enabledCount = models.filter((model) => model.enabled).length
+      const showInput = models.some((model) => model.input?.includes('image'))
+        && models.some((model) => Array.isArray(model.input) && !model.input.includes('image'))
       return h('div', { className: 'osubs-family', style: { opacity: group.loggedIn ? 1 : 0.72 } },
         h('div', { className: 'osubs-family-head' },
           h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' } },
@@ -1093,7 +1101,7 @@ window.__ModuleLoader__.load({
           ),
         ),
         h('div', { className: 'osubs-models' },
-          models.map((model) => h(ModelRow, { t, model, onToggle, key: model.key })),
+          models.map((model) => h(ModelRow, { t, model, onToggle, showInput, key: model.key })),
         ),
       )
     }

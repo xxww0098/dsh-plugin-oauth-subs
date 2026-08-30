@@ -188,3 +188,17 @@ test('syncHarnessModels honors a persisted selected subset', async () => {
   assert.deepEqual(result.routes.find((row) => row.provider === 'oauth-codex').models, ['gpt-5.5'])
   assert.deepEqual(result.routes.find((row) => row.provider === 'oauth-grok').models, ['grok-4.6-fast'])
 })
+
+test('GLM catalog is three models with official input types; Codex stays image-capable', () => {
+  const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
+  const glm = catalog['oauth-glm'].models
+  assert.deepEqual(glm.map((model) => model.id), ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
+  assert.deepEqual(glm.find((model) => model.id === 'glm-5.3').input, ['text'])
+  assert.deepEqual(glm.find((model) => model.id === 'glm-5.3-flash').input, ['text', 'image'])
+  assert.deepEqual(glm.find((model) => model.id === 'glm-5-turbo').input, ['text'])
+  assert.equal(glm.find((model) => model.id === 'glm-5.3-flash').name, 'GLM-5.3-Flash')
+  assert.deepEqual(catalog['oauth-codex'].models.find((model) => model.id === 'gpt-5.5').input, ['text', 'image'])
+  const described = describeCatalog(catalog).find((row) => row.family === 'glm')
+  assert.deepEqual(described.models.find((model) => model.id === 'glm-5.3-flash').input, ['text', 'image'])
+  assert.deepEqual(described.models.find((model) => model.id === 'glm-5.3').input, ['text'])
+})
