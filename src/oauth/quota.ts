@@ -5,9 +5,12 @@
  *          POST …/rate-limit-reset-credits/consume
  *   Grok   GET cli-chat-proxy.grok.com/v1/billing?format=credits
  *          GET cli-chat-proxy.grok.com/v1/user?include=subscription
+ *          POST grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig
  *
  * Codex windows report used_percent; remaining is 100 − used.
  * Grok creditUsagePercent is also used-percent. Display remaining in the UI.
+ * Unified-billing SuperGrok / X Premium+ payloads often omit that percent
+ * on the CLI JSON; the grok.com gRPC-web path still has the weekly pool.
  */
 
 import { randomUUID } from 'node:crypto'
@@ -20,10 +23,13 @@ import {
 import {
   GROK_BILLING_URL,
   GROK_CLI_USER_URL,
+  GROK_CREDITS_URL,
   GROK_CLIENT_VERSION,
+  grokCreditsHeaders,
   grokTierFromValue,
   grokUpstreamHeaders,
 } from './grok/index.js'
+import { GROK_WEB_EMPTY_FRAME, decodeGrokCreditsFrame } from './grok/credits-frame.js'
 import { formatPlanLabel, pickPlanRaw } from './plan.js'
 import { glmQuotaUrl, glmUpstreamHeaders } from './glm/index.js'
 
@@ -250,12 +256,54 @@ function creditUsageSources(billing, config) {
   ]
 }
 
+function grokOnDemandBag(billing, config) {
+  const used = asNumber(
+    config.onDemandUsed
+    ?? config.on_demand_used
+    ?? billing.onDemandUsed
+    ?? billing.on_demand_used,
+  )
+  const total = asNumber(
+    config.onDemandCap
+    ?? config.on_demand_cap
+    ?? billing.onDemandCap
+    ?? billing.on_demand_cap,
+  )
+  if (used === undefined && total === undefined) return undefined
+  const remaining = total !== undefined && used !== undefined ? Math.max(0, total - used) : undefined
+  return { used, total, remaining }
+}
+
+function grokMonthlyBag(billing, config) {
+  const used = asNumber(
+    config.used
+    ?? billing.usage?.includedUsed
+    ?? billing.usage?.totalUsed
+    ?? billing.includedUsed,
+  )
+  const total = asNumber(
+    config.monthlyLimit
+    ?? config.monthly_limit
+    ?? billing.monthlyLimit
+    ?? billing.monthly_limit,
+  )
+  if (total === undefined || total <= 0) return undefined
+  const remaining = used !== undefined ? Math.max(0, total - used) : undefined
+  return { used, total, remaining }
+}
+
+function grokWindowKind(periodType) {
+  const text = String(periodType ?? '')
+  if (/month/i.test(text)) return 'cycle'
+  return 'weekly'
+}
+
 function productRow(item) {
   if (!item || typeof item !== 'object') return undefined
   const product = item.product ?? item.name ?? item.productName
   if (typeof product !== 'string' || product.length === 0) return undefined
   const bag = creditBagAmounts(item) ?? {}
-  const usedPercent = clampPct(item.usagePercent ?? item.usedPercent)
+  const usedPercent = clampPct(item.usagePercent ?? item.usedPercent ?? item.usage_percent)
     ?? (bag.total > 0 && bag.used !== undefined ? clampPct((bag.used / bag.total) * 100) : undefined)
   if (usedPercent === undefined && bag.used === undefined && bag.total === undefined) return undefined
   const remainingPercent = usedPercent === undefined ? undefined : 100 - usedPercent
@@ -285,12 +333,18 @@ function periodResetAt(end) {
 export function parseGrokBilling(billing, { cliUser } = {}) {
   if (!billing || typeof billing !== 'object') return { rows: [] }
   const config = billing.config && typeof billing.config === 'object' ? billing.config : billing
-  const period = config.currentPeriod && typeof config.currentPeriod === 'object' ? config.currentPeriod : {}
+  const period = config.currentPeriod && typeof config.currentPeriod === 'object'
+    ? config.currentPeriod
+    : config.current_period && typeof config.current_period === 'object'
+      ? config.current_period
+      : {}
   const user = userPayload(cliUser)
   const subscription = user.subscription ?? cliUser?.subscription ?? config.subscription
   const subscriptionTier = formatPlanLabel(grokTierFromValue(pickPlanRaw(
     config.subscription_tier,
     config.subscriptionTier,
+    billing.subscription_tier,
+    billing.subscriptionTier,
     subscription?.tier,
     user.subscriptionTier,
     user.subscription_tier,
@@ -299,34 +353,52 @@ export function parseGrokBilling(billing, { cliUser } = {}) {
   const hasGrokCodeAccess = user.hasGrokCodeAccess ?? user.has_grok_code_access ?? cliUser?.hasGrokCodeAccess
 
   let usedPercent = clampPct(config.creditUsagePercent ?? config.credit_usage_percent)
+  const onDemand = grokOnDemandBag(billing, config)
+  const monthly = grokMonthlyBag(billing, config)
   const amounts = creditUsageSources(billing, config)
     .map((source) => (source === undefined ? undefined : creditBagAmounts(source)))
     .find((bag) => bag && (bag.used !== undefined || bag.total !== undefined))
+    ?? onDemand
+    ?? monthly
   if (usedPercent === undefined && amounts) usedPercent = creditBagUsedPercent(amounts) ?? undefined
   const remainingPercent = usedPercent === undefined ? undefined : 100 - usedPercent
-  const resetAt = periodResetAt(period.end ?? config.billingPeriodEnd)
+  const periodType = typeof period.type === 'string'
+    ? period.type
+    : typeof period.periodType === 'string'
+      ? period.periodType
+      : undefined
+  const resetAt = periodResetAt(period.end ?? config.billingPeriodEnd ?? config.billing_period_end)
 
   const rows = []
   if (usedPercent !== undefined || amounts?.used !== undefined || amounts?.total !== undefined) {
     rows.push({
-      key: 'cycle',
-      kind: 'cycle',
+      key: grokWindowKind(periodType) === 'weekly' ? 'weekly' : 'cycle',
+      kind: grokWindowKind(periodType),
       usedPercent,
       remainingPercent,
       used: amounts?.used,
       total: amounts?.total,
       remaining: amounts?.remaining,
       resetAt,
-      periodType: typeof period.type === 'string' ? period.type : undefined,
+      periodType,
       periodStart: typeof period.start === 'string' ? period.start : config.billingPeriodStart,
       periodEnd: typeof period.end === 'string' ? period.end : config.billingPeriodEnd,
     })
   }
-  const prepaid = asNumber(config.prepaidBalance ?? billing.prepaidBalance)
-  if (prepaid !== undefined) {
+  const prepaid = asNumber(
+    config.prepaidBalance
+    ?? config.prepaid_balance
+    ?? billing.prepaidBalance
+    ?? billing.prepaid_balance,
+  )
+  if (prepaid !== undefined && prepaid > 0) {
     rows.push({ key: 'prepaid', kind: 'prepaid', remaining: prepaid })
   }
-  const products = Array.isArray(config.productUsage) ? config.productUsage : []
+  const products = Array.isArray(config.productUsage)
+    ? config.productUsage
+    : Array.isArray(config.product_usage)
+      ? config.product_usage
+      : []
   for (const item of products.slice(0, 4)) {
     const row = productRow(item)
     if (row) rows.push(row)
@@ -338,6 +410,38 @@ export function parseGrokBilling(billing, { cliUser } = {}) {
     hasGrokCodeAccess: typeof hasGrokCodeAccess === 'boolean' ? hasGrokCodeAccess : undefined,
     rows,
   }
+}
+
+export function applyGrokCreditsSnapshot(parsed, snapshot) {
+  const base = parsed && typeof parsed === 'object' ? parsed : { rows: [] }
+  const rows = Array.isArray(base.rows) ? [...base.rows] : []
+  if (!snapshot || typeof snapshot !== 'object') return { ...base, rows }
+  const idx = rows.findIndex((row) => row.kind === 'cycle' || row.kind === 'weekly')
+  const current = idx >= 0 ? rows[idx] : undefined
+  if (current?.usedPercent !== undefined) {
+    if (current.resetAt === undefined && snapshot.resetAt !== undefined) {
+      rows[idx] = { ...current, resetAt: snapshot.resetAt }
+    }
+    return { ...base, rows }
+  }
+  if (snapshot.usedPercent === undefined && snapshot.resetAt === undefined) return { ...base, rows }
+  const usedPercent = snapshot.usedPercent
+  const next = {
+    key: 'weekly',
+    kind: 'weekly',
+    usedPercent,
+    remainingPercent: usedPercent === undefined ? undefined : 100 - usedPercent,
+    resetAt: snapshot.resetAt ?? current?.resetAt,
+    periodType: current?.periodType ?? 'USAGE_PERIOD_TYPE_WEEKLY',
+    periodStart: current?.periodStart,
+    periodEnd: current?.periodEnd,
+    used: current?.used,
+    total: current?.total,
+    remaining: current?.remaining,
+  }
+  if (idx >= 0) rows[idx] = { ...current, ...next }
+  else rows.unshift(next)
+  return { ...base, rows }
 }
 
 function glmWindowKind(window) {
@@ -498,19 +602,38 @@ export async function fetchGrokQuota(session, fetchFn = fetch) {
   const headers = grokQuotaHeaders(session)
   const billingWait = timeoutSignal(QUOTA_TIMEOUT_MS)
   const userWait = timeoutSignal(QUOTA_TIMEOUT_MS)
+  const creditsWait = timeoutSignal(QUOTA_TIMEOUT_MS)
   try {
-    const [billingResult, userResult] = await Promise.allSettled([
+    const [billingResult, userResult, creditsResult] = await Promise.allSettled([
       fetchFn(GROK_BILLING_URL, { method: 'GET', headers, signal: billingWait.signal })
         .then((response) => readJson(response, 'grok billing')),
       fetchFn(GROK_CLI_USER_URL, { method: 'GET', headers, signal: userWait.signal })
         .then((response) => readJson(response, 'grok user')),
+      fetchFn(GROK_CREDITS_URL, {
+        method: 'POST',
+        headers: grokCreditsHeaders(session),
+        body: GROK_WEB_EMPTY_FRAME,
+        signal: creditsWait.signal,
+      }).then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`grok credits failed (HTTP ${response.status})`)
+        }
+        const decoded = decodeGrokCreditsFrame(Buffer.from(await response.arrayBuffer()))
+        if (!decoded) throw new Error('grok credits returned no usage')
+        return decoded
+      }),
     ])
-    if (billingResult.status === 'rejected') throw billingResult.reason
+    if (billingResult.status === 'rejected' && creditsResult.status === 'rejected') {
+      throw billingResult.reason
+    }
+    const billing = billingResult.status === 'fulfilled' ? billingResult.value : {}
     const cliUser = userResult.status === 'fulfilled' ? userResult.value : undefined
-    return parseGrokBilling(billingResult.value, { cliUser })
+    const snapshot = creditsResult.status === 'fulfilled' ? creditsResult.value : undefined
+    return applyGrokCreditsSnapshot(parseGrokBilling(billing, { cliUser }), snapshot)
   } finally {
     billingWait.cancel()
     userWait.cancel()
+    creditsWait.cancel()
   }
 }
 

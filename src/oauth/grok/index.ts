@@ -14,6 +14,7 @@ export const GROK_DISCOVERY_URL = 'https://auth.x.ai/.well-known/openid-configur
 export const GROK_API_URL = 'https://api.x.ai/v1/responses'
 export const GROK_BILLING_URL = 'https://cli-chat-proxy.grok.com/v1/billing?format=credits'
 export const GROK_CLI_USER_URL = 'https://cli-chat-proxy.grok.com/v1/user?include=subscription'
+export const GROK_CREDITS_URL = 'https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig'
 export const GROK_CLIENT_VERSION = '0.2.93'
 export const GROK_USER_AGENT = `grok-cli/${GROK_CLIENT_VERSION}`
 export const GROK_SCOPE = 'openid profile email offline_access grok-cli:access api:access'
@@ -268,11 +269,33 @@ export function grokCredentialHeaders() {
   }
 }
 
+export function grokUserId(session) {
+  const payload = session?.accessToken ? decodeJwtPayload(session.accessToken) : undefined
+  const id = payload?.sub ?? payload?.user_id ?? payload?.userId
+  return typeof id === 'string' && id.length > 0 ? id : undefined
+}
+
 export function grokUpstreamHeaders(session) {
-  return {
+  const headers = {
     authorization: `Bearer ${session.accessToken}`,
     'x-xai-token-auth': 'xai-grok-cli',
     accept: 'application/json',
+    ...grokCredentialHeaders(),
+  }
+  const userId = grokUserId(session)
+  if (userId) headers['x-userid'] = userId
+  return headers
+}
+
+export function grokCreditsHeaders(session) {
+  return {
+    authorization: `Bearer ${session.accessToken}`,
+    'content-type': 'application/grpc-web+proto',
+    'x-grpc-web': '1',
+    accept: '*/*',
+    origin: 'https://grok.com',
+    referer: 'https://grok.com/?_s=usage',
+    'x-user-agent': 'connect-es/2.1.1',
     ...grokCredentialHeaders(),
   }
 }

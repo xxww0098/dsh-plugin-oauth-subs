@@ -10,6 +10,7 @@ export declare const GROK_DISCOVERY_URL = "https://auth.x.ai/.well-known/openid-
 export declare const GROK_API_URL = "https://api.x.ai/v1/responses";
 export declare const GROK_BILLING_URL = "https://cli-chat-proxy.grok.com/v1/billing?format=credits";
 export declare const GROK_CLI_USER_URL = "https://cli-chat-proxy.grok.com/v1/user?include=subscription";
+export declare const GROK_CREDITS_URL = "https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig";
 export declare const GROK_CLIENT_VERSION = "0.2.93";
 export declare const GROK_USER_AGENT = "grok-cli/0.2.93";
 export declare const GROK_SCOPE = "openid profile email offline_access grok-cli:access api:access";
@@ -129,11 +130,22 @@ export declare function isGrokPermanentRefreshError(error: any): boolean;
 export declare function grokCredentialHeaders(): {
     'user-agent': string;
 };
+export declare function grokUserId(session: any): string;
 export declare function grokUpstreamHeaders(session: any): {
     'user-agent': string;
     authorization: string;
     'x-xai-token-auth': string;
     accept: string;
+};
+export declare function grokCreditsHeaders(session: any): {
+    'user-agent': string;
+    authorization: string;
+    'content-type': string;
+    'x-grpc-web': string;
+    accept: string;
+    origin: string;
+    referer: string;
+    'x-user-agent': string;
 };
 /**
  * xAI sticky-routes prompt cache by `x-grok-conv-id`. Codex `session-id` /

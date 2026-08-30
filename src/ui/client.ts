@@ -71,6 +71,7 @@ window.__ModuleLoader__.load({
         quotaRefresh: '刷新额度',
         quotaLoading: '正在读取额度…',
         quotaFailed: '额度读取失败',
+        quotaUnknown: '周额度未返回。点刷新重试。',
         quotaReset: '重置',
         quotaResetBank: '重置券',
         quotaResetHint: '每张券过期时间不同，按钮按券单独渲染。点一次消耗一张，刷新周额度窗口。',
@@ -159,6 +160,7 @@ window.__ModuleLoader__.load({
         quotaRefresh: 'Refresh quota',
         quotaLoading: 'Reading quota…',
         quotaFailed: 'Could not read quota',
+        quotaUnknown: 'Weekly usage was not in the xAI payload. Refresh to retry.',
         quotaReset: 'Reset',
         quotaResetBank: 'Reset credits',
         quotaResetHint: 'Each credit expires on its own clock. One button per credit; spending one refreshes the weekly window.',
@@ -848,6 +850,12 @@ window.__ModuleLoader__.load({
     function QuotaBlock({ t, quota, onRefresh, onReset }) {
       if (!quota || quota.status === 'idle') return null
       const rows = Array.isArray(quota.rows) ? quota.rows : []
+      const hasUsage = rows.some((row) => (
+        typeof row.usedPercent === 'number'
+        || typeof row.remainingPercent === 'number'
+        || (row.kind === 'prepaid' && typeof row.remaining === 'number' && row.remaining > 0)
+        || (row.used !== undefined && row.total !== undefined)
+      ))
       return h('div', { className: 'osubs-quota' },
         h('div', { className: 'osubs-quota-head' },
           h('span', { className: 'osubs-eyebrow' }, t.quota),
@@ -856,10 +864,10 @@ window.__ModuleLoader__.load({
           ),
         ),
         quota.status === 'loading' && rows.length === 0 && h('p', { className: 'osubs-hint' }, t.quotaLoading),
-        quota.status === 'error' && rows.length === 0 && h('p', { className: 'osubs-hint osubs-bad' }, `${t.quotaFailed}${quota.error ? ` · ${quota.error}` : ''}`),
+        quota.status === 'error' && !hasUsage && h('p', { className: 'osubs-hint osubs-bad' }, `${t.quotaFailed}${quota.error ? ` · ${quota.error}` : ''}`),
+        quota.status === 'ready' && !hasUsage && h('p', { className: 'osubs-hint' }, t.quotaUnknown),
         rows.map((row) => h(QuotaRow, { t, row, key: row.key })),
         h(QuotaResetBox, { t, quota, onReset }),
-        quota.hasGrokCodeAccess === true && h('p', { className: 'osubs-note' }, t.grokCode),
       )
     }
 
