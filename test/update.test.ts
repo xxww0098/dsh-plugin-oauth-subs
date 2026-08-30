@@ -28,25 +28,22 @@ test('compareVersions orders semver tags', () => {
   assert.equal(compareVersions('0.0.14', '0.0.15') < 0, true)
 })
 
-test('pickDownloads shares a generic zip across win/mac/linux', () => {
+test('pickDownloads ignores a generic zip', () => {
   const rows = pickDownloads([
     { name: 'dsh-plugin-oauth-subs-0.0.15.zip', browser_download_url: 'https://example/a.zip', size: 10 },
   ], 'linux')
-  assert.equal(rows.length, 3)
-  assert.deepEqual(rows.map((row) => row.platform), ['win', 'mac', 'linux'])
-  assert.equal(rows.every((row) => row.url === 'https://example/a.zip'), true)
-  assert.equal(rows.find((row) => row.platform === 'linux').current, true)
-  assert.equal(rows.find((row) => row.platform === 'win').generic, true)
+  assert.deepEqual(rows, [])
 })
 
-test('pickDownloads prefers a platform-named asset', () => {
+test('pickDownloads lists only platform-named assets', () => {
   const rows = pickDownloads([
     { name: 'plugin.zip', browser_download_url: 'https://example/any.zip' },
     { name: 'plugin-win.zip', browser_download_url: 'https://example/win.zip' },
   ], 'win')
-  assert.equal(rows.find((row) => row.platform === 'win').url, 'https://example/win.zip')
-  assert.equal(rows.find((row) => row.platform === 'win').generic, false)
-  assert.equal(rows.find((row) => row.platform === 'mac').url, 'https://example/any.zip')
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].platform, 'win')
+  assert.equal(rows[0].url, 'https://example/win.zip')
+  assert.equal(rows[0].current, true)
 })
 
 test('fetchLatest compares installed version against GitHub latest', async () => {
@@ -70,7 +67,7 @@ test('fetchLatest compares installed version against GitHub latest', async () =>
   assert.equal(update.status, 'update')
   assert.equal(update.platform, 'mac')
   assert.equal(update.latest.tag, 'v0.0.15')
-  assert.equal(update.assets.length, 3)
+  assert.equal(update.assets.length, 0)
   const ahead = await fetchLatest({ fetchFn, current: '0.0.16', platform: 'linux' })
   assert.equal(ahead.status, 'ahead')
   const current = await fetchLatest({ fetchFn, current: '0.0.15', platform: 'win32' })

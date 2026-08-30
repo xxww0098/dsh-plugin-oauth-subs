@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.21
+
+- About no longer lists a fake Windows / macOS / Linux download for the generic zip. Check for updates, then open the GitHub release. This is a DSH plugin, not a desktop installer.
+
 ## 0.0.20
 
 - GLM catalog is three Coding Plan models: **GLM-5.3** (text), **GLM-5.3-Flash** (image + text), **GLM-5-Turbo** (text). Drop GLM-5.2 / 5.1 / 5 / 4.7. Flash is the missing multimodal row. `llm-pi-ai` `input` is no longer hardcoded `['text', 'image']` for every family — text-only GLM rows stay text so the Harness picker will not offer image paste on them. Turbo window is 200K / 128K out.

@@ -1,7 +1,7 @@
 /**
  * Local version + GitHub latest-release check.
- * One zip is enough for all hosts; win/mac/linux rows share it unless
- * the release ships platform-named assets.
+ * About only lists win/mac/linux-named assets. A generic zip is not a
+ * download row — this is a DSH plugin, not a desktop installer.
  */
 export declare const REPO_SLUG = "xxww0098/dsh-plugin-oauth-subs";
 export declare const REPO_URL = "https://github.com/xxww0098/dsh-plugin-oauth-subs";
@@ -23,7 +23,6 @@ export declare function pickDownloads(assets: any, host: any): {
     name: any;
     url: any;
     size: any;
-    generic: boolean;
 }[];
 export declare function localUpdateInfo(platform?: NodeJS.Platform): {
     version: string;
@@ -50,7 +49,6 @@ export declare function fetchLatest({ fetchFn, current, platform, timeoutMs }?: 
         name: any;
         url: any;
         size: any;
-        generic: boolean;
     }[];
     platform: string;
     repo: string;
