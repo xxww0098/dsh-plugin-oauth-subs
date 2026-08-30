@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.35
+
+- GLM model picker: checking GLM-5.3 / Flash / Turbo (or 全选) while signed in writes `llm-pi-ai` `providers.oauth-glm` (`api: openai`, `baseURL` origin `/glm/v1`, `compat.thinkingFormat: openai`). Unchecking the last GLM row still unsets the route.
+- Leftover 全关: if a signed-in family has every *current* catalog key disabled (stale `glm-4.7` / `glm-5` / `glm-5.1` / `glm-5.2` ids from the old 6-row catalog), login and startup `sync()` enable the current keys and write the route. Retired ids stay off. A deliberate 全关 in the picker is not immediately undone.
+- Snapshot `catalog` GLM `loggedIn: true` when `getSession('glm')` is a vault account.
+
 ## 0.0.33
 
 - Drop Grok Fast. Grok 4.6 accepted `service_tier: "priority"` on the wire but a 2026-08-30 interleaved run showed no speed gain (ratio 0.994). No `grok-*-fast` picker row, no Priority field on xAI. A stale `grok-4.6-fast` id is peeled to `grok-4.6`.

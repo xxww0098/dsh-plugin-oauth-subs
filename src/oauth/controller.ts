@@ -433,12 +433,13 @@ export class AuthController {
       throw new Error('models payload needs selected, key, family, or all')
     }
     if (this.settings && typeof this.settings.mutate === 'function') {
-      await this.sync()
+      // Picker already wrote the switch; do not re-enable a deliberate 全关.
+      await this.sync(undefined, { recover: false })
     }
     return this.snapshot()
   }
 
-  async sync(selected) {
+  async sync(selected, options = {}) {
     if (this.settings === undefined || typeof this.settings.mutate !== 'function') {
       throw new Error('settings service is not mounted; cannot sync llm-pi-ai routes')
     }
@@ -448,6 +449,9 @@ export class AuthController {
       await this.models.setEnabled(selected, catalog)
     }
     const loggedIn = await this.loggedIn()
+    if (options.recover !== false && selected === undefined) {
+      await this.models.recoverEmptyLoggedInFamilies(catalog, loggedIn)
+    }
     return syncHarnessModels({
       settings: this.settings,
       prefix: this.prefix,

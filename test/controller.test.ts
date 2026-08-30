@@ -7,6 +7,35 @@ import { test } from 'node:test'
 import { AuthController } from '../lib/oauth/controller.js'
 import { saveSession } from '../lib/oauth/store.js'
 import { installedVersion } from '../lib/utils/update.js'
+import { ModelSwitch, catalogProviders } from '../lib/oauth/models.js'
+import { glmSession } from '../lib/oauth/glm/index.js'
+
+const GLM_CURRENT = ['oauth-glm/glm-5.3', 'oauth-glm/glm-5.3-flash', 'oauth-glm/glm-5-turbo']
+const GLM_STALE = ['oauth-glm/glm-4.7', 'oauth-glm/glm-5', 'oauth-glm/glm-5.1', 'oauth-glm/glm-5.2']
+
+function glmQuotaFetch() {
+  return async () => new Response(JSON.stringify({
+    data: { level: 'pro', list: [] },
+  }), { status: 200, headers: { 'content-type': 'application/json' } })
+}
+
+async function glmController({ dir, models, ops = [] }) {
+  const authPath = join(dir, 'auth.json')
+  await saveSession('glm', glmSession({
+    accessToken: 'glm-token',
+    account: 'zcode',
+    region: 'bigmodel',
+  }), authPath)
+  const controller = new AuthController({
+    authPath,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async (target, mutations) => { ops.push({ target, mutations }) } },
+    models,
+    fetchFn: glmQuotaFetch(),
+  })
+  return { controller, ops, authPath }
+}
 
 test('snapshot reports logged-out accounts and empty providers', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
@@ -141,6 +170,70 @@ test('controller rejects Grok quota reset', async () => {
     origin: () => 'http://127.0.0.1:8318',
   })
   await assert.rejects(controller.consumeReset('grok'), /Codex/)
+})
+
+test('snapshot marks GLM catalog loggedIn for a vault account', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const { controller } = await glmController({ dir, models: new ModelSwitch() })
+  const snap = await controller.snapshot()
+  const glm = snap.catalog.find((row) => row.family === 'glm')
+  assert.equal(snap.accounts.glm.loggedIn, true)
+  assert.equal(snap.accounts.glm.activeId, 'zcode@bigmodel')
+  assert.equal(glm.loggedIn, true)
+  assert.equal(glm.models.length, 3)
+})
+
+test('toggle glm-5.3 on writes oauth-glm when all current GLM keys were disabled', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://127.0.0.1:8318' })
+  const models = new ModelSwitch()
+  await models.ready
+  models.disabled = new Set([...GLM_CURRENT, ...GLM_STALE])
+  const ops = []
+  const { controller } = await glmController({ dir, models, ops })
+  const before = await controller.snapshot()
+  assert.equal(before.catalog.find((row) => row.family === 'glm').loggedIn, true)
+  assert.equal(before.catalog.find((row) => row.family === 'glm').models.every((model) => model.enabled === false), true)
+  const snap = await controller.setModels({ key: 'oauth-glm/glm-5.3', on: true })
+  assert.equal(snap.catalog.find((row) => row.family === 'glm').models.find((model) => model.id === 'glm-5.3').enabled, true)
+  const last = ops.at(-1)
+  assert.equal(last.target, 'llm-pi-ai')
+  const set = last.mutations.filter((row) => row.op === 'set')
+  const glm = set.find((row) => row.path[1] === 'oauth-glm')
+  assert.equal(glm.value.api, 'openai')
+  assert.equal(glm.value.baseURL, 'http://127.0.0.1:8318/glm/v1')
+  assert.equal(glm.value.compat.thinkingFormat, 'openai')
+  assert.deepEqual(glm.value.models.map((model) => model.id), ['glm-5.3'])
+})
+
+test('login/sync recovers leftover GLM 全关 and writes the current catalog route', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const models = new ModelSwitch()
+  await models.ready
+  models.disabled = new Set([...GLM_CURRENT, ...GLM_STALE])
+  const ops = []
+  const { controller } = await glmController({ dir, models, ops })
+  const result = await controller.sync()
+  const glm = result.routes.find((row) => row.provider === 'oauth-glm')
+  assert.deepEqual(glm.models, ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
+  for (const key of GLM_CURRENT) assert.equal(models.isEnabled(key), true)
+  for (const key of GLM_STALE) assert.equal(models.disabled.has(key), true)
+  const set = ops.at(-1).mutations.filter((row) => row.op === 'set')
+  const route = set.find((row) => row.path[1] === 'oauth-glm')
+  assert.equal(route.value.api, 'openai')
+  assert.equal(route.value.compat.thinkingFormat, 'openai')
+  assert.deepEqual(route.value.models.map((model) => model.id), ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
+})
+
+test('setModels 全关 still unsets oauth-glm and does not recover', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const ops = []
+  const { controller } = await glmController({ dir, models: new ModelSwitch(), ops })
+  await controller.setModels({ family: 'glm', on: true })
+  const off = await controller.setModels({ family: 'glm', on: false })
+  assert.equal(off.catalog.find((row) => row.family === 'glm').models.every((model) => model.enabled === false), true)
+  const empty = ops.at(-1).mutations.filter((row) => row.op === 'set')
+  assert.equal(empty.some((row) => row.path[1] === 'oauth-glm'), false)
 })
 
 test('controller toggles models and sync uses the persisted set', async () => {
