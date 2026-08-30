@@ -42,7 +42,7 @@ import {
   parseAntigravityPlistVersion,
   parseAntigravityVersionText,
 } from '../lib/oauth/antigravity/index.js'
-import { antigravityToOpenai, openaiToAntigravity } from '../lib/oauth/antigravity/request.js'
+import { antigravityToOpenai, asGeminiStruct, openaiToAntigravity } from '../lib/oauth/antigravity/request.js'
 import { createProxy } from '../lib/oauth/proxy.js'
 
 const FORBIDDEN = ['IDE_UNSPECIFIED', 'dsh-plugin', 'DeepSeek', 'CLIProxy', 'undici', 'node-fetch']
@@ -278,6 +278,138 @@ test('empty loadCodeAssist falls back to daily onboardUser', async () => {
   assert.equal(onboard.headers['x-goog-api-client'], ANTIGRAVITY_GOOG_API_CLIENT_UA)
   assert.equal(JSON.parse(onboard.body).metadata.ide_type, 'ANTIGRAVITY')
   assertCleanIdentity(onboard)
+})
+
+function assertSingularFunctionWire(contents) {
+  for (const content of contents) {
+    for (const part of content.parts ?? []) {
+      if (part.functionResponse) {
+        assert.equal(Array.isArray(part.functionResponse), false, 'functionResponse must be an object')
+        assert.equal(typeof part.functionResponse, 'object')
+        assert.equal(Array.isArray(part.functionResponse.response), false, 'functionResponse.response must be a Struct')
+        assert.equal(part.functionResponse.response && typeof part.functionResponse.response === 'object', true)
+      }
+      if (part.functionCall) {
+        assert.equal(Array.isArray(part.functionCall), false, 'functionCall must be an object')
+        assert.equal(Array.isArray(part.functionCall.args), false, 'functionCall.args must be a Struct')
+      }
+    }
+  }
+  const json = JSON.stringify(contents)
+  assert.equal(json.includes('"functionResponse":['), false)
+  assert.equal(json.includes('"functionCall":['), false)
+  assert.equal(json.includes('"response":['), false)
+}
+
+test('asGeminiStruct wraps arrays and strings so response is never a list', () => {
+  assert.deepEqual(asGeminiStruct('plain tool output'), { result: 'plain tool output' })
+  assert.deepEqual(asGeminiStruct({ ok: true, n: 1 }), { ok: true, n: 1 })
+  assert.deepEqual(asGeminiStruct([{ type: 'text', text: 'a' }, { type: 'text', text: 'b' }]), {
+    result: [{ type: 'text', text: 'a' }, { type: 'text', text: 'b' }],
+  })
+  assert.deepEqual(asGeminiStruct('[{"path":"a.ts"}]'), { result: [{ path: 'a.ts' }] })
+  assert.deepEqual(asGeminiStruct('{"already":"object"}'), { already: 'object' })
+  assert.deepEqual(asGeminiStruct(''), {})
+  assert.deepEqual(asGeminiStruct(null), {})
+})
+
+test('tool results become singular functionResponse objects, arrays wrapped', () => {
+  const body = openaiToAntigravity({
+    model: 'gemini-3.7-flash-high',
+    messages: [
+      { role: 'user', content: 'read files' },
+      {
+        role: 'assistant',
+        content: null,
+        tool_calls: [
+          { id: 'call_1', type: 'function', function: { name: 'Read', arguments: '{"path":"a.ts"}' } },
+          { id: 'call_2', type: 'function', function: { name: 'Grep', arguments: '["src"]' } },
+        ],
+      },
+      { role: 'tool', tool_call_id: 'call_1', name: 'Read', content: 'file a contents' },
+      {
+        role: 'tool',
+        tool_call_id: 'call_2',
+        name: 'Grep',
+        content: [{ type: 'text', text: 'hit 1' }, { type: 'text', text: 'hit 2' }],
+      },
+    ],
+  }, { projectId: 'cogent-snow-4mnnp' })
+
+  const [user, model, tools] = body.request.contents
+  assert.equal(user.role, 'user')
+  assert.equal(model.role, 'model')
+  assert.equal(model.parts.length, 2)
+  assert.deepEqual(model.parts[0].functionCall, { name: 'Read', args: { path: 'a.ts' } })
+  assert.deepEqual(model.parts[1].functionCall, { name: 'Grep', args: { result: ['src'] } })
+
+  assert.equal(tools.role, 'user')
+  assert.equal(tools.parts.length, 2)
+  assert.deepEqual(tools.parts[0].functionResponse, {
+    name: 'Read',
+    response: { result: 'file a contents' },
+  })
+  assert.deepEqual(tools.parts[1].functionResponse, {
+    name: 'Grep',
+    response: { result: [{ type: 'text', text: 'hit 1' }, { type: 'text', text: 'hit 2' }] },
+  })
+  assertSingularFunctionWire(body.request.contents)
+})
+
+test('object tool content stays the response Struct; JSON array string is wrapped', () => {
+  const body = openaiToAntigravity({
+    model: 'gemini-3.7-flash-high',
+    messages: [
+      { role: 'tool', name: 'Read', content: { stdout: 'ok', files: 2 } },
+      { role: 'tool', name: 'Glob', content: '["a.ts","b.ts"]' },
+    ],
+  }, { projectId: 'p' })
+  const turn = body.request.contents[0]
+  assert.equal(turn.parts.length, 2)
+  assert.deepEqual(turn.parts[0].functionResponse, {
+    name: 'Read',
+    response: { stdout: 'ok', files: 2 },
+  })
+  assert.deepEqual(turn.parts[1].functionResponse, {
+    name: 'Glob',
+    response: { result: ['a.ts', 'b.ts'] },
+  })
+  assertSingularFunctionWire(body.request.contents)
+})
+
+test('Google 400 fixture: array-shaped functionResponse / response never emitted', () => {
+  // DSH long session (~151 steps) sent tool content as a JSON array. Old tryJson
+  // put that array on functionResponse.response → daily-cloudcode-pa 400:
+  // Unknown name "response" at function_response: Proto field is not repeating.
+  const body = openaiToAntigravity({
+    model: 'gemini-3.7-flash-high',
+    messages: [
+      { role: 'user', content: 'continue' },
+      {
+        role: 'assistant',
+        tool_calls: [
+          { id: 'call_read', type: 'function', function: { name: 'Read', arguments: '{}' } },
+        ],
+      },
+      {
+        role: 'tool',
+        name: 'Read',
+        content: [
+          { type: 'text', text: 'chunk A' },
+          { type: 'text', text: 'chunk B' },
+        ],
+      },
+    ],
+  }, { projectId: 'p' })
+
+  const toolTurn = body.request.contents.find((content) => content.parts.some((part) => part.functionResponse))
+  const fn = toolTurn.parts[0].functionResponse
+  assert.equal(Array.isArray(fn), false)
+  assert.equal(Array.isArray(fn.response), false)
+  assert.deepEqual(fn.response, {
+    result: [{ type: 'text', text: 'chunk A' }, { type: 'text', text: 'chunk B' }],
+  })
+  assertSingularFunctionWire(body.request.contents)
 })
 
 test('generateContent body is official-shaped and rejects an empty project', () => {

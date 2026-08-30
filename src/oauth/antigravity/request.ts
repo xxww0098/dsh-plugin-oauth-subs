@@ -9,14 +9,42 @@ function trimmed(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined
 }
 
-function tryJson(value) {
-  if (value && typeof value === 'object') return value
-  if (typeof value !== 'string' || !value.trim()) return {}
+function parseJsonish(value) {
+  if (Array.isArray(value) || (value && typeof value === 'object')) return value
+  if (typeof value !== 'string' || !value.trim()) return undefined
   try {
     return JSON.parse(value)
   } catch {
-    return { text: value }
+    return value
   }
+}
+
+/**
+ * Gemini `FunctionResponse.response` / `FunctionCall.args` are protobuf Structs.
+ * A JSON array (or scalar) on that field is 400 INVALID_ARGUMENT:
+ * "Proto field is not repeating, cannot start list."
+ */
+export function asGeminiStruct(value) {
+  const parsed = parseJsonish(value)
+  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed
+  if (parsed === undefined) return {}
+  return { result: parsed }
+}
+
+function functionResponsePart(message) {
+  return {
+    functionResponse: {
+      name: trimmed(message?.name) ?? 'tool',
+      response: asGeminiStruct(message?.content),
+    },
+  }
+}
+
+function isFunctionResponseTurn(content) {
+  return content?.role === 'user'
+    && Array.isArray(content.parts)
+    && content.parts.length > 0
+    && content.parts.every((part) => part?.functionResponse && typeof part.functionResponse === 'object' && !Array.isArray(part.functionResponse))
 }
 
 function imagePart(url) {
@@ -73,15 +101,10 @@ export function openaiToAntigravity(payload, { projectId, sessionId } = {}) {
       continue
     }
     if (role === 'tool') {
-      contents.push({
-        role: 'user',
-        parts: [{
-          functionResponse: {
-            name: trimmed(message.name) ?? 'tool',
-            response: tryJson(message.content),
-          },
-        }],
-      })
+      const part = functionResponsePart(message)
+      const last = contents[contents.length - 1]
+      if (isFunctionResponseTurn(last)) last.parts.push(part)
+      else contents.push({ role: 'user', parts: [part] })
       continue
     }
     const parts = []
@@ -89,7 +112,7 @@ export function openaiToAntigravity(payload, { projectId, sessionId } = {}) {
       for (const call of message.tool_calls) {
         const name = trimmed(call?.function?.name)
         if (!name) continue
-        parts.push({ functionCall: { name, args: tryJson(call.function?.arguments) } })
+        parts.push({ functionCall: { name, args: asGeminiStruct(call.function?.arguments) } })
       }
     }
     parts.push(...partsFromContent(message?.content))
