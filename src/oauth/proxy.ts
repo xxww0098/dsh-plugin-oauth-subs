@@ -7,7 +7,7 @@
 import { createServer } from 'node:http'
 import { once } from 'node:events'
 import { CODEX_API_URL, CODEX_CLIENT_VERSION, CODEX_MODELS, CODEX_MODELS_URL, codexUpstreamHeaders } from './codex/index.js'
-import { GROK_API_URL, GROK_MODELS, grokUpstreamHeaders } from './grok/index.js'
+import { GROK_API_URL, GROK_MODELS, grokAffinityHeaders, grokUpstreamHeaders } from './grok/index.js'
 import { GLM_MODELS, glmCodingUrl, glmUpstreamHeaders } from './glm/index.js'
 import { applyFastMode } from '../utils/fast-mode.js'
 import { normalizeCodexResponsesBody } from './codex/request.js'
@@ -20,9 +20,10 @@ export const STREAM_ATTEMPTS = 3
 const RETRY_BACKOFF_MS = [1000, 4000]
 
 /**
- * Codex cache-affinity headers only accept 1–64 of [A-Za-z0-9._:-].
- * Sanitize and clip instead of dropping the key — a too-long session id
- * must still pin the shard.
+ * Codex `session-id` / `x-client-request-id` and xAI `x-grok-conv-id` /
+ * `prompt_cache_key` all need a stable shard pin. Sanitize to
+ * 1–64 of [A-Za-z0-9._:-] instead of dropping the key — a too-long
+ * DSH session id must still stick.
  */
 export function codexCacheSessionId(key) {
   if (typeof key !== 'string') return undefined
@@ -139,11 +140,12 @@ function rewriteUpstreamBody(buffer, family) {
   }
   const fast = applyFastMode(payload)
   const next = family === 'codex' ? normalizeCodexResponsesBody(fast) : fast
-  const cacheSessionId = family === 'codex'
+  const pinCache = family === 'codex' || family === 'grok'
+  const cacheSessionId = pinCache
     ? (codexCacheSessionId(next.prompt_cache_key) || codexCacheSessionId(next.session_id))
     : undefined
   if (cacheSessionId) next.prompt_cache_key = cacheSessionId
-  else if (family === 'codex') delete next.prompt_cache_key
+  else if (pinCache) delete next.prompt_cache_key
   return { body: Buffer.from(JSON.stringify(next)), cacheSessionId, stream: next.stream === true }
 }
 
@@ -333,10 +335,11 @@ async function forward(request, response, { url, session, headersOf, fetchFn, fa
     ...headersOf(session),
     'content-type': request.headers['content-type'] ?? 'application/json',
     ...(stream ? { accept: 'text/event-stream' } : {}),
-    ...(cacheSessionId === undefined ? {} : {
+    ...(family === 'codex' && cacheSessionId !== undefined ? {
       'session-id': cacheSessionId,
       'x-client-request-id': cacheSessionId,
-    }),
+    } : {}),
+    ...(family === 'grok' ? grokAffinityHeaders(cacheSessionId) : {}),
   }
 
   let lastFailure

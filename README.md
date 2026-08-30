@@ -71,9 +71,10 @@ src/
 
 The proxy is the cache-affinity and stream-retry path. Two contracts matter on a long Codex turn:
 
-1. **Cache shard.** A Codex `prompt_cache_key` is forwarded as both `session-id` and `x-client-request-id`. Keys are sanitized to `[A-Za-z0-9._:-]` and clipped to 64 characters instead of dropped — a too-long session id must still pin the shard. Missing or illegal keys fall back to `session_id`. The clipped key is written back into the body so Codex does not 400 on a >64-character value.
-2. **Stable prefix.** Codex matches the longest prefix of `instructions` then `input`. Duplicate leading developer/system items are stripped; extra plan or header text is parked at the **input suffix** so the conversation prefix can still hit. `prompt_cache_retention` is dropped (gpt-5.6 rejects it).
-3. **Commit gate.** A silent pre-output break is retried before headers are committed, so llm-pi-ai does not see a clean EOF and fire five TRANSPORT retries.
+1. **Cache shard (Codex).** A Codex `prompt_cache_key` is forwarded as both `session-id` and `x-client-request-id`. Keys are sanitized to `[A-Za-z0-9._:-]` and clipped to 64 characters instead of dropped — a too-long session id must still pin the shard. Missing or illegal keys fall back to `session_id`. The clipped key is written back into the body so Codex does not 400 on a >64-character value.
+2. **Cache shard (Grok).** xAI stores prompt cache **per server**. The proxy writes the same sanitized key as Responses `prompt_cache_key` and sends `x-grok-conv-id`. Codex `session-id` / `x-client-request-id` are not copied — they do nothing on this backend. A later call that reuses <10% of the previous prompt, including xAI's 512-token block on the wrong shard, is an affinity miss.
+3. **Stable prefix.** Codex matches the longest prefix of `instructions` then `input`. Duplicate leading developer/system items are stripped; extra plan or header text is parked at the **input suffix** so the conversation prefix can still hit. `prompt_cache_retention` is dropped (gpt-5.6 rejects it).
+4. **Commit gate.** A silent pre-output break is retried before headers are committed, so llm-pi-ai does not see a clean EOF and fire five TRANSPORT retries.
 
 Acceptance on the full `session-772f7f3a-…` SkillStar turn (`oauth-codex` / `gpt-5.6-terra-fast`, 211 calls, 71 min):
 

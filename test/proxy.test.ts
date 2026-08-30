@@ -61,6 +61,7 @@ test('proxy requires the local bearer and forwards Codex Responses', async () =>
     assert.equal(seen[0].headers['openai-version'], '0.147.0')
     assert.equal(seen[0].headers['session-id'], 'session-cache-1')
     assert.equal(seen[0].headers['x-client-request-id'], 'session-cache-1')
+    assert.equal(seen[0].headers['x-grok-conv-id'], undefined)
   } finally {
     await proxy.close()
   }
@@ -654,7 +655,7 @@ test('proxy parks extra leading developer and strips prompt_cache_retention on t
   })
 })
 
-test('Grok does not inherit Codex cache-affinity headers from session_id', async () => {
+test('Grok pins cache with x-grok-conv-id and does not inherit Codex headers', async () => {
   await captureCodex(async ({ port, headers, seen }) => {
     await fetch(`http://127.0.0.1:${port}/grok/v1/responses`, {
       method: 'POST',
@@ -663,6 +664,34 @@ test('Grok does not inherit Codex cache-affinity headers from session_id', async
     })
     assert.equal(seen[0].headers['session-id'], undefined)
     assert.equal(seen[0].headers['x-client-request-id'], undefined)
+    assert.equal(seen[0].headers['x-grok-conv-id'], 'k1')
     assert.equal(seen[0].body.prompt_cache_key, 'k1')
+
+    await fetch(`http://127.0.0.1:${port}/grok/v1/responses`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ model: 'grok-4.6', session_id: 'sess-from-dsh' }),
+    })
+    assert.equal(seen[1].headers['x-grok-conv-id'], 'sess-from-dsh')
+    assert.equal(seen[1].headers['session-id'], undefined)
+    assert.equal(seen[1].body.prompt_cache_key, 'sess-from-dsh')
+
+    const long = `session-${'a'.repeat(80)}`
+    await fetch(`http://127.0.0.1:${port}/grok/v1/responses`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ model: 'grok-4.6', prompt_cache_key: long }),
+    })
+    assert.equal(seen[2].headers['x-grok-conv-id'].length, 64)
+    assert.equal(seen[2].body.prompt_cache_key, seen[2].headers['x-grok-conv-id'])
+
+    await fetch(`http://127.0.0.1:${port}/grok/v1/responses`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ model: 'grok-4.6', prompt_cache_key: '   ' }),
+    })
+    assert.equal(seen[3].headers['x-grok-conv-id'], undefined)
+    assert.equal(seen[3].headers['session-id'], undefined)
+    assert.equal(seen[3].body.prompt_cache_key, undefined)
   })
 })
