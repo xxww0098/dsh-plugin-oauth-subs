@@ -154,7 +154,7 @@ GLM-5.3 与 GLM-5.3-Flash 的思考深度为 **low / high / max**（默认 **max
 
 额度约每分钟刷新一次，也可点卡片上的 **刷新额度**。读失败不影响对话。
 
-登录后账号标题旁显示 **套餐** 徽章：Codex 来自 JWT `chatgpt_plan_type` 与 usage 的 `plan_type`；Grok 来自 JWT `tier` 与 billing / user 的 `subscription_tier`。
+登录后账号标题旁显示 **套餐** 徽章：Codex 来自 JWT `chatgpt_plan_type` 与 usage 的 `plan_type`（`pro` → **Pro 20x**，$200；`prolite` → **Pro 5x**，$100）；Grok 来自 JWT `tier` 与 billing / user 的 `subscription_tier`。
 
 进度条按剩余百分比从绿过渡到黄再到红（`hsl(剩余 × 1.2, 78%, 38%)`）。
 

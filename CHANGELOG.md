@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.25
+
+- Codex plan badge splits **Pro 20x** (`pro`, $200) and **Pro 5x** (`prolite`, $100). GLM `pro` stays Pro.
+
 ## 0.0.24
 
 - Settings tabs are brand icons (LobeHub `@lobehub/icons`): Codex, Grok, **Z.ai** for 智谱 GLM, a grid for Models, GitHub for About. Hover still shows the name.
