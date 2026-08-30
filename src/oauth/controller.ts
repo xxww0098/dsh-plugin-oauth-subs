@@ -22,7 +22,9 @@ import {
   refreshGrok,
 } from './grok/index.js'
 import {
+  glmSession,
   isGlmPermanentRefreshError,
+  normalizeGlmRegion,
   refreshGlm,
 } from './glm/index.js'
 import { importCodexAuth, importGrokAuth, importGlmAuth } from './import-auth.js'
@@ -192,10 +194,11 @@ export class AuthController {
 
   async login(provider, mode) {
     if (provider === 'glm') {
-      const attempt = await this.glmFlows.start('glm', { region: 'zai', fetchFn: this.fetchFn })
+      const region = normalizeGlmRegion(mode)
+      const attempt = await this.glmFlows.start('glm', { region, fetchFn: this.fetchFn })
       this.finalizing.add('glm')
       void this.completeGlm(attempt)
-      return { authorizeUrl: attempt.authorizeUrl, mode: 'cli' }
+      return { authorizeUrl: attempt.authorizeUrl, mode: 'cli', region }
     }
     if (provider === 'codex') {
       const attempt = await this.flows.start('codex', codexFlow)
@@ -272,6 +275,24 @@ export class AuthController {
     } finally {
       this.finalizing.delete('glm')
     }
+  }
+
+  async useKey(provider, key, region) {
+    if (provider !== 'glm') throw new Error('only GLM accepts a pasted API key')
+    const accessToken = typeof key === 'string' ? key.trim() : ''
+    if (accessToken.length < 8) throw new Error('glm API key is empty')
+    this.claim('glm')
+    this.glmFlows.pending('glm')?.cancel()
+    const resolved = normalizeGlmRegion(region)
+    await saveSession('glm', glmSession({
+      accessToken,
+      account: 'api-key',
+      region: resolved,
+    }), this.authPath)
+    this.lastError.delete('glm')
+    this.onAuthChanged?.('glm')
+    void this.quota.refresh('glm')
+    return { region: resolved }
   }
 
   async manual(provider, input) {

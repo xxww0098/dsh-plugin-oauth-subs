@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.19
+
+- GLM has two OAuth buttons, matching ZCode's welcome screen: **Z.ai (全球)** and **BigModel (中国)**. CLI init now sends ZCode's internal provider ids (`zai` / `zcode`). Chat and quota follow the active account's region (`api.z.ai` vs `open.bigmodel.cn`).
+- BigModel skips the Z.ai business-login key mint and uses the poll JWT as the Coding Plan bearer. Z.ai / BigModel accounts with the same email can both stay signed in.
+- Paste an API key as the third welcome option. Import from `~/.zcode` now picks the region from the provider key name.
+
 ## 0.0.18
 
 - Grok quota. SuperGrok / X Premium+ unified-billing accounts no longer show a blank gauge (prepaid `0` + empty Grok Code). CLI `/v1/billing?format=credits` often omits `creditUsagePercent`; the plugin now also POSTs grok.com `GetGrokCreditsConfig` (gRPC-web, same bearer as `grok login`) and fills the weekly pool. Fallback: `onDemandUsed` / `onDemandCap`. Hide prepaid when it is 0. Settings shows **每周** plus a retry hint if xAI still returns no percent.

@@ -293,10 +293,13 @@ function glmKeyFromZcodeConfig(raw) {
   const providers = raw?.provider ?? raw?.providers ?? raw
   if (!providers || typeof providers !== 'object') return undefined
   for (const [key, value] of Object.entries(providers)) {
-    if (!/zai|glm|coding.?plan|bigmodel/i.test(key)) continue
+    if (!/zai|glm|coding.?plan|bigmodel|zcode/i.test(key)) continue
     const options = value?.options ?? value
     const apiKey = options?.apiKey ?? options?.api_key ?? value?.apiKey
-    if (typeof apiKey === 'string' && apiKey.includes('.')) return apiKey
+    if (typeof apiKey === 'string' && apiKey.trim()) {
+      const region = /bigmodel|zcode|\bcn\b|china/i.test(key) ? 'bigmodel' : 'zai'
+      return { apiKey: apiKey.trim(), region }
+    }
   }
   return undefined
 }
@@ -314,10 +317,10 @@ export async function importGlmAuth(paths = glmAuthSearchPaths()) {
     tried.push(path)
     const raw = await readJson(path)
     if (raw === undefined) continue
-    const apiKey = glmKeyFromZcodeConfig(raw)
-    if (!apiKey) continue
+    const found = glmKeyFromZcodeConfig(raw)
+    if (!found) continue
     return {
-      session: glmSession({ accessToken: apiKey, account: 'zcode', region: 'zai' }),
+      session: glmSession({ accessToken: found.apiKey, account: 'zcode', region: found.region }),
       source: path,
     }
   }

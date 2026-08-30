@@ -58,9 +58,9 @@ src/
     grok/                  xAI Grok only
       index.ts             catalog, identity, device/PKCE endpoints
       device-flow.ts       RFC 8628
-    glm/                   Zhipu GLM / Z.ai Coding Plan
+    glm/                   Zhipu GLM Coding Plan (Z.ai global + BigModel China)
       index.ts             catalog, CLI poll OAuth, key mint, headers
-      cli-flow.ts          ZCode /oauth/cli/init + poll
+      cli-flow.ts          ZCode /oauth/cli/init + poll (`zai` / `zcode`)
   ui/                      React Settings (classic-script factory)
     client.ts
   utils/                   shared, provider-agnostic

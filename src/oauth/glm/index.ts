@@ -1,32 +1,41 @@
 /**
- * Zhipu GLM / Z.ai Coding Plan OAuth.
+ * Zhipu GLM Coding Plan OAuth — two providers, same ZCode CLI poll.
  *
- * Official ZCode Individual Plan flow (no PKCE):
- *   1. POST zcode.z.ai/api/v1/oauth/cli/init  (Bearer poll token)
+ * Z.ai (global) and BigModel (China) are the two buttons on ZCode's welcome
+ * screen. Internal CLI provider ids are `zai` and `zcode`.
+ *
+ *   1. POST zcode.z.ai/api/v1/oauth/cli/init  { provider: "zai"|"zcode" }
  *   2. Open data.authorize_url, poll /oauth/cli/poll/{flow_id}
- *   3. POST api.z.ai/api/auth/z/login          (OAuth access → biz JWT)
- *   4. Provision a durable id.secret API key on the biz API
+ *   3. Z.ai only: POST api.z.ai/api/auth/z/login then mint id.secret
+ *      BigModel: the poll JWT is the Coding Plan bearer (no biz mint)
  *
- * Chat goes to the Coding Plan OpenAI-compatible endpoint.
- * Client id matches ZCode: client_P8X5CMWmlaRO9gyO-KSqtg
+ * Chat goes to the matching Coding Plan OpenAI-compatible endpoint.
  */
 
 import { randomBytes } from 'node:crypto'
 
 export const GLM_CLIENT_ID = 'client_P8X5CMWmlaRO9gyO-KSqtg'
+export const GLM_BIGMODEL_APP_ID = 'zcode'
 export const GLM_CLI_INIT_URL = 'https://zcode.z.ai/api/v1/oauth/cli/init'
 export const GLM_CLI_POLL_URL = 'https://zcode.z.ai/api/v1/oauth/cli/poll'
 export const GLM_TOKEN_URL = 'https://zcode.z.ai/api/v1/oauth/token'
 export const GLM_AUTHORIZE_URL = 'https://chat.z.ai/api/oauth/authorize'
+export const GLM_BIGMODEL_AUTHORIZE_URL = 'https://bigmodel.cn/login'
 export const GLM_BUSINESS_LOGIN_URL = 'https://api.z.ai/api/auth/z/login'
 export const GLM_BIZ_BASE = 'https://api.z.ai'
 export const GLM_CODING_URL = 'https://api.z.ai/api/coding/paas/v4/chat/completions'
 export const GLM_QUOTA_URL = 'https://api.z.ai/api/monitor/usage/quota/limit'
 export const GLM_KEY_NAME = 'dsh-plugin-oauth-subs'
-export const GLM_USER_AGENT = 'dsh-plugin-oauth-subs/0.0.17'
+export const GLM_USER_AGENT = 'dsh-plugin-oauth-subs/0.0.19'
 export const GLM_NEVER_EXPIRES = 8.64e15
 export const GLM_CONTEXT_WINDOW = 128_000
 export const GLM_LARGE_CONTEXT = 1_000_000
+
+export const GLM_REGIONS = Object.freeze(['zai', 'bigmodel'])
+export const GLM_CLI_PROVIDERS = Object.freeze({
+  zai: 'zai',
+  bigmodel: 'zcode',
+})
 
 export const GLM_MODELS = Object.freeze([
   { id: 'glm-5.3', name: 'GLM-5.3', contextWindow: GLM_LARGE_CONTEXT, maxTokens: 128_000, reasoningEfforts: false },
@@ -48,6 +57,16 @@ export const GLM_PLAN_NAMES = Object.freeze({
   team: 'Team',
 })
 
+export function normalizeGlmRegion(value) {
+  const raw = typeof value === 'string' ? value.trim().toLowerCase() : ''
+  if (raw === 'bigmodel' || raw === 'cn' || raw === 'zcode' || raw === 'china') return 'bigmodel'
+  return 'zai'
+}
+
+export function glmCliProvider(region) {
+  return GLM_CLI_PROVIDERS[normalizeGlmRegion(region)]
+}
+
 export function glmPlanLabel(raw) {
   if (typeof raw !== 'string' || !raw.trim()) return undefined
   const slug = raw.trim().toLowerCase().replace(/[_\-\s]+/g, '_')
@@ -55,19 +74,19 @@ export function glmPlanLabel(raw) {
 }
 
 export function glmCodingUrl(region = 'zai') {
-  return region === 'bigmodel'
+  return normalizeGlmRegion(region) === 'bigmodel'
     ? 'https://open.bigmodel.cn/api/coding/paas/v4/chat/completions'
     : GLM_CODING_URL
 }
 
 export function glmQuotaUrl(region = 'zai') {
-  return region === 'bigmodel'
+  return normalizeGlmRegion(region) === 'bigmodel'
     ? 'https://open.bigmodel.cn/api/monitor/usage/quota/limit'
     : GLM_QUOTA_URL
 }
 
 export function glmBizBase(region = 'zai') {
-  return region === 'bigmodel' ? 'https://open.bigmodel.cn' : GLM_BIZ_BASE
+  return normalizeGlmRegion(region) === 'bigmodel' ? 'https://open.bigmodel.cn' : GLM_BIZ_BASE
 }
 
 export function glmUpstreamHeaders(session) {
@@ -108,6 +127,11 @@ function trimmed(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined
 }
 
+function tokenFrom(obj) {
+  if (!obj || typeof obj !== 'object') return undefined
+  return trimmed(obj.access_token ?? obj.accessToken)
+}
+
 export function createPollToken() {
   return randomBytes(32).toString('hex')
 }
@@ -131,7 +155,10 @@ export function parseCliPoll(body) {
   const data = unwrapEnvelope(body, 'cli poll') ?? {}
   const status = trimmed(data.status) ?? 'pending'
   if (status !== 'ready') return { status, ready: false }
-  const oauthAccess = trimmed(data.zai?.access_token ?? data.zai?.accessToken ?? data.access_token)
+  const oauthAccess = tokenFrom(data.zai)
+    ?? tokenFrom(data.zcode)
+    ?? tokenFrom(data.bigmodel)
+    ?? trimmed(data.access_token)
   if (!oauthAccess) throw new Error('glm cli poll ready without access token')
   const email = trimmed(data.user?.email)
   const accountId = data.user?.id != null ? String(data.user.id) : undefined
@@ -152,13 +179,14 @@ async function readJson(response, label) {
 }
 
 export async function glmCliInit({ region = 'zai', fetchFn = fetch, pollToken = createPollToken() } = {}) {
+  const resolved = normalizeGlmRegion(region)
   const response = await fetchFn(GLM_CLI_INIT_URL, {
     method: 'POST',
     headers: jsonHeaders({ authorization: `Bearer ${pollToken}` }),
-    body: JSON.stringify({ provider: region === 'bigmodel' ? 'bigmodel' : 'zai' }),
+    body: JSON.stringify({ provider: glmCliProvider(resolved) }),
   })
   const started = parseCliInit(await readJson(response, 'glm cli init'))
-  return { ...started, pollToken, region }
+  return { ...started, pollToken, region: resolved }
 }
 
 export async function glmCliPoll({ flowId, pollToken, fetchFn = fetch } = {}) {
@@ -182,7 +210,7 @@ async function postJson(url, body, headers, fetchFn) {
 }
 
 export async function businessLogin(oauthAccessToken, { fetchFn = fetch, region = 'zai' } = {}) {
-  const url = region === 'bigmodel'
+  const url = normalizeGlmRegion(region) === 'bigmodel'
     ? 'https://open.bigmodel.cn/api/auth/z/login'
     : GLM_BUSINESS_LOGIN_URL
   const data = unwrapEnvelope(
@@ -248,19 +276,31 @@ export function glmSession({ accessToken, account, accountId, planType, region =
     refreshToken: accessToken,
     expiresAt: GLM_NEVER_EXPIRES,
     account: account ?? accountId ?? 'glm',
-    region,
+    region: normalizeGlmRegion(region),
     ...(planType === undefined ? {} : { planType }),
     ...(zcodeJwt === undefined ? {} : { zcodeJwt }),
   }
 }
 
 export async function completeGlmCli(ready, { fetchFn = fetch, region = 'zai' } = {}) {
-  const accessToken = await mintGlmApiKey(ready.oauthAccess, { fetchFn, region })
+  const resolved = normalizeGlmRegion(region)
+  if (resolved === 'bigmodel') {
+    const accessToken = ready.zcodeJwt || ready.oauthAccess
+    if (!accessToken) throw new Error('glm BigModel poll ready without a token')
+    return glmSession({
+      accessToken,
+      account: ready.email ?? ready.accountId,
+      accountId: ready.accountId,
+      region: resolved,
+      zcodeJwt: ready.zcodeJwt,
+    })
+  }
+  const accessToken = await mintGlmApiKey(ready.oauthAccess, { fetchFn, region: resolved })
   return glmSession({
     accessToken,
     account: ready.email ?? ready.accountId,
     accountId: ready.accountId,
-    region,
+    region: resolved,
     zcodeJwt: ready.zcodeJwt,
   })
 }

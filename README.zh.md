@@ -15,7 +15,7 @@ dsh plugin --profile web add https://github.com/xxww0098/dsh-plugin-oauth-subs
 dsh web
 ```
 
-打开 **设置 → OAuth 订阅**。页签：**Codex**、**Grok**、**智谱 GLM**、**模型**、**关于**。每个系列可登录多个账号，点一行切换。对话和额度走当前账号。**GLM** 走 ZCode 的浏览器 OAuth（无 PKCE），登录后签发 Coding Plan 的长期 `id.secret` 密钥。**关于** 里有 GitHub 仓库链接，并按 Windows / macOS / Linux 检查最新发布。也可以用 `cordis.patch.yml` 手动挂载：
+打开 **设置 → OAuth 订阅**。页签：**Codex**、**Grok**、**智谱 GLM**、**模型**、**关于**。每个系列可登录多个账号，点一行切换。对话和额度走当前账号。**GLM** 与 ZCode 欢迎页一样，分 **Z.ai（全球）** 和 **BigModel（中国）** 两套 OAuth，也可粘贴 API key。登录后签发 Coding Plan 密钥。**关于** 里有 GitHub 仓库链接，并按 Windows / macOS / Linux 检查最新发布。也可以用 `cordis.patch.yml` 手动挂载：
 
 ```yaml
 - insert:
@@ -33,6 +33,8 @@ pnpm dsh web --patch ./cordis.patch.yml
 |---|---|---|---|
 | ChatGPT Codex | PKCE，回环 `localhost:1455`（占用则 `1457`），可粘贴回调 | `app_EMoamEEZ73f0CkXaXp7hrann` | `chatgpt.com/backend-api/codex/responses` |
 | xAI Grok | **设备码（默认）**；PKCE 回环 `127.0.0.1:56121` 作备选 | `b1a00492-073a-47ea-816f-4c329264a828` | `api.x.ai/v1/responses` |
+| 智谱 GLM · Z.ai（全球） | ZCode CLI 轮询，`provider: zai`，再换发 `id.secret` | `client_P8X5CMWmlaRO9gyO-KSqtg` | `api.z.ai/api/coding/paas/v4` |
+| 智谱 GLM · BigModel（中国） | 同一 CLI 轮询，`provider: zcode`，poll JWT 即密钥 | `zcode` | `open.bigmodel.cn/api/coding/paas/v4` |
 
 已在本机登录过 Codex CLI、Grok CLI 或 Hermes 时，点 **导入本机会话**：
 
@@ -115,7 +117,7 @@ node --experimental-strip-types scripts/analyze-session.ts --fail-below 80 path/
 
 默认关闭。在 `gpt-5.6-luna` 上实测：**输出 88.3 对 57.5 token/秒，1.54 倍**，与目录标称的 "1.5x speed, increased usage" 吻合。提升只在生成吞吐上——首 token 时间和缓存命中不受影响。
 
-登录、刷新令牌、对话和额度走同一套官方客户端身份：Codex 为成对的 `originator: codex_cli_rs` 与 `User-Agent: codex_cli_rs/<version>`；Grok 为 `x-xai-token-auth: xai-grok-cli` 与 `User-Agent: grok-cli/<version>`。GLM 用 ZCode 公开 client `client_P8X5CMWmlaRO9gyO-KSqtg` 和 CLI 轮询流（`zcode.z.ai/api/v1/oauth/cli/init` → 浏览器授权 → poll → `api.z.ai/api/auth/z/login` → 长期 `id.secret` 密钥）。不模拟浏览器 TLS 指纹。
+登录、刷新令牌、对话和额度走同一套官方客户端身份：Codex 为成对的 `originator: codex_cli_rs` 与 `User-Agent: codex_cli_rs/<version>`；Grok 为 `x-xai-token-auth: xai-grok-cli` 与 `User-Agent: grok-cli/<version>`。GLM 走 ZCode CLI 轮询：国际站 `provider: zai`（client `client_P8X5CMWmlaRO9gyO-KSqtg`，再 `api.z.ai/api/auth/z/login` 换长期 `id.secret`）；国内站 `provider: zcode`（`bigmodel.cn/login`，poll JWT 直接当 Coding Plan 密钥）。对话分别打 `api.z.ai` 与 `open.bigmodel.cn` 的 `/api/coding/paas/v4`。不模拟浏览器 TLS 指纹。
 
 ## 模型选择
 
@@ -144,7 +146,7 @@ Grok 4.6 思考深度为 **low / medium / high / xhigh**。Grok 4.5 为 **low / 
 | ChatGPT Codex | `chatgpt.com/backend-api/wham/usage` | 套餐等级（Plus / Pro / Team …）+ 5 小时窗口 + 每周窗口，展示**剩余**百分比和重置时间 |
 | ChatGPT Codex 重置 | `…/wham/rate-limit-reset-credits` 与 `/consume` | 银行的周窗口重置券和过期时间；Codex 卡片上按券各一颗确认按钮 |
 | xAI Grok | `cli-chat-proxy.grok.com/v1/billing?format=credits`，并读 `/v1/user?include=subscription` | 套餐等级（SuperGrok / X Premium+ …）+ 本周期用量、预付余额、产品分项 |
-| 智谱 GLM | `api.z.ai/api/monitor/usage/quota/limit` | 套餐徽章（Lite / Pro / Max）+ Coding Plan 积分窗口 |
+| 智谱 GLM | `api.z.ai` 或 `open.bigmodel.cn` 的 `monitor/usage/quota/limit` | 套餐徽章（Lite / Pro / Max）+ Coding Plan 积分窗口；站点随当前账号 |
 
 额度约每分钟刷新一次，也可点卡片上的 **刷新额度**。读失败不影响对话。
 
