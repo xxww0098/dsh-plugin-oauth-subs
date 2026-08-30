@@ -137,6 +137,8 @@ GPT-5.6 Sol / Terra / Luna 实际可到 **872K**，GPT-5.4 可到 **1M**，都�
 
 Grok 4.6 思考深度为 **low / medium / high / xhigh**。Grok 4.5 为 **low / medium / high**（没有 xhigh）。思考不能关掉；不选时上游默认 **high**。Grok 4 没有深度选项。Codex 的 GPT-5.6 Sol / Terra / Luna 在 **low / medium / high / xhigh** 之上还有 **max**。其余 Codex 模型最高到 **xhigh**。不提供 `minimal`：所有 Codex 模型都拒绝该取值。
 
+GLM-5.3 与 GLM-5.3-Flash 的思考深度为 **low / high / max**（默认 **max**）。没有 `medium`，也不能关掉思考——`thinking.type: disabled` 会 400。GLM-5-Turbo 没有深度选项（思考默认开着）。会话选择器只列出目录声明的档位。
+
 在 DeepSeek Harness **会话**里点模型名称 → **推理等级** 设置，不在「设置 → 模型」。登录、退出、勾选都会自动同步。
 
 ## 额度

@@ -196,6 +196,13 @@ test('GLM catalog is three models with official input types; Codex stays image-c
   assert.deepEqual(glm.find((model) => model.id === 'glm-5.3').input, ['text'])
   assert.deepEqual(glm.find((model) => model.id === 'glm-5.3-flash').input, ['text', 'image'])
   assert.deepEqual(glm.find((model) => model.id === 'glm-5-turbo').input, ['text'])
+  assert.deepEqual(glm.find((model) => model.id === 'glm-5.3').reasoningEfforts, {
+    low: 'low',
+    high: 'high',
+    max: 'max',
+  })
+  assert.equal(glm.find((model) => model.id === 'glm-5-turbo').reasoningEfforts, false)
+  assert.equal(catalog['oauth-glm'].compat.thinkingFormat, 'openai')
   assert.equal(glm.find((model) => model.id === 'glm-5.3-flash').name, 'GLM-5.3-Flash')
   assert.deepEqual(catalog['oauth-codex'].models.find((model) => model.id === 'gpt-5.5').input, ['text', 'image'])
   const described = describeCatalog(catalog).find((row) => row.family === 'glm')

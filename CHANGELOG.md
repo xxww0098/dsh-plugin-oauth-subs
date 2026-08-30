@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.22
+
+- GLM-5.3 and GLM-5.3-Flash declare thinking depth **low / high / max** (official `reasoning_effort`; default max). Thinking cannot be turned off. No `medium`. GLM-5-Turbo stays without a depth ladder. The Harness session picker reads this from the catalog; `oauth-glm` also sets `compat.supportsReasoningEffort` so the localhost proxy actually sends `reasoning_effort`.
+
 ## 0.0.21
 
 - About no longer lists a fake Windows / macOS / Linux download for the generic zip. Check for updates, then open the GitHub release. This is a DSH plugin, not a desktop installer.
