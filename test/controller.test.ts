@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict'
+import { EventEmitter } from 'node:events'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { AuthController } from '../lib/oauth/controller.js'
 import { saveSession } from '../lib/oauth/store.js'
+import { installedVersion } from '../lib/utils/update.js'
 
 test('snapshot reports logged-out accounts and empty providers', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
@@ -243,4 +245,82 @@ test('snapshot shows quota on every Grok account, not only the active one', asyn
   assert.equal(first.quota.rows[0].remainingPercent, 60)
   assert.equal(second.quota.rows[0].remainingPercent, 90)
   assert.equal(second.active, true)
+})
+
+function githubLatest(tag) {
+  return async () => new Response(JSON.stringify({
+    tag_name: tag,
+    name: tag,
+    html_url: `https://github.com/xxww0098/dsh-plugin-oauth-subs/releases/tag/${tag}`,
+    published_at: '2026-08-30T15:07:49Z',
+    assets: [],
+  }), { status: 200, headers: { 'content-type': 'application/json' } })
+}
+
+function spawnChild(code = 0) {
+  const child = new EventEmitter()
+  child.stdout = new EventEmitter()
+  child.stderr = new EventEmitter()
+  child.kill = () => undefined
+  queueMicrotask(() => child.emit('close', code))
+  return child
+}
+
+test('checkUpdate compare-only never spawns dsh', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  let spawned = 0
+  const controller = new AuthController({
+    authPath: join(dir, 'auth.json'),
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+    fetchFn: githubLatest('v9.9.9'),
+    spawnFn: () => { spawned += 1; return spawnChild(0) },
+    profile: 'web',
+  })
+  const check = await controller.checkUpdate({ apply: false })
+  assert.equal(check.status, 'update')
+  assert.equal(check.apply.status, 'none')
+  assert.equal(spawned, 0)
+  const current = await controller.checkUpdate({ apply: true })
+  assert.equal(current.status, 'update')
+  assert.equal(current.apply.status, 'installed')
+  assert.equal(current.apply.restart, true)
+  assert.equal(current.apply.command, 'dsh plugin --profile web update dsh-plugin-oauth-subs')
+  assert.equal(spawned, 1)
+})
+
+test('checkUpdate does not reinstall when already current', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  let spawned = 0
+  const controller = new AuthController({
+    authPath: join(dir, 'auth.json'),
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+    fetchFn: githubLatest(`v${installedVersion()}`),
+    spawnFn: () => { spawned += 1; return spawnChild(0) },
+    profile: 'web',
+  })
+  const result = await controller.checkUpdate({ apply: true })
+  assert.equal(result.status, 'current')
+  assert.equal(result.apply.status, 'none')
+  assert.equal(spawned, 0)
+})
+
+test('checkUpdate reports a failed dsh plugin update', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const controller = new AuthController({
+    authPath: join(dir, 'auth.json'),
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+    fetchFn: githubLatest('v9.9.9'),
+    spawnFn: () => spawnChild(1),
+    profile: 'web',
+  })
+  const result = await controller.checkUpdate({ apply: true })
+  assert.equal(result.status, 'update')
+  assert.equal(result.apply.status, 'failed')
+  assert.match(result.apply.command, /dsh plugin --profile web update/)
 })

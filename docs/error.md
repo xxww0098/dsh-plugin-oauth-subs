@@ -1,5 +1,127 @@
 # 错误记录
 
+## 2026-08-30：关于页「打开发布页」是假安装入口；检查更新只比版本
+
+### 现象
+
+设置 → OAuth 订阅 → 关于。检查更新只打 `api.github.com/.../releases/latest`，装的是 0.0.24，显示 **有新版本**。底下还有 **打开发布页**，点开 GitHub release / zip。DSH 插件的真实升级是 `dsh plugin --profile web update`，不是下 zip。0.0.21 已经去掉假 Win/mac/linux 下载行，但发布页链接还在。
+
+### 根因
+
+`checkUpdate` 只做 GitHub 比版本。关于页把 `latest.url` 画成独立 CTA。宿主没有自动升级器；用户本机的 zsh 包装才是「停 DSH → `dsh plugin --profile web update` → 再开 `dsh web`」。CLI 文档：`dsh plugin --profile <args...>` 转发给 profile 目录里的 pnpm，跑完要重启 profile，热重载只管 `cordis.patch.yml`，不管 bundle 更新。
+
+### 修复（0.0.33）
+
+- 去掉「打开发布页」/ Open release page。仓库链接、版本行、**有新版本** 状态保留。
+- 打开关于页仍只比较版本（不重装）。点 **检查更新** 且 latest > installed 时 spawn PATH 上的 `dsh plugin --profile web update dsh-plugin-oauth-subs`（只动本包）。已是最新不重装。
+- 成功后提示重启 `dsh web`。找不到 `dsh`、超时、非 0 退出都写在关于页。不 `npm i -g`，不杀当前进程。
+
+### 验证
+
+- `npm test`：`apply: false` 不 spawn；`status === current` 不 spawn；有新版本时参数正好是 `dsh plugin --profile web update dsh-plugin-oauth-subs`；ENOENT → `missing-dsh`。
+
+## 2026-08-30：Grok Fast 无加速；Codex Fast 只靠 body 字段，回显一直是 default
+
+### 现象
+
+用户本机 Mac，本地插件代理 `127.0.0.1:8318`，ChatGPT Pro + Grok X Premium+。交错 default 与 `-fast`，同一 prompt（整数 1–180），`reasoning.effort` low，`stream` true。Codex 请求体必须是 list `input` + `store: false`（string input 先 400，再 400 “Store must be set to false”）。
+
+**Grok 4.6**
+
+- Echo：default → `service_tier` `default`；`-fast` → created 和 completed 都是 `priority`（字段线上被接受）。
+- 吞吐：default 81.20 / 85.48 tok/s（均值 83.34）；fast 85.08 / 80.51（均值 82.80，比 0.994）。无加速。
+- 探针：POST grok-4.5 带 body `service_tier=priority` → HTTP 200，echo `default`（插件剥掉，符合设计）。
+
+**Codex gpt-5.6-luna**
+
+- 插件剥掉 `-fast`（model echo 是 `gpt-5.6-luna`）。
+- Echo：created=`auto`，completed=`default`，default 和 `-fast` 两边一样。从未出现 `priority`。
+- 吞吐：default 37.79 / 54.74（均值 46.27）；fast 71.76 / 51.08（均值 61.42，比 1.33）。成对比 1.90× 然后 0.93×，不是稳定的 Priority 提升。
+- 探针：`gpt-5.4-mini-fast` → HTTP 400 `The 'gpt-5.4-mini-fast' model is not supported when using Codex with a ChatGPT account.` 不合格 `-fast` 没剥掉，上游看到假 id。
+
+README 曾写 Luna Fast 88.3 vs 57.5 tok/s（1.54×，2026-08-26）。今晚没复现。`fast-mode.json` 磁盘上是 `{on:false}`（旧 UI 开关），后缀剥离不读这个文件。
+
+### 根因
+
+1. **Grok**：xAI Responses 接受 Grok 4.6 的 `priority`，但不给吞吐。继续挂 `-fast` 是撒谎。
+2. **Codex**：插件只写了 body `service_tier: "priority"`。Codex CLI 0.149+（openai/codex#37345）还会发 `x-codex-routing-hint: model=<id>;tier=priority`，ChatGPT 订阅路径 `store` 必须是 `false`。回显 `auto`/`default` 本身不是失败判据（openai/codex#14204 官方也说 ChatGPT 鉴权下 `response.service_tier` 不可靠），但缺 hint 时请求形状和 CLI 不一致。Plus 账号上 CLI 带 hint 的对照（#32191）同样 echo `default`、吞吐无差；本机 Pro 今晚也没稳定 1.5×。
+3. **不合格 `-fast`**：`peelFastSuffix` 只在 `fastTier` 为真时剥后缀，mini / 过期 id 原样转发。
+
+### 修复（0.0.33）
+
+- 删掉 Grok Fast：目录、选择器、Settings 文案、README 不再出现 `grok-*-fast`。代理永不给 Grok 写 `service_tier`。残留 `grok-4.6-fast` 只剥后缀。
+- Codex 合格 `-fast`：剥后缀 + `service_tier: "priority"` + `x-codex-routing-hint: model=<id>;tier=priority`，并强制 `store: false`。客户端身份跟到 `codex_cli_rs/0.151.0`。
+- 不合格 Codex `-fast`（mini / Spark / 过期 id）本地剥掉，不再把假 id 转给上游。
+- 保留 Codex `-fast` 选择器行：目录仍标 Fast，CLI 仍这样请求。文档不再把 2026-08-26 的 1.54× 写成当前事实；回显 `default`/`auto` 不能当 Priority 成功判据。
+
+### 验证
+
+- `npm test`：Grok 无 `-fast` 行；`grok-4.6-fast` / `gpt-5.4-mini-fast` 剥后缀且不带 `service_tier`；Codex `-fast` 请求带 `priority`、`store: false`、`x-codex-routing-hint=model=…;tier=priority`。
+
+## 2026-08-30：GLM「导入本机会话」是空操作
+
+### 现象
+
+设置页智谱 GLM → **导入本机会话**。本机已用 ZCode Desktop 登录 BigModel Coding Plan，按钮点了没反应。插件 0.0.24。
+
+### 证据
+
+本机 `~/.zcode/cli/config.json` 与 `~/.zcode/config.json` 都不存在。活会话在 **`~/.zcode/v2/config.json`**（`provider` 下）：
+
+- `builtin:bigmodel-coding-plan`.options.apiKey 非空（Coding Plan 密钥，站点 BigModel）
+- `builtin:bigmodel-start-plan`.options.apiKey 是 JWT
+- `builtin:zai-coding-plan` / `builtin:bigmodel` / `builtin:zai` 的 apiKey 为空
+- `~/.zcode/v2/credentials.json` 是 `enc:v1:…`，不必解密
+
+同一份 `glmKeyFromZcodeConfig` 对着 v2 文件能选出 `builtin:bigmodel-coding-plan`，region `bigmodel`。
+
+### 根因
+
+`glmAuthSearchPaths` 只扫了旧 CLI 路径，没扫 Desktop `v2/config.json`。解析本身已经会跳过空 apiKey。
+
+### 修复（0.0.33）
+
+搜索路径加上 `~/.zcode/v2/config.json`（放在最前）。多把钥匙时优先 coding-plan / start-plan，且非 JWT 的 Coding Plan 密钥压过 JWT。不读加密 credentials。
+
+### 验证
+
+- `glmAuthSearchPaths()[0]` 以 `.zcode/v2/config.json` 结尾。
+- 夹具 `importGlmAuth` 读 v2 文件，session.region 为 `bigmodel`，token 是 coding-plan 那把。
+- `npm test` 全绿。
+
+## 2026-08-30：BigModel OAuth 登录线上 500
+
+### 现象
+
+设置页 **连接 BigModel 继续使用** 立刻失败。插件 0.0.24。
+
+### 证据
+
+2026-08-30 对 `POST https://zcode.z.ai/api/v1/oauth/cli/init`：
+
+| body | 结果 |
+|---|---|
+| `{provider:"zai"}` | HTTP 200，`flow_id` + `authorize_url`（连打会 429） |
+| `{provider:"zcode"}` | HTTP 500 `{"code":1000,"msg":"something went wrong"}`（复现两次） |
+| `{provider:"bigmodel"}` | HTTP 200，`flow_id` + `authorize_url`，授权页 `bigmodel.cn/login` |
+
+0.0.19 把国内站改成 `zcode` 时写过「ZCode 内部 id 是 `zcode`」。今晚这条已经 500。
+
+### 根因
+
+`GLM_CLI_PROVIDERS.bigmodel` 仍发 `zcode`。init API 现在要 `bigmodel`。
+
+### 修复（0.0.33）
+
+`GLM_CLI_PROVIDERS.bigmodel = 'bigmodel'`。region 别名 `zcode` → `bigmodel` 仍留给导入路径上的 provider 名。`GLM_BIGMODEL_APP_ID` 仍是 `zcode`（授权 URL 的 app_id）。
+
+### 验证
+
+- `glmCliProvider('bigmodel') === 'bigmodel'`。
+- `glmCliInit({ region: 'bigmodel' })` body `provider` 为 `bigmodel`。
+- 线上再打一次 init：HTTP 200，authorize host `bigmodel.cn`，path `/login`。
+- `npm test` 全绿。
+
 ## 2026-08-30：多账号额度只显示当前账号
 
 ### 现象
@@ -99,7 +221,7 @@ JWT / usage 的 slug：`$200` 仍是 `pro`，`$100` 是 `prolite`（openai/codex
 
 ### 修复（0.0.21）
 
-通用 zip 不再生成下载行。关于页只保留检查更新和「打开发布页」。只有文件名带 win/mac/linux 的资源才会出现下载行。
+通用 zip 不再生成下载行。关于页当时还留了「打开发布页」。只有文件名带 win/mac/linux 的资源才会出现下载行。0.0.33 去掉发布页链接，检查更新在有新版本时会跑 `dsh plugin --profile web update`。
 
 ### 验证
 

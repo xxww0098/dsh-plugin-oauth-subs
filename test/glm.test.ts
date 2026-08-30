@@ -34,7 +34,7 @@ test('normalizeGlmRegion maps ZCode ids to zai / bigmodel', () => {
   assert.equal(normalizeGlmRegion('zcode'), 'bigmodel')
   assert.equal(normalizeGlmRegion('cn'), 'bigmodel')
   assert.equal(glmCliProvider('zai'), 'zai')
-  assert.equal(glmCliProvider('bigmodel'), 'zcode')
+  assert.equal(glmCliProvider('bigmodel'), 'bigmodel')
 })
 
 test('parseCliInit reads flow_id and authorize_url', () => {
@@ -152,7 +152,7 @@ test('completeGlmCli for BigModel uses poll JWT and skips biz mint', async () =>
   assert.equal(session.account, 'cn@bigmodel.cn')
 })
 
-test('glmCliInit posts ZCode provider id zcode for BigModel', async () => {
+test('glmCliInit posts provider id bigmodel for BigModel', async () => {
   let body
   const fetchFn = async (url, init = {}) => {
     body = init.body
@@ -167,7 +167,7 @@ test('glmCliInit posts ZCode provider id zcode for BigModel', async () => {
     })
   }
   const started = await glmCliInit({ region: 'bigmodel', fetchFn, pollToken: 'poll' })
-  assert.equal(JSON.parse(body).provider, 'zcode')
+  assert.equal(JSON.parse(body).provider, 'bigmodel')
   assert.equal(started.region, 'bigmodel')
   assert.equal(started.authorizeUrl.includes('bigmodel.cn'), true)
 })
@@ -267,7 +267,7 @@ test('controller GLM login sends BigModel region to cli init', async () => {
   const result = await controller.login('glm', 'bigmodel')
   assert.equal(result.region, 'bigmodel')
   assert.equal(result.mode, 'cli')
-  assert.equal(JSON.parse(calls[0].body).provider, 'zcode')
+  assert.equal(JSON.parse(calls[0].body).provider, 'bigmodel')
   await controller.cancel('glm')
 })
 

@@ -60,7 +60,7 @@ src/
       device-flow.ts       RFC 8628
     glm/                   Zhipu GLM Coding Plan (Z.ai global + BigModel China)
       index.ts             catalog, CLI poll OAuth, key mint, headers
-      cli-flow.ts          ZCode /oauth/cli/init + poll (`zai` / `zcode`)
+      cli-flow.ts          ZCode /oauth/cli/init + poll (`zai` / `bigmodel`)
   ui/                      React Settings (classic-script factory)
     client.ts
   utils/                   shared, provider-agnostic

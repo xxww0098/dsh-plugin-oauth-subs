@@ -20,6 +20,7 @@ import { AuthController } from './oauth/controller.js'
 import { authFilePath, defaultDataDir, readPrivateText, writePrivateText } from './oauth/store.js'
 import { createProxy } from './oauth/proxy.js'
 import { OAUTH_CREDENTIAL_REF, ModelSwitch } from './oauth/models.js'
+import { profileFromBaseUrl } from './utils/update.js'
 
 export const name = 'dsh-plugin-oauth-subs'
 export const inject = ['settings', 'credentials']
@@ -90,7 +91,7 @@ function registerRpc(ctx, controller) {
       models: (payload) => controller.setModels(payload ?? {}),
       quota: (payload) => controller.refreshQuota(payload?.provider, payload?.id),
       reset: (payload) => controller.consumeReset(payload?.provider, payload?.id),
-      update: () => controller.checkUpdate(),
+      update: (payload) => controller.checkUpdate(payload),
     }
     return rpc.handle('/oauth-subs-auth', async (endpoint, payload) => {
       const fn = methods[endpoint]
@@ -138,6 +139,7 @@ export function apply(ctx, config = {}) {
         ctx.logger?.warn?.(`dsh-plugin-oauth-subs: llm-pi-ai sync failed: ${error.message}`)
       })
     },
+    profile: profileFromBaseUrl(ctx.baseUrl),
   })
 
   let proxy
@@ -216,4 +218,7 @@ export {
   installedVersion,
   fetchLatest,
   localUpdateInfo,
+  profileFromBaseUrl,
+  pluginUpdateCommand,
+  runPluginUpdate,
 } from './utils/update.js'

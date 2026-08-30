@@ -13,9 +13,9 @@ export declare const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usa
 export declare const CODEX_RESET_CREDITS_URL = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits";
 export declare const CODEX_RESET_CONSUME_URL = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume";
 export declare const CODEX_MODELS_URL = "https://chatgpt.com/backend-api/codex/models";
-export declare const CODEX_CLIENT_VERSION = "0.147.0";
+export declare const CODEX_CLIENT_VERSION = "0.151.0";
 export declare const CODEX_ORIGINATOR = "codex_cli_rs";
-export declare const CODEX_USER_AGENT = "codex_cli_rs/0.147.0";
+export declare const CODEX_USER_AGENT = "codex_cli_rs/0.151.0";
 export declare const CODEX_SCOPE = "openid profile email offline_access api.connectors.read api.connectors.invoke";
 export declare const CODEX_CALLBACK_PATH = "/auth/callback";
 export declare const CODEX_PREEMPT_MS: number;
@@ -202,6 +202,13 @@ export declare function codexCredentialHeaders(): {
     originator: string;
     'user-agent': string;
 };
+/**
+ * Codex CLI `x-codex-routing-hint` (openai/codex#37345). ChatGPT Codex
+ * subscription Responses use this together with body `service_tier` to
+ * request Fast / Priority. Always sent on Codex-backend auth: `model=<id>`
+ * or `model=<id>;tier=priority`.
+ */
+export declare function codexRoutingHint(model: any, serviceTier: any): string;
 export declare function codexUpstreamHeaders(session: any): {
     'openai-version': string;
     'openai-beta': string;

@@ -7,6 +7,9 @@ import { codexSession } from '../lib/oauth/codex/index.js'
 import { GROK_CLIENT_ID } from '../lib/oauth/grok/index.js'
 import {
   GROK_HERMES_KEYS,
+  glmAuthSearchPaths,
+  glmKeyFromZcodeConfig,
+  importGlmAuth,
   importGrokAuth,
   tokensFromGrokCli,
   tokensFromHermes,
@@ -211,6 +214,48 @@ test('importGrokAuth skips Grok CLI API-key-only files and still reads Hermes', 
   const result = await importGrokAuth([grokPath, hermesPath])
   assert.equal(result.source, hermesPath)
   assert.equal(result.session.refreshToken, 'rt-after-skip')
+})
+
+test('glmAuthSearchPaths includes ZCode Desktop v2 config', () => {
+  const paths = glmAuthSearchPaths()
+  assert.equal(paths[0].endsWith(join('.zcode', 'v2', 'config.json')), true)
+})
+
+test('glmKeyFromZcodeConfig prefers a non-JWT coding-plan key over start-plan JWT', () => {
+  const jwtKey = jwt({ sub: 'start-plan', email: 'dev@bigmodel.cn' })
+  const found = glmKeyFromZcodeConfig({
+    provider: {
+      'builtin:bigmodel': { options: { apiKey: '' } },
+      'builtin:zai': { options: { apiKey: '' } },
+      'builtin:bigmodel-start-plan': { options: { apiKey: jwtKey } },
+      'builtin:zai-coding-plan': { options: { apiKey: '' } },
+      'builtin:bigmodel-coding-plan': { options: { apiKey: 'coding-plan-key-not-a-jwt' } },
+    },
+  })
+  assert.equal(found.apiKey, 'coding-plan-key-not-a-jwt')
+  assert.equal(found.region, 'bigmodel')
+})
+
+test('importGlmAuth reads ~/.zcode/v2/config.json and sets region from the provider key', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'zcode-v2-import-'))
+  const v2Dir = join(root, '.zcode', 'v2')
+  await mkdir(v2Dir, { recursive: true })
+  const v2Path = join(v2Dir, 'config.json')
+  await writeFile(v2Path, JSON.stringify({
+    provider: {
+      'builtin:bigmodel': { options: { apiKey: '' } },
+      'builtin:bigmodel-start-plan': { options: { apiKey: jwt({ sub: 'start' }) } },
+      'builtin:bigmodel-coding-plan': { options: { apiKey: 'bm-coding-plan-fixture' } },
+    },
+  }))
+  const result = await importGlmAuth([
+    v2Path,
+    join(root, '.zcode', 'cli', 'config.json'),
+    join(root, '.zcode', 'config.json'),
+  ])
+  assert.equal(result.source, v2Path)
+  assert.equal(result.session.accessToken, 'bm-coding-plan-fixture')
+  assert.equal(result.session.region, 'bigmodel')
 })
 
 test('importGrokAuth lists both paths when nothing is found', async () => {

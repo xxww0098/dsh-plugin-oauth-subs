@@ -9,6 +9,7 @@ import {
   CODEX_CLIENT_VERSION,
   codexFlow,
   codexCredentialHeaders,
+  codexRoutingHint,
   codexUpstreamHeaders,
   exchangeCodexCode,
   refreshCodex,
@@ -46,6 +47,13 @@ test('Codex originator and User-Agent are the official CLI pair', () => {
   assert.equal(upstream.originator, cred.originator)
   assert.equal(upstream['user-agent'], cred['user-agent'])
   assert.equal(upstream['openai-version'], CODEX_CLIENT_VERSION)
+})
+
+test('codexRoutingHint matches Codex CLI x-codex-routing-hint', () => {
+  assert.equal(codexRoutingHint('gpt-5.6-luna', 'priority'), 'model=gpt-5.6-luna;tier=priority')
+  assert.equal(codexRoutingHint('gpt-5.5', undefined), 'model=gpt-5.5')
+  assert.equal(codexRoutingHint('gpt-5.5', ''), 'model=gpt-5.5')
+  assert.equal(codexRoutingHint('', 'priority'), undefined)
 })
 
 test('exchangeCodexCode and refreshCodex send the same identity pair', async () => {

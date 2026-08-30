@@ -7,6 +7,9 @@
  *   ~/.codex/auth.json          Codex CLI
  *   ~/.grok/auth.json           Grok CLI ($GROK_HOME/auth.json)
  *   ~/.hermes/auth.json         Hermes multi-provider store
+ *   ~/.zcode/v2/config.json     ZCode Desktop (Coding Plan apiKey under provider)
+ *   ~/.zcode/cli/config.json    older ZCode CLI
+ *   ~/.zcode/config.json        older ZCode
  */
 export declare const GROK_HERMES_KEYS: readonly string[];
 export declare function grokAuthSearchPaths(): string[];
@@ -46,6 +49,10 @@ export declare function importGrokAuth(paths?: string[]): Promise<{
     };
     source: string;
 }>;
+export declare function glmKeyFromZcodeConfig(raw: any): {
+    apiKey: any;
+    region: any;
+};
 export declare function glmAuthSearchPaths(): string[];
 export declare function importGlmAuth(paths?: string[]): Promise<{
     session: {

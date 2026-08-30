@@ -15,7 +15,7 @@ dsh plugin --profile web add https://github.com/xxww0098/dsh-plugin-oauth-subs
 dsh web
 ```
 
-打开 **设置 → OAuth 订阅**。顶栏五个图标页签：Codex、Grok、**Z.ai（智谱 GLM）**、模型、关于。每个系列可登录多个账号，**每个账号一张卡片，额度各自显示**；点卡片切换当前对话账号。**GLM** 与 ZCode 欢迎页一样，分 **Z.ai（全球）** 和 **BigModel（中国）** 两套 OAuth，也可粘贴 API key。登录后签发 Coding Plan 密钥。**关于** 里有 GitHub 仓库链接，并检查最新发布。也可以用 `cordis.patch.yml` 手动挂载：
+打开 **设置 → OAuth 订阅**。顶栏五个图标页签：Codex、Grok、**Z.ai（智谱 GLM）**、模型、关于。每个系列可登录多个账号，**每个账号一张卡片，额度各自显示**；点卡片切换当前对话账号。**GLM** 与 ZCode 欢迎页一样，分 **Z.ai（全球）** 和 **BigModel（中国）** 两套 OAuth，也可粘贴 API key。登录后签发 Coding Plan 密钥。**关于** 里有 GitHub 仓库链接。检查更新会对比 GitHub 最新版，有新版本时跑 `dsh plugin --profile web update dsh-plugin-oauth-subs`。重启 `dsh web` 后才会加载新模块。也可以用 `cordis.patch.yml` 手动挂载：
 
 ```yaml
 - insert:
@@ -34,13 +34,14 @@ pnpm dsh web --patch ./cordis.patch.yml
 | ChatGPT Codex | PKCE，回环 `localhost:1455`（占用则 `1457`），可粘贴回调 | `app_EMoamEEZ73f0CkXaXp7hrann` | `chatgpt.com/backend-api/codex/responses` |
 | xAI Grok | **设备码（默认）**；PKCE 回环 `127.0.0.1:56121` 作备选 | `b1a00492-073a-47ea-816f-4c329264a828` | `api.x.ai/v1/responses` |
 | 智谱 GLM · Z.ai（全球） | ZCode CLI 轮询，`provider: zai`，再换发 `id.secret` | `client_P8X5CMWmlaRO9gyO-KSqtg` | `api.z.ai/api/coding/paas/v4` |
-| 智谱 GLM · BigModel（中国） | 同一 CLI 轮询，`provider: zcode`，poll JWT 即密钥 | `zcode` | `open.bigmodel.cn/api/coding/paas/v4` |
+| 智谱 GLM · BigModel（中国） | 同一 CLI 轮询，`provider: bigmodel`，poll JWT 即密钥 | `zcode` | `open.bigmodel.cn/api/coding/paas/v4` |
 
-已在本机登录过 Codex CLI、Grok CLI 或 Hermes 时，点 **导入本机会话**：
+已在本机登录过 Codex CLI、Grok CLI、Hermes 或 ZCode Desktop 时，点 **导入本机会话**：
 
 - `~/.codex/auth.json`
 - `~/.grok/auth.json`
 - `~/.hermes/auth.json`
+- `~/.zcode/v2/config.json`（ZCode Desktop；旧路径 `~/.zcode/cli/config.json` / `~/.zcode/config.json` 仍读）
 
 令牌写在 profile 数据目录 `data/dsh-plugin-oauth-subs/auth.json`，权限 `0600`。每个系列的多个账号存在这个文件的保险库里；旧的单会话文件仍能读。开启/关闭的模型写在同目录的 `models.json`。
 
@@ -106,26 +107,25 @@ node --experimental-strip-types scripts/analyze-session.ts --fail-below 80 path/
 
 ## Fast 模式
 
-本质是 **Priority Processing**（请求里写 `service_tier: "priority"`），不是换一个模型族。
+Codex 上本质是 **Priority Processing**，不是换一个模型族。代理会剥掉本机 `-fast`，并按 Codex CLI 0.149+ 的线格式请求：请求体 `service_tier: "priority"`，再加上头 `x-codex-routing-hint: model=<id>;tier=priority`。ChatGPT 订阅 Responses 必须 `store: false`，否则 400。
 
 | 模型 | Fast |
 |---|---|
 | GPT-5.6 Sol / Terra / Luna、GPT-5.5、GPT-5.4 | 可以。在模型列表选带 `-fast` 的条目。 |
-| GPT-5.4 Mini、GPT-5.3 Codex Spark | 不行。它们目录里的 `service_tiers` 是空的，不会生成 `-fast` 条目。 |
-| Grok 4.6 | 可以。 |
-| 更早的 Grok | 不行。xAI Responses API 不接受该字段，代理会剥掉。 |
+| GPT-5.4 Mini、GPT-5.3 Codex Spark | 不行。它们目录里的 `service_tiers` 是空的，不会生成 `-fast` 条目。残留的 `*-fast` id 会在本地剥掉，不会转给上游。 |
+| Grok | 不行。Grok 4.6 线上会接受 `service_tier: "priority"`，但 2026-08-30 交错实测无加速（83.34 对 82.80 tok/s，比 0.994）。更早的 id 拒绝该字段，代理会剥掉。 |
 
-默认关闭。在 `gpt-5.6-luna` 上实测：**输出 88.3 对 57.5 token/秒，1.54 倍**，与目录标称的 "1.5x speed, increased usage" 吻合。提升只在生成吞吐上——首 token 时间和缓存命中不受影响。
+ChatGPT Codex 即使请求了 Priority，回显也经常是 `created=auto` / `completed=default`——这不能当确认（openai/codex#14204）。2026-08-26 Luna 曾测到 88.3 对 57.5 tok/s（1.54 倍）；2026-08-30 交错复测没有稳定提升（均值 1.33 倍，成对比 1.90 再 0.93）。提升只在生成吞吐上——首 token 时间和缓存命中不受影响。
 
-登录、刷新令牌、对话和额度走同一套官方客户端身份：Codex 为成对的 `originator: codex_cli_rs` 与 `User-Agent: codex_cli_rs/<version>`；Grok 为 `x-xai-token-auth: xai-grok-cli` 与 `User-Agent: grok-cli/<version>`。GLM 走 ZCode CLI 轮询：国际站 `provider: zai`（client `client_P8X5CMWmlaRO9gyO-KSqtg`，再 `api.z.ai/api/auth/z/login` 换长期 `id.secret`）；国内站 `provider: zcode`（`bigmodel.cn/login`，poll JWT 直接当 Coding Plan 密钥）。对话分别打 `api.z.ai` 与 `open.bigmodel.cn` 的 `/api/coding/paas/v4`。不模拟浏览器 TLS 指纹。
+登录、刷新令牌、对话和额度走同一套官方客户端身份：Codex 为成对的 `originator: codex_cli_rs` 与 `User-Agent: codex_cli_rs/<version>`；Grok 为 `x-xai-token-auth: xai-grok-cli` 与 `User-Agent: grok-cli/<version>`。GLM 走 ZCode CLI 轮询：国际站 `provider: zai`（client `client_P8X5CMWmlaRO9gyO-KSqtg`，再 `api.z.ai/api/auth/z/login` 换长期 `id.secret`）；国内站 `provider: bigmodel`（`bigmodel.cn/login`，poll JWT 直接当 Coding Plan 密钥）。对话分别打 `api.z.ai` 与 `open.bigmodel.cn` 的 `/api/coding/paas/v4`。不模拟浏览器 TLS 指纹。
 
 ## 模型选择
 
-设置 → OAuth 订阅 → **模型** 会列出 Codex 与 Grok 的全部目录（含 `-fast` 与 `-900k` 条目）。每一行是独立开关。每个系列有 **全选** / **全关**。
+设置 → OAuth 订阅 → **模型** 会列出 Codex、Grok 与 GLM 的全部目录（含 Codex `-fast` 与 `-900k` 条目）。每一行是独立开关。每个系列有 **全选** / **全关**。
 
 GLM 只显示三个 Coding Plan 模型：**GLM-5.3**（文本）、**GLM-5.3-Flash**（图文）、**GLM-5-Turbo**（文本）。只有 Flash 是多模态；纯文本行不会向 Harness 声明 image 输入。
 
-默认全部开启，**900K 除外**。选带 **Fast** 的条目（`gpt-5.6-sol-fast`、`grok-4.6-fast`）才会走 Priority Processing。`-fast` 只在本机目录里，发给上游前会剥掉并加上 `service_tier: "priority"`。GPT-5.4 Mini 和 GPT-5.3 Codex Spark 没有 Fast 条目。
+默认全部开启，**900K 除外**。选 Codex 带 **Fast** 的条目（`gpt-5.6-sol-fast`）才会走 Priority Processing。`-fast` 只在本机目录里，发给上游前会剥掉，并加上 `service_tier: "priority"` 和 `x-codex-routing-hint`。Grok 没有 Fast 条目。GPT-5.4 Mini 和 GPT-5.3 Codex Spark 没有 Fast；残留的 `gpt-5.4-mini-fast` 会剥成 `gpt-5.4-mini`。
 
 GPT-5.6 Sol / Terra / Luna 实际可到 **872K**，GPT-5.4 可到 **1M**，都远超默认窗口。选 `gpt-5.6-sol-900k`（以及 Terra / Luna / 5.4 对应项）即可开启——`-900k` 只是一个稳定的本机 id，真实上限逐模型不同，发给上游前会剥掉。GPT-5.5、GPT-5.4 Mini 和 Spark 没有大窗口条目。
 

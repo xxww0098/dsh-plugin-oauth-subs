@@ -2,9 +2,9 @@
  * Zhipu GLM Coding Plan OAuth — two providers, same ZCode CLI poll.
  *
  * Z.ai (global) and BigModel (China) are the two buttons on ZCode's welcome
- * screen. Internal CLI provider ids are `zai` and `zcode`.
+ * screen. CLI init provider ids are `zai` and `bigmodel` (`zcode` 500s).
  *
- *   1. POST zcode.z.ai/api/v1/oauth/cli/init  { provider: "zai"|"zcode" }
+ *   1. POST zcode.z.ai/api/v1/oauth/cli/init  { provider: "zai"|"bigmodel" }
  *   2. Open data.authorize_url, poll /oauth/cli/poll/{flow_id}
  *   3. Z.ai only: POST api.z.ai/api/auth/z/login then mint id.secret
  *      BigModel: the poll JWT is the Coding Plan bearer (no biz mint)
@@ -50,7 +50,7 @@ export const GLM_REASONING = Object.freeze({
 export const GLM_REGIONS = Object.freeze(['zai', 'bigmodel'])
 export const GLM_CLI_PROVIDERS = Object.freeze({
   zai: 'zai',
-  bigmodel: 'zcode',
+  bigmodel: 'bigmodel',
 })
 
 /**
