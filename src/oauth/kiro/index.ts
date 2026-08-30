@@ -252,17 +252,26 @@ export function kiroUsageHeaders(session) {
   return headers
 }
 
+/** Portal + token exchange both register origin only; KiroIDE still lands on `/oauth/callback`. */
+export function kiroSocialRedirectUri(redirectUri) {
+  const url = new URL(String(redirectUri ?? ''))
+  return `${url.protocol}//${url.host}`
+}
+
+function kiroSocialClientAgent(session = {}) {
+  return `KiroIDE-${KIRO_USAGE_VERSION}-${kiroMachineId(session)}`
+}
+
 export function kiroSocialFlow() {
   return {
     listen: { host: '127.0.0.1', ports: [...KIRO_CALLBACK_PORTS] },
     callbackPath: KIRO_CALLBACK_PATH,
     buildAuthorizeUrl(input) {
-      const url = new URL(input.redirectUri)
       const params = new URLSearchParams({
         state: input.state,
         code_challenge: input.pkce.challenge,
         code_challenge_method: 'S256',
-        redirect_uri: `${url.protocol}//${url.host}`,
+        redirect_uri: kiroSocialRedirectUri(input.redirectUri),
         redirect_from: 'KiroIDE',
       })
       return `${KIRO_PORTAL_URL}/signin?${params}`
@@ -332,17 +341,18 @@ async function readJson(response, label) {
 }
 
 export async function exchangeKiroSocialCode(code, verifier, redirectUri, { fetchFn = fetch } = {}) {
+  const machineId = kiroMachineId()
   const response = await fetchFn(`${KIRO_AUTH_URL}/oauth/token`, {
     method: 'POST',
     headers: {
-      accept: 'application/json',
+      accept: 'application/json, text/plain, */*',
       'content-type': 'application/json',
-      'user-agent': `KiroIDE-${KIRO_USAGE_VERSION}`,
+      'user-agent': kiroSocialClientAgent({ machineId }),
     },
     body: JSON.stringify({
       code,
       code_verifier: verifier,
-      redirect_uri: redirectUri,
+      redirect_uri: kiroSocialRedirectUri(redirectUri),
     }),
   })
   const body = await readJson(response, 'kiro social token')
@@ -356,6 +366,7 @@ export async function exchangeKiroSocialCode(code, verifier, redirectUri, { fetc
     profileArn: body.profileArn ?? body.profile_arn ?? SOCIAL_PROFILE_ARN,
     authMethod: 'social',
     kiroProvider: 'Social',
+    machineId,
   })
 }
 
@@ -368,7 +379,7 @@ export async function refreshKiroSocial(session, { fetchFn = fetch } = {}) {
     headers: {
       accept: 'application/json, text/plain, */*',
       'content-type': 'application/json',
-      'user-agent': `KiroIDE-${KIRO_USAGE_VERSION}-${kiroMachineId(session)}`,
+      'user-agent': kiroSocialClientAgent(session),
     },
     body: JSON.stringify({ refreshToken }),
   })

@@ -63,6 +63,38 @@ INVALID_REQUEST
 
 - `npm test`：DSH 形 `developer`+user → `system`+user；已是 `system` 不变；`tool` 仍是 `tool`；Codex / Grok body 的 `developer` 不被这条改写。无 live Zhipu 调用。
 
+## 2026-08-30：Kiro Social 换票 HTTP 500（redirect_uri 授权/换票不一致）
+
+### 现象
+
+设置 → AWS Kiro Social，未登录。浏览器走完 `打开授权页` 后，插件 `exchangeKiroSocialCode` POST `https://prod.us-east-1.auth.desktop.kiro.dev/oauth/token`，AWS 回：
+
+```
+失败: kiro social token failed (HTTP 500): {"message":"Oops, something went wrong. Please try again later."}
+```
+
+本环境 dummy code 是 HTTP 400 `Bad request`（端点活着）。真 code + 对不上的 `redirect_uri` 是 Cognito 常见的 500 形态。
+
+### 证据
+
+- `kiroSocialFlow().buildAuthorizeUrl` 用 origin：`http://127.0.0.1:3128`（`redirect_from=KiroIDE`）。
+- `OAuthFlowManager.start` 存的是完整回跳：`http://127.0.0.1:3128/oauth/callback`。
+- `completePkce` 把 `attempt.redirectUri` 原样交给 `exchangeKiroSocialCode`，换票 JSON 是 `{ code, code_verifier, redirect_uri }` 带 path。
+- CLIProxyAPI / kiro.rs social 换票体同样三个字段，但 `redirect_uri` 必须和授权时一样（origin，无 path）。KiroIDE 仍会打到 `/oauth/callback`。
+- 换票 UA 曾是裸 `KiroIDE-0.9.2`；refresh 已是 `KiroIDE-0.9.2-<64hex>`。
+
+### 根因
+
+代理层（本插件 Kiro Social PKCE）。授权和换票的 `redirect_uri` 漂移。不是 loopback 端口/path，也不是 Codex / Grok / GLM / Antigravity。
+
+### 修复
+
+`kiroSocialRedirectUri` 一律裁成 origin，授权 URL 和换票 body 共用。换票头对齐 CLIProxyAPI social：`Accept: application/json, text/plain, */*`，`User-Agent: KiroIDE-0.9.2-<64hex>`（`kiroMachineId`，与 refresh 同形）。回跳端口和 `/oauth/callback` 不动。
+
+### 验证
+
+- `npm test`：授权 query 与换票 body 的 `redirect_uri` 都是 origin；UA 匹配 `KiroIDE-0.9.2-<64hex>`；把 path 写回换票 body 会红。无 live AWS 调用。
+
 ## 2026-08-30：勾选 GLM / Antigravity / Kiro 不写 settings.yaml
 
 ### 现象
