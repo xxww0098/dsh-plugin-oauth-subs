@@ -15,7 +15,7 @@ dsh plugin --profile web add https://github.com/xxww0098/dsh-plugin-oauth-subs
 dsh web
 ```
 
-Open **Settings → OAuth subs**. Tabs: **Codex**, **Grok**, **GLM**, **Models**, **About**. Sign in more than once per family; click a row to switch. Chat and quota use the active account. **GLM** uses ZCode's browser OAuth (no PKCE) and mints a durable Coding Plan key. **About** links the GitHub repo and checks the latest release for Windows, macOS, and Linux. Or mount the bundle patch by hand:
+Open **Settings → OAuth subs**. Tabs: **Codex**, **Grok**, **GLM**, **Models**, **About**. Sign in more than once per family; click a row to switch. Chat and quota use the active account. **GLM** matches ZCode's welcome screen: **Z.ai (global)** and **BigModel (China)** OAuth, plus paste-an-API-key. **About** links the GitHub repo and checks the latest release for Windows, macOS, and Linux. Or mount the bundle patch by hand:
 
 ```yaml
 - insert:
@@ -33,6 +33,8 @@ pnpm dsh web --patch ./cordis.patch.yml
 |---|---|---|---|
 | ChatGPT Codex | PKCE on `localhost:1455` (falls back to `1457`); paste-callback supported | `app_EMoamEEZ73f0CkXaXp7hrann` | `chatgpt.com/backend-api/codex/responses` |
 | xAI Grok | **Device-code (default)**; PKCE on `127.0.0.1:56121` as fallback | `b1a00492-073a-47ea-816f-4c329264a828` | `api.x.ai/v1/responses` |
+| Zhipu GLM · Z.ai (global) | ZCode CLI poll, `provider: zai`, then mint `id.secret` | `client_P8X5CMWmlaRO9gyO-KSqtg` | `api.z.ai/api/coding/paas/v4` |
+| Zhipu GLM · BigModel (China) | Same CLI poll, `provider: zcode`; poll JWT is the bearer | `zcode` | `open.bigmodel.cn/api/coding/paas/v4` |
 
 Already signed in on this machine via Codex CLI, Grok CLI, or Hermes? Use **Import local session**:
 
@@ -115,7 +117,7 @@ It is **Priority Processing** (`service_tier: "priority"`), not a different mode
 
 Default is off. Measured on `gpt-5.6-luna`: **88.3 against 57.5 output tokens per second — 1.54×**, matching the catalog's "1.5x speed, increased usage". The gain is on generation throughput only: time to first token and prompt caching are unchanged.
 
-Login, token refresh, chat, and quota use one official client identity: Codex pairs `originator: codex_cli_rs` with `User-Agent: codex_cli_rs/<version>`; Grok sends `x-xai-token-auth: xai-grok-cli` and `User-Agent: grok-cli/<version>`. GLM uses ZCode's public client `client_P8X5CMWmlaRO9gyO-KSqtg` and the CLI poll flow (`zcode.z.ai/api/v1/oauth/cli/init` → browser → poll → `api.z.ai/api/auth/z/login` → durable `id.secret` key). No TLS fingerprint impersonation.
+Login, token refresh, chat, and quota use one official client identity: Codex pairs `originator: codex_cli_rs` with `User-Agent: codex_cli_rs/<version>`; Grok sends `x-xai-token-auth: xai-grok-cli` and `User-Agent: grok-cli/<version>`. GLM uses ZCode's CLI poll: global `provider: zai` (client `client_P8X5CMWmlaRO9gyO-KSqtg`, then `api.z.ai/api/auth/z/login` to mint `id.secret`); China `provider: zcode` (`bigmodel.cn/login`, poll JWT is the Coding Plan bearer). Chat hits `/api/coding/paas/v4` on `api.z.ai` or `open.bigmodel.cn`. No TLS fingerprint impersonation.
 
 ## Models
 
@@ -144,7 +146,7 @@ After sign-in, each account card shows official remaining quota.
 | ChatGPT Codex | `chatgpt.com/backend-api/wham/usage` | Plan badge (Plus / Pro / Team …) plus 5-hour + weekly windows, **remaining** percent and reset time |
 | ChatGPT Codex reset | `…/wham/rate-limit-reset-credits` + `/consume` | Banked weekly-window reset credits and expiry; one confirm button per credit on the Codex card |
 | xAI Grok | `cli-chat-proxy.grok.com/v1/billing?format=credits` plus `/v1/user?include=subscription` | Plan badge (SuperGrok / X Premium+ …) plus period usage, prepaid balance, product split |
-| Zhipu GLM | `api.z.ai/api/monitor/usage/quota/limit` | Plan badge (Lite / Pro / Max) plus Coding Plan credit windows |
+| Zhipu GLM | `api.z.ai` or `open.bigmodel.cn` `monitor/usage/quota/limit` | Plan badge (Lite / Pro / Max) plus Coding Plan credit windows; host follows the active account |
 
 Quota refreshes about once a minute, or immediately from **Refresh quota**. A failed read does not block chat.
 

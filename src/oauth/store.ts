@@ -77,6 +77,12 @@ export function accountIdOf(provider, session) {
   if (provider === 'codex') {
     const id = session.emailAddress || session.accountId
     if (typeof id === 'string' && id.trim()) return id.trim()
+  } else if (provider === 'glm') {
+    const account = typeof session.account === 'string' && session.account.trim()
+      ? session.account.trim()
+      : 'glm'
+    const region = session.region === 'bigmodel' ? 'bigmodel' : 'zai'
+    return `${account}@${region}`
   } else if (typeof session.account === 'string' && session.account.trim()) {
     return session.account.trim()
   }
@@ -234,6 +240,15 @@ export function publicSession(provider, session) {
       account: session.emailAddress ?? session.accountId,
       planType,
       planLabel,
+      expiresAt: session.expiresAt,
+    }
+  }
+  if (provider === 'glm') {
+    return {
+      account: session.account,
+      planType,
+      planLabel,
+      region: session.region === 'bigmodel' ? 'bigmodel' : 'zai',
       expiresAt: session.expiresAt,
     }
   }

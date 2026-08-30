@@ -1,6 +1,37 @@
 # 错误记录
 
+## 2026-08-30：智谱 GLM 只有一条 OAuth，国内 BigModel 登不进去
+
+### 现象
+
+- ZCode 欢迎页有两个授权入口：**连接 Z.ai 继续使用（全球）** 和 **连接 BigModel 继续使用（中国）**，底下还有 **使用 API key**。
+- 插件 0.0.16–0.0.18 的智谱 GLM 页只有一颗「登录」，`AuthController.login('glm')` 把 `region` 写死成 `'zai'`。CLI init 还把国内站打成 `provider: "bigmodel"`，ZCode 内部 id 其实是 `zcode`。
+- 国内 Coding Plan 账号因此一直走 `api.z.ai`，额度、对话都打到国际站。
+
+### 根因
+
+ZCode Desktop 把 GLM 拆成两套 OAuth：
+
+| 欢迎页 | CLI provider | 授权 | 对话 / 额度 |
+|---|---|---|---|
+| Z.ai · 全球 | `zai` | `chat.z.ai/api/oauth/authorize` | `api.z.ai/api/coding/paas/v4` |
+| BigModel · 中国 | `zcode` | `bigmodel.cn/login` | `open.bigmodel.cn/api/coding/paas/v4` |
+
+两端共用 `zcode.z.ai/api/v1/oauth/cli/init` + poll。Z.ai 还要 `api.z.ai/api/auth/z/login` 再签发 `id.secret`；BigModel 没有这步，poll 回来的 JWT 就是 Coding Plan bearer。账号 id 以前只用 email，两个站点会互相覆盖。
+
+### 修复（0.0.19）
+
+设置页两颗授权按钮（全球 / 中国）+ 粘贴 API key。CLI init 发 `zai` / `zcode`。session 带 `region`，账号 id 为 `email@zai` / `email@bigmodel`。代理和额度按当前账号切上游。
+
+### 验证
+
+- `glmCliInit({ region: 'bigmodel' })` body `provider` 为 `zcode`。
+- `completeGlmCli` BigModel 不打 biz mint。
+- 同一 email 的 Z.ai + BigModel 能共存。
+- `npm test` 全绿。
+
 ## 2026-08-30：xAI Grok 额度读出来是预付 0、Grok Code 空行
+
 
 ### 现象
 

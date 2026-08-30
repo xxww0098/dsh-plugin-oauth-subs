@@ -1,29 +1,37 @@
 /**
- * Zhipu GLM / Z.ai Coding Plan OAuth.
+ * Zhipu GLM Coding Plan OAuth — two providers, same ZCode CLI poll.
  *
- * Official ZCode Individual Plan flow (no PKCE):
- *   1. POST zcode.z.ai/api/v1/oauth/cli/init  (Bearer poll token)
+ * Z.ai (global) and BigModel (China) are the two buttons on ZCode's welcome
+ * screen. Internal CLI provider ids are `zai` and `zcode`.
+ *
+ *   1. POST zcode.z.ai/api/v1/oauth/cli/init  { provider: "zai"|"zcode" }
  *   2. Open data.authorize_url, poll /oauth/cli/poll/{flow_id}
- *   3. POST api.z.ai/api/auth/z/login          (OAuth access → biz JWT)
- *   4. Provision a durable id.secret API key on the biz API
+ *   3. Z.ai only: POST api.z.ai/api/auth/z/login then mint id.secret
+ *      BigModel: the poll JWT is the Coding Plan bearer (no biz mint)
  *
- * Chat goes to the Coding Plan OpenAI-compatible endpoint.
- * Client id matches ZCode: client_P8X5CMWmlaRO9gyO-KSqtg
+ * Chat goes to the matching Coding Plan OpenAI-compatible endpoint.
  */
 export declare const GLM_CLIENT_ID = "client_P8X5CMWmlaRO9gyO-KSqtg";
+export declare const GLM_BIGMODEL_APP_ID = "zcode";
 export declare const GLM_CLI_INIT_URL = "https://zcode.z.ai/api/v1/oauth/cli/init";
 export declare const GLM_CLI_POLL_URL = "https://zcode.z.ai/api/v1/oauth/cli/poll";
 export declare const GLM_TOKEN_URL = "https://zcode.z.ai/api/v1/oauth/token";
 export declare const GLM_AUTHORIZE_URL = "https://chat.z.ai/api/oauth/authorize";
+export declare const GLM_BIGMODEL_AUTHORIZE_URL = "https://bigmodel.cn/login";
 export declare const GLM_BUSINESS_LOGIN_URL = "https://api.z.ai/api/auth/z/login";
 export declare const GLM_BIZ_BASE = "https://api.z.ai";
 export declare const GLM_CODING_URL = "https://api.z.ai/api/coding/paas/v4/chat/completions";
 export declare const GLM_QUOTA_URL = "https://api.z.ai/api/monitor/usage/quota/limit";
 export declare const GLM_KEY_NAME = "dsh-plugin-oauth-subs";
-export declare const GLM_USER_AGENT = "dsh-plugin-oauth-subs/0.0.17";
+export declare const GLM_USER_AGENT = "dsh-plugin-oauth-subs/0.0.19";
 export declare const GLM_NEVER_EXPIRES = 8640000000000000;
 export declare const GLM_CONTEXT_WINDOW = 128000;
 export declare const GLM_LARGE_CONTEXT = 1000000;
+export declare const GLM_REGIONS: readonly string[];
+export declare const GLM_CLI_PROVIDERS: Readonly<{
+    zai: "zai";
+    bigmodel: "zcode";
+}>;
 export declare const GLM_MODELS: readonly {
     id: string;
     name: string;
@@ -41,6 +49,8 @@ export declare const GLM_PLAN_NAMES: Readonly<{
     individual: "Individual";
     team: "Team";
 }>;
+export declare function normalizeGlmRegion(value: any): "zai" | "bigmodel";
+export declare function glmCliProvider(region: any): "zai" | "zcode";
 export declare function glmPlanLabel(raw: any): any;
 export declare function glmCodingUrl(region?: string): "https://api.z.ai/api/coding/paas/v4/chat/completions" | "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions";
 export declare function glmQuotaUrl(region?: string): "https://api.z.ai/api/monitor/usage/quota/limit" | "https://open.bigmodel.cn/api/monitor/usage/quota/limit";

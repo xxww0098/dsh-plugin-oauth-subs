@@ -27,6 +27,18 @@ export declare class AuthController {
         planType: any;
         planLabel: any;
         expiresAt: any;
+        region?: undefined;
+        scopes?: undefined;
+        loggedIn: boolean;
+        busy: any;
+    } | {
+        detail?: any;
+        quota: any;
+        account: any;
+        planType: any;
+        planLabel: any;
+        region: string;
+        expiresAt: any;
         scopes?: undefined;
         loggedIn: boolean;
         busy: any;
@@ -38,6 +50,7 @@ export declare class AuthController {
         planLabel: any;
         scopes: any;
         expiresAt: any;
+        region?: undefined;
         loggedIn: boolean;
         busy: any;
     }>;
@@ -66,6 +79,16 @@ export declare class AuthController {
                     planType: any;
                     planLabel: any;
                     expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
                     scopes?: undefined;
                     id: string;
                     active: boolean;
@@ -75,6 +98,7 @@ export declare class AuthController {
                     planLabel: any;
                     scopes: any;
                     expiresAt: any;
+                    region?: undefined;
                     id: string;
                     active: boolean;
                 })[];
@@ -83,6 +107,47 @@ export declare class AuthController {
                 account: any;
                 planType: any;
                 planLabel: any;
+                expiresAt: any;
+                region?: undefined;
+                scopes?: undefined;
+                loggedIn: boolean;
+                busy: any;
+            } | {
+                activeId: string;
+                accounts: ({
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    id: string;
+                    active: boolean;
+                })[];
+                detail?: any;
+                quota: any;
+                account: any;
+                planType: any;
+                planLabel: any;
+                region: string;
                 expiresAt: any;
                 scopes?: undefined;
                 loggedIn: boolean;
@@ -94,6 +159,16 @@ export declare class AuthController {
                     planType: any;
                     planLabel: any;
                     expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
                     scopes?: undefined;
                     id: string;
                     active: boolean;
@@ -103,6 +178,7 @@ export declare class AuthController {
                     planLabel: any;
                     scopes: any;
                     expiresAt: any;
+                    region?: undefined;
                     id: string;
                     active: boolean;
                 })[];
@@ -113,6 +189,7 @@ export declare class AuthController {
                 planLabel: any;
                 scopes: any;
                 expiresAt: any;
+                region?: undefined;
                 loggedIn: boolean;
                 busy: any;
             };
@@ -123,6 +200,16 @@ export declare class AuthController {
                     planType: any;
                     planLabel: any;
                     expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
                     scopes?: undefined;
                     id: string;
                     active: boolean;
@@ -132,6 +219,7 @@ export declare class AuthController {
                     planLabel: any;
                     scopes: any;
                     expiresAt: any;
+                    region?: undefined;
                     id: string;
                     active: boolean;
                 })[];
@@ -140,6 +228,47 @@ export declare class AuthController {
                 account: any;
                 planType: any;
                 planLabel: any;
+                expiresAt: any;
+                region?: undefined;
+                scopes?: undefined;
+                loggedIn: boolean;
+                busy: any;
+            } | {
+                activeId: string;
+                accounts: ({
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    id: string;
+                    active: boolean;
+                })[];
+                detail?: any;
+                quota: any;
+                account: any;
+                planType: any;
+                planLabel: any;
+                region: string;
                 expiresAt: any;
                 scopes?: undefined;
                 loggedIn: boolean;
@@ -151,6 +280,16 @@ export declare class AuthController {
                     planType: any;
                     planLabel: any;
                     expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
                     scopes?: undefined;
                     id: string;
                     active: boolean;
@@ -160,6 +299,7 @@ export declare class AuthController {
                     planLabel: any;
                     scopes: any;
                     expiresAt: any;
+                    region?: undefined;
                     id: string;
                     active: boolean;
                 })[];
@@ -170,6 +310,7 @@ export declare class AuthController {
                 planLabel: any;
                 scopes: any;
                 expiresAt: any;
+                region?: undefined;
                 loggedIn: boolean;
                 busy: any;
             };
@@ -180,6 +321,16 @@ export declare class AuthController {
                     planType: any;
                     planLabel: any;
                     expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
                     scopes?: undefined;
                     id: string;
                     active: boolean;
@@ -189,6 +340,7 @@ export declare class AuthController {
                     planLabel: any;
                     scopes: any;
                     expiresAt: any;
+                    region?: undefined;
                     id: string;
                     active: boolean;
                 })[];
@@ -197,6 +349,47 @@ export declare class AuthController {
                 account: any;
                 planType: any;
                 planLabel: any;
+                expiresAt: any;
+                region?: undefined;
+                scopes?: undefined;
+                loggedIn: boolean;
+                busy: any;
+            } | {
+                activeId: string;
+                accounts: ({
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    id: string;
+                    active: boolean;
+                })[];
+                detail?: any;
+                quota: any;
+                account: any;
+                planType: any;
+                planLabel: any;
+                region: string;
                 expiresAt: any;
                 scopes?: undefined;
                 loggedIn: boolean;
@@ -208,6 +401,16 @@ export declare class AuthController {
                     planType: any;
                     planLabel: any;
                     expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
                     scopes?: undefined;
                     id: string;
                     active: boolean;
@@ -217,6 +420,7 @@ export declare class AuthController {
                     planLabel: any;
                     scopes: any;
                     expiresAt: any;
+                    region?: undefined;
                     id: string;
                     active: boolean;
                 })[];
@@ -227,6 +431,7 @@ export declare class AuthController {
                 planLabel: any;
                 scopes: any;
                 expiresAt: any;
+                region?: undefined;
                 loggedIn: boolean;
                 busy: any;
             };
@@ -273,6 +478,7 @@ export declare class AuthController {
     login(provider: any, mode: any): Promise<{
         authorizeUrl: any;
         mode: string;
+        region: string;
         redirectUri?: undefined;
         verificationUri?: undefined;
         userCode?: undefined;
@@ -280,6 +486,7 @@ export declare class AuthController {
         authorizeUrl: any;
         redirectUri: any;
         mode: string;
+        region?: undefined;
         verificationUri?: undefined;
         userCode?: undefined;
     } | {
@@ -287,11 +494,15 @@ export declare class AuthController {
         verificationUri: any;
         userCode: any;
         mode: string;
+        region?: undefined;
         redirectUri?: undefined;
     }>;
     completePkce(provider: any, attempt: any, claim: any): Promise<void>;
     completeDevice(provider: any, attempt: any): Promise<void>;
     completeGlm(attempt: any): Promise<void>;
+    useKey(provider: any, key: any, region: any): Promise<{
+        region: string;
+    }>;
     manual(provider: any, input: any): Promise<void>;
     cancel(provider: any): Promise<void>;
     logout(provider: any, id: any): Promise<void>;
@@ -319,6 +530,16 @@ export declare class AuthController {
                     planType: any;
                     planLabel: any;
                     expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
                     scopes?: undefined;
                     id: string;
                     active: boolean;
@@ -328,6 +549,7 @@ export declare class AuthController {
                     planLabel: any;
                     scopes: any;
                     expiresAt: any;
+                    region?: undefined;
                     id: string;
                     active: boolean;
                 })[];
@@ -336,6 +558,47 @@ export declare class AuthController {
                 account: any;
                 planType: any;
                 planLabel: any;
+                expiresAt: any;
+                region?: undefined;
+                scopes?: undefined;
+                loggedIn: boolean;
+                busy: any;
+            } | {
+                activeId: string;
+                accounts: ({
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    id: string;
+                    active: boolean;
+                })[];
+                detail?: any;
+                quota: any;
+                account: any;
+                planType: any;
+                planLabel: any;
+                region: string;
                 expiresAt: any;
                 scopes?: undefined;
                 loggedIn: boolean;
@@ -347,6 +610,16 @@ export declare class AuthController {
                     planType: any;
                     planLabel: any;
                     expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
                     scopes?: undefined;
                     id: string;
                     active: boolean;
@@ -356,6 +629,7 @@ export declare class AuthController {
                     planLabel: any;
                     scopes: any;
                     expiresAt: any;
+                    region?: undefined;
                     id: string;
                     active: boolean;
                 })[];
@@ -366,6 +640,7 @@ export declare class AuthController {
                 planLabel: any;
                 scopes: any;
                 expiresAt: any;
+                region?: undefined;
                 loggedIn: boolean;
                 busy: any;
             };
@@ -376,6 +651,16 @@ export declare class AuthController {
                     planType: any;
                     planLabel: any;
                     expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
                     scopes?: undefined;
                     id: string;
                     active: boolean;
@@ -385,6 +670,7 @@ export declare class AuthController {
                     planLabel: any;
                     scopes: any;
                     expiresAt: any;
+                    region?: undefined;
                     id: string;
                     active: boolean;
                 })[];
@@ -393,6 +679,47 @@ export declare class AuthController {
                 account: any;
                 planType: any;
                 planLabel: any;
+                expiresAt: any;
+                region?: undefined;
+                scopes?: undefined;
+                loggedIn: boolean;
+                busy: any;
+            } | {
+                activeId: string;
+                accounts: ({
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    id: string;
+                    active: boolean;
+                })[];
+                detail?: any;
+                quota: any;
+                account: any;
+                planType: any;
+                planLabel: any;
+                region: string;
                 expiresAt: any;
                 scopes?: undefined;
                 loggedIn: boolean;
@@ -404,6 +731,16 @@ export declare class AuthController {
                     planType: any;
                     planLabel: any;
                     expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
                     scopes?: undefined;
                     id: string;
                     active: boolean;
@@ -413,6 +750,7 @@ export declare class AuthController {
                     planLabel: any;
                     scopes: any;
                     expiresAt: any;
+                    region?: undefined;
                     id: string;
                     active: boolean;
                 })[];
@@ -423,6 +761,7 @@ export declare class AuthController {
                 planLabel: any;
                 scopes: any;
                 expiresAt: any;
+                region?: undefined;
                 loggedIn: boolean;
                 busy: any;
             };
@@ -433,6 +772,16 @@ export declare class AuthController {
                     planType: any;
                     planLabel: any;
                     expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
                     scopes?: undefined;
                     id: string;
                     active: boolean;
@@ -442,6 +791,7 @@ export declare class AuthController {
                     planLabel: any;
                     scopes: any;
                     expiresAt: any;
+                    region?: undefined;
                     id: string;
                     active: boolean;
                 })[];
@@ -450,6 +800,47 @@ export declare class AuthController {
                 account: any;
                 planType: any;
                 planLabel: any;
+                expiresAt: any;
+                region?: undefined;
+                scopes?: undefined;
+                loggedIn: boolean;
+                busy: any;
+            } | {
+                activeId: string;
+                accounts: ({
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    id: string;
+                    active: boolean;
+                })[];
+                detail?: any;
+                quota: any;
+                account: any;
+                planType: any;
+                planLabel: any;
+                region: string;
                 expiresAt: any;
                 scopes?: undefined;
                 loggedIn: boolean;
@@ -461,6 +852,16 @@ export declare class AuthController {
                     planType: any;
                     planLabel: any;
                     expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
                     scopes?: undefined;
                     id: string;
                     active: boolean;
@@ -470,6 +871,7 @@ export declare class AuthController {
                     planLabel: any;
                     scopes: any;
                     expiresAt: any;
+                    region?: undefined;
                     id: string;
                     active: boolean;
                 })[];
@@ -480,6 +882,7 @@ export declare class AuthController {
                 planLabel: any;
                 scopes: any;
                 expiresAt: any;
+                region?: undefined;
                 loggedIn: boolean;
                 busy: any;
             };
@@ -498,6 +901,14 @@ export declare class AuthController {
             planType: any;
             planLabel: any;
             expiresAt: any;
+            region?: undefined;
+            scopes?: undefined;
+        } | {
+            account: any;
+            planType: any;
+            planLabel: any;
+            region: string;
+            expiresAt: any;
             scopes?: undefined;
         } | {
             account: any;
@@ -505,6 +916,7 @@ export declare class AuthController {
             planLabel: any;
             scopes: any;
             expiresAt: any;
+            region?: undefined;
         };
     }>;
     setModels(payload?: {}): Promise<{
@@ -531,6 +943,16 @@ export declare class AuthController {
                     planType: any;
                     planLabel: any;
                     expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
                     scopes?: undefined;
                     id: string;
                     active: boolean;
@@ -540,6 +962,7 @@ export declare class AuthController {
                     planLabel: any;
                     scopes: any;
                     expiresAt: any;
+                    region?: undefined;
                     id: string;
                     active: boolean;
                 })[];
@@ -548,6 +971,47 @@ export declare class AuthController {
                 account: any;
                 planType: any;
                 planLabel: any;
+                expiresAt: any;
+                region?: undefined;
+                scopes?: undefined;
+                loggedIn: boolean;
+                busy: any;
+            } | {
+                activeId: string;
+                accounts: ({
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    id: string;
+                    active: boolean;
+                })[];
+                detail?: any;
+                quota: any;
+                account: any;
+                planType: any;
+                planLabel: any;
+                region: string;
                 expiresAt: any;
                 scopes?: undefined;
                 loggedIn: boolean;
@@ -559,6 +1023,16 @@ export declare class AuthController {
                     planType: any;
                     planLabel: any;
                     expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
                     scopes?: undefined;
                     id: string;
                     active: boolean;
@@ -568,6 +1042,7 @@ export declare class AuthController {
                     planLabel: any;
                     scopes: any;
                     expiresAt: any;
+                    region?: undefined;
                     id: string;
                     active: boolean;
                 })[];
@@ -578,6 +1053,7 @@ export declare class AuthController {
                 planLabel: any;
                 scopes: any;
                 expiresAt: any;
+                region?: undefined;
                 loggedIn: boolean;
                 busy: any;
             };
@@ -588,6 +1064,16 @@ export declare class AuthController {
                     planType: any;
                     planLabel: any;
                     expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
                     scopes?: undefined;
                     id: string;
                     active: boolean;
@@ -597,6 +1083,7 @@ export declare class AuthController {
                     planLabel: any;
                     scopes: any;
                     expiresAt: any;
+                    region?: undefined;
                     id: string;
                     active: boolean;
                 })[];
@@ -605,6 +1092,47 @@ export declare class AuthController {
                 account: any;
                 planType: any;
                 planLabel: any;
+                expiresAt: any;
+                region?: undefined;
+                scopes?: undefined;
+                loggedIn: boolean;
+                busy: any;
+            } | {
+                activeId: string;
+                accounts: ({
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    id: string;
+                    active: boolean;
+                })[];
+                detail?: any;
+                quota: any;
+                account: any;
+                planType: any;
+                planLabel: any;
+                region: string;
                 expiresAt: any;
                 scopes?: undefined;
                 loggedIn: boolean;
@@ -616,6 +1144,16 @@ export declare class AuthController {
                     planType: any;
                     planLabel: any;
                     expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
                     scopes?: undefined;
                     id: string;
                     active: boolean;
@@ -625,6 +1163,7 @@ export declare class AuthController {
                     planLabel: any;
                     scopes: any;
                     expiresAt: any;
+                    region?: undefined;
                     id: string;
                     active: boolean;
                 })[];
@@ -635,6 +1174,7 @@ export declare class AuthController {
                 planLabel: any;
                 scopes: any;
                 expiresAt: any;
+                region?: undefined;
                 loggedIn: boolean;
                 busy: any;
             };
@@ -645,6 +1185,16 @@ export declare class AuthController {
                     planType: any;
                     planLabel: any;
                     expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
                     scopes?: undefined;
                     id: string;
                     active: boolean;
@@ -654,6 +1204,7 @@ export declare class AuthController {
                     planLabel: any;
                     scopes: any;
                     expiresAt: any;
+                    region?: undefined;
                     id: string;
                     active: boolean;
                 })[];
@@ -662,6 +1213,47 @@ export declare class AuthController {
                 account: any;
                 planType: any;
                 planLabel: any;
+                expiresAt: any;
+                region?: undefined;
+                scopes?: undefined;
+                loggedIn: boolean;
+                busy: any;
+            } | {
+                activeId: string;
+                accounts: ({
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    id: string;
+                    active: boolean;
+                })[];
+                detail?: any;
+                quota: any;
+                account: any;
+                planType: any;
+                planLabel: any;
+                region: string;
                 expiresAt: any;
                 scopes?: undefined;
                 loggedIn: boolean;
@@ -673,6 +1265,16 @@ export declare class AuthController {
                     planType: any;
                     planLabel: any;
                     expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
                     scopes?: undefined;
                     id: string;
                     active: boolean;
@@ -682,6 +1284,7 @@ export declare class AuthController {
                     planLabel: any;
                     scopes: any;
                     expiresAt: any;
+                    region?: undefined;
                     id: string;
                     active: boolean;
                 })[];
@@ -692,6 +1295,7 @@ export declare class AuthController {
                 planLabel: any;
                 scopes: any;
                 expiresAt: any;
+                region?: undefined;
                 loggedIn: boolean;
                 busy: any;
             };

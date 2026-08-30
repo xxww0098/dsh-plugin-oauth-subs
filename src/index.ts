@@ -3,7 +3,8 @@
  *
  * A Cordis plugin (export apply + inject + Config) that:
  *   1. runs a loopback OpenAI Responses proxy on 127.0.0.1:<port>
- *   2. drives ChatGPT Codex PKCE and xAI Grok device-code / PKCE logins
+ *   2. drives ChatGPT Codex PKCE, xAI Grok device-code / PKCE, and
+ *      Zhipu GLM Z.ai / BigModel CLI-poll logins
  *   3. syncs logged-in catalogs into llm-pi-ai
  *
  * The client half (Settings > OAuth 订阅) is discovered from package.json
@@ -78,7 +79,8 @@ function registerRpc(ctx, controller) {
     }
     const methods = {
       status: () => controller.snapshot(),
-      login: (payload) => controller.login(payload?.provider, payload?.mode),
+      login: (payload) => controller.login(payload?.provider, payload?.mode ?? payload?.region),
+      key: (payload) => controller.useKey(payload?.provider, payload?.key, payload?.region ?? payload?.mode),
       manual: (payload) => controller.manual(payload?.provider, payload?.input),
       cancel: (payload) => controller.cancel(payload?.provider),
       logout: (payload) => controller.logout(payload?.provider, payload?.id),
