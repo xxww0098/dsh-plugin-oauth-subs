@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.18
+
+- Grok quota. SuperGrok / X Premium+ unified-billing accounts no longer show a blank gauge (prepaid `0` + empty Grok Code). CLI `/v1/billing?format=credits` often omits `creditUsagePercent`; the plugin now also POSTs grok.com `GetGrokCreditsConfig` (gRPC-web, same bearer as `grok login`) and fills the weekly pool. Fallback: `onDemandUsed` / `onDemandCap`. Hide prepaid when it is 0. Settings shows **每周** plus a retry hint if xAI still returns no percent.
+
 ## 0.0.17
 
 - Grok cache affinity. The proxy now sticky-routes xAI prompt cache: sanitized `prompt_cache_key` (falling back to `session_id`) is written back into the Responses body and sent as `x-grok-conv-id`. Codex `session-id` / `x-client-request-id` stay Codex-only — they do nothing on this backend.

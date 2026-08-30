@@ -5,9 +5,12 @@
  *          POST …/rate-limit-reset-credits/consume
  *   Grok   GET cli-chat-proxy.grok.com/v1/billing?format=credits
  *          GET cli-chat-proxy.grok.com/v1/user?include=subscription
+ *          POST grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig
  *
  * Codex windows report used_percent; remaining is 100 − used.
  * Grok creditUsagePercent is also used-percent. Display remaining in the UI.
+ * Unified-billing SuperGrok / X Premium+ payloads often omit that percent
+ * on the CLI JSON; the grok.com gRPC-web path still has the weekly pool.
  */
 export declare const QUOTA_TTL_MS = 60000;
 export declare const QUOTA_TIMEOUT_MS = 10000;
@@ -42,6 +45,7 @@ export declare function parseGrokBilling(billing: any, { cliUser }?: {}): {
     hasGrokCodeAccess: boolean;
     rows: any[];
 };
+export declare function applyGrokCreditsSnapshot(parsed: any, snapshot: any): any;
 export declare function parseGlmQuota(payload: any): {
     rows: any[];
     planType?: undefined;
@@ -89,17 +93,7 @@ export declare function consumeCodexReset(session: any, fetchFn?: typeof fetch):
     ok: boolean;
     redeemRequestId: `${string}-${string}-${string}-${string}-${string}`;
 }>;
-export declare function fetchGrokQuota(session: any, fetchFn?: typeof fetch): Promise<{
-    rows: any[];
-    planType?: undefined;
-    subscriptionStatus?: undefined;
-    hasGrokCodeAccess?: undefined;
-} | {
-    planType: any;
-    subscriptionStatus: any;
-    hasGrokCodeAccess: boolean;
-    rows: any[];
-}>;
+export declare function fetchGrokQuota(session: any, fetchFn?: typeof fetch): Promise<any>;
 export declare class QuotaStore {
     #private;
     constructor({ tokens, fetchFn, ttlMs }?: {

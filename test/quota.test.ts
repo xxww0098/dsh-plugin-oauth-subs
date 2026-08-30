@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
   QuotaStore,
+  applyGrokCreditsSnapshot,
   asNumber,
   consumeResetBody,
   creditBagAmounts,
@@ -11,7 +12,8 @@ import {
   parseResetCredits,
 } from '../lib/oauth/quota.js'
 import { CODEX_RESET_CONSUME_URL, CODEX_RESET_CREDITS_URL, CODEX_USAGE_URL } from '../lib/oauth/codex/index.js'
-import { GROK_BILLING_URL } from '../lib/oauth/grok/index.js'
+import { GROK_BILLING_URL, GROK_CREDITS_URL } from '../lib/oauth/grok/index.js'
+import { GROK_WEB_EMPTY_FRAME, decodeGrokCreditsFrame } from '../lib/oauth/grok/credits-frame.js'
 
 test('asNumber reads val wrappers', () => {
   assert.equal(asNumber(12), 12)
@@ -173,7 +175,7 @@ test('parseGrokBilling reads weekly credits, products, prepaid, plan', () => {
   })
   assert.equal(parsed.planType, 'SuperGrok')
   assert.equal(parsed.hasGrokCodeAccess, true)
-  assert.equal(parsed.rows[0].kind, 'cycle')
+  assert.equal(parsed.rows[0].kind, 'weekly')
   assert.equal(parsed.rows[0].remainingPercent, 68)
   assert.equal(parsed.rows[0].used, 160)
   assert.equal(parsed.rows[0].total, 500)
@@ -283,7 +285,7 @@ test('QuotaStore consume posts redeem body then refreshes usage', async () => {
 test('QuotaStore fetches Grok billing and does not fail the card if user probe 404s', async () => {
   const seen = []
   const fetchFn = async (url, init) => {
-    seen.push(init?.headers)
+    seen.push({ url: String(url), headers: init?.headers, method: init?.method ?? 'GET' })
     if (String(url) === GROK_BILLING_URL) {
       return new Response(JSON.stringify({
         config: { subscription_tier: 'X Premium+', creditUsagePercent: 81 },
@@ -294,7 +296,7 @@ test('QuotaStore fetches Grok billing and does not fail the card if user probe 4
   const store = new QuotaStore({
     fetchFn,
     tokens: {
-      grok: { session: async () => ({ accessToken: 'g' }) },
+      grok: { session: async () => ({ accessToken: 'eyJhbGciOiJub25lIn0.eyJzdWIiOiJ1c2VyLTEifQ.x' }) },
     },
   })
   const quota = await store.refresh('grok')
@@ -302,8 +304,11 @@ test('QuotaStore fetches Grok billing and does not fail the card if user probe 4
   assert.equal(quota.planType, 'X Premium+')
   assert.equal(quota.planLabel, 'X Premium+')
   assert.equal(quota.rows[0].remainingPercent, 19)
-  assert.equal(seen[0]['user-agent'], 'grok-cli/0.2.93')
-  assert.equal(seen[0]['x-xai-token-auth'], 'xai-grok-cli')
+  const billing = seen.find((row) => row.url === GROK_BILLING_URL)
+  assert.equal(billing.headers['user-agent'], 'grok-cli/0.2.93')
+  assert.equal(billing.headers['x-xai-token-auth'], 'xai-grok-cli')
+  assert.equal(billing.headers['x-userid'], 'user-1')
+  assert.equal(seen.some((row) => row.url === GROK_CREDITS_URL && row.method === 'POST'), true)
 })
 
 test('parseGrokBilling maps SuperGrokPro user enum to SuperGrok Heavy', () => {
@@ -324,4 +329,146 @@ test('parseGrokBilling maps numeric subscription_tier the way JWT does', () => {
     config: { subscription_tier: 0, creditUsagePercent: 0 },
   })
   assert.equal(free.planType, 'Free')
+})
+
+test('parseGrokBilling hides unified-billing empty prepaid and product shells', () => {
+  const parsed = parseGrokBilling({
+    config: {
+      isUnifiedBillingUser: true,
+      prepaidBalance: 0,
+      productUsage: [{ product: 'Grok Code' }],
+      currentPeriod: { type: 'USAGE_PERIOD_TYPE_WEEKLY', end: '2026-09-05T00:00:00Z' },
+    },
+  })
+  assert.equal(parsed.rows.length, 0)
+})
+
+test('parseGrokBilling falls back to onDemandUsed / onDemandCap', () => {
+  const parsed = parseGrokBilling({
+    config: {
+      subscription_tier: 'SuperGrok Heavy',
+      onDemandUsed: { val: 25 },
+      onDemandCap: { val: 100 },
+    },
+  })
+  assert.equal(parsed.rows[0].kind, 'weekly')
+  assert.equal(parsed.rows[0].usedPercent, 25)
+  assert.equal(parsed.rows[0].remainingPercent, 75)
+})
+
+function encodeVarint(value) {
+  const bytes = []
+  let rest = value >>> 0
+  while (rest > 0x7f) {
+    bytes.push((rest & 0x7f) | 0x80)
+    rest >>>= 7
+  }
+  bytes.push(rest)
+  return Buffer.from(bytes)
+}
+
+function protoTag(field, wire) {
+  return encodeVarint((field << 3) | wire)
+}
+
+function protoLen(field, payload) {
+  return Buffer.concat([protoTag(field, 2), encodeVarint(payload.length), payload])
+}
+
+function protoFixed32(field, value) {
+  const data = Buffer.alloc(4)
+  data.writeFloatLE(value)
+  return Buffer.concat([protoTag(field, 5), data])
+}
+
+function grpcFrame(payload, flags = 0) {
+  const header = Buffer.alloc(5)
+  header[0] = flags
+  header.writeUInt32BE(payload.length, 1)
+  return Buffer.concat([header, payload])
+}
+
+function grokCreditsPayload({ usage, seconds }) {
+  const inner = []
+  if (usage !== undefined) inner.push(protoFixed32(1, usage))
+  if (seconds !== undefined) {
+    inner.push(protoLen(5, Buffer.concat([protoTag(1, 0), encodeVarint(seconds)])))
+  }
+  return protoLen(1, Buffer.concat(inner))
+}
+
+test('decodeGrokCreditsFrame reads 0-1 ratio and timestamp', () => {
+  const seconds = 1_788_307_200
+  const framed = grpcFrame(grokCreditsPayload({ usage: 0.425, seconds }))
+  const decoded = decodeGrokCreditsFrame(framed)
+  assert.equal(decoded.usedPercent, 43)
+  assert.equal(decoded.resetAt, seconds * 1000)
+})
+
+test('decodeGrokCreditsFrame treats a 0-100 float as percent', () => {
+  const decoded = decodeGrokCreditsFrame(grokCreditsPayload({ usage: 42.4 }))
+  assert.equal(decoded.usedPercent, 42)
+})
+
+test('decodeGrokCreditsFrame rejects grpc-status 16 trailers', () => {
+  const trailer = grpcFrame(Buffer.from('grpc-status: 16\r\ngrpc-message: no-credentials\r\n'), 0x80)
+  assert.equal(decodeGrokCreditsFrame(trailer), undefined)
+})
+
+test('applyGrokCreditsSnapshot fills weekly usage when JSON omitted the percent', () => {
+  const parsed = parseGrokBilling({
+    config: {
+      isUnifiedBillingUser: true,
+      prepaidBalance: 0,
+      currentPeriod: { type: 'USAGE_PERIOD_TYPE_WEEKLY', end: '2026-09-05T00:00:00Z' },
+    },
+  })
+  const merged = applyGrokCreditsSnapshot(parsed, { usedPercent: 37, resetAt: Date.parse('2026-09-05T00:00:00Z') })
+  assert.equal(merged.rows[0].kind, 'weekly')
+  assert.equal(merged.rows[0].usedPercent, 37)
+  assert.equal(merged.rows[0].remainingPercent, 63)
+})
+
+test('applyGrokCreditsSnapshot does not override a JSON percent', () => {
+  const parsed = parseGrokBilling({ config: { creditUsagePercent: 10 } })
+  const merged = applyGrokCreditsSnapshot(parsed, { usedPercent: 90 })
+  assert.equal(merged.rows[0].usedPercent, 10)
+})
+
+test('QuotaStore uses grok.com credits when CLI billing omits the weekly percent', async () => {
+  const seconds = 1_788_307_200
+  const seen = []
+  const fetchFn = async (url, init) => {
+    seen.push({ url: String(url), method: init?.method ?? 'GET', body: init?.body })
+    if (String(url) === GROK_BILLING_URL) {
+      return new Response(JSON.stringify({
+        config: {
+          isUnifiedBillingUser: true,
+          prepaidBalance: 0,
+          productUsage: [{ product: 'Grok Code' }],
+        },
+      }), { status: 200 })
+    }
+    if (String(url) === GROK_CREDITS_URL) {
+      return new Response(grpcFrame(grokCreditsPayload({ usage: 0.19, seconds })), {
+        status: 200,
+        headers: { 'content-type': 'application/grpc-web+proto' },
+      })
+    }
+    return new Response('nope', { status: 404 })
+  }
+  const store = new QuotaStore({
+    fetchFn,
+    tokens: { grok: { session: async () => ({ accessToken: 'tok' }) } },
+  })
+  const quota = await store.refresh('grok')
+  assert.equal(quota.status, 'ready')
+  assert.equal(quota.rows[0].kind, 'weekly')
+  assert.equal(quota.rows[0].usedPercent, 19)
+  assert.equal(quota.rows[0].remainingPercent, 81)
+  assert.equal(quota.rows[0].resetAt, seconds * 1000)
+  assert.equal(quota.rows.some((row) => row.kind === 'prepaid'), false)
+  const credits = seen.find((row) => row.url === GROK_CREDITS_URL)
+  assert.equal(credits.method, 'POST')
+  assert.deepEqual(Buffer.from(credits.body), GROK_WEB_EMPTY_FRAME)
 })

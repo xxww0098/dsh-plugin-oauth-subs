@@ -1,5 +1,35 @@
 # 错误记录
 
+## 2026-08-30：xAI Grok 额度读出来是预付 0、Grok Code 空行
+
+### 现象
+
+- 环境：DSH 插件设置 → xAI Grok 页，0.0.17。两个已登录账号（X Premium+ / SuperGrok Heavy）。
+- 点「刷新额度」后只看到「预付余额 0」和一行没有数字的「Grok Code」，没有周额度条。
+- 登录和套餐徽章正常，所以 OAuth token 是活的，坏的是额度解析。
+
+### 根因
+
+xAI 2026-06 起把付费账号收成**共享周池**。CLI 代理 `GET cli-chat-proxy.grok.com/v1/billing?format=credits` 仍会 200，但对 `isUnifiedBillingUser: true` 的 SuperGrok / X Premium+ 常常：
+
+1. **省略** `config.creditUsagePercent`（proto3 JSON 不写默认值；统一计费也不再填月度 included 额度）。
+2. 给出 `prepaidBalance: 0`（没买过 Extra Usage Credits）。
+3. `productUsage` 里有 `Grok Code` 但没有 `usagePercent`。
+
+插件把 0 预付和空产品行渲染成「额度」，周池百分比其实在 grok.com `GetGrokCreditsConfig`（gRPC-web，OIDC bearer，空请求帧）。Grok CLI `/usage` 走的是同一条 credits 配置。
+
+对照：官方 grok-build `billing.rs`（`credit_usage_percent` 可缺省、`prepaid_balance` 是加购余额）；CodexBar / OmniRoute 在 JSON 没有 percent 时回退 grok.com gRPC。
+
+### 修复（0.0.18）
+
+`fetchGrokQuota` 并行打三条：CLI billing JSON、CLI user、`POST grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig`。JSON 已有 percent 时以 JSON 为准；缺了就用 gRPC 的 weekly 0–1 ratio / 0–100 float。`onDemandUsed.val / onDemandCap.val` 作第三回退。预付 0 和没有数字的产品行不再画出来。JWT `sub` 写入 `x-userid`。
+
+### 验证
+
+- `parseGrokBilling`：统一计费空壳 → 0 行；onDemand 袋 → 25% used。
+- `decodeGrokCreditsFrame`：ratio 0.425 → 43%；42.4 → 42%；grpc-status 16 trailer → undefined。
+- `QuotaStore`：billing 省略 percent + gRPC 0.19 → 每周剩余 81%。
+- `npm test` 全绿。
 ## 2026-08-30：Grok 缓存命中率卡在 ~70%，热身后反复出现 512 token 块
 
 ### 现象
