@@ -1,7 +1,7 @@
 /**
  * Local version + GitHub latest-release check.
- * One zip is enough for all hosts; win/mac/linux rows share it unless
- * the release ships platform-named assets.
+ * About only lists win/mac/linux-named assets. A generic zip is not a
+ * download row — this is a DSH plugin, not a desktop installer.
  */
 
 import { createRequire } from 'node:module'
@@ -49,29 +49,25 @@ export function classifyAsset(name) {
 
 export function pickDownloads(assets, host) {
   const named = { win: undefined, mac: undefined, linux: undefined }
-  const generic = []
   for (const asset of Array.isArray(assets) ? assets : []) {
     const name = asset?.name
     const url = asset?.browser_download_url || asset?.url
     if (typeof name !== 'string' || typeof url !== 'string' || !url) continue
-    const row = { name, url, size: Number.isFinite(asset.size) ? asset.size : undefined }
     const kind = classifyAsset(name)
-    if (kind === 'any') generic.push(row)
-    else if (!named[kind]) named[kind] = row
+    if (kind === 'any' || named[kind]) continue
+    named[kind] = { name, url, size: Number.isFinite(asset.size) ? asset.size : undefined }
   }
-  const fallback = generic[0]
-  return PLATFORMS.map((platform) => {
-    const hit = named[platform] || fallback
-    if (!hit) return undefined
-    return {
+  return PLATFORMS.flatMap((platform) => {
+    const hit = named[platform]
+    if (!hit) return []
+    return [{
       platform,
       current: platform === host,
       name: hit.name,
       url: hit.url,
       size: hit.size,
-      generic: !named[platform],
-    }
-  }).filter(Boolean)
+    }]
+  })
 }
 
 export function localUpdateInfo(platform = process.platform) {

@@ -134,12 +134,10 @@ window.__ModuleLoader__.load({
         updateAhead: '本地版本领先发布',
         updateUnknown: 'GitHub 没有可用的版本号',
         updateError: '检查失败',
-        download: '下载',
         platformWin: 'Windows',
         platformMac: 'macOS',
         platformLinux: 'Linux',
         thisOs: '本机',
-        platformAny: '通用包',
         published: '发布于 {n}',
         releasePage: '打开发布页',
       },
@@ -237,12 +235,10 @@ window.__ModuleLoader__.load({
         updateAhead: 'Local version is ahead of the latest release',
         updateUnknown: 'GitHub did not return a version',
         updateError: 'Update check failed',
-        download: 'Download',
         platformWin: 'Windows',
         platformMac: 'macOS',
         platformLinux: 'Linux',
         thisOs: 'This machine',
-        platformAny: 'Universal',
         published: 'Published {n}',
         releasePage: 'Open release',
       },
@@ -445,12 +441,6 @@ window.__ModuleLoader__.load({
 .osubs-kv-row {
   display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap;
 }
-.osubs-dl {
-  display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
-  padding: 10px 12px;
-  border: 1px solid var(--osubs-line); border-radius: 10px;
-}
-.osubs-dl--on { border-color: var(--osubs-edge); background: var(--osubs-fill); }
 .osubs-acct {
   display: flex; align-items: center; justify-content: space-between;
   gap: 10px; flex-wrap: wrap; width: 100%;
@@ -1144,7 +1134,6 @@ window.__ModuleLoader__.load({
       const slug = local?.repoSlug || update?.repoSlug || 'xxww0098/dsh-plugin-oauth-subs'
       const version = local?.version || update?.version || '—'
       const host = local?.platform || update?.platform
-      const assets = Array.isArray(update?.assets) ? update.assets : []
       const latest = update?.latest
       const tone = update?.status === 'update' ? 'osubs-warn' : update?.status === 'error' ? 'osubs-bad' : ''
       return h('section', { className: 'osubs-card' },
@@ -1173,26 +1162,7 @@ window.__ModuleLoader__.load({
             latest?.publishedAt && h('p', { className: 'osubs-note' }, fill(t.published, latest.publishedAt.replace('T', ' ').replace(/Z$/, ' UTC'))),
             update?.status && h('p', { className: `osubs-hint${tone ? ` ${tone}` : ''}` }, statusLabel(t, update)),
           ),
-          assets.map((row) => h('div', {
-            key: row.platform,
-            className: `osubs-dl${row.current ? ' osubs-dl--on' : ''}`,
-          },
-            h('div', { className: 'osubs-acct-main' },
-              h('div', { className: 'osubs-acct-row' },
-                h('span', { style: { fontSize: 13, fontWeight: 600 } }, platformLabel(t, row.platform)),
-                row.current && h('span', { className: 'osubs-tag' }, t.thisOs),
-                row.generic && h('span', { className: 'osubs-tag' }, t.platformAny),
-              ),
-              h('span', { className: 'osubs-note' }, row.name),
-            ),
-            h('a', {
-              className: 'osubs-link',
-              href: row.url,
-              target: '_blank',
-              rel: 'noreferrer',
-            }, t.download),
-          )),
-          latest?.url && assets.length === 0 && h('a', {
+          latest?.url && h('a', {
             className: 'osubs-link',
             href: latest.url,
             target: '_blank',

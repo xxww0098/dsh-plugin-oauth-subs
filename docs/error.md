@@ -1,5 +1,26 @@
 # 错误记录
 
+## 2026-08-30：关于页把一份通用 zip 拆成 Win / macOS / Linux 三行下载
+
+### 现象
+
+- 设置 → 关于。检查更新后出现三张下载卡，每张都标 **通用包**，文件名都是 `dsh-plugin-oauth-subs-0.0.16.zip`。
+- 本机 macOS 那行多一个「本机」徽章，另外两行同样能下同一份 zip。
+
+### 根因
+
+`pickDownloads` 把 GitHub 的 generic zip 复制到 win/mac/linux 三行。发布从来没有平台包，这三行是假的安装器 UI。DSH 插件用仓库安装，不靠下载 zip。
+
+### 修复（0.0.21）
+
+通用 zip 不再生成下载行。关于页只保留检查更新和「打开发布页」。只有文件名带 win/mac/linux 的资源才会出现下载行。
+
+### 验证
+
+- 只有 `dsh-plugin-oauth-subs-0.0.15.zip` → `pickDownloads` 空数组。
+- `plugin-win.zip` 只出 Windows 一行。
+- `npm test` 全绿。
+
 ## 2026-08-30：智谱 GLM 模型清单错了，缺 Flash，且全部标成图文
 
 ### 现象

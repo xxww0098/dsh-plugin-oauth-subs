@@ -459,7 +459,6 @@ export declare class AuthController {
             name: any;
             url: any;
             size: any;
-            generic: boolean;
         }[];
         platform: string;
         repo: string;
