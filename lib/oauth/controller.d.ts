@@ -23,6 +23,7 @@ export declare class AuthController {
         grok: boolean;
         glm: boolean;
         kiro: boolean;
+        antigravity: boolean;
     }>;
     status(provider: any): Promise<{
         detail?: any;
@@ -40,7 +41,7 @@ export declare class AuthController {
     } | {
         detail?: any;
         quota: any;
-        account: any;
+        account: string;
         planType: any;
         planLabel: any;
         region: string;
@@ -111,7 +112,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -174,7 +175,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -211,7 +212,7 @@ export declare class AuthController {
                 })[];
                 detail?: any;
                 quota: any;
-                account: any;
+                account: string;
                 planType: any;
                 planLabel: any;
                 region: string;
@@ -237,7 +238,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -300,7 +301,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -364,7 +365,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -427,7 +428,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -464,7 +465,7 @@ export declare class AuthController {
                 })[];
                 detail?: any;
                 quota: any;
-                account: any;
+                account: string;
                 planType: any;
                 planLabel: any;
                 region: string;
@@ -490,7 +491,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -553,7 +554,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -617,7 +618,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -680,7 +681,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -717,7 +718,7 @@ export declare class AuthController {
                 })[];
                 detail?: any;
                 quota: any;
-                account: any;
+                account: string;
                 planType: any;
                 planLabel: any;
                 region: string;
@@ -743,7 +744,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -806,7 +807,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -870,7 +871,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -933,7 +934,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -970,7 +971,7 @@ export declare class AuthController {
                 })[];
                 detail?: any;
                 quota: any;
-                account: any;
+                account: string;
                 planType: any;
                 planLabel: any;
                 region: string;
@@ -996,7 +997,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -1059,7 +1060,260 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
+                    account: string;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
+                    method?: undefined;
+                    methodLabel?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
                     account: any;
+                    planType: any;
+                    planLabel: any;
+                    method: any;
+                    methodLabel: string;
+                    expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    method?: undefined;
+                    methodLabel?: undefined;
+                    id: string;
+                    active: boolean;
+                })[];
+                detail?: any;
+                quota: any;
+                account: any;
+                planType: any;
+                planLabel: any;
+                scopes: any;
+                expiresAt: any;
+                region?: undefined;
+                method?: undefined;
+                methodLabel?: undefined;
+                loggedIn: boolean;
+                busy: any;
+            };
+            antigravity: {
+                activeId: string;
+                accounts: ({
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    method?: undefined;
+                    methodLabel?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: string;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
+                    method?: undefined;
+                    methodLabel?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    method: any;
+                    methodLabel: string;
+                    expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    method?: undefined;
+                    methodLabel?: undefined;
+                    id: string;
+                    active: boolean;
+                })[];
+                detail?: any;
+                quota: any;
+                account: any;
+                planType: any;
+                planLabel: any;
+                expiresAt: any;
+                region?: undefined;
+                method?: undefined;
+                methodLabel?: undefined;
+                scopes?: undefined;
+                loggedIn: boolean;
+                busy: any;
+            } | {
+                activeId: string;
+                accounts: ({
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    method?: undefined;
+                    methodLabel?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: string;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
+                    method?: undefined;
+                    methodLabel?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    method: any;
+                    methodLabel: string;
+                    expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    method?: undefined;
+                    methodLabel?: undefined;
+                    id: string;
+                    active: boolean;
+                })[];
+                detail?: any;
+                quota: any;
+                account: string;
+                planType: any;
+                planLabel: any;
+                region: string;
+                expiresAt: any;
+                method?: undefined;
+                methodLabel?: undefined;
+                scopes?: undefined;
+                loggedIn: boolean;
+                busy: any;
+            } | {
+                activeId: string;
+                accounts: ({
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    method?: undefined;
+                    methodLabel?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: string;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
+                    method?: undefined;
+                    methodLabel?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    method: any;
+                    methodLabel: string;
+                    expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    method?: undefined;
+                    methodLabel?: undefined;
+                    id: string;
+                    active: boolean;
+                })[];
+                detail?: any;
+                quota: any;
+                account: any;
+                planType: any;
+                planLabel: any;
+                method: any;
+                methodLabel: string;
+                expiresAt: any;
+                region?: undefined;
+                scopes?: undefined;
+                loggedIn: boolean;
+                busy: any;
+            } | {
+                activeId: string;
+                accounts: ({
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    method?: undefined;
+                    methodLabel?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -1253,7 +1507,7 @@ export declare class AuthController {
             methodLabel?: undefined;
             scopes?: undefined;
         } | {
-            account: any;
+            account: string;
             planType: any;
             planLabel: any;
             region: string;
@@ -1319,7 +1573,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -1382,7 +1636,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -1419,7 +1673,7 @@ export declare class AuthController {
                 })[];
                 detail?: any;
                 quota: any;
-                account: any;
+                account: string;
                 planType: any;
                 planLabel: any;
                 region: string;
@@ -1445,7 +1699,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -1508,7 +1762,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -1572,7 +1826,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -1635,7 +1889,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -1672,7 +1926,7 @@ export declare class AuthController {
                 })[];
                 detail?: any;
                 quota: any;
-                account: any;
+                account: string;
                 planType: any;
                 planLabel: any;
                 region: string;
@@ -1698,7 +1952,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -1761,7 +2015,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -1825,7 +2079,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -1888,7 +2142,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -1925,7 +2179,7 @@ export declare class AuthController {
                 })[];
                 detail?: any;
                 quota: any;
-                account: any;
+                account: string;
                 planType: any;
                 planLabel: any;
                 region: string;
@@ -1951,7 +2205,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -2014,7 +2268,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -2078,7 +2332,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -2141,7 +2395,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -2178,7 +2432,7 @@ export declare class AuthController {
                 })[];
                 detail?: any;
                 quota: any;
-                account: any;
+                account: string;
                 planType: any;
                 planLabel: any;
                 region: string;
@@ -2204,7 +2458,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -2267,7 +2521,260 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
+                    account: string;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
+                    method?: undefined;
+                    methodLabel?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
                     account: any;
+                    planType: any;
+                    planLabel: any;
+                    method: any;
+                    methodLabel: string;
+                    expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    method?: undefined;
+                    methodLabel?: undefined;
+                    id: string;
+                    active: boolean;
+                })[];
+                detail?: any;
+                quota: any;
+                account: any;
+                planType: any;
+                planLabel: any;
+                scopes: any;
+                expiresAt: any;
+                region?: undefined;
+                method?: undefined;
+                methodLabel?: undefined;
+                loggedIn: boolean;
+                busy: any;
+            };
+            antigravity: {
+                activeId: string;
+                accounts: ({
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    method?: undefined;
+                    methodLabel?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: string;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
+                    method?: undefined;
+                    methodLabel?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    method: any;
+                    methodLabel: string;
+                    expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    method?: undefined;
+                    methodLabel?: undefined;
+                    id: string;
+                    active: boolean;
+                })[];
+                detail?: any;
+                quota: any;
+                account: any;
+                planType: any;
+                planLabel: any;
+                expiresAt: any;
+                region?: undefined;
+                method?: undefined;
+                methodLabel?: undefined;
+                scopes?: undefined;
+                loggedIn: boolean;
+                busy: any;
+            } | {
+                activeId: string;
+                accounts: ({
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    method?: undefined;
+                    methodLabel?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: string;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
+                    method?: undefined;
+                    methodLabel?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    method: any;
+                    methodLabel: string;
+                    expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    method?: undefined;
+                    methodLabel?: undefined;
+                    id: string;
+                    active: boolean;
+                })[];
+                detail?: any;
+                quota: any;
+                account: string;
+                planType: any;
+                planLabel: any;
+                region: string;
+                expiresAt: any;
+                method?: undefined;
+                methodLabel?: undefined;
+                scopes?: undefined;
+                loggedIn: boolean;
+                busy: any;
+            } | {
+                activeId: string;
+                accounts: ({
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    method?: undefined;
+                    methodLabel?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: string;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
+                    method?: undefined;
+                    methodLabel?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    method: any;
+                    methodLabel: string;
+                    expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    method?: undefined;
+                    methodLabel?: undefined;
+                    id: string;
+                    active: boolean;
+                })[];
+                detail?: any;
+                quota: any;
+                account: any;
+                planType: any;
+                planLabel: any;
+                method: any;
+                methodLabel: string;
+                expiresAt: any;
+                region?: undefined;
+                scopes?: undefined;
+                loggedIn: boolean;
+                busy: any;
+            } | {
+                activeId: string;
+                accounts: ({
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    method?: undefined;
+                    methodLabel?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -2324,7 +2831,7 @@ export declare class AuthController {
         };
     }>;
     importFrom(provider: any): Promise<{
-        source: string;
+        source: any;
         account: {
             account: any;
             planType: any;
@@ -2335,7 +2842,7 @@ export declare class AuthController {
             methodLabel?: undefined;
             scopes?: undefined;
         } | {
-            account: any;
+            account: string;
             planType: any;
             planLabel: any;
             region: string;
@@ -2396,7 +2903,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -2459,7 +2966,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -2496,7 +3003,7 @@ export declare class AuthController {
                 })[];
                 detail?: any;
                 quota: any;
-                account: any;
+                account: string;
                 planType: any;
                 planLabel: any;
                 region: string;
@@ -2522,7 +3029,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -2585,7 +3092,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -2649,7 +3156,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -2712,7 +3219,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -2749,7 +3256,7 @@ export declare class AuthController {
                 })[];
                 detail?: any;
                 quota: any;
-                account: any;
+                account: string;
                 planType: any;
                 planLabel: any;
                 region: string;
@@ -2775,7 +3282,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -2838,7 +3345,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -2902,7 +3409,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -2965,7 +3472,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -3002,7 +3509,7 @@ export declare class AuthController {
                 })[];
                 detail?: any;
                 quota: any;
-                account: any;
+                account: string;
                 planType: any;
                 planLabel: any;
                 region: string;
@@ -3028,7 +3535,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -3091,7 +3598,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -3155,7 +3662,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -3218,7 +3725,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -3255,7 +3762,7 @@ export declare class AuthController {
                 })[];
                 detail?: any;
                 quota: any;
-                account: any;
+                account: string;
                 planType: any;
                 planLabel: any;
                 region: string;
@@ -3281,7 +3788,7 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
-                    account: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -3344,7 +3851,260 @@ export declare class AuthController {
                     active: boolean;
                 } | {
                     quota: any;
+                    account: string;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
+                    method?: undefined;
+                    methodLabel?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
                     account: any;
+                    planType: any;
+                    planLabel: any;
+                    method: any;
+                    methodLabel: string;
+                    expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    method?: undefined;
+                    methodLabel?: undefined;
+                    id: string;
+                    active: boolean;
+                })[];
+                detail?: any;
+                quota: any;
+                account: any;
+                planType: any;
+                planLabel: any;
+                scopes: any;
+                expiresAt: any;
+                region?: undefined;
+                method?: undefined;
+                methodLabel?: undefined;
+                loggedIn: boolean;
+                busy: any;
+            };
+            antigravity: {
+                activeId: string;
+                accounts: ({
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    method?: undefined;
+                    methodLabel?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: string;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
+                    method?: undefined;
+                    methodLabel?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    method: any;
+                    methodLabel: string;
+                    expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    method?: undefined;
+                    methodLabel?: undefined;
+                    id: string;
+                    active: boolean;
+                })[];
+                detail?: any;
+                quota: any;
+                account: any;
+                planType: any;
+                planLabel: any;
+                expiresAt: any;
+                region?: undefined;
+                method?: undefined;
+                methodLabel?: undefined;
+                scopes?: undefined;
+                loggedIn: boolean;
+                busy: any;
+            } | {
+                activeId: string;
+                accounts: ({
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    method?: undefined;
+                    methodLabel?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: string;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
+                    method?: undefined;
+                    methodLabel?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    method: any;
+                    methodLabel: string;
+                    expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    method?: undefined;
+                    methodLabel?: undefined;
+                    id: string;
+                    active: boolean;
+                })[];
+                detail?: any;
+                quota: any;
+                account: string;
+                planType: any;
+                planLabel: any;
+                region: string;
+                expiresAt: any;
+                method?: undefined;
+                methodLabel?: undefined;
+                scopes?: undefined;
+                loggedIn: boolean;
+                busy: any;
+            } | {
+                activeId: string;
+                accounts: ({
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    method?: undefined;
+                    methodLabel?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: string;
+                    planType: any;
+                    planLabel: any;
+                    region: string;
+                    expiresAt: any;
+                    method?: undefined;
+                    methodLabel?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    method: any;
+                    methodLabel: string;
+                    expiresAt: any;
+                    region?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    method?: undefined;
+                    methodLabel?: undefined;
+                    id: string;
+                    active: boolean;
+                })[];
+                detail?: any;
+                quota: any;
+                account: any;
+                planType: any;
+                planLabel: any;
+                method: any;
+                methodLabel: string;
+                expiresAt: any;
+                region?: undefined;
+                scopes?: undefined;
+                loggedIn: boolean;
+                busy: any;
+            } | {
+                activeId: string;
+                accounts: ({
+                    quota: any;
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    region?: undefined;
+                    method?: undefined;
+                    methodLabel?: undefined;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    quota: any;
+                    account: string;
                     planType: any;
                     planLabel: any;
                     region: string;
@@ -3400,7 +4160,7 @@ export declare class AuthController {
             repoSlug: string;
         };
     }>;
-    sync(selected: any): Promise<{
+    sync(selected: any, options?: {}): Promise<{
         routes: {
             provider: string;
             api: any;

@@ -22,6 +22,7 @@ import { codexProfileClaims, codexSession } from './codex/index.js'
 import { GROK_CLIENT_ID, grokSession } from './grok/index.js'
 import { glmSession } from './glm/index.js'
 import { isKiroCredential, kiroSessionFromImport } from './kiro/index.js'
+import { antigravitySession, completeAntigravityLogin } from './antigravity/index.js'
 import { decodeJwtPayload } from '../utils/jwt.js'
 
 const GROK_TOKEN_ENDPOINT = 'https://auth.x.ai/oauth2/token'
@@ -340,6 +341,103 @@ export function glmAuthSearchPaths() {
   ]
 }
 
+function antigravityHomeDir() {
+  return homeFile('.gemini')
+}
+
+function cliProxyAuthDir() {
+  const override = process.env.CLIPROXYAPI_AUTH_DIR?.trim() || process.env.CLI_PROXY_API_AUTH_DIR?.trim()
+  return override || homeFile('.cli-proxy-api')
+}
+
+export function antigravityAuthSearchPaths() {
+  return [
+    homeFile('.gemini', 'antigravity-cli', 'antigravity-oauth-token'),
+    join(cliProxyAuthDir(), 'antigravity.json'),
+  ]
+}
+
+function tokensFromAntigravityRaw(raw) {
+  if (!raw || typeof raw !== 'object') return undefined
+  const nested = raw.token && typeof raw.token === 'object' ? raw.token : raw
+  const access = pickString(
+    nested.access_token, nested.accessToken, raw.access_token, raw.accessToken,
+  )
+  const refresh = pickString(
+    nested.refresh_token, nested.refreshToken, raw.refresh_token, raw.refreshToken,
+  )
+  if (!access || !refresh) return undefined
+  const expiresAt = parseTime(nested.expiry ?? nested.expires_at ?? nested.expiresAt ?? raw.expired ?? raw.expires_at)
+  let expires_in = asPositiveNumber(nested.expires_in ?? nested.expiresIn ?? raw.expires_in)
+  if (expires_in === undefined && expiresAt !== undefined) {
+    expires_in = Math.max(Math.round((expiresAt - Date.now()) / 1000), 60)
+  }
+  return {
+    access_token: access,
+    refresh_token: refresh,
+    expires_in,
+    expiresAt,
+    account: pickString(raw.email, raw.account, nested.email),
+    projectId: pickString(raw.project_id, raw.projectId, nested.project_id, nested.projectId),
+    planType: pickString(raw.planType, raw.plan_type, nested.planType),
+  }
+}
+
+async function readAntigravityJsonFiles(dir) {
+  try {
+    const names = await readdir(dir)
+    const out = []
+    for (const name of names) {
+      if (!/^antigravity(-.+)?\.json$/i.test(name)) continue
+      const raw = await readJson(join(dir, name))
+      if (raw !== undefined) out.push({ path: join(dir, name), raw })
+    }
+    return out
+  } catch (error) {
+    if (error.code === 'ENOENT') return []
+    throw error
+  }
+}
+
+export async function importAntigravityAuth({ paths, fetchFn = fetch } = {}) {
+  const tried = []
+  const candidates = paths ?? [
+    ...antigravityAuthSearchPaths(),
+    ...(await readAntigravityJsonFiles(cliProxyAuthDir())).map((row) => row.path),
+    ...(await readAntigravityJsonFiles(join(antigravityHomeDir(), 'antigravity'))).map((row) => row.path),
+  ]
+  const seen = new Set()
+  for (const path of candidates) {
+    if (!path || seen.has(path)) continue
+    seen.add(path)
+    tried.push(path)
+    const raw = await readJson(path)
+    if (raw === undefined) continue
+    const tokens = tokensFromAntigravityRaw(raw)
+    if (tokens === undefined) continue
+    if (tokens.projectId && tokens.account) {
+      return {
+        session: antigravitySession({
+          accessToken: tokens.access_token,
+          refreshToken: tokens.refresh_token,
+          expiresIn: tokens.expires_in,
+          expiresAt: tokens.expiresAt,
+          account: tokens.account,
+          projectId: tokens.projectId,
+          planType: tokens.planType,
+        }),
+        source: path,
+      }
+    }
+    const session = await completeAntigravityLogin(tokens, {
+      fetchFn,
+      account: tokens.account,
+    })
+    return { session, source: path }
+  }
+  throw new Error(`no Antigravity session found in ${tried.join(' or ')}`)
+}
+
 export async function importGlmAuth(paths = glmAuthSearchPaths()) {
   const tried = []
   for (const path of paths) {
@@ -349,7 +447,7 @@ export async function importGlmAuth(paths = glmAuthSearchPaths()) {
     const found = glmKeyFromZcodeConfig(raw)
     if (!found) continue
     return {
-      session: glmSession({ accessToken: found.apiKey, account: 'zcode', region: found.region }),
+      session: glmSession({ accessToken: found.apiKey, region: found.region }),
       source: path,
     }
   }

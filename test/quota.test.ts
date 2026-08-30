@@ -13,6 +13,7 @@ import {
 } from '../lib/oauth/quota.js'
 import { CODEX_RESET_CONSUME_URL, CODEX_RESET_CREDITS_URL, CODEX_USAGE_URL } from '../lib/oauth/codex/index.js'
 import { GROK_BILLING_URL, GROK_CREDITS_URL } from '../lib/oauth/grok/index.js'
+import { GLM_QUOTA_URL, GLM_TOOL_USAGE_URL, GLM_USER_AGENT } from '../lib/oauth/glm/index.js'
 import { GROK_WEB_EMPTY_FRAME, decodeGrokCreditsFrame } from '../lib/oauth/grok/credits-frame.js'
 
 test('asNumber reads val wrappers', () => {
@@ -309,6 +310,50 @@ test('QuotaStore fetches Grok billing and does not fail the card if user probe 4
   assert.equal(billing.headers['x-xai-token-auth'], 'xai-grok-cli')
   assert.equal(billing.headers['x-userid'], 'user-1')
   assert.equal(seen.some((row) => row.url === GROK_CREDITS_URL && row.method === 'POST'), true)
+})
+
+test('QuotaStore GLM quota hop uses ZCode Desktop 3.10.1 fingerprint', async () => {
+  const seen = []
+  const fetchFn = async (url, init) => {
+    seen.push({ url: String(url), headers: init?.headers })
+    return new Response(JSON.stringify({
+      data: {
+        level: 'pro',
+        list: [{ type: 'CREDIT_LIMIT', usage: 12000, currentValue: 3000, duration: '5h' }],
+      },
+    }), { status: 200 })
+  }
+  const store = new QuotaStore({
+    fetchFn,
+    tokens: { glm: { session: async () => ({ accessToken: 'id.secret', region: 'zai' }) } },
+  })
+  const first = await store.refresh('glm')
+  const second = await store.refresh('glm')
+  assert.equal(first.status, 'ready')
+  assert.equal(first.planType, 'Pro')
+  // Card parse also GETs tool-usage when the quota payload has no MCP row.
+  assert.equal(seen.length, 4)
+  assert.equal(seen[0].url, GLM_QUOTA_URL)
+  assert.equal(seen[1].url, GLM_TOOL_USAGE_URL)
+  assert.equal(seen[2].url, GLM_QUOTA_URL)
+  assert.equal(seen[3].url, GLM_TOOL_USAGE_URL)
+  for (const row of seen) {
+    const headers = row.headers
+    assert.equal(headers.authorization, 'Bearer id.secret')
+    assert.equal(headers['user-agent'], GLM_USER_AGENT)
+    assert.equal(headers['user-agent'], 'ZCode/3.10.1 ai-sdk/anthropic/3.0.81')
+    assert.equal(headers['X-ZCode-App-Version'], '3.10.1')
+    assert.equal(headers['X-ZCode-Agent'], 'glm')
+    assert.equal(headers['HTTP-Referer'], 'https://zcode.z.ai')
+    assert.equal(headers.referer, 'https://zcode.z.ai')
+    assert.equal(headers['X-Title'], 'Z Code')
+    assert.match(headers['x-session-id'], /^sess_[0-9a-f]{24}$/)
+    assert.equal(JSON.stringify(headers).includes('dsh-plugin-oauth-subs'), false)
+  }
+  assert.equal(seen[0].headers['x-session-id'], seen[1].headers['x-session-id'])
+  assert.equal(seen[0].headers['x-session-id'], seen[2].headers['x-session-id'])
+  assert.notEqual(seen[0].headers['x-zcode-trace-id'], seen[2].headers['x-zcode-trace-id'])
+  assert.notEqual(seen[0].headers['x-request-id'], seen[2].headers['x-request-id'])
 })
 
 test('parseGrokBilling maps SuperGrokPro user enum to SuperGrok Heavy', () => {

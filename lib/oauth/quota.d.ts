@@ -46,6 +46,7 @@ export declare function parseGrokBilling(billing: any, { cliUser }?: {}): {
     rows: any[];
 };
 export declare function applyGrokCreditsSnapshot(parsed: any, snapshot: any): any;
+export declare function glmWindowKind(item: any): "cycle" | "weekly" | "mcp" | "primary";
 export declare function parseGlmQuota(payload: any): {
     rows: any[];
     planType?: undefined;
@@ -53,6 +54,7 @@ export declare function parseGlmQuota(payload: any): {
     planType: any;
     rows: any[];
 };
+export declare function mergeGlmToolUsage(parsed: any, toolPayload: any): any;
 export declare function parseKiroUsage(payload: any): {
     rows: any[];
     planType?: undefined;
@@ -71,13 +73,7 @@ export declare function parseKiroUsage(payload: any): {
         resetAt: number;
     }[];
 };
-export declare function fetchGlmQuota(session: any, fetchFn?: typeof fetch): Promise<{
-    rows: any[];
-    planType?: undefined;
-} | {
-    planType: any;
-    rows: any[];
-}>;
+export declare function fetchGlmQuota(session: any, fetchFn?: typeof fetch): Promise<any>;
 export declare function fetchKiroQuota(session: any, fetchFn?: typeof fetch): Promise<{
     rows: any[];
     planType?: undefined;

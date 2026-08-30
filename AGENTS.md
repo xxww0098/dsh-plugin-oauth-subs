@@ -64,6 +64,9 @@ src/
     kiro/                  AWS Kiro (Social / Builder ID / IdC / Entra / API key)
       index.ts             catalog, identity, portal PKCE, refresh, usage headers
       idc-flow.ts          AWS SSO OIDC register + JSON device poll
+    antigravity/           Google Antigravity (cloudcode-pa)
+      index.ts             catalog, identity, Google OAuth, fingerprint
+      request.ts           OpenAI chat ↔ generateContent
   ui/                      React Settings (classic-script factory)
     client.ts
   utils/                   shared, provider-agnostic
@@ -81,14 +84,14 @@ scripts/                   CLI (TypeScript)
 
 Rules:
 
-- Codex-only code → `src/oauth/codex/`. Grok-only code → `src/oauth/grok/`. GLM-only code → `src/oauth/glm/`. Kiro-only code → `src/oauth/kiro/`.
+- Codex-only code → `src/oauth/codex/`. Grok-only code → `src/oauth/grok/`. GLM-only code → `src/oauth/glm/`. Kiro-only code → `src/oauth/kiro/`. Antigravity-only code → `src/oauth/antigravity/`.
 - Shared crypto / session scoring → `src/utils/`.
 - Settings React → `src/ui/`.
 - Do not flatten modules back into a single `lib/*.js` bag.
 
 ## Adding a new OAuth family
 
-A family is one top-level tab (Codex / Grok / GLM / Kiro today) plus its own
+A family is one top-level tab (Codex / Grok / GLM / Kiro / Antigravity today) plus its own
 `src/oauth/<id>/` module. Do not piggyback a new vendor onto an existing
 tab. Follow this checklist in one PR.
 
@@ -143,7 +146,7 @@ into `TAB_ICONS`.
   the page heading.
 
 ```text
-[ Codex ] [ Grok ] [ Z.ai ] [ Kiro ] [ New ] [ ▦ ] [ GitHub ]
+[ Codex ] [ Grok ] [ Z.ai ] [ Kiro ] [ Antigravity ] [ New ] [ ▦ ] [ GitHub ]
 ```
 
 ### Settings — one account, one card

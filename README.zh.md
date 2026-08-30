@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml/badge.svg)](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml)
 
-把 **ChatGPT / Codex**、**xAI Grok**、**智谱 GLM** 和 **AWS Kiro** 订阅接到 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。登录走官方 OAuth；Kiro 还可贴 `ksk_` API key。
+把 **ChatGPT / Codex**、**xAI Grok**、**智谱 GLM**、**AWS Kiro** 和 **Google Antigravity** 订阅接到 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。登录走官方 OAuth；Kiro 还可贴 `ksk_` API key。
 
 本机 Responses 代理 + `llm-pi-ai` 路由同步。
 
@@ -15,7 +15,7 @@ dsh plugin --profile web add https://github.com/xxww0098/dsh-plugin-oauth-subs
 dsh web
 ```
 
-打开 **设置 → OAuth 订阅**。顶栏图标页签固定不随滚动移出：Codex、Grok、**Z.ai（智谱 GLM）**、**Kiro**、模型、关于。每个系列可登录多个账号，**每个账号一张卡片，额度各自显示**；点卡片切换当前对话账号。**GLM** 与 ZCode 欢迎页一样，分 **Z.ai（全球）** 和 **BigModel（中国）** 两套 OAuth，也可粘贴 API key。登录后签发 Coding Plan 密钥。**Kiro** 叠放 Social / GitHub / Google、Builder ID、企业 IdC、Entra / Azure AD，以及 `ksk_` 密钥。**关于** 里有 GitHub 仓库链接。检查更新会对比 GitHub 最新版，有新版本时跑 `dsh plugin --profile web update dsh-plugin-oauth-subs`。重启 `dsh web` 后才会加载新模块。也可以用 `cordis.patch.yml` 手动挂载：
+打开 **设置 → OAuth 订阅**。顶栏图标页签固定不随滚动移出：Codex、Grok、**Z.ai（智谱 GLM）**、**Kiro**、**Antigravity**、模型、关于。每个系列可登录多个账号，**每个账号一张卡片，额度各自显示**；点卡片切换当前对话账号。**GLM** 与 ZCode 欢迎页一样，分 **Z.ai（全球）** 和 **BigModel（中国）** 两套 OAuth，也可粘贴 API key。登录后签发 Coding Plan 密钥。**Kiro** 叠放 Social / GitHub / Google、Builder ID、企业 IdC、Entra / Azure AD，以及 `ksk_` 密钥。**Antigravity** 是和官方 IDE 一样的 Google 登录。**关于** 里有 GitHub 仓库链接。检查更新会对比 GitHub 最新版，有新版本时跑 `dsh plugin --profile web update dsh-plugin-oauth-subs`。重启 `dsh web` 后才会加载新模块。也可以用 `cordis.patch.yml` 手动挂载：
 
 ```yaml
 - insert:
@@ -40,8 +40,9 @@ pnpm dsh web --patch ./cordis.patch.yml
 | AWS Kiro · Enterprise / IdC | 同一设备码，打组织自己的 Start URL | 登录时签发 | `https://oidc.{region}.amazonaws.com` |
 | AWS Kiro · Entra / Azure AD | 粘贴 refresh token；public client `refresh_token` grant | 你的 Entra client id | `*.microsoftonline.com` token 端点 |
 | AWS Kiro · API key | 粘贴 `ksk_…` | — | Bearer，不刷新 |
+| Google Antigravity | Google OAuth，回环 `localhost:51121/oauth-callback`，可粘贴回调 | `1071006060591-…apps.googleusercontent.com` | `cloudcode-pa.googleapis.com/v1internal:streamGenerateContent` |
 
-已在本机登录过 Codex CLI、Grok CLI、Hermes、ZCode Desktop、Kiro IDE 或 kiro.rs 时，点 **导入本机会话**：
+已在本机登录过 Codex CLI、Grok CLI、Hermes、ZCode Desktop、Kiro IDE、kiro.rs、Antigravity CLI 或 CLIProxyAPI 时，点 **导入本机会话**：
 
 - `~/.codex/auth.json`
 - `~/.grok/auth.json`
@@ -50,6 +51,8 @@ pnpm dsh web --patch ./cordis.patch.yml
 - `credentials.json`（kiro.rs 当前目录）
 - `~/.kiro/credentials.json`
 - `~/.aws/sso/cache/kiro-auth-token.json`
+- `~/.gemini/antigravity-cli/antigravity-oauth-token`
+- `~/.cli-proxy-api/antigravity-*.json`
 
 令牌写在 profile 数据目录 `data/dsh-plugin-oauth-subs/auth.json`，权限 `0600`。每个系列的多个账号存在这个文件的保险库里；旧的单会话文件仍能读。开启/关闭的模型写在同目录的 `models.json`。
 
@@ -62,6 +65,7 @@ pnpm dsh web --patch ./cordis.patch.yml
 DeepSeek Harness（调用面）
   └─ llm-pi-ai
        └─ http://127.0.0.1:8318/{codex,grok}/v1/responses
+       └─ http://127.0.0.1:8318/{glm,antigravity}/v1/chat/completions
             └─ 使用刷新后的订阅令牌访问上游
 ```
 
@@ -73,7 +77,9 @@ DeepSeek Harness（调用面）
 src/
   oauth/codex/     Codex 目录、身份、Responses 请求体
   oauth/grok/      Grok 目录、身份、设备码
+  oauth/kiro/      Kiro Social / Builder ID / IdC / Entra / API key
   oauth/           代理、PKCE、额度、模型
+  oauth/antigravity/ Google OAuth + cloudcode-pa 指纹
   ui/              React 设置页（classic-script factory）
   utils/           jwt、pkce、fast/context、会话分析器
 ```
@@ -125,7 +131,7 @@ Codex 上本质是 **Priority Processing**，不是换一个模型族。代理�
 
 ChatGPT Codex 即使请求了 Priority，回显也经常是 `created=auto` / `completed=default`——这不能当确认（openai/codex#14204）。2026-08-26 Luna 曾测到 88.3 对 57.5 tok/s（1.54 倍）；2026-08-30 交错复测没有稳定提升（均值 1.33 倍，成对比 1.90 再 0.93）。提升只在生成吞吐上——首 token 时间和缓存命中不受影响。
 
-登录、刷新令牌、对话和额度走同一套官方客户端身份：Codex 为成对的 `originator: codex_cli_rs` 与 `User-Agent: codex_cli_rs/<version>`；Grok 为 `x-xai-token-auth: xai-grok-cli` 与 `User-Agent: grok-cli/<version>`。GLM 走 ZCode CLI 轮询：国际站 `provider: zai`（client `client_P8X5CMWmlaRO9gyO-KSqtg`，再 `api.z.ai/api/auth/z/login` 换长期 `id.secret`）；国内站 `provider: bigmodel`（`bigmodel.cn/login`，poll JWT 直接当 Coding Plan 密钥）。对话分别打 `api.z.ai` 与 `open.bigmodel.cn` 的 `/api/coding/paas/v4`。不模拟浏览器 TLS 指纹。
+登录、刷新令牌、对话和额度走同一套官方客户端身份：Codex 为成对的 `originator: codex_cli_rs` 与 `User-Agent: codex_cli_rs/<version>`；Grok 为 `x-xai-token-auth: xai-grok-cli` 与 `User-Agent: grok-cli/<version>`。GLM 走 ZCode CLI 轮询：国际站 `provider: zai`（client `client_P8X5CMWmlaRO9gyO-KSqtg`，再 `api.z.ai/api/auth/z/login` 换长期 `id.secret`）；国内站 `provider: bigmodel`（`bigmodel.cn/login`，poll JWT 直接当 Coding Plan 密钥）。对话和额度按 **ZCode Desktop 3.10.1** 指纹发出（`User-Agent: ZCode/3.10.1 ai-sdk/anthropic/3.0.81`、`X-ZCode-App-Version`、`X-ZCode-Agent: glm`、`Referer` / `X-Title: Z Code`），打 `api.z.ai` 或 `open.bigmodel.cn` 的 `/api/coding/paas/v4`。`zcode.z.ai` 上的 CLI init/poll 仍用 CLI 形态的 `ZCode/3.10.1`。不模拟浏览器 TLS 指纹。
 
 ## 模型选择
 
@@ -159,6 +165,7 @@ GLM-5.3 与 GLM-5.3-Flash 的思考深度为 **low / high / max**（默认 **max
 | ChatGPT Codex 重置 | `…/wham/rate-limit-reset-credits` 与 `/consume` | 银行的周窗口重置券和过期时间；Codex 卡片上按券各一颗确认按钮 |
 | xAI Grok | `cli-chat-proxy.grok.com/v1/billing?format=credits`，并读 `/v1/user?include=subscription` | 套餐等级（SuperGrok / X Premium+ …）+ 本周期用量、预付余额、产品分项 |
 | 智谱 GLM | `api.z.ai` 或 `open.bigmodel.cn` 的 `monitor/usage/quota/limit` | 套餐徽章（Lite / Pro / Max）+ Coding Plan 积分窗口；站点随当前账号 |
+| Google Antigravity | 无公开额度接口 | 卡片照常渲染，额度块保持空闲 |
 
 额度约每分钟刷新一次，也可点卡片上的 **刷新额度**。读失败不影响对话。
 
@@ -173,7 +180,7 @@ ChatGPT / Codex Plus、Pro 可能有银行的周窗口重置券。还有剩余�
 | 选项 | 默认 | 说明 |
 |---|---|---|
 | `port` | `8318` | 本机代理端口 |
-| `provider` | `oauth` | 同步到 DSH 的路由 ID 前缀（`oauth-codex` / `oauth-grok` / `oauth-glm`） |
+| `provider` | `oauth` | 同步到 DSH 的路由 ID 前缀（`oauth-codex` / `oauth-grok` / `oauth-glm` / `oauth-antigravity`） |
 | `dataDir` | profile 数据目录 | `auth.json`、`models.json` 与 `proxy-key` 位置 |
 | `grokLogin` | `device` | `device` 或 `pkce` |
 

@@ -1,5 +1,179 @@
 # 错误记录
 
+## 2026-08-30：GLM 对话/额度带第三方 UA，拿不到 ZCode 1.5 倍额度
+
+### 现象
+
+官方限时（至 2026-08-31）：「GLM Coding Plan 用户在 ZCode 中登录使用即可享受全天 1.5 倍使用额度」，同等调用按 67% 扣减。本插件走 `api.z.ai` / `open.bigmodel.cn` 的 `/api/coding/paas/v4` 与 `/api/monitor/usage/quota/limit` 时，`User-Agent` 是 `dsh-plugin-oauth-subs/0.0.22`，没有 `X-ZCode-*` / `Referer` / `X-Title`，上游按第三方客户端记账，吃不到 Desktop 加成。
+
+### 证据
+
+- `src/oauth/glm/index.ts`：`GLM_USER_AGENT = 'dsh-plugin-oauth-subs/0.0.22'`；`glmUpstreamHeaders` 只发 Bearer + accept + 该 UA。
+- 对话 hop：`src/oauth/proxy.ts` `POST /glm/v1/chat/completions` → `glmCodingUrl`，`headersOf: glmUpstreamHeaders`。`forward()` 原样展开 `headersOf`，不会剥额外头。
+- 额度：`fetchGlmQuota` 同样用 `glmUpstreamHeaders`。
+- 官方 Desktop 3.10.1（2026-08-28，https://zcode.z.ai/en/changelog）。Coding Plan hop 的指纹来自 Desktop `resources/glm/zcode.cjs` 的 `eao()` / `rao()`，不是 Electron host 对 `zcode.z.ai` 的 `Z Code@electron` / `ZCode/unknown`（旧 dump：vibe-coding-labs/zcode-reverse-engineer）。不要抄 CLIProxyAPI 的 claude-cli 伪装头。
+
+### 根因
+
+代理层（本插件）。把插件名写进 Coding Plan 上游 UA，Z.ai 按非 ZCode Desktop 计费。
+
+### 修复（0.0.38）
+
+`glmDesktopHeaders` / `glmUpstreamHeaders` 与 biz GET/POST（`api.z.ai` / `open.bigmodel.cn` 的 login、customer、api_keys、quota）改为 Desktop 3.10.1：
+
+- `User-Agent: ZCode/3.10.1 ai-sdk/anthropic/3.0.81`
+- `X-ZCode-App-Version: 3.10.1`，`X-ZCode-Agent: glm`
+- `x-zcode-trace-id` / `x-request-id` / `x-query-id` 每请求新 hex；`x-session-id` 进程内稳定 `sess_<24hex>`
+- `HTTP-Referer` + `Referer: https://zcode.z.ai`，`X-Title: Z Code`
+
+`zcode.z.ai` CLI init/poll 用 `ZCode/3.10.1`，不带 Desktop 套件，也不带插件名。`GLM_KEY_NAME` 仍是本地 key 标签，不进 UA。
+
+### 验证
+
+- `npm test`：UA / X-ZCode / Referer / X-Title 锁定；每请求 id 变化、session id 稳定；chat/quota/biz hop 头里没有 `dsh-plugin-oauth-subs`。
+- 代理 `POST /glm/v1/chat/completions` 原样转发这些头。
+
+## 2026-08-30：GLM 卡要看见官方「150%配额」限时加成
+
+### 现象
+
+ZCode Coding Plan 限时：在 ZCode 里登录使用全天 1.5 倍额度（同样调用按 67% 计）。用户要设置页已登录 GLM 账号卡上直接看到 **150%配额**，不要只写在说明里。
+
+### 根因
+
+账号卡 pill 只有套餐 / 使用中 / 中国（全球）。没有加成标记。额度条数学也不该改——这是展示文案，不是把 used/total 乘 1.5。
+
+### 修复（0.0.38）
+
+已登录 GLM 卡抬头 pill 行加 **150%配额**（en **150% quota**）。额度标题下多一行 `ZCode 登录使用享 150%配额` / `ZCode session: 150% quota`。不做日期开关。Codex / Grok / Antigravity 卡不出现。额度数字不动。
+
+### 验证
+
+- `npm test`：GLM 卡 render 含 `150%配额` / `150% quota`；codex / grok / antigravity 不含。
+
+## 2026-08-30：GLM 账号卡身份显示 zcode，不是邮箱
+
+### 现象
+
+设置 → 智谱 GLM。已登录卡抬头是 **zcode**，后面 LITE / 使用中 / 中国。本机 vault `activeId: zcode@bigmodel`，`account: "zcode"`。
+
+### 证据
+
+用户现场截图。BigModel CLI poll 经常没有 `user.email`；`completeGlmCli` 把 `session.account` 写成 `ready.email ?? ready.accountId`，`accountId` 落到 CLI app id `zcode`（`GLM_BIGMODEL_APP_ID`）。`publicSession('glm')` 原样输出 `session.account`。
+
+### 根因
+
+身份层（`completeGlmCli` / `publicSession` / 导入）。没有解码 poll JWT，也没打 ZCode 用的 userinfo。`zcode` / `zai` / `bigmodel` / `glm` 是站点/客户端 id，不是用户。
+
+### 修复（0.0.38）
+
+- 可见身份只走邮箱或其它人类 id：poll 字段、JWT `email` / `preferred_username`（不验签）、ZCode userinfo。
+  - 全球：`GET https://chat.z.ai/api/oauth/userinfo`（失败再试 `api.z.ai/api/biz/customer/getCustomerInfo`）
+  - 中国：`GET https://open.bigmodel.cn/api/biz/customer/getCustomerInfo`
+- `publicSession` / 卡抬头永不展示 `zcode` / `zai` / `bigmodel` / `glm`。
+- `accountIdOf` 在有邮箱后是 `email@bigmodel`（或 `@zai`）。快照时若 vault 仍是 app id，能解析到邮箱就改写 session 并换 key，switch / logout 仍按新 id。
+
+### 验证
+
+- `npm test`：BigModel complete 无 poll email、JWT/userinfo 有邮箱 → `account` 不是 zcode；`publicSession` 对 `account: "zcode"` 不回 zcode。
+
+## 2026-08-30：GLM 额度两条「本周期」，没有 5 小时 / 每周 / ZCode MCP
+
+### 现象
+
+同一张 GLM 卡额度区两条杠都标 **本周期**：`0 / 2000 · 剩余 100%` 和 `880 / 2000 · 剩余 56%`。官方 Coding Plan 是 5 小时窗口 + 每周窗口（Lite 2,000 / 10,000），MCP（Web Search / Web Reader / Zread）另算。
+
+### 证据
+
+用户现场截图。Lite 5 小时额度就是 2000；两条都是 2000 说明 weekly / MCP 被标成 `kind: 'cycle'`，或根本没从 `limits[]` 的 `unit`/`number`/`TIME_LIMIT` 认出来。
+
+### 根因
+
+`GET api.z.ai|open.bigmodel.cn/api/monitor/usage/quota/limit` 的 live 形状是 `data.limits[]`：
+
+| type | unit | number | 窗口 |
+|---|---|---|---|
+| `CREDIT_LIMIT` / `TOKENS_LIMIT` | 3 | 5 | 5 小时（Lite usage=2000） |
+| `CREDIT_LIMIT` / `TOKENS_LIMIT` | 6 | 1 或 7 | 每周（Lite usage=10000） |
+| `TIME_LIMIT` | 5 | 1 | ZCode MCP；`usageDetails[].modelCode` = `search-prime` / `web-reader` / `zread` |
+
+旧 `parseGlmQuota` 只拿 `duration`/`window` 判断 5h / week，没有就 `cycle` → UI **本周期**。CREDIT_LIMIT 行没有 duration 字符串。MCP 在同 URL 的 `TIME_LIMIT`；若只有 CREDIT_LIMIT，再 GET 同站 ` /api/monitor/usage/tool-usage`。不编造额度数字。
+
+### 修复（0.0.38）
+
+按 type / duration / name / `unit`+`number` 映射 `primary` / `weekly` / `mcp`。UI（仅 GLM）：**5 小时剩余** / **每周剩余** / **ZCode MCP**（en: 5-hour remaining / Weekly remaining / ZCode MCP），剩余百分比 + used/total。额度仍在账号卡内，刷新仍按卡。Codex / Grok 文案不动。
+
+### 验证
+
+- `npm test`：截图形 CREDIT_LIMIT（两条 2000）+ weekly 10000 + TIME_LIMIT MCP → 三行 kind 正确，没有 `cycle`。
+
+## 2026-08-30：GLM 模型勾选 0/3，settings.yaml 没有 oauth-glm
+
+### 现象
+
+本机 DSH web profile，插件 0.0.33。设置 → 模型 → **OAuth · GLM** 显示 **已开启 0 / 3**（GLM-5.3、GLM-5.3-Flash、GLM-5-Turbo 全未勾）。用户勾选或点全选，DSH 里仍然没有这条路由。
+
+### 证据
+
+- `auth.json` `glm.activeId = zcode@bigmodel`，vault 里有 BigModel 会话（已登录）。
+- `~/.dsh/profiles/web/data/dsh-plugin-oauth-subs/models.json` 的 `disabled` 含全部当前 GLM key：`oauth-glm/glm-5.3`、`oauth-glm/glm-5.3-flash`、`oauth-glm/glm-5-turbo`，外加旧 6 模型目录残留 `glm-4.7` / `glm-5` / `glm-5.1` / `glm-5.2`。
+- `~/.dsh/settings.yaml` `llm-pi-ai.providers` 只有 `oauth-codex` 和 `oauth-grok`，**没有 `oauth-glm`**。
+
+### 根因
+
+`syncHarnessModels` 只给「已登录且至少有一条当前目录 key 开启」的系列写路由。`selectedForSync` + `filterProviders` 在当前三条全在 `disabled` 时丢掉 `oauth-glm`，mutate 先 unset 再也不 set。旧目录 6 行时的全关把后来仍在目录里的三条也写进了 `disabled`；全选必须打开**当前** id，不能只翻残留 key。登录后的 `sync()` 不会把「空选择器 / 残留全关」当成要恢复的状态，已登录 GLM 会卡在 0/3 且没有 DSH 路由。勾选本身（`toggle` / `setFamily`）对当前 catalog key 是有效的；锁到登录（`catalog[].loggedIn`）在 vault session 下应为 true，不是这次的阻断点。
+
+### 修复（0.0.38）
+
+- `setFamily(true)` 只 enable 当前 catalog id；`disabled` 里的退役 id 保持不动、不复活。
+- 登录 / 启动 `sync()`：某系列已登录且当前 catalog key 全关时，视为残留全关，打开当前 key 再写入 `providers.oauth-glm`（`api openai`，`baseURL` origin `/glm/v1`，`compat.thinkingFormat openai`）。不复活退役 id。选择器里主动全关仍会 unset 路由（`setModels` 不走恢复）。
+- snapshot `catalog` GLM `loggedIn: true` 当 `getSession('glm')` 是 vault 账号。
+
+### 验证
+
+- `npm test`：GLM 已登录 + 当前 key 全在 disabled → toggle `glm-5.3` → mutate 含 `oauth-glm` 且只有 `glm-5.3`。
+- `setFamily('glm', true)` 打开 5.3 / Flash / Turbo，`disabled` 仍可留着 `glm-4.7`。
+- `sync()` 在当前 GLM key 全关时恢复三条并写入路由。
+- 选择器全关 GLM 仍 unset `oauth-glm`。
+
+## 2026-08-30：Antigravity 第三方包装指纹不一致会被 Google 封
+
+### 现象
+
+第三方 Antigravity 包装用 Google OAuth 登录后，cloudcode-pa 对聊天返回 403 / 账号被拦。decolua/9router#1226：OAuth / loadCodeAssist 走 `IDE_UNSPECIFIED` / `PLATFORM_UNSPECIFIED` / `GEMINI` 字符串，聊天却走数字枚举 `ideType: 9` + `User-Agent: antigravity/…`。Google 按官方 IDE 指纹拦不一致的客户端。
+
+### 证据
+
+- decolua/9router#1226（第三方包装混用未指定字符串与数字 chat 头）。
+- CLIProxyAPI 当前 `internal/auth/antigravity` + `internal/misc/antigravity_version.go`（main @ f0de1d0）：
+  - 短 UA：`antigravity/hub/<version> <os>/<arch>`（userinfo、loadCodeAssist、generateContent）
+  - 长 UA：短 UA + ` google-api-nodejs-client/10.3.0`（仅 onboardUser）
+  - `X-Goog-Api-Client: gl-node/22.21.1`（仅 onboardUser；不是旧的 `google-cloud-sdk vscode_cloudshelleditor/0.1`）
+  - loadCodeAssist metadata：`{"ideType":"ANTIGRAVITY"}` 字符串，不是 `IDE_UNSPECIFIED`，也不是数字 `9`
+  - onboardUser metadata：`ide_type` / `ide_version` / `ide_name: antigravity`
+  - 聊天体：`userAgent: "antigravity"` + 必填 `project`
+- 本插件没有公开的 Antigravity 额度 API；卡片照常画，额度块保持 idle。
+
+### 根因
+
+控制面和聊天面必须是**同一套**官方 Antigravity IDE 身份。混用 Gemini CLI / `google-api-nodejs-client` 默认 UA / `dsh-plugin` / `CLIProxyAPI` / Node undici 默认 UA，或 OAuth 用未指定枚举而聊天用数字 `ideType: 9`，都会被当成第三方包装。空 `project` 的 generateContent 是 403 / 封号风险。
+
+### 修复（0.0.38）
+
+本插件只认一种编码，控制面和聊天共用：
+
+1. 产品名永远是 Antigravity IDE。UA 家族是 `antigravity/hub/<version> <os>/<arch>`，版本下限 2.9.1（Cloud Code 拒 < 2.9.0）。
+2. metadata 用 CLIProxyAPI 现网的**字符串** `ANTIGRAVITY`，不用 `IDE_UNSPECIFIED` / `PLATFORM_UNSPECIFIED` / `GEMINI`，也不改成数字 `ideType: 9`。数字枚举（`9` = ANTIGRAVITY，`pluginType: 2` = GEMINI，platform 1–5）是另一套官方形状；现网 CLIProxyAPI 控制面仍发字符串，混用两套才是 #1226 的炸点。
+3. onboardUser 额外带 Node helper UA + `X-Goog-Api-Client: gl-node/22.21.1`，与 CLIProxyAPI 一致；不把这套头抄到 loadCodeAssist（CLIProxyAPI 测试断言那边为空）。
+4. OAuth client_id / secret / scopes / `http://localhost:<port>/oauth-callback` 来自 CLIProxyAPI constants（就是官方安装应用客户端）。`access_type=offline` + `prompt=consent`。
+5. session 必存 `projectId`；generateContent 缺 project 直接 403，不上游。
+6. refresh 用同一 client_id/secret；刷新后指纹不变。
+7. 不发明 `~/.zcode` 式路径。导入只认官方 CLI `~/.gemini/antigravity-cli/antigravity-oauth-token` 和 CLIProxyAPI `~/.cli-proxy-api/antigravity-*.json`。
+
+### 验证
+
+- `npm test`：loadCodeAssist / onboardUser / generateContent 的 UA 都是 `antigravity/hub/`；metadata 含 `ANTIGRAVITY`；零 `IDE_UNSPECIFIED`、`dsh-plugin`、`DeepSeek`、`CLIProxy`、Node 默认 UA。
+
 ## 2026-08-30：Kiro 对话不是 OpenAI
 
 ### 现象

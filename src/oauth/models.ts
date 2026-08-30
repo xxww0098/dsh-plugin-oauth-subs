@@ -7,6 +7,7 @@ import { CODEX_MODELS, CODEX_REASONING_EFFORTS } from './codex/index.js'
 import { GROK_MODELS } from './grok/index.js'
 import { GLM_MODELS } from './glm/index.js'
 import { KIRO_MODELS } from './kiro/index.js'
+import { ANTIGRAVITY_MODELS } from './antigravity/index.js'
 import { modelSupportsFastMode } from '../utils/fast-mode.js'
 import { readPrivateText, writePrivateText } from './store.js'
 import {
@@ -27,8 +28,10 @@ export function modelKey(provider, id) {
   return `${provider}/${id}`
 }
 
+export const FAMILY_IDS = Object.freeze(['codex', 'grok', 'glm', 'kiro', 'antigravity'])
+
 export function ownedProviderIds(prefix) {
-  return [`${prefix}-codex`, `${prefix}-grok`, `${prefix}-glm`, `${prefix}-kiro`]
+  return FAMILY_IDS.map((id) => `${prefix}-${id}`)
 }
 
 function harnessInput(model) {
@@ -121,6 +124,19 @@ export function buildProviders({ prefix, origin, loggedIn }) {
       models: KIRO_MODELS.map(toHarnessModel),
     }
   }
+  if (loggedIn.antigravity) {
+    providers[`${prefix}-antigravity`] = {
+      displayName: 'OAuth · Antigravity',
+      api: 'openai',
+      apiKeyEnv: OAUTH_CREDENTIAL_REF,
+      baseURL: `${origin}/antigravity/v1`,
+      compat: {
+        supportsReasoningEffort: true,
+        thinkingFormat: 'openai',
+      },
+      models: ANTIGRAVITY_MODELS.map(toHarnessModel),
+    }
+  }
   return providers
 }
 
@@ -133,7 +149,7 @@ export function describeProviders(providers) {
 }
 
 export function catalogProviders({ prefix, origin }) {
-  return buildProviders({ prefix, origin, loggedIn: { codex: true, grok: true, glm: true, kiro: true } })
+  return buildProviders({ prefix, origin, loggedIn: { codex: true, grok: true, glm: true, kiro: true, antigravity: true } })
 }
 
 export function catalogKeys(providers) {
@@ -147,7 +163,17 @@ export function familyOfProvider(provider) {
   if (String(provider).endsWith('-grok')) return 'grok'
   if (String(provider).endsWith('-glm')) return 'glm'
   if (String(provider).endsWith('-kiro')) return 'kiro'
+  if (String(provider).endsWith('-antigravity')) return 'antigravity'
   return String(provider)
+}
+
+export function familyOfKey(key) {
+  const slash = String(key).indexOf('/')
+  return familyOfProvider(slash === -1 ? key : key.slice(0, slash))
+}
+
+export function familyCatalogKeys(catalog, family) {
+  return catalogKeys(catalog).filter((key) => familyOfKey(key) === family)
 }
 
 export function describeCatalog(providers, { enabledKeys, loggedIn } = {}) {
@@ -275,10 +301,10 @@ export class ModelSwitch {
   }
 
   async setFamily(family, on, catalog) {
-    if (family !== 'codex' && family !== 'grok' && family !== 'glm' && family !== 'kiro') throw new Error('family must be codex, grok, glm, or kiro')
-    for (const key of catalogKeys(catalog)) {
-      const provider = key.slice(0, key.indexOf('/'))
-      if (familyOfProvider(provider) !== family) continue
+    if (!FAMILY_IDS.includes(family)) throw new Error('family must be codex, grok, glm, kiro, or antigravity')
+    // Only current catalog ids. Retired leftovers (glm-4.7, …) stay in
+    // `disabled` and are not resurrected.
+    for (const key of familyCatalogKeys(catalog, family)) {
       if (on) {
         this.disabled.delete(key)
         if (isOptInKey(key)) this.enabled.add(key)
@@ -289,6 +315,25 @@ export class ModelSwitch {
     }
     await this.save()
     return this.status(catalog)
+  }
+
+  /**
+   * Leftover 全关: every *current* catalog key for a signed-in family is
+   * off (often after a catalog shrink left stale ids in `disabled`).
+   * Enable the current keys so login/sync can write the DSH route.
+   * Does not resurrect retired ids or opt-in `-900k` rows.
+   */
+  async recoverEmptyLoggedInFamilies(catalog, loggedIn) {
+    let changed = false
+    for (const family of FAMILY_IDS) {
+      if (!loggedIn?.[family]) continue
+      const keys = familyCatalogKeys(catalog, family)
+      if (keys.length === 0 || keys.some((key) => this.isEnabled(key))) continue
+      for (const key of keys) this.disabled.delete(key)
+      changed = true
+    }
+    if (changed) await this.save()
+    return changed
   }
 
   async setAll(on, catalog) {

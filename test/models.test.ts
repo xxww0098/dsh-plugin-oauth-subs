@@ -16,6 +16,9 @@ import {
   syncHarnessModels,
 } from '../lib/oauth/models.js'
 
+const GLM_CURRENT = ['oauth-glm/glm-5.3', 'oauth-glm/glm-5.3-flash', 'oauth-glm/glm-5-turbo']
+const GLM_STALE = ['oauth-glm/glm-4.7', 'oauth-glm/glm-5', 'oauth-glm/glm-5.1', 'oauth-glm/glm-5.2']
+
 test('buildProviders only emits logged-in families with openai-responses', () => {
   const both = buildProviders({ prefix: 'oauth', origin: 'http://127.0.0.1:8318', loggedIn: { codex: true, grok: true } })
   assert.equal(both['oauth-codex'].api, 'openai-responses')
@@ -184,6 +187,37 @@ test('syncHarnessModels honors a persisted selected subset', async () => {
   assert.deepEqual(result.routes.find((row) => row.provider === 'oauth-grok').models, ['grok-4.6'])
 })
 
+test('setFamily enables current GLM catalog keys and leaves retired ids in disabled', async () => {
+  const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
+  const models = new ModelSwitch()
+  await models.ready
+  models.disabled = new Set([...GLM_CURRENT, ...GLM_STALE])
+  await models.setFamily('glm', true, catalog)
+  for (const key of GLM_CURRENT) {
+    assert.equal(models.isEnabled(key), true)
+    assert.equal(models.disabled.has(key), false)
+  }
+  for (const key of GLM_STALE) {
+    assert.equal(models.disabled.has(key), true)
+  }
+  assert.equal(models.status(catalog).selected.includes('oauth-glm/glm-5.3'), true)
+  assert.equal(models.status(catalog).selected.includes('oauth-glm/glm-5.3-flash'), true)
+  assert.equal(models.status(catalog).selected.includes('oauth-glm/glm-5-turbo'), true)
+})
+
+test('recoverEmptyLoggedInFamilies enables current GLM keys after leftover 全关', async () => {
+  const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
+  const models = new ModelSwitch()
+  await models.ready
+  models.disabled = new Set([...GLM_CURRENT, ...GLM_STALE])
+  const changed = await models.recoverEmptyLoggedInFamilies(catalog, { glm: true, codex: false, grok: false })
+  assert.equal(changed, true)
+  for (const key of GLM_CURRENT) assert.equal(models.isEnabled(key), true)
+  for (const key of GLM_STALE) assert.equal(models.disabled.has(key), true)
+  const loggedOut = await models.recoverEmptyLoggedInFamilies(catalog, { glm: false, codex: false, grok: false })
+  assert.equal(loggedOut, false)
+})
+
 test('GLM catalog is three models with official input types; Codex stays image-capable', () => {
   const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
   const glm = catalog['oauth-glm'].models
@@ -203,4 +237,14 @@ test('GLM catalog is three models with official input types; Codex stays image-c
   const described = describeCatalog(catalog).find((row) => row.family === 'glm')
   assert.deepEqual(described.models.find((model) => model.id === 'glm-5.3-flash').input, ['text', 'image'])
   assert.deepEqual(described.models.find((model) => model.id === 'glm-5.3').input, ['text'])
+})
+
+test('Antigravity catalog is cloudcode-pa Claude / Gemini / GPT-OSS', () => {
+  const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
+  const rows = catalog['oauth-antigravity'].models
+  assert.equal(rows.some((model) => model.id === 'claude-sonnet-4-6'), true)
+  assert.equal(rows.some((model) => model.id === 'gemini-pro-agent'), true)
+  assert.equal(rows.some((model) => model.id === 'gpt-oss-120b-medium'), true)
+  assert.deepEqual(rows.find((model) => model.id === 'gpt-oss-120b-medium').input, ['text'])
+  assert.equal(catalog['oauth-antigravity'].compat.supportsReasoningEffort, true)
 })
