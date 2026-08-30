@@ -9,7 +9,7 @@
  * gpt-5.5, gpt-5.4-mini and Spark cap at their default window — no variant.
  */
 
-import { codexModel, codexSlug } from './codex.js'
+import { codexModel, codexSlug } from '../oauth/codex/index.js'
 
 export const CONTEXT_VARIANT_SUFFIX = '-900k'
 

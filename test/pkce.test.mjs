@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { test } from 'node:test'
-import { base64url, createPkce, randomHex, randomToken } from '../lib/pkce.js'
+import { base64url, createPkce, randomHex, randomToken } from '../lib/utils/pkce.js'
 
 test('createPkce mints an S256 pair', () => {
   const pair = createPkce()

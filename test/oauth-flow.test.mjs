@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { OAuthFlowManager } from '../lib/oauth-flow.js'
-import { createPkce } from '../lib/pkce.js'
+import { OAuthFlowManager } from '../lib/oauth/flow.js'
+import { createPkce } from '../lib/utils/pkce.js'
 import {
   CODEX_CLIENT_ID,
   CODEX_ORIGINATOR,
@@ -12,8 +12,8 @@ import {
   codexUpstreamHeaders,
   exchangeCodexCode,
   refreshCodex,
-} from '../lib/codex.js'
-import { GROK_USER_AGENT, grokCredentialHeaders, grokUpstreamHeaders } from '../lib/grok.js'
+} from '../lib/oauth/codex/index.js'
+import { GROK_USER_AGENT, grokCredentialHeaders, grokUpstreamHeaders } from '../lib/oauth/grok/index.js'
 
 function jwtId() {
   const header = Buffer.from(JSON.stringify({ alg: 'none' })).toString('base64url')

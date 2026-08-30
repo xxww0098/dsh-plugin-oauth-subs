@@ -6,7 +6,7 @@
  * `codex_cli_rs`). Token exchange is form-encoded; refresh is JSON.
  */
 
-import { decodeJwtPayload } from './jwt.js'
+import { decodeJwtPayload } from '../../utils/jwt.js'
 
 export const CODEX_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann'
 export const CODEX_AUTHORIZE_URL = 'https://auth.openai.com/oauth/authorize'

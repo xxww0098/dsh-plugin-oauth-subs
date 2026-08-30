@@ -14,7 +14,7 @@ import {
   modelKey,
   ownedProviderIds,
   syncHarnessModels,
-} from '../lib/models.js'
+} from '../lib/oauth/models.js'
 
 test('buildProviders only emits logged-in families with openai-responses', () => {
   const both = buildProviders({ prefix: 'oauth', origin: 'http://127.0.0.1:8318', loggedIn: { codex: true, grok: true } })

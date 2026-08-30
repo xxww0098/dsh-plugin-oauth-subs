@@ -39,10 +39,63 @@ x-client-request-id: <prompt_cache_key>
 - `git diff --check`：通过。
 - 完整测试当时为 89/90 通过；唯一失败是并行安全加固新增的“token 加载期间客户端断连”测试，与缓存亲和修复无关。
 
-### 待完成的运行时验收
+### 运行时验收（2026-08-30 关闭）
 
-源代码修复尚不能证明本地已安装副本生效。更新本地 DSH profile 中安装的插件并重启宿主后，
-应使用同一长会话复测，确认连续调用不再频繁出现 0 缓存，并记录新的加权命中率。
+- 证据：完整 `session-772f7f3a-332c-4e0c-bff1-6074123474e3`（SkillStar，标题「极简模式快速开关 Agent 技能」），含子代理 `2e1afbbc-…`。
+- 模型：`oauth-codex` / `gpt-5.6-terra-fast`，`reasoningEffort: max`，窗口 258000。
+- 主会话 211 次调用、71 分钟：未缓存 1,370,864，缓存读取 30,068,480，输出 121,278。
+- 加权命中 **95.6%**，前缀复用中位数 **99.6%**，亲和丢失 **0**，TRANSPORT 0。
+- 子代理 17 次调用，命中 91.0%，复用中位 99.0%，亲和丢失 0。
+- 热身后的一次零缓存（step 55，168,767 未缓存）发生在 `request/header reason=change` 且退出 plan 之后，是前缀重建，不是分片走丢；step 56 立刻 99.2% 命中、168,448 缓存读取。
+- 另外 9 次命中下跌与 `compaction/prune` 或 `compaction/start` 对齐（合计约 330k 未缓存）。压缩后下一拍同样回到 ~99% 复用。
+- 未缓存构成：增量工具输出 860k，压缩 330k，plan 重建 169k，冷启动 12k，亲和丢失 0。
+- 健康规则改为：加权命中 ≥80%，**亲和丢失为 0**，且无 TRANSPORT。压缩 / 适配器重建造成的零缓存不再判失败。
+- 诊断：`node scripts/analyze-session.mjs path/to/session.jsonl`。
+
+### 前缀稳定（0.0.15，分析之后落地的优化）
+
+亲和头修好之后，插件还能动的是 **input 前缀**，不是再分类一次压缩。
+
+Codex 按 `instructions` 再 `input` 的最长前缀匹配缓存。DSH / llm-pi-ai 会把 system 既放在 `instructions` 又放在 `input[0]` developer。退出 plan 或 `request/header reason=change` 时，多出来的 developer（plan dump、header 重建）如果留在 `input` 开头，会把已经缓存的对话前缀顶掉——step 55 的 168,767 未缓存就是这个形状：`plan/mode active:false` 紧挨着 header 重建。
+
+`lib/codex-request.js` 现在：
+
+1. 剥掉与 `instructions` 重复的 leading developer/system。
+2. 把多出来的 leading 文本挪到 `input` **末尾**（对话历史仍从 `input[0]` 开始）。模型还能读到 plan，前缀可以继续命中。
+3. `lib/proxy.js` 在 `prompt_cache_key` 缺失或清洗后为空时回退 `session_id`；裁过的键写回请求体；无法使用的键直接删除，避免 Codex 400。
+4. 转发前删除 `prompt_cache_retention` / `prompt_cache_options`（gpt-5.6，Codex #39397）。
+
+压缩本身（~330k）和 DSH 改写 system（38,775 → 36,433 字符）仍然会冷写前缀，插件不能冻结 DSH 的 system。能保住的是 **instructions 不变时的对话历史**。
+
+验证：`test/codex-request.test.mjs`（剥重、后缀停放、不提升对话中段的 developer）与 `test/proxy.test.mjs`（session_id 回退、body 回写、retention 剥离、Grok 不继承亲和头）。
+
+### 工具超时不在本插件（2026-08-30）
+
+完整验收会话 `session-772f7f3a-…` 有 12 条 `tool/code-dispatch isError`，**0** 条 TRANSPORT：
+
+| 条数 | 工具 | 原因 | 签名 |
+|---|---|---|---|
+| 7 | glob | `host_timeout` | `Error: tool call timed out after 30000ms` |
+| 3 | glob / read | `cascade_abort` | `glob was aborted…` / `read aborted` / `resolve aborted` |
+| 1 | read | `cascade_abort` | 与 glob 同一 `Promise.all` |
+| 1 | grep | `invalid` | ripgrep `unclosed group` |
+
+这不是代理掐的。oauth-subs 是 Responses 回环代理，**不跑** glob / read / grep。DSH 宿主把 `glob` / `grep` 交给 `@deepseek-ai/dsh-tool-fs-search`，工具定义上的 `timeoutMs` 默认 **30000**，由 `@deepseek-ai/dsh-tool-call-timeout-policy` 在 `tools/execute` 上落地成上面那句错误。`read` 本身不声明预算；它被掐是因为模型用 `Promise.all` 把 glob 和 read 绑在一起，glob 到点后宿主取消同组调用。
+
+本插件里能看到的超时全不是这条路径：
+
+- `lib/oauth-flow.js`：登录
+- `lib/quota.js`：配额拉取
+- `COMMIT_DEADLINE_MS`（120s）：SSE 提交门
+- `abortOnDisconnect`：只有 llm-pi-ai 断开代理连接时才 abort 上游
+
+TRANSPORT=0 也排除了「代理把 LLM 流掐掉 → 工具被取消」这条耦合。
+
+不要在 oauth-subs 里加 `toolTimeoutMs`，也不要在代理层重试 glob。用户补丁目前到不了挂载模型可见工具的代理平面（[deepseek-harness#4484](https://github.com/deepseek-ai/deepseek-harness/discussions/4484)）。要加长预算，改 `dsh-tool-fs-search` 的 `timeoutMs`，或等 DSH 让补丁能打到 agent-preset。
+
+另外：fs-search 的 glob 在 pattern **不含 `/`** 时按任意深度的 basename 匹配。会话里 `*`、`vitest.config.*` 都会扫整棵 SkillStar 树（含 ignored，不含 VCS），外置卷 `/Volumes/Acasis` 上 30s 很容易打满。
+
+分析器把这三类分开记，不判健康失败。
 
 ## 2026-08-26：并发子代理全线 `stream ended before a terminal response event`
 

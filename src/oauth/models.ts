@@ -3,15 +3,15 @@
  * replace only the routes this plugin owns.
  */
 
-import { CODEX_MODELS, CODEX_REASONING_EFFORTS } from './codex.js'
-import { GROK_MODELS } from './grok.js'
-import { modelSupportsFastMode } from './fast-mode.js'
+import { CODEX_MODELS, CODEX_REASONING_EFFORTS } from './codex/index.js'
+import { GROK_MODELS } from './grok/index.js'
+import { modelSupportsFastMode } from '../utils/fast-mode.js'
 import { readPrivateText, writePrivateText } from './store.js'
 import {
   CONTEXT_VARIANT_SUFFIX,
   codexLargeContext,
   isLargeContextKey,
-} from './context-mode.js'
+} from '../utils/context-mode.js'
 
 export const OAUTH_CREDENTIAL_REF = 'DSH_OAUTH_SUBS_API_KEY'
 

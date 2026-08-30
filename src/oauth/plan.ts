@@ -4,7 +4,7 @@
  * the UI shows Plus / SuperGrok / X Premium+.
  */
 
-import { GROK_TIER_NAMES } from './grok.js'
+import { GROK_TIER_NAMES } from './grok/index.js'
 
 export const CODEX_PLAN_NAMES = Object.freeze({
   free: 'Free',

@@ -2,6 +2,8 @@
 
 简体中文 | [English](README.md)
 
+[![CI](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml/badge.svg)](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml)
+
 把 **ChatGPT / Codex 订阅** 和 **xAI Grok 订阅** 接到 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。登录走官方 OAuth，不需要 API Key。
 
 本机 Responses 代理 + `llm-pi-ai` 路由同步。
@@ -54,6 +56,51 @@ DeepSeek Harness（调用面）
 
 本插件不是第二套 LLM 适配器。设置页关闭后，DSH 仍通过 `llm-pi-ai` 调本机代理。代理只监听回环地址，并用本地凭证 `DSH_OAUTH_SUBS_API_KEY` 鉴权。
 
+技术栈、模块树、以及「错误写入 `docs/error.md`」写在 [AGENTS.md](AGENTS.md)。宿主半边是 `src/oauth` 与 `src/utils` 的 TypeScript，设置页是 `src/ui` 的 React。不要手改编译产物 `lib/`。
+
+```text
+src/
+  oauth/codex/     Codex 目录、身份、Responses 请求体
+  oauth/grok/      Grok 目录、身份、设备码
+  oauth/           代理、PKCE、额度、模型
+  ui/              React 设置页（classic-script factory）
+  utils/           jwt、pkce、fast/context、会话分析器
+```
+
+## 可靠性
+
+代理负责缓存亲和与流重试。长 Codex 会话里有两条契约：
+
+1. **缓存分片。** Codex 的 `prompt_cache_key` 会同时写成 `session-id` 和 `x-client-request-id`。键会被清洗成 `[A-Za-z0-9._:-]` 并裁到 64 字符，而不是直接丢掉——会话 id 过长时仍然要钉在同一分片。键缺失或非法时回退 `session_id`。裁过的键会写回请求体，避免 Codex 对超过 64 字符的值返回 400。
+2. **稳定前缀。** Codex 按 `instructions` 再 `input` 的最长前缀匹配缓存。重复的 leading developer/system 会剥掉；多出来的 plan / header 文本停到 **input 末尾**，对话前缀才能继续命中。`prompt_cache_retention` 会删掉（gpt-5.6 拒绝该字段）。
+3. **提交门。** 产出内容之前的静默断流会在响应头提交前重试，避免 llm-pi-ai 把干净 EOF 当成 TRANSPORT 连重试 5 次。
+
+完整 `session-772f7f3a-…` SkillStar 会话验收（`oauth-codex` / `gpt-5.6-terra-fast`，211 次调用，71 分钟）：
+
+| | 2026-08-26 事故 | 0.0.14 亲和头之后 |
+|---|---|---|
+| 加权缓存命中 | 27.4% | **95.6%** |
+| 前缀复用（中位） | — | **99.6%** |
+| 亲和丢失 | 47 / 90 零缓存 | **0** |
+| 前缀改写 | — | 1 次适配器重建 + 9 次压缩 |
+| TRANSPORT 故障 | 29 | 0 |
+
+剩下的未缓存几乎都是新的工具输出（`delta`），加上预期的前缀改写：退出 plan（step 55，169k）和 DSH 压缩（330k）。每次改写后的下一拍复用约 99%。这不是分片走丢。
+
+健康规则：加权命中 ≥ **80%**，**亲和丢失为 0**，且无 TRANSPORT。压缩 / `request/header` 重建造成的零缓存不会判失败。细节见 [docs/error.md](docs/error.md)。
+
+## 诊断会话
+
+导出 DSH 的 `session.jsonl`（或解压会话压缩包）后打分：
+
+```sh
+npm run analyze -- path/to/session.jsonl
+node scripts/analyze-session.mjs --json path/to/session.jsonl
+node scripts/analyze-session.mjs --fail-below 80 path/to/session.jsonl
+```
+
+分析器按 turn+step 只计一次 `assistant/message` 的 usage（后面的 `assistant/chunk` usage 是重复记账）。每步会标 `cold_start` / `delta` / `compaction` / `rebuild` / `affinity_miss`，避免把压缩会话误判成分片回归。工具错误会分成 `host_timeout` / `cascade_abort` / `invalid`，与 TRANSPORT 分开。glob/grep 的 30s 预算在 `dsh-tool-fs-search` 上，本代理加不长。也可 `import` `dsh-plugin-oauth-subs/analyze-session`。
+
 ## Fast 模式
 
 本质是 **Priority Processing**（请求里写 `service_tier: "priority"`），不是换一个模型族。
@@ -94,7 +141,7 @@ Grok 4.6 思考深度为 **low / medium / high / xhigh**。Grok 4.5 为 **low / 
 | 订阅 | 接口 | 显示 |
 |---|---|---|
 | ChatGPT Codex | `chatgpt.com/backend-api/wham/usage` | 套餐等级（Plus / Pro / Team …）+ 5 小时窗口 + 每周窗口，展示**剩余**百分比和重置时间 |
-| ChatGPT Codex 重置 | `…/wham/rate-limit-reset-credits` 与 `/consume` | 银行的 5 小时重置次数和过期时间；Codex 卡片上的确认按钮 |
+| ChatGPT Codex 重置 | `…/wham/rate-limit-reset-credits` 与 `/consume` | 银行的周窗口重置券和过期时间；Codex 卡片上按券各一颗确认按钮 |
 | xAI Grok | `cli-chat-proxy.grok.com/v1/billing?format=credits`，并读 `/v1/user?include=subscription` | 套餐等级（SuperGrok / X Premium+ …）+ 本周期用量、预付余额、产品分项 |
 
 额度约每分钟刷新一次，也可点卡片上的 **刷新额度**。读失败不影响对话。
@@ -103,7 +150,7 @@ Grok 4.6 思考深度为 **low / medium / high / xhigh**。Grok 4.5 为 **low / 
 
 进度条按剩余百分比从绿过渡到黄再到红（`hsl(剩余 × 1.2, 78%, 38%)`）。
 
-ChatGPT / Codex Plus、Pro 可能有银行的 5 小时重置次数。还有剩余次数时，Codex 卡片显示 **重置额度 · 剩 N 次**，并标出该次重置何时过期。确认后插件会 `POST` `chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume`，请求体为 `{ redeem_request_id }`，并带 `idempotencyKey`。Grok 没有对应能力。
+ChatGPT / Codex Plus、Pro 可能有银行的周窗口重置券。还有剩余券时，Codex 卡片里会嵌一套 **重置额度** 框，**每张券一颗按钮**，标着这张券何时过期。点 **重置** 会打开 DeepSeek Harness 的风险确认弹窗（警告图标、勾选确认，再点确认）。确认后插件会 `POST` `chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume`，请求体为 `{ redeem_request_id }`，并带 `idempotencyKey`。消耗的是 **周额度窗口**。Grok 没有对应能力。
 
 ## 配置
 
@@ -117,5 +164,8 @@ ChatGPT / Codex Plus、Pro 可能有银行的 5 小时重置次数。还有剩�
 ## 开发
 
 ```sh
-node --test 'test/*.test.mjs'
+npm test
+npm run analyze -- path/to/session.jsonl
 ```
+
+见 [CONTRIBUTING.md](CONTRIBUTING.md)。

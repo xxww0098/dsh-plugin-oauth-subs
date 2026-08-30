@@ -3,15 +3,15 @@
  * Codex PKCE (+ paste callback + import), Grok device-code (primary) + PKCE fallback.
  */
 
-import { OAuthFlowManager } from './oauth-flow.js'
-import { DeviceFlowManager } from './device-flow.js'
+import { OAuthFlowManager } from './flow.js'
+import { DeviceFlowManager } from './grok/device-flow.js'
 import { deleteSession, getSession, publicSession, saveSession } from './store.js'
 import {
   codexFlow,
   exchangeCodexCode,
   isCodexPermanentRefreshError,
   refreshCodex,
-} from './codex.js'
+} from './codex/index.js'
 import {
   completeGrokDevice,
   grokDeviceSpec,
@@ -19,7 +19,7 @@ import {
   exchangeGrokCode,
   isGrokPermanentRefreshError,
   refreshGrok,
-} from './grok.js'
+} from './grok/index.js'
 import { importCodexAuth, importGrokAuth } from './import-auth.js'
 import {
   buildProviders,

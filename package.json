@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-oauth-subs",
-  "version": "0.0.14",
+  "version": "0.0.15",
   "description": "ChatGPT Codex and xAI Grok subscription OAuth for DeepSeek Harness — PKCE / device-code login, local Responses proxy, llm-pi-ai sync.",
   "license": "MIT",
   "repository": {
@@ -15,7 +15,8 @@
   "main": "lib/index.js",
   "exports": {
     ".": "./lib/index.js",
-    "./client": "./lib/client.js",
+    "./client": "./lib/ui/client.js",
+    "./analyze-session": "./lib/utils/analyze-session.js",
     "./package.json": "./package.json"
   },
   "dsh": {
@@ -24,6 +25,9 @@
       "inject": [
         "@deepseek-ai/dsh-client-runtime",
         "@deepseek-ai/dsh-client-ui-settings"
+      ],
+      "external": [
+        "@deepseek-ai/dsh-client-ui-primitives"
       ]
     },
     "bundle": {
@@ -32,12 +36,16 @@
   },
   "files": [
     "lib",
+    "scripts",
     "cordis.patch.yml",
+    "AGENTS.md",
     "README.md",
     "README.zh.md"
   ],
   "scripts": {
-    "test": "node --test 'test/*.test.mjs'"
+    "build": "tsc && mkdir -p lib/ui && cp src/ui/client.js lib/ui/client.js",
+    "test": "npm run build && node --test 'test/*.test.mjs'",
+    "analyze": "node scripts/analyze-session.mjs"
   },
   "keywords": [
     "deepseek-harness",
@@ -54,5 +62,9 @@
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "^3.18.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "typescript": "^5.9.3"
   }
 }

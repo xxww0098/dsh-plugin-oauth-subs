@@ -12,9 +12,9 @@
 import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { codexProfileClaims, codexSession } from './codex.js'
-import { GROK_CLIENT_ID, grokSession } from './grok.js'
-import { decodeJwtPayload } from './jwt.js'
+import { codexProfileClaims, codexSession } from './codex/index.js'
+import { GROK_CLIENT_ID, grokSession } from './grok/index.js'
+import { decodeJwtPayload } from '../utils/jwt.js'
 
 const GROK_TOKEN_ENDPOINT = 'https://auth.x.ai/oauth2/token'
 

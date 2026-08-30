@@ -2,6 +2,8 @@
 
 [简体中文](README.zh.md) | English
 
+[![CI](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml/badge.svg)](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml)
+
 Use a **ChatGPT / Codex subscription** and an **xAI Grok subscription** inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). Official OAuth, no API keys.
 
 A loopback Responses proxy plus `llm-pi-ai` route sync.
@@ -54,6 +56,51 @@ DeepSeek Harness (call plane)
 
 This is not a second LLM adapter. After you close Settings, DSH still calls the loopback proxy through `llm-pi-ai`. The proxy binds loopback only and checks the local credential `DSH_OAUTH_SUBS_API_KEY`.
 
+Stack, module tree, and the `docs/error.md` rule are in [AGENTS.md](AGENTS.md). Host code is TypeScript under `src/oauth` and `src/utils`. Settings is React under `src/ui`. Do not edit compiled `lib/`.
+
+```text
+src/
+  oauth/codex/     Codex catalog, identity, Responses body
+  oauth/grok/      Grok catalog, identity, device-code
+  oauth/           proxy, PKCE, quota, models
+  ui/              React Settings (classic-script factory)
+  utils/           jwt, pkce, fast/context, session analyzer
+```
+
+## Reliability
+
+The proxy is the cache-affinity and stream-retry path. Two contracts matter on a long Codex turn:
+
+1. **Cache shard.** A Codex `prompt_cache_key` is forwarded as both `session-id` and `x-client-request-id`. Keys are sanitized to `[A-Za-z0-9._:-]` and clipped to 64 characters instead of dropped — a too-long session id must still pin the shard. Missing or illegal keys fall back to `session_id`. The clipped key is written back into the body so Codex does not 400 on a >64-character value.
+2. **Stable prefix.** Codex matches the longest prefix of `instructions` then `input`. Duplicate leading developer/system items are stripped; extra plan or header text is parked at the **input suffix** so the conversation prefix can still hit. `prompt_cache_retention` is dropped (gpt-5.6 rejects it).
+3. **Commit gate.** A silent pre-output break is retried before headers are committed, so llm-pi-ai does not see a clean EOF and fire five TRANSPORT retries.
+
+Acceptance on the full `session-772f7f3a-…` SkillStar turn (`oauth-codex` / `gpt-5.6-terra-fast`, 211 calls, 71 min):
+
+| | 2026-08-26 incident | After 0.0.14 affinity headers |
+|---|---|---|
+| Weighted cache hit | 27.4% | **95.6%** |
+| Prefix reuse (median) | — | **99.6%** |
+| Affinity misses | 47 / 90 zero-cache | **0** |
+| Prefix rewrites | — | 1 adapter rebuild + 9 compaction |
+| TRANSPORT faults | 29 | 0 |
+
+The remaining uncached tokens are almost all new tool output (`delta`) plus expected prefix rewrites: leaving plan mode (step 55, 169k) and DSH compaction (330k). The next call after each rewrite reused ~99%. That is not a shard miss.
+
+Healthy rule: weighted hit ≥ **80%**, **zero affinity misses**, no TRANSPORT. Compaction / `request/header` rebuild zeros do not fail the session. Details: [docs/error.md](docs/error.md).
+
+## Diagnose a session
+
+Export the DSH `session.jsonl` (or unzip the session archive) and score it:
+
+```sh
+npm run analyze -- path/to/session.jsonl
+node scripts/analyze-session.mjs --json path/to/session.jsonl
+node scripts/analyze-session.mjs --fail-below 80 path/to/session.jsonl
+```
+
+The analyzer reads `assistant/message` usage once per turn+step (the later `assistant/chunk` usage event is a duplicate). It labels each call `cold_start` / `delta` / `compaction` / `rebuild` / `affinity_miss` so a compacted session is not flagged as a shard regression. Tool errors are split into `host_timeout` / `cascade_abort` / `invalid` and are not TRANSPORT. glob/grep's 30s budget lives on `dsh-tool-fs-search`, not this proxy — this plugin cannot raise it. Import as `dsh-plugin-oauth-subs/analyze-session`.
+
 ## Fast mode
 
 It is **Priority Processing** (`service_tier: "priority"`), not a different model family.
@@ -94,7 +141,7 @@ After sign-in, each account card shows official remaining quota.
 | Subscription | Endpoint | Display |
 |---|---|---|
 | ChatGPT Codex | `chatgpt.com/backend-api/wham/usage` | Plan badge (Plus / Pro / Team …) plus 5-hour + weekly windows, **remaining** percent and reset time |
-| ChatGPT Codex reset | `…/wham/rate-limit-reset-credits` + `/consume` | Banked 5-hour reset count and expiry; confirm button on the Codex card |
+| ChatGPT Codex reset | `…/wham/rate-limit-reset-credits` + `/consume` | Banked weekly-window reset credits and expiry; one confirm button per credit on the Codex card |
 | xAI Grok | `cli-chat-proxy.grok.com/v1/billing?format=credits` plus `/v1/user?include=subscription` | Plan badge (SuperGrok / X Premium+ …) plus period usage, prepaid balance, product split |
 
 Quota refreshes about once a minute, or immediately from **Refresh quota**. A failed read does not block chat.
@@ -103,7 +150,7 @@ After sign-in the account title shows a **Plan** badge. Codex reads JWT `chatgpt
 
 Bars interpolate green → yellow → red with remaining percent (`hsl(remaining × 1.2, 78%, 38%)`).
 
-ChatGPT / Codex Plus and Pro may bank extra 5-hour resets. When the account has unused credits, the Codex card shows **Reset quota · N left** plus when that credit expires. Confirm, then the plugin `POST`s `chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume` with `{ redeem_request_id }` plus `idempotencyKey`. Grok has no equivalent.
+ChatGPT / Codex Plus and Pro may bank extra weekly-window resets. When the account has unused credits, the Codex card nests a **Reset credits** box and draws **one button per credit**, labeled with that credit’s expiry. Clicking **Reset** opens the DeepSeek Harness risk-confirmation dialog (warning icon, checkbox acknowledgement, then confirm). Confirm, then the plugin `POST`s `chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume` with `{ redeem_request_id }` plus `idempotencyKey`. That spend refreshes the **weekly** window. Grok has no equivalent.
 
 ## Options
 
@@ -117,5 +164,8 @@ ChatGPT / Codex Plus and Pro may bank extra 5-hour resets. When the account has 
 ## Develop
 
 ```sh
-node --test 'test/*.test.mjs'
+npm test
+npm run analyze -- path/to/session.jsonl
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).

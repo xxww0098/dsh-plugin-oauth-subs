@@ -9,9 +9,9 @@ import {
   parseCodexUsage,
   parseGrokBilling,
   parseResetCredits,
-} from '../lib/quota.js'
-import { CODEX_RESET_CONSUME_URL, CODEX_RESET_CREDITS_URL, CODEX_USAGE_URL } from '../lib/codex.js'
-import { GROK_BILLING_URL } from '../lib/grok.js'
+} from '../lib/oauth/quota.js'
+import { CODEX_RESET_CONSUME_URL, CODEX_RESET_CREDITS_URL, CODEX_USAGE_URL } from '../lib/oauth/codex/index.js'
+import { GROK_BILLING_URL } from '../lib/oauth/grok/index.js'
 
 test('asNumber reads val wrappers', () => {
   assert.equal(asNumber(12), 12)
@@ -118,6 +118,37 @@ test('parseResetCredits derives count from credits when available_count is missi
   assert.equal(parsed.nextExpiresAt, future * 1000)
 })
 
+test('public quota lists each available reset credit instead of a lumped count', async () => {
+  const later = Math.floor(Date.now() / 1000) + 86_400 * 20
+  const sooner = Math.floor(Date.now() / 1000) + 86_400 * 7
+  const fetchFn = async (url) => {
+    if (String(url) === CODEX_RESET_CREDITS_URL) {
+      return new Response(JSON.stringify({
+        available_count: 2,
+        credits: [
+          { id: 'soon', status: 'available', expires_at: sooner },
+          { id: 'later', status: 'available', expires_at: later },
+          { id: 'spent', status: 'redeemed', expires_at: later },
+        ],
+      }), { status: 200 })
+    }
+    return new Response(JSON.stringify({
+      plan_type: 'pro',
+      rate_limit: { primary_window: { used_percent: 2, limit_window_seconds: 18_000 } },
+    }), { status: 200 })
+  }
+  const store = new QuotaStore({
+    ttlMs: 60_000,
+    fetchFn,
+    tokens: { codex: { session: async () => ({ accessToken: 'tok' }) } },
+  })
+  const quota = await store.ensure('codex')
+  assert.equal(quota.resetCredits.availableCount, 2)
+  assert.deepEqual(quota.resetCredits.credits.map((row) => row.id), ['soon', 'later'])
+  assert.equal(quota.resetCredits.credits[0].expiresAt, sooner * 1000)
+  assert.equal(quota.resetCredits.credits[1].expiresAt, later * 1000)
+})
+
 test('consumeResetBody matches redeem_request_id plus CLI idempotencyKey', () => {
   assert.deepEqual(consumeResetBody('req-1'), {
     redeem_request_id: 'req-1',
@@ -192,6 +223,9 @@ test('QuotaStore fetches Codex usage + reset credits and caches', async () => {
   assert.equal(first.rows[0].remainingPercent, 90)
   assert.equal(first.resetCredits.availableCount, 2)
   assert.ok(first.resetCredits.nextExpiresAt > Date.now())
+  assert.equal(first.resetCredits.credits.length, 1)
+  assert.equal(first.resetCredits.credits[0].id, 'c1')
+  assert.ok(first.resetCredits.credits[0].expiresAt > Date.now())
   assert.equal(second.status, 'ready')
 })
 

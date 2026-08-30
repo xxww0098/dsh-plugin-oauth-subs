@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { decodeJwtPayload } from '../lib/jwt.js'
-import { codexProfileClaims } from '../lib/codex.js'
-import { grokTierName } from '../lib/grok.js'
+import { decodeJwtPayload } from '../lib/utils/jwt.js'
+import { codexProfileClaims } from '../lib/oauth/codex/index.js'
+import { grokTierName } from '../lib/oauth/grok/index.js'
 
 function jwt(payload) {
   const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url')

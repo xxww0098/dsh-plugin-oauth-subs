@@ -16,14 +16,14 @@ import {
   CODEX_RESET_CREDITS_URL,
   CODEX_RESET_CONSUME_URL,
   codexUpstreamHeaders,
-} from './codex.js'
+} from './codex/index.js'
 import {
   GROK_BILLING_URL,
   GROK_CLI_USER_URL,
   GROK_CLIENT_VERSION,
   grokTierFromValue,
   grokUpstreamHeaders,
-} from './grok.js'
+} from './grok/index.js'
 import { formatPlanLabel, pickPlanRaw } from './plan.js'
 
 export const QUOTA_TTL_MS = 60_000
@@ -215,10 +215,24 @@ export function parseResetCredits(payload) {
 }
 
 function publicResetCredits(value) {
-  if (!value) return { availableCount: 0 }
+  if (!value) return { availableCount: 0, credits: [] }
+  const available = (value.credits ?? []).filter(isAvailableResetCredit).map((credit) => ({
+    id: credit.id,
+    expiresAt: credit.expiresAt,
+  }))
+  const nextExpiresAt = value.nextExpiresAt
+  let credits = available
+  if (credits.length === 0 && (value.availableCount ?? 0) > 0) {
+    const count = Math.max(0, Math.round(value.availableCount))
+    credits = Array.from({ length: count }, (_, index) => ({
+      id: `available-${index + 1}`,
+      expiresAt: nextExpiresAt,
+    }))
+  }
   return {
-    availableCount: value.availableCount ?? 0,
-    ...(value.nextExpiresAt === undefined ? {} : { nextExpiresAt: value.nextExpiresAt }),
+    availableCount: value.availableCount ?? credits.length,
+    credits,
+    ...(nextExpiresAt === undefined ? {} : { nextExpiresAt }),
   }
 }
 

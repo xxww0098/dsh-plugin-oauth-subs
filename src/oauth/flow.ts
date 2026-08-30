@@ -6,7 +6,7 @@
  */
 
 import { createServer } from 'node:http'
-import { createPkce, randomHex, randomToken } from './pkce.js'
+import { createPkce, randomHex, randomToken } from '../utils/pkce.js'
 
 export const DEFAULT_FLOW_TIMEOUT_MS = 180_000
 

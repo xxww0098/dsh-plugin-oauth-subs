@@ -3,14 +3,14 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { codexSession } from '../lib/codex.js'
-import { GROK_CLIENT_ID } from '../lib/grok.js'
+import { codexSession } from '../lib/oauth/codex/index.js'
+import { GROK_CLIENT_ID } from '../lib/oauth/grok/index.js'
 import {
   GROK_HERMES_KEYS,
   importGrokAuth,
   tokensFromGrokCli,
   tokensFromHermes,
-} from '../lib/import-auth.js'
+} from '../lib/oauth/import-auth.js'
 
 function jwt(payload) {
   const header = Buffer.from(JSON.stringify({ alg: 'none' })).toString('base64url')
