@@ -53,12 +53,48 @@ export declare function parseGlmQuota(payload: any): {
     planType: any;
     rows: any[];
 };
+export declare function parseKiroUsage(payload: any): {
+    rows: any[];
+    planType?: undefined;
+    account?: undefined;
+} | {
+    planType: string | number;
+    account: any;
+    rows: {
+        key: string;
+        kind: string;
+        usedPercent: number;
+        remainingPercent: number;
+        used: number;
+        total: number;
+        remaining: number;
+        resetAt: number;
+    }[];
+};
 export declare function fetchGlmQuota(session: any, fetchFn?: typeof fetch): Promise<{
     rows: any[];
     planType?: undefined;
 } | {
     planType: any;
     rows: any[];
+}>;
+export declare function fetchKiroQuota(session: any, fetchFn?: typeof fetch): Promise<{
+    rows: any[];
+    planType?: undefined;
+    account?: undefined;
+} | {
+    planType: string | number;
+    account: any;
+    rows: {
+        key: string;
+        kind: string;
+        usedPercent: number;
+        remainingPercent: number;
+        used: number;
+        total: number;
+        remaining: number;
+        resetAt: number;
+    }[];
 }>;
 export declare function fetchCodexQuota(session: any, fetchFn?: typeof fetch): Promise<{
     resetCredits: {
@@ -104,6 +140,7 @@ export declare class QuotaStore {
         status: string;
         planType?: undefined;
         planLabel?: undefined;
+        account?: undefined;
         subscriptionStatus?: undefined;
         hasGrokCodeAccess?: undefined;
         updatedAt?: undefined;
@@ -114,6 +151,7 @@ export declare class QuotaStore {
         status: any;
         planType: any;
         planLabel: any;
+        account: any;
         subscriptionStatus: any;
         hasGrokCodeAccess: any;
         updatedAt: any;

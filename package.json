@@ -1,7 +1,7 @@
 {
   "name": "dsh-plugin-oauth-subs",
-  "version": "0.0.33",
-  "description": "ChatGPT Codex and xAI Grok subscription OAuth for DeepSeek Harness — PKCE / device-code login, local Responses proxy, llm-pi-ai sync.",
+  "version": "0.0.34",
+  "description": "ChatGPT Codex, xAI Grok, Zhipu GLM, and AWS Kiro subscription OAuth for DeepSeek Harness — PKCE / device-code login, local Responses proxy, llm-pi-ai sync.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -55,6 +55,8 @@
     "codex",
     "grok",
     "xai",
+    "glm",
+    "kiro",
     "pkce"
   ],
   "peerDependencies": {

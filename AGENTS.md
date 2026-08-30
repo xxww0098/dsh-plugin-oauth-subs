@@ -61,6 +61,9 @@ src/
     glm/                   Zhipu GLM Coding Plan (Z.ai global + BigModel China)
       index.ts             catalog, CLI poll OAuth, key mint, headers
       cli-flow.ts          ZCode /oauth/cli/init + poll (`zai` / `bigmodel`)
+    kiro/                  AWS Kiro (Social / Builder ID / IdC / Entra / API key)
+      index.ts             catalog, identity, portal PKCE, refresh, usage headers
+      idc-flow.ts          AWS SSO OIDC register + JSON device poll
   ui/                      React Settings (classic-script factory)
     client.ts
   utils/                   shared, provider-agnostic
@@ -78,14 +81,14 @@ scripts/                   CLI (TypeScript)
 
 Rules:
 
-- Codex-only code → `src/oauth/codex/`. Grok-only code → `src/oauth/grok/`. GLM-only code → `src/oauth/glm/`.
+- Codex-only code → `src/oauth/codex/`. Grok-only code → `src/oauth/grok/`. GLM-only code → `src/oauth/glm/`. Kiro-only code → `src/oauth/kiro/`.
 - Shared crypto / session scoring → `src/utils/`.
 - Settings React → `src/ui/`.
 - Do not flatten modules back into a single `lib/*.js` bag.
 
 ## Adding a new OAuth family
 
-A family is one top-level tab (Codex / Grok / GLM today) plus its own
+A family is one top-level tab (Codex / Grok / GLM / Kiro today) plus its own
 `src/oauth/<id>/` module. Do not piggyback a new vendor onto an existing
 tab. Follow this checklist in one PR.
 
@@ -133,14 +136,14 @@ into `TAB_ICONS`.
 - Size 18×18, `viewBox="0 0 24 24"`, `fill="currentColor"`. Match the
   official brand mark, not a generic letter. GLM uses the **Z.ai** icon
   (`zai`), not Zhipu.
-- Order: families first (Codex, Grok, GLM, then the new one), then
+- Order: families first (Codex, Grok, GLM, Kiro, then the new one), then
   Models, then About (GitHub icon). Insert the new family **before**
   Models.
 - Add `COPY.zh.<id>Title` / `COPY.en.<id>Title` for the hover string and
   the page heading.
 
 ```text
-[ Codex ] [ Grok ] [ Z.ai ] [ New ] [ ▦ ] [ GitHub ]
+[ Codex ] [ Grok ] [ Z.ai ] [ Kiro ] [ New ] [ ▦ ] [ GitHub ]
 ```
 
 ### Settings — one account, one card

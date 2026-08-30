@@ -1,5 +1,23 @@
 # 错误记录
 
+## 2026-08-30：Kiro 对话不是 OpenAI
+
+### 现象
+
+Kiro 上游是 AWS `generateAssistantResponse` 事件流（`q.{region}.amazonaws.com`），不是 `/v1/chat/completions`。不能拿 GLM 那套直通当聊天。
+
+### 根因
+
+Kiro IDE / kiro.rs 走 CodeWhisperer Runtime；Bearer 之外还要 `tokentype`、profileArn、machineId。
+
+### 非修复（0.0.34）
+
+本任务只接 **认证 + 额度 + 目录 + 设置页 tab**。`GET /kiro/v1/models` 可用；`POST /kiro/v1/chat/completions` 返回 501。聊天翻译是后续任务。
+
+### 验证
+
+- `npm test`：Kiro 登录/导入/额度/目录用例。
+
 ## 2026-08-30：关于页「打开发布页」是假安装入口；检查更新只比版本
 
 ### 现象

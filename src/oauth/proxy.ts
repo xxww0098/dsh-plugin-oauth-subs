@@ -9,6 +9,7 @@ import { once } from 'node:events'
 import { CODEX_API_URL, CODEX_CLIENT_VERSION, CODEX_MODELS, CODEX_MODELS_URL, codexRoutingHint, codexUpstreamHeaders } from './codex/index.js'
 import { GROK_API_URL, GROK_MODELS, grokAffinityHeaders, grokUpstreamHeaders } from './grok/index.js'
 import { GLM_MODELS, glmCodingUrl, glmUpstreamHeaders } from './glm/index.js'
+import { KIRO_MODELS } from './kiro/index.js'
 import { applyFastMode } from '../utils/fast-mode.js'
 import { normalizeCodexResponsesBody } from './codex/request.js'
 import { withPickerVariants } from './models.js'
@@ -207,6 +208,12 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
         await tokens.glm.session()
         data.push(...GLM_MODELS.map((model) => ({ id: model.id, object: 'model', owned_by: 'glm' })))
       } catch { /* not logged in */ }
+      try {
+        if (tokens.kiro) {
+          await tokens.kiro.session()
+          data.push(...KIRO_MODELS.map((model) => ({ id: model.id, object: 'model', owned_by: 'kiro' })))
+        }
+      } catch { /* not logged in */ }
       send(response, 200, { object: 'list', data })
       return
     }
@@ -292,6 +299,23 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
       send(response, 200, {
         object: 'list',
         data: GLM_MODELS.map((model) => ({ id: model.id, object: 'model', owned_by: 'glm' })),
+      })
+      return
+    }
+
+    if (path === '/kiro/v1/models' && request.method === 'GET') {
+      send(response, 200, {
+        object: 'list',
+        data: KIRO_MODELS.map((model) => ({ id: model.id, object: 'model', owned_by: 'kiro' })),
+      })
+      return
+    }
+
+    if (path === '/kiro/v1/chat/completions' || path === '/kiro/v1/responses') {
+      send(response, 501, {
+        error: {
+          message: 'Kiro chat is AWS generateAssistantResponse, not OpenAI. Auth, quota, and the catalog are live; the translator is a follow-up.',
+        },
       })
       return
     }
