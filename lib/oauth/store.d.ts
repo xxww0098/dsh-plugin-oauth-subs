@@ -46,7 +46,13 @@ export declare function listAccounts(provider: any, path: any): Promise<({
     id: string;
     active: boolean;
 })[]>;
-export declare function saveSession(provider: any, session: any, path: any): Promise<any>;
+export declare function listStoredSessions(provider: any, path: any): Promise<{
+    id: string;
+    session: unknown;
+    active: boolean;
+}[]>;
+export declare function getAccountSession(provider: any, id: any, path: any): Promise<any>;
+export declare function saveSession(provider: any, session: any, path: any, options: any): Promise<any>;
 export declare function switchAccount(provider: any, id: any, path: any): Promise<any>;
 export declare function deleteSession(provider: any, path: any, id: any): Promise<any>;
 export declare function publicSession(provider: any, session: any): {

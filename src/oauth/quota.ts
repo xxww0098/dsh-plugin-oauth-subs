@@ -32,6 +32,7 @@ import {
 import { GROK_WEB_EMPTY_FRAME, decodeGrokCreditsFrame } from './grok/credits-frame.js'
 import { formatPlanLabel, pickPlanRaw } from './plan.js'
 import { glmQuotaUrl, glmUpstreamHeaders } from './glm/index.js'
+import { accountIdOf } from './store.js'
 
 export const QUOTA_TTL_MS = 60_000
 export const QUOTA_TIMEOUT_MS = 10_000
@@ -637,6 +638,10 @@ export async function fetchGrokQuota(session, fetchFn = fetch) {
   }
 }
 
+function quotaCacheKey(provider, accountId) {
+  return accountId ? `${provider}\0${accountId}` : provider
+}
+
 function publicQuota(entry, provider) {
   if (!entry) return { status: 'idle' }
   return {
@@ -661,70 +666,88 @@ export class QuotaStore {
     this.inflight = new Map()
   }
 
-  peek(provider) {
-    return publicQuota(this.cache.get(provider), provider)
+  peek(provider, accountId) {
+    if (accountId) return publicQuota(this.cache.get(quotaCacheKey(provider, accountId)), provider)
+    const exact = this.cache.get(provider)
+    if (exact) return publicQuota(exact, provider)
+    for (const [key, entry] of this.cache) {
+      if (key.startsWith(`${provider}\0`)) return publicQuota(entry, provider)
+    }
+    return publicQuota()
   }
 
-  clear(provider) {
-    if (provider) this.cache.delete(provider)
-    else this.cache.clear()
+  clear(provider, accountId) {
+    if (!provider) {
+      this.cache.clear()
+      return
+    }
+    if (accountId) {
+      this.cache.delete(quotaCacheKey(provider, accountId))
+      this.cache.delete(provider)
+      return
+    }
+    this.cache.delete(provider)
+    for (const key of [...this.cache.keys()]) {
+      if (key.startsWith(`${provider}\0`)) this.cache.delete(key)
+    }
   }
 
-  async ensure(provider) {
-    const cached = this.cache.get(provider)
+  async ensure(provider, accountId, session) {
+    const live = session ?? await this.#activeSession(provider)
+    const id = accountId ?? (live ? accountIdOf(provider, live) : undefined)
+    const key = quotaCacheKey(provider, id)
+    const cached = this.cache.get(key)
     if (cached && Date.now() - cached.updatedAt < this.ttlMs) {
       return publicQuota(cached, provider)
     }
     if (cached && cached.status === 'ready') {
-      void this.refresh(provider)
+      void this.refresh(provider, id, live)
       return publicQuota(cached, provider)
     }
-    return this.refresh(provider)
+    return this.refresh(provider, id, live)
   }
 
-  async refresh(provider) {
-    const pending = this.inflight.get(provider)
+  async refresh(provider, accountId, session) {
+    const live = session ?? await this.#activeSession(provider)
+    const id = accountId ?? (live ? accountIdOf(provider, live) : undefined)
+    const key = quotaCacheKey(provider, id)
+    const pending = this.inflight.get(key)
     if (pending) return pending
-    const run = this.#load(provider).finally(() => this.inflight.delete(provider))
-    this.inflight.set(provider, run)
+    const run = this.#load(provider, id, live).finally(() => this.inflight.delete(key))
+    this.inflight.set(key, run)
     return run
   }
 
-  async consume(provider) {
+  async consume(provider, accountId, session) {
     if (provider !== 'codex') throw new Error('only ChatGPT Codex can reset quota')
-    const manager = this.tokens?.codex
-    if (!manager || typeof manager.session !== 'function') {
-      throw new Error('ChatGPT Codex is not signed in')
-    }
-    const pending = this.inflight.get('codex')
+    const live = session ?? await this.#activeSession(provider)
+    if (!live) throw new Error('ChatGPT Codex is not signed in')
+    const id = accountId ?? accountIdOf('codex', live)
+    const pending = this.inflight.get(quotaCacheKey('codex', id))
     if (pending) await pending.catch(() => undefined)
-    let session
-    try {
-      session = await manager.session()
-    } catch {
-      throw new Error('ChatGPT Codex is not signed in')
-    }
-    if (!session) throw new Error('ChatGPT Codex is not signed in')
-    await consumeCodexReset(session, this.fetchFn)
-    this.cache.delete('codex')
-    return this.refresh('codex')
+    await consumeCodexReset(live, this.fetchFn)
+    this.cache.delete(quotaCacheKey('codex', id))
+    return this.refresh('codex', id, live)
   }
 
-  async #load(provider) {
+  async #activeSession(provider) {
     const manager = this.tokens?.[provider]
-    if (!manager || typeof manager.session !== 'function') {
-      this.cache.delete(provider)
-      return publicQuota()
-    }
-    let session
+    if (!manager || typeof manager.session !== 'function') return undefined
     try {
-      session = await manager.session()
+      return await manager.session()
     } catch {
-      this.cache.delete(provider)
+      return undefined
+    }
+  }
+
+  async #load(provider, accountId, session) {
+    const key = quotaCacheKey(provider, accountId)
+    if (!session) {
+      this.cache.delete(key)
       return publicQuota()
     }
-    const previous = this.cache.get(provider)
-    this.cache.set(provider, {
+    const previous = this.cache.get(key)
+    this.cache.set(key, {
       ...(previous ?? {}),
       status: previous?.status === 'ready' ? 'ready' : 'loading',
       updatedAt: previous?.updatedAt ?? Date.now(),
@@ -746,7 +769,7 @@ export class QuotaStore {
         rows: parsed.rows ?? [],
         resetCredits: parsed.resetCredits ?? { availableCount: 0 },
       }
-      this.cache.set(provider, entry)
+      this.cache.set(key, entry)
       return publicQuota(entry, provider)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -760,7 +783,7 @@ export class QuotaStore {
         rows: previous?.rows ?? [],
         resetCredits: previous?.resetCredits ?? { availableCount: 0 },
       }
-      this.cache.set(provider, entry)
+      this.cache.set(key, entry)
       return publicQuota(entry, provider)
     }
   }

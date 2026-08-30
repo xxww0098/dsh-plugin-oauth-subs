@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.26
+
+- Settings shows **quota on every account card**, not only the one in use. Refresh/reset stay per card. Switching still picks the chat account.
+
 ## 0.0.25
 
 - Codex plan badge splits **Pro 20x** (`pro`, $200) and **Pro 5x** (`prolite`, $100). GLM `pro` stays Pro.

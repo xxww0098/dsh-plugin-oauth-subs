@@ -1,5 +1,23 @@
 # 错误记录
 
+## 2026-08-30：多账号额度只显示当前账号
+
+### 现象
+
+Grok 两张卡：使用中的那张有额度，另一张只有邮箱和切换。必须先切换才看得到额度。
+
+### 根因
+
+`QuotaStore` 按 provider 缓存，只读 `TokenManager` 的当前 session。UI 也只在 `row.active` 时挂 `QuotaBlock`。
+
+### 修复（0.0.26）
+
+按 `provider + accountId` 分别拉额度；snapshot 每张卡带自己的 `quota`。刷新/重置走该卡的 session。切换不再清空别的账号缓存。
+
+### 验证
+
+- `npm test`：两份 Grok session 在 snapshot 里各有一份 remainingPercent。
+
 ## 2026-08-30：Codex Pro 徽章没区分 5x / 20x
 
 ### 现象
