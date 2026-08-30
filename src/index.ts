@@ -197,6 +197,9 @@ export {
   GLM_CLIENT_ID,
   GLM_CODING_URL,
   GLM_AUTHORIZE_URL,
+  GLM_APP_VERSION,
+  GLM_USER_AGENT,
+  glmDesktopHeaders,
   glmUpstreamHeaders,
 } from './oauth/glm/index.js'
 export {

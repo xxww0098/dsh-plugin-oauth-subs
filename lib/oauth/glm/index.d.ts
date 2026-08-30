@@ -28,7 +28,15 @@ export declare const GLM_BIGMODEL_USERINFO_URL = "https://open.bigmodel.cn/api/b
 export declare const GLM_KEY_NAME = "dsh-plugin-oauth-subs";
 /** CLI / site ids. Never show these as the account name on the card. */
 export declare const GLM_APP_ACCOUNTS: readonly string[];
-export declare const GLM_USER_AGENT = "dsh-plugin-oauth-subs/0.0.22";
+/** Official ZCode Desktop, latest stable (https://zcode.z.ai/en/changelog). */
+export declare const GLM_APP_VERSION = "3.10.1";
+/** Desktop UA from resources/glm/zcode.cjs (`eao`/`rao`). Do not leak this plugin. */
+export declare const GLM_USER_AGENT = "ZCode/3.10.1 ai-sdk/anthropic/3.0.81";
+/** CLI poll against zcode.z.ai — official CLI shape, not Desktop, not this plugin. */
+export declare const GLM_CLI_USER_AGENT = "ZCode/3.10.1";
+export declare const GLM_REFERER = "https://zcode.z.ai";
+export declare const GLM_TITLE = "Z Code";
+export declare const GLM_AGENT = "glm";
 export declare const GLM_NEVER_EXPIRES = 8640000000000000;
 export declare const GLM_CONTEXT_WINDOW = 128000;
 export declare const GLM_LARGE_CONTEXT = 1000000;
@@ -103,10 +111,32 @@ export declare function isGlmAppAccount(value: any): boolean;
 export declare function pickGlmHumanAccount(...candidates: any[]): string;
 export declare function accountFromJwt(token: any): string;
 export declare function glmBizBase(region?: string): "https://open.bigmodel.cn" | "https://api.z.ai";
+/** ZCode Desktop 3.10.1 fingerprint for api.z.ai / open.bigmodel.cn Coding Plan hops. */
+export declare function glmDesktopHeaders(): {
+    'user-agent': string;
+    'X-ZCode-App-Version': string;
+    'X-ZCode-Agent': string;
+    'x-zcode-trace-id': string;
+    'x-request-id': string;
+    'x-session-id': string;
+    'x-query-id': string;
+    'HTTP-Referer': string;
+    referer: string;
+    'X-Title': string;
+};
 export declare function glmUpstreamHeaders(session: any): {
+    'user-agent': string;
+    'X-ZCode-App-Version': string;
+    'X-ZCode-Agent': string;
+    'x-zcode-trace-id': string;
+    'x-request-id': string;
+    'x-session-id': string;
+    'x-query-id': string;
+    'HTTP-Referer': string;
+    referer: string;
+    'X-Title': string;
     authorization: string;
     accept: string;
-    'user-agent': string;
 };
 export declare function isSuccessCode(code: any): boolean;
 export declare function unwrapEnvelope(body: any, operation: any): any;

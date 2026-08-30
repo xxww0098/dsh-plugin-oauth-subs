@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.38
+
+- **Antigravity** family tab (after Kiro, before Models): Google OAuth loopback, multiple accounts, import from the official CLI token file or CLIProxyAPI `antigravity-*.json`. Chat goes through the local OpenAI hop to `cloudcode-pa` `generateContent` / `streamGenerateContent`. Catalog is the live cloudcode-pa list (Claude / Gemini / GPT-OSS). One official Antigravity IDE fingerprint for login, loadCodeAssist, onboardUser, refresh, and every chat request. String `ideType: ANTIGRAVITY`. Empty `project_id` is rejected before generateContent.
+- GLM model picker: checking GLM-5.3 / Flash / Turbo (or 全选) while signed in writes `llm-pi-ai` `providers.oauth-glm`. Leftover 全关 (stale `glm-4.7` / `glm-5` / … ids) is recovered on login/startup `sync()` so the current keys write the route. A deliberate 全关 in the picker still unsets it.
+- GLM Settings card identity is email (or another human claim), not CLI app ids (`zcode` / `zai` / `bigmodel` / `glm`). Quota is three remaining bars like ZCode Coding Plan: **5 小时剩余** / **每周剩余** / **ZCode MCP**. Logged-in cards show a **150%配额** / **150% quota** pill and hint.
+- GLM chat and quota hops fingerprint as official **ZCode Desktop 3.10.1** (`User-Agent: ZCode/3.10.1 ai-sdk/anthropic/3.0.81` plus X-ZCode / Referer / X-Title). Stops leaking `dsh-plugin-oauth-subs` on api.z.ai / open.bigmodel.cn so Coding Plan's 1.5× ZCode quota applies. OAuth CLI init/poll stays a CLI-shaped `ZCode/3.10.1` identity.
+
 ## 0.0.37
 
 - Drop Grok 4 from the catalog. Picker and `/grok/v1/models` keep Grok 4.6 and Grok 4.5.
