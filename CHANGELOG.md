@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.27
+
+- About: one 13px typeface for the fact rows. OS is only **macOS / Windows / Linux** — no “本机”.
+
 ## 0.0.26
 
 - Settings shows **quota on every account card**, not only the one in use. Refresh/reset stay per card. Switching still picks the chat account.
