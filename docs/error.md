@@ -1,5 +1,33 @@
 # 错误记录
 
+## 2026-08-30：Antigravity 指纹版本停在 2.9.1，不像现网桌面
+
+### 现象
+
+`antigravityVersion()` 永远返回 `ANTIGRAVITY_FALLBACK_VERSION = '2.9.1'`，不读本机官方桌面。cloudcode-pa 聊天 / loadCodeAssist 的 UA 是 `antigravity/hub/2.9.1 <os>/<arch>`。用户本机 Mac 官方客户端是 **Antigravity.app 2.11.0**（`com.google.antigravity`）。同机还有 **Antigravity IDE.app 2.5.5**（`com.google.antigravity-ide`），不能拿来当 UA 版本。
+
+### 证据
+
+- 本机 `/Applications/Antigravity.app` `CFBundleShortVersionString` **2.11.0**。
+- `/Applications/Antigravity IDE.app` 是 2.5.5，忽略。
+- 官方 language_server 的 protobuf `ClientMetadata.ide_type` 是 `ANTIGRAVITY`；UA 运行时格式化（日志 `Request User-Agent to %s`），不是写死的 `hub/2.9.1`。
+- CLIProxyAPI `AntigravityRequestUserAgent` 形状仍是 `antigravity/hub/{ver} {os}/{arch}`。官方 Manager 聊天 hop **不**发 `Client-Metadata` / `x-goog-api-client`。
+- SkillStar `crates/skillstar-usage/src/cloud_code.rs` `detect_ide_version`：macOS 读 `Antigravity.app` Info.plist，Windows `LocalAppData\Programs\antigravity\Antigravity.exe` FileVersion，linux `antigravity --version`。
+
+### 根因
+
+代理层（本插件）。0.0.38 抄了 CLIProxyAPI 的 hub UA + `ideType: ANTIGRAVITY`，但版本只留了 CLIProxyAPI 的 2.9.1 地板，没有读官方 Antigravity.app。
+
+### 修复（0.0.40）
+
+- 地板改为 **2.11.0**（当前官方桌面）。
+- `antigravityVersion()` 优先本机 Antigravity.app 短版本（同上 SkillStar 三端探测），读不到再用 2.11.0。**不**读 Antigravity IDE.app。
+- 保持 hub UA、`ideType: ANTIGRAVITY`、聊天头只有 User-Agent。不把 OAuth client secret 从二进制再抄一遍（插件已有官方 client id）。
+
+### 验证
+
+- `npm test`：地板 2.11.0；plist / CLI / FileVersion 解析；UA 匹配 `antigravity/hub/<ver> darwin/arm64`（或本机 platform）；UA 无 `dsh-plugin`；chat 头无 `Client-Metadata` / `x-goog-api-client`。
+
 ## 2026-08-30：GLM 对话/额度带第三方 UA，拿不到 ZCode 1.5 倍额度
 
 ### 现象

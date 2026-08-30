@@ -10,8 +10,10 @@ import { importAntigravityAuth } from '../lib/oauth/import-auth.js'
 import { formatPlanLabel } from '../lib/oauth/plan.js'
 import {
   ANTIGRAVITY_CLIENT_ID,
+  ANTIGRAVITY_FALLBACK_VERSION,
   ANTIGRAVITY_GOOG_API_CLIENT_UA,
   ANTIGRAVITY_LOAD_CODE_ASSIST_URL,
+  ANTIGRAVITY_MAC_APP_PLIST,
   ANTIGRAVITY_MODELS,
   ANTIGRAVITY_NODE_API_CLIENT_UA,
   ANTIGRAVITY_ONBOARD_USER_URL,
@@ -21,11 +23,17 @@ import {
   antigravityLoadCodeAssistHeaders,
   antigravityLoadCodeAssistMetadata,
   antigravityOnboardUserHeaders,
+  antigravityPlatform,
   antigravityRequestUserAgent,
   antigravitySession,
+  antigravityVersion,
   completeAntigravityLogin,
+  detectAntigravityVersion,
   exchangeAntigravityCode,
   fetchAntigravityProject,
+  normalizeAntigravityVersion,
+  parseAntigravityPlistVersion,
+  parseAntigravityVersionText,
 } from '../lib/oauth/antigravity/index.js'
 import { antigravityToOpenai, openaiToAntigravity } from '../lib/oauth/antigravity/request.js'
 import { createProxy } from '../lib/oauth/proxy.js'
@@ -60,6 +68,80 @@ test('authorize URL is the official Google installed-app client', () => {
   assert.equal(url.searchParams.has('code_challenge'), false)
 })
 
+test('fallback version is current official Antigravity.app 2.11.0', () => {
+  assert.equal(ANTIGRAVITY_FALLBACK_VERSION, '2.11.0')
+  assert.equal(detectAntigravityVersion({
+    platform: 'linux',
+    execFile: () => { throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' }) },
+  }), '2.11.0')
+  assert.equal(detectAntigravityVersion({
+    platform: 'darwin',
+    readFile: () => { throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' }) },
+    execFile: () => { throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' }) },
+  }), '2.11.0')
+})
+
+test('plist helper reads CFBundleShortVersionString from Antigravity.app XML', () => {
+  const plist = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>com.google.antigravity</string>
+	<key>CFBundleShortVersionString</key>
+	<string>2.11.0</string>
+	<key>CFBundleVersion</key>
+	<string>99.0.0</string>
+</dict>
+</plist>`
+  assert.equal(parseAntigravityPlistVersion(plist), '2.11.0')
+  assert.equal(parseAntigravityVersionText('Antigravity 2.11.0\n'), '2.11.0')
+  assert.equal(normalizeAntigravityVersion('2.11.0.0'), '2.11.0')
+  const seen = []
+  const detected = detectAntigravityVersion({
+    platform: 'darwin',
+    readFile: (path) => {
+      seen.push(path)
+      return plist
+    },
+    execFile: () => { throw new Error('plist parse should not need plutil') },
+  })
+  assert.equal(detected, '2.11.0')
+  assert.deepEqual(seen, [ANTIGRAVITY_MAC_APP_PLIST])
+  assert.equal(ANTIGRAVITY_MAC_APP_PLIST, '/Applications/Antigravity.app/Contents/Info.plist')
+  assert.equal(ANTIGRAVITY_MAC_APP_PLIST.includes('IDE.app'), false)
+  const win = detectAntigravityVersion({
+    platform: 'win32',
+    env: { LOCALAPPDATA: 'C:\\Users\\dev\\AppData\\Local' },
+    execFile: (file, args) => {
+      assert.equal(file, 'powershell.exe')
+      const command = args.join(' ')
+      assert.equal(command.includes('Antigravity.exe'), true)
+      assert.equal(command.includes('IDE.app') || command.includes('Antigravity IDE'), false)
+      return '2.11.0.0\r\n'
+    },
+  })
+  assert.equal(win, '2.11.0')
+  const linux = detectAntigravityVersion({
+    platform: 'linux',
+    execFile: (file, args) => {
+      assert.equal(file, 'antigravity')
+      assert.deepEqual(args, ['--version'])
+      return '2.11.0\n'
+    },
+  })
+  assert.equal(linux, '2.11.0')
+})
+
+test('request UA is CLIProxyAPI hub shape and never the plugin name', () => {
+  const ua = antigravityRequestUserAgent()
+  const ver = antigravityVersion()
+  assert.equal(ua, `antigravity/hub/${ver} ${antigravityPlatform()}`)
+  assert.match(ua, /^antigravity\/hub\/\d+\.\d+\.\d+ (darwin|windows|linux)\/(arm64|amd64)$/)
+  assert.equal(ua.includes('dsh-plugin'), false)
+  assert.equal(ua.includes('2.5.5'), false)
+})
+
 test('fingerprint is one Antigravity IDE identity on loadCodeAssist, onboardUser, and chat', () => {
   const load = antigravityLoadCodeAssistHeaders('tok')
   const onboard = antigravityOnboardUserHeaders('tok')
@@ -72,9 +154,13 @@ test('fingerprint is one Antigravity IDE identity on loadCodeAssist, onboardUser
   }
   assert.equal(load['user-agent'].includes(ANTIGRAVITY_NODE_API_CLIENT_UA), false)
   assert.equal(load['x-goog-api-client'], undefined)
+  assert.equal(load['Client-Metadata'], undefined)
   assert.equal(onboard['user-agent'].includes(ANTIGRAVITY_NODE_API_CLIENT_UA), true)
   assert.equal(onboard['x-goog-api-client'], ANTIGRAVITY_GOOG_API_CLIENT_UA)
   assert.equal(chat['user-agent'], load['user-agent'])
+  assert.deepEqual(Object.keys(chat).sort(), ['accept', 'authorization', 'content-type', 'user-agent'])
+  assert.equal(chat['x-goog-api-client'], undefined)
+  assert.equal(chat['Client-Metadata'], undefined)
   assert.deepEqual(antigravityLoadCodeAssistMetadata(), { ideType: 'ANTIGRAVITY' })
   assert.equal(JSON.stringify(antigravityLoadCodeAssistMetadata()).includes('IDE_UNSPECIFIED'), false)
 })
