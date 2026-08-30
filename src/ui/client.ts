@@ -462,7 +462,7 @@ window.__ModuleLoader__.load({
   --osubs-ring: color-mix(in oklab, currentColor 45%, transparent);
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: 0;
   width: 100%;
   max-width: 1000px;
   font-variant-numeric: tabular-nums;
@@ -511,6 +511,15 @@ window.__ModuleLoader__.load({
   padding: 16px 18px 18px;
   border: 1px solid var(--osubs-line); border-radius: 14px;
 }
+/* Pin the icon tabs to the top of the host settings scroller
+   (options overflow-y auto). Bleed 24px to match that column's
+   side padding so cards cannot peek in the gutter. */
+.osubs-nav {
+  position: sticky; top: 0; z-index: 6; flex: none;
+  margin: 0 -24px; padding: 0 24px 16px;
+  background: var(--dsw-alias-bg-layer-2, Canvas);
+}
+.osubs-pane { display: flex; flex-direction: column; gap: 22px; min-width: 0; }
 .osubs-tabs {
   display: flex; gap: 4px; padding: 4px;
   border: 1px solid var(--osubs-line); border-radius: 12px;
@@ -1605,33 +1614,37 @@ window.__ModuleLoader__.load({
       })
 
       return h('div', { className: 'osubs' },
-        error && h('p', { className: 'osubs-hint osubs-bad' }, error),
-        h('div', { className: 'osubs-tabs', role: 'tablist' },
-          h(Tab, { id: 'codex', label: t.codexTitle, current: tab, onSelect: setTab, icon: 'codex' }),
-          h(Tab, { id: 'grok', label: t.grokTitle, current: tab, onSelect: setTab, icon: 'grok' }),
-          h(Tab, { id: 'glm', label: t.glmTitle, current: tab, onSelect: setTab, icon: 'zai' }),
-          h(Tab, { id: 'kiro', label: t.kiroTitle, current: tab, onSelect: setTab, icon: 'kiro' }),
-          h(Tab, { id: 'models', label: t.modelsTitle, current: tab, onSelect: setTab, icon: 'models' }),
-          h(Tab, { id: 'about', label: t.aboutTitle, current: tab, onSelect: setTab, icon: 'github' }),
+        h('div', { className: 'osubs-nav' },
+          h('div', { className: 'osubs-tabs', role: 'tablist' },
+            h(Tab, { id: 'codex', label: t.codexTitle, current: tab, onSelect: setTab, icon: 'codex' }),
+            h(Tab, { id: 'grok', label: t.grokTitle, current: tab, onSelect: setTab, icon: 'grok' }),
+            h(Tab, { id: 'glm', label: t.glmTitle, current: tab, onSelect: setTab, icon: 'zai' }),
+            h(Tab, { id: 'kiro', label: t.kiroTitle, current: tab, onSelect: setTab, icon: 'kiro' }),
+            h(Tab, { id: 'models', label: t.modelsTitle, current: tab, onSelect: setTab, icon: 'models' }),
+            h(Tab, { id: 'about', label: t.aboutTitle, current: tab, onSelect: setTab, icon: 'github' }),
+          ),
         ),
-        tab === 'codex' && card('codex', t.codexTitle),
-        tab === 'grok' && card('grok', t.grokTitle),
-        tab === 'glm' && card('glm', t.glmTitle),
-        tab === 'kiro' && card('kiro', t.kiroTitle),
-        tab === 'models' && h(ModelPicker, {
-          t,
-          catalog: snap?.catalog,
-          onToggle: (key, on) => run('models', { key, on }),
-          onFamily: (family, on) => run('models', { family, on }),
-        }),
-        tab === 'about' && h(AboutPanel, {
-          t,
-          local: snap?.update,
-          update,
-          busy: updateBusy,
-          applying,
-          onCheck: () => checkUpdate(true),
-        }),
+        h('div', { className: 'osubs-pane' },
+          error && h('p', { className: 'osubs-hint osubs-bad' }, error),
+          tab === 'codex' && card('codex', t.codexTitle),
+          tab === 'grok' && card('grok', t.grokTitle),
+          tab === 'glm' && card('glm', t.glmTitle),
+          tab === 'kiro' && card('kiro', t.kiroTitle),
+          tab === 'models' && h(ModelPicker, {
+            t,
+            catalog: snap?.catalog,
+            onToggle: (key, on) => run('models', { key, on }),
+            onFamily: (family, on) => run('models', { family, on }),
+          }),
+          tab === 'about' && h(AboutPanel, {
+            t,
+            local: snap?.update,
+            update,
+            busy: updateBusy,
+            applying,
+            onCheck: () => checkUpdate(true),
+          }),
+        ),
       )
     }
 

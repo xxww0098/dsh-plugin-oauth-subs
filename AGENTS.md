@@ -189,6 +189,10 @@ Binding UI rules:
 - Inherit the host theme. Colors are `currentColor` mixes
   (`--osubs-line` 16%, `--osubs-fill` 6%, `--osubs-muted` 66%). No
   hardcoded light-theme grays.
+- Icon tabs live in `.osubs-nav` (`position: sticky; top: 0`). They stay
+  on screen while the settings scroller moves. Background is
+  `--dsw-alias-bg-layer-2` (the panel). Bleed `24px` matches the host
+  `.options` side padding so cards cannot peek in the gutter.
 - Cards: 12px radius, 1px `--osubs-line`, 14×16 padding. Active uses
   `--osubs-edge` + `--osubs-fill`.
 - Type: 13px UI, 12.5px emails. Tags (`osubs-tag`) for plan / in-use /
