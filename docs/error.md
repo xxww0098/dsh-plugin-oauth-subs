@@ -1,5 +1,39 @@
 # 错误记录
 
+## 2026-08-30：Antigravity Gemini 长会话 400 INVALID_ARGUMENT（function_response 列表）
+
+### 现象
+
+DSH web，模型 Gemini 3.7 Flash High，长会话约 151 步。本轮失败：
+
+```
+400 INVALID_REQUEST
+Invalid JSON payload received. Unknown name "response" at
+'request.contents[109].parts[0].function_response': Proto field is not repeating,
+cannot start list.
+```
+
+同样的字段违规出现在 `contents[134]`。`status: INVALID_ARGUMENT`。
+
+### 证据
+
+- 用户截图，daily-cloudcode-pa `generateContent` / `streamGenerateContent`。
+- 本插件 `POST /antigravity/v1/chat/completions` → `openaiToAntigravity` 把 OpenAI `role: tool` 转成 Gemini `contents[].parts[].functionResponse`。
+- Gemini proto：`FunctionResponse.response` 是**单个** `Struct`，`functionResponse` 本身也不是 repeated。多工具结果必须是**多个 parts**，每个 part 一个对象。
+- 旧 `tryJson`：对象（含数组）原样返回；JSON 字符串 `JSON.parse`。OpenAI / DSH 的 tool `content` 经常是 part 数组或 `"[...]"`，于是 `functionResponse.response` 变成 JSON 数组。
+
+### 根因
+
+代理转换层（`src/oauth/antigravity/request.ts`）。`response` 被赋成数组后，protobuf JSON 把 `response` 当成要开 list 的 repeated 字段，Struct 不是 repeating → 400。不是 Codex 前缀、不是 DSH host、不是 fs-search。Codex / Grok / GLM / Kiro 不走这个 converter。
+
+### 修复
+
+`functionResponsePayload`（只用于 tool 结果，不用 `typeof === 'object'` 当 Struct）：普通对象原样作为 `response`；数组 / `JSON.parse` 出的 null / number / bool 包成 `{ result: … }`；非 JSON 字符串仍走原来的 `{ text: value }`。连续 `role: tool` 合成一条 user content 的多个 `functionResponse` parts。绝不把 `functionResponse` 或 `response` 写成 JSON 数组。`functionCall.args` 仍走 `tryJson`。
+
+### 验证
+
+- `npm test`：`openaiToAntigravity` 对 tool content 为 JSON 数组字符串、真实数组、JSON 对象字符串、普通字符串、null/空；连续两条 tool → 两个 parts；复现 400 的数组 fixture 不再发出 `"functionResponse":[` 或 `"response":[`。
+
 ## 2026-08-30：勾选 GLM / Antigravity / Kiro 不写 settings.yaml
 
 ### 现象
