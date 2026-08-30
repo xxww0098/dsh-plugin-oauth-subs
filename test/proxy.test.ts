@@ -57,8 +57,8 @@ test('proxy requires the local bearer and forwards Codex Responses', async () =>
     assert.equal(seen[0].headers.authorization, 'Bearer codex-tok')
     assert.equal(seen[0].headers['chatgpt-account-id'], 'acct')
     assert.equal(seen[0].headers.originator, 'codex_cli_rs')
-    assert.equal(seen[0].headers['user-agent'], 'codex_cli_rs/0.147.0')
-    assert.equal(seen[0].headers['openai-version'], '0.147.0')
+    assert.equal(seen[0].headers['user-agent'], 'codex_cli_rs/0.151.0')
+    assert.equal(seen[0].headers['openai-version'], '0.151.0')
     assert.equal(seen[0].headers['session-id'], 'session-cache-1')
     assert.equal(seen[0].headers['x-client-request-id'], 'session-cache-1')
     assert.equal(seen[0].headers['x-grok-conv-id'], undefined)
@@ -99,10 +99,10 @@ test('proxy asks upstream for SSE when the body streams', async () => {
   }
 })
 
-test('proxy peels -fast and injects service_tier on GPT; strips it on Codex', async () => {
+test('proxy peels -fast and injects Codex Priority; never sets Grok service_tier', async () => {
   const seen = []
   const fetchFn = async (url, init) => {
-    seen.push(JSON.parse(init.body.toString()))
+    seen.push({ headers: init.headers, body: JSON.parse(init.body.toString()) })
     return new Response('{"id":"resp"}', { status: 200, headers: { 'content-type': 'application/json' } })
   }
   const proxy = createProxy({
@@ -123,32 +123,37 @@ test('proxy peels -fast and injects service_tier on GPT; strips it on Codex', as
       headers,
       body: '{"model":"gpt-5.5-fast"}',
     })
-    assert.equal(seen[0].model, 'gpt-5.5')
-    assert.equal(seen[0].service_tier, 'priority')
-    assert.equal(seen[0].instructions, 'You are a helpful assistant.')
+    assert.equal(seen[0].body.model, 'gpt-5.5')
+    assert.equal(seen[0].body.service_tier, 'priority')
+    assert.equal(seen[0].body.store, false)
+    assert.equal(seen[0].body.instructions, 'You are a helpful assistant.')
+    assert.equal(seen[0].headers['x-codex-routing-hint'], 'model=gpt-5.5;tier=priority')
 
     await fetch(`http://127.0.0.1:${port}/codex/v1/responses`, {
       method: 'POST',
       headers,
       body: '{"model":"gpt-5.3-codex","service_tier":"priority"}',
     })
-    assert.equal(seen[1].model, 'gpt-5.3-codex')
-    assert.equal(seen[1].service_tier, undefined)
+    assert.equal(seen[1].body.model, 'gpt-5.3-codex')
+    assert.equal(seen[1].body.service_tier, undefined)
+    assert.equal(seen[1].headers['x-codex-routing-hint'], 'model=gpt-5.3-codex')
 
     await fetch(`http://127.0.0.1:${port}/grok/v1/responses`, {
       method: 'POST',
       headers,
       body: '{"model":"grok-4.6-fast"}',
     })
-    assert.deepEqual(seen[2], { model: 'grok-4.6', service_tier: 'priority' })
+    assert.deepEqual(seen[2].body, { model: 'grok-4.6' })
+    assert.equal(seen[2].headers['x-codex-routing-hint'], undefined)
 
     await fetch(`http://127.0.0.1:${port}/codex/v1/responses`, {
       method: 'POST',
       headers,
       body: '{"model":"gpt-5.6-sol-900k-fast"}',
     })
-    assert.equal(seen[3].model, 'gpt-5.6-sol')
-    assert.equal(seen[3].service_tier, 'priority')
+    assert.equal(seen[3].body.model, 'gpt-5.6-sol')
+    assert.equal(seen[3].body.service_tier, 'priority')
+    assert.equal(seen[3].headers['x-codex-routing-hint'], 'model=gpt-5.6-sol;tier=priority')
 
     await fetch(`http://127.0.0.1:${port}/codex/v1/responses`, {
       method: 'POST',
@@ -162,11 +167,22 @@ test('proxy peels -fast and injects service_tier on GPT; strips it on Codex', as
         ],
       }),
     })
-    assert.equal(seen[4].model, 'gpt-5.6-luna')
-    assert.equal(seen[4].service_tier, 'priority')
-    assert.equal(seen[4].instructions, 'sys')
-    assert.equal(seen[4].reasoning.effort, 'max')
-    assert.deepEqual(seen[4].input, [{ role: 'user', content: 'go' }])
+    assert.equal(seen[4].body.model, 'gpt-5.6-luna')
+    assert.equal(seen[4].body.service_tier, 'priority')
+    assert.equal(seen[4].body.store, false)
+    assert.equal(seen[4].headers['x-codex-routing-hint'], 'model=gpt-5.6-luna;tier=priority')
+    assert.equal(seen[4].body.instructions, 'sys')
+    assert.equal(seen[4].body.reasoning.effort, 'max')
+    assert.deepEqual(seen[4].body.input, [{ role: 'user', content: 'go' }])
+
+    await fetch(`http://127.0.0.1:${port}/codex/v1/responses`, {
+      method: 'POST',
+      headers,
+      body: '{"model":"gpt-5.4-mini-fast"}',
+    })
+    assert.equal(seen[5].body.model, 'gpt-5.4-mini')
+    assert.equal(seen[5].body.service_tier, undefined)
+    assert.equal(seen[5].headers['x-codex-routing-hint'], 'model=gpt-5.4-mini')
   } finally {
     await proxy.close()
   }

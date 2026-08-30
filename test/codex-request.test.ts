@@ -37,9 +37,20 @@ test('drops public-only fields and default service_tier', () => {
     prompt_cache_retention: '24h',
   })
   assert.equal(out.service_tier, undefined)
+  assert.equal(out.store, false)
   assert.equal(out.max_output_tokens, undefined)
   assert.equal(out.prompt_cache_options, undefined)
   assert.equal(out.prompt_cache_retention, undefined)
+})
+
+test('keeps priority and forces store false', () => {
+  const out = normalizeCodexResponsesBody({
+    model: 'gpt-5.6-luna',
+    service_tier: 'fast',
+    store: true,
+  })
+  assert.equal(out.service_tier, 'priority')
+  assert.equal(out.store, false)
 })
 
 test('strips duplicate leading developer once instructions already exist', () => {

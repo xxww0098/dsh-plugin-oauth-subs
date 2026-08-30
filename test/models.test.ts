@@ -23,16 +23,10 @@ test('buildProviders only emits logged-in families with openai-responses', () =>
   assert.equal(both['oauth-codex'].baseURL, 'http://127.0.0.1:8318/codex/v1')
   assert.equal(both['oauth-grok'].displayName.includes('Grok'), true)
   assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4.6').contextWindow, 500_000)
-  assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4.6-fast').contextWindow, 500_000)
+  assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4.6-fast'), undefined)
   assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4.5').contextWindow, 500_000)
   assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4').contextWindow, 256_000)
   assert.deepEqual(both['oauth-grok'].models.find((model) => model.id === 'grok-4.6').reasoningEfforts, {
-    low: 'low',
-    medium: 'medium',
-    high: 'high',
-    xhigh: 'xhigh',
-  })
-  assert.deepEqual(both['oauth-grok'].models.find((model) => model.id === 'grok-4.6-fast').reasoningEfforts, {
     low: 'low',
     medium: 'medium',
     high: 'high',
@@ -110,7 +104,7 @@ test('catalogProviders always lists both families with Fast and 900K siblings', 
   assert.equal(keys.includes('oauth-codex/gpt-5.5-900k'), false)
   assert.equal(keys.includes('oauth-codex/gpt-5.4-mini-900k'), false)
   assert.equal(keys.includes('oauth-grok/grok-4.6'), true)
-  assert.equal(keys.includes('oauth-grok/grok-4.6-fast'), true)
+  assert.equal(keys.includes('oauth-grok/grok-4.6-fast'), false)
   const described = describeCatalog(catalog, {
     enabledKeys: ['oauth-codex/gpt-5.5'],
     loggedIn: { codex: true, grok: false },
@@ -181,12 +175,12 @@ test('syncHarnessModels honors a persisted selected subset', async () => {
     prefix: 'oauth',
     origin: 'http://127.0.0.1:8318',
     loggedIn: { codex: true, grok: true },
-    selected: ['oauth-codex/gpt-5.5', 'oauth-grok/grok-4.6-fast'],
+    selected: ['oauth-codex/gpt-5.5', 'oauth-grok/grok-4.6'],
   })
   const set = ops[0].mutations.filter((row) => row.op === 'set')
   assert.deepEqual(set.map((row) => row.path[1]).sort(), ['oauth-codex', 'oauth-grok'])
   assert.deepEqual(result.routes.find((row) => row.provider === 'oauth-codex').models, ['gpt-5.5'])
-  assert.deepEqual(result.routes.find((row) => row.provider === 'oauth-grok').models, ['grok-4.6-fast'])
+  assert.deepEqual(result.routes.find((row) => row.provider === 'oauth-grok').models, ['grok-4.6'])
 })
 
 test('GLM catalog is three models with official input types; Codex stays image-capable', () => {

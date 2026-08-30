@@ -4,7 +4,7 @@
  */
 export declare class AuthController {
     #private;
-    constructor({ authPath, prefix, origin, settings, grokLogin, onAuthChanged, models, fetchFn, quotaTtlMs }: {
+    constructor({ authPath, prefix, origin, settings, grokLogin, onAuthChanged, models, fetchFn, quotaTtlMs, spawnFn, profile }: {
         authPath: any;
         prefix: any;
         origin: any;
@@ -14,6 +14,8 @@ export declare class AuthController {
         models: any;
         fetchFn?: typeof fetch;
         quotaTtlMs: any;
+        spawnFn: any;
+        profile: any;
     });
     claim(provider: any): any;
     loggedIn(): Promise<{
@@ -473,7 +475,63 @@ export declare class AuthController {
     }>;
     refreshQuota(provider: any, accountId: any): any;
     consumeReset(provider: any, accountId: any): Promise<any>;
-    checkUpdate(): Promise<{
+    checkUpdate(payload?: {}): Promise<{
+        apply: {
+            status: string;
+            restart?: undefined;
+            command?: undefined;
+            error?: undefined;
+        };
+        version: string;
+        status: string;
+        latest: {
+            tag: string;
+            name: any;
+            url: any;
+            publishedAt: any;
+        };
+        assets: {
+            platform: string;
+            current: boolean;
+            name: any;
+            url: any;
+            size: any;
+        }[];
+        platform: string;
+        repo: string;
+        repoSlug: string;
+    } | {
+        apply: {
+            status: string;
+            restart: boolean;
+            command: any;
+            error?: undefined;
+        };
+        version: string;
+        status: string;
+        latest: {
+            tag: string;
+            name: any;
+            url: any;
+            publishedAt: any;
+        };
+        assets: {
+            platform: string;
+            current: boolean;
+            name: any;
+            url: any;
+            size: any;
+        }[];
+        platform: string;
+        repo: string;
+        repoSlug: string;
+    } | {
+        apply: {
+            status: any;
+            error: any;
+            command: any;
+            restart?: undefined;
+        };
         version: string;
         status: string;
         latest: {
@@ -497,6 +555,12 @@ export declare class AuthController {
         error: string;
         latest: any;
         assets: any[];
+        apply: {
+            status: string;
+            restart?: undefined;
+            command?: undefined;
+            error?: undefined;
+        };
         version: string;
         platform: string;
         repo: string;

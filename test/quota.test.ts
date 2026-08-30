@@ -219,7 +219,7 @@ test('QuotaStore fetches Codex usage + reset credits and caches', async () => {
   assert.equal(seen.some((row) => row.url === CODEX_RESET_CREDITS_URL), true)
   assert.equal(seen[0].headers['chatgpt-account-id'], 'acct-1')
   assert.equal(seen[0].headers.originator, 'codex_cli_rs')
-  assert.equal(seen[0].headers['user-agent'], 'codex_cli_rs/0.147.0')
+  assert.equal(seen[0].headers['user-agent'], 'codex_cli_rs/0.151.0')
   assert.equal(first.planType, 'pro')
   assert.equal(first.planLabel, 'Pro 20x')
   assert.equal(first.rows[0].remainingPercent, 90)

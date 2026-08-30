@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.33
+
+- Drop Grok Fast. Grok 4.6 accepted `service_tier: "priority"` on the wire but a 2026-08-30 interleaved run showed no speed gain (ratio 0.994). No `grok-*-fast` picker row, no Priority field on xAI. A stale `grok-4.6-fast` id is peeled to `grok-4.6`.
+- Codex Fast matches Codex CLI 0.149+: peel eligible `-fast`, send `service_tier: "priority"`, add `x-codex-routing-hint: model=<id>;tier=priority`, and force `store: false`. Identity is `codex_cli_rs/0.151.0`. Ineligible leftovers such as `gpt-5.4-mini-fast` are peeled locally.
+- About: drop **Open release page** / **打开发布页**. Opening the tab still only compares GitHub latest vs installed. Tapping **检查更新** when latest is newer runs `dsh plugin --profile web update dsh-plugin-oauth-subs` (PATH `dsh`, this package only). After a successful write, restart `dsh web`.
+- GLM **导入本机会话** reads ZCode Desktop `~/.zcode/v2/config.json`. BigModel CLI init posts `{ provider: "bigmodel" }` (`zcode` now 500s).
+
 ## 0.0.32
 
 - AGENTS.md: checklist for a new OAuth family (tab icon, one card per account, design rules).
