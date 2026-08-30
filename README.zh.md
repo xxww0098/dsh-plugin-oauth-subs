@@ -150,7 +150,7 @@ Grok 4.6 思考深度为 **low / medium / high / xhigh**。Grok 4.5 为 **low / 
 
 进度条按剩余百分比从绿过渡到黄再到红（`hsl(剩余 × 1.2, 78%, 38%)`）。
 
-ChatGPT / Codex Plus、Pro 可能有银行的周窗口重置券。还有剩余券时，Codex 卡片里会嵌一套 **重置额度** 框，**每张券一颗按钮**，标着这张券何时过期。确认后插件会 `POST` `chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume`，请求体为 `{ redeem_request_id }`，并带 `idempotencyKey`。消耗的是 **周额度窗口**。Grok 没有对应能力。
+ChatGPT / Codex Plus、Pro 可能有银行的周窗口重置券。还有剩余券时，Codex 卡片里会嵌一套 **重置额度** 框，**每张券一颗按钮**，标着这张券何时过期。点 **重置** 会打开 DeepSeek Harness 的风险确认弹窗（警告图标、勾选确认，再点确认）。确认后插件会 `POST` `chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume`，请求体为 `{ redeem_request_id }`，并带 `idempotencyKey`。消耗的是 **周额度窗口**。Grok 没有对应能力。
 
 ## 配置
 

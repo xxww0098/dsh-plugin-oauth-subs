@@ -150,7 +150,7 @@ After sign-in the account title shows a **Plan** badge. Codex reads JWT `chatgpt
 
 Bars interpolate green → yellow → red with remaining percent (`hsl(remaining × 1.2, 78%, 38%)`).
 
-ChatGPT / Codex Plus and Pro may bank extra weekly-window resets. When the account has unused credits, the Codex card nests a **Reset credits** box and draws **one button per credit**, labeled with that credit’s expiry. Confirm, then the plugin `POST`s `chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume` with `{ redeem_request_id }` plus `idempotencyKey`. That spend refreshes the **weekly** window. Grok has no equivalent.
+ChatGPT / Codex Plus and Pro may bank extra weekly-window resets. When the account has unused credits, the Codex card nests a **Reset credits** box and draws **one button per credit**, labeled with that credit’s expiry. Clicking **Reset** opens the DeepSeek Harness risk-confirmation dialog (warning icon, checkbox acknowledgement, then confirm). Confirm, then the plugin `POST`s `chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume` with `{ redeem_request_id }` plus `idempotencyKey`. That spend refreshes the **weekly** window. Grok has no equivalent.
 
 ## Options
 

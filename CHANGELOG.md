@@ -2,7 +2,8 @@
 
 ## 0.0.15
 
-- Codex reset credits refresh the **weekly** window, not the 5-hour window. Settings copy, confirm dialog, and README now say so.
+- Codex reset credits refresh the **weekly** window, not the 5-hour window.
+- Codex reset opens DeepSeek Harness `RiskConfirmation` (checkbox ack + confirm). If the primitive is not on the module table, the Settings page uses a `--dsw-alias-*` clone of the same dialog.
 - Drop the unused Codex / Grok loopback hint lines from the Settings cards.
 - Redesign Codex reset-quota UI: nest a credit box inside the ChatGPT Codex card and render one reset button per credit, keyed to that credit’s expiry instead of a lumped “N left” control. The snapshot now forwards each available credit (`id`, `expiresAt`).
 - Restructure the source tree into `src/oauth/{codex,grok}`, `src/ui`, and `src/utils`. Host code is TypeScript; Settings UI stays React. Compiled output lives in `lib/`. Binding conventions: `AGENTS.md`. Recurring faults still go in `docs/error.md`.

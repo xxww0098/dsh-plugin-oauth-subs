@@ -12,6 +12,12 @@ window.__ModuleLoader__.load({
     const exports = module.exports
     const { createElement: h, useCallback, useEffect, useState } = require('react')
 
+    function tryHost(id) {
+      try { return require(id) } catch { return undefined }
+    }
+    const primitives = tryHost('@deepseek-ai/dsh-client-ui-primitives')
+    const HostRisk = primitives && (primitives.RiskConfirmation || primitives.default && primitives.default.RiskConfirmation)
+
     const name = 'dsh-plugin-oauth-subs-client'
     const inject = ['slots', 'connection']
 
@@ -46,7 +52,11 @@ window.__ModuleLoader__.load({
         quotaResetBank: '重置额度',
         quotaResetHint: '每张券过期时间不同，按钮按券单独渲染。点一次消耗一张，刷新周额度窗口。',
         quotaResetLeft: '重置额度 · 剩 {n} 次',
-        quotaResetConfirm: '确认重置 Codex 周额度窗口？将消耗这张重置券（{n} 过期）。',
+        quotaResetWarnTitle: '警告',
+        quotaResetConfirm: '将消耗这张重置券（{n} 过期），并立即刷新 Codex 周额度窗口。此操作无法撤销。',
+        quotaResetAck: '我已了解风险，确认消耗这张重置券',
+        quotaResetConfirmOk: '确认重置',
+        quotaResetClose: '关闭',
         quotaResetBusy: '正在重置…',
         quotaResetEmpty: '没有可用的重置券。',
         quotaResetExpires: '{n} 过期',
@@ -104,7 +114,11 @@ window.__ModuleLoader__.load({
         quotaResetBank: 'Reset credits',
         quotaResetHint: 'Each credit expires on its own clock. One button per credit; spending one refreshes the weekly window.',
         quotaResetLeft: 'Reset quota · {n} left',
-        quotaResetConfirm: 'Reset the Codex weekly window? This spends the credit that expires {n}.',
+        quotaResetWarnTitle: 'Warning',
+        quotaResetConfirm: 'This spends the credit that expires {n} and immediately refreshes the Codex weekly window. It cannot be undone.',
+        quotaResetAck: 'I understand the risk and want to spend this credit',
+        quotaResetConfirmOk: 'Reset now',
+        quotaResetClose: 'Close',
         quotaResetBusy: 'Resetting…',
         quotaResetEmpty: 'No reset credits left.',
         quotaResetExpires: 'Expires {n}',
@@ -290,6 +304,16 @@ window.__ModuleLoader__.load({
   border-color: transparent; background: var(--osubs-fill-2);
 }
 .osubs-btn--primary:hover { background: color-mix(in oklab, currentColor 19%, transparent); border-color: transparent; }
+.osubs-btn--danger {
+  font-weight: 600;
+  color: var(--osubs-bad);
+  border-color: color-mix(in oklab, var(--osubs-bad) 42%, transparent);
+  background: color-mix(in oklab, var(--osubs-bad) 14%, transparent);
+}
+.osubs-btn--danger:hover {
+  background: color-mix(in oklab, var(--osubs-bad) 22%, transparent);
+  border-color: color-mix(in oklab, var(--osubs-bad) 58%, transparent);
+}
 .osubs-btn--sm { height: 28px; padding: 0 10px; font-size: 11px; }
 
 .osubs-seg { display: inline-flex; border: 1px solid var(--osubs-edge); border-radius: 8px; overflow: hidden; flex: none; }
@@ -363,6 +387,89 @@ window.__ModuleLoader__.load({
 .osubs-reset-meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .osubs-reset-when { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; }
 .osubs-reset-rel { font-size: 11px; color: var(--osubs-muted); }
+
+.osubs-dsw {
+  position: fixed; inset: 0; z-index: 1000;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+}
+.osubs-dsw-mask {
+  position: absolute; inset: 0;
+  background: var(--dsw-alias-bg-mask-1, rgba(0, 0, 0, .24));
+  backdrop-filter: var(--dsw-mask-blur, blur(2px));
+}
+.osubs-dsw-card {
+  position: relative; z-index: 1;
+  display: flex; flex-direction: column; gap: 20px;
+  width: min(440px, 100%);
+  max-height: calc(100vh - 48px);
+  padding: 0 0 24px;
+  overflow: hidden;
+  border: 1px solid var(--dsw-alias-border-inverted, color-mix(in oklab, currentColor 10%, transparent));
+  border-radius: 24px;
+  background: var(--dsw-alias-bg-layer-2, Canvas);
+  color: var(--dsw-alias-label-primary, CanvasText);
+  box-shadow: var(--dsw-shadow-lv3, 0 18px 48px color-mix(in oklab, #000 22%, transparent));
+}
+.osubs-dsw-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 22px 14px 12px 24px;
+}
+.osubs-dsw-title {
+  margin: 0;
+  font-size: 16px; line-height: 24px; font-weight: 500;
+  color: var(--dsw-alias-label-primary, inherit);
+}
+.osubs-dsw-x {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border: 0; border-radius: 8px;
+  background: transparent; color: var(--dsw-alias-label-secondary, inherit);
+  cursor: pointer;
+}
+.osubs-dsw-x:hover { background: var(--dsw-alias-interactive-bg-hover, color-mix(in oklab, currentColor 8%, transparent)); }
+.osubs-dsw-body { display: flex; flex-direction: column; padding: 0 24px; }
+.osubs-dsw-warning {
+  display: flex; align-items: flex-start; gap: 10px;
+  color: var(--dsw-alias-label-secondary, color-mix(in oklab, currentColor 72%, transparent));
+  font-size: 14px; line-height: 22px;
+}
+.osubs-dsw-warning p { margin: 0; }
+.osubs-dsw-icon { flex: none; margin-top: 2px; color: var(--dsw-alias-state-error-primary, #e5484d); }
+.osubs-dsw-ack {
+  display: flex; align-items: flex-start; gap: 10px; margin-top: 20px;
+  color: var(--dsw-alias-label-primary, inherit);
+  font-size: 14px; line-height: 22px; cursor: pointer;
+}
+.osubs-dsw-ack input {
+  flex: none; width: 16px; height: 16px; margin: 3px 0 0;
+  accent-color: var(--dsw-alias-button-primary-fill, currentColor);
+}
+.osubs-dsw-foot {
+  display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+  padding: 0 24px;
+}
+.osubs-dsw-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 36px; padding: 0 16px;
+  border-radius: 18px; border: 1px solid transparent;
+  background: transparent; color: inherit;
+  font: inherit; font-size: 14px; font-weight: 500; line-height: 1;
+  cursor: pointer;
+}
+.osubs-dsw-btn--outline {
+  min-width: 72px;
+  border-color: var(--dsw-alias-border-l2, color-mix(in oklab, currentColor 18%, transparent));
+}
+.osubs-dsw-btn--outline:hover { background: var(--dsw-alias-interactive-bg-hover, color-mix(in oklab, currentColor 8%, transparent)); }
+.osubs-dsw-btn--primary {
+  min-width: 136px;
+  background: var(--dsw-alias-button-primary-fill, #0f1115);
+  color: var(--dsw-alias-label-primary-foreground, #fff);
+}
+.osubs-dsw-btn--primary:hover:not(:disabled) {
+  background: var(--dsw-alias-button-primary-hover, color-mix(in oklab, #0f1115 88%, #fff));
+}
+.osubs-dsw-btn:disabled { opacity: .4; cursor: default; pointer-events: none; }
 
 .osubs-family { display: flex; flex-direction: column; gap: 10px; }
 .osubs-family + .osubs-family { padding-top: 18px; border-top: 1px solid var(--osubs-hair); }
@@ -475,21 +582,127 @@ window.__ModuleLoader__.load({
       }))
     }
 
+    function IconWarning({ size = 18 }) {
+      return h('svg', {
+        width: size, height: size, viewBox: '0 0 14 14', fill: 'none',
+        className: 'osubs-dsw-icon', 'aria-hidden': 'true',
+      },
+        h('path', { d: 'M6.3002 3.32843H7.69986V7.79657H6.3002V3.32843Z', fill: 'currentColor' }),
+        h('path', { d: 'M6.3002 9.01935H7.69986V10.6711H6.3002V9.01935Z', fill: 'currentColor' }),
+        h('path', { d: 'M12.6328 6.99976C12.6328 3.88874 10.111 1.36694 7 1.36694C3.88899 1.36695 1.3672 3.88875 1.36719 6.99976C1.36719 10.1108 3.88899 12.6326 7 12.6326C10.111 12.6326 12.6328 10.1108 12.6328 6.99976ZM13.8582 6.99976C13.8582 10.7873 10.7876 13.8579 7 13.8579C3.21244 13.8579 0.141846 10.7873 0.141846 6.99976C0.141857 3.2122 3.21245 0.141612 7 0.141602C10.7876 0.141602 13.8581 3.21219 13.8582 6.99976Z', fill: 'currentColor' }),
+      )
+    }
+
+    function IconClose({ size = 14 }) {
+      return h('svg', {
+        width: size, height: size, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': 'true',
+      },
+        h('path', { d: 'M14.1168 13.197L13.197 14.1167L1.8833 2.80303L2.80309 1.88324L14.1168 13.197Z', fill: 'currentColor' }),
+        h('path', { d: 'M13.197 1.88326L14.1168 2.80305L2.80309 14.1168L1.8833 13.197L13.197 1.88326Z', fill: 'currentColor' }),
+      )
+    }
+
+    function WarnDialog({ t, when, acknowledged, onAcknowledgedChange, onCancel, onConfirm }) {
+      const description = fill(t.quotaResetConfirm, when)
+      useEffect(() => {
+        const onKey = (event) => {
+          if (event.key === 'Escape') onCancel()
+        }
+        window.addEventListener('keydown', onKey)
+        return () => window.removeEventListener('keydown', onKey)
+      }, [onCancel])
+      if (typeof HostRisk === 'function') {
+        return h(HostRisk, {
+          open: true,
+          title: t.quotaResetWarnTitle,
+          description,
+          acknowledgeLabel: t.quotaResetAck,
+          cancelLabel: t.cancel,
+          closeLabel: t.quotaResetClose,
+          confirmLabel: t.quotaResetConfirmOk,
+          acknowledged,
+          onAcknowledgedChange,
+          onCancel,
+          onConfirm,
+        })
+      }
+      return h('div', { className: 'osubs-dsw', role: 'presentation' },
+        h('div', { className: 'osubs-dsw-mask', 'aria-hidden': 'true', onClick: onCancel }),
+        h('div', {
+          className: 'osubs-dsw-card',
+          role: 'alertdialog',
+          'aria-modal': 'true',
+          'aria-labelledby': 'osubs-warn-title',
+          'aria-describedby': 'osubs-warn-body',
+        },
+          h('div', { className: 'osubs-dsw-head' },
+            h('h2', { id: 'osubs-warn-title', className: 'osubs-dsw-title' }, t.quotaResetWarnTitle),
+            h('button', {
+              type: 'button',
+              className: 'osubs-dsw-x',
+              'aria-label': t.quotaResetClose,
+              onClick: onCancel,
+            }, h(IconClose)),
+          ),
+          h('div', { className: 'osubs-dsw-body' },
+            h('div', { className: 'osubs-dsw-warning' },
+              h(IconWarning),
+              h('p', { id: 'osubs-warn-body' }, description),
+            ),
+            h('label', { className: 'osubs-dsw-ack' },
+              h('input', {
+                type: 'checkbox',
+                checked: acknowledged,
+                autoFocus: true,
+                onChange: (event) => onAcknowledgedChange(event.currentTarget.checked),
+              }),
+              h('span', null, t.quotaResetAck),
+            ),
+          ),
+          h('div', { className: 'osubs-dsw-foot' },
+            h('button', { type: 'button', className: 'osubs-dsw-btn osubs-dsw-btn--outline', onClick: onCancel }, t.cancel),
+            h('button', {
+              type: 'button',
+              className: 'osubs-dsw-btn osubs-dsw-btn--primary',
+              disabled: !acknowledged,
+              onClick: onConfirm,
+            }, t.quotaResetConfirmOk),
+          ),
+        ),
+      )
+    }
+
     function QuotaResetBox({ t, quota, onReset }) {
       const [busyId, setBusyId] = useState(null)
+      const [pending, setPending] = useState(null)
+      const [acked, setAcked] = useState(false)
       const credits = resetCreditRows(quota)
       if (typeof onReset !== 'function') return null
-      const spend = async (credit) => {
+      const ask = (credit) => {
         if (busyId) return
-        const when = formatStamp(credit.expiresAt) || formatReset(credit.expiresAt, t, 'expires') || '—'
-        if (typeof window !== 'undefined' && !window.confirm(fill(t.quotaResetConfirm, when))) return
-        setBusyId(credit.id ?? 'reset')
+        setAcked(false)
+        setPending(credit)
+      }
+      const close = () => {
+        setPending(null)
+        setAcked(false)
+      }
+      const confirm = async () => {
+        if (!pending || busyId || !acked) return
+        const credit = pending
+        const key = credit.id ?? 'reset'
+        setPending(null)
+        setAcked(false)
+        setBusyId(key)
         try {
           await onReset(credit)
         } finally {
           setBusyId(null)
         }
       }
+      const pendingWhen = pending
+        ? (formatStamp(pending.expiresAt) || formatReset(pending.expiresAt, t, 'expires') || '—')
+        : ''
       return h('div', { className: 'osubs-qbox' },
         h('div', { className: 'osubs-qbox-head' },
           h('span', { className: 'osubs-eyebrow' }, t.quotaResetBank),
@@ -512,11 +725,19 @@ window.__ModuleLoader__.load({
               h(Button, {
                 size: 'sm',
                 disabled: busy,
-                onClick: () => spend(credit),
+                onClick: () => ask(credit),
                 label: busyId === key ? t.quotaResetBusy : t.quotaReset,
               }),
             )
           }),
+        pending && h(WarnDialog, {
+          t,
+          when: pendingWhen,
+          acknowledged: acked,
+          onAcknowledgedChange: setAcked,
+          onCancel: close,
+          onConfirm: confirm,
+        }),
       )
     }
 
