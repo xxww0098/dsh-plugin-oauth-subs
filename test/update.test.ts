@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { EventEmitter } from 'node:events'
 import { test } from 'node:test'
 import {
   classifyAsset,
@@ -6,6 +7,10 @@ import {
   fetchLatest,
   hostPlatform,
   pickDownloads,
+  pluginUpdateArgs,
+  pluginUpdateCommand,
+  profileFromBaseUrl,
+  runPluginUpdate,
   RELEASES_API,
 } from '../lib/utils/update.js'
 
@@ -72,4 +77,68 @@ test('fetchLatest compares installed version against GitHub latest', async () =>
   assert.equal(ahead.status, 'ahead')
   const current = await fetchLatest({ fetchFn, current: '0.0.15', platform: 'win32' })
   assert.equal(current.status, 'current')
+})
+
+test('profileFromBaseUrl reads $DSH_HOME/profiles/<name>', () => {
+  assert.equal(profileFromBaseUrl('file:///Users/me/.dsh/profiles/web'), 'web')
+  assert.equal(profileFromBaseUrl('file:///home/me/.dsh/profiles/headless/'), 'headless')
+  assert.equal(profileFromBaseUrl('https://example'), 'web')
+  assert.equal(profileFromBaseUrl(undefined), 'web')
+})
+
+test('pluginUpdateArgs targets this package on the named profile', () => {
+  assert.deepEqual(pluginUpdateArgs('web'), ['plugin', '--profile', 'web', 'update', 'dsh-plugin-oauth-subs'])
+  assert.equal(pluginUpdateCommand('web'), 'dsh plugin --profile web update dsh-plugin-oauth-subs')
+})
+
+function fakeChild({ code = 0, error, stderr = '', stdout = '' } = {}) {
+  return (_cmd, _args, _opts) => {
+    const child = new EventEmitter()
+    child.stdout = new EventEmitter()
+    child.stderr = new EventEmitter()
+    child.kill = () => undefined
+    queueMicrotask(() => {
+      if (stdout) child.stdout.emit('data', stdout)
+      if (stderr) child.stderr.emit('data', stderr)
+      if (error) child.emit('error', error)
+      else child.emit('close', code)
+    })
+    return child
+  }
+}
+
+test('runPluginUpdate spawns PATH dsh and reports success', async () => {
+  const seen = []
+  const spawnFn = (cmd, args, opts) => {
+    seen.push({ cmd, args, cwd: opts.cwd, stdio: opts.stdio })
+    return fakeChild({ code: 0 })(cmd, args, opts)
+  }
+  const result = await runPluginUpdate({ spawnFn, profile: 'web', env: { DSH_HOME: process.cwd() } })
+  assert.equal(result.ok, true)
+  assert.equal(result.status, 'installed')
+  assert.equal(result.command, 'dsh plugin --profile web update dsh-plugin-oauth-subs')
+  assert.equal(seen[0].cmd, 'dsh')
+  assert.deepEqual(seen[0].args, ['plugin', '--profile', 'web', 'update', 'dsh-plugin-oauth-subs'])
+})
+
+test('runPluginUpdate maps ENOENT to missing-dsh', async () => {
+  const result = await runPluginUpdate({
+    spawnFn: fakeChild({ error: Object.assign(new Error('spawn dsh ENOENT'), { code: 'ENOENT' }) }),
+    profile: 'web',
+    env: { DSH_HOME: process.cwd() },
+  })
+  assert.equal(result.ok, false)
+  assert.equal(result.status, 'missing-dsh')
+  assert.match(result.error, /not found on PATH/)
+})
+
+test('runPluginUpdate surfaces a nonzero exit', async () => {
+  const result = await runPluginUpdate({
+    spawnFn: fakeChild({ code: 1, stderr: 'ERR_PNPM_NO_IMPORTER  no pnpm-workspace.yaml' }),
+    profile: 'web',
+    env: { DSH_HOME: process.cwd() },
+  })
+  assert.equal(result.ok, false)
+  assert.equal(result.status, 'failed')
+  assert.match(result.error, /no pnpm-workspace/)
 })

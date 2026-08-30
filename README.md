@@ -15,7 +15,7 @@ dsh plugin --profile web add https://github.com/xxww0098/dsh-plugin-oauth-subs
 dsh web
 ```
 
-Open **Settings → OAuth subs**. Five icon tabs: Codex, Grok, **Z.ai (GLM)**, Models, About. Sign in more than once per family; **one card per account**, click a card to switch. Chat and quota use the active account. **GLM** matches ZCode's welcome screen: **Z.ai (global)** and **BigModel (China)** OAuth, plus paste-an-API-key. **About** links the GitHub repo and checks the latest release. Or mount the bundle patch by hand:
+Open **Settings → OAuth subs**. Five icon tabs: Codex, Grok, **Z.ai (GLM)**, Models, About. Sign in more than once per family; **one card per account**, click a card to switch. Chat and quota use the active account. **GLM** matches ZCode's welcome screen: **Z.ai (global)** and **BigModel (China)** OAuth, plus paste-an-API-key. **About** links the GitHub repo. Check for updates compares GitHub latest and, when newer, runs `dsh plugin --profile web update dsh-plugin-oauth-subs`. Restart `dsh web` to load the new module. Or mount the bundle patch by hand:
 
 ```yaml
 - insert:

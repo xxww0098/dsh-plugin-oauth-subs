@@ -5,6 +5,7 @@
 - Drop Grok Fast. Grok 4.6 accepted `service_tier: "priority"` on the wire but a 2026-08-30 interleaved run showed no speed gain (ratio 0.994). No `grok-*-fast` picker row, no Priority field on xAI, no Settings/README advertising. A stale `grok-4.6-fast` id is peeled to `grok-4.6`.
 - Codex Fast matches Codex CLI 0.149+: peel eligible `-fast`, send `service_tier: "priority"`, and add `x-codex-routing-hint: model=<id>;tier=priority`. ChatGPT Codex Responses also get `store: false` (400 otherwise). Ineligible leftovers such as `gpt-5.4-mini-fast` are peeled locally instead of forwarded as a fake model id.
 - Codex client identity is `codex_cli_rs/0.151.0`. ChatGPT Codex often echoes `created=auto` / `completed=default` even when Priority is requested; that echo is not a confirmation. The 2026-08-26 Luna 1.54× claim was not reproduced on 2026-08-30.
+- About: drop **Open release page** / **打开发布页**. Opening the About tab still only compares GitHub latest vs installed. Tapping **检查更新** when latest is newer runs `dsh plugin --profile web update dsh-plugin-oauth-subs` (PATH `dsh`, this package only). Already current does not reinstall. After a successful write, say so and ask to restart `dsh web` — the running process still has the old module. No zip download rows, no silent DSH kill, no `npm i -g @deepseek-ai/dsh`.
 
 ## 0.0.25
 

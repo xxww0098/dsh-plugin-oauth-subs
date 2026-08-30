@@ -1,5 +1,25 @@
 # 错误记录
 
+## 2026-08-30：关于页「打开发布页」是假安装入口；检查更新只比版本
+
+### 现象
+
+设置 → OAuth 订阅 → 关于。检查更新只打 `api.github.com/.../releases/latest`，装的是 0.0.24，显示 **有新版本 v0.0.26**。底下还有 **打开发布页**，点开 GitHub release / zip。DSH 插件的真实升级是 `dsh plugin --profile web update`，不是下 zip。0.0.21 已经去掉假 Win/mac/linux 下载行，但发布页链接还在。
+
+### 根因
+
+`checkUpdate` 只做 GitHub 比版本。关于页把 `latest.url` 画成独立 CTA。宿主没有自动升级器；用户本机的 zsh 包装才是「停 DSH → `dsh plugin --profile web update` → 再开 `dsh web`」。CLI 文档：`dsh plugin --profile <args...>` 转发给 profile 目录里的 pnpm，跑完要重启 profile，热重载只管 `cordis.patch.yml`，不管 bundle 更新。
+
+### 修复（0.0.26）
+
+- 去掉「打开发布页」/ Open release page。仓库链接、版本行、**有新版本** 状态保留。
+- 打开关于页仍只比较版本（不重装）。点 **检查更新** 且 latest > installed 时 spawn PATH 上的 `dsh plugin --profile web update dsh-plugin-oauth-subs`（只动本包）。已是最新不重装。
+- 成功后提示重启 `dsh web`。找不到 `dsh`、超时、非 0 退出都写在关于页。不 `npm i -g`，不杀当前进程。
+
+### 验证
+
+- `npm test`：`apply: false` 不 spawn；`status === current` 不 spawn；有新版本时参数正好是 `dsh plugin --profile web update dsh-plugin-oauth-subs`；ENOENT → `missing-dsh`。
+
 ## 2026-08-30：Grok Fast 无加速；Codex Fast 只靠 body 字段，回显一直是 default
 
 ### 现象
@@ -119,7 +139,7 @@ JWT / usage 的 slug：`$200` 仍是 `pro`，`$100` 是 `prolite`（openai/codex
 
 ### 修复（0.0.21）
 
-通用 zip 不再生成下载行。关于页只保留检查更新和「打开发布页」。只有文件名带 win/mac/linux 的资源才会出现下载行。
+通用 zip 不再生成下载行。关于页当时还留了「打开发布页」。只有文件名带 win/mac/linux 的资源才会出现下载行。0.0.26 去掉发布页链接，检查更新在有新版本时会跑 `dsh plugin --profile web update`。
 
 ### 验证
 

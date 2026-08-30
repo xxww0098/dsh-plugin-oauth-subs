@@ -39,15 +39,17 @@ import {
 } from './models.js'
 import { TokenManager } from './tokens.js'
 import { QuotaStore } from './quota.js'
-import { fetchLatest, localUpdateInfo } from '../utils/update.js'
+import { fetchLatest, localUpdateInfo, runPluginUpdate, DEFAULT_PROFILE } from '../utils/update.js'
 
 export class AuthController {
-  constructor({ authPath, prefix, origin, settings, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs }) {
+  constructor({ authPath, prefix, origin, settings, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, spawnFn, profile }) {
     this.authPath = authPath
     this.prefix = prefix
     this.origin = origin
     this.settings = settings
     this.grokLogin = grokLogin
+    this.spawnFn = spawnFn
+    this.profile = profile || DEFAULT_PROFILE
     this.onAuthChanged = onAuthChanged
     this.models = models ?? new ModelSwitch()
     this.flows = new OAuthFlowManager()
@@ -173,9 +175,24 @@ export class AuthController {
     return { codex, grok, glm }
   }
 
-  async checkUpdate() {
+  async checkUpdate(payload = {}) {
+    const apply = payload?.apply === true
     try {
-      return await fetchLatest({ fetchFn: this.fetchFn, platform: process.platform })
+      const info = await fetchLatest({ fetchFn: this.fetchFn, platform: process.platform })
+      if (!apply || info.status !== 'update') {
+        return { ...info, apply: { status: 'none' } }
+      }
+      const result = await runPluginUpdate({
+        spawnFn: this.spawnFn,
+        profile: this.profile,
+      })
+      if (result.ok) {
+        return { ...info, apply: { status: 'installed', restart: true, command: result.command } }
+      }
+      return {
+        ...info,
+        apply: { status: result.status, error: result.error, command: result.command },
+      }
     } catch (error) {
       return {
         ...localUpdateInfo(),
@@ -183,6 +200,7 @@ export class AuthController {
         error: error instanceof Error ? error.message : String(error),
         latest: undefined,
         assets: [],
+        apply: { status: 'none' },
       }
     }
   }

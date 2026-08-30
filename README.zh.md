@@ -15,7 +15,7 @@ dsh plugin --profile web add https://github.com/xxww0098/dsh-plugin-oauth-subs
 dsh web
 ```
 
-打开 **设置 → OAuth 订阅**。顶栏五个图标页签：Codex、Grok、**Z.ai（智谱 GLM）**、模型、关于。每个系列可登录多个账号，**每个账号一张卡片**；点卡片切换。对话和额度走当前账号。**GLM** 与 ZCode 欢迎页一样，分 **Z.ai（全球）** 和 **BigModel（中国）** 两套 OAuth，也可粘贴 API key。登录后签发 Coding Plan 密钥。**关于** 里有 GitHub 仓库链接，并检查最新发布。也可以用 `cordis.patch.yml` 手动挂载：
+打开 **设置 → OAuth 订阅**。顶栏五个图标页签：Codex、Grok、**Z.ai（智谱 GLM）**、模型、关于。每个系列可登录多个账号，**每个账号一张卡片**；点卡片切换。对话和额度走当前账号。**GLM** 与 ZCode 欢迎页一样，分 **Z.ai（全球）** 和 **BigModel（中国）** 两套 OAuth，也可粘贴 API key。登录后签发 Coding Plan 密钥。**关于** 里有 GitHub 仓库链接。检查更新会对比 GitHub 最新版，有新版本时跑 `dsh plugin --profile web update dsh-plugin-oauth-subs`。重启 `dsh web` 后才会加载新模块。也可以用 `cordis.patch.yml` 手动挂载：
 
 ```yaml
 - insert:
