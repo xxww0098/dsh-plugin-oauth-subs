@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.28
+
+- Model picker no longer shows 文本 / 图文 input tags.
+
 ## 0.0.27
 
 - About: one 13px typeface for the fact rows. OS is only **macOS / Windows / Linux** — no “本机”.
