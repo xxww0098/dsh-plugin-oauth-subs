@@ -39,6 +39,8 @@ export declare function localUpdateInfo(platform?: NodeJS.Platform): {
     repo: string;
     repoSlug: string;
 };
+/** GitHub `published_at` as `YYYY-MM-DD HH:mm:ss` in Asia/Shanghai. */
+export declare function formatPublishedAt(iso: any): string;
 export declare function fetchLatest({ fetchFn, current, platform, timeoutMs }?: {
     fetchFn?: typeof fetch;
     platform?: NodeJS.Platform;
@@ -50,7 +52,7 @@ export declare function fetchLatest({ fetchFn, current, platform, timeoutMs }?: 
         tag: string;
         name: any;
         url: any;
-        publishedAt: any;
+        publishedAt: string;
     };
     assets: {
         platform: string;

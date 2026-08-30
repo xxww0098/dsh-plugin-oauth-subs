@@ -1520,7 +1520,7 @@ window.__ModuleLoader__.load({
               h('span', null, t.latest),
               h('span', null, latest.tag),
             ),
-            latest?.publishedAt && h('p', { className: 'osubs-note' }, fill(t.published, latest.publishedAt.replace('T', ' ').replace(/Z$/, ' UTC'))),
+            latest?.publishedAt && h('p', { className: 'osubs-note' }, fill(t.published, latest.publishedAt)),
             update?.status && h('p', { className: `osubs-hint${tone ? ` ${tone}` : ''}` }, statusLabel(t, update)),
             apply && h('p', { className: `osubs-hint${applyTone ? ` ${applyTone}` : ''}` }, apply),
           ),

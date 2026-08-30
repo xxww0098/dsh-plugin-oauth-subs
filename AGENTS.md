@@ -197,7 +197,8 @@ Binding UI rules:
   `--osubs-edge` + `--osubs-fill`.
 - Type: 13px UI, 12.5px emails. Tags (`osubs-tag`) for plan / in-use /
   Fast / 900K — small, not a second heading. About kv rows are one 13px
-  face; OS is only `macOS` / `Windows` / `Linux` (no “本机”).
+  face; OS is only `macOS` / `Windows` / `Linux` (no “本机”). Release
+  time is `YYYY-MM-DD HH:mm:ss` in `Asia/Shanghai`, not UTC.
 - Model picker: family name + `已开启 n / m`. **No 文本 / 图文 tags.**
   Checkboxes and All/None stay **disabled until that family is signed
   in**.

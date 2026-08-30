@@ -92,6 +92,26 @@ export function localUpdateInfo(platform = process.platform) {
   }
 }
 
+/** GitHub `published_at` as `YYYY-MM-DD HH:mm:ss` in Asia/Shanghai. */
+export function formatPublishedAt(iso) {
+  if (typeof iso !== 'string' || !iso.trim()) return undefined
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return iso.trim()
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(date)
+  const pick = (type) => parts.find((part) => part.type === type)?.value || ''
+  const hour = pick('hour') === '24' ? '00' : pick('hour')
+  return `${pick('year')}-${pick('month')}-${pick('day')} ${hour}:${pick('minute')}:${pick('second')}`
+}
+
 export async function fetchLatest({ fetchFn = fetch, current, platform = process.platform, timeoutMs = 10_000 } = {}) {
   const local = localUpdateInfo(platform)
   const installed = parseVersion(current ?? local.version)?.raw ?? local.version
@@ -120,7 +140,7 @@ export async function fetchLatest({ fetchFn = fetch, current, platform = process
         tag: typeof tag === 'string' ? tag : undefined,
         name: typeof payload?.name === 'string' ? payload.name : undefined,
         url: html,
-        publishedAt: typeof payload?.published_at === 'string' ? payload.published_at : undefined,
+        publishedAt: formatPublishedAt(payload?.published_at),
       },
       assets: pickDownloads(payload?.assets, local.platform),
     }
