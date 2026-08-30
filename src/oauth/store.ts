@@ -10,8 +10,9 @@ import { chmod, mkdir, open, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
 import { formatPlanLabel } from './plan.js'
+import { kiroAccountId, kiroMethodLabel } from './kiro/index.js'
 
-export const PROVIDER_IDS = Object.freeze(['codex', 'grok', 'glm'])
+export const PROVIDER_IDS = Object.freeze(['codex', 'grok', 'glm', 'kiro'])
 
 export function defaultDataDir() {
   return join(homedir(), '.dsh', 'plugins', 'oauth-subs')
@@ -83,6 +84,8 @@ export function accountIdOf(provider, session) {
       : 'glm'
     const region = session.region === 'bigmodel' ? 'bigmodel' : 'zai'
     return `${account}@${region}`
+  } else if (provider === 'kiro') {
+    return kiroAccountId(session)
   } else if (typeof session.account === 'string' && session.account.trim()) {
     return session.account.trim()
   }
@@ -209,7 +212,9 @@ export async function saveSession(provider, session, path, options) {
   return serialize(file, async () => {
     const store = await loadStore(file)
     const vault = asVault(provider, store[provider])
-    const id = accountIdOf(provider, session)
+    const id = typeof options?.id === 'string' && options.id.trim()
+      ? options.id.trim()
+      : accountIdOf(provider, session)
     vault.accounts[id] = session
     if (activate || !vault.activeId || !vault.accounts[vault.activeId]) vault.activeId = id
     store[provider] = vault
@@ -266,6 +271,16 @@ export function publicSession(provider, session) {
       planType,
       planLabel,
       region: session.region === 'bigmodel' ? 'bigmodel' : 'zai',
+      expiresAt: session.expiresAt,
+    }
+  }
+  if (provider === 'kiro') {
+    return {
+      account: session.account,
+      planType,
+      planLabel,
+      method: session.authMethod,
+      methodLabel: kiroMethodLabel(session),
       expiresAt: session.expiresAt,
     }
   }

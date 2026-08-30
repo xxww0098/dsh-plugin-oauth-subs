@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml/badge.svg)](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml)
 
-把 **ChatGPT / Codex 订阅** 和 **xAI Grok 订阅** 接到 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。登录走官方 OAuth，不需要 API Key。
+把 **ChatGPT / Codex**、**xAI Grok**、**智谱 GLM** 和 **AWS Kiro** 订阅接到 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。登录走官方 OAuth；Kiro 还可贴 `ksk_` API key。
 
 本机 Responses 代理 + `llm-pi-ai` 路由同步。
 
@@ -15,7 +15,7 @@ dsh plugin --profile web add https://github.com/xxww0098/dsh-plugin-oauth-subs
 dsh web
 ```
 
-打开 **设置 → OAuth 订阅**。顶栏五个图标页签：Codex、Grok、**Z.ai（智谱 GLM）**、模型、关于。每个系列可登录多个账号，**每个账号一张卡片，额度各自显示**；点卡片切换当前对话账号。**GLM** 与 ZCode 欢迎页一样，分 **Z.ai（全球）** 和 **BigModel（中国）** 两套 OAuth，也可粘贴 API key。登录后签发 Coding Plan 密钥。**关于** 里有 GitHub 仓库链接。检查更新会对比 GitHub 最新版，有新版本时跑 `dsh plugin --profile web update dsh-plugin-oauth-subs`。重启 `dsh web` 后才会加载新模块。也可以用 `cordis.patch.yml` 手动挂载：
+打开 **设置 → OAuth 订阅**。顶栏图标页签：Codex、Grok、**Z.ai（智谱 GLM）**、**Kiro**、模型、关于。每个系列可登录多个账号，**每个账号一张卡片，额度各自显示**；点卡片切换当前对话账号。**GLM** 与 ZCode 欢迎页一样，分 **Z.ai（全球）** 和 **BigModel（中国）** 两套 OAuth，也可粘贴 API key。登录后签发 Coding Plan 密钥。**Kiro** 叠放 Social / GitHub / Google、Builder ID、企业 IdC、Entra / Azure AD，以及 `ksk_` 密钥。**关于** 里有 GitHub 仓库链接。检查更新会对比 GitHub 最新版，有新版本时跑 `dsh plugin --profile web update dsh-plugin-oauth-subs`。重启 `dsh web` 后才会加载新模块。也可以用 `cordis.patch.yml` 手动挂载：
 
 ```yaml
 - insert:
@@ -35,13 +35,21 @@ pnpm dsh web --patch ./cordis.patch.yml
 | xAI Grok | **设备码（默认）**；PKCE 回环 `127.0.0.1:56121` 作备选 | `b1a00492-073a-47ea-816f-4c329264a828` | `api.x.ai/v1/responses` |
 | 智谱 GLM · Z.ai（全球） | ZCode CLI 轮询，`provider: zai`，再换发 `id.secret` | `client_P8X5CMWmlaRO9gyO-KSqtg` | `api.z.ai/api/coding/paas/v4` |
 | 智谱 GLM · BigModel（中国） | 同一 CLI 轮询，`provider: bigmodel`，poll JWT 即密钥 | `zcode` | `open.bigmodel.cn/api/coding/paas/v4` |
+| AWS Kiro · Social | `app.kiro.dev` 门户 PKCE，回调端口 3128…53153 | （门户无固定 client） | `prod.us-east-1.auth.desktop.kiro.dev` |
+| AWS Kiro · Builder ID | AWS SSO OIDC 设备码，每次登录注册 public client | 登录时签发 | `https://view.awsapps.com/start` |
+| AWS Kiro · Enterprise / IdC | 同一设备码，打组织自己的 Start URL | 登录时签发 | `https://oidc.{region}.amazonaws.com` |
+| AWS Kiro · Entra / Azure AD | 粘贴 refresh token；public client `refresh_token` grant | 你的 Entra client id | `*.microsoftonline.com` token 端点 |
+| AWS Kiro · API key | 粘贴 `ksk_…` | — | Bearer，不刷新 |
 
-已在本机登录过 Codex CLI、Grok CLI、Hermes 或 ZCode Desktop 时，点 **导入本机会话**：
+已在本机登录过 Codex CLI、Grok CLI、Hermes、ZCode Desktop、Kiro IDE 或 kiro.rs 时，点 **导入本机会话**：
 
 - `~/.codex/auth.json`
 - `~/.grok/auth.json`
 - `~/.hermes/auth.json`
 - `~/.zcode/v2/config.json`（ZCode Desktop；旧路径 `~/.zcode/cli/config.json` / `~/.zcode/config.json` 仍读）
+- `credentials.json`（kiro.rs 当前目录）
+- `~/.kiro/credentials.json`
+- `~/.aws/sso/cache/kiro-auth-token.json`
 
 令牌写在 profile 数据目录 `data/dsh-plugin-oauth-subs/auth.json`，权限 `0600`。每个系列的多个账号存在这个文件的保险库里；旧的单会话文件仍能读。开启/关闭的模型写在同目录的 `models.json`。
 

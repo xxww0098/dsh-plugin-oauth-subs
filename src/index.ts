@@ -4,7 +4,8 @@
  * A Cordis plugin (export apply + inject + Config) that:
  *   1. runs a loopback OpenAI Responses proxy on 127.0.0.1:<port>
  *   2. drives ChatGPT Codex PKCE, xAI Grok device-code / PKCE, and
- *      Zhipu GLM Z.ai / BigModel CLI-poll logins
+ *      Zhipu GLM Z.ai / BigModel CLI-poll, and AWS Kiro (Social / Builder ID /
+ *      IdC / Entra / API key) logins
  *   3. syncs logged-in catalogs into llm-pi-ai
  *
  * The client half (Settings > OAuth 订阅) is discovered from package.json
@@ -80,8 +81,8 @@ function registerRpc(ctx, controller) {
     }
     const methods = {
       status: () => controller.snapshot(),
-      login: (payload) => controller.login(payload?.provider, payload?.mode ?? payload?.region),
-      key: (payload) => controller.useKey(payload?.provider, payload?.key, payload?.region ?? payload?.mode),
+      login: (payload) => controller.login(payload?.provider, payload),
+      key: (payload) => controller.useKey(payload?.provider, payload?.key, payload),
       manual: (payload) => controller.manual(payload?.provider, payload?.input),
       cancel: (payload) => controller.cancel(payload?.provider),
       logout: (payload) => controller.logout(payload?.provider, payload?.id),
@@ -199,6 +200,12 @@ export {
   GLM_AUTHORIZE_URL,
   glmUpstreamHeaders,
 } from './oauth/glm/index.js'
+export {
+  KIRO_PORTAL_URL,
+  KIRO_MODELS,
+  kiroUsageHeaders,
+  kiroSession,
+} from './oauth/kiro/index.js'
 export { OAUTH_CREDENTIAL_REF, ModelSwitch } from './oauth/models.js'
 export { defaultDataDir } from './oauth/store.js'
 export { AuthController } from './oauth/controller.js'
@@ -210,7 +217,7 @@ export {
   isCodex900kBase,
   peelContextSuffix,
 } from './utils/context-mode.js'
-export { parseCodexUsage, parseGrokBilling, parseGlmQuota, parseResetCredits, QuotaStore } from './oauth/quota.js'
+export { parseCodexUsage, parseGrokBilling, parseGlmQuota, parseKiroUsage, parseResetCredits, QuotaStore } from './oauth/quota.js'
 export { formatPlanLabel, CODEX_PLAN_NAMES } from './oauth/plan.js'
 export {
   REPO_URL,

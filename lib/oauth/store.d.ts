@@ -24,6 +24,8 @@ export declare function listAccounts(provider: any, path: any): Promise<({
     planLabel: any;
     expiresAt: any;
     region?: undefined;
+    method?: undefined;
+    methodLabel?: undefined;
     scopes?: undefined;
     id: string;
     active: boolean;
@@ -33,6 +35,19 @@ export declare function listAccounts(provider: any, path: any): Promise<({
     planLabel: any;
     region: string;
     expiresAt: any;
+    method?: undefined;
+    methodLabel?: undefined;
+    scopes?: undefined;
+    id: string;
+    active: boolean;
+} | {
+    account: any;
+    planType: any;
+    planLabel: any;
+    method: any;
+    methodLabel: string;
+    expiresAt: any;
+    region?: undefined;
     scopes?: undefined;
     id: string;
     active: boolean;
@@ -43,6 +58,8 @@ export declare function listAccounts(provider: any, path: any): Promise<({
     scopes: any;
     expiresAt: any;
     region?: undefined;
+    method?: undefined;
+    methodLabel?: undefined;
     id: string;
     active: boolean;
 })[]>;
@@ -61,6 +78,8 @@ export declare function publicSession(provider: any, session: any): {
     planLabel: any;
     expiresAt: any;
     region?: undefined;
+    method?: undefined;
+    methodLabel?: undefined;
     scopes?: undefined;
 } | {
     account: any;
@@ -68,6 +87,17 @@ export declare function publicSession(provider: any, session: any): {
     planLabel: any;
     region: string;
     expiresAt: any;
+    method?: undefined;
+    methodLabel?: undefined;
+    scopes?: undefined;
+} | {
+    account: any;
+    planType: any;
+    planLabel: any;
+    method: any;
+    methodLabel: string;
+    expiresAt: any;
+    region?: undefined;
     scopes?: undefined;
 } | {
     account: any;
@@ -76,4 +106,6 @@ export declare function publicSession(provider: any, session: any): {
     scopes: any;
     expiresAt: any;
     region?: undefined;
+    method?: undefined;
+    methodLabel?: undefined;
 };

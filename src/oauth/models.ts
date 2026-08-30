@@ -6,6 +6,7 @@
 import { CODEX_MODELS, CODEX_REASONING_EFFORTS } from './codex/index.js'
 import { GROK_MODELS } from './grok/index.js'
 import { GLM_MODELS } from './glm/index.js'
+import { KIRO_MODELS } from './kiro/index.js'
 import { modelSupportsFastMode } from '../utils/fast-mode.js'
 import { readPrivateText, writePrivateText } from './store.js'
 import {
@@ -27,7 +28,7 @@ export function modelKey(provider, id) {
 }
 
 export function ownedProviderIds(prefix) {
-  return [`${prefix}-codex`, `${prefix}-grok`, `${prefix}-glm`]
+  return [`${prefix}-codex`, `${prefix}-grok`, `${prefix}-glm`, `${prefix}-kiro`]
 }
 
 function harnessInput(model) {
@@ -111,6 +112,15 @@ export function buildProviders({ prefix, origin, loggedIn }) {
       models: GLM_MODELS.map(toHarnessModel),
     }
   }
+  if (loggedIn.kiro) {
+    providers[`${prefix}-kiro`] = {
+      displayName: 'OAuth · Kiro',
+      api: 'openai',
+      apiKeyEnv: OAUTH_CREDENTIAL_REF,
+      baseURL: `${origin}/kiro/v1`,
+      models: KIRO_MODELS.map(toHarnessModel),
+    }
+  }
   return providers
 }
 
@@ -123,7 +133,7 @@ export function describeProviders(providers) {
 }
 
 export function catalogProviders({ prefix, origin }) {
-  return buildProviders({ prefix, origin, loggedIn: { codex: true, grok: true, glm: true } })
+  return buildProviders({ prefix, origin, loggedIn: { codex: true, grok: true, glm: true, kiro: true } })
 }
 
 export function catalogKeys(providers) {
@@ -136,6 +146,7 @@ export function familyOfProvider(provider) {
   if (String(provider).endsWith('-codex')) return 'codex'
   if (String(provider).endsWith('-grok')) return 'grok'
   if (String(provider).endsWith('-glm')) return 'glm'
+  if (String(provider).endsWith('-kiro')) return 'kiro'
   return String(provider)
 }
 
@@ -264,7 +275,7 @@ export class ModelSwitch {
   }
 
   async setFamily(family, on, catalog) {
-    if (family !== 'codex' && family !== 'grok' && family !== 'glm') throw new Error('family must be codex, grok, or glm')
+    if (family !== 'codex' && family !== 'grok' && family !== 'glm' && family !== 'kiro') throw new Error('family must be codex, grok, glm, or kiro')
     for (const key of catalogKeys(catalog)) {
       const provider = key.slice(0, key.indexOf('/'))
       if (familyOfProvider(provider) !== family) continue
