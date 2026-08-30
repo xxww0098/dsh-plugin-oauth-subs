@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.41
+
+- Antigravity: Gemini `functionResponse.response` must be a Struct. Wrap array tool results (`{ result }`) so long sessions stop 400 INVALID_ARGUMENT.
+- GLM: map DSH `developer` role → `system` on Coding Plan chat hop; fixes 400 `1214 角色信息不正确` on first turn.
+- Kiro Social: token exchange `redirect_uri` now matches authorize (origin only, no `/oauth/callback`); fixes HTTP 500 `Oops, something went wrong`.
+
 ## 0.0.40
 
 - Antigravity mimics **Antigravity.app / hub**, not Antigravity IDE.app. Cloud Code default is `https://daily-cloudcode-pa.googleapis.com` (`loadCodeAssist`, `fetchAvailableModels`, `generateContent`, `streamGenerateContent`). Prod `cloudcode-pa` is an IDE fallback only when daily fails (5xx / transport). Fingerprint version is the installed Antigravity.app short version, or **2.11.0**. UA stays `antigravity/hub/<ver> <os>/<arch>` + `ideType: ANTIGRAVITY`. Chat/loadCodeAssist stay User-Agent only.
