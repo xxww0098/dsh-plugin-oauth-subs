@@ -20,9 +20,7 @@ export const GROK_USER_AGENT = `grok-cli/${GROK_CLIENT_VERSION}`
 export const GROK_SCOPE = 'openid profile email offline_access grok-cli:access api:access'
 export const GROK_CALLBACK_PATH = '/callback'
 export const GROK_PREEMPT_MS = 2 * 60_000
-export const GROK_CONTEXT_WINDOW = 256_000
 export const GROK_LARGE_CONTEXT = 500_000
-export const GROK_DEFAULT_MAX_TOKENS = 32_000
 
 /** grok-4.5: low / medium / high. Reasoning cannot be turned off. */
 export const GROK_REASONING_45 = Object.freeze({
@@ -31,7 +29,7 @@ export const GROK_REASONING_45 = Object.freeze({
   high: 'high',
 })
 
-/** grok-4.6 adds xhigh. grok-4 does not accept reasoning.effort. */
+/** grok-4.6 adds xhigh. */
 export const GROK_REASONING_46 = Object.freeze({
   low: 'low',
   medium: 'medium',
@@ -53,13 +51,6 @@ export const GROK_MODELS = Object.freeze([
     contextWindow: GROK_LARGE_CONTEXT,
     maxTokens: GROK_LARGE_CONTEXT,
     reasoningEfforts: GROK_REASONING_45,
-  },
-  {
-    id: 'grok-4',
-    name: 'Grok 4',
-    contextWindow: GROK_CONTEXT_WINDOW,
-    maxTokens: GROK_DEFAULT_MAX_TOKENS,
-    reasoningEfforts: false,
   },
 ])
 

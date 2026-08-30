@@ -28,7 +28,7 @@ export declare const Config: z<Schemastery.ObjectS<{
 }>>;
 export declare function apply(ctx: any, config?: {}): void;
 export { CODEX_CLIENT_ID, CODEX_AUTHORIZE_URL, CODEX_TOKEN_URL, CODEX_API_URL, CODEX_ORIGINATOR, CODEX_USER_AGENT, codexCredentialHeaders, } from './oauth/codex/index.js';
-export { GROK_CLIENT_ID, GROK_DISCOVERY_URL, GROK_API_URL, GROK_USER_AGENT, GROK_CONTEXT_WINDOW, GROK_LARGE_CONTEXT, GROK_REASONING_45, GROK_REASONING_46, grokCredentialHeaders, } from './oauth/grok/index.js';
+export { GROK_CLIENT_ID, GROK_DISCOVERY_URL, GROK_API_URL, GROK_USER_AGENT, GROK_LARGE_CONTEXT, GROK_REASONING_45, GROK_REASONING_46, grokCredentialHeaders, } from './oauth/grok/index.js';
 export { GLM_CLIENT_ID, GLM_CODING_URL, GLM_AUTHORIZE_URL, glmUpstreamHeaders, } from './oauth/glm/index.js';
 export { KIRO_PORTAL_URL, KIRO_MODELS, kiroUsageHeaders, kiroSession, } from './oauth/kiro/index.js';
 export { OAUTH_CREDENTIAL_REF, ModelSwitch } from './oauth/models.js';

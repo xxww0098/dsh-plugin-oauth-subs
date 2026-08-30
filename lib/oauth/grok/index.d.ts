@@ -16,23 +16,21 @@ export declare const GROK_USER_AGENT = "grok-cli/0.2.93";
 export declare const GROK_SCOPE = "openid profile email offline_access grok-cli:access api:access";
 export declare const GROK_CALLBACK_PATH = "/callback";
 export declare const GROK_PREEMPT_MS: number;
-export declare const GROK_CONTEXT_WINDOW = 256000;
 export declare const GROK_LARGE_CONTEXT = 500000;
-export declare const GROK_DEFAULT_MAX_TOKENS = 32000;
 /** grok-4.5: low / medium / high. Reasoning cannot be turned off. */
 export declare const GROK_REASONING_45: Readonly<{
     low: "low";
     medium: "medium";
     high: "high";
 }>;
-/** grok-4.6 adds xhigh. grok-4 does not accept reasoning.effort. */
+/** grok-4.6 adds xhigh. */
 export declare const GROK_REASONING_46: Readonly<{
     low: "low";
     medium: "medium";
     high: "high";
     xhigh: "xhigh";
 }>;
-export declare const GROK_MODELS: readonly ({
+export declare const GROK_MODELS: readonly {
     id: string;
     name: string;
     contextWindow: number;
@@ -42,13 +40,7 @@ export declare const GROK_MODELS: readonly ({
         medium: "medium";
         high: "high";
     }>;
-} | {
-    id: string;
-    name: string;
-    contextWindow: number;
-    maxTokens: number;
-    reasoningEfforts: boolean;
-})[];
+}[];
 export declare const GROK_TIER_NAMES: Readonly<{
     0: "Free";
     1: "SuperGrok";
