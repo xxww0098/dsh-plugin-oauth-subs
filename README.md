@@ -117,7 +117,7 @@ It is **Priority Processing** (`service_tier: "priority"`), not a different mode
 
 Default is off. Measured on `gpt-5.6-luna`: **88.3 against 57.5 output tokens per second — 1.54×**, matching the catalog's "1.5x speed, increased usage". The gain is on generation throughput only: time to first token and prompt caching are unchanged.
 
-Login, token refresh, chat, and quota use one official client identity: Codex pairs `originator: codex_cli_rs` with `User-Agent: codex_cli_rs/<version>`; Grok sends `x-xai-token-auth: xai-grok-cli` and `User-Agent: grok-cli/<version>`. GLM uses ZCode's CLI poll: global `provider: zai` (client `client_P8X5CMWmlaRO9gyO-KSqtg`, then `api.z.ai/api/auth/z/login` to mint `id.secret`); China `provider: zcode` (`bigmodel.cn/login`, poll JWT is the Coding Plan bearer). Chat hits `/api/coding/paas/v4` on `api.z.ai` or `open.bigmodel.cn`. No TLS fingerprint impersonation.
+Login, token refresh, chat, and quota use one official client identity: Codex pairs `originator: codex_cli_rs` with `User-Agent: codex_cli_rs/<version>`; Grok sends `x-xai-token-auth: xai-grok-cli` and `User-Agent: grok-cli/<version>`. GLM uses ZCode's CLI poll: global `provider: zai` (client `client_P8X5CMWmlaRO9gyO-KSqtg`, then `api.z.ai/api/auth/z/login` to mint `id.secret`); China `provider: zcode` (`bigmodel.cn/login`, poll JWT is the Coding Plan bearer). Chat and quota hop as **ZCode Desktop 3.10.1** (`User-Agent: ZCode/3.10.1 ai-sdk/anthropic/3.0.81`, `X-ZCode-App-Version`, `X-ZCode-Agent: glm`, `Referer` / `X-Title: Z Code`) to `api.z.ai` or `open.bigmodel.cn` `/api/coding/paas/v4`. CLI init/poll against `zcode.z.ai` stays a CLI-shaped `ZCode/3.10.1` identity. No TLS fingerprint impersonation.
 
 ## Models
 

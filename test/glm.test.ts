@@ -4,14 +4,20 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import {
+  GLM_APP_VERSION,
   GLM_CLIENT_ID,
   GLM_CLI_INIT_URL,
+  GLM_CLI_USER_AGENT,
+  GLM_TITLE,
+  GLM_USER_AGENT,
   completeGlmCli,
   glmCliInit,
   glmCliProvider,
   glmCodingUrl,
+  glmDesktopHeaders,
   glmQuotaUrl,
   glmSession,
+  glmUpstreamHeaders,
   normalizeGlmRegion,
   parseCliInit,
   parseCliPoll,
@@ -91,6 +97,39 @@ test('glmSession stores a durable never-expiring key', () => {
   assert.ok(session.expiresAt > Date.now() + 1e12)
 })
 
+function assertZcodeDesktopFingerprint(headers) {
+  const blob = JSON.stringify(headers)
+  assert.equal(headers['user-agent'], 'ZCode/3.10.1 ai-sdk/anthropic/3.0.81')
+  assert.equal(headers['user-agent'], GLM_USER_AGENT)
+  assert.equal(headers['X-ZCode-App-Version'], '3.10.1')
+  assert.equal(headers['X-ZCode-App-Version'], GLM_APP_VERSION)
+  assert.equal(headers['X-ZCode-Agent'], 'glm')
+  assert.equal(headers['HTTP-Referer'], 'https://zcode.z.ai')
+  assert.equal(headers.referer, 'https://zcode.z.ai')
+  assert.equal(headers['X-Title'], 'Z Code')
+  assert.equal(headers['X-Title'], GLM_TITLE)
+  assert.match(headers['x-zcode-trace-id'], /^[0-9a-f]+$/)
+  assert.match(headers['x-request-id'], /^[0-9a-f]+$/)
+  assert.match(headers['x-query-id'], /^[0-9a-f]+$/)
+  assert.match(headers['x-session-id'], /^sess_[0-9a-f]{24}$/)
+  assert.equal(blob.includes('dsh-plugin-oauth-subs'), false)
+}
+
+test('glmUpstreamHeaders is ZCode Desktop 3.10.1, not this plugin', () => {
+  const session = glmSession({ accessToken: 'id.secret', account: 'dev@z.ai' })
+  const first = glmUpstreamHeaders(session)
+  const second = glmUpstreamHeaders(session)
+  assert.equal(first.authorization, 'Bearer id.secret')
+  assert.equal(first.accept, 'application/json')
+  assertZcodeDesktopFingerprint(first)
+  assertZcodeDesktopFingerprint(second)
+  assert.equal(first['x-session-id'], second['x-session-id'])
+  assert.notEqual(first['x-zcode-trace-id'], second['x-zcode-trace-id'])
+  assert.notEqual(first['x-request-id'], second['x-request-id'])
+  assert.notEqual(first['x-query-id'], second['x-query-id'])
+  assert.equal(glmDesktopHeaders()['x-session-id'], first['x-session-id'])
+})
+
 test('glmCodingUrl and glmQuotaUrl split Z.ai vs BigModel', () => {
   assert.equal(glmCodingUrl('zai').startsWith('https://api.z.ai/'), true)
   assert.equal(glmCodingUrl('bigmodel').startsWith('https://open.bigmodel.cn/'), true)
@@ -101,7 +140,7 @@ test('completeGlmCli mints id.secret through business login + copy', async () =>
   const calls = []
   const fetchFn = async (url, init = {}) => {
     const href = String(url)
-    calls.push({ href, method: init.method ?? 'GET', body: init.body })
+    calls.push({ href, method: init.method ?? 'GET', body: init.body, headers: init.headers })
     if (href.includes('/api/auth/z/login')) {
       return json({ code: 200, success: true, data: { access_token: 'biz' } })
     }
@@ -137,6 +176,10 @@ test('completeGlmCli mints id.secret through business login + copy', async () =>
   assert.equal(session.region, 'zai')
   assert.equal(calls[0].href.includes('/api/auth/z/login'), true)
   assert.equal(GLM_CLI_INIT_URL.includes('zcode.z.ai'), true)
+  for (const call of calls) {
+    assertZcodeDesktopFingerprint(call.headers)
+    assert.equal(String(call.href).includes('dsh-plugin-oauth-subs'), false)
+  }
 })
 
 test('completeGlmCli for BigModel uses poll JWT and skips biz mint', async () => {
@@ -154,8 +197,10 @@ test('completeGlmCli for BigModel uses poll JWT and skips biz mint', async () =>
 
 test('glmCliInit posts ZCode provider id zcode for BigModel', async () => {
   let body
+  let headers
   const fetchFn = async (url, init = {}) => {
     body = init.body
+    headers = init.headers
     return json({
       code: 0,
       data: {
@@ -170,6 +215,9 @@ test('glmCliInit posts ZCode provider id zcode for BigModel', async () => {
   assert.equal(JSON.parse(body).provider, 'zcode')
   assert.equal(started.region, 'bigmodel')
   assert.equal(started.authorizeUrl.includes('bigmodel.cn'), true)
+  assert.equal(headers['user-agent'], GLM_CLI_USER_AGENT)
+  assert.equal(headers['user-agent'], 'ZCode/3.10.1')
+  assert.equal(JSON.stringify(headers).includes('dsh-plugin-oauth-subs'), false)
 })
 
 test('parseGlmQuota maps credit windows and plan level', () => {

@@ -1,5 +1,38 @@
 # 错误记录
 
+## 2026-08-30：GLM 对话/额度带第三方 UA，拿不到 ZCode 1.5 倍额度
+
+### 现象
+
+官方限时（至 2026-08-31）：「GLM Coding Plan 用户在 ZCode 中登录使用即可享受全天 1.5 倍使用额度」，同等调用按 67% 扣减。本插件走 `api.z.ai` / `open.bigmodel.cn` 的 `/api/coding/paas/v4` 与 `/api/monitor/usage/quota/limit` 时，`User-Agent` 是 `dsh-plugin-oauth-subs/0.0.22`，没有 `X-ZCode-*` / `Referer` / `X-Title`，上游按第三方客户端记账，吃不到 Desktop 加成。
+
+### 证据
+
+- `src/oauth/glm/index.ts`：`GLM_USER_AGENT = 'dsh-plugin-oauth-subs/0.0.22'`；`glmUpstreamHeaders` 只发 Bearer + accept + 该 UA。
+- 对话 hop：`src/oauth/proxy.ts` `POST /glm/v1/chat/completions` → `glmCodingUrl`，`headersOf: glmUpstreamHeaders`。`forward()` 原样展开 `headersOf`，不会剥额外头。
+- 额度：`fetchGlmQuota` 同样用 `glmUpstreamHeaders`。
+- 官方 Desktop 3.10.1（2026-08-28，https://zcode.z.ai/en/changelog）。Coding Plan hop 的指纹来自 Desktop `resources/glm/zcode.cjs` 的 `eao()` / `rao()`，不是 Electron host 对 `zcode.z.ai` 的 `Z Code@electron` / `ZCode/unknown`（旧 dump：vibe-coding-labs/zcode-reverse-engineer）。不要抄 CLIProxyAPI 的 claude-cli 伪装头。
+
+### 根因
+
+代理层（本插件）。把插件名写进 Coding Plan 上游 UA，Z.ai 按非 ZCode Desktop 计费。
+
+### 修复（0.0.26）
+
+`glmDesktopHeaders` / `glmUpstreamHeaders` 与 biz GET/POST（`api.z.ai` / `open.bigmodel.cn` 的 login、customer、api_keys、quota）改为 Desktop 3.10.1：
+
+- `User-Agent: ZCode/3.10.1 ai-sdk/anthropic/3.0.81`
+- `X-ZCode-App-Version: 3.10.1`，`X-ZCode-Agent: glm`
+- `x-zcode-trace-id` / `x-request-id` / `x-query-id` 每请求新 hex；`x-session-id` 进程内稳定 `sess_<24hex>`
+- `HTTP-Referer` + `Referer: https://zcode.z.ai`，`X-Title: Z Code`
+
+`zcode.z.ai` CLI init/poll 用 `ZCode/3.10.1`，不带 Desktop 套件，也不带插件名。`GLM_KEY_NAME` 仍是本地 key 标签，不进 UA。
+
+### 验证
+
+- `npm test`：UA / X-ZCode / Referer / X-Title 锁定；每请求 id 变化、session id 稳定；chat/quota/biz hop 头里没有 `dsh-plugin-oauth-subs`。
+- 代理 `POST /glm/v1/chat/completions` 原样转发这些头。
+
 ## 2026-08-30：Codex Pro 徽章没区分 5x / 20x
 
 ### 现象

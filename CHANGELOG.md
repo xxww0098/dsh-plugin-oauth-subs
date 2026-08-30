@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.26
+
+- GLM chat and quota hops fingerprint as official **ZCode Desktop 3.10.1** (`User-Agent: ZCode/3.10.1 ai-sdk/anthropic/3.0.81` plus X-ZCode / Referer / X-Title). Stops leaking `dsh-plugin-oauth-subs` on api.z.ai / open.bigmodel.cn so Coding Plan's limited-time 1.5× ZCode quota applies. OAuth CLI init/poll stays a CLI-shaped `ZCode/3.10.1` identity.
+
 ## 0.0.25
 
 - Codex plan badge splits **Pro 20x** (`pro`, $200) and **Pro 5x** (`prolite`, $100). GLM `pro` stays Pro.

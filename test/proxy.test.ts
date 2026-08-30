@@ -3,6 +3,7 @@ import { request as httpRequest } from 'node:http'
 import { test } from 'node:test'
 import { createProxy, describeError, hasOutputEvent, STREAM_ATTEMPTS, codexCacheSessionId } from '../lib/oauth/proxy.js'
 import { CODEX_API_URL } from '../lib/oauth/codex/index.js'
+import { GLM_CODING_URL, GLM_USER_AGENT } from '../lib/oauth/glm/index.js'
 
 function rawRequest(port, { method = 'GET', path = '/', headers = {}, body } = {}) {
   return new Promise((resolve, reject) => {
@@ -62,6 +63,57 @@ test('proxy requires the local bearer and forwards Codex Responses', async () =>
     assert.equal(seen[0].headers['session-id'], 'session-cache-1')
     assert.equal(seen[0].headers['x-client-request-id'], 'session-cache-1')
     assert.equal(seen[0].headers['x-grok-conv-id'], undefined)
+  } finally {
+    await proxy.close()
+  }
+})
+
+test('proxy GLM chat hop forwards ZCode Desktop 3.10.1 headers', async () => {
+  const seen = []
+  const fetchFn = async (url, init) => {
+    seen.push({ url: String(url), headers: init.headers })
+    return new Response('{"id":"chat"}', { status: 200, headers: { 'content-type': 'application/json' } })
+  }
+  const proxy = createProxy({
+    port: 0,
+    apiKey: 'secret-key',
+    fetchFn,
+    tokens: {
+      glm: { session: async () => ({ accessToken: 'id.secret', region: 'zai' }) },
+    },
+  })
+  const server = await proxy.listen()
+  const { port } = server.address()
+  try {
+    const first = await fetch(`http://127.0.0.1:${port}/glm/v1/chat/completions`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer secret-key', 'content-type': 'application/json' },
+      body: '{"model":"glm-5.3","messages":[{"role":"user","content":"hi"}]}',
+    })
+    const second = await fetch(`http://127.0.0.1:${port}/glm/v1/chat/completions`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer secret-key', 'content-type': 'application/json' },
+      body: '{"model":"glm-5.3","messages":[{"role":"user","content":"hi"}]}',
+    })
+    assert.equal(first.status, 200)
+    assert.equal(second.status, 200)
+    assert.equal(seen[0].url, GLM_CODING_URL)
+    assert.equal(seen[0].url.endsWith('/api/coding/paas/v4/chat/completions'), true)
+    for (const row of seen) {
+      const headers = row.headers
+      assert.equal(headers.authorization, 'Bearer id.secret')
+      assert.equal(headers['user-agent'], GLM_USER_AGENT)
+      assert.equal(headers['user-agent'], 'ZCode/3.10.1 ai-sdk/anthropic/3.0.81')
+      assert.equal(headers['X-ZCode-App-Version'], '3.10.1')
+      assert.equal(headers['X-ZCode-Agent'], 'glm')
+      assert.equal(headers['HTTP-Referer'], 'https://zcode.z.ai')
+      assert.equal(headers.referer, 'https://zcode.z.ai')
+      assert.equal(headers['X-Title'], 'Z Code')
+      assert.match(headers['x-session-id'], /^sess_[0-9a-f]{24}$/)
+      assert.equal(JSON.stringify(headers).includes('dsh-plugin-oauth-subs'), false)
+    }
+    assert.equal(seen[0].headers['x-session-id'], seen[1].headers['x-session-id'])
+    assert.notEqual(seen[0].headers['x-zcode-trace-id'], seen[1].headers['x-zcode-trace-id'])
   } finally {
     await proxy.close()
   }

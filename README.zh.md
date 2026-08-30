@@ -117,7 +117,7 @@ node --experimental-strip-types scripts/analyze-session.ts --fail-below 80 path/
 
 默认关闭。在 `gpt-5.6-luna` 上实测：**输出 88.3 对 57.5 token/秒，1.54 倍**，与目录标称的 "1.5x speed, increased usage" 吻合。提升只在生成吞吐上——首 token 时间和缓存命中不受影响。
 
-登录、刷新令牌、对话和额度走同一套官方客户端身份：Codex 为成对的 `originator: codex_cli_rs` 与 `User-Agent: codex_cli_rs/<version>`；Grok 为 `x-xai-token-auth: xai-grok-cli` 与 `User-Agent: grok-cli/<version>`。GLM 走 ZCode CLI 轮询：国际站 `provider: zai`（client `client_P8X5CMWmlaRO9gyO-KSqtg`，再 `api.z.ai/api/auth/z/login` 换长期 `id.secret`）；国内站 `provider: zcode`（`bigmodel.cn/login`，poll JWT 直接当 Coding Plan 密钥）。对话分别打 `api.z.ai` 与 `open.bigmodel.cn` 的 `/api/coding/paas/v4`。不模拟浏览器 TLS 指纹。
+登录、刷新令牌、对话和额度走同一套官方客户端身份：Codex 为成对的 `originator: codex_cli_rs` 与 `User-Agent: codex_cli_rs/<version>`；Grok 为 `x-xai-token-auth: xai-grok-cli` 与 `User-Agent: grok-cli/<version>`。GLM 走 ZCode CLI 轮询：国际站 `provider: zai`（client `client_P8X5CMWmlaRO9gyO-KSqtg`，再 `api.z.ai/api/auth/z/login` 换长期 `id.secret`）；国内站 `provider: zcode`（`bigmodel.cn/login`，poll JWT 直接当 Coding Plan 密钥）。对话和额度按 **ZCode Desktop 3.10.1** 指纹发出（`User-Agent: ZCode/3.10.1 ai-sdk/anthropic/3.0.81`、`X-ZCode-App-Version`、`X-ZCode-Agent: glm`、`Referer` / `X-Title: Z Code`），打 `api.z.ai` 或 `open.bigmodel.cn` 的 `/api/coding/paas/v4`。`zcode.z.ai` 上的 CLI init/poll 仍用 CLI 形态的 `ZCode/3.10.1`。不模拟浏览器 TLS 指纹。
 
 ## 模型选择
 
