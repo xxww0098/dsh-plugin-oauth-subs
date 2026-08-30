@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { formatPlanLabel, pickPlanRaw } from '../lib/plan.js'
-import { grokSession, grokTierFromValue, grokTierName } from '../lib/grok.js'
-import { publicSession } from '../lib/store.js'
+import { formatPlanLabel, pickPlanRaw } from '../lib/oauth/plan.js'
+import { grokSession, grokTierFromValue, grokTierName } from '../lib/oauth/grok/index.js'
+import { publicSession } from '../lib/oauth/store.js'
 
 function jwt(payload) {
   const header = Buffer.from(JSON.stringify({ alg: 'none' })).toString('base64url')

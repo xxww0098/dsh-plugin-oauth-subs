@@ -8,7 +8,7 @@
  */
 
 import { readFile } from 'node:fs/promises'
-import { analyzeSession, formatReport } from '../lib/analyze-session.js'
+import { analyzeSession, formatReport } from '../lib/utils/analyze-session.js'
 
 function parseArgs(argv) {
   const args = { json: false, failBelow: null, path: null }

@@ -15,8 +15,8 @@
   "main": "lib/index.js",
   "exports": {
     ".": "./lib/index.js",
-    "./client": "./lib/client.js",
-    "./analyze-session": "./lib/analyze-session.js",
+    "./client": "./lib/ui/client.js",
+    "./analyze-session": "./lib/utils/analyze-session.js",
     "./package.json": "./package.json"
   },
   "dsh": {
@@ -35,11 +35,13 @@
     "lib",
     "scripts",
     "cordis.patch.yml",
+    "AGENTS.md",
     "README.md",
     "README.zh.md"
   ],
   "scripts": {
-    "test": "node --test 'test/*.test.mjs'",
+    "build": "tsc && mkdir -p lib/ui && cp src/ui/client.js lib/ui/client.js",
+    "test": "npm run build && node --test 'test/*.test.mjs'",
     "analyze": "node scripts/analyze-session.mjs"
   },
   "keywords": [
@@ -57,5 +59,9 @@
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "^3.18.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "typescript": "^5.9.3"
   }
 }

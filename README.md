@@ -56,6 +56,17 @@ DeepSeek Harness (call plane)
 
 This is not a second LLM adapter. After you close Settings, DSH still calls the loopback proxy through `llm-pi-ai`. The proxy binds loopback only and checks the local credential `DSH_OAUTH_SUBS_API_KEY`.
 
+Stack, module tree, and the `docs/error.md` rule are in [AGENTS.md](AGENTS.md). Host code is TypeScript under `src/oauth` and `src/utils`. Settings is React under `src/ui`. Do not edit compiled `lib/`.
+
+```text
+src/
+  oauth/codex/     Codex catalog, identity, Responses body
+  oauth/grok/      Grok catalog, identity, device-code
+  oauth/           proxy, PKCE, quota, models
+  ui/              React Settings (classic-script factory)
+  utils/           jwt, pkce, fast/context, session analyzer
+```
+
 ## Reliability
 
 The proxy is the cache-affinity and stream-retry path. Two contracts matter on a long Codex turn:

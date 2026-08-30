@@ -3,8 +3,8 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { AuthController } from '../lib/controller.js'
-import { saveSession } from '../lib/store.js'
+import { AuthController } from '../lib/oauth/controller.js'
+import { saveSession } from '../lib/oauth/store.js'
 
 test('snapshot reports logged-out accounts and empty providers', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))

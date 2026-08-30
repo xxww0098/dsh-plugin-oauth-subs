@@ -6,9 +6,9 @@ import {
   isCodex900kBase,
   isLargeContextId,
   peelContextSuffix,
-} from '../lib/context-mode.js'
-import { applyFastMode } from '../lib/fast-mode.js'
-import { withPickerVariants } from '../lib/models.js'
+} from '../lib/utils/context-mode.js'
+import { applyFastMode } from '../lib/utils/fast-mode.js'
+import { withPickerVariants } from '../lib/oauth/models.js'
 
 test('only gpt-5.4 and gpt-5.6 Sol/Terra/Luna get a large-context variant', () => {
   assert.equal(isCodex900kBase('gpt-5.6-sol'), true)

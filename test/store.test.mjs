@@ -3,7 +3,7 @@ import { chmod, mkdtemp, readFile, stat, symlink, writeFile } from 'node:fs/prom
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { deleteSession, getSession, loadStore, saveSession } from '../lib/store.js'
+import { deleteSession, getSession, loadStore, saveSession } from '../lib/oauth/store.js'
 
 test('saveSession writes atomically with mode 0600 and preserves siblings', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))

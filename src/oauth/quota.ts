@@ -16,14 +16,14 @@ import {
   CODEX_RESET_CREDITS_URL,
   CODEX_RESET_CONSUME_URL,
   codexUpstreamHeaders,
-} from './codex.js'
+} from './codex/index.js'
 import {
   GROK_BILLING_URL,
   GROK_CLI_USER_URL,
   GROK_CLIENT_VERSION,
   grokTierFromValue,
   grokUpstreamHeaders,
-} from './grok.js'
+} from './grok/index.js'
 import { formatPlanLabel, pickPlanRaw } from './plan.js'
 
 export const QUOTA_TTL_MS = 60_000

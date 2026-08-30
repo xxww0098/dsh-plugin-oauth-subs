@@ -56,6 +56,17 @@ DeepSeek Harness（调用面）
 
 本插件不是第二套 LLM 适配器。设置页关闭后，DSH 仍通过 `llm-pi-ai` 调本机代理。代理只监听回环地址，并用本地凭证 `DSH_OAUTH_SUBS_API_KEY` 鉴权。
 
+技术栈、模块树、以及「错误写入 `docs/error.md`」写在 [AGENTS.md](AGENTS.md)。宿主半边是 `src/oauth` 与 `src/utils` 的 TypeScript，设置页是 `src/ui` 的 React。不要手改编译产物 `lib/`。
+
+```text
+src/
+  oauth/codex/     Codex 目录、身份、Responses 请求体
+  oauth/grok/      Grok 目录、身份、设备码
+  oauth/           代理、PKCE、额度、模型
+  ui/              React 设置页（classic-script factory）
+  utils/           jwt、pkce、fast/context、会话分析器
+```
+
 ## 可靠性
 
 代理负责缓存亲和与流重试。长 Codex 会话里有两条契约：

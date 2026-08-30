@@ -4,7 +4,7 @@ import {
   applyFastMode,
   modelSupportsFastMode,
   peelFastSuffix,
-} from '../lib/fast-mode.js'
+} from '../lib/utils/fast-mode.js'
 
 test('Fast follows each catalog row service_tiers, plus Grok 4.6', () => {
   assert.equal(modelSupportsFastMode('gpt-5.5'), true)

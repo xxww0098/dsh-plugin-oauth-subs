@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { analyzeSession, formatReport, parseSessionEvents } from '../lib/analyze-session.js'
+import { analyzeSession, formatReport, parseSessionEvents } from '../lib/utils/analyze-session.js'
 
 function event(type, data = {}, extra = {}) {
   return { type, data, time: extra.time ?? 1_000, seq: extra.seq ?? 1 }

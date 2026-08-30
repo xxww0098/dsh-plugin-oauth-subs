@@ -2,6 +2,8 @@
 
 ## 0.0.15
 
+- Restructure the source tree into `src/oauth/{codex,grok}`, `src/ui`, and `src/utils`. Host code is TypeScript; Settings UI stays React. Compiled output lives in `lib/`. Binding conventions: `AGENTS.md`. Recurring faults still go in `docs/error.md`.
+
 - Add `scripts/analyze-session.mjs` to score a DeepSeek Harness `session.jsonl` for Codex cache affinity, token spend, tool errors, and transport faults.
 - Classify each call as `cold_start` / `delta` / `compaction` / `rebuild` / `affinity_miss`, so compaction and leaving plan mode are not reported as shard misses.
 - Close the 2026-08-26 cache-affinity runtime acceptance on the full 211-call `gpt-5.6-terra-fast` session: **95.6%** weighted hit, **99.6%** median prefix reuse, **0** affinity misses, 0 TRANSPORT.

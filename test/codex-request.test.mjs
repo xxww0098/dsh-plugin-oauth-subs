@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { normalizeCodexResponsesBody } from '../lib/codex-request.js'
+import { normalizeCodexResponsesBody } from '../lib/oauth/codex/request.js'
 
 test('lifts developer/system input into required instructions', () => {
   const out = normalizeCodexResponsesBody({

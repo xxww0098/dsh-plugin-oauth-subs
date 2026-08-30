@@ -6,10 +6,10 @@
 
 import { createServer } from 'node:http'
 import { once } from 'node:events'
-import { CODEX_API_URL, CODEX_CLIENT_VERSION, CODEX_MODELS, CODEX_MODELS_URL, codexUpstreamHeaders } from './codex.js'
-import { GROK_API_URL, GROK_MODELS, grokUpstreamHeaders } from './grok.js'
-import { applyFastMode } from './fast-mode.js'
-import { normalizeCodexResponsesBody } from './codex-request.js'
+import { CODEX_API_URL, CODEX_CLIENT_VERSION, CODEX_MODELS, CODEX_MODELS_URL, codexUpstreamHeaders } from './codex/index.js'
+import { GROK_API_URL, GROK_MODELS, grokUpstreamHeaders } from './grok/index.js'
+import { applyFastMode } from '../utils/fast-mode.js'
+import { normalizeCodexResponsesBody } from './codex/request.js'
 import { withPickerVariants } from './models.js'
 
 const JSON_TYPE = { 'content-type': 'application/json; charset=utf-8' }

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { DeviceFlowManager } from '../lib/device-flow.js'
-import { GROK_CLIENT_ID, grokDiscovery, resetGrokDiscovery } from '../lib/grok.js'
+import { DeviceFlowManager } from '../lib/oauth/grok/device-flow.js'
+import { GROK_CLIENT_ID, grokDiscovery, resetGrokDiscovery } from '../lib/oauth/grok/index.js'
 
 function jsonResponse(status, body) {
   return new Response(JSON.stringify(body), {

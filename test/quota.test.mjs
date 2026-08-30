@@ -9,9 +9,9 @@ import {
   parseCodexUsage,
   parseGrokBilling,
   parseResetCredits,
-} from '../lib/quota.js'
-import { CODEX_RESET_CONSUME_URL, CODEX_RESET_CREDITS_URL, CODEX_USAGE_URL } from '../lib/codex.js'
-import { GROK_BILLING_URL } from '../lib/grok.js'
+} from '../lib/oauth/quota.js'
+import { CODEX_RESET_CONSUME_URL, CODEX_RESET_CREDITS_URL, CODEX_USAGE_URL } from '../lib/oauth/codex/index.js'
+import { GROK_BILLING_URL } from '../lib/oauth/grok/index.js'
 
 test('asNumber reads val wrappers', () => {
   assert.equal(asNumber(12), 12)

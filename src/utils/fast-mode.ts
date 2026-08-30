@@ -12,7 +12,7 @@
  * The `-fast` suffix is host-side only and is peeled before the upstream request.
  */
 
-import { codexModel, codexSlug } from './codex.js'
+import { codexModel, codexSlug } from '../oauth/codex/index.js'
 import { peelContextSuffix } from './context-mode.js'
 
 export const FAST_SUFFIX = '-fast'

@@ -1,12 +1,14 @@
 # Contributing
 
+Read [`AGENTS.md`](AGENTS.md) first. Host code is TypeScript under `src/`. Settings UI is React under `src/ui`. Recurring faults go in [`docs/error.md`](docs/error.md).
+
 ## Tests
 
 ```sh
 npm test
 ```
 
-Node 22. Tests are `node:test` files under `test/`. Do not write credentials or live `auth.json` fixtures.
+Node 22. Tests are `node:test` files under `test/` and import **compiled** `lib/`. Do not write credentials or live `auth.json` fixtures.
 
 ## Session diagnosis
 
@@ -22,9 +24,10 @@ A healthy long session should stay above **80%** weighted cache hit with **zero 
 
 | Path | Owns |
 | --- | --- |
-| `lib/proxy.js` | Loopback Responses proxy, cache-affinity headers, stream commit gate |
-| `lib/codex-request.js` | Codex body shaping: lift instructions, stabilize input prefix, strip gpt-5.6-rejected fields |
-| `lib/codex.js` / `lib/grok.js` | Catalog, identity headers, OAuth endpoints |
-| `lib/client.js` | Settings UI (classic script, `__ModuleLoader__`) |
-| `lib/analyze-session.js` | Session.jsonl scoring |
+| `src/oauth/proxy.ts` | Loopback Responses proxy, cache-affinity headers, stream commit gate |
+| `src/oauth/codex/` | Codex catalog, identity, Responses body (prefix stabilize) |
+| `src/oauth/grok/` | Grok catalog, identity, device-code flow |
+| `src/ui/client.js` | Settings UI (React classic-script, `__ModuleLoader__`) |
+| `src/utils/analyze-session.ts` | Session.jsonl scoring |
 | `docs/error.md` | Recurring faults and the acceptance that closed them |
+| `AGENTS.md` | Binding stack, tree, and error-log rules |

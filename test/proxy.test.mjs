@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { request as httpRequest } from 'node:http'
 import { test } from 'node:test'
-import { createProxy, describeError, hasOutputEvent, STREAM_ATTEMPTS, codexCacheSessionId } from '../lib/proxy.js'
-import { CODEX_API_URL } from '../lib/codex.js'
+import { createProxy, describeError, hasOutputEvent, STREAM_ATTEMPTS, codexCacheSessionId } from '../lib/oauth/proxy.js'
+import { CODEX_API_URL } from '../lib/oauth/codex/index.js'
 
 function rawRequest(port, { method = 'GET', path = '/', headers = {}, body } = {}) {
   return new Promise((resolve, reject) => {
