@@ -14,6 +14,7 @@
 
 import { randomBytes } from 'node:crypto'
 import { decodeJwtPayload } from '../../utils/jwt.js'
+import { codexCacheSessionId } from '../../utils/cache-session.js'
 
 export const GLM_CLIENT_ID = 'client_P8X5CMWmlaRO9gyO-KSqtg'
 export const GLM_BIGMODEL_APP_ID = 'zcode'
@@ -202,14 +203,14 @@ function randomHex(bytes = 16) {
 }
 
 /** ZCode Desktop 3.10.1 fingerprint for api.z.ai / open.bigmodel.cn Coding Plan hops. */
-export function glmDesktopHeaders() {
+export function glmDesktopHeaders(sessionId) {
   return {
     'user-agent': GLM_USER_AGENT,
     'X-ZCode-App-Version': GLM_APP_VERSION,
     'X-ZCode-Agent': GLM_AGENT,
     'x-zcode-trace-id': randomHex(),
     'x-request-id': randomHex(),
-    'x-session-id': GLM_PROCESS_SESSION_ID,
+    'x-session-id': codexCacheSessionId(sessionId) || GLM_PROCESS_SESSION_ID,
     'x-query-id': randomHex(),
     'HTTP-Referer': GLM_REFERER,
     referer: GLM_REFERER,
@@ -217,11 +218,11 @@ export function glmDesktopHeaders() {
   }
 }
 
-export function glmUpstreamHeaders(session) {
+export function glmUpstreamHeaders(session, sessionId) {
   return {
     authorization: `Bearer ${session.accessToken}`,
     accept: 'application/json',
-    ...glmDesktopHeaders(),
+    ...glmDesktopHeaders(sessionId),
   }
 }
 

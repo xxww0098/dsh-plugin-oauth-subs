@@ -112,6 +112,24 @@ test('OAuthFlowManager rejects a mismatched pasted state', async () => {
   await assert.rejects(attempt.waitCode(), /cancelled/)
 })
 
+test('Codex and Antigravity callback paths stay exact; Kiro-only extras 404', async () => {
+  const flows = new OAuthFlowManager()
+  const attempt = await flows.start('codex', {
+    callbackPath: '/auth/callback',
+    listen: { host: '127.0.0.1', ports: [0] },
+    timeoutMs: 5_000,
+    buildAuthorizeUrl: ({ redirectUri }) => `https://example.test/authorize?redirect_uri=${encodeURIComponent(redirectUri)}`,
+  })
+  const port = new URL(attempt.redirectUri).port
+  const root = await fetch(`http://127.0.0.1:${port}/?code=x&state=${attempt.state}`)
+  assert.equal(root.status, 404)
+  const kiroPath = await fetch(`http://127.0.0.1:${port}/oauth/callback?code=x&state=${attempt.state}`)
+  assert.equal(kiroPath.status, 404)
+  const ok = await fetch(`http://127.0.0.1:${port}/auth/callback?code=abc&state=${attempt.state}`)
+  assert.equal(ok.status, 200)
+  assert.equal(await attempt.waitCode(), 'abc')
+})
+
 test('OAuthFlowManager rejects a bare code without state proof', async () => {
   const flows = new OAuthFlowManager()
   const attempt = await flows.start('codex', {

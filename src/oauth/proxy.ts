@@ -18,10 +18,13 @@ import {
   antigravityChatHeaders,
   fetchAntigravityCloudCode,
 } from './antigravity/index.js'
-import { antigravityToOpenai, antigravityToOpenaiChunk, openaiToAntigravity, parseAntigravitySseBlocks } from './antigravity/request.js'
+import { ANTIGRAVITY_STABLE_SESSION, antigravityToOpenai, antigravityToOpenaiChunk, openaiToAntigravity, parseAntigravitySseBlocks } from './antigravity/request.js'
 import { applyFastMode } from '../utils/fast-mode.js'
+import { codexCacheSessionId } from '../utils/cache-session.js'
 import { normalizeCodexResponsesBody } from './codex/request.js'
 import { withPickerVariants } from './models.js'
+
+export { codexCacheSessionId } from '../utils/cache-session.js'
 
 const JSON_TYPE = { 'content-type': 'application/json; charset=utf-8' }
 export const MAX_REQUEST_BODY_BYTES = 64 * 1024 * 1024
@@ -29,18 +32,6 @@ export const MAX_REQUEST_BODY_BYTES = 64 * 1024 * 1024
 export const STREAM_ATTEMPTS = 3
 const RETRY_BACKOFF_MS = [1000, 4000]
 
-/**
- * Codex `session-id` / `x-client-request-id` and xAI `x-grok-conv-id` /
- * `prompt_cache_key` all need a stable shard pin. Sanitize to
- * 1–64 of [A-Za-z0-9._:-] instead of dropping the key — a too-long
- * DSH session id must still stick.
- */
-export function codexCacheSessionId(key) {
-  if (typeof key !== 'string') return undefined
-  const cleaned = key.trim().replace(/[^A-Za-z0-9._:-]/g, '-')
-  if (!cleaned) return undefined
-  return cleaned.slice(0, 64)
-}
 /**
  * SSE events that carry no output, so a stream ending here is worth retrying.
  * The `codex.*` frames are handshake metadata; the allow-list mirrors
@@ -154,12 +145,16 @@ function rewriteUpstreamBody(buffer, family) {
     : family === 'glm'
       ? normalizeGlmChatBody(fast)
       : fast
-  const pinCache = family === 'codex' || family === 'grok'
+  const pinCache = family === 'codex' || family === 'grok' || family === 'glm' || family === 'antigravity'
   const cacheSessionId = pinCache
     ? (codexCacheSessionId(next.prompt_cache_key) || codexCacheSessionId(next.session_id))
     : undefined
   if (cacheSessionId) next.prompt_cache_key = cacheSessionId
   else if (pinCache) delete next.prompt_cache_key
+  if (family === 'glm' || family === 'antigravity') {
+    delete next.prompt_cache_retention
+    delete next.prompt_cache_options
+  }
   const routingHint = family === 'codex'
     ? codexRoutingHint(typeof next.model === 'string' ? next.model : '', next.service_tier)
     : undefined
@@ -401,7 +396,7 @@ async function forward(request, response, { url, session, headersOf, fetchFn, fa
   const raw = await readBody(request, maxRequestBodyBytes)
   const { body, cacheSessionId, stream, routingHint } = rewriteUpstreamBody(raw, family)
   const headers = {
-    ...headersOf(session),
+    ...headersOf(session, cacheSessionId),
     'content-type': request.headers['content-type'] ?? 'application/json',
     ...(stream ? { accept: 'text/event-stream' } : {}),
     ...(family === 'codex' && cacheSessionId !== undefined ? {
@@ -597,24 +592,20 @@ function delay(ms, signal) {
 
 async function forwardAntigravity(request, response, { session, fetchFn, maxRequestBodyBytes, signal }) {
   const raw = await readBody(request, maxRequestBodyBytes)
-  let payload
-  try {
-    payload = JSON.parse(raw.toString('utf8'))
-  } catch {
-    throw new RequestError(400, 'request body must contain valid JSON')
-  }
-  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
-    throw new RequestError(400, 'request body must contain a JSON object')
-  }
+  const { body: rewritten, cacheSessionId, stream } = rewriteUpstreamBody(raw, 'antigravity')
+  const payload = JSON.parse(rewritten.toString('utf8'))
   const projectId = session.projectId
   if (typeof projectId !== 'string' || !projectId.trim()) {
     throw new RequestError(403, 'antigravity session is missing project_id')
   }
+  const sessionId = cacheSessionId
+    ?? codexCacheSessionId(payload.session_id)
+    ?? codexCacheSessionId(payload.prompt_cache_key)
+    ?? ANTIGRAVITY_STABLE_SESSION
   const body = Buffer.from(JSON.stringify(openaiToAntigravity(payload, {
     projectId,
-    sessionId: payload.session_id ?? payload.prompt_cache_key,
+    sessionId,
   })))
-  const stream = payload.stream === true
   const url = stream ? ANTIGRAVITY_STREAM_URL : ANTIGRAVITY_GENERATE_URL
   const headers = {
     ...antigravityChatHeaders(session),

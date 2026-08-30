@@ -112,7 +112,7 @@ export declare function pickGlmHumanAccount(...candidates: any[]): string;
 export declare function accountFromJwt(token: any): string;
 export declare function glmBizBase(region?: string): "https://open.bigmodel.cn" | "https://api.z.ai";
 /** ZCode Desktop 3.10.1 fingerprint for api.z.ai / open.bigmodel.cn Coding Plan hops. */
-export declare function glmDesktopHeaders(): {
+export declare function glmDesktopHeaders(sessionId: any): {
     'user-agent': string;
     'X-ZCode-App-Version': string;
     'X-ZCode-Agent': string;
@@ -124,7 +124,7 @@ export declare function glmDesktopHeaders(): {
     referer: string;
     'X-Title': string;
 };
-export declare function glmUpstreamHeaders(session: any): {
+export declare function glmUpstreamHeaders(session: any, sessionId: any): {
     'user-agent': string;
     'X-ZCode-App-Version': string;
     'X-ZCode-Agent': string;

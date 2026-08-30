@@ -45,6 +45,7 @@ test('normalizeGlmChatBody remaps DSH developer roles to system', () => {
     { role: 'user', content: 'hello' },
   ])
   assert.equal(out.model, 'glm-5.3-flash')
+  assert.deepEqual(out.thinking, { type: 'enabled', clear_thinking: false })
 })
 
 test('normalizeGlmChatBody keeps system / user / assistant / tool and tool ids', () => {
@@ -56,6 +57,45 @@ test('normalizeGlmChatBody keeps system / user / assistant / tool and tool ids',
   ]
   const out = normalizeGlmChatBody({ model: 'glm-5.3', messages })
   assert.deepEqual(out.messages, messages)
+  assert.equal(out.thinking.type, 'enabled')
+  assert.equal(out.thinking.clear_thinking, false)
+})
+
+test('normalizeGlmChatBody copies assistant reasoning to reasoning_content', () => {
+  const out = normalizeGlmChatBody({
+    model: 'glm-5.3',
+    messages: [
+      { role: 'assistant', content: 'done', reasoning: 'I counted first' },
+      { role: 'assistant', content: 'kept', reasoning_content: 'official', reasoning: 'alias' },
+    ],
+  })
+  assert.equal(out.messages[0].reasoning_content, 'I counted first')
+  assert.equal(out.messages[0].reasoning, 'I counted first')
+  assert.equal(out.messages[1].reasoning_content, 'official')
+  assert.equal(out.messages[1].reasoning, 'alias')
+  assert.equal(out.thinking.clear_thinking, false)
+})
+
+test('normalizeGlmChatBody does not force-disable Turbo thinking', () => {
+  const idle = normalizeGlmChatBody({
+    model: 'glm-5-turbo',
+    messages: [{ role: 'user', content: 'hi' }],
+  })
+  assert.equal(idle.thinking, undefined)
+
+  const on = normalizeGlmChatBody({
+    model: 'glm-5-turbo',
+    thinking: { type: 'enabled' },
+    messages: [{ role: 'user', content: 'hi' }],
+  })
+  assert.deepEqual(on.thinking, { type: 'enabled', clear_thinking: false })
+
+  const off = normalizeGlmChatBody({
+    model: 'glm-5-turbo',
+    thinking: { type: 'disabled' },
+    messages: [{ role: 'user', content: 'hi' }],
+  })
+  assert.deepEqual(off.thinking, { type: 'disabled' })
 })
 
 test('normalizeGlmChatBody maps unknown instructional roles to system and leaves input-only bodies', () => {
@@ -72,8 +112,9 @@ test('normalizeGlmChatBody maps unknown instructional roles to system and leaves
     model: 'glm-5.3',
     input: [{ role: 'developer', content: 'sys' }, { role: 'user', content: 'go' }],
   }
-  assert.equal(normalizeGlmChatBody(inputOnly), inputOnly)
-  assert.equal(inputOnly.input[0].role, 'developer')
+  const rewritten = normalizeGlmChatBody(inputOnly)
+  assert.equal(rewritten.input[0].role, 'developer')
+  assert.equal(rewritten.thinking.clear_thinking, false)
 })
 
 test('unwrapEnvelope accepts ZCode code 0 and biz code 200', () => {
@@ -176,6 +217,15 @@ test('glmUpstreamHeaders is ZCode Desktop 3.10.1, not this plugin', () => {
   assert.notEqual(first['x-request-id'], second['x-request-id'])
   assert.notEqual(first['x-query-id'], second['x-query-id'])
   assert.equal(glmDesktopHeaders()['x-session-id'], first['x-session-id'])
+})
+
+test('glmDesktopHeaders x-session-id equals a pinned DSH session', () => {
+  const session = glmSession({ accessToken: 'id.secret', account: 'dev@z.ai' })
+  const pinned = glmUpstreamHeaders(session, 'session-772f7f3a-332c-4e0c-bff1-6074123474e3')
+  assert.equal(pinned['x-session-id'], 'session-772f7f3a-332c-4e0c-bff1-6074123474e3')
+  assert.equal(glmDesktopHeaders('session-cache-1')['x-session-id'], 'session-cache-1')
+  assert.match(glmDesktopHeaders()['x-session-id'], /^sess_[0-9a-f]{24}$/)
+  assert.notEqual(pinned['x-request-id'], glmUpstreamHeaders(session, 'session-cache-1')['x-request-id'])
 })
 
 test('glmCodingUrl and glmQuotaUrl split Z.ai vs BigModel', () => {

@@ -3,16 +3,10 @@
  * this process attaches a fresh OAuth bearer and forwards to ChatGPT Codex
  * or xAI Grok. Settings operations stay on the host-owned RPC channel.
  */
+export { codexCacheSessionId } from '../utils/cache-session.js';
 export declare const MAX_REQUEST_BODY_BYTES: number;
 /** Upstream attempts before the client is told the stream failed. */
 export declare const STREAM_ATTEMPTS = 3;
-/**
- * Codex `session-id` / `x-client-request-id` and xAI `x-grok-conv-id` /
- * `prompt_cache_key` all need a stable shard pin. Sanitize to
- * 1–64 of [A-Za-z0-9._:-] instead of dropping the key — a too-long
- * DSH session id must still stick.
- */
-export declare function codexCacheSessionId(key: any): string;
 /** undici reports socket faults as a bare "fetch failed"; the cause carries the reason. */
 export declare function describeError(error: any): string;
 export declare function createProxy({ port, apiKey, tokens, fetchFn, maxRequestBodyBytes }: {

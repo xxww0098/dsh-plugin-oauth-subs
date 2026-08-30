@@ -276,6 +276,8 @@ test('proxy GLM chat hop remaps developer; Codex and Grok keep theirs', async ()
       { role: 'system', content: 'You are DSH.\n\n# AGENTS.md' },
       { role: 'user', content: 'hello' },
     ])
+    assert.equal(seen[0].body.thinking.clear_thinking, false)
+    assert.equal(seen[0].body.thinking.type, 'enabled')
 
     const grok = await fetch(`http://127.0.0.1:${port}/grok/v1/responses`, {
       method: 'POST',
@@ -787,6 +789,52 @@ test('proxy parks extra leading developer and strips prompt_cache_retention on t
     assert.deepEqual(seen[0].body.input[2].content, [{ type: 'input_text', text: 'Plan: toggle all skills.' }])
     assert.equal(seen[0].headers['session-id'], 'session-cache-1')
   })
+})
+
+test('GLM hop pins x-session-id from DSH and strips prompt_cache_retention', async () => {
+  const seen = []
+  const fetchFn = async (_url, init) => {
+    seen.push({ headers: init.headers, body: JSON.parse(String(init.body)) })
+    return new Response('{"id":"chat"}', { status: 200, headers: { 'content-type': 'application/json' } })
+  }
+  const proxy = createProxy({
+    port: 0,
+    apiKey: 'secret-key',
+    fetchFn,
+    tokens: {
+      glm: { session: async () => ({ accessToken: 'id.secret', region: 'zai' }) },
+    },
+  })
+  const server = await proxy.listen()
+  const { port } = server.address()
+  const headers = { authorization: 'Bearer secret-key', 'content-type': 'application/json' }
+  try {
+    const ok = await fetch(`http://127.0.0.1:${port}/glm/v1/chat/completions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: 'glm-5.3',
+        session_id: 'session-dsh-glm',
+        prompt_cache_retention: '24h',
+        messages: [
+          { role: 'developer', content: 'sys' },
+          { role: 'assistant', content: 'hi', reasoning: 'thought' },
+          { role: 'user', content: 'go' },
+        ],
+      }),
+    })
+    assert.equal(ok.status, 200)
+    assert.equal(seen[0].headers['x-session-id'], 'session-dsh-glm')
+    assert.equal(seen[0].headers['session-id'], undefined)
+    assert.equal(seen[0].headers['x-grok-conv-id'], undefined)
+    assert.equal(seen[0].body.prompt_cache_key, 'session-dsh-glm')
+    assert.equal(seen[0].body.prompt_cache_retention, undefined)
+    assert.equal(seen[0].body.messages[0].role, 'system')
+    assert.equal(seen[0].body.messages[1].reasoning_content, 'thought')
+    assert.equal(seen[0].body.thinking.clear_thinking, false)
+  } finally {
+    await proxy.close()
+  }
 })
 
 test('Grok pins cache with x-grok-conv-id and does not inherit Codex headers', async () => {
