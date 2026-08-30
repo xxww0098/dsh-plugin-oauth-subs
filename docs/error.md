@@ -1,5 +1,32 @@
 # 错误记录
 
+## 2026-08-30：勾选 GLM / Antigravity / Kiro 不写 settings.yaml
+
+### 现象
+
+0.0.38 live web profile。设置 → OAuth 订阅 → 模型：OAuth · GLM 3/3、OAuth · Antigravity 13/13、OAuth · Kiro 3/3（未登录灰显「登录后同步」）。打开 DSH 配置文件，`llm-pi-ai.providers` 只有 `oauth-codex` / `oauth-grok` / 其它非本插件路由，**没有** `oauth-glm` / `oauth-antigravity` / `oauth-kiro`。
+
+### 证据
+
+- `~/.dsh/settings.yaml` `llm-pi-ai.providers` keys：`opencode-go`、`oauth-codex`、`oauth-grok`、`deepseek`。
+- `models.json`：GLM 当前三条不在 `disabled`（只有退役 glm-4.7/5/5.1/5.2）——选择器 3/3 正确，yaml 仍无路由。Antigravity 当前 13 个 id 里 12 个在 `disabled`（只留 `gemini-3.7-flash-high`）；全选/勾选没清掉，yaml 也没有 `oauth-antigravity`。`enabled: []`。
+- `auth.json` 有 glm + antigravity 会话，无 kiro（Kiro 灰显符合预期）。
+- 不是 PR #23 残留全关：那条只在**当前 catalog key 全关**时恢复。GLM 3/3 已开、AG 1/13 已开，`recoverEmptyLoggedInFamilies` 不会跑。
+
+### 根因
+
+DSH `@deepseek-ai/dsh-llm-pi-ai` 的 profile schema 只接受 `api: openai-completions | openai-responses | anthropic-messages`（`Schema.union`）。GLM / Kiro / Antigravity 本地 hop 是 chat completions（`/glm/v1`、`/kiro/v1`、`/antigravity/v1`），却写成了裸 `api: 'openai'`。`settings.mutate('llm-pi-ai', …)` 整段校验失败后**保留上次合法 section**，所以 Codex/Grok 的 `openai-responses` 还在，glm/ag/kiro 的 `set`（以及同批 `unset`）都是空操作。启动 `controller.sync()` 把失败吞成 `llm-pi-ai sync failed` warn。dsh-plugin-cpa-local 从不写裸 `openai`。
+
+### 修复（0.0.39）
+
+- GLM / Kiro / Antigravity 改为 `api: openai-completions`，保留 `compat.supportsReasoningEffort` + `thinkingFormat: openai`（GLM/AG）。Codex/Grok 仍是 `openai-responses`。不改成 Responses，避免把 Responses 体打到 completions hop。
+- `syncHarnessModels` 不再吞 mutate：包一层 `llm-pi-ai mutate failed: …`，`setModels` RPC 原样抛给选择器。能 `settings.get` 时回读，缺 `providers.oauth-*` 当失败。
+- 已登录且至少一条当前 catalog key 开启 ⇒ `set` 该路由（AG 12/13 关也写那一条；全选清当前 `disabled` 再写满）。主动全关仍 unset。Kiro 未登录选择器继续锁；登录 / `onAuthChanged` 的 `sync()` 写 `oauth-kiro`。
+
+### 验证
+
+- `npm test`：假 settings store 校验 DSH `api` union。已登录 GLM 3/3 / AG 全选 / Kiro sync 的 mutations 含 `set`，随后 `get` 看得到 `providers.oauth-*`。裸 `api: openai` 整批拒绝、store 不变。mutate 失败从 `setModels` 抛出。
+
 ## 2026-08-30：GLM 对话/额度带第三方 UA，拿不到 ZCode 1.5 倍额度
 
 ### 现象

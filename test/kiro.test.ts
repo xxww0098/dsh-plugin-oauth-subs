@@ -174,7 +174,7 @@ test('Kiro catalog is three Claude models with image input', () => {
   const kiro = catalog['oauth-kiro']
   assert.deepEqual(kiro.models.map((model) => model.id), KIRO_MODELS.map((model) => model.id))
   assert.deepEqual(kiro.models[0].input, ['text', 'image'])
-  assert.equal(kiro.api, 'openai')
+  assert.equal(kiro.api, 'openai-completions')
   const described = describeCatalog(catalog).find((row) => row.family === 'kiro')
   assert.equal(described.displayName.includes('Kiro'), true)
   const loggedOut = buildProviders({ prefix: 'oauth', origin: 'http://x', loggedIn: { kiro: false } })

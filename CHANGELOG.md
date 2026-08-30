@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.39
+
+- GLM / Kiro / Antigravity now declare DSH `api: openai-completions` (local chat-completions hops). Bare `api: openai` is refused by llm-pi-ai's schema, so picker 全选 never wrote `providers.oauth-glm` / `oauth-antigravity` / `oauth-kiro`. Codex / Grok stay `openai-responses`. Mutate failures surface in the Settings RPC; a post-write `get` asserts the provider key landed.
+
 ## 0.0.38
 
 - **Antigravity** family tab (after Kiro, before Models): Google OAuth loopback, multiple accounts, import from the official CLI token file or CLIProxyAPI `antigravity-*.json`. Chat goes through the local OpenAI hop to `cloudcode-pa` `generateContent` / `streamGenerateContent`. Catalog is the live cloudcode-pa list (Claude / Gemini / GPT-OSS). One official Antigravity IDE fingerprint for login, loadCodeAssist, onboardUser, refresh, and every chat request. String `ideType: ANTIGRAVITY`. Empty `project_id` is rejected before generateContent.

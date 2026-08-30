@@ -153,7 +153,7 @@ test('catalog is the live cloudcode-pa list, not Vertex-direct names', () => {
   assert.equal(ids.includes('gpt-oss-120b-medium'), true)
   assert.equal(ids.some((id) => id.startsWith('publishers/') || id.includes('vertex')), false)
   const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
-  assert.equal(catalog['oauth-antigravity'].api, 'openai')
+  assert.equal(catalog['oauth-antigravity'].api, 'openai-completions')
   assert.equal(catalog['oauth-antigravity'].baseURL, 'http://x/antigravity/v1')
   assert.deepEqual(catalog['oauth-antigravity'].models.find((model) => model.id === 'gpt-oss-120b-medium').input, ['text'])
 })
