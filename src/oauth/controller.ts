@@ -5,6 +5,7 @@
 
 import { OAuthFlowManager } from './flow.js'
 import { DeviceFlowManager } from './grok/device-flow.js'
+import { GlmCliFlowManager } from './glm/cli-flow.js'
 import { deleteSession, getSession, listAccounts, publicSession, saveSession, switchAccount } from './store.js'
 import {
   codexFlow,
@@ -20,7 +21,11 @@ import {
   isGrokPermanentRefreshError,
   refreshGrok,
 } from './grok/index.js'
-import { importCodexAuth, importGrokAuth } from './import-auth.js'
+import {
+  isGlmPermanentRefreshError,
+  refreshGlm,
+} from './glm/index.js'
+import { importCodexAuth, importGrokAuth, importGlmAuth } from './import-auth.js'
 import {
   buildProviders,
   catalogProviders,
@@ -45,6 +50,7 @@ export class AuthController {
     this.models = models ?? new ModelSwitch()
     this.flows = new OAuthFlowManager()
     this.devices = new DeviceFlowManager()
+    this.glmFlows = new GlmCliFlowManager()
     this.lastError = new Map()
     this.finalizing = new Set()
     this.claims = new Map()
@@ -69,6 +75,16 @@ export class AuthController {
         isPermanent: isGrokPermanentRefreshError,
         onRemoved: () => this.onAuthChanged?.('grok'),
       }),
+      glm: new TokenManager({
+        displayName: 'GLM (Coding Plan)',
+        preemptMs: 24 * 60 * 60_000,
+        load: () => getSession('glm', this.authPath),
+        save: (session) => saveSession('glm', session, this.authPath),
+        remove: () => deleteSession('glm', this.authPath),
+        refresh: refreshGlm,
+        isPermanent: isGlmPermanentRefreshError,
+        onRemoved: () => this.onAuthChanged?.('glm'),
+      }),
     }
     this.quota = new QuotaStore({ tokens: this.tokens, fetchFn, ttlMs: quotaTtlMs })
     this.fetchFn = fetchFn
@@ -84,6 +100,7 @@ export class AuthController {
     return {
       codex: (await getSession('codex', this.authPath)) !== undefined,
       grok: (await getSession('grok', this.authPath)) !== undefined,
+      glm: (await getSession('glm', this.authPath)) !== undefined,
     }
   }
 
@@ -93,7 +110,7 @@ export class AuthController {
     const pub = publicSession(provider, session)
     return {
       loggedIn: session !== undefined,
-      busy: this.flows.isBusy(provider) || this.devices.isBusy(provider) || this.finalizing.has(provider),
+      busy: this.flows.isBusy(provider) || this.devices.isBusy(provider) || this.glmFlows.isBusy(provider) || this.finalizing.has(provider),
       ...pub,
       quota: this.quota.peek(provider),
       ...(detail === undefined ? {} : { detail }),
@@ -119,10 +136,13 @@ export class AuthController {
     else this.quota.clear('codex')
     if (loggedIn.grok) await this.quota.ensure('grok')
     else this.quota.clear('grok')
+    if (loggedIn.glm) await this.quota.ensure('glm')
+    else this.quota.clear('glm')
     const enabledKeys = this.models.enabledKeys(catalog)
-    const [codexAccounts, grokAccounts] = await Promise.all([
+    const [codexAccounts, grokAccounts, glmAccounts] = await Promise.all([
       listAccounts('codex', this.authPath),
       listAccounts('grok', this.authPath),
+      listAccounts('glm', this.authPath),
     ])
     return {
       origin,
@@ -133,17 +153,22 @@ export class AuthController {
       accounts: {
         codex: { ...(await this.status('codex')), activeId: codexAccounts.find((row) => row.active)?.id, accounts: codexAccounts },
         grok: { ...(await this.status('grok')), activeId: grokAccounts.find((row) => row.active)?.id, accounts: grokAccounts },
+        glm: { ...(await this.status('glm')), activeId: glmAccounts.find((row) => row.active)?.id, accounts: glmAccounts },
       },
       update: localUpdateInfo(),
     }
   }
 
   async refreshQuota(provider) {
-    if (provider === 'codex' || provider === 'grok') {
+    if (provider === 'codex' || provider === 'grok' || provider === 'glm') {
       return this.quota.refresh(provider)
     }
-    const [codex, grok] = await Promise.all([this.quota.refresh('codex'), this.quota.refresh('grok')])
-    return { codex, grok }
+    const [codex, grok, glm] = await Promise.all([
+      this.quota.refresh('codex'),
+      this.quota.refresh('grok'),
+      this.quota.refresh('glm'),
+    ])
+    return { codex, grok, glm }
   }
 
   async checkUpdate() {
@@ -166,12 +191,19 @@ export class AuthController {
   }
 
   async login(provider, mode) {
+    if (provider === 'glm') {
+      const attempt = await this.glmFlows.start('glm', { region: 'zai', fetchFn: this.fetchFn })
+      this.finalizing.add('glm')
+      void this.completeGlm(attempt)
+      return { authorizeUrl: attempt.authorizeUrl, mode: 'cli' }
+    }
     if (provider === 'codex') {
       const attempt = await this.flows.start('codex', codexFlow)
       const claim = this.claim('codex')
       void this.completePkce('codex', attempt, claim)
       return { authorizeUrl: attempt.authorizeUrl, redirectUri: attempt.redirectUri, mode: 'pkce' }
     }
+    if (provider !== 'grok') throw new Error(`unknown provider ${provider}`)
     const useDevice = (mode ?? this.grokLogin) !== 'pkce'
     if (useDevice) {
       const attempt = await this.devices.start('grok', await grokDeviceSpec())
@@ -226,6 +258,22 @@ export class AuthController {
     }
   }
 
+  async completeGlm(attempt) {
+    try {
+      const session = await attempt.waitToken()
+      await saveSession('glm', session, this.authPath)
+      this.lastError.delete('glm')
+      this.onAuthChanged?.('glm')
+      void this.quota.refresh('glm')
+    } catch (error) {
+      if (!(error instanceof Error && error.message === 'login cancelled')) {
+        this.lastError.set('glm', error instanceof Error ? error.message : String(error))
+      }
+    } finally {
+      this.finalizing.delete('glm')
+    }
+  }
+
   async manual(provider, input) {
     const attempt = this.flows.pending(provider)
     if (attempt === undefined) throw new Error(`no ${provider} login attempt is in progress`)
@@ -236,6 +284,7 @@ export class AuthController {
     this.claim(provider)
     this.flows.pending(provider)?.cancel()
     this.devices.pending(provider)?.cancel()
+    this.glmFlows.pending(provider)?.cancel()
   }
 
   async logout(provider, id) {
@@ -259,10 +308,15 @@ export class AuthController {
   }
 
   async importFrom(provider) {
-    const result = provider === 'codex' ? await importCodexAuth() : await importGrokAuth()
+    const result = provider === 'codex'
+      ? await importCodexAuth()
+      : provider === 'glm'
+        ? await importGlmAuth()
+        : await importGrokAuth()
     this.claim(provider)
     this.flows.pending(provider)?.cancel()
     this.devices.pending(provider)?.cancel()
+    this.glmFlows.pending(provider)?.cancel()
     await saveSession(provider, result.session, this.authPath)
     this.lastError.delete(provider)
     this.onAuthChanged?.(provider)
@@ -277,7 +331,7 @@ export class AuthController {
       await this.models.setEnabled(payload.selected, catalog)
     } else if (typeof payload.key === 'string') {
       await this.models.toggle(payload.key, payload.on !== false, catalog)
-    } else if (payload.family === 'codex' || payload.family === 'grok') {
+    } else if (payload.family === 'codex' || payload.family === 'grok' || payload.family === 'glm') {
       await this.models.setFamily(payload.family, payload.on !== false, catalog)
     } else if (typeof payload.all === 'boolean') {
       await this.models.setAll(payload.all, catalog)

@@ -44,6 +44,7 @@ window.__ModuleLoader__.load({
         nav: 'OAuth 订阅',
         codexTitle: 'ChatGPT Codex',
         grokTitle: 'xAI Grok',
+        glmTitle: '智谱 GLM',
         login: '登录',
         addAccount: '添加账号',
         switchTo: '切换',
@@ -131,6 +132,7 @@ window.__ModuleLoader__.load({
         nav: 'OAuth subs',
         codexTitle: 'ChatGPT Codex',
         grokTitle: 'xAI Grok',
+        glmTitle: 'Zhipu GLM',
         login: 'Sign in',
         addAccount: 'Add account',
         switchTo: 'Switch',
@@ -403,7 +405,7 @@ window.__ModuleLoader__.load({
   flex: 1 1 0; height: 36px; padding: 0 12px;
   border: 0; border-radius: 9px;
   background: transparent; color: inherit;
-  font: inherit; font-size: 13px; font-weight: 500; line-height: 1;
+  font: inherit; font-size: 12px; font-weight: 500; line-height: 1;
   cursor: pointer;
 }
 .osubs-tab--on { background: var(--osubs-fill-2); font-weight: 600; }
@@ -1174,6 +1176,11 @@ window.__ModuleLoader__.load({
             onClick: () => setTab('grok'),
           }, t.grokTitle),
           h('button', {
+            type: 'button', role: 'tab', 'aria-selected': tab === 'glm',
+            className: `osubs-tab${tab === 'glm' ? ' osubs-tab--on' : ''}`,
+            onClick: () => setTab('glm'),
+          }, t.glmTitle),
+          h('button', {
             type: 'button', role: 'tab', 'aria-selected': tab === 'models',
             className: `osubs-tab${tab === 'models' ? ' osubs-tab--on' : ''}`,
             onClick: () => setTab('models'),
@@ -1186,6 +1193,7 @@ window.__ModuleLoader__.load({
         ),
         tab === 'codex' && card('codex', t.codexTitle),
         tab === 'grok' && card('grok', t.grokTitle),
+        tab === 'glm' && card('glm', t.glmTitle),
         tab === 'models' && h(ModelPicker, {
           t,
           catalog: snap?.catalog,

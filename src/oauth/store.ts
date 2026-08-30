@@ -11,7 +11,7 @@ import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
 import { formatPlanLabel } from './plan.js'
 
-export const PROVIDER_IDS = Object.freeze(['codex', 'grok'])
+export const PROVIDER_IDS = Object.freeze(['codex', 'grok', 'glm'])
 
 export function defaultDataDir() {
   return join(homedir(), '.dsh', 'plugins', 'oauth-subs')

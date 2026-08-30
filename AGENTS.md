@@ -58,6 +58,9 @@ src/
     grok/                  xAI Grok only
       index.ts             catalog, identity, device/PKCE endpoints
       device-flow.ts       RFC 8628
+    glm/                   Zhipu GLM / Z.ai Coding Plan
+      index.ts             catalog, CLI poll OAuth, key mint, headers
+      cli-flow.ts          ZCode /oauth/cli/init + poll
   ui/                      React Settings (classic-script factory)
     client.ts
   utils/                   shared, provider-agnostic
@@ -75,7 +78,7 @@ scripts/                   CLI (TypeScript)
 
 Rules:
 
-- Codex-only code → `src/oauth/codex/`. Grok-only code → `src/oauth/grok/`.
+- Codex-only code → `src/oauth/codex/`. Grok-only code → `src/oauth/grok/`. GLM-only code → `src/oauth/glm/`.
 - Shared crypto / session scoring → `src/utils/`.
 - Settings React → `src/ui/`.
 - Do not flatten modules back into a single `lib/*.js` bag.

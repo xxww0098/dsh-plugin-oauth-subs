@@ -189,6 +189,12 @@ export {
   GROK_REASONING_46,
   grokCredentialHeaders,
 } from './oauth/grok/index.js'
+export {
+  GLM_CLIENT_ID,
+  GLM_CODING_URL,
+  GLM_AUTHORIZE_URL,
+  glmUpstreamHeaders,
+} from './oauth/glm/index.js'
 export { OAUTH_CREDENTIAL_REF, ModelSwitch } from './oauth/models.js'
 export { defaultDataDir } from './oauth/store.js'
 export { AuthController } from './oauth/controller.js'
@@ -200,7 +206,7 @@ export {
   isCodex900kBase,
   peelContextSuffix,
 } from './utils/context-mode.js'
-export { parseCodexUsage, parseGrokBilling, parseResetCredits, QuotaStore } from './oauth/quota.js'
+export { parseCodexUsage, parseGrokBilling, parseGlmQuota, parseResetCredits, QuotaStore } from './oauth/quota.js'
 export { formatPlanLabel, CODEX_PLAN_NAMES } from './oauth/plan.js'
 export {
   REPO_URL,

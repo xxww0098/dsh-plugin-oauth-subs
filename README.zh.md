@@ -15,7 +15,7 @@ dsh plugin --profile web add https://github.com/xxww0098/dsh-plugin-oauth-subs
 dsh web
 ```
 
-打开 **设置 → OAuth 订阅**。四个页签：**Codex**、**Grok**、**模型**、**关于**。每个系列可登录多个账号，点一行切换。对话和额度走当前账号。**关于** 里有 GitHub 仓库链接，并按 Windows / macOS / Linux 检查最新发布。也可以用 `cordis.patch.yml` 手动挂载：
+打开 **设置 → OAuth 订阅**。页签：**Codex**、**Grok**、**智谱 GLM**、**模型**、**关于**。每个系列可登录多个账号，点一行切换。对话和额度走当前账号。**GLM** 走 ZCode 的浏览器 OAuth（无 PKCE），登录后签发 Coding Plan 的长期 `id.secret` 密钥。**关于** 里有 GitHub 仓库链接，并按 Windows / macOS / Linux 检查最新发布。也可以用 `cordis.patch.yml` 手动挂载：
 
 ```yaml
 - insert:
@@ -114,7 +114,7 @@ node --experimental-strip-types scripts/analyze-session.ts --fail-below 80 path/
 
 默认关闭。在 `gpt-5.6-luna` 上实测：**输出 88.3 对 57.5 token/秒，1.54 倍**，与目录标称的 "1.5x speed, increased usage" 吻合。提升只在生成吞吐上——首 token 时间和缓存命中不受影响。
 
-登录、刷新令牌、对话和额度走同一套官方客户端身份：Codex 为成对的 `originator: codex_cli_rs` 与 `User-Agent: codex_cli_rs/<version>`；Grok 为 `x-xai-token-auth: xai-grok-cli` 与 `User-Agent: grok-cli/<version>`。不模拟浏览器 TLS 指纹。
+登录、刷新令牌、对话和额度走同一套官方客户端身份：Codex 为成对的 `originator: codex_cli_rs` 与 `User-Agent: codex_cli_rs/<version>`；Grok 为 `x-xai-token-auth: xai-grok-cli` 与 `User-Agent: grok-cli/<version>`。GLM 用 ZCode 公开 client `client_P8X5CMWmlaRO9gyO-KSqtg` 和 CLI 轮询流（`zcode.z.ai/api/v1/oauth/cli/init` → 浏览器授权 → poll → `api.z.ai/api/auth/z/login` → 长期 `id.secret` 密钥）。不模拟浏览器 TLS 指纹。
 
 ## 模型选择
 
@@ -143,6 +143,7 @@ Grok 4.6 思考深度为 **low / medium / high / xhigh**。Grok 4.5 为 **low / 
 | ChatGPT Codex | `chatgpt.com/backend-api/wham/usage` | 套餐等级（Plus / Pro / Team …）+ 5 小时窗口 + 每周窗口，展示**剩余**百分比和重置时间 |
 | ChatGPT Codex 重置 | `…/wham/rate-limit-reset-credits` 与 `/consume` | 银行的周窗口重置券和过期时间；Codex 卡片上按券各一颗确认按钮 |
 | xAI Grok | `cli-chat-proxy.grok.com/v1/billing?format=credits`，并读 `/v1/user?include=subscription` | 套餐等级（SuperGrok / X Premium+ …）+ 本周期用量、预付余额、产品分项 |
+| 智谱 GLM | `api.z.ai/api/monitor/usage/quota/limit` | 套餐徽章（Lite / Pro / Max）+ Coding Plan 积分窗口 |
 
 额度约每分钟刷新一次，也可点卡片上的 **刷新额度**。读失败不影响对话。
 
@@ -157,7 +158,7 @@ ChatGPT / Codex Plus、Pro 可能有银行的周窗口重置券。还有剩余�
 | 选项 | 默认 | 说明 |
 |---|---|---|
 | `port` | `8318` | 本机代理端口 |
-| `provider` | `oauth` | 同步到 DSH 的路由 ID 前缀（`oauth-codex` / `oauth-grok`） |
+| `provider` | `oauth` | 同步到 DSH 的路由 ID 前缀（`oauth-codex` / `oauth-grok` / `oauth-glm`） |
 | `dataDir` | profile 数据目录 | `auth.json`、`models.json` 与 `proxy-key` 位置 |
 | `grokLogin` | `device` | `device` 或 `pkce` |
 

@@ -8,6 +8,7 @@
 - Codex reset box title is **重置券** (was 重置额度).
 - Settings adds an **About** tab: GitHub repo link, installed version, and a win/mac/linux update check against the latest GitHub release.
 - Source is TypeScript throughout: Settings UI (`src/ui/client.ts`), tests, and the analyze CLI. Runtime `lib/` is compiled.
+- **GLM / Z.ai Coding Plan OAuth.** Settings adds a **智谱 GLM** tab. Login uses ZCode's CLI poll (`zcode.z.ai/api/v1/oauth/cli/init` → browser → poll → business login → durable `id.secret` key). Chat goes to `api.z.ai/api/coding/paas/v4`. Import reads `~/.zcode/cli/config.json`.
 
 ## 0.0.15
 

@@ -18,6 +18,7 @@ export declare class AuthController {
     loggedIn(): Promise<{
         codex: boolean;
         grok: boolean;
+        glm: boolean;
     }>;
     status(provider: any): Promise<{
         detail?: any;
@@ -172,6 +173,63 @@ export declare class AuthController {
                 loggedIn: boolean;
                 busy: any;
             };
+            glm: {
+                activeId: string;
+                accounts: ({
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    id: string;
+                    active: boolean;
+                })[];
+                detail?: any;
+                quota: any;
+                account: any;
+                planType: any;
+                planLabel: any;
+                expiresAt: any;
+                scopes?: undefined;
+                loggedIn: boolean;
+                busy: any;
+            } | {
+                activeId: string;
+                accounts: ({
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    id: string;
+                    active: boolean;
+                })[];
+                detail?: any;
+                quota: any;
+                account: any;
+                planType: any;
+                planLabel: any;
+                scopes: any;
+                expiresAt: any;
+                loggedIn: boolean;
+                busy: any;
+            };
         };
         update: {
             version: string;
@@ -214,6 +272,12 @@ export declare class AuthController {
     consumeReset(provider: any): Promise<any>;
     login(provider: any, mode: any): Promise<{
         authorizeUrl: any;
+        mode: string;
+        redirectUri?: undefined;
+        verificationUri?: undefined;
+        userCode?: undefined;
+    } | {
+        authorizeUrl: any;
         redirectUri: any;
         mode: string;
         verificationUri?: undefined;
@@ -227,6 +291,7 @@ export declare class AuthController {
     }>;
     completePkce(provider: any, attempt: any, claim: any): Promise<void>;
     completeDevice(provider: any, attempt: any): Promise<void>;
+    completeGlm(attempt: any): Promise<void>;
     manual(provider: any, input: any): Promise<void>;
     cancel(provider: any): Promise<void>;
     logout(provider: any, id: any): Promise<void>;
@@ -305,6 +370,63 @@ export declare class AuthController {
                 busy: any;
             };
             grok: {
+                activeId: string;
+                accounts: ({
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    id: string;
+                    active: boolean;
+                })[];
+                detail?: any;
+                quota: any;
+                account: any;
+                planType: any;
+                planLabel: any;
+                expiresAt: any;
+                scopes?: undefined;
+                loggedIn: boolean;
+                busy: any;
+            } | {
+                activeId: string;
+                accounts: ({
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    id: string;
+                    active: boolean;
+                })[];
+                detail?: any;
+                quota: any;
+                account: any;
+                planType: any;
+                planLabel: any;
+                scopes: any;
+                expiresAt: any;
+                loggedIn: boolean;
+                busy: any;
+            };
+            glm: {
                 activeId: string;
                 accounts: ({
                     account: any;
@@ -460,6 +582,63 @@ export declare class AuthController {
                 busy: any;
             };
             grok: {
+                activeId: string;
+                accounts: ({
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    id: string;
+                    active: boolean;
+                })[];
+                detail?: any;
+                quota: any;
+                account: any;
+                planType: any;
+                planLabel: any;
+                expiresAt: any;
+                scopes?: undefined;
+                loggedIn: boolean;
+                busy: any;
+            } | {
+                activeId: string;
+                accounts: ({
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    expiresAt: any;
+                    scopes?: undefined;
+                    id: string;
+                    active: boolean;
+                } | {
+                    account: any;
+                    planType: any;
+                    planLabel: any;
+                    scopes: any;
+                    expiresAt: any;
+                    id: string;
+                    active: boolean;
+                })[];
+                detail?: any;
+                quota: any;
+                account: any;
+                planType: any;
+                planLabel: any;
+                scopes: any;
+                expiresAt: any;
+                loggedIn: boolean;
+                busy: any;
+            };
+            glm: {
                 activeId: string;
                 accounts: ({
                     account: any;

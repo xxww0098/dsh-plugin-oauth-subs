@@ -5,6 +5,7 @@
 
 import { CODEX_MODELS, CODEX_REASONING_EFFORTS } from './codex/index.js'
 import { GROK_MODELS } from './grok/index.js'
+import { GLM_MODELS } from './glm/index.js'
 import { modelSupportsFastMode } from '../utils/fast-mode.js'
 import { readPrivateText, writePrivateText } from './store.js'
 import {
@@ -26,7 +27,7 @@ export function modelKey(provider, id) {
 }
 
 export function ownedProviderIds(prefix) {
-  return [`${prefix}-codex`, `${prefix}-grok`]
+  return [`${prefix}-codex`, `${prefix}-grok`, `${prefix}-glm`]
 }
 
 function toHarnessModel(model) {
@@ -90,6 +91,15 @@ export function buildProviders({ prefix, origin, loggedIn }) {
       models: withPickerVariants(GROK_MODELS).map(toHarnessModel),
     }
   }
+  if (loggedIn.glm) {
+    providers[`${prefix}-glm`] = {
+      displayName: 'OAuth · GLM',
+      api: 'openai',
+      apiKeyEnv: OAUTH_CREDENTIAL_REF,
+      baseURL: `${origin}/glm/v1`,
+      models: GLM_MODELS.map(toHarnessModel),
+    }
+  }
   return providers
 }
 
@@ -102,7 +112,7 @@ export function describeProviders(providers) {
 }
 
 export function catalogProviders({ prefix, origin }) {
-  return buildProviders({ prefix, origin, loggedIn: { codex: true, grok: true } })
+  return buildProviders({ prefix, origin, loggedIn: { codex: true, grok: true, glm: true } })
 }
 
 export function catalogKeys(providers) {
@@ -114,6 +124,7 @@ export function catalogKeys(providers) {
 export function familyOfProvider(provider) {
   if (String(provider).endsWith('-codex')) return 'codex'
   if (String(provider).endsWith('-grok')) return 'grok'
+  if (String(provider).endsWith('-glm')) return 'glm'
   return String(provider)
 }
 
@@ -241,7 +252,7 @@ export class ModelSwitch {
   }
 
   async setFamily(family, on, catalog) {
-    if (family !== 'codex' && family !== 'grok') throw new Error('family must be codex or grok')
+    if (family !== 'codex' && family !== 'grok' && family !== 'glm') throw new Error('family must be codex, grok, or glm')
     for (const key of catalogKeys(catalog)) {
       const provider = key.slice(0, key.indexOf('/'))
       if (familyOfProvider(provider) !== family) continue

@@ -5,6 +5,7 @@
  */
 
 import { GROK_TIER_NAMES } from './grok/index.js'
+import { GLM_PLAN_NAMES } from './glm/index.js'
 
 export const CODEX_PLAN_NAMES = Object.freeze({
   free: 'Free',
@@ -75,6 +76,7 @@ export function formatPlanLabel(raw) {
   const slug = slugOf(trimmed)
   const compact = compactOf(trimmed)
   if (CODEX_PLAN_NAMES[slug]) return CODEX_PLAN_NAMES[slug]
+  if (GLM_PLAN_NAMES[slug]) return GLM_PLAN_NAMES[slug]
   if (GROK_PLAN_ALIASES[slug]) return GROK_PLAN_ALIASES[slug]
   if (GROK_PLAN_ALIASES[compact]) return GROK_PLAN_ALIASES[compact]
   const known = Object.values(GROK_TIER_NAMES)
