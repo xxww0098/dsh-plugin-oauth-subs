@@ -5,7 +5,6 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import {
   BUILDER_ID_START_URL,
-  KIRO_MODELS,
   KIRO_PORTAL_URL,
   canonicalizeKiroMethod,
   exchangeKiroSocialCode,
@@ -169,11 +168,35 @@ test('formatPlanLabel maps Kiro slugs without colliding with Codex Pro 20x', () 
   assert.equal(formatPlanLabel('KIRO POWERED', 'kiro'), 'Powered')
 })
 
-test('Kiro catalog is three Claude models with image input', () => {
+test('Kiro catalog matches kiro.dev models minus Auto, with native ids', () => {
   const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
   const kiro = catalog['oauth-kiro']
-  assert.deepEqual(kiro.models.map((model) => model.id), KIRO_MODELS.map((model) => model.id))
-  assert.deepEqual(kiro.models[0].input, ['text', 'image'])
+  assert.deepEqual(kiro.models.map((model) => model.id), [
+    'gpt-5.6-sol',
+    'gpt-5.6-terra',
+    'gpt-5.6-luna',
+    'claude-opus-5',
+    'claude-opus-4.8',
+    'claude-opus-4.7',
+    'claude-opus-4.6',
+    'claude-opus-4.5',
+    'claude-sonnet-5',
+    'claude-sonnet-4.6',
+    'claude-sonnet-4.5',
+    'claude-sonnet-4',
+    'claude-haiku-4.5',
+    'deepseek-3.2',
+    'minimax-m2.5',
+    'glm-5',
+    'minimax-m2.1',
+    'qwen3-coder-next',
+  ])
+  assert.equal(kiro.models.find((model) => model.id === 'claude-sonnet-4-8'), undefined)
+  assert.equal(kiro.models.find((model) => model.id === 'auto'), undefined)
+  assert.equal(kiro.models.find((model) => model.id === 'claude-opus-5').contextWindow, 1_000_000)
+  assert.equal(kiro.models.find((model) => model.id === 'claude-sonnet-5').name, 'Claude Sonnet 5')
+  assert.deepEqual(kiro.models.find((model) => model.id === 'claude-opus-4.8').input, ['text', 'image'])
+  assert.deepEqual(kiro.models.find((model) => model.id === 'glm-5').input, ['text'])
   assert.equal(kiro.api, 'openai')
   const described = describeCatalog(catalog).find((row) => row.family === 'kiro')
   assert.equal(described.displayName.includes('Kiro'), true)

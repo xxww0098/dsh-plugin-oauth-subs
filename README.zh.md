@@ -135,7 +135,9 @@ ChatGPT Codex 即使请求了 Priority，回显也经常是 `created=auto` / `co
 
 ## 模型选择
 
-设置 → OAuth 订阅 → **模型** 会列出 Codex、Grok 与 GLM 的全部目录（含 Codex `-fast` 与 `-900k` 条目）。每一行是独立开关。每个系列有 **全选** / **全关**。
+设置 → OAuth 订阅 → **模型** 会列出 Codex、Grok、GLM、**Kiro** 与 Antigravity 的全部目录（含 Codex `-fast` 与 `-900k` 条目）。每一行是独立开关。每个系列有 **全选** / **全关**。
+
+Kiro 对齐 [kiro.dev/docs/models](https://kiro.dev/docs/models/)（不含 Auto 路由）：GPT-5.6 Sol / Terra / Luna，Claude Opus 5 / 4.8 / 4.7 / 4.6 / 4.5，Claude Sonnet 5 / 4.6 / 4.5 / 4，Claude Haiku 4.5，DeepSeek 3.2，MiniMax M2.5 / M2.1，GLM-5，Qwen3 Coder Next。id 用 Kiro 原生写法（`claude-opus-5`、`claude-sonnet-4.6`、`gpt-5.6-sol`）。Claude 与 GPT-5.6 声明图文输入；开源权重行只有文本。
 
 GLM 只显示三个 Coding Plan 模型：**GLM-5.3**（文本）、**GLM-5.3-Flash**（图文）、**GLM-5-Turbo**（文本）。只有 Flash 是多模态；纯文本行不会向 Harness 声明 image 输入。
 
