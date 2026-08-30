@@ -205,6 +205,21 @@ test('catalog includes GLM as openai chat completions', () => {
   assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.3-flash').name, 'GLM-5.3-Flash')
   assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5-turbo').name, 'GLM-5-Turbo')
   assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5-turbo').contextWindow, 200_000)
+  assert.deepEqual(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.3').reasoningEfforts, {
+    low: 'low',
+    high: 'high',
+    max: 'max',
+  })
+  assert.deepEqual(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.3-flash').reasoningEfforts, {
+    low: 'low',
+    high: 'high',
+    max: 'max',
+  })
+  assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.3').reasoningEfforts.off, undefined)
+  assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.3').reasoningEfforts.medium, undefined)
+  assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5-turbo').reasoningEfforts, false)
+  assert.equal(providers['oauth-glm'].compat.supportsReasoningEffort, true)
+  assert.equal(providers['oauth-glm'].compat.thinkingFormat, 'openai')
   assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.2'), undefined)
 })
 

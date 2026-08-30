@@ -1,5 +1,35 @@
 # 错误记录
 
+## 2026-08-30：GLM 思考深度没写进目录，会话选不了
+
+### 现象
+
+- Codex / Grok 在 Harness 会话 → 模型 → **推理等级** 能选深度。
+- OAuth · GLM 三行都是 `reasoningEfforts: false`。选 GLM-5.3 / Flash 时没有 low / high / max，请求也不带 `reasoning_effort`，上游一直用默认 **max**。
+
+### 根因
+
+0.0.20 只补了模型清单和输入类型，没抄官方思考档。Z.AI 文档（GLM-5.3 / Flash）：
+
+| 模型 | 思考深度 | 可关闭 | 默认 |
+|---|---|---|---|
+| GLM-5.3 | `low` / `high` / `max` | 否（`disabled` 会 400） | `max` |
+| GLM-5.3-Flash | 同上 | 否 | `max` |
+| GLM-5-Turbo | 无（只有 thinking on/off，Coding Plan 默认开） | 深度选择器不提供 | 开着 |
+
+没有 `medium`。DSH `reasoningEfforts` 的键是选择器档位、值是线上拼写；不写 `off` 表示不能关。另外 `oauth-glm` 的 baseURL 是 `127.0.0.1`，pi-ai 不会按 z.ai 猜 `supportsReasoningEffort`，不显式打开的话档位到不了请求体。
+
+### 修复（0.0.22）
+
+`GLM_REASONING = { low, high, max }` 写在 5.3 与 Flash 上；Turbo 仍是 `false`。路由加 `compat.supportsReasoningEffort` + `thinkingFormat: openai`（发 `reasoning_effort`）。
+
+### 验证
+
+- 5.3 / Flash `reasoningEfforts` 正好是 low/high/max，没有 off / medium。
+- Turbo 仍是 `false`。
+- `oauth-glm.compat.thinkingFormat === 'openai'`。
+- `npm test` 全绿。
+
 ## 2026-08-30：关于页把一份通用 zip 拆成 Win / macOS / Linux 三行下载
 
 ### 现象

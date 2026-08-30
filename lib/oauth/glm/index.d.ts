@@ -23,7 +23,7 @@ export declare const GLM_BIZ_BASE = "https://api.z.ai";
 export declare const GLM_CODING_URL = "https://api.z.ai/api/coding/paas/v4/chat/completions";
 export declare const GLM_QUOTA_URL = "https://api.z.ai/api/monitor/usage/quota/limit";
 export declare const GLM_KEY_NAME = "dsh-plugin-oauth-subs";
-export declare const GLM_USER_AGENT = "dsh-plugin-oauth-subs/0.0.21";
+export declare const GLM_USER_AGENT = "dsh-plugin-oauth-subs/0.0.22";
 export declare const GLM_NEVER_EXPIRES = 8640000000000000;
 export declare const GLM_CONTEXT_WINDOW = 128000;
 export declare const GLM_LARGE_CONTEXT = 1000000;
@@ -31,6 +31,17 @@ export declare const GLM_TURBO_CONTEXT = 200000;
 /** Text-only GLM rows. Flash is the one multimodal Coding Plan model. */
 export declare const GLM_TEXT_INPUT: readonly string[];
 export declare const GLM_VISION_INPUT: readonly string[];
+/**
+ * GLM-5.3 / GLM-5.3-Flash thinking depth. Official docs (2026-08):
+ * `reasoning_effort` is `low` / `high` / `max`, default `max`. Thinking
+ * cannot be turned off — `thinking.type: disabled` 400s. No `medium`.
+ * Turbo is hybrid on/off with no effort ladder.
+ */
+export declare const GLM_REASONING: Readonly<{
+    low: "low";
+    high: "high";
+    max: "max";
+}>;
 export declare const GLM_REGIONS: readonly string[];
 export declare const GLM_CLI_PROVIDERS: Readonly<{
     zai: "zai";
@@ -41,15 +52,30 @@ export declare const GLM_CLI_PROVIDERS: Readonly<{
  * GLM-5.3 and GLM-5-Turbo are text; GLM-5.3-Flash is the natively
  * multimodal model (image + text). Official Flash also takes video/file;
  * llm-pi-ai / pi-ai only wire `text` and `image`.
+ *
+ * Thinking depth is declared here so the Harness session picker can
+ * offer it. `false` means no depth control (Turbo); omitting `off`
+ * means thinking cannot be disabled (5.3 / Flash).
  */
-export declare const GLM_MODELS: readonly {
+export declare const GLM_MODELS: readonly ({
+    id: string;
+    name: string;
+    contextWindow: number;
+    maxTokens: number;
+    reasoningEfforts: Readonly<{
+        low: "low";
+        high: "high";
+        max: "max";
+    }>;
+    input: readonly string[];
+} | {
     id: string;
     name: string;
     contextWindow: number;
     maxTokens: number;
     reasoningEfforts: boolean;
     input: readonly string[];
-}[];
+})[];
 export declare const GLM_PLAN_NAMES: Readonly<{
     lite: "Lite";
     pro: "Pro";

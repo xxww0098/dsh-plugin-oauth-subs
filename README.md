@@ -137,6 +137,8 @@ You can pre-select while signed out; the family applies on the next sign-in. Che
 
 Grok 4.6 thinking depth is **low / medium / high / xhigh**. Grok 4.5 is **low / medium / high** (no xhigh). Reasoning cannot be turned off; if you leave it unset the API uses **high**. Grok 4 has no depth control. Codex GPT-5.6 Sol / Terra / Luna add **max** on top of **low / medium / high / xhigh**. Other Codex models stop at **xhigh**. `minimal` is not offered: every Codex model rejects it.
 
+GLM-5.3 and GLM-5.3-Flash thinking depth is **low / high / max** (default **max**). There is no `medium`, and thinking cannot be turned off — `thinking.type: disabled` 400s. GLM-5-Turbo has no depth control (thinking stays on by default). The session picker only lists levels the catalog declares.
+
 Set the level in the DeepSeek Harness session model menu → **Reasoning**. It is not on Settings → Models. Login, logout, and each checkbox already sync the picker.
 
 ## Quota

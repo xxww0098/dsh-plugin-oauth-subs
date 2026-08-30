@@ -102,6 +102,12 @@ export function buildProviders({ prefix, origin, loggedIn }) {
       api: 'openai',
       apiKeyEnv: OAUTH_CREDENTIAL_REF,
       baseURL: `${origin}/glm/v1`,
+      // Localhost is not api.z.ai, so pi-ai would guess OpenAI and drop
+      // `reasoning_effort`. Coding Plan reads that field for 5.3 / Flash.
+      compat: {
+        supportsReasoningEffort: true,
+        thinkingFormat: 'openai',
+      },
       models: GLM_MODELS.map(toHarnessModel),
     }
   }
