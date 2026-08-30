@@ -9,6 +9,10 @@ function trimmed(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined
 }
 
+function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
 function tryJson(value) {
   if (value && typeof value === 'object') return value
   if (typeof value !== 'string' || !value.trim()) return {}
@@ -17,6 +21,43 @@ function tryJson(value) {
   } catch {
     return { text: value }
   }
+}
+
+/**
+ * Gemini `FunctionResponse.response` is a singular protobuf Struct.
+ * Arrays / null / number / bool must be wrapped or cloudcode-pa returns 400:
+ * "Unknown name \"response\" … Proto field is not repeating, cannot start list."
+ */
+export function functionResponsePayload(value) {
+  if (isPlainObject(value)) return value
+  if (typeof value === 'string') {
+    if (!value.trim()) return {}
+    try {
+      const parsed = JSON.parse(value)
+      if (isPlainObject(parsed)) return parsed
+      return { result: parsed }
+    } catch {
+      return { text: value }
+    }
+  }
+  if (value == null) return {}
+  return { result: value }
+}
+
+function functionResponsePart(message) {
+  return {
+    functionResponse: {
+      name: trimmed(message?.name) ?? 'tool',
+      response: functionResponsePayload(message?.content),
+    },
+  }
+}
+
+function isFunctionResponseTurn(content) {
+  return content?.role === 'user'
+    && Array.isArray(content.parts)
+    && content.parts.length > 0
+    && content.parts.every((part) => isPlainObject(part?.functionResponse))
 }
 
 function imagePart(url) {
@@ -73,15 +114,10 @@ export function openaiToAntigravity(payload, { projectId, sessionId } = {}) {
       continue
     }
     if (role === 'tool') {
-      contents.push({
-        role: 'user',
-        parts: [{
-          functionResponse: {
-            name: trimmed(message.name) ?? 'tool',
-            response: tryJson(message.content),
-          },
-        }],
-      })
+      const part = functionResponsePart(message)
+      const last = contents[contents.length - 1]
+      if (isFunctionResponseTurn(last)) last.parts.push(part)
+      else contents.push({ role: 'user', parts: [part] })
       continue
     }
     const parts = []
