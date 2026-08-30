@@ -1,5 +1,61 @@
 # 错误记录
 
+## 2026-08-30：GLM 账号卡身份显示 zcode，不是邮箱
+
+### 现象
+
+设置 → 智谱 GLM。已登录卡抬头是 **zcode**，后面 LITE / 使用中 / 中国。本机 vault `activeId: zcode@bigmodel`，`account: "zcode"`。
+
+### 证据
+
+用户现场截图。BigModel CLI poll 经常没有 `user.email`；`completeGlmCli` 把 `session.account` 写成 `ready.email ?? ready.accountId`，`accountId` 落到 CLI app id `zcode`（`GLM_BIGMODEL_APP_ID`）。`publicSession('glm')` 原样输出 `session.account`。
+
+### 根因
+
+身份层（`completeGlmCli` / `publicSession` / 导入）。没有解码 poll JWT，也没打 ZCode 用的 userinfo。`zcode` / `zai` / `bigmodel` / `glm` 是站点/客户端 id，不是用户。
+
+### 修复（0.0.36）
+
+- 可见身份只走邮箱或其它人类 id：poll 字段、JWT `email` / `preferred_username`（不验签）、ZCode userinfo。
+  - 全球：`GET https://chat.z.ai/api/oauth/userinfo`（失败再试 `api.z.ai/api/biz/customer/getCustomerInfo`）
+  - 中国：`GET https://open.bigmodel.cn/api/biz/customer/getCustomerInfo`
+- `publicSession` / 卡抬头永不展示 `zcode` / `zai` / `bigmodel` / `glm`。
+- `accountIdOf` 在有邮箱后是 `email@bigmodel`（或 `@zai`）。快照时若 vault 仍是 app id，能解析到邮箱就改写 session 并换 key，switch / logout 仍按新 id。
+
+### 验证
+
+- `npm test`：BigModel complete 无 poll email、JWT/userinfo 有邮箱 → `account` 不是 zcode；`publicSession` 对 `account: "zcode"` 不回 zcode。
+
+## 2026-08-30：GLM 额度两条「本周期」，没有 5 小时 / 每周 / ZCode MCP
+
+### 现象
+
+同一张 GLM 卡额度区两条杠都标 **本周期**：`0 / 2000 · 剩余 100%` 和 `880 / 2000 · 剩余 56%`。官方 Coding Plan 是 5 小时窗口 + 每周窗口（Lite 2,000 / 10,000），MCP（Web Search / Web Reader / Zread）另算。
+
+### 证据
+
+用户现场截图。Lite 5 小时额度就是 2000；两条都是 2000 说明 weekly / MCP 被标成 `kind: 'cycle'`，或根本没从 `limits[]` 的 `unit`/`number`/`TIME_LIMIT` 认出来。
+
+### 根因
+
+`GET api.z.ai|open.bigmodel.cn/api/monitor/usage/quota/limit` 的 live 形状是 `data.limits[]`：
+
+| type | unit | number | 窗口 |
+|---|---|---|---|
+| `CREDIT_LIMIT` / `TOKENS_LIMIT` | 3 | 5 | 5 小时（Lite usage=2000） |
+| `CREDIT_LIMIT` / `TOKENS_LIMIT` | 6 | 1 或 7 | 每周（Lite usage=10000） |
+| `TIME_LIMIT` | 5 | 1 | ZCode MCP；`usageDetails[].modelCode` = `search-prime` / `web-reader` / `zread` |
+
+旧 `parseGlmQuota` 只拿 `duration`/`window` 判断 5h / week，没有就 `cycle` → UI **本周期**。CREDIT_LIMIT 行没有 duration 字符串。MCP 在同 URL 的 `TIME_LIMIT`；若只有 CREDIT_LIMIT，再 GET 同站 ` /api/monitor/usage/tool-usage`。不编造额度数字。
+
+### 修复（0.0.36）
+
+按 type / duration / name / `unit`+`number` 映射 `primary` / `weekly` / `mcp`。UI（仅 GLM）：**5 小时剩余** / **每周剩余** / **ZCode MCP**（en: 5-hour remaining / Weekly remaining / ZCode MCP），剩余百分比 + used/total。额度仍在账号卡内，刷新仍按卡。Codex / Grok 文案不动。
+
+### 验证
+
+- `npm test`：截图形 CREDIT_LIMIT（两条 2000）+ weekly 10000 + TIME_LIMIT MCP → 三行 kind 正确，没有 `cycle`。
+
 ## 2026-08-30：关于页「打开发布页」是假安装入口；检查更新只比版本
 
 ### 现象

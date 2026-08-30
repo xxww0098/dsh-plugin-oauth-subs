@@ -58,11 +58,11 @@ export declare function importGlmAuth(paths?: string[]): Promise<{
     session: {
         zcodeJwt?: any;
         planType?: any;
+        region: string;
+        account?: string;
         accessToken: string;
         refreshToken: string;
         expiresAt: number;
-        account: any;
-        region: string;
     };
     source: string;
 }>;

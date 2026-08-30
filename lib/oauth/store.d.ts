@@ -28,7 +28,7 @@ export declare function listAccounts(provider: any, path: any): Promise<({
     id: string;
     active: boolean;
 } | {
-    account: any;
+    account: string;
     planType: any;
     planLabel: any;
     region: string;
@@ -52,6 +52,7 @@ export declare function listStoredSessions(provider: any, path: any): Promise<{
     active: boolean;
 }[]>;
 export declare function getAccountSession(provider: any, id: any, path: any): Promise<any>;
+export declare function replaceAccountId(provider: any, fromId: any, session: any, path: any): Promise<any>;
 export declare function saveSession(provider: any, session: any, path: any, options: any): Promise<any>;
 export declare function switchAccount(provider: any, id: any, path: any): Promise<any>;
 export declare function deleteSession(provider: any, path: any, id: any): Promise<any>;
@@ -63,7 +64,7 @@ export declare function publicSession(provider: any, session: any): {
     region?: undefined;
     scopes?: undefined;
 } | {
-    account: any;
+    account: string;
     planType: any;
     planLabel: any;
     region: string;

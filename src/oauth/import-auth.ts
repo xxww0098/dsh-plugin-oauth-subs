@@ -345,7 +345,7 @@ export async function importGlmAuth(paths = glmAuthSearchPaths()) {
     const found = glmKeyFromZcodeConfig(raw)
     if (!found) continue
     return {
-      session: glmSession({ accessToken: found.apiKey, account: 'zcode', region: found.region }),
+      session: glmSession({ accessToken: found.apiKey, region: found.region }),
       source: path,
     }
   }

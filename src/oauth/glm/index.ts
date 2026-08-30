@@ -13,6 +13,7 @@
  */
 
 import { randomBytes } from 'node:crypto'
+import { decodeJwtPayload } from '../../utils/jwt.js'
 
 export const GLM_CLIENT_ID = 'client_P8X5CMWmlaRO9gyO-KSqtg'
 export const GLM_BIGMODEL_APP_ID = 'zcode'
@@ -25,7 +26,12 @@ export const GLM_BUSINESS_LOGIN_URL = 'https://api.z.ai/api/auth/z/login'
 export const GLM_BIZ_BASE = 'https://api.z.ai'
 export const GLM_CODING_URL = 'https://api.z.ai/api/coding/paas/v4/chat/completions'
 export const GLM_QUOTA_URL = 'https://api.z.ai/api/monitor/usage/quota/limit'
+export const GLM_TOOL_USAGE_URL = 'https://api.z.ai/api/monitor/usage/tool-usage'
+export const GLM_USERINFO_URL = 'https://chat.z.ai/api/oauth/userinfo'
+export const GLM_BIGMODEL_USERINFO_URL = 'https://open.bigmodel.cn/api/biz/customer/getCustomerInfo'
 export const GLM_KEY_NAME = 'dsh-plugin-oauth-subs'
+/** CLI / site ids. Never show these as the account name on the card. */
+export const GLM_APP_ACCOUNTS = Object.freeze(['zcode', 'zai', 'bigmodel', 'glm'])
 export const GLM_USER_AGENT = 'dsh-plugin-oauth-subs/0.0.22'
 export const GLM_NEVER_EXPIRES = 8.64e15
 export const GLM_CONTEXT_WINDOW = 128_000
@@ -108,6 +114,73 @@ export function glmQuotaUrl(region = 'zai') {
     : GLM_QUOTA_URL
 }
 
+export function glmToolUsageUrl(region = 'zai') {
+  return normalizeGlmRegion(region) === 'bigmodel'
+    ? 'https://open.bigmodel.cn/api/monitor/usage/tool-usage'
+    : GLM_TOOL_USAGE_URL
+}
+
+export function glmUserinfoUrl(region = 'zai') {
+  return normalizeGlmRegion(region) === 'bigmodel' ? GLM_BIGMODEL_USERINFO_URL : GLM_USERINFO_URL
+}
+
+export function isGlmAppAccount(value) {
+  if (typeof value !== 'string' || !value.trim()) return false
+  const raw = value.trim().toLowerCase()
+  if (GLM_APP_ACCOUNTS.includes(raw)) return true
+  const at = raw.lastIndexOf('@')
+  if (at <= 0) return false
+  const head = raw.slice(0, at)
+  const tail = raw.slice(at + 1)
+  if ((tail === 'zai' || tail === 'bigmodel' || tail === 'zcode' || tail === 'glm')
+    && GLM_APP_ACCOUNTS.includes(head)) {
+    return true
+  }
+  return GLM_APP_ACCOUNTS.includes(head) && (tail === 'zai' || tail === 'bigmodel')
+}
+
+export function pickGlmHumanAccount(...candidates) {
+  for (const value of candidates) {
+    if (typeof value !== 'string' || !value.trim()) continue
+    const trimmedValue = value.trim()
+    if (isGlmAppAccount(trimmedValue)) continue
+    return trimmedValue
+  }
+  return undefined
+}
+
+export function accountFromJwt(token) {
+  const payload = decodeJwtPayload(token)
+  if (!payload) return undefined
+  return pickGlmHumanAccount(
+    payload.email,
+    payload.preferred_username,
+    payload.preferredUsername,
+    payload.username,
+    payload.userName,
+    payload.name,
+  )
+}
+
+function humanFromObject(value) {
+  if (!value || typeof value !== 'object') return undefined
+  return pickGlmHumanAccount(
+    value.email,
+    value.mail,
+    value.preferred_username,
+    value.preferredUsername,
+    value.username,
+    value.userName,
+    value.customerName,
+    value.nickName,
+    value.nickname,
+    value.displayName,
+    value.name,
+    value.phone,
+    value.mobile,
+  )
+}
+
 export function glmBizBase(region = 'zai') {
   return normalizeGlmRegion(region) === 'bigmodel' ? 'https://open.bigmodel.cn' : GLM_BIZ_BASE
 }
@@ -183,13 +256,22 @@ export function parseCliPoll(body) {
     ?? tokenFrom(data.bigmodel)
     ?? trimmed(data.access_token)
   if (!oauthAccess) throw new Error('glm cli poll ready without access token')
-  const email = trimmed(data.user?.email)
-  const accountId = data.user?.id != null ? String(data.user.id) : undefined
+  const zcodeJwt = trimmed(data.token)
+  const rawAccountId = data.user?.id != null ? String(data.user.id) : undefined
+  const email = pickGlmHumanAccount(
+    data.user?.email,
+    data.user?.preferred_username,
+    data.user?.preferredUsername,
+    data.email,
+    accountFromJwt(zcodeJwt),
+    accountFromJwt(oauthAccess),
+  )
+  const accountId = pickGlmHumanAccount(rawAccountId)
   return {
     status: 'ready',
     ready: true,
     oauthAccess,
-    zcodeJwt: trimmed(data.token),
+    zcodeJwt,
     email,
     accountId,
   }
@@ -294,35 +376,92 @@ export function glmSession({ accessToken, account, accountId, planType, region =
   if (typeof accessToken !== 'string' || !accessToken) {
     throw new Error('glm session needs an access token')
   }
+  const human = pickGlmHumanAccount(account, accountId, accountFromJwt(zcodeJwt), accountFromJwt(accessToken))
   return {
     accessToken,
     refreshToken: accessToken,
     expiresAt: GLM_NEVER_EXPIRES,
-    account: account ?? accountId ?? 'glm',
+    ...(human === undefined ? {} : { account: human }),
     region: normalizeGlmRegion(region),
     ...(planType === undefined ? {} : { planType }),
     ...(zcodeJwt === undefined ? {} : { zcodeJwt }),
   }
 }
 
+export async function fetchGlmUserinfo(source, { fetchFn = fetch, region } = {}) {
+  const resolved = normalizeGlmRegion(region ?? source?.region)
+  const bearer = trimmed(source?.zcodeJwt) ?? trimmed(source?.oauthAccess) ?? trimmed(source?.accessToken)
+  if (!bearer) return undefined
+  const urls = resolved === 'bigmodel'
+    ? [GLM_BIGMODEL_USERINFO_URL]
+    : [GLM_USERINFO_URL, `${GLM_BIZ_BASE}/api/biz/customer/getCustomerInfo`]
+  const headers = {
+    authorization: `Bearer ${bearer}`,
+    accept: 'application/json',
+    'user-agent': GLM_USER_AGENT,
+  }
+  for (const url of urls) {
+    try {
+      const body = await getJson(url, headers, fetchFn)
+      let data
+      try {
+        data = unwrapEnvelope(body, 'userinfo')
+      } catch {
+        data = body
+      }
+      const human = humanFromObject(data)
+        ?? humanFromObject(data?.user)
+        ?? humanFromObject(data?.profile)
+        ?? humanFromObject(body)
+      if (human) return human
+    } catch {
+      continue
+    }
+  }
+  return undefined
+}
+
+export async function resolveGlmIdentity(source, { fetchFn = fetch } = {}) {
+  const fromHand = pickGlmHumanAccount(
+    source?.email,
+    source?.account,
+    source?.accountId,
+    accountFromJwt(source?.zcodeJwt),
+    accountFromJwt(source?.accessToken),
+    accountFromJwt(source?.oauthAccess),
+  )
+  if (fromHand) return fromHand
+  return fetchGlmUserinfo(source, { fetchFn, region: source?.region })
+}
+
+export function displayGlmAccount(session) {
+  return pickGlmHumanAccount(
+    session?.account,
+    accountFromJwt(session?.zcodeJwt),
+    accountFromJwt(session?.accessToken),
+  )
+}
+
 export async function completeGlmCli(ready, { fetchFn = fetch, region = 'zai' } = {}) {
   const resolved = normalizeGlmRegion(region)
-  if (resolved === 'bigmodel') {
-    const accessToken = ready.zcodeJwt || ready.oauthAccess
-    if (!accessToken) throw new Error('glm BigModel poll ready without a token')
-    return glmSession({
-      accessToken,
-      account: ready.email ?? ready.accountId,
-      accountId: ready.accountId,
-      region: resolved,
-      zcodeJwt: ready.zcodeJwt,
-    })
-  }
-  const accessToken = await mintGlmApiKey(ready.oauthAccess, { fetchFn, region: resolved })
-  return glmSession({
-    accessToken,
-    account: ready.email ?? ready.accountId,
+  const minted = resolved === 'bigmodel'
+    ? (ready.zcodeJwt || ready.oauthAccess)
+    : await mintGlmApiKey(ready.oauthAccess, { fetchFn, region: resolved })
+  if (!minted) throw new Error(resolved === 'bigmodel'
+    ? 'glm BigModel poll ready without a token'
+    : 'glm key provisioning returned no apiKey')
+  const account = await resolveGlmIdentity({
+    email: ready.email,
+    account: ready.account,
     accountId: ready.accountId,
+    accessToken: minted,
+    oauthAccess: ready.oauthAccess,
+    zcodeJwt: ready.zcodeJwt,
+    region: resolved,
+  }, { fetchFn })
+  return glmSession({
+    accessToken: minted,
+    account,
     region: resolved,
     zcodeJwt: ready.zcodeJwt,
   })

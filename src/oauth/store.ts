@@ -10,6 +10,7 @@ import { chmod, mkdir, open, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
 import { formatPlanLabel } from './plan.js'
+import { displayGlmAccount } from './glm/index.js'
 
 export const PROVIDER_IDS = Object.freeze(['codex', 'grok', 'glm'])
 
@@ -203,6 +204,23 @@ export async function getAccountSession(provider, id, path) {
   return vault.accounts[key]
 }
 
+export async function replaceAccountId(provider, fromId, session, path) {
+  const file = path ?? authFilePath()
+  return serialize(file, async () => {
+    const store = await loadStore(file)
+    const vault = asVault(provider, store[provider])
+    const nextId = accountIdOf(provider, session)
+    const previous = typeof fromId === 'string' && fromId.trim() ? fromId.trim() : vault.activeId
+    const wasActive = vault.activeId === previous || vault.activeId === nextId
+    if (previous && previous !== nextId) delete vault.accounts[previous]
+    vault.accounts[nextId] = session
+    if (wasActive || !vault.activeId || !vault.accounts[vault.activeId]) vault.activeId = nextId
+    store[provider] = vault
+    await writeStore(store, file)
+    return nextId
+  })
+}
+
 export async function saveSession(provider, session, path, options) {
   const file = path ?? authFilePath()
   const activate = options?.activate !== false
@@ -262,7 +280,7 @@ export function publicSession(provider, session) {
   }
   if (provider === 'glm') {
     return {
-      account: session.account,
+      account: displayGlmAccount(session),
       planType,
       planLabel,
       region: session.region === 'bigmodel' ? 'bigmodel' : 'zai',

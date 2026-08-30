@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.36
+
+- GLM Settings card no longer shows CLI app ids (`zcode` / `zai` / `bigmodel` / `glm`) as the account name. Identity is email (or another human claim) from the poll payload, the poll JWT / access token, or ZCode’s userinfo (`chat.z.ai/api/oauth/userinfo`, BigModel `getCustomerInfo`). Existing `zcode@bigmodel` vaults are rewritten on snapshot when an email is available.
+- GLM quota is three remaining bars like ZCode Coding Plan: **5 小时剩余** / **每周剩余** / **ZCode MCP**. `parseGlmQuota` maps `CREDIT_LIMIT`/`TOKENS_LIMIT` `unit`+`number` (5h / weekly) and `TIME_LIMIT` / tool-usage MCP instead of dumping unknown windows as **本周期**.
+
 ## 0.0.33
 
 - Drop Grok Fast. Grok 4.6 accepted `service_tier: "priority"` on the wire but a 2026-08-30 interleaved run showed no speed gain (ratio 0.994). No `grok-*-fast` picker row, no Priority field on xAI. A stale `grok-4.6-fast` id is peeled to `grok-4.6`.
