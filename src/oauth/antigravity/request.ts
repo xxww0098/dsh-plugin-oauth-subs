@@ -1,5 +1,5 @@
 /**
- * OpenAI chat/completions ↔ cloudcode-pa generateContent.
+ * OpenAI chat/completions ↔ daily-cloudcode-pa generateContent (hub).
  * Body always includes project + model + userAgent: "antigravity".
  */
 

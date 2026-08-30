@@ -7,8 +7,44 @@ import { test } from 'node:test'
 import { AuthController } from '../lib/oauth/controller.js'
 import { saveSession } from '../lib/oauth/store.js'
 import { installedVersion } from '../lib/utils/update.js'
-import { ModelSwitch, catalogProviders } from '../lib/oauth/models.js'
+import { HARNESS_COMPLETIONS_API, ModelSwitch, catalogKeys, catalogProviders } from '../lib/oauth/models.js'
 import { glmSession } from '../lib/oauth/glm/index.js'
+import { kiroSession, KIRO_MODELS } from '../lib/oauth/kiro/index.js'
+import { antigravitySession } from '../lib/oauth/antigravity/index.js'
+
+const DSH_APIS = new Set(['openai-completions', 'openai-responses', 'anthropic-messages'])
+const KIRO_RT = `rt_${'x'.repeat(120)}`
+
+function createPiAiSettings(initialProviders = {}) {
+  const section = { providers: structuredClone(initialProviders) }
+  const ops = []
+  return {
+    ops,
+    section,
+    get(name) {
+      if (name !== 'llm-pi-ai') return undefined
+      return structuredClone(section)
+    },
+    async mutate(target, mutations) {
+      if (target !== 'llm-pi-ai') throw new Error(`unknown settings namespace ${target}`)
+      const next = { providers: { ...section.providers } }
+      for (const row of mutations) {
+        const key = row.path?.[1]
+        if (row.path?.[0] !== 'providers' || typeof key !== 'string') throw new Error('bad path')
+        if (row.op === 'unset') {
+          delete next.providers[key]
+        } else if (row.op === 'set') {
+          if (!DSH_APIS.has(row.value?.api)) {
+            throw new Error(`llm-pi-ai: provider "${key}" api must be openai-completions | openai-responses | anthropic-messages`)
+          }
+          next.providers[key] = structuredClone(row.value)
+        }
+      }
+      section.providers = next.providers
+      ops.push({ target, mutations })
+    },
+  }
+}
 
 const GLM_CURRENT = ['oauth-glm/glm-5.3', 'oauth-glm/glm-5.3-flash', 'oauth-glm/glm-5-turbo']
 const GLM_STALE = ['oauth-glm/glm-4.7', 'oauth-glm/glm-5', 'oauth-glm/glm-5.1', 'oauth-glm/glm-5.2']
@@ -19,22 +55,25 @@ function glmQuotaFetch() {
   }), { status: 200, headers: { 'content-type': 'application/json' } })
 }
 
-async function glmController({ dir, models, ops = [] }) {
+async function glmController({ dir, models, ops = [], settings }) {
   const authPath = join(dir, 'auth.json')
   await saveSession('glm', glmSession({
     accessToken: 'glm-token',
     account: 'dev@x',
     region: 'bigmodel',
   }), authPath)
+  const store = settings ?? {
+    mutate: async (target, mutations) => { ops.push({ target, mutations }) },
+  }
   const controller = new AuthController({
     authPath,
     prefix: 'oauth',
     origin: () => 'http://127.0.0.1:8318',
-    settings: { mutate: async (target, mutations) => { ops.push({ target, mutations }) } },
+    settings: store,
     models,
     fetchFn: glmQuotaFetch(),
   })
-  return { controller, ops, authPath }
+  return { controller, ops: store.ops ?? ops, authPath, settings: store }
 }
 
 test('snapshot reports logged-out accounts and empty providers', async () => {
@@ -201,7 +240,7 @@ test('toggle glm-5.3 on writes oauth-glm when all current GLM keys were disabled
   assert.equal(last.target, 'llm-pi-ai')
   const set = last.mutations.filter((row) => row.op === 'set')
   const glm = set.find((row) => row.path[1] === 'oauth-glm')
-  assert.equal(glm.value.api, 'openai')
+  assert.equal(glm.value.api, HARNESS_COMPLETIONS_API)
   assert.equal(glm.value.baseURL, 'http://127.0.0.1:8318/glm/v1')
   assert.equal(glm.value.compat.thinkingFormat, 'openai')
   assert.deepEqual(glm.value.models.map((model) => model.id), ['glm-5.3'])
@@ -221,7 +260,7 @@ test('login/sync recovers leftover GLM 全关 and writes the current catalog rou
   for (const key of GLM_STALE) assert.equal(models.disabled.has(key), true)
   const set = ops.at(-1).mutations.filter((row) => row.op === 'set')
   const route = set.find((row) => row.path[1] === 'oauth-glm')
-  assert.equal(route.value.api, 'openai')
+  assert.equal(route.value.api, HARNESS_COMPLETIONS_API)
   assert.equal(route.value.compat.thinkingFormat, 'openai')
   assert.deepEqual(route.value.models.map((model) => model.id), ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
 })
@@ -235,6 +274,94 @@ test('setModels 全关 still unsets oauth-glm and does not recover', async () =>
   assert.equal(off.catalog.find((row) => row.family === 'glm').models.every((model) => model.enabled === false), true)
   const empty = ops.at(-1).mutations.filter((row) => row.op === 'set')
   assert.equal(empty.some((row) => row.path[1] === 'oauth-glm'), false)
+})
+
+test('setModels 全选 persists logged-in GLM 3/3 into the settings store', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const store = createPiAiSettings()
+  const { controller } = await glmController({ dir, models: new ModelSwitch(), settings: store })
+  await controller.setModels({ family: 'glm', on: true })
+  const set = store.ops.at(-1).mutations.filter((row) => row.op === 'set')
+  const glm = set.find((row) => row.path[1] === 'oauth-glm')
+  assert.equal(glm.value.api, HARNESS_COMPLETIONS_API)
+  assert.deepEqual(glm.value.models.map((model) => model.id), ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
+  assert.equal(store.section.providers['oauth-glm'].api, 'openai-completions')
+  assert.deepEqual(store.section.providers['oauth-glm'].models.map((model) => model.id), ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
+})
+
+test('Antigravity 全选 clears leftover disabled keys and writes oauth-antigravity', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const authPath = join(dir, 'auth.json')
+  await saveSession('antigravity', antigravitySession({
+    accessToken: 'a', refreshToken: 'r', expiresAt: Date.now() + 60 * 60_000, account: 'dev@x', projectId: 'proj',
+  }), authPath)
+  const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://127.0.0.1:8318' })
+  const agKeys = catalogKeys(catalog).filter((key) => key.startsWith('oauth-antigravity/'))
+  const models = new ModelSwitch()
+  await models.ready
+  models.disabled = new Set(agKeys.filter((key) => key !== 'oauth-antigravity/gemini-3.7-flash-high'))
+  const store = createPiAiSettings()
+  const controller = new AuthController({
+    authPath,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: store,
+    models,
+    fetchFn: async () => { throw new Error('antigravity must not hit a quota API') },
+  })
+  const before = await controller.snapshot()
+  assert.equal(before.catalog.find((row) => row.family === 'antigravity').loggedIn, true)
+  assert.equal(before.catalog.find((row) => row.family === 'antigravity').models.filter((model) => model.enabled).length, 1)
+  assert.equal(store.section.providers['oauth-antigravity'], undefined)
+  await controller.setModels({ family: 'antigravity', on: true })
+  for (const key of agKeys) assert.equal(models.disabled.has(key), false)
+  assert.equal(store.section.providers['oauth-antigravity'].api, HARNESS_COMPLETIONS_API)
+  assert.equal(store.section.providers['oauth-antigravity'].models.length, agKeys.length)
+})
+
+test('Kiro login sync writes oauth-kiro; picker stays locked while logged out', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const authPath = join(dir, 'auth.json')
+  const store = createPiAiSettings()
+  const loggedOut = new AuthController({
+    authPath,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: store,
+  })
+  const empty = await loggedOut.snapshot()
+  assert.equal(empty.catalog.find((row) => row.family === 'kiro').loggedIn, false)
+  await saveSession('kiro', kiroSession({
+    accessToken: 'tok', refreshToken: KIRO_RT, authMethod: 'social', account: 'dev@x',
+  }), authPath)
+  const controller = new AuthController({
+    authPath,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: store,
+    fetchFn: async () => new Response(JSON.stringify({
+      subscriptionInfo: { subscriptionTitle: 'KIRO PRO' },
+      userInfo: { email: 'dev@x' },
+      usageBreakdownList: [{ currentUsageWithPrecision: 10, usageLimitWithPrecision: 100 }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } }),
+  })
+  await controller.sync()
+  assert.equal(store.section.providers['oauth-kiro'].api, HARNESS_COMPLETIONS_API)
+  assert.deepEqual(store.section.providers['oauth-kiro'].models.map((model) => model.id), KIRO_MODELS.map((model) => model.id))
+})
+
+test('setModels surfaces a mutate failure instead of swallowing it', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const { controller } = await glmController({
+    dir,
+    models: new ModelSwitch(),
+    settings: {
+      async mutate() {
+        throw new Error('llm-pi-ai: provider "oauth-glm" api must be openai-completions | openai-responses | anthropic-messages')
+      },
+    },
+  })
+  await assert.rejects(controller.setModels({ family: 'glm', on: true }), /llm-pi-ai mutate failed/)
 })
 
 test('controller toggles models and sync uses the persisted set', async () => {

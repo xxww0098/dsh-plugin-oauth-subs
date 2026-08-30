@@ -9,23 +9,38 @@ import { catalogProviders } from '../lib/oauth/models.js'
 import { importAntigravityAuth } from '../lib/oauth/import-auth.js'
 import { formatPlanLabel } from '../lib/oauth/plan.js'
 import {
+  ANTIGRAVITY_API_URL,
   ANTIGRAVITY_CLIENT_ID,
+  ANTIGRAVITY_DAILY_API_URL,
+  ANTIGRAVITY_FALLBACK_VERSION,
+  ANTIGRAVITY_GENERATE_URL,
   ANTIGRAVITY_GOOG_API_CLIENT_UA,
   ANTIGRAVITY_LOAD_CODE_ASSIST_URL,
+  ANTIGRAVITY_MAC_APP_PLIST,
   ANTIGRAVITY_MODELS,
+  ANTIGRAVITY_MODELS_URL,
   ANTIGRAVITY_NODE_API_CLIENT_UA,
   ANTIGRAVITY_ONBOARD_USER_URL,
+  ANTIGRAVITY_PROD_API_URL,
   ANTIGRAVITY_STREAM_URL,
   antigravityChatHeaders,
+  antigravityFetchModelsUrls,
   antigravityFlow,
+  antigravityLoadCodeAssistBody,
   antigravityLoadCodeAssistHeaders,
   antigravityLoadCodeAssistMetadata,
   antigravityOnboardUserHeaders,
+  antigravityPlatform,
   antigravityRequestUserAgent,
   antigravitySession,
+  antigravityVersion,
   completeAntigravityLogin,
+  detectAntigravityVersion,
   exchangeAntigravityCode,
   fetchAntigravityProject,
+  normalizeAntigravityVersion,
+  parseAntigravityPlistVersion,
+  parseAntigravityVersionText,
 } from '../lib/oauth/antigravity/index.js'
 import { antigravityToOpenai, openaiToAntigravity } from '../lib/oauth/antigravity/request.js'
 import { createProxy } from '../lib/oauth/proxy.js'
@@ -60,7 +75,101 @@ test('authorize URL is the official Google installed-app client', () => {
   assert.equal(url.searchParams.has('code_challenge'), false)
 })
 
-test('fingerprint is one Antigravity IDE identity on loadCodeAssist, onboardUser, and chat', () => {
+test('fallback version is current official Antigravity.app 2.11.0', () => {
+  assert.equal(ANTIGRAVITY_FALLBACK_VERSION, '2.11.0')
+  assert.equal(detectAntigravityVersion({
+    platform: 'linux',
+    execFile: () => { throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' }) },
+  }), '2.11.0')
+  assert.equal(detectAntigravityVersion({
+    platform: 'darwin',
+    readFile: () => { throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' }) },
+    execFile: () => { throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' }) },
+  }), '2.11.0')
+})
+
+test('plist helper reads CFBundleShortVersionString from Antigravity.app XML', () => {
+  const plist = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>com.google.antigravity</string>
+	<key>CFBundleShortVersionString</key>
+	<string>2.11.0</string>
+	<key>CFBundleVersion</key>
+	<string>99.0.0</string>
+</dict>
+</plist>`
+  assert.equal(parseAntigravityPlistVersion(plist), '2.11.0')
+  assert.equal(parseAntigravityVersionText('Antigravity 2.11.0\n'), '2.11.0')
+  assert.equal(normalizeAntigravityVersion('2.11.0.0'), '2.11.0')
+  const seen = []
+  const detected = detectAntigravityVersion({
+    platform: 'darwin',
+    readFile: (path) => {
+      seen.push(path)
+      return plist
+    },
+    execFile: () => { throw new Error('plist parse should not need plutil') },
+  })
+  assert.equal(detected, '2.11.0')
+  assert.deepEqual(seen, [ANTIGRAVITY_MAC_APP_PLIST])
+  assert.equal(ANTIGRAVITY_MAC_APP_PLIST, '/Applications/Antigravity.app/Contents/Info.plist')
+  assert.equal(ANTIGRAVITY_MAC_APP_PLIST.includes('IDE.app'), false)
+  const win = detectAntigravityVersion({
+    platform: 'win32',
+    env: { LOCALAPPDATA: 'C:\\Users\\dev\\AppData\\Local' },
+    execFile: (file, args) => {
+      assert.equal(file, 'powershell.exe')
+      const command = args.join(' ')
+      assert.equal(command.includes('Antigravity.exe'), true)
+      assert.equal(command.includes('IDE.app') || command.includes('Antigravity IDE'), false)
+      return '2.11.0.0\r\n'
+    },
+  })
+  assert.equal(win, '2.11.0')
+  const linux = detectAntigravityVersion({
+    platform: 'linux',
+    execFile: (file, args) => {
+      assert.equal(file, 'antigravity')
+      assert.deepEqual(args, ['--version'])
+      return '2.11.0\n'
+    },
+  })
+  assert.equal(linux, '2.11.0')
+})
+
+test('request UA is CLIProxyAPI hub shape and never the plugin name', () => {
+  const ua = antigravityRequestUserAgent()
+  const ver = antigravityVersion()
+  assert.equal(ua, `antigravity/hub/${ver} ${antigravityPlatform()}`)
+  assert.match(ua, /^antigravity\/hub\/\d+\.\d+\.\d+ (darwin|windows|linux)\/(arm64|amd64)$/)
+  assert.equal(ua.includes('dsh-plugin'), false)
+  assert.equal(ua.includes('2.5.5'), false)
+})
+
+test('hub Cloud Code RPCs use daily, not IDE prod', () => {
+  assert.equal(ANTIGRAVITY_API_URL, 'https://daily-cloudcode-pa.googleapis.com')
+  assert.equal(ANTIGRAVITY_DAILY_API_URL, ANTIGRAVITY_API_URL)
+  assert.equal(ANTIGRAVITY_PROD_API_URL, 'https://cloudcode-pa.googleapis.com')
+  assert.equal(ANTIGRAVITY_LOAD_CODE_ASSIST_URL, 'https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist')
+  assert.equal(ANTIGRAVITY_MODELS_URL, 'https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels')
+  assert.equal(ANTIGRAVITY_GENERATE_URL, 'https://daily-cloudcode-pa.googleapis.com/v1internal:generateContent')
+  assert.equal(ANTIGRAVITY_STREAM_URL, 'https://daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse')
+  assert.equal(ANTIGRAVITY_ONBOARD_USER_URL, 'https://daily-cloudcode-pa.googleapis.com/v1internal:onboardUser')
+  for (const url of [
+    ANTIGRAVITY_LOAD_CODE_ASSIST_URL,
+    ANTIGRAVITY_MODELS_URL,
+    ANTIGRAVITY_GENERATE_URL,
+    ANTIGRAVITY_STREAM_URL,
+  ]) {
+    assert.equal(url.startsWith('https://daily-cloudcode-pa.googleapis.com/'), true)
+    assert.equal(url.startsWith('https://cloudcode-pa.googleapis.com/'), false)
+  }
+})
+
+test('fingerprint is one Antigravity hub identity on loadCodeAssist, onboardUser, and chat', () => {
   const load = antigravityLoadCodeAssistHeaders('tok')
   const onboard = antigravityOnboardUserHeaders('tok')
   const chat = antigravityChatHeaders({ accessToken: 'tok', projectId: 'proj' })
@@ -72,11 +181,20 @@ test('fingerprint is one Antigravity IDE identity on loadCodeAssist, onboardUser
   }
   assert.equal(load['user-agent'].includes(ANTIGRAVITY_NODE_API_CLIENT_UA), false)
   assert.equal(load['x-goog-api-client'], undefined)
+  assert.equal(load['Client-Metadata'], undefined)
   assert.equal(onboard['user-agent'].includes(ANTIGRAVITY_NODE_API_CLIENT_UA), true)
   assert.equal(onboard['x-goog-api-client'], ANTIGRAVITY_GOOG_API_CLIENT_UA)
   assert.equal(chat['user-agent'], load['user-agent'])
+  assert.deepEqual(Object.keys(chat).sort(), ['accept', 'authorization', 'content-type', 'user-agent'])
+  assert.equal(chat['x-goog-api-client'], undefined)
+  assert.equal(chat['Client-Metadata'], undefined)
   assert.deepEqual(antigravityLoadCodeAssistMetadata(), { ideType: 'ANTIGRAVITY' })
   assert.equal(JSON.stringify(antigravityLoadCodeAssistMetadata()).includes('IDE_UNSPECIFIED'), false)
+  assert.deepEqual(antigravityLoadCodeAssistBody(), { metadata: { ideType: 'ANTIGRAVITY' } })
+  assert.deepEqual(antigravityLoadCodeAssistBody('proj-9'), {
+    metadata: { ideType: 'ANTIGRAVITY', duetProject: 'proj-9' },
+    cloudaicompanionProject: 'proj-9',
+  })
 })
 
 test('login discovers project via loadCodeAssist and stores it', async () => {
@@ -101,7 +219,37 @@ test('login discovers project via loadCodeAssist and stores it', async () => {
   const load = seen.find((row) => row.url === ANTIGRAVITY_LOAD_CODE_ASSIST_URL)
   assert.equal(load.headers['user-agent'], antigravityRequestUserAgent())
   assert.equal(JSON.parse(load.body).metadata.ideType, 'ANTIGRAVITY')
+  assert.equal(load.url, 'https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist')
+  assert.equal(seen.some((row) => String(row.url).startsWith('https://cloudcode-pa.googleapis.com/')), false)
   assertCleanIdentity(load)
+})
+
+test('hub 5xx on daily falls back to IDE prod; 4xx does not', async () => {
+  const seen = []
+  const fetchFn = async (url) => {
+    seen.push(String(url))
+    if (String(url) === ANTIGRAVITY_LOAD_CODE_ASSIST_URL) return new Response('busy', { status: 503 })
+    if (String(url) === `${ANTIGRAVITY_PROD_API_URL}/v1internal:loadCodeAssist`) {
+      return jsonResponse({ cloudaicompanionProject: 'from-prod' })
+    }
+    throw new Error(`unexpected ${url}`)
+  }
+  const found = await fetchAntigravityProject({ accessToken: 'acc', fetchFn })
+  assert.equal(found.projectId, 'from-prod')
+  assert.deepEqual(seen, [
+    ANTIGRAVITY_LOAD_CODE_ASSIST_URL,
+    `${ANTIGRAVITY_PROD_API_URL}/v1internal:loadCodeAssist`,
+  ])
+
+  const denied = []
+  await assert.rejects(() => fetchAntigravityProject({
+    accessToken: 'acc',
+    fetchFn: async (url) => {
+      denied.push(String(url))
+      return new Response('no', { status: 403 })
+    },
+  }), /HTTP 403/)
+  assert.deepEqual(denied, [ANTIGRAVITY_LOAD_CODE_ASSIST_URL])
 })
 
 test('empty loadCodeAssist falls back to daily onboardUser', async () => {
@@ -121,6 +269,10 @@ test('empty loadCodeAssist falls back to daily onboardUser', async () => {
   }
   const found = await fetchAntigravityProject({ accessToken: 'acc', fetchFn, sleep: async () => undefined })
   assert.equal(found.projectId, 'cogent-snow-4mnnp')
+  assert.deepEqual(seen.map((row) => row.url), [
+    'https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist',
+    'https://daily-cloudcode-pa.googleapis.com/v1internal:onboardUser',
+  ])
   const onboard = seen.find((row) => row.url === ANTIGRAVITY_ONBOARD_USER_URL)
   assert.equal(onboard.headers['user-agent'].includes(ANTIGRAVITY_NODE_API_CLIENT_UA), true)
   assert.equal(onboard.headers['x-goog-api-client'], ANTIGRAVITY_GOOG_API_CLIENT_UA)
@@ -153,33 +305,66 @@ test('catalog is the live cloudcode-pa list, not Vertex-direct names', () => {
   assert.equal(ids.includes('gpt-oss-120b-medium'), true)
   assert.equal(ids.some((id) => id.startsWith('publishers/') || id.includes('vertex')), false)
   const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
-  assert.equal(catalog['oauth-antigravity'].api, 'openai')
+  assert.equal(catalog['oauth-antigravity'].api, 'openai-completions')
   assert.equal(catalog['oauth-antigravity'].baseURL, 'http://x/antigravity/v1')
   assert.deepEqual(catalog['oauth-antigravity'].models.find((model) => model.id === 'gpt-oss-120b-medium').input, ['text'])
 })
 
-test('snapshot shows idle quota on every Antigravity account', async () => {
+test('snapshot shows quota on every Antigravity account via daily hub', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-ag-'))
   const authPath = join(dir, 'auth.json')
   const later = Date.now() + 60 * 60_000
   await saveSession('antigravity', antigravitySession({
-    accessToken: 'a', refreshToken: 'r', expiresAt: later, account: 'a@x', projectId: 'p1',
+    accessToken: 'tok-a', refreshToken: 'r', expiresAt: later, account: 'a@x', projectId: 'p1',
+    planType: 'STANDARD TIER',
   }), authPath)
   await saveSession('antigravity', antigravitySession({
-    accessToken: 'b', refreshToken: 's', expiresAt: later, account: 'b@x', projectId: 'p2',
+    accessToken: 'tok-b', refreshToken: 's', expiresAt: later, account: 'b@x', projectId: 'p2',
+    planType: 'STANDARD TIER',
   }), authPath)
+  const daily = antigravityFetchModelsUrls()[0]
+  const seen = []
   const controller = new AuthController({
     authPath,
     prefix: 'oauth',
     origin: () => 'http://127.0.0.1:8318',
     settings: { mutate: async () => undefined },
-    fetchFn: async () => { throw new Error('antigravity must not hit a quota API') },
+    fetchFn: async (url, init) => {
+      const href = String(url)
+      seen.push(href)
+      const auth = String(init?.headers?.authorization ?? '')
+      const remaining = auth.includes('tok-b') ? 0.9 : 0.4
+      if (href === ANTIGRAVITY_LOAD_CODE_ASSIST_URL) {
+        return jsonResponse({
+          currentTier: { id: 'STANDARD TIER' },
+          cloudaicompanionProject: auth.includes('tok-b') ? 'p2' : 'p1',
+        })
+      }
+      if (href === daily) {
+        return jsonResponse({
+          models: {
+            'gemini-3-flash': { quotaInfo: { remainingFraction: remaining } },
+          },
+        })
+      }
+      throw new Error(`unexpected ${href}`)
+    },
   })
   const snap = await controller.snapshot()
   assert.equal(snap.catalog.length, 5)
   assert.equal(snap.accounts.antigravity.loggedIn, true)
-  assert.equal(snap.accounts.antigravity.accounts.length, 2)
-  assert.equal(snap.accounts.antigravity.accounts.every((row) => row.quota.status === 'idle'), true)
+  const roster = snap.accounts.antigravity.accounts
+  assert.equal(roster.length, 2)
+  const first = roster.find((row) => row.account === 'a@x')
+  const second = roster.find((row) => row.account === 'b@x')
+  assert.equal(first.quota.status, 'ready')
+  assert.equal(second.quota.status, 'ready')
+  assert.equal(first.quota.rows[0].product, 'Gemini 3 Flash')
+  assert.equal(first.quota.rows[0].remainingPercent, 40)
+  assert.equal(second.quota.rows[0].remainingPercent, 90)
+  assert.equal(first.quota.planLabel, 'STANDARD TIER')
+  assert.equal(seen.every((href) => !href.startsWith(ANTIGRAVITY_PROD_API_URL)), true)
+  assert.equal(seen.every((href) => href.startsWith(ANTIGRAVITY_DAILY_API_URL)), true)
   assert.equal(formatPlanLabel('free-tier', 'antigravity'), 'Free')
 })
 
@@ -216,7 +401,7 @@ test('import reads the official CLI token file and CLIProxyAPI auth json', async
   assert.equal(fromProxy.session.projectId, 'proj-proxy')
 })
 
-test('proxy translates OpenAI chat to cloudcode-pa with the same fingerprint', async () => {
+test('proxy translates OpenAI chat to daily-cloudcode-pa with the same fingerprint', async () => {
   const seen = []
   const fetchFn = async (url, init) => {
     seen.push({ url: String(url), headers: init.headers, body: String(init.body) })
@@ -253,7 +438,9 @@ test('proxy translates OpenAI chat to cloudcode-pa with the same fingerprint', a
     assert.equal(ok.status, 200)
     const payload = await ok.json()
     assert.equal(payload.choices[0].message.content, 'ok')
-    assert.equal(seen[0].url, ANTIGRAVITY_STREAM_URL.replace('streamGenerateContent?alt=sse', 'generateContent'))
+    assert.equal(seen[0].url, ANTIGRAVITY_GENERATE_URL)
+    assert.equal(seen[0].url, 'https://daily-cloudcode-pa.googleapis.com/v1internal:generateContent')
+    assert.equal(seen.some((row) => String(row.url).startsWith('https://cloudcode-pa.googleapis.com/')), false)
     assert.equal(seen[0].headers['user-agent'], antigravityRequestUserAgent())
     const body = JSON.parse(seen[0].body)
     assert.equal(body.project, 'cogent-snow-4mnnp')

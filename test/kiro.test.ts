@@ -197,7 +197,7 @@ test('Kiro catalog matches kiro.dev models minus Auto, with native ids', () => {
   assert.equal(kiro.models.find((model) => model.id === 'claude-sonnet-5').name, 'Claude Sonnet 5')
   assert.deepEqual(kiro.models.find((model) => model.id === 'claude-opus-4.8').input, ['text', 'image'])
   assert.deepEqual(kiro.models.find((model) => model.id === 'glm-5').input, ['text'])
-  assert.equal(kiro.api, 'openai')
+  assert.equal(kiro.api, 'openai-completions')
   const described = describeCatalog(catalog).find((row) => row.family === 'kiro')
   assert.equal(described.displayName.includes('Kiro'), true)
   const loggedOut = buildProviders({ prefix: 'oauth', origin: 'http://x', loggedIn: { kiro: false } })

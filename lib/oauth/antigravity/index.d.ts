@@ -1,10 +1,16 @@
 /**
- * Google Antigravity (cloudcode-pa) OAuth + chat fingerprint.
+ * Google Antigravity (hub / Antigravity.app) OAuth + chat fingerprint.
  *
- * Client id, scopes, callback path, and UA helpers match CLIProxyAPI
- * `internal/auth/antigravity` + `internal/misc/antigravity_version.go`
- * (current main). One official-IDE identity for login, project
- * discovery, refresh, and every generateContent call.
+ * Official desktop to mimic (2026-08-30 Mac): Antigravity.app 2.11.0
+ * (`com.google.antigravity`, `--subclient_type hub`). Ignore
+ * Antigravity IDE.app 2.5.5 (`--subclient_type ide`). Hub
+ * `--cloud_code_endpoint` is daily-cloudcode-pa; IDE uses prod
+ * cloudcode-pa. language_server uses protobuf ClientMetadata.ide_type
+ * ANTIGRAVITY. UA shape is CLIProxyAPI AntigravityRequestUserAgent:
+ *   antigravity/hub/<ver> <os>/<arch>
+ * Chat / loadCodeAssist: User-Agent only — no Client-Metadata /
+ * x-goog-api-client. Body metadata: { ideType: 'ANTIGRAVITY' }.
+ * onboardUser keeps the longer UA + x-goog-api-client gl-node/22.21.1.
  */
 export declare const ANTIGRAVITY_CLIENT_ID: string;
 export declare const ANTIGRAVITY_CLIENT_SECRET: string;
@@ -13,16 +19,41 @@ export declare const ANTIGRAVITY_CALLBACK_PATH = "/oauth-callback";
 export declare const ANTIGRAVITY_AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 export declare const ANTIGRAVITY_TOKEN_URL = "https://oauth2.googleapis.com/token";
 export declare const ANTIGRAVITY_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo?alt=json";
-export declare const ANTIGRAVITY_API_URL = "https://cloudcode-pa.googleapis.com";
+/** Hub default — Antigravity.app `--cloud_code_endpoint`. */
 export declare const ANTIGRAVITY_DAILY_API_URL = "https://daily-cloudcode-pa.googleapis.com";
+/** IDE / prod Cloud Code. Only used if daily fails. */
+export declare const ANTIGRAVITY_PROD_API_URL = "https://cloudcode-pa.googleapis.com";
+export declare const ANTIGRAVITY_API_URL = "https://daily-cloudcode-pa.googleapis.com";
 export declare const ANTIGRAVITY_API_VERSION = "v1internal";
-export declare const ANTIGRAVITY_LOAD_CODE_ASSIST_URL = "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist";
-export declare const ANTIGRAVITY_ONBOARD_USER_URL = "https://daily-cloudcode-pa.googleapis.com/v1internal:onboardUser";
-export declare const ANTIGRAVITY_GENERATE_URL = "https://cloudcode-pa.googleapis.com/v1internal:generateContent";
-export declare const ANTIGRAVITY_STREAM_URL = "https://cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse";
+export declare const ANTIGRAVITY_LOAD_CODE_ASSIST_URL: string;
+export declare const ANTIGRAVITY_MODELS_URL: string;
+export declare const ANTIGRAVITY_ONBOARD_USER_URL: string;
+export declare const ANTIGRAVITY_GENERATE_URL: string;
+export declare const ANTIGRAVITY_STREAM_URL: string;
+/** SkillStar `antigravity_quota_groups` — label + model ids, first match wins per bar. */
+export declare const ANTIGRAVITY_QUOTA_GROUPS: readonly ({
+    label: string;
+    identifiers: readonly string[];
+    labelFromModel?: undefined;
+} | {
+    label: string;
+    identifiers: readonly string[];
+    labelFromModel: boolean;
+})[];
+/** Daily hub first, then IDE prod — same order as chat / loadCodeAssist. */
+export declare function antigravityFetchModelsUrls(): string[];
+/** Daily first, then IDE prod. onboardUser stays daily-only. */
+export declare function antigravityCloudCodeFallbacks(url: any): string[];
+/** POST a hub Cloud Code RPC: daily, then IDE prod on transport / 5xx. */
+export declare function fetchAntigravityCloudCode(url: any, init: any, fetchFn?: typeof fetch): Promise<Response>;
 export declare const ANTIGRAVITY_SCOPE: string;
-/** Floor from CLIProxyAPI: Cloud Code rejects clients below 2.9.0. */
-export declare const ANTIGRAVITY_FALLBACK_VERSION = "2.9.1";
+/**
+ * Current official Antigravity.app short version when the desktop app
+ * is not installed. Cloud Code still rejects clients below 2.9.0.
+ */
+export declare const ANTIGRAVITY_FALLBACK_VERSION = "2.11.0";
+/** Official hub app only — never Antigravity IDE.app. */
+export declare const ANTIGRAVITY_MAC_APP_PLIST = "/Applications/Antigravity.app/Contents/Info.plist";
 export declare const ANTIGRAVITY_NODE_API_CLIENT_UA = "google-api-nodejs-client/10.3.0";
 export declare const ANTIGRAVITY_GOOG_API_CLIENT_UA = "gl-node/22.21.1";
 export declare const ANTIGRAVITY_BODY_USER_AGENT = "antigravity";
@@ -71,7 +102,28 @@ export declare const ANTIGRAVITY_PLAN_NAMES: Readonly<{
     ultra: "Ultra";
 }>;
 export declare function antigravityPlatform(platform?: NodeJS.Platform, arch?: NodeJS.Architecture): string;
-export declare function antigravityVersion(): string;
+/** Normalize FileVersion `2.11.0.0` → `2.11.0`; keep a real fourth component. */
+export declare function normalizeAntigravityVersion(value: any): string;
+/**
+ * SkillStar-style CFBundleShortVersionString extract from Info.plist XML.
+ * Does not read Antigravity IDE.app — callers pass Antigravity.app only.
+ */
+export declare function parseAntigravityPlistVersion(plistXml: any): string;
+/** First `X.Y` / `X.Y.Z` / `X.Y.Z.W` token in CLI or PowerShell output. */
+export declare function parseAntigravityVersionText(text: any): string;
+/**
+ * Prefer the installed official Antigravity.app (SkillStar
+ * `detect_ide_version`): macOS Info.plist, Windows LocalAppData
+ * `Antigravity.exe` FileVersion, linux `antigravity --version`.
+ * Never reads Antigravity IDE.app. Else 2.11.0.
+ */
+export declare function detectAntigravityVersion({ platform, env, readFile, execFile, }?: {
+    platform?: NodeJS.Platform;
+    env?: NodeJS.ProcessEnv;
+    readFile?: (path: any) => string;
+    execFile?: (file: any, args: any, opts: any) => string;
+}): string;
+export declare function antigravityVersion(): any;
 /** Short runtime UA — userinfo, loadCodeAssist, chat. CLIProxyAPI AntigravityRequestUserAgent. */
 export declare function antigravityRequestUserAgent(): string;
 /** Long control-plane UA — onboardUser only. CLIProxyAPI AntigravityOnboardUserUserAgent. */
@@ -79,9 +131,22 @@ export declare function antigravityOnboardUserUserAgent(): string;
 export declare function antigravityLoadCodeAssistMetadata(): {
     ideType: string;
 };
+/** SkillStar loadCodeAssist body: metadata.ideType plus optional project / duetProject. */
+export declare function antigravityLoadCodeAssistBody(projectId: any): {
+    metadata: {
+        ideType: string;
+    };
+    cloudaicompanionProject?: undefined;
+} | {
+    metadata: {
+        duetProject: string;
+        ideType: string;
+    };
+    cloudaicompanionProject: string;
+};
 export declare function antigravityControlPlaneMetadata(): {
     ide_type: string;
-    ide_version: string;
+    ide_version: any;
     ide_name: string;
 };
 export declare function antigravityUserinfoHeaders(accessToken: any): {

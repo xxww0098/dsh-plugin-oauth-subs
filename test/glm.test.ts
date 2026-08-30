@@ -446,7 +446,7 @@ test('catalog includes GLM as openai chat completions', () => {
     origin: 'http://127.0.0.1:8318',
     loggedIn: { glm: true },
   })
-  assert.equal(providers['oauth-glm'].api, 'openai')
+  assert.equal(providers['oauth-glm'].api, 'openai-completions')
   assert.equal(providers['oauth-glm'].baseURL, 'http://127.0.0.1:8318/glm/v1')
   const ids = providers['oauth-glm'].models.map((model) => model.id)
   assert.deepEqual(ids, ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])

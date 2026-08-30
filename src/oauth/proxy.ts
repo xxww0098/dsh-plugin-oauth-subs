@@ -15,6 +15,7 @@ import {
   ANTIGRAVITY_MODELS,
   ANTIGRAVITY_STREAM_URL,
   antigravityChatHeaders,
+  fetchAntigravityCloudCode,
 } from './antigravity/index.js'
 import { antigravityToOpenai, antigravityToOpenaiChunk, openaiToAntigravity, parseAntigravitySseBlocks } from './antigravity/request.js'
 import { applyFastMode } from '../utils/fast-mode.js'
@@ -617,7 +618,7 @@ async function forwardAntigravity(request, response, { session, fetchFn, maxRequ
 
   let upstream
   try {
-    upstream = await fetchFn(url, { method: 'POST', headers, body, signal })
+    upstream = await fetchAntigravityCloudCode(url, { method: 'POST', headers, body, signal }, fetchFn)
   } catch (error) {
     if (signal.aborted) throw error
     throw new RequestError(502, describeError(error))
