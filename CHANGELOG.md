@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.39
+
+- Antigravity logged-in cards fetch Cloud Code quota the SkillStar way (`loadCodeAssist` + `fetchAvailableModels` on daily / sandbox / prod). Bars are the SkillStar model groups (Claude/GPT, Gemini 3.1 Pro Series, …). Same official `antigravity/hub/` fingerprint as login and chat. Failed reads show the existing quota-failed hint instead of an empty card.
+
 ## 0.0.38
 
 - **Antigravity** family tab (after Kiro, before Models): Google OAuth loopback, multiple accounts, import from the official CLI token file or CLIProxyAPI `antigravity-*.json`. Chat goes through the local OpenAI hop to `cloudcode-pa` `generateContent` / `streamGenerateContent`. Catalog is the live cloudcode-pa list (Claude / Gemini / GPT-OSS). One official Antigravity IDE fingerprint for login, loadCodeAssist, onboardUser, refresh, and every chat request. String `ideType: ANTIGRAVITY`. Empty `project_id` is rejected before generateContent.

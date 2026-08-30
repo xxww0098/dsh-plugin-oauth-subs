@@ -22,9 +22,31 @@ export const ANTIGRAVITY_TOKEN_URL = 'https://oauth2.googleapis.com/token'
 export const ANTIGRAVITY_USERINFO_URL = 'https://www.googleapis.com/oauth2/v2/userinfo?alt=json'
 export const ANTIGRAVITY_API_URL = 'https://cloudcode-pa.googleapis.com'
 export const ANTIGRAVITY_DAILY_API_URL = 'https://daily-cloudcode-pa.googleapis.com'
+export const ANTIGRAVITY_DAILY_SANDBOX_API_URL = 'https://daily-cloudcode-pa.sandbox.googleapis.com'
 export const ANTIGRAVITY_API_VERSION = 'v1internal'
 export const ANTIGRAVITY_LOAD_CODE_ASSIST_URL = `${ANTIGRAVITY_API_URL}/${ANTIGRAVITY_API_VERSION}:loadCodeAssist`
 export const ANTIGRAVITY_ONBOARD_USER_URL = `${ANTIGRAVITY_DAILY_API_URL}/${ANTIGRAVITY_API_VERSION}:onboardUser`
+export const ANTIGRAVITY_FETCH_MODELS_PATH = `${ANTIGRAVITY_API_VERSION}:fetchAvailableModels`
+
+/** SkillStar `antigravity_quota_groups` — label + model ids, first match wins per bar. */
+export const ANTIGRAVITY_QUOTA_GROUPS = Object.freeze([
+  { label: 'Claude/GPT', identifiers: Object.freeze(['claude-sonnet-4-6', 'claude-opus-4-6-thinking', 'gpt-oss-120b-medium']) },
+  { label: 'Gemini 3.1 Pro Series', identifiers: Object.freeze(['gemini-3.1-pro-high', 'gemini-3.1-pro-low']) },
+  { label: 'Gemini 3 Pro', identifiers: Object.freeze(['gemini-3-pro-high', 'gemini-3-pro-low']) },
+  { label: 'Gemini 2.5 Flash', identifiers: Object.freeze(['gemini-2.5-flash', 'gemini-2.5-flash-thinking']) },
+  { label: 'Gemini 2.5 Flash Lite', identifiers: Object.freeze(['gemini-2.5-flash-lite']) },
+  { label: 'Gemini 2.5 CU', identifiers: Object.freeze(['rev19-uic3-1p']) },
+  { label: 'Gemini 3 Flash', identifiers: Object.freeze(['gemini-3-flash']) },
+  { label: 'gemini-3.1-flash-image', identifiers: Object.freeze(['gemini-3.1-flash-image']), labelFromModel: true },
+])
+
+export function antigravityFetchModelsUrls() {
+  return [
+    `${ANTIGRAVITY_DAILY_API_URL}/${ANTIGRAVITY_FETCH_MODELS_PATH}`,
+    `${ANTIGRAVITY_DAILY_SANDBOX_API_URL}/${ANTIGRAVITY_FETCH_MODELS_PATH}`,
+    `${ANTIGRAVITY_API_URL}/${ANTIGRAVITY_FETCH_MODELS_PATH}`,
+  ]
+}
 export const ANTIGRAVITY_GENERATE_URL = `${ANTIGRAVITY_API_URL}/${ANTIGRAVITY_API_VERSION}:generateContent`
 export const ANTIGRAVITY_STREAM_URL = `${ANTIGRAVITY_API_URL}/${ANTIGRAVITY_API_VERSION}:streamGenerateContent?alt=sse`
 export const ANTIGRAVITY_SCOPE = [
@@ -113,6 +135,16 @@ export function antigravityLoadCodeAssistMetadata() {
   return { ideType: 'ANTIGRAVITY' }
 }
 
+/** SkillStar loadCodeAssist body: metadata.ideType plus optional project / duetProject. */
+export function antigravityLoadCodeAssistBody(projectId) {
+  const pid = trimmed(projectId)
+  if (!pid) return { metadata: antigravityLoadCodeAssistMetadata() }
+  return {
+    metadata: { ...antigravityLoadCodeAssistMetadata(), duetProject: pid },
+    cloudaicompanionProject: pid,
+  }
+}
+
 export function antigravityControlPlaneMetadata() {
   return {
     ide_type: 'ANTIGRAVITY',
@@ -187,7 +219,7 @@ function trimmed(value) {
 
 export function extractCloudaicompanionProject(data) {
   if (!data || typeof data !== 'object') return undefined
-  for (const key of ['cloudaicompanionProject', 'projectId', 'project']) {
+  for (const key of ['cloudaicompanionProject', 'cloudaicompanionProjectId', 'projectId', 'project']) {
     const value = data[key]
     if (typeof value === 'string' && value.trim()) return value.trim()
     if (value && typeof value === 'object' && typeof value.id === 'string' && value.id.trim()) {

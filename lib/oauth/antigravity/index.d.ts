@@ -15,9 +15,22 @@ export declare const ANTIGRAVITY_TOKEN_URL = "https://oauth2.googleapis.com/toke
 export declare const ANTIGRAVITY_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo?alt=json";
 export declare const ANTIGRAVITY_API_URL = "https://cloudcode-pa.googleapis.com";
 export declare const ANTIGRAVITY_DAILY_API_URL = "https://daily-cloudcode-pa.googleapis.com";
+export declare const ANTIGRAVITY_DAILY_SANDBOX_API_URL = "https://daily-cloudcode-pa.sandbox.googleapis.com";
 export declare const ANTIGRAVITY_API_VERSION = "v1internal";
 export declare const ANTIGRAVITY_LOAD_CODE_ASSIST_URL = "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist";
 export declare const ANTIGRAVITY_ONBOARD_USER_URL = "https://daily-cloudcode-pa.googleapis.com/v1internal:onboardUser";
+export declare const ANTIGRAVITY_FETCH_MODELS_PATH = "v1internal:fetchAvailableModels";
+/** SkillStar `antigravity_quota_groups` — label + model ids, first match wins per bar. */
+export declare const ANTIGRAVITY_QUOTA_GROUPS: readonly ({
+    label: string;
+    identifiers: readonly string[];
+    labelFromModel?: undefined;
+} | {
+    label: string;
+    identifiers: readonly string[];
+    labelFromModel: boolean;
+})[];
+export declare function antigravityFetchModelsUrls(): string[];
 export declare const ANTIGRAVITY_GENERATE_URL = "https://cloudcode-pa.googleapis.com/v1internal:generateContent";
 export declare const ANTIGRAVITY_STREAM_URL = "https://cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse";
 export declare const ANTIGRAVITY_SCOPE: string;
@@ -78,6 +91,19 @@ export declare function antigravityRequestUserAgent(): string;
 export declare function antigravityOnboardUserUserAgent(): string;
 export declare function antigravityLoadCodeAssistMetadata(): {
     ideType: string;
+};
+/** SkillStar loadCodeAssist body: metadata.ideType plus optional project / duetProject. */
+export declare function antigravityLoadCodeAssistBody(projectId: any): {
+    metadata: {
+        ideType: string;
+    };
+    cloudaicompanionProject?: undefined;
+} | {
+    metadata: {
+        duetProject: string;
+        ideType: string;
+    };
+    cloudaicompanionProject: string;
 };
 export declare function antigravityControlPlaneMetadata(): {
     ide_type: string;

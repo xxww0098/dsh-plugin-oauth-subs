@@ -6,6 +6,9 @@
  *   Grok   GET cli-chat-proxy.grok.com/v1/billing?format=credits
  *          GET cli-chat-proxy.grok.com/v1/user?include=subscription
  *          POST grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig
+ *   Antigravity  POST cloudcode-pa …/v1internal:loadCodeAssist
+ *                POST daily / sandbox / prod …/v1internal:fetchAvailableModels
+ *                (SkillStar cloud_code.rs + antigravity.rs; same official UA)
  *
  * Codex windows report used_percent; remaining is 100 − used.
  * Grok creditUsagePercent is also used-percent. Display remaining in the UI.
@@ -74,6 +77,16 @@ export declare function parseKiroUsage(payload: any): {
     }[];
 };
 export declare function fetchGlmQuota(session: any, fetchFn?: typeof fetch): Promise<any>;
+/** SkillStar `parse_model_windows` — group fetchAvailableModels into product bars. */
+export declare function parseAntigravityModelQuota(payload: any): {
+    rows: any[];
+};
+export declare function parseAntigravityPaidCredits(payload: any): any[];
+export declare function pickAntigravityPlanName(payload: any): string;
+export declare function fetchAntigravityQuota(session: any, fetchFn?: typeof fetch): Promise<{
+    planType: any;
+    rows: any[];
+}>;
 export declare function fetchKiroQuota(session: any, fetchFn?: typeof fetch): Promise<{
     rows: any[];
     planType?: undefined;

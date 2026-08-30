@@ -1,5 +1,38 @@
 # 错误记录
 
+## 2026-08-30：Antigravity 已登录卡没有额度条
+
+### 现象
+
+设置 → Antigravity。已登录卡抬头是邮箱 + **STANDARD TIER** + **使用中** + **退出**，卡身空白。没有 Claude/GPT、Gemini 分组进度条。用户截图：徽章下面直接跳到「打开授权页」。
+
+### 证据
+
+- 现场截图（`antigravity-no-quota.png`）：`.osubs-acct` 只有身份行，没有 `.osubs-quota`。
+- `src/oauth/quota.ts` `QuotaStore.#load`：`provider === 'antigravity'` 直接写入 `{ status: 'idle', planType: session.planType, rows: [] }`，不打 Cloud Code。
+- `test/antigravity.test.ts` 原断言 `snapshot shows idle quota`，`fetchFn` 抛 `must not hit a quota API`。
+- `docs/error.md` 0.0.38 指纹条写过「没有公开的 Antigravity 额度 API」。
+- SkillStar 权威路径：`crates/skillstar-usage/src/cloud_code.rs`（`load_code_assist` + `fetch_model_quotas` + `parse_model_windows`）与 `fetchers/oauth/antigravity.rs`（`load_code_assist_with_project_fallback`）。
+
+### 根因
+
+额度层（本插件）。0.0.38 接了登录 / 指纹 / 聊天 hop，额度故意 idle。UI 对 `status === 'idle'` 整块不渲染（`QuotaBlock` return null），所以不是「读失败」，是从未请求。
+
+### 修复（0.0.39）
+
+抄 SkillStar，不另发明接口：
+
+1. `POST https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist`，Bearer + 现有 `antigravity/hub/<ver> <os>/<arch>`（不改成 SkillStar 的短 `antigravity/<ver>`，避免指纹回退）。
+2. Body：`{ metadata: { ideType: "ANTIGRAVITY" } }`；有 `session.projectId` 时加 `cloudaicompanionProject` 与 `metadata.duetProject`。缓存 project 400 则去掉 project 再打一次。
+3. `POST v1internal:fetchAvailableModels`，body `{ project }` 或 `{}`。基址顺序：daily-cloudcode-pa → daily sandbox → cloudcode-pa。先成功且能解析出窗口的胜出。401 = 鉴权失败。
+4. `models`（或根对象）按 SkillStar `antigravity_quota_groups()` 分组；`remainingFraction` / `remaining_fraction` / `remaining`（含 `"75%"`）；缺 remaining 但有 `resetTime` 当 0。组内取 min。`remainingPercent = round(remaining*100)`。
+5. 行 `kind: 'product'`，标签用组名（`gemini-3.1-flash-image` 用 `displayName`）。套餐 pill 仍用 session 的 STANDARD TIER / `antigravityPlanType`。失败 `status: error` + 现有 `quotaFailed`，不再静默空卡。不加 GLM 的 150%配额。
+
+### 验证
+
+- `npm test`：SkillStar fixture `0.25` / `"75%"` / `1.0` 分出 Claude/GPT 25%、Gemini 3.1 Pro Series 75%、Gemini 2.5 Flash 100%、Gemini 3.1 Flash Image 50%。
+- QuotaStore 有 session 时不再 idle；load 500 → `error`。Codex / Grok / GLM / Kiro 额度测试未改行为。
+
 ## 2026-08-30：GLM 对话/额度带第三方 UA，拿不到 ZCode 1.5 倍额度
 
 ### 现象
@@ -152,7 +185,7 @@ ZCode Coding Plan 限时：在 ZCode 里登录使用全天 1.5 倍额度（同�
   - loadCodeAssist metadata：`{"ideType":"ANTIGRAVITY"}` 字符串，不是 `IDE_UNSPECIFIED`，也不是数字 `9`
   - onboardUser metadata：`ide_type` / `ide_version` / `ide_name: antigravity`
   - 聊天体：`userAgent: "antigravity"` + 必填 `project`
-- 本插件没有公开的 Antigravity 额度 API；卡片照常画，额度块保持 idle。
+- 0.0.38 当时没有接额度 hop，卡片照常画、额度块 idle。0.0.39 起走 SkillStar 的 loadCodeAssist + fetchAvailableModels，UA 仍是这一套 `antigravity/hub/`。
 
 ### 根因
 

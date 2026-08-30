@@ -16,8 +16,10 @@ import {
   ANTIGRAVITY_NODE_API_CLIENT_UA,
   ANTIGRAVITY_ONBOARD_USER_URL,
   ANTIGRAVITY_STREAM_URL,
+  antigravityFetchModelsUrls,
   antigravityChatHeaders,
   antigravityFlow,
+  antigravityLoadCodeAssistBody,
   antigravityLoadCodeAssistHeaders,
   antigravityLoadCodeAssistMetadata,
   antigravityOnboardUserHeaders,
@@ -77,6 +79,11 @@ test('fingerprint is one Antigravity IDE identity on loadCodeAssist, onboardUser
   assert.equal(chat['user-agent'], load['user-agent'])
   assert.deepEqual(antigravityLoadCodeAssistMetadata(), { ideType: 'ANTIGRAVITY' })
   assert.equal(JSON.stringify(antigravityLoadCodeAssistMetadata()).includes('IDE_UNSPECIFIED'), false)
+  assert.deepEqual(antigravityLoadCodeAssistBody(), { metadata: { ideType: 'ANTIGRAVITY' } })
+  assert.deepEqual(antigravityLoadCodeAssistBody('proj-9'), {
+    metadata: { ideType: 'ANTIGRAVITY', duetProject: 'proj-9' },
+    cloudaicompanionProject: 'proj-9',
+  })
 })
 
 test('login discovers project via loadCodeAssist and stores it', async () => {
@@ -158,28 +165,57 @@ test('catalog is the live cloudcode-pa list, not Vertex-direct names', () => {
   assert.deepEqual(catalog['oauth-antigravity'].models.find((model) => model.id === 'gpt-oss-120b-medium').input, ['text'])
 })
 
-test('snapshot shows idle quota on every Antigravity account', async () => {
+test('snapshot shows quota on every Antigravity account', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-ag-'))
   const authPath = join(dir, 'auth.json')
   const later = Date.now() + 60 * 60_000
   await saveSession('antigravity', antigravitySession({
-    accessToken: 'a', refreshToken: 'r', expiresAt: later, account: 'a@x', projectId: 'p1',
+    accessToken: 'tok-a', refreshToken: 'r', expiresAt: later, account: 'a@x', projectId: 'p1',
+    planType: 'STANDARD TIER',
   }), authPath)
   await saveSession('antigravity', antigravitySession({
-    accessToken: 'b', refreshToken: 's', expiresAt: later, account: 'b@x', projectId: 'p2',
+    accessToken: 'tok-b', refreshToken: 's', expiresAt: later, account: 'b@x', projectId: 'p2',
+    planType: 'STANDARD TIER',
   }), authPath)
+  const daily = antigravityFetchModelsUrls()[0]
   const controller = new AuthController({
     authPath,
     prefix: 'oauth',
     origin: () => 'http://127.0.0.1:8318',
     settings: { mutate: async () => undefined },
-    fetchFn: async () => { throw new Error('antigravity must not hit a quota API') },
+    fetchFn: async (url, init) => {
+      const href = String(url)
+      const auth = String(init?.headers?.authorization ?? '')
+      const remaining = auth.includes('tok-b') ? 0.9 : 0.4
+      if (href === ANTIGRAVITY_LOAD_CODE_ASSIST_URL) {
+        return jsonResponse({
+          currentTier: { id: 'STANDARD TIER' },
+          cloudaicompanionProject: auth.includes('tok-b') ? 'p2' : 'p1',
+        })
+      }
+      if (href === daily) {
+        return jsonResponse({
+          models: {
+            'gemini-3-flash': { quotaInfo: { remainingFraction: remaining } },
+          },
+        })
+      }
+      throw new Error(`unexpected ${href}`)
+    },
   })
   const snap = await controller.snapshot()
   assert.equal(snap.catalog.length, 5)
   assert.equal(snap.accounts.antigravity.loggedIn, true)
-  assert.equal(snap.accounts.antigravity.accounts.length, 2)
-  assert.equal(snap.accounts.antigravity.accounts.every((row) => row.quota.status === 'idle'), true)
+  const roster = snap.accounts.antigravity.accounts
+  assert.equal(roster.length, 2)
+  const first = roster.find((row) => row.account === 'a@x')
+  const second = roster.find((row) => row.account === 'b@x')
+  assert.equal(first.quota.status, 'ready')
+  assert.equal(second.quota.status, 'ready')
+  assert.equal(first.quota.rows[0].product, 'Gemini 3 Flash')
+  assert.equal(first.quota.rows[0].remainingPercent, 40)
+  assert.equal(second.quota.rows[0].remainingPercent, 90)
+  assert.equal(first.quota.planLabel, 'STANDARD TIER')
   assert.equal(formatPlanLabel('free-tier', 'antigravity'), 'Free')
 })
 
