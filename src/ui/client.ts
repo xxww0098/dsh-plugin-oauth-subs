@@ -62,7 +62,7 @@ window.__ModuleLoader__.load({
         switchTo: '切换',
         inUse: '使用中',
         noAccounts: '还没有登录账号',
-        accountsHint: '可登录多个账号。点一行切换；当前账号用于对话和额度。',
+        accountsHint: '每个账号一张卡片。点卡片切换；当前账号用于对话和额度。',
         pkce: 'PKCE 登录',
         device: '设备码登录',
         import: '导入本机会话',
@@ -163,7 +163,7 @@ window.__ModuleLoader__.load({
         switchTo: 'Switch',
         inUse: 'In use',
         noAccounts: 'No accounts yet',
-        accountsHint: 'Sign in more than once. Click a row to switch. The active account is used for chat and quota.',
+        accountsHint: 'One card per account. Click a card to switch. The active account is used for chat and quota.',
         pkce: 'PKCE sign-in',
         device: 'Device-code sign-in',
         import: 'Import local session',
@@ -442,16 +442,20 @@ window.__ModuleLoader__.load({
   display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap;
 }
 .osubs-acct {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: 10px; flex-wrap: wrap; width: 100%;
-  padding: 10px 12px;
-  border: 1px solid var(--osubs-line); border-radius: 10px;
+  display: flex; flex-direction: column; gap: 12px; width: 100%;
+  padding: 14px 16px 16px;
+  border: 1px solid var(--osubs-line); border-radius: 12px;
   background: transparent; color: inherit; font: inherit; text-align: left;
   cursor: pointer;
 }
 .osubs-acct--on { border-color: var(--osubs-edge); background: var(--osubs-fill); }
-.osubs-acct-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.osubs-acct-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 10px; flex-wrap: wrap;
+}
+.osubs-acct-main { display: flex; flex-direction: column; gap: 6px; min-width: 0; flex: 1 1 180px; }
 .osubs-acct-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.osubs-accts { display: flex; flex-direction: column; gap: 12px; }
 .osubs-glm-logins { display: flex; flex-direction: column; gap: 8px; }
 .osubs-glm-login {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
@@ -505,7 +509,7 @@ window.__ModuleLoader__.load({
 .osubs-link { font-size: 12.5px; color: inherit; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: color-mix(in oklab, currentColor 35%, transparent); width: fit-content; }
 .osubs-link:hover { text-decoration-color: currentColor; }
 
-.osubs-quota { display: flex; flex-direction: column; gap: 12px; margin-top: 2px; padding-top: 14px; border-top: 1px solid var(--osubs-hair); }
+.osubs-quota { display: flex; flex-direction: column; gap: 12px; padding-top: 12px; border-top: 1px solid var(--osubs-hair); }
 .osubs-quota-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .osubs-qrow { display: flex; flex-direction: column; gap: 5px; }
 .osubs-qrow-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 12px; }
@@ -904,6 +908,48 @@ window.__ModuleLoader__.load({
       )
     }
 
+    function AccountCard({ t, id, row, quota, onSwitch, onLogout, onRefreshQuota, onResetQuota }) {
+      const regionLabel = (region) => region === 'bigmodel' ? t.glmRegionCn : t.glmRegionGlobal
+      const planLabel = row.planLabel || (row.active ? planOf({ quota }) : '')
+      const clickable = !row.active
+      return h('article', {
+        className: `osubs-acct${row.active ? ' osubs-acct--on' : ''}`,
+        role: clickable ? 'button' : undefined,
+        tabIndex: clickable ? 0 : undefined,
+        onClick: clickable ? () => onSwitch(id, row.id) : undefined,
+        onKeyDown: clickable ? (event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            onSwitch(id, row.id)
+          }
+        } : undefined,
+        style: clickable ? undefined : { cursor: 'default' },
+      },
+        h('div', { className: 'osubs-acct-head' },
+          h('div', { className: 'osubs-acct-main' },
+            h('div', { className: 'osubs-acct-row' },
+              h('span', { className: 'osubs-mono' }, row.account || row.id),
+              row.active && h('span', { className: 'osubs-tag' }, t.inUse),
+              id === 'glm' && row.region && h('span', { className: 'osubs-tag' }, regionLabel(row.region)),
+            ),
+            planLabel && h(PlanBadge, { t, label: planLabel }),
+          ),
+          h('div', { className: 'osubs-actions', onClick: (event) => event.stopPropagation() },
+            !row.active && h(Button, { size: 'sm', onClick: () => onSwitch(id, row.id), label: t.switchTo }),
+            h(Button, { size: 'sm', onClick: () => onLogout(id, row.id), label: t.logout }),
+          ),
+        ),
+        row.active && h('div', { onClick: (event) => event.stopPropagation() },
+          h(QuotaBlock, {
+            t,
+            quota,
+            onRefresh: () => onRefreshQuota(id),
+            onReset: id === 'codex' && onResetQuota ? () => onResetQuota(id) : undefined,
+          }),
+        ),
+      )
+    }
+
     function ProviderCard({ t, id, title, account, pending, onLogin, onImport, onLogout, onCancel, onManual, onSwitch, onRefreshQuota, onResetQuota, onUseKey }) {
       const [paste, setPaste] = useState('')
       const [apiKey, setApiKey] = useState('')
@@ -913,15 +959,10 @@ window.__ModuleLoader__.load({
       const loggedIn = Boolean(account?.loggedIn) || roster.length > 0
       const busy = Boolean(account?.busy)
       const status = busy ? t.busy : loggedIn ? t.loggedIn : t.loggedOut
-      const planLabel = loggedIn ? planOf(account) : ''
-      const regionLabel = (region) => region === 'bigmodel' ? t.glmRegionCn : t.glmRegionGlobal
       return h('section', { className: 'osubs-card' },
         h('header', { style: { display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' } },
           h('div', { style: { display: 'flex', flexDirection: 'column', gap: 7, flex: '1 1 180px' } },
-            h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
-              h('h3', { style: { fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' } }, title),
-              planLabel && h(PlanBadge, { t, label: planLabel }),
-            ),
+            h('h3', { style: { fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' } }, title),
             h('p', { className: 'osubs-hint' }, t.accountsHint),
           ),
           h('span', {
@@ -929,32 +970,19 @@ window.__ModuleLoader__.load({
           }, status),
         ),
         roster.length === 0 && !busy && h('p', { className: 'osubs-note' }, t.noAccounts),
-        roster.map((row) => h('div', {
-          key: row.id,
-          className: `osubs-acct${row.active ? ' osubs-acct--on' : ''}`,
-          role: 'button',
-          tabIndex: 0,
-          onClick: () => { if (!row.active) onSwitch(id, row.id) },
-          onKeyDown: (event) => {
-            if ((event.key === 'Enter' || event.key === ' ') && !row.active) {
-              event.preventDefault()
-              onSwitch(id, row.id)
-            }
-          },
-        },
-          h('div', { className: 'osubs-acct-main' },
-            h('div', { className: 'osubs-acct-row' },
-              h('span', { className: 'osubs-mono' }, row.account || row.id),
-              row.active && h('span', { className: 'osubs-tag' }, t.inUse),
-              id === 'glm' && row.region && h('span', { className: 'osubs-tag' }, regionLabel(row.region)),
-              row.planLabel && h(PlanBadge, { t, label: row.planLabel }),
-            ),
-          ),
-          h('div', { className: 'osubs-actions', onClick: (event) => event.stopPropagation() },
-            !row.active && h(Button, { size: 'sm', onClick: () => onSwitch(id, row.id), label: t.switchTo }),
-            h(Button, { size: 'sm', onClick: () => onLogout(id, row.id), label: t.logout }),
-          ),
-        )),
+        roster.length > 0 && h('div', { className: 'osubs-accts' },
+          roster.map((row) => h(AccountCard, {
+            t,
+            id,
+            row,
+            quota: row.active ? account.quota : undefined,
+            onSwitch,
+            onLogout,
+            onRefreshQuota,
+            onResetQuota,
+            key: row.id,
+          })),
+        ),
         account?.detail && h('p', { className: 'osubs-hint osubs-bad' }, `${t.error}: ${account.detail}`),
         pending?.userCode && h('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
           h('span', { className: 'osubs-eyebrow' }, t.userCode),
@@ -1049,12 +1077,6 @@ window.__ModuleLoader__.load({
           }),
           h(Button, { type: 'submit', variant: 'primary', label: t.submitPaste }),
         ),
-        loggedIn && h(QuotaBlock, {
-          t,
-          quota: account.quota,
-          onRefresh: () => onRefreshQuota(id),
-          onReset: id === 'codex' && onResetQuota ? () => onResetQuota(id) : undefined,
-        }),
       )
     }
 
