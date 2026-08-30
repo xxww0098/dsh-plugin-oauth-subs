@@ -187,14 +187,31 @@ export async function listAccounts(provider, path) {
     .sort((left, right) => Number(right.active) - Number(left.active) || left.id.localeCompare(right.id))
 }
 
-export async function saveSession(provider, session, path) {
+export async function listStoredSessions(provider, path) {
+  const vault = asVault(provider, (await loadStore(path))[provider])
+  return Object.entries(vault.accounts).map(([id, session]) => ({
+    id,
+    session,
+    active: id === vault.activeId,
+  }))
+}
+
+export async function getAccountSession(provider, id, path) {
+  const vault = asVault(provider, (await loadStore(path))[provider])
+  const key = typeof id === 'string' && id.trim() ? id.trim() : vault.activeId
+  if (!key) return undefined
+  return vault.accounts[key]
+}
+
+export async function saveSession(provider, session, path, options) {
   const file = path ?? authFilePath()
+  const activate = options?.activate !== false
   return serialize(file, async () => {
     const store = await loadStore(file)
     const vault = asVault(provider, store[provider])
     const id = accountIdOf(provider, session)
     vault.accounts[id] = session
-    vault.activeId = id
+    if (activate || !vault.activeId || !vault.accounts[vault.activeId]) vault.activeId = id
     store[provider] = vault
     await writeStore(store, file)
   })

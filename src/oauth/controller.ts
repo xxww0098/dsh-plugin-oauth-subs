@@ -6,7 +6,7 @@
 import { OAuthFlowManager } from './flow.js'
 import { DeviceFlowManager } from './grok/device-flow.js'
 import { GlmCliFlowManager } from './glm/cli-flow.js'
-import { deleteSession, getSession, listAccounts, publicSession, saveSession, switchAccount } from './store.js'
+import { accountIdOf, deleteSession, getAccountSession, getSession, listStoredSessions, publicSession, saveSession, switchAccount } from './store.js'
 import {
   codexFlow,
   exchangeCodexCode,
@@ -110,11 +110,12 @@ export class AuthController {
     const session = await getSession(provider, this.authPath)
     const detail = this.lastError.get(provider)
     const pub = publicSession(provider, session)
+    const activeId = session ? accountIdOf(provider, session) : undefined
     return {
       loggedIn: session !== undefined,
       busy: this.flows.isBusy(provider) || this.devices.isBusy(provider) || this.glmFlows.isBusy(provider) || this.finalizing.has(provider),
       ...pub,
-      quota: this.quota.peek(provider),
+      quota: this.quota.peek(provider, activeId),
       ...(detail === undefined ? {} : { detail }),
     }
   }
@@ -134,17 +135,17 @@ export class AuthController {
       origin,
       loggedIn,
     }), selected)
-    if (loggedIn.codex) await this.quota.ensure('codex')
+    if (loggedIn.codex) await this.#ensureAccountQuota('codex')
     else this.quota.clear('codex')
-    if (loggedIn.grok) await this.quota.ensure('grok')
+    if (loggedIn.grok) await this.#ensureAccountQuota('grok')
     else this.quota.clear('grok')
-    if (loggedIn.glm) await this.quota.ensure('glm')
+    if (loggedIn.glm) await this.#ensureAccountQuota('glm')
     else this.quota.clear('glm')
     const enabledKeys = this.models.enabledKeys(catalog)
     const [codexAccounts, grokAccounts, glmAccounts] = await Promise.all([
-      listAccounts('codex', this.authPath),
-      listAccounts('grok', this.authPath),
-      listAccounts('glm', this.authPath),
+      this.#accountsWithQuota('codex'),
+      this.#accountsWithQuota('grok'),
+      this.#accountsWithQuota('glm'),
     ])
     return {
       origin,
@@ -161,16 +162,33 @@ export class AuthController {
     }
   }
 
-  async refreshQuota(provider) {
+  async refreshQuota(provider, accountId) {
     if (provider === 'codex' || provider === 'grok' || provider === 'glm') {
-      return this.quota.refresh(provider)
+      const rows = await this.#liveAccounts(provider)
+      const targets = accountId
+        ? rows.filter((row) => row.id === accountId)
+        : rows
+      if (accountId && targets.length === 0) throw new Error(`${provider} account ${accountId} is not signed in`)
+      if (targets.length === 0) return this.quota.peek(provider)
+      await Promise.all(targets.map((row) => this.quota.refresh(provider, row.id, row.session)))
+      if (accountId) return this.quota.peek(provider, accountId)
+      const active = rows.find((row) => row.active)
+      return this.quota.peek(provider, active?.id)
     }
     const [codex, grok, glm] = await Promise.all([
-      this.quota.refresh('codex'),
-      this.quota.refresh('grok'),
-      this.quota.refresh('glm'),
+      this.refreshQuota('codex'),
+      this.refreshQuota('grok'),
+      this.refreshQuota('glm'),
     ])
     return { codex, grok, glm }
+  }
+
+  async consumeReset(provider, accountId) {
+    if (provider !== 'codex') throw new Error('only ChatGPT Codex can reset quota')
+    const session = await getAccountSession('codex', accountId, this.authPath)
+    if (!session) throw new Error('ChatGPT Codex is not signed in')
+    const live = await this.#hydrateSession('codex', session)
+    return this.quota.consume('codex', accountIdOf('codex', live), live)
   }
 
   async checkUpdate() {
@@ -187,9 +205,48 @@ export class AuthController {
     }
   }
 
-  async consumeReset(provider) {
-    if (provider !== 'codex') throw new Error('only ChatGPT Codex can reset quota')
-    return this.quota.consume('codex')
+  async #hydrateSession(provider, session) {
+    const manager = this.tokens[provider]
+    if (!session || !manager) return session
+    if (typeof session.expiresAt !== 'number') return session
+    if (session.expiresAt - Date.now() > manager.preemptMs) return session
+    try {
+      const next = await manager.refresh(session)
+      await saveSession(provider, next, this.authPath, { activate: false })
+      return next
+    } catch {
+      return session
+    }
+  }
+
+  async #liveAccounts(provider) {
+    const rows = await listStoredSessions(provider, this.authPath)
+    return Promise.all(rows.map(async (row) => ({
+      ...row,
+      session: await this.#hydrateSession(provider, row.session),
+    })))
+  }
+
+  async #ensureAccountQuota(provider) {
+    const rows = await this.#liveAccounts(provider)
+    if (rows.length === 0) {
+      this.quota.clear(provider)
+      return []
+    }
+    await Promise.all(rows.map((row) => this.quota.ensure(provider, row.id, row.session)))
+    return rows
+  }
+
+  async #accountsWithQuota(provider) {
+    const rows = await listStoredSessions(provider, this.authPath)
+    return rows
+      .map((row) => ({
+        id: row.id,
+        active: row.active,
+        ...publicSession(provider, row.session),
+        quota: this.quota.peek(provider, row.id),
+      }))
+      .sort((left, right) => Number(right.active) - Number(left.active) || left.id.localeCompare(right.id))
   }
 
   async login(provider, mode) {
@@ -314,17 +371,15 @@ export class AuthController {
     this.devices.pending(provider)?.cancel()
     await deleteSession(provider, this.authPath, id)
     this.lastError.delete(provider)
-    this.quota.clear(provider)
+    this.quota.clear(provider, id)
     this.onAuthChanged?.(provider)
-    if (await getSession(provider, this.authPath)) void this.quota.refresh(provider)
+    if (await getSession(provider, this.authPath)) void this.#ensureAccountQuota(provider)
   }
 
   async switchAccount(provider, id) {
     await switchAccount(provider, id, this.authPath)
     this.lastError.delete(provider)
-    this.quota.clear(provider)
     this.onAuthChanged?.(provider)
-    void this.quota.refresh(provider)
     return this.snapshot()
   }
 

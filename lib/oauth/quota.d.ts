@@ -100,7 +100,7 @@ export declare class QuotaStore {
         fetchFn?: typeof fetch;
         ttlMs?: number;
     });
-    peek(provider: any): {
+    peek(provider: any, accountId: any): {
         status: string;
         planType?: undefined;
         planLabel?: undefined;
@@ -125,8 +125,8 @@ export declare class QuotaStore {
             credits: any;
         };
     };
-    clear(provider: any): void;
-    ensure(provider: any): Promise<any>;
-    refresh(provider: any): Promise<any>;
-    consume(provider: any): Promise<any>;
+    clear(provider: any, accountId: any): void;
+    ensure(provider: any, accountId: any, session: any): Promise<any>;
+    refresh(provider: any, accountId: any, session: any): Promise<any>;
+    consume(provider: any, accountId: any, session: any): Promise<any>;
 }

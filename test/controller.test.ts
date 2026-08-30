@@ -209,3 +209,38 @@ test('controller lists Codex accounts and switchAccount changes the active sessi
   assert.equal(after.accounts.codex.activeId, 'two@x')
   assert.equal(after.accounts.codex.accounts.length, 1)
 })
+
+test('snapshot shows quota on every Grok account, not only the active one', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const authPath = join(dir, 'auth.json')
+  const later = Date.now() + 60 * 60_000
+  await saveSession('grok', {
+    accessToken: 'tok-a', refreshToken: 'r-a', expiresAt: later, account: 'a@x',
+  }, authPath)
+  await saveSession('grok', {
+    accessToken: 'tok-b', refreshToken: 'r-b', expiresAt: later, account: 'b@x',
+  }, authPath)
+  const controller = new AuthController({
+    authPath,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+    fetchFn: async (_url, init) => {
+      const auth = String(init?.headers?.authorization ?? '')
+      const used = auth.includes('tok-b') ? 10 : 40
+      return new Response(JSON.stringify({
+        config: { subscription_tier: 'SuperGrok', creditUsagePercent: used },
+      }), { status: 200, headers: { 'content-type': 'application/json' } })
+    },
+  })
+  const snap = await controller.snapshot()
+  const roster = snap.accounts.grok.accounts
+  assert.equal(roster.length, 2)
+  const first = roster.find((row) => row.id === 'a@x')
+  const second = roster.find((row) => row.id === 'b@x')
+  assert.equal(first.quota.status, 'ready')
+  assert.equal(second.quota.status, 'ready')
+  assert.equal(first.quota.rows[0].remainingPercent, 60)
+  assert.equal(second.quota.rows[0].remainingPercent, 90)
+  assert.equal(second.active, true)
+})

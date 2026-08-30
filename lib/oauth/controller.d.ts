@@ -3,6 +3,7 @@
  * Codex PKCE (+ paste callback + import), Grok device-code (primary) + PKCE fallback.
  */
 export declare class AuthController {
+    #private;
     constructor({ authPath, prefix, origin, settings, grokLogin, onAuthChanged, models, fetchFn, quotaTtlMs }: {
         authPath: any;
         prefix: any;
@@ -75,6 +76,7 @@ export declare class AuthController {
             codex: {
                 activeId: string;
                 accounts: ({
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -84,6 +86,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -93,6 +96,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -115,6 +119,7 @@ export declare class AuthController {
             } | {
                 activeId: string;
                 accounts: ({
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -124,6 +129,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -133,6 +139,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -155,6 +162,7 @@ export declare class AuthController {
             } | {
                 activeId: string;
                 accounts: ({
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -164,6 +172,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -173,6 +182,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -196,6 +206,7 @@ export declare class AuthController {
             grok: {
                 activeId: string;
                 accounts: ({
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -205,6 +216,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -214,6 +226,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -236,6 +249,7 @@ export declare class AuthController {
             } | {
                 activeId: string;
                 accounts: ({
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -245,6 +259,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -254,6 +269,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -276,6 +292,7 @@ export declare class AuthController {
             } | {
                 activeId: string;
                 accounts: ({
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -285,6 +302,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -294,6 +312,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -317,6 +336,7 @@ export declare class AuthController {
             glm: {
                 activeId: string;
                 accounts: ({
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -326,6 +346,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -335,6 +356,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -357,6 +379,7 @@ export declare class AuthController {
             } | {
                 activeId: string;
                 accounts: ({
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -366,6 +389,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -375,6 +399,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -397,6 +422,7 @@ export declare class AuthController {
             } | {
                 activeId: string;
                 accounts: ({
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -406,6 +432,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -415,6 +442,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -443,7 +471,8 @@ export declare class AuthController {
             repoSlug: string;
         };
     }>;
-    refreshQuota(provider: any): Promise<any>;
+    refreshQuota(provider: any, accountId: any): any;
+    consumeReset(provider: any, accountId: any): Promise<any>;
     checkUpdate(): Promise<{
         version: string;
         status: string;
@@ -473,7 +502,6 @@ export declare class AuthController {
         repo: string;
         repoSlug: string;
     }>;
-    consumeReset(provider: any): Promise<any>;
     login(provider: any, mode: any): Promise<{
         authorizeUrl: any;
         mode: string;
@@ -525,6 +553,7 @@ export declare class AuthController {
             codex: {
                 activeId: string;
                 accounts: ({
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -534,6 +563,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -543,6 +573,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -565,6 +596,7 @@ export declare class AuthController {
             } | {
                 activeId: string;
                 accounts: ({
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -574,6 +606,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -583,6 +616,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -605,6 +639,7 @@ export declare class AuthController {
             } | {
                 activeId: string;
                 accounts: ({
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -614,6 +649,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -623,6 +659,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -646,6 +683,7 @@ export declare class AuthController {
             grok: {
                 activeId: string;
                 accounts: ({
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -655,6 +693,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -664,6 +703,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -686,6 +726,7 @@ export declare class AuthController {
             } | {
                 activeId: string;
                 accounts: ({
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -695,6 +736,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -704,6 +746,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -726,6 +769,7 @@ export declare class AuthController {
             } | {
                 activeId: string;
                 accounts: ({
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -735,6 +779,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -744,6 +789,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -767,6 +813,7 @@ export declare class AuthController {
             glm: {
                 activeId: string;
                 accounts: ({
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -776,6 +823,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -785,6 +833,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -807,6 +856,7 @@ export declare class AuthController {
             } | {
                 activeId: string;
                 accounts: ({
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -816,6 +866,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -825,6 +876,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -847,6 +899,7 @@ export declare class AuthController {
             } | {
                 activeId: string;
                 accounts: ({
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -856,6 +909,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -865,6 +919,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -938,6 +993,7 @@ export declare class AuthController {
             codex: {
                 activeId: string;
                 accounts: ({
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -947,6 +1003,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -956,6 +1013,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -978,6 +1036,7 @@ export declare class AuthController {
             } | {
                 activeId: string;
                 accounts: ({
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -987,6 +1046,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -996,6 +1056,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -1018,6 +1079,7 @@ export declare class AuthController {
             } | {
                 activeId: string;
                 accounts: ({
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -1027,6 +1089,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -1036,6 +1099,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -1059,6 +1123,7 @@ export declare class AuthController {
             grok: {
                 activeId: string;
                 accounts: ({
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -1068,6 +1133,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -1077,6 +1143,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -1099,6 +1166,7 @@ export declare class AuthController {
             } | {
                 activeId: string;
                 accounts: ({
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -1108,6 +1176,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -1117,6 +1186,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -1139,6 +1209,7 @@ export declare class AuthController {
             } | {
                 activeId: string;
                 accounts: ({
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -1148,6 +1219,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -1157,6 +1229,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -1180,6 +1253,7 @@ export declare class AuthController {
             glm: {
                 activeId: string;
                 accounts: ({
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -1189,6 +1263,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -1198,6 +1273,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -1220,6 +1296,7 @@ export declare class AuthController {
             } | {
                 activeId: string;
                 accounts: ({
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -1229,6 +1306,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -1238,6 +1316,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -1260,6 +1339,7 @@ export declare class AuthController {
             } | {
                 activeId: string;
                 accounts: ({
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -1269,6 +1349,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
@@ -1278,6 +1359,7 @@ export declare class AuthController {
                     id: string;
                     active: boolean;
                 } | {
+                    quota: any;
                     account: any;
                     planType: any;
                     planLabel: any;
