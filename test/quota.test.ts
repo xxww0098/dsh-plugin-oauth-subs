@@ -613,6 +613,7 @@ test('QuotaStore fetches Antigravity model groups from daily hub, not IDE prod',
     })
     if (String(url) === ANTIGRAVITY_LOAD_CODE_ASSIST_URL) {
       return new Response(JSON.stringify({
+        paidTier: { id: 'g1-pro-tier' },
         currentTier: { id: 'STANDARD TIER' },
         cloudaicompanionProject: 'proj-1',
       }), { status: 200 })
@@ -629,7 +630,8 @@ test('QuotaStore fetches Antigravity model groups from daily hub, not IDE prod',
   const quota = await store.refresh('antigravity')
   assert.equal(quota.status, 'ready')
   assert.notEqual(quota.status, 'idle')
-  assert.equal(quota.planType, 'STANDARD TIER')
+  assert.equal(quota.planType, 'g1-pro-tier')
+  assert.equal(quota.planLabel, 'Pro')
   assert.equal(quota.rows.length, 4)
   assert.equal(quota.rows[0].product, 'Claude/GPT')
   assert.equal(quota.rows[0].remainingPercent, 25)

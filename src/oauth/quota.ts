@@ -845,29 +845,12 @@ export function parseAntigravityPaidCredits(payload) {
 
 export function pickAntigravityPlanName(payload) {
   if (!payload || typeof payload !== 'object') return undefined
-  const subscription = payload.subscriptionTier ?? payload.subscription_tier
-  if (typeof subscription === 'string' && subscription.trim()) return subscription.trim().toUpperCase()
-  for (const path of [
-    ['paidTier', 'id'],
-    ['currentTier', 'id'],
-    ['paid_tier', 'id'],
-    ['current_tier', 'id'],
-  ]) {
-    let cur = payload
-    let ok = true
-    for (const key of path) {
-      if (!cur || typeof cur !== 'object' || !(key in cur)) {
-        ok = false
-        break
-      }
-      cur = cur[key]
-    }
-    if (ok && typeof cur === 'string' && cur.trim()) return cur.trim().toUpperCase()
-  }
+  const fromTiers = antigravityPlanType(payload)
+  if (fromTiers) return fromTiers
   const tiers = Array.isArray(payload.allowedTiers) ? payload.allowedTiers : []
   const fallback = tiers.find((entry) => entry?.isDefault) ?? tiers[0]
   const id = fallback?.id
-  return typeof id === 'string' && id.trim() ? id.trim().toUpperCase() : undefined
+  return typeof id === 'string' && id.trim() ? id.trim() : undefined
 }
 
 function isQuotaHttpStatus(error, status) {
@@ -929,11 +912,9 @@ export async function fetchAntigravityQuota(session, fetchFn = fetch) {
     ?? (typeof session.projectId === 'string' && session.projectId.trim() ? session.projectId.trim() : undefined)
   const rows = await fetchAntigravityModelWindows(session.accessToken, projectId, fetchFn)
   const credits = parseAntigravityPaidCredits(load)
-  const planType = (typeof session.planType === 'string' && session.planType.trim()
-    ? session.planType.trim()
-    : undefined)
+  const planType = antigravityPlanType(load)
     ?? pickAntigravityPlanName(load)
-    ?? antigravityPlanType(load)
+    ?? (typeof session.planType === 'string' && session.planType.trim() ? session.planType.trim() : undefined)
   return { planType, rows: [...rows, ...credits] }
 }
 

@@ -30,6 +30,7 @@ import {
   antigravityLoadCodeAssistHeaders,
   antigravityLoadCodeAssistMetadata,
   antigravityOnboardUserHeaders,
+  antigravityPlanType,
   antigravityPlatform,
   antigravityRequestUserAgent,
   antigravitySession,
@@ -510,6 +511,7 @@ test('snapshot shows quota on every Antigravity account via daily hub', async ()
       const remaining = auth.includes('tok-b') ? 0.9 : 0.4
       if (href === ANTIGRAVITY_LOAD_CODE_ASSIST_URL) {
         return jsonResponse({
+          paidTier: auth.includes('tok-b') ? undefined : { id: 'g1-pro-tier' },
           currentTier: { id: 'STANDARD TIER' },
           cloudaicompanionProject: auth.includes('tok-b') ? 'p2' : 'p1',
         })
@@ -536,10 +538,15 @@ test('snapshot shows quota on every Antigravity account via daily hub', async ()
   assert.equal(first.quota.rows[0].product, 'Gemini 3 Flash')
   assert.equal(first.quota.rows[0].remainingPercent, 40)
   assert.equal(second.quota.rows[0].remainingPercent, 90)
-  assert.equal(first.quota.planLabel, 'STANDARD TIER')
+  assert.equal(first.quota.planLabel, 'Pro')
+  assert.equal(second.quota.planLabel, 'Standard')
   assert.equal(seen.every((href) => !href.startsWith(ANTIGRAVITY_PROD_API_URL)), true)
   assert.equal(seen.every((href) => href.startsWith(ANTIGRAVITY_DAILY_API_URL)), true)
   assert.equal(formatPlanLabel('free-tier', 'antigravity'), 'Free')
+  assert.equal(antigravityPlanType({
+    paidTier: { id: 'g1-pro-tier' },
+    currentTier: { id: 'STANDARD TIER' },
+  }), 'g1-pro-tier')
 })
 
 test('import reads the official CLI token file and CLIProxyAPI auth json', async () => {
