@@ -64,12 +64,13 @@ import {
   ModelSwitch,
   syncHarnessModels,
 } from './models.js'
+import { EffortMemory } from './reasoning-effort.js'
 import { TokenManager } from './tokens.js'
 import { QuotaStore } from './quota.js'
 import { fetchLatest, localUpdateInfo, runPluginUpdate, DEFAULT_PROFILE } from '../utils/update.js'
 
 export class AuthController {
-  constructor({ authPath, prefix, origin, settings, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, spawnFn, profile }) {
+  constructor({ authPath, prefix, origin, settings, grokLogin = 'device', onAuthChanged, models, effort, fetchFn = fetch, quotaTtlMs, spawnFn, profile }) {
     this.authPath = authPath
     this.prefix = prefix
     this.origin = origin
@@ -79,6 +80,7 @@ export class AuthController {
     this.profile = profile || DEFAULT_PROFILE
     this.onAuthChanged = onAuthChanged
     this.models = models ?? new ModelSwitch()
+    this.effort = effort ?? new EffortMemory()
     this.flows = new OAuthFlowManager()
     this.devices = new DeviceFlowManager()
     this.glmFlows = new GlmCliFlowManager()
@@ -704,6 +706,7 @@ export class AuthController {
       origin: this.origin(),
       loggedIn,
       selected: this.models.selectedForSync(catalog),
+      reasoning: this.effort.last(),
     })
   }
 }

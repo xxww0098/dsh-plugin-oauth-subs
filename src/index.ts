@@ -20,7 +20,8 @@ import z from '@deepseek-ai/schemastery'
 import { AuthController } from './oauth/controller.js'
 import { authFilePath, defaultDataDir, readPrivateText, writePrivateText } from './oauth/store.js'
 import { createProxy } from './oauth/proxy.js'
-import { OAUTH_CREDENTIAL_REF, ModelSwitch } from './oauth/models.js'
+import { catalogProviders, OAUTH_CREDENTIAL_REF, ModelSwitch } from './oauth/models.js'
+import { EffortMemory, LAST_EFFORT_FILE, startEffortRestore } from './oauth/reasoning-effort.js'
 import { profileFromBaseUrl } from './utils/update.js'
 
 export const name = 'dsh-plugin-oauth-subs'
@@ -127,6 +128,9 @@ export function apply(ctx, config = {}) {
   const models = new ModelSwitch({
     path: join(dataDir, 'models.json'),
   })
+  const effort = new EffortMemory({
+    path: join(dataDir, LAST_EFFORT_FILE),
+  })
 
   const controller = new AuthController({
     authPath,
@@ -135,6 +139,7 @@ export function apply(ctx, config = {}) {
     settings: ctx.settings,
     grokLogin,
     models,
+    effort,
     onAuthChanged: () => {
       controller.sync().catch((error) => {
         ctx.logger?.warn?.(`dsh-plugin-oauth-subs: llm-pi-ai sync failed: ${error.message}`)
@@ -146,11 +151,13 @@ export function apply(ctx, config = {}) {
   let proxy
   ctx.effect(() => {
     let closed = false
+    let stopEffort
     void (async () => {
       try {
         const apiKey = await ensureApiKey(dataDir)
         await rememberCredential(ctx, apiKey)
         await models.ready
+        await effort.ready
         proxy = createProxy({
           port,
           apiKey,
@@ -158,6 +165,15 @@ export function apply(ctx, config = {}) {
         })
         await proxy.listen()
         ctx.logger?.info?.(`dsh-plugin-oauth-subs: proxy on ${proxy.origin()}`)
+        stopEffort = startEffortRestore({
+          settings: ctx.settings,
+          memory: effort,
+          prefix,
+          effortsFor: (provider, modelId) => {
+            const catalog = catalogProviders({ prefix, origin: proxy.origin() })
+            return catalog[provider]?.models.find((model) => model.id === modelId)?.reasoningEfforts
+          },
+        })
         await controller.sync().catch((error) => {
           ctx.logger?.warn?.(`dsh-plugin-oauth-subs: llm-pi-ai sync failed: ${error.message}`)
         })
@@ -167,6 +183,7 @@ export function apply(ctx, config = {}) {
     })()
     return () => {
       closed = true
+      stopEffort?.()
       void proxy?.close()
     }
   }, 'dsh-plugin-oauth-subs: local responses proxy')

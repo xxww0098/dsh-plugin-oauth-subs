@@ -1,5 +1,32 @@
 # 错误记录
 
+## 2026-08-31：DSH 换模型会丢掉 reasoningEffort，选择器回到 Default
+
+### 现象
+
+用户 DSH 0.1.2-alpha.2。OAuth 系列（Codex / Grok / GLM / Kiro / Antigravity）里把思考深度设成 High 等非 Default 档后，在会话里换模型，思考深度选择器回到 **Default**，而不是上次选的档。`~/.dsh/settings.yaml` 的 `agent-default-model` 只剩 `{ provider, model }`。
+
+### 证据
+
+- `@deepseek-ai/dsh-agent-default-model` `saveSelection` 写入整节：`reasoningEffort === undefined` 时省略该字段。换模型通常不带 effort，用户层的 `reasoningEffort` 被清掉。
+- llm-pi-ai `reasoningInfo()` 用路由级 `reasoning` 当 `defaultEffort`。本插件的 oauth-* 路由原先不写 `reasoning`，Default 就是空。
+- 目录里各模型已有 `reasoningEfforts`（Codex off/low/medium/high/xhigh/max，AG low/medium/high，GLM low/high/max，Grok low/medium/high/xhigh）。能力在，缺的是跨模型持久化。
+- 不是 Codex / Grok hop，也不是 hytime/dsh-thinking-effort。
+
+### 根因
+
+DSH 核心：换模型的 `saveSelection` 不保留上一档 effort。本插件可以在 `agent-default-model` 变更后把兼容档写回去，并给 oauth-* 路由补 `reasoning`，让 composer 显示 High 而不是 Default。
+
+### 修复
+
+- 插件数据目录 `reasoning-effort.json` 记全局上次非 Default 档（`off` 仅在用户明确选 Off 时记；`default` / 空不记）。
+- 看 `agent-default-model`（有 `settings.watch` 就用，否则 poll `settings.get`）。非本插件 oauth-* 路由不动。新选择带真实档则记住。provider/model 变了且 effort 缺失/`default` 时，目标模型的 `reasoningEfforts` 有该键就还原；`xhigh`/`max` 没有则夹到模型最高档（`max` > `xhigh` > `high` > `medium` > `low`）。`reasoningEfforts: false` 保持未设。只在值真的变了才 `mutate`，避免 watch 环。
+- `syncHarnessModels` 给 oauth-* 路由写 `reasoning`：已记住的档，或尚无记录且目录有 `high` 时用 `high`。不覆盖用户已经写好的合法 `agent-default-model.reasoningEffort`。
+
+### 验证
+
+- `npm test`：目标有该档则还原；AG 上 xhigh→high；非 oauth 提供方 no-op；watch 回写不环；`reasoning-effort.json` 读回。Codex / Grok hop 未改。
+
 ## 2026-08-31：Antigravity 套餐 pill 显示 STANDARD TIER
 
 ### 现象

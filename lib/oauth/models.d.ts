@@ -92,12 +92,13 @@ export declare class ModelSwitch {
 export declare function filterProviders(providers: any, selected: any): any;
 /** `undefined` when the host has no readable settings.get; `{}` when the section is empty. */
 export declare function peekPiAiProviders(settings: any): Promise<any>;
-export declare function syncHarnessModels({ settings, prefix, origin, loggedIn, selected }: {
+export declare function syncHarnessModels({ settings, prefix, origin, loggedIn, selected, reasoning }: {
     settings: any;
     prefix: any;
     origin: any;
     loggedIn: any;
     selected: any;
+    reasoning: any;
 }): Promise<{
     routes: {
         provider: string;

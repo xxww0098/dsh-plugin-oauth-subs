@@ -352,6 +352,27 @@ test('logged-in Kiro persist writes oauth-kiro with the kiro.dev catalog', async
   assert.equal(stored['oauth-kiro'].api, HARNESS_COMPLETIONS_API)
   assert.deepEqual(stored['oauth-kiro'].models.map((model) => model.id), KIRO_MODELS.map((model) => model.id))
   assert.deepEqual(result.routes.find((row) => row.provider === 'oauth-kiro').models, KIRO_MODELS.map((model) => model.id))
+  assert.equal(stored['oauth-kiro'].reasoning, undefined)
+})
+
+test('syncHarnessModels stamps provider reasoning from memory or high', async () => {
+  const settings = createPiAiSettings()
+  await syncHarnessModels({
+    settings,
+    prefix: 'oauth',
+    origin: 'http://127.0.0.1:8318',
+    loggedIn: { codex: true },
+  })
+  assert.equal((await peekPiAiProviders(settings))['oauth-codex'].reasoning, 'high')
+  const again = createPiAiSettings()
+  await syncHarnessModels({
+    settings: again,
+    prefix: 'oauth',
+    origin: 'http://127.0.0.1:8318',
+    loggedIn: { grok: true },
+    reasoning: 'xhigh',
+  })
+  assert.equal((await peekPiAiProviders(again))['oauth-grok'].reasoning, 'xhigh')
 })
 
 test('syncHarnessModels rejects a silent drop after mutate', async () => {
