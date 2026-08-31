@@ -64,12 +64,13 @@ DSH chat/completions  →  POST https://q.<region>.amazonaws.com/
 
 `openaiToKiro`：
 
-- `developer` 以及未知角色 → system 文本，拼进 **current** `userInputMessage.content`（Kiro 没有独立 system 字段）。
-- 历史是 `userInputMessage` / `assistantResponseMessage` 成对。
-- `conversationId` = `kiroConversationId(payload, conversationId)`，**永远不要** `Date.now()`。
+- `developer` 以及未知角色 → system。官方 wire **没有**独立 system 字段（[kiro.rs](https://github.com/ZyphrZero/kiro.rs) `build_history` / kiro-proxy PROTOCOL.md）。system 钉成 **history 第一条** `userInputMessage` + 固定 ack `I will follow these instructions.`，**不要**每轮拼进 `currentMessage.content`。
+- 历史是 `userInputMessage` / `assistantResponseMessage` 成对。当前 user 文本只是这一轮。
+- `conversationId` = DSH `session_id` / `prompt_cache_key` **加上 model**（`session:deepseek-3.2`），缺 pin 时 `dsh-kiro:<model>`。**永远不要** `Date.now()`。18 个目录模型各钉各的，切换 picker 不共用一条 AWS conversation。
+- tools 仍在 **current** `userInputMessageContext.tools`（官方也是挂 current，不在 conversationState 顶层）。
 - 上游 401/403 改写成 400（非 AUTH），避免 DSH 把订阅打成「API 密钥无效」。
 
-命中：eventstream 上的 `cacheReadInputTokens`。
+命中：eventstream `cacheReadInputTokens` → OpenAI `prompt_tokens_details.cached_tokens`（DSH `cacheReadTokens`）。
 
 ## 模型
 
@@ -85,20 +86,26 @@ DSH chat/completions  →  POST https://q.<region>.amazonaws.com/
 
 ## 缓存
 
-AWS 按 **CodeWhisperer conversation** 粘滞。没有 Codex 前缀、没有 Grok 分片、没有 Gemini `systemInstruction` pin。
+AWS 按 **CodeWhisperer conversation** 粘滞。没有 Codex 前缀、没有 Grok 分片、没有 Gemini `systemInstruction` 字段。system 的稳定位置是 **history 首对**，不是 current 正文。
 
 | 步骤 | 函数 | 做什么 |
 |---|---|---|
-| 1 | `kiroCacheSessionId` | 清洗 DSH `session_id` / `prompt_cache_key` |
-| 2 | `kiroConversationId` | 有 pin 用 pin，否则常量 **`dsh-kiro`** |
-| 3 | `openaiToKiro` | 写入 `conversationState.conversationId` |
+| 1 | `kiroCacheSessionId` | 清洗 DSH `session_id` / `prompt_cache_key` / model |
+| 2 | `kiroConversationId` | pin + **model**；否则 **`dsh-kiro:<model>`** |
+| 3 | `pinKiroSystemPrefix` | 每个 conversationId 钉第一次 system；DSH snapshot 增量挂 history **后缀**（再一对 user+ack） |
+| 4 | `openaiToKiro` | 写入 `conversationId`；current 不再重倒 system |
+| 5 | `mapKiroUsage` | `cacheReadInputTokens` → `prompt_tokens_details.cached_tokens` |
 
 proxy 只删 `prompt_cache_retention` / `prompt_cache_options`，**不**把 `prompt_cache_key` 转给 AWS。
+测试用 `resetKiroSystemPins()`。不要和 GLM / Antigravity 共用 Map。
 
 ## 不要
 
 - 不要 `conversationId: \`-${Date.now()}\``。
-- 不要给 Kiro 写 Codex `session-id` 或 Grok `x-grok-conv-id`。
+- 不要把整段 system 每轮拼进 `currentMessage.content`（current 一变，AWS 前缀就 miss）。
+- 不要 18 个模型共用一个 `dsh-kiro` conversationId。
+- 不要给 Kiro 写 Codex `session-id` / `prompt_cache_key` 或 Grok `x-grok-conv-id`。
+- 不要把 tools 挪到 conversationState 顶层（官方挂 current `userInputMessageContext`）。
 - 不要把 Social 的 `redirect_uri` 在 authorize 和 token 之间改掉（HTTP 500）。
 - 不要只 stub `GenerateAssistantResponse`（会 501）。
 - 不要把 `api` 改成 Responses / Anthropic。
@@ -117,5 +124,6 @@ proxy 只删 `prompt_cache_retention` / `prompt_cache_options`，**不**把 `pro
 | 0.0.55 仍写不进 yaml：GLM Anthropic 带了 Completions compat | 同文件 2026-08-31 GLM Anthropic compat / Kiro yaml |
 | 对话不是 OpenAI | 同文件 2026-08-30（已在 0.0.50 做成翻译层） |
 | 导入只吃第一条 / IDE 丢 client 注册 | 同文件 2026-08-31 Kiro 导入 |
+| 18 模型缓存 miss（system 每轮进 current + 共用 conversationId） | 同文件 2026-08-31 Kiro 缓存 |
 
 测试：`test/kiro.test.ts`、`test/cache-families.test.ts`、`test/proxy.test.ts`。

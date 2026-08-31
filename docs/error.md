@@ -1,5 +1,34 @@
 # 错误记录
 
+## 2026-08-31：Kiro 18 个模型多轮 cacheReadInputTokens 偏低
+
+### 现象
+
+DSH 走 `oauth-kiro` 的 18 个目录模型（gpt-5.6-sol/terra/luna、claude-opus-5/4.8/4.7/4.6/4.5、claude-sonnet-5/4.6/4.5/4、claude-haiku-4.5、deepseek-3.2、minimax-m2.5/m2.1、glm-5、qwen3-coder-next）。典型请求是长 system + tools 前缀、增长的 history、很小的新 user。多轮 `cacheReadInputTokens` 偏低；同一 DSH session 换模型还会打到同一条 AWS conversation。
+
+### 证据
+
+- `openaiToKiro` 把全部 system/developer 拼进 **每一轮** `currentMessage.userInputMessage.content`（`` `${systemParts.join('\n')}\n${content}` ``）。current 每步都变，CodeWhisperer 对话前缀对不上。
+- `kiroConversationId` 回落常量 `dsh-kiro`，且有 `session_id` 时也不带 model。18 个模型共用一条 conversation。
+- `collectKiroEvents` 把 `cacheReadInputTokens` 加进 `prompt_tokens`，但没有写 DSH 已经认的 `prompt_tokens_details.cached_tokens`（Antigravity / GLM Completions 那条字段）。流式收尾 chunk 也不带 usage。
+- 官方 wire（kiro.rs `build_history`、oleglr/kiro-proxy PROTOCOL.md）：`conversationState` **没有** system 字段；system 做成 history 里一对 `userInputMessage` + 固定 ack `I will follow these instructions.`；tools 仍在 current `userInputMessageContext.tools`，不在 conversationState 顶层。
+
+### 根因
+
+代理翻译层。不是登录 / 指纹 / yaml sync，也不是 Codex `prompt_cache_key` 或 Grok `x-grok-conv-id` 没抄过来（Kiro 本来就不认那些）。
+
+### 修复
+
+- system 钉在 history **第一条** user + canned ack。current 只留这一轮 user 文本。
+- `pinKiroSystemPrefix`：每个 conversationId 钉第一次 system；DSH runtime-context snapshot 增量挂 history **后缀**（再一对 user+ack），不重写前缀。
+- `conversationId` = DSH pin **加上 model**（`session-dsh-1:deepseek-3.2`）；缺 pin 时 `dsh-kiro:<model>`。仍禁止 `Date.now()`。
+- `mapKiroUsage`：`cacheReadInputTokens` → `prompt_tokens_details.cached_tokens`。非流 `kiroToOpenai` 和流式收尾 chunk 都带上。
+- tools 仍在 current context。不写 Codex / Grok / GLM 缓存字段。
+
+### 验证
+
+- `npm test`：`session_id` 仍赢过 `prompt_cache_key`；无 session 时 18 个模型各有 `dsh-kiro:<id>` 且互不相同；两轮 openaiToKiro 的 system 只在 history 首对，第二轮 current 不再重倒 system；tools 映射不变；`metadataEvent.tokenUsage.cacheReadInputTokens` → `cached_tokens`。无 live AWS。
+
 ## 2026-08-31：0.0.55 登录 Kiro 后 settings.yaml 仍没有 oauth-kiro（GLM Anthropic + Completions compat）
 
 ### 现象

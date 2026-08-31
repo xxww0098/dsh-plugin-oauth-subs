@@ -175,8 +175,9 @@ GLM:       drop prompt_cache_key / retention / options
            extra system parked at messages suffix
 Antigravity: request.sessionId
            first systemInstruction pinned; extra → trailing user turn
-Kiro:      conversationState.conversationId
+Kiro:      conversationState.conversationId (+ model)
            drop Codex/Grok cache fields
+           system as first history user+ack; extra snapshots at history suffix
 ```
 
 ### Per family
@@ -240,11 +241,20 @@ Kiro:      conversationState.conversationId
 **Kiro** (`src/oauth/kiro/cache.ts`)
 
 - AWS CodeWhisperer conversation cache. Sticky:
-  `conversationState.conversationId`. Fallback `dsh-kiro`. Never
-  `Date.now()`.
-- Hits: `cacheReadInputTokens` on the event stream.
+  `conversationState.conversationId` = DSH pin **plus model id**.
+  Fallback `dsh-kiro:<model>` (bare `dsh-kiro` only when model is
+  unknown). Never `Date.now()`. Switching the picker must not reuse
+  another model's conversation.
+- Official wire has no system field. Park system as the first history
+  `userInputMessage` + canned ack (`I will follow these instructions.`).
+  Do not prepend the system blob onto every `currentMessage.content`.
+  Pin the first system text per conversationId; extra DSH snapshots
+  become another user+ack pair at the **history suffix**.
+- Tools stay on current `userInputMessageContext.tools` (not a
+  conversationState-level field).
+- Hits: `cacheReadInputTokens` → OpenAI `prompt_tokens_details.cached_tokens`.
 - No Codex `prompt_cache_key`, no Grok `x-grok-conv-id`, no Gemini
-  systemInstruction pin.
+  `systemInstruction` field.
 
 ### New family checklist (cache)
 
@@ -268,7 +278,7 @@ When adding `src/oauth/<id>/`:
 | Grok | conversation shard | `x-grok-conv-id` (+ body `prompt_cache_key`) | n/a (shard, not prefix) | `cacheReadTokens`; 512 + reuse<10% = affinity miss |
 | GLM | content hash of leading system + history | Anthropic: `metadata.user_id` + `x-session-id` + first-block `cache_control`; Completions leftover: `user` + `x-session-id` | Completions: system at **messages suffix**; Anthropic: extra system text blocks without cache_control | `cached_tokens` / `cache_read_input_tokens` |
 | Antigravity | Gemini `systemInstruction` + contents | `request.sessionId` | extra as trailing **user** | `cachedContentTokenCount` → `cached_tokens` |
-| Kiro | CodeWhisperer conversation | `conversationId` | n/a | `cacheReadInputTokens` |
+| Kiro | CodeWhisperer conversation | `conversationId` + model | system as first history user+ack; extra at history suffix | `cacheReadInputTokens` → `cached_tokens` |
 
 ### Do not
 

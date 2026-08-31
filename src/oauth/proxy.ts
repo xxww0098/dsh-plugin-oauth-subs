@@ -24,6 +24,7 @@ import {
   kiroToOpenai,
   kiroToOpenaiChunk,
   KiroEventStreamParser,
+  mapKiroUsage,
   mergeKiroText,
   openaiToKiro,
 } from './kiro/request.js'
@@ -826,6 +827,7 @@ async function forwardKiro(request, response, { session, fetchFn, maxRequestBody
   const parser = new KiroEventStreamParser()
   let accText = ''
   let sawTools = false
+  let usage
   const reader = upstream.body?.getReader()
   if (!reader) {
     await writeKiroSse(response, kiroToOpenaiChunk({}, { model, id, done: true }), signal)
@@ -857,6 +859,8 @@ async function forwardKiro(request, response, { session, fetchFn, maxRequestBody
           }
         }
         await writeKiroSse(response, kiroToOpenaiChunk(delta, { model, id }), signal)
+      } else if (type === 'metadataEvent' && data.tokenUsage) {
+        usage = mapKiroUsage(data.tokenUsage)
       } else if (type === 'exception' || type === 'invalidStateEvent' || event.messageType === 'exception') {
         const message = data.message || data.reason || 'kiro upstream exception'
         await writeKiroSse(response, kiroToOpenaiChunk({ content: '' }, { model, id, done: true, finishReason: 'stop' }), signal)
@@ -865,7 +869,13 @@ async function forwardKiro(request, response, { session, fetchFn, maxRequestBody
     }
     if (done) break
   }
-  await writeKiroSse(response, kiroToOpenaiChunk({}, { model, id, done: true, finishReason: sawTools ? 'tool_calls' : 'stop' }), signal)
+  await writeKiroSse(response, kiroToOpenaiChunk({}, {
+    model,
+    id,
+    done: true,
+    finishReason: sawTools ? 'tool_calls' : 'stop',
+    usage,
+  }), signal)
   response.write('data: [DONE]\n\n')
   if (!response.writableEnded && !response.destroyed) response.end()
 }
