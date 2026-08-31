@@ -21,7 +21,7 @@ import {
   fetchAntigravityCloudCode,
   parseAntigravityValidation,
 } from './antigravity/index.js'
-import { ANTIGRAVITY_STABLE_SESSION, antigravityToOpenai, antigravityToOpenaiChunk, openaiToAntigravity, parseAntigravitySseBlocks } from './antigravity/request.js'
+import { ANTIGRAVITY_STABLE_SESSION, antigravityToOpenai, createAntigravityOpenaiStream, openaiToAntigravity, parseAntigravitySseBlocks } from './antigravity/request.js'
 import { applyFastMode } from '../utils/fast-mode.js'
 import { codexCacheSessionId } from '../utils/cache-session.js'
 import { normalizeCodexResponsesBody } from './codex/request.js'
@@ -668,10 +668,11 @@ async function forwardAntigravity(request, response, { session, tokens, fetchFn,
     'x-content-type-options': 'nosniff',
   })
   const id = `chatcmpl-${Date.now()}`
+  const streamMapper = createAntigravityOpenaiStream({ model, id })
   let rest = ''
   const reader = upstream.body?.getReader()
   if (!reader) {
-    response.write(`data: ${JSON.stringify(antigravityToOpenaiChunk({}, { model, id, done: true }))}\n\n`)
+    response.write(`data: ${JSON.stringify(streamMapper.finish())}\n\n`)
     response.write('data: [DONE]\n\n')
     response.end()
     return
@@ -682,14 +683,14 @@ async function forwardAntigravity(request, response, { session, tokens, fetchFn,
     const parsed = parseAntigravitySseBlocks(done ? `${rest}\n\n` : rest)
     rest = parsed.rest
     for (const event of parsed.events) {
-      const chunk = antigravityToOpenaiChunk(event, { model, id })
-      if (chunk.choices[0].delta.content || chunk.choices[0].delta.tool_calls) {
+      const chunk = streamMapper.push(event)
+      if (chunk) {
         if (!response.write(`data: ${JSON.stringify(chunk)}\n\n`)) await once(response, 'drain', { signal })
       }
     }
     if (done) break
   }
-  if (!response.write(`data: ${JSON.stringify(antigravityToOpenaiChunk({}, { model, id, done: true }))}\n\n`)) {
+  if (!response.write(`data: ${JSON.stringify(streamMapper.finish())}\n\n`)) {
     await once(response, 'drain', { signal })
   }
   response.write('data: [DONE]\n\n')
