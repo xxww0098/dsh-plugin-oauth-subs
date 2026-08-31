@@ -1,8 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.0.55
 
-- Kiro GPT thinking Off is DSH `off: "none"` (wire `none`). A `none` key is not a DSH thinking level, so the whole `oauth-kiro` write was dropped from settings.yaml. `toHarnessModel` now refuses unknown keys before mutate.
+- Kiro GPT thinking Off is DSH `off: "none"` (wire `none`). A `none` key is not a DSH thinking level, so the whole `oauth-kiro` write was dropped from settings.yaml. `toHarnessModel` now refuses unknown keys before mutate. PR #61.
+
 
 
 ## 0.0.54
