@@ -64,6 +64,7 @@ src/
     kiro/                  AWS Kiro (Social / Builder ID / IdC / Entra / API key)
       index.ts             catalog, identity, portal PKCE, refresh, usage headers
       idc-flow.ts          AWS SSO OIDC register + JSON device poll
+      request.ts           OpenAI chat ↔ generateAssistantResponse eventstream
     antigravity/           Google Antigravity (cloudcode-pa)
       index.ts             catalog, identity, Google OAuth, fingerprint
       request.ts           OpenAI chat ↔ generateContent
