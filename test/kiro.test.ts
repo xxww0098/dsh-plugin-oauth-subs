@@ -222,7 +222,7 @@ test('Kiro catalog matches kiro.dev models minus Auto, with native ids', () => {
   assert.deepEqual(kiro.models.find((model) => model.id === 'deepseek-3.2').input, ['text'])
   assert.deepEqual(kiro.models.find((model) => model.id === 'qwen3-coder-next').input, ['text'])
   assert.deepEqual(kiro.models.find((model) => model.id === 'gpt-5.6-sol').reasoningEfforts, {
-    none: 'none',
+    off: 'none',
     low: 'low',
     medium: 'medium',
     high: 'high',

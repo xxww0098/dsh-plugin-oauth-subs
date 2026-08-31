@@ -1,5 +1,29 @@
 # 错误记录
 
+## 2026-08-31：Kiro 登录后写不进 DSH 模型设置
+
+### 现象
+
+Kiro 已登录（账号卡、额度都活着），设置页模型勾选也亮着，打开 DSH 配置文件 `llm-pi-ai.providers` 没有 `oauth-kiro`。Composer 选不到 Kiro 模型。Codex / Grok / GLM 仍在。
+
+### 证据
+
+- DSH `@deepseek-ai/dsh-llm-pi-ai` `reasoningEfforts` 的键是闭集 `off|minimal|low|medium|high|xhigh|max`（`THINKING_LEVELS`）。值才是线上拼写。
+- `KIRO_REASONING_GPT` 写成了 `{ none: "none", low, … }`。`none` 不是 DSH 档位。
+- `settings.mutate('llm-pi-ai', …)` 整段校验失败后保留上次合法 section；启动 `sync()` 把失败吞成 `llm-pi-ai sync failed`。和 0.0.40 的裸 `api: openai` 同类。
+
+### 根因
+
+模型表。Kiro GPT 官方 wire 是 `none`，被误当成 DSH 选择器键。不是 hop、不是未登录锁、也不是 `models.json` 全关。
+
+### 修复
+
+`KIRO_REASONING_GPT` 改为 `off: "none"`（选择器 Off → 线上 `none`）。`toHarnessModel` 在 mutate 前拒绝未知键。假 settings store 同样校验。
+
+### 验证
+
+- `npm test`：已登录 Kiro persist 的 Sol 是 `off: none`，没有 `none` 键；直接 `set` `{ none: "none" }` 被拒。
+
 ## 2026-08-31：Kiro 导入只吃第一条，且 IDE token 丢了 IdC client 注册
 
 ### 现象

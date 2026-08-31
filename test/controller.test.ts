@@ -7,7 +7,7 @@ import { test } from 'node:test'
 import { AuthController } from '../lib/oauth/controller.js'
 import { saveSession } from '../lib/oauth/store.js'
 import { installedVersion } from '../lib/utils/update.js'
-import { HARNESS_ANTHROPIC_API, HARNESS_COMPLETIONS_API, ModelSwitch, catalogKeys, catalogProviders } from '../lib/oauth/models.js'
+import { HARNESS_ANTHROPIC_API, HARNESS_COMPLETIONS_API, DSH_THINKING_LEVELS, ModelSwitch, catalogKeys, catalogProviders } from '../lib/oauth/models.js'
 import { glmSession } from '../lib/oauth/glm/index.js'
 import { kiroSession, KIRO_MODELS } from '../lib/oauth/kiro/index.js'
 import { antigravitySession } from '../lib/oauth/antigravity/index.js'
@@ -36,6 +36,16 @@ function createPiAiSettings(initialProviders = {}) {
         } else if (row.op === 'set') {
           if (!DSH_APIS.has(row.value?.api)) {
             throw new Error(`llm-pi-ai: provider "${key}" api must be openai-completions | openai-responses | anthropic-messages`)
+          }
+          for (const model of row.value?.models ?? []) {
+            const efforts = model.reasoningEfforts
+            if (efforts && typeof efforts === 'object') {
+              for (const level of Object.keys(efforts)) {
+                if (!DSH_THINKING_LEVELS.includes(level)) {
+                  throw new Error(`llm-pi-ai: model "${model.id}" reasoningEfforts key "${level}" is not ${DSH_THINKING_LEVELS.join('|')}`)
+                }
+              }
+            }
           }
           next.providers[key] = structuredClone(row.value)
         }

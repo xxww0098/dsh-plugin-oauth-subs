@@ -159,6 +159,8 @@ Grok 4.6 thinking depth is **low / medium / high / xhigh**. Grok 4.5 is **low / 
 
 GLM-5.3 and GLM-5.3-Flash thinking depth is **low / high / max** (default **max**). There is no `medium`, and thinking cannot be turned off — `thinking.type: disabled` 400s. GLM-5-Turbo has no depth control (thinking stays on by default). The session picker only lists levels the catalog declares.
 
+Kiro GPT-5.6 thinking depth is **off / low / medium / high / xhigh / max**. Off sends Kiro's wire value `none` (DSH has no `none` key). Opus 5 / 4.8 / 4.7 and Sonnet 5 add **xhigh**; 4.6 family stops at **max**; Haiku and the open-weight rows have no depth control.
+
 Set the level in the DeepSeek Harness session model menu → **Reasoning**. It is not on Settings → Models. Login, logout, and each checkbox already sync the picker.
 
 ## Quota

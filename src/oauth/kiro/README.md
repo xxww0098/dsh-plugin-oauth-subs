@@ -76,7 +76,7 @@ DSH chat/completions  →  POST https://q.<region>.amazonaws.com/
 `KIRO_MODELS` 对齐 [kiro.dev/docs/models](https://kiro.dev/docs/models)（不含 Auto）+ [effort](https://kiro.dev/docs/models/effort)。id 用点号（`claude-sonnet-5`）。
 
 - GPT-5.6 / Claude：输入 `text+image`。OSS（DeepSeek / MiniMax / GLM-5 / Qwen）：`text`。
-- 思考：GPT-5.6 `none`–`max`；Opus 5 / 4.8 / 4.7、Sonnet 5 有 `xhigh`；4.6 家族到 `max`；Haiku / OSS 为 `false`。
+- 思考：GPT-5.6 DSH 档位 `off`–`max`，关思考的 **wire** 是 `none`（`off: "none"`）。Opus 5 / 4.8 / 4.7、Sonnet 5 有 `xhigh`；4.6 家族到 `max`；Haiku / OSS 为 `false`。不要把 `none` 当 DSH 键——整段 `oauth-kiro` 写不进 settings.yaml。
 - 目录必须有 Opus 5、Opus 4.8；Sonnet 主推是 **Claude Sonnet 5**（4.5 仍保留）。
 
 ## 额度
@@ -102,6 +102,7 @@ proxy 只删 `prompt_cache_retention` / `prompt_cache_options`，**不**把 `pro
 - 不要把 Social 的 `redirect_uri` 在 authorize 和 token 之间改掉（HTTP 500）。
 - 不要只 stub `GenerateAssistantResponse`（会 501）。
 - 不要把 `api` 改成 Responses / Anthropic。
+- 不要把 `none` 写成 `reasoningEfforts` 的键（DSH 只认 `off|minimal|low|medium|high|xhigh|max`）。
 - 不要把 kiro-manager-lite 的 AGPL 源码贴进来；只蒸馏格式，解析器写自己的。
 
 ## 追溯
@@ -112,6 +113,7 @@ proxy 只删 `prompt_cache_retention` / `prompt_cache_options`，**不**把 `pro
 | Social 换票 500（redirect_uri） | 同文件 2026-08-30 / 08-31 Kiro Social |
 | 登录成功授权页还在 | 同文件 2026-08-31 打开授权页 |
 | 模型缺思考深度 / 输入类型 | 同文件 2026-08-31 Kiro 模型 |
+| GPT `none` 键写不进 settings.yaml | 同文件 2026-08-31 Kiro reasoningEfforts |
 | 对话不是 OpenAI | 同文件 2026-08-30（已在 0.0.50 做成翻译层） |
 | 导入只吃第一条 / IDE 丢 client 注册 | 同文件 2026-08-31 Kiro 导入 |
 

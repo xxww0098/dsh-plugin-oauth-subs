@@ -13,6 +13,13 @@ export declare const OAUTH_CREDENTIAL_REF = "DSH_OAUTH_SUBS_API_KEY";
 export declare const HARNESS_RESPONSES_API = "openai-responses";
 export declare const HARNESS_COMPLETIONS_API = "openai-completions";
 export declare const HARNESS_ANTHROPIC_API = "anthropic-messages";
+/**
+ * DSH `reasoningEfforts` keys (`packages/llm/llm-pi-ai` THINKING_LEVELS).
+ * Vendor wire spellings belong in the *value* (`off: "none"`), never as a
+ * key. An unknown key fails the whole `llm-pi-ai` mutate, so the family
+ * never lands in settings.yaml.
+ */
+export declare const DSH_THINKING_LEVELS: readonly string[];
 export { CODEX_REASONING_EFFORTS };
 export declare function isOptInKey(key: any): boolean;
 export declare function modelKey(provider: any, id: any): string;

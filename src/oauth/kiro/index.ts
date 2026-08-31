@@ -57,9 +57,9 @@ export const KIRO_REASONING_CLAUDE_XHIGH = Object.freeze({
   xhigh: 'xhigh',
 })
 
-/** GPT-5.6 `reasoning.effort`; official includes `none` (not Codex `off`). */
+/** GPT-5.6 `reasoning.effort`. Official wire is `none`; DSH picker key is `off`. */
 export const KIRO_REASONING_GPT = Object.freeze({
-  none: 'none',
+  off: 'none',
   low: 'low',
   medium: 'medium',
   high: 'high',

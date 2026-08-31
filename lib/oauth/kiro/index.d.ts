@@ -48,9 +48,9 @@ export declare const KIRO_REASONING_CLAUDE_XHIGH: Readonly<{
     high: "high";
     max: "max";
 }>;
-/** GPT-5.6 `reasoning.effort`; official includes `none` (not Codex `off`). */
+/** GPT-5.6 `reasoning.effort`. Official wire is `none`; DSH picker key is `off`. */
 export declare const KIRO_REASONING_GPT: Readonly<{
-    none: "none";
+    off: "none";
     low: "low";
     medium: "medium";
     high: "high";
