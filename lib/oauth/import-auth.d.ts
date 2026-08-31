@@ -13,6 +13,8 @@
  *   credentials.json            kiro.rs CWD dump
  *   ~/.kiro/credentials.json    Kiro IDE
  *   ~/.aws/sso/cache/kiro-auth-token.json
+ *   ~/.aws/sso/cache/*.json     IdC client registration (paired with the token)
+ *   kiro-manager-lite 卡密 / compact JSON / full backup (paste or file)
  */
 export declare const GROK_HERMES_KEYS: readonly string[];
 export declare function grokAuthSearchPaths(): string[];
@@ -86,46 +88,9 @@ export declare function importGlmAuth(paths?: string[]): Promise<{
     source: string;
 }>;
 export declare function kiroAuthSearchPaths(): string[];
-export declare function sessionFromKiroAuth(raw: any): {
-    accessToken: string;
-    refreshToken: string;
-    expiresAt: number;
-    account: string;
-    authMethod: string;
-    kiroProvider: string;
-    planType: string;
-    profileArn: string;
-    clientId: string;
-    clientSecret: string;
-    startUrl: string;
-    tokenEndpoint: string;
-    issuerUrl: string;
-    scopes: string;
-    region: string;
-    authRegion: string;
-    apiRegion: string;
-    kiroApiKey: string;
-};
-export declare function importKiroAuth(paths?: string[]): Promise<{
-    session: {
-        accessToken: string;
-        refreshToken: string;
-        expiresAt: number;
-        account: string;
-        authMethod: string;
-        kiroProvider: string;
-        planType: string;
-        profileArn: string;
-        clientId: string;
-        clientSecret: string;
-        startUrl: string;
-        tokenEndpoint: string;
-        issuerUrl: string;
-        scopes: string;
-        region: string;
-        authRegion: string;
-        apiRegion: string;
-        kiroApiKey: string;
-    };
-    source: string;
+export declare function sessionFromKiroAuth(raw: any): any;
+export declare function importKiroAuth(paths: any): Promise<{
+    session: any;
+    sessions: any[];
+    source: any;
 }>;

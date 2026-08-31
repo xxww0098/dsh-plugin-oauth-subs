@@ -13,15 +13,22 @@
  *   credentials.json            kiro.rs CWD dump
  *   ~/.kiro/credentials.json    Kiro IDE
  *   ~/.aws/sso/cache/kiro-auth-token.json
+ *   ~/.aws/sso/cache/*.json     IdC client registration (paired with the token)
+ *   kiro-manager-lite 卡密 / compact JSON / full backup (paste or file)
  */
 
 import { readdir, readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { codexProfileClaims, codexSession } from './codex/index.js'
 import { GROK_CLIENT_ID, grokSession } from './grok/index.js'
 import { glmSession } from './glm/index.js'
-import { isKiroCredential, kiroSessionFromImport } from './kiro/index.js'
+import { kiroAccountId } from './kiro/index.js'
+import {
+  hydrateKiroSsoToken,
+  kiroSsoClientIdHash,
+  sessionsFromKiroAuth,
+} from './kiro/import.js'
 import { antigravitySession, completeAntigravityLogin } from './antigravity/index.js'
 import { decodeJwtPayload } from '../utils/jwt.js'
 
@@ -456,65 +463,114 @@ export async function importGlmAuth(paths = glmAuthSearchPaths()) {
 
 export function kiroAuthSearchPaths() {
   return [
-    join(process.cwd(), 'credentials.json'),
-    homeFile('.kiro', 'credentials.json'),
     homeFile('.aws', 'sso', 'cache', 'kiro-auth-token.json'),
+    homeFile('.kiro', 'credentials.json'),
+    join(process.cwd(), 'credentials.json'),
   ]
 }
 
-function kiroEntriesFrom(raw) {
-  if (Array.isArray(raw)) return raw.filter((row) => row && typeof row === 'object')
-  if (!raw || typeof raw !== 'object') return []
-  if (Array.isArray(raw.credentials)) return raw.credentials.filter((row) => row && typeof row === 'object')
-  if (Array.isArray(raw.accounts)) return raw.accounts.filter((row) => row && typeof row === 'object')
-  return [raw]
-}
-
 export function sessionFromKiroAuth(raw) {
-  for (const entry of kiroEntriesFrom(raw)) {
-    if (!isKiroCredential(entry)) continue
-    try {
-      return kiroSessionFromImport(entry)
-    } catch {
-      continue
-    }
-  }
-  return undefined
+  return sessionsFromKiroAuth(raw)[0]
 }
 
-async function importKiroFromCache(dir, tried) {
+function takeKiroSessions(raw, registration) {
+  const hydrated = registration ? hydrateKiroSsoToken(raw, registration) : raw
+  return sessionsFromKiroAuth(hydrated)
+}
+
+function isClientRegistration(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false
+  const clientId = raw.clientId ?? raw.client_id
+  const clientSecret = raw.clientSecret ?? raw.client_secret
+  if (typeof clientId !== 'string' || typeof clientSecret !== 'string') return false
+  if (raw.refreshToken || raw.refresh_token || raw.accessToken || raw.access_token) return false
+  return true
+}
+
+async function importKiroFromCache(dir, tried, seenIds, seenPaths) {
   let names
   try {
     names = await readdir(dir)
   } catch (error) {
-    if (error.code === 'ENOENT') return undefined
+    if (error.code === 'ENOENT') return []
     throw error
   }
-  const ordered = [
-    ...names.filter((name) => name === 'kiro-auth-token.json'),
-    ...names.filter((name) => name.endsWith('.json') && name !== 'kiro-auth-token.json'),
-  ]
-  for (const name of ordered) {
+  const files = new Map()
+  for (const name of names) {
+    if (!name.endsWith('.json')) continue
     const path = join(dir, name)
-    tried.push(path)
     const raw = await readJson(path)
-    if (raw === undefined) continue
-    const session = sessionFromKiroAuth(raw)
-    if (session) return { session, source: path }
+    if (raw !== undefined) files.set(name, { path, raw })
   }
-  return undefined
+  const registrations = []
+  for (const { raw } of files.values()) {
+    if (isClientRegistration(raw)) registrations.push(raw)
+  }
+  const token = files.get('kiro-auth-token.json')
+  const hash = token
+    ? (token.raw.clientIdHash || kiroSsoClientIdHash(token.raw.startUrl))
+    : undefined
+  const hashed = hash ? files.get(`${hash}.json`) : undefined
+  const registration = hashed?.raw ?? registrations[0]
+  const ordered = [
+    'kiro-auth-token.json',
+    ...[...files.keys()].filter((name) => name !== 'kiro-auth-token.json'),
+  ]
+  const found = []
+  for (const name of ordered) {
+    const row = files.get(name)
+    if (!row) continue
+    if (seenPaths.has(row.path)) continue
+    seenPaths.add(row.path)
+    tried.push(row.path)
+    if (isClientRegistration(row.raw)) continue
+    const sessions = takeKiroSessions(
+      row.raw,
+      name === 'kiro-auth-token.json' ? registration : undefined,
+    )
+    for (const session of sessions) {
+      const id = kiroAccountId(session)
+      if (seenIds.has(id)) continue
+      seenIds.add(id)
+      found.push({ session, source: row.path })
+    }
+  }
+  return found
 }
 
-export async function importKiroAuth(paths = kiroAuthSearchPaths()) {
+export async function importKiroAuth(paths) {
+  const list = paths ?? kiroAuthSearchPaths()
+  const scanCache = paths == null
   const tried = []
-  for (const path of paths) {
+  const found = []
+  const seenIds = new Set()
+  const seenPaths = new Set()
+  for (const path of list) {
+    if (!path || seenPaths.has(path)) continue
+    seenPaths.add(path)
     tried.push(path)
     const raw = await readJson(path)
     if (raw === undefined) continue
-    const session = sessionFromKiroAuth(raw)
-    if (session) return { session, source: path }
+    let registration
+    if (path.endsWith('kiro-auth-token.json')) {
+      const hash = raw.clientIdHash || kiroSsoClientIdHash(raw.startUrl)
+      registration = await readJson(join(dirname(path), `${hash}.json`))
+    }
+    for (const session of takeKiroSessions(raw, registration)) {
+      const id = kiroAccountId(session)
+      if (seenIds.has(id)) continue
+      seenIds.add(id)
+      found.push({ session, source: path })
+    }
   }
-  const fromCache = await importKiroFromCache(homeFile('.aws', 'sso', 'cache'), tried)
-  if (fromCache) return fromCache
-  throw new Error(`no Kiro session found in ${tried.join(' or ')}`)
+  if (scanCache) {
+    const fromCache = await importKiroFromCache(homeFile('.aws', 'sso', 'cache'), tried, seenIds, seenPaths)
+    found.push(...fromCache)
+  }
+  if (found.length === 0) throw new Error(`no Kiro session found in ${tried.join(' or ')}`)
+  return {
+    session: found[0].session,
+    sessions: found.map((row) => row.session),
+    source: found[0].source,
+  }
 }

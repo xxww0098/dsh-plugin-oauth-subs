@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Kiro import accepts kiro-manager-lite kami / compact JSON / full backup / CSV, kiro.rs dumps, and `ksk_` lines. Local import writes every account (not just the first). IDE `kiro-auth-token.json` is paired with the hashed SSO client registration so Builder ID / IdC refresh keeps `clientId` + `clientSecret`. Settings paste box takes the same text formats.
+
+
 ## 0.0.53
 
 - GLM default DSH protocol is `anthropic-messages` (ZCode Desktop default). Hop is `POST /glm/v1/messages` → `api.z.ai` / `open.bigmodel.cn` `/api/anthropic/v1/messages` with `anthropic-version: 2023-06-01`, first-system `cache_control`, and `metadata.user_id`. Completions leftover stays at `/glm/v1/chat/completions` until the next sync. Codex/Grok stay Responses; Kiro/Antigravity stay Completions adapters. 150% quota is still identity (ZCode Desktop UA), not proven by this protocol switch. PR #57.

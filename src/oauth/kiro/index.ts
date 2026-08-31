@@ -125,14 +125,48 @@ export function canonicalizeKiroMethod(value, { tokenEndpoint } = {}) {
   const raw = typeof value === 'string' ? value.trim() : ''
   if (!raw && tokenEndpoint) return 'external_idp'
   const lower = raw.toLowerCase()
-  if (lower === 'builder-id' || lower === 'builder_id' || lower === 'builder' || lower === 'iam') return 'idc'
+  if (lower === 'builder-id' || lower === 'builder_id' || lower === 'builderid' || lower === 'builder' || lower === 'iam') return 'idc'
   if (lower === 'api_key' || lower === 'apikey' || lower === 'ksk') return 'api_key'
   if (EXTERNAL_IDP_ALIASES.some((alias) => alias === lower)) return 'external_idp'
-  if (lower === 'oauth' || lower === 'github' || lower === 'google') return 'social'
+  if (lower === 'oauth' || lower === 'github' || lower === 'google' || lower === 'gmail' || lower === 'gh' || lower === 'social') return 'social'
   if (lower === 'enterprise' || lower === 'idc') return 'idc'
   if (KIRO_METHODS.includes(lower)) return lower
   if (tokenEndpoint) return 'external_idp'
   return raw ? lower : 'social'
+}
+
+const SOCIAL_PROVIDERS = Object.freeze(['github', 'google', 'gmail', 'gh', 'social', 'oauth'])
+const IDC_PROVIDERS = Object.freeze([
+  'builderid', 'builder-id', 'builder_id', 'builder', 'enterprise', 'idc', 'iam',
+])
+
+/**
+ * Guess authMethod for dumps that omit it (kiro-manager-lite compact JSON /
+ * 卡密). Social = GitHub/Google refresh only; IdC = Builder ID / Enterprise
+ * with clientId+clientSecret.
+ */
+export function inferKiroAuthMethod(raw = {}) {
+  const nested = raw?.credentials && typeof raw.credentials === 'object' && !Array.isArray(raw.credentials)
+    ? raw.credentials
+    : raw
+  const kiroApiKey = trimmed(nested.kiroApiKey ?? nested.kiro_api_key)
+  const access = trimmed(nested.accessToken ?? nested.access_token)
+  if (kiroApiKey || (access && access.startsWith('ksk_'))) return 'api_key'
+  const tokenEndpoint = nested.tokenEndpoint ?? nested.token_endpoint ?? raw.tokenEndpoint ?? raw.token_endpoint
+  const declared = nested.authMethod ?? nested.auth_method ?? raw.authMethod ?? raw.auth_method
+  if ((typeof declared === 'string' && declared.trim()) || tokenEndpoint) {
+    return canonicalizeKiroMethod(declared, { tokenEndpoint })
+  }
+  const provider = String(nested.provider ?? nested.idp ?? raw.provider ?? raw.idp ?? raw.kiroProvider ?? '')
+    .trim()
+    .toLowerCase()
+  if (SOCIAL_PROVIDERS.includes(provider)) return 'social'
+  if (IDC_PROVIDERS.includes(provider)) return 'idc'
+  if (EXTERNAL_IDP_ALIASES.includes(provider)) return 'external_idp'
+  const clientId = trimmed(nested.clientId ?? nested.client_id)
+  const clientSecret = trimmed(nested.clientSecret ?? nested.client_secret)
+  if (clientId && clientSecret) return 'idc'
+  return 'social'
 }
 
 export function kiroAccountKind(session = {}) {
@@ -534,56 +568,88 @@ export function isKiroPermanentRefreshError(error) {
 
 export function isKiroCredential(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false
-  if (trimmed(raw.kiroApiKey ?? raw.kiro_api_key)) return true
-  const method = raw.authMethod ?? raw.auth_method
+  const nested = raw.credentials && typeof raw.credentials === 'object' && !Array.isArray(raw.credentials)
+    ? raw.credentials
+    : raw
+  if (trimmed(nested.kiroApiKey ?? nested.kiro_api_key ?? raw.kiroApiKey ?? raw.kiro_api_key)) return true
+  const method = nested.authMethod ?? nested.auth_method ?? raw.authMethod ?? raw.auth_method
   if (typeof method === 'string' && method.trim()) return true
-  const arn = raw.profileArn ?? raw.profile_arn
+  const arn = nested.profileArn ?? nested.profile_arn ?? raw.profileArn ?? raw.profile_arn
   if (typeof arn === 'string' && arn.includes('codewhisperer')) return true
-  const endpoint = raw.tokenEndpoint ?? raw.token_endpoint
+  const endpoint = nested.tokenEndpoint ?? nested.token_endpoint ?? raw.tokenEndpoint ?? raw.token_endpoint
   if (typeof endpoint === 'string' && endpoint.includes('microsoftonline')) return true
-  const start = raw.startUrl ?? raw.start_url
-  if (typeof start === 'string' && /awsapps\.com\/start/i.test(start) && (raw.clientId || raw.client_id)) return true
+  const start = nested.startUrl ?? nested.start_url ?? raw.startUrl ?? raw.start_url
+  if (typeof start === 'string' && /awsapps\.com\/start/i.test(start) && (nested.clientId || nested.client_id || raw.clientId || raw.client_id)) return true
+  const provider = String(nested.provider ?? nested.idp ?? raw.provider ?? raw.idp ?? '').trim().toLowerCase()
+  if (SOCIAL_PROVIDERS.includes(provider) || IDC_PROVIDERS.includes(provider) || EXTERNAL_IDP_ALIASES.includes(provider)) {
+    return true
+  }
+  const refresh = trimmed(nested.refreshToken ?? nested.refresh_token ?? raw.refreshToken ?? raw.refresh_token)
+  if (refresh && refresh.length >= 100 && (
+    trimmed(raw.email) || trimmed(nested.email)
+    || trimmed(nested.accessToken ?? nested.access_token)
+    || trimmed(nested.clientId ?? nested.client_id)
+  )) return true
   return false
+}
+
+function unwrapKiroCredential(raw) {
+  if (!raw || typeof raw !== 'object') return raw
+  const nested = raw.credentials
+  if (!nested || typeof nested !== 'object' || Array.isArray(nested)) return raw
+  const subscription = raw.subscription && typeof raw.subscription === 'object' ? raw.subscription : {}
+  return {
+    ...nested,
+    email: raw.email ?? nested.email,
+    account: raw.account ?? nested.account ?? raw.email ?? nested.email,
+    provider: nested.provider ?? raw.idp ?? raw.provider,
+    idp: raw.idp,
+    authMethod: nested.authMethod ?? nested.auth_method ?? raw.authMethod ?? raw.auth_method,
+    subscriptionTitle: subscription.title ?? raw.subscriptionTitle ?? raw.subscription_title,
+    planType: subscription.type ?? raw.planType ?? nested.planType,
+    profileArn: nested.profileArn ?? nested.profile_arn ?? raw.profileArn,
+  }
 }
 
 export function kiroSessionFromImport(raw) {
   if (!raw || typeof raw !== 'object') throw new Error('kiro credential is not an object')
-  const kiroApiKey = trimmed(raw.kiroApiKey ?? raw.kiro_api_key)
-  const method = canonicalizeKiroMethod(raw.authMethod ?? raw.auth_method, {
-    tokenEndpoint: raw.tokenEndpoint ?? raw.token_endpoint,
-  })
+  const entry = unwrapKiroCredential(raw)
+  const kiroApiKey = trimmed(entry.kiroApiKey ?? entry.kiro_api_key)
+  const method = inferKiroAuthMethod(entry)
   if (method === 'api_key' || kiroApiKey) {
     return kiroSession({
-      accessToken: validateKiroApiKey(kiroApiKey || raw.accessToken || raw.access_token),
+      accessToken: validateKiroApiKey(kiroApiKey || entry.accessToken || entry.access_token),
       kiroApiKey,
       authMethod: 'api_key',
-      account: trimmed(raw.email) || trimmed(raw.account) || 'api-key',
-      planType: raw.subscriptionTitle ?? raw.subscription_title ?? raw.planType,
+      account: trimmed(entry.email) || trimmed(entry.account) || 'api-key',
+      planType: entry.subscriptionTitle ?? entry.subscription_title ?? entry.planType,
     })
   }
   if (method === 'external_idp') {
-    validateKiroIdpEndpoint(raw.tokenEndpoint ?? raw.token_endpoint)
+    validateKiroIdpEndpoint(entry.tokenEndpoint ?? entry.token_endpoint)
   }
-  const refresh = raw.refreshToken ?? raw.refresh_token
+  const refresh = entry.refreshToken ?? entry.refresh_token
   if (refresh) validateKiroRefreshToken(refresh)
+  const startUrl = trimmed(entry.startUrl ?? entry.start_url)
+    || (method === 'idc' ? BUILDER_ID_START_URL : undefined)
   return kiroSession({
-    accessToken: raw.accessToken ?? raw.access_token,
+    accessToken: entry.accessToken ?? entry.access_token,
     refreshToken: refresh,
-    expiresAt: raw.expiresAt ?? raw.expires_at,
-    account: raw.email ?? raw.account,
+    expiresAt: entry.expiresAt ?? entry.expires_at,
+    account: entry.email ?? entry.account,
     authMethod: method,
-    kiroProvider: raw.provider,
-    planType: raw.subscriptionTitle ?? raw.subscription_title ?? raw.planType,
-    profileArn: raw.profileArn ?? raw.profile_arn,
-    clientId: raw.clientId ?? raw.client_id,
-    clientSecret: raw.clientSecret ?? raw.client_secret,
-    startUrl: raw.startUrl ?? raw.start_url,
-    tokenEndpoint: raw.tokenEndpoint ?? raw.token_endpoint,
-    issuerUrl: raw.issuerUrl ?? raw.issuer_url,
-    scopes: raw.scopes,
-    region: raw.region,
-    authRegion: raw.authRegion ?? raw.auth_region,
-    apiRegion: raw.apiRegion ?? raw.api_region,
-    machineId: raw.machineId ?? raw.machine_id,
+    kiroProvider: entry.provider ?? entry.idp,
+    planType: entry.subscriptionTitle ?? entry.subscription_title ?? entry.planType,
+    profileArn: entry.profileArn ?? entry.profile_arn,
+    clientId: entry.clientId ?? entry.client_id,
+    clientSecret: entry.clientSecret ?? entry.client_secret,
+    startUrl,
+    tokenEndpoint: entry.tokenEndpoint ?? entry.token_endpoint,
+    issuerUrl: entry.issuerUrl ?? entry.issuer_url,
+    scopes: entry.scopes,
+    region: entry.region,
+    authRegion: entry.authRegion ?? entry.auth_region,
+    apiRegion: entry.apiRegion ?? entry.api_region,
+    machineId: entry.machineId ?? entry.machine_id,
   })
 }

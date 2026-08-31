@@ -1,6 +1,33 @@
 # 错误记录
 
+## 2026-08-31：Kiro 导入只吃第一条，且 IDE token 丢了 IdC client 注册
+
+### 现象
+
+「导入本机会话」从 `credentials.json` / `kiro-auth-token.json` 只返回第一个账号。kiro-manager-lite 卡密、精简 JSON、完整备份、CSV 粘进去会被当成非法 Social refresh。Builder ID 从 IDE 文件导入后，刷新缺 `clientId`/`clientSecret`（它们在 SSO cache 里另一份 hash json）。
+
+### 证据
+
+- kiro-manager-lite 导入：卡密 `邮箱----密码----RT----clientId----clientSecret----登录方式`、`[{ email, refreshToken, provider }]`、`{ app: "kiro-account-lite", accounts }`、CSV。
+- Kiro IDE：`~/.aws/sso/cache/kiro-auth-token.json` 的 `clientIdHash` = sha1(`JSON.stringify({ startUrl })`)，对应同目录 `{hash}.json` 的 OIDC 注册。
+- 旧 `isKiroCredential` 必须有 `authMethod` / profileArn；compact JSON 只有 `provider: "BuilderId"` 会被丢掉。
+
+### 根因
+
+导入器按 Codex「找一份 auth.json」来写，没有按 Kiro 多凭据、多格式来写。SSO 缓存里的 token 和 client 注册被当成互不相关的 json。
+
+### 修复
+
+- `src/oauth/kiro/import.ts`：自写解析（蒸馏格式，不抄 AGPL）。`inferKiroAuthMethod` 从 provider / clientId+secret 猜 social vs idc。
+- `importKiroAuth` 写入全部账号；IDE token 配对 hash 注册。
+- Settings「粘贴凭证」走同一套解析。
+
+### 验证
+
+- `npm test`：卡密 / compact JSON / 完整备份 / CSV / SSO 配对 / 多账号 import。
+
 ## 2026-08-31：GLM 默认协议应对齐 ZCode Anthropic，150% 不是协议证明
+
 
 ### 现象
 

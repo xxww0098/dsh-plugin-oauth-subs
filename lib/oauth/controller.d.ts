@@ -2502,6 +2502,7 @@ export declare class AuthController {
             needsValidation?: undefined;
             validationUrl?: undefined;
         };
+        count: number;
     } | {
         region: string;
     }>;
@@ -4771,6 +4772,7 @@ export declare class AuthController {
             needsValidation?: undefined;
             validationUrl?: undefined;
         };
+        count: any;
     }>;
     setModels(payload?: {}): Promise<{
         origin: any;

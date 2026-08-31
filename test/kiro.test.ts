@@ -10,6 +10,7 @@ import {
   allocateKiroMachineId,
   canonicalizeKiroMethod,
   exchangeKiroSocialCode,
+  inferKiroAuthMethod,
   isKiroCredential,
   kiroAccountId,
   kiroAccountKind,
@@ -35,6 +36,12 @@ import { AuthController } from '../lib/oauth/controller.js'
 import { accountIdOf, listAccounts, saveSession } from '../lib/oauth/store.js'
 import { buildProviders, catalogProviders, describeCatalog } from '../lib/oauth/models.js'
 import { importKiroAuth, sessionFromKiroAuth } from '../lib/oauth/import-auth.js'
+import {
+  hydrateKiroSsoToken,
+  kiroSsoClientIdHash,
+  parseKiroImportText,
+  sessionsFromKiroAuth,
+} from '../lib/oauth/kiro/import.js'
 
 const RT = `rt_${'x'.repeat(120)}`
 const KEY = 'ksk_live_example1'
@@ -45,10 +52,12 @@ function json(body, status = 200) {
 
 test('canonicalizeKiroMethod maps aliases including Entra and Builder ID', () => {
   assert.equal(canonicalizeKiroMethod('builder-id'), 'idc')
+  assert.equal(canonicalizeKiroMethod('builderid'), 'idc')
   assert.equal(canonicalizeKiroMethod('enterprise'), 'idc')
   assert.equal(canonicalizeKiroMethod('entra-id'), 'external_idp')
   assert.equal(canonicalizeKiroMethod('azuread'), 'external_idp')
   assert.equal(canonicalizeKiroMethod('github'), 'social')
+  assert.equal(canonicalizeKiroMethod('gmail'), 'social')
   assert.equal(canonicalizeKiroMethod('oauth'), 'social')
   assert.equal(canonicalizeKiroMethod('ksk'), 'api_key')
   assert.equal(canonicalizeKiroMethod(undefined, { tokenEndpoint: 'https://login.microsoftonline.com/t/oauth2/v2.0/token' }), 'external_idp')
@@ -563,7 +572,132 @@ test('sessionFromKiroAuth and importKiroAuth read a kiro.rs credentials dump', a
   const imported = await importKiroAuth([path])
   assert.equal(imported.session.account, 'imp@x')
   assert.equal(imported.source, path)
+  assert.equal(imported.sessions.length, 1)
   assert.equal(sessionFromKiroAuth({ foo: 1 }), undefined)
+})
+
+test('inferKiroAuthMethod reads kiro-manager-lite provider without authMethod', () => {
+  assert.equal(inferKiroAuthMethod({ provider: 'BuilderId', refreshToken: RT, clientId: 'cid', clientSecret: 'sec' }), 'idc')
+  assert.equal(inferKiroAuthMethod({ provider: 'Github', refreshToken: RT }), 'social')
+  assert.equal(inferKiroAuthMethod({ clientId: 'cid', clientSecret: 'sec', refreshToken: RT }), 'idc')
+  assert.equal(inferKiroAuthMethod({ kiroApiKey: KEY }), 'api_key')
+  assert.equal(isKiroCredential({ email: 'a@x', refreshToken: RT, provider: 'BuilderId' }), true)
+})
+
+test('parseKiroImportText reads kami, compact JSON, full backup, and CSV', () => {
+  const kami = parseKiroImportText(`a@x----no_password----${RT}----cid----sec----BuilderId`)
+  assert.equal(kami.kind, 'kami')
+  assert.equal(kami.sessions.length, 1)
+  assert.equal(kami.sessions[0].authMethod, 'idc')
+  assert.equal(kami.sessions[0].account, 'a@x')
+  assert.equal(kami.sessions[0].clientId, 'cid')
+  assert.equal(kami.sessions[0].clientSecret, 'sec')
+
+  const compact = parseKiroImportText(JSON.stringify([
+    { email: 'gh@x', refreshToken: RT, provider: 'Github' },
+    { email: 'b@x', refreshToken: RT, provider: 'BuilderId', clientId: 'cid', clientSecret: 'sec' },
+  ]))
+  assert.equal(compact.kind, 'json')
+  assert.equal(compact.sessions.length, 2)
+  assert.equal(compact.sessions[0].authMethod, 'social')
+  assert.equal(compact.sessions[1].authMethod, 'idc')
+
+  const backup = parseKiroImportText(JSON.stringify({
+    app: 'kiro-account-lite',
+    version: '1.0.19',
+    accounts: [{
+      email: 'full@x',
+      idp: 'Google',
+      credentials: {
+        accessToken: 'at',
+        refreshToken: RT,
+        authMethod: 'social',
+        expiresAt: Date.now() + 3_600_000,
+      },
+      subscription: { title: 'KIRO PRO' },
+    }],
+  }))
+  assert.equal(backup.kind, 'json')
+  assert.equal(backup.sessions.length, 1)
+  assert.equal(backup.sessions[0].account, 'full@x')
+  assert.equal(backup.sessions[0].authMethod, 'social')
+  assert.equal(backup.sessions[0].planType, 'KIRO PRO')
+
+  const csv = parseKiroImportText(`邮箱,refreshToken,登录方式,clientId,clientSecret\nb@x,${RT},BuilderId,cid,sec`)
+  assert.equal(csv.kind, 'csv')
+  assert.equal(csv.sessions.length, 1)
+  assert.equal(csv.sessions[0].authMethod, 'idc')
+  assert.equal(csv.sessions[0].account, 'b@x')
+})
+
+test('importKiroAuth writes every account in a kiro.rs array', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'kiro-multi-'))
+  const path = join(dir, 'credentials.json')
+  await writeFile(path, JSON.stringify([
+    { authMethod: 'social', accessToken: 'at1', refreshToken: RT, email: 'one@x', provider: 'Github' },
+    { authMethod: 'idc', accessToken: 'at2', refreshToken: RT, email: 'two@x', provider: 'BuilderId', clientId: 'cid', clientSecret: 'sec' },
+  ]))
+  const imported = await importKiroAuth([path])
+  assert.equal(imported.sessions.length, 2)
+  assert.deepEqual(imported.sessions.map((row) => row.account).sort(), ['one@x', 'two@x'])
+  assert.equal(sessionsFromKiroAuth({ accounts: [] }).length, 0)
+})
+
+test('hydrateKiroSsoToken pairs IDE token with hashed OIDC registration', async () => {
+  const hash = kiroSsoClientIdHash()
+  const dir = await mkdtemp(join(tmpdir(), 'kiro-sso-'))
+  const tokenPath = join(dir, 'kiro-auth-token.json')
+  await writeFile(tokenPath, JSON.stringify({
+    accessToken: 'at',
+    refreshToken: RT,
+    expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    authMethod: 'IdC',
+    provider: 'BuilderId',
+    clientIdHash: hash,
+  }))
+  await writeFile(join(dir, `${hash}.json`), JSON.stringify({
+    clientId: 'oidc-cid',
+    clientSecret: 'oidc-sec',
+  }))
+  const imported = await importKiroAuth([tokenPath])
+  assert.equal(imported.session.authMethod, 'idc')
+  assert.equal(imported.session.clientId, 'oidc-cid')
+  assert.equal(imported.session.clientSecret, 'oidc-sec')
+  const merged = hydrateKiroSsoToken(
+    { refreshToken: RT, authMethod: 'IdC' },
+    { clientId: 'x', clientSecret: 'y' },
+  )
+  assert.equal(merged.clientId, 'x')
+  assert.equal(merged.clientSecret, 'y')
+})
+
+test('controller paste imports kami and compact JSON as multiple Kiro cards', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const path = join(dir, 'auth.json')
+  const controller = new AuthController({
+    authPath: path,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+    fetchFn: async () => json({
+      accessToken: 'new-at',
+      refreshToken: RT,
+      expiresIn: 3600,
+      profileArn: 'arn:aws:codewhisperer:us-east-1:1:profile/X',
+    }),
+  })
+  const kami = await controller.useKey('kiro', ['gh@x', 'no_password', RT, '', '', 'Google'].join('----'))
+  assert.equal(kami.count, 1)
+  assert.equal(kami.method, 'social')
+  const compact = await controller.useKey('kiro', JSON.stringify({
+    email: 'full@x',
+    accessToken: 'kept-at',
+    refreshToken: RT,
+    provider: 'Github',
+  }))
+  assert.equal(compact.count, 1)
+  const roster = await listAccounts('kiro', path)
+  assert.equal(roster.length, 2)
 })
 
 test('Kiro vault can hold one card per credential method', async () => {

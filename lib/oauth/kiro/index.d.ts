@@ -84,6 +84,12 @@ export declare const KIRO_PLAN_NAMES: Readonly<{
     powered: "Powered";
 }>;
 export declare function canonicalizeKiroMethod(value: any, { tokenEndpoint }?: {}): string;
+/**
+ * Guess authMethod for dumps that omit it (kiro-manager-lite compact JSON /
+ * 卡密). Social = GitHub/Google refresh only; IdC = Builder ID / Enterprise
+ * with clientId+clientSecret.
+ */
+export declare function inferKiroAuthMethod(raw?: {}): string;
 export declare function kiroAccountKind(session?: {}): "entra" | "social" | "idc" | "builder" | "key";
 export declare function kiroMethodLabel(methodOrSession: any): "Builder" | "IdC" | "Entra" | "API key" | "Social";
 export declare function kiroAccountId(session?: {}): string;

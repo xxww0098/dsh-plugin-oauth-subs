@@ -50,7 +50,8 @@ pnpm dsh web --patch ./cordis.patch.yml
 - `~/.zcode/v2/config.json`（ZCode Desktop；旧路径 `~/.zcode/cli/config.json` / `~/.zcode/config.json` 仍读）
 - `credentials.json`（kiro.rs 当前目录）
 - `~/.kiro/credentials.json`
-- `~/.aws/sso/cache/kiro-auth-token.json`
+- `~/.aws/sso/cache/kiro-auth-token.json`（IdC 会配对同目录里按 hash 命名的 OIDC 客户端注册）
+- Settings **粘贴凭证**：kiro-manager-lite 卡密 / 精简 JSON / 完整备份 / CSV，或 Social refresh token / `ksk_…`
 - `~/.gemini/antigravity-cli/antigravity-oauth-token`
 - `~/.cli-proxy-api/antigravity-*.json`
 

@@ -71,6 +71,7 @@ src/
     kiro/                  AWS Kiro (Social / Builder ID / IdC / Entra / API key)
       README.md
       index.ts             catalog, identity, portal PKCE, refresh, usage headers
+      import.ts            kami / JSON / CSV / kiro.rs / IDE SSO-cache pairing
       idc-flow.ts          AWS SSO OIDC register + JSON device poll
       request.ts           OpenAI chat ↔ generateAssistantResponse eventstream
       cache.ts             conversationId (never Date.now())
