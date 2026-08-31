@@ -1,8 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.0.54
 
-- Kiro import accepts kiro-manager-lite kami / compact JSON / full backup / CSV, kiro.rs dumps, and `ksk_` lines. Local import writes every account (not just the first). IDE `kiro-auth-token.json` is paired with the hashed SSO client registration so Builder ID / IdC refresh keeps `clientId` + `clientSecret`. Settings paste box takes the same text formats.
+- Kiro import accepts kiro-manager-lite kami / compact JSON / full backup / CSV, kiro.rs dumps, and `ksk_` lines. Local import writes every account (not just the first). IDE `kiro-auth-token.json` is paired with the hashed SSO client registration so Builder ID / IdC refresh keeps `clientId` + `clientSecret`. Settings paste box takes the same text formats. PR #59.
+
 
 
 ## 0.0.53
