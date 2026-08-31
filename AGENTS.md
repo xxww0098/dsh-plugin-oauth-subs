@@ -164,7 +164,7 @@ rewrite busts any prefix cache. Parking is family-owned and the park
 ```text
 DSH body:  session_id?  prompt_cache_key?  messages/input  (volatile leading system)
 
-Codex:     prompt_cache_key + headers session-id / x-client-request-id
+Codex:     prompt_cache_key + headers session-id / x-client-request-id; drop session_id
            extra developer parked at input suffix
 Grok:      prompt_cache_key + header x-grok-conv-id
            no Codex session-id headers
@@ -190,6 +190,7 @@ Kiro:      conversationState.conversationId (+ model)
   then `input`. Extra leading `developer` / `system` in `input` (plan
   dumps, header rebuilds) must not stay at the front.
 - Sticky: `session-id` = `x-client-request-id` = `prompt_cache_key`.
+- Strip DSH `session_id` after copying onto `prompt_cache_key` (chatgpt.com `Unsupported parameter`).
 - Strip `prompt_cache_retention` / `prompt_cache_options` (gpt-5.6 400).
 - Healthy long session: weighted hit ≥ 80%, **zero** affinity misses.
   Compaction / plan-rebuild zeros are not shard misses.
@@ -282,7 +283,7 @@ When adding `src/oauth/<id>/`:
 
 | Family | Backend cache | Sticky identity | Park extras | Hit field |
 |---|---|---|---|---|
-| Codex | prefix of `instructions` then `input` | `session-id` + `x-client-request-id` = `prompt_cache_key` | developer at **input suffix** | `cacheReadTokens` |
+| Codex | prefix of `instructions` then `input` | `session-id` + `x-client-request-id` = `prompt_cache_key`; drop DSH `session_id` | developer at **input suffix** | `cacheReadTokens` |
 | Grok | conversation shard | `x-grok-conv-id` (+ body `prompt_cache_key`) | n/a (shard, not prefix) | `cacheReadTokens`; 512 + reuse<10% = affinity miss |
 | GLM | content hash of leading system + history | Anthropic: `metadata.user_id` + `x-session-id` + first-block `cache_control`; Completions leftover: `user` + `x-session-id` | Completions: system at **messages suffix**; Anthropic: extra system text blocks without cache_control | `cached_tokens` / `cache_read_input_tokens` |
 | Antigravity | Gemini `systemInstruction` + contents + tools | `request.sessionId` (fallback + model) | extra as trailing **user** | `cachedContentTokenCount` / `cache_read_tokens` → `cached_tokens` |

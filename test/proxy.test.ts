@@ -809,6 +809,7 @@ test('proxy falls back to session_id and writes the clipped cache key back into 
     assert.equal(seen[0].headers['session-id'], 'sess-from-dsh')
     assert.equal(seen[0].headers['x-client-request-id'], 'sess-from-dsh')
     assert.equal(seen[0].body.prompt_cache_key, 'sess-from-dsh')
+    assert.equal(Object.hasOwn(seen[0].body, 'session_id'), false)
 
     await fetch(`http://127.0.0.1:${port}/codex/v1/responses`, {
       method: 'POST',
@@ -821,6 +822,7 @@ test('proxy falls back to session_id and writes the clipped cache key back into 
     })
     assert.equal(seen[1].headers['session-id'], 'sess-from-dsh')
     assert.equal(seen[1].body.prompt_cache_key, 'sess-from-dsh')
+    assert.equal(Object.hasOwn(seen[1].body, 'session_id'), false)
 
     const long = `session-${'a'.repeat(80)}`
     await fetch(`http://127.0.0.1:${port}/codex/v1/responses`, {

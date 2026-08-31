@@ -3,8 +3,10 @@
  *
  * Codex matches the longest stable prefix of `instructions` then `input`.
  * Sticky routing is `session-id` + `x-client-request-id` (same value as
- * `prompt_cache_key`). gpt-5.6 400s on `prompt_cache_retention` /
- * `prompt_cache_options` — those are stripped in request.ts, not here.
+ * `prompt_cache_key`). chatgpt.com 400s on DSH `session_id` in the JSON
+ * (`Unsupported parameter: session_id`) — copy then strip here.
+ * gpt-5.6 400s on `prompt_cache_retention` / `prompt_cache_options` —
+ * those are stripped in request.ts, not here.
  *
  * Do not reuse this helper for Grok / GLM / Kiro / Antigravity.
  */
@@ -22,6 +24,8 @@ export function applyCodexCache(payload) {
     || codexCacheSessionId(next.session_id)
   if (cacheSessionId) next.prompt_cache_key = cacheSessionId
   else delete next.prompt_cache_key
+  // DSH long chats send session_id. chatgpt.com Codex rejects it.
+  delete next.session_id
   return { payload: next, cacheSessionId }
 }
 
