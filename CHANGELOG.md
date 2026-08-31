@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.56
+
+- GLM Anthropic route no longer sets Completions-only `compat.supportsReasoningEffort`, so DSH `assertServiceable` accepts the atomic `llm-pi-ai` mutate. Logged-in Kiro (18 models) now writes to `settings.yaml` as `oauth-kiro`. PR #63.
+
 ## 0.0.55
 
 - Kiro GPT thinking Off is DSH `off: "none"` (wire `none`). A `none` key is not a DSH thinking level, so the whole `oauth-kiro` write was dropped from settings.yaml. `toHarnessModel` now refuses unknown keys before mutate. PR #61.
