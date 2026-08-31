@@ -15,8 +15,11 @@ import {
   ANTIGRAVITY_GENERATE_URL,
   ANTIGRAVITY_MODELS,
   ANTIGRAVITY_STREAM_URL,
+  applyAntigravityValidation,
   antigravityChatHeaders,
+  antigravityValidationClientError,
   fetchAntigravityCloudCode,
+  parseAntigravityValidation,
 } from './antigravity/index.js'
 import { ANTIGRAVITY_STABLE_SESSION, antigravityToOpenai, antigravityToOpenaiChunk, openaiToAntigravity, parseAntigravitySseBlocks } from './antigravity/request.js'
 import { applyFastMode } from '../utils/fast-mode.js'
@@ -179,7 +182,7 @@ function abortOnDisconnect(request, response) {
   }
 }
 
-export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestBodyBytes = MAX_REQUEST_BODY_BYTES }) {
+export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestBodyBytes = MAX_REQUEST_BODY_BYTES, onAntigravityValidation }) {
   let server
 
   const authorized = (request) => {
@@ -347,9 +350,11 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
       try {
         await forwardAntigravity(request, response, {
           session: await tokens.antigravity.session(),
+          tokens: tokens.antigravity,
           fetchFn,
           maxRequestBodyBytes,
           signal: client.signal,
+          onValidation: onAntigravityValidation,
         })
       } finally {
         client.cleanup()
@@ -590,7 +595,19 @@ function delay(ms, signal) {
   })
 }
 
-async function forwardAntigravity(request, response, { session, fetchFn, maxRequestBodyBytes, signal }) {
+async function rememberAntigravityValidation(session, info, tokens, onValidation) {
+  if (!info?.required) return
+  const next = applyAntigravityValidation(session, info)
+  if (tokens && typeof tokens.remember === 'function') {
+    await tokens.remember({
+      needsValidation: true,
+      ...(next.validationUrl ? { validationUrl: next.validationUrl } : {}),
+    })
+  }
+  onValidation?.(next)
+}
+
+async function forwardAntigravity(request, response, { session, tokens, fetchFn, maxRequestBodyBytes, signal, onValidation }) {
   const raw = await readBody(request, maxRequestBodyBytes)
   const { body: rewritten, cacheSessionId, stream } = rewriteUpstreamBody(raw, 'antigravity')
   const payload = JSON.parse(rewritten.toString('utf8'))
@@ -624,6 +641,12 @@ async function forwardAntigravity(request, response, { session, fetchFn, maxRequ
     const text = await upstream.text()
     let parsed
     try { parsed = text ? JSON.parse(text) : null } catch { parsed = { error: { message: text } } }
+    const validation = parseAntigravityValidation(parsed) ?? parseAntigravityValidation(text)
+    if (validation) {
+      await rememberAntigravityValidation(session, validation, tokens, onValidation)
+      send(response, 400, antigravityValidationClientError(validation))
+      return
+    }
     send(response, upstream.status, parsed ?? { error: { message: `antigravity upstream ${upstream.status}` } })
     return
   }

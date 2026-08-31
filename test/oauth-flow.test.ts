@@ -96,7 +96,27 @@ test('OAuthFlowManager accepts a pasted callback URL with matching state', async
   assert.equal(flows.isBusy('codex'), true)
   attempt.manual(`${attempt.redirectUri}?code=abc123&state=${attempt.state}`)
   assert.equal(await attempt.waitCode(), 'abc123')
+  assert.equal(typeof await attempt.waitCode(), 'string')
   assert.equal(flows.isBusy('codex'), false)
+})
+
+test('OAuthFlowManager keeps waitCode a string and stores Kiro callback metadata', async () => {
+  const flows = new OAuthFlowManager()
+  const attempt = await flows.start('kiro', {
+    callbackPath: '/oauth/callback',
+    callbackPaths: ['/', '/oauth/callback', '/signin/callback'],
+    listen: { host: 'localhost', ports: [0] },
+    timeoutMs: 5_000,
+    buildAuthorizeUrl: ({ redirectUri }) => `https://example.test/authorize?redirect_uri=${encodeURIComponent(redirectUri)}`,
+  })
+  attempt.manual(`http://localhost:3128/signin/callback?code=kiro-code&state=${attempt.state}&loginOption=GitHub`)
+  assert.equal(await attempt.waitCode(), 'kiro-code')
+  assert.equal(typeof await attempt.waitCode(), 'string')
+  assert.deepEqual(attempt.callback(), {
+    pathname: '/signin/callback',
+    loginOption: 'github',
+    issuerUrl: undefined,
+  })
 })
 
 test('OAuthFlowManager rejects a mismatched pasted state', async () => {

@@ -18,6 +18,7 @@ import {
   KIRO_CALLBACK_PATHS,
   kiroSocialFlow,
   kiroSocialRedirectUri,
+  kiroSocialTokenRedirectUri,
   kiroUsageUrl,
   refreshKiro,
   validateKiroApiKey,
@@ -213,10 +214,11 @@ test('Kiro catalog matches kiro.dev models minus Auto, with native ids', () => {
   assert.equal(loggedOut['oauth-kiro'], undefined)
 })
 
-test('exchangeKiroSocialCode posts origin-only redirect_uri and KiroIDE machine UA', async () => {
-  const callback = 'http://localhost:3128/oauth/callback'
+test('exchangeKiroSocialCode posts landed callback path and login_option', async () => {
+  const registered = 'http://localhost:3128/oauth/callback'
   let seen
-  const session = await exchangeKiroSocialCode('code-1', 'verifier', callback, {
+  const session = await exchangeKiroSocialCode('code-1', 'verifier', registered, {
+    callback: { pathname: '/signin/callback', loginOption: 'Google' },
     fetchFn: async (url, init) => {
       seen = { url: String(url), body: JSON.parse(init.body), headers: init.headers }
       return json({
@@ -227,8 +229,12 @@ test('exchangeKiroSocialCode posts origin-only redirect_uri and KiroIDE machine 
       })
     },
   })
-  assert.equal(seen.body.redirect_uri, 'http://localhost:3128')
-  assert.equal(seen.body.redirect_uri, kiroSocialRedirectUri(callback))
+  assert.equal(seen.body.redirect_uri, 'http://localhost:3128/signin/callback?login_option=google')
+  assert.equal(seen.body.redirect_uri, kiroSocialTokenRedirectUri(registered, {
+    pathname: '/signin/callback',
+    loginOption: 'Google',
+  }))
+  assert.equal(Object.keys(seen.body).sort().join(','), 'code,code_verifier,redirect_uri')
   assert.match(seen.headers['user-agent'], /^KiroIDE-0\.9\.2-[0-9a-f]{64}$/i)
   assert.equal(seen.headers.accept, 'application/json, text/plain, */*')
   assert.equal(session.authMethod, 'social')
@@ -236,24 +242,43 @@ test('exchangeKiroSocialCode posts origin-only redirect_uri and KiroIDE machine 
   assert.equal(session.machineId, seen.headers['user-agent'].slice('KiroIDE-0.9.2-'.length))
 })
 
-test('kiro social authorize and token exchange cannot drift on redirect_uri', async () => {
-  const callback = 'http://localhost:4649/oauth/callback'
+test('kiro social authorize stays origin-only; token uses landed callback', async () => {
+  const registered = 'http://localhost:4649/oauth/callback'
   const authorizeRedirect = new URL(kiroSocialFlow().buildAuthorizeUrl({
     state: 'st',
     pkce: { challenge: 'ch' },
-    redirectUri: callback,
+    redirectUri: registered,
   })).searchParams.get('redirect_uri')
   let tokenRedirect
-  await exchangeKiroSocialCode('code-2', 'verifier', callback, {
+  await exchangeKiroSocialCode('code-2', 'verifier', registered, {
+    callback: { pathname: '/oauth/callback', loginOption: 'github' },
     fetchFn: async (_url, init) => {
       tokenRedirect = JSON.parse(init.body).redirect_uri
       return json({ accessToken: 'at', refreshToken: RT, expiresIn: 3600 })
     },
   })
   assert.equal(authorizeRedirect, 'http://localhost:4649')
-  assert.equal(tokenRedirect, authorizeRedirect)
-  assert.notEqual(tokenRedirect, callback)
-  assert.equal(String(tokenRedirect).includes('/oauth/callback'), false)
+  assert.equal(authorizeRedirect, kiroSocialRedirectUri(registered))
+  assert.equal(tokenRedirect, 'http://localhost:4649/oauth/callback?login_option=github')
+  assert.notEqual(tokenRedirect, authorizeRedirect)
+  assert.equal(String(authorizeRedirect).includes('127.0.0.1'), false)
+  assert.equal(String(tokenRedirect).includes('127.0.0.1'), false)
+})
+
+test('kiro social token redirect_uri keeps path when login_option is missing', () => {
+  assert.equal(
+    kiroSocialTokenRedirectUri('http://localhost:3128/oauth/callback', { pathname: '/oauth/callback' }),
+    'http://localhost:3128/oauth/callback',
+  )
+  assert.equal(
+    kiroSocialTokenRedirectUri('http://127.0.0.1:3128/oauth/callback', {
+      pathname: '/signin/callback',
+      loginOption: 'GitHub',
+    }),
+    'http://localhost:3128/signin/callback?login_option=github',
+  )
+  assert.equal(kiroSocialRedirectUri('http://127.0.0.1:3128/oauth/callback'), 'http://localhost:3128')
+  assert.equal(kiroSocialRedirectUri('http://127.0.0.1:3128/oauth/callback').includes('127.0.0.1'), false)
 })
 
 test('Kiro Social loopback registers localhost and accepts / plus /oauth/callback', async () => {
@@ -289,9 +314,23 @@ test('Kiro Social loopback registers localhost and accepts / plus /oauth/callbac
     timeoutMs: 8_000,
   })
   const thirdPort = new URL(third.redirectUri).port
-  const signin = await fetch(`http://127.0.0.1:${thirdPort}/signin/callback?code=from-signin&state=${third.state}`)
+  const signin = await fetch(`http://127.0.0.1:${thirdPort}/signin/callback?code=from-signin&state=${third.state}&login_option=Google`)
   assert.equal(signin.status, 200)
   assert.equal(await third.waitCode(), 'from-signin')
+  const landed = third.callback()
+  assert.equal(landed.pathname, '/signin/callback')
+  assert.equal(landed.loginOption, 'google')
+  let tokenRedirect
+  await exchangeKiroSocialCode('from-signin', third.pkce.verifier, third.redirectUri, {
+    callback: landed,
+    fetchFn: async (_url, init) => {
+      tokenRedirect = JSON.parse(init.body).redirect_uri
+      return json({ accessToken: 'at', refreshToken: RT, expiresIn: 3600 })
+    },
+  })
+  assert.equal(tokenRedirect, `http://localhost:${thirdPort}/signin/callback?login_option=google`)
+  assert.equal(String(tokenRedirect).includes('127.0.0.1'), false)
+  assert.equal(new URL(third.authorizeUrl).searchParams.get('redirect_uri').includes('127.0.0.1'), false)
 })
 
 test('refreshKiro social / idc / entra hit the matching endpoints', async () => {

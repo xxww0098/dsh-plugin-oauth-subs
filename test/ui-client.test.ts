@@ -57,3 +57,12 @@ test('Settings client paints the GLM boost pill and hint only on the GLM card', 
   assert.equal((src.match(/t\.glmBoost\b/g) || []).length, 1)
   assert.equal((src.match(/t\.glmBoostHint\b/g) || []).length, 1)
 })
+
+test('Settings Antigravity card shows a verify banner, not API-key-invalid', async () => {
+  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  assert.match(src, /antigravityVerify:\s*'Google 需要验证此账号才能对话'/)
+  assert.match(src, /antigravityVerifyGo:\s*'去验证'/)
+  assert.match(src, /id === 'antigravity' && row\.needsValidation/)
+  assert.match(src, /window\.open\(row\.validationUrl/)
+  assert.equal(src.includes('API 密钥无效'), false)
+})

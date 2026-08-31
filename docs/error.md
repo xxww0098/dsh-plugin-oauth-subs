@@ -1,5 +1,72 @@
 # 错误记录
 
+## 2026-08-31：Kiro Social 换票仍 HTTP 500（#39 两边都 origin-only）
+
+### 现象
+
+用户本地已是 0.0.42（#38 / #39）。设置 → AWS Kiro Social，浏览器走完授权后，插件 `exchangeKiroSocialCode` 仍回：
+
+```
+kiro social token failed (HTTP 500): {"message":"Oops, something went wrong. Please try again later."}
+```
+
+与 #38 / #39 用户报错原文相同。
+
+### 证据
+
+- 授权 URL 的 `redirect_uri` 已是 origin-only `http://localhost:<port>`（#39，对齐 KiroIDE portal）。
+- 换票 POST 体也用 `kiroSocialRedirectUri` 裁成 origin-only。`OAuthFlowManager.settle` 只交出 `code`，丢掉落地 path 与 `login_option` / `loginOption`。
+- cockpit-tools `kiro_oauth.rs`（同一 portal `https://app.kiro.dev/signin`、同一端口、同一 token host）：portal 注册 origin-only；换票 `redirect_uri` 是 `http://localhost:<port><actualPath>?login_option=<google|github>`。actualPath 是浏览器真正打到的 `/oauth/callback` 或 `/signin/callback`；`login_option` 来自回跳 query，小写。换票 JSON 仍只有 `{ code, code_verifier, redirect_uri }`。
+- 听 `127.0.0.1`、对外 hostname 必须是 `localhost`。注册 URI 里不能再出现 `127.0.0.1`。
+
+### 根因
+
+本插件 Kiro Social PKCE。#39 把授权和换票都收成 origin-only，修了 hostname，但 Kiro auth 服务要的是**落地回调 URL**（path + `login_option`）。不是 Codex / Grok / GLM / Antigravity。
+
+### 修复
+
+- `waitCode()` 仍只返回 code 字符串（Codex / Grok / Antigravity 不变）。Kiro 额外 `attempt.callback()`：pathname + `login_option`（及可选 `issuer_url`）。
+- `kiroSocialTokenRedirectUri`：origin + 落地 path；有 `login_option` 时加 `?login_option=`。缺 query 仍带真实 path，不再 origin-only。
+- 授权 URL 继续 origin-only。`127.0.0.1` 在授权/换票 `redirect_uri` 里改写成 `localhost`。回跳仍接受 `/`、`/oauth/callback`、`/signin/callback`。
+
+### 验证
+
+- `npm test`：授权 query 仍是 `http://localhost:<port>`；换票 body 含 `/signin/callback?login_option=google`（模拟回跳）；`127.0.0.1` 不出现在授权或换票 `redirect_uri`。无 live AWS 调用。
+
+## 2026-08-31：Antigravity 对话 403 VALIDATION_REQUIRED 被 DSH 显示成「API 密钥无效」
+
+### 现象
+
+用户 Mac，插件 0.0.42。OAuth 登录成功，`GET /antigravity/v1/models` 200，`DSH_OAUTH_SUBS_API_KEY` 与 `proxy-key` 一致（32 字符），settings.yaml 有 `oauth-antigravity`。对话 `POST /antigravity/v1/chat/completions` 被 Google Cloud Code 回 **HTTP 403**：
+
+```
+PERMISSION_DENIED / VALIDATION_REQUIRED / "Verify your account to continue."
+domain cloudcode-pa.googleapis.com
+```
+
+`validation_url` 是一次性 Google continue 链接（带 `plt=`，不记入本条）。daily-cloudcode-pa 与 cloudcode-pa 都是同一 403。额度条正常：`loadCodeAssist` / `fetchAvailableModels` 不走这道闸。DSH 把 403 映射成「本轮运行失败 API 密钥无效」。
+
+### 证据
+
+- 代理原样转发上游 403 JSON。DSH 把 403 当成密钥无效，不是 Google 账号验证。
+- 额度 API 不触发 VALIDATION_REQUIRED，所以卡片上看起来「已登录、额度可用」。
+
+### 根因
+
+代理层（`forwardAntigravity`）。OAuth bearer 有效，Cloud Code 仍要求 Google 账号验证才能 `generateContent`。不是 Codex / Grok  hop，也不是本机 proxy-key 错了。
+
+### 修复
+
+- `parseAntigravityValidation` 识别 `VALIDATION_REQUIRED` / `Verify your account`，抽出 `validationUrl`。
+- 会话与 snapshot 记 `needsValidation` + `validationUrl`（Settings 卡展示）。不把 `plt=` 打进日志。
+- 设置页 Antigravity 卡：中文条「Google 需要验证此账号才能对话」+ 打开 `validationUrl` 的按钮。
+- 对话错误改写为 **HTTP 400**，`error.message` / `error.code: VALIDATION_REQUIRED`，不再回 Google 原始 403。
+- 登录后 / 点刷新额度时用极小 `generateContent` 探测，卡片可在再次对话前出现横幅。
+
+### 验证
+
+- `npm test`：检测 + 改写后的 400 body + snapshot 字段 + Settings 文案。无 live Google 调用。不打印 `plt=`。
+
 ## 2026-08-30：Kiro Social 登录在 #38 之后仍会 Google 500
 
 ### 现象

@@ -47,8 +47,10 @@ import {
 import {
   antigravityFlow,
   ANTIGRAVITY_PREEMPT_MS,
+  applyAntigravityValidation,
   exchangeAntigravityCode,
   isAntigravityPermanentRefreshError,
+  probeAntigravityValidation,
   refreshAntigravity,
 } from './antigravity/index.js'
 import { importAntigravityAuth, importCodexAuth, importGrokAuth, importGlmAuth, importKiroAuth } from './import-auth.js'
@@ -229,6 +231,9 @@ export class AuthController {
       if (accountId && targets.length === 0) throw new Error(`${provider} account ${accountId} is not signed in`)
       if (targets.length === 0) return this.quota.peek(provider)
       await Promise.all(targets.map((row) => this.quota.refresh(provider, row.id, row.session)))
+      if (provider === 'antigravity') {
+        await Promise.all(targets.map((row) => this.#probeAntigravity(row.session, row.id)))
+      }
       if (accountId) return this.quota.peek(provider, accountId)
       const active = rows.find((row) => row.active)
       return this.quota.peek(provider, active?.id)
@@ -442,7 +447,10 @@ export class AuthController {
       const session = provider === 'codex'
         ? await exchangeCodexCode(code, attempt.pkce.verifier, attempt.redirectUri)
         : provider === 'kiro'
-          ? await exchangeKiroSocialCode(code, attempt.pkce.verifier, attempt.redirectUri, { fetchFn: this.fetchFn })
+          ? await exchangeKiroSocialCode(code, attempt.pkce.verifier, attempt.redirectUri, {
+            fetchFn: this.fetchFn,
+            callback: typeof attempt.callback === 'function' ? attempt.callback() : attempt.callback,
+          })
         : provider === 'antigravity'
           ? await exchangeAntigravityCode(code, attempt.redirectUri, { fetchFn: this.fetchFn })
           : await exchangeGrokCode(code, attempt.pkce.verifier, attempt.redirectUri, attempt.pkce.challenge)
@@ -451,11 +459,25 @@ export class AuthController {
       this.lastError.delete(provider)
       this.onAuthChanged?.(provider)
       void this.quota.refresh(provider)
+      if (provider === 'antigravity') void this.#probeAntigravity(session)
     } catch (error) {
       if (this.claims.get(provider) !== claim) return
       if (!(error instanceof Error && error.message === 'login cancelled')) {
         this.lastError.set(provider, error.message)
       }
+    }
+  }
+
+  async #probeAntigravity(session, accountId) {
+    try {
+      const info = await probeAntigravityValidation(session, { fetchFn: this.fetchFn })
+      if (info === undefined) return
+      const next = applyAntigravityValidation(session, info)
+      await saveSession('antigravity', next, this.authPath, accountId
+        ? { id: accountId, activate: false }
+        : { activate: false })
+    } catch {
+      // probe is best-effort; quota / login must still succeed
     }
   }
 
