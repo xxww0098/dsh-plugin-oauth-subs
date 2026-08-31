@@ -1,5 +1,30 @@
 # 错误记录
 
+## 2026-08-31：Kiro 模型没有思考深度，也没标明 text / image
+
+### 现象
+
+DSH 模型选择器里 OAuth · Kiro 的 Claude / GPT 没有思考深度档；附件能力也不清楚是纯文字还是图文。
+
+### 证据
+
+- `kiroModel()` 只写了 `id/name/contextWindow/input`，没有 `reasoningEfforts`。`toHarnessModel` 因此不带档位。
+- `oauth-kiro` 没有 `compat.supportsReasoningEffort`，pi-ai 对 localhost completions 会丢掉 `reasoning_effort`。
+- 官方 [effort](https://kiro.dev/docs/models/effort/)：GPT-5.6 `none|low|medium|high|xhigh|max`；Opus 5/4.8/4.7、Sonnet 5 另有 `xhigh`；Opus/Sonnet 4.6 到 `max`；Haiku、DeepSeek、MiniMax、GLM-5、Qwen 无档。
+- Input：GPT/Claude 图文；DeepSeek / MiniMax / GLM-5 / Qwen 纯文字（catalog 里已有，需在测试里钉死）。
+
+### 根因
+
+模型表。不是 hop（chat 仍 501）。
+
+### 修复
+
+每行写 `reasoningEfforts` + `input`；`oauth-kiro` 加 `compat.supportsReasoningEffort` + `thinkingFormat: openai`。
+
+### 验证
+
+- `npm test`：Sol / Opus 5 / Sonnet 4.6 档位、Haiku/GLM `false`、glm-5 `['text']`、opus `['text','image']`。
+
 ## 2026-08-31：Antigravity 额度条没有刷新时间
 
 ### 现象

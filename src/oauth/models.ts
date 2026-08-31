@@ -130,6 +130,10 @@ export function buildProviders({ prefix, origin, loggedIn }) {
       api: HARNESS_COMPLETIONS_API,
       apiKeyEnv: OAUTH_CREDENTIAL_REF,
       baseURL: `${origin}/kiro/v1`,
+      compat: {
+        supportsReasoningEffort: true,
+        thinkingFormat: 'openai',
+      },
       models: KIRO_MODELS.map(toHarnessModel),
     }
   }
