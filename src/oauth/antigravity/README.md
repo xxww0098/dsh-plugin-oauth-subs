@@ -37,6 +37,8 @@ Google **Antigravity hub**（`Antigravity.app`），Cloud Code `daily-cloudcode-
 
 ## 对话
 
+DSH `api: openai-completions`。原生是 Cloud Code `generateContent`，三种闭集都对不上，Completions + 翻译层是唯一划算的。不要改 Responses / Anthropic。
+
 ```text
 DSH chat/completions  →  POST daily-cloudcode-pa.googleapis.com/v1internal:generateContent
                          (stream: streamGenerateContent?alt=sse)
@@ -88,6 +90,7 @@ DSH 每步再插 runtime-context system。不处理则 `systemInstruction` 每�
 - 不要用 `currentTier` 当套餐 pill。
 - 不要把 Antigravity extras 停成 GLM trailing system。
 - 不要 fingerprint 成第三方包装（Google 会封）。
+- 不要把 `api` 改成 Responses / Anthropic。
 
 ## 追溯
 

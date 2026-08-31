@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- GLM default DSH protocol is `anthropic-messages` (ZCode Desktop default). Hop is `POST /glm/v1/messages` → `api.z.ai` / `open.bigmodel.cn` `/api/anthropic/v1/messages` with `anthropic-version: 2023-06-01`, first-system `cache_control`, and `metadata.user_id`. Completions leftover stays at `/glm/v1/chat/completions` until the next sync. Codex/Grok stay Responses; Kiro/Antigravity stay Completions adapters. 150% quota is still identity (ZCode Desktop UA), not proven by this protocol switch.
+
 ## 0.0.52
 
 - Prompt cache is per OAuth family (`src/oauth/<id>/cache.ts`). Codex, Grok, GLM, Kiro, and Antigravity no longer share `codexCacheSessionId`. GLM drops Codex `prompt_cache_key` and pins the leading system so Z.AI implicit cache can keep the prefix. Binding spec is in `AGENTS.md`; each family has `src/oauth/<id>/README.md`. PRs #54 #55.

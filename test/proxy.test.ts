@@ -3,7 +3,7 @@ import { request as httpRequest } from 'node:http'
 import { test } from 'node:test'
 import { createProxy, describeError, hasOutputEvent, STREAM_ATTEMPTS } from '../lib/oauth/proxy.js'
 import { CODEX_API_URL } from '../lib/oauth/codex/index.js'
-import { GLM_CODING_URL, GLM_USER_AGENT } from '../lib/oauth/glm/index.js'
+import { GLM_ANTHROPIC_URL, GLM_ANTHROPIC_VERSION, GLM_CODING_URL, GLM_USER_AGENT } from '../lib/oauth/glm/index.js'
 import { resetGlmSystemPins } from '../lib/oauth/glm/cache.js'
 import { codexCacheSessionId } from '../lib/oauth/codex/cache.js'
 
@@ -116,8 +116,91 @@ test('proxy GLM chat hop forwards ZCode Desktop 3.10.1 headers', async () => {
     }
     assert.equal(seen[0].headers['x-session-id'], seen[1].headers['x-session-id'])
     assert.notEqual(seen[0].headers['x-zcode-trace-id'], seen[1].headers['x-zcode-trace-id'])
+    assert.equal(seen[0].headers['anthropic-version'], undefined)
+    assert.equal(seen[0].headers['session-id'], undefined)
+    assert.equal(seen[0].headers['x-grok-conv-id'], undefined)
   } finally {
     await proxy.close()
+  }
+})
+
+test('proxy GLM Anthropic hop is ZCode default: /api/anthropic + cache_control', async () => {
+  resetGlmSystemPins()
+  const seen = []
+  const fetchFn = async (url, init) => {
+    seen.push({ url: String(url), headers: init.headers, body: JSON.parse(String(init.body)) })
+    return new Response('{"id":"msg"}', { status: 200, headers: { 'content-type': 'application/json' } })
+  }
+  const proxy = createProxy({
+    port: 0,
+    apiKey: 'secret-key',
+    fetchFn,
+    tokens: {
+      glm: { session: async () => ({ accessToken: 'id.secret', region: 'zai' }) },
+    },
+  })
+  const server = await proxy.listen()
+  const { port } = server.address()
+  const headers = { authorization: 'Bearer secret-key', 'content-type': 'application/json' }
+  try {
+    const first = await fetch(`http://127.0.0.1:${port}/glm/v1/messages`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: 'glm-5.3',
+        session_id: 'session-dsh-glm-anth',
+        prompt_cache_key: 'drop-me',
+        system: 'You are an AI agent.',
+        messages: [{ role: 'user', content: 'analyze the repo' }],
+      }),
+    })
+    const leftover = await fetch(`http://127.0.0.1:${port}/glm/v1/v1/messages`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: 'glm-5.3',
+        session_id: 'session-dsh-glm-anth',
+        system: 'You are an AI agent.\n\nCurrent runtime context. This snapshot supersedes earlier runtime-context snapshots.',
+        messages: [
+          { role: 'user', content: 'analyze the repo' },
+          { role: 'assistant', content: 'ok' },
+        ],
+      }),
+    })
+    assert.equal(first.status, 200)
+    assert.equal(leftover.status, 200)
+    assert.equal(seen[0].url, GLM_ANTHROPIC_URL)
+    assert.equal(seen[0].url.endsWith('/api/anthropic/v1/messages'), true)
+    assert.equal(seen[1].url, GLM_ANTHROPIC_URL)
+    for (const row of seen) {
+      assert.equal(row.headers.authorization, 'Bearer id.secret')
+      assert.equal(row.headers['user-agent'], GLM_USER_AGENT)
+      assert.equal(row.headers['anthropic-version'], GLM_ANTHROPIC_VERSION)
+      assert.equal(row.headers['anthropic-version'], '2023-06-01')
+      assert.equal(row.headers['X-ZCode-App-Version'], '3.10.1')
+      assert.equal(row.headers['X-ZCode-Agent'], 'glm')
+      assert.equal(row.headers['x-session-id'], 'session-dsh-glm-anth')
+      assert.equal(row.headers['session-id'], undefined)
+      assert.equal(row.headers['x-client-request-id'], undefined)
+      assert.equal(row.headers['x-grok-conv-id'], undefined)
+      assert.equal(JSON.stringify(row.headers).includes('dsh-plugin-oauth-subs'), false)
+    }
+    assert.equal(seen[0].body.prompt_cache_key, undefined)
+    assert.equal(seen[0].body.max_tokens, 128_000)
+    assert.equal(seen[0].body.metadata.user_id, 'session-dsh-glm-anth')
+    assert.deepEqual(seen[0].body.system, [
+      { type: 'text', text: 'You are an AI agent.', cache_control: { type: 'ephemeral' } },
+    ])
+    assert.equal(seen[0].body.thinking.type, 'enabled')
+    assert.equal(seen[0].body.thinking.clear_thinking, false)
+    assert.equal(seen[1].body.system[0].text, 'You are an AI agent.')
+    assert.deepEqual(seen[1].body.system[0].cache_control, { type: 'ephemeral' })
+    assert.equal(seen[1].body.system[1].text.includes('Current runtime context'), true)
+    assert.equal(seen[1].body.system[1].cache_control, undefined)
+    assert.equal(seen[1].body.metadata.user_id, 'session-dsh-glm-anth')
+  } finally {
+    await proxy.close()
+    resetGlmSystemPins()
   }
 })
 

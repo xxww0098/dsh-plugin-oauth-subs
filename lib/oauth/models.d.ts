@@ -12,6 +12,7 @@ export declare const OAUTH_CREDENTIAL_REF = "DSH_OAUTH_SUBS_API_KEY";
  */
 export declare const HARNESS_RESPONSES_API = "openai-responses";
 export declare const HARNESS_COMPLETIONS_API = "openai-completions";
+export declare const HARNESS_ANTHROPIC_API = "anthropic-messages";
 export { CODEX_REASONING_EFFORTS };
 export declare function isOptInKey(key: any): boolean;
 export declare function modelKey(provider: any, id: any): string;

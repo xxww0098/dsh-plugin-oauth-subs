@@ -9,7 +9,9 @@
  *   3. Z.ai only: POST api.z.ai/api/auth/z/login then mint id.secret
  *      BigModel: the poll JWT is the Coding Plan bearer (no biz mint)
  *
- * Chat goes to the matching Coding Plan OpenAI-compatible endpoint.
+ * Chat default is Anthropic Messages (`/api/anthropic/v1/messages`, ZCode
+ * Desktop). Completions leftover (`/api/coding/paas/v4/chat/completions`)
+ * stays until the next llm-pi-ai sync. Not chatgpt.com.
  */
 export declare const GLM_CLIENT_ID = "client_P8X5CMWmlaRO9gyO-KSqtg";
 export declare const GLM_BIGMODEL_APP_ID = "zcode";
@@ -21,6 +23,8 @@ export declare const GLM_BIGMODEL_AUTHORIZE_URL = "https://bigmodel.cn/login";
 export declare const GLM_BUSINESS_LOGIN_URL = "https://api.z.ai/api/auth/z/login";
 export declare const GLM_BIZ_BASE = "https://api.z.ai";
 export declare const GLM_CODING_URL = "https://api.z.ai/api/coding/paas/v4/chat/completions";
+export declare const GLM_ANTHROPIC_URL = "https://api.z.ai/api/anthropic/v1/messages";
+export declare const GLM_ANTHROPIC_VERSION = "2023-06-01";
 export declare const GLM_QUOTA_URL = "https://api.z.ai/api/monitor/usage/quota/limit";
 export declare const GLM_TOOL_USAGE_URL = "https://api.z.ai/api/monitor/usage/tool-usage";
 export declare const GLM_USERINFO_URL = "https://chat.z.ai/api/oauth/userinfo";
@@ -104,6 +108,8 @@ export declare function normalizeGlmRegion(value: any): "zai" | "bigmodel";
 export declare function glmCliProvider(region: any): "zai" | "bigmodel";
 export declare function glmPlanLabel(raw: any): any;
 export declare function glmCodingUrl(region?: string): "https://api.z.ai/api/coding/paas/v4/chat/completions" | "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions";
+/** ZCode default protocol. https://docs.z.ai/devpack/quick-start */
+export declare function glmAnthropicUrl(region?: string): "https://api.z.ai/api/anthropic/v1/messages" | "https://open.bigmodel.cn/api/anthropic/v1/messages";
 export declare function glmQuotaUrl(region?: string): "https://api.z.ai/api/monitor/usage/quota/limit" | "https://open.bigmodel.cn/api/monitor/usage/quota/limit";
 export declare function glmToolUsageUrl(region?: string): "https://api.z.ai/api/monitor/usage/tool-usage" | "https://open.bigmodel.cn/api/monitor/usage/tool-usage";
 export declare function glmUserinfoUrl(region?: string): "https://chat.z.ai/api/oauth/userinfo" | "https://open.bigmodel.cn/api/biz/customer/getCustomerInfo";
@@ -125,6 +131,21 @@ export declare function glmDesktopHeaders(sessionId: any): {
     'X-Title': string;
 };
 export declare function glmUpstreamHeaders(session: any, sessionId: any): {
+    'user-agent': string;
+    'X-ZCode-App-Version': string;
+    'X-ZCode-Agent': string;
+    'x-zcode-trace-id': string;
+    'x-request-id': string;
+    'x-session-id': string;
+    'x-query-id': string;
+    'HTTP-Referer': string;
+    referer: string;
+    'X-Title': string;
+    authorization: string;
+    accept: string;
+};
+export declare function glmAnthropicHeaders(session: any, sessionId: any): {
+    'anthropic-version': string;
     'user-agent': string;
     'X-ZCode-App-Version': string;
     'X-ZCode-Agent': string;

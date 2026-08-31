@@ -34,6 +34,8 @@
 
 ## 对话
 
+DSH `api: openai-responses`。上游就是 xAI `api.x.ai/v1/responses`。不要改 Completions / Anthropic。
+
 ```text
 DSH  →  本机 Responses 代理  →  POST https://api.x.ai/v1/responses
 ```
@@ -72,6 +74,7 @@ xAI 按 **会话分片** 粘滞，键是 `x-grok-conv-id`，不是前缀哈希�
 - 不要给 Grok 写 Codex `session-id` / `x-client-request-id`。
 - 不要把 Grok 4 加回目录。
 - 不要只用 billing JSON 填额度条（Heavy / Premium+ 会空）。
+- 不要把 `api` 改成 Completions / Anthropic。
 
 ## 追溯
 

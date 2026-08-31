@@ -10,9 +10,9 @@ import { CODEX_API_URL, CODEX_CLIENT_VERSION, CODEX_MODELS, CODEX_MODELS_URL, co
 import { applyCodexCache, codexCacheHeaders } from './codex/cache.js'
 import { GROK_API_URL, GROK_MODELS, grokAffinityHeaders, grokUpstreamHeaders } from './grok/index.js'
 import { applyGrokCache } from './grok/cache.js'
-import { GLM_MODELS, glmCodingUrl, glmUpstreamHeaders } from './glm/index.js'
+import { GLM_MODELS, glmAnthropicHeaders, glmAnthropicUrl, glmCodingUrl, glmUpstreamHeaders } from './glm/index.js'
 import { glmCacheSessionId } from './glm/cache.js'
-import { normalizeGlmChatBody } from './glm/request.js'
+import { normalizeGlmAnthropicBody, normalizeGlmChatBody } from './glm/request.js'
 import { KIRO_MODELS, kiroStreamingProfileArn } from './kiro/index.js'
 import {
   KIRO_STABLE_SESSION,
@@ -145,7 +145,7 @@ export function describeError(error) {
   return detail === undefined ? String(error?.message ?? error) : `${error.message}: ${detail}`
 }
 
-function rewriteUpstreamBody(buffer, family) {
+function rewriteUpstreamBody(buffer, family, wire) {
   if (!buffer.length) throw new RequestError(400, 'request body must contain JSON')
   let payload
   try {
@@ -171,10 +171,12 @@ function rewriteUpstreamBody(buffer, family) {
     return { body: Buffer.from(JSON.stringify(next)), cacheSessionId, stream: next.stream === true }
   }
   if (family === 'glm') {
-    const next = normalizeGlmChatBody(fast)
+    const next = wire === 'anthropic' ? normalizeGlmAnthropicBody(fast) : normalizeGlmChatBody(fast)
     return {
       body: Buffer.from(JSON.stringify(next)),
-      cacheSessionId: glmCacheSessionId(next.user) || glmCacheSessionId(next.session_id),
+      cacheSessionId: glmCacheSessionId(next.user)
+        || glmCacheSessionId(next.metadata?.user_id)
+        || glmCacheSessionId(next.session_id),
       stream: next.stream === true,
     }
   }
@@ -349,6 +351,26 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
       return
     }
 
+    if ((path === '/glm/v1/messages' || path === '/glm/v1/v1/messages') && request.method === 'POST') {
+      const client = abortOnDisconnect(request, response)
+      try {
+        const session = await tokens.glm.session()
+        await forward(request, response, {
+          url: glmAnthropicUrl(session.region),
+          session,
+          headersOf: glmAnthropicHeaders,
+          fetchFn,
+          family: 'glm',
+          wire: 'anthropic',
+          maxRequestBodyBytes,
+          signal: client.signal,
+        })
+      } finally {
+        client.cleanup()
+      }
+      return
+    }
+
     if (path === '/glm/v1/models' && request.method === 'GET') {
       send(response, 200, {
         object: 'list',
@@ -449,9 +471,9 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
   }
 }
 
-async function forward(request, response, { url, session, headersOf, fetchFn, family, maxRequestBodyBytes, signal }) {
+async function forward(request, response, { url, session, headersOf, fetchFn, family, wire, maxRequestBodyBytes, signal }) {
   const raw = await readBody(request, maxRequestBodyBytes)
-  const { body, cacheSessionId, stream, routingHint } = rewriteUpstreamBody(raw, family)
+  const { body, cacheSessionId, stream, routingHint } = rewriteUpstreamBody(raw, family, wire)
   const headers = {
     ...headersOf(session, cacheSessionId),
     'content-type': request.headers['content-type'] ?? 'application/json',

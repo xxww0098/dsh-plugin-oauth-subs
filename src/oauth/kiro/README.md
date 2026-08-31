@@ -36,6 +36,8 @@ AWS **Kiro / CodeWhisperer**。协议对齐 [ZyphrZero/kiro.rs](https://github.c
 
 ## 对话
 
+DSH `api: openai-completions`。原生是 AWS EventStream `GenerateAssistantResponse`，三种闭集都对不上，Completions + 翻译层是唯一划算的。不要改 Responses / Anthropic（翻译层还在，还丢掉 DSH 原生 Completions）。
+
 ```text
 DSH chat/completions  →  POST https://q.<region>.amazonaws.com/
   X-Amz-Target: AmazonCodeWhispererStreamingService.GenerateAssistantResponse
@@ -83,6 +85,7 @@ proxy 只删 `prompt_cache_retention` / `prompt_cache_options`，**不**把 `pro
 - 不要给 Kiro 写 Codex `session-id` 或 Grok `x-grok-conv-id`。
 - 不要把 Social 的 `redirect_uri` 在 authorize 和 token 之间改掉（HTTP 500）。
 - 不要只 stub `GenerateAssistantResponse`（会 501）。
+- 不要把 `api` 改成 Responses / Anthropic。
 
 ## 追溯
 
