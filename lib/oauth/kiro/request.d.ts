@@ -1,0 +1,121 @@
+/**
+ * OpenAI chat/completions ↔ AWS CodeWhisperer GenerateAssistantResponse.
+ *
+ * Wire shape matches Kiro IDE / kiro-proxy PROTOCOL.md:
+ *   POST https://q.<region>.amazonaws.com/
+ *   X-Amz-Target: AmazonCodeWhispererStreamingService.GenerateAssistantResponse
+ *   Content-Type: application/x-amz-json-1.0
+ *   Body: conversationState + profileArn
+ * Response is application/vnd.amazon.eventstream.
+ */
+/** When DSH sends neither session_id nor prompt_cache_key, still pin a constant. */
+export declare const KIRO_STABLE_SESSION = "dsh-kiro";
+export declare const KIRO_CHAT_ORIGIN = "AI_EDITOR";
+export declare const KIRO_AMZ_TARGET = "AmazonCodeWhispererStreamingService.GenerateAssistantResponse";
+export declare const KIRO_EVENTSTREAM_TYPE = "application/vnd.amazon.eventstream";
+export declare const KIRO_AMZ_JSON_TYPE = "application/x-amz-json-1.0";
+export declare function kiroChatUrl(session?: {}): string;
+/** Quota keeps accept: application/json. Chat must ask for the event stream. */
+export declare function kiroChatHeaders(session: any): {
+    accept: string;
+    'content-type': string;
+    'x-amz-target': string;
+    'x-amzn-kiro-agent-mode': string;
+    authorization: string;
+    'user-agent': string;
+    'x-amz-user-agent': string;
+    'amz-sdk-invocation-id': `${string}-${string}-${string}-${string}-${string}`;
+    'amz-sdk-request': string;
+};
+export declare function kiroConversationId(payload: {}, explicit: any): string;
+/**
+ * DSH `developer` (and any other unknown role) → system, same as GLM.
+ * History is userInputMessage / assistantResponseMessage pairs.
+ * conversationId is the DSH pin — never Date.now().
+ */
+export declare function openaiToKiro(payload: any, { conversationId, profileArn, origin }?: {
+    origin?: string;
+}): {
+    conversationState: {
+        conversationId: string;
+        history: any[];
+        currentMessage: {
+            userInputMessage: {
+                content: any;
+                userInputMessageContext: {
+                    envState: {
+                        operatingSystem: string;
+                    };
+                };
+                origin: string;
+                modelId: string;
+            };
+        };
+        chatTriggerType: string;
+        agentTaskType: string;
+    };
+};
+export declare class KiroEventStreamParser {
+    constructor();
+    feed(chunk: any): any[];
+}
+export declare function parseKiroEventStream(buffer: any): any[];
+export declare function mergeKiroText(previous: any, chunk: any): {
+    text: any;
+    delta: any;
+};
+export declare function collectKiroEvents(events: any): {
+    text: string;
+    toolCalls: {
+        id: any;
+        type: string;
+        function: {
+            name: any;
+            arguments: any;
+        };
+    }[];
+    usage: any;
+    error: any;
+};
+export declare function kiroToOpenai(eventsOrBody: any, { model, id }?: {
+    id?: string;
+}): {
+    error?: {
+        message: any;
+    };
+    id: string;
+    object: string;
+    model: any;
+    choices: {
+        index: number;
+        message: {
+            role: string;
+            content: string;
+        };
+        finish_reason: string;
+    }[];
+    usage: any;
+};
+export declare function kiroToOpenaiChunk(delta: any, { model, id, done, finishReason }?: {
+    done?: boolean;
+    finishReason?: any;
+}): {
+    id: any;
+    object: string;
+    model: any;
+    choices: {
+        index: number;
+        delta: any;
+        finish_reason: any;
+    }[];
+};
+export declare function kiroClientErrorStatus(status: any): any;
+export declare function kiroClientErrorBody(status: any, parsed: any, text: any): {
+    error: {
+        message: string;
+        type: string;
+        code: string;
+    };
+};
+export declare function encodeKiroEventFrame(type: any, payload: any, messageType?: string): Buffer<ArrayBuffer>;
+export declare function encodeKiroEventStream(events: any): Buffer<ArrayBuffer>;
