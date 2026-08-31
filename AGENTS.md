@@ -216,7 +216,8 @@ Binding UI rules:
 - Show quota only on the active card.
 - npm-install a React icon package into the classic-script UI.
 - Hand-edit `lib/`.
-- Auto-release; one task → one PR.
+- Auto-release or bump `package.json` / lockfile version. The maintainer
+  says when to raise the version and when to tag. One task → one PR.
 
 ## Commands
 
@@ -239,4 +240,5 @@ this proxy — record it in `docs/error.md`, do not add `toolTimeoutMs` here.
 - Keep `docs/error.md` in the same PR as the behavior change.
 - Do not merge generated `lib/` that was hand-patched.
 - Tests stay green on Node 22 (`npm test`).
-- One task, one PR. Do not tag / `gh release` unless asked.
+- One task, one PR. Do not bump `package.json` (or the lockfile version),
+  do not tag, and do not `gh release` unless the maintainer asked.
