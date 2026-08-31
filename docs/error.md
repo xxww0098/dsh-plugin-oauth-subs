@@ -1,6 +1,31 @@
 # 错误记录
 
+## 2026-08-31：各家 OAuth 缓存被混成 Codex 一套
+
+### 现象
+
+Grok / GLM / Kiro / Antigravity 都从 `src/utils/cache-session.ts` 的 `codexCacheSessionId` 钉 key，`proxy.rewriteUpstreamBody` 用同一个 `pinCache` 给五家写 `prompt_cache_key`。GLM 隐式前缀哈希、Grok 分片、Gemini `systemInstruction`、Kiro `conversationId` 被当成 Codex `session-id`。
+
+### 证据
+
+- `codexCacheSessionId` 注释写着 “Shared shard pin for Codex / Grok / GLM / Antigravity”。
+- GLM hop 测试期望 body 上有 `prompt_cache_key`（Z.AI 不认这个字段；它认 `user` + `x-session-id`）。
+- Antigravity / Kiro 的 `request.ts` 直接 import Codex 工具函数。
+
+### 根因
+
+把「清洗 DSH session id」当成可共享的缓存实现。各家后端的缓存键、请求头、前缀钉法都不一样。
+
+### 修复
+
+每家一个 `src/oauth/<id>/cache.ts`。`proxy.ts` 只分发。删除 `src/utils/cache-session.ts`。GLM 不再上传 `prompt_cache_key` / `prompt_cache_retention`；首次 leading system 钉住，后续 DSH snapshot 挂到 messages 末尾。
+
+### 验证
+
+- `npm test`：Codex 仍写 `session-id`；Grok 只写 `x-grok-conv-id`；GLM body 无 `prompt_cache_key`，`user` 与 `x-session-id` 一致；Antigravity `sessionId` / Kiro `conversationId` 不走 Codex helper。
+
 ## 2026-08-31：额度刷新时间只精确到小时
+
 
 ### 现象
 
@@ -22,6 +47,31 @@
 ### 验证
 
 - `npm test`：`4h32m` → `4 小时 32 分钟后重置`；整点 5 小时不加 0 分钟；源码不再 `Math.round(minutes / 60)`。
+
+## 2026-08-31：Antigravity 额度要拆成 Gemini / Claude+GPT 的每周 + 5 小时，套餐仍是 STANDARD
+
+### 现象
+
+官方 Model Quota 面板是两组：Gemini Models、Claude and GPT models，每组 Weekly remaining + Five Hour remaining。插件卡片仍是按模型系列一条 remainingFraction。套餐还可能显示 Standard（Code Assist `currentTier`）。
+
+### 证据
+
+- 官方 RPC 是 `v1internal:retrieveUserQuotaSummary`（`groups[].buckets[]`）。`fetchAvailableModels.quotaInfo` 只有 5 小时窗口。
+- `antigravityPlanType` 在 paidTier 缺失时回落到 `currentTier.id` = `STANDARD TIER`。Google AI Pro 账号的 Code Assist 档仍是 STANDARD。
+
+### 根因
+
+额度解析 + 套餐字段。不是 UI 进度条组件本身。
+
+### 修复
+
+- 先打 `retrieveUserQuotaSummary`；失败再回落 `fetchAvailableModels`。
+- 套餐优先 `paidTier.name` / `id`（Google AI Pro / Ultra）。`currentTier` 的 STANDARD / legacy 是 Code Assist SKU，不显示。Free 仍读 `currentTier: free-tier`。
+- 设置卡抬头优先额度里的 planLabel，不再被登录时写进去的 STANDARD TIER 盖住。
+
+### 验证
+
+- `npm test`：99%/96% + 100%/100% 两组；`currentTier` 单独 STANDARD 时 planType 为空；`free-tier` 仍是 Free；`Google AI Pro` → Pro。
 
 ## 2026-08-31：Antigravity 缓存命中率显示 0
 

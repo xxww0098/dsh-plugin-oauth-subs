@@ -11,10 +11,9 @@
 
 import { crc32 } from 'node:zlib'
 import { KIRO_DEFAULT_REGION, kiroUsageHeaders, kiroUsageHost } from './index.js'
-import { codexCacheSessionId } from '../../utils/cache-session.js'
+import { kiroConversationId } from './cache.js'
 
-/** When DSH sends neither session_id nor prompt_cache_key, still pin a constant. */
-export const KIRO_STABLE_SESSION = 'dsh-kiro'
+export { KIRO_STABLE_SESSION, kiroConversationId } from './cache.js'
 export const KIRO_CHAT_ORIGIN = 'AI_EDITOR'
 export const KIRO_AMZ_TARGET = 'AmazonCodeWhispererStreamingService.GenerateAssistantResponse'
 export const KIRO_EVENTSTREAM_TYPE = 'application/vnd.amazon.eventstream'
@@ -47,13 +46,6 @@ export function kiroChatHeaders(session) {
     'x-amz-target': KIRO_AMZ_TARGET,
     'x-amzn-kiro-agent-mode': 'vibe',
   }
-}
-
-export function kiroConversationId(payload = {}, explicit) {
-  return codexCacheSessionId(explicit)
-    ?? codexCacheSessionId(payload.session_id)
-    ?? codexCacheSessionId(payload.prompt_cache_key)
-    ?? KIRO_STABLE_SESSION
 }
 
 function flattenContent(content) {

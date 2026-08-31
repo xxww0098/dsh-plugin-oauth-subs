@@ -4,18 +4,12 @@
  */
 
 import { antigravityRequestId, ANTIGRAVITY_BODY_USER_AGENT } from './index.js'
-import { codexCacheSessionId } from '../../utils/cache-session.js'
+import {
+  antigravitySessionIdOf,
+  pinAntigravitySystemInstruction,
+} from './cache.js'
 
-/** When DSH sends neither session_id nor prompt_cache_key, still pin a constant. */
-export const ANTIGRAVITY_STABLE_SESSION = 'dsh-antigravity'
-
-/** First systemInstruction per session so later DSH snapshots cannot bust the prefix. */
-const SYSTEM_PINS = new Map()
-const SYSTEM_PIN_CAP = 64
-
-export function resetAntigravitySystemPins() {
-  SYSTEM_PINS.clear()
-}
+export { ANTIGRAVITY_STABLE_SESSION, resetAntigravitySystemPins } from './cache.js'
 
 function asCount(value) {
   if (typeof value === 'number' && Number.isFinite(value) && value >= 0) return Math.round(value)
@@ -24,28 +18,6 @@ function asCount(value) {
     if (Number.isFinite(next) && next >= 0) return Math.round(next)
   }
   return undefined
-}
-
-function systemText(parts) {
-  return (parts ?? []).map((part) => typeof part?.text === 'string' ? part.text : '').filter(Boolean).join('\n\n')
-}
-
-function pinSystemInstruction(sessionId, parts) {
-  const text = systemText(parts)
-  if (!sessionId || sessionId === ANTIGRAVITY_STABLE_SESSION || !text) return { parts, extra: undefined }
-  const existing = SYSTEM_PINS.get(sessionId)
-  if (existing === undefined) {
-    if (SYSTEM_PINS.size >= SYSTEM_PIN_CAP) {
-      const first = SYSTEM_PINS.keys().next().value
-      SYSTEM_PINS.delete(first)
-    }
-    SYSTEM_PINS.set(sessionId, text)
-    return { parts, extra: undefined }
-  }
-  if (existing === text) return { parts, extra: undefined }
-  let extra = text
-  if (text.startsWith(existing)) extra = text.slice(existing.length).replace(/^\n+/, '').trim()
-  return { parts: [{ text: existing }], extra: extra || undefined }
 }
 
 function trimmed(value) {
@@ -180,11 +152,8 @@ export function openaiToAntigravity(payload, { projectId, sessionId } = {}) {
     contents.push({ role: 'user', parts: [{ text: trimmed(payload?.input) ?? '' }] })
   }
 
-  const pinnedSession = codexCacheSessionId(sessionId)
-    ?? codexCacheSessionId(payload?.session_id)
-    ?? codexCacheSessionId(payload?.prompt_cache_key)
-    ?? ANTIGRAVITY_STABLE_SESSION
-  const pinned = pinSystemInstruction(pinnedSession, systemParts)
+  const pinnedSession = antigravitySessionIdOf(payload, sessionId)
+  const pinned = pinAntigravitySystemInstruction(pinnedSession, systemParts)
   if (pinned.extra) contents.push({ role: 'user', parts: [{ text: pinned.extra }] })
 
   const request = {

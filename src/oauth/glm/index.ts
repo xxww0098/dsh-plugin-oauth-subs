@@ -14,7 +14,7 @@
 
 import { randomBytes } from 'node:crypto'
 import { decodeJwtPayload } from '../../utils/jwt.js'
-import { codexCacheSessionId } from '../../utils/cache-session.js'
+import { glmCacheSessionId } from './cache.js'
 
 export const GLM_CLIENT_ID = 'client_P8X5CMWmlaRO9gyO-KSqtg'
 export const GLM_BIGMODEL_APP_ID = 'zcode'
@@ -210,7 +210,7 @@ export function glmDesktopHeaders(sessionId) {
     'X-ZCode-Agent': GLM_AGENT,
     'x-zcode-trace-id': randomHex(),
     'x-request-id': randomHex(),
-    'x-session-id': codexCacheSessionId(sessionId) || GLM_PROCESS_SESSION_ID,
+    'x-session-id': glmCacheSessionId(sessionId) || GLM_PROCESS_SESSION_ID,
     'x-query-id': randomHex(),
     'HTTP-Referer': GLM_REFERER,
     referer: GLM_REFERER,

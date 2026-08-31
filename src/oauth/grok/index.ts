@@ -9,6 +9,8 @@
 import { decodeJwtPayload } from '../../utils/jwt.js'
 import { OAuthEndpointError, oauthError } from '../codex/index.js'
 
+export { grokAffinityHeaders, grokCacheSessionId, applyGrokCache } from './cache.js'
+
 export const GROK_CLIENT_ID = 'b1a00492-073a-47ea-816f-4c329264a828'
 export const GROK_DISCOVERY_URL = 'https://auth.x.ai/.well-known/openid-configuration'
 export const GROK_API_URL = 'https://api.x.ai/v1/responses'
@@ -291,11 +293,3 @@ export function grokCreditsHeaders(session) {
   }
 }
 
-/**
- * xAI sticky-routes prompt cache by `x-grok-conv-id`. Codex `session-id` /
- * `x-client-request-id` are ignored on this backend and must not be copied.
- */
-export function grokAffinityHeaders(cacheSessionId) {
-  if (typeof cacheSessionId !== 'string' || cacheSessionId.length === 0) return {}
-  return { 'x-grok-conv-id': cacheSessionId }
-}

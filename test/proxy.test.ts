@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
 import { request as httpRequest } from 'node:http'
 import { test } from 'node:test'
-import { createProxy, describeError, hasOutputEvent, STREAM_ATTEMPTS, codexCacheSessionId } from '../lib/oauth/proxy.js'
+import { createProxy, describeError, hasOutputEvent, STREAM_ATTEMPTS } from '../lib/oauth/proxy.js'
 import { CODEX_API_URL } from '../lib/oauth/codex/index.js'
 import { GLM_CODING_URL, GLM_USER_AGENT } from '../lib/oauth/glm/index.js'
+import { resetGlmSystemPins } from '../lib/oauth/glm/cache.js'
+import { codexCacheSessionId } from '../lib/oauth/codex/cache.js'
 
 function rawRequest(port, { method = 'GET', path = '/', headers = {}, body } = {}) {
   return new Promise((resolve, reject) => {
@@ -827,13 +829,71 @@ test('GLM hop pins x-session-id from DSH and strips prompt_cache_retention', asy
     assert.equal(seen[0].headers['x-session-id'], 'session-dsh-glm')
     assert.equal(seen[0].headers['session-id'], undefined)
     assert.equal(seen[0].headers['x-grok-conv-id'], undefined)
-    assert.equal(seen[0].body.prompt_cache_key, 'session-dsh-glm')
+    assert.equal(seen[0].body.prompt_cache_key, undefined)
     assert.equal(seen[0].body.prompt_cache_retention, undefined)
     assert.equal(seen[0].body.messages[0].role, 'system')
     assert.equal(seen[0].body.messages[1].reasoning_content, 'thought')
     assert.equal(seen[0].body.thinking.clear_thinking, false)
+    assert.equal(seen[0].body.user, 'session-dsh-glm')
   } finally {
     await proxy.close()
+  }
+})
+
+test('GLM hop parks extra leading system snapshots after the conversation', async () => {
+  resetGlmSystemPins()
+  const seen = []
+  const fetchFn = async (_url, init) => {
+    seen.push(JSON.parse(String(init.body)))
+    return new Response('{"id":"chat"}', { status: 200, headers: { 'content-type': 'application/json' } })
+  }
+  const proxy = createProxy({
+    port: 0,
+    apiKey: 'secret-key',
+    fetchFn,
+    tokens: {
+      glm: { session: async () => ({ accessToken: 'id.secret', region: 'zai' }) },
+    },
+  })
+  const server = await proxy.listen()
+  const { port } = server.address()
+  const headers = { authorization: 'Bearer secret-key', 'content-type': 'application/json' }
+  try {
+    await fetch(`http://127.0.0.1:${port}/glm/v1/chat/completions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: 'glm-5.3-flash',
+        session_id: 'session-glm-park',
+        messages: [
+          { role: 'developer', content: 'You are an AI agent.' },
+          { role: 'user', content: 'analyze the repo' },
+        ],
+      }),
+    })
+    await fetch(`http://127.0.0.1:${port}/glm/v1/chat/completions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: 'glm-5.3-flash',
+        session_id: 'session-glm-park',
+        messages: [
+          { role: 'system', content: 'You are an AI agent.' },
+          { role: 'system', content: 'Current runtime context. This snapshot supersedes earlier runtime-context snapshots.' },
+          { role: 'user', content: 'analyze the repo' },
+          { role: 'assistant', content: 'ok' },
+        ],
+      }),
+    })
+    assert.equal(seen[0].messages[0].content, 'You are an AI agent.')
+    assert.equal(seen[1].messages[0].content, 'You are an AI agent.')
+    assert.equal(seen[1].messages[1].role, 'user')
+    assert.match(seen[1].messages.at(-1).content, /Current runtime context/)
+    assert.equal(seen[1].user, 'session-glm-park')
+    assert.equal(seen[1].prompt_cache_key, undefined)
+  } finally {
+    await proxy.close()
+    resetGlmSystemPins()
   }
 })
 
