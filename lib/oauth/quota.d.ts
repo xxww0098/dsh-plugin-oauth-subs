@@ -7,8 +7,9 @@
  *          GET cli-chat-proxy.grok.com/v1/user?include=subscription
  *          POST grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig
  *   Antigravity  POST daily-cloudcode-pa …/v1internal:loadCodeAssist
- *                POST daily-cloudcode-pa …/v1internal:fetchAvailableModels
- *                (SkillStar parse; hub host from #34 — prod only on 5xx / transport)
+ *                POST daily-cloudcode-pa …/v1internal:retrieveUserQuotaSummary
+ *                POST daily-cloudcode-pa …/v1internal:fetchAvailableModels (5h fallback)
+ *                Official Model Quota UI is two groups × (weekly + 5-hour).
  *
  * Codex windows report used_percent; remaining is 100 − used.
  * Grok creditUsagePercent is also used-percent. Display remaining in the UI.
@@ -81,10 +82,15 @@ export declare function fetchGlmQuota(session: any, fetchFn?: typeof fetch): Pro
 export declare function parseAntigravityModelQuota(payload: any): {
     rows: any[];
 };
+/** Official Model Quota panel: Gemini Models / Claude and GPT models × weekly + 5-hour. */
+export declare function parseAntigravityQuotaSummary(payload: any): {
+    rows: any[];
+    planType: string;
+};
 export declare function parseAntigravityPaidCredits(payload: any): any[];
 export declare function pickAntigravityPlanName(payload: any): string;
 export declare function fetchAntigravityQuota(session: any, fetchFn?: typeof fetch): Promise<{
-    planType: any;
+    planType: string;
     rows: any[];
 }>;
 export declare function fetchKiroQuota(session: any, fetchFn?: typeof fetch): Promise<{

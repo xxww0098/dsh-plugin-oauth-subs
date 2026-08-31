@@ -19,6 +19,7 @@ import {
   ANTIGRAVITY_MAC_APP_PLIST,
   ANTIGRAVITY_MODELS,
   ANTIGRAVITY_MODELS_URL,
+  ANTIGRAVITY_QUOTA_SUMMARY_URL,
   ANTIGRAVITY_NODE_API_CLIENT_UA,
   ANTIGRAVITY_ONBOARD_USER_URL,
   ANTIGRAVITY_PROD_API_URL,
@@ -523,6 +524,9 @@ test('snapshot shows quota on every Antigravity account via daily hub', async ()
           cloudaicompanionProject: auth.includes('tok-b') ? 'p2' : 'p1',
         })
       }
+      if (href === ANTIGRAVITY_QUOTA_SUMMARY_URL) {
+        return new Response('not found', { status: 404 })
+      }
       if (href === daily) {
         return jsonResponse({
           models: {
@@ -546,7 +550,7 @@ test('snapshot shows quota on every Antigravity account via daily hub', async ()
   assert.equal(first.quota.rows[0].remainingPercent, 40)
   assert.equal(second.quota.rows[0].remainingPercent, 90)
   assert.equal(first.quota.planLabel, 'Pro')
-  assert.equal(second.quota.planLabel, 'Standard')
+  assert.equal(second.quota.planLabel, undefined)
   assert.equal(seen.every((href) => !href.startsWith(ANTIGRAVITY_PROD_API_URL)), true)
   assert.equal(seen.every((href) => href.startsWith(ANTIGRAVITY_DAILY_API_URL)), true)
   assert.equal(formatPlanLabel('free-tier', 'antigravity'), 'Free')
@@ -554,6 +558,17 @@ test('snapshot shows quota on every Antigravity account via daily hub', async ()
     paidTier: { id: 'g1-pro-tier' },
     currentTier: { id: 'STANDARD TIER' },
   }), 'g1-pro-tier')
+  assert.equal(antigravityPlanType({
+    paidTier: { name: 'Google AI Pro' },
+    currentTier: { id: 'STANDARD TIER' },
+  }), 'Google AI Pro')
+  assert.equal(antigravityPlanType({
+    paidTier: { name: 'Google AI Pro' },
+    currentTier: { id: 'free-tier' },
+  }), 'Google AI Pro')
+  assert.equal(antigravityPlanType({ currentTier: { id: 'STANDARD TIER' } }), undefined)
+  assert.equal(antigravityPlanType({ currentTier: { id: 'free-tier' } }), 'free-tier')
+  assert.equal(first.planLabel, 'Pro')
 })
 
 test('import reads the official CLI token file and CLIProxyAPI auth json', async () => {
@@ -801,6 +816,9 @@ test('snapshot exposes Antigravity needsValidation and validationUrl on the card
       const href = String(url)
       if (href === ANTIGRAVITY_LOAD_CODE_ASSIST_URL) {
         return jsonResponse({ currentTier: { id: 'STANDARD TIER' }, cloudaicompanionProject: 'p1' })
+      }
+      if (href === ANTIGRAVITY_QUOTA_SUMMARY_URL) {
+        return new Response('not found', { status: 404 })
       }
       if (href === daily) {
         return jsonResponse({ models: { 'gemini-3-flash': { quotaInfo: { remainingFraction: 0.5 } } } })

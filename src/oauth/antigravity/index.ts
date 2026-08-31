@@ -42,6 +42,7 @@ function cloudCodeUrl(base, rpc, query = '') {
 
 export const ANTIGRAVITY_LOAD_CODE_ASSIST_URL = cloudCodeUrl(ANTIGRAVITY_API_URL, 'loadCodeAssist')
 export const ANTIGRAVITY_MODELS_URL = cloudCodeUrl(ANTIGRAVITY_API_URL, 'fetchAvailableModels')
+export const ANTIGRAVITY_QUOTA_SUMMARY_URL = cloudCodeUrl(ANTIGRAVITY_API_URL, 'retrieveUserQuotaSummary')
 export const ANTIGRAVITY_ONBOARD_USER_URL = cloudCodeUrl(ANTIGRAVITY_DAILY_API_URL, 'onboardUser')
 export const ANTIGRAVITY_GENERATE_URL = cloudCodeUrl(ANTIGRAVITY_API_URL, 'generateContent')
 export const ANTIGRAVITY_STREAM_URL = cloudCodeUrl(ANTIGRAVITY_API_URL, 'streamGenerateContent', '?alt=sse')
@@ -412,15 +413,41 @@ export function defaultAntigravityTierId(loadResp) {
   return current ?? 'free-tier'
 }
 
-export function antigravityPlanType(loadResp) {
-  return trimmed(loadResp?.paidTier?.id)
-    ?? trimmed(loadResp?.paid_tier?.id)
-    ?? trimmed(loadResp?.subscriptionTier)
-    ?? trimmed(loadResp?.subscription_tier)
-    ?? trimmed(loadResp?.currentTier?.id)
-    ?? trimmed(loadResp?.current_tier?.id)
-    ?? trimmed(loadResp?.tierId)
+function tierClaim(tier) {
+  if (typeof tier === 'string') return trimmed(tier)
+  return trimmed(tier?.name) ?? trimmed(tier?.id) ?? trimmed(tier?.quotaTier) ?? trimmed(tier?.slug)
 }
+
+/** Code Assist SKU — not the Google AI / Antigravity subscription. */
+export function isCodeAssistOnlyPlan(raw) {
+  const compact = String(raw ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '')
+  return compact === 'standard' || compact === 'standardtier' || compact === 'legacy' || compact === 'legacytier'
+}
+
+function googleAiClaim(value) {
+  const claim = tierClaim(value)
+  if (!claim || isCodeAssistOnlyPlan(claim)) return undefined
+  return claim
+}
+
+/**
+ * Google AI plan. Prefer paidTier name/id (Google AI Pro / Ultra).
+ * currentTier is Code Assist: STANDARD is ignored, free-tier is kept.
+ */
+export function antigravityPlanType(loadResp) {
+  return googleAiClaim(loadResp?.paidTier)
+    ?? googleAiClaim(loadResp?.paid_tier)
+    ?? googleAiClaim(loadResp?.subscriptionTier)
+    ?? googleAiClaim(loadResp?.subscription_tier)
+    ?? googleAiClaim(loadResp?.userTier)
+    ?? googleAiClaim(loadResp?.user_tier)
+    ?? googleAiClaim(loadResp?.planName)
+    ?? googleAiClaim(loadResp?.plan_name)
+    ?? googleAiClaim(loadResp?.tierId)
+    ?? googleAiClaim(loadResp?.currentTier)
+    ?? googleAiClaim(loadResp?.current_tier)
+}
+
 
 export const ANTIGRAVITY_VERIFY_MESSAGE = 'Google 需要验证此账号才能对话'
 export const ANTIGRAVITY_VERIFY_CODE = 'VALIDATION_REQUIRED'
