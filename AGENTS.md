@@ -98,19 +98,162 @@ Rules:
 - Settings React → `src/ui/`.
 - Do not flatten modules back into a single `lib/*.js` bag.
 
-## Prompt cache (do not mix)
+## Prompt cache — 设计规范（硬约定，禁止混用）
 
-Each OAuth family has a different cache. Copying Codex suffix-park or Grok shard headers onto another vendor is a bug.
+Each OAuth family has a **different** prompt cache. Copying Codex
+suffix-park, Grok shard headers, GLM `user` / `x-session-id`, Gemini
+`systemInstruction`, or Kiro `conversationId` onto another vendor is a
+bug. `proxy.ts` only **dispatches**; it must not pin a shared key.
 
-| Family | What the backend caches | Sticky identity | This plugin |
-|---|---|---|---|
-| **Codex** | Longest stable prefix of `instructions` then `input` | `session-id` + `x-client-request-id` = `prompt_cache_key` | Park extra developer/system at the **input suffix**. Strip `prompt_cache_retention` / `prompt_cache_options`. |
-| **Grok** | Server shard keyed by conversation | `x-grok-conv-id` (+ body `prompt_cache_key`) | Never copy Codex `session-id` headers. A later 512-token block with <10% reuse is an **affinity miss**. |
-| **GLM** | Implicit **content hash** of leading system + history. No shard key. | Body `user` + header `x-session-id` | Freeze the first leading system; park later DSH snapshots at the **messages suffix**. Do **not** send `prompt_cache_key`. Thinking models need `clear_thinking: false`. |
-| **Antigravity** | Gemini implicit cache on `systemInstruction` + contents | `request.sessionId` on generateContent | Pin the first `systemInstruction`; park extras as a trailing **user** turn. Map `cachedContentTokenCount` → `prompt_tokens_details.cached_tokens`. Never `Date.now()`. |
-| **Kiro** | CodeWhisperer conversation | `conversationState.conversationId` | Pin per DSH session. Hits are `cacheReadInputTokens`. Never `Date.now()`. No Codex/Grok cache fields. |
+### Invariants
 
-`src/utils/analyze-session.ts` may **label** hits by family. It must not rewrite upstream bodies.
+- One file: `src/oauth/<id>/cache.ts`. Identity, headers, prefix pin, and
+  field stripping for that vendor live **only** there.
+- Do **not** import another family's cache helper. Do **not** revive
+  `src/utils/cache-session.ts` or a shared `codexCacheSessionId`.
+- Do **not** stamp `Date.now()` (or any per-request random) as a session /
+  conversation / cache id. Missing DSH ids fall back to a **stable
+  constant** owned by that family (`dsh-antigravity`, `dsh-kiro`, …).
+- DSH may send `session_id` and/or `prompt_cache_key`. Mapping those onto
+  the vendor wire is family-owned. Reading DSH's key is fine; writing
+  Codex fields upstream is not, unless that vendor actually uses them.
+- `src/utils/analyze-session.ts` may **label** hits by family. It must
+  not rewrite upstream bodies.
+
+### `cache.ts` contract
+
+Export (names may vary, behavior must not):
+
+1. `<id>CacheSessionId(key)` — sanitize that family's id. Empty / non-string
+   → `undefined`. Clip is family-owned (today 1–64 of `[A-Za-z0-9._:-]`,
+   but the function still lives in that folder so the charset can diverge).
+2. Apply / pin helper used by `request.ts` or `proxy.ts`
+   (`applyCodexCache`, `applyGrokCache`, `applyGlmCache`,
+   `antigravitySessionIdOf` + `pinAntigravitySystemInstruction`,
+   `kiroConversationId`).
+3. Header helper if the vendor sticky-routes on headers
+   (`codexCacheHeaders`, `grokAffinityHeaders`). GLM headers stay in
+   `glm/index.ts` (`x-session-id`) and call `glmCacheSessionId`.
+4. `reset*Pins()` when the family keeps an in-process prefix map (tests
+   call this between cases).
+
+`proxy.rewriteUpstreamBody` switches on `family` and calls **that**
+helper. No `pinCache = family === 'codex' || family === 'grok' || …`.
+
+### DSH → vendor
+
+DSH / llm-pi-ai often prepends a **runtime-context snapshot** as another
+leading system/developer every step (`This snapshot supersedes…`). That
+rewrite busts any prefix cache. Parking is family-owned and the park
+**shape** follows the vendor, not Codex.
+
+```text
+DSH body:  session_id?  prompt_cache_key?  messages/input  (volatile leading system)
+
+Codex:     prompt_cache_key + headers session-id / x-client-request-id
+           extra developer parked at input suffix
+Grok:      prompt_cache_key + header x-grok-conv-id
+           no Codex session-id headers
+GLM:       body.user + header x-session-id
+           drop prompt_cache_key / retention / options
+           extra system parked at messages suffix
+Antigravity: request.sessionId
+           first systemInstruction pinned; extra → trailing user turn
+Kiro:      conversationState.conversationId
+           drop Codex/Grok cache fields
+```
+
+### Per family
+
+**Codex** (`src/oauth/codex/cache.ts` + prefix lift in `request.ts`)
+
+- Backend matches the longest stable prefix of top-level `instructions`
+  then `input`. Extra leading `developer` / `system` in `input` (plan
+  dumps, header rebuilds) must not stay at the front.
+- Sticky: `session-id` = `x-client-request-id` = `prompt_cache_key`.
+- Strip `prompt_cache_retention` / `prompt_cache_options` (gpt-5.6 400).
+- Healthy long session: weighted hit ≥ 80%, **zero** affinity misses.
+  Compaction / plan-rebuild zeros are not shard misses.
+
+**Grok** (`src/oauth/grok/cache.ts`)
+
+- xAI sticky-routes the prompt cache by **shard**, keyed on
+  `x-grok-conv-id`. Codex `session-id` / `x-client-request-id` are ignored
+  and must not be copied.
+- Body still carries `prompt_cache_key` with the same cleaned id.
+- A later **512-token** cache block with <10% reuse is an **affinity miss**
+  (wrong shard), not a prefix rewrite.
+
+**GLM** (`src/oauth/glm/cache.ts` + thinking in `request.ts`)
+
+- Z.AI Coding Plan is an **implicit content-hash** of leading system +
+  history. There is **no** shard key.
+  https://docs.z.ai/guides/capabilities/cache
+- Sticky: OpenAI `user` + `x-session-id`. Quota/biz hops without a DSH
+  pin keep the process-level `sess_<24hex>` (not a chat cache id).
+- **Do not** send `prompt_cache_key`, `prompt_cache_retention`, or
+  `prompt_cache_options`.
+- Pin the first leading `system` run per DSH session. Later snapshots go
+  after the conversation (`role: system` at the **messages suffix**).
+- GLM-5.3 / Flash: `thinking: { type: 'enabled', clear_thinking: false }`
+  and keep previous `reasoning_content`. A 576-token remnant after a
+  leading splice is a **prefix break**, not a Grok affinity miss.
+- Hits: OpenAI `prompt_tokens_details.cached_tokens` /
+  `cache_read_input_tokens`. Anthropic-compat may set `cache_control`.
+
+**Antigravity** (`src/oauth/antigravity/cache.ts` + usage map in `request.ts`)
+
+- Gemini implicit-caches `systemInstruction` + contents prefix.
+- Sticky: `request.sessionId` on generateContent. Fallback constant
+  `dsh-antigravity`. Never `` `-${Date.now()}` ``.
+- Pin the first `systemInstruction` text per DSH session. Extra snapshot
+  text is a trailing **user** turn (Gemini has no trailing system the way
+  GLM messages do).
+- Map `cachedContentTokenCount` / `cacheTokensDetails` → OpenAI
+  `prompt_tokens_details.cached_tokens` or DSH hit rate stays 0%.
+
+**Kiro** (`src/oauth/kiro/cache.ts`)
+
+- AWS CodeWhisperer conversation cache. Sticky:
+  `conversationState.conversationId`. Fallback `dsh-kiro`. Never
+  `Date.now()`.
+- Hits: `cacheReadInputTokens` on the event stream.
+- No Codex `prompt_cache_key`, no Grok `x-grok-conv-id`, no Gemini
+  systemInstruction pin.
+
+### New family checklist (cache)
+
+When adding `src/oauth/<id>/`:
+
+1. Add `cache.ts` in **that** folder in the same PR.
+2. Document the backend (prefix hash / shard / conversation / other) in
+   this section — one row in the table below **and** the bullets above.
+3. Wire `proxy.ts` with an explicit `family === '<id>'` branch. Do not
+   extend a shared `pinCache` boolean.
+4. Tests: sanitizer, sticky id across two turns, “does not inherit Codex
+   / Grok headers or `prompt_cache_key` unless this vendor uses them”,
+   and prefix-park if DSH snapshots would bust the cache.
+5. Usage mapping: if the vendor returns cache hits under a non-OpenAI
+   name, translate them so DSH `cacheReadTokens` is non-zero.
+
+| Family | Backend cache | Sticky identity | Park extras | Hit field |
+|---|---|---|---|---|
+| Codex | prefix of `instructions` then `input` | `session-id` + `x-client-request-id` = `prompt_cache_key` | developer at **input suffix** | `cacheReadTokens` |
+| Grok | conversation shard | `x-grok-conv-id` (+ body `prompt_cache_key`) | n/a (shard, not prefix) | `cacheReadTokens`; 512 + reuse<10% = affinity miss |
+| GLM | content hash of leading system + history | `user` + `x-session-id` | system at **messages suffix** | `cached_tokens` / `cache_read_input_tokens` |
+| Antigravity | Gemini `systemInstruction` + contents | `request.sessionId` | extra as trailing **user** | `cachedContentTokenCount` → `cached_tokens` |
+| Kiro | CodeWhisperer conversation | `conversationId` | n/a | `cacheReadInputTokens` |
+
+### Do not
+
+- Share one sanitizer / pin map / header helper across families.
+- Write Codex `session-id` or `prompt_cache_key` to GLM / Kiro / Antigravity.
+- Write Grok `x-grok-conv-id` to anyone else.
+- Park GLM extras as a Gemini user turn, or Gemini extras as a GLM
+  trailing system, “because parking is the same idea”.
+- Treat a GLM 576-token remnant as a Grok affinity miss, or a Grok 512
+  block as a GLM prefix break.
+- Put cache rewrite in `src/utils/`.
 
 ## Adding a new OAuth family
 
