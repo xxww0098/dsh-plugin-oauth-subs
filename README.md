@@ -50,7 +50,8 @@ Already signed in on this machine via Codex CLI, Grok CLI, Hermes, ZCode Desktop
 - `~/.zcode/v2/config.json` (ZCode Desktop; also older `~/.zcode/cli/config.json` / `~/.zcode/config.json`)
 - `credentials.json` (kiro.rs CWD dump)
 - `~/.kiro/credentials.json`
-- `~/.aws/sso/cache/kiro-auth-token.json`
+- `~/.aws/sso/cache/kiro-auth-token.json` (IdC pairs the hashed client registration in the same folder)
+- Paste in Settings: kiro-manager-lite kami / compact JSON / full backup / CSV, or a Social refresh token / `ksk_…`
 - `~/.gemini/antigravity-cli/antigravity-oauth-token`
 - `~/.cli-proxy-api/antigravity-*.json`
 

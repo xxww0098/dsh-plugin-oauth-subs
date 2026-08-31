@@ -45,6 +45,7 @@ import {
   validateKiroIdpEndpoint,
   validateKiroRefreshToken,
 } from './kiro/index.js'
+import { isKiroBatchImport, parseKiroImportText } from './kiro/import.js'
 import {
   antigravityFlow,
   ANTIGRAVITY_PREEMPT_MS,
@@ -573,6 +574,10 @@ export class AuthController {
 
   async #useKiroKey(key, payload = {}) {
     const raw = typeof key === 'string' ? key.trim() : ''
+    const parsed = parseKiroImportText(raw)
+    if (isKiroBatchImport(parsed.kind) && parsed.sessions.length > 0) {
+      return this.#saveKiroImports(parsed.sessions, { refreshMissingAccess: true })
+    }
     const mode = canonicalizeKiroMethod(payload.mode ?? payload.authMethod, {
       tokenEndpoint: payload.tokenEndpoint,
     })
@@ -612,7 +617,40 @@ export class AuthController {
     this.lastError.delete('kiro')
     this.onAuthChanged?.('kiro')
     void this.quota.refresh('kiro')
-    return { method: session.authMethod, account: publicSession('kiro', session) }
+    return { method: session.authMethod, account: publicSession('kiro', session), count: 1 }
+  }
+
+  async #saveKiroImports(sessions, { refreshMissingAccess = false } = {}) {
+    this.claim('kiro')
+    this.flows.pending('kiro')?.cancel()
+    this.kiroFlows.pending('kiro')?.cancel()
+    const saved = []
+    const errors = []
+    for (const draft of sessions) {
+      let session = draft
+      const method = canonicalizeKiroMethod(session.authMethod, { tokenEndpoint: session.tokenEndpoint })
+      const needsRefresh = refreshMissingAccess
+        && method !== 'api_key'
+        && (!session.accessToken || session.accessToken === session.refreshToken)
+      try {
+        if (needsRefresh) session = await refreshKiro(session, { fetchFn: this.fetchFn })
+        await saveSession('kiro', session, this.authPath, { activate: saved.length === 0 })
+        saved.push(session)
+      } catch (error) {
+        errors.push(error instanceof Error ? error.message : String(error))
+      }
+    }
+    if (saved.length === 0) {
+      throw new Error(errors[0] || 'no Kiro credentials imported')
+    }
+    this.lastError.delete('kiro')
+    this.onAuthChanged?.('kiro')
+    void this.quota.refresh('kiro')
+    return {
+      method: saved[0]?.authMethod,
+      account: publicSession('kiro', saved[0]),
+      count: saved.length,
+    }
   }
 
   async manual(provider, input) {
@@ -664,11 +702,20 @@ export class AuthController {
     this.devices.pending(provider)?.cancel()
     this.glmFlows.pending(provider)?.cancel()
     this.kiroFlows.pending(provider)?.cancel()
-    await saveSession(provider, result.session, this.authPath)
+    const sessions = provider === 'kiro' && Array.isArray(result.sessions) && result.sessions.length > 0
+      ? result.sessions
+      : [result.session]
+    for (let i = 0; i < sessions.length; i++) {
+      await saveSession(provider, sessions[i], this.authPath, { activate: i === 0 })
+    }
     this.lastError.delete(provider)
     this.onAuthChanged?.(provider)
     void this.quota.refresh(provider)
-    return { source: result.source, account: publicSession(provider, result.session) }
+    return {
+      source: result.source,
+      account: publicSession(provider, sessions[0]),
+      count: sessions.length,
+    }
   }
 
   async setModels(payload = {}) {

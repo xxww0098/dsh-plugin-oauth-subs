@@ -10,6 +10,7 @@ AWS **Kiro / CodeWhisperer**。协议对齐 [ZyphrZero/kiro.rs](https://github.c
 | 文件 | 职责 |
 |---|---|
 | [`index.ts`](index.ts) | 五种凭据、portal PKCE、刷新、profileArn、用量头、目录 |
+| [`import.ts`](import.ts) | 卡密 / JSON / CSV / kiro.rs / IDE token 解析；SSO client 配对 |
 | [`idc-flow.ts`](idc-flow.ts) | AWS SSO OIDC register + JSON device poll（Builder ID / 企业 IdC） |
 | [`request.ts`](request.ts) | OpenAI chat ↔ `conversationState` + eventstream → `chat.completion` |
 | [`cache.ts`](cache.ts) | `conversationState.conversationId`。禁止 `Date.now()` |
@@ -30,8 +31,23 @@ AWS **Kiro / CodeWhisperer**。协议对齐 [ZyphrZero/kiro.rs](https://github.c
 | Entra / Azure AD | 企业 SSO | `external_idp`，token endpoint 必须是 `*.microsoftonline.com` / `.us` / `.cn` | `refresh_token` grant |
 | API Key | `ksk_…` | 直接 bearer，`KIRO_NEVER_EXPIRES` | |
 
-`canonicalizeKiroMethod` 把 `oauth`/`github`/`google` → `social`，`builder-id` → `idc`，`azuread`/`entra` → `external_idp`。
-导入：`importKiroAuth` / `sessionFromKiroAuth`。
+`canonicalizeKiroMethod` 把 `oauth`/`github`/`google`/`gmail`/`gh` → `social`，`builder-id`/`builderid` → `idc`，`azuread`/`entra` → `external_idp`。
+没有 `authMethod` 时 `inferKiroAuthMethod` 看 provider / 是否带 clientId+secret：GitHub/Google 是 social，Builder ID / Enterprise 是 idc。
+
+导入：`parseKiroImportText` / `sessionsFromKiroAuth` / `importKiroAuth`。格式蒸馏自 [kiro-manager-lite](https://github.com/lucks-cloud/kiro-manager-lite)（**不**抄 AGPL 源码）和 kiro.rs：
+
+| 来源 | 形状 |
+|---|---|
+| 卡密 | `邮箱----密码----RefreshToken----ClientId----ClientSecret----登录方式`（也认 Tab / 连续空格 / 逗号） |
+| 精简 JSON | `[{ email, refreshToken, provider, clientId, clientSecret }]` |
+| 完整备份 | `{ app: "kiro-account-lite", accounts: [{ email, idp, credentials }] }` |
+| CSV / TXT | 表头 `邮箱` / `email` / `refreshToken` / `登录方式` |
+| kiro.rs | `credentials.json` 数组或对象 |
+| Kiro IDE | `~/.aws/sso/cache/kiro-auth-token.json`；IdC 用 `clientIdHash` 配对旁边的 OIDC 注册 json |
+| API key | 一行一个 `ksk_…` |
+
+**导入本机会话** 扫本地文件，**一次写入全部账号**（不再只取第一条）。IDE token 缺 clientId/secret 时补上 SSO 缓存里的注册，否则 Builder ID 之后刷新会 401。Settings **粘贴凭证** 吃上面任何一种文本；只有 refresh、没有 access 时会按方法走 `refreshKiro`。
+
 登录成功后 Settings 必须清掉「打开授权页」（`busy === false`），否则授权条还挂在已登录卡下面。
 
 ## 对话
@@ -86,6 +102,7 @@ proxy 只删 `prompt_cache_retention` / `prompt_cache_options`，**不**把 `pro
 - 不要把 Social 的 `redirect_uri` 在 authorize 和 token 之间改掉（HTTP 500）。
 - 不要只 stub `GenerateAssistantResponse`（会 501）。
 - 不要把 `api` 改成 Responses / Anthropic。
+- 不要把 kiro-manager-lite 的 AGPL 源码贴进来；只蒸馏格式，解析器写自己的。
 
 ## 追溯
 
@@ -96,5 +113,6 @@ proxy 只删 `prompt_cache_retention` / `prompt_cache_options`，**不**把 `pro
 | 登录成功授权页还在 | 同文件 2026-08-31 打开授权页 |
 | 模型缺思考深度 / 输入类型 | 同文件 2026-08-31 Kiro 模型 |
 | 对话不是 OpenAI | 同文件 2026-08-30（已在 0.0.50 做成翻译层） |
+| 导入只吃第一条 / IDE 丢 client 注册 | 同文件 2026-08-31 Kiro 导入 |
 
 测试：`test/kiro.test.ts`、`test/cache-families.test.ts`、`test/proxy.test.ts`。
