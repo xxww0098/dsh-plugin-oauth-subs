@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Quota reset labels keep leftover minutes (`4 小时 32 分钟后重置` / `resets in 4 h 32 min`) instead of rounding to whole hours.
+- Prompt cache is per OAuth family (`src/oauth/<id>/cache.ts`). Codex, Grok, GLM, Kiro, and Antigravity no longer share `codexCacheSessionId`. GLM drops Codex `prompt_cache_key` and pins the leading system so Z.AI implicit cache can keep the prefix.
 
 ## 0.0.51
 

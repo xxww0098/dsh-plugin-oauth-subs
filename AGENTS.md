@@ -55,19 +55,25 @@ src/
     codex/                 ChatGPT Codex only
       index.ts             catalog, identity, session, OAuth endpoints
       request.ts           Responses body: prefix stabilize, strip retention
+      cache.ts             prompt_cache_key + session-id / x-client-request-id
     grok/                  xAI Grok only
       index.ts             catalog, identity, device/PKCE endpoints
       device-flow.ts       RFC 8628
+      cache.ts             prompt_cache_key + x-grok-conv-id (not Codex headers)
     glm/                   Zhipu GLM Coding Plan (Z.ai global + BigModel China)
       index.ts             catalog, CLI poll OAuth, key mint, headers
       cli-flow.ts          ZCode /oauth/cli/init + poll (`zai` / `bigmodel`)
+      request.ts           chat body: roles, thinking, reasoning_content
+      cache.ts             implicit prefix hash + user / x-session-id
     kiro/                  AWS Kiro (Social / Builder ID / IdC / Entra / API key)
       index.ts             catalog, identity, portal PKCE, refresh, usage headers
       idc-flow.ts          AWS SSO OIDC register + JSON device poll
       request.ts           OpenAI chat ↔ generateAssistantResponse eventstream
+      cache.ts             conversationId (never Date.now())
     antigravity/           Google Antigravity (cloudcode-pa)
       index.ts             catalog, identity, Google OAuth, fingerprint
       request.ts           OpenAI chat ↔ generateContent
+      cache.ts             generateContent sessionId + systemInstruction pin
   ui/                      React Settings (classic-script factory)
     client.ts
   utils/                   shared, provider-agnostic
@@ -87,9 +93,24 @@ scripts/                   CLI (TypeScript)
 Rules:
 
 - Codex-only code → `src/oauth/codex/`. Grok-only code → `src/oauth/grok/`. GLM-only code → `src/oauth/glm/`. Kiro-only code → `src/oauth/kiro/`. Antigravity-only code → `src/oauth/antigravity/`.
+- **Cache is per family.** Each `src/oauth/<id>/cache.ts` owns that vendor's prompt-cache identity, headers, and prefix pin. Do not import Codex cache helpers from Grok / GLM / Kiro / Antigravity. Do not share a `codexCacheSessionId` in `src/utils/`. `proxy.ts` only dispatches.
 - Shared crypto / session scoring → `src/utils/`.
 - Settings React → `src/ui/`.
 - Do not flatten modules back into a single `lib/*.js` bag.
+
+## Prompt cache (do not mix)
+
+Each OAuth family has a different cache. Copying Codex suffix-park or Grok shard headers onto another vendor is a bug.
+
+| Family | What the backend caches | Sticky identity | This plugin |
+|---|---|---|---|
+| **Codex** | Longest stable prefix of `instructions` then `input` | `session-id` + `x-client-request-id` = `prompt_cache_key` | Park extra developer/system at the **input suffix**. Strip `prompt_cache_retention` / `prompt_cache_options`. |
+| **Grok** | Server shard keyed by conversation | `x-grok-conv-id` (+ body `prompt_cache_key`) | Never copy Codex `session-id` headers. A later 512-token block with <10% reuse is an **affinity miss**. |
+| **GLM** | Implicit **content hash** of leading system + history. No shard key. | Body `user` + header `x-session-id` | Freeze the first leading system; park later DSH snapshots at the **messages suffix**. Do **not** send `prompt_cache_key`. Thinking models need `clear_thinking: false`. |
+| **Antigravity** | Gemini implicit cache on `systemInstruction` + contents | `request.sessionId` on generateContent | Pin the first `systemInstruction`; park extras as a trailing **user** turn. Map `cachedContentTokenCount` → `prompt_tokens_details.cached_tokens`. Never `Date.now()`. |
+| **Kiro** | CodeWhisperer conversation | `conversationState.conversationId` | Pin per DSH session. Hits are `cacheReadInputTokens`. Never `Date.now()`. No Codex/Grok cache fields. |
+
+`src/utils/analyze-session.ts` may **label** hits by family. It must not rewrite upstream bodies.
 
 ## Adding a new OAuth family
 
@@ -122,9 +143,11 @@ tab. Follow this checklist in one PR.
 6. **Plan labels** (`src/oauth/plan.ts`): map wire slugs to the product
    name users see (`Pro 20x`, `SuperGrok Heavy`, `Lite`). Family-specific
    collisions (`glm` `pro` → `Pro`, Codex `pro` → `Pro 20x`) belong here.
-7. **Proxy / tokens** only if chat actually goes through the local
+7. **Proxy / tokens / cache** only if chat actually goes through the local
    Responses proxy. GLM talks to Z.ai / BigModel directly — do not force
-   a proxy hop.
+   a proxy hop. Prompt cache **must** be a new `src/oauth/<id>/cache.ts`.
+   Do not import another family's cache helper, and do not revive
+   `src/utils/cache-session.ts`.
 8. **Tests** under `test/`: login parse, session round-trip, catalog
    input types, and `snapshot shows quota on every <id> account`.
 
@@ -233,6 +256,10 @@ misses, no TRANSPORT. Compaction / plan rebuild zeros are not shard misses.
 Grok uses `x-grok-conv-id` + body `prompt_cache_key`, not Codex
 `session-id` headers; a later 512-token cache block with <10% reuse is an
 affinity miss (wrong xAI shard), not a prefix rewrite.
+GLM uses a content-hash prefix (`user` / `x-session-id`); a 576-token remnant
+after a leading-system splice is a **prefix break**, not a Grok affinity miss.
+Antigravity hits are `cachedContentTokenCount`. Kiro hits are
+`cacheReadInputTokens`.
 `Error: tool call timed out after 30000ms` is `dsh-tool-fs-search`, not
 this proxy — record it in `docs/error.md`, do not add `toolTimeoutMs` here.
 

@@ -26,7 +26,7 @@ import {
   parseCliPoll,
   unwrapEnvelope,
 } from '../lib/oauth/glm/index.js'
-import { normalizeGlmChatBody } from '../lib/oauth/glm/request.js'
+import { normalizeGlmChatBody, resetGlmSystemPins } from '../lib/oauth/glm/request.js'
 import { fetchGlmQuota, mergeGlmToolUsage, parseGlmQuota } from '../lib/oauth/quota.js'
 import { buildProviders } from '../lib/oauth/models.js'
 import { AuthController } from '../lib/oauth/controller.js'
@@ -115,6 +115,67 @@ test('normalizeGlmChatBody maps unknown instructional roles to system and leaves
   const rewritten = normalizeGlmChatBody(inputOnly)
   assert.equal(rewritten.input[0].role, 'developer')
   assert.equal(rewritten.thinking.clear_thinking, false)
+})
+
+test('normalizeGlmChatBody parks extra leading system snapshots after the conversation', () => {
+  resetGlmSystemPins()
+  const first = normalizeGlmChatBody({
+    model: 'glm-5.3-flash',
+    session_id: 'session-cache-glm',
+    prompt_cache_key: 'should-not-leave',
+    messages: [
+      { role: 'developer', content: 'You are an AI agent.' },
+      { role: 'user', content: 'analyze the repo' },
+    ],
+  })
+  assert.deepEqual(first.messages.map((message) => message.role), ['system', 'user'])
+  assert.equal(first.messages[0].content, 'You are an AI agent.')
+  assert.equal(first.user, 'session-cache-glm')
+  assert.equal(first.prompt_cache_key, undefined)
+
+  const later = normalizeGlmChatBody({
+    model: 'glm-5.3-flash',
+    session_id: 'session-cache-glm',
+    messages: [
+      { role: 'system', content: 'You are an AI agent.' },
+      { role: 'system', content: 'Current runtime context. This snapshot supersedes earlier runtime-context snapshots.' },
+      { role: 'user', content: 'analyze the repo' },
+      { role: 'assistant', content: 'ok' },
+    ],
+  })
+  assert.equal(later.messages[0].content, 'You are an AI agent.')
+  assert.equal(later.messages[1].role, 'user')
+  assert.equal(later.messages[1].content, 'analyze the repo')
+  assert.equal(later.messages.at(-1).role, 'system')
+  assert.match(later.messages.at(-1).content, /Current runtime context/)
+  assert.equal(later.user, 'session-cache-glm')
+  resetGlmSystemPins()
+})
+
+test('normalizeGlmChatBody keeps a matching leading system pinned across identical follow-ups', () => {
+  resetGlmSystemPins()
+  const body = {
+    model: 'glm-5.3',
+    prompt_cache_key: 'session-glm-stable',
+    messages: [
+      { role: 'system', content: 'stable prefix' },
+      { role: 'user', content: 'one' },
+    ],
+  }
+  const first = normalizeGlmChatBody(body)
+  const second = normalizeGlmChatBody({
+    ...body,
+    messages: [
+      { role: 'system', content: 'stable prefix' },
+      { role: 'user', content: 'two' },
+    ],
+  })
+  assert.equal(first.messages[0], second.messages[0])
+  assert.equal(second.messages[1].content, 'two')
+  assert.equal(second.messages.length, 2)
+  assert.equal(second.prompt_cache_key, undefined)
+  assert.equal(second.user, 'session-glm-stable')
+  resetGlmSystemPins()
 })
 
 test('unwrapEnvelope accepts ZCode code 0 and biz code 200', () => {
