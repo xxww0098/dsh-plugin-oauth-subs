@@ -70,7 +70,9 @@ DSH chat/completions  →  POST https://q.<region>.amazonaws.com/
 - tools 仍在 **current** `userInputMessageContext.tools`（官方也是挂 current，不在 conversationState 顶层）。
 - 上游 401/403 改写成 400（非 AUTH），避免 DSH 把订阅打成「API 密钥无效」。
 
-命中：eventstream `cacheReadInputTokens`（也认 `token_usage` / snake_case）→ OpenAI `prompt_tokens_details.cached_tokens`（DSH `cacheReadTokens`）。头解码要走过 bool / byte / int / long / timestamp / uuid，不能在非 string 头上 `break`，否则 `:event-type` 丢了、`metadataEvent` 分不出来、usage 全 0。
+命中：有 `metadataEvent.tokenUsage`（或嵌套 `metadataEvent` / snake_case）时用精确字段，`cacheReadInputTokens` → `prompt_tokens_details.cached_tokens`。
+
+**现场 wire 往往没有 `metadataEvent`。** kiro-cli / kirogo / kiro.rs 实测 `:event-type` 是 `initial-response`、`assistantResponseEvent`、`toolUseEvent`、`contextUsageEvent`、`meteringEvent`。`meteringEvent.usage` 是 **credit**，不是 token。没有 tokenUsage 时，`prompt_tokens` = `contextUsagePercentage / 100 *` 该模型 `contextWindow`；`completion_tokens` 按输出字数估。AWS 连 context 也没下发时才保持 0/0/0。头解码仍要走过非 string 类型。
 
 ## 模型
 
@@ -94,7 +96,7 @@ AWS 按 **CodeWhisperer conversation** 粘滞。没有 Codex 前缀、没有 Gro
 | 2 | `kiroConversationId` | pin + **model**；否则 **`dsh-kiro:<model>`** |
 | 3 | `pinKiroSystemPrefix` | 每个 conversationId 钉第一次 system；DSH snapshot 增量挂 history **后缀**（再一对 user+ack） |
 | 4 | `openaiToKiro` | 写入 `conversationId`；current 不再重倒 system |
-| 5 | `mapKiroUsage` | `cacheReadInputTokens` → `prompt_tokens_details.cached_tokens` |
+| 5 | `mapKiroUsage` / `resolveKiroUsage` | 精确 `tokenUsage` 优先；否则 `contextUsageEvent` % × 窗口 |
 
 proxy 只删 `prompt_cache_retention` / `prompt_cache_options`，**不**把 `prompt_cache_key` 转给 AWS。
 测试用 `resetKiroSystemPins()`。不要和 GLM / Antigravity 共用 Map。
@@ -110,7 +112,9 @@ proxy 只删 `prompt_cache_retention` / `prompt_cache_options`，**不**把 `pro
 - 不要在 refresh 成功后保留旧 `expiresAt`（TokenManager 会每轮打 `/refreshToken` → 429）。
 - 不要把 refresh 429 映射成代理 500；原样回 429（有则带 Retry-After）。
 - 不要只 stub `GenerateAssistantResponse`（会 501）。
-- 不要在 eventstream 非 string 头上 `break`（会丢掉 `:event-type`，usage 全 0）。
+- 不要在 eventstream 非 string 头上 `break`（会丢掉 `:event-type`）。
+- 不要只认 `metadataEvent.tokenUsage`。现场流经常只有 `contextUsageEvent` + `meteringEvent`（credit）。
+- 不要把 `meteringEvent.usage` 当 token。
 - 不要把 `api` 改成 Responses / Anthropic。
 - 不要把 `none` 写成 `reasoningEfforts` 的键（DSH 只认 `off|minimal|low|medium|high|xhigh|max`）。
 - 不要把 kiro-manager-lite 的 AGPL 源码贴进来；只蒸馏格式，解析器写自己的。
@@ -129,5 +133,6 @@ proxy 只删 `prompt_cache_retention` / `prompt_cache_options`，**不**把 `pro
 | 导入只吃第一条 / IDE 丢 client 注册 | 同文件 2026-08-31 Kiro 导入 |
 | 18 模型缓存 miss（system 每轮进 current + 共用 conversationId） | 同文件 2026-08-31 Kiro 缓存 |
 | 每轮 refresh 429 + usage 0/0/0 | 同文件 2026-09-01 Kiro 0.0.57 live |
+| overlay 后 usage 仍 0/0/0（header-type 不够） | 同文件 2026-09-01 Kiro usage 真实事件 |
 
 测试：`test/kiro.test.ts`、`test/cache-families.test.ts`、`test/proxy.test.ts`。

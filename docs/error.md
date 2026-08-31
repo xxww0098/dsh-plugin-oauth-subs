@@ -1,5 +1,34 @@
 # 错误记录
 
+## 2026-09-01：Kiro overlay 后 usage 仍 0/0/0 — 现场没有 metadataEvent
+
+### 现象
+
+同一条 PR #68 overlay 到用户 Mac（2026-09-01 ~01:20–01:29 CST）。expiresAt 重写和 429 风暴都好了：过期戳 `2026-08-31 18:04:33 CST` 在第一条 200 后变成 `2026-09-01 02:22:40 CST`（~3600s），后续 200 不再 refresh。`claude-haiku-4.5` / `deepseek-3.2` 短 ping 和 4 轮 ALPHA 全 200、能记住 ALPHA、无 429/500。
+
+**每个 200 的 usage 仍是** `{prompt_tokens:0,completion_tokens:0,total_tokens:0}`，只有这三个键，没有 `prompt_tokens_details` / `cached_tokens`。eventstream 头类型修复 **没有** 把 `metadataEvent.tokenUsage` 捞出来。
+
+### 证据
+
+- `forwardKiro` 非流路径已经走 `kiroToOpenai` → `collectKiroEvents` → `mapKiroUsage`。不是 finish() 漏挂 usage，是收集结果就是 `undefined`，于是零回落。
+- 现场 CodeWhisperer `:event-type`（kiro-cli 抓包 / kirogo INTERNALS / kiro.rs）：`initial-response`、`assistantResponseEvent`、`toolUseEvent`、`contextUsageEvent`、`meteringEvent`。`metadataEvent` 在 schema 里，**很少下发**。
+- `contextUsageEvent` payload 是 `{ contextUsagePercentage }`。`meteringEvent` 是 `{ unit:"credit", unitPlural:"credits", usage:<float> }`（kiro.rs 实测确认：上游不下发 token / cache 字段）。
+- 头类型修只保证 `:event-type` 不被 `break` 丢掉。现场根本没有 `tokenUsage` 对象可映射。
+
+### 根因
+
+代理翻译层认错了事件。不是 refresh、不是指纹、不是 yaml、不是 501 stub。
+
+### 修复
+
+- 精确路径仍认 `metadataEvent` / `messageMetadataEvent` / 嵌套 `{ metadataEvent: { tokenUsage } }` / snake_case；有则优先，并加上 `cacheWriteInputTokens`。
+- 没有 tokenUsage 时：`prompt_tokens = contextUsagePercentage / 100 *` 该模型 `contextWindow`；`completion_tokens` 按输出字数估。不把 metering credit 当 token。不编 `cached_tokens`。
+- AWS 连 `contextUsageEvent` 也没有时保持 0/0/0。
+
+### 验证
+
+- `npm test`：仅 `assistantResponseEvent` → 仍 0/0/0；`assistantResponseEvent` + `contextUsageEvent` + `meteringEvent`、无 `metadataEvent` → `prompt_tokens > 0`（haiku 1.2% × 200k = 2400）；有 `tokenUsage` 时精确字段赢过百分比。无 live AWS。
+
 ## 2026-09-01：Kiro 0.0.57 live — 每轮 refresh 429、usage 全 0
 
 ### 现象

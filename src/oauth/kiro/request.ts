@@ -10,7 +10,13 @@
  */
 
 import { crc32 } from 'node:zlib'
-import { KIRO_DEFAULT_REGION, kiroUsageHeaders, kiroUsageHost } from './index.js'
+import {
+  KIRO_CONTEXT_WINDOW,
+  KIRO_DEFAULT_REGION,
+  KIRO_MODELS,
+  kiroUsageHeaders,
+  kiroUsageHost,
+} from './index.js'
 import { kiroConversationId, pinKiroSystemPrefix } from './cache.js'
 
 export { KIRO_STABLE_SESSION, kiroConversationId, pinKiroSystemPrefix, resetKiroSystemPins } from './cache.js'
@@ -27,6 +33,31 @@ function trimmed(value) {
 
 function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+const KIRO_PAYLOAD_WRAPPERS = Object.freeze([
+  'assistantResponseEvent',
+  'metadataEvent',
+  'messageMetadataEvent',
+  'contextUsageEvent',
+  'meteringEvent',
+  'toolUseEvent',
+])
+
+/** Live AWS often wraps the payload as `{ [eventType]: { … } }`. */
+export function unwrapKiroEventPayload(payload, type) {
+  if (!isPlainObject(payload)) return {}
+  if (type && isPlainObject(payload[type])) return payload[type]
+  for (const key of KIRO_PAYLOAD_WRAPPERS) {
+    if (isPlainObject(payload[key])) return payload[key]
+  }
+  return payload
+}
+
+export function kiroContextWindowOf(model) {
+  const id = typeof model === 'string' ? model.trim() : ''
+  const row = KIRO_MODELS.find((item) => item.id === id)
+  return row?.contextWindow || KIRO_CONTEXT_WINDOW
 }
 
 function kiroOsName() {
@@ -365,32 +396,30 @@ export function collectKiroEvents(events) {
   let text = ''
   const toolCalls = new Map()
   let usage
+  let contextPercentage
   let error
   for (const event of events ?? []) {
     const type = event?.type
-    const data = isPlainObject(event?.payload) ? event.payload : {}
-    if (type === 'assistantResponseEvent') {
+    const data = unwrapKiroEventPayload(event?.payload, type)
+    if (type === 'assistantResponseEvent' || typeof data.content === 'string') {
       const chunk = typeof data.content === 'string' ? data.content : ''
-      text = mergeKiroText(text, chunk).text
-      continue
+      if (chunk) text = mergeKiroText(text, chunk).text
     }
     if (type === 'toolUseEvent') {
       const id = trimmed(data.toolUseId ?? data.tool_use_id)
-      if (!id) continue
-      if (!toolCalls.has(id)) toolCalls.set(id, { id, name: trimmed(data.name) ?? 'tool', parts: [] })
-      const row = toolCalls.get(id)
-      if (trimmed(data.name)) row.name = data.name
-      if (data.stop) continue
-      if (data.input !== undefined && data.input !== '') {
-        row.parts.push(typeof data.input === 'string' ? data.input : JSON.stringify(data.input))
+      if (id) {
+        if (!toolCalls.has(id)) toolCalls.set(id, { id, name: trimmed(data.name) ?? 'tool', parts: [] })
+        const row = toolCalls.get(id)
+        if (trimmed(data.name)) row.name = data.name
+        if (!data.stop && data.input !== undefined && data.input !== '') {
+          row.parts.push(typeof data.input === 'string' ? data.input : JSON.stringify(data.input))
+        }
       }
-      continue
     }
-    const usageRaw = isPlainObject(data.tokenUsage)
-      ? data.tokenUsage
-      : isPlainObject(data.token_usage) ? data.token_usage : undefined
-    if (usageRaw) usage = mapKiroUsage(usageRaw)
-    if (type === 'metadataEvent' || type === 'metadata') continue
+    const nextUsage = usageFromPayload(data)
+    if (hasRealKiroUsage(nextUsage)) usage = nextUsage
+    const percent = contextPercentFromPayload(data)
+    if (percent !== undefined) contextPercentage = percent
     if (type === 'exception' || type === 'invalidStateEvent' || event?.messageType === 'exception') {
       error = trimmed(data.message) || trimmed(data.reason) || trimmed(data.Message) || JSON.stringify(data)
     }
@@ -403,6 +432,7 @@ export function collectKiroEvents(events) {
       function: { name: row.name, arguments: row.parts.join('') || '{}' },
     })),
     usage,
+    contextPercentage,
     error,
   }
 }
@@ -421,7 +451,7 @@ export function kiroToOpenai(eventsOrBody, { model, id = `chatcmpl-${Date.now()}
       message,
       finish_reason: collected.toolCalls.length ? 'tool_calls' : 'stop',
     }],
-    usage: collected.usage ?? { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+    usage: resolveKiroUsage(collected, model),
     ...(collected.error ? { error: { message: collected.error } } : {}),
   }
 }
@@ -441,16 +471,68 @@ function numberField(object, ...keys) {
 export function mapKiroUsage(tokens) {
   if (!isPlainObject(tokens)) return undefined
   const cacheRead = numberField(tokens, 'cacheReadInputTokens', 'cache_read_input_tokens')
+  const cacheWrite = numberField(tokens, 'cacheWriteInputTokens', 'cache_write_input_tokens') ?? 0
   const uncached = numberField(tokens, 'uncachedInputTokens', 'uncached_input_tokens') ?? 0
   const output = numberField(tokens, 'outputTokens', 'output_tokens') ?? 0
   const cached = cacheRead ?? 0
+  const prompt = uncached + cached + cacheWrite
   const usage = {
-    prompt_tokens: uncached + cached,
+    prompt_tokens: prompt,
     completion_tokens: output,
-    total_tokens: numberField(tokens, 'totalTokens', 'total_tokens') ?? (uncached + cached + output),
+    total_tokens: numberField(tokens, 'totalTokens', 'total_tokens') ?? (prompt + output),
   }
   if (cacheRead !== undefined) usage.prompt_tokens_details = { cached_tokens: cacheRead }
   return usage
+}
+
+function usageFromPayload(data) {
+  if (!isPlainObject(data)) return undefined
+  const nested = isPlainObject(data.tokenUsage)
+    ? data.tokenUsage
+    : isPlainObject(data.token_usage) ? data.token_usage : undefined
+  if (nested) return mapKiroUsage(nested)
+  if (
+    numberField(data, 'uncachedInputTokens', 'uncached_input_tokens') !== undefined
+    || numberField(data, 'cacheReadInputTokens', 'cache_read_input_tokens') !== undefined
+    || numberField(data, 'outputTokens', 'output_tokens') !== undefined
+    || numberField(data, 'totalTokens', 'total_tokens') !== undefined
+  ) {
+    return mapKiroUsage(data)
+  }
+  return undefined
+}
+
+function contextPercentFromPayload(data) {
+  if (!isPlainObject(data)) return undefined
+  return numberField(data, 'contextUsagePercentage', 'context_usage_percentage')
+}
+
+function hasRealKiroUsage(usage) {
+  if (!isPlainObject(usage)) return false
+  return usage.prompt_tokens > 0
+    || usage.completion_tokens > 0
+    || usage.total_tokens > 0
+    || usage.prompt_tokens_details?.cached_tokens > 0
+}
+
+/** Live CodeWhisperer rarely sends metadataEvent. Fall back to contextUsageEvent % × window. */
+export function kiroUsageFromContext(percent, model, text = '') {
+  const pct = typeof percent === 'number' ? percent : Number(percent)
+  if (!Number.isFinite(pct) || pct <= 0) return undefined
+  const prompt = Math.max(0, Math.round(kiroContextWindowOf(model) * pct / 100))
+  if (prompt <= 0) return undefined
+  const completion = text ? Math.max(1, Math.ceil(String(text).length / 4)) : 0
+  return {
+    prompt_tokens: prompt,
+    completion_tokens: completion,
+    total_tokens: prompt + completion,
+  }
+}
+
+export function resolveKiroUsage(collected, model) {
+  if (hasRealKiroUsage(collected?.usage)) return collected.usage
+  return kiroUsageFromContext(collected?.contextPercentage, model, collected?.text)
+    ?? { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
 }
 
 export function kiroToOpenaiChunk(delta, { model, id, done = false, finishReason = null, usage } = {}) {

@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { createProxy } from '../lib/oauth/proxy.js'
-import { SOCIAL_PROFILE_ARN, kiroSession, kiroUsageHeaders } from '../lib/oauth/kiro/index.js'
-import { KIRO_MODELS } from '../lib/oauth/kiro/index.js'
+import { KIRO_CONTEXT_WINDOW, KIRO_DEEPSEEK_CONTEXT, KIRO_MODELS, SOCIAL_PROFILE_ARN, kiroSession, kiroUsageHeaders } from '../lib/oauth/kiro/index.js'
 import {
   KIRO_AMZ_TARGET,
   KIRO_CHAT_ORIGIN,
@@ -21,6 +20,7 @@ import {
   openaiToKiro,
   parseKiroEventStream,
   resetKiroSystemPins,
+  resolveKiroUsage,
 } from '../lib/oauth/kiro/request.js'
 
 const RT = `rt_${'x'.repeat(120)}`
@@ -183,6 +183,81 @@ test('eventstream fixture becomes chat.completion content', () => {
   assert.equal(openai.choices[0].message.content, 'Hello from Kiro')
   assert.equal(openai.choices[0].finish_reason, 'stop')
   assert.equal(openai.model, 'deepseek-3.2')
+  assert.equal(openai.usage.prompt_tokens, Math.round(KIRO_DEEPSEEK_CONTEXT * 1.2 / 100))
+  assert.ok(openai.usage.prompt_tokens > 0)
+})
+
+test('live AWS stream without metadataEvent uses contextUsageEvent percentage', () => {
+  const frames = encodeKiroEventStream([
+    { type: 'initial-response', payload: { conversationId: 'c1' } },
+    { type: 'assistantResponseEvent', payload: { content: 'ALPHA', modelId: 'claude-haiku-4.5' } },
+    { type: 'contextUsageEvent', payload: { contextUsagePercentage: 1.2 } },
+    { type: 'meteringEvent', payload: { unit: 'credit', unitPlural: 'credits', usage: 0.016954 } },
+  ])
+  const events = parseKiroEventStream(frames)
+  assert.equal(events.some((event) => event.type === 'metadataEvent'), false)
+  assert.equal(events.some((event) => event.type === 'contextUsageEvent'), true)
+  assert.equal(events.some((event) => event.type === 'meteringEvent'), true)
+  const collected = collectKiroEvents(events)
+  assert.equal(collected.usage, undefined)
+  assert.equal(collected.contextPercentage, 1.2)
+  const openai = kiroToOpenai(frames, { model: 'claude-haiku-4.5', id: 'chatcmpl-live' })
+  assert.equal(openai.choices[0].message.content, 'ALPHA')
+  assert.equal(openai.usage.prompt_tokens, Math.round(KIRO_CONTEXT_WINDOW * 1.2 / 100))
+  assert.ok(openai.usage.prompt_tokens > 0)
+  assert.equal(openai.usage.completion_tokens, Math.ceil('ALPHA'.length / 4))
+  assert.equal(openai.usage.prompt_tokens_details, undefined)
+  assert.notEqual(openai.usage.prompt_tokens, 0.016954)
+})
+
+test('assistantResponseEvent-only stream stays 0/0/0 when AWS omits usage events', () => {
+  const frames = encodeKiroEventStream([
+    { type: 'assistantResponseEvent', payload: { content: 'ALPHA', modelId: 'deepseek-3.2' } },
+  ])
+  const openai = kiroToOpenai(frames, { model: 'deepseek-3.2', id: 'chatcmpl-empty' })
+  assert.equal(openai.choices[0].message.content, 'ALPHA')
+  assert.deepEqual(openai.usage, { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 })
+  assert.equal(openai.usage.prompt_tokens_details, undefined)
+})
+
+test('nested metadataEvent wrapper still maps tokenUsage', () => {
+  const frame = encodeKiroEventFrame('metadataEvent', {
+    metadataEvent: {
+      tokenUsage: {
+        uncachedInputTokens: 10,
+        cacheReadInputTokens: 90,
+        cacheWriteInputTokens: 4,
+        outputTokens: 3,
+        totalTokens: 107,
+      },
+    },
+  })
+  const openai = kiroToOpenai(frame, { model: 'claude-haiku-4.5', id: 'chatcmpl-wrap' })
+  assert.equal(openai.usage.prompt_tokens, 104)
+  assert.equal(openai.usage.prompt_tokens_details.cached_tokens, 90)
+})
+
+test('metadataEvent tokenUsage wins over contextUsageEvent estimate', () => {
+  const frames = encodeKiroEventStream([
+    { type: 'assistantResponseEvent', payload: { content: 'ok' } },
+    { type: 'contextUsageEvent', payload: { contextUsagePercentage: 50 } },
+    {
+      type: 'metadataEvent',
+      payload: {
+        tokenUsage: {
+          uncachedInputTokens: 40,
+          cacheReadInputTokens: 960,
+          outputTokens: 8,
+          totalTokens: 1008,
+        },
+      },
+    },
+  ])
+  const openai = kiroToOpenai(frames, { model: 'claude-haiku-4.5', id: 'chatcmpl-prefer' })
+  assert.equal(openai.usage.prompt_tokens, 1000)
+  assert.equal(openai.usage.prompt_tokens_details.cached_tokens, 960)
+  assert.notEqual(openai.usage.prompt_tokens, Math.round(KIRO_CONTEXT_WINDOW * 50 / 100))
+  assert.equal(resolveKiroUsage({ usage: openai.usage, contextPercentage: 50, text: 'ok' }, 'claude-haiku-4.5').prompt_tokens, 1000)
 })
 
 test('kiroToOpenaiChunk emits SSE-shaped deltas', () => {
@@ -333,6 +408,8 @@ test('proxy translates hello on /kiro/v1/chat/completions and does not 501', asy
     assert.equal(ok.status, 200)
     const payload = await ok.json()
     assert.equal(payload.choices[0].message.content, 'hello')
+    assert.ok(payload.usage.prompt_tokens > 0)
+    assert.equal(payload.usage.prompt_tokens, Math.round(KIRO_DEEPSEEK_CONTEXT * 1.2 / 100))
     assert.equal(seen[0].url, 'https://q.us-east-1.amazonaws.com/')
     assert.equal(seen[0].headers['x-amz-target'], KIRO_AMZ_TARGET)
     assert.equal(seen[0].headers.accept, KIRO_EVENTSTREAM_TYPE)

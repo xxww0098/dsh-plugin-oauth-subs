@@ -27,6 +27,8 @@ import {
   mapKiroUsage,
   mergeKiroText,
   openaiToKiro,
+  resolveKiroUsage,
+  unwrapKiroEventPayload,
 } from './kiro/request.js'
 import {
   ANTIGRAVITY_GENERATE_URL,
@@ -838,6 +840,7 @@ async function forwardKiro(request, response, { session, fetchFn, maxRequestBody
   let accText = ''
   let sawTools = false
   let usage
+  let contextPercentage
   const reader = upstream.body?.getReader()
   if (!reader) {
     await writeKiroSse(response, kiroToOpenaiChunk({}, { model, id, done: true }), signal)
@@ -850,8 +853,8 @@ async function forwardKiro(request, response, { session, fetchFn, maxRequestBody
     const events = parser.feed(value ?? Buffer.alloc(0))
     for (const event of events) {
       const type = event.type
-      const data = event.payload && typeof event.payload === 'object' ? event.payload : {}
-      if (type === 'assistantResponseEvent' && typeof data.content === 'string' && data.content) {
+      const data = unwrapKiroEventPayload(event.payload, type)
+      if ((type === 'assistantResponseEvent' || typeof data.content === 'string') && typeof data.content === 'string' && data.content) {
         const merged = mergeKiroText(accText, data.content)
         accText = merged.text
         if (merged.delta) {
@@ -869,14 +872,15 @@ async function forwardKiro(request, response, { session, fetchFn, maxRequestBody
           }
         }
         await writeKiroSse(response, kiroToOpenaiChunk(delta, { model, id }), signal)
-      } else if (type === 'metadataEvent' || type === 'metadata' || data.tokenUsage || data.token_usage) {
-        const tokens = data.tokenUsage ?? data.token_usage
-        if (tokens) usage = mapKiroUsage(tokens)
       } else if (type === 'exception' || type === 'invalidStateEvent' || event.messageType === 'exception') {
         const message = data.message || data.reason || 'kiro upstream exception'
         await writeKiroSse(response, kiroToOpenaiChunk({ content: '' }, { model, id, done: true, finishReason: 'stop' }), signal)
         console.error(`[oauth-subs] kiro upstream exception: ${message}`)
       }
+      const tokens = data.tokenUsage ?? data.token_usage
+      if (tokens) usage = mapKiroUsage(tokens)
+      const percent = data.contextUsagePercentage ?? data.context_usage_percentage
+      if (typeof percent === 'number' && Number.isFinite(percent)) contextPercentage = percent
     }
     if (done) break
   }
@@ -885,7 +889,7 @@ async function forwardKiro(request, response, { session, fetchFn, maxRequestBody
     id,
     done: true,
     finishReason: sawTools ? 'tool_calls' : 'stop',
-    usage,
+    usage: resolveKiroUsage({ usage, contextPercentage, text: accText }, model),
   }), signal)
   response.write('data: [DONE]\n\n')
   if (!response.writableEnded && !response.destroyed) response.end()

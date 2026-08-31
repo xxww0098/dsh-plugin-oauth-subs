@@ -15,6 +15,9 @@ export declare const KIRO_CHAT_ORIGIN = "AI_EDITOR";
 export declare const KIRO_AMZ_TARGET = "AmazonCodeWhispererStreamingService.GenerateAssistantResponse";
 export declare const KIRO_EVENTSTREAM_TYPE = "application/vnd.amazon.eventstream";
 export declare const KIRO_AMZ_JSON_TYPE = "application/x-amz-json-1.0";
+/** Live AWS often wraps the payload as `{ [eventType]: { … } }`. */
+export declare function unwrapKiroEventPayload(payload: any, type: any): any;
+export declare function kiroContextWindowOf(model: any): any;
 export declare function kiroChatUrl(session?: {}): string;
 /** Quota keeps accept: application/json. Chat must ask for the event stream. */
 export declare function kiroChatHeaders(session: any): {
@@ -77,6 +80,7 @@ export declare function collectKiroEvents(events: any): {
         };
     }[];
     usage: any;
+    contextPercentage: any;
     error: any;
 };
 export declare function kiroToOpenai(eventsOrBody: any, { model, id }?: {
@@ -103,6 +107,13 @@ export declare function mapKiroUsage(tokens: any): {
     completion_tokens: number;
     total_tokens: number;
 };
+/** Live CodeWhisperer rarely sends metadataEvent. Fall back to contextUsageEvent % × window. */
+export declare function kiroUsageFromContext(percent: any, model: any, text?: string): {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+};
+export declare function resolveKiroUsage(collected: any, model: any): any;
 export declare function kiroToOpenaiChunk(delta: any, { model, id, done, finishReason, usage }?: {
     done?: boolean;
     finishReason?: any;
