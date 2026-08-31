@@ -8,6 +8,7 @@ import {
   HARNESS_ANTHROPIC_API,
   HARNESS_COMPLETIONS_API,
   HARNESS_RESPONSES_API,
+  DSH_THINKING_LEVELS,
   ModelSwitch,
   buildProviders,
   catalogKeys,
@@ -44,6 +45,16 @@ function createPiAiSettings(initialProviders = {}) {
         } else if (row.op === 'set') {
           if (!DSH_APIS.has(row.value?.api)) {
             throw new Error(`llm-pi-ai: provider "${key}" api must be openai-completions | openai-responses | anthropic-messages`)
+          }
+          for (const model of row.value?.models ?? []) {
+            const efforts = model.reasoningEfforts
+            if (efforts && typeof efforts === 'object') {
+              for (const level of Object.keys(efforts)) {
+                if (!DSH_THINKING_LEVELS.includes(level)) {
+                  throw new Error(`llm-pi-ai: model "${model.id}" reasoningEfforts key "${level}" is not ${DSH_THINKING_LEVELS.join('|')}`)
+                }
+              }
+            }
           }
           next.providers[key] = structuredClone(row.value)
         }
@@ -359,8 +370,28 @@ test('logged-in Kiro persist writes oauth-kiro with the kiro.dev catalog', async
   assert.equal(stored['oauth-kiro'].reasoning, undefined)
   assert.equal(stored['oauth-kiro'].compat.supportsReasoningEffort, true)
   assert.deepEqual(stored['oauth-kiro'].models.find((model) => model.id === 'gpt-5.6-sol').input, ['text', 'image'])
+  assert.deepEqual(stored['oauth-kiro'].models.find((model) => model.id === 'gpt-5.6-sol').reasoningEfforts, {
+    off: 'none',
+    low: 'low',
+    medium: 'medium',
+    high: 'high',
+    xhigh: 'xhigh',
+    max: 'max',
+  })
   assert.deepEqual(stored['oauth-kiro'].models.find((model) => model.id === 'glm-5').input, ['text'])
   assert.equal(stored['oauth-kiro'].models.find((model) => model.id === 'glm-5').reasoningEfforts, false)
+})
+
+test('DSH refuses a vendor none key on reasoningEfforts', async () => {
+  const settings = createPiAiSettings()
+  await assert.rejects(settings.mutate('llm-pi-ai', [{
+    op: 'set',
+    path: ['providers', 'oauth-kiro'],
+    value: {
+      api: HARNESS_COMPLETIONS_API,
+      models: [{ id: 'gpt-5.6-sol', reasoningEfforts: { none: 'none', low: 'low' } }],
+    },
+  }]), /reasoningEfforts key "none"/)
 })
 
 test('syncHarnessModels does not set provider-level reasoning', async () => {

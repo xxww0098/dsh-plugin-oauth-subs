@@ -27,6 +27,13 @@ export const OAUTH_CREDENTIAL_REF = 'DSH_OAUTH_SUBS_API_KEY'
 export const HARNESS_RESPONSES_API = 'openai-responses'
 export const HARNESS_COMPLETIONS_API = 'openai-completions'
 export const HARNESS_ANTHROPIC_API = 'anthropic-messages'
+/**
+ * DSH `reasoningEfforts` keys (`packages/llm/llm-pi-ai` THINKING_LEVELS).
+ * Vendor wire spellings belong in the *value* (`off: "none"`), never as a
+ * key. An unknown key fails the whole `llm-pi-ai` mutate, so the family
+ * never lands in settings.yaml.
+ */
+export const DSH_THINKING_LEVELS = Object.freeze(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
 
 export { CODEX_REASONING_EFFORTS }
 
@@ -49,6 +56,22 @@ function harnessInput(model) {
   return ['text', 'image']
 }
 
+function harnessReasoningEfforts(model) {
+  const raw = model.reasoningEfforts
+  if (raw === false) return false
+  if (!raw || typeof raw !== 'object') return undefined
+  const efforts = {}
+  for (const [level, wire] of Object.entries(raw)) {
+    if (!DSH_THINKING_LEVELS.includes(level)) {
+      throw new Error(
+        `llm-pi-ai: model "${model.id}" reasoningEfforts key "${level}" is not ${DSH_THINKING_LEVELS.join('|')} (vendor spelling belongs in the value, e.g. off: "none")`,
+      )
+    }
+    efforts[level] = wire
+  }
+  return efforts
+}
+
 function toHarnessModel(model) {
   const row = {
     id: model.id,
@@ -57,11 +80,8 @@ function toHarnessModel(model) {
     maxTokens: model.maxTokens,
     input: harnessInput(model),
   }
-  if (model.reasoningEfforts && typeof model.reasoningEfforts === 'object') {
-    row.reasoningEfforts = { ...model.reasoningEfforts }
-  } else if (model.reasoningEfforts === false) {
-    row.reasoningEfforts = false
-  }
+  const efforts = harnessReasoningEfforts(model)
+  if (efforts !== undefined) row.reasoningEfforts = efforts
   return row
 }
 

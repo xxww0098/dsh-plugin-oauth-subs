@@ -159,6 +159,8 @@ Grok 4.6 思考深度为 **low / medium / high / xhigh**。Grok 4.5 为 **low / 
 
 GLM-5.3 与 GLM-5.3-Flash 的思考深度为 **low / high / max**（默认 **max**）。没有 `medium`，也不能关掉思考——`thinking.type: disabled` 会 400。GLM-5-Turbo 没有深度选项（思考默认开着）。会话选择器只列出目录声明的档位。
 
+Kiro GPT-5.6 思考深度为 **off / low / medium / high / xhigh / max**。Off 发给 Kiro 的是 `none`（DSH 没有 `none` 这个键）。Opus 5 / 4.8 / 4.7 和 Sonnet 5 另有 **xhigh**；4.6 家族到 **max**；Haiku 和开源权重行没有档位。
+
 在 DeepSeek Harness **会话**里点模型名称 → **推理等级** 设置，不在「设置 → 模型」。登录、退出、勾选都会自动同步。
 
 ## 额度

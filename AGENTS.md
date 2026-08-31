@@ -318,6 +318,10 @@ invariant list. When the two disagree, fix the README.
 `{baseURL}/v1/messages`, so GLM is `${origin}/glm` (not `${origin}/glm/v1`).
 `/glm/v1/v1/messages` is leftover-settings safety only.
 
+### `reasoningEfforts` keys
+
+DSH `llm-pi-ai` thinking levels are a **closed union**: `off` | `minimal` | `low` | `medium` | `high` | `xhigh` | `max`. Keys are picker levels; **values** are the vendor wire spelling (`off: "none"` for Kiro GPT). A key like `none` fails the whole section write — same class of bug as bare `api: openai`. `toHarnessModel` throws before mutate. Do not invent a fourth key.
+
 ### GLM 150%
 
 The Coding Plan 1.5× boost is **identity** (ZCode Desktop UA /
@@ -339,6 +343,8 @@ already said `ai-sdk/anthropic` while Completions was posted). Do
 - Drop the Completions leftover route until the next `sync()` has
   rewritten leftover `openai-completions` settings.
 - Stamp GLM `compat.thinkingFormat: openai` on the Anthropic route.
+- Use a vendor effort name (`none`, `adaptive`, `disabled`) as a
+  `reasoningEfforts` **key**. Map it as the value of a DSH level.
 
 ## Adding a new OAuth family
 
@@ -375,7 +381,9 @@ tab. Follow this checklist in one PR.
    `describeCatalog`. Pick `api` from the closed union per the protocol
    section. `baseURL` must match how that SDK posts. `toHarnessModel`
    copies `model.input` and `reasoningEfforts`; do not hard-code image
-   on every row.
+   on every row. `reasoningEfforts` keys must be DSH thinking levels
+   (`off|minimal|low|medium|high|xhigh|max`); vendor `none` is the
+   **value** of `off`, not a key.
 7. **Plan labels** (`src/oauth/plan.ts`): map wire slugs to the product
    name users see (`Pro 20x`, `SuperGrok Heavy`, `Lite`). Family-specific
    collisions (`glm` `pro` → `Pro`, Codex `pro` → `Pro 20x`) belong here.
