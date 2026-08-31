@@ -76,6 +76,7 @@ src/
     fast-mode.ts
     context-mode.ts
     analyze-session.ts
+    relative-time.ts       remaining-time labels, precise to the minute
     update.ts              GitHub latest-release check
 lib/                       tsc + UI tsc — generated, do not edit
 docs/error.md              fault log

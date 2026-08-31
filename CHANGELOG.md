@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Quota reset labels keep leftover minutes (`4 小时 32 分钟后重置` / `resets in 4 h 32 min`) instead of rounding to whole hours.
+
 ## 0.0.51
 
 - Antigravity: map Google `cachedContentTokenCount` to OpenAI `prompt_tokens_details.cached_tokens` so DSH cache hit rate is not stuck at 0%. Extra DSH system snapshots are parked after the conversation so the implicit-cache prefix can still hit.
