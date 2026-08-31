@@ -355,24 +355,17 @@ test('logged-in Kiro persist writes oauth-kiro with the kiro.dev catalog', async
   assert.equal(stored['oauth-kiro'].reasoning, undefined)
 })
 
-test('syncHarnessModels stamps provider reasoning from memory or high', async () => {
+test('syncHarnessModels does not set provider-level reasoning', async () => {
   const settings = createPiAiSettings()
   await syncHarnessModels({
     settings,
     prefix: 'oauth',
     origin: 'http://127.0.0.1:8318',
-    loggedIn: { codex: true },
+    loggedIn: { codex: true, grok: true },
   })
-  assert.equal((await peekPiAiProviders(settings))['oauth-codex'].reasoning, 'high')
-  const again = createPiAiSettings()
-  await syncHarnessModels({
-    settings: again,
-    prefix: 'oauth',
-    origin: 'http://127.0.0.1:8318',
-    loggedIn: { grok: true },
-    reasoning: 'xhigh',
-  })
-  assert.equal((await peekPiAiProviders(again))['oauth-grok'].reasoning, 'xhigh')
+  const stored = await peekPiAiProviders(settings)
+  assert.equal(stored['oauth-codex'].reasoning, undefined)
+  assert.equal(stored['oauth-grok'].reasoning, undefined)
 })
 
 test('syncHarnessModels rejects a silent drop after mutate', async () => {

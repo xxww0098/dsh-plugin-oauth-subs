@@ -5,11 +5,13 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { catalogProviders } from '../lib/oauth/models.js'
 import {
+  AGENT_DEFAULT_MODEL_NS,
   EffortMemory,
+  applyRestoredSelection,
   compatibleEffort,
   decideEffortAction,
   isOwnedOauthProvider,
-  providerReasoning,
+  lastModelSelection,
   startEffortRestore,
 } from '../lib/oauth/reasoning-effort.js'
 
@@ -19,46 +21,89 @@ function effortsFor(provider, modelId) {
   return catalog[provider]?.models.find((model) => model.id === modelId)?.reasoningEfforts
 }
 
-function createDefaultModelSettings(initial = {}) {
+function createHost(initial = {}) {
   const section = { ...initial }
-  const watchers = new Set()
-  const ops = []
-  const settings = {
-    ops,
+  const updated = new Set()
+  const selects = []
+  const saves = []
+  const mutates = []
+  const sessions = []
+  const host = {
     section,
-    get(name) {
-      if (name !== 'agent-default-model') return undefined
-      return { ...section }
-    },
-    watch(name, callback) {
-      if (name !== 'agent-default-model') throw new Error(`watch ${name}`)
-      watchers.add(callback)
-      return () => watchers.delete(callback)
-    },
-    async mutate(target, mutations) {
-      if (target !== 'agent-default-model') throw new Error(`mutate ${target}`)
-      const prev = { ...section }
-      for (const row of mutations) {
-        if (row.op === 'set' && row.path?.[0] === 'reasoningEffort') {
-          section.reasoningEffort = row.value
-        } else if (row.op === 'unset' && row.path?.[0] === 'reasoningEffort') {
-          delete section.reasoningEffort
+    selects,
+    saves,
+    mutates,
+    sessions: { list: () => sessions },
+    settings: {
+      get(name) {
+        if (name !== AGENT_DEFAULT_MODEL_NS) return undefined
+        return { ...section }
+      },
+      async mutate(target, mutations) {
+        if (target !== AGENT_DEFAULT_MODEL_NS) throw new Error(`mutate ${target}`)
+        const prev = { ...section }
+        for (const row of mutations) {
+          if (row.op === 'set' && row.path?.[0] === 'reasoningEffort') {
+            section.reasoningEffort = row.value
+          }
         }
-      }
-      ops.push({ target, mutations })
-      for (const callback of watchers) await callback({ ...section }, prev)
+        mutates.push({ target, mutations })
+        for (const callback of updated) await callback(AGENT_DEFAULT_MODEL_NS, { ...section }, prev, 'update')
+      },
     },
-    async setSelection(next) {
+    sessionController: {
+      async selectModel(request) {
+        selects.push({ ...request })
+        const prev = { ...section }
+        section.provider = request.provider
+        section.model = request.model
+        section.reasoningEffort = request.reasoningEffort
+        const session = sessions.find((row) => row.id === request.sessionId)
+        if (session) {
+          session.events.push({
+            type: 'model/selection',
+            data: { provider: request.provider, model: request.model, reasoningEffort: request.reasoningEffort },
+          })
+        }
+        for (const callback of updated) {
+          await callback(AGENT_DEFAULT_MODEL_NS, { ...section }, prev, 'update')
+        }
+      },
+    },
+    agentDefaultModel: {
+      async saveSelection(next) {
+        saves.push({ ...next })
+        const prev = { ...section }
+        for (const key of Object.keys(section)) delete section[key]
+        Object.assign(section, next)
+        for (const callback of updated) await callback(AGENT_DEFAULT_MODEL_NS, { ...section }, prev, 'update')
+      },
+    },
+    on(name, callback) {
+      if (name === 'settings/updated') updated.add(callback)
+      return () => updated.delete(callback)
+    },
+    off(name, callback) {
+      if (name === 'settings/updated') updated.delete(callback)
+    },
+    addSession(id, selection) {
+      sessions.push({
+        id,
+        events: [{ type: 'model/selection', data: { ...selection } }],
+      })
+    },
+    async emitUpdated(next) {
       const prev = { ...section }
       for (const key of Object.keys(section)) delete section[key]
       Object.assign(section, next)
-      for (const callback of watchers) await callback({ ...section }, prev)
+      for (const callback of updated) await callback(AGENT_DEFAULT_MODEL_NS, { ...section }, prev, 'update')
     },
   }
-  return settings
+  return host
 }
 
 async function settle() {
+  await Promise.resolve()
   await Promise.resolve()
   await Promise.resolve()
 }
@@ -116,14 +161,14 @@ test('decideEffortAction restores on oauth switch and no-ops other providers', (
   })
   assert.deepEqual(keep, { remember: 'low' })
 
-  const same = decideEffortAction({
+  const omittedDefault = decideEffortAction({
     selection: { provider: 'oauth-codex', model: 'gpt-5.5' },
     previous: { provider: 'oauth-codex', model: 'gpt-5.5', reasoningEffort: 'high' },
     remembered: 'high',
     prefix: 'oauth',
     efforts: effortsFor('oauth-codex', 'gpt-5.5'),
   })
-  assert.deepEqual(same, {})
+  assert.deepEqual(omittedDefault, {})
 
   assert.equal(isOwnedOauthProvider('oauth', 'oauth-kiro'), true)
   assert.equal(isOwnedOauthProvider('oauth', 'openai'), false)
@@ -149,37 +194,81 @@ test('EffortMemory persists a last effort next to models.json', async () => {
   assert.equal(second.last(), 'off')
 })
 
-test('startEffortRestore writes the remembered level when the target model has it', async () => {
+test('applyRestoredSelection calls selectModel so the live picker gets the effort', async () => {
+  const host = createHost({ provider: 'oauth-grok', model: 'grok-4.6' })
+  host.addSession('session-1', { provider: 'oauth-grok', model: 'grok-4.6' })
+  host.addSession('session-2', { provider: 'oauth-codex', model: 'gpt-5.5', reasoningEffort: 'high' })
+  const result = await applyRestoredSelection(host, {
+    provider: 'oauth-grok',
+    model: 'grok-4.6',
+    reasoningEffort: 'high',
+  })
+  assert.equal(result.via, 'selectModel')
+  assert.equal(result.livePicker, true)
+  assert.deepEqual(host.selects, [{
+    sessionId: 'session-1',
+    provider: 'oauth-grok',
+    model: 'grok-4.6',
+    reasoningEffort: 'high',
+  }])
+  assert.equal(lastModelSelection(host.sessions.list()[0]).reasoningEffort, 'high')
+  assert.equal(host.mutates.length, 0)
+})
+
+test('applyRestoredSelection falls back to saveSelection when no live session matches', async () => {
+  const host = createHost({ provider: 'oauth-grok', model: 'grok-4.6' })
+  const result = await applyRestoredSelection(host, {
+    provider: 'oauth-grok',
+    model: 'grok-4.6',
+    reasoningEffort: 'high',
+  })
+  assert.equal(result.via, 'saveSelection')
+  assert.equal(result.livePicker, false)
+  assert.deepEqual(host.saves, [{ provider: 'oauth-grok', model: 'grok-4.6', reasoningEffort: 'high' }])
+})
+
+test('startEffortRestore calls selectModel on an oauth switch', async () => {
   const memory = new EffortMemory()
   await memory.remember('high')
-  const settings = createDefaultModelSettings({
+  const host = createHost({
     provider: 'oauth-codex',
     model: 'gpt-5.6-sol',
     reasoningEffort: 'high',
   })
-  const stop = startEffortRestore({ settings, memory, prefix: 'oauth', effortsFor })
+  host.addSession('live', { provider: 'oauth-codex', model: 'gpt-5.6-sol', reasoningEffort: 'high' })
+  const stop = startEffortRestore({ ctx: host, settings: host.settings, memory, prefix: 'oauth', effortsFor })
   await settle()
-  await settings.setSelection({ provider: 'oauth-grok', model: 'grok-4.6' })
+  host.sessions.list()[0].events.push({ type: 'model/selection', data: { provider: 'oauth-grok', model: 'grok-4.6' } })
+  await host.emitUpdated({ provider: 'oauth-grok', model: 'grok-4.6' })
   await settle()
-  assert.equal(settings.section.reasoningEffort, 'high')
-  assert.equal(settings.ops.length, 1)
-  assert.deepEqual(settings.ops[0].mutations, [{ op: 'set', path: ['reasoningEffort'], value: 'high' }])
+  assert.equal(host.selects.length, 1)
+  assert.deepEqual(host.selects[0], {
+    sessionId: 'live',
+    provider: 'oauth-grok',
+    model: 'grok-4.6',
+    reasoningEffort: 'high',
+  })
   stop()
 })
 
 test('startEffortRestore clamps xhigh to high on Antigravity', async () => {
   const memory = new EffortMemory()
   await memory.remember('xhigh')
-  const settings = createDefaultModelSettings({
+  const host = createHost({
     provider: 'oauth-codex',
     model: 'gpt-5.6-sol',
     reasoningEffort: 'xhigh',
   })
-  const stop = startEffortRestore({ settings, memory, prefix: 'oauth', effortsFor })
+  host.addSession('live', { provider: 'oauth-codex', model: 'gpt-5.6-sol', reasoningEffort: 'xhigh' })
+  const stop = startEffortRestore({ ctx: host, settings: host.settings, memory, prefix: 'oauth', effortsFor })
   await settle()
-  await settings.setSelection({ provider: 'oauth-antigravity', model: 'gemini-3.7-flash-high' })
+  host.sessions.list()[0].events.push({
+    type: 'model/selection',
+    data: { provider: 'oauth-antigravity', model: 'gemini-3.7-flash-high' },
+  })
+  await host.emitUpdated({ provider: 'oauth-antigravity', model: 'gemini-3.7-flash-high' })
   await settle()
-  assert.equal(settings.section.reasoningEffort, 'high')
+  assert.equal(host.selects[0].reasoningEffort, 'high')
   assert.equal(memory.last(), 'xhigh')
   stop()
 })
@@ -187,57 +276,52 @@ test('startEffortRestore clamps xhigh to high on Antigravity', async () => {
 test('startEffortRestore ignores non-oauth providers', async () => {
   const memory = new EffortMemory()
   await memory.remember('high')
-  const settings = createDefaultModelSettings({
+  const host = createHost({
     provider: 'oauth-codex',
     model: 'gpt-5.5',
     reasoningEffort: 'high',
   })
-  const stop = startEffortRestore({ settings, memory, prefix: 'oauth', effortsFor })
+  const stop = startEffortRestore({ ctx: host, settings: host.settings, memory, prefix: 'oauth', effortsFor })
   await settle()
-  await settings.setSelection({ provider: 'openai', model: 'gpt-5.4' })
+  await host.emitUpdated({ provider: 'openai', model: 'gpt-5.4' })
   await settle()
-  assert.equal(settings.section.reasoningEffort, undefined)
-  assert.equal(settings.ops.length, 0)
+  assert.equal(host.selects.length, 0)
+  assert.equal(host.saves.length, 0)
+  assert.equal(host.mutates.length, 0)
   assert.equal(memory.last(), 'high')
   stop()
 })
 
-test('startEffortRestore does not loop when watch echoes the restore write', async () => {
+test('startEffortRestore does not loop when selectModel echoes settings/updated', async () => {
   const memory = new EffortMemory()
   await memory.remember('high')
-  const settings = createDefaultModelSettings({ provider: 'oauth-codex', model: 'gpt-5.5' })
-  const stop = startEffortRestore({ settings, memory, prefix: 'oauth', effortsFor })
+  const host = createHost({ provider: 'oauth-codex', model: 'gpt-5.5' })
+  host.addSession('live', { provider: 'oauth-codex', model: 'gpt-5.5' })
+  const stop = startEffortRestore({ ctx: host, settings: host.settings, memory, prefix: 'oauth', effortsFor })
   await settle()
-  assert.equal(settings.section.reasoningEffort, 'high')
-  assert.equal(settings.ops.length, 1)
+  assert.equal(host.selects.length, 1)
+  assert.equal(host.selects[0].reasoningEffort, 'high')
   await settle()
-  assert.equal(settings.ops.length, 1)
-  await settings.setSelection({ provider: 'oauth-codex', model: 'gpt-5.5', reasoningEffort: 'high' })
+  assert.equal(host.selects.length, 1)
+  await host.emitUpdated({ provider: 'oauth-codex', model: 'gpt-5.5', reasoningEffort: 'high' })
   await settle()
-  assert.equal(settings.ops.length, 1)
+  assert.equal(host.selects.length, 1)
   stop()
 })
 
 test('startEffortRestore leaves models with reasoningEfforts false unset', async () => {
   const memory = new EffortMemory()
   await memory.remember('high')
-  const settings = createDefaultModelSettings({
+  const host = createHost({
     provider: 'oauth-glm',
     model: 'glm-5.3',
     reasoningEffort: 'high',
   })
-  const stop = startEffortRestore({ settings, memory, prefix: 'oauth', effortsFor })
+  const stop = startEffortRestore({ ctx: host, settings: host.settings, memory, prefix: 'oauth', effortsFor })
   await settle()
-  await settings.setSelection({ provider: 'oauth-glm', model: 'glm-5-turbo' })
+  await host.emitUpdated({ provider: 'oauth-glm', model: 'glm-5-turbo' })
   await settle()
-  assert.equal(settings.section.reasoningEffort, undefined)
-  assert.equal(settings.ops.length, 0)
+  assert.equal(host.selects.length, 0)
+  assert.equal(host.saves.length, 0)
   stop()
-})
-
-test('providerReasoning uses the remembered effort or high when the catalog has it', () => {
-  assert.equal(providerReasoning('xhigh', catalog['oauth-codex'].models), 'xhigh')
-  assert.equal(providerReasoning(undefined, catalog['oauth-codex'].models), 'high')
-  assert.equal(providerReasoning(undefined, catalog['oauth-kiro'].models), undefined)
-  assert.equal(providerReasoning('off', catalog['oauth-codex'].models), 'off')
 })

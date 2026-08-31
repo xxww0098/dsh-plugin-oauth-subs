@@ -1,12 +1,18 @@
 /**
- * Remember the last reasoning effort the user picked on an oauth-* family
- * and put it back when DSH's model switch drops `agent-default-model.reasoningEffort`.
+ * Remember the last explicit reasoning effort on oauth-* families and put it
+ * back after DSH's model picker drops `reasoningEffort` (Default = omitted).
+ *
+ * YAML `agent-default-model` alone does not move the live composer: the picker
+ * reads the session `model/selection` event from `selectForNextRequest`.
+ * Prefer `sessionController.selectModel` so that path runs with the effort.
  */
 
 import { readPrivateText, writePrivateText } from './store.js'
 
 export const AGENT_DEFAULT_MODEL_NS = 'agent-default-model'
 export const LAST_EFFORT_FILE = 'reasoning-effort.json'
+export const SETTINGS_UPDATED = 'settings/updated'
+export const SETTINGS_DOCUMENT_UPDATED = 'settings/document-updated'
 
 const FAMILIES = Object.freeze(['codex', 'grok', 'glm', 'kiro', 'antigravity'])
 const REMEMBERABLE = new Set(['off', 'low', 'medium', 'high', 'xhigh', 'max'])
@@ -40,16 +46,6 @@ export function compatibleEffort(remembered, reasoningEfforts) {
   if (remembered !== 'xhigh' && remembered !== 'max') return undefined
   for (const level of CLAMP_ORDER) {
     if (Object.prototype.hasOwnProperty.call(reasoningEfforts, level)) return level
-  }
-  return undefined
-}
-
-export function providerReasoning(remembered, models) {
-  if (isRememberableEffort(remembered)) return remembered
-  const rows = Array.isArray(models) ? models : []
-  if (rows.some((model) => model?.reasoningEfforts && typeof model.reasoningEfforts === 'object'
-    && Object.prototype.hasOwnProperty.call(model.reasoningEfforts, 'high'))) {
-    return 'high'
   }
   return undefined
 }
@@ -107,7 +103,7 @@ export class EffortMemory {
   }
 }
 
-function snapshotSelection(value) {
+export function snapshotSelection(value) {
   if (value == null || typeof value !== 'object') return undefined
   return {
     provider: value.provider,
@@ -116,111 +112,155 @@ function snapshotSelection(value) {
   }
 }
 
-function selectionKey(value) {
-  const snap = snapshotSelection(value)
-  if (!snap) return ''
-  return `${snap.provider ?? ''}\0${snap.model ?? ''}\0${snap.reasoningEffort ?? ''}`
+export function lastModelSelection(session) {
+  const events = session?.events
+  if (!Array.isArray(events)) return undefined
+  for (let i = events.length - 1; i >= 0; i -= 1) {
+    const event = events[i]
+    if (event?.type !== 'model/selection') continue
+    const data = event.data && typeof event.data === 'object' ? event.data : event
+    if (typeof data.provider === 'string' && typeof data.model === 'string') return data
+  }
+  return undefined
 }
 
-async function writeRestoredEffort(settings, value) {
-  if (typeof settings?.mutate === 'function') {
-    await settings.mutate(AGENT_DEFAULT_MODEL_NS, [
-      { op: 'set', path: ['reasoningEffort'], value },
-    ])
-    return
+function readSettingsSelection(host) {
+  const settings = host?.settings ?? host
+  if (typeof settings?.get !== 'function') return undefined
+  return snapshotSelection(settings.get(AGENT_DEFAULT_MODEL_NS))
+}
+
+function liveSessions(host) {
+  const store = host?.sessions ?? host?.get?.('sessions')
+  if (store == null) return []
+  if (typeof store.list === 'function') {
+    const rows = store.list()
+    return Array.isArray(rows) ? rows : []
   }
-  if (typeof settings?.replace === 'function') {
-    const current = typeof settings.get === 'function' ? await settings.get(AGENT_DEFAULT_MODEL_NS) : {}
-    await settings.replace(AGENT_DEFAULT_MODEL_NS, {
-      ...(current && typeof current === 'object' ? current : {}),
-      reasoningEffort: value,
-    })
-  }
+  return []
+}
+
+function sessionControllerOf(host) {
+  const direct = host?.sessionController
+  if (direct && typeof direct.selectModel === 'function') return direct
+  const got = host?.get?.('sessionController')
+  if (got && typeof got.selectModel === 'function') return got
+  return undefined
+}
+
+function agentDefaultModelOf(host) {
+  const direct = host?.agentDefaultModel
+  if (direct && typeof direct.saveSelection === 'function') return direct
+  const got = host?.get?.('agentDefaultModel')
+  if (got && typeof got.saveSelection === 'function') return got
+  return undefined
 }
 
 /**
- * Prefer `settings.watch('agent-default-model', cb)` when the host exposes it.
- * DSH 0.1.x only watches via `register()` (already owned by agent-default-model),
- * so we poll `settings.get` — `saveSelection` already writes that namespace.
+ * Re-run host selectModel (selectForNextRequest + saveSelection) with the
+ * effort. Falls back to saveSelection / mutate YAML when the session API is
+ * missing — that updates future sessions, not the current composer.
  */
-export function attachDefaultModelWatch(settings, onChange, { intervalMs = 250 } = {}) {
-  if (settings == null) return () => {}
-  let stopped = false
-  const emit = (next, prev) => {
-    if (stopped) return
-    void Promise.resolve(onChange(next, prev)).catch(() => undefined)
+export async function applyRestoredSelection(host, selection) {
+  const selected = {
+    provider: selection.provider,
+    model: selection.model,
+    reasoningEffort: selection.reasoningEffort,
+  }
+  const controller = sessionControllerOf(host)
+  let applied = 0
+  if (controller) {
+    for (const session of liveSessions(host)) {
+      const current = lastModelSelection(session)
+      if (current?.provider !== selected.provider || current?.model !== selected.model) continue
+      if (current.reasoningEffort === selected.reasoningEffort) continue
+      await controller.selectModel({
+        sessionId: session.id,
+        provider: selected.provider,
+        model: selected.model,
+        reasoningEffort: selected.reasoningEffort,
+      })
+      applied += 1
+    }
+    if (applied > 0) return { via: 'selectModel', sessions: applied, livePicker: true }
   }
 
-  if (typeof settings.watch === 'function') {
-    let stop
-    try {
-      stop = settings.watch(AGENT_DEFAULT_MODEL_NS, emit)
-    } catch {
-      stop = undefined
-    }
-    if (typeof stop === 'function') {
-      if (typeof settings.get === 'function') {
-        void Promise.resolve(settings.get(AGENT_DEFAULT_MODEL_NS)).then((current) => {
-          if (current != null) emit(current, undefined)
-        })
-      }
-      return () => {
-        stopped = true
-        stop()
-      }
-    }
+  const defaults = agentDefaultModelOf(host)
+  if (defaults) {
+    await defaults.saveSelection(selected)
+    return { via: 'saveSelection', sessions: 0, livePicker: false }
   }
 
-  if (typeof settings.get !== 'function') return () => {}
-  let prevKey = selectionKey(undefined)
-  const tick = () => {
-    if (stopped) return
-    void Promise.resolve(settings.get(AGENT_DEFAULT_MODEL_NS)).then((current) => {
-      const key = selectionKey(current)
-      if (key === prevKey) return
-      prevKey = key
-      emit(current)
-    })
+  const settings = host?.settings ?? host
+  if (typeof settings?.mutate === 'function') {
+    await settings.mutate(AGENT_DEFAULT_MODEL_NS, [
+      { op: 'set', path: ['reasoningEffort'], value: selected.reasoningEffort },
+    ])
+    return { via: 'mutate', sessions: 0, livePicker: false }
   }
-  tick()
-  const timer = setInterval(tick, intervalMs)
-  timer.unref?.()
-  return () => {
-    stopped = true
-    clearInterval(timer)
-  }
+  return { via: 'none', sessions: 0, livePicker: false }
 }
 
-export function startEffortRestore({ settings, memory, prefix, effortsFor }) {
-  let previous
-  let pendingRestore
-  const handle = async (next) => {
+export function startEffortRestore({ ctx, settings, memory, prefix, effortsFor }) {
+  const host = ctx ?? { settings }
+  const settingsRef = settings ?? host.settings
+  let lastSeen
+  let pending
+
+  const handle = async (next, prev) => {
+    await memory.ready
     const snap = snapshotSelection(next)
-    if (pendingRestore) {
-      const echo = snap
-        && snap.provider === pendingRestore.provider
-        && snap.model === pendingRestore.model
-        && snap.reasoningEffort === pendingRestore.effort
-      pendingRestore = undefined
-      if (echo) {
-        previous = snap
-        return
-      }
+    if (pending
+      && snap?.provider === pending.provider
+      && snap?.model === pending.model
+      && snap?.reasoningEffort === pending.effort) {
+      pending = undefined
+      lastSeen = snap
+      return
     }
     const action = decideEffortAction({
       selection: snap,
-      previous,
+      previous: snapshotSelection(prev) ?? lastSeen,
       remembered: memory.last(),
       prefix,
       efforts: typeof effortsFor === 'function' ? effortsFor(snap?.provider, snap?.model) : undefined,
     })
-    previous = snap
+    lastSeen = snap
     if (action.remember) await memory.remember(action.remember)
-    if (action.restore && action.restore !== snap?.reasoningEffort) {
-      pendingRestore = { provider: snap.provider, model: snap.model, effort: action.restore }
-      await writeRestoredEffort(settings, action.restore)
-      previous = { provider: snap.provider, model: snap.model, reasoningEffort: action.restore }
-    }
+    if (!action.restore || action.restore === snap?.reasoningEffort) return
+    pending = { provider: snap.provider, model: snap.model, effort: action.restore }
+    const restored = { provider: snap.provider, model: snap.model, reasoningEffort: action.restore }
+    await applyRestoredSelection({ ...host, settings: settingsRef }, restored)
+    lastSeen = restored
   }
-  return attachDefaultModelWatch(settings, handle)
+
+  const onUpdated = (ns, next, prev) => {
+    if (ns !== AGENT_DEFAULT_MODEL_NS) return
+    void handle(next, prev).catch(() => undefined)
+  }
+  const onDocument = (ns) => {
+    if (ns !== AGENT_DEFAULT_MODEL_NS) return
+    const current = readSettingsSelection({ settings: settingsRef })
+    void handle(current, lastSeen).catch(() => undefined)
+  }
+
+  const offs = []
+  if (typeof host.on === 'function') {
+    host.on(SETTINGS_UPDATED, onUpdated)
+    host.on(SETTINGS_DOCUMENT_UPDATED, onDocument)
+    offs.push(() => {
+      host.off?.(SETTINGS_UPDATED, onUpdated)
+      host.off?.(SETTINGS_DOCUMENT_UPDATED, onDocument)
+    })
+  }
+
+  void memory.ready.then(() => {
+    const current = readSettingsSelection({ settings: settingsRef })
+    if (current) return handle(current, undefined)
+    return undefined
+  }).catch(() => undefined)
+
+  return () => {
+    for (const off of offs) off()
+  }
 }

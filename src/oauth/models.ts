@@ -10,7 +10,6 @@ import { KIRO_MODELS } from './kiro/index.js'
 import { ANTIGRAVITY_MODELS } from './antigravity/index.js'
 import { modelSupportsFastMode } from '../utils/fast-mode.js'
 import { readPrivateText, writePrivateText } from './store.js'
-import { providerReasoning } from './reasoning-effort.js'
 import {
   CONTEXT_VARIANT_SUFFIX,
   codexLargeContext,
@@ -398,18 +397,10 @@ async function assertPersistedProviders(settings, expectedIds) {
   }
 }
 
-function stampProviderReasoning(providers, remembered) {
-  for (const value of Object.values(providers)) {
-    const next = providerReasoning(remembered, value.models)
-    if (next !== undefined) value.reasoning = next
-  }
-}
-
-export async function syncHarnessModels({ settings, prefix, origin, loggedIn, selected, reasoning }) {
+export async function syncHarnessModels({ settings, prefix, origin, loggedIn, selected }) {
   const routePrefix = String(prefix ?? '').trim()
   if (!routePrefix) throw new Error('Harness route prefix cannot be empty')
   const providers = filterProviders(buildProviders({ prefix: routePrefix, origin, loggedIn }), selected)
-  stampProviderReasoning(providers, reasoning)
   const owned = ownedProviderIds(routePrefix)
   try {
     await settings.mutate('llm-pi-ai', [

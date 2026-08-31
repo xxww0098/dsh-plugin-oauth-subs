@@ -4,7 +4,7 @@
  */
 export declare class AuthController {
     #private;
-    constructor({ authPath, prefix, origin, settings, grokLogin, onAuthChanged, models, effort, fetchFn, quotaTtlMs, spawnFn, profile }: {
+    constructor({ authPath, prefix, origin, settings, grokLogin, onAuthChanged, models, fetchFn, quotaTtlMs, spawnFn, profile }: {
         authPath: any;
         prefix: any;
         origin: any;
@@ -12,7 +12,6 @@ export declare class AuthController {
         grokLogin?: string;
         onAuthChanged: any;
         models: any;
-        effort: any;
         fetchFn?: typeof fetch;
         quotaTtlMs: any;
         spawnFn: any;

@@ -4,28 +4,32 @@
 
 ### 现象
 
-用户 DSH 0.1.2-alpha.2。OAuth 系列（Codex / Grok / GLM / Kiro / Antigravity）里把思考深度设成 High 等非 Default 档后，在会话里换模型，思考深度选择器回到 **Default**，而不是上次选的档。`~/.dsh/settings.yaml` 的 `agent-default-model` 只剩 `{ provider, model }`。
+用户 DSH 0.1.2-alpha.2。OAuth 系列（Codex / Grok / GLM / Kiro / Antigravity）里把思考深度设成 High 等非 Default 档后，在会话里换模型，思考深度选择器回到 **Default**，而不是上次选的档。本机 `~/.dsh/settings.yaml` 的 `agent-default-model` 在上次切换后**没有** `reasoningEffort`（省略的 Default，不是字符串 `"default"`）。
 
 ### 证据
 
-- `@deepseek-ai/dsh-agent-default-model` `saveSelection` 写入整节：`reasoningEffort === undefined` 时省略该字段。换模型通常不带 effort，用户层的 `reasoningEffort` 被清掉。
-- llm-pi-ai `reasoningInfo()` 用路由级 `reasoning` 当 `defaultEffort`。本插件的 oauth-* 路由原先不写 `reasoning`，Default 就是空。
-- 目录里各模型已有 `reasoningEfforts`（Codex off/low/medium/high/xhigh/max，AG low/medium/high，GLM low/high/max，Grok low/medium/high/xhigh）。能力在，缺的是跨模型持久化。
-- 不是 Codex / Grok hop，也不是 hytime/dsh-thinking-effort。
+- `dsh-client-ui-model-selection` `choose` / `selectionOf` 在**换模型**时永远组 `{ provider, model, ...(model.reasoning?.defaultEffort === undefined ? {} : { reasoningEffort: defaultEffort }) }`。上一会话的 effort **不会**抄过来。Default 行只在 `defaultEffort` 缺失时注入（`effort.providerDefault`，中文界面也是英文 “Default”）。点 Default 是省略字段，不写 `"default"`。
+- Host `SessionCommandController.selectModel` 顺序：`llm.resolveCallConfig` → `selectForNextRequest`（会话 `model/selection` 事件，**活着的选择器读这个**）→ `agentDefaultModel.saveSelection`（YAML `replace` 整节 `agent-default-model`）。
+- 因此事后改 YAML **只影响新会话**，当前 composer 仍停在 Default，直到再一次 `selectModel`。
+- `settings.watch` 只挂在 `settings.register()` 的 scope 上；`agent-default-model` 已被核心注册。正确观察是 `ctx.on("settings/updated", (ns, next, prev, source) => …)`（以及 `settings/document-updated`）。
+- 目录里各模型已有 `reasoningEfforts`。能力在，缺的是跨模型持久化。不是 Codex / Grok hop，也不是 hytime/dsh-thinking-effort。
 
 ### 根因
 
-DSH 核心：换模型的 `saveSelection` 不保留上一档 effort。本插件可以在 `agent-default-model` 变更后把兼容档写回去，并给 oauth-* 路由补 `reasoning`，让 composer 显示 High 而不是 Default。
+DSH 换模型从不复制上一档 effort。只 `mutate` YAML 或给 oauth-* 路由写 `reasoning:` 都不能修活选择器：前者赶不上 `selectForNextRequest`；后者变成整条路由的 `defaultEffort`，藏掉 Default 行，而且 GLM/Claude 子集会 `UNSUPPORTED_REASONING_EFFORT`。
 
 ### 修复
 
-- 插件数据目录 `reasoning-effort.json` 记全局上次非 Default 档（`off` 仅在用户明确选 Off 时记；`default` / 空不记）。
-- 看 `agent-default-model`（有 `settings.watch` 就用，否则 poll `settings.get`）。非本插件 oauth-* 路由不动。新选择带真实档则记住。provider/model 变了且 effort 缺失/`default` 时，目标模型的 `reasoningEfforts` 有该键就还原；`xhigh`/`max` 没有则夹到模型最高档（`max` > `xhigh` > `high` > `medium` > `low`）。`reasoningEfforts: false` 保持未设。只在值真的变了才 `mutate`，避免 watch 环。
-- `syncHarnessModels` 给 oauth-* 路由写 `reasoning`：已记住的档，或尚无记录且目录有 `high` 时用 `high`。不覆盖用户已经写好的合法 `agent-default-model.reasoningEffort`。
+- **不要**写 `llm-pi-ai.providers.oauth-*.reasoning`。
+- **不要** `settings.replace` 整节 `agent-default-model`，除非连 provider+model 一并重写（那正是 DSH 清 effort 的写法）。`saveSelection({ provider, model, reasoningEffort })` 可以，因为它重述了三者。
+- 用 `settings/updated`（`ns === "agent-default-model"`）缓存上次**显式**档到内存 + `<dataDir>/reasoning-effort.json`。省略 / Default 不记。`off` 仅在用户明确选 Off 时记。
+- oauth-* 换模型且 effort 消失：按**新**模型 `reasoningEfforts` 键还原；`xhigh`/`max` 没有则夹到最高可用（`max` > `xhigh` > `high` > `medium` > `low`）。`reasoningEfforts: false` 跳过。
+- 活会话：对当前已是该 provider/model 的 session 调 `sessionController.selectModel({ sessionId, provider, model, reasoningEffort })`，让 `selectForNextRequest` **带着** effort 再跑一遍。没有 session API 时退到 `agentDefaultModel.saveSelection` 或 `settings.mutate` 只写 `reasoningEffort`——此时当前 composer 仍停在 Default，需要再选一次模型才会跟上。
+- 已是目标档的事件直接忽略，避免环。
 
 ### 验证
 
-- `npm test`：目标有该档则还原；AG 上 xhigh→high；非 oauth 提供方 no-op；watch 回写不环；`reasoning-effort.json` 读回。Codex / Grok hop 未改。
+- `npm test`：目标有该档则 `selectModel`；AG 上 xhigh→high；非 oauth no-op；`settings/updated` 回写不环；`reasoning-effort.json` 读回；`syncHarnessModels` **不**写 provider `reasoning`。Codex / Grok hop 未改。
 
 ## 2026-08-31：Antigravity 套餐 pill 显示 STANDARD TIER
 
