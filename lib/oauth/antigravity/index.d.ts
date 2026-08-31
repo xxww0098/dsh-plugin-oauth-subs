@@ -187,7 +187,25 @@ export declare const antigravityFlow: {
 export declare function extractCloudaicompanionProject(data: any): any;
 export declare function defaultAntigravityTierId(loadResp: any): string;
 export declare function antigravityPlanType(loadResp: any): string;
-export declare function antigravitySession({ accessToken, refreshToken, expiresAt, expiresIn, account, projectId, planType }?: {}): {
+export declare const ANTIGRAVITY_VERIFY_MESSAGE = "Google \u9700\u8981\u9A8C\u8BC1\u6B64\u8D26\u53F7\u624D\u80FD\u5BF9\u8BDD";
+export declare const ANTIGRAVITY_VERIFY_CODE = "VALIDATION_REQUIRED";
+/** Detect Google Cloud Code `VALIDATION_REQUIRED` / "Verify your account". */
+export declare function parseAntigravityValidation(payload: any): {
+    required: boolean;
+    validationUrl: any;
+    message: string;
+    code: string;
+};
+export declare function antigravityValidationClientError(info?: {}): {
+    error: {
+        message: any;
+        code: any;
+        type: string;
+    };
+};
+export declare function antigravitySession({ accessToken, refreshToken, expiresAt, expiresIn, account, projectId, planType, needsValidation, validationUrl, }?: {}): {
+    validationUrl?: string;
+    needsValidation?: boolean;
     planType?: any;
     accessToken: any;
     refreshToken: any;
@@ -213,6 +231,8 @@ export declare function fetchAntigravityProject({ accessToken, fetchFn, sleep }?
 export declare function completeAntigravityLogin(tokens: any, { fetchFn, sleep, account }?: {
     fetchFn?: typeof fetch;
 }): Promise<{
+    validationUrl?: string;
+    needsValidation?: boolean;
     planType?: any;
     accessToken: any;
     refreshToken: any;
@@ -223,6 +243,8 @@ export declare function completeAntigravityLogin(tokens: any, { fetchFn, sleep, 
 export declare function exchangeAntigravityCode(code: any, redirectUri: any, { fetchFn }?: {
     fetchFn?: typeof fetch;
 }): Promise<{
+    validationUrl?: string;
+    needsValidation?: boolean;
     planType?: any;
     accessToken: any;
     refreshToken: any;
@@ -231,12 +253,26 @@ export declare function exchangeAntigravityCode(code: any, redirectUri: any, { f
     projectId: any;
 }>;
 export declare function refreshAntigravity(session: any, fetchFn?: typeof fetch): Promise<{
+    validationUrl?: string;
+    needsValidation?: boolean;
     planType?: any;
     accessToken: any;
     refreshToken: any;
     expiresAt: number;
     account: string;
     projectId: any;
+}>;
+export declare function applyAntigravityValidation(session: any, info: any): any;
+/** Tiny generateContent so Settings can show the verify banner before DSH chats. */
+export declare function probeAntigravityValidation(session: any, { fetchFn }?: {
+    fetchFn?: typeof fetch;
+}): Promise<{
+    required: boolean;
+    validationUrl: any;
+    message: string;
+    code: string;
+} | {
+    required: boolean;
 }>;
 export declare function isAntigravityPermanentRefreshError(error: any): boolean;
 export declare function antigravityRequestId(): string;

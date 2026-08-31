@@ -5,6 +5,12 @@
  * the matching state can substitute for the browser redirect (`manual`).
  */
 export declare const DEFAULT_FLOW_TIMEOUT_MS = 180000;
+/** Path + query the browser actually landed on (Kiro token exchange needs this). */
+export declare function oauthCallbackFromUrl(url: any, fallbackPath: any): {
+    pathname: any;
+    loginOption: any;
+    issuerUrl: any;
+};
 export declare class OAuthFlowManager {
     constructor();
     isBusy(provider: any): any;
@@ -18,6 +24,7 @@ export declare class OAuthFlowManager {
         };
         state: any;
         waitCode: () => Promise<unknown>;
+        callback(): any;
         manual(rawInput: any): void;
         cancel(): void;
     }>;

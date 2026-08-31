@@ -62,6 +62,8 @@ export declare function importAntigravityAuth({ paths, fetchFn }?: {
     fetchFn?: typeof fetch;
 }): Promise<{
     session: {
+        validationUrl?: string;
+        needsValidation?: boolean;
         planType?: any;
         accessToken: any;
         refreshToken: any;

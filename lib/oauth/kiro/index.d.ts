@@ -78,8 +78,15 @@ export declare function kiroUsageHeaders(session: any): {
     'amz-sdk-invocation-id': `${string}-${string}-${string}-${string}-${string}`;
     'amz-sdk-request': string;
 };
-/** Portal + token exchange both register origin only; KiroIDE still lands on `/oauth/callback`. */
+/** Portal authorize `redirect_uri` is origin only (`http://localhost:<port>`). */
 export declare function kiroSocialRedirectUri(redirectUri: any): string;
+export declare function kiroSocialLoginOption(value: any): string;
+/**
+ * Token-exchange `redirect_uri` is the URL the browser actually hit:
+ * origin + path (`/` / `/oauth/callback` / `/signin/callback`) and
+ * `?login_option=google|github` when the callback carried that query.
+ */
+export declare function kiroSocialTokenRedirectUri(redirectUri: any, callback?: {}): string;
 export declare function kiroSocialFlow(): {
     listen: {
         host: string;
@@ -109,7 +116,7 @@ export declare function kiroSession(fields?: {}): {
     apiRegion: string;
     kiroApiKey: string;
 };
-export declare function exchangeKiroSocialCode(code: any, verifier: any, redirectUri: any, { fetchFn }?: {
+export declare function exchangeKiroSocialCode(code: any, verifier: any, redirectUri: any, { fetchFn, callback }?: {
     fetchFn?: typeof fetch;
 }): Promise<{
     accessToken: string;
