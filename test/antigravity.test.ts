@@ -55,6 +55,7 @@ import {
   antigravityToOpenai,
   functionResponsePayload,
   openaiToAntigravity,
+  resetAntigravitySystemPins,
 } from '../lib/oauth/antigravity/request.js'
 import { createProxy } from '../lib/oauth/proxy.js'
 
@@ -882,6 +883,81 @@ test('antigravityToOpenai maps thoughtsTokenCount into completion_tokens', () =>
   assert.equal(noTotal.usage.completion_tokens, 10)
   assert.equal(noTotal.usage.total_tokens, 20)
   assert.equal(noTotal.usage.completion_tokens_details.reasoning_tokens, 7)
+})
+
+test('antigravityToOpenai maps cachedContentTokenCount into prompt_tokens_details', () => {
+  const out = antigravityToOpenai({
+    response: {
+      candidates: [{ content: { parts: [{ text: 'hi' }] }, finishReason: 'STOP' }],
+      usageMetadata: {
+        promptTokenCount: 25598,
+        candidatesTokenCount: 4768,
+        totalTokenCount: 30366,
+        cachedContentTokenCount: 18360,
+      },
+    },
+  }, { model: 'gemini-3.7-flash-high' })
+  assert.equal(out.usage.prompt_tokens, 25598)
+  assert.equal(out.usage.prompt_tokens_details.cached_tokens, 18360)
+  assert.equal(out.usage.completion_tokens, 4768)
+
+  const snake = antigravityToOpenai({
+    response: {
+      candidates: [{ content: { parts: [{ text: 'hi' }] } }],
+      usageMetadata: { promptTokenCount: 100, cached_content_token_count: 80, candidatesTokenCount: 1 },
+    },
+  }, { model: 'gemini-3.7-flash-high' })
+  assert.equal(snake.usage.prompt_tokens_details.cached_tokens, 80)
+
+  const details = antigravityToOpenai({
+    response: {
+      candidates: [{ content: { parts: [{ text: 'hi' }] } }],
+      usageMetadata: {
+        promptTokenCount: 50,
+        cacheTokensDetails: [{ tokenCount: 20 }, { token_count: 10 }],
+        candidatesTokenCount: 1,
+      },
+    },
+  }, { model: 'gemini-3.7-flash-high' })
+  assert.equal(details.usage.prompt_tokens_details.cached_tokens, 30)
+
+  const zero = antigravityToOpenai({
+    response: {
+      candidates: [{ content: { parts: [{ text: 'hi' }] } }],
+      usageMetadata: { promptTokenCount: 10, cachedContentTokenCount: 0, candidatesTokenCount: 1 },
+    },
+  }, { model: 'gemini-3.7-flash-high' })
+  assert.equal(zero.usage.prompt_tokens_details.cached_tokens, 0)
+  assert.equal(zero.usage.prompt_tokens_details === undefined, false)
+})
+
+test('openaiToAntigravity parks extra system snapshots after the pinned prefix', () => {
+  resetAntigravitySystemPins()
+  const first = openaiToAntigravity({
+    model: 'gemini-3.7-flash-high',
+    session_id: 'session-cache-1',
+    messages: [
+      { role: 'system', content: 'You are an AI agent.' },
+      { role: 'user', content: 'analyze the repo' },
+    ],
+  }, { projectId: 'p' })
+  assert.deepEqual(first.request.systemInstruction.parts, [{ text: 'You are an AI agent.' }])
+  assert.equal(first.request.contents.at(-1).parts[0].text, 'analyze the repo')
+
+  const later = openaiToAntigravity({
+    model: 'gemini-3.7-flash-high',
+    session_id: 'session-cache-1',
+    messages: [
+      { role: 'system', content: 'You are an AI agent.' },
+      { role: 'system', content: 'Current runtime context. This snapshot supersedes earlier runtime-context snapshots.' },
+      { role: 'user', content: 'analyze the repo' },
+      { role: 'assistant', content: 'ok' },
+    ],
+  }, { projectId: 'p' })
+  assert.deepEqual(later.request.systemInstruction.parts, [{ text: 'You are an AI agent.' }])
+  assert.equal(later.request.contents.at(-1).role, 'user')
+  assert.match(later.request.contents.at(-1).parts[0].text, /Current runtime context/)
+  resetAntigravitySystemPins()
 })
 
 test('cumulative Google SSE becomes incremental OpenAI deltas', () => {

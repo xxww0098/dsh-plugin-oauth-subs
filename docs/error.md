@@ -1,5 +1,29 @@
 # 错误记录
 
+## 2026-08-31：Antigravity 缓存命中率显示 0
+
+### 现象
+
+DSH 会话 `oauth-antigravity` / `gemini-3.7-flash-high`（「项目代码结构分析」）。8 步 tool loop，input 从 9855 涨到 25598，每条 `assistant/message.usage` 只有 `inputTokens/outputTokens/totalTokens`，**没有** `cacheReadTokens`。页脚缓存命中率 0%。
+
+### 证据
+
+- Google `usageMetadata.cachedContentTokenCount` 是隐式缓存命中数。`mapAntigravityUsage` 只抄了 `promptTokenCount` / `candidatesTokenCount` / `thoughtsTokenCount`，没写 `prompt_tokens_details.cached_tokens`。DSH openai-completions 因此不填 `cacheReadTokens`。
+- DSH 每步会再塞一条 runtime-context system snapshot。全部进 `systemInstruction` 会改 Gemini 隐式缓存前缀。
+
+### 根因
+
+代理层 OpenAI 用量翻译，外加 system 前缀不稳。不是 sessionId 没钉（已经钉了），也不是额度。
+
+### 修复
+
+- `cachedContentTokenCount` / `cached_content_token_count` / `cacheTokensDetails` → `prompt_tokens_details.cached_tokens`。
+- 同一 DSH `session_id` 第一次的 `systemInstruction` 钉住；后续多出来的 system 文本挂到 `contents` 末尾。
+
+### 验证
+
+- `npm test`：18360 cached → `cached_tokens: 18360`；同 session 第二条 snapshot 在 contents 末尾，systemInstruction 不变。
+
 ## 2026-08-31：Kiro 对话 501 generateAssistantResponse 未翻译
 
 ### 现象

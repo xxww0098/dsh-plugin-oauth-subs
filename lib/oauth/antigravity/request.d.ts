@@ -4,6 +4,7 @@
  */
 /** When DSH sends neither session_id nor prompt_cache_key, still pin a constant. */
 export declare const ANTIGRAVITY_STABLE_SESSION = "dsh-antigravity";
+export declare function resetAntigravitySystemPins(): void;
 /**
  * Gemini `FunctionResponse.response` is a singular protobuf Struct.
  * Arrays / null / number / bool must be wrapped or cloudcode-pa returns 400:
