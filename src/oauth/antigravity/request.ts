@@ -7,9 +7,14 @@ import { antigravityRequestId, ANTIGRAVITY_BODY_USER_AGENT } from './index.js'
 import {
   antigravitySessionIdOf,
   pinAntigravitySystemInstruction,
+  pinAntigravityThinking,
+  pinAntigravityTools,
 } from './cache.js'
 
-export { ANTIGRAVITY_STABLE_SESSION, resetAntigravitySystemPins } from './cache.js'
+export {
+  ANTIGRAVITY_STABLE_SESSION,
+  resetAntigravitySystemPins,
+} from './cache.js'
 
 function asCount(value) {
   if (typeof value === 'number' && Number.isFinite(value) && value >= 0) return Math.round(value)
@@ -161,13 +166,11 @@ export function openaiToAntigravity(payload, { projectId, sessionId } = {}) {
     sessionId: pinnedSession,
   }
   if (pinned.parts.length) request.systemInstruction = { parts: pinned.parts }
-  const tools = toolDeclarations(payload?.tools)
+  const tools = pinAntigravityTools(pinnedSession, toolDeclarations(payload?.tools))
   if (tools) request.tools = tools
-  const effort = trimmed(payload?.reasoning_effort)
-  if (effort) {
-    request.generationConfig = {
-      thinkingConfig: { thinkingLevel: effort },
-    }
+  const thinking = pinAntigravityThinking(pinnedSession, trimmed(payload?.reasoning_effort))
+  if (thinking) {
+    request.generationConfig = { thinkingConfig: thinking }
   }
 
   return {
@@ -217,12 +220,17 @@ export function collectAntigravityParts(body) {
   }
 }
 
-function cachedTokensOf(usage) {
+/** Gemini usage plus CLI stats aliases (cache_read_tokens / cacheReadTokens). */
+export function cachedTokensOf(usage) {
+  if (usage == null || typeof usage !== 'object') return undefined
   const direct = asCount(
     usage.cachedContentTokenCount
     ?? usage.cached_content_token_count
     ?? usage.cachedTokenCount
-    ?? usage.cached_tokens,
+    ?? usage.cached_tokens
+    ?? usage.cache_read_tokens
+    ?? usage.cacheReadTokens
+    ?? usage.cacheReadInputTokens,
   )
   if (direct !== undefined) return direct
   const details = usage.cacheTokensDetails ?? usage.cache_tokens_details

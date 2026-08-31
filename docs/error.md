@@ -1,5 +1,34 @@
 # 错误记录
 
+## 2026-08-31：0.0.57 Antigravity 长聊 Google 不回 cached_tokens
+
+### 现象
+
+Mac，插件 **0.0.57**。Antigravity 13/13 模型能聊，ALPHA 跨 4 轮记得住，但 Google **不回** 缓存计数（约 1500 prompt tokens 仍没有 `cachedContentTokenCount`）。DSH 页脚命中率 0%。不是 mapper 漏字段：上游 usage 里本来就没有这项。
+
+### 证据
+
+- 官方 CLI `agy` 1.1.22 / hub Antigravity.app 2.11.0 打同一条 RPC：`POST daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse`。
+- Inner Vertex 字段：model, contents, systemInstruction, cachedContent, tools, toolConfig, labels, safetySettings, generationConfig, sessionId, implicitCacheConfig。CLI **不**调 CreateCachedContent / `cachedContents`。`implicitCacheConfig` 是 DURABLE_CACHE_TRUSTED_USERS，**不要发**。`--subclient_type hub` 是 language_server 旗标，不要上 HTTP。
+- Changelog：prompt 顺序不稳就会 miss。命中字段仍是 `cachedContentTokenCount` / `cacheTokensDetails`；CLI 统计还写 `cache_read_tokens` / `cacheReadTokens`。
+- 当时插件：`pinAntigravitySystemInstruction` 已钉首段 system；`sessionId` = session_id || prompt_cache_key || `dsh-antigravity`；`requestId` 每请求新的；`thinkingConfig` 只在本包有 `reasoning_effort` 时出现；`request.tools` 原样转发 DSH 工具表。
+
+### 根因
+
+代理翻译层前缀不稳。system 钉住了，但 DSH 工具 JSON key 顺序 / 声明顺序会抖，`reasoning_effort` 有时有有时无会让 `generationConfig.thinkingConfig` 闪断。Gemini 隐式缓存吃的是 **systemInstruction + contents 前缀 + tools**。缺 DSH session 时所有模型共用 `dsh-antigravity`，换 picker 会串 pin。不是新的 cache API，也不是 `cachedContent` 资源名。
+
+### 修复
+
+- `pinAntigravityTools`：每个 session 钉第一次 tools JSON；names+schemas 等价（canonical key order）则复用首份字节。增删工具才换列表。
+- `pinAntigravityThinking`：sticky-first，第一次的 thinkingLevel（或省略）一直保持。不发 `implicitCacheConfig`。
+- 缺 DSH session 时 sessionId = `dsh-antigravity:<model>`。有 `session_id` 则原样（官方一条对话跨模型）。
+- `cachedTokensOf` 兼读 `cache_read_tokens` / `cacheReadTokens` / `cacheReadInputTokens`。
+- `requestId` 仍每 HTTP 调用唯一。
+
+### 验证
+
+- `npm test`：同 session 两轮 systemInstruction.parts 与 tools JSON 字节相同；工具只抖 key 顺序不换列表；增删工具才换；thinkingConfig 第一次有则后续省略仍带、第一次省略则后续有也不带；无 session 时不同 model 的 fallback id 不同；有 session_id 不加 model；`cachedTokensOf` 读 CLI 别名；旧 system-pin 用例仍过。无 live Google。
+
 ## 2026-08-31：Kiro 18 个模型多轮 cacheReadInputTokens 偏低
 
 ### 现象

@@ -75,6 +75,15 @@ test('Antigravity cache identity is request.sessionId, with a stable fallback', 
   assert.equal(antigravitySessionIdOf({ prompt_cache_key: 'cache-key-9' }), 'cache-key-9')
   assert.equal(antigravitySessionIdOf({}), ANTIGRAVITY_STABLE_SESSION)
   assert.equal(/^-\d+$/.test(antigravitySessionIdOf({})), false)
+  assert.equal(antigravitySessionIdOf({ session_id: 'sess-ag', model: 'gemini-3.7-flash-high' }), 'sess-ag')
+  assert.equal(
+    antigravitySessionIdOf({ model: 'gemini-3.7-flash-high' }),
+    `${ANTIGRAVITY_STABLE_SESSION}:gemini-3.7-flash-high`,
+  )
+  assert.notEqual(
+    antigravitySessionIdOf({ model: 'gemini-3.7-flash-high' }),
+    antigravitySessionIdOf({ model: 'claude-sonnet-4-6' }),
+  )
 })
 
 test('Kiro cache identity is conversationId, with a stable fallback', () => {
