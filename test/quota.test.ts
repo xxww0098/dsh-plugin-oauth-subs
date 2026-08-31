@@ -9,6 +9,7 @@ import {
   isAvailableResetCredit,
   parseAntigravityModelQuota,
   parseAntigravityPaidCredits,
+  parseAntigravityQuotaSummary,
   parseCodexUsage,
   parseGrokBilling,
   parseResetCredits,
@@ -20,6 +21,7 @@ import { GROK_WEB_EMPTY_FRAME, decodeGrokCreditsFrame } from '../lib/oauth/grok/
 import {
   ANTIGRAVITY_DAILY_API_URL,
   ANTIGRAVITY_LOAD_CODE_ASSIST_URL,
+  ANTIGRAVITY_QUOTA_SUMMARY_URL,
   ANTIGRAVITY_PROD_API_URL,
   antigravityFetchModelsUrls,
   antigravityLoadCodeAssistBody,
@@ -622,6 +624,56 @@ test('parseAntigravityPaidCredits reads paidTier.availableCredits', () => {
   assert.equal(rows[0].remaining, 12.5)
 })
 
+test('parseAntigravityQuotaSummary is Gemini / Claude+GPT weekly and 5-hour bars', () => {
+  const parsed = parseAntigravityQuotaSummary({
+    paidTier: { name: 'Google AI Pro' },
+    groups: [
+      {
+        displayName: 'Gemini Models',
+        buckets: [
+          { displayName: 'Weekly Limit Remaining', remainingFraction: 0.99, resetTime: '2099-02-08T00:00:00Z' },
+          { bucketId: 'gemini-five-hour', remaining: { remainingFraction: 0.96 } },
+        ],
+      },
+      {
+        displayName: 'Claude and GPT models',
+        buckets: [
+          { displayName: 'Weekly Limit Remaining', remainingFraction: 1 },
+          { displayName: 'Five Hour Limit Remaining', remainingFraction: 1 },
+        ],
+      },
+    ],
+  })
+  assert.equal(parsed.planType, 'Google AI Pro')
+  assert.deepEqual(parsed.rows.map((row) => row.kind), ['heading', 'weekly', 'primary', 'heading', 'weekly', 'primary'])
+  assert.equal(parsed.rows[0].product, 'Gemini Models')
+  assert.equal(parsed.rows[1].remainingPercent, 99)
+  assert.equal(parsed.rows[1].resetAt, Date.parse('2099-02-08T00:00:00Z'))
+  assert.equal(parsed.rows[2].remainingPercent, 96)
+  assert.equal(parsed.rows[2].windowMinutes, 300)
+  assert.equal(parsed.rows[3].product, 'Claude and GPT models')
+  assert.equal(parsed.rows[4].remainingPercent, 100)
+  assert.equal(parsed.rows[5].remainingPercent, 100)
+})
+
+test('parseAntigravityQuotaSummary reads window weekly / five_hour', () => {
+  const parsed = parseAntigravityQuotaSummary({
+    groups: [{
+      displayName: 'Gemini Models',
+      buckets: [
+        { window: 'weekly', remainingFraction: 0.99 },
+        { window: 'five_hour', remainingFraction: 0.96 },
+      ],
+    }],
+  })
+  assert.equal(parsed.rows[0].kind, 'heading')
+  assert.equal(parsed.rows[1].kind, 'weekly')
+  assert.equal(parsed.rows[1].remainingPercent, 99)
+  assert.equal(parsed.rows[2].kind, 'primary')
+  assert.equal(parsed.rows[2].remainingPercent, 96)
+  assert.equal(parsed.rows[2].windowMinutes, 300)
+})
+
 test('QuotaStore fetches Antigravity model groups from daily hub, not IDE prod', async () => {
   const later = Date.now() + 60 * 60_000
   const session = antigravitySession({
@@ -647,8 +699,25 @@ test('QuotaStore fetches Antigravity model groups from daily hub, not IDE prod',
         cloudaicompanionProject: 'proj-1',
       }), { status: 200 })
     }
-    if (String(url) === antigravityFetchModelsUrls()[0]) {
-      return new Response(JSON.stringify(SKILLSTAR_ANTIGRAVITY_MODELS), { status: 200 })
+    if (String(url) === ANTIGRAVITY_QUOTA_SUMMARY_URL) {
+      return new Response(JSON.stringify({
+        groups: [
+          {
+            displayName: 'Gemini Models',
+            buckets: [
+              { displayName: 'Weekly Limit Remaining', remainingFraction: 0.99 },
+              { displayName: 'Five Hour Limit Remaining', remainingFraction: 0.96 },
+            ],
+          },
+          {
+            displayName: 'Claude and GPT models',
+            buckets: [
+              { displayName: 'Weekly Limit Remaining', remainingFraction: 1 },
+              { displayName: 'Five Hour Limit Remaining', remainingFraction: 1 },
+            ],
+          },
+        ],
+      }), { status: 200 })
     }
     throw new Error(`unexpected ${url}`)
   }
@@ -661,14 +730,19 @@ test('QuotaStore fetches Antigravity model groups from daily hub, not IDE prod',
   assert.notEqual(quota.status, 'idle')
   assert.equal(quota.planType, 'g1-pro-tier')
   assert.equal(quota.planLabel, 'Pro')
-  assert.equal(quota.rows.length, 4)
-  assert.equal(quota.rows[0].product, 'Claude/GPT')
-  assert.equal(quota.rows[0].remainingPercent, 25)
+  assert.equal(quota.rows[0].kind, 'heading')
+  assert.equal(quota.rows[0].product, 'Gemini Models')
+  assert.equal(quota.rows[1].kind, 'weekly')
+  assert.equal(quota.rows[1].remainingPercent, 99)
+  assert.equal(quota.rows[2].kind, 'primary')
+  assert.equal(quota.rows[2].remainingPercent, 96)
+  assert.equal(quota.rows[3].product, 'Claude and GPT models')
+  assert.equal(quota.rows[4].remainingPercent, 100)
   assert.equal(seen[0].url, ANTIGRAVITY_LOAD_CODE_ASSIST_URL)
   assert.equal(seen[0].url.startsWith(ANTIGRAVITY_DAILY_API_URL), true)
   assert.deepEqual(JSON.parse(seen[0].body), antigravityLoadCodeAssistBody('proj-1'))
   assert.equal(seen[0].headers['user-agent'], antigravityRequestUserAgent())
-  assert.equal(seen[1].url, antigravityFetchModelsUrls()[0])
+  assert.equal(seen[1].url, ANTIGRAVITY_QUOTA_SUMMARY_URL)
   assert.equal(seen[1].url.startsWith(ANTIGRAVITY_DAILY_API_URL), true)
   assert.deepEqual(JSON.parse(seen[1].body), { project: 'proj-1' })
   assert.equal(seen[1].headers['user-agent'], antigravityRequestUserAgent())
@@ -690,6 +764,9 @@ test('QuotaStore Antigravity load 400 with cached project retries without projec
         return new Response('Bad Request', { status: 400 })
       }
       return new Response(JSON.stringify({ cloudaicompanionProject: 'fresh-proj' }), { status: 200 })
+    }
+    if (String(url) === ANTIGRAVITY_QUOTA_SUMMARY_URL) {
+      return new Response('not found', { status: 404 })
     }
     if (String(url) === antigravityFetchModelsUrls()[0]) {
       assert.deepEqual(JSON.parse(init.body), { project: 'fresh-proj' })

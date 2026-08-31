@@ -335,6 +335,7 @@ export class AuthController {
     await Promise.all(rows.map(async (row) => {
       const quota = await this.quota.ensure(provider, row.id, row.session)
       if (provider === 'kiro') await this.#rememberKiroProfile(row, quota)
+      if (provider === 'antigravity') await this.#rememberAntigravityPlan(row, quota)
     }))
     return rows
   }
@@ -349,6 +350,13 @@ export class AuthController {
     if (email) next.account = email
     if (planType) next.planType = planType
     await saveSession('kiro', next, this.authPath, { id: row.id, activate: row.active })
+  }
+
+  async #rememberAntigravityPlan(row, quota) {
+    if (!quota || quota.status !== 'ready') return
+    const planType = typeof quota.planType === 'string' && quota.planType.trim() ? quota.planType.trim() : undefined
+    if (!planType || row.session.planType === planType) return
+    await saveSession('antigravity', { ...row.session, planType }, this.authPath, { id: row.id, activate: row.active })
   }
 
   async #existingKiroMachineId() {

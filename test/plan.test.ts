@@ -31,6 +31,7 @@ test('formatPlanLabel maps Codex slugs to Plus / Pro 20x / Pro 5x / Team', () =>
   assert.equal(formatPlanLabel('pro', 'kiro'), 'Pro')
   assert.equal(formatPlanLabel('KIRO PRO+', 'kiro'), 'Pro+')
   assert.equal(formatPlanLabel('g1-pro-tier', 'antigravity'), 'Pro')
+  assert.equal(formatPlanLabel('Google AI Pro', 'antigravity'), 'Pro')
   assert.equal(formatPlanLabel('STANDARD TIER', 'antigravity'), 'Standard')
   assert.equal(formatPlanLabel('g1-ultra-tier', 'antigravity'), 'Ultra')
   assert.equal(formatPlanLabel('free-tier', 'antigravity'), 'Free')

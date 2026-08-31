@@ -145,6 +145,8 @@ window.__ModuleLoader__.load({
         glmBoostHint: 'ZCode 登录使用享 150%配额',
         prepaid: '预付余额',
         grokCode: 'Grok Code',
+        agGemini: 'Gemini 模型',
+        agClaudeGpt: 'Claude 和 GPT 模型',
         modelsTitle: '模型',
         modelsHint: '勾选即同步。Fast 仅 Codex Priority，更快更耗额度；900K 大上下文，默认关。',
         modelsOn: '已开启 {n}',
@@ -281,6 +283,8 @@ window.__ModuleLoader__.load({
         glmBoostHint: 'ZCode session: 150% quota',
         prepaid: 'Prepaid',
         grokCode: 'Grok Code',
+        agGemini: 'Gemini Models',
+        agClaudeGpt: 'Claude and GPT models',
         modelsTitle: 'Models',
         modelsHint: 'Check to sync. Fast is Codex Priority only and spends more. 900K is the large window, off by default.',
         modelsOn: '{n} on',
@@ -467,10 +471,23 @@ window.__ModuleLoader__.load({
       return PLAN_LABELS[slug] || PLAN_LABELS[compact] || trimmed
     }
 
+    function isAssistOnlyPlan(raw) {
+      const compact = String(raw ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '')
+      return compact === 'standard' || compact === 'standardtier' || compact === 'legacy' || compact === 'legacytier'
+    }
+
     function planOf(account, family) {
-      return account?.quota?.planLabel
-        || account?.planLabel
-        || formatPlanLabel(account?.quota?.planType || account?.planType, family)
+      const labels = [
+        account?.quota?.planLabel,
+        account?.planLabel,
+        formatPlanLabel(account?.quota?.planType || account?.planType, family),
+      ]
+      for (const label of labels) {
+        if (typeof label !== 'string' || !label.trim()) continue
+        if (family === 'antigravity' && isAssistOnlyPlan(label)) continue
+        return label
+      }
+      return ''
     }
 
     function isGlmAppIdentity(value) {
@@ -691,6 +708,15 @@ window.__ModuleLoader__.load({
 .osubs-quota-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .osubs-qrow { display: flex; flex-direction: column; gap: 5px; }
 .osubs-qrow-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 12px; }
+.osubs-qcluster { display: flex; flex-direction: column; gap: 8px; }
+.osubs-qcluster + .osubs-qcluster {
+  margin-top: 2px; padding-top: 10px;
+  border-top: 1px solid var(--osubs-hair);
+}
+.osubs-qgroup {
+  font-size: 12.5px; font-weight: 600; line-height: 1.35;
+  color: var(--osubs-muted);
+}
 .osubs-bar { height: 6px; border-radius: 99px; background: var(--osubs-hair); overflow: hidden; }
 .osubs-bar > i { display: block; height: 100%; border-radius: 99px; transform-origin: left center; transition: transform 340ms cubic-bezier(.2,.8,.2,1), background-color 240ms ease; }
 .osubs-qbox {
@@ -876,14 +902,22 @@ window.__ModuleLoader__.load({
       }, h(TabIcon, { name: icon }))
     }
 
+    function antigravityGroupLabel(product, t) {
+      const text = String(product ?? '')
+      if (/claude|gpt/i.test(text)) return t.agClaudeGpt
+      if (/gemini/i.test(text)) return t.agGemini
+      return text
+    }
+
     function rowLabel(row, t, family) {
-      if (family === 'glm') {
+      if (family === 'glm' || family === 'antigravity') {
         if (row.kind === 'primary') return t.glmPrimary
         if (row.kind === 'weekly') return t.glmWeekly
-        if (row.kind === 'mcp' || (row.kind === 'product' && /mcp|zread|web.?search/i.test(row.product ?? ''))) {
+        if (family === 'glm' && (row.kind === 'mcp' || (row.kind === 'product' && /mcp|zread|web.?search/i.test(row.product ?? '')))) {
           return t.glmMcp
         }
       }
+      if (row.kind === 'heading') return antigravityGroupLabel(row.product, t)
       if (row.kind === 'product' && row.product) return row.product
       if (row.kind === 'primary') {
         const minutes = row.windowMinutes
@@ -901,6 +935,9 @@ window.__ModuleLoader__.load({
     }
 
     function QuotaRow({ t, row, family }) {
+      if (row.kind === 'heading') {
+        return h('div', { className: 'osubs-qgroup' }, antigravityGroupLabel(row.product, t))
+      }
       if (row.kind === 'prepaid') {
         return h('div', { className: 'osubs-qrow-head' },
           h('span', { style: { color: 'var(--osubs-muted)' } }, t.prepaid),
@@ -1105,6 +1142,34 @@ window.__ModuleLoader__.load({
       )
     }
 
+    function renderQuotaRows(rows, t, family) {
+      const nodes = []
+      let cluster
+      const flush = () => {
+        if (!cluster) return
+        nodes.push(h('div', { className: 'osubs-qcluster', key: cluster.key },
+          h('div', { className: 'osubs-qgroup' }, antigravityGroupLabel(cluster.title, t)),
+          cluster.rows.map((row) => h(QuotaRow, { t, row, family, key: row.key })),
+        ))
+        cluster = undefined
+      }
+      for (const row of rows) {
+        if (row.kind === 'heading') {
+          flush()
+          cluster = { key: row.key, title: row.product, rows: [] }
+          continue
+        }
+        if (cluster && (row.kind === 'weekly' || row.kind === 'primary')) {
+          cluster.rows.push(row)
+          continue
+        }
+        flush()
+        nodes.push(h(QuotaRow, { t, row, family, key: row.key }))
+      }
+      flush()
+      return nodes
+    }
+
     function QuotaBlock({ t, quota, onRefresh, onReset, family }) {
       if (!quota || quota.status === 'idle') return null
       const rows = Array.isArray(quota.rows) ? quota.rows : []
@@ -1125,14 +1190,14 @@ window.__ModuleLoader__.load({
         quota.status === 'loading' && rows.length === 0 && h('p', { className: 'osubs-hint' }, t.quotaLoading),
         quota.status === 'error' && !hasUsage && h('p', { className: 'osubs-hint osubs-bad' }, `${t.quotaFailed}${quota.error ? ` · ${quota.error}` : ''}`),
         quota.status === 'ready' && !hasUsage && h('p', { className: 'osubs-hint' }, t.quotaUnknown),
-        rows.map((row) => h(QuotaRow, { t, row, family, key: row.key })),
+        renderQuotaRows(rows, t, family),
         h(QuotaResetBox, { t, quota, onReset }),
       )
     }
 
     function AccountCard({ t, id, row, quota, onSwitch, onLogout, onRefreshQuota, onResetQuota }) {
       const regionLabel = (region) => region === 'bigmodel' ? t.glmRegionCn : t.glmRegionGlobal
-      const planLabel = row.planLabel || (row.active ? planOf({ quota }, id) : '')
+      const planLabel = planOf({ ...row, quota }, id)
       const clickable = !row.active
       return h('article', {
         className: `osubs-acct${row.active ? ' osubs-acct--on' : ''}`,

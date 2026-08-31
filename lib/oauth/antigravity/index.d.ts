@@ -27,6 +27,7 @@ export declare const ANTIGRAVITY_API_URL = "https://daily-cloudcode-pa.googleapi
 export declare const ANTIGRAVITY_API_VERSION = "v1internal";
 export declare const ANTIGRAVITY_LOAD_CODE_ASSIST_URL: string;
 export declare const ANTIGRAVITY_MODELS_URL: string;
+export declare const ANTIGRAVITY_QUOTA_SUMMARY_URL: string;
 export declare const ANTIGRAVITY_ONBOARD_USER_URL: string;
 export declare const ANTIGRAVITY_GENERATE_URL: string;
 export declare const ANTIGRAVITY_STREAM_URL: string;
@@ -214,6 +215,12 @@ export declare const antigravityFlow: {
 };
 export declare function extractCloudaicompanionProject(data: any): any;
 export declare function defaultAntigravityTierId(loadResp: any): string;
+/** Code Assist SKU — not the Google AI / Antigravity subscription. */
+export declare function isCodeAssistOnlyPlan(raw: any): boolean;
+/**
+ * Google AI plan. Prefer paidTier name/id (Google AI Pro / Ultra).
+ * currentTier is Code Assist: STANDARD is ignored, free-tier is kept.
+ */
 export declare function antigravityPlanType(loadResp: any): string;
 export declare const ANTIGRAVITY_VERIFY_MESSAGE = "Google \u9700\u8981\u9A8C\u8BC1\u6B64\u8D26\u53F7\u624D\u80FD\u5BF9\u8BDD";
 export declare const ANTIGRAVITY_VERIFY_CODE = "VALIDATION_REQUIRED";
