@@ -8,7 +8,9 @@
  *   Body: conversationState + profileArn
  * Response is application/vnd.amazon.eventstream.
  */
-export { KIRO_STABLE_SESSION, kiroConversationId } from './cache.js';
+export { KIRO_STABLE_SESSION, kiroConversationId, pinKiroSystemPrefix, resetKiroSystemPins } from './cache.js';
+/** Official kiro.rs ack after a parked system user turn. Byte-stable; never Date.now(). */
+export declare const KIRO_SYSTEM_ACK = "I will follow these instructions.";
 export declare const KIRO_CHAT_ORIGIN = "AI_EDITOR";
 export declare const KIRO_AMZ_TARGET = "AmazonCodeWhispererStreamingService.GenerateAssistantResponse";
 export declare const KIRO_EVENTSTREAM_TYPE = "application/vnd.amazon.eventstream";
@@ -28,14 +30,16 @@ export declare function kiroChatHeaders(session: any): {
 };
 /**
  * DSH `developer` (and any other unknown role) → system, same as GLM.
- * History is userInputMessage / assistantResponseMessage pairs.
- * conversationId is the DSH pin — never Date.now().
+ * Official wire has no system field (kiro.rs / kiro-proxy PROTOCOL.md):
+ * park system as the first history user + canned assistant pair so the
+ * current turn stays just the new user text. conversationId is the DSH
+ * pin plus model — never Date.now().
  */
 export declare function openaiToKiro(payload: any, { conversationId, profileArn, origin }?: {
     origin?: string;
 }): {
     conversationState: {
-        conversationId: string;
+        conversationId: any;
         history: any[];
         currentMessage: {
             userInputMessage: {
@@ -94,7 +98,12 @@ export declare function kiroToOpenai(eventsOrBody: any, { model, id }?: {
     }[];
     usage: any;
 };
-export declare function kiroToOpenaiChunk(delta: any, { model, id, done, finishReason }?: {
+export declare function mapKiroUsage(tokens: any): {
+    prompt_tokens: any;
+    completion_tokens: any;
+    total_tokens: any;
+};
+export declare function kiroToOpenaiChunk(delta: any, { model, id, done, finishReason, usage }?: {
     done?: boolean;
     finishReason?: any;
 }): {
