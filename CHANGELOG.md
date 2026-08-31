@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.50
+
+- Kiro chat: `POST /kiro/v1/chat/completions` translates OpenAI messages to AWS `GenerateAssistantResponse` (no more 501 stub). Event stream → `chat.completion` / SSE. `conversationId` pinned per DSH session. Upstream 401/403 rewritten to 400 (non-AUTH).
+
 ## 0.0.49
 
 - Antigravity stream: emit OpenAI usage on the terminal SSE chunk (fixes DSH 用量 0 tok / 0 tok/s) and convert cumulative Google text to incremental deltas (fixes first token starting mid-sentence). PR #47. Live-tested on the user's Mac against gemini-3.7-flash-high and glm-5.3.
