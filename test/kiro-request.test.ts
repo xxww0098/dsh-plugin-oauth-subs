@@ -2,11 +2,13 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { createProxy } from '../lib/oauth/proxy.js'
 import { SOCIAL_PROFILE_ARN, kiroSession, kiroUsageHeaders } from '../lib/oauth/kiro/index.js'
+import { KIRO_MODELS } from '../lib/oauth/kiro/index.js'
 import {
   KIRO_AMZ_TARGET,
   KIRO_CHAT_ORIGIN,
   KIRO_EVENTSTREAM_TYPE,
   KIRO_STABLE_SESSION,
+  KIRO_SYSTEM_ACK,
   encodeKiroEventStream,
   kiroChatHeaders,
   kiroChatUrl,
@@ -16,6 +18,7 @@ import {
   kiroToOpenaiChunk,
   openaiToKiro,
   parseKiroEventStream,
+  resetKiroSystemPins,
 } from '../lib/oauth/kiro/request.js'
 
 const RT = `rt_${'x'.repeat(120)}`
@@ -42,6 +45,7 @@ function helloStream(text = 'Hello from Kiro') {
 }
 
 test('openai messages become conversationState with dotted modelId and pinned conversationId', () => {
+  resetKiroSystemPins()
   const first = openaiToKiro({
     model: 'deepseek-3.2',
     session_id: 'session-dsh-1',
@@ -57,12 +61,14 @@ test('openai messages become conversationState with dotted modelId and pinned co
   assert.equal(user.modelId.includes('.'), true)
   assert.equal(user.origin, KIRO_CHAT_ORIGIN)
   assert.equal(user.origin, 'AI_EDITOR')
-  assert.equal(user.content.startsWith('You are DSH.\nBe brief.\n'), true)
-  assert.equal(user.content.endsWith('hello'), true)
-  assert.equal(first.conversationState.conversationId, 'session-dsh-1')
+  assert.equal(user.content, 'hello')
+  assert.equal(user.content.includes('You are DSH.'), false)
+  assert.equal(first.conversationState.conversationId, 'session-dsh-1:deepseek-3.2')
   assert.equal(/^-\d+$/.test(first.conversationState.conversationId), false)
   assert.equal(first.conversationState.chatTriggerType, 'MANUAL')
-  assert.equal(first.conversationState.history.length, 0)
+  assert.equal(first.conversationState.history.length, 2)
+  assert.equal(first.conversationState.history[0].userInputMessage.content, 'You are DSH.\nBe brief.')
+  assert.equal(first.conversationState.history[1].assistantResponseMessage.content, KIRO_SYSTEM_ACK)
   assert.equal(first.profileArn, SOCIAL_PROFILE_ARN)
 
   const second = openaiToKiro({
@@ -76,13 +82,17 @@ test('openai messages become conversationState with dotted modelId and pinned co
     ],
   }, { conversationId: 'session-dsh-1', profileArn: SOCIAL_PROFILE_ARN })
   assert.equal(second.conversationState.conversationId, first.conversationState.conversationId)
-  assert.equal(second.conversationState.history.length, 2)
-  assert.equal(second.conversationState.history[0].userInputMessage.content, 'hello')
-  assert.equal(second.conversationState.history[1].assistantResponseMessage.content, 'Hi!')
-  assert.equal(second.conversationState.currentMessage.userInputMessage.content.endsWith('again'), true)
+  assert.equal(second.conversationState.history.length, 4)
+  assert.equal(second.conversationState.history[0].userInputMessage.content, 'You are DSH.\nBe brief.')
+  assert.equal(second.conversationState.history[1].assistantResponseMessage.content, KIRO_SYSTEM_ACK)
+  assert.equal(second.conversationState.history[2].userInputMessage.content, 'hello')
+  assert.equal(second.conversationState.history[3].assistantResponseMessage.content, 'Hi!')
+  assert.equal(second.conversationState.currentMessage.userInputMessage.content, 'again')
+  assert.equal(second.conversationState.currentMessage.userInputMessage.content.includes('You are DSH.'), false)
 })
 
 test('developer role is rewritten like GLM and unknown roles do not reach Kiro', () => {
+  resetKiroSystemPins()
   const body = openaiToKiro({
     model: 'claude-sonnet-4.6',
     messages: [
@@ -92,7 +102,56 @@ test('developer role is rewritten like GLM and unknown roles do not reach Kiro',
   })
   const json = JSON.stringify(body)
   assert.equal(json.includes('"developer"'), false)
-  assert.equal(body.conversationState.currentMessage.userInputMessage.content.includes('AGENTS.md'), true)
+  assert.equal(body.conversationState.history[0].userInputMessage.content, 'AGENTS.md')
+  assert.equal(body.conversationState.currentMessage.userInputMessage.content, 'hi')
+})
+
+test('later DSH system snapshots park at the history suffix, not on currentMessage', () => {
+  resetKiroSystemPins()
+  openaiToKiro({
+    model: 'claude-sonnet-5',
+    session_id: 'session-dsh-snap',
+    messages: [
+      { role: 'system', content: 'You are DSH.' },
+      { role: 'user', content: 'hello' },
+    ],
+  })
+  const second = openaiToKiro({
+    model: 'claude-sonnet-5',
+    session_id: 'session-dsh-snap',
+    messages: [
+      { role: 'system', content: 'You are DSH.\nThis snapshot supersedes the previous context.' },
+      { role: 'user', content: 'hello' },
+      { role: 'assistant', content: 'Hi!' },
+      { role: 'user', content: 'again' },
+    ],
+  })
+  assert.equal(second.conversationState.history[0].userInputMessage.content, 'You are DSH.')
+  assert.equal(second.conversationState.history[1].assistantResponseMessage.content, KIRO_SYSTEM_ACK)
+  const last = second.conversationState.history.at(-1)
+  const parked = second.conversationState.history.at(-2)
+  assert.equal(parked.userInputMessage.content, 'This snapshot supersedes the previous context.')
+  assert.equal(last.assistantResponseMessage.content, KIRO_SYSTEM_ACK)
+  assert.equal(second.conversationState.currentMessage.userInputMessage.content, 'again')
+  assert.equal(JSON.stringify(second).includes('prompt_cache_key'), false)
+  assert.equal(JSON.stringify(second).includes('x-grok-conv-id'), false)
+})
+
+test('same DSH session switching models does not reuse conversationId', () => {
+  resetKiroSystemPins()
+  const a = openaiToKiro({
+    model: 'claude-opus-5',
+    session_id: 'session-shared',
+    messages: [{ role: 'user', content: 'hello' }],
+  })
+  const b = openaiToKiro({
+    model: 'glm-5',
+    session_id: 'session-shared',
+    messages: [{ role: 'user', content: 'hello' }],
+  })
+  assert.equal(a.conversationState.conversationId, 'session-shared:claude-opus-5')
+  assert.equal(b.conversationState.conversationId, 'session-shared:glm-5')
+  assert.notEqual(a.conversationState.conversationId, b.conversationState.conversationId)
 })
 
 test('tools map into userInputMessageContext and tool results stay in history', () => {
@@ -142,6 +201,47 @@ test('conversationId is the DSH pin across two turns, never a Date.now stamp', (
   assert.equal(/^-\d+$/.test(kiroConversationId({})), false)
   const cleaned = kiroConversationId({}, 'session 772f/foo')
   assert.equal(cleaned, 'session-772f-foo')
+  assert.equal(
+    kiroConversationId({ session_id: 'session-dsh-9', model: 'deepseek-3.2' }),
+    'session-dsh-9:deepseek-3.2',
+  )
+  const pinned = kiroConversationId({ session_id: 'session-dsh-9', model: 'claude-sonnet-5' }, 'session-dsh-9')
+  assert.equal(pinned, 'session-dsh-9:claude-sonnet-5')
+  assert.equal(pinned.includes(String(Date.now()).slice(0, 8)), false)
+})
+
+test('conversationId isolates all 18 catalog models when DSH omits session_id', () => {
+  assert.equal(KIRO_MODELS.length, 18)
+  const ids = KIRO_MODELS.map((model) => kiroConversationId({ model: model.id }))
+  assert.equal(ids.length, new Set(ids).size)
+  for (const model of KIRO_MODELS) {
+    const id = kiroConversationId({ model: model.id })
+    assert.equal(id, `${KIRO_STABLE_SESSION}:${model.id}`)
+    assert.equal(/^-\d+$/.test(id), false)
+    assert.notEqual(id, KIRO_STABLE_SESSION)
+  }
+})
+
+test('collectKiroEvents maps cacheReadInputTokens to prompt_tokens_details.cached_tokens', () => {
+  const frames = encodeKiroEventStream([
+    { type: 'assistantResponseEvent', payload: { content: 'ok', modelId: 'deepseek-3.2' } },
+    {
+      type: 'metadataEvent',
+      payload: {
+        tokenUsage: {
+          uncachedInputTokens: 40,
+          cacheReadInputTokens: 960,
+          outputTokens: 8,
+          totalTokens: 1008,
+        },
+      },
+    },
+  ])
+  const openai = kiroToOpenai(frames, { model: 'deepseek-3.2', id: 'chatcmpl-cache' })
+  assert.equal(openai.usage.prompt_tokens, 1000)
+  assert.equal(openai.usage.completion_tokens, 8)
+  assert.equal(openai.usage.total_tokens, 1008)
+  assert.equal(openai.usage.prompt_tokens_details.cached_tokens, 960)
 })
 
 test('chat headers ask for eventstream; quota headers stay JSON', () => {
@@ -200,7 +300,7 @@ test('proxy translates hello on /kiro/v1/chat/completions and does not 501', asy
     assert.equal(seen[0].headers.authorization, 'Bearer kiro-tok')
     const body = JSON.parse(seen[0].body)
     assert.equal(body.conversationState.currentMessage.userInputMessage.modelId, 'deepseek-3.2')
-    assert.equal(body.conversationState.conversationId, 'session-dsh-kiro')
+    assert.equal(body.conversationState.conversationId, 'session-dsh-kiro:deepseek-3.2')
     assert.equal(body.profileArn, SOCIAL_PROFILE_ARN)
 
     const again = await fetch(`http://127.0.0.1:${port}/kiro/v1/chat/completions`, {
@@ -219,7 +319,7 @@ test('proxy translates hello on /kiro/v1/chat/completions and does not 501', asy
     assert.equal(again.status, 200)
     const second = JSON.parse(seen[1].body)
     assert.equal(second.conversationState.conversationId, body.conversationState.conversationId)
-    assert.equal(second.conversationState.conversationId, 'session-dsh-kiro')
+    assert.equal(second.conversationState.conversationId, 'session-dsh-kiro:deepseek-3.2')
 
     const streamed = await fetch(`http://127.0.0.1:${port}/kiro/v1/chat/completions`, {
       method: 'POST',

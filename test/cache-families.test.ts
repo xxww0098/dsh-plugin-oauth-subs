@@ -4,7 +4,7 @@ import { applyCodexCache, codexCacheHeaders, codexCacheSessionId } from '../lib/
 import { applyGrokCache, grokAffinityHeaders, grokCacheSessionId } from '../lib/oauth/grok/cache.js'
 import { applyGlmAnthropicCache, applyGlmCache, glmCacheSessionId, resetGlmSystemPins } from '../lib/oauth/glm/cache.js'
 import { antigravityCacheSessionId, antigravitySessionIdOf, ANTIGRAVITY_STABLE_SESSION } from '../lib/oauth/antigravity/cache.js'
-import { kiroCacheSessionId, kiroConversationId, KIRO_STABLE_SESSION } from '../lib/oauth/kiro/cache.js'
+import { kiroCacheSessionId, kiroConversationId, pinKiroSystemPrefix, KIRO_STABLE_SESSION, resetKiroSystemPins } from '../lib/oauth/kiro/cache.js'
 
 const dirty = 'session 772f7f3a/foo'
 
@@ -78,7 +78,19 @@ test('Antigravity cache identity is request.sessionId, with a stable fallback', 
 })
 
 test('Kiro cache identity is conversationId, with a stable fallback', () => {
+  resetKiroSystemPins()
   assert.equal(kiroConversationId({ session_id: 'sess-kiro' }), 'sess-kiro')
   assert.equal(kiroConversationId({}), KIRO_STABLE_SESSION)
   assert.equal(/^-\d+$/.test(kiroConversationId({})), false)
+  assert.equal(kiroConversationId({ session_id: 'sess-kiro', model: 'glm-5' }), 'sess-kiro:glm-5')
+  assert.notEqual(
+    kiroConversationId({ model: 'claude-opus-5' }),
+    kiroConversationId({ model: 'qwen3-coder-next' }),
+  )
+  const first = pinKiroSystemPrefix('sess-kiro:glm-5', 'You are DSH.')
+  const extra = pinKiroSystemPrefix('sess-kiro:glm-5', 'You are DSH.\nSnapshot')
+  assert.equal(first.pinned, 'You are DSH.')
+  assert.equal(first.extra, '')
+  assert.equal(extra.pinned, 'You are DSH.')
+  assert.equal(extra.extra, 'Snapshot')
 })
