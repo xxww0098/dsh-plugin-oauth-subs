@@ -1,8 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.0.53
 
-- GLM default DSH protocol is `anthropic-messages` (ZCode Desktop default). Hop is `POST /glm/v1/messages` → `api.z.ai` / `open.bigmodel.cn` `/api/anthropic/v1/messages` with `anthropic-version: 2023-06-01`, first-system `cache_control`, and `metadata.user_id`. Completions leftover stays at `/glm/v1/chat/completions` until the next sync. Codex/Grok stay Responses; Kiro/Antigravity stay Completions adapters. 150% quota is still identity (ZCode Desktop UA), not proven by this protocol switch.
+- GLM default DSH protocol is `anthropic-messages` (ZCode Desktop default). Hop is `POST /glm/v1/messages` → `api.z.ai` / `open.bigmodel.cn` `/api/anthropic/v1/messages` with `anthropic-version: 2023-06-01`, first-system `cache_control`, and `metadata.user_id`. Completions leftover stays at `/glm/v1/chat/completions` until the next sync. Codex/Grok stay Responses; Kiro/Antigravity stay Completions adapters. 150% quota is still identity (ZCode Desktop UA), not proven by this protocol switch. PR #57.
+
 
 ## 0.0.52
 
