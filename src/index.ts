@@ -20,7 +20,8 @@ import z from '@deepseek-ai/schemastery'
 import { AuthController } from './oauth/controller.js'
 import { authFilePath, defaultDataDir, readPrivateText, writePrivateText } from './oauth/store.js'
 import { createProxy } from './oauth/proxy.js'
-import { OAUTH_CREDENTIAL_REF, ModelSwitch } from './oauth/models.js'
+import { catalogProviders, OAUTH_CREDENTIAL_REF, ModelSwitch } from './oauth/models.js'
+import { EffortMemory, LAST_EFFORT_FILE, startEffortRestore } from './oauth/reasoning-effort.js'
 import { profileFromBaseUrl } from './utils/update.js'
 
 export const name = 'dsh-plugin-oauth-subs'
@@ -127,6 +128,9 @@ export function apply(ctx, config = {}) {
   const models = new ModelSwitch({
     path: join(dataDir, 'models.json'),
   })
+  const effort = new EffortMemory({
+    path: join(dataDir, LAST_EFFORT_FILE),
+  })
 
   const controller = new AuthController({
     authPath,
@@ -143,6 +147,17 @@ export function apply(ctx, config = {}) {
     profile: profileFromBaseUrl(ctx.baseUrl),
   })
 
+  ctx.effect(() => startEffortRestore({
+    ctx,
+    settings: ctx.settings,
+    memory: effort,
+    prefix,
+    effortsFor: (provider, modelId) => {
+      const catalog = catalogProviders({ prefix, origin: `http://127.0.0.1:${port}` })
+      return catalog[provider]?.models.find((model) => model.id === modelId)?.reasoningEfforts
+    },
+  }), 'dsh-plugin-oauth-subs: remember reasoning effort')
+
   let proxy
   ctx.effect(() => {
     let closed = false
@@ -151,6 +166,7 @@ export function apply(ctx, config = {}) {
         const apiKey = await ensureApiKey(dataDir)
         await rememberCredential(ctx, apiKey)
         await models.ready
+        await effort.ready
         proxy = createProxy({
           port,
           apiKey,
