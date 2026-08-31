@@ -17,7 +17,7 @@ export declare const KIRO_CALLBACK_PATH = "/oauth/callback";
 /** Origin-only Cognito redirect can land on `/`, the IDE path, or `/signin/callback`. */
 export declare const KIRO_CALLBACK_PATHS: readonly string[];
 export declare const KIRO_OIDC_SCOPES: readonly string[];
-export declare const KIRO_USAGE_VERSION = "0.9.2";
+export declare const KIRO_USAGE_VERSION = "1.0.0";
 export declare const KIRO_NEVER_EXPIRES = 8640000000000000;
 export declare const KIRO_DEFAULT_REGION = "us-east-1";
 export declare const KIRO_CONTEXT_WINDOW = 200000;
@@ -67,6 +67,8 @@ export declare function validateKiroIdpEndpoint(raw: any): any;
 export declare function validateKiroRefreshToken(value: any): string;
 export declare function validateKiroApiKey(value: any): string;
 export declare function kiroMachineId(session?: {}): string;
+/** Stable 64-hex for Social UA. Pass a prior id (or session) so login/token share one machine. */
+export declare function allocateKiroMachineId(prior: any): string;
 export declare function kiroTokenTypeHeader(session: any): "API_KEY" | "EXTERNAL_IDP";
 export declare function kiroEffectiveProfileArn(session: any): any;
 export declare function kiroStreamingProfileArn(session: any): any;
@@ -116,7 +118,7 @@ export declare function kiroSession(fields?: {}): {
     apiRegion: string;
     kiroApiKey: string;
 };
-export declare function exchangeKiroSocialCode(code: any, verifier: any, redirectUri: any, { fetchFn, callback }?: {
+export declare function exchangeKiroSocialCode(code: any, verifier: any, redirectUri: any, { fetchFn, callback, machineId: priorMachineId }?: {
     fetchFn?: typeof fetch;
 }): Promise<{
     accessToken: string;

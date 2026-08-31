@@ -2408,10 +2408,12 @@ export declare class AuthController {
         kind: string;
         startUrl: any;
         redirectUri?: undefined;
+        machineId?: undefined;
     } | {
         authorizeUrl: any;
         redirectUri: any;
         mode: string;
+        machineId: string;
         verificationUri?: undefined;
         userCode?: undefined;
         kind?: undefined;
@@ -2420,6 +2422,14 @@ export declare class AuthController {
         authorizeUrl: any;
         mode: string;
         region: string;
+        redirectUri?: undefined;
+        verificationUri?: undefined;
+        userCode?: undefined;
+    } | {
+        authorizeUrl: any;
+        redirectUri: any;
+        mode: string;
+        region?: undefined;
         verificationUri?: undefined;
         userCode?: undefined;
     } | {
@@ -2428,6 +2438,7 @@ export declare class AuthController {
         userCode: any;
         mode: string;
         region?: undefined;
+        redirectUri?: undefined;
     }>;
     completePkce(provider: any, attempt: any, claim: any): Promise<void>;
     completeDevice(provider: any, attempt: any): Promise<void>;
