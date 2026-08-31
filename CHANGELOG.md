@@ -5,6 +5,7 @@
 - Quota reset labels keep leftover minutes (`4 小时 32 分钟后重置` / `resets in 4 h 32 min`) instead of rounding to whole hours.
 - Antigravity quota matches the official Model Quota panel: Gemini / Claude+GPT groups, each with weekly remaining and 5-hour remaining (`retrieveUserQuotaSummary`). Plan badge uses Google AI `paidTier` (Pro / Ultra); Code Assist `currentTier` STANDARD is ignored, Free still comes from `free-tier`.
 - Prompt cache is per OAuth family (`src/oauth/<id>/cache.ts`). Codex, Grok, GLM, Kiro, and Antigravity no longer share `codexCacheSessionId`. GLM drops Codex `prompt_cache_key` and pins the leading system so Z.AI implicit cache can keep the prefix. Binding spec is in `AGENTS.md` (Prompt cache — 设计规范).
+- Each OAuth family has `src/oauth/<id>/README.md` (login, chat hop, quota, cache) so the design is traceable. AGENTS.md requires a README on every new family.
 
 ## 0.0.51
 - Antigravity: map Google `cachedContentTokenCount` to OpenAI `prompt_tokens_details.cached_tokens` so DSH cache hit rate is not stuck at 0%. Extra DSH system snapshots are parked after the conversation so the implicit-cache prefix can still hit.
