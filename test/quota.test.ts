@@ -577,6 +577,35 @@ test('parseAntigravityModelQuota uses resetTime as remaining 0 and min of group'
   assert.equal(parsed.rows[0].product, 'Claude/GPT')
   assert.equal(parsed.rows[0].remainingPercent, 0)
   assert.equal(parsed.rows[0].usedPercent, 100)
+  assert.equal(parsed.rows[0].resetAt, Date.parse('2099-01-01T00:00:00Z'))
+})
+
+test('parseAntigravityModelQuota copies resetTime onto each product bar', () => {
+  const flashReset = '2099-02-01T05:00:00Z'
+  const proReset = '2099-02-01T06:00:00Z'
+  const parsed = parseAntigravityModelQuota({
+    models: {
+      'claude-sonnet-4-6': {
+        quotaInfo: { remainingFraction: 1, resetTime: '2099-02-01T08:00:00Z' },
+      },
+      'gemini-3.1-pro-high': {
+        quotaInfo: { remainingFraction: 0.97, resetTime: proReset },
+      },
+      'gemini-3.1-pro-low': {
+        quotaInfo: { remainingFraction: 0.99, resetTime: '2099-02-01T01:00:00Z' },
+      },
+      'gemini-3-flash': {
+        quotaInfo: { remainingFraction: '97%', reset_time: flashReset },
+      },
+    },
+  })
+  const claude = parsed.rows.find((row) => row.product === 'Claude/GPT')
+  const pro = parsed.rows.find((row) => row.product === 'Gemini 3.1 Pro Series')
+  const flash = parsed.rows.find((row) => row.product === 'Gemini 3 Flash')
+  assert.equal(claude.resetAt, Date.parse('2099-02-01T08:00:00Z'))
+  assert.equal(pro.remainingPercent, 97)
+  assert.equal(pro.resetAt, Date.parse(proReset))
+  assert.equal(flash.resetAt, Date.parse(flashReset))
 })
 
 test('parseAntigravityPaidCredits reads paidTier.availableCredits', () => {
