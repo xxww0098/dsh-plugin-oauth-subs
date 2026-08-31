@@ -132,6 +132,9 @@ export declare function kiroSocialFlow(): {
     callbackPaths: string[];
     buildAuthorizeUrl(input: any): string;
 };
+export declare class KiroHttpError extends Error {
+    constructor(message: any, status: any, { retryAfter }?: {});
+}
 export declare function kiroSession(fields?: {}): {
     accessToken: string;
     refreshToken: string;

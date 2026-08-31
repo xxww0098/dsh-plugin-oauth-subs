@@ -99,9 +99,9 @@ export declare function kiroToOpenai(eventsOrBody: any, { model, id }?: {
     usage: any;
 };
 export declare function mapKiroUsage(tokens: any): {
-    prompt_tokens: any;
-    completion_tokens: any;
-    total_tokens: any;
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
 };
 export declare function kiroToOpenaiChunk(delta: any, { model, id, done, finishReason, usage }?: {
     done?: boolean;
