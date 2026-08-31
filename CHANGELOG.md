@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.43
+
+- Kiro Social: authorize stays origin-only `http://localhost:<port>`; token exchange uses the landed callback `http://localhost:<port><path>?login_option=google|github`. UA is `KiroIDE-1.0.0-<stable machineId>`.
+- Antigravity: Google `VALIDATION_REQUIRED` is rewritten to HTTP 400 (not DSH AUTH / 「API 密钥无效」). Settings card shows a verify-account CTA.
+
 ## 0.0.42
 
 - Kiro Social: register origin-only `http://localhost:<port>` (not `127.0.0.1`); accept `/`, `/oauth/callback`, `/signin/callback`.
