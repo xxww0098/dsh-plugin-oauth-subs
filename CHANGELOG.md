@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.57
+
+- Kiro: park DSH system prefix in a stable history user+ack; per-model conversationId (`session:model`); surface `cacheReadInputTokens` as `prompt_tokens_details.cached_tokens`. PR #65.
+
 ## 0.0.56
 
 - GLM Anthropic route no longer sets Completions-only `compat.supportsReasoningEffort`, so DSH `assertServiceable` accepts the atomic `llm-pi-ai` mutate. Logged-in Kiro (18 models) now writes to `settings.yaml` as `oauth-kiro`. PR #63.
