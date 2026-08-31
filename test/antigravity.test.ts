@@ -33,11 +33,17 @@ import {
   antigravityPlatform,
   antigravityRequestUserAgent,
   antigravitySession,
+  ANTIGRAVITY_VERIFY_CODE,
+  ANTIGRAVITY_VERIFY_MESSAGE,
+  antigravityValidationClientError,
   antigravityVersion,
+  applyAntigravityValidation,
   completeAntigravityLogin,
+  parseAntigravityValidation,
   detectAntigravityVersion,
   exchangeAntigravityCode,
   fetchAntigravityProject,
+  isAntigravityPermanentRefreshError,
   normalizeAntigravityVersion,
   parseAntigravityPlistVersion,
   parseAntigravityVersionText,
@@ -685,4 +691,114 @@ test('completeAntigravityLogin keeps fingerprint after token exchange', async ()
   assert.deepEqual(antigravityToOpenai({
     response: { candidates: [{ content: { parts: [{ text: 'hi' }] } }] },
   }, { model: 'claude-sonnet-4-6' }).choices[0].message.content, 'hi')
+})
+
+function googleValidationDenied() {
+  return {
+    error: {
+      code: 403,
+      message: 'Verify your account to continue.',
+      status: 'PERMISSION_DENIED',
+      details: [{
+        '@type': 'type.googleapis.com/google.rpc.ErrorInfo',
+        reason: 'VALIDATION_REQUIRED',
+        domain: 'cloudcode-pa.googleapis.com',
+        metadata: {
+          validation_url: 'https://accounts.google.com/signin/continue?continue=https://developers.google.com/gemini-code-assist/auth/auth_success_gemini&plt=one-time-test',
+        },
+      }],
+    },
+  }
+}
+
+test('parseAntigravityValidation detects VALIDATION_REQUIRED and strips nothing from the URL', () => {
+  const info = parseAntigravityValidation(googleValidationDenied())
+  assert.equal(info.required, true)
+  assert.equal(info.code, ANTIGRAVITY_VERIFY_CODE)
+  assert.equal(info.message, ANTIGRAVITY_VERIFY_MESSAGE)
+  assert.equal(info.validationUrl?.startsWith('https://accounts.google.com/signin/continue'), true)
+  assert.equal(parseAntigravityValidation({ error: { message: 'quota exceeded' } }), undefined)
+  const body = antigravityValidationClientError(info)
+  assert.equal(body.error.message, 'Google 需要验证此账号才能对话')
+  assert.equal(body.error.code, 'VALIDATION_REQUIRED')
+  assert.equal(JSON.stringify(body).includes('plt='), false)
+})
+
+test('proxy rewrites Cloud Code VALIDATION_REQUIRED to a 400, not a 403', async () => {
+  const remembered = []
+  const proxy = createProxy({
+    port: 0,
+    apiKey: 'secret-key',
+    fetchFn: async () => jsonResponse(googleValidationDenied(), 403),
+    tokens: {
+      antigravity: {
+        session: async () => antigravitySession({
+          accessToken: 'ag-tok',
+          refreshToken: 'r',
+          expiresAt: Date.now() + 60_000,
+          account: 'dev@x',
+          projectId: 'proj-1',
+        }),
+        remember: async (fields) => { remembered.push(fields) },
+      },
+    },
+  })
+  const server = await proxy.listen()
+  try {
+    const denied = await fetch(`http://127.0.0.1:${server.address().port}/antigravity/v1/chat/completions`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer secret-key', 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'gemini-3.7-flash-high', messages: [{ role: 'user', content: 'hi' }] }),
+    })
+    assert.equal(denied.status, 400)
+    assert.equal([401, 403].includes(denied.status), false)
+    const payload = await denied.json()
+    assert.equal(payload.error.message, ANTIGRAVITY_VERIFY_MESSAGE)
+    assert.equal(payload.error.code, ANTIGRAVITY_VERIFY_CODE)
+    assert.equal(payload.error.type, 'invalid_request')
+    assert.equal(String(payload.error.message).includes('密钥'), false)
+    assert.equal(JSON.stringify(payload).includes('plt='), false)
+    assert.equal(isAntigravityPermanentRefreshError({ code: ANTIGRAVITY_VERIFY_CODE }), false)
+    assert.equal(isAntigravityPermanentRefreshError(googleValidationDenied()), false)
+    assert.equal(isAntigravityPermanentRefreshError({ code: 'invalid_grant' }), true)
+    assert.equal(remembered[0].needsValidation, true)
+    assert.equal(remembered[0].validationUrl.startsWith('https://accounts.google.com/'), true)
+  } finally {
+    await proxy.close()
+  }
+})
+
+test('snapshot exposes Antigravity needsValidation and validationUrl on the card row', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-ag-val-'))
+  const authPath = join(dir, 'auth.json')
+  const later = Date.now() + 60 * 60_000
+  const verifyUrl = 'https://accounts.google.com/signin/continue?continue=https://developers.google.com/gemini-code-assist/auth/auth_success_gemini&plt=card-test'
+  await saveSession('antigravity', applyAntigravityValidation(antigravitySession({
+    accessToken: 'tok-v', refreshToken: 'r', expiresAt: later, account: 'need@x', projectId: 'p1',
+    planType: 'STANDARD TIER',
+  }), { required: true, validationUrl: verifyUrl }), authPath)
+  const daily = antigravityFetchModelsUrls()[0]
+  const controller = new AuthController({
+    authPath,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+    fetchFn: async (url) => {
+      const href = String(url)
+      if (href === ANTIGRAVITY_LOAD_CODE_ASSIST_URL) {
+        return jsonResponse({ currentTier: { id: 'STANDARD TIER' }, cloudaicompanionProject: 'p1' })
+      }
+      if (href === daily) {
+        return jsonResponse({ models: { 'gemini-3-flash': { quotaInfo: { remainingFraction: 0.5 } } } })
+      }
+      if (href.includes(':generateContent')) {
+        return jsonResponse(googleValidationDenied(), 403)
+      }
+      throw new Error(`unexpected ${href}`)
+    },
+  })
+  const snap = await controller.snapshot()
+  const row = snap.accounts.antigravity.accounts.find((item) => item.account === 'need@x')
+  assert.equal(row.needsValidation, true)
+  assert.equal(row.validationUrl, verifyUrl)
 })

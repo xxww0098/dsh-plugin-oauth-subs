@@ -21,6 +21,12 @@ export class TokenManager {
     return this.inflight
   }
 
+  async remember(fields) {
+    const current = await this.load()
+    if (current === undefined) return
+    await this.save({ ...current, ...fields })
+  }
+
   async #resolve() {
     const current = await this.load()
     if (current === undefined) {

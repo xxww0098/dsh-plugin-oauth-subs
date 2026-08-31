@@ -12,4 +12,5 @@ export declare class TokenManager {
         onRemoved: any;
     });
     session(): Promise<any>;
+    remember(fields: any): Promise<void>;
 }

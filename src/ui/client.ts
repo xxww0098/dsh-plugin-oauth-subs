@@ -48,6 +48,8 @@ window.__ModuleLoader__.load({
         kiroTitle: 'AWS Kiro',
         antigravityTitle: 'Antigravity',
         antigravityPastePlaceholder: 'http://localhost:51121/oauth-callback?code=…&state=…',
+        antigravityVerify: 'Google 需要验证此账号才能对话',
+        antigravityVerifyGo: '去验证',
         login: '登录',
         addAccount: '添加账号',
         glmLoginZai: '连接 Z.ai 继续使用',
@@ -182,6 +184,8 @@ window.__ModuleLoader__.load({
         kiroTitle: 'AWS Kiro',
         antigravityTitle: 'Antigravity',
         antigravityPastePlaceholder: 'http://localhost:51121/oauth-callback?code=…&state=…',
+        antigravityVerify: 'Google needs to verify this account before chat',
+        antigravityVerifyGo: 'Verify',
         login: 'Sign in',
         addAccount: 'Add account',
         glmLoginZai: 'Continue with Z.ai',
@@ -587,6 +591,14 @@ window.__ModuleLoader__.load({
 .osubs-acct-main { display: flex; flex-direction: column; gap: 6px; min-width: 0; flex: 1 1 180px; }
 .osubs-acct-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .osubs-accts { display: flex; flex-direction: column; gap: 12px; }
+.osubs-verify {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in oklab, var(--osubs-warn) 42%, transparent);
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--osubs-warn) 10%, transparent);
+}
+.osubs-hint.osubs-warn { color: var(--osubs-warn); }
 .osubs-glm-logins { display: flex; flex-direction: column; gap: 8px; }
 .osubs-glm-login {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
@@ -1142,6 +1154,14 @@ window.__ModuleLoader__.load({
           ),
         ),
         h('div', { onClick: (event) => event.stopPropagation() },
+          id === 'antigravity' && row.needsValidation && h('div', { className: 'osubs-verify' },
+            h('p', { className: 'osubs-hint osubs-warn' }, t.antigravityVerify),
+            row.validationUrl && h(Button, {
+              size: 'sm',
+              onClick: () => { window.open(row.validationUrl, '_blank', 'noopener') },
+              label: t.antigravityVerifyGo,
+            }),
+          ),
           h(QuotaBlock, {
             t,
             family: id,

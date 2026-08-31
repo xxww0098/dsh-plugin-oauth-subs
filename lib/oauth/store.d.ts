@@ -26,6 +26,8 @@ export declare function listAccounts(provider: any, path: any): Promise<({
     region?: undefined;
     method?: undefined;
     methodLabel?: undefined;
+    needsValidation?: undefined;
+    validationUrl?: undefined;
     scopes?: undefined;
     id: string;
     active: boolean;
@@ -37,6 +39,8 @@ export declare function listAccounts(provider: any, path: any): Promise<({
     expiresAt: any;
     method?: undefined;
     methodLabel?: undefined;
+    needsValidation?: undefined;
+    validationUrl?: undefined;
     scopes?: undefined;
     id: string;
     active: boolean;
@@ -48,6 +52,21 @@ export declare function listAccounts(provider: any, path: any): Promise<({
     methodLabel: string;
     expiresAt: any;
     region?: undefined;
+    needsValidation?: undefined;
+    validationUrl?: undefined;
+    scopes?: undefined;
+    id: string;
+    active: boolean;
+} | {
+    account: any;
+    planType: any;
+    planLabel: any;
+    expiresAt: any;
+    needsValidation: boolean;
+    validationUrl: any;
+    region?: undefined;
+    method?: undefined;
+    methodLabel?: undefined;
     scopes?: undefined;
     id: string;
     active: boolean;
@@ -60,6 +79,8 @@ export declare function listAccounts(provider: any, path: any): Promise<({
     region?: undefined;
     method?: undefined;
     methodLabel?: undefined;
+    needsValidation?: undefined;
+    validationUrl?: undefined;
     id: string;
     active: boolean;
 })[]>;
@@ -81,6 +102,8 @@ export declare function publicSession(provider: any, session: any): {
     region?: undefined;
     method?: undefined;
     methodLabel?: undefined;
+    needsValidation?: undefined;
+    validationUrl?: undefined;
     scopes?: undefined;
 } | {
     account: string;
@@ -90,6 +113,8 @@ export declare function publicSession(provider: any, session: any): {
     expiresAt: any;
     method?: undefined;
     methodLabel?: undefined;
+    needsValidation?: undefined;
+    validationUrl?: undefined;
     scopes?: undefined;
 } | {
     account: any;
@@ -99,6 +124,19 @@ export declare function publicSession(provider: any, session: any): {
     methodLabel: string;
     expiresAt: any;
     region?: undefined;
+    needsValidation?: undefined;
+    validationUrl?: undefined;
+    scopes?: undefined;
+} | {
+    account: any;
+    planType: any;
+    planLabel: any;
+    expiresAt: any;
+    needsValidation: boolean;
+    validationUrl: any;
+    region?: undefined;
+    method?: undefined;
+    methodLabel?: undefined;
     scopes?: undefined;
 } | {
     account: any;
@@ -109,4 +147,6 @@ export declare function publicSession(provider: any, session: any): {
     region?: undefined;
     method?: undefined;
     methodLabel?: undefined;
+    needsValidation?: undefined;
+    validationUrl?: undefined;
 };

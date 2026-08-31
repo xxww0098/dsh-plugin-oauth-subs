@@ -17,7 +17,7 @@ export declare const KIRO_CALLBACK_PATH = "/oauth/callback";
 /** Origin-only Cognito redirect can land on `/`, the IDE path, or `/signin/callback`. */
 export declare const KIRO_CALLBACK_PATHS: readonly string[];
 export declare const KIRO_OIDC_SCOPES: readonly string[];
-export declare const KIRO_USAGE_VERSION = "0.9.2";
+export declare const KIRO_USAGE_VERSION = "1.0.0";
 export declare const KIRO_NEVER_EXPIRES = 8640000000000000;
 export declare const KIRO_DEFAULT_REGION = "us-east-1";
 export declare const KIRO_CONTEXT_WINDOW = 200000;
@@ -67,6 +67,8 @@ export declare function validateKiroIdpEndpoint(raw: any): any;
 export declare function validateKiroRefreshToken(value: any): string;
 export declare function validateKiroApiKey(value: any): string;
 export declare function kiroMachineId(session?: {}): string;
+/** Stable 64-hex for Social UA. Pass a prior id (or session) so login/token share one machine. */
+export declare function allocateKiroMachineId(prior: any): string;
 export declare function kiroTokenTypeHeader(session: any): "API_KEY" | "EXTERNAL_IDP";
 export declare function kiroEffectiveProfileArn(session: any): any;
 export declare function kiroStreamingProfileArn(session: any): any;
@@ -78,8 +80,15 @@ export declare function kiroUsageHeaders(session: any): {
     'amz-sdk-invocation-id': `${string}-${string}-${string}-${string}-${string}`;
     'amz-sdk-request': string;
 };
-/** Portal + token exchange both register origin only; KiroIDE still lands on `/oauth/callback`. */
+/** Portal authorize `redirect_uri` is origin only (`http://localhost:<port>`). */
 export declare function kiroSocialRedirectUri(redirectUri: any): string;
+export declare function kiroSocialLoginOption(value: any): string;
+/**
+ * Token-exchange `redirect_uri` is the URL the browser actually hit:
+ * origin + path (`/` / `/oauth/callback` / `/signin/callback`) and
+ * `?login_option=google|github` when the callback carried that query.
+ */
+export declare function kiroSocialTokenRedirectUri(redirectUri: any, callback?: {}): string;
 export declare function kiroSocialFlow(): {
     listen: {
         host: string;
@@ -109,7 +118,7 @@ export declare function kiroSession(fields?: {}): {
     apiRegion: string;
     kiroApiKey: string;
 };
-export declare function exchangeKiroSocialCode(code: any, verifier: any, redirectUri: any, { fetchFn }?: {
+export declare function exchangeKiroSocialCode(code: any, verifier: any, redirectUri: any, { fetchFn, callback, machineId: priorMachineId }?: {
     fetchFn?: typeof fetch;
 }): Promise<{
     accessToken: string;
