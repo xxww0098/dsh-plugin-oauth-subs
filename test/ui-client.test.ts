@@ -66,3 +66,10 @@ test('Settings Antigravity card shows a verify banner, not API-key-invalid', asy
   assert.match(src, /window\.open\(row\.validationUrl/)
   assert.equal(src.includes('API 密钥无效'), false)
 })
+
+test('authorize URL and user code hide when the provider is no longer busy', async () => {
+  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  assert.match(src, /pending\?\.userCode && busy &&/)
+  assert.match(src, /pending\?\.authorizeUrl && busy &&/)
+  assert.match(src, /snap\.accounts\[id\]\?\.busy/)
+})

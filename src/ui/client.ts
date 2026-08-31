@@ -1222,11 +1222,11 @@ window.__ModuleLoader__.load({
           })),
         ),
         account?.detail && h('p', { className: 'osubs-hint osubs-bad' }, `${t.error}: ${account.detail}`),
-        pending?.userCode && h('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+        pending?.userCode && busy && h('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
           h('span', { className: 'osubs-eyebrow' }, t.userCode),
           h('code', { style: { fontSize: 20, letterSpacing: '0.14em', fontWeight: 600, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' } }, pending.userCode),
         ),
-        pending?.authorizeUrl && h('a', {
+        pending?.authorizeUrl && busy && h('a', {
           className: 'osubs-link',
           href: pending.authorizeUrl,
           target: '_blank',
@@ -1623,6 +1623,20 @@ window.__ModuleLoader__.load({
         const timer = setInterval(() => void refresh(), 1500)
         return () => clearInterval(timer)
       }, [refresh])
+
+      useEffect(() => {
+        if (!snap?.accounts) return
+        setPending((current) => {
+          let changed = false
+          const next = { ...current }
+          for (const id of Object.keys(current)) {
+            if (!current[id] || snap.accounts[id]?.busy) continue
+            next[id] = undefined
+            changed = true
+          }
+          return changed ? next : current
+        })
+      }, [snap])
 
       const run = async (method, payload) => {
         try {
