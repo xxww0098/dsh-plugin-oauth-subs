@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.42
+
+- Kiro Social: register origin-only `http://localhost:<port>` (not `127.0.0.1`); accept `/`, `/oauth/callback`, `/signin/callback`.
+- GLM: `thinking: { type: enabled, clear_thinking: false }` for 5.3/Flash; copy DSH `reasoning` → `reasoning_content`; pin `x-session-id` per DSH conversation.
+- Antigravity: pin `request.sessionId` to DSH session; never `Date.now()`.
+- GLM + Antigravity: pin `prompt_cache_key` like Codex/Grok.
+
 ## 0.0.41
 
 - Antigravity: Gemini `functionResponse.response` must be a Struct. Wrap array tool results (`{ result }`) so long sessions stop 400 INVALID_ARGUMENT.
