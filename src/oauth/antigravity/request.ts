@@ -4,6 +4,10 @@
  */
 
 import { antigravityRequestId, ANTIGRAVITY_BODY_USER_AGENT } from './index.js'
+import { codexCacheSessionId } from '../../utils/cache-session.js'
+
+/** When DSH sends neither session_id nor prompt_cache_key, still pin a constant. */
+export const ANTIGRAVITY_STABLE_SESSION = 'dsh-antigravity'
 
 function trimmed(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined
@@ -139,7 +143,10 @@ export function openaiToAntigravity(payload, { projectId, sessionId } = {}) {
 
   const request = {
     contents,
-    sessionId: trimmed(sessionId) ?? trimmed(payload?.session_id) ?? `-${Date.now()}`,
+    sessionId: codexCacheSessionId(sessionId)
+      ?? codexCacheSessionId(payload?.session_id)
+      ?? codexCacheSessionId(payload?.prompt_cache_key)
+      ?? ANTIGRAVITY_STABLE_SESSION,
   }
   if (systemParts.length) request.systemInstruction = { parts: systemParts }
   const tools = toolDeclarations(payload?.tools)

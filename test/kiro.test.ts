@@ -15,6 +15,7 @@ import {
   kiroMethodLabel,
   kiroSession,
   kiroSessionFromImport,
+  KIRO_CALLBACK_PATHS,
   kiroSocialFlow,
   kiroSocialRedirectUri,
   kiroUsageUrl,
@@ -26,6 +27,7 @@ import {
 import { registerKiroOidcClient, kiroIdcSession } from '../lib/oauth/kiro/idc-flow.js'
 import { parseKiroUsage } from '../lib/oauth/quota.js'
 import { formatPlanLabel } from '../lib/oauth/plan.js'
+import { OAuthFlowManager } from '../lib/oauth/flow.js'
 import { AuthController } from '../lib/oauth/controller.js'
 import { accountIdOf, listAccounts, saveSession } from '../lib/oauth/store.js'
 import { buildProviders, catalogProviders, describeCatalog } from '../lib/oauth/models.js'
@@ -50,14 +52,17 @@ test('canonicalizeKiroMethod maps aliases including Entra and Builder ID', () =>
 })
 
 test('kiro social authorize URL omits the callback path on redirect_uri', () => {
-  const callback = 'http://127.0.0.1:3128/oauth/callback'
-  const url = new URL(kiroSocialFlow().buildAuthorizeUrl({
+  const flow = kiroSocialFlow()
+  assert.equal(flow.listen.host, 'localhost')
+  assert.deepEqual(flow.callbackPaths, [...KIRO_CALLBACK_PATHS])
+  const callback = 'http://localhost:3128/oauth/callback'
+  const url = new URL(flow.buildAuthorizeUrl({
     state: 'st',
     pkce: { challenge: 'ch' },
     redirectUri: callback,
   }))
   assert.equal(`${url.origin}${url.pathname}`, `${KIRO_PORTAL_URL}/signin`)
-  assert.equal(url.searchParams.get('redirect_uri'), 'http://127.0.0.1:3128')
+  assert.equal(url.searchParams.get('redirect_uri'), 'http://localhost:3128')
   assert.equal(url.searchParams.get('redirect_uri'), kiroSocialRedirectUri(callback))
   assert.notEqual(url.searchParams.get('redirect_uri'), callback)
   assert.equal(url.searchParams.get('code_challenge_method'), 'S256')
@@ -209,7 +214,7 @@ test('Kiro catalog matches kiro.dev models minus Auto, with native ids', () => {
 })
 
 test('exchangeKiroSocialCode posts origin-only redirect_uri and KiroIDE machine UA', async () => {
-  const callback = 'http://127.0.0.1:3128/oauth/callback'
+  const callback = 'http://localhost:3128/oauth/callback'
   let seen
   const session = await exchangeKiroSocialCode('code-1', 'verifier', callback, {
     fetchFn: async (url, init) => {
@@ -222,7 +227,7 @@ test('exchangeKiroSocialCode posts origin-only redirect_uri and KiroIDE machine 
       })
     },
   })
-  assert.equal(seen.body.redirect_uri, 'http://127.0.0.1:3128')
+  assert.equal(seen.body.redirect_uri, 'http://localhost:3128')
   assert.equal(seen.body.redirect_uri, kiroSocialRedirectUri(callback))
   assert.match(seen.headers['user-agent'], /^KiroIDE-0\.9\.2-[0-9a-f]{64}$/i)
   assert.equal(seen.headers.accept, 'application/json, text/plain, */*')
@@ -232,7 +237,7 @@ test('exchangeKiroSocialCode posts origin-only redirect_uri and KiroIDE machine 
 })
 
 test('kiro social authorize and token exchange cannot drift on redirect_uri', async () => {
-  const callback = 'http://127.0.0.1:4649/oauth/callback'
+  const callback = 'http://localhost:4649/oauth/callback'
   const authorizeRedirect = new URL(kiroSocialFlow().buildAuthorizeUrl({
     state: 'st',
     pkce: { challenge: 'ch' },
@@ -245,10 +250,48 @@ test('kiro social authorize and token exchange cannot drift on redirect_uri', as
       return json({ accessToken: 'at', refreshToken: RT, expiresIn: 3600 })
     },
   })
-  assert.equal(authorizeRedirect, 'http://127.0.0.1:4649')
+  assert.equal(authorizeRedirect, 'http://localhost:4649')
   assert.equal(tokenRedirect, authorizeRedirect)
   assert.notEqual(tokenRedirect, callback)
   assert.equal(String(tokenRedirect).includes('/oauth/callback'), false)
+})
+
+test('Kiro Social loopback registers localhost and accepts / plus /oauth/callback', async () => {
+  const flows = new OAuthFlowManager()
+
+  const first = await flows.start('kiro', {
+    ...kiroSocialFlow(),
+    listen: { host: 'localhost', ports: [0] },
+    timeoutMs: 8_000,
+  })
+  const redirect = new URL(first.authorizeUrl).searchParams.get('redirect_uri')
+  assert.match(redirect, /^http:\/\/localhost:\d+$/)
+  assert.equal(new URL(first.redirectUri).hostname, 'localhost')
+  assert.equal(new URL(first.authorizeUrl).searchParams.get('redirect_from'), 'KiroIDE')
+  const port = new URL(redirect).port
+  const root = await fetch(`http://127.0.0.1:${port}/?code=from-root&state=${first.state}`)
+  assert.equal(root.status, 200)
+  assert.equal(await first.waitCode(), 'from-root')
+
+  const second = await flows.start('kiro', {
+    ...kiroSocialFlow(),
+    listen: { host: 'localhost', ports: [0] },
+    timeoutMs: 8_000,
+  })
+  const secondPort = new URL(second.redirectUri).port
+  const callback = await fetch(`http://127.0.0.1:${secondPort}/oauth/callback?code=from-cb&state=${second.state}`)
+  assert.equal(callback.status, 200)
+  assert.equal(await second.waitCode(), 'from-cb')
+
+  const third = await flows.start('kiro', {
+    ...kiroSocialFlow(),
+    listen: { host: 'localhost', ports: [0] },
+    timeoutMs: 8_000,
+  })
+  const thirdPort = new URL(third.redirectUri).port
+  const signin = await fetch(`http://127.0.0.1:${thirdPort}/signin/callback?code=from-signin&state=${third.state}`)
+  assert.equal(signin.status, 200)
+  assert.equal(await third.waitCode(), 'from-signin')
 })
 
 test('refreshKiro social / idc / entra hit the matching endpoints', async () => {

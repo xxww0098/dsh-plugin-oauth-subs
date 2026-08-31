@@ -14,6 +14,8 @@ export declare const BUILDER_ID_PROFILE_ARN = "arn:aws:codewhisperer:us-east-1:6
 export declare const SOCIAL_PROFILE_ARN = "arn:aws:codewhisperer:us-east-1:699475941385:profile/EHGA3GRVQMUK";
 export declare const KIRO_CALLBACK_PORTS: readonly number[];
 export declare const KIRO_CALLBACK_PATH = "/oauth/callback";
+/** Origin-only Cognito redirect can land on `/`, the IDE path, or `/signin/callback`. */
+export declare const KIRO_CALLBACK_PATHS: readonly string[];
 export declare const KIRO_OIDC_SCOPES: readonly string[];
 export declare const KIRO_USAGE_VERSION = "0.9.2";
 export declare const KIRO_NEVER_EXPIRES = 8640000000000000;
@@ -84,6 +86,7 @@ export declare function kiroSocialFlow(): {
         ports: number[];
     };
     callbackPath: string;
+    callbackPaths: string[];
     buildAuthorizeUrl(input: any): string;
 };
 export declare function kiroSession(fields?: {}): {

@@ -1,5 +1,61 @@
 # 错误记录
 
+## 2026-08-30：Kiro Social 登录在 #38 之后仍会 Google 500
+
+### 现象
+
+用户已装 0.0.41（#38 授权/换票共用 origin-only `redirect_uri`）。设置 → AWS Kiro Social，走 Google 社交登录时 Cognito 仍回 `Oops, something went wrong`（HTTP 500）。本机 dummy code 仍是 400，真 code + 对不上的 `redirect_uri` 是同一形态。
+
+### 证据
+
+- 官方 KiroIDE 注册的是 **`http://localhost:3128`**（hostname `localhost`，无 path）。
+- #38 之后插件仍 `kiroSocialFlow().listen.host === '127.0.0.1'`，`OAuthFlowManager` 拼出 `http://127.0.0.1:${port}/oauth/callback`，`kiroSocialRedirectUri` 裁成 `http://127.0.0.1:${port}`。Cognito `redirect_uri` 精确匹配，Google 社交常见 500。
+- `listenHosts`：`host === 'localhost'` 才绑 `127.0.0.1` + `::1`；redirect 却写 `http://${spec.listen.host}`。两边必须同时是 `localhost`。
+- 回跳 handler 只认 `pathname === '/oauth/callback'`。Origin-only 注册后浏览器可能落到 `/`、`/oauth/callback` 或 `/signin/callback`。
+
+### 根因
+
+本插件 Kiro Social PKCE。#38 修了 path 漂移，没修 **hostname**（`127.0.0.1` vs `localhost`），也没放宽 Kiro 回跳 path。不是 Codex / Grok / GLM / Antigravity。
+
+### 修复
+
+- `kiroSocialFlow().listen.host = 'localhost'`。loopback 仍绑 `127.0.0.1` + `::1`，注册/换票 origin 是 `http://localhost:<port>`。
+- Kiro 回跳额外接受 `/` 与 `/signin/callback`（`callbackPaths`）。Codex / Grok / Antigravity 仍只认各自的 `callbackPath`。
+- 换票仍 origin-only；`redirect_from: KiroIDE`；UA 仍 `KiroIDE-${KIRO_USAGE_VERSION}-${machineId}`。不打印 token。
+
+### 验证
+
+- `npm test`：授权 query 与换票 body 都是 `http://localhost:<port>`；loopback 对 `/` 和 `/oauth/callback` 收 code；Codex `/` 与 `/oauth/callback` 仍 404。无 live AWS 调用。
+
+## 2026-08-30：GLM Coding Plan 思考链被清、Antigravity sessionId 用 Date.now
+
+### 现象
+
+0.0.41 已有 GLM `developer`→`system`（#37）和 Antigravity Struct wrap（#36）。真实对话仍断：GLM-5.3 / Flash 不带 `thinking.clear_thinking: false`，或把上一轮 `reasoning_content` 丢掉，前缀对不上；Antigravity `openaiToAntigravity` 在缺 `sessionId` 时写成 `` `-${Date.now()}` ``，既打爆 prompt cache，也可能让 hub 400。
+
+### 证据
+
+- 官方思考模式：https://docs.z.ai/guides/capabilities/thinking-mode 。5.3 / Flash 强制 thinking，`type: disabled` 400。Coding Plan 要保思考前缀必须 `clear_thinking: false` **且** 原样回放 `reasoning_content`。Turbo 是 hybrid，不能强关。
+- DSH 助手消息常用别名 `reasoning`，不是 Zhipu 的 `reasoning_content`。
+- `rewriteUpstreamBody` 只给 `codex` / `grok` 钉 `prompt_cache_key`。GLM hop 的 `x-session-id` 是进程启动时随机的 `GLM_PROCESS_SESSION_ID`，插件一重启就换，也跨会话共用。
+- Antigravity `request.sessionId` 回退 `-${Date.now()}`。
+
+### 根因
+
+代理层。不是 DSH host，不是 fs-search。Codex / Grok 钉 key 行为本来就是对的。
+
+### 修复
+
+- `normalizeGlmChatBody`：5.3 / Flash 始终 `thinking: { type: 'enabled', clear_thinking: false }`；Turbo 不强制关，thinking 开着时补 `clear_thinking: false`。不剥 `reasoning_content` / `reasoning`；DSH `reasoning` 抄到 `reasoning_content`。角色改写保留。
+- `codexCacheSessionId` 抽到 `src/utils/cache-session.ts`，GLM / Antigravity 也从 `prompt_cache_key` || `session_id` 钉同一套 1–64 `[A-Za-z0-9._:-]`。
+- GLM hop：`glmUpstreamHeaders(session, pin)` 的 `x-session-id` 用该 pin（按 DSH 会话稳，不按进程）。`x-request-id` / `x-zcode-trace-id` / `x-query-id` 仍每请求随机。额度/biz 无 pin 时仍用进程 `sess_<24hex>`。
+- Antigravity hop 先走 `rewriteUpstreamBody`，再把 pin 交给 `openaiToAntigravity`。**永不** `-${Date.now()}`；两边都缺时用稳定常量 `dsh-antigravity`。
+- 不把 Codex-only `prompt_cache_retention` / `prompt_cache_options` 转给 GLM / AG。
+
+### 验证
+
+- `npm test`：developer→system 仍在；`thinking.clear_thinking === false`；assistant `reasoning` → `reasoning_content`；`x-session-id` 等于 pin；Antigravity tool 数组仍包 Struct；`sessionId` 等于 DSH pin，不匹配 `/^-\d+$/`；Codex / Grok 钉 key 行为不变。无 live Zhipu / Google 调用。
+
 ## 2026-08-30：Antigravity Gemini 长会话 400 INVALID_ARGUMENT（function_response 列表）
 
 ### 现象

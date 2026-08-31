@@ -21,7 +21,20 @@ function failurePage(detail) {
 }
 
 function listenHosts(host) {
+  // Hostname `localhost` is what KiroIDE / Google register. Bind the
+  // loopback addresses the browser actually connects to after DNS.
   return host === 'localhost' ? ['127.0.0.1', '::1'] : [host]
+}
+
+function callbackPathsOf(spec) {
+  if (Array.isArray(spec.callbackPaths) && spec.callbackPaths.length > 0) {
+    return spec.callbackPaths
+  }
+  return spec.callbackPath ? [spec.callbackPath] : []
+}
+
+function isCallbackPath(pathname, spec) {
+  return callbackPathsOf(spec).includes(pathname)
 }
 
 function familyUnavailable(error) {
@@ -122,7 +135,7 @@ export class OAuthFlowManager {
 
     const handler = (request, response) => {
       const url = new URL(request.url ?? '/', 'http://localhost')
-      if (url.pathname !== spec.callbackPath) {
+      if (!isCallbackPath(url.pathname, spec)) {
         response.writeHead(404, { 'content-type': 'text/plain' })
         response.end('not found')
         return

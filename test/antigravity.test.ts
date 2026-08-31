@@ -42,7 +42,7 @@ import {
   parseAntigravityPlistVersion,
   parseAntigravityVersionText,
 } from '../lib/oauth/antigravity/index.js'
-import { antigravityToOpenai, functionResponsePayload, openaiToAntigravity } from '../lib/oauth/antigravity/request.js'
+import { ANTIGRAVITY_STABLE_SESSION, antigravityToOpenai, functionResponsePayload, openaiToAntigravity } from '../lib/oauth/antigravity/request.js'
 import { createProxy } from '../lib/oauth/proxy.js'
 
 const FORBIDDEN = ['IDE_UNSPECIFIED', 'dsh-plugin', 'DeepSeek', 'CLIProxy', 'undici', 'node-fetch']
@@ -435,8 +435,34 @@ test('generateContent body is official-shaped and rejects an empty project', () 
   assert.equal(body.userAgent, 'antigravity')
   assert.deepEqual(body.request.systemInstruction.parts, [{ text: 'You are helpful.' }])
   assert.equal(body.request.contents[0].role, 'user')
+  assert.equal(body.request.sessionId, ANTIGRAVITY_STABLE_SESSION)
+  assert.equal(/^-\d+$/.test(body.request.sessionId), false)
   assertCleanIdentity(body)
   assert.throws(() => openaiToAntigravity({ model: 'claude-sonnet-4-6', messages: [] }, { projectId: '' }), /project_id/)
+})
+
+test('openaiToAntigravity sessionId is the DSH pin, never a Date.now stamp', () => {
+  const pinned = openaiToAntigravity({
+    model: 'gemini-3.7-flash-high',
+    session_id: 'session-dsh-1',
+    messages: [{ role: 'user', content: 'hi' }],
+  }, { projectId: 'p' })
+  assert.equal(pinned.request.sessionId, 'session-dsh-1')
+  assert.equal(/^-\d+$/.test(pinned.request.sessionId), false)
+
+  const fromCache = openaiToAntigravity({
+    model: 'gemini-3.7-flash-high',
+    prompt_cache_key: 'cache-key-9',
+    messages: [{ role: 'user', content: 'hi' }],
+  }, { projectId: 'p' })
+  assert.equal(fromCache.request.sessionId, 'cache-key-9')
+
+  const explicit = openaiToAntigravity({
+    model: 'gemini-3.7-flash-high',
+    messages: [{ role: 'user', content: 'hi' }],
+  }, { projectId: 'p', sessionId: 'session 772f/foo' })
+  assert.equal(explicit.request.sessionId, 'session-772f-foo')
+  assert.equal(/^-\d+$/.test(explicit.request.sessionId), false)
 })
 
 test('catalog is the live cloudcode-pa list, not Vertex-direct names', () => {
@@ -587,8 +613,27 @@ test('proxy translates OpenAI chat to daily-cloudcode-pa with the same fingerpri
     const body = JSON.parse(seen[0].body)
     assert.equal(body.project, 'cogent-snow-4mnnp')
     assert.equal(body.userAgent, 'antigravity')
+    assert.equal(body.request.sessionId, ANTIGRAVITY_STABLE_SESSION)
+    assert.equal(/^-\d+$/.test(body.request.sessionId), false)
     assertCleanIdentity(seen[0])
     assertCleanIdentity(body)
+
+    const pinned = await fetch(`http://127.0.0.1:${port}/antigravity/v1/chat/completions`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer secret-key', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        session_id: 'session-dsh-ag',
+        prompt_cache_retention: '24h',
+        messages: [{ role: 'user', content: 'hi' }],
+      }),
+    })
+    assert.equal(pinned.status, 200)
+    const pinnedBody = JSON.parse(seen[1].body)
+    assert.equal(pinnedBody.request.sessionId, 'session-dsh-ag')
+    assert.equal(/^-\d+$/.test(pinnedBody.request.sessionId), false)
+    assert.equal(pinnedBody.request.prompt_cache_retention, undefined)
+    assert.equal(pinnedBody.prompt_cache_retention, undefined)
 
     const missing = createProxy({
       port: 0,
