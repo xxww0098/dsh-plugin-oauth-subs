@@ -342,7 +342,10 @@ already said `ai-sdk/anthropic` while Completions was posted). Do
   Coding Plan).
 - Drop the Completions leftover route until the next `sync()` has
   rewritten leftover `openai-completions` settings.
-- Stamp GLM `compat.thinkingFormat: openai` on the Anthropic route.
+- Stamp GLM Completions-only `compat` (`supportsReasoningEffort`,
+  `thinkingFormat`) on the Anthropic route. DSH `assertServiceable`
+  rejects those fields and the atomic `llm-pi-ai` mutate drops every
+  owned route in that write, including `oauth-kiro`.
 - Use a vendor effort name (`none`, `adaptive`, `disabled`) as a
   `reasoningEfforts` **key**. Map it as the value of a DSH level.
 

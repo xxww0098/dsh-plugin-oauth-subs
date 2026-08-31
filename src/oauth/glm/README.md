@@ -96,7 +96,7 @@ DSH openai-completions  →  POST /glm/v1/chat/completions  →
 | `glm-5.3-flash` | text + image | 同上 |
 | `glm-5-turbo` | text | `false`（混合 on/off，无档位） |
 
-`compat` 只留 `supportsReasoningEffort: true`。**不要**在 Anthropic 路由上写 `thinkingFormat: openai`。
+Anthropic 路由**不要**写任何 Completions-only `compat`（`supportsReasoningEffort`、`thinkingFormat`）。思考是 hop 上的 `thinking: { type: enabled }`，不是那两个开关。DSH `assertServiceable` 会拒掉 Anthropic 路由上的 Completions compat，整段原子 mutate 失败，`oauth-kiro` 也写不进 settings.yaml。Kiro / Antigravity 仍是 `openai-completions`，可以保留 `supportsReasoningEffort`。
 
 ## 额度
 
@@ -147,7 +147,7 @@ Pin map 的 Anthropic 键是 `${sessionId}\0anthropic`，和 Completions 的 `se
 - 不要把卡片账号显示成 `zcode`。
 - 不要把 `api` 改成 `openai-responses`（`api.z.ai/api/v1` 不是 Coding Plan）。
 - 不要宣称切 Anthropic 就能吃上 150%。150% 是 Desktop **身份/UA**，没有和官方 Desktop 对比过用量斜率。
-- 不要在 Anthropic 路由上写 `compat.thinkingFormat: openai`。
+- 不要在 Anthropic 路由上写 Completions-only `compat`（`supportsReasoningEffort` / `thinkingFormat: openai`）。
 - 不要在下次 `sync()` 改写残留设置之前拆掉 Completions hop。
 
 ## 追溯
@@ -155,6 +155,7 @@ Pin map 的 Anthropic 键是 `${sessionId}\0anthropic`，和 Completions 的 `se
 | 问题 | 记录 |
 |---|---|
 | Completions + `ai-sdk/anthropic` UA 对不齐 ZCode 默认协议 | [`docs/error.md`](../../../docs/error.md) 2026-08-31 GLM Anthropic |
+| Anthropic 路由写 `supportsReasoningEffort` 卡死整段 sync，Kiro 进不了 yaml | 同文件 2026-08-31 GLM Anthropic compat / Kiro yaml |
 | 150% 是身份不是协议，未对照 Desktop 用量 | 同文件 2026-08-31 GLM Anthropic；2026-08-30 GLM UA |
 | 首轮 400 `1214 角色信息不正确` | 同文件 2026-08-30 GLM 1214 |
 | 思考链被清 / 前缀 miss | 同文件 2026-08-30 GLM 思考链 |

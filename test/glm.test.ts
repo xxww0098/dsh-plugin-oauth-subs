@@ -705,8 +705,9 @@ test('catalog includes GLM as Anthropic Messages (ZCode default)', () => {
   assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.3').reasoningEfforts.off, undefined)
   assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.3').reasoningEfforts.medium, undefined)
   assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5-turbo').reasoningEfforts, false)
-  assert.equal(providers['oauth-glm'].compat.supportsReasoningEffort, true)
-  assert.equal(providers['oauth-glm'].compat.thinkingFormat, undefined)
+  assert.equal(providers['oauth-glm'].compat, undefined)
+  assert.equal(providers['oauth-glm'].compat?.supportsReasoningEffort, undefined)
+  assert.equal(providers['oauth-glm'].compat?.thinkingFormat, undefined)
   assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.2'), undefined)
 })
 

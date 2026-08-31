@@ -8,7 +8,7 @@ import {
   HARNESS_ANTHROPIC_API,
   HARNESS_COMPLETIONS_API,
   HARNESS_RESPONSES_API,
-  DSH_THINKING_LEVELS,
+  assertDshServiceableProvider,
   ModelSwitch,
   buildProviders,
   catalogKeys,
@@ -20,9 +20,7 @@ import {
   peekPiAiProviders,
   syncHarnessModels,
 } from '../lib/oauth/models.js'
-import { KIRO_MODELS } from '../lib/oauth/kiro/index.js'
-
-const DSH_APIS = new Set(['openai-completions', 'openai-responses', 'anthropic-messages'])
+import { KIRO_MODELS, KIRO_REASONING_GPT } from '../lib/oauth/kiro/index.js'
 
 function createPiAiSettings(initialProviders = {}) {
   const section = { providers: structuredClone(initialProviders) }
@@ -43,19 +41,7 @@ function createPiAiSettings(initialProviders = {}) {
         if (row.op === 'unset') {
           delete next.providers[key]
         } else if (row.op === 'set') {
-          if (!DSH_APIS.has(row.value?.api)) {
-            throw new Error(`llm-pi-ai: provider "${key}" api must be openai-completions | openai-responses | anthropic-messages`)
-          }
-          for (const model of row.value?.models ?? []) {
-            const efforts = model.reasoningEfforts
-            if (efforts && typeof efforts === 'object') {
-              for (const level of Object.keys(efforts)) {
-                if (!DSH_THINKING_LEVELS.includes(level)) {
-                  throw new Error(`llm-pi-ai: model "${model.id}" reasoningEfforts key "${level}" is not ${DSH_THINKING_LEVELS.join('|')}`)
-                }
-              }
-            }
-          }
+          assertDshServiceableProvider(key, row.value)
           next.providers[key] = structuredClone(row.value)
         }
       }
@@ -113,8 +99,10 @@ test('buildProviders only emits logged-in families with DSH api ids', () => {
   })
   assert.equal(chat['oauth-glm'].api, HARNESS_ANTHROPIC_API)
   assert.equal(chat['oauth-glm'].baseURL, 'http://127.0.0.1:8318/glm')
+  assert.equal(chat['oauth-glm'].compat, undefined)
   assert.equal(chat['oauth-kiro'].api, HARNESS_COMPLETIONS_API)
   assert.equal(chat['oauth-kiro'].compat.supportsReasoningEffort, true)
+  assert.equal(chat['oauth-kiro'].models.length, 18)
   assert.equal(chat['oauth-antigravity'].api, HARNESS_COMPLETIONS_API)
   assert.equal(chat['oauth-codex'], undefined)
 })
@@ -292,8 +280,9 @@ test('GLM catalog is three models with official input types; Codex stays image-c
     max: 'max',
   })
   assert.equal(glm.find((model) => model.id === 'glm-5-turbo').reasoningEfforts, false)
-  assert.equal(catalog['oauth-glm'].compat.supportsReasoningEffort, true)
-  assert.equal(catalog['oauth-glm'].compat.thinkingFormat, undefined)
+  assert.equal(catalog['oauth-glm'].compat, undefined)
+  assert.equal(catalog['oauth-glm'].compat?.supportsReasoningEffort, undefined)
+  assert.equal(catalog['oauth-glm'].compat?.thinkingFormat, undefined)
   assert.equal(glm.find((model) => model.id === 'glm-5.3-flash').name, 'GLM-5.3-Flash')
   assert.deepEqual(catalog['oauth-codex'].models.find((model) => model.id === 'gpt-5.5').input, ['text', 'image'])
   const described = describeCatalog(catalog).find((row) => row.family === 'glm')
@@ -327,7 +316,9 @@ test('logged-in GLM 3/3 persist writes oauth-glm and a subsequent get shows it',
   const glm = set.find((row) => row.path[1] === 'oauth-glm')
   assert.equal(glm.value.api, HARNESS_ANTHROPIC_API)
   assert.equal(glm.value.baseURL, 'http://127.0.0.1:8318/glm')
-  assert.equal(glm.value.compat.thinkingFormat, undefined)
+  assert.equal(glm.value.compat, undefined)
+  assert.equal(glm.value.compat?.thinkingFormat, undefined)
+  assert.equal(glm.value.compat?.supportsReasoningEffort, undefined)
   assert.deepEqual(glm.value.models.map((model) => model.id), ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
   assert.deepEqual(result.routes.find((row) => row.provider === 'oauth-glm').models, ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
   const stored = await peekPiAiProviders(settings)
@@ -380,6 +371,75 @@ test('logged-in Kiro persist writes oauth-kiro with the kiro.dev catalog', async
   })
   assert.deepEqual(stored['oauth-kiro'].models.find((model) => model.id === 'glm-5').input, ['text'])
   assert.equal(stored['oauth-kiro'].models.find((model) => model.id === 'glm-5').reasoningEfforts, false)
+  assert.equal(Object.hasOwn(KIRO_REASONING_GPT, 'off'), true)
+  assert.equal(Object.hasOwn(KIRO_REASONING_GPT, 'none'), false)
+  assert.equal(KIRO_REASONING_GPT.off, 'none')
+  assert.equal(Object.hasOwn(stored['oauth-kiro'].models.find((model) => model.id === 'gpt-5.6-sol').reasoningEfforts, 'none'), false)
+})
+
+test('logged-in GLM + Kiro persist together: anthropic GLM without completions compat, 18 Kiro rows', async () => {
+  const settings = createPiAiSettings()
+  const result = await syncHarnessModels({
+    settings,
+    prefix: 'oauth',
+    origin: 'http://127.0.0.1:8318',
+    loggedIn: { glm: true, kiro: true },
+  })
+  const stored = await peekPiAiProviders(settings)
+  const glm = stored['oauth-glm']
+  const kiro = stored['oauth-kiro']
+  assert.equal(glm.api, HARNESS_ANTHROPIC_API)
+  assert.equal(glm.baseURL, 'http://127.0.0.1:8318/glm')
+  assert.equal(glm.compat, undefined)
+  assert.equal(Object.hasOwn(glm, 'compat'), false)
+  assert.equal(kiro.api, HARNESS_COMPLETIONS_API)
+  assert.equal(kiro.compat.supportsReasoningEffort, true)
+  assert.equal(kiro.compat.thinkingFormat, 'openai')
+  assert.equal(kiro.models.length, 18)
+  assert.equal(KIRO_MODELS.length, 18)
+  assert.deepEqual(kiro.models.map((model) => model.id), KIRO_MODELS.map((model) => model.id))
+  assert.deepEqual(kiro.models.find((model) => model.id === 'gpt-5.6-sol').reasoningEfforts, {
+    off: 'none',
+    low: 'low',
+    medium: 'medium',
+    high: 'high',
+    xhigh: 'xhigh',
+    max: 'max',
+  })
+  assertDshServiceableProvider('oauth-glm', glm)
+  assertDshServiceableProvider('oauth-kiro', kiro)
+  assert.deepEqual(result.routes.map((row) => row.provider).sort(), ['oauth-glm', 'oauth-kiro'])
+})
+
+test('DSH refuses completions-only compat on an anthropic-messages GLM route', async () => {
+  const settings = createPiAiSettings({
+    'oauth-codex': { api: 'openai-responses', models: [{ id: 'gpt-5.5' }] },
+  })
+  await assert.rejects(settings.mutate('llm-pi-ai', [
+    { op: 'unset', path: ['providers', 'oauth-kiro'] },
+    {
+      op: 'set',
+      path: ['providers', 'oauth-glm'],
+      value: {
+        api: HARNESS_ANTHROPIC_API,
+        baseURL: 'http://127.0.0.1:8318/glm',
+        compat: { supportsReasoningEffort: true },
+        models: [{ id: 'glm-5.3', reasoningEfforts: { low: 'low', high: 'high', max: 'max' } }],
+      },
+    },
+    {
+      op: 'set',
+      path: ['providers', 'oauth-kiro'],
+      value: {
+        api: HARNESS_COMPLETIONS_API,
+        compat: { supportsReasoningEffort: true, thinkingFormat: 'openai' },
+        models: KIRO_MODELS.map((model) => ({ id: model.id, reasoningEfforts: model.reasoningEfforts })),
+      },
+    },
+  ]), /sets compat "supportsReasoningEffort".*no model on the route speaks a protocol that takes it/)
+  assert.equal(settings.section.providers['oauth-codex'].api, 'openai-responses')
+  assert.equal(settings.section.providers['oauth-glm'], undefined)
+  assert.equal(settings.section.providers['oauth-kiro'], undefined)
 })
 
 test('DSH refuses a vendor none key on reasoningEfforts', async () => {

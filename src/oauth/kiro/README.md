@@ -114,6 +114,7 @@ proxy 只删 `prompt_cache_retention` / `prompt_cache_options`，**不**把 `pro
 | 登录成功授权页还在 | 同文件 2026-08-31 打开授权页 |
 | 模型缺思考深度 / 输入类型 | 同文件 2026-08-31 Kiro 模型 |
 | GPT `none` 键写不进 settings.yaml | 同文件 2026-08-31 Kiro reasoningEfforts |
+| 0.0.55 仍写不进 yaml：GLM Anthropic 带了 Completions compat | 同文件 2026-08-31 GLM Anthropic compat / Kiro yaml |
 | 对话不是 OpenAI | 同文件 2026-08-30（已在 0.0.50 做成翻译层） |
 | 导入只吃第一条 / IDE 丢 client 注册 | 同文件 2026-08-31 Kiro 导入 |
 
