@@ -1,5 +1,30 @@
 # 错误记录
 
+## 2026-08-31：Kiro 登录成功后「打开授权页」还在
+
+### 现象
+
+设置 → AWS Kiro。Social 已登录（邮箱 + FREE + 使用中 + SOCIAL + 额度条），状态是 **已登录**，卡片下方仍有 **打开授权页**。
+
+### 证据
+
+- `login` RPC 把 `{ authorizeUrl }` 写入 React `pending[provider]`，只在 `logout` / `cancel` / `key` 时清掉。
+- 轮询 `status` 会把 `busy` 变成 false、画出账号卡，但 `pending.authorizeUrl` 还在。
+- `pending?.authorizeUrl && h('a', …, t.openUrl)` 没有看 `busy`。配对码同样。粘贴回调表单已经有 `busy &&`。
+
+### 根因
+
+设置页。授权链接跟服务端 busy 脱节，不是 Kiro token 没换完。
+
+### 修复
+
+- 配对码 / 打开授权页仅在 `busy` 时渲染。
+- snapshot 该 provider 已不 busy 时清掉 client `pending`。
+
+### 验证
+
+- `npm test`：client 源码断言 `pending?.authorizeUrl && busy`。
+
 ## 2026-08-31：DSH 换模型会丢掉 reasoningEffort，选择器回到 Default
 
 ### 现象

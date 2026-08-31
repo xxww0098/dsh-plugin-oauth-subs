@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.46
+
+- Settings: drop the leftover **打开授权页** / user-code row once login finishes (`busy` is false). Kiro (and Codex / Grok / Antigravity) no longer keep the authorize link under a signed-in card.
+
 ## 0.0.45
 
 - Remember last reasoning effort when switching oauth-* models in DSH (no more reset to Default). Clamps to the new model's `reasoningEfforts` (e.g. xhigh→high on Antigravity). Live picker restored via `selectModel`, not YAML-only.
