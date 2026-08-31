@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.44
+
+- Antigravity plan badge reads Google AI `paidTier` (`g1-pro-tier` / `g1-ultra-tier`) instead of Code Assist `currentTier` (`STANDARD TIER`). Card shows Pro / Ultra / Free / Standard.
+
 ## 0.0.43
 
 - Kiro Social: authorize stays origin-only `http://localhost:<port>`; token exchange uses the landed callback `http://localhost:<port><path>?login_option=google|github`. UA is `KiroIDE-1.0.0-<stable machineId>`.

@@ -1,5 +1,30 @@
 # 错误记录
 
+## 2026-08-31：Antigravity 套餐 pill 显示 STANDARD TIER
+
+### 现象
+
+设置 → Antigravity。已登录卡抬头是邮箱 + **STANDARD TIER** + **使用中**。用户有 Google AI Pro/Ultra 时也不显示 Pro / Ultra。
+
+### 证据
+
+- `loadCodeAssist` 对 Google AI Pro 返回 `currentTier.id = standard-tier` / `STANDARD TIER`（Gemini Code Assist SKU），真正订阅在 `paidTier.id = g1-pro-tier`（gemini-cli#22648，`g1-ultra-tier` 同理）。
+- `antigravityPlanType` 只读 `currentTier`。`fetchAntigravityQuota` 又优先用登录时写入的 `session.planType`，刷新额度也不会改 pill。
+- `ANTIGRAVITY_PLAN_NAMES` 没有 `standard_tier` / `g1_pro_tier`，`formatPlanLabel` 对全大写原样吐出 STANDARD TIER。
+
+### 根因
+
+额度层。把 Code Assist 的 currentTier 当成 Antigravity / Google AI 套餐。
+
+### 修复
+
+- `antigravityPlanType` / 额度刷新优先 `paidTier`，没有才回落 `currentTier`。
+- 映射：`g1-pro-tier` → Pro，`g1-ultra-tier` → Ultra，`free-tier` → Free，`STANDARD TIER` → Standard。
+
+### 验证
+
+- `npm test`：paidTier + currentTier 并存时 planLabel 是 Pro；只有 STANDARD TIER 时是 Standard。
+
 ## 2026-08-31：Kiro Social 换票仍 HTTP 500（#39 两边都 origin-only）
 
 ### 现象
