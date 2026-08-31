@@ -1,5 +1,32 @@
 # 错误记录
 
+## 2026-08-31：Antigravity 流式对话 DSH 显示「用量 0 tok」且首 token 从半句开始
+
+### 现象
+
+DSH / SkillStar 会话 `oauth-antigravity` / `gemini-3.7-flash-high`（reasoningEffort high，会话「项目结构与代码分析」）产出长中文回答（约 24 步、1m21s）。页脚是 **用量 0 tok**、**首 token 平均 2.4秒 · 0 tok/s**。最终组装文本完整，但该步第一条 `text-delta` 从正文第 303 字中途开始（`` ` 遍历所有适配目标... ``），前缀从未出现在 streamed delta 里。每条 `assistant/message` 的 `usage` 都是 `{inputTokens:0, outputTokens:0, totalTokens:0}`，`replayState.response.usage` 为 `null`，`api: openai-completions`。
+
+### 证据
+
+- `antigravityToOpenai`（非流）已经把 `usageMetadata.{promptTokenCount,candidatesTokenCount,totalTokenCount}` 映射成 OpenAI `usage`，但漏了 `thoughtsTokenCount`。
+- `antigravityToOpenaiChunk` 从不写 `usage`。`forwardAntigravity` 流循环只在 `delta.content || delta.tool_calls` 时才写出 chunk，Google 最后一帧常见「只有 usage / finish」被丢掉。
+- 收尾 chunk 是 `antigravityToOpenaiChunk({}, { done: true })`，空 body，DSH 永远看不到 usage。
+- Google `streamGenerateContent` SSE 的 `part.text` / tool args 是**累计全文**。chunk 把 `delta.content` 设成目前为止的全文后，DSH openai-completions 客户端按累计做 diff，第一条 `text-delta` 变成后一帧的后缀，前缀（约 300 字）和首 token / tok/s 都错。
+
+### 根因
+
+代理层 OpenAI-compat 翻译（`src/oauth/antigravity/request.ts` + `forwardAntigravity`）。不是 fingerprint / hub URL / sessionId pinning / VALIDATION_REQUIRED，也不是 generativelanguage / API key。GLM/Codex 没有对 Antigravity thought 文本的 `reasoning_content` 流约定，思考正文继续不转发。
+
+### 修复
+
+- `mapAntigravityUsage`：`prompt_tokens = promptTokenCount`；`completion_tokens = candidatesTokenCount + (thoughtsTokenCount || 0)`；`total_tokens = totalTokenCount`，缺则 prompt+completion。有 `thoughtsTokenCount` 时写 `completion_tokens_details.reasoning_tokens`。非流 `antigravityToOpenai` 共用。思考 token 必须进 `completion_tokens`，否则思考模型 tok/s 仍是 ~0。
+- `createAntigravityOpenaiStream` 每流保存已发出的可见文本 / tool args 和最后一次 `usageMetadata`。累计帧只发出新后缀；后一帧更短则整段重发，不做负切片。`part.thought` 仍不进 `delta.content`，但 usage 照记。
+- 流路径在 `data: [DONE]` 之前必写一帧收尾 chunk：`choices[0].delta` 为空、`finish_reason` 为 `stop` / `tool_calls` / 映射值，并带上过程中见过的最后一次 usage。只有 usage/finish 的帧不再被丢掉。
+
+### 验证
+
+- `npm test`：`thoughtsTokenCount` 映射；累计 SSE `Hello` → `Hello world` 变成 `Hello` 然后 ` world`；mock stream 最后一帧只有 usage 时客户端 SSE 有非零 `prompt_tokens` / `completion_tokens` / `total_tokens` 再 `[DONE]`；先 thought 再可见文本时第一条 `delta.content` 是可见字；tool-call 流仍是 `tool_calls`。
+
 ## 2026-08-31：Kiro 模型没有思考深度，也没标明 text / image
 
 ### 现象

@@ -49,7 +49,13 @@ import {
   parseAntigravityPlistVersion,
   parseAntigravityVersionText,
 } from '../lib/oauth/antigravity/index.js'
-import { ANTIGRAVITY_STABLE_SESSION, antigravityToOpenai, functionResponsePayload, openaiToAntigravity } from '../lib/oauth/antigravity/request.js'
+import {
+  ANTIGRAVITY_STABLE_SESSION,
+  antigravityEventsToOpenaiChunks,
+  antigravityToOpenai,
+  functionResponsePayload,
+  openaiToAntigravity,
+} from '../lib/oauth/antigravity/request.js'
 import { createProxy } from '../lib/oauth/proxy.js'
 
 const FORBIDDEN = ['IDE_UNSPECIFIED', 'dsh-plugin', 'DeepSeek', 'CLIProxy', 'undici', 'node-fetch']
@@ -808,4 +814,195 @@ test('snapshot exposes Antigravity needsValidation and validationUrl on the card
   const row = snap.accounts.antigravity.accounts.find((item) => item.account === 'need@x')
   assert.equal(row.needsValidation, true)
   assert.equal(row.validationUrl, verifyUrl)
+})
+
+function googleSseEvent({ text, thought, finishReason, usage, functionCall, parts } = {}) {
+  const contentParts = parts ?? [
+    ...(thought != null ? [{ text: thought, thought: true }] : []),
+    ...(text != null ? [{ text }] : []),
+    ...(functionCall ? [{ functionCall }] : []),
+  ]
+  return {
+    response: {
+      candidates: [{
+        content: { parts: contentParts },
+        ...(finishReason ? { finishReason } : {}),
+      }],
+      ...(usage ? { usageMetadata: usage } : {}),
+    },
+  }
+}
+
+function parseOpenaiSse(text) {
+  const chunks = []
+  let done = false
+  for (const block of String(text).split(/\r?\n\r?\n/)) {
+    const data = block.split(/\r?\n/)
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.slice(5).trim())
+      .join('\n')
+    if (!data) continue
+    if (data === '[DONE]') {
+      done = true
+      continue
+    }
+    chunks.push(JSON.parse(data))
+  }
+  return { chunks, done }
+}
+
+const STREAM_USAGE = {
+  promptTokenCount: 120,
+  candidatesTokenCount: 18,
+  thoughtsTokenCount: 42,
+  totalTokenCount: 180,
+}
+
+test('antigravityToOpenai maps thoughtsTokenCount into completion_tokens', () => {
+  const out = antigravityToOpenai({
+    response: {
+      candidates: [{ content: { parts: [{ text: 'hi' }] }, finishReason: 'STOP' }],
+      usageMetadata: STREAM_USAGE,
+    },
+  }, { model: 'gemini-3.7-flash-high', id: 'chatcmpl-usage' })
+  assert.deepEqual(out.usage, {
+    prompt_tokens: 120,
+    completion_tokens: 60,
+    total_tokens: 180,
+    completion_tokens_details: { reasoning_tokens: 42 },
+  })
+
+  const noTotal = antigravityToOpenai({
+    response: {
+      candidates: [{ content: { parts: [{ text: 'hi' }] } }],
+      usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 3, thoughtsTokenCount: 7 },
+    },
+  }, { model: 'gemini-3.7-flash-high' })
+  assert.equal(noTotal.usage.prompt_tokens, 10)
+  assert.equal(noTotal.usage.completion_tokens, 10)
+  assert.equal(noTotal.usage.total_tokens, 20)
+  assert.equal(noTotal.usage.completion_tokens_details.reasoning_tokens, 7)
+})
+
+test('cumulative Google SSE becomes incremental OpenAI deltas', () => {
+  const chunks = antigravityEventsToOpenaiChunks([
+    googleSseEvent({ text: 'Hello' }),
+    googleSseEvent({ text: 'Hello world' }),
+  ], { model: 'gemini-3.7-flash-high', id: 'chatcmpl-delta' })
+  assert.equal(chunks[0].choices[0].delta.content, 'Hello')
+  assert.equal(chunks[1].choices[0].delta.content, ' world')
+  assert.equal(chunks.some((chunk) => chunk.choices[0].delta.content === 'Hello world'), false)
+  const terminal = chunks.at(-1)
+  assert.deepEqual(terminal.choices[0].delta, {})
+  assert.equal(terminal.choices[0].finish_reason, 'stop')
+  assert.equal(terminal.usage, undefined)
+
+  const reset = antigravityEventsToOpenaiChunks([
+    googleSseEvent({ text: 'Hello world' }),
+    googleSseEvent({ text: 'Hi' }),
+  ], { id: 'chatcmpl-reset' })
+  assert.equal(reset[0].choices[0].delta.content, 'Hello world')
+  assert.equal(reset[1].choices[0].delta.content, 'Hi')
+})
+
+test('thought-only frames stay out of delta.content; usage still counts thoughts', () => {
+  const chunks = antigravityEventsToOpenaiChunks([
+    googleSseEvent({ thought: 'planning the answer' }),
+    googleSseEvent({
+      thought: 'planning the answer',
+      text: '可见正文从这里开始',
+      finishReason: 'STOP',
+      usage: STREAM_USAGE,
+    }),
+  ], { model: 'gemini-3.7-flash-high', id: 'chatcmpl-thought' })
+  const contents = chunks.map((chunk) => chunk.choices[0].delta.content).filter(Boolean)
+  assert.deepEqual(contents, ['可见正文从这里开始'])
+  assert.equal(contents[0].includes('planning'), false)
+  const terminal = chunks.at(-1)
+  assert.equal(terminal.choices[0].finish_reason, 'stop')
+  assert.equal(terminal.usage.prompt_tokens, 120)
+  assert.equal(terminal.usage.completion_tokens, 60)
+  assert.equal(terminal.usage.total_tokens, 180)
+  assert.equal(terminal.usage.completion_tokens_details.reasoning_tokens, 42)
+})
+
+test('tool-call stream emits tool_calls and finish_reason tool_calls', () => {
+  const chunks = antigravityEventsToOpenaiChunks([
+    googleSseEvent({ functionCall: { name: 'Read', args: { path: 'a.ts' } } }),
+    googleSseEvent({
+      functionCall: { name: 'Read', args: { path: 'a.ts' } },
+      finishReason: 'STOP',
+    }),
+  ], { model: 'gemini-3.7-flash-high', id: 'chatcmpl-tools' })
+  const toolChunk = chunks.find((chunk) => chunk.choices[0].delta.tool_calls)
+  assert.equal(toolChunk.choices[0].delta.tool_calls[0].function.name, 'Read')
+  assert.equal(toolChunk.choices[0].delta.tool_calls[0].function.arguments, '{"path":"a.ts"}')
+  assert.equal(chunks.filter((chunk) => chunk.choices[0].delta.tool_calls).length, 1)
+  const terminal = chunks.at(-1)
+  assert.deepEqual(terminal.choices[0].delta, {})
+  assert.equal(terminal.choices[0].finish_reason, 'tool_calls')
+})
+
+test('proxy stream writes incremental deltas then a terminal usage chunk before [DONE]', async () => {
+  const sse = [
+    googleSseEvent({ text: 'Hello' }),
+    googleSseEvent({ text: 'Hello world' }),
+    googleSseEvent({
+      thought: 'done thinking',
+      finishReason: 'STOP',
+      usage: STREAM_USAGE,
+    }),
+  ].map((event) => `data: ${JSON.stringify(event)}\n\n`).join('')
+  const fetchFn = async (url) => {
+    assert.equal(String(url).includes('streamGenerateContent'), true)
+    return new Response(sse, {
+      status: 200,
+      headers: { 'content-type': 'text/event-stream' },
+    })
+  }
+  const proxy = createProxy({
+    port: 0,
+    apiKey: 'secret-key',
+    fetchFn,
+    tokens: {
+      antigravity: {
+        session: async () => antigravitySession({
+          accessToken: 'ag-tok',
+          refreshToken: 'r',
+          expiresAt: Date.now() + 60_000,
+          account: 'dev@x',
+          projectId: 'cogent-snow-4mnnp',
+        }),
+      },
+    },
+  })
+  const server = await proxy.listen()
+  try {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/antigravity/v1/chat/completions`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer secret-key', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gemini-3.7-flash-high',
+        stream: true,
+        messages: [{ role: 'user', content: 'hi' }],
+      }),
+    })
+    assert.equal(response.status, 200)
+    const { chunks, done } = parseOpenaiSse(await response.text())
+    assert.equal(done, true)
+    const contents = chunks.map((chunk) => chunk.choices[0].delta.content).filter(Boolean)
+    assert.deepEqual(contents, ['Hello', ' world'])
+    const terminal = chunks.at(-1)
+    assert.deepEqual(terminal.choices[0].delta, {})
+    assert.equal(terminal.choices[0].finish_reason, 'stop')
+    assert.equal(terminal.usage.prompt_tokens > 0, true)
+    assert.equal(terminal.usage.completion_tokens > 0, true)
+    assert.equal(terminal.usage.total_tokens > 0, true)
+    assert.equal(terminal.usage.prompt_tokens, 120)
+    assert.equal(terminal.usage.completion_tokens, 60)
+    assert.equal(terminal.usage.total_tokens, 180)
+    assert.equal(terminal.usage.completion_tokens_details.reasoning_tokens, 42)
+  } finally {
+    await proxy.close()
+  }
 })
