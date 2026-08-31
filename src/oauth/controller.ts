@@ -32,6 +32,7 @@ import {
 } from './glm/index.js'
 import {
   BUILDER_ID_START_URL,
+  allocateKiroMachineId,
   canonicalizeKiroMethod,
   exchangeKiroSocialCode,
   isKiroPermanentRefreshError,
@@ -350,6 +351,15 @@ export class AuthController {
     await saveSession('kiro', next, this.authPath, { id: row.id, activate: row.active })
   }
 
+  async #existingKiroMachineId() {
+    const rows = await listStoredSessions('kiro', this.authPath)
+    for (const row of rows) {
+      const id = row.session?.machineId
+      if (typeof id === 'string' && /^[0-9a-f]{64}$/i.test(id)) return id
+    }
+    return undefined
+  }
+
   async #accountsWithQuota(provider) {
     const rows = await listStoredSessions(provider, this.authPath)
     return rows
@@ -435,10 +445,12 @@ export class AuthController {
         startUrl,
       }
     }
+    const machineId = allocateKiroMachineId(await this.#existingKiroMachineId())
     const attempt = await this.flows.start('kiro', kiroSocialFlow())
+    attempt.machineId = machineId
     const claim = this.claim('kiro')
     void this.completePkce('kiro', attempt, claim)
-    return { authorizeUrl: attempt.authorizeUrl, redirectUri: attempt.redirectUri, mode: 'pkce' }
+    return { authorizeUrl: attempt.authorizeUrl, redirectUri: attempt.redirectUri, mode: 'pkce', machineId }
   }
 
   async completePkce(provider, attempt, claim) {
@@ -450,6 +462,7 @@ export class AuthController {
           ? await exchangeKiroSocialCode(code, attempt.pkce.verifier, attempt.redirectUri, {
             fetchFn: this.fetchFn,
             callback: typeof attempt.callback === 'function' ? attempt.callback() : attempt.callback,
+            machineId: attempt.machineId,
           })
         : provider === 'antigravity'
           ? await exchangeAntigravityCode(code, attempt.redirectUri, { fetchFn: this.fetchFn })

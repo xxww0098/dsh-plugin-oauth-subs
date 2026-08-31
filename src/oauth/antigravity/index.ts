@@ -648,6 +648,7 @@ export async function probeAntigravityValidation(session, { fetchFn = fetch } = 
 }
 
 export function isAntigravityPermanentRefreshError(error) {
+  if (parseAntigravityValidation(error) || error?.code === ANTIGRAVITY_VERIFY_CODE) return false
   const code = error?.code ?? error?.error
   return typeof code === 'string' && PERMANENT_REFRESH.has(code)
 }

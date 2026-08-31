@@ -18,20 +18,22 @@ kiro social token failed (HTTP 500): {"message":"Oops, something went wrong. Ple
 - 换票 POST 体也用 `kiroSocialRedirectUri` 裁成 origin-only。`OAuthFlowManager.settle` 只交出 `code`，丢掉落地 path 与 `login_option` / `loginOption`。
 - cockpit-tools `kiro_oauth.rs`（同一 portal `https://app.kiro.dev/signin`、同一端口、同一 token host）：portal 注册 origin-only；换票 `redirect_uri` 是 `http://localhost:<port><actualPath>?login_option=<google|github>`。actualPath 是浏览器真正打到的 `/oauth/callback` 或 `/signin/callback`；`login_option` 来自回跳 query，小写。换票 JSON 仍只有 `{ code, code_verifier, redirect_uri }`。
 - 听 `127.0.0.1`、对外 hostname 必须是 `localhost`。注册 URI 里不能再出现 `127.0.0.1`。
+- 次要：`KIRO_USAGE_VERSION` 仍是 `0.9.2`；GitHub Kiro 议题写现 IDE 是 **1.0.0**。`exchangeKiroSocialCode` 对空 session 调 `kiroMachineId()`，每次登录新 64-hex。`/kiro/v1/chat/completions` 仍是 501（translator 不在本 PR）。本机无 Kiro.app、settings.yaml 尚无 `oauth-kiro`。
 
 ### 根因
 
-本插件 Kiro Social PKCE。#39 把授权和换票都收成 origin-only，修了 hostname，但 Kiro auth 服务要的是**落地回调 URL**（path + `login_option`）。不是 Codex / Grok / GLM / Antigravity。
+本插件 Kiro Social PKCE。#39 把授权和换票都收成 origin-only，修了 hostname，但 Kiro auth 服务要的是**落地回调 URL**（path + `login_option`）。不是 Codex / Grok / GLM / Antigravity。对话 501 是另一层，本条只修登录 500。
 
 ### 修复
 
 - `waitCode()` 仍只返回 code 字符串（Codex / Grok / Antigravity 不变）。Kiro 额外 `attempt.callback()`：pathname + `login_option`（及可选 `issuer_url`）。
 - `kiroSocialTokenRedirectUri`：origin + 落地 path；有 `login_option` 时加 `?login_option=`。缺 query 仍带真实 path，不再 origin-only。
 - 授权 URL 继续 origin-only。`127.0.0.1` 在授权/换票 `redirect_uri` 里改写成 `localhost`。回跳仍接受 `/`、`/oauth/callback`、`/signin/callback`。
+- UA 改为 `KiroIDE-1.0.0-<64hex>`。打开授权页之前分配并挂在 attempt 上的 `machineId`，换票复用；已有 Kiro 会话则沿用其 machineId。
 
 ### 验证
 
-- `npm test`：授权 query 仍是 `http://localhost:<port>`；换票 body 含 `/signin/callback?login_option=google`（模拟回跳）；`127.0.0.1` 不出现在授权或换票 `redirect_uri`。无 live AWS 调用。
+- `npm test`：授权 query 仍是 `http://localhost:<port>`；换票 body 含 `/signin/callback?login_option=google`（模拟回跳）；`127.0.0.1` 不出现在授权或换票 `redirect_uri`；UA `KiroIDE-1.0.0-<64hex>`；同一次登录 authorize 前与换票共用一个 machineId。无 live AWS 调用。不实现 generateAssistantResponse 翻译。
 
 ## 2026-08-31：Antigravity 对话 403 VALIDATION_REQUIRED 被 DSH 显示成「API 密钥无效」
 
@@ -44,28 +46,32 @@ PERMISSION_DENIED / VALIDATION_REQUIRED / "Verify your account to continue."
 domain cloudcode-pa.googleapis.com
 ```
 
-`validation_url` 是一次性 Google continue 链接（带 `plt=`，不记入本条）。daily-cloudcode-pa 与 cloudcode-pa 都是同一 403。额度条正常：`loadCodeAssist` / `fetchAvailableModels` 不走这道闸。DSH 把 403 映射成「本轮运行失败 API 密钥无效」。
+`validation_url` 是一次性 Google continue 链接（带 `plt=`，不记入本条）。daily-cloudcode-pa 与 cloudcode-pa 都是同一 403。额度条正常：`loadCodeAssist` / `fetchAvailableModels` 不走这道闸。
+
+DSH **不是**从 Google 原文发明「API 密钥无效」。会话 `b8ebc450-a911-4716-90c2-64c340989947`（08:35 CST，`oauth-antigravity` / `gemini-3.7-flash-high`）：`failure.code` = **`AUTH`**；i18n `message.turnError` = 「本轮运行失败」，`message.failure.auth` = 「API 密钥无效」。llm-pi-ai 把插件转发的 **401/403** 收成 AUTH 就会显示这句。
 
 ### 证据
 
-- 代理原样转发上游 403 JSON。DSH 把 403 当成密钥无效，不是 Google 账号验证。
+- 代理原样转发上游 403 JSON → DSH 标 AUTH → 「本轮运行失败 API 密钥无效」。
 - 额度 API 不触发 VALIDATION_REQUIRED，所以卡片上看起来「已登录、额度可用」。
+- 这不是 refresh token 失效，不能当 permanent refresh 清会话。
 
 ### 根因
 
-代理层（`forwardAntigravity`）。OAuth bearer 有效，Cloud Code 仍要求 Google 账号验证才能 `generateContent`。不是 Codex / Grok  hop，也不是本机 proxy-key 错了。
+代理层（`forwardAntigravity`）。OAuth bearer 有效，Cloud Code 仍要求 Google 账号验证才能 `generateContent`。DSH 把 403 当成密钥 AUTH。不是 Codex / Grok hop，也不是本机 proxy-key 错了。
 
 ### 修复
 
 - `parseAntigravityValidation` 识别 `VALIDATION_REQUIRED` / `Verify your account`，抽出 `validationUrl`。
 - 会话与 snapshot 记 `needsValidation` + `validationUrl`（Settings 卡展示）。不把 `plt=` 打进日志。
 - 设置页 Antigravity 卡：中文条「Google 需要验证此账号才能对话」+ 打开 `validationUrl` 的按钮。
-- 对话错误改写为 **HTTP 400**，`error.message` / `error.code: VALIDATION_REQUIRED`，不再回 Google 原始 403。
+- 对话错误改写为 **HTTP 400**（非 AUTH 状态），`error.message` 中文验证句、`error.code: VALIDATION_REQUIRED`。绝不回 Google 原始 403/401。
+- `isAntigravityPermanentRefreshError` 对 VALIDATION_REQUIRED 为 false，不清登录。
 - 登录后 / 点刷新额度时用极小 `generateContent` 探测，卡片可在再次对话前出现横幅。
 
 ### 验证
 
-- `npm test`：检测 + 改写后的 400 body + snapshot 字段 + Settings 文案。无 live Google 调用。不打印 `plt=`。
+- `npm test`：检测 + 改写后的 400（不是 401/403）+ snapshot 字段 + Settings 文案 + permanent-refresh 不为真。无 live Google 调用。不打印 `plt=`。
 
 ## 2026-08-30：Kiro Social 登录在 #38 之后仍会 Google 500
 

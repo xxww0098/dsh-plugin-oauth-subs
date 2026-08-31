@@ -6,6 +6,8 @@ import { test } from 'node:test'
 import {
   BUILDER_ID_START_URL,
   KIRO_PORTAL_URL,
+  KIRO_USAGE_VERSION,
+  allocateKiroMachineId,
   canonicalizeKiroMethod,
   exchangeKiroSocialCode,
   isKiroCredential,
@@ -235,11 +237,30 @@ test('exchangeKiroSocialCode posts landed callback path and login_option', async
     loginOption: 'Google',
   }))
   assert.equal(Object.keys(seen.body).sort().join(','), 'code,code_verifier,redirect_uri')
-  assert.match(seen.headers['user-agent'], /^KiroIDE-0\.9\.2-[0-9a-f]{64}$/i)
+  assert.equal(KIRO_USAGE_VERSION, '1.0.0')
+  assert.match(seen.headers['user-agent'], /^KiroIDE-1\.0\.0-[0-9a-f]{64}$/i)
   assert.equal(seen.headers.accept, 'application/json, text/plain, */*')
   assert.equal(session.authMethod, 'social')
   assert.equal(session.accessToken, 'at')
-  assert.equal(session.machineId, seen.headers['user-agent'].slice('KiroIDE-0.9.2-'.length))
+  assert.equal(session.machineId, seen.headers['user-agent'].slice('KiroIDE-1.0.0-'.length))
+})
+
+test('exchangeKiroSocialCode reuses a machineId allocated before the browser opens', async () => {
+  const machineId = allocateKiroMachineId()
+  assert.match(machineId, /^[0-9a-f]{64}$/)
+  assert.equal(allocateKiroMachineId(machineId), machineId)
+  let seen
+  const session = await exchangeKiroSocialCode('code-m', 'verifier', 'http://localhost:3128/oauth/callback', {
+    machineId,
+    callback: { pathname: '/oauth/callback', loginOption: 'google' },
+    fetchFn: async (_url, init) => {
+      seen = { body: JSON.parse(init.body), ua: init.headers['user-agent'] }
+      return json({ accessToken: 'at', refreshToken: RT, expiresIn: 3600 })
+    },
+  })
+  assert.equal(session.machineId, machineId)
+  assert.equal(seen.ua, `KiroIDE-1.0.0-${machineId}`)
+  assert.equal(seen.body.redirect_uri, 'http://localhost:3128/oauth/callback?login_option=google')
 })
 
 test('kiro social authorize stays origin-only; token uses landed callback', async () => {
@@ -443,6 +464,30 @@ test('controller useKey stores a Kiro API key', async () => {
   assert.equal(result.method, 'api_key')
   const roster = await listAccounts('kiro', authPath)
   assert.equal(roster[0].methodLabel, 'API key')
+})
+
+test('controller kiro Social login allocates machineId before opening the browser', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const authPath = join(dir, 'auth.json')
+  const prior = allocateKiroMachineId()
+  await saveSession('kiro', kiroSession({
+    accessToken: 'old', refreshToken: RT, authMethod: 'social', account: 'old@x', machineId: prior,
+  }), authPath)
+  const controller = new AuthController({
+    authPath,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+    fetchFn: async () => { throw new Error('social login must not hit AWS before the browser') },
+  })
+  const result = await controller.login('kiro', { mode: 'social' })
+  assert.equal(result.mode, 'pkce')
+  assert.equal(result.machineId, prior)
+  assert.equal(controller.flows.pending('kiro').machineId, prior)
+  assert.match(result.authorizeUrl, /^https:\/\/app\.kiro\.dev\/signin\?/)
+  const authorizeRedirect = new URL(result.authorizeUrl).searchParams.get('redirect_uri')
+  assert.match(authorizeRedirect, /^http:\/\/localhost:\d+$/)
+  await controller.cancel('kiro')
 })
 
 test('controller kiro Builder ID login registers an OIDC client then can cancel', async () => {

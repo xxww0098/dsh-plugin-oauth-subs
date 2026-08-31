@@ -43,6 +43,7 @@ import {
   detectAntigravityVersion,
   exchangeAntigravityCode,
   fetchAntigravityProject,
+  isAntigravityPermanentRefreshError,
   normalizeAntigravityVersion,
   parseAntigravityPlistVersion,
   parseAntigravityVersionText,
@@ -750,11 +751,16 @@ test('proxy rewrites Cloud Code VALIDATION_REQUIRED to a 400, not a 403', async 
       body: JSON.stringify({ model: 'gemini-3.7-flash-high', messages: [{ role: 'user', content: 'hi' }] }),
     })
     assert.equal(denied.status, 400)
+    assert.equal([401, 403].includes(denied.status), false)
     const payload = await denied.json()
     assert.equal(payload.error.message, ANTIGRAVITY_VERIFY_MESSAGE)
     assert.equal(payload.error.code, ANTIGRAVITY_VERIFY_CODE)
+    assert.equal(payload.error.type, 'invalid_request')
     assert.equal(String(payload.error.message).includes('密钥'), false)
     assert.equal(JSON.stringify(payload).includes('plt='), false)
+    assert.equal(isAntigravityPermanentRefreshError({ code: ANTIGRAVITY_VERIFY_CODE }), false)
+    assert.equal(isAntigravityPermanentRefreshError(googleValidationDenied()), false)
+    assert.equal(isAntigravityPermanentRefreshError({ code: 'invalid_grant' }), true)
     assert.equal(remembered[0].needsValidation, true)
     assert.equal(remembered[0].validationUrl.startsWith('https://accounts.google.com/'), true)
   } finally {
