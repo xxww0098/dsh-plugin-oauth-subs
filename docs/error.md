@@ -1,5 +1,39 @@
 # 错误记录
 
+## 2026-08-31：Kiro 对话 501 generateAssistantResponse 未翻译
+
+### 现象
+
+用户已登录 Kiro（Auth / 额度 / 目录都活着）。Composer 选 **DeepSeek 3.2**（`oauth-kiro` / `deepseek-3.2`）。DSH 重试 5/5 后显示：
+
+```
+501: {"message":"Kiro chat is AWS generateAssistantResponse, not OpenAI. Auth, quota, and the catalog are live; the translator is a follow-up."}
+```
+
+请求是 `POST /kiro/v1/chat/completions`（`hello`，无 tools）。不是 密钥无效。
+
+### 证据
+
+- 插件自己的 stub：`src/oauth/proxy.ts` 对 `/kiro/v1/chat/completions` 和 `/kiro/v1/responses` 一律 `send(501, …translator is a follow-up)`。
+- 目录已声明 `api: openai-completions`、`baseURL …/kiro/v1`。DSH 按 OpenAI chat 发，不会自己改成 AWS Event Stream。
+- 上游是 `POST https://q.<region>.amazonaws.com/` + `X-Amz-Target: AmazonCodeWhispererStreamingService.GenerateAssistantResponse` + `application/x-amz-json-1.0`，响应 `application/vnd.amazon.eventstream`。协议对齐 kiro-proxy PROTOCOL.md / kiro.rs / kiroxy。
+
+### 根因
+
+代理层。认证、额度、`KIRO_MODELS` 已接；聊天翻译故意留空。不是 Codex / Grok hop，也不是 DSH 密钥或 `dsh-tool-fs-search`。
+
+### 修复
+
+- 新增 `src/oauth/kiro/request.ts`：OpenAI messages → `conversationState`（`modelId` 带点、`origin: AI_EDITOR`、`developer`→system、history 成对、`conversationId` 用 `codexCacheSessionId` 钉死，禁止 `Date.now()`）。
+- Event Stream 帧（`assistantResponseEvent` / `toolUseEvent` / `contextUsageEvent` / exception）→ `chat.completion` JSON 和 `stream: true` SSE。
+- `forwardKiro` 替换 501。刷新走 `tokens.kiro.session()`。头复用 `kiroUsageHeaders` 的 UA / `tokentype`，另加 chat 专用 `accept: application/vnd.amazon.eventstream`（额度 JSON 的 `accept: application/json` 不动）。
+- `profileArn` 来自 `kiroStreamingProfileArn(session)`。上游 401/403 改写成 **400**（非 AUTH），避免 DSH 画「API 密钥无效」。
+- `/kiro/v1/responses` 仍 501（DSH 走 chat/completions）。tools 已映射进 `userInputMessageContext.tools`；本条验收是无 tools 的 `hello`。
+
+### 验证
+
+- `npm test`：messages→conversationState、eventstream fixture→content、SSE chunks、proxy 不再对 `POST /kiro/v1/chat/completions` 回 501、同一 `session_id` 两轮 `conversationId` 相同、403→400。无 live AWS 调用。
+
 ## 2026-08-31：Antigravity 流式对话 DSH 显示「用量 0 tok」且首 token 从半句开始
 
 ### 现象
