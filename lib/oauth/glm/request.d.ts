@@ -9,7 +9,10 @@
  * Coding Plan prefix cache needs `clear_thinking: false` and the
  * previous turn's `reasoning_content` left intact.
  * https://docs.z.ai/guides/capabilities/thinking-mode
+ *
+ * Cache lives in `./cache.ts` (implicit prefix hash + `user` / x-session-id).
  */
+export { glmCacheSessionId, resetGlmSystemPins } from './cache.js';
 /** 5.3 / Flash cannot turn thinking off. Turbo is hybrid — do not force it. */
 export declare function glmForcedThinkingModel(model: any): boolean;
 export declare function normalizeGlmChatBody(payload: any): any;

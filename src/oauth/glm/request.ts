@@ -9,7 +9,13 @@
  * Coding Plan prefix cache needs `clear_thinking: false` and the
  * previous turn's `reasoning_content` left intact.
  * https://docs.z.ai/guides/capabilities/thinking-mode
+ *
+ * Cache lives in `./cache.ts` (implicit prefix hash + `user` / x-session-id).
  */
+
+import { applyGlmCache } from './cache.js'
+
+export { glmCacheSessionId, resetGlmSystemPins } from './cache.js'
 
 const GLM_CHAT_ROLES = new Set(['system', 'user', 'assistant', 'tool'])
 
@@ -55,5 +61,5 @@ export function normalizeGlmChatBody(payload) {
       return withReasoningContent(rewritten)
     })
   }
-  return applyGlmThinking(next)
+  return applyGlmThinking(applyGlmCache(next).payload)
 }

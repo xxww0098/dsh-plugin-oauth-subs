@@ -7,8 +7,11 @@
 import { createServer } from 'node:http'
 import { once } from 'node:events'
 import { CODEX_API_URL, CODEX_CLIENT_VERSION, CODEX_MODELS, CODEX_MODELS_URL, codexRoutingHint, codexUpstreamHeaders } from './codex/index.js'
+import { applyCodexCache, codexCacheHeaders } from './codex/cache.js'
 import { GROK_API_URL, GROK_MODELS, grokAffinityHeaders, grokUpstreamHeaders } from './grok/index.js'
+import { applyGrokCache } from './grok/cache.js'
 import { GLM_MODELS, glmCodingUrl, glmUpstreamHeaders } from './glm/index.js'
+import { glmCacheSessionId } from './glm/cache.js'
 import { normalizeGlmChatBody } from './glm/request.js'
 import { KIRO_MODELS, kiroStreamingProfileArn } from './kiro/index.js'
 import {
@@ -34,13 +37,11 @@ import {
   fetchAntigravityCloudCode,
   parseAntigravityValidation,
 } from './antigravity/index.js'
-import { ANTIGRAVITY_STABLE_SESSION, antigravityToOpenai, createAntigravityOpenaiStream, openaiToAntigravity, parseAntigravitySseBlocks } from './antigravity/request.js'
+import { antigravityToOpenai, createAntigravityOpenaiStream, openaiToAntigravity, parseAntigravitySseBlocks } from './antigravity/request.js'
+import { antigravitySessionIdOf } from './antigravity/cache.js'
 import { applyFastMode } from '../utils/fast-mode.js'
-import { codexCacheSessionId } from '../utils/cache-session.js'
 import { normalizeCodexResponsesBody } from './codex/request.js'
 import { withPickerVariants } from './models.js'
-
-export { codexCacheSessionId } from '../utils/cache-session.js'
 
 const JSON_TYPE = { 'content-type': 'application/json; charset=utf-8' }
 export const MAX_REQUEST_BODY_BYTES = 64 * 1024 * 1024
@@ -156,25 +157,48 @@ function rewriteUpstreamBody(buffer, family) {
     throw new RequestError(400, 'request body must contain a JSON object')
   }
   const fast = applyFastMode(payload)
-  const next = family === 'codex'
-    ? normalizeCodexResponsesBody(fast)
-    : family === 'glm'
-      ? normalizeGlmChatBody(fast)
-      : fast
-  const pinCache = family === 'codex' || family === 'grok' || family === 'glm' || family === 'antigravity' || family === 'kiro'
-  const cacheSessionId = pinCache
-    ? (codexCacheSessionId(next.prompt_cache_key) || codexCacheSessionId(next.session_id))
-    : undefined
-  if (cacheSessionId) next.prompt_cache_key = cacheSessionId
-  else if (pinCache) delete next.prompt_cache_key
-  if (family === 'glm' || family === 'antigravity' || family === 'kiro') {
+  if (family === 'codex') {
+    const { payload: next, cacheSessionId } = applyCodexCache(normalizeCodexResponsesBody(fast))
+    return {
+      body: Buffer.from(JSON.stringify(next)),
+      cacheSessionId,
+      stream: next.stream === true,
+      routingHint: codexRoutingHint(typeof next.model === 'string' ? next.model : '', next.service_tier),
+    }
+  }
+  if (family === 'grok') {
+    const { payload: next, cacheSessionId } = applyGrokCache(fast)
+    return { body: Buffer.from(JSON.stringify(next)), cacheSessionId, stream: next.stream === true }
+  }
+  if (family === 'glm') {
+    const next = normalizeGlmChatBody(fast)
+    return {
+      body: Buffer.from(JSON.stringify(next)),
+      cacheSessionId: glmCacheSessionId(next.user) || glmCacheSessionId(next.session_id),
+      stream: next.stream === true,
+    }
+  }
+  if (family === 'antigravity') {
+    const next = { ...fast }
     delete next.prompt_cache_retention
     delete next.prompt_cache_options
+    return {
+      body: Buffer.from(JSON.stringify(next)),
+      cacheSessionId: antigravitySessionIdOf(next),
+      stream: next.stream === true,
+    }
   }
-  const routingHint = family === 'codex'
-    ? codexRoutingHint(typeof next.model === 'string' ? next.model : '', next.service_tier)
-    : undefined
-  return { body: Buffer.from(JSON.stringify(next)), cacheSessionId, stream: next.stream === true, routingHint }
+  if (family === 'kiro') {
+    const next = { ...fast }
+    delete next.prompt_cache_retention
+    delete next.prompt_cache_options
+    return {
+      body: Buffer.from(JSON.stringify(next)),
+      cacheSessionId: kiroConversationId(next),
+      stream: next.stream === true,
+    }
+  }
+  throw new RequestError(400, `unknown oauth family: ${family}`)
 }
 
 function abortOnDisconnect(request, response) {
@@ -432,11 +456,10 @@ async function forward(request, response, { url, session, headersOf, fetchFn, fa
     ...headersOf(session, cacheSessionId),
     'content-type': request.headers['content-type'] ?? 'application/json',
     ...(stream ? { accept: 'text/event-stream' } : {}),
-    ...(family === 'codex' && cacheSessionId !== undefined ? {
-      'session-id': cacheSessionId,
-      'x-client-request-id': cacheSessionId,
+    ...(family === 'codex' ? {
+      ...codexCacheHeaders(cacheSessionId),
+      ...(routingHint ? { 'x-codex-routing-hint': routingHint } : {}),
     } : {}),
-    ...(family === 'codex' && routingHint ? { 'x-codex-routing-hint': routingHint } : {}),
     ...(family === 'grok' ? grokAffinityHeaders(cacheSessionId) : {}),
   }
 
@@ -643,10 +666,7 @@ async function forwardAntigravity(request, response, { session, tokens, fetchFn,
   if (typeof projectId !== 'string' || !projectId.trim()) {
     throw new RequestError(403, 'antigravity session is missing project_id')
   }
-  const sessionId = cacheSessionId
-    ?? codexCacheSessionId(payload.session_id)
-    ?? codexCacheSessionId(payload.prompt_cache_key)
-    ?? ANTIGRAVITY_STABLE_SESSION
+  const sessionId = cacheSessionId ?? antigravitySessionIdOf(payload)
   const body = Buffer.from(JSON.stringify(openaiToAntigravity(payload, {
     projectId,
     sessionId,

@@ -3,7 +3,6 @@
  * this process attaches a fresh OAuth bearer and forwards to ChatGPT Codex
  * or xAI Grok. Settings operations stay on the host-owned RPC channel.
  */
-export { codexCacheSessionId } from '../utils/cache-session.js';
 export declare const MAX_REQUEST_BODY_BYTES: number;
 /** Upstream attempts before the client is told the stream failed. */
 export declare const STREAM_ATTEMPTS = 3;

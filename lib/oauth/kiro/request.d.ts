@@ -8,8 +8,7 @@
  *   Body: conversationState + profileArn
  * Response is application/vnd.amazon.eventstream.
  */
-/** When DSH sends neither session_id nor prompt_cache_key, still pin a constant. */
-export declare const KIRO_STABLE_SESSION = "dsh-kiro";
+export { KIRO_STABLE_SESSION, kiroConversationId } from './cache.js';
 export declare const KIRO_CHAT_ORIGIN = "AI_EDITOR";
 export declare const KIRO_AMZ_TARGET = "AmazonCodeWhispererStreamingService.GenerateAssistantResponse";
 export declare const KIRO_EVENTSTREAM_TYPE = "application/vnd.amazon.eventstream";
@@ -27,7 +26,6 @@ export declare function kiroChatHeaders(session: any): {
     'amz-sdk-invocation-id': `${string}-${string}-${string}-${string}-${string}`;
     'amz-sdk-request': string;
 };
-export declare function kiroConversationId(payload: {}, explicit: any): string;
 /**
  * DSH `developer` (and any other unknown role) → system, same as GLM.
  * History is userInputMessage / assistantResponseMessage pairs.
