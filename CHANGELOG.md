@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.45
+
+- Remember last reasoning effort when switching oauth-* models in DSH (no more reset to Default). Clamps to the new model's `reasoningEfforts` (e.g. xhigh→high on Antigravity). Live picker restored via `selectModel`, not YAML-only.
+- Also includes unreleased #41: Antigravity plan badge from Google AI `paidTier` (`g1-pro-tier` / `g1-ultra-tier`) instead of Code Assist `currentTier`. Card shows Pro / Ultra / Free / Standard.
+
 ## 0.0.44
 
 - Antigravity plan badge reads Google AI `paidTier` (`g1-pro-tier` / `g1-ultra-tier`) instead of Code Assist `currentTier` (`STANDARD TIER`). Card shows Pro / Ultra / Free / Standard.
