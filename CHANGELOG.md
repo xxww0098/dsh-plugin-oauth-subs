@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.49
+
+- Antigravity stream: emit OpenAI usage on the terminal SSE chunk (fixes DSH 用量 0 tok / 0 tok/s) and convert cumulative Google text to incremental deltas (fixes first token starting mid-sentence). PR #47. Live-tested on the user's Mac against gemini-3.7-flash-high and glm-5.3.
+- Also landing since last tag v0.0.45: 0.0.46 hide authorize link after login (#43); 0.0.47 Antigravity quota reset time on each bar (#44); 0.0.48 Kiro catalog reasoningEfforts + input on every row (#46).
+
 ## 0.0.48
 
 - Kiro catalog: thinking depth from [kiro.dev/docs/models/effort](https://kiro.dev/docs/models/effort/) (GPT-5.6 `none`–`max`, Claude 4.7+ `xhigh`, 4.6 `low`–`max`, Haiku / OSS `false`). Input is `text+image` for GPT/Claude and `text` for DeepSeek / MiniMax / GLM-5 / Qwen.
