@@ -1,5 +1,28 @@
 # 错误记录
 
+## 2026-08-31：Antigravity 额度条没有刷新时间
+
+### 现象
+
+设置 → Antigravity。已登录卡有 Claude/GPT、Gemini 分组进度条和剩余百分比，没有「N小时后重置」。Codex / Kiro 同一套 `QuotaRow` 会显示。
+
+### 证据
+
+- `fetchAvailableModels` 的 `quotaInfo.resetTime`（ISO）本来就有。`buildAntigravityQuotaRow` 只在缺 `remainingFraction` 时用它当 remaining 0，行上不写 `resetAt`。
+- UI `QuotaRow` 已经 `formatReset(row.resetAt)`。
+
+### 根因
+
+额度解析。SkillStar 分组抄了 remaining，漏了 reset。
+
+### 修复
+
+每组取 remaining 最低那条模型的 `resetTime`（`resetAtOf`），写到行上。
+
+### 验证
+
+- `npm test`：`remainingFraction` + `resetTime` 并存时 `resetAt` 是 ISO 毫秒；组内取最低 remaining 那条的时间。
+
 ## 2026-08-31：Kiro 登录成功后「打开授权页」还在
 
 ### 现象

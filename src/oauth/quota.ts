@@ -780,7 +780,7 @@ function antigravityQuotaInfo(entry) {
 }
 
 function buildAntigravityQuotaRow(models, group) {
-  const fractions = []
+  const samples = []
   let displayName
   for (const identifier of group.identifiers) {
     const found = findAntigravityModel(models, identifier)
@@ -789,27 +789,36 @@ function buildAntigravityQuotaRow(models, group) {
     const remaining = normalizeQuotaFraction(
       info?.remainingFraction ?? info?.remaining_fraction ?? info?.remaining,
     )
-    const hasReset = Boolean(info?.resetTime ?? info?.reset_time)
+    const stamp = resetAtOf(info)
+    const hasReset = stamp !== undefined
     const fraction = remaining ?? (hasReset ? 0 : undefined)
     if (fraction === undefined) return undefined
-    fractions.push(fraction)
+    samples.push({ fraction, stamp })
     if (displayName === undefined) {
       const name = found.entry?.displayName
       if (typeof name === 'string' && name.trim()) displayName = name.trim()
     }
   }
-  if (fractions.length === 0) return undefined
-  const remaining = fractions.reduce((lowest, next) => Math.min(lowest, next))
+  if (samples.length === 0) return undefined
+  const remaining = samples.reduce((lowest, next) => Math.min(lowest, next.fraction), 1)
   const remainingPercent = clampPct(remaining * 100) ?? 0
   const usedPercent = Math.max(0, Math.min(100, 100 - remainingPercent))
   const product = group.labelFromModel ? (displayName ?? group.label) : group.label
+  const atFloor = samples.filter((sample) => sample.fraction === remaining)
+  const resetAt = soonestReset(atFloor) ?? soonestReset(samples)
   return {
     key: `product:${product}`,
     kind: 'product',
     product,
     usedPercent,
     remainingPercent,
+    ...(resetAt === undefined ? {} : { resetAt }),
   }
+}
+
+function soonestReset(samples) {
+  const stamps = samples.map((sample) => sample.stamp).filter((stamp) => typeof stamp === 'number')
+  return stamps.length > 0 ? Math.min(...stamps) : undefined
 }
 
 /** SkillStar `parse_model_windows` — group fetchAvailableModels into product bars. */

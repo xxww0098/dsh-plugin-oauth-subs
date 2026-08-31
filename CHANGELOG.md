@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.47
+
+- Antigravity quota bars show reset time (`quotaInfo.resetTime` → `N小时后重置`), same as Codex / Kiro.
+
 ## 0.0.46
 
 - Settings: drop the leftover **打开授权页** / user-code row once login finishes (`busy` is false). Kiro (and Codex / Grok / Antigravity) no longer keep the authorize link under a signed-in card.
