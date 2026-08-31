@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.51
+
+- Antigravity: map Google `cachedContentTokenCount` to OpenAI `prompt_tokens_details.cached_tokens` so DSH cache hit rate is not stuck at 0%. Extra DSH system snapshots are parked after the conversation so the implicit-cache prefix can still hit.
+
 ## 0.0.50
 
 - Kiro chat: `POST /kiro/v1/chat/completions` translates OpenAI messages to AWS `GenerateAssistantResponse` (no more 501 stub). Event stream → `chat.completion` / SSE. `conversationId` pinned per DSH session. Upstream 401/403 rewritten to 400 (non-AUTH).
