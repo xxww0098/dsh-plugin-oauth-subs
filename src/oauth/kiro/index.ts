@@ -383,6 +383,21 @@ function trimmed(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined
 }
 
+function asPositiveNumber(value) {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) return value
+  if (typeof value === 'string' && value.trim()) {
+    const n = Number(value)
+    if (Number.isFinite(n) && n > 0) return n
+  }
+  return undefined
+}
+
+function durationMsOf(value) {
+  const n = asPositiveNumber(value)
+  if (n === undefined) return undefined
+  return n > 1e6 ? n : n * 1000
+}
+
 function expiresAtOf(value, fallbackSec = 3600) {
   if (typeof value === 'number' && Number.isFinite(value) && value > 1e12) return value
   if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
@@ -393,6 +408,31 @@ function expiresAtOf(value, fallbackSec = 3600) {
     if (Number.isFinite(stamp)) return stamp
   }
   return Date.now() + fallbackSec * 1000
+}
+
+/** Fresh TTL from the refresh JSON only. Never reuse a stored session expiresAt. */
+function refreshExpiresAt(body = {}) {
+  const ttl = durationMsOf(body.expiresIn ?? body.expires_in)
+  if (ttl !== undefined) return Date.now() + ttl
+  const stamp = body.expiresAt ?? body.expires_at
+  if (stamp !== undefined && stamp !== null && stamp !== '') return expiresAtOf(stamp)
+  return Date.now() + 3600 * 1000
+}
+
+export class KiroHttpError extends Error {
+  constructor(message, status, { retryAfter } = {}) {
+    super(message)
+    this.name = 'KiroHttpError'
+    this.status = status
+    if (retryAfter != null && String(retryAfter).trim()) this.retryAfter = String(retryAfter).trim()
+  }
+}
+
+function headerOf(response, name) {
+  const headers = response?.headers
+  if (!headers) return undefined
+  if (typeof headers.get === 'function') return headers.get(name) ?? undefined
+  return headers[name] ?? headers[name.toLowerCase()]
 }
 
 export function kiroSession(fields = {}) {
@@ -435,7 +475,11 @@ export function kiroSession(fields = {}) {
 async function readJson(response, label) {
   const text = await response.text()
   if (!response.ok) {
-    throw new Error(`${label} failed (HTTP ${response.status})${text ? `: ${text.slice(0, 240)}` : ''}`)
+    throw new KiroHttpError(
+      `${label} failed (HTTP ${response.status})${text ? `: ${text.slice(0, 240)}` : ''}`,
+      response.status,
+      { retryAfter: headerOf(response, 'retry-after') },
+    )
   }
   return text ? JSON.parse(text) : {}
 }
@@ -488,7 +532,7 @@ export async function refreshKiroSocial(session, { fetchFn = fetch } = {}) {
     ...session,
     accessToken: body.accessToken ?? body.access_token,
     refreshToken: body.refreshToken ?? body.refresh_token ?? refreshToken,
-    expiresIn: body.expiresIn ?? body.expires_in,
+    expiresAt: refreshExpiresAt(body),
     profileArn: body.profileArn ?? body.profile_arn ?? session.profileArn,
     authMethod: 'social',
   })
@@ -517,7 +561,7 @@ export async function refreshKiroIdc(session, { fetchFn = fetch } = {}) {
     ...session,
     accessToken: body.accessToken ?? body.access_token,
     refreshToken: body.refreshToken ?? body.refresh_token ?? refreshToken,
-    expiresIn: body.expiresIn ?? body.expires_in,
+    expiresAt: refreshExpiresAt(body),
     profileArn: body.profileArn ?? body.profile_arn ?? session.profileArn,
     authMethod: 'idc',
   })
@@ -548,7 +592,7 @@ export async function refreshKiroExternalIdp(session, { fetchFn = fetch } = {}) 
     ...session,
     accessToken,
     refreshToken: body.refresh_token ?? body.refreshToken ?? refreshToken,
-    expiresIn: body.expires_in ?? body.expiresIn,
+    expiresAt: refreshExpiresAt(body),
     authMethod: 'external_idp',
   })
 }

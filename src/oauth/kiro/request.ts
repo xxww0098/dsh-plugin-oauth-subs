@@ -244,20 +244,60 @@ function parseEventHeaders(buffer) {
   while (offset < buffer.length) {
     const nameLen = buffer[offset]
     offset += 1
-    if (offset + nameLen > buffer.length) break
+    if (offset + nameLen + 1 > buffer.length) break
     const name = buffer.subarray(offset, offset + nameLen).toString('utf8')
     offset += nameLen
     const type = buffer[offset]
     offset += 1
-    if (type === 7) {
+    if (type === 0) {
+      headers[name] = true
+      continue
+    }
+    if (type === 1) {
+      headers[name] = false
+      continue
+    }
+    if (type === 2) {
+      if (offset + 1 > buffer.length) break
+      headers[name] = buffer.readInt8(offset)
+      offset += 1
+      continue
+    }
+    if (type === 3) {
+      if (offset + 2 > buffer.length) break
+      headers[name] = buffer.readInt16BE(offset)
+      offset += 2
+      continue
+    }
+    if (type === 4) {
+      if (offset + 4 > buffer.length) break
+      headers[name] = buffer.readInt32BE(offset)
+      offset += 4
+      continue
+    }
+    if (type === 5 || type === 8) {
+      if (offset + 8 > buffer.length) break
+      headers[name] = buffer.readBigInt64BE(offset)
+      offset += 8
+      continue
+    }
+    if (type === 6 || type === 7) {
       if (offset + 2 > buffer.length) break
       const valueLen = buffer.readUInt16BE(offset)
       offset += 2
-      headers[name] = buffer.subarray(offset, offset + valueLen).toString('utf8')
+      if (offset + valueLen > buffer.length) break
+      const raw = buffer.subarray(offset, offset + valueLen)
+      headers[name] = type === 7 ? raw.toString('utf8') : raw
       offset += valueLen
-    } else {
-      break
+      continue
     }
+    if (type === 9) {
+      if (offset + 16 > buffer.length) break
+      headers[name] = buffer.subarray(offset, offset + 16)
+      offset += 16
+      continue
+    }
+    break
   }
   return headers
 }
@@ -346,10 +386,11 @@ export function collectKiroEvents(events) {
       }
       continue
     }
-    if (type === 'metadataEvent' && isPlainObject(data.tokenUsage)) {
-      usage = mapKiroUsage(data.tokenUsage)
-      continue
-    }
+    const usageRaw = isPlainObject(data.tokenUsage)
+      ? data.tokenUsage
+      : isPlainObject(data.token_usage) ? data.token_usage : undefined
+    if (usageRaw) usage = mapKiroUsage(usageRaw)
+    if (type === 'metadataEvent' || type === 'metadata') continue
     if (type === 'exception' || type === 'invalidStateEvent' || event?.messageType === 'exception') {
       error = trimmed(data.message) || trimmed(data.reason) || trimmed(data.Message) || JSON.stringify(data)
     }
@@ -385,17 +426,30 @@ export function kiroToOpenai(eventsOrBody, { model, id = `chatcmpl-${Date.now()}
   }
 }
 
+function numberField(object, ...keys) {
+  for (const key of keys) {
+    const value = object[key]
+    if (typeof value === 'number' && Number.isFinite(value)) return value
+    if (typeof value === 'string' && value.trim()) {
+      const n = Number(value)
+      if (Number.isFinite(n)) return n
+    }
+  }
+  return undefined
+}
+
 export function mapKiroUsage(tokens) {
   if (!isPlainObject(tokens)) return undefined
-  const cacheRead = tokens.cacheReadInputTokens ?? 0
+  const cacheRead = numberField(tokens, 'cacheReadInputTokens', 'cache_read_input_tokens')
+  const uncached = numberField(tokens, 'uncachedInputTokens', 'uncached_input_tokens') ?? 0
+  const output = numberField(tokens, 'outputTokens', 'output_tokens') ?? 0
+  const cached = cacheRead ?? 0
   const usage = {
-    prompt_tokens: (tokens.uncachedInputTokens ?? 0) + cacheRead,
-    completion_tokens: tokens.outputTokens ?? 0,
-    total_tokens: tokens.totalTokens ?? 0,
+    prompt_tokens: uncached + cached,
+    completion_tokens: output,
+    total_tokens: numberField(tokens, 'totalTokens', 'total_tokens') ?? (uncached + cached + output),
   }
-  if (typeof tokens.cacheReadInputTokens === 'number') {
-    usage.prompt_tokens_details = { cached_tokens: tokens.cacheReadInputTokens }
-  }
+  if (cacheRead !== undefined) usage.prompt_tokens_details = { cached_tokens: cacheRead }
   return usage
 }
 
@@ -435,27 +489,49 @@ export function kiroClientErrorBody(status, parsed, text) {
   }
 }
 
+function encodeOneHeader(name, type, valueBuf) {
+  const nameBuf = Buffer.from(name)
+  const row = Buffer.alloc(1 + nameBuf.length + 1 + valueBuf.length)
+  row[0] = nameBuf.length
+  nameBuf.copy(row, 1)
+  row[1 + nameBuf.length] = type
+  valueBuf.copy(row, 1 + nameBuf.length + 1)
+  return row
+}
+
 function encodeEventHeaders(headers) {
   const parts = []
-  for (const [name, value] of Object.entries(headers)) {
-    const nameBuf = Buffer.from(name)
-    const valueBuf = Buffer.from(String(value))
-    const row = Buffer.alloc(1 + nameBuf.length + 1 + 2 + valueBuf.length)
-    row[0] = nameBuf.length
-    nameBuf.copy(row, 1)
-    row[1 + nameBuf.length] = 7
-    row.writeUInt16BE(valueBuf.length, 1 + nameBuf.length + 1)
-    valueBuf.copy(row, 1 + nameBuf.length + 1 + 2)
-    parts.push(row)
+  for (const [name, spec] of Object.entries(headers)) {
+    if (spec === true) {
+      parts.push(encodeOneHeader(name, 0, Buffer.alloc(0)))
+      continue
+    }
+    if (spec === false) {
+      parts.push(encodeOneHeader(name, 1, Buffer.alloc(0)))
+      continue
+    }
+    if (spec && typeof spec === 'object' && Number.isInteger(spec.type)) {
+      parts.push(encodeOneHeader(name, spec.type, spec.value ?? Buffer.alloc(0)))
+      continue
+    }
+    const valueBuf = Buffer.from(String(spec))
+    const payload = Buffer.alloc(2 + valueBuf.length)
+    payload.writeUInt16BE(valueBuf.length, 0)
+    valueBuf.copy(payload, 2)
+    parts.push(encodeOneHeader(name, 7, payload))
   }
   return Buffer.concat(parts)
 }
 
 export function encodeKiroEventFrame(type, payload, messageType = 'event') {
+  const timestamp = Buffer.alloc(8)
   const headers = encodeEventHeaders({
+    ':compacted': false,
     ':message-type': messageType,
     ...(type ? { ':event-type': type } : {}),
     ':content-type': 'application/json',
+    ':event-id': { type: 9, value: Buffer.alloc(16) },
+    timestamp: { type: 8, value: timestamp },
   })
   const payloadBuf = Buffer.from(typeof payload === 'string' ? payload : JSON.stringify(payload ?? {}))
   const prelude = Buffer.alloc(12)

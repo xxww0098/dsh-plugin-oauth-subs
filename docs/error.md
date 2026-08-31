@@ -1,5 +1,33 @@
 # 错误记录
 
+## 2026-09-01：Kiro 0.0.57 live — 每轮 refresh 429、usage 全 0
+
+### 现象
+
+Mac，插件 **0.0.57**，2026-09-01 ~01:02–01:11 CST。`GET /kiro/v1/models` 18 个 id。短非流 chat 18/18 PASS（第一波两次 500 是 Kiro `/refreshToken` HTTP 429，重试后成功）。从未打到 `/kiro/v1/responses` 501。
+
+每个 200 的 usage 都是 `{prompt_tokens:0,completion_tokens:0,total_tokens:0}`，没有 `prompt_tokens_details` / `cached_tokens`。`claude-opus-4.5` / `claude-sonnet-5` 跑完 4 轮 ALPHA 并能记住 ALPHA，usage 仍是 0/0/0。多数 4 轮中途死在 500：`kiro social refresh failed (HTTP 429): Too many requests`。`auth.json` Pro+ 的 `expiresAt` 在大量 200 之后仍停在 `2026-08-31 18:04:33 CST`。
+
+### 证据
+
+- `refreshKiroSocial` 展开旧 session 再 `kiroSession()`。`expiresAtOf()` 看见已有毫秒时间戳（`>1e12`）就直接返回，丢掉 refresh JSON 里的 `expiresIn`。TokenManager `expiresAt - now > preemptMs` 一直为假，**每条请求都打 `/refreshToken`**，于是 429。
+- `readJson()` 把非 2xx 收成普通 `Error`（无 `.status`）。代理 `error.status ?? 500`，429 被报成 500，DSH 无法按 Retry-After 退避。
+- `parseEventHeaders` 只认 AWS eventstream type-7（string）。type 0/1/2/3/4/5/6/8/9 直接 `break`，后面的 `:event-type` 丢了。`assistantResponseEvent` 仍能出字（payload 还在），`metadataEvent` 分不出来，`kiroToOpenai` 走零 usage 回落。`mapKiroUsage` 也不认 `token_usage` / snake_case。
+
+### 根因
+
+代理 / Social 刷新 / eventstream 解码。不是指纹、不是 yaml sync、不是 501 stub。也不是该给 AWS 写 Codex `prompt_cache_key`。
+
+### 修复
+
+- 刷新成功后 **一律** 用 refresh JSON 的 `expiresIn` / `expires_in` / `expiresAt` 写新的 `expiresAt`（秒 vs 毫秒）。有新 TTL 时不保留旧 `expiresAt`。IdC / Entra 同一条。
+- `KiroHttpError` 带 `status` + `Retry-After`。代理原样回 429（有则带 Retry-After），不再改 500。
+- eventstream 头解码 bool / byte / short / int / long / bytes / string / timestamp / uuid。`mapKiroUsage` 认 camelCase 和 snake_case；`token_usage` 也能落到 `prompt_tokens_details.cached_tokens`。
+
+### 验证
+
+- `npm test`：旧毫秒 `expiresAt` + `expiresIn: 3600` → 新的未来 `expiresAt`；mock refresh 429 → 客户端 429 + Retry-After；`encodeKiroEventFrame` 带非 string 头的 `metadataEvent.tokenUsage.cacheReadInputTokens` → `prompt_tokens > 0` 且 `cached_tokens`。无 live AWS。不要改指纹 / yaml / 501 stub。
+
 ## 2026-08-31：0.0.57 Antigravity 长聊 Google 不回 cached_tokens
 
 ### 现象

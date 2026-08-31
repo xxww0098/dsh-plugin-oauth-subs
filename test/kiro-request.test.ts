@@ -9,6 +9,8 @@ import {
   KIRO_EVENTSTREAM_TYPE,
   KIRO_STABLE_SESSION,
   KIRO_SYSTEM_ACK,
+  collectKiroEvents,
+  encodeKiroEventFrame,
   encodeKiroEventStream,
   kiroChatHeaders,
   kiroChatUrl,
@@ -222,6 +224,44 @@ test('conversationId isolates all 18 catalog models when DSH omits session_id', 
   }
 })
 
+test('metadataEvent usage survives mixed eventstream header types', () => {
+  const frame = encodeKiroEventFrame('metadataEvent', {
+    tokenUsage: {
+      uncachedInputTokens: 40,
+      cacheReadInputTokens: 960,
+      outputTokens: 8,
+      totalTokens: 1008,
+    },
+  })
+  const events = parseKiroEventStream(frame)
+  assert.equal(events.length, 1)
+  assert.equal(events[0].type, 'metadataEvent')
+  const collected = collectKiroEvents(events)
+  assert.equal(collected.usage.prompt_tokens, 1000)
+  assert.equal(collected.usage.prompt_tokens_details.cached_tokens, 960)
+  const openai = kiroToOpenai(frame, { model: 'claude-sonnet-5', id: 'chatcmpl-usage' })
+  assert.ok(openai.usage.prompt_tokens > 0)
+  assert.equal(openai.usage.prompt_tokens, 1000)
+  assert.equal(openai.usage.completion_tokens, 8)
+  assert.equal(openai.usage.total_tokens, 1008)
+  assert.equal(openai.usage.prompt_tokens_details.cached_tokens, 960)
+})
+
+test('mapKiroUsage accepts snake_case tokenUsage aliases', () => {
+  const frame = encodeKiroEventFrame('metadataEvent', {
+    token_usage: {
+      uncached_input_tokens: 10,
+      cache_read_input_tokens: 90,
+      output_tokens: 5,
+      total_tokens: 105,
+    },
+  })
+  const openai = kiroToOpenai(frame, { model: 'claude-opus-4.5', id: 'chatcmpl-snake' })
+  assert.ok(openai.usage.prompt_tokens > 0)
+  assert.equal(openai.usage.prompt_tokens, 100)
+  assert.equal(openai.usage.prompt_tokens_details.cached_tokens, 90)
+})
+
 test('collectKiroEvents maps cacheReadInputTokens to prompt_tokens_details.cached_tokens', () => {
   const frames = encodeKiroEventStream([
     { type: 'assistantResponseEvent', payload: { content: 'ok', modelId: 'deepseek-3.2' } },
@@ -338,6 +378,41 @@ test('proxy translates hello on /kiro/v1/chat/completions and does not 501', asy
     assert.equal(sse.includes('"object":"chat.completion.chunk"'), true)
     assert.equal(sse.includes('hello'), true)
     assert.equal(sse.includes('data: [DONE]'), true)
+  } finally {
+    await proxy.close()
+  }
+})
+
+test('proxy forwards kiro social refresh 429 with Retry-After', async () => {
+  const error = new Error('kiro social refresh failed (HTTP 429): Too many requests')
+  error.status = 429
+  error.retryAfter = '2'
+  const proxy = createProxy({
+    port: 0,
+    apiKey: 'secret-key',
+    fetchFn: async () => {
+      throw new Error('refresh 429 must not reach GenerateAssistantResponse')
+    },
+    tokens: {
+      kiro: {
+        session: async () => {
+          throw error
+        },
+      },
+    },
+  })
+  const server = await proxy.listen()
+  try {
+    const denied = await fetch(`http://127.0.0.1:${server.address().port}/kiro/v1/chat/completions`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer secret-key', 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'claude-sonnet-5', messages: [{ role: 'user', content: 'hello' }] }),
+    })
+    assert.equal(denied.status, 429)
+    assert.notEqual(denied.status, 500)
+    assert.equal(denied.headers.get('retry-after'), '2')
+    const payload = await denied.json()
+    assert.match(String(payload.error), /HTTP 429/)
   } finally {
     await proxy.close()
   }

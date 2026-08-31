@@ -25,7 +25,7 @@ AWS **Kiro / CodeWhisperer**。协议对齐 [ZyphrZero/kiro.rs](https://github.c
 
 | 方法 | 用户看见 | 怎么登录 | 换票注意 |
 |---|---|---|---|
-| Social / OAuth | Google / GitHub | portal PKCE `app.kiro.dev`，callback 端口 `KIRO_CALLBACK_PORTS` | **authorize 和 token 的 `redirect_uri` 必须字节一致**。Cognito 常是 origin-only（`http://127.0.0.1:PORT`），path 可能是 `/`、`/oauth/callback`、`/signin/callback` |
+| Social / OAuth | Google / GitHub | portal PKCE `app.kiro.dev`，callback 端口 `KIRO_CALLBACK_PORTS` | **authorize 和 token 的 `redirect_uri` 必须字节一致**。Cognito 常是 origin-only（`http://127.0.0.1:PORT`），path 可能是 `/`、`/oauth/callback`、`/signin/callback`。`refreshKiroSocial` 成功后必须用 refresh JSON 的 `expiresIn` / `expiresAt` **重写** `expiresAt`，不能留旧毫秒戳，否则 TokenManager 每轮都刷新 → `/refreshToken` 429。429 带 `status` + `Retry-After` 回给 DSH，不要改成 500。 |
 | Builder ID | 个人 AWS | `idc-flow.ts` + `https://view.awsapps.com/start`，profile `BUILDER_ID_PROFILE_ARN` | |
 | Enterprise / IdC | 企业 IAM IC | 同一套 device poll，用户填 org Start URL | `kiroAccountKind` → `idc` |
 | Entra / Azure AD | 企业 SSO | `external_idp`，token endpoint 必须是 `*.microsoftonline.com` / `.us` / `.cn` | `refresh_token` grant |
@@ -70,7 +70,7 @@ DSH chat/completions  →  POST https://q.<region>.amazonaws.com/
 - tools 仍在 **current** `userInputMessageContext.tools`（官方也是挂 current，不在 conversationState 顶层）。
 - 上游 401/403 改写成 400（非 AUTH），避免 DSH 把订阅打成「API 密钥无效」。
 
-命中：eventstream `cacheReadInputTokens` → OpenAI `prompt_tokens_details.cached_tokens`（DSH `cacheReadTokens`）。
+命中：eventstream `cacheReadInputTokens`（也认 `token_usage` / snake_case）→ OpenAI `prompt_tokens_details.cached_tokens`（DSH `cacheReadTokens`）。头解码要走过 bool / byte / int / long / timestamp / uuid，不能在非 string 头上 `break`，否则 `:event-type` 丢了、`metadataEvent` 分不出来、usage 全 0。
 
 ## 模型
 
@@ -107,7 +107,10 @@ proxy 只删 `prompt_cache_retention` / `prompt_cache_options`，**不**把 `pro
 - 不要给 Kiro 写 Codex `session-id` / `prompt_cache_key` 或 Grok `x-grok-conv-id`。
 - 不要把 tools 挪到 conversationState 顶层（官方挂 current `userInputMessageContext`）。
 - 不要把 Social 的 `redirect_uri` 在 authorize 和 token 之间改掉（HTTP 500）。
+- 不要在 refresh 成功后保留旧 `expiresAt`（TokenManager 会每轮打 `/refreshToken` → 429）。
+- 不要把 refresh 429 映射成代理 500；原样回 429（有则带 Retry-After）。
 - 不要只 stub `GenerateAssistantResponse`（会 501）。
+- 不要在 eventstream 非 string 头上 `break`（会丢掉 `:event-type`，usage 全 0）。
 - 不要把 `api` 改成 Responses / Anthropic。
 - 不要把 `none` 写成 `reasoningEfforts` 的键（DSH 只认 `off|minimal|low|medium|high|xhigh|max`）。
 - 不要把 kiro-manager-lite 的 AGPL 源码贴进来；只蒸馏格式，解析器写自己的。
@@ -125,5 +128,6 @@ proxy 只删 `prompt_cache_retention` / `prompt_cache_options`，**不**把 `pro
 | 对话不是 OpenAI | 同文件 2026-08-30（已在 0.0.50 做成翻译层） |
 | 导入只吃第一条 / IDE 丢 client 注册 | 同文件 2026-08-31 Kiro 导入 |
 | 18 模型缓存 miss（system 每轮进 current + 共用 conversationId） | 同文件 2026-08-31 Kiro 缓存 |
+| 每轮 refresh 429 + usage 0/0/0 | 同文件 2026-09-01 Kiro 0.0.57 live |
 
 测试：`test/kiro.test.ts`、`test/cache-families.test.ts`、`test/proxy.test.ts`。
