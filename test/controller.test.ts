@@ -7,7 +7,7 @@ import { test } from 'node:test'
 import { AuthController } from '../lib/oauth/controller.js'
 import { saveSession } from '../lib/oauth/store.js'
 import { installedVersion } from '../lib/utils/update.js'
-import { HARNESS_COMPLETIONS_API, ModelSwitch, catalogKeys, catalogProviders } from '../lib/oauth/models.js'
+import { HARNESS_ANTHROPIC_API, HARNESS_COMPLETIONS_API, ModelSwitch, catalogKeys, catalogProviders } from '../lib/oauth/models.js'
 import { glmSession } from '../lib/oauth/glm/index.js'
 import { kiroSession, KIRO_MODELS } from '../lib/oauth/kiro/index.js'
 import { antigravitySession } from '../lib/oauth/antigravity/index.js'
@@ -240,9 +240,9 @@ test('toggle glm-5.3 on writes oauth-glm when all current GLM keys were disabled
   assert.equal(last.target, 'llm-pi-ai')
   const set = last.mutations.filter((row) => row.op === 'set')
   const glm = set.find((row) => row.path[1] === 'oauth-glm')
-  assert.equal(glm.value.api, HARNESS_COMPLETIONS_API)
-  assert.equal(glm.value.baseURL, 'http://127.0.0.1:8318/glm/v1')
-  assert.equal(glm.value.compat.thinkingFormat, 'openai')
+  assert.equal(glm.value.api, HARNESS_ANTHROPIC_API)
+  assert.equal(glm.value.baseURL, 'http://127.0.0.1:8318/glm')
+  assert.equal(glm.value.compat.thinkingFormat, undefined)
   assert.deepEqual(glm.value.models.map((model) => model.id), ['glm-5.3'])
 })
 
@@ -260,8 +260,8 @@ test('login/sync recovers leftover GLM 全关 and writes the current catalog rou
   for (const key of GLM_STALE) assert.equal(models.disabled.has(key), true)
   const set = ops.at(-1).mutations.filter((row) => row.op === 'set')
   const route = set.find((row) => row.path[1] === 'oauth-glm')
-  assert.equal(route.value.api, HARNESS_COMPLETIONS_API)
-  assert.equal(route.value.compat.thinkingFormat, 'openai')
+  assert.equal(route.value.api, HARNESS_ANTHROPIC_API)
+  assert.equal(route.value.compat.thinkingFormat, undefined)
   assert.deepEqual(route.value.models.map((model) => model.id), ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
 })
 
@@ -283,9 +283,9 @@ test('setModels 全选 persists logged-in GLM 3/3 into the settings store', asyn
   await controller.setModels({ family: 'glm', on: true })
   const set = store.ops.at(-1).mutations.filter((row) => row.op === 'set')
   const glm = set.find((row) => row.path[1] === 'oauth-glm')
-  assert.equal(glm.value.api, HARNESS_COMPLETIONS_API)
+  assert.equal(glm.value.api, HARNESS_ANTHROPIC_API)
   assert.deepEqual(glm.value.models.map((model) => model.id), ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
-  assert.equal(store.section.providers['oauth-glm'].api, 'openai-completions')
+  assert.equal(store.section.providers['oauth-glm'].api, 'anthropic-messages')
   assert.deepEqual(store.section.providers['oauth-glm'].models.map((model) => model.id), ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
 })
 

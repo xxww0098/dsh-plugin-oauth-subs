@@ -66,8 +66,8 @@ src/
       README.md
       index.ts             catalog, CLI poll OAuth, key mint, headers
       cli-flow.ts          ZCode /oauth/cli/init + poll (`zai` / `bigmodel`)
-      request.ts           chat body: roles, thinking, reasoning_content
-      cache.ts             implicit prefix hash + user / x-session-id
+      request.ts           Anthropic default + Completions leftover; thinking
+      cache.ts             implicit prefix hash; Completions `user` / Anthropic `metadata.user_id` + `cache_control`
     kiro/                  AWS Kiro (Social / Builder ID / IdC / Entra / API key)
       README.md
       index.ts             catalog, identity, portal PKCE, refresh, usage headers
@@ -138,12 +138,14 @@ Export (names may vary, behavior must not):
    → `undefined`. Clip is family-owned (today 1–64 of `[A-Za-z0-9._:-]`,
    but the function still lives in that folder so the charset can diverge).
 2. Apply / pin helper used by `request.ts` or `proxy.ts`
-   (`applyCodexCache`, `applyGrokCache`, `applyGlmCache`,
+   (`applyCodexCache`, `applyGrokCache`, `applyGlmCache` /
+   `applyGlmAnthropicCache`,
    `antigravitySessionIdOf` + `pinAntigravitySystemInstruction`,
    `kiroConversationId`).
 3. Header helper if the vendor sticky-routes on headers
    (`codexCacheHeaders`, `grokAffinityHeaders`). GLM headers stay in
-   `glm/index.ts` (`x-session-id`) and call `glmCacheSessionId`.
+   `glm/index.ts` (`x-session-id`, Anthropic `anthropic-version`) and call
+   `glmCacheSessionId`.
 4. `reset*Pins()` when the family keeps an in-process prefix map (tests
    call this between cases).
 
@@ -164,8 +166,11 @@ Codex:     prompt_cache_key + headers session-id / x-client-request-id
            extra developer parked at input suffix
 Grok:      prompt_cache_key + header x-grok-conv-id
            no Codex session-id headers
-GLM:       body.user + header x-session-id
-           drop prompt_cache_key / retention / options
+GLM:       drop prompt_cache_key / retention / options
+           Anthropic default: metadata.user_id + header x-session-id
+           first system block cache_control: ephemeral
+           extra system as text blocks without cache_control
+           Completions leftover: body.user + header x-session-id
            extra system parked at messages suffix
 Antigravity: request.sessionId
            first systemInstruction pinned; extra → trailing user turn
@@ -199,17 +204,26 @@ Kiro:      conversationState.conversationId
 - Z.AI Coding Plan is an **implicit content-hash** of leading system +
   history. There is **no** shard key.
   https://docs.z.ai/guides/capabilities/cache
-- Sticky: OpenAI `user` + `x-session-id`. Quota/biz hops without a DSH
-  pin keep the process-level `sess_<24hex>` (not a chat cache id).
+- Default hop is Anthropic. Sticky: `metadata.user_id` + `x-session-id`.
+  Completions leftover: OpenAI `user` + `x-session-id`. Quota/biz hops
+  without a DSH pin keep the process-level `sess_<24hex>` (not a chat
+  cache id).
 - **Do not** send `prompt_cache_key`, `prompt_cache_retention`, or
   `prompt_cache_options`.
-- Pin the first leading `system` run per DSH session. Later snapshots go
-  after the conversation (`role: system` at the **messages suffix**).
+- Completions leftover: pin the first leading `system` run per DSH
+  session. Later snapshots go after the conversation (`role: system` at
+  the **messages suffix**).
+- Anthropic: pin the first `system` text block with
+  `cache_control: { type: 'ephemeral' }`. Extra snapshots become extra
+  text blocks **without** `cache_control`. Pin map key is
+  `${sessionId}\0anthropic` so Completions and Anthropic do not collide.
 - GLM-5.3 / Flash: `thinking: { type: 'enabled', clear_thinking: false }`
-  and keep previous `reasoning_content`. A 576-token remnant after a
-  leading splice is a **prefix break**, not a Grok affinity miss.
+  on **both** hops. Official thinking-mode docs are Completions-shaped;
+  Anthropic thinking/signatures are unproven. Keep previous
+  `reasoning_content` on Completions leftover. A 576-token remnant after
+  a leading splice is a **prefix break**, not a Grok affinity miss.
 - Hits: OpenAI `prompt_tokens_details.cached_tokens` /
-  `cache_read_input_tokens`. Anthropic-compat may set `cache_control`.
+  `cache_read_input_tokens`. Anthropic stamps `cache_control`.
 
 **Antigravity** (`src/oauth/antigravity/cache.ts` + usage map in `request.ts`)
 
@@ -251,7 +265,7 @@ When adding `src/oauth/<id>/`:
 |---|---|---|---|---|
 | Codex | prefix of `instructions` then `input` | `session-id` + `x-client-request-id` = `prompt_cache_key` | developer at **input suffix** | `cacheReadTokens` |
 | Grok | conversation shard | `x-grok-conv-id` (+ body `prompt_cache_key`) | n/a (shard, not prefix) | `cacheReadTokens`; 512 + reuse<10% = affinity miss |
-| GLM | content hash of leading system + history | `user` + `x-session-id` | system at **messages suffix** | `cached_tokens` / `cache_read_input_tokens` |
+| GLM | content hash of leading system + history | Anthropic: `metadata.user_id` + `x-session-id` + first-block `cache_control`; Completions leftover: `user` + `x-session-id` | Completions: system at **messages suffix**; Anthropic: extra system text blocks without cache_control | `cached_tokens` / `cache_read_input_tokens` |
 | Antigravity | Gemini `systemInstruction` + contents | `request.sessionId` | extra as trailing **user** | `cachedContentTokenCount` → `cached_tokens` |
 | Kiro | CodeWhisperer conversation | `conversationId` | n/a | `cacheReadInputTokens` |
 
@@ -266,6 +280,65 @@ When adding `src/oauth/<id>/`:
   block as a GLM prefix break.
 - Put cache rewrite in `src/utils/`.
 
+## Harness protocol — 设计规范（硬约定）
+
+DSH `llm-pi-ai` `api` is a **closed union**:
+
+- `openai-completions`
+- `openai-responses`
+- `anthropic-messages`
+
+Bare `openai` is refused and the whole section write is dropped, so the
+family never lands in `settings.yaml`. One provider = one `api`. Do not
+invent a fourth value.
+
+### Rule
+
+Pick the DSH shape that matches the **vendor-native** wire among those
+three. If the vendor is none of them, use Completions plus a hop
+translator in that family's `request.ts`. Do not pick Responses or
+Anthropic just to avoid Completions — the extra DSH adapter still has
+to exist, and you lose the native Completions path.
+
+Family hops live in `src/oauth/<id>/README.md`. This section is the
+invariant list. When the two disagree, fix the README.
+
+### Per family
+
+| Family | DSH `api` | Why | Hop |
+|---|---|---|---|
+| Codex | `openai-responses` | ChatGPT backend is Responses | passthrough `POST /codex/v1/responses` |
+| Grok | `openai-responses` | xAI `api.x.ai/v1/responses` | passthrough `POST /grok/v1/responses` |
+| GLM | `anthropic-messages` | ZCode Desktop default is Anthropic (`ai-sdk/anthropic`). Coding Plan also has Completions `paas/v4`. Generic Responses `api.z.ai/api/v1` is **not** Coding Plan dedicated. | `POST /glm/v1/messages` → `/api/anthropic/v1/messages`. Completions leftover `/glm/v1/chat/completions` until the next `sync()`. |
+| Kiro | `openai-completions` | Native is AWS EventStream `GenerateAssistantResponse` | Completions adapter |
+| Antigravity | `openai-completions` | Native is `generateContent` | Completions adapter |
+
+`baseURL` must match how that SDK posts. Anthropic SDK posts
+`{baseURL}/v1/messages`, so GLM is `${origin}/glm` (not `${origin}/glm/v1`).
+`/glm/v1/v1/messages` is leftover-settings safety only.
+
+### GLM 150%
+
+The Coding Plan 1.5× boost is **identity** (ZCode Desktop UA /
+`X-ZCode-*`), not protocol. Fingerprint matches Desktop 3.10.1 from
+`zcode.cjs` (`eao` / `rao`). This plugin has **not** compared quota
+slope vs official Desktop. Official promo copy ran through 2026-08-31.
+Switching GLM to Anthropic aligns the hop with ZCode's default (the UA
+already said `ai-sdk/anthropic` while Completions was posted). Do
+**not** claim the protocol switch "earns 150%".
+
+### Do not
+
+- Switch Codex / Grok to Completions.
+- Switch Kiro / Antigravity to Responses or Anthropic (native is still
+  none of the three; you would keep a translator and lose DSH's native
+  Completions path).
+- Set GLM `api: openai-responses` (generic `api.z.ai/api/v1` is not
+  Coding Plan).
+- Drop the Completions leftover route until the next `sync()` has
+  rewritten leftover `openai-completions` settings.
+- Stamp GLM `compat.thinkingFormat: openai` on the Anthropic route.
+
 ## Adding a new OAuth family
 
 A family is one top-level tab (Codex / Grok / GLM / Kiro / Antigravity today) plus its own
@@ -275,10 +348,11 @@ tab. Follow this checklist in one PR.
 ### Host
 
 1. **README** `src/oauth/<id>/README.md` in the same PR: what the vendor
-   is, file map, login, session, chat hop, models, quota, **cache**, do-not,
-   and links into `docs/error.md`. Keep it traceable (function names,
-   endpoints, wire fields). AGENTS.md is the cross-family contract; the
-   family README is the design source for that folder.
+   is, file map, login, session, **protocol** (`api` + hop), chat hop,
+   models, quota, **cache**, do-not, and links into `docs/error.md`. Keep
+   it traceable (function names, endpoints, wire fields). AGENTS.md is
+   the cross-family contract; the family README is the design source for
+   that folder.
 2. **Module** `src/oauth/<id>/index.ts`: catalog (`id`, `name`,
    `contextWindow`, `maxTokens`, `input`, `reasoningEfforts`), OAuth
    endpoints, session builder, User-Agent, refresh. Extra flow files stay
@@ -297,16 +371,17 @@ tab. Follow this checklist in one PR.
    fine — the card still renders, quota block stays idle.
 6. **Catalog** (`src/oauth/models.ts`): add `${prefix}-<id>` to
    `ownedProviderIds`, `buildProviders`, `catalogProviders`,
-   `describeCatalog`. `toHarnessModel` copies `model.input` and
-   `reasoningEfforts`; do not hard-code image on every row.
+   `describeCatalog`. Pick `api` from the closed union per the protocol
+   section. `baseURL` must match how that SDK posts. `toHarnessModel`
+   copies `model.input` and `reasoningEfforts`; do not hard-code image
+   on every row.
 7. **Plan labels** (`src/oauth/plan.ts`): map wire slugs to the product
    name users see (`Pro 20x`, `SuperGrok Heavy`, `Lite`). Family-specific
    collisions (`glm` `pro` → `Pro`, Codex `pro` → `Pro 20x`) belong here.
-8. **Proxy / tokens / cache** only if chat actually goes through the local
-   Responses proxy. GLM talks to Z.ai / BigModel directly — do not force
-   a proxy hop. Prompt cache **must** be a new `src/oauth/<id>/cache.ts`.
-   Do not import another family's cache helper, and do not revive
-   `src/utils/cache-session.ts`.
+8. **Proxy / tokens / cache**: all five families chat through the local
+   proxy. Pick `api` per the protocol section. Prompt cache **must** be
+   a new `src/oauth/<id>/cache.ts`. Do not import another family's cache
+   helper, and do not revive `src/utils/cache-session.ts`.
 9. **Tests** under `test/`: login parse, session round-trip, catalog
    input types, and `snapshot shows quota on every <id> account`.
 

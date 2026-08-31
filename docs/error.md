@@ -1,5 +1,35 @@
 # 错误记录
 
+## 2026-08-31：GLM 默认协议应对齐 ZCode Anthropic，150% 不是协议证明
+
+### 现象
+
+DSH `llm-pi-ai` `api` 只有三种：`openai-completions` | `openai-responses` | `anthropic-messages`。插件把 GLM 写成 Completions， hop 打 `/api/coding/paas/v4/chat/completions`，但 Desktop UA 是 `ZCode/3.10.1 ai-sdk/anthropic/3.0.81`。ZCode 默认协议是 Anthropic Messages。
+
+### 证据
+
+- Z.AI Coding Plan 同时开 Anthropic（`https://api.z.ai/api/anthropic`）、Completions（`…/coding/paas/v4`）、以及**非** Coding Plan 专用的 Responses（`https://api.z.ai/api/v1`）。
+- 官方 quick-start / ZCode Desktop 默认 Anthropic。Desktop `zcode.cjs` UA 写 `ai-sdk/anthropic`。
+- Codex / Grok 上游就是 Responses，已经最优。Kiro 原生 EventStream、Antigravity 原生 generateContent，改 Responses / Anthropic 仍要翻译层。
+- 150%：「在 ZCode 中登录使用」是 **身份** 计费，官方文案到 2026-08-31。指纹对齐 Desktop 3.10.1，**没有**和官方 Desktop 对比过用量斜率。不能把切协议说成「就能吃上 150%」。
+
+### 根因
+
+把「有 Completions 兼容」当成 DSH 该选的 `api`。闭集规则是：三种里哪条是上游原生就选哪条；都不是才 Completions + 翻译。
+
+### 修复
+
+- `oauth-glm`：`api: anthropic-messages`，`baseURL: ${origin}/glm`。
+- `POST /glm/v1/messages` → `glmAnthropicUrl` + `glmAnthropicHeaders`（`anthropic-version: 2023-06-01`）。SSE 原样转发。
+- `normalizeGlmAnthropicBody`：默认 `max_tokens` 128000；5.3 / Flash 仍盖 `thinking: { type: enabled, clear_thinking: false }`（官方思考文档是 Completions 形，Anthropic signature **未实测**）。
+- `applyGlmAnthropicCache`：钉 `metadata.user_id`，首块 `cache_control: ephemeral`，多余 system 块不加 cache_control。Pin 键 `${sessionId}\0anthropic`，不和 Completions map 撞。
+- Completions `/glm/v1/chat/completions` 留到下次 `sync()`。`/glm/v1/v1/messages` 只防旧 baseURL。
+- Codex / Grok / Kiro / Antigravity 协议不动。
+
+### 验证
+
+- `npm test`：catalog `api` 是 `anthropic-messages`，`baseURL` 以 `/glm` 结尾；Anthropic hop 打 `/api/anthropic/v1/messages`，带 `anthropic-version` / `cache_control` / `metadata.user_id`，无 Codex 头、无 `prompt_cache_key`；Completions 残留仍走 `paas/v4` 且不带 `anthropic-version`。
+
 ## 2026-08-31：各家 OAuth 缓存被混成 Codex 一套
 
 ### 现象

@@ -4,7 +4,9 @@
  *
  * The cache key is a hash of the leading system blob plus history. There is
  * no Codex `prompt_cache_key` and no Grok `x-grok-conv-id`. Sticky routing
- * is the OpenAI `user` field plus the `x-session-id` header.
+ * is the OpenAI `user` field / Anthropic `metadata.user_id` plus the
+ * `x-session-id` header. Anthropic also stamps `cache_control` on the first
+ * system text block (ZCode default protocol).
  *
  * DSH prepends a runtime-context snapshot as another leading system every
  * step. That rewrite is parked at the messages suffix so the first system
@@ -78,6 +80,64 @@ export function stabilizeGlmSystemPrefix(messages, sessionId) {
   return [...existing.head, ...rest, ...parked]
 }
 
+/**
+ * Pin the first Anthropic `system` run per DSH session. Extra snapshots
+ * become additional text blocks *without* cache_control so the first
+ * block stays a stable prefix. Z.AI Anthropic accepts `cache_control`.
+ */
+export function stabilizeGlmAnthropicSystem(system, sessionId) {
+  if (!sessionId) return system
+  const pinId = `${sessionId}\0anthropic`
+  const blocks = systemBlocks(system)
+  if (blocks.length === 0) return system
+  const text = blocks.map((block) => block.text).filter(Boolean).join('\n\n')
+  if (!text) return system
+  const existing = SYSTEM_PINS.get(pinId)
+  if (existing === undefined) {
+    if (SYSTEM_PINS.size >= SYSTEM_PIN_CAP) {
+      const first = SYSTEM_PINS.keys().next().value
+      SYSTEM_PINS.delete(first)
+    }
+    SYSTEM_PINS.set(pinId, { head: blocks, text })
+    return withCacheControl(blocks)
+  }
+  let extra = ''
+  if (text !== existing.text) {
+    extra = text.startsWith(existing.text)
+      ? text.slice(existing.text.length).replace(/^\n+/, '').trim()
+      : text
+  }
+  const extras = extra ? [{ type: 'text', text: extra }] : []
+  return withCacheControl([...existing.head, ...extras])
+}
+
+function systemBlocks(system) {
+  if (typeof system === 'string') {
+    const text = system.trim()
+    return text ? [{ type: 'text', text }] : []
+  }
+  if (!Array.isArray(system)) return []
+  return system.flatMap((part) => {
+    if (typeof part === 'string') {
+      const text = part.trim()
+      return text ? [{ type: 'text', text }] : []
+    }
+    if (part && typeof part.text === 'string' && part.text.trim()) {
+      return [{ type: 'text', text: part.text }]
+    }
+    return []
+  })
+}
+
+function withCacheControl(blocks) {
+  if (blocks.length === 0) return blocks
+  return blocks.map((block, index) => (
+    index === 0
+      ? { ...block, cache_control: { type: 'ephemeral' } }
+      : { type: 'text', text: block.text }
+  ))
+}
+
 /** Drop Codex/Grok cache fields; pin `user`; freeze the leading system. */
 export function applyGlmCache(payload) {
   const next = { ...payload }
@@ -92,4 +152,32 @@ export function applyGlmCache(payload) {
   }
   if (sessionId && (next.user == null || next.user === '')) next.user = sessionId
   return { payload: next, cacheSessionId: sessionId }
+}
+
+/**
+ * Anthropic Messages: pin top-level `system`, `metadata.user_id`, and
+ * `cache_control` on the first system block. Same pin map as Completions.
+ */
+export function applyGlmAnthropicCache(payload) {
+  const next = { ...payload }
+  const sessionId = glmCacheSessionId(next.metadata?.user_id)
+    || glmCacheSessionId(next.session_id)
+    || glmCacheSessionId(next.prompt_cache_key)
+    || glmCacheSessionId(next.user)
+  delete next.prompt_cache_key
+  delete next.prompt_cache_retention
+  delete next.prompt_cache_options
+  if (sessionId && next.system != null) {
+    next.system = stabilizeGlmAnthropicSystem(next.system, sessionId)
+  }
+  if (sessionId) {
+    const metadata = isPlainObject(next.metadata) ? { ...next.metadata } : {}
+    if (metadata.user_id == null || metadata.user_id === '') metadata.user_id = sessionId
+    next.metadata = metadata
+  }
+  return { payload: next, cacheSessionId: sessionId }
+}
+
+function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
 }

@@ -3,10 +3,11 @@
 本文件是 `src/oauth/glm/` 的设计源。改登录、额度、对话或缓存先改这里再改代码。
 跨家族硬约定在仓库根 [`AGENTS.md`](../../../AGENTS.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)。
 
-Zhipu **Coding Plan**。两个站点、同一套 ZCode CLI poll。对话直连 Coding Plan OpenAI 兼容接口，**不**走 chatgpt.com。
+Zhipu **Coding Plan**。两个站点、同一套 ZCode CLI poll。默认对话走 **Anthropic Messages**（ZCode Desktop 默认协议），**不**走 chatgpt.com。
 
-官方缓存说明：<https://docs.z.ai/guides/capabilities/cache>
-官方思考说明：<https://docs.z.ai/guides/capabilities/thinking-mode>
+官方 Anthropic：<https://docs.z.ai/devpack/quick-start>
+官方缓存：<https://docs.z.ai/guides/capabilities/cache>
+官方思考（Completions 形）：<https://docs.z.ai/guides/capabilities/thinking-mode>
 
 ## 文件
 
@@ -14,13 +15,14 @@ Zhipu **Coding Plan**。两个站点、同一套 ZCode CLI poll。对话直连 C
 |---|---|
 | [`index.ts`](index.ts) | 区域、端点、CLI init/poll、Z.ai biz 登录 + 铸 key、桌面指纹头、会话 |
 | [`cli-flow.ts`](cli-flow.ts) | 浏览器打开 `authorize_url`，轮询 `/oauth/cli/poll/{flow_id}`。无 loopback、无 PKCE |
-| [`request.ts`](request.ts) | 角色归一、思考链、`clear_thinking: false`；再调 `applyGlmCache` |
-| [`cache.ts`](cache.ts) | 隐式前缀哈希：钉住首段 system，多余快照停到 **messages 末尾**。剥掉 Codex `prompt_cache_key` |
-| [`boost.ts`](boost.ts) | 卡片「150%配额」文案（ZCode 登录限时加成） |
+| [`request.ts`](request.ts) | Anthropic 默认 + Completions 残留：思考链、`clear_thinking: false`；再调 cache |
+| [`cache.ts`](cache.ts) | 隐式前缀哈希。Completions：钉首段 system，多余停 **messages 末尾**。Anthropic：钉 system 首块 `cache_control`，多余块不加 cache_control。剥掉 Codex `prompt_cache_key` |
+| [`boost.ts`](boost.ts) | 卡片「150%配额」文案（ZCode **身份** 限时加成，不是协议证明） |
 
-调度：[`../proxy.ts`](../proxy.ts) `family === 'glm'` → `normalizeGlmChatBody`；`x-session-id` 在 `glmDesktopHeaders`。
+调度：[`../proxy.ts`](../proxy.ts) `family === 'glm'` + `wire === 'anthropic'` → `normalizeGlmAnthropicBody`；Completions 残留 → `normalizeGlmChatBody`。`x-session-id` 在 `glmDesktopHeaders`；Anthropic 另加 `anthropic-version`。
 额度：[`../quota.ts`](../quota.ts) `fetchGlmQuota` / `parseGlmQuota` / `mergeGlmToolUsage`。
 套餐：`GLM_PLAN_NAMES`（`coding_pro` → **Pro**，不要和 Codex `pro` → Pro 20x 搞混）。
+协议：[`../models.ts`](../models.ts) `api: anthropic-messages`，`baseURL: ${origin}/glm`（Anthropic SDK 打 `{baseURL}/v1/messages`）。
 
 ## 登录
 
@@ -41,22 +43,48 @@ BigModel： poll JWT 本身就是 Coding Plan bearer，不再铸 biz key
 
 Settings：两颗堆叠登录按钮（只这一家）。Tab 图标用 **Z.ai**（`zai`），不是智谱字母。
 
+## 协议
+
+DSH `llm-pi-ai` `api` 是闭集：`openai-completions` | `openai-responses` | `anthropic-messages`。选和上游原生最贴的那一种。
+
+Z.AI Coding Plan 同时开三条：
+
+| 上游 | URL | 是不是 Coding Plan | 选不选 |
+|---|---|---|---|
+| Anthropic Messages | `https://api.z.ai/api/anthropic[/v1/messages]` | 是。ZCode Desktop 默认（UA `ai-sdk/anthropic`） | **默认** |
+| OpenAI Completions | `…/coding/paas/v4/chat/completions` | 是 | 残留 hop，直到下一次 `sync()` |
+| OpenAI Responses | `https://api.z.ai/api/v1` | **不是** Coding Plan 专用 | 不选 |
+
+所以 `oauth-glm` 写 `api: anthropic-messages`。不要改 `openai-responses`。
+
 ## 对话
 
 ```text
-DSH chat/completions  →  本机代理  →  POST
-  zai:      api.z.ai/api/coding/paas/v4/chat/completions
-  bigmodel: open.bigmodel.cn/api/coding/paas/v4/chat/completions
+DSH anthropic-messages  →  本机代理 POST /glm/v1/messages  →
+  zai:      api.z.ai/api/anthropic/v1/messages
+  bigmodel: open.bigmodel.cn/api/anthropic/v1/messages
+
+残留（下次 sync 前）：
+DSH openai-completions  →  POST /glm/v1/chat/completions  →
+  …/api/coding/paas/v4/chat/completions
 ```
 
-头：`glmUpstreamHeaders` = Bearer + `glmDesktopHeaders`（`ZCode/3.10.1`、`X-ZCode-*`、`x-session-id`）。第三方 UA 会丢掉 ZCode 1.5 倍额度。
+`/glm/v1/v1/messages` 只防旧 `baseURL: ${origin}/glm/v1` 被 Anthropic SDK 再拼一层。
 
-`normalizeGlmChatBody`：
+头：`glmAnthropicHeaders` = `glmUpstreamHeaders` + `anthropic-version: 2023-06-01`。Desktop 指纹是 `ZCode/3.10.1`、`X-ZCode-*`、`x-session-id`。SSE 原样转发（DSH anthropic-messages 要的就是 Anthropic SSE）。
+
+`normalizeGlmAnthropicBody`：
+
+1. Anthropic 必须有 `max_tokens`；缺则 128000。
+2. `applyGlmThinking`：GLM-5.3 / Flash 强制 `thinking.type = enabled` + `clear_thinking: false`。官方思考文档是 Completions 形；Anthropic thinking/signature **未实测**。Turbo 不强制开。
+3. `applyGlmAnthropicCache`（见下）。
+
+`normalizeGlmChatBody`（残留 Completions）：
 
 1. 非 `system/user/assistant/tool` 的角色（DSH `developer`）改成 `system`，否则 400 `1214 角色信息不正确`。
 2. assistant 的 `reasoning` 补成 `reasoning_content`。
-3. `applyGlmThinking`：GLM-5.3 / Flash 强制 `thinking.type = enabled` + `clear_thinking: false`（`disabled` 400）。Turbo 是混合开关，不强制开。
-4. `applyGlmCache`（见下）。
+3. 同一套 `applyGlmThinking`。
+4. `applyGlmCache`。
 
 ## 模型
 
@@ -68,12 +96,14 @@ DSH chat/completions  →  本机代理  →  POST
 | `glm-5.3-flash` | text + image | 同上 |
 | `glm-5-turbo` | text | `false`（混合 on/off，无档位） |
 
+`compat` 只留 `supportsReasoningEffort: true`。**不要**在 Anthropic 路由上写 `thinkingFormat: openai`。
+
 ## 额度
 
 `GET glmQuotaUrl(region)` + `GET glmToolUsageUrl(region)`。
 
 条必须按窗口拆：5 小时 / 每周 / ZCode MCP，不要两条都叫「本周期」。`glmWindowKind` 认 `five_hour` / `weekly` / `mcp`。
-卡片加成：`glmCardBoost` 显示「150%配额」。
+卡片加成：`glmCardBoost` 显示「150%配额」。这是 **ZCode Desktop 身份** 的限时文案（官方说到 2026-08-31），**不是**协议证明。指纹对齐 Desktop 3.10.1（`zcode.cjs` `eao`/`rao`），没有和官方 Desktop 做过用量斜率对比。切 Anthropic 是对齐 ZCode 默认协议（UA 本来就是 `ai-sdk/anthropic`），不是「切协议就能吃 150%」。
 
 ## 缓存
 
@@ -81,17 +111,31 @@ Z.AI Coding Plan 是 **隐式内容哈希**：对「前导 system + 历史」做
 
 DSH 每步再插一条 leading system（`This snapshot supersedes…`）。前缀一变，整段 miss。
 
+Completions 残留：
+
 | 步骤 | 函数 | 做什么 |
 |---|---|---|
 | 1 | `glmCacheSessionId` | 从 `user` / `session_id` / `prompt_cache_key` 取 id 并清洗 |
 | 2 | 删除 | `prompt_cache_key`、`prompt_cache_retention`、`prompt_cache_options` |
 | 3 | `stabilizeGlmSystemPrefix` | 每个 DSH session 钉住 **第一次** leading system；后来的快照以 `role: system` 挂到 **messages 末尾** |
 | 4 | body `user` | 空则填 session id |
-| 5 | 头 `x-session-id` | `glmDesktopHeaders`（配额/biz  hop 没有 DSH pin 时用进程级 `sess_<24hex>`，不是对话缓存 id） |
+| 5 | 头 `x-session-id` | `glmDesktopHeaders`（配额/biz hop 没有 DSH pin 时用进程级 `sess_<24hex>`，不是对话缓存 id） |
 
-命中字段：OpenAI `prompt_tokens_details.cached_tokens` / `cache_read_input_tokens`。Anthropic 兼容路径可以带 `cache_control`。
+Anthropic 默认：
 
-判定：前缀被切开后剩 **576 token** 残骸 = **prefix break**，不是 Grok affinity miss。思考模型必须 `clear_thinking: false` 且保留上一轮 `reasoning_content`，否则前缀同样断。
+| 步骤 | 函数 | 做什么 |
+|---|---|---|
+| 1 | `glmCacheSessionId` | 从 `metadata.user_id` / `session_id` / `prompt_cache_key` / `user` 取 id |
+| 2 | 删除 | 同上 Codex 字段 |
+| 3 | `stabilizeGlmAnthropicSystem` | 钉住第一次 `system` 文本块，并盖 `cache_control: { type: 'ephemeral' }`；后来的快照变成 **额外 text 块、不加 cache_control** |
+| 4 | `metadata.user_id` | 空则填 session id |
+| 5 | 头 `x-session-id` + `anthropic-version` | `glmAnthropicHeaders` |
+
+Pin map 的 Anthropic 键是 `${sessionId}\0anthropic`，和 Completions 的 `sessionId` **不撞**。
+
+命中字段：OpenAI `prompt_tokens_details.cached_tokens` / `cache_read_input_tokens`。Anthropic 靠 `cache_control`。
+
+判定：前缀被切开后剩 **576 token** 残骸 = **prefix break**，不是 Grok affinity miss。思考模型必须 `clear_thinking: false`；Completions 残留还要保留上一轮 `reasoning_content`，否则前缀同样断。
 
 进程内 `SYSTEM_PINS`（cap 64）只服务 GLM。测试用 `resetGlmSystemPins()`。不要 import Antigravity 的 pin map。
 
@@ -101,12 +145,18 @@ DSH 每步再插一条 leading system（`This snapshot supersedes…`）。前�
 - 不要把 GLM extras 停成 Gemini trailing user（「停车是同一个思路」也算混用）。
 - 不要用 `zcode` 当 CLI provider。
 - 不要把卡片账号显示成 `zcode`。
+- 不要把 `api` 改成 `openai-responses`（`api.z.ai/api/v1` 不是 Coding Plan）。
+- 不要宣称切 Anthropic 就能吃上 150%。150% 是 Desktop **身份/UA**，没有和官方 Desktop 对比过用量斜率。
+- 不要在 Anthropic 路由上写 `compat.thinkingFormat: openai`。
+- 不要在下次 `sync()` 改写残留设置之前拆掉 Completions hop。
 
 ## 追溯
 
 | 问题 | 记录 |
 |---|---|
-| 首轮 400 `1214 角色信息不正确` | [`docs/error.md`](../../../docs/error.md) 2026-08-30 GLM 1214 |
+| Completions + `ai-sdk/anthropic` UA 对不齐 ZCode 默认协议 | [`docs/error.md`](../../../docs/error.md) 2026-08-31 GLM Anthropic |
+| 150% 是身份不是协议，未对照 Desktop 用量 | 同文件 2026-08-31 GLM Anthropic；2026-08-30 GLM UA |
+| 首轮 400 `1214 角色信息不正确` | 同文件 2026-08-30 GLM 1214 |
 | 思考链被清 / 前缀 miss | 同文件 2026-08-30 GLM 思考链 |
 | 第三方 UA 丢掉 1.5 倍额度 | 同文件 2026-08-30 GLM UA |
 | 额度两条「本周期」 | 同文件 2026-08-30 GLM 额度窗口 |
@@ -114,4 +164,4 @@ DSH 每步再插一条 leading system（`This snapshot supersedes…`）。前�
 | BigModel init 500 | 同文件 2026-08-30 BigModel OAuth |
 | 缓存和 Codex 混用 | 同文件 2026-08-31 缓存混用 |
 
-测试：`test/glm.test.ts`、`test/proxy.test.ts`（GLM hop **不得**带 `prompt_cache_key`）、`test/cache-families.test.ts`。
+测试：`test/glm.test.ts`、`test/proxy.test.ts`（Anthropic hop 必须打 `/api/anthropic`、带 `anthropic-version` / `cache_control` / `metadata.user_id`，**不得**带 Codex 头或 `prompt_cache_key`；Completions 残留仍走 `paas/v4`）、`test/cache-families.test.ts`。

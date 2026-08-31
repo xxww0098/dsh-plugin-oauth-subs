@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import {
   OAUTH_CREDENTIAL_REF,
+  HARNESS_ANTHROPIC_API,
   HARNESS_COMPLETIONS_API,
   HARNESS_RESPONSES_API,
   ModelSwitch,
@@ -99,7 +100,8 @@ test('buildProviders only emits logged-in families with DSH api ids', () => {
     origin: 'http://127.0.0.1:8318',
     loggedIn: { glm: true, kiro: true, antigravity: true },
   })
-  assert.equal(chat['oauth-glm'].api, HARNESS_COMPLETIONS_API)
+  assert.equal(chat['oauth-glm'].api, HARNESS_ANTHROPIC_API)
+  assert.equal(chat['oauth-glm'].baseURL, 'http://127.0.0.1:8318/glm')
   assert.equal(chat['oauth-kiro'].api, HARNESS_COMPLETIONS_API)
   assert.equal(chat['oauth-kiro'].compat.supportsReasoningEffort, true)
   assert.equal(chat['oauth-antigravity'].api, HARNESS_COMPLETIONS_API)
@@ -279,7 +281,8 @@ test('GLM catalog is three models with official input types; Codex stays image-c
     max: 'max',
   })
   assert.equal(glm.find((model) => model.id === 'glm-5-turbo').reasoningEfforts, false)
-  assert.equal(catalog['oauth-glm'].compat.thinkingFormat, 'openai')
+  assert.equal(catalog['oauth-glm'].compat.supportsReasoningEffort, true)
+  assert.equal(catalog['oauth-glm'].compat.thinkingFormat, undefined)
   assert.equal(glm.find((model) => model.id === 'glm-5.3-flash').name, 'GLM-5.3-Flash')
   assert.deepEqual(catalog['oauth-codex'].models.find((model) => model.id === 'gpt-5.5').input, ['text', 'image'])
   const described = describeCatalog(catalog).find((row) => row.family === 'glm')
@@ -311,13 +314,13 @@ test('logged-in GLM 3/3 persist writes oauth-glm and a subsequent get shows it',
   })
   const set = settings.ops[0].mutations.filter((row) => row.op === 'set')
   const glm = set.find((row) => row.path[1] === 'oauth-glm')
-  assert.equal(glm.value.api, HARNESS_COMPLETIONS_API)
-  assert.equal(glm.value.baseURL, 'http://127.0.0.1:8318/glm/v1')
-  assert.equal(glm.value.compat.thinkingFormat, 'openai')
+  assert.equal(glm.value.api, HARNESS_ANTHROPIC_API)
+  assert.equal(glm.value.baseURL, 'http://127.0.0.1:8318/glm')
+  assert.equal(glm.value.compat.thinkingFormat, undefined)
   assert.deepEqual(glm.value.models.map((model) => model.id), ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
   assert.deepEqual(result.routes.find((row) => row.provider === 'oauth-glm').models, ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
   const stored = await peekPiAiProviders(settings)
-  assert.equal(stored['oauth-glm'].api, 'openai-completions')
+  assert.equal(stored['oauth-glm'].api, 'anthropic-messages')
   assert.deepEqual(stored['oauth-glm'].models.map((model) => model.id), ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
   assert.equal(stored['oauth-codex'], undefined)
 })

@@ -26,6 +26,7 @@ export const OAUTH_CREDENTIAL_REF = 'DSH_OAUTH_SUBS_API_KEY'
  */
 export const HARNESS_RESPONSES_API = 'openai-responses'
 export const HARNESS_COMPLETIONS_API = 'openai-completions'
+export const HARNESS_ANTHROPIC_API = 'anthropic-messages'
 
 export { CODEX_REASONING_EFFORTS }
 
@@ -112,14 +113,13 @@ export function buildProviders({ prefix, origin, loggedIn }) {
   if (loggedIn.glm) {
     providers[`${prefix}-glm`] = {
       displayName: 'OAuth · GLM',
-      api: HARNESS_COMPLETIONS_API,
+      api: HARNESS_ANTHROPIC_API,
       apiKeyEnv: OAUTH_CREDENTIAL_REF,
-      baseURL: `${origin}/glm/v1`,
-      // Localhost is not api.z.ai, so pi-ai would guess OpenAI and drop
-      // `reasoning_effort`. Coding Plan reads that field for 5.3 / Flash.
+      // Anthropic SDK posts `{baseURL}/v1/messages`. Completions leftover
+      // still lives at /glm/v1/chat/completions until the next sync.
+      baseURL: `${origin}/glm`,
       compat: {
         supportsReasoningEffort: true,
-        thinkingFormat: 'openai',
       },
       models: GLM_MODELS.map(toHarnessModel),
     }

@@ -6,7 +6,7 @@
 
 把 **ChatGPT / Codex**、**xAI Grok**、**智谱 GLM**、**AWS Kiro** 和 **Google Antigravity** 订阅接到 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。登录走官方 OAuth；Kiro 还可贴 `ksk_` API key。
 
-本机 Responses 代理 + `llm-pi-ai` 路由同步。
+本机代理 + `llm-pi-ai` 路由同步。每家从闭集 `openai-responses` | `openai-completions` | `anthropic-messages` 里选一种 DSH `api`。
 
 ## 安装
 
@@ -33,8 +33,8 @@ pnpm dsh web --patch ./cordis.patch.yml
 |---|---|---|---|
 | ChatGPT Codex | PKCE，回环 `localhost:1455`（占用则 `1457`），可粘贴回调 | `app_EMoamEEZ73f0CkXaXp7hrann` | `chatgpt.com/backend-api/codex/responses` |
 | xAI Grok | **设备码（默认）**；PKCE 回环 `127.0.0.1:56121` 作备选 | `b1a00492-073a-47ea-816f-4c329264a828` | `api.x.ai/v1/responses` |
-| 智谱 GLM · Z.ai（全球） | ZCode CLI 轮询，`provider: zai`，再换发 `id.secret` | `client_P8X5CMWmlaRO9gyO-KSqtg` | `api.z.ai/api/coding/paas/v4` |
-| 智谱 GLM · BigModel（中国） | 同一 CLI 轮询，`provider: bigmodel`，poll JWT 即密钥 | `zcode` | `open.bigmodel.cn/api/coding/paas/v4` |
+| 智谱 GLM · Z.ai（全球） | ZCode CLI 轮询，`provider: zai`，再换发 `id.secret` | `client_P8X5CMWmlaRO9gyO-KSqtg` | `api.z.ai/api/anthropic`（Completions 残留 `…/coding/paas/v4`） |
+| 智谱 GLM · BigModel（中国） | 同一 CLI 轮询，`provider: bigmodel`，poll JWT 即密钥 | `zcode` | `open.bigmodel.cn/api/anthropic`（Completions 残留 `…/coding/paas/v4`） |
 | AWS Kiro · Social | `app.kiro.dev` 门户 PKCE，回调端口 3128…53153 | （门户无固定 client） | `prod.us-east-1.auth.desktop.kiro.dev` |
 | AWS Kiro · Builder ID | AWS SSO OIDC 设备码，每次登录注册 public client | 登录时签发 | `https://view.awsapps.com/start` |
 | AWS Kiro · Enterprise / IdC | 同一设备码，打组织自己的 Start URL | 登录时签发 | `https://oidc.{region}.amazonaws.com` |
@@ -65,9 +65,12 @@ pnpm dsh web --patch ./cordis.patch.yml
 DeepSeek Harness（调用面）
   └─ llm-pi-ai
        └─ http://127.0.0.1:8318/{codex,grok}/v1/responses
-       └─ http://127.0.0.1:8318/{glm,antigravity}/v1/chat/completions
+       └─ http://127.0.0.1:8318/glm/v1/messages
+       └─ http://127.0.0.1:8318/{kiro,antigravity}/v1/chat/completions
             └─ 使用刷新后的订阅令牌访问上游
 ```
+
+Codex / Grok 是 **Responses**（上游原生）。GLM 是 **Anthropic Messages**（ZCode Desktop 默认；Completions 残留 `/glm/v1/chat/completions` 留到下次 sync）。Kiro / Antigravity 继续用 **Completions 翻译层**，因为原生线（AWS EventStream / `generateContent`）三种都对不上。GLM 150% 加成是身份（ZCode Desktop UA），不是协议证明——本插件没有和官方 Desktop 对比过用量斜率。
 
 本插件不是第二套 LLM 适配器。设置页关闭后，DSH 仍通过 `llm-pi-ai` 调本机代理。代理只监听回环地址，并用本地凭证 `DSH_OAUTH_SUBS_API_KEY` 鉴权。
 
@@ -131,7 +134,7 @@ Codex 上本质是 **Priority Processing**，不是换一个模型族。代理�
 
 ChatGPT Codex 即使请求了 Priority，回显也经常是 `created=auto` / `completed=default`——这不能当确认（openai/codex#14204）。2026-08-26 Luna 曾测到 88.3 对 57.5 tok/s（1.54 倍）；2026-08-30 交错复测没有稳定提升（均值 1.33 倍，成对比 1.90 再 0.93）。提升只在生成吞吐上——首 token 时间和缓存命中不受影响。
 
-登录、刷新令牌、对话和额度走同一套官方客户端身份：Codex 为成对的 `originator: codex_cli_rs` 与 `User-Agent: codex_cli_rs/<version>`；Grok 为 `x-xai-token-auth: xai-grok-cli` 与 `User-Agent: grok-cli/<version>`。GLM 走 ZCode CLI 轮询：国际站 `provider: zai`（client `client_P8X5CMWmlaRO9gyO-KSqtg`，再 `api.z.ai/api/auth/z/login` 换长期 `id.secret`）；国内站 `provider: bigmodel`（`bigmodel.cn/login`，poll JWT 直接当 Coding Plan 密钥）。对话和额度按 **ZCode Desktop 3.10.1** 指纹发出（`User-Agent: ZCode/3.10.1 ai-sdk/anthropic/3.0.81`、`X-ZCode-App-Version`、`X-ZCode-Agent: glm`、`Referer` / `X-Title: Z Code`），打 `api.z.ai` 或 `open.bigmodel.cn` 的 `/api/coding/paas/v4`。`zcode.z.ai` 上的 CLI init/poll 仍用 CLI 形态的 `ZCode/3.10.1`。Antigravity 对话 / loadCodeAssist 走 `antigravity/hub/<ver> <os>/<arch>`（本机 **Antigravity.app** 短版本，否则 **2.11.0**），打 **daily-cloudcode-pa**，body `ideType: ANTIGRAVITY`，头里只有 User-Agent。不模拟浏览器 TLS 指纹。
+登录、刷新令牌、对话和额度走同一套官方客户端身份：Codex 为成对的 `originator: codex_cli_rs` 与 `User-Agent: codex_cli_rs/<version>`；Grok 为 `x-xai-token-auth: xai-grok-cli` 与 `User-Agent: grok-cli/<version>`。GLM 走 ZCode CLI 轮询：国际站 `provider: zai`（client `client_P8X5CMWmlaRO9gyO-KSqtg`，再 `api.z.ai/api/auth/z/login` 换长期 `id.secret`）；国内站 `provider: bigmodel`（`bigmodel.cn/login`，poll JWT 直接当 Coding Plan 密钥）。对话按 **ZCode Desktop 3.10.1** 指纹发出（`User-Agent: ZCode/3.10.1 ai-sdk/anthropic/3.0.81`、`X-ZCode-App-Version`、`X-ZCode-Agent: glm`、`Referer` / `X-Title: Z Code`），打 `api.z.ai` 或 `open.bigmodel.cn` 的 **`/api/anthropic/v1/messages`**。Completions 残留 `/api/coding/paas/v4` 留到下次 sync。额度仍打 `/api/monitor/usage/quota/limit`。`zcode.z.ai` 上的 CLI init/poll 仍用 CLI 形态的 `ZCode/3.10.1`。Antigravity 对话 / loadCodeAssist 走 `antigravity/hub/<ver> <os>/<arch>`（本机 **Antigravity.app** 短版本，否则 **2.11.0**），打 **daily-cloudcode-pa**，body `ideType: ANTIGRAVITY`，头里只有 User-Agent。不模拟浏览器 TLS 指纹。
 
 ## 模型选择
 

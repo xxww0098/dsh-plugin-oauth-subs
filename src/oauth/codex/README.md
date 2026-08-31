@@ -39,6 +39,8 @@
 
 ## 对话
 
+DSH `api: openai-responses`。ChatGPT 订阅后端就是 Responses，三种闭集里这是原生。不要改 Completions / Anthropic（会凭空加翻译层）。
+
 ```text
 DSH  →  本机 Responses 代理  →  POST chatgpt.com/backend-api/codex/responses
 ```
@@ -82,6 +84,7 @@ Fast：body `service_tier` 从 `fast` 改成 `priority`，并带 `x-codex-routin
 - 不要用 `Date.now()` 当 `session-id`。
 - 不要把 `prompt_cache_retention` 送上去。
 - 不要把 Fast 只写 body 不写 `x-codex-routing-hint`（回显会一直是 default）。
+- 不要把 `api` 改成 Completions / Anthropic。
 
 ## 追溯
 

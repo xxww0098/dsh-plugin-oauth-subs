@@ -6,7 +6,7 @@
 
 Use a **ChatGPT / Codex**, **xAI Grok**, **Zhipu GLM**, **AWS Kiro**, or **Google Antigravity** subscription inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). Official OAuth, plus Kiro API keys.
 
-A loopback Responses proxy plus `llm-pi-ai` route sync.
+A loopback proxy plus `llm-pi-ai` route sync. Each family picks one DSH `api` from the closed union `openai-responses` | `openai-completions` | `anthropic-messages`.
 
 ## Install
 
@@ -33,8 +33,8 @@ pnpm dsh web --patch ./cordis.patch.yml
 |---|---|---|---|
 | ChatGPT Codex | PKCE on `localhost:1455` (falls back to `1457`); paste-callback supported | `app_EMoamEEZ73f0CkXaXp7hrann` | `chatgpt.com/backend-api/codex/responses` |
 | xAI Grok | **Device-code (default)**; PKCE on `127.0.0.1:56121` as fallback | `b1a00492-073a-47ea-816f-4c329264a828` | `api.x.ai/v1/responses` |
-| Zhipu GLM · Z.ai (global) | ZCode CLI poll, `provider: zai`, then mint `id.secret` | `client_P8X5CMWmlaRO9gyO-KSqtg` | `api.z.ai/api/coding/paas/v4` |
-| Zhipu GLM · BigModel (China) | Same CLI poll, `provider: bigmodel`; poll JWT is the bearer | `zcode` | `open.bigmodel.cn/api/coding/paas/v4` |
+| Zhipu GLM · Z.ai (global) | ZCode CLI poll, `provider: zai`, then mint `id.secret` | `client_P8X5CMWmlaRO9gyO-KSqtg` | `api.z.ai/api/anthropic` (Completions leftover `…/coding/paas/v4`) |
+| Zhipu GLM · BigModel (China) | Same CLI poll, `provider: bigmodel`; poll JWT is the bearer | `zcode` | `open.bigmodel.cn/api/anthropic` (Completions leftover `…/coding/paas/v4`) |
 | AWS Kiro · Social | Portal PKCE at `app.kiro.dev`; callback ports 3128…53153 | (none — portal) | Auth `prod.us-east-1.auth.desktop.kiro.dev` |
 | AWS Kiro · Builder ID | AWS SSO OIDC device code; registers a public client each login | issued at login | `https://view.awsapps.com/start` |
 | AWS Kiro · Enterprise / IdC | Same device code against the org Start URL | issued at login | `https://oidc.{region}.amazonaws.com` |
@@ -65,9 +65,12 @@ Settings (control plane)
 DeepSeek Harness (call plane)
   └─ llm-pi-ai
        └─ http://127.0.0.1:8318/{codex,grok}/v1/responses
-       └─ http://127.0.0.1:8318/{glm,antigravity}/v1/chat/completions
+       └─ http://127.0.0.1:8318/glm/v1/messages
+       └─ http://127.0.0.1:8318/{kiro,antigravity}/v1/chat/completions
             └─ refreshed subscription bearer against upstream
 ```
+
+Codex and Grok are **Responses** (vendor-native). GLM is **Anthropic Messages** (ZCode Desktop default; Completions leftover stays at `/glm/v1/chat/completions` until the next sync). Kiro and Antigravity stay **Completions adapters** because their native wires (AWS EventStream / `generateContent`) are none of the three. The 150% GLM Coding Plan boost is identity (ZCode Desktop UA), not a protocol claim — this plugin has not compared quota slope vs official Desktop.
 
 This is not a second LLM adapter. After you close Settings, DSH still calls the loopback proxy through `llm-pi-ai`. The proxy binds loopback only and checks the local credential `DSH_OAUTH_SUBS_API_KEY`.
 
@@ -131,7 +134,7 @@ On Codex it is **Priority Processing**, not a different model family. The proxy 
 
 ChatGPT Codex often echoes `created=auto` / `completed=default` even when Priority is requested — that echo is not a confirmation (openai/codex#14204). A 2026-08-26 Luna run measured 88.3 vs 57.5 tok/s (1.54×); a 2026-08-30 interleaved rerun did not reproduce a stable lift (mean 1.33×, pair ratios 1.90 then 0.93). Throughput-only; TTFT and cache are unchanged.
 
-Login, token refresh, chat, and quota use one official client identity: Codex pairs `originator: codex_cli_rs` with `User-Agent: codex_cli_rs/<version>`; Grok sends `x-xai-token-auth: xai-grok-cli` and `User-Agent: grok-cli/<version>`. GLM uses ZCode's CLI poll: global `provider: zai` (client `client_P8X5CMWmlaRO9gyO-KSqtg`, then `api.z.ai/api/auth/z/login` to mint `id.secret`); China `provider: bigmodel` (`bigmodel.cn/login`, poll JWT is the Coding Plan bearer). Chat and quota hop as **ZCode Desktop 3.10.1** (`User-Agent: ZCode/3.10.1 ai-sdk/anthropic/3.0.81`, `X-ZCode-App-Version`, `X-ZCode-Agent: glm`, `Referer` / `X-Title: Z Code`) to `api.z.ai` or `open.bigmodel.cn` `/api/coding/paas/v4`. CLI init/poll against `zcode.z.ai` stays a CLI-shaped `ZCode/3.10.1` identity. Antigravity chat / loadCodeAssist hop as `antigravity/hub/<ver> <os>/<arch>` (installed **Antigravity.app** or **2.11.0**) to **daily-cloudcode-pa** with body `ideType: ANTIGRAVITY` and User-Agent only. No TLS fingerprint impersonation.
+Login, token refresh, chat, and quota use one official client identity: Codex pairs `originator: codex_cli_rs` with `User-Agent: codex_cli_rs/<version>`; Grok sends `x-xai-token-auth: xai-grok-cli` and `User-Agent: grok-cli/<version>`. GLM uses ZCode's CLI poll: global `provider: zai` (client `client_P8X5CMWmlaRO9gyO-KSqtg`, then `api.z.ai/api/auth/z/login` to mint `id.secret`); China `provider: bigmodel` (`bigmodel.cn/login`, poll JWT is the Coding Plan bearer). Chat hops as **ZCode Desktop 3.10.1** (`User-Agent: ZCode/3.10.1 ai-sdk/anthropic/3.0.81`, `X-ZCode-App-Version`, `X-ZCode-Agent: glm`, `Referer` / `X-Title: Z Code`) to `api.z.ai` or `open.bigmodel.cn` **`/api/anthropic/v1/messages`**. Completions leftover `/api/coding/paas/v4` stays until the next sync. Quota still hits `/api/monitor/usage/quota/limit`. CLI init/poll against `zcode.z.ai` stays a CLI-shaped `ZCode/3.10.1` identity. Antigravity chat / loadCodeAssist hop as `antigravity/hub/<ver> <os>/<arch>` (installed **Antigravity.app** or **2.11.0**) to **daily-cloudcode-pa** with body `ideType: ANTIGRAVITY` and User-Agent only. No TLS fingerprint impersonation.
 
 ## Models
 

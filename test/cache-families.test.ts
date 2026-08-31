@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { applyCodexCache, codexCacheHeaders, codexCacheSessionId } from '../lib/oauth/codex/cache.js'
 import { applyGrokCache, grokAffinityHeaders, grokCacheSessionId } from '../lib/oauth/grok/cache.js'
-import { applyGlmCache, glmCacheSessionId, resetGlmSystemPins } from '../lib/oauth/glm/cache.js'
+import { applyGlmAnthropicCache, applyGlmCache, glmCacheSessionId, resetGlmSystemPins } from '../lib/oauth/glm/cache.js'
 import { antigravityCacheSessionId, antigravitySessionIdOf, ANTIGRAVITY_STABLE_SESSION } from '../lib/oauth/antigravity/cache.js'
 import { kiroCacheSessionId, kiroConversationId, KIRO_STABLE_SESSION } from '../lib/oauth/kiro/cache.js'
 
@@ -48,6 +48,25 @@ test('GLM cache strips Codex/Grok fields and pins user', () => {
   assert.equal(payload.prompt_cache_key, undefined)
   assert.equal(payload.prompt_cache_retention, undefined)
   assert.equal(payload.prompt_cache_options, undefined)
+  resetGlmSystemPins()
+})
+
+test('GLM Anthropic cache pins metadata.user_id and first-block cache_control', () => {
+  resetGlmSystemPins()
+  const { payload, cacheSessionId } = applyGlmAnthropicCache({
+    session_id: 'sess-glm-anth',
+    prompt_cache_key: 'codex-style',
+    prompt_cache_retention: '24h',
+    system: 'You are GLM.',
+    messages: [{ role: 'user', content: 'hi' }],
+  })
+  assert.equal(cacheSessionId, 'sess-glm-anth')
+  assert.equal(payload.metadata.user_id, 'sess-glm-anth')
+  assert.equal(payload.prompt_cache_key, undefined)
+  assert.equal(payload.prompt_cache_retention, undefined)
+  assert.deepEqual(payload.system, [
+    { type: 'text', text: 'You are GLM.', cache_control: { type: 'ephemeral' } },
+  ])
   resetGlmSystemPins()
 })
 

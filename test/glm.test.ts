@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import {
   GLM_APP_VERSION,
+  GLM_ANTHROPIC_VERSION,
   GLM_CLIENT_ID,
   GLM_CLI_INIT_URL,
   GLM_CLI_USER_AGENT,
@@ -15,10 +16,12 @@ import {
   displayGlmAccount,
   glmCliInit,
   glmCliProvider,
+  glmAnthropicUrl,
   glmCodingUrl,
   glmDesktopHeaders,
   glmQuotaUrl,
   glmSession,
+  glmAnthropicHeaders,
   glmUpstreamHeaders,
   isGlmAppAccount,
   normalizeGlmRegion,
@@ -26,7 +29,7 @@ import {
   parseCliPoll,
   unwrapEnvelope,
 } from '../lib/oauth/glm/index.js'
-import { normalizeGlmChatBody, resetGlmSystemPins } from '../lib/oauth/glm/request.js'
+import { normalizeGlmAnthropicBody, normalizeGlmChatBody, resetGlmSystemPins } from '../lib/oauth/glm/request.js'
 import { fetchGlmQuota, mergeGlmToolUsage, parseGlmQuota } from '../lib/oauth/quota.js'
 import { buildProviders } from '../lib/oauth/models.js'
 import { AuthController } from '../lib/oauth/controller.js'
@@ -178,6 +181,70 @@ test('normalizeGlmChatBody keeps a matching leading system pinned across identic
   resetGlmSystemPins()
 })
 
+test('normalizeGlmAnthropicBody pins system, cache_control, metadata.user_id', () => {
+  resetGlmSystemPins()
+  const first = normalizeGlmAnthropicBody({
+    model: 'glm-5.3',
+    session_id: 'session-glm-anthropic',
+    prompt_cache_key: 'drop-me',
+    system: 'You are an AI agent.',
+    messages: [{ role: 'user', content: 'analyze the repo' }],
+  })
+  assert.equal(first.max_tokens, 128_000)
+  assert.equal(first.prompt_cache_key, undefined)
+  assert.equal(first.metadata.user_id, 'session-glm-anthropic')
+  assert.deepEqual(first.system, [
+    { type: 'text', text: 'You are an AI agent.', cache_control: { type: 'ephemeral' } },
+  ])
+  assert.equal(first.thinking.type, 'enabled')
+  assert.equal(first.thinking.clear_thinking, false)
+
+  const later = normalizeGlmAnthropicBody({
+    model: 'glm-5.3',
+    session_id: 'session-glm-anthropic',
+    system: 'You are an AI agent.\n\nCurrent runtime context. This snapshot supersedes earlier runtime-context snapshots.',
+    messages: [
+      { role: 'user', content: 'analyze the repo' },
+      { role: 'assistant', content: 'ok' },
+    ],
+  })
+  assert.equal(later.system[0].text, 'You are an AI agent.')
+  assert.deepEqual(later.system[0].cache_control, { type: 'ephemeral' })
+  assert.equal(later.system[1].text.includes('Current runtime context'), true)
+  assert.equal(later.system[1].cache_control, undefined)
+  assert.equal(later.metadata.user_id, 'session-glm-anthropic')
+  resetGlmSystemPins()
+})
+
+test('normalizeGlmAnthropicBody does not force Turbo thinking', () => {
+  const idle = normalizeGlmAnthropicBody({
+    model: 'glm-5-turbo',
+    max_tokens: 1024,
+    messages: [{ role: 'user', content: 'hi' }],
+  })
+  assert.equal(idle.thinking, undefined)
+  assert.equal(idle.max_tokens, 1024)
+})
+
+test('GLM Completions and Anthropic system pins do not collide', () => {
+  resetGlmSystemPins()
+  const chat = normalizeGlmChatBody({
+    model: 'glm-5.3',
+    session_id: 'same-session',
+    messages: [{ role: 'system', content: 'chat-sys' }, { role: 'user', content: 'hi' }],
+  })
+  const anth = normalizeGlmAnthropicBody({
+    model: 'glm-5.3',
+    session_id: 'same-session',
+    system: 'anth-sys',
+    messages: [{ role: 'user', content: 'hi' }],
+  })
+  assert.equal(chat.messages[0].content, 'chat-sys')
+  assert.equal(anth.system[0].text, 'anth-sys')
+  assert.deepEqual(anth.system[0].cache_control, { type: 'ephemeral' })
+  resetGlmSystemPins()
+})
+
 test('unwrapEnvelope accepts ZCode code 0 and biz code 200', () => {
   assert.equal(unwrapEnvelope({ code: 0, data: { ok: true } }, 'x').ok, true)
   assert.equal(unwrapEnvelope({ code: 200, success: true, data: { ok: true } }, 'x').ok, true)
@@ -191,6 +258,8 @@ test('normalizeGlmRegion maps ZCode ids to zai / bigmodel', () => {
   assert.equal(normalizeGlmRegion('cn'), 'bigmodel')
   assert.equal(glmCliProvider('zai'), 'zai')
   assert.equal(glmCliProvider('bigmodel'), 'bigmodel')
+  assert.equal(glmAnthropicUrl('zai'), 'https://api.z.ai/api/anthropic/v1/messages')
+  assert.equal(glmAnthropicUrl('bigmodel'), 'https://open.bigmodel.cn/api/anthropic/v1/messages')
 })
 
 test('parseCliInit reads flow_id and authorize_url', () => {
@@ -278,6 +347,17 @@ test('glmUpstreamHeaders is ZCode Desktop 3.10.1, not this plugin', () => {
   assert.notEqual(first['x-request-id'], second['x-request-id'])
   assert.notEqual(first['x-query-id'], second['x-query-id'])
   assert.equal(glmDesktopHeaders()['x-session-id'], first['x-session-id'])
+})
+
+test('glmAnthropicHeaders is Desktop plus anthropic-version', () => {
+  const session = glmSession({ accessToken: 'id.secret', account: 'dev@z.ai' })
+  const headers = glmAnthropicHeaders(session, 'session-anth')
+  assert.equal(headers.authorization, 'Bearer id.secret')
+  assert.equal(headers['anthropic-version'], GLM_ANTHROPIC_VERSION)
+  assert.equal(headers['anthropic-version'], '2023-06-01')
+  assert.equal(headers['x-session-id'], 'session-anth')
+  assert.equal(headers['user-agent'], GLM_USER_AGENT)
+  assert.equal(JSON.stringify(headers).includes('dsh-plugin-oauth-subs'), false)
 })
 
 test('glmDesktopHeaders x-session-id equals a pinned DSH session', () => {
@@ -596,14 +676,14 @@ test('fetchGlmQuota asks tool-usage when MCP is missing from quota/limit', async
   assert.deepEqual(parsed.rows.map((row) => row.kind), ['primary', 'weekly', 'mcp'])
 })
 
-test('catalog includes GLM as openai chat completions', () => {
+test('catalog includes GLM as Anthropic Messages (ZCode default)', () => {
   const providers = buildProviders({
     prefix: 'oauth',
     origin: 'http://127.0.0.1:8318',
     loggedIn: { glm: true },
   })
-  assert.equal(providers['oauth-glm'].api, 'openai-completions')
-  assert.equal(providers['oauth-glm'].baseURL, 'http://127.0.0.1:8318/glm/v1')
+  assert.equal(providers['oauth-glm'].api, 'anthropic-messages')
+  assert.equal(providers['oauth-glm'].baseURL, 'http://127.0.0.1:8318/glm')
   const ids = providers['oauth-glm'].models.map((model) => model.id)
   assert.deepEqual(ids, ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
   assert.deepEqual(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.3').input, ['text'])
@@ -626,7 +706,7 @@ test('catalog includes GLM as openai chat completions', () => {
   assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.3').reasoningEfforts.medium, undefined)
   assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5-turbo').reasoningEfforts, false)
   assert.equal(providers['oauth-glm'].compat.supportsReasoningEffort, true)
-  assert.equal(providers['oauth-glm'].compat.thinkingFormat, 'openai')
+  assert.equal(providers['oauth-glm'].compat.thinkingFormat, undefined)
   assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.2'), undefined)
 })
 
