@@ -1,5 +1,39 @@
 # 错误记录
 
+## 2026-08-31：0.0.55 登录 Kiro 后 settings.yaml 仍没有 oauth-kiro（GLM Anthropic + Completions compat）
+
+### 现象
+
+Mac，2026-08-31 ~17:20 CST。已安装插件 **0.0.55**（与 GitHub 最新 tag 相同）。DSH host `@deepseek-ai/dsh-llm-pi-ai@0.1.2-alpha.2`。文件是 `~/.dsh/settings.yaml`（不是 web profile）。
+
+- Kiro **已登录**（`auth.json` `activeId` social Pro+）。插件 `KIRO_MODELS` 18 行带 `input` + `reasoningEfforts`。代理 `GET /kiro/v1/models` 返回这 18 个 id。`models.json` 没有 `oauth-kiro/…` 键（默认全开）。
+- `llm-pi-ai.providers` 有 oauth-codex、oauth-grok、oauth-glm、oauth-antigravity，**没有 oauth-kiro**。
+- YAML 最后写入 13:28 CST；插件 0.0.55 17:19 CST 启动。重启后的 `sync()` **没有落盘**。
+- YAML 里 GLM 仍是旧形：`api: openai-completions`，`baseURL: …/glm/v1`，`compat.thinkingFormat: openai`。当前 `buildProviders` 会写 `api: anthropic-messages`、`baseURL: …/glm`、并去掉 `thinkingFormat`。对不上 ⇒ `syncHarnessModels` 在 0.0.55 之后从未成功 commit。
+
+`syncHarnessModels` 是 **一次原子** `settings.mutate('llm-pi-ai', [先 unset 全部 owned 含 oauth-kiro，再 set])`。启动 / `onAuthChanged` 把失败记成 `llm-pi-ai sync failed: …`，保留上次合法 section。
+
+### 证据
+
+- 0.0.55 已经修过 Kiro-only 杀手：`KIRO_REASONING_GPT` 从键 `none` 改成 `off: "none"`。本机代码已是 `off`。YAML 仍冻住 ⇒ 同一段 mutate 里还有别的非法字段。
+- DSH 0.1.2-alpha.2：`api` 闭集 `openai-completions | openai-responses | anthropic-messages`；`reasoningEfforts` 键 `off|minimal|low|medium|high|xhigh|max`；`supportsReasoningEffort` / `thinkingFormat` **只属于 openai-completions**。路由级 compat 写在不吃该字段的协议上，`assertServiceable` 抛 `sets compat "${field}", but no model on the route speaks a protocol that takes it`，整段 mutate 被拒。
+- 0.0.53 GLM `buildProviders` 把 `api` 改成 `anthropic-messages` **同时** 写 `compat.supportsReasoningEffort: true`。这就是剩下的非法字段。
+
+### 根因
+
+代理层 / Codex 前缀都不是。是 **harness catalog sync**：GLM Anthropic 路由带了 Completions-only compat，DSH 拒整段原子写，Kiro 18 行永远进不了 yaml。YAML 里 GLM 还停在旧 Completions 形，就是这次失败的现场证据。
+
+### 修复
+
+- GLM `anthropic-messages` 路由不再写 `compat`（不要 `supportsReasoningEffort`，也不要 `thinkingFormat`）。Anthropic 思考是 hop 上的 `thinking: { type: enabled }`，不是那个开关。
+- Kiro / Antigravity 仍是 `openai-completions`，保留 `supportsReasoningEffort`（Kiro 另加 `thinkingFormat: openai`）。
+- Kiro GPT 仍是 `off: "none"`（DSH 键 `off`，线上值 `none`）。不要复活键 `none`。
+- `assertDshServiceableProvider` 在 mutate 前按 DSH 形状自检（host 包不是依赖，对不上就本地抛同样的 compat 文案）。
+
+### 验证
+
+- `npm test`：GLM harness blob 在 `api: anthropic-messages` 时没有 `supportsReasoningEffort` / `thinkingFormat`；Kiro GPT `reasoningEfforts` 键是 `off` 不是 `none`；已登录 Kiro 的 `buildProviders` / catalog 有 `oauth-kiro` 且 18 行；假 `assertServiceable` 同时接受 GLM + Kiro，并拒掉 Anthropic 路由上的 Completions compat（整段 mutate 不落盘）。
+
 ## 2026-08-31：Kiro 登录后写不进 DSH 模型设置
 
 ### 现象

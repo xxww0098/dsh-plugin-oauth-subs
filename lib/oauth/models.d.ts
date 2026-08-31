@@ -20,7 +20,24 @@ export declare const HARNESS_ANTHROPIC_API = "anthropic-messages";
  * never lands in settings.yaml.
  */
 export declare const DSH_THINKING_LEVELS: readonly string[];
+/**
+ * Completions-only `compat` switches. DSH `@deepseek-ai/dsh-llm-pi-ai`
+ * `assertServiceable` (0.1.2-alpha.2 `catalog.ts`) refuses a route-level
+ * field that no model on the route can read:
+ * `sets compat "${field}", but no model on the route speaks a protocol that takes it`.
+ * `supportsReasoningEffort` / `thinkingFormat` live on
+ * `openai-completions` only — not `anthropic-messages` or `openai-responses`.
+ * Stamping either on GLM's Anthropic hop aborts the atomic `llm-pi-ai`
+ * mutate, so `oauth-kiro` never lands in settings.yaml.
+ */
+export declare const DSH_COMPLETIONS_ONLY_COMPAT: readonly string[];
 export { CODEX_REASONING_EFFORTS };
+/**
+ * Local stand-in for DSH `assertServiceable` on one owned route. The host
+ * package is not a dependency; this matches the JSON shape it rejects so a
+ * bad payload fails here instead of silently keeping the last good section.
+ */
+export declare function assertDshServiceableProvider(provider: any, value: any): void;
 export declare function isOptInKey(key: any): boolean;
 export declare function modelKey(provider: any, id: any): string;
 export declare const FAMILY_IDS: readonly string[];

@@ -7,12 +7,11 @@ import { test } from 'node:test'
 import { AuthController } from '../lib/oauth/controller.js'
 import { saveSession } from '../lib/oauth/store.js'
 import { installedVersion } from '../lib/utils/update.js'
-import { HARNESS_ANTHROPIC_API, HARNESS_COMPLETIONS_API, DSH_THINKING_LEVELS, ModelSwitch, catalogKeys, catalogProviders } from '../lib/oauth/models.js'
+import { HARNESS_ANTHROPIC_API, HARNESS_COMPLETIONS_API, assertDshServiceableProvider, ModelSwitch, catalogKeys, catalogProviders } from '../lib/oauth/models.js'
 import { glmSession } from '../lib/oauth/glm/index.js'
 import { kiroSession, KIRO_MODELS } from '../lib/oauth/kiro/index.js'
 import { antigravitySession } from '../lib/oauth/antigravity/index.js'
 
-const DSH_APIS = new Set(['openai-completions', 'openai-responses', 'anthropic-messages'])
 const KIRO_RT = `rt_${'x'.repeat(120)}`
 
 function createPiAiSettings(initialProviders = {}) {
@@ -34,19 +33,7 @@ function createPiAiSettings(initialProviders = {}) {
         if (row.op === 'unset') {
           delete next.providers[key]
         } else if (row.op === 'set') {
-          if (!DSH_APIS.has(row.value?.api)) {
-            throw new Error(`llm-pi-ai: provider "${key}" api must be openai-completions | openai-responses | anthropic-messages`)
-          }
-          for (const model of row.value?.models ?? []) {
-            const efforts = model.reasoningEfforts
-            if (efforts && typeof efforts === 'object') {
-              for (const level of Object.keys(efforts)) {
-                if (!DSH_THINKING_LEVELS.includes(level)) {
-                  throw new Error(`llm-pi-ai: model "${model.id}" reasoningEfforts key "${level}" is not ${DSH_THINKING_LEVELS.join('|')}`)
-                }
-              }
-            }
-          }
+          assertDshServiceableProvider(key, row.value)
           next.providers[key] = structuredClone(row.value)
         }
       }
@@ -252,7 +239,7 @@ test('toggle glm-5.3 on writes oauth-glm when all current GLM keys were disabled
   const glm = set.find((row) => row.path[1] === 'oauth-glm')
   assert.equal(glm.value.api, HARNESS_ANTHROPIC_API)
   assert.equal(glm.value.baseURL, 'http://127.0.0.1:8318/glm')
-  assert.equal(glm.value.compat.thinkingFormat, undefined)
+  assert.equal(glm.value.compat, undefined)
   assert.deepEqual(glm.value.models.map((model) => model.id), ['glm-5.3'])
 })
 
@@ -271,7 +258,7 @@ test('login/sync recovers leftover GLM 全关 and writes the current catalog rou
   const set = ops.at(-1).mutations.filter((row) => row.op === 'set')
   const route = set.find((row) => row.path[1] === 'oauth-glm')
   assert.equal(route.value.api, HARNESS_ANTHROPIC_API)
-  assert.equal(route.value.compat.thinkingFormat, undefined)
+  assert.equal(route.value.compat, undefined)
   assert.deepEqual(route.value.models.map((model) => model.id), ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
 })
 
