@@ -30,6 +30,33 @@ export declare const KIRO_VISION_INPUT: readonly string[];
 export declare const KIRO_TEXT_INPUT: readonly string[];
 export declare const KIRO_METHODS: readonly string[];
 export declare const KIRO_USAGE_REGIONS: readonly string[];
+/**
+ * kiro.dev/docs/models/effort — Claude `output_config.effort`.
+ * Opus 5 / 4.8 / 4.7 and Sonnet 5 add `xhigh`; 4.6 family stops at `max`.
+ * Thinking can also be `adaptive`/`disabled`; DSH picker is the effort ladder.
+ */
+export declare const KIRO_REASONING_CLAUDE: Readonly<{
+    low: "low";
+    medium: "medium";
+    high: "high";
+    max: "max";
+}>;
+export declare const KIRO_REASONING_CLAUDE_XHIGH: Readonly<{
+    xhigh: "xhigh";
+    low: "low";
+    medium: "medium";
+    high: "high";
+    max: "max";
+}>;
+/** GPT-5.6 `reasoning.effort`; official includes `none` (not Codex `off`). */
+export declare const KIRO_REASONING_GPT: Readonly<{
+    none: "none";
+    low: "low";
+    medium: "medium";
+    high: "high";
+    xhigh: "xhigh";
+    max: "max";
+}>;
 /** Kiro generateAssistantResponse ids (dots). Matches kiro.dev/docs/models, minus Auto. */
 export declare const KIRO_MODELS: readonly {
     id: any;
@@ -37,6 +64,7 @@ export declare const KIRO_MODELS: readonly {
     contextWindow: any;
     maxTokens: number;
     input: readonly string[];
+    reasoningEfforts: boolean;
 }[];
 export declare const KIRO_PLAN_NAMES: Readonly<{
     kiro_free: "Free";

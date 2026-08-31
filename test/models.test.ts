@@ -101,6 +101,7 @@ test('buildProviders only emits logged-in families with DSH api ids', () => {
   })
   assert.equal(chat['oauth-glm'].api, HARNESS_COMPLETIONS_API)
   assert.equal(chat['oauth-kiro'].api, HARNESS_COMPLETIONS_API)
+  assert.equal(chat['oauth-kiro'].compat.supportsReasoningEffort, true)
   assert.equal(chat['oauth-antigravity'].api, HARNESS_COMPLETIONS_API)
   assert.equal(chat['oauth-codex'], undefined)
 })
@@ -353,6 +354,10 @@ test('logged-in Kiro persist writes oauth-kiro with the kiro.dev catalog', async
   assert.deepEqual(stored['oauth-kiro'].models.map((model) => model.id), KIRO_MODELS.map((model) => model.id))
   assert.deepEqual(result.routes.find((row) => row.provider === 'oauth-kiro').models, KIRO_MODELS.map((model) => model.id))
   assert.equal(stored['oauth-kiro'].reasoning, undefined)
+  assert.equal(stored['oauth-kiro'].compat.supportsReasoningEffort, true)
+  assert.deepEqual(stored['oauth-kiro'].models.find((model) => model.id === 'gpt-5.6-sol').input, ['text', 'image'])
+  assert.deepEqual(stored['oauth-kiro'].models.find((model) => model.id === 'glm-5').input, ['text'])
+  assert.equal(stored['oauth-kiro'].models.find((model) => model.id === 'glm-5').reasoningEfforts, false)
 })
 
 test('syncHarnessModels does not set provider-level reasoning', async () => {

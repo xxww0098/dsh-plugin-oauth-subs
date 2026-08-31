@@ -208,7 +208,35 @@ test('Kiro catalog matches kiro.dev models minus Auto, with native ids', () => {
   assert.equal(kiro.models.find((model) => model.id === 'claude-opus-5').contextWindow, 1_000_000)
   assert.equal(kiro.models.find((model) => model.id === 'claude-sonnet-5').name, 'Claude Sonnet 5')
   assert.deepEqual(kiro.models.find((model) => model.id === 'claude-opus-4.8').input, ['text', 'image'])
+  assert.deepEqual(kiro.models.find((model) => model.id === 'gpt-5.6-sol').input, ['text', 'image'])
   assert.deepEqual(kiro.models.find((model) => model.id === 'glm-5').input, ['text'])
+  assert.deepEqual(kiro.models.find((model) => model.id === 'deepseek-3.2').input, ['text'])
+  assert.deepEqual(kiro.models.find((model) => model.id === 'qwen3-coder-next').input, ['text'])
+  assert.deepEqual(kiro.models.find((model) => model.id === 'gpt-5.6-sol').reasoningEfforts, {
+    none: 'none',
+    low: 'low',
+    medium: 'medium',
+    high: 'high',
+    xhigh: 'xhigh',
+    max: 'max',
+  })
+  assert.deepEqual(kiro.models.find((model) => model.id === 'claude-opus-5').reasoningEfforts, {
+    low: 'low',
+    medium: 'medium',
+    high: 'high',
+    max: 'max',
+    xhigh: 'xhigh',
+  })
+  assert.deepEqual(kiro.models.find((model) => model.id === 'claude-sonnet-4.6').reasoningEfforts, {
+    low: 'low',
+    medium: 'medium',
+    high: 'high',
+    max: 'max',
+  })
+  assert.equal(kiro.models.find((model) => model.id === 'claude-sonnet-4.6').reasoningEfforts.xhigh, undefined)
+  assert.equal(kiro.models.find((model) => model.id === 'claude-haiku-4.5').reasoningEfforts, false)
+  assert.equal(kiro.models.find((model) => model.id === 'glm-5').reasoningEfforts, false)
+  assert.equal(kiro.compat.supportsReasoningEffort, true)
   assert.equal(kiro.api, 'openai-completions')
   const described = describeCatalog(catalog).find((row) => row.family === 'kiro')
   assert.equal(described.displayName.includes('Kiro'), true)

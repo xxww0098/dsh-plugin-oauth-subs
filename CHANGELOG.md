@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.48
+
+- Kiro catalog: thinking depth from [kiro.dev/docs/models/effort](https://kiro.dev/docs/models/effort/) (GPT-5.6 `none`–`max`, Claude 4.7+ `xhigh`, 4.6 `low`–`max`, Haiku / OSS `false`). Input is `text+image` for GPT/Claude and `text` for DeepSeek / MiniMax / GLM-5 / Qwen.
+
 ## 0.0.47
 
 - Antigravity quota bars show reset time (`quotaInfo.resetTime` → `N小时后重置`), same as Codex / Kiro.
