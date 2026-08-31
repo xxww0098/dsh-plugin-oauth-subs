@@ -53,24 +53,29 @@ src/
     models.ts
     plan.ts
     codex/                 ChatGPT Codex only
+      README.md            family design: login, chat, quota, cache (traceable)
       index.ts             catalog, identity, session, OAuth endpoints
       request.ts           Responses body: prefix stabilize, strip retention
       cache.ts             prompt_cache_key + session-id / x-client-request-id
     grok/                  xAI Grok only
+      README.md
       index.ts             catalog, identity, device/PKCE endpoints
       device-flow.ts       RFC 8628
       cache.ts             prompt_cache_key + x-grok-conv-id (not Codex headers)
     glm/                   Zhipu GLM Coding Plan (Z.ai global + BigModel China)
+      README.md
       index.ts             catalog, CLI poll OAuth, key mint, headers
       cli-flow.ts          ZCode /oauth/cli/init + poll (`zai` / `bigmodel`)
       request.ts           chat body: roles, thinking, reasoning_content
       cache.ts             implicit prefix hash + user / x-session-id
     kiro/                  AWS Kiro (Social / Builder ID / IdC / Entra / API key)
+      README.md
       index.ts             catalog, identity, portal PKCE, refresh, usage headers
       idc-flow.ts          AWS SSO OIDC register + JSON device poll
       request.ts           OpenAI chat ↔ generateAssistantResponse eventstream
       cache.ts             conversationId (never Date.now())
     antigravity/           Google Antigravity (cloudcode-pa)
+      README.md
       index.ts             catalog, identity, Google OAuth, fingerprint
       request.ts           OpenAI chat ↔ generateContent
       cache.ts             generateContent sessionId + systemInstruction pin
@@ -93,6 +98,7 @@ scripts/                   CLI (TypeScript)
 Rules:
 
 - Codex-only code → `src/oauth/codex/`. Grok-only code → `src/oauth/grok/`. GLM-only code → `src/oauth/glm/`. Kiro-only code → `src/oauth/kiro/`. Antigravity-only code → `src/oauth/antigravity/`.
+- **Each family has `README.md`.** Login, session, chat hop, models, quota, and cache for that vendor are written there so a later change can be traced to files and to `docs/error.md`. Cross-family rules stay in this file; do not let family READMEs contradict it.
 - **Cache is per family.** Each `src/oauth/<id>/cache.ts` owns that vendor's prompt-cache identity, headers, and prefix pin. Do not import Codex cache helpers from Grok / GLM / Kiro / Antigravity. Do not share a `codexCacheSessionId` in `src/utils/`. `proxy.ts` only dispatches.
 - Shared crypto / session scoring → `src/utils/`.
 - Settings React → `src/ui/`.
@@ -104,6 +110,10 @@ Each OAuth family has a **different** prompt cache. Copying Codex
 suffix-park, Grok shard headers, GLM `user` / `x-session-id`, Gemini
 `systemInstruction`, or Kiro `conversationId` onto another vendor is a
 bug. `proxy.ts` only **dispatches**; it must not pin a shared key.
+
+Family-level detail (endpoints, functions, historical faults) lives in
+`src/oauth/<id>/README.md`. This section is the invariant list. When the
+two disagree, fix the README — do not weaken these invariants.
 
 ### Invariants
 
@@ -225,7 +235,8 @@ Kiro:      conversationState.conversationId
 
 When adding `src/oauth/<id>/`:
 
-1. Add `cache.ts` in **that** folder in the same PR.
+1. Add `cache.ts` **and** document it in that family's `README.md` in the
+   same PR.
 2. Document the backend (prefix hash / shard / conversation / other) in
    this section — one row in the table below **and** the bullets above.
 3. Wire `proxy.ts` with an explicit `family === '<id>'` branch. Do not
@@ -263,35 +274,40 @@ tab. Follow this checklist in one PR.
 
 ### Host
 
-1. **Module** `src/oauth/<id>/index.ts`: catalog (`id`, `name`,
+1. **README** `src/oauth/<id>/README.md` in the same PR: what the vendor
+   is, file map, login, session, chat hop, models, quota, **cache**, do-not,
+   and links into `docs/error.md`. Keep it traceable (function names,
+   endpoints, wire fields). AGENTS.md is the cross-family contract; the
+   family README is the design source for that folder.
+2. **Module** `src/oauth/<id>/index.ts`: catalog (`id`, `name`,
    `contextWindow`, `maxTokens`, `input`, `reasoningEfforts`), OAuth
    endpoints, session builder, User-Agent, refresh. Extra flow files stay
    in that folder (`device-flow.ts`, `cli-flow.ts`, …).
-2. **Store** already keys by provider string. Use a short id (`codex`,
+3. **Store** already keys by provider string. Use a short id (`codex`,
    `grok`, `glm`). `saveSession` / `listStoredSessions` keep **many
    accounts per family**; `switchAccount` picks the chat session. Do not
    invent a second credential file.
-3. **Controller** (`src/oauth/controller.ts`): wire login / cancel /
+4. **Controller** (`src/oauth/controller.ts`): wire login / cancel /
    logout / switch / import / quota in the same places Codex and Grok
    already branch. Snapshot must return
    `accounts.<id> = { …status, activeId, accounts: AccountRow[] }`.
-4. **Quota** (`src/oauth/quota.ts`): cache key is `provider\0accountId`.
+5. **Quota** (`src/oauth/quota.ts`): cache key is `provider\0accountId`.
    Snapshot hydrates **every** stored account (`ensureAll` /
    `#accountsWithQuota`), not only the active one. A missing quota API is
    fine — the card still renders, quota block stays idle.
-5. **Catalog** (`src/oauth/models.ts`): add `${prefix}-<id>` to
+6. **Catalog** (`src/oauth/models.ts`): add `${prefix}-<id>` to
    `ownedProviderIds`, `buildProviders`, `catalogProviders`,
    `describeCatalog`. `toHarnessModel` copies `model.input` and
    `reasoningEfforts`; do not hard-code image on every row.
-6. **Plan labels** (`src/oauth/plan.ts`): map wire slugs to the product
+7. **Plan labels** (`src/oauth/plan.ts`): map wire slugs to the product
    name users see (`Pro 20x`, `SuperGrok Heavy`, `Lite`). Family-specific
    collisions (`glm` `pro` → `Pro`, Codex `pro` → `Pro 20x`) belong here.
-7. **Proxy / tokens / cache** only if chat actually goes through the local
+8. **Proxy / tokens / cache** only if chat actually goes through the local
    Responses proxy. GLM talks to Z.ai / BigModel directly — do not force
    a proxy hop. Prompt cache **must** be a new `src/oauth/<id>/cache.ts`.
    Do not import another family's cache helper, and do not revive
    `src/utils/cache-session.ts`.
-8. **Tests** under `test/`: login parse, session round-trip, catalog
+9. **Tests** under `test/`: login parse, session round-trip, catalog
    input types, and `snapshot shows quota on every <id> account`.
 
 ### Settings — tab icon
@@ -385,6 +401,7 @@ Binding UI rules:
 - Hand-edit `lib/`.
 - Auto-release or bump `package.json` / lockfile version. The maintainer
   says when to raise the version and when to tag. One task → one PR.
+- Add a family without `src/oauth/<id>/README.md`.
 
 ## Commands
 
