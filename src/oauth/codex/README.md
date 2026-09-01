@@ -72,7 +72,7 @@ Fast：body `service_tier` 从 `fast` 改成 `priority`，并带 `x-codex-routin
 |---|---|---|
 | 1 | `liftInstructions` | 前缀 system/developer 抬成顶层 `instructions` |
 | 2 | `stabilizeInputPrefix` | 已有 `instructions` 不变；多出来的快照改成 **input 末尾** 的 developer |
-| 3 | `applyCodexCache` | `prompt_cache_key` ← DSH `prompt_cache_key` 或 `session_id`（`codexCacheSessionId` 清洗，最长 64） |
+| 3 | `applyCodexCache` | `prompt_cache_key` ← DSH `prompt_cache_key` 或 `session_id`（`codexCacheSessionId` 清洗，最长 64）。抄完后从上游 JSON **删掉** `session_id`（chatgpt.com `Unsupported parameter`） |
 | 4 | `codexCacheHeaders` | `session-id` **等于** `x-client-request-id` **等于** `prompt_cache_key` |
 
 健康长会话：加权命中 ≥ 80%，**零** affinity miss。压缩 / 计划重建造成的 0 命中不是分片 miss。
@@ -82,6 +82,7 @@ Fast：body `service_tier` 从 `fast` 改成 `priority`，并带 `x-codex-routin
 ## 不要
 
 - 不要用 `Date.now()` 当 `session-id`。
+- 不要把 DSH `session_id` 送上 chatgpt.com（抄到 `prompt_cache_key` 和亲和头之后删掉）。
 - 不要把 `prompt_cache_retention` 送上去。
 - 不要把 Fast 只写 body 不写 `x-codex-routing-hint`（回显会一直是 default）。
 - 不要把 `api` 改成 Completions / Anthropic。
@@ -90,6 +91,7 @@ Fast：body `service_tier` 从 `fast` 改成 `priority`，并带 `x-codex-routin
 
 | 问题 | 记录 |
 |---|---|
+| DSH `session_id` 送上 chatgpt.com 400 | [`docs/error.md`](../../../docs/error.md) 2026-09-01 session_id |
 | Codex Pro 徽章没分 5x / 20x | [`docs/error.md`](../../../docs/error.md) 2026-08-30 Pro 徽章 |
 | Fast 只靠 body，回显 default | 同文件 2026-08-30 Grok/Codex Fast |
 | 各家缓存被混成 Codex 一套 | 同文件 2026-08-31 缓存混用 |

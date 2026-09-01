@@ -1,5 +1,42 @@
 # 错误记录
 
+## 2026-09-01：Codex 上游 400 `Unsupported parameter: session_id`
+
+### 现象
+
+Mac 实机扫 `dsh-plugin-oauth-subs` **0.0.57**。Hop：`POST http://127.0.0.1:8318/codex/v1/responses`（`openai-responses`），ChatGPT OAuth。
+
+DSH 长会话请求体带 `session_id` 时，chatgpt.com 回：
+
+```text
+400 {"detail":"Unsupported parameter: session_id"}
+```
+
+同一请求只带 `prompt_cache_key`（同一值）是 HTTP 200。
+
+### 证据
+
+- 插件已经把 `session_id` 抄到 `prompt_cache_key` 和 `session-id` / `x-client-request-id` 头。
+- `applyCodexCache` **没有**从送上 chatgpt.com 的 JSON 里删掉 `session_id`。
+- DSH / llm-pi-ai 长会话会发 `session_id`，所以 DSH 形请求体会 400，而只带 cache-key 的探测能过。
+- 同次扫描里 **不修**：`-fast` 仍回显 `service_tier=default`（该账号 `x-codex-credits-has-credits=False`）；非流 400 `Stream must be set to true` 是 chatgpt.com（实机 DSH 走 SSE）；176–248 input token 时 `cached_tokens` 仍为 0 是前缀没到 Codex 阈值。
+
+### 根因
+
+Codex 翻译层。`src/oauth/codex/cache.ts` `applyCodexCache` 读了 DSH `session_id` 做回退，但原字段还留在上游 body。chatgpt.com Codex Responses 不认这个 DSH 字段。不是登录 / 指纹 / yaml sync，也不是 GLM / Kiro / Antigravity / Grok 缓存。
+
+`normalizeCodexResponsesBody` 已经剥 `prompt_cache_retention` / `prompt_cache_options` / `safety_identifier` / `max_output_tokens`。同一次实机扫没有别的 DSH-only 键再 400。
+
+### 修复
+
+- `applyCodexCache`：先从 `prompt_cache_key` 或 `session_id` 写出清洗后的 `prompt_cache_key`，再 `delete session_id`。
+- 头不变：`session-id` = `x-client-request-id` = `prompt_cache_key`。
+- 不发明新缓存 API。不把 Codex `prompt_cache_key` 抄给别的家族。不强制 `stream: true`。
+
+### 验证
+
+- `npm test`：只有 `session_id` → 剥掉且写出 `prompt_cache_key`；两个都有 → 保留原 `prompt_cache_key`、`session_id` 消失；两个都没有 → body 不变。代理 hop 同样不再把 `session_id` 送上去。无 live chatgpt.com 重放。
+
 ## 2026-09-01：Kiro overlay 后 usage 仍 0/0/0 — 现场没有 metadataEvent
 
 ### 现象

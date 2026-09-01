@@ -21,10 +21,34 @@ test('each family owns its cache id helper (same clip, separate modules)', () =>
 test('Codex cache writes prompt_cache_key and session-id headers', () => {
   const { payload, cacheSessionId } = applyCodexCache({ session_id: 'sess-codex', prompt_cache_retention: '24h' })
   assert.equal(payload.prompt_cache_key, 'sess-codex')
+  assert.equal(Object.hasOwn(payload, 'session_id'), false)
   assert.deepEqual(codexCacheHeaders(cacheSessionId), {
     'session-id': 'sess-codex',
     'x-client-request-id': 'sess-codex',
   })
+})
+
+test('Codex cache strips session_id after copying onto prompt_cache_key', () => {
+  const onlySession = applyCodexCache({ model: 'gpt-5.6-terra', session_id: 'sess-from-dsh' })
+  assert.equal(onlySession.payload.prompt_cache_key, 'sess-from-dsh')
+  assert.equal(Object.hasOwn(onlySession.payload, 'session_id'), false)
+  assert.equal(onlySession.cacheSessionId, 'sess-from-dsh')
+
+  const both = applyCodexCache({
+    model: 'gpt-5.6-terra',
+    session_id: 'sess-from-dsh',
+    prompt_cache_key: 'pck-keep',
+  })
+  assert.equal(both.payload.prompt_cache_key, 'pck-keep')
+  assert.equal(Object.hasOwn(both.payload, 'session_id'), false)
+  assert.equal(both.cacheSessionId, 'pck-keep')
+
+  const neither = { model: 'gpt-5.6-terra', instructions: 'You are DSH.' }
+  const { payload, cacheSessionId } = applyCodexCache(neither)
+  assert.deepEqual(payload, neither)
+  assert.equal(cacheSessionId, undefined)
+  assert.equal(Object.hasOwn(payload, 'prompt_cache_key'), false)
+  assert.equal(Object.hasOwn(payload, 'session_id'), false)
 })
 
 test('Grok cache writes prompt_cache_key and x-grok-conv-id, never Codex headers', () => {
