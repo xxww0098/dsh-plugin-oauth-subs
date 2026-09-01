@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.59
+
+- Kiro: flush assistant `toolUses` before user `toolResults` so multi-round tools pair; park extra DSH system snapshots without inserting them between a tool_use and its tool_result. Fixes live 400 `unexpected tool_use_id`. PR #71.
+- Antigravity: round-trip Gemini `thoughtSignature` on functionCall parts (tool_calls extra fields + per-sessionId map). Fixes live 400 missing thought_signature on `run_code`. PR #72.
+
 ## 0.0.58
 
 - Antigravity: pin tools, sticky thinking, and a `dsh-antigravity:<model>` session fallback so the implicit-cache prefix stays stable. Google may still omit `cached_tokens`. PR #67.
