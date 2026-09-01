@@ -16,6 +16,21 @@ export {
   resetAntigravitySystemPins,
 } from './cache.js'
 
+/**
+ * Gemini 3 / Cloud Code require the original `thoughtSignature` on each
+ * functionCall part when that history is sent back. DSH has no first-class
+ * field; we stamp extra keys on OpenAI tool_calls (echo if DSH keeps them)
+ * and keep a per-session map keyed by tool id and name+args.
+ * https://ai.google.dev/gemini-api/docs/thought-signatures
+ */
+const THOUGHT_SIGNATURES = new Map()
+const THOUGHT_SIGNATURE_SESSION_CAP = 64
+const THOUGHT_SIGNATURES_PER_SESSION = 256
+
+export function resetAntigravityThoughtSignatures() {
+  THOUGHT_SIGNATURES.clear()
+}
+
 function asCount(value) {
   if (typeof value === 'number' && Number.isFinite(value) && value >= 0) return Math.round(value)
   if (typeof value === 'string' && value.trim()) {
@@ -41,6 +56,90 @@ function tryJson(value) {
   } catch {
     return { text: value }
   }
+}
+
+function stableJson(value) {
+  if (value === undefined) return 'null'
+  if (value === null || typeof value !== 'object') return JSON.stringify(value)
+  if (Array.isArray(value)) return `[${value.map((item) => stableJson(item)).join(',')}]`
+  const keys = Object.keys(value).sort()
+  return `{${keys.map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(',')}}`
+}
+
+/** Cloud Code / Gemini REST: part-level thoughtSignature (also accept snake / nested). */
+export function thoughtSignatureOf(...sources) {
+  for (const source of sources) {
+    if (!isPlainObject(source)) continue
+    const direct = trimmed(source.thoughtSignature) ?? trimmed(source.thought_signature)
+    if (direct) return direct
+    const extra = isPlainObject(source.extra_content)
+      ? source.extra_content
+      : isPlainObject(source.extra_body) ? source.extra_body : undefined
+    const google = isPlainObject(extra?.google) ? extra.google : extra
+    const fromExtra = trimmed(google?.thought_signature) ?? trimmed(google?.thoughtSignature)
+    if (fromExtra) return fromExtra
+    const fromFn = thoughtSignatureOf(source.function, source.functionCall)
+    if (fromFn) return fromFn
+  }
+  return undefined
+}
+
+function signatureCallKey(name, args) {
+  const n = trimmed(name)
+  if (!n) return undefined
+  return `${n}\0${stableJson(args ?? {})}`
+}
+
+function rememberThoughtSignature(sessionId, { id, name, args, signature } = {}) {
+  if (!sessionId || !signature) return
+  let bucket = THOUGHT_SIGNATURES.get(sessionId)
+  if (!bucket) {
+    if (THOUGHT_SIGNATURES.size >= THOUGHT_SIGNATURE_SESSION_CAP) {
+      const first = THOUGHT_SIGNATURES.keys().next().value
+      THOUGHT_SIGNATURES.delete(first)
+    }
+    bucket = new Map()
+    THOUGHT_SIGNATURES.set(sessionId, bucket)
+  }
+  const ck = signatureCallKey(name, args)
+  if (ck) bucket.set(ck, signature)
+  if (trimmed(id)) bucket.set(`id:${id}`, signature)
+  while (bucket.size > THOUGHT_SIGNATURES_PER_SESSION) {
+    bucket.delete(bucket.keys().next().value)
+  }
+}
+
+function lookupThoughtSignature(sessionId, { id, name, args } = {}) {
+  const bucket = THOUGHT_SIGNATURES.get(sessionId)
+  if (!bucket) return undefined
+  const ck = signatureCallKey(name, args)
+  return (ck && bucket.get(ck)) || (trimmed(id) && bucket.get(`id:${id}`)) || undefined
+}
+
+function attachThoughtSignatureFields(target, signature) {
+  if (!signature) return target
+  target.thoughtSignature = signature
+  target.thought_signature = signature
+  target.extra_content = { google: { thought_signature: signature } }
+  return target
+}
+
+function functionCallPart(call, sessionId, message) {
+  const name = trimmed(call?.function?.name)
+  if (!name) return undefined
+  const args = tryJson(call.function?.arguments)
+  const shared = Array.isArray(message?.tool_calls) && message.tool_calls.length === 1
+    ? thoughtSignatureOf(message)
+    : undefined
+  const signature = thoughtSignatureOf(call)
+    ?? shared
+    ?? lookupThoughtSignature(sessionId, { id: call?.id, name, args })
+  const part = { functionCall: { name, args } }
+  if (signature) {
+    part.thoughtSignature = signature
+    rememberThoughtSignature(sessionId, { id: call?.id, name, args, signature })
+  }
+  return part
 }
 
 /**
@@ -126,6 +225,7 @@ export function openaiToAntigravity(payload, { projectId, sessionId } = {}) {
   const messages = Array.isArray(payload?.messages) ? payload.messages : []
   const systemParts = []
   const contents = []
+  const pinnedSession = antigravitySessionIdOf(payload, sessionId)
 
   for (const message of messages) {
     const role = message?.role
@@ -143,9 +243,8 @@ export function openaiToAntigravity(payload, { projectId, sessionId } = {}) {
     const parts = []
     if (Array.isArray(message?.tool_calls)) {
       for (const call of message.tool_calls) {
-        const name = trimmed(call?.function?.name)
-        if (!name) continue
-        parts.push({ functionCall: { name, args: tryJson(call.function?.arguments) } })
+        const part = functionCallPart(call, pinnedSession, message)
+        if (part) parts.push(part)
       }
     }
     parts.push(...partsFromContent(message?.content))
@@ -156,8 +255,6 @@ export function openaiToAntigravity(payload, { projectId, sessionId } = {}) {
   if (contents.length === 0) {
     contents.push({ role: 'user', parts: [{ text: trimmed(payload?.input) ?? '' }] })
   }
-
-  const pinnedSession = antigravitySessionIdOf(payload, sessionId)
   const pinned = pinAntigravitySystemInstruction(pinnedSession, systemParts)
   if (pinned.extra) contents.push({ role: 'user', parts: [{ text: pinned.extra }] })
 
@@ -191,24 +288,42 @@ function finishReason(raw) {
   return 'stop'
 }
 
-export function collectAntigravityParts(body) {
+export function collectAntigravityParts(body, { sessionId } = {}) {
   const response = body?.response ?? body
   const candidate = response?.candidates?.[0]
   const parts = Array.isArray(candidate?.content?.parts) ? candidate.content.parts : []
   let text = ''
   const toolCalls = []
+  let pendingThoughtSig
   for (const part of parts) {
-    if (!part || part.thought) continue
+    if (!part) continue
+    const partSig = thoughtSignatureOf(part, part.functionCall)
+    if (part.thought) {
+      if (partSig) pendingThoughtSig = partSig
+      continue
+    }
     if (typeof part.text === 'string') text += part.text
     if (part.functionCall?.name) {
-      toolCalls.push({
+      const signature = partSig ?? pendingThoughtSig
+      pendingThoughtSig = undefined
+      const call = {
         id: `call_${toolCalls.length + 1}`,
         type: 'function',
         function: {
           name: part.functionCall.name,
           arguments: JSON.stringify(part.functionCall.args ?? {}),
         },
-      })
+      }
+      if (signature) {
+        attachThoughtSignatureFields(call, signature)
+        rememberThoughtSignature(sessionId, {
+          id: call.id,
+          name: part.functionCall.name,
+          args: part.functionCall.args ?? {},
+          signature,
+        })
+      }
+      toolCalls.push(call)
     }
   }
   return {
@@ -292,7 +407,7 @@ function openaiChunk({ id, model, delta, finish_reason, usage }) {
  * Per-stream mapper: cumulative Google frames → incremental OpenAI chunks.
  * Thought parts stay out of `delta.content`; their tokens still land in usage.
  */
-export function createAntigravityOpenaiStream({ model, id = `chatcmpl-${Date.now()}` } = {}) {
+export function createAntigravityOpenaiStream({ model, id = `chatcmpl-${Date.now()}`, sessionId } = {}) {
   let emittedText = ''
   const emittedToolArgs = []
   let lastUsage
@@ -300,7 +415,7 @@ export function createAntigravityOpenaiStream({ model, id = `chatcmpl-${Date.now
   let sawTools = false
 
   function applyEvent(body) {
-    const collected = collectAntigravityParts(body)
+    const collected = collectAntigravityParts(body, { sessionId })
     if (collected.usage) lastUsage = collected.usage
     if (collected.rawFinish) lastFinish = collected.finishReason
     if (collected.toolCalls.length) {
@@ -325,7 +440,7 @@ export function createAntigravityOpenaiStream({ model, id = `chatcmpl-${Date.now
         const argDelta = incrementalSuffix(args, first ? '' : prevArgs)
         if (!first && !argDelta) continue
         emittedToolArgs[index] = args
-        calls.push({
+        const next = {
           index,
           id: call.id,
           type: 'function',
@@ -333,7 +448,9 @@ export function createAntigravityOpenaiStream({ model, id = `chatcmpl-${Date.now
             name: call.function.name,
             arguments: argDelta,
           },
-        })
+        }
+        if (first && call.thoughtSignature) attachThoughtSignatureFields(next, call.thoughtSignature)
+        calls.push(next)
       }
       if (calls.length) delta.tool_calls = calls
     }
@@ -369,8 +486,8 @@ export function antigravityEventsToOpenaiChunks(events, opts) {
   return chunks
 }
 
-export function antigravityToOpenai(body, { model, id = `chatcmpl-${Date.now()}` } = {}) {
-  const collected = collectAntigravityParts(body)
+export function antigravityToOpenai(body, { model, id = `chatcmpl-${Date.now()}`, sessionId } = {}) {
+  const collected = collectAntigravityParts(body, { sessionId })
   const message = { role: 'assistant', content: collected.text || null }
   if (collected.toolCalls.length) message.tool_calls = collected.toolCalls
   return {
@@ -386,16 +503,22 @@ export function antigravityToOpenai(body, { model, id = `chatcmpl-${Date.now()}`
   }
 }
 
-export function antigravityToOpenaiChunk(body, { model, id, done = false } = {}) {
-  const collected = collectAntigravityParts(body)
+export function antigravityToOpenaiChunk(body, { model, id, done = false, sessionId } = {}) {
+  const collected = collectAntigravityParts(body, { sessionId })
   const delta = {}
   if (collected.text) delta.content = collected.text
-  if (collected.toolCalls.length) delta.tool_calls = collected.toolCalls.map((call, index) => ({
-    index,
-    id: call.id,
-    type: 'function',
-    function: call.function,
-  }))
+  if (collected.toolCalls.length) {
+    delta.tool_calls = collected.toolCalls.map((call, index) => {
+      const next = {
+        index,
+        id: call.id,
+        type: 'function',
+        function: call.function,
+      }
+      if (call.thoughtSignature) attachThoughtSignatureFields(next, call.thoughtSignature)
+      return next
+    })
+  }
   const usage = mapAntigravityUsage(collected.usage)
   return {
     id,

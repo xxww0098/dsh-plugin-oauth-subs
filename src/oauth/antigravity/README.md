@@ -51,6 +51,7 @@ DSH chat/completions  →  POST daily-cloudcode-pa.googleapis.com/v1internal:gen
 - tool 结果必须是 **单个** protobuf Struct（`functionResponsePayload`）。数组会 400 `Proto field is not repeating`。
 - `request.sessionId` = `antigravitySessionIdOf`（有 DSH session 原样；否则 `dsh-antigravity:<model>`）。
 - `request.tools` / `generationConfig.thinkingConfig` 按 session 钉住，避免 DSH 抖前缀。不发 `implicitCacheConfig`。
+- Gemini 3 / Cloud Code 的 `functionCall` part 必须带回原 `thoughtSignature`（[Google thought signatures](https://ai.google.dev/gemini-api/docs/thought-signatures)）。官方 wire 是 **part 级** camelCase，也接受 `thought_signature` / 嵌在 `functionCall` 里的入站。`collectAntigravityParts` 把它抄到 OpenAI `tool_calls` 的 `thoughtSignature` / `thought_signature` / `extra_content.google.thought_signature`；`openaiToAntigravity` 写回 part。DSH 若剥掉未知键，进程内按 `sessionId` + tool id / `name+args` 再贴。缺签名仍发 tool_calls，**不要**写空串或 `skip_thought_signature_validator`。`part.thought` 仍不进可见文本；若签名只在 thought part 上，转给随后第一条无签名的 functionCall。
 - SSE 文本是累积的，用 `incrementalSuffix` 切成 OpenAI delta；终帧带 `mapAntigravityUsage`，否则 DSH 显示「用量 0 tok」。
 
 ## 模型
@@ -94,6 +95,7 @@ DSH 每步再插 runtime-context system，工具 JSON 的 key 顺序也会抖。
 - 不要把 `cachedContentTokenCount` / CLI `cache_read_tokens` 丢掉（DSH 命中率会显示 0）。
 - 不要发 `implicitCacheConfig` 或 CreateCachedContent。
 - 不要把 `--subclient_type hub` 写进 HTTP。
+- 不要编造 `thoughtSignature` / 空串 / `skip_thought_signature_validator`。缺就省略字段。
 - 不要用 `currentTier` 当套餐 pill。
 - 不要把 Antigravity extras 停成 GLM trailing system。
 - 不要 fingerprint 成第三方包装（Google 会封）。
@@ -109,6 +111,7 @@ DSH 每步再插 runtime-context system，工具 JSON 的 key 顺序也会抖。
 | 套餐 STANDARD TIER | 同文件 2026-08-31 Antigravity 套餐 |
 | 额度条没有刷新时间 / 只到小时 | 同文件 2026-08-31 刷新时间 |
 | 用量 0 tok / 首 token 半句 | 同文件 2026-08-31 Antigravity 流式 |
+| functionCall 缺 thought_signature 400 | 同文件 2026-09-01 Antigravity thoughtSignature |
 | function_response 列表 400 | 同文件 2026-08-30 INVALID_ARGUMENT |
 | 打了 IDE prod 不是 hub daily | 同文件 2026-08-30 Cloud Code |
 | 403 VALIDATION_REQUIRED 显示成密钥无效 | 同文件 2026-08-31 VALIDATION_REQUIRED |

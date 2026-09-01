@@ -244,6 +244,10 @@ Kiro:      conversationState.conversationId (+ model)
 - Pin the first `request.tools` JSON when names+schemas are equivalent
   (canonical key order). Added or removed tools are a real change.
 - `thinkingConfig` is sticky-first. Do **not** send `implicitCacheConfig`.
+- Round-trip Gemini `thoughtSignature` on **functionCall parts**
+  (`request.ts`). OpenAI `tool_calls` carry extra keys; a per-session
+  map reattaches if DSH strips them. Do not invent a dummy / empty
+  signature. Thought-only parts stay out of visible text.
 - Map `cachedContentTokenCount` / `cacheTokensDetails` / CLI
   `cache_read_tokens` / `cacheReadTokens` / `cacheReadInputTokens` →
   OpenAI `prompt_tokens_details.cached_tokens` or DSH hit rate stays 0%.

@@ -58,6 +58,7 @@ import {
   functionResponsePayload,
   openaiToAntigravity,
   resetAntigravitySystemPins,
+  resetAntigravityThoughtSignatures,
 } from '../lib/oauth/antigravity/request.js'
 import { antigravitySessionIdOf } from '../lib/oauth/antigravity/cache.js'
 import { createProxy } from '../lib/oauth/proxy.js'
@@ -1048,6 +1049,261 @@ test('tool-call stream emits tool_calls and finish_reason tool_calls', () => {
   assert.equal(terminal.choices[0].finish_reason, 'tool_calls')
 })
 
+function assertNoThoughtSignature(part) {
+  assert.equal(Object.hasOwn(part, 'thoughtSignature'), false)
+  assert.equal(Object.hasOwn(part, 'thought_signature'), false)
+  assert.equal(part.thoughtSignature, undefined)
+  assert.equal(part.functionCall?.thoughtSignature, undefined)
+}
+
+test('functionCall thoughtSignature round-trips on the matching part', () => {
+  resetAntigravityThoughtSignatures()
+  resetAntigravitySystemPins()
+  const google = {
+    response: {
+      candidates: [{
+        content: {
+          parts: [{
+            functionCall: { name: 'default_api:run_code', args: { code: 'print(1)' } },
+            thoughtSignature: 'sig-run-code-A',
+          }],
+        },
+        finishReason: 'STOP',
+      }],
+    },
+  }
+  const openai = antigravityToOpenai(google, { model: 'gemini-3.7-flash-high' })
+  const call = openai.choices[0].message.tool_calls[0]
+  assert.equal(call.id, 'call_1')
+  assert.equal(call.function.name, 'default_api:run_code')
+  assert.equal(call.function.arguments, '{"code":"print(1)"}')
+  assert.equal(call.thoughtSignature, 'sig-run-code-A')
+  assert.equal(call.thought_signature, 'sig-run-code-A')
+  assert.equal(call.extra_content.google.thought_signature, 'sig-run-code-A')
+
+  resetAntigravityThoughtSignatures()
+  const back = openaiToAntigravity({
+    model: 'gemini-3.7-flash-high',
+    session_id: 'session-inband-1',
+    messages: [
+      { role: 'user', content: 'run' },
+      { role: 'assistant', content: null, tool_calls: [call] },
+      { role: 'tool', tool_call_id: call.id, name: 'default_api:run_code', content: '1' },
+    ],
+  }, { projectId: 'p' })
+  const model = back.request.contents.find((content) => content.role === 'model')
+  assert.equal(model.parts[0].thoughtSignature, 'sig-run-code-A')
+  assert.deepEqual(model.parts[0].functionCall, { name: 'default_api:run_code', args: { code: 'print(1)' } })
+  assert.equal(Object.hasOwn(model.parts[0].functionCall, 'thoughtSignature'), false)
+  resetAntigravityThoughtSignatures()
+  resetAntigravitySystemPins()
+})
+
+test('nested functionCall.thoughtSignature inbound becomes part-level outbound', () => {
+  resetAntigravityThoughtSignatures()
+  const openai = antigravityToOpenai({
+    response: {
+      candidates: [{
+        content: {
+          parts: [{
+            functionCall: {
+              name: 'Read',
+              args: { path: 'a.ts' },
+              thoughtSignature: 'sig-nested',
+            },
+          }],
+        },
+      }],
+    },
+  }, { model: 'gemini-3.7-flash-high' })
+  assert.equal(openai.choices[0].message.tool_calls[0].thoughtSignature, 'sig-nested')
+  resetAntigravityThoughtSignatures()
+  const back = openaiToAntigravity({
+    model: 'gemini-3.7-flash-high',
+    session_id: 'session-nested-1',
+    messages: [
+      { role: 'user', content: 'read' },
+      { role: 'assistant', content: null, tool_calls: openai.choices[0].message.tool_calls },
+    ],
+  }, { projectId: 'p' })
+  assert.equal(back.request.contents[1].parts[0].thoughtSignature, 'sig-nested')
+  assert.deepEqual(back.request.contents[1].parts[0].functionCall, { name: 'Read', args: { path: 'a.ts' } })
+  resetAntigravityThoughtSignatures()
+})
+
+test('missing thoughtSignature still emits tool_calls and outbound omits the field', () => {
+  resetAntigravityThoughtSignatures()
+  const openai = antigravityToOpenai({
+    response: {
+      candidates: [{
+        content: { parts: [{ functionCall: { name: 'Read', args: { path: 'a.ts' } } }] },
+      }],
+    },
+  }, { model: 'gemini-3.7-flash-high' })
+  const call = openai.choices[0].message.tool_calls[0]
+  assert.equal(call.function.name, 'Read')
+  assert.equal(call.thoughtSignature, undefined)
+  assert.equal(call.extra_content, undefined)
+
+  const empty = antigravityToOpenai({
+    response: {
+      candidates: [{
+        content: {
+          parts: [{
+            functionCall: { name: 'Read', args: {} },
+            thoughtSignature: '   ',
+            thought_signature: '',
+          }],
+        },
+      }],
+    },
+  }, { model: 'gemini-3.7-flash-high' })
+  assert.equal(empty.choices[0].message.tool_calls[0].function.name, 'Read')
+  assert.equal(empty.choices[0].message.tool_calls[0].thoughtSignature, undefined)
+
+  const back = openaiToAntigravity({
+    model: 'gemini-3.7-flash-high',
+    session_id: 'session-missing-1',
+    messages: [
+      { role: 'user', content: 'read' },
+      {
+        role: 'assistant',
+        content: null,
+        tool_calls: [
+          { id: 'call_1', type: 'function', function: { name: 'Read', arguments: '{"path":"a.ts"}' }, thoughtSignature: '' },
+        ],
+      },
+    ],
+  }, { projectId: 'p' })
+  assertNoThoughtSignature(back.request.contents[1].parts[0])
+  assert.deepEqual(back.request.contents[1].parts[0].functionCall, { name: 'Read', args: { path: 'a.ts' } })
+  resetAntigravityThoughtSignatures()
+})
+
+test('each parallel functionCall keeps its own thoughtSignature', () => {
+  resetAntigravityThoughtSignatures()
+  const openai = antigravityToOpenai({
+    response: {
+      candidates: [{
+        content: {
+          parts: [
+            { functionCall: { name: 'Read', args: { path: 'a.ts' } }, thoughtSignature: 'sig-a' },
+            { functionCall: { name: 'Grep', args: { q: 'src' } }, thoughtSignature: 'sig-b' },
+            { functionCall: { name: 'Read', args: { path: 'b.ts' } } },
+          ],
+        },
+      }],
+    },
+  }, { model: 'gemini-3.7-flash-high' })
+  const calls = openai.choices[0].message.tool_calls
+  assert.equal(calls.length, 3)
+  assert.equal(calls[0].thoughtSignature, 'sig-a')
+  assert.equal(calls[1].thoughtSignature, 'sig-b')
+  assert.equal(calls[2].thoughtSignature, undefined)
+  resetAntigravityThoughtSignatures()
+  const back = openaiToAntigravity({
+    model: 'gemini-3.7-flash-high',
+    session_id: 'session-multi-1',
+    messages: [
+      { role: 'user', content: 'look' },
+      { role: 'assistant', content: null, tool_calls: calls },
+    ],
+  }, { projectId: 'p' })
+  const parts = back.request.contents[1].parts
+  assert.equal(parts[0].thoughtSignature, 'sig-a')
+  assert.equal(parts[1].thoughtSignature, 'sig-b')
+  assertNoThoughtSignature(parts[2])
+  assert.deepEqual(parts[0].functionCall, { name: 'Read', args: { path: 'a.ts' } })
+  assert.deepEqual(parts[1].functionCall, { name: 'Grep', args: { q: 'src' } })
+  resetAntigravityThoughtSignatures()
+})
+
+test('session map reattaches thoughtSignature when DSH strips extra tool_call keys', () => {
+  resetAntigravityThoughtSignatures()
+  resetAntigravitySystemPins()
+  antigravityToOpenai({
+    response: {
+      candidates: [{
+        content: {
+          parts: [{
+            functionCall: { name: 'default_api:run_code', args: { code: 'print(1)' } },
+            thoughtSignature: 'sig-map-A',
+          }],
+        },
+      }],
+    },
+  }, { model: 'gemini-3.7-flash-high', sessionId: 'session-sig-1' })
+  const back = openaiToAntigravity({
+    model: 'gemini-3.7-flash-high',
+    session_id: 'session-sig-1',
+    messages: [
+      { role: 'user', content: 'run' },
+      {
+        role: 'assistant',
+        content: null,
+        tool_calls: [{
+          id: 'call_1',
+          type: 'function',
+          function: { name: 'default_api:run_code', arguments: '{"code":"print(1)"}' },
+        }],
+      },
+      { role: 'tool', tool_call_id: 'call_1', name: 'default_api:run_code', content: '1' },
+    ],
+  }, { projectId: 'p' })
+  assert.equal(back.request.contents[1].parts[0].thoughtSignature, 'sig-map-A')
+  resetAntigravityThoughtSignatures()
+  resetAntigravitySystemPins()
+})
+
+test('thought-only part signature moves onto the following unsigned functionCall', () => {
+  resetAntigravityThoughtSignatures()
+  const openai = antigravityToOpenai({
+    response: {
+      candidates: [{
+        content: {
+          parts: [
+            { thought: true, text: 'planning run_code', thoughtSignature: 'sig-thought' },
+            { functionCall: { name: 'default_api:run_code', args: { code: '1+1' } } },
+          ],
+        },
+      }],
+    },
+  }, { model: 'gemini-3.7-flash-high' })
+  assert.equal(openai.choices[0].message.content, null)
+  assert.equal(openai.choices[0].message.tool_calls[0].thoughtSignature, 'sig-thought')
+  resetAntigravityThoughtSignatures()
+  const back = openaiToAntigravity({
+    model: 'gemini-3.7-flash-high',
+    session_id: 'session-thought-1',
+    messages: [
+      { role: 'user', content: 'run' },
+      { role: 'assistant', content: openai.choices[0].message.content, tool_calls: openai.choices[0].message.tool_calls },
+    ],
+  }, { projectId: 'p' })
+  assert.equal(back.request.contents[1].parts.length, 1)
+  assert.equal(back.request.contents[1].parts[0].thoughtSignature, 'sig-thought')
+  assert.equal(JSON.stringify(back.request.contents).includes('planning run_code'), false)
+  resetAntigravityThoughtSignatures()
+})
+
+test('SSE functionCall thoughtSignature lands on the first tool_calls delta', () => {
+  resetAntigravityThoughtSignatures()
+  const chunks = antigravityEventsToOpenaiChunks([
+    googleSseEvent({
+      parts: [{
+        functionCall: { name: 'default_api:run_code', args: { code: 'print(1)' } },
+        thoughtSignature: 'sig-sse',
+      }],
+    }),
+  ], { model: 'gemini-3.7-flash-high', id: 'chatcmpl-sig', sessionId: 'session-sse-1' })
+  const toolChunk = chunks.find((chunk) => chunk.choices[0].delta.tool_calls)
+  const call = toolChunk.choices[0].delta.tool_calls[0]
+  assert.equal(call.function.name, 'default_api:run_code')
+  assert.equal(call.thoughtSignature, 'sig-sse')
+  assert.equal(call.extra_content.google.thought_signature, 'sig-sse')
+  resetAntigravityThoughtSignatures()
+})
+
 test('proxy stream writes incremental deltas then a terminal usage chunk before [DONE]', async () => {
   const sse = [
     googleSseEvent({ text: 'Hello' }),
@@ -1109,6 +1365,94 @@ test('proxy stream writes incremental deltas then a terminal usage chunk before 
     assert.equal(terminal.usage.completion_tokens_details.reasoning_tokens, 42)
   } finally {
     await proxy.close()
+  }
+})
+
+test('proxy remembers functionCall thoughtSignature across a stripped DSH tool turn', async () => {
+  resetAntigravityThoughtSignatures()
+  resetAntigravitySystemPins()
+  const seen = []
+  const sse = `data: ${JSON.stringify(googleSseEvent({
+    parts: [{
+      functionCall: { name: 'default_api:run_code', args: { code: 'print(1)' } },
+      thoughtSignature: 'sig-proxy-live',
+    }],
+    finishReason: 'STOP',
+  }))}\n\n`
+  const fetchFn = async (url, init) => {
+    seen.push({ url: String(url), body: String(init.body) })
+    if (String(url).includes('streamGenerateContent')) {
+      return new Response(sse, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+    }
+    return jsonResponse({
+      response: { candidates: [{ content: { parts: [{ text: 'done' }] }, finishReason: 'STOP' }] },
+    })
+  }
+  const proxy = createProxy({
+    port: 0,
+    apiKey: 'secret-key',
+    fetchFn,
+    tokens: {
+      antigravity: {
+        session: async () => antigravitySession({
+          accessToken: 'ag-tok',
+          refreshToken: 'r',
+          expiresAt: Date.now() + 60_000,
+          account: 'dev@x',
+          projectId: 'cogent-snow-4mnnp',
+        }),
+      },
+    },
+  })
+  const server = await proxy.listen()
+  try {
+    const first = await fetch(`http://127.0.0.1:${server.address().port}/antigravity/v1/chat/completions`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer secret-key', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gemini-3.7-flash-high',
+        stream: true,
+        session_id: 'session-proxy-sig',
+        messages: [{ role: 'user', content: 'run code' }],
+      }),
+    })
+    assert.equal(first.status, 200)
+    const { chunks } = parseOpenaiSse(await first.text())
+    const toolChunk = chunks.find((chunk) => chunk.choices[0].delta.tool_calls)
+    assert.equal(toolChunk.choices[0].delta.tool_calls[0].thoughtSignature, 'sig-proxy-live')
+
+    const second = await fetch(`http://127.0.0.1:${server.address().port}/antigravity/v1/chat/completions`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer secret-key', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gemini-3.7-flash-high',
+        session_id: 'session-proxy-sig',
+        messages: [
+          { role: 'user', content: 'run code' },
+          {
+            role: 'assistant',
+            content: null,
+            tool_calls: [{
+              id: 'call_1',
+              type: 'function',
+              function: { name: 'default_api:run_code', arguments: '{"code":"print(1)"}' },
+            }],
+          },
+          { role: 'tool', tool_call_id: 'call_1', name: 'default_api:run_code', content: '1' },
+        ],
+      }),
+    })
+    assert.equal(second.status, 200)
+    const replay = JSON.parse(seen[1].body)
+    const model = replay.request.contents.find((content) => content.role === 'model')
+    assert.equal(model.parts[0].thoughtSignature, 'sig-proxy-live')
+    assert.deepEqual(model.parts[0].functionCall, { name: 'default_api:run_code', args: { code: 'print(1)' } })
+    assert.equal(replay.request.implicitCacheConfig, undefined)
+    assert.equal(JSON.stringify(replay).includes('skip_thought_signature'), false)
+  } finally {
+    await proxy.close()
+    resetAntigravityThoughtSignatures()
+    resetAntigravitySystemPins()
   }
 })
 
