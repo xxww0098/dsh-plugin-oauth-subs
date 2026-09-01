@@ -54,10 +54,12 @@ import {
   ANTIGRAVITY_STABLE_SESSION,
   antigravityEventsToOpenaiChunks,
   antigravityToOpenai,
+  cachedTokensOf,
   functionResponsePayload,
   openaiToAntigravity,
   resetAntigravitySystemPins,
 } from '../lib/oauth/antigravity/request.js'
+import { antigravitySessionIdOf } from '../lib/oauth/antigravity/cache.js'
 import { createProxy } from '../lib/oauth/proxy.js'
 
 const FORBIDDEN = ['IDE_UNSPECIFIED', 'dsh-plugin', 'DeepSeek', 'CLIProxy', 'undici', 'node-fetch']
@@ -438,6 +440,7 @@ test('Google 400 fixture: array-shaped functionResponse / response never emitted
 })
 
 test('generateContent body is official-shaped and rejects an empty project', () => {
+  resetAntigravitySystemPins()
   const body = openaiToAntigravity({
     model: 'claude-sonnet-4-6',
     messages: [
@@ -450,10 +453,13 @@ test('generateContent body is official-shaped and rejects an empty project', () 
   assert.equal(body.userAgent, 'antigravity')
   assert.deepEqual(body.request.systemInstruction.parts, [{ text: 'You are helpful.' }])
   assert.equal(body.request.contents[0].role, 'user')
-  assert.equal(body.request.sessionId, ANTIGRAVITY_STABLE_SESSION)
+  assert.equal(body.request.sessionId, `${ANTIGRAVITY_STABLE_SESSION}:claude-sonnet-4-6`)
   assert.equal(/^-\d+$/.test(body.request.sessionId), false)
+  assert.equal(body.request.implicitCacheConfig, undefined)
+  assert.equal(body.request.cachedContent, undefined)
   assertCleanIdentity(body)
   assert.throws(() => openaiToAntigravity({ model: 'claude-sonnet-4-6', messages: [] }, { projectId: '' }), /project_id/)
+  resetAntigravitySystemPins()
 })
 
 test('openaiToAntigravity sessionId is the DSH pin, never a Date.now stamp', () => {
@@ -648,7 +654,7 @@ test('proxy translates OpenAI chat to daily-cloudcode-pa with the same fingerpri
     const body = JSON.parse(seen[0].body)
     assert.equal(body.project, 'cogent-snow-4mnnp')
     assert.equal(body.userAgent, 'antigravity')
-    assert.equal(body.request.sessionId, ANTIGRAVITY_STABLE_SESSION)
+    assert.equal(body.request.sessionId, `${ANTIGRAVITY_STABLE_SESSION}:claude-sonnet-4-6`)
     assert.equal(/^-\d+$/.test(body.request.sessionId), false)
     assertCleanIdentity(seen[0])
     assertCleanIdentity(body)
@@ -947,6 +953,11 @@ test('antigravityToOpenai maps cachedContentTokenCount into prompt_tokens_detail
   }, { model: 'gemini-3.7-flash-high' })
   assert.equal(zero.usage.prompt_tokens_details.cached_tokens, 0)
   assert.equal(zero.usage.prompt_tokens_details === undefined, false)
+
+  assert.equal(cachedTokensOf({ cache_read_tokens: 12 }), 12)
+  assert.equal(cachedTokensOf({ cacheReadTokens: 34 }), 34)
+  assert.equal(cachedTokensOf({ cacheReadInputTokens: 56 }), 56)
+  assert.equal(cachedTokensOf({ cachedContentTokenCount: 9, cacheReadTokens: 99 }), 9)
 })
 
 test('openaiToAntigravity parks extra system snapshots after the pinned prefix', () => {
@@ -1099,4 +1110,169 @@ test('proxy stream writes incremental deltas then a terminal usage chunk before 
   } finally {
     await proxy.close()
   }
+})
+
+const READ_TOOL = {
+  type: 'function',
+  function: {
+    name: 'Read',
+    description: 'read a file',
+    parameters: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
+  },
+}
+const GREP_TOOL = {
+  type: 'function',
+  function: {
+    name: 'Grep',
+    description: 'search',
+    parameters: { type: 'object', properties: { q: { type: 'string' } } },
+  },
+}
+
+test('openaiToAntigravity two-turn same session keeps systemInstruction and tools JSON', () => {
+  resetAntigravitySystemPins()
+  const first = openaiToAntigravity({
+    model: 'gemini-3.7-flash-high',
+    session_id: 'session-stable-1',
+    reasoning_effort: 'high',
+    tools: [READ_TOOL, GREP_TOOL],
+    messages: [
+      { role: 'system', content: 'You are an AI agent.' },
+      { role: 'user', content: 'analyze the repo' },
+    ],
+  }, { projectId: 'p' })
+  const later = openaiToAntigravity({
+    model: 'gemini-3.7-flash-high',
+    session_id: 'session-stable-1',
+    tools: [
+      {
+        type: 'function',
+        function: {
+          name: 'Grep',
+          description: 'search (reshuffled)',
+          parameters: { properties: { q: { type: 'string' } }, type: 'object' },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'Read',
+          description: 'read a file (reshuffled)',
+          parameters: { required: ['path'], type: 'object', properties: { path: { type: 'string' } } },
+        },
+      },
+    ],
+    messages: [
+      { role: 'system', content: 'You are an AI agent.' },
+      { role: 'system', content: 'Current runtime context. This snapshot supersedes earlier runtime-context snapshots.' },
+      { role: 'user', content: 'analyze the repo' },
+      { role: 'assistant', content: 'ok' },
+    ],
+  }, { projectId: 'p' })
+
+  assert.deepEqual(later.request.systemInstruction.parts, first.request.systemInstruction.parts)
+  assert.deepEqual(later.request.systemInstruction.parts, [{ text: 'You are an AI agent.' }])
+  assert.equal(JSON.stringify(later.request.tools), JSON.stringify(first.request.tools))
+  assert.equal(later.request.tools[0].functionDeclarations[0].name, 'Read')
+  assert.equal(later.request.tools[0].functionDeclarations[0].description, 'read a file')
+  assert.deepEqual(later.request.generationConfig.thinkingConfig, { thinkingLevel: 'high' })
+  assert.deepEqual(later.request.generationConfig.thinkingConfig, first.request.generationConfig.thinkingConfig)
+  assert.notEqual(later.requestId, first.requestId)
+  assert.equal(later.request.implicitCacheConfig, undefined)
+  assert.equal(later.request.cachedContent, undefined)
+  assert.equal(later.implicitCacheConfig, undefined)
+  resetAntigravitySystemPins()
+})
+
+test('antigravity tools pin reuses first JSON when names+schemas match; add/remove is a real change', () => {
+  resetAntigravitySystemPins()
+  const first = openaiToAntigravity({
+    model: 'gemini-3.7-flash-high',
+    session_id: 'session-tools-1',
+    tools: [READ_TOOL, GREP_TOOL],
+    messages: [{ role: 'user', content: 'hi' }],
+  }, { projectId: 'p' })
+  const shuffled = openaiToAntigravity({
+    model: 'gemini-3.7-flash-high',
+    session_id: 'session-tools-1',
+    tools: [
+      { type: 'function', function: { name: 'Grep', parameters: { properties: { q: { type: 'string' } }, type: 'object' } } },
+      { type: 'function', function: { name: 'Read', parameters: { required: ['path'], properties: { path: { type: 'string' } }, type: 'object' } } },
+    ],
+    messages: [{ role: 'user', content: 'again' }],
+  }, { projectId: 'p' })
+  assert.equal(JSON.stringify(shuffled.request.tools), JSON.stringify(first.request.tools))
+
+  const removed = openaiToAntigravity({
+    model: 'gemini-3.7-flash-high',
+    session_id: 'session-tools-1',
+    tools: [READ_TOOL],
+    messages: [{ role: 'user', content: 'only read' }],
+  }, { projectId: 'p' })
+  assert.equal(removed.request.tools[0].functionDeclarations.length, 1)
+  assert.equal(removed.request.tools[0].functionDeclarations[0].name, 'Read')
+  assert.notEqual(JSON.stringify(removed.request.tools), JSON.stringify(first.request.tools))
+  resetAntigravitySystemPins()
+})
+
+test('antigravity thinkingConfig is sticky-first and never adds implicitCacheConfig', () => {
+  resetAntigravitySystemPins()
+  const sent = openaiToAntigravity({
+    model: 'gemini-3.7-flash-high',
+    session_id: 'session-think-on',
+    reasoning_effort: 'high',
+    messages: [{ role: 'user', content: 'hi' }],
+  }, { projectId: 'p' })
+  const omitted = openaiToAntigravity({
+    model: 'gemini-3.7-flash-high',
+    session_id: 'session-think-on',
+    messages: [{ role: 'user', content: 'again' }],
+  }, { projectId: 'p' })
+  assert.deepEqual(sent.request.generationConfig.thinkingConfig, { thinkingLevel: 'high' })
+  assert.deepEqual(omitted.request.generationConfig.thinkingConfig, { thinkingLevel: 'high' })
+  assert.equal(omitted.request.implicitCacheConfig, undefined)
+
+  const firstOmit = openaiToAntigravity({
+    model: 'gemini-3.7-flash-high',
+    session_id: 'session-think-off',
+    messages: [{ role: 'user', content: 'hi' }],
+  }, { projectId: 'p' })
+  const laterEffort = openaiToAntigravity({
+    model: 'gemini-3.7-flash-high',
+    session_id: 'session-think-off',
+    reasoning_effort: 'low',
+    messages: [{ role: 'user', content: 'again' }],
+  }, { projectId: 'p' })
+  assert.equal(firstOmit.request.generationConfig, undefined)
+  assert.equal(laterEffort.request.generationConfig, undefined)
+  resetAntigravitySystemPins()
+})
+
+test('antigravity fallback sessionId is per model; DSH session_id stays one conversation', () => {
+  resetAntigravitySystemPins()
+  const flash = openaiToAntigravity({
+    model: 'gemini-3.7-flash-high',
+    messages: [{ role: 'user', content: 'hi' }],
+  }, { projectId: 'p' })
+  const sonnet = openaiToAntigravity({
+    model: 'claude-sonnet-4-6',
+    messages: [{ role: 'user', content: 'hi' }],
+  }, { projectId: 'p' })
+  assert.equal(flash.request.sessionId, `${ANTIGRAVITY_STABLE_SESSION}:gemini-3.7-flash-high`)
+  assert.equal(sonnet.request.sessionId, `${ANTIGRAVITY_STABLE_SESSION}:claude-sonnet-4-6`)
+  assert.notEqual(flash.request.sessionId, sonnet.request.sessionId)
+  assert.equal(antigravitySessionIdOf({}), ANTIGRAVITY_STABLE_SESSION)
+  assert.equal(
+    antigravitySessionIdOf({ session_id: 'session-dsh-1', model: 'gemini-3.7-flash-high' }),
+    'session-dsh-1',
+  )
+  assert.equal(
+    openaiToAntigravity({
+      model: 'claude-sonnet-4-6',
+      session_id: 'session-dsh-1',
+      messages: [{ role: 'user', content: 'hi' }],
+    }, { projectId: 'p' }).request.sessionId,
+    'session-dsh-1',
+  )
+  resetAntigravitySystemPins()
 })

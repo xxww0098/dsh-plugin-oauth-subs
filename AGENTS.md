@@ -141,7 +141,8 @@ Export (names may vary, behavior must not):
 2. Apply / pin helper used by `request.ts` or `proxy.ts`
    (`applyCodexCache`, `applyGrokCache`, `applyGlmCache` /
    `applyGlmAnthropicCache`,
-   `antigravitySessionIdOf` + `pinAntigravitySystemInstruction`,
+   `antigravitySessionIdOf` + `pinAntigravitySystemInstruction` /
+   `pinAntigravityTools` / `pinAntigravityThinking`,
    `kiroConversationId`).
 3. Header helper if the vendor sticky-routes on headers
    (`codexCacheHeaders`, `grokAffinityHeaders`). GLM headers stay in
@@ -173,8 +174,9 @@ GLM:       drop prompt_cache_key / retention / options
            extra system as text blocks without cache_control
            Completions leftover: body.user + header x-session-id
            extra system parked at messages suffix
-Antigravity: request.sessionId
-           first systemInstruction pinned; extra → trailing user turn
+Antigravity: request.sessionId (fallback `dsh-antigravity:<model>`)
+           first systemInstruction + equivalent tools pinned; extra → trailing user
+           thinkingConfig sticky-first; no implicitCacheConfig
 Kiro:      conversationState.conversationId (+ model)
            drop Codex/Grok cache fields
            system as first history user+ack; extra snapshots at history suffix
@@ -230,13 +232,19 @@ Kiro:      conversationState.conversationId (+ model)
 **Antigravity** (`src/oauth/antigravity/cache.ts` + usage map in `request.ts`)
 
 - Gemini implicit-caches `systemInstruction` + contents prefix.
-- Sticky: `request.sessionId` on generateContent. Fallback constant
-  `dsh-antigravity`. Never `` `-${Date.now()}` ``.
+- Sticky: `request.sessionId` on generateContent. DSH `session_id` is
+  one conversation (keep as-is). Fallback `dsh-antigravity:<model>`
+  (bare `dsh-antigravity` only when model is unknown). Never
+  `` `-${Date.now()}` ``.
 - Pin the first `systemInstruction` text per DSH session. Extra snapshot
   text is a trailing **user** turn (Gemini has no trailing system the way
   GLM messages do).
-- Map `cachedContentTokenCount` / `cacheTokensDetails` → OpenAI
-  `prompt_tokens_details.cached_tokens` or DSH hit rate stays 0%.
+- Pin the first `request.tools` JSON when names+schemas are equivalent
+  (canonical key order). Added or removed tools are a real change.
+- `thinkingConfig` is sticky-first. Do **not** send `implicitCacheConfig`.
+- Map `cachedContentTokenCount` / `cacheTokensDetails` / CLI
+  `cache_read_tokens` / `cacheReadTokens` / `cacheReadInputTokens` →
+  OpenAI `prompt_tokens_details.cached_tokens` or DSH hit rate stays 0%.
 
 **Kiro** (`src/oauth/kiro/cache.ts`)
 
@@ -277,7 +285,7 @@ When adding `src/oauth/<id>/`:
 | Codex | prefix of `instructions` then `input` | `session-id` + `x-client-request-id` = `prompt_cache_key` | developer at **input suffix** | `cacheReadTokens` |
 | Grok | conversation shard | `x-grok-conv-id` (+ body `prompt_cache_key`) | n/a (shard, not prefix) | `cacheReadTokens`; 512 + reuse<10% = affinity miss |
 | GLM | content hash of leading system + history | Anthropic: `metadata.user_id` + `x-session-id` + first-block `cache_control`; Completions leftover: `user` + `x-session-id` | Completions: system at **messages suffix**; Anthropic: extra system text blocks without cache_control | `cached_tokens` / `cache_read_input_tokens` |
-| Antigravity | Gemini `systemInstruction` + contents | `request.sessionId` | extra as trailing **user** | `cachedContentTokenCount` → `cached_tokens` |
+| Antigravity | Gemini `systemInstruction` + contents + tools | `request.sessionId` (fallback + model) | extra as trailing **user** | `cachedContentTokenCount` / `cache_read_tokens` → `cached_tokens` |
 | Kiro | CodeWhisperer conversation | `conversationId` + model | system as first history user+ack; extra at history suffix | `cacheReadInputTokens` → `cached_tokens` |
 
 ### Do not

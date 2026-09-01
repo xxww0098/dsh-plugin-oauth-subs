@@ -2,7 +2,7 @@
  * OpenAI chat/completions ↔ daily-cloudcode-pa generateContent (hub).
  * Body always includes project + model + userAgent: "antigravity".
  */
-export { ANTIGRAVITY_STABLE_SESSION, resetAntigravitySystemPins } from './cache.js';
+export { ANTIGRAVITY_STABLE_SESSION, resetAntigravitySystemPins, } from './cache.js';
 /**
  * Gemini `FunctionResponse.response` is a singular protobuf Struct.
  * Arrays / null / number / bool must be wrapped or cloudcode-pa returns 400:
@@ -18,7 +18,7 @@ export declare function openaiToAntigravity(payload: any, { projectId, sessionId
     requestId: string;
     request: {
         contents: any[];
-        sessionId: string;
+        sessionId: any;
     };
 };
 export declare function collectAntigravityParts(body: any): {
@@ -28,6 +28,8 @@ export declare function collectAntigravityParts(body: any): {
     rawFinish: any;
     usage: any;
 };
+/** Gemini usage plus CLI stats aliases (cache_read_tokens / cacheReadTokens). */
+export declare function cachedTokensOf(usage: any): number;
 /** OpenAI chat.completion usage. Thoughts count as completion tokens (and tok/s). */
 export declare function mapAntigravityUsage(usage: any): {
     prompt_tokens: any;
