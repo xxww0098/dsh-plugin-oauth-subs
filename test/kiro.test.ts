@@ -24,6 +24,7 @@ import {
   kiroSocialTokenRedirectUri,
   kiroUsageUrl,
   refreshKiro,
+  refreshKiroSocial,
   validateKiroApiKey,
   validateKiroIdpEndpoint,
   validateKiroRefreshToken,
@@ -389,6 +390,47 @@ test('Kiro Social loopback registers localhost and accepts / plus /oauth/callbac
   assert.equal(tokenRedirect, `http://localhost:${thirdPort}/signin/callback?login_option=google`)
   assert.equal(String(tokenRedirect).includes('127.0.0.1'), false)
   assert.equal(new URL(third.authorizeUrl).searchParams.get('redirect_uri').includes('127.0.0.1'), false)
+})
+
+test('refreshKiroSocial rewrites stale ms expiresAt from expiresIn', async () => {
+  const stale = Date.parse('2026-08-31T10:04:33.000Z')
+  const before = Date.now()
+  const next = await refreshKiroSocial(kiroSession({
+    accessToken: 'old',
+    refreshToken: RT,
+    authMethod: 'social',
+    expiresAt: stale,
+  }), {
+    fetchFn: async () => json({ accessToken: 'next', refreshToken: RT, expiresIn: 3600 }),
+  })
+  assert.equal(next.accessToken, 'next')
+  assert.notEqual(next.expiresAt, stale)
+  assert.ok(next.expiresAt > before + 3_000_000)
+  assert.ok(next.expiresAt <= before + 3_700_000)
+  assert.ok(next.expiresAt - Date.now() > 2 * 60_000)
+})
+
+test('refreshKiroSocial 429 keeps HTTP status and Retry-After', async () => {
+  await assert.rejects(
+    () => refreshKiroSocial(kiroSession({
+      accessToken: 'old',
+      refreshToken: RT,
+      authMethod: 'social',
+      expiresAt: Date.now() - 1,
+    }), {
+      fetchFn: async () => new Response('Too many requests', {
+        status: 429,
+        headers: { 'retry-after': '2' },
+      }),
+    }),
+    (error) => {
+      assert.equal(error.status, 429)
+      assert.equal(error.retryAfter, '2')
+      assert.match(error.message, /HTTP 429/)
+      assert.match(error.message, /Too many requests/)
+      return true
+    },
+  )
 })
 
 test('refreshKiro social / idc / entra hit the matching endpoints', async () => {

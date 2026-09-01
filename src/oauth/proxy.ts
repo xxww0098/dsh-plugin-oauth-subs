@@ -27,6 +27,8 @@ import {
   mapKiroUsage,
   mergeKiroText,
   openaiToKiro,
+  resolveKiroUsage,
+  unwrapKiroEventPayload,
 } from './kiro/request.js'
 import {
   ANTIGRAVITY_GENERATE_URL,
@@ -77,14 +79,18 @@ class RequestError extends Error {
   }
 }
 
-function send(response, status, body) {
+function send(response, status, body, extraHeaders = {}) {
   const text = typeof body === 'string' ? body : JSON.stringify(body)
-  response.writeHead(status, {
+  const headers = {
     ...JSON_TYPE,
     'cache-control': 'no-store',
     'content-length': Buffer.byteLength(text),
     'x-content-type-options': 'nosniff',
-  })
+  }
+  for (const [key, value] of Object.entries(extraHeaders ?? {})) {
+    if (value != null && String(value) !== '') headers[key] = String(value)
+  }
+  response.writeHead(status, headers)
   response.end(text)
 }
 
@@ -454,7 +460,13 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
     async listen() {
       server = createServer((request, response) => {
         handle(request, response).catch((error) => {
-          if (!response.headersSent) send(response, error.status ?? 500, { error: describeError(error) })
+          if (!response.headersSent) {
+            const extra = {}
+            if (error?.retryAfter != null && String(error.retryAfter).trim()) {
+              extra['retry-after'] = String(error.retryAfter).trim()
+            }
+            send(response, error.status ?? 500, { error: describeError(error) }, extra)
+          }
           else response.end()
         })
       })
@@ -828,6 +840,7 @@ async function forwardKiro(request, response, { session, fetchFn, maxRequestBody
   let accText = ''
   let sawTools = false
   let usage
+  let contextPercentage
   const reader = upstream.body?.getReader()
   if (!reader) {
     await writeKiroSse(response, kiroToOpenaiChunk({}, { model, id, done: true }), signal)
@@ -840,8 +853,8 @@ async function forwardKiro(request, response, { session, fetchFn, maxRequestBody
     const events = parser.feed(value ?? Buffer.alloc(0))
     for (const event of events) {
       const type = event.type
-      const data = event.payload && typeof event.payload === 'object' ? event.payload : {}
-      if (type === 'assistantResponseEvent' && typeof data.content === 'string' && data.content) {
+      const data = unwrapKiroEventPayload(event.payload, type)
+      if ((type === 'assistantResponseEvent' || typeof data.content === 'string') && typeof data.content === 'string' && data.content) {
         const merged = mergeKiroText(accText, data.content)
         accText = merged.text
         if (merged.delta) {
@@ -859,13 +872,15 @@ async function forwardKiro(request, response, { session, fetchFn, maxRequestBody
           }
         }
         await writeKiroSse(response, kiroToOpenaiChunk(delta, { model, id }), signal)
-      } else if (type === 'metadataEvent' && data.tokenUsage) {
-        usage = mapKiroUsage(data.tokenUsage)
       } else if (type === 'exception' || type === 'invalidStateEvent' || event.messageType === 'exception') {
         const message = data.message || data.reason || 'kiro upstream exception'
         await writeKiroSse(response, kiroToOpenaiChunk({ content: '' }, { model, id, done: true, finishReason: 'stop' }), signal)
         console.error(`[oauth-subs] kiro upstream exception: ${message}`)
       }
+      const tokens = data.tokenUsage ?? data.token_usage
+      if (tokens) usage = mapKiroUsage(tokens)
+      const percent = data.contextUsagePercentage ?? data.context_usage_percentage
+      if (typeof percent === 'number' && Number.isFinite(percent)) contextPercentage = percent
     }
     if (done) break
   }
@@ -874,7 +889,7 @@ async function forwardKiro(request, response, { session, fetchFn, maxRequestBody
     id,
     done: true,
     finishReason: sawTools ? 'tool_calls' : 'stop',
-    usage,
+    usage: resolveKiroUsage({ usage, contextPercentage, text: accText }, model),
   }), signal)
   response.write('data: [DONE]\n\n')
   if (!response.writableEnded && !response.destroyed) response.end()
