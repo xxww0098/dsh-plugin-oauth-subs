@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.58
+
+- Antigravity: pin tools, sticky thinking, and a `dsh-antigravity:<model>` session fallback so the implicit-cache prefix stays stable. Google may still omit `cached_tokens`. PR #67.
+- Kiro: always rewrite `expiresAt` from the social refresh TTL (stops refresh-every-request 429); forward refresh 429 with Retry-After; usage from `metadataEvent.tokenUsage` when present, else `contextUsageEvent` percentage × the model context window. PR #68.
+- Codex: strip DSH `session_id` from the chatgpt.com JSON after copying it to `prompt_cache_key` (fixes 400 Unsupported parameter: session_id). PR #69.
+
 ## 0.0.57
 
 - Kiro: park DSH system prefix in a stable history user+ack; per-model conversationId (`session:model`); surface `cacheReadInputTokens` as `prompt_tokens_details.cached_tokens`. PR #65.
