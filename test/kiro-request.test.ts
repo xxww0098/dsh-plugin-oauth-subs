@@ -156,22 +156,209 @@ test('same DSH session switching models does not reuse conversationId', () => {
   assert.notEqual(a.conversationState.conversationId, b.conversationState.conversationId)
 })
 
+const EZ5 = 'toolu_bdrk_01Ez5MSML7fNdsjMvkPUTeCd'
+const KG = 'toolu_bdrk_01KGbfVG6ZntZbT6MBPiMyfg'
+const EZ5_WIRE = 'tooluse_bdrk_01Ez5MSML7fNdsjMvkPUTeCd'
+const KG_WIRE = 'tooluse_bdrk_01KGbfVG6ZntZbT6MBPiMyfg'
+
+function toolCall(id, name = 'run_code', args = '{}') {
+  return { id, type: 'function', function: { name, arguments: args } }
+}
+
+function toolUseIds(row) {
+  return row?.assistantResponseMessage?.toolUses?.map((item) => item.toolUseId) ?? []
+}
+
+function toolResultIdsOf(row) {
+  const results = row?.userInputMessage?.userInputMessageContext?.toolResults
+    ?? row?.userInputMessageContext?.toolResults
+  return (results ?? []).map((item) => item.toolUseId)
+}
+
+function isKiroSystemAck(row) {
+  return row?.assistantResponseMessage?.content === KIRO_SYSTEM_ACK
+}
+
+function assertToolResultFollowsUse(history, current, toolUseId) {
+  const idx = history.findIndex((row) => toolUseIds(row).includes(toolUseId))
+  assert.notEqual(idx, -1, `missing tool_use ${toolUseId}`)
+  const after = history[idx + 1]
+  assert.equal(isKiroSystemAck(after), false, `KIRO_SYSTEM_ACK between tool_use ${toolUseId} and tool_result`)
+  const resultIds = after ? toolResultIdsOf(after) : toolResultIdsOf(current)
+  assert.equal(resultIds.includes(toolUseId), true, `missing tool_result ${toolUseId}`)
+  if (!after) {
+    assert.equal(toolUseIds(history.at(-1)).includes(toolUseId), true)
+    assert.equal(isKiroSystemAck(history.at(-1)), false)
+  }
+}
+
 test('tools map into userInputMessageContext and tool results stay in history', () => {
   const body = openaiToKiro({
     model: 'deepseek-3.2',
     tools: [{ type: 'function', function: { name: 'run_code', description: 'run', parameters: { type: 'object', properties: { code: { type: 'string' } } } } }],
     messages: [
       { role: 'user', content: 'run it' },
-      { role: 'assistant', content: '', tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'run_code', arguments: '{"code":"1"}' } }] },
+      { role: 'assistant', content: '', tool_calls: [toolCall('call_1')] },
       { role: 'tool', tool_call_id: 'call_1', content: '{"ok":true}' },
       { role: 'user', content: 'thanks' },
     ],
   })
   const current = body.conversationState.currentMessage.userInputMessage
   assert.equal(current.userInputMessageContext.tools[0].toolSpecification.name, 'run_code')
-  const assistant = body.conversationState.history.find((row) => row.assistantResponseMessage)
+  const assistant = body.conversationState.history.find((row) => row.assistantResponseMessage?.toolUses)
   assert.equal(assistant.assistantResponseMessage.toolUses[0].name, 'run_code')
   assert.equal(assistant.assistantResponseMessage.toolUses[0].toolUseId.startsWith('tooluse_'), true)
+  const asstIdx = body.conversationState.history.indexOf(assistant)
+  assert.equal(toolResultIdsOf(body.conversationState.history[asstIdx + 1]).includes('tooluse_1'), true)
+})
+
+test('two tool rounds keep tool_use before matching tool_result (live 0.0.58 walk)', () => {
+  resetKiroSystemPins()
+  const session_id = 'session-34f2f661-be56-4464-8b29-f20217fd0711'
+  const model = 'claude-opus-5'
+  openaiToKiro({
+    model,
+    session_id,
+    messages: [
+      { role: 'system', content: 'You are DSH.' },
+      { role: 'user', content: 'run it' },
+    ],
+  })
+  const extraSystem = 'You are DSH.\nThis snapshot supersedes the previous context.'
+  const first = openaiToKiro({
+    model,
+    session_id,
+    messages: [
+      { role: 'system', content: extraSystem },
+      { role: 'user', content: 'run it' },
+      { role: 'assistant', content: '', tool_calls: [toolCall(EZ5)] },
+      { role: 'tool', tool_call_id: EZ5, content: '{"ok":1}' },
+    ],
+  })
+  const firstHist = first.conversationState.history
+  const firstCurrent = first.conversationState.currentMessage.userInputMessage
+  assert.equal(firstHist[0].userInputMessage.content, 'You are DSH.')
+  assert.equal(isKiroSystemAck(firstHist[1]), true)
+  assertToolResultFollowsUse(firstHist, firstCurrent, EZ5_WIRE)
+  assert.deepEqual(toolResultIdsOf(firstCurrent), [EZ5_WIRE])
+  assert.deepEqual(toolUseIds(firstHist.at(-1)), [EZ5_WIRE])
+
+  const second = openaiToKiro({
+    model,
+    session_id,
+    messages: [
+      { role: 'system', content: extraSystem },
+      { role: 'user', content: 'run it' },
+      { role: 'assistant', content: '', tool_calls: [toolCall(EZ5)] },
+      { role: 'tool', tool_call_id: EZ5, content: '{"ok":1}' },
+      { role: 'assistant', content: '', tool_calls: [toolCall(KG)] },
+      { role: 'tool', tool_call_id: KG, content: '{"ok":2}' },
+    ],
+  })
+  const hist = second.conversationState.history
+  const current = second.conversationState.currentMessage.userInputMessage
+  assert.equal(hist[0].userInputMessage.content, 'You are DSH.')
+  assert.equal(isKiroSystemAck(hist[1]), true)
+  assertToolResultFollowsUse(hist, current, EZ5_WIRE)
+  assertToolResultFollowsUse(hist, current, KG_WIRE)
+  assert.deepEqual(toolUseIds(hist.at(-1)), [KG_WIRE])
+  assert.deepEqual(toolResultIdsOf(current), [KG_WIRE])
+  const ez5Idx = hist.findIndex((row) => toolUseIds(row).includes(EZ5_WIRE))
+  const kgIdx = hist.findIndex((row) => toolUseIds(row).includes(KG_WIRE))
+  assert.ok(ez5Idx < kgIdx)
+  assert.deepEqual(toolResultIdsOf(hist[ez5Idx + 1]), [EZ5_WIRE])
+  assert.equal(isKiroSystemAck(hist[kgIdx]), false)
+
+  const follow = openaiToKiro({
+    model,
+    session_id,
+    messages: [
+      { role: 'system', content: extraSystem },
+      { role: 'user', content: 'run it' },
+      { role: 'assistant', content: '', tool_calls: [toolCall(EZ5)] },
+      { role: 'tool', tool_call_id: EZ5, content: '{"ok":1}' },
+      { role: 'assistant', content: '', tool_calls: [toolCall(KG)] },
+      { role: 'tool', tool_call_id: KG, content: '{"ok":2}' },
+      { role: 'user', content: 'thanks' },
+    ],
+  })
+  const followHist = follow.conversationState.history
+  const followCurrent = follow.conversationState.currentMessage.userInputMessage
+  assert.equal(followHist[0].userInputMessage.content, 'You are DSH.')
+  assertToolResultFollowsUse(followHist, followCurrent, EZ5_WIRE)
+  assertToolResultFollowsUse(followHist, followCurrent, KG_WIRE)
+  assert.equal(followCurrent.content, 'thanks')
+  assert.equal((followCurrent.userInputMessageContext.toolResults ?? []).length, 0)
+})
+
+test('extra system snapshot does not sit between last tool_use and current toolResults', () => {
+  resetKiroSystemPins()
+  openaiToKiro({
+    model: 'claude-sonnet-5',
+    session_id: 'session-dsh-tool-extra',
+    messages: [
+      { role: 'system', content: 'You are DSH.' },
+      { role: 'user', content: 'use the tool' },
+    ],
+  })
+  const extra = 'This snapshot supersedes the previous context.'
+  const body = openaiToKiro({
+    model: 'claude-sonnet-5',
+    session_id: 'session-dsh-tool-extra',
+    messages: [
+      { role: 'system', content: `You are DSH.\n${extra}` },
+      { role: 'user', content: 'use the tool' },
+      { role: 'assistant', content: '', tool_calls: [toolCall(EZ5, 'Read')] },
+      { role: 'tool', tool_call_id: EZ5, content: '{"ok":true}' },
+    ],
+  })
+  const history = body.conversationState.history
+  const current = body.conversationState.currentMessage.userInputMessage
+  assert.equal(history[0].userInputMessage.content, 'You are DSH.')
+  assert.equal(isKiroSystemAck(history[1]), true)
+  assert.equal(history.some((row) => row.userInputMessage?.content === extra), true)
+  assertToolResultFollowsUse(history, current, EZ5_WIRE)
+  assert.deepEqual(toolUseIds(history.at(-1)), [EZ5_WIRE])
+  assert.deepEqual(toolResultIdsOf(current), [EZ5_WIRE])
+  assert.equal(isKiroSystemAck(history.at(-1)), false)
+
+  const withEmptyUser = openaiToKiro({
+    model: 'claude-sonnet-5',
+    session_id: 'session-dsh-tool-extra',
+    messages: [
+      { role: 'system', content: `You are DSH.\n${extra}` },
+      { role: 'user', content: 'use the tool' },
+      { role: 'assistant', content: '', tool_calls: [toolCall(EZ5, 'Read')] },
+      { role: 'tool', tool_call_id: EZ5, content: '{"ok":true}' },
+      { role: 'user', content: '' },
+    ],
+  })
+  const emptyHist = withEmptyUser.conversationState.history
+  assert.equal(emptyHist[0].userInputMessage.content, 'You are DSH.')
+  assertToolResultFollowsUse(emptyHist, withEmptyUser.conversationState.currentMessage.userInputMessage, EZ5_WIRE)
+})
+
+test('multiple tool_calls on one assistant all pair with their toolResults', () => {
+  resetKiroSystemPins()
+  const body = openaiToKiro({
+    model: 'claude-opus-5',
+    session_id: 'session-dsh-multi-tool',
+    messages: [
+      { role: 'system', content: 'You are DSH.' },
+      { role: 'user', content: 'run both' },
+      { role: 'assistant', content: '', tool_calls: [toolCall(EZ5), toolCall(KG, 'read_file')] },
+      { role: 'tool', tool_call_id: EZ5, content: '{"ok":1}' },
+      { role: 'tool', tool_call_id: KG, content: '{"ok":2}' },
+    ],
+  })
+  const history = body.conversationState.history
+  const current = body.conversationState.currentMessage.userInputMessage
+  assert.equal(history[0].userInputMessage.content, 'You are DSH.')
+  assert.equal(isKiroSystemAck(history[1]), true)
+  assert.deepEqual(toolUseIds(history.at(-1)), [EZ5_WIRE, KG_WIRE])
+  assert.deepEqual(toolResultIdsOf(current), [EZ5_WIRE, KG_WIRE])
+  assertToolResultFollowsUse(history, current, EZ5_WIRE)
+  assertToolResultFollowsUse(history, current, KG_WIRE)
 })
 
 test('eventstream fixture becomes chat.completion content', () => {

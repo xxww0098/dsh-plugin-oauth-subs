@@ -1,5 +1,47 @@
 # 错误记录
 
+## 2026-09-01：Kiro 0.0.58 live 400 — tool_result 与 tool_use 不相邻
+
+### 现象
+
+Mac，2026-09-01。插件 **0.0.58**。SkillStar `session-34f2f661-be56-4464-8b29-f20217fd0711`。模型 `oauth-kiro` / `claude-opus-5` `effort=max`。DSH：
+
+```
+本轮运行失败400: {"message":"messages.2.content.4: unexpected `tool_use_id` found in `tool_result` blocks: tooluse_bdrk_01Ez5MSML7fNdsjMvkPUTeCd. Each `tool_result` block must have a corresponding `tool_use` block in the previous message.","type":"invalid_request_error","code":"kiro_upstream"}
+```
+
+`kiro_upstream` 是 AWS / CodeWhisperer 拒了 `openaiToKiro` 的 body。`messages.N.content.M` 是上游用 Anthropic 形描述配对；hop 仍是 `GenerateAssistantResponse`。
+
+### 证据
+
+Walk（CST 08:56:53–08:57:09），`POST :8318/kiro/v1/chat/completions`：
+
+1. assistant `toolu_bdrk_01Ez5MSML7fNdsjMvkPUTeCd` `run_code` → 200
+2. tool result 同一 id → 200
+3. assistant `toolu_bdrk_01KGbfVG6ZntZbT6MBPiMyfg` → 200
+4. tool result 同一 id
+5. **第三跳**（history 里已有两轮 tool）→ 400，unexpected `tooluse_bdrk_01Ez5MSML7fNdsjMvkPUTeCd` 不在 previous message
+
+DSH 存的是 Bedrock `toolu_bdrk_…`。`normalizeToolUseId` 去 `toolu_` 再加 `tooluse_`，400 里的名字就是这次改写。两侧都走同一函数，id 改写本身不是配对 bug。
+
+`role === 'assistant'` 时旧顺序是 `flushUser()` 再 `flushAssistant()`。`flushUser` 会把 `pendingToolResults` 一并写出。第一轮结束：`pendingAssistant` = tool_use Ez5，`pendingToolResults` = [Ez5]。第二轮 assistant 到：先写出 **user toolResults Ez5**，再写出 **tool_use Ez5**。history 里 tool_result 在 tool_use **前面**。末条是第二轮 tool_use KG，current 是 KG 的 results；Ez5 的 results 仍挂在一条没有对应 previous `tool_use` 的 user 上。
+
+另一条：`pinKiroSystemPrefix`（0.0.57 / PR #65）把变更的 DSH system 钉成 history **后缀** user+ack。tool-result 回合若把这对该在 last assistant `toolUses` 和 current `toolResults` 中间，上一 previous 变成 canned `I will follow these instructions.`，同样 400。
+
+### 根因
+
+代理翻译层 `openaiToKiro`。不是登录 / yaml / Codex `prompt_cache_key`，也不是 conversationId-per-model 要回退。
+
+### 修复
+
+- 新 assistant 到时先 `flushAssistant`（上一条 tool_use），再 `flushUser`（属于它的 tool_results）。首条 user 文本仍先入 history（那时 `flushAssistant` 是空操作）。
+- `parkKiroSystemExtra`：extra system user+ack 仍挂后缀；若 current 带着 `toolResults` 且 history 末条是 unpaired `toolUses`，改插到那条 assistant **前面**，永不夹在一对中间。
+- 需要的顺序：assistant toolUses Ez5 → user toolResults Ez5 → assistant toolUses KG → current toolResults KG。
+
+### 验证
+
+- `npm test`：两轮 `assistant+tool` 再带上两对的 follow-up，AWS history 配对；extra snapshot 在普通 user 回合仍挂后缀；带 extra 的 tool-result 回合 last assistant 与 current `toolResults` 之间没有 `KIRO_SYSTEM_ACK`；多 `tool_calls` 的 results 都对上；history 首对仍是 leading system。无 live AWS。
+
 ## 2026-09-01：Codex 上游 400 `Unsupported parameter: session_id`
 
 ### 现象

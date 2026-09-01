@@ -68,6 +68,7 @@ DSH chat/completions  →  POST https://q.<region>.amazonaws.com/
 - 历史是 `userInputMessage` / `assistantResponseMessage` 成对。当前 user 文本只是这一轮。
 - `conversationId` = DSH `session_id` / `prompt_cache_key` **加上 model**（`session:deepseek-3.2`），缺 pin 时 `dsh-kiro:<model>`。**永远不要** `Date.now()`。18 个目录模型各钉各的，切换 picker 不共用一条 AWS conversation。
 - tools 仍在 **current** `userInputMessageContext.tools`（官方也是挂 current，不在 conversationState 顶层）。
+- `toolResults` 必须紧跟带该 `toolUseId` 的 `assistantResponseMessage`（history user 或 current）。新 assistant 到时先 `flushAssistant`（上一条 tool_use）再 `flushUser`（它的 tool_results）；首条 user 文本仍先入 history。**不要**把 extra system user+ack 插在这一对中间（AWS 400 `unexpected tool_use_id` / `kiro_upstream`）。
 - 上游 401/403 改写成 400（非 AUTH），避免 DSH 把订阅打成「API 密钥无效」。
 
 命中：有 `metadataEvent.tokenUsage`（或嵌套 `metadataEvent` / snake_case）时用精确字段，`cacheReadInputTokens` → `prompt_tokens_details.cached_tokens`。
@@ -94,8 +95,8 @@ AWS 按 **CodeWhisperer conversation** 粘滞。没有 Codex 前缀、没有 Gro
 |---|---|---|
 | 1 | `kiroCacheSessionId` | 清洗 DSH `session_id` / `prompt_cache_key` / model |
 | 2 | `kiroConversationId` | pin + **model**；否则 **`dsh-kiro:<model>`** |
-| 3 | `pinKiroSystemPrefix` | 每个 conversationId 钉第一次 system；DSH snapshot 增量挂 history **后缀**（再一对 user+ack） |
-| 4 | `openaiToKiro` | 写入 `conversationId`；current 不再重倒 system |
+| 3 | `pinKiroSystemPrefix` | 每个 conversationId 钉第一次 system；DSH snapshot 增量挂 history **后缀**（再一对 user+ack）。后缀若会夹在 assistant `toolUses` 和 current `toolResults` 之间，改插到那条 assistant **前面** |
+| 4 | `openaiToKiro` | 写入 `conversationId`；current 不再重倒 system；`parkKiroSystemExtra` 保证 tool 对相邻 |
 | 5 | `mapKiroUsage` / `resolveKiroUsage` | 精确 `tokenUsage` 优先；否则 `contextUsageEvent` % × 窗口 |
 
 proxy 只删 `prompt_cache_retention` / `prompt_cache_options`，**不**把 `prompt_cache_key` 转给 AWS。
@@ -107,6 +108,8 @@ proxy 只删 `prompt_cache_retention` / `prompt_cache_options`，**不**把 `pro
 - 不要把整段 system 每轮拼进 `currentMessage.content`（current 一变，AWS 前缀就 miss）。
 - 不要 18 个模型共用一个 `dsh-kiro` conversationId。
 - 不要给 Kiro 写 Codex `session-id` / `prompt_cache_key` 或 Grok `x-grok-conv-id`。
+- 不要在新 assistant 上先 `flushUser` 再 `flushAssistant`（会把上一轮 tool_result 写到 tool_use 前面；0.0.58 第三跳 400）。
+- 不要把 extra system user+ack 插在 `toolUses` 和匹配的 `toolResults` 中间。
 - 不要把 tools 挪到 conversationState 顶层（官方挂 current `userInputMessageContext`）。
 - 不要把 Social 的 `redirect_uri` 在 authorize 和 token 之间改掉（HTTP 500）。
 - 不要在 refresh 成功后保留旧 `expiresAt`（TokenManager 会每轮打 `/refreshToken` → 429）。
@@ -132,6 +135,7 @@ proxy 只删 `prompt_cache_retention` / `prompt_cache_options`，**不**把 `pro
 | 对话不是 OpenAI | 同文件 2026-08-30（已在 0.0.50 做成翻译层） |
 | 导入只吃第一条 / IDE 丢 client 注册 | 同文件 2026-08-31 Kiro 导入 |
 | 18 模型缓存 miss（system 每轮进 current + 共用 conversationId） | 同文件 2026-08-31 Kiro 缓存 |
+| 第二轮 tool 前 flushUser 把 tool_result 写到 tool_use 前面（400） | 同文件 2026-09-01 Kiro tool pairing |
 | 每轮 refresh 429 + usage 0/0/0 | 同文件 2026-09-01 Kiro 0.0.57 live |
 | overlay 后 usage 仍 0/0/0（header-type 不够） | 同文件 2026-09-01 Kiro usage 真实事件 |
 
