@@ -741,7 +741,7 @@ async function forwardAntigravity(request, response, { session, tokens, fetchFn,
     try { parsed = text ? JSON.parse(text) : {} } catch {
       throw new RequestError(502, 'antigravity upstream returned invalid JSON')
     }
-    send(response, 200, antigravityToOpenai(parsed, { model }))
+    send(response, 200, antigravityToOpenai(parsed, { model, sessionId }))
     return
   }
 
@@ -751,7 +751,7 @@ async function forwardAntigravity(request, response, { session, tokens, fetchFn,
     'x-content-type-options': 'nosniff',
   })
   const id = `chatcmpl-${Date.now()}`
-  const streamMapper = createAntigravityOpenaiStream({ model, id })
+  const streamMapper = createAntigravityOpenaiStream({ model, id, sessionId })
   let rest = ''
   const reader = upstream.body?.getReader()
   if (!reader) {

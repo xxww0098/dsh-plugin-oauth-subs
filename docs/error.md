@@ -1,5 +1,38 @@
 # 错误记录
 
+## 2026-09-01：Antigravity 工具轮 400 缺 `thought_signature`
+
+### 现象
+
+Mac，2026-09-01，插件 **0.0.58**。Hop 是 Cloud Code `streamGenerateContent`（Antigravity / Gemini）。DSH 工具 `run_code`，Google 名 `default_api:run_code`。
+
+```text
+本轮运行失败400: {"code":400,"message":"Function call is missing a thought_signature in functionCall parts. This is required for tools to work correctly, and missing thought_signature may lead to degraded model performance. Additional data, function call `default_api:run_code` , position 5. Please refer to https://ai.google.dev/gemini-api/docs/thought-signatures for more details.","status":"INVALID_ARGUMENT"}
+```
+
+### 证据
+
+- Gemini 3 / 当前 Cloud Code：把上一轮 `functionCall` 再放进 `contents` 时，**第一条**（并行组）或**每一步**（串行）必须带回模型当时给的 `thoughtSignature`。官方 REST 写在 **part 上**（`functionCall` 的兄弟字段），不是 OpenAI `tool_calls` 的标准键。
+- `collectAntigravityParts` 跳过 `part.thought`，只把 `functionCall` 收成 `{ id, type, function: { name, arguments } }`，签名丢掉。
+- `openaiToAntigravity` 从 DSH `tool_calls` 重建 `{ functionCall: { name, args } }`，没有签名。
+- 官方文档：https://ai.google.dev/gemini-api/docs/thought-signatures 。不要编空串或 `skip_thought_signature_validator`（受限 / 会伤思考质量）。
+
+### 根因
+
+代理翻译层（`src/oauth/antigravity/request.ts`）。不是登录 / 指纹 / `sessionId` 前缀 pin（#67 的 tools / thinking / systemInstruction 仍要留着），也不是 Codex / Grok / GLM / Kiro。DSH Completions 没有一等 `thought_signature` 字段。
+
+### 修复
+
+- 入站读 part 级 `thoughtSignature` / `thought_signature`，也接受嵌在 `functionCall` 里的。
+- 抄到 OpenAI `tool_calls`：`thoughtSignature`、`thought_signature`、`extra_content.google.thought_signature`（DSH 若原样回显就能闭环）。
+- DSH 剥未知键时：每个 `sessionId` 一张表，按 tool id 和 `name+canonical args` 记住上次签名，`openaiToAntigravity` 再贴回 **part 级** `thoughtSignature`。
+- 缺签名仍发 tool_calls；空串不写字段。多工具各自保留自己的签名。`part.thought` 仍不进可见文本；签名若只在 thought part 上，转给随后第一条无签名的 functionCall。
+- 不发 `--subclient_type hub` HTTP 头，不 CreateCachedContent，不 `implicitCacheConfig`。
+
+### 验证
+
+- `npm test`：带 `thoughtSignature` 的 SSE / 模型 part → OpenAI `tool_calls` 仍可用，再转回 Antigravity 时同一条 functionCall part 带同一签名；缺签名不崩、出站省略字段；多 tool 各自保留；`functionResponse` 数组 wrap（`tryJson` / `{ result }`）不变。无 live Cloud Code。
+
 ## 2026-09-01：Kiro 0.0.58 live 400 — tool_result 与 tool_use 不相邻
 
 ### 现象

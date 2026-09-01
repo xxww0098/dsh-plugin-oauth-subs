@@ -3,6 +3,9 @@
  * Body always includes project + model + userAgent: "antigravity".
  */
 export { ANTIGRAVITY_STABLE_SESSION, resetAntigravitySystemPins, } from './cache.js';
+export declare function resetAntigravityThoughtSignatures(): void;
+/** Cloud Code / Gemini REST: part-level thoughtSignature (also accept snake / nested). */
+export declare function thoughtSignatureOf(...sources: any[]): any;
 /**
  * Gemini `FunctionResponse.response` is a singular protobuf Struct.
  * Arrays / null / number / bool must be wrapped or cloudcode-pa returns 400:
@@ -21,7 +24,7 @@ export declare function openaiToAntigravity(payload: any, { projectId, sessionId
         sessionId: any;
     };
 };
-export declare function collectAntigravityParts(body: any): {
+export declare function collectAntigravityParts(body: any, { sessionId }?: {}): {
     text: string;
     toolCalls: any[];
     finishReason: string;
@@ -42,7 +45,7 @@ export declare function incrementalSuffix(next: any, previous: any): string;
  * Per-stream mapper: cumulative Google frames → incremental OpenAI chunks.
  * Thought parts stay out of `delta.content`; their tokens still land in usage.
  */
-export declare function createAntigravityOpenaiStream({ model, id }?: {
+export declare function createAntigravityOpenaiStream({ model, id, sessionId }?: {
     id?: string;
 }): {
     push(body: any): {
@@ -67,7 +70,7 @@ export declare function createAntigravityOpenaiStream({ model, id }?: {
     };
 };
 export declare function antigravityEventsToOpenaiChunks(events: any, opts: any): any[];
-export declare function antigravityToOpenai(body: any, { model, id }?: {
+export declare function antigravityToOpenai(body: any, { model, id, sessionId }?: {
     id?: string;
 }): {
     id: string;
@@ -87,7 +90,7 @@ export declare function antigravityToOpenai(body: any, { model, id }?: {
         total_tokens: any;
     };
 };
-export declare function antigravityToOpenaiChunk(body: any, { model, id, done }?: {
+export declare function antigravityToOpenaiChunk(body: any, { model, id, done, sessionId }?: {
     done?: boolean;
 }): {
     usage?: {
