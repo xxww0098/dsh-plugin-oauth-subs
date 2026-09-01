@@ -165,6 +165,28 @@ function pushKiroSystemPair(history, text, { modelId, origin } = {}) {
   history.push({ assistantResponseMessage: { content: KIRO_SYSTEM_ACK } })
 }
 
+function lastHistoryHasToolUses(history) {
+  const last = history.at(-1)?.assistantResponseMessage
+  return Boolean(last?.toolUses?.length)
+}
+
+/**
+ * Extra DSH snapshots stay a suffix user+ack pair. On a tool-result
+ * turn the last history item is the assistant with `toolUses` and
+ * `toolResults` sit on current — never insert the ack between them
+ * (AWS 400: tool_result without a matching previous tool_use).
+ */
+function parkKiroSystemExtra(history, extra, { modelId, origin, currentHasToolResults } = {}) {
+  if (!extra) return
+  if (currentHasToolResults && lastHistoryHasToolUses(history)) {
+    const pair = []
+    pushKiroSystemPair(pair, extra, { modelId, origin })
+    history.splice(history.length - 1, 0, ...pair)
+    return
+  }
+  pushKiroSystemPair(history, extra, { modelId, origin })
+}
+
 /**
  * DSH `developer` (and any other unknown role) → system, same as GLM.
  * Official wire has no system field (kiro.rs / kiro-proxy PROTOCOL.md):
@@ -213,8 +235,12 @@ export function openaiToKiro(payload, { conversationId, profileArn, origin = KIR
       continue
     }
     if (role === 'assistant') {
-      flushUser()
+      // Previous tool_use must hit history before the tool_results that
+      // belong to it. flushUser-first inverted that pair on the second
+      // tool round (live 400: unexpected tool_use_id). Opening user text
+      // still flushes first — flushAssistant is a no-op then.
       flushAssistant()
+      flushUser()
       pendingAssistant = assistantHistoryMessage(message)
       continue
     }
@@ -236,7 +262,11 @@ export function openaiToKiro(payload, { conversationId, profileArn, origin = KIR
   const parked = []
   pushKiroSystemPair(parked, pinned, { modelId, origin })
   const fullHistory = parked.concat(history)
-  pushKiroSystemPair(fullHistory, extra, { modelId, origin })
+  parkKiroSystemExtra(fullHistory, extra, {
+    modelId,
+    origin,
+    currentHasToolResults: pendingToolResults.length > 0,
+  })
 
   const userContext = { envState: { operatingSystem: kiroOsName() } }
   const tools = openaiToolsToKiro(payload?.tools)

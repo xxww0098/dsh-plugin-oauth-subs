@@ -180,6 +180,7 @@ Antigravity: request.sessionId (fallback `dsh-antigravity:<model>`)
 Kiro:      conversationState.conversationId (+ model)
            drop Codex/Grok cache fields
            system as first history user+ack; extra snapshots at history suffix
+           (never between assistant toolUses and matching toolResults)
 ```
 
 ### Per family
@@ -258,7 +259,9 @@ Kiro:      conversationState.conversationId (+ model)
   `userInputMessage` + canned ack (`I will follow these instructions.`).
   Do not prepend the system blob onto every `currentMessage.content`.
   Pin the first system text per conversationId; extra DSH snapshots
-  become another user+ack pair at the **history suffix**.
+  become another user+ack pair at the **history suffix**. Never insert
+  that pair between an assistant `toolUses` and the matching
+  `toolResults` (splice before the unpaired trailing assistant).
 - Tools stay on current `userInputMessageContext.tools` (not a
   conversationState-level field).
 - Hits: `cacheReadInputTokens` → OpenAI `prompt_tokens_details.cached_tokens`.
@@ -287,7 +290,7 @@ When adding `src/oauth/<id>/`:
 | Grok | conversation shard | `x-grok-conv-id` (+ body `prompt_cache_key`) | n/a (shard, not prefix) | `cacheReadTokens`; 512 + reuse<10% = affinity miss |
 | GLM | content hash of leading system + history | Anthropic: `metadata.user_id` + `x-session-id` + first-block `cache_control`; Completions leftover: `user` + `x-session-id` | Completions: system at **messages suffix**; Anthropic: extra system text blocks without cache_control | `cached_tokens` / `cache_read_input_tokens` |
 | Antigravity | Gemini `systemInstruction` + contents + tools | `request.sessionId` (fallback + model) | extra as trailing **user** | `cachedContentTokenCount` / `cache_read_tokens` → `cached_tokens` |
-| Kiro | CodeWhisperer conversation | `conversationId` + model | system as first history user+ack; extra at history suffix | `cacheReadInputTokens` → `cached_tokens` |
+| Kiro | CodeWhisperer conversation | `conversationId` + model | system as first history user+ack; extra at history suffix (not between toolUses / toolResults) | `cacheReadInputTokens` → `cached_tokens` |
 
 ### Do not
 
@@ -296,6 +299,8 @@ When adding `src/oauth/<id>/`:
 - Write Grok `x-grok-conv-id` to anyone else.
 - Park GLM extras as a Gemini user turn, or Gemini extras as a GLM
   trailing system, “because parking is the same idea”.
+- Insert a Kiro extra system user+ack between an assistant `toolUses`
+  and the matching `toolResults`.
 - Treat a GLM 576-token remnant as a Grok affinity miss, or a Grok 512
   block as a GLM prefix break.
 - Put cache rewrite in `src/utils/`.
