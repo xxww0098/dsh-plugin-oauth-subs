@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.60
+
+- Antigravity: add Gemini 3.8 Flash as picker row `gemini-3.8-flash-high` (Cloud Code wire id, not Gemini API `gemini-3.8-flash`). Same window/thinking as 3.7 Flash. PR #74.
+
 ## 0.0.59
 
 - Kiro: flush assistant `toolUses` before user `toolResults` so multi-round tools pair; park extra DSH system snapshots without inserting them between a tool_use and its tool_result. Fixes live 400 `unexpected tool_use_id`. PR #71.
