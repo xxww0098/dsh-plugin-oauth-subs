@@ -295,6 +295,10 @@ test('Antigravity catalog is cloudcode-pa Claude / Gemini / GPT-OSS', () => {
   const rows = catalog['oauth-antigravity'].models
   assert.equal(rows.some((model) => model.id === 'claude-sonnet-4-6'), true)
   assert.equal(rows.some((model) => model.id === 'gemini-pro-agent'), true)
+  assert.equal(rows.some((model) => model.id === 'gemini-3.6-flash-high'), true)
+  assert.equal(rows.some((model) => model.id === 'gemini-3.7-flash-high'), true)
+  assert.equal(rows.some((model) => model.id === 'gemini-3.8-flash-high'), true)
+  assert.equal(rows.some((model) => model.id === 'gemini-3.8-flash'), false)
   assert.equal(rows.some((model) => model.id === 'gpt-oss-120b-medium'), true)
   assert.deepEqual(rows.find((model) => model.id === 'gpt-oss-120b-medium').input, ['text'])
   assert.equal(catalog['oauth-antigravity'].compat.supportsReasoningEffort, true)
@@ -339,7 +343,7 @@ test('logged-in Antigravity with leftover disabled keys still sets the enabled m
     loggedIn: { antigravity: true },
     selected: [keep],
   })
-  assert.equal(agKeys.length, 13)
+  assert.equal(agKeys.length, 14)
   const stored = await peekPiAiProviders(settings)
   assert.equal(stored['oauth-antigravity'].api, HARNESS_COMPLETIONS_API)
   assert.deepEqual(stored['oauth-antigravity'].models.map((model) => model.id), ['gemini-3.7-flash-high'])

@@ -56,8 +56,10 @@ DSH chat/completions  →  POST daily-cloudcode-pa.googleapis.com/v1internal:gen
 
 ## 模型
 
-`ANTIGRAVITY_MODELS` 对齐 CLIProxyAPI `models.json` 的 `antigravity` 行。llm-pi-ai 只接 text/image，音频/视频行也标 vision。
+`ANTIGRAVITY_MODELS` 对齐 CLIProxyAPI `models.json` 的 `antigravity` 行（Cloud Code 线 id，不是 Gemini API 裸 id）。llm-pi-ai 只接 text/image，音频/视频行也标 vision。
 思考：Gemini `low/medium/high`；Claude `low/high`；GPT-OSS `false`。
+
+Gemini 3.6 / 3.7 / 3.8 Flash 各一行 picker：`gemini-3.X-flash-high` + `reasoningEfforts` low/medium/high。不要发 Gemini API 的 `gemini-3.8-flash`（无 `-high`）。不要拆 `-low` / `-medium` 成独立行（3.7 也没拆）。3.8 Flash Cyber 不在 Antigravity 选择器，不要加。`ANTIGRAVITY_QUOTA_GROUPS` 仍是冻结 SkillStar 条；3.7 也不在里面，3.8 同样不加。
 
 ## 额度
 

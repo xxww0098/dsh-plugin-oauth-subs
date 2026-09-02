@@ -1,5 +1,34 @@
 # 错误记录
 
+## 2026-09-03：Antigravity Gemini 3.8 Flash 线 id 是 `gemini-3.8-flash-high`
+
+### 现象
+
+Google 2026-09-02 发布 Gemini 3.8 Flash。官方 Antigravity 文档把 3.8 Flash 列成 reasoning 模型，选择器截图是 **Gemini 3.8 Flash Medium**（和 3.7 / 3.6 Flash Medium 并列）。https://antigravity.google/docs/models/
+
+Gemini API id 是 `gemini-3.8-flash`（1_048_576 / 65_536，thinking low/medium/high）。那 **不是** Cloud Code 线 id。
+
+### 证据
+
+- CLIProxyAPI `internal/registry/models/models.json` `antigravity` 数组（`router-for-me/CLIProxyAPI` main，读到 2026-09-03）：**还没有**任何含 `3.8` 的行。3.6 / 3.7 各一行 picker：`gemini-3.6-flash-high` / `gemini-3.7-flash-high`，`display_name` 无 High，thinking levels 含 low/medium/high。同一文件的 Gemini / Vertex 段用裸 `gemini-3.7-flash`。
+- 官方 `agy` / Antigravity 侧已经用 `gemini-3.8-flash-high`、`gemini-3.8-flash-medium`、`gemini-3.8-flash-low`（effort 写在 id 后缀上）。
+- 本仓库 3.6 / 3.7 已经是「一行 `-high` + `ANTIGRAVITY_REASONING_GEMINI`」，没有把 `-low` / `-medium` 拆成独立 checkbox。3.7 也没进冻结的 `ANTIGRAVITY_QUOTA_GROUPS`。
+- 3.8 Flash Cyber 是 Fairwind 专用，Antigravity 文档 / CCA `antigravity` 数组都没有。
+
+无 live `fetchAvailableModels`（本环境没有 Antigravity token）。
+
+### 根因
+
+Cloud Code 用 effort 后缀 id；Gemini API 用裸 id。把 `gemini-3.8-flash` 发给 daily-cloudcode-pa 会走错线。CCA 当天还没跟上，不能拿「CCA 没有」当成「没有 3.8」。
+
+### 修复
+
+`ANTIGRAVITY_MODELS` 加一行 `gemini-3.8-flash-high` / `Gemini 3.8 Flash`，窗口和 3.7 一样（1_048_576 / 65_536 / vision / low·medium·high）。不发明 quota 条，不加 Cyber，不 bump 版本。
+
+### 验证
+
+- `npm test`：目录含 `gemini-3.8-flash-high`，不含裸 `gemini-3.8-flash`；3.6 / 3.7 行仍在；`toHarnessModel` / yaml sync 条数 13 → 14。无 live Cloud Code。
+
 ## 2026-09-01：Antigravity 工具轮 400 缺 `thought_signature`
 
 ### 现象
