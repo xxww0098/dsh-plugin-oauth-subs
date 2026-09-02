@@ -492,12 +492,26 @@ test('catalog is the live cloudcode-pa list, not Vertex-direct names', () => {
   assert.equal(ids.includes('claude-sonnet-4-6'), true)
   assert.equal(ids.includes('gemini-pro-agent'), true)
   assert.equal(ids.includes('gemini-3.1-pro-low'), true)
+  assert.equal(ids.includes('gemini-3.6-flash-high'), true)
+  assert.equal(ids.includes('gemini-3.7-flash-high'), true)
+  assert.equal(ids.includes('gemini-3.8-flash-high'), true)
+  assert.equal(ids.includes('gemini-3.8-flash'), false)
   assert.equal(ids.includes('gpt-oss-120b-medium'), true)
   assert.equal(ids.some((id) => id.startsWith('publishers/') || id.includes('vertex')), false)
   const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
   assert.equal(catalog['oauth-antigravity'].api, 'openai-completions')
   assert.equal(catalog['oauth-antigravity'].baseURL, 'http://x/antigravity/v1')
   assert.deepEqual(catalog['oauth-antigravity'].models.find((model) => model.id === 'gpt-oss-120b-medium').input, ['text'])
+  const flash38 = catalog['oauth-antigravity'].models.find((model) => model.id === 'gemini-3.8-flash-high')
+  assert.equal(flash38.name, 'Gemini 3.8 Flash')
+  assert.equal(flash38.contextWindow, 1_048_576)
+  assert.equal(flash38.maxTokens, 65_536)
+  assert.deepEqual(flash38.input, ['text', 'image'])
+  assert.deepEqual(flash38.reasoningEfforts, { low: 'low', medium: 'medium', high: 'high' })
+  assert.deepEqual(
+    catalog['oauth-antigravity'].models.find((model) => model.id === 'gemini-3.7-flash-high').reasoningEfforts,
+    flash38.reasoningEfforts,
+  )
 })
 
 test('snapshot shows quota on every Antigravity account via daily hub', async () => {

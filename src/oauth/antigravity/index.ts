@@ -142,6 +142,7 @@ export const ANTIGRAVITY_MODELS = Object.freeze([
   { id: 'gemini-3-flash-agent', name: 'Gemini 3.5 Flash', contextWindow: 1_048_576, maxTokens: 65_536, reasoningEfforts: ANTIGRAVITY_REASONING_GEMINI, input: ANTIGRAVITY_VISION_INPUT },
   { id: 'gemini-3.6-flash-high', name: 'Gemini 3.6 Flash', contextWindow: 1_048_576, maxTokens: 65_536, reasoningEfforts: ANTIGRAVITY_REASONING_GEMINI, input: ANTIGRAVITY_VISION_INPUT },
   { id: 'gemini-3.7-flash-high', name: 'Gemini 3.7 Flash', contextWindow: 1_048_576, maxTokens: 65_536, reasoningEfforts: ANTIGRAVITY_REASONING_GEMINI, input: ANTIGRAVITY_VISION_INPUT },
+  { id: 'gemini-3.8-flash-high', name: 'Gemini 3.8 Flash', contextWindow: 1_048_576, maxTokens: 65_536, reasoningEfforts: ANTIGRAVITY_REASONING_GEMINI, input: ANTIGRAVITY_VISION_INPUT },
   { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash Lite', contextWindow: 1_048_576, maxTokens: 65_535, reasoningEfforts: ANTIGRAVITY_REASONING_GEMINI, input: ANTIGRAVITY_VISION_INPUT },
   { id: 'gemini-3.5-flash-low', name: 'Gemini 3.5 Flash Medium', contextWindow: 1_048_576, maxTokens: 65_535, reasoningEfforts: ANTIGRAVITY_REASONING_GEMINI, input: ANTIGRAVITY_VISION_INPUT },
   { id: 'gemini-3.5-flash-extra-low', name: 'Gemini 3.5 Flash Low', contextWindow: 1_048_576, maxTokens: 65_535, reasoningEfforts: ANTIGRAVITY_REASONING_GEMINI, input: ANTIGRAVITY_VISION_INPUT },
