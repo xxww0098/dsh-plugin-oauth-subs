@@ -113,7 +113,7 @@ unary AvailableModels  api2    /aiserver.v1.AiService/AvailableModels
 
 `AvailableModels` 用现有 proto 编解码，不加 Bun。任一 RPC 失败或空列表 **不挡对话**，回落静态 5。
 
-不要把 pi-cursor `catalog.json` 的 ~100 个 effort/fast/thinking/max-mode id 铺进 Settings 勾选格。`cursorPickerFamilyId` 剥那些后缀，DSH `reasoningEfforts` 键只有 `off|low|medium|high|xhigh`（值 `off: "none"`，`xhigh: "extra-high"`）。Tab / chat 内部变体隐藏（Pi `/cursor.models all` 才是 opt-in）。账号有 `default` / Auto 就留一行 `default` / Auto。窗口优先活 metadata，否则 `inferCursorContextWindow` / `inferCursorMaxOutputTokens`。
+不要把 pi-cursor `catalog.json` 的 ~100 个 effort/fast/thinking/max-mode id 铺进 Settings 勾选格。`cursorPickerFamilyId` 剥那些后缀，DSH `reasoningEfforts` 键只有 `off|low|medium|high|xhigh`（值 `off: "none"`，`xhigh: "extra-high"`）。Tab / chat 内部变体隐藏（Pi `/cursor.models all` 才是 opt-in）。账号有 `default` / `auto` 就留一行 id `default`，显示名 **Cursor Auto**（zh/en 同名，不翻译 Auto；wire 仍是 `default`）。窗口优先活 metadata，否则 `inferCursorContextWindow` / `inferCursorMaxOutputTokens`。
 
 Settings 勾选仍须登录后才能改。新发现的行默认开，`setModels` / `sync()` 写入 `settings.yaml` `oauth-cursor.models`。
 
