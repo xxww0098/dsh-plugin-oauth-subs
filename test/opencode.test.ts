@@ -20,8 +20,7 @@ import {
   OPENCODE_MODELS,
   OPENCODE_MODELS_DEV_URL,
   OPENCODE_MODELS_URL,
-  OPENCODE_REASONING_DEEPSEEK,
-  OPENCODE_REASONING_LAGUNA,
+  OPENCODE_OFFICIAL_FREE,
   OPENCODE_REASONING_MUSE,
   OPENCODE_REASONING_TOGGLE,
   isOpencodeFreeSlug,
@@ -103,11 +102,16 @@ test('catalog is Completions at /opencode, not a custom api string', () => {
   assert.equal(route.baseURL.endsWith('/opencode/v1'), false)
   assert.equal(route.compat.supportsReasoningEffort, true)
   assert.equal(route.compat.thinkingFormat, 'openai')
-  const laguna = route.models.find((model) => model.id === OPENCODE_DEFAULT_MODEL)
-  assert.deepEqual(laguna.reasoningEfforts, OPENCODE_REASONING_LAGUNA)
-  assert.deepEqual(laguna.input, ['text'])
-  assert.equal(laguna.contextWindow, 256_000)
-  assert.equal(laguna.maxTokens, 32_000)
+  const ling = route.models.find((model) => model.id === OPENCODE_DEFAULT_MODEL)
+  assert.deepEqual(ling.reasoningEfforts, OPENCODE_REASONING_TOGGLE)
+  assert.deepEqual(ling.input, ['text'])
+  assert.equal(ling.contextWindow, 262_144)
+  assert.equal(ling.maxTokens, 32_768)
+  const pickle = route.models.find((model) => model.id === 'big-pickle')
+  assert.equal(Object.hasOwn(pickle, 'reasoningEfforts'), false)
+  assert.deepEqual(pickle.input, ['text'])
+  assert.equal(pickle.contextWindow, 200_000)
+  assert.equal(pickle.maxTokens, 32_000)
   const mimo = route.models.find((model) => model.id === 'mimo-v2.5-free')
   assert.equal(Object.hasOwn(mimo, 'reasoningEfforts'), false)
   assert.deepEqual(mimo.input, ['text', 'image'])
@@ -118,23 +122,33 @@ test('catalog is Completions at /opencode, not a custom api string', () => {
   assert.equal(muse.input.includes('video'), false)
   assert.equal(muse.input.includes('pdf'), false)
   assert.equal(route.models.some((model) => model.id === OPENCODE_DEFAULT_MODEL), true)
+  assert.equal(route.models.some((model) => model.id === 'big-pickle'), true)
   assert.equal(route.models.some((model) => model.id === 'hy3-free'), false)
-  assert.equal(route.models.some((model) => model.id === 'big-pickle'), false)
+  assert.equal(route.models.some((model) => model.id === 'deepseek-v4-flash-free'), false)
+  assert.equal(route.models.some((model) => model.id === 'laguna-s-2.1-free'), false)
   assert.equal(route.models.some((model) => model.id === 'ox-alpha-free'), false)
+  assert.equal(route.models.length, OPENCODE_OFFICIAL_FREE.size)
   resetOpencodeCatalogCache()
   assert.equal(catalogProviders({ prefix: 'oauth', origin: 'http://x' })['oauth-opencode'].models.length, OPENCODE_MODELS.length)
 })
 
-test('isOpencodeFreeSlug keeps anonymous *-free and drops Go-keyed / UA-gated', () => {
-  assert.equal(isOpencodeFreeSlug('laguna-s-2.1-free'), true)
-  assert.equal(isOpencodeFreeSlug('opencode/laguna-s-2.1-free'), true)
+test('isOpencodeFreeSlug is the official Free allowlist, not a *-free suffix', () => {
+  assert.equal(isOpencodeFreeSlug('big-pickle'), true)
+  assert.equal(isOpencodeFreeSlug('opencode/big-pickle'), true)
+  assert.equal(isOpencodeFreeSlug('ling-3.0-flash-fin-free'), true)
+  assert.equal(isOpencodeFreeSlug('mimo-v2.5-free'), true)
+  assert.equal(isOpencodeFreeSlug('muse-spark-1.3-contributor-free'), true)
   assert.equal(isOpencodeFreeSlug('ox-alpha-free'), false)
-  assert.equal(isOpencodeFreeSlug('big-pickle'), false)
+  assert.equal(isOpencodeFreeSlug('laguna-s-2.1-free'), false)
+  assert.equal(isOpencodeFreeSlug('deepseek-v4-flash-free'), false)
+  assert.equal(isOpencodeFreeSlug('hy3-free'), false)
   assert.equal(isOpencodeFreeSlug('gpt-5'), false)
   assert.equal(isOpencodeFreeSlug(''), false)
+  assert.equal(OPENCODE_OFFICIAL_FREE.size, 7)
+  assert.deepEqual([...OPENCODE_MODELS.map((model) => model.id)].sort(), [...OPENCODE_OFFICIAL_FREE].sort())
 })
 
-test('live catalog keeps *-free, drops keyed and non-free, falls back to the floor', async () => {
+test('live catalog keeps official Free ∩ Zen list and falls back to the floor', async () => {
   resetOpencodeCatalogCache()
   const models = toOpencodePickerModels({
     data: [
@@ -144,48 +158,45 @@ test('live catalog keeps *-free, drops keyed and non-free, falls back to the flo
       { id: 'hy3-free' },
       { id: 'mimo-v2.5-free' },
       { id: 'mimo-v2.5-free' },
+      { id: 'deepseek-v4-flash-free' },
     ],
   })
-  assert.deepEqual(models.map((model) => model.id), ['hy3-free', 'laguna-s-2.1-free', 'mimo-v2.5-free'])
-  assert.equal(models.find((model) => model.id === 'laguna-s-2.1-free').contextWindow, 200_000)
+  assert.deepEqual(models.map((model) => model.id), ['big-pickle', 'mimo-v2.5-free'])
+  assert.equal(models.find((model) => model.id === 'big-pickle').contextWindow, 200_000)
 
   const calls = []
   const fetchFn = async (url, init) => {
     calls.push({ url: String(url), headers: init.headers })
     assert.equal(Object.hasOwn(init.headers ?? {}, 'authorization'), false)
     if (String(url) === OPENCODE_MODELS_DEV_URL) return json({ opencode: { models: {} } })
-    return json({ data: [{ id: 'laguna-s-2.1-free' }, { id: 'ox-alpha-free' }, { id: 'nemotron-3-ultra-free' }] })
+    return json({ data: [{ id: 'laguna-s-2.1-free' }, { id: 'ox-alpha-free' }, { id: 'nemotron-3-ultra-free' }, { id: 'big-pickle' }] })
   }
   const live = await refreshOpencodeCatalog({ fetchFn, force: true })
   assert.equal(calls.some((row) => row.url === OPENCODE_MODELS_URL), true)
   assert.equal(calls.some((row) => row.url === OPENCODE_MODELS_DEV_URL), true)
-  assert.deepEqual(live.map((model) => model.id), ['laguna-s-2.1-free', 'nemotron-3-ultra-free'])
+  assert.deepEqual(live.map((model) => model.id), ['big-pickle', 'nemotron-3-ultra-free'])
   assert.equal(opencodeCatalogModels().length, 2)
-  assert.deepEqual(live.find((model) => model.id === 'laguna-s-2.1-free').reasoningEfforts, OPENCODE_REASONING_LAGUNA)
+  assert.equal(Object.hasOwn(live.find((model) => model.id === 'big-pickle'), 'reasoningEfforts'), false)
 
   resetOpencodeCatalogCache()
   const empty = await refreshOpencodeCatalog({
-    fetchFn: async () => json({ data: [{ id: 'ox-alpha-free' }] }),
+    fetchFn: async () => json({ data: [{ id: 'ox-alpha-free' }, { id: 'laguna-s-2.1-free' }] }),
     force: true,
   })
   assert.equal(empty.length, OPENCODE_MODELS.length)
   assert.equal(empty.some((model) => model.id === 'hy3-free'), false)
+  assert.equal(empty.some((model) => model.id === 'big-pickle'), true)
+  assert.equal(empty.some((model) => model.id === 'laguna-s-2.1-free'), false)
 })
 
-const MODELS_DEV_EIGHT = {
+const MODELS_DEV_OFFICIAL = {
   opencode: {
     models: {
-      'deepseek-v4-flash-free': {
+      'big-pickle': {
         reasoning: true,
-        reasoning_options: [{ type: 'effort', values: ['low', 'high', 'max'] }],
+        reasoning_options: [],
         modalities: { input: ['text'] },
-        limit: { context: 200000, output: 128000 },
-      },
-      'laguna-s-2.1-free': {
-        reasoning: true,
-        reasoning_options: [{ type: 'effort', values: ['low', 'medium', 'high'] }],
-        modalities: { input: ['text'] },
-        limit: { context: 256000, output: 32000 },
+        limit: { context: 200000, output: 32000 },
       },
       'ling-3.0-flash-fin-free': {
         reasoning: true,
@@ -238,27 +249,24 @@ const MODELS_DEV_EIGHT = {
   },
 }
 
-test('models.dev overlay maps the eight live rows and does not add delisted slugs', () => {
+test('models.dev overlay maps the official seven and does not add delisted slugs', () => {
   assert.deepEqual(opencodePickerInput(['text', 'image', 'audio', 'video']), ['text', 'image'])
   assert.deepEqual(opencodePickerInput(['text']), ['text'])
   const zen = toOpencodePickerModels({
     data: OPENCODE_MODELS.map((model) => ({ id: model.id })),
   })
-  const rows = overlayOpencodeModelsDev(zen, MODELS_DEV_EIGHT)
+  const rows = overlayOpencodeModelsDev(zen, MODELS_DEV_OFFICIAL)
   assert.deepEqual(rows.map((model) => model.id), OPENCODE_MODELS.map((model) => model.id).slice().sort())
   assert.equal(rows.some((model) => model.id === 'hy3-free'), false)
   assert.equal(rows.some((model) => model.id === 'kimi-k2.5-free'), false)
+  assert.equal(rows.some((model) => model.id === 'laguna-s-2.1-free'), false)
+  assert.equal(rows.some((model) => model.id === 'deepseek-v4-flash-free'), false)
 
   const byId = Object.fromEntries(rows.map((model) => [model.id, model]))
-  assert.deepEqual(byId['deepseek-v4-flash-free'].reasoningEfforts, OPENCODE_REASONING_DEEPSEEK)
-  assert.deepEqual(byId['deepseek-v4-flash-free'].input, ['text'])
-  assert.equal(byId['deepseek-v4-flash-free'].contextWindow, 200_000)
-  assert.equal(byId['deepseek-v4-flash-free'].maxTokens, 128_000)
-
-  assert.deepEqual(byId['laguna-s-2.1-free'].reasoningEfforts, OPENCODE_REASONING_LAGUNA)
-  assert.deepEqual(byId['laguna-s-2.1-free'].input, ['text'])
-  assert.equal(byId['laguna-s-2.1-free'].contextWindow, 256_000)
-  assert.equal(byId['laguna-s-2.1-free'].maxTokens, 32_000)
+  assert.equal(Object.hasOwn(byId['big-pickle'], 'reasoningEfforts'), false)
+  assert.deepEqual(byId['big-pickle'].input, ['text'])
+  assert.equal(byId['big-pickle'].contextWindow, 200_000)
+  assert.equal(byId['big-pickle'].maxTokens, 32_000)
 
   assert.deepEqual(byId['ling-3.0-flash-fin-free'].reasoningEfforts, OPENCODE_REASONING_TOGGLE)
   assert.deepEqual(byId['ling-3.0-flash-fin-free'].input, ['text'])
@@ -292,17 +300,18 @@ test('models.dev overlay maps the eight live rows and does not add delisted slug
   assert.equal(byId['nemotron-3.5-lightning-free'].maxTokens, 262_144)
 
   const down = overlayOpencodeModelsDev(zen, undefined)
-  assert.deepEqual(down.find((model) => model.id === 'laguna-s-2.1-free').reasoningEfforts, OPENCODE_REASONING_LAGUNA)
+  assert.deepEqual(down.find((model) => model.id === 'ling-3.0-flash-fin-free').reasoningEfforts, OPENCODE_REASONING_TOGGLE)
+  assert.equal(Object.hasOwn(down.find((model) => model.id === 'big-pickle'), 'reasoningEfforts'), false)
 })
 
 test('hop maps reasoning_effort and never sends thinking with it', () => {
-  const laguna = applyOpencodeThinking({
-    model: 'laguna-s-2.1-free',
+  const ling = applyOpencodeThinking({
+    model: 'ling-3.0-flash-fin-free',
     reasoning_effort: 'high',
     thinking: { type: 'enabled' },
   })
-  assert.equal(laguna.reasoning_effort, 'high')
-  assert.equal(laguna.thinking, undefined)
+  assert.equal(ling.reasoning_effort, 'high')
+  assert.equal(ling.thinking, undefined)
 
   const toggleOff = applyOpencodeThinking({ model: 'ling-3.0-flash-fin-free', reasoning_effort: 'off' })
   assert.equal(toggleOff.reasoning_effort, 'none')
@@ -317,7 +326,8 @@ test('isOpencodeResponsesModel treats muse-spark* as Responses', () => {
   assert.equal(isOpencodeResponsesModel('muse-spark-1.3-contributor-free'), true)
   assert.equal(isOpencodeResponsesModel('muse-spark-1.2-contributor-free'), true)
   assert.equal(isOpencodeResponsesModel('opencode/muse-spark-1.4-contributor-free'), true)
-  assert.equal(isOpencodeResponsesModel('laguna-s-2.1-free'), false)
+  assert.equal(isOpencodeResponsesModel('ling-3.0-flash-fin-free'), false)
+  assert.equal(isOpencodeResponsesModel('big-pickle'), false)
   assert.equal(isOpencodeResponsesModel('mimo-v2.5-free'), false)
   assert.equal(isOpencodeResponsesModel(''), false)
 })
@@ -675,6 +685,19 @@ test('Muse chat hop targets Zen Responses and other free models stay on Completi
     assert.equal(mimo.status, 200)
     assert.equal(hops[4].url, OPENCODE_CHAT_URL)
     assert.equal((await mimo.json()).choices[0].message.content, 'mimo think')
+
+    const pickle = await fetch(`http://127.0.0.1:${port}/opencode/v1/chat/completions`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({
+        model: 'big-pickle',
+        messages: [{ role: 'user', content: 'hi' }],
+      }),
+    })
+    assert.equal(pickle.status, 200)
+    assert.equal(hops[5].url, OPENCODE_CHAT_URL)
+    assert.equal((await pickle.json()).choices[0].message.content, 'pong')
+    assert.equal(Object.hasOwn(hops[5].headers, 'authorization'), false)
   } finally {
     await proxy.close()
   }
@@ -698,6 +721,7 @@ test('empty-roster auto-enable writes sentinel, hops without Authorization, and 
         return json({
           data: [
             { id: 'laguna-s-2.1-free' },
+            { id: 'ling-3.0-flash-fin-free' },
             { id: 'mimo-v2.5-free' },
             { id: 'ox-alpha-free' },
             { id: 'big-pickle' },
@@ -709,11 +733,17 @@ test('empty-roster auto-enable writes sentinel, hops without Authorization, and 
         return json({
           opencode: {
             models: {
-              'laguna-s-2.1-free': {
+              'big-pickle': {
                 reasoning: true,
-                reasoning_options: [{ type: 'effort', values: ['low', 'medium', 'high'] }],
+                reasoning_options: [],
                 modalities: { input: ['text'] },
-                limit: { context: 256000, output: 32000 },
+                limit: { context: 200000, output: 32000 },
+              },
+              'ling-3.0-flash-fin-free': {
+                reasoning: true,
+                reasoning_options: [{ type: 'toggle' }],
+                modalities: { input: ['text'] },
+                limit: { context: 262144, output: 32768 },
               },
               'mimo-v2.5-free': {
                 reasoning: true,
@@ -764,15 +794,16 @@ test('empty-roster auto-enable writes sentinel, hops without Authorization, and 
   assert.equal(route.apiKeyEnv, 'DSH_OAUTH_SUBS_API_KEY')
   assert.equal(route.compat.supportsReasoningEffort, true)
   assert.equal(route.compat.thinkingFormat, 'openai')
-  assert.deepEqual(route.models.map((model) => model.id), ['laguna-s-2.1-free', 'mimo-v2.5-free'])
+  assert.deepEqual(route.models.map((model) => model.id), ['big-pickle', 'ling-3.0-flash-fin-free', 'mimo-v2.5-free'])
   assert.equal(synced.routes.some((row) => row.provider === 'oauth-opencode'), true)
-  assert.deepEqual(route.models.find((model) => model.id === 'laguna-s-2.1-free').reasoningEfforts, OPENCODE_REASONING_LAGUNA)
+  assert.equal(Object.hasOwn(route.models.find((model) => model.id === 'big-pickle'), 'reasoningEfforts'), false)
+  assert.deepEqual(route.models.find((model) => model.id === 'ling-3.0-flash-fin-free').reasoningEfforts, OPENCODE_REASONING_TOGGLE)
   assert.equal(Object.hasOwn(route.models.find((model) => model.id === 'mimo-v2.5-free'), 'reasoningEfforts'), false)
   assert.deepEqual(route.models.find((model) => model.id === 'mimo-v2.5-free').input, ['text', 'image'])
   for (const model of route.models) {
-    assert.equal(model.id.endsWith('-free'), true)
+    assert.equal(OPENCODE_OFFICIAL_FREE.has(model.id), true)
     assert.notEqual(model.id, 'hy3-free')
-    assert.notEqual(model.id, 'big-pickle')
+    assert.notEqual(model.id, 'laguna-s-2.1-free')
     assert.notEqual(model.id, 'ox-alpha-free')
     assert.equal(model.input.includes('audio'), false)
   }

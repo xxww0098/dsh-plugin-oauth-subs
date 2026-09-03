@@ -136,15 +136,17 @@ test('buildProviders only emits logged-in families with DSH api ids', () => {
   assert.equal(chat['oauth-opencode'].compat.supportsReasoningEffort, true)
   assert.equal(chat['oauth-opencode'].compat.thinkingFormat, 'openai')
   assert.equal(chat['oauth-opencode'].apiKeyEnv, OAUTH_CREDENTIAL_REF)
-  assert.equal(chat['oauth-opencode'].models.some((model) => model.id === 'laguna-s-2.1-free'), true)
+  assert.equal(chat['oauth-opencode'].models.some((model) => model.id === 'ling-3.0-flash-fin-free'), true)
+  assert.equal(chat['oauth-opencode'].models.some((model) => model.id === 'big-pickle'), true)
   assert.equal(chat['oauth-opencode'].models.some((model) => model.id === 'hy3-free'), false)
-  assert.equal(chat['oauth-opencode'].models.some((model) => model.id === 'big-pickle'), false)
+  assert.equal(chat['oauth-opencode'].models.some((model) => model.id === 'laguna-s-2.1-free'), false)
+  assert.equal(chat['oauth-opencode'].models.some((model) => model.id === 'deepseek-v4-flash-free'), false)
   assert.equal(chat['oauth-opencode'].models.some((model) => model.id === 'ox-alpha-free'), false)
-  assert.deepEqual(chat['oauth-opencode'].models.find((model) => model.id === 'laguna-s-2.1-free').reasoningEfforts, {
-    low: 'low',
-    medium: 'medium',
+  assert.deepEqual(chat['oauth-opencode'].models.find((model) => model.id === 'ling-3.0-flash-fin-free').reasoningEfforts, {
+    off: 'none',
     high: 'high',
   })
+  assert.equal(Object.hasOwn(chat['oauth-opencode'].models.find((model) => model.id === 'big-pickle'), 'reasoningEfforts'), false)
   assert.equal(Object.hasOwn(chat['oauth-opencode'].models.find((model) => model.id === 'mimo-v2.5-free'), 'reasoningEfforts'), false)
   assert.deepEqual(chat['oauth-opencode'].models.find((model) => model.id === 'mimo-v2.5-free').input, ['text', 'image'])
   assert.equal(chat['oauth-codex'], undefined)

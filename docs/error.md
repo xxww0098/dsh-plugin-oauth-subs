@@ -2,6 +2,17 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-03：OpenCode Free 目录漏 Big Pickle、含过期 DeepSeek/Laguna
+
+### 现象
+picker 有 `deepseek-v4-flash-free`（400 Model is unavailable）和 `laguna-s-2.1-free`（503）。官方 Free 里的 `big-pickle` 进不了目录。
+
+### 根因
+`isOpencodeFreeSlug` 只认 `*-free`。Zen `/models` 还挂着过期 slug；`big-pickle` 官方免费但不带 `-free`。
+
+### 修复
+匿名 picker 改官方 7 个 id 白名单 ∩ live `/models`。静态楼同样 7 个。DeepSeek/Laguna 下架。
+
 ## 2026-09-03：OpenCode Muse Spark 500 Internal server error
 
 ### 现象

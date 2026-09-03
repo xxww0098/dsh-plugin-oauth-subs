@@ -23,17 +23,6 @@ export declare const OPENCODE_DEFAULT_CONTEXT = 128000;
 export declare const OPENCODE_DEFAULT_MAX_TOKENS = 16384;
 export declare const OPENCODE_INPUT: readonly string[];
 export declare const OPENCODE_VISION_INPUT: readonly string[];
-/** models.dev effort values that are DSH picker keys. Vendor `none` is `off`. */
-export declare const OPENCODE_REASONING_DEEPSEEK: Readonly<{
-    low: "low";
-    high: "high";
-    max: "max";
-}>;
-export declare const OPENCODE_REASONING_LAGUNA: Readonly<{
-    low: "low";
-    medium: "medium";
-    high: "high";
-}>;
 export declare const OPENCODE_REASONING_MUSE: Readonly<{
     minimal: "minimal";
     low: "low";
@@ -49,13 +38,18 @@ export declare const OPENCODE_REASONING_TOGGLE: Readonly<{
 export declare const OPENCODE_SOURCES: readonly string[];
 /** Go-subscription slugs that look free. Never put these on the keyless picker. */
 export declare const OPENCODE_KEYED_FREE: Readonly<Set<string>>;
-export declare const OPENCODE_DEFAULT_MODEL = "laguna-s-2.1-free";
+/**
+ * Official Zen Free pricing ids (https://opencode.ai/docs/zen).
+ * Suffix `-free` is not the rule — `big-pickle` is free; stale `*-free` rows are not.
+ */
+export declare const OPENCODE_OFFICIAL_FREE: Readonly<Set<string>>;
+export declare const OPENCODE_DEFAULT_MODEL = "ling-3.0-flash-fin-free";
 export declare const OPENCODE_PLAN_NAMES: Readonly<{
     free: "Free";
 }>;
 /**
- * Offline floor: Zen live ids on 2026-09-03 + models.dev caps.
- * Delisted slugs (hy3-free, x-preview-f-free) stay out — they 401.
+ * Offline floor: official Zen Free ids + models.dev caps (2026-09-03).
+ * Stale Zen slugs (deepseek-v4-flash-free, laguna-s-2.1-free) stay out.
  * Empty reasoning_options + reasoning true omit reasoningEfforts.
  */
 export declare const OPENCODE_MODELS: readonly {
