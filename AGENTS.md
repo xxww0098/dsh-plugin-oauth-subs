@@ -540,17 +540,17 @@ into `TAB_ICONS`.
 - Size 18×18, `viewBox="0 0 24 24"`, `fill="currentColor"`. Match the
   official brand mark, not a generic letter. GLM uses the **Z.ai** icon
   (`zai`), not Zhipu.
-- Order: families first (Codex, Grok, GLM, Kiro, Antigravity, Cursor, Ollama, Kimi, OpenCode), then
+- Order: families first (Codex, Grok, GLM, Kiro, Antigravity, Cursor, Ollama Cloud, Kimi, OpenCode), then
   Models, then About (GitHub icon). Insert a new family **before**
   Models. Layout is **8 icons per row** (`.osubs-tabs` 8-column 36px grid);
   row 1 is the first eight families; row 2 is OpenCode + Models + About. Do not pack
   every tab on one flex row. Do not `flex: 1 1 0` or shrink tab
   `min-width` to 0.
 - Add `COPY.zh.<id>Title` / `COPY.en.<id>Title` for the hover string and
-  the page heading.
+  the page heading. Ollama's title is **Ollama Cloud** (not localhost 11434).
 
 ```text
-[ Codex ] [ Grok ] [ Z.ai ] [ Kiro ] [ Antigravity ] [ Cursor ] [ Ollama ] [ Kimi ]
+[ Codex ] [ Grok ] [ Z.ai ] [ Kiro ] [ Antigravity ] [ Cursor ] [ Ollama Cloud ] [ Kimi ]
 [ OpenCode ] [ ▦ ] [ GitHub ]
 ```
 

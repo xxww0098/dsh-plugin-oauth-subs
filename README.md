@@ -13,7 +13,7 @@ dsh plugin --profile web add https://github.com/xxww0098/dsh-plugin-oauth-subs
 dsh web
 ```
 
-Open **Settings → OAuth subs**. One card per account (quota on every card; Ollama has no quota bars). About compares GitHub latest and may run `dsh plugin --profile web update dsh-plugin-oauth-subs` — restart `dsh web`. Or `pnpm dsh web --patch ./cordis.patch.yml` (`id: oauth-subs`).
+Open **Settings → OAuth subs**. One card per account (quota on every card; Ollama Cloud has no quota bars). About compares GitHub latest and may run `dsh plugin --profile web update dsh-plugin-oauth-subs` — restart `dsh web`. Or `pnpm dsh web --patch ./cordis.patch.yml` (`id: oauth-subs`).
 
 ## Families
 
@@ -39,7 +39,7 @@ Open **Settings → OAuth subs**. One card per account (quota on every card; Oll
 | Settings paste: kami / JSON / CSV / Social refresh / `ksk_…` | Kiro |
 | `~/.gemini/antigravity-cli/antigravity-oauth-token`; `~/.cli-proxy-api/antigravity-*.json` | Antigravity |
 | macOS Keychain `cursor-access-token` / `cursor-refresh-token`; IDE `state.vscdb` (current OS user only); `CURSOR_ACCESS_TOKEN` | Cursor |
-| `OLLAMA_API_KEY` env (not `~/.ollama/id_ed25519.pub`) | Ollama |
+| `OLLAMA_API_KEY` env (not `~/.ollama/id_ed25519.pub`) | Ollama Cloud |
 | `~/.kimi-code/credentials/kimi-code.json`; read-only `~/.kimi/credentials/kimi-code.json`; `KIMI_API_KEY` | Kimi |
 
 Tokens: `<profile>/data/dsh-plugin-oauth-subs/auth.json` (`0600`). Models: `models.json` beside it.
@@ -93,7 +93,7 @@ Login and chat use official client identity; UA / fingerprint live in each `src/
 | Grok | No. 2026-08-30: 83.34 vs 82.80 tok/s (0.994). Older ids reject the field | — | 4.6: low / medium / high / xhigh (unset = **high**); 4.5: no xhigh |
 | GLM | — | — | 5.3 / Flash: low / high / **max** (default max; no `medium`; `disabled` 400s). Turbo: on, no depth. Flash is the only GLM image row |
 | Kiro | — | — | GPT-5.6: off / low / medium / high / xhigh / max (`off` → wire `none`). Opus 5 / 4.8 / 4.7 and Sonnet 5 add **xhigh**; 4.6 family to max; Haiku / OSS: none. Catalog: [kiro.dev/docs/models](https://kiro.dev/docs/models/) (no Auto) |
-| Ollama | No | Live `GET /api/tags` (static 19-row Cloud snapshot fallback). Context from `POST /api/show` `model_info.<family>.context_length`. No quota bars | off / low / medium / high / max (`off` → wire `none`) |
+| Ollama Cloud | No | Live `GET /api/tags` (static 19-row Cloud snapshot fallback). Context from `POST /api/show` `model_info.<family>.context_length`. No quota bars | off / low / medium / high / max (`off` → wire `none`) |
 | Kimi | No | Live `GET /coding/v1/models` (static `kimi-for-coding` / highspeed / `k3`, 256k/32k). Prefix-hash cache | off / minimal / low / medium / high / xhigh / max → `thinking.effort` |
 
 Codex Priority echo `created=auto` / `completed=default` is not a confirmation (openai/codex#14204). 2026-08-26 Luna: 88.3 vs 57.5 tok/s (1.54×); 2026-08-30 interleaved mean 1.33× (1.90 then 0.93). Throughput-only; TTFT and cache unchanged.
