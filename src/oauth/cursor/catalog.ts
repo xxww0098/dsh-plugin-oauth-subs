@@ -124,7 +124,7 @@ function cleanPickerName(name) {
 }
 
 function prettyFamilyName(id) {
-  if (id === 'default') return 'Auto'
+  if (id === 'default') return 'Cursor Auto'
   return id
     .replace(/[-_]+/g, ' ')
     .replace(/\b\w/g, (char) => char.toUpperCase())
@@ -198,7 +198,7 @@ export function toCursorPickerModels(usable, parameterized = []) {
   for (const [id, group] of groups) {
     const cleaned = group.names.map(cleanPickerName).filter(Boolean)
     const name = id === 'default'
-      ? 'Auto'
+      ? prettyFamilyName(id)
       : (cleaned.sort((a, b) => a.length - b.length)[0] || prettyFamilyName(id))
     const inferredWindow = inferCursorContextWindow(id, name)
     const window = clampCursorContextWindow(
