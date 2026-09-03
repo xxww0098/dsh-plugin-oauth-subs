@@ -9,7 +9,8 @@ AWS **Kiro / CodeWhisperer**。协议对齐 [ZyphrZero/kiro.rs](https://github.c
 
 | 文件 | 职责 |
 |---|---|
-| [`index.ts`](index.ts) | 五种凭据、portal PKCE、刷新、profileArn、用量头、目录 |
+| [`index.ts`](index.ts) | 五种凭据、portal PKCE、刷新、profileArn、用量头、静态目录 |
+| [`catalog.ts`](catalog.ts) | 登录后 `ListAvailableModels` 活目录；静态 `KIRO_MODELS` 只做离线 fallback |
 | [`import.ts`](import.ts) | 卡密 / JSON / CSV / kiro.rs / IDE token 解析；SSO client 配对 |
 | [`idc-flow.ts`](idc-flow.ts) | AWS SSO OIDC register + JSON device poll（Builder ID / 企业 IdC） |
 | [`request.ts`](request.ts) | OpenAI chat ↔ `conversationState` + eventstream → `chat.completion` |
@@ -66,10 +67,12 @@ DSH chat/completions  →  POST https://q.<region>.amazonaws.com/
 
 - `developer` 以及未知角色 → system。官方 wire **没有**独立 system 字段（[kiro.rs](https://github.com/ZyphrZero/kiro.rs) `build_history` / kiro-proxy PROTOCOL.md）。system 钉成 **history 第一条** `userInputMessage` + 固定 ack `I will follow these instructions.`，**不要**每轮拼进 `currentMessage.content`。
 - 历史是 `userInputMessage` / `assistantResponseMessage` 成对。当前 user 文本只是这一轮。
-- `conversationId` = DSH `session_id` / `prompt_cache_key` **加上 model**（`session:deepseek-3.2`），缺 pin 时 `dsh-kiro:<model>`。**永远不要** `Date.now()`。18 个目录模型各钉各的，切换 picker 不共用一条 AWS conversation。
+- `conversationId` = DSH `session_id` / `prompt_cache_key` **加上 model**（`session:deepseek-3.2`），缺 pin 时 `dsh-kiro:<model>`。**永远不要** `Date.now()`。静态目录各钉各的，切换 picker 不共用一条 AWS conversation。
 - tools 仍在 **current** `userInputMessageContext.tools`（官方也是挂 current，不在 conversationState 顶层）。
-- `toolResults` 必须紧跟带该 `toolUseId` 的 `assistantResponseMessage`（history user 或 current）。新 assistant 到时先 `flushAssistant`（上一条 tool_use）再 `flushUser`（它的 tool_results）；首条 user 文本仍先入 history。**不要**把 extra system user+ack 插在这一对中间（AWS 400 `unexpected tool_use_id` / `kiro_upstream`）。
-- 上游 401/403 改写成 400（非 AUTH），避免 DSH 把订阅打成「API 密钥无效」。
+- `toolResults` 必须紧跟带该 `toolUseId` 的 `assistantResponseMessage`（history user 或 current）。`relocateDisplacedToolResults` 先按 id 把错位的 result 挪回发出它的 assistant 后面（并发交错：A / user / B / result(A) → AWS 400）；再走原来的 `flushAssistant` 再 `flushUser`。不编造 “Tool results provided.”；有 `toolResults` 时 `content` 保持空串，只有既无文本也无 results 才写占位 `.`。
+- `normalizeToolUseId`：已符合 `^[a-zA-Z0-9_.:-]{1,64}$` 的 id 只做 `call_` / `toolu_` / `tool_` → `tooluse_`；带 `|` 或超长的 OpenAI Responses 复合 id（`call_…|fc_…`）用稳定 sha256 映成 `tooluse_<32>`，use 和 result 共用同一张表。
+- 上游 401/403 改写成 400（非 AUTH），避免 DSH 把订阅打成「API 密钥无效」。`MONTHLY_REQUEST_COUNT` 也回 400（不要扮成可锤的 429）；`INSUFFICIENT_MODEL_CAPACITY` → 503；`USER_REQUEST_RATE_EXCEEDED` → 429（有则带 Retry-After）；超大 / `TOO_BIG` 保持 400/413。TokenManager 已经会刷新，不要再抄 kiro-cli 403 级联。
+- eventstream 里结构化 thinking / `text`（无 `content`）映成 Completions `reasoning_content`。不要把思考压成 `<thinking>` XML 写进 `content`。
 
 命中：有 `metadataEvent.tokenUsage`（或嵌套 `metadataEvent` / snake_case）时用精确字段，`cacheReadInputTokens` → `prompt_tokens_details.cached_tokens`。
 
@@ -77,10 +80,12 @@ DSH chat/completions  →  POST https://q.<region>.amazonaws.com/
 
 ## 模型
 
-`KIRO_MODELS` 对齐 [kiro.dev/docs/models](https://kiro.dev/docs/models)（不含 Auto）+ [effort](https://kiro.dev/docs/models/effort)。id 用点号（`claude-sonnet-5`）。
+`KIRO_MODELS` 是离线 fallback，对齐 [kiro.dev/docs/models](https://kiro.dev/docs/models)（含 **Auto**）+ [effort](https://kiro.dev/docs/models/effort)。id 用点号（`claude-sonnet-5`）。`claude-fable-5` 来自 pi-provider-kiro 0.10.2 bootstrap（官方表未列）。GPT-5.6 Sol/Terra/Luna 行不删。
 
-- GPT-5.6 / Claude：输入 `text+image`。OSS（DeepSeek / MiniMax / GLM-5 / Qwen）：`text`。
-- 思考：GPT-5.6 DSH 档位 `off`–`max`，关思考的 **wire** 是 `none`（`off: "none"`）。Opus 5 / 4.8 / 4.7、Sonnet 5 有 `xhigh`；4.6 家族到 `max`；Haiku / OSS 为 `false`。不要把 `none` 当 DSH 键——整段 `oauth-kiro` 写不进 settings.yaml。
+登录 / 导入 / 额度刷新后 `refreshKiroCatalog` 打 management `https://management.<region>.kiro.dev/` `List-Available-Models`（空或区域 403 再探 `us-east-1` / `eu-central-1`，不在第一个 403 停），按 token hash 缓存，merge 进 picker 和 `oauth-kiro.models` yaml。失败或空列表不挡对话，回静态 fallback。对话 hop **仍是** `q.<region>.amazonaws.com` GenerateAssistantResponse。
+
+- GPT-5.6 / Claude / Auto：输入 `text+image`。OSS（DeepSeek / MiniMax / GLM-5 / Qwen）：`text`。
+- 思考：GPT-5.6 DSH 档位 `off`–`max`，关思考的 **wire** 是 `none`（`off: "none"`）。Opus 5 / 4.8 / 4.7、Sonnet 5、Fable 5、Auto 有 `xhigh`；4.6 家族到 `max`；Haiku / OSS 为 `false`。不要把 `none` 当 DSH 键——整段 `oauth-kiro` 写不进 settings.yaml。
 - 目录必须有 Opus 5、Opus 4.8；Sonnet 主推是 **Claude Sonnet 5**（4.5 仍保留）。
 
 ## 额度
@@ -106,7 +111,12 @@ proxy 只删 `prompt_cache_retention` / `prompt_cache_options`，**不**把 `pro
 
 - 不要 `conversationId: \`-${Date.now()}\``。
 - 不要把整段 system 每轮拼进 `currentMessage.content`（current 一变，AWS 前缀就 miss）。
-- 不要 18 个模型共用一个 `dsh-kiro` conversationId。
+- 不要把目录模型共用一个 `dsh-kiro` conversationId。
+- 不要把带 `|` 的 OpenAI Responses tool id 原样发给 AWS（`REQUEST_BODY_INVALID`）。
+- 不要在错位 tool_result 上编造合成 “Tool results provided.” 或丢掉已有 call 的 result。
+- 不要把思考压成 `<thinking>` XML 写进 assistant `content`。
+- 不要把 chat hop 改到 `runtime.<region>.kiro.dev`（未在本 hop 的 JSON + eventstream 上证明）。
+- 不要只在第一个 ListAvailableModels 403 就放弃；再探另一个 canonical region。
 - 不要给 Kiro 写 Codex `session-id` / `prompt_cache_key` 或 Grok `x-grok-conv-id`。
 - 不要在新 assistant 上先 `flushUser` 再 `flushAssistant`（会把上一轮 tool_result 写到 tool_use 前面；0.0.58 第三跳 400）。
 - 不要把 extra system user+ack 插在 `toolUses` 和匹配的 `toolResults` 中间。
@@ -136,6 +146,7 @@ proxy 只删 `prompt_cache_retention` / `prompt_cache_options`，**不**把 `pro
 | 导入只吃第一条 / IDE 丢 client 注册 | 同文件 2026-08-31 Kiro 导入 |
 | 18 模型缓存 miss（system 每轮进 current + 共用 conversationId） | 同文件 2026-08-31 Kiro 缓存 |
 | 第二轮 tool 前 flushUser 把 tool_result 写到 tool_use 前面（400） | 同文件 2026-09-01 Kiro tool pairing |
+| 复合 tool id / 错位 result / 静态目录缺口 | 同文件 2026-09-03 Kiro tool-id / displaced-result / live-catalog |
 | 每轮 refresh 429 + usage 0/0/0 | 同文件 2026-09-01 Kiro 0.0.57 live |
 | overlay 后 usage 仍 0/0/0（header-type 不够） | 同文件 2026-09-01 Kiro usage 真实事件 |
 

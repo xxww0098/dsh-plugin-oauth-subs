@@ -102,7 +102,7 @@ test('buildProviders only emits logged-in families with DSH api ids', () => {
   assert.equal(chat['oauth-glm'].compat, undefined)
   assert.equal(chat['oauth-kiro'].api, HARNESS_COMPLETIONS_API)
   assert.equal(chat['oauth-kiro'].compat.supportsReasoningEffort, true)
-  assert.equal(chat['oauth-kiro'].models.length, 18)
+  assert.equal(chat['oauth-kiro'].models.length, KIRO_MODELS.length)
   assert.equal(chat['oauth-antigravity'].api, HARNESS_COMPLETIONS_API)
   assert.equal(chat['oauth-cursor'].api, HARNESS_COMPLETIONS_API)
   assert.equal(chat['oauth-cursor'].baseURL, 'http://127.0.0.1:8318/cursor')
@@ -413,8 +413,10 @@ test('logged-in GLM + Kiro persist together: anthropic GLM without completions c
   assert.equal(kiro.api, HARNESS_COMPLETIONS_API)
   assert.equal(kiro.compat.supportsReasoningEffort, true)
   assert.equal(kiro.compat.thinkingFormat, 'openai')
-  assert.equal(kiro.models.length, 18)
-  assert.equal(KIRO_MODELS.length, 18)
+  assert.equal(kiro.models.length, KIRO_MODELS.length)
+  assert.ok(KIRO_MODELS.length >= 18)
+  assert.ok(KIRO_MODELS.some((model) => model.id === 'auto'))
+  assert.ok(KIRO_MODELS.some((model) => model.id === 'claude-fable-5'))
   assert.deepEqual(kiro.models.map((model) => model.id), KIRO_MODELS.map((model) => model.id))
   assert.deepEqual(kiro.models.find((model) => model.id === 'gpt-5.6-sol').reasoningEfforts, {
     off: 'none',

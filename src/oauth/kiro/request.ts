@@ -9,6 +9,7 @@
  * Response is application/vnd.amazon.eventstream.
  */
 
+import { createHash } from 'node:crypto'
 import { crc32 } from 'node:zlib'
 import {
   KIRO_CONTEXT_WINDOW,
@@ -42,7 +43,21 @@ const KIRO_PAYLOAD_WRAPPERS = Object.freeze([
   'contextUsageEvent',
   'meteringEvent',
   'toolUseEvent',
+  'thinkingEvent',
+  'reasoningEvent',
 ])
+
+/** Kiro accepts 1–64 of `[A-Za-z0-9_.:-]`. Piped OpenAI Responses ids 400. */
+export const KIRO_TOOL_USE_ID_PATTERN = /^[a-zA-Z0-9_.:-]{1,64}$/
+
+export const KIRO_REASON_CODES = Object.freeze({
+  CONTENT_LENGTH_EXCEEDS_THRESHOLD: 'CONTENT_LENGTH_EXCEEDS_THRESHOLD',
+  INPUT_TOO_LONG: 'Input is too long',
+  MONTHLY_REQUEST_COUNT: 'MONTHLY_REQUEST_COUNT',
+  INSUFFICIENT_MODEL_CAPACITY: 'INSUFFICIENT_MODEL_CAPACITY',
+  USER_REQUEST_RATE_EXCEEDED: 'USER_REQUEST_RATE_EXCEEDED',
+  REQUEST_BODY_INVALID: 'REQUEST_BODY_INVALID',
+})
 
 /** Live AWS often wraps the payload as `{ [eventType]: { … } }`. */
 export function unwrapKiroEventPayload(payload, type) {
@@ -119,11 +134,44 @@ function openaiToolsToKiro(tools) {
   return mapped.length ? mapped : undefined
 }
 
-function normalizeToolUseId(id) {
+/**
+ * IDs Kiro already accepts stay (after the existing call_/toolu_/tool_
+ * → tooluse_ prefix). Compound OpenAI Responses ids (`call_…|fc_…`,
+ * over 64 chars) get a stable sha256 remap so the matching tool_result
+ * uses the same wire id. Same map both ways — never Date.now().
+ */
+export function normalizeToolUseId(id) {
   const raw = trimmed(id)
   if (!raw) return undefined
-  if (raw.startsWith('tooluse_')) return raw
-  return `tooluse_${raw.replace(/^(toolu_|call_|tool_)/, '')}`
+  if (raw.startsWith('tooluse_') && KIRO_TOOL_USE_ID_PATTERN.test(raw)) return raw
+  const prefixed = raw.startsWith('tooluse_') ? raw : `tooluse_${raw.replace(/^(toolu_|call_|tool_)/, '')}`
+  if (KIRO_TOOL_USE_ID_PATTERN.test(prefixed)) return prefixed
+  const digest = createHash('sha256').update(raw).digest('base64url').slice(0, 32)
+  return `tooluse_${digest}`
+}
+
+/**
+ * Concurrent tools can interleave: assistant(A) / user text / assistant(B)
+ * / toolResult(A). AWS 400s a tool_use without an immediately following
+ * tool_result. Pure reorder by id — no fabricate, no drop of a result
+ * whose call exists. Well-formed transcripts stay unchanged.
+ */
+export function relocateDisplacedToolResults(messages) {
+  if (!Array.isArray(messages) || messages.length === 0) return messages ?? []
+  const pending = [...messages]
+  const out = []
+  while (pending.length) {
+    const message = pending.shift()
+    out.push(message)
+    if (message?.role !== 'assistant' || !Array.isArray(message.tool_calls)) continue
+    for (const call of message.tool_calls) {
+      const id = trimmed(call?.id)
+      if (!id) continue
+      const at = pending.findIndex((row) => row?.role === 'tool' && trimmed(row.tool_call_id) === id)
+      if (at >= 0) out.push(...pending.splice(at, 1))
+    }
+  }
+  return out
 }
 
 function assistantHistoryMessage(message) {
@@ -197,7 +245,7 @@ function parkKiroSystemExtra(history, extra, { modelId, origin, currentHasToolRe
 export function openaiToKiro(payload, { conversationId, profileArn, origin = KIRO_CHAT_ORIGIN } = {}) {
   const modelId = trimmed(payload?.model)
   if (!modelId) throw new Error('kiro generateAssistantResponse requires a model')
-  const messages = Array.isArray(payload?.messages) ? payload.messages : []
+  const messages = relocateDisplacedToolResults(Array.isArray(payload?.messages) ? payload.messages : [])
   const history = []
   const systemParts = []
   let pendingUser
@@ -422,8 +470,22 @@ export function mergeKiroText(previous, chunk) {
   return { text: previous + chunk, delta: chunk }
 }
 
+export function thinkingTextFromPayload(type, data) {
+  if (!isPlainObject(data)) return undefined
+  const typed = typeof type === 'string' && /thinking|reasoning/i.test(type)
+    ? (trimmed(data.text) || trimmed(data.thinking) || trimmed(data.content) || trimmed(data.reasoningContent))
+    : undefined
+  if (typed) return typed
+  // Native thinking events carry `text` / `signature`, not assistant `content`.
+  if (typeof data.text === 'string' && data.content === undefined && !data.toolUseId && !data.name) {
+    return data.text
+  }
+  return trimmed(data.thinking) || trimmed(data.reasoningContent)
+}
+
 export function collectKiroEvents(events) {
   let text = ''
+  let thinking = ''
   const toolCalls = new Map()
   let usage
   let contextPercentage
@@ -431,6 +493,11 @@ export function collectKiroEvents(events) {
   for (const event of events ?? []) {
     const type = event?.type
     const data = unwrapKiroEventPayload(event?.payload, type)
+    const thought = thinkingTextFromPayload(type, data)
+    if (thought) {
+      thinking = mergeKiroText(thinking, thought).text
+      continue
+    }
     if (type === 'assistantResponseEvent' || typeof data.content === 'string') {
       const chunk = typeof data.content === 'string' ? data.content : ''
       if (chunk) text = mergeKiroText(text, chunk).text
@@ -456,6 +523,7 @@ export function collectKiroEvents(events) {
   }
   return {
     text,
+    thinking,
     toolCalls: [...toolCalls.values()].map((row) => ({
       id: row.id,
       type: 'function',
@@ -471,6 +539,7 @@ export function kiroToOpenai(eventsOrBody, { model, id = `chatcmpl-${Date.now()}
   const events = Array.isArray(eventsOrBody) ? eventsOrBody : parseKiroEventStream(eventsOrBody)
   const collected = collectKiroEvents(events)
   const message = { role: 'assistant', content: collected.text || null }
+  if (collected.thinking) message.reasoning_content = collected.thinking
   if (collected.toolCalls.length) message.tool_calls = collected.toolCalls
   return {
     id,
@@ -580,23 +649,62 @@ export function kiroToOpenaiChunk(delta, { model, id, done = false, finishReason
   return chunk
 }
 
-export function kiroClientErrorStatus(status) {
-  if (status === 401 || status === 403) return 400
-  return status >= 400 ? status : 502
+function hopErrorBlob(parsed, text) {
+  const raw = isPlainObject(parsed) ? parsed : {}
+  return [typeof text === 'string' ? text : '', raw.reason, raw.message, raw.Message, raw.error?.message, raw.code]
+    .filter((part) => typeof part === 'string' && part)
+    .join('\n')
+}
+
+/**
+ * Classify hop errors so DSH does not hammer a hard monthly quota as a
+ * generic 429, or treat size / capacity as AUTH. 401/403 still become
+ * 400 (subscription key stays valid) unless TokenManager already refreshed.
+ */
+export function classifyKiroHopError(status, parsed, text, { retryAfter } = {}) {
+  const blob = hopErrorBlob(parsed, text)
+  const headerRetry = retryAfter != null && String(retryAfter).trim() ? String(retryAfter).trim() : undefined
+  if (blob.includes(KIRO_REASON_CODES.MONTHLY_REQUEST_COUNT)) {
+    return { status: 400, code: 'kiro_quota', retryAfter: undefined }
+  }
+  if (blob.includes(KIRO_REASON_CODES.INSUFFICIENT_MODEL_CAPACITY)) {
+    return { status: 503, code: 'kiro_capacity', retryAfter: headerRetry }
+  }
+  if (blob.includes(KIRO_REASON_CODES.USER_REQUEST_RATE_EXCEEDED)) {
+    return { status: 429, code: 'kiro_rate', retryAfter: headerRetry }
+  }
+  if (
+    status === 413
+    || blob.includes(KIRO_REASON_CODES.CONTENT_LENGTH_EXCEEDS_THRESHOLD)
+    || blob.includes(KIRO_REASON_CODES.INPUT_TOO_LONG)
+    || /\bTOO_BIG\b/.test(blob)
+  ) {
+    return { status: status === 413 ? 413 : 400, code: 'kiro_too_big', retryAfter: undefined }
+  }
+  if (status === 401 || status === 403) {
+    return { status: 400, code: 'kiro_upstream', retryAfter: undefined }
+  }
+  return { status: status >= 400 ? status : 502, code: 'kiro_upstream', retryAfter: headerRetry }
+}
+
+export function kiroClientErrorStatus(status, parsed, text) {
+  return classifyKiroHopError(status, parsed, text).status
 }
 
 export function kiroClientErrorBody(status, parsed, text) {
   const raw = isPlainObject(parsed) ? parsed : {}
+  const classified = classifyKiroHopError(status, raw, text)
   const message = trimmed(raw.message)
     || trimmed(raw.error?.message)
     || trimmed(raw.Message)
+    || trimmed(raw.reason)
     || (typeof text === 'string' && text.trim() ? text.trim().slice(0, 800) : undefined)
-    || `kiro upstream ${status}`
+    || `kiro upstream ${classified.status}`
   return {
     error: {
       message,
-      type: 'invalid_request_error',
-      code: 'kiro_upstream',
+      type: classified.status === 429 ? 'rate_limit_error' : 'invalid_request_error',
+      code: classified.code,
     },
   }
 }

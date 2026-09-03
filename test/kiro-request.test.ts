@@ -474,8 +474,8 @@ test('conversationId is the DSH pin across two turns, never a Date.now stamp', (
   assert.equal(pinned.includes(String(Date.now()).slice(0, 8)), false)
 })
 
-test('conversationId isolates all 18 catalog models when DSH omits session_id', () => {
-  assert.equal(KIRO_MODELS.length, 18)
+test('conversationId isolates all catalog models when DSH omits session_id', () => {
+  assert.ok(KIRO_MODELS.length >= 18)
   const ids = KIRO_MODELS.map((model) => kiroConversationId({ model: model.id }))
   assert.equal(ids.length, new Set(ids).size)
   for (const model of KIRO_MODELS) {

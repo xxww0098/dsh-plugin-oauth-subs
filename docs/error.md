@@ -1,5 +1,39 @@
 # 错误记录
 
+## 2026-09-03：Kiro 复合 tool id / 错位 tool_result / 静态目录缺口
+
+### 现象
+
+DSH Completions hop 已经能打活 `POST https://q.<region>.amazonaws.com/` `GenerateAssistantResponse`。三处仍会 400 或让 picker 落后：
+
+1. OpenAI Responses 复合 tool id（`call_…|fc_…`，常超 64 且含 `|`）。`normalizeToolUseId` 只剥 `call_` / `toolu_` / `tool_` 再加 `tooluse_`，管道符还在 → AWS `400 REQUEST_BODY_INVALID`。
+2. 并发工具交错：`assistant(A)` / user 文本 / `assistant(B)` / `toolResult(A)`。只靠位置 flush 时 A 的 result 不紧跟 A 的 tool_use → `400` tool_use without immediately following tool_result。
+3. 静态 `KIRO_MODELS` 不打 `ListAvailableModels`。官方表已有 Auto；pi-provider-kiro 0.10.2 bootstrap 还有 `claude-fable-5`。登录后 picker / `oauth-kiro.models` yaml 不会长出新行。
+
+月度额度 `MONTHLY_REQUEST_COUNT` 若原样当 429，DSH 会锤。思考事件若压成 `<thinking>` XML 写进 `content`，会污染下一轮前缀。
+
+### 证据
+
+- MIT [mikeyobrien/pi-provider-kiro](https://github.com/mikeyobrien/pi-provider-kiro) v0.10.2（2026-08-31）：`toKiroToolUseId`（#137）、`relocateDisplacedToolResults`（0.10.0）、`ListAvailableModels` on `https://management.<region>.kiro.dev/`（`src/models.ts` / `src/endpoints.ts` / `src/management.ts`）、`KIRO_REASON_CODES`（#115）、0.9.1/0.9.2 native thinking events（0.10.0 已撤回 XML flatten）。
+- kiro.dev/docs/models（页脚 2026-08-04）：表里有 **Auto**，没有 Claude Fable 5。GPT-5.6 Sol/Terra/Luna 在。
+- 本 hop 现场仍是 CodeWhisperer `q.<region>.amazonaws.com` eventstream，不是 `runtime.<region>.kiro.dev`。未改 hop 主机。
+
+### 根因
+
+代理翻译层 + 离线目录。不是登录 PKCE、不是 Codex/Grok cache helper、也不是把 Completions 改 Responses。
+
+### 修复
+
+- `normalizeToolUseId`：合法 charset/长度保留（仍做 `call_`/`toolu_`/`tool_` 前缀）；非法 id 稳定 sha256 → `tooluse_<32>`，use 和 result 同一函数。
+- `relocateDisplacedToolResults` 在 flush 前按 id 纯重排；不编造、不丢已有 call 的 result。原来的 flushAssistant-before-flushUser 不动。
+- `src/oauth/kiro/catalog.ts`：登录 / 导入 / 额度刷新打 ListAvailableModels；区域 403 或空列表再探 `us-east-1` / `eu-central-1`；按 token hash 缓存。失败回静态。静态 fallback 含原 18 行 + `auto` + `claude-fable-5`。
+- `classifyKiroHopError`：`MONTHLY_REQUEST_COUNT` → 400；capacity → 503；rate → 429+Retry-After；过大 → 400/413。401/403 仍改 400。
+- 结构化 thinking → Completions `reasoning_content`，不写 `<thinking>` 进 `content`。
+
+### 验证
+
+- `npm test`：piped id 在 use+result 上稳定且无 `|`；交错 A/B 按 id 归位；活目录 mock 能长出静态以外的行且含 `auto`；空 ListAvailableModels 保住静态（原 18 行仍在）；`MONTHLY_REQUEST_COUNT` 不是 429；thinking 事件不把 XML 漏进 content。无 live AWS。
+
 ## 2026-09-03：Ollama Cloud — signin 不是 Bearer，无额度 / cache-read
 
 ### 现象

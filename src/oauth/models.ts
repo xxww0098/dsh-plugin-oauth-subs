@@ -169,7 +169,12 @@ function ollamaHarnessModels(ollamaModels) {
   return OLLAMA_MODELS
 }
 
-export function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaModels }) {
+function kiroHarnessModels(kiroModels) {
+  if (Array.isArray(kiroModels) && kiroModels.length > 0) return kiroModels
+  return KIRO_MODELS
+}
+
+export function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaModels, kiroModels }) {
   const providers = {}
   if (loggedIn.codex) {
     providers[`${prefix}-codex`] = {
@@ -213,7 +218,7 @@ export function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaM
         supportsReasoningEffort: true,
         thinkingFormat: 'openai',
       },
-      models: KIRO_MODELS.map(toHarnessModel),
+      models: kiroHarnessModels(kiroModels).map(toHarnessModel),
     }
   }
   if (loggedIn.antigravity) {
@@ -270,13 +275,14 @@ export function describeProviders(providers) {
   }))
 }
 
-export function catalogProviders({ prefix, origin, cursorModels, ollamaModels }) {
+export function catalogProviders({ prefix, origin, cursorModels, ollamaModels, kiroModels }) {
   return buildProviders({
     prefix,
     origin,
     loggedIn: { codex: true, grok: true, glm: true, kiro: true, antigravity: true, cursor: true, ollama: true },
     cursorModels,
     ollamaModels,
+    kiroModels,
   })
 }
 
@@ -518,10 +524,12 @@ async function assertPersistedProviders(settings, expectedIds) {
   }
 }
 
-export async function syncHarnessModels({ settings, prefix, origin, loggedIn, selected, cursorModels, ollamaModels }) {
+export async function syncHarnessModels({ settings, prefix, origin, loggedIn, selected, cursorModels, ollamaModels, kiroModels }) {
   const routePrefix = String(prefix ?? '').trim()
   if (!routePrefix) throw new Error('Harness route prefix cannot be empty')
-  const providers = filterProviders(buildProviders({ prefix: routePrefix, origin, loggedIn, cursorModels, ollamaModels }), selected)
+  const providers = filterProviders(buildProviders({
+    prefix: routePrefix, origin, loggedIn, cursorModels, ollamaModels, kiroModels,
+  }), selected)
   for (const [id, value] of Object.entries(providers)) {
     assertDshServiceableProvider(id, value)
   }

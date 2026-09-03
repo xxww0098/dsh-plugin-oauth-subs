@@ -13,13 +13,14 @@ import { applyGrokCache } from './grok/cache.js'
 import { GLM_MODELS, glmAnthropicHeaders, glmAnthropicUrl, glmCodingUrl, glmUpstreamHeaders } from './glm/index.js'
 import { glmCacheSessionId } from './glm/cache.js'
 import { normalizeGlmAnthropicBody, normalizeGlmChatBody } from './glm/request.js'
-import { KIRO_MODELS, kiroStreamingProfileArn } from './kiro/index.js'
+import { kiroStreamingProfileArn } from './kiro/index.js'
+import { kiroCatalogModels } from './kiro/catalog.js'
 import {
   KIRO_STABLE_SESSION,
+  classifyKiroHopError,
   kiroChatHeaders,
   kiroChatUrl,
   kiroClientErrorBody,
-  kiroClientErrorStatus,
   kiroConversationId,
   kiroToOpenai,
   kiroToOpenaiChunk,
@@ -28,6 +29,7 @@ import {
   mergeKiroText,
   openaiToKiro,
   resolveKiroUsage,
+  thinkingTextFromPayload,
   unwrapKiroEventPayload,
 } from './kiro/request.js'
 import {
@@ -293,7 +295,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
       try {
         if (tokens.kiro) {
           await tokens.kiro.session()
-          data.push(...KIRO_MODELS.map((model) => ({ id: model.id, object: 'model', owned_by: 'kiro' })))
+          data.push(...kiroCatalogModels().map((model) => ({ id: model.id, object: 'model', owned_by: 'kiro' })))
         }
       } catch { /* not logged in */ }
       try {
@@ -426,7 +428,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
     if (path === '/kiro/v1/models' && request.method === 'GET') {
       send(response, 200, {
         object: 'list',
-        data: KIRO_MODELS.map((model) => ({ id: model.id, object: 'model', owned_by: 'kiro' })),
+        data: kiroCatalogModels().map((model) => ({ id: model.id, object: 'model', owned_by: 'kiro' })),
       })
       return
     }
@@ -884,10 +886,24 @@ async function forwardAntigravity(request, response, { session, tokens, fetchFn,
   if (!response.writableEnded && !response.destroyed) response.end()
 }
 
-function sendKiroUpstreamError(response, status, text) {
+function headerValue(headers, name) {
+  if (!headers) return undefined
+  if (typeof headers.get === 'function') return headers.get(name) ?? undefined
+  return headers[name] ?? headers[name.toLowerCase()]
+}
+
+function sendKiroUpstreamError(response, status, text, headers) {
   let parsed
   try { parsed = text ? JSON.parse(text) : null } catch { parsed = null }
-  send(response, kiroClientErrorStatus(status), kiroClientErrorBody(status, parsed, text))
+  const classified = classifyKiroHopError(status, parsed, text, {
+    retryAfter: headerValue(headers, 'retry-after'),
+  })
+  send(
+    response,
+    classified.status,
+    kiroClientErrorBody(status, parsed, text),
+    classified.retryAfter ? { 'retry-after': classified.retryAfter } : {},
+  )
 }
 
 async function writeKiroSse(response, chunk, signal) {
@@ -917,7 +933,7 @@ async function forwardKiro(request, response, { session, fetchFn, maxRequestBody
   }
 
   if (upstream.status >= 400) {
-    sendKiroUpstreamError(response, upstream.status, await upstream.text())
+    sendKiroUpstreamError(response, upstream.status, await upstream.text(), upstream.headers)
     return
   }
 
@@ -942,6 +958,7 @@ async function forwardKiro(request, response, { session, fetchFn, maxRequestBody
   })
   const parser = new KiroEventStreamParser()
   let accText = ''
+  let accThinking = ''
   let sawTools = false
   let usage
   let contextPercentage
@@ -958,6 +975,15 @@ async function forwardKiro(request, response, { session, fetchFn, maxRequestBody
     for (const event of events) {
       const type = event.type
       const data = unwrapKiroEventPayload(event.payload, type)
+      const thought = thinkingTextFromPayload(type, data)
+      if (thought) {
+        const merged = mergeKiroText(accThinking, thought)
+        accThinking = merged.text
+        if (merged.delta) {
+          await writeKiroSse(response, kiroToOpenaiChunk({ reasoning_content: merged.delta }, { model, id }), signal)
+        }
+        continue
+      }
       if ((type === 'assistantResponseEvent' || typeof data.content === 'string') && typeof data.content === 'string' && data.content) {
         const merged = mergeKiroText(accText, data.content)
         accText = merged.text
