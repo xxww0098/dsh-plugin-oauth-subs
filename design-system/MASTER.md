@@ -30,10 +30,10 @@ The overlay below is what this plugin actually ships.
 - No glassmorphism on the shell. Optional `backdrop-blur-xs` **only**
   on the centered Dialog overlay (`--dsw-mask-blur`).
 - No hardcoded light-theme grays. Dark host stays dark.
-- Icon-only tabs, sticky `.osubs-nav`, **two groups**: left OAuth
-  capsule (`repeat(8, 36px)`, families only; OpenCode is the 9th and
-  wraps inside that group) and far-right utility capsule (Models over GitHub).
-  Never one wrapping grid that drops Models/GitHub under the families.
+- Icon-only tabs, sticky `.osubs-nav`, **two groups docked** with a 4px
+  seam: left OAuth capsule (`repeat(8, 36px)`, families only; OpenCode
+  wraps inside) then utility capsule (Models over GitHub). Do not
+  `margin-left: auto` / `space-between` (that leaves a hole).
 - No family-level identity row. No shared quota block under the heading.
 
 ## Remaining bars

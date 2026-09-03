@@ -10,11 +10,11 @@ No hero, no feature grid, no glass CTA slab. The first catalog hit for
 SaaS (Hero + Features + CTA / Glassmorphism) stops at the overlay
 already recorded in MASTER. Settings is a stacked workbench:
 
-1. Sticky icon tabs (`.osubs-nav`): **two capsules**. Left `.osubs-tabs`
-   is family-only `repeat(8, 36px)` (8 families fill row 1; a 9th wraps
-   inside this group). Right `.osubs-tabs-util` (`margin-left: auto`)
-   stacks Models on row 1 and GitHub/About on row 2. Do not put
-   Models/GitHub in the OAuth grid.
+1. Sticky icon tabs (`.osubs-nav`): **two capsules**, docked with
+   `gap: 4px`. Left `.osubs-tabs` is family-only `repeat(8, 36px)`
+   (8 families fill row 1; a 9th wraps inside this group). Right
+   `.osubs-tabs-util` stacks Models on row 1 and GitHub/About on row 2.
+   Do not `margin-left: auto` or `space-between`.
 2. One family card (or Models / About)
 3. Account cards in a column
 4. One primary CTA → centered Dialog

@@ -35,16 +35,18 @@ Session / Weekly 没有 `{n}后重置`。官方 Cloud UI 有倒计时。`/api/us
 ### 修复
 有 stamp 就用。Session 缺 stamp 用下一 UTC 5h unix 桶（`18000-(epoch%18000)`，ollama#12532）。Weekly 只信 wire。不 `now+5h` / `now+7d`，不刮 settings HTML。
 
-## 2026-09-03：模型和 GitHub 掉进 OAuth 第二排左边
+## 2026-09-03：tab 栏中间空白，两胶囊对不齐
 
 ### 现象
-8 个家族填满第一排后，Models 和 GitHub 折到 OAuth 胶囊第二排左边，像第 9/10 个家族。
+OAuth 胶囊和 Models/GitHub 胶囊被拉开，中间一大块空白。
 
 ### 根因
-一个 8 列 `.osubs-tabs` 同时装家族 + Models + About。第 9 个起 wrap 进同一 grid。
+`.osubs-nav` `space-between` + `.osubs-tabs-util` `margin-left: auto` 把第二胶囊推到最右。
 
 ### 修复
-两胶囊。左 OAuth `repeat(8, 36px)` 只放家族（OpenCode 是第 9 个，折在本组第二排）；右独立胶囊 Models 上、GitHub 下，`margin-left: auto`。## 2026-09-03：Kimi Code 不能写自定义 api；设备码过期要重开
+两胶囊保留。`.osubs-nav` `flex-start` + `gap: 4px`，去掉 `margin-left: auto`。胶囊对接，中间只留 4px 缝。
+
+## 2026-09-03：Kimi Code 不能写自定义 api；设备码过期要重开
 
 
 ### 现象
