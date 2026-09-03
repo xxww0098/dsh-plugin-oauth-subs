@@ -55,6 +55,7 @@ import {
   fetchAntigravityCloudCode,
   isCodeAssistOnlyPlan,
 } from './antigravity/index.js'
+import { CURSOR_USAGE_URL, cursorUsageHeaders } from './cursor/index.js'
 
 export const QUOTA_TTL_MS = 60_000
 export const QUOTA_TIMEOUT_MS = 10_000
@@ -704,6 +705,53 @@ export function parseKiroUsage(payload) {
   }
 }
 
+export function parseCursorPeriodUsage(payload) {
+  if (!payload || typeof payload !== 'object') return { rows: [] }
+  const planUsage = payload.planUsage && typeof payload.planUsage === 'object' ? payload.planUsage : {}
+  const spend = payload.spendLimitUsage && typeof payload.spendLimitUsage === 'object' ? payload.spendLimitUsage : {}
+  const limitType = typeof spend.limitType === 'string' ? spend.limitType : undefined
+  const membership = typeof payload.membershipType === 'string' && payload.membershipType.trim()
+    ? payload.membershipType.trim()
+    : limitType === 'team' ? 'Team' : 'Pro'
+  const usedPercent = clampPct(planUsage.totalPercentUsed)
+  const includedSpend = asNumber(planUsage.includedSpend)
+  const limit = asNumber(planUsage.limit)
+  const remaining = limit !== undefined && includedSpend !== undefined
+    ? Math.max(0, limit - includedSpend)
+    : undefined
+  const resetAt = stampOf(payload.billingCycleEnd)
+  return {
+    planType: pickPlanRaw(membership, payload.planType, limitType),
+    account: typeof payload.email === 'string' ? payload.email.trim() : undefined,
+    rows: [{
+      key: 'cycle',
+      kind: 'cycle',
+      usedPercent,
+      remainingPercent: usedPercent === undefined ? undefined : 100 - usedPercent,
+      used: includedSpend,
+      total: limit,
+      remaining,
+      resetAt,
+    }],
+  }
+}
+
+export async function fetchCursorQuota(session, fetchFn = fetch) {
+  const wait = timeoutSignal(QUOTA_TIMEOUT_MS)
+  try {
+    const response = await fetchFn(CURSOR_USAGE_URL, {
+      method: 'POST',
+      headers: cursorUsageHeaders(session),
+      body: '{}',
+      signal: wait.signal,
+    })
+    if (!response.ok) throw new Error(`cursor quota failed (HTTP ${response.status})`)
+    return parseCursorPeriodUsage(await readJson(response, 'cursor period usage'))
+  } finally {
+    wait.cancel()
+  }
+}
+
 export async function fetchGlmQuota(session, fetchFn = fetch) {
   const wait = timeoutSignal(QUOTA_TIMEOUT_MS)
   try {
@@ -1334,6 +1382,8 @@ export class QuotaStore {
             ? await fetchKiroQuota(session, this.fetchFn)
             : provider === 'antigravity'
               ? await fetchAntigravityQuota(session, this.fetchFn)
+              : provider === 'cursor'
+                ? await fetchCursorQuota(session, this.fetchFn)
               : await fetchGrokQuota(session, this.fetchFn)
       const entry = {
         status: 'ready',

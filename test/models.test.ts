@@ -95,7 +95,7 @@ test('buildProviders only emits logged-in families with DSH api ids', () => {
   const chat = buildProviders({
     prefix: 'oauth',
     origin: 'http://127.0.0.1:8318',
-    loggedIn: { glm: true, kiro: true, antigravity: true },
+    loggedIn: { glm: true, kiro: true, antigravity: true, cursor: true },
   })
   assert.equal(chat['oauth-glm'].api, HARNESS_ANTHROPIC_API)
   assert.equal(chat['oauth-glm'].baseURL, 'http://127.0.0.1:8318/glm')
@@ -104,6 +104,11 @@ test('buildProviders only emits logged-in families with DSH api ids', () => {
   assert.equal(chat['oauth-kiro'].compat.supportsReasoningEffort, true)
   assert.equal(chat['oauth-kiro'].models.length, 18)
   assert.equal(chat['oauth-antigravity'].api, HARNESS_COMPLETIONS_API)
+  assert.equal(chat['oauth-cursor'].api, HARNESS_COMPLETIONS_API)
+  assert.equal(chat['oauth-cursor'].baseURL, 'http://127.0.0.1:8318/cursor')
+  assert.equal(chat['oauth-cursor'].baseURL.endsWith('/cursor/v1'), false)
+  assert.equal(Object.hasOwn(chat['oauth-cursor'].models.find((model) => model.id === 'composer-2').reasoningEfforts, 'none'), false)
+  assert.equal(chat['oauth-cursor'].models.find((model) => model.id === 'composer-2').reasoningEfforts.off, 'none')
   assert.equal(chat['oauth-codex'], undefined)
 })
 

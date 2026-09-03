@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml/badge.svg)](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml)
 
-Use a **ChatGPT / Codex**, **xAI Grok**, **Zhipu GLM**, **AWS Kiro**, or **Google Antigravity** subscription inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). Official OAuth, plus Kiro API keys.
+Use a **ChatGPT / Codex**, **xAI Grok**, **Zhipu GLM**, **AWS Kiro**, **Google Antigravity**, or **Cursor** subscription inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). Official OAuth, plus Kiro API keys and Cursor CLI/IDE reuse.
 
 A loopback proxy plus `llm-pi-ai` route sync. Each family picks one DSH `api` from the closed union `openai-responses` | `openai-completions` | `anthropic-messages`.
 
@@ -15,7 +15,7 @@ dsh plugin --profile web add https://github.com/xxww0098/dsh-plugin-oauth-subs
 dsh web
 ```
 
-Open **Settings → OAuth subs**. Icon tabs stay pinned at the top: Codex, Grok, **Z.ai (GLM)**, **Kiro**, **Antigravity**, Models, About. Sign in more than once per family; **one card per account, each with its own quota**. Click a card to switch the chat account. **GLM** matches ZCode's welcome screen: **Z.ai (global)** and **BigModel (China)** OAuth, plus paste-an-API-key. **Kiro** stacks Social / GitHub / Google, Builder ID, Enterprise IdC, Entra / Azure AD, and `ksk_` keys. **Antigravity** is Google login like the official IDE. **About** links the GitHub repo. Check for updates compares GitHub latest and, when newer, runs `dsh plugin --profile web update dsh-plugin-oauth-subs`. Restart `dsh web` to load the new module. Or mount the bundle patch by hand:
+Open **Settings → OAuth subs**. Icon tabs stay pinned at the top: Codex, Grok, **Z.ai (GLM)**, **Kiro**, **Antigravity**, **Cursor**, Models, About. Sign in more than once per family; **one card per account, each with its own quota**. Click a card to switch the chat account. **GLM** matches ZCode's welcome screen: **Z.ai (global)** and **BigModel (China)** OAuth, plus paste-an-API-key. **Kiro** stacks Social / GitHub / Google, Builder ID, Enterprise IdC, Entra / Azure AD, and `ksk_` keys. **Antigravity** is Google login like the official IDE. **Cursor** is PKCE poll plus **Import local Cursor** (CLI Keychain / IDE `state.vscdb` / `CURSOR_ACCESS_TOKEN`) — user-owned login reuse, not a second OAuth. **About** links the GitHub repo. Check for updates compares GitHub latest and, when newer, runs `dsh plugin --profile web update dsh-plugin-oauth-subs`. Restart `dsh web` to load the new module. Or mount the bundle patch by hand:
 
 ```yaml
 - insert:
@@ -41,8 +41,9 @@ pnpm dsh web --patch ./cordis.patch.yml
 | AWS Kiro · Entra / Azure AD | Paste refresh token; public-client `refresh_token` grant | your Entra client id | `*.microsoftonline.com` token endpoint |
 | AWS Kiro · API key | Paste `ksk_…` | — | Bearer, no refresh |
 | Google Antigravity | Google OAuth on `localhost:51121/oauth-callback`; paste-callback supported | `1071006060591-…apps.googleusercontent.com` | `daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent` (hub; prod is IDE fallback) |
+| Cursor | PKCE poll at `cursor.com/loginDeepControl`; or **Import local Cursor** | Cursor CLI / IDE | Connect `agentn.us.api5.cursor.sh` `AgentService/Run` |
 
-Already signed in on this machine via Codex CLI, Grok CLI, Hermes, ZCode Desktop, Kiro IDE, kiro.rs, Antigravity CLI, or CLIProxyAPI? Use **Import local session**:
+Already signed in on this machine via Codex CLI, Grok CLI, Hermes, ZCode Desktop, Kiro IDE, kiro.rs, Antigravity CLI, CLIProxyAPI, or Cursor CLI/IDE? Use **Import local session** (Cursor button: **Import local Cursor**):
 
 - `~/.codex/auth.json`
 - `~/.grok/auth.json`
@@ -54,6 +55,9 @@ Already signed in on this machine via Codex CLI, Grok CLI, Hermes, ZCode Desktop
 - Paste in Settings: kiro-manager-lite kami / compact JSON / full backup / CSV, or a Social refresh token / `ksk_…`
 - `~/.gemini/antigravity-cli/antigravity-oauth-token`
 - `~/.cli-proxy-api/antigravity-*.json`
+- macOS Keychain `cursor-access-token` / `cursor-refresh-token` (Cursor CLI)
+- Cursor IDE `state.vscdb` keys `cursorAuth/accessToken` + `cursorAuth/refreshToken` (current OS user only; WSL does not walk other Windows profiles)
+- `CURSOR_ACCESS_TOKEN` env (no refresh)
 
 Tokens live at `<profile>/data/dsh-plugin-oauth-subs/auth.json` with mode `0600`. Multiple accounts per family sit in that file as a vault; a legacy single-session file still loads. Enabled-model choices live in `models.json` next to it.
 
@@ -67,11 +71,11 @@ DeepSeek Harness (call plane)
   └─ llm-pi-ai
        └─ http://127.0.0.1:8318/{codex,grok}/v1/responses
        └─ http://127.0.0.1:8318/glm/v1/messages
-       └─ http://127.0.0.1:8318/{kiro,antigravity}/v1/chat/completions
+       └─ http://127.0.0.1:8318/{kiro,antigravity,cursor}/v1/chat/completions
             └─ refreshed subscription bearer against upstream
 ```
 
-Codex and Grok are **Responses** (vendor-native). GLM is **Anthropic Messages** (ZCode Desktop default; Completions leftover stays at `/glm/v1/chat/completions` until the next sync). Kiro and Antigravity stay **Completions adapters** because their native wires (AWS EventStream / `generateContent`) are none of the three. The 150% GLM Coding Plan boost is identity (ZCode Desktop UA), not a protocol claim — this plugin has not compared quota slope vs official Desktop.
+Codex and Grok are **Responses** (vendor-native). GLM is **Anthropic Messages** (ZCode Desktop default; Completions leftover stays at `/glm/v1/chat/completions` until the next sync). Kiro, Antigravity, and Cursor stay **Completions adapters** because their native wires (AWS EventStream / `generateContent` / Connect protobuf) are none of the three. The 150% GLM Coding Plan boost is identity (ZCode Desktop UA), not a protocol claim — this plugin has not compared quota slope vs official Desktop.
 
 This is not a second LLM adapter. After you close Settings, DSH still calls the loopback proxy through `llm-pi-ai`. The proxy binds loopback only and checks the local credential `DSH_OAUTH_SUBS_API_KEY`.
 
@@ -84,6 +88,7 @@ src/
   oauth/kiro/      Kiro Social / Builder ID / IdC / Entra / API key
   oauth/           proxy, PKCE, quota, models
   oauth/antigravity/ Google OAuth + cloudcode-pa fingerprint
+  oauth/cursor/    Cursor PKCE + CLI/IDE import + AgentService/Run hop
   ui/              React Settings (classic-script factory)
   utils/           jwt, pkce, fast/context, session analyzer
 ```
@@ -139,7 +144,7 @@ Login, token refresh, chat, and quota use one official client identity: Codex pa
 
 ## Models
 
-Settings → OAuth subs → **Models** lists every Codex, Grok, GLM, **Kiro**, and Antigravity catalog id, including Codex `-fast` and `-900k` siblings. Each row is an on/off checkbox. **All on** / **All off** apply per family.
+Settings → OAuth subs → **Models** lists every Codex, Grok, GLM, **Kiro**, Antigravity, and Cursor catalog id, including Codex `-fast` and `-900k` siblings. Each row is an on/off checkbox. **All on** / **All off** apply per family.
 
 Kiro follows [kiro.dev/docs/models](https://kiro.dev/docs/models/) (no Auto router): GPT-5.6 Sol / Terra / Luna, Claude Opus 5 / 4.8 / 4.7 / 4.6 / 4.5, Claude Sonnet 5 / 4.6 / 4.5 / 4, Claude Haiku 4.5, DeepSeek 3.2, MiniMax M2.5 / M2.1, GLM-5, Qwen3 Coder Next. Ids are Kiro native (`claude-opus-5`, `claude-sonnet-4.6`, `gpt-5.6-sol`). Claude and GPT-5.6 advertise image input; the open-weight rows are text.
 
@@ -174,6 +179,7 @@ After sign-in, each account card shows official remaining quota.
 | xAI Grok | `cli-chat-proxy.grok.com/v1/billing?format=credits` plus `/v1/user?include=subscription` | Plan badge (SuperGrok / X Premium+ …) plus period usage, prepaid balance, product split |
 | Zhipu GLM | `api.z.ai` or `open.bigmodel.cn` `monitor/usage/quota/limit` | Plan badge (Lite / Pro / Max) plus Coding Plan credit windows; host follows the active account |
 | Google Antigravity | daily-cloudcode-pa `loadCodeAssist` + `fetchAvailableModels` (prod only on 5xx / transport) | Plan badge (Pro / Ultra / Free / Standard) plus SkillStar model-group remaining bars and reset time |
+| Cursor | `api2.cursor.sh` `DashboardService/GetCurrentPeriodUsage` | Plan badge (Free / Pro / Pro+ / Ultra …) plus cycle remaining percent |
 
 Quota refreshes about once a minute, or immediately from **Refresh quota**. A failed read does not block chat.
 

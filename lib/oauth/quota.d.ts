@@ -77,6 +77,42 @@ export declare function parseKiroUsage(payload: any): {
         resetAt: number;
     }[];
 };
+export declare function parseCursorPeriodUsage(payload: any): {
+    rows: any[];
+    planType?: undefined;
+    account?: undefined;
+} | {
+    planType: string | number;
+    account: any;
+    rows: {
+        key: string;
+        kind: string;
+        usedPercent: number;
+        remainingPercent: number;
+        used: number;
+        total: number;
+        remaining: number;
+        resetAt: number;
+    }[];
+};
+export declare function fetchCursorQuota(session: any, fetchFn?: typeof fetch): Promise<{
+    rows: any[];
+    planType?: undefined;
+    account?: undefined;
+} | {
+    planType: string | number;
+    account: any;
+    rows: {
+        key: string;
+        kind: string;
+        usedPercent: number;
+        remainingPercent: number;
+        used: number;
+        total: number;
+        remaining: number;
+        resetAt: number;
+    }[];
+}>;
 export declare function fetchGlmQuota(session: any, fetchFn?: typeof fetch): Promise<any>;
 /** SkillStar `parse_model_windows` — group fetchAvailableModels into product bars. */
 export declare function parseAntigravityModelQuota(payload: any): {

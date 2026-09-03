@@ -8,13 +8,14 @@ export declare const MAX_REQUEST_BODY_BYTES: number;
 export declare const STREAM_ATTEMPTS = 3;
 /** undici reports socket faults as a bare "fetch failed"; the cause carries the reason. */
 export declare function describeError(error: any): string;
-export declare function createProxy({ port, apiKey, tokens, fetchFn, maxRequestBodyBytes, onAntigravityValidation }: {
+export declare function createProxy({ port, apiKey, tokens, fetchFn, maxRequestBodyBytes, onAntigravityValidation, cursorRpc }: {
     port: any;
     apiKey: any;
     tokens: any;
     fetchFn?: typeof fetch;
     maxRequestBodyBytes?: number;
     onAntigravityValidation: any;
+    cursorRpc: any;
 }): {
     origin: () => string;
     listen(): Promise<any>;

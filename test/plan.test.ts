@@ -36,6 +36,10 @@ test('formatPlanLabel maps Codex slugs to Plus / Pro 20x / Pro 5x / Team', () =>
   assert.equal(formatPlanLabel('g1-ultra-tier', 'antigravity'), 'Ultra')
   assert.equal(formatPlanLabel('free-tier', 'antigravity'), 'Free')
   assert.equal(formatPlanLabel('g1-ultra-5x-tier', 'antigravity'), 'Ultra 5x')
+  assert.equal(formatPlanLabel('pro', 'cursor'), 'Pro')
+  assert.equal(formatPlanLabel('proplus', 'cursor'), 'Pro+')
+  assert.equal(formatPlanLabel('ultra', 'cursor'), 'Ultra')
+  assert.equal(formatPlanLabel('hobby', 'cursor'), 'Hobby')
 })
 
 test('formatPlanLabel maps Grok numeric tiers and aliases', () => {

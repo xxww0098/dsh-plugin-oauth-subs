@@ -13,7 +13,7 @@ import { formatPlanLabel } from './plan.js'
 import { kiroAccountId, kiroMethodLabel } from './kiro/index.js'
 import { displayGlmAccount } from './glm/index.js'
 
-export const PROVIDER_IDS = Object.freeze(['codex', 'grok', 'glm', 'kiro', 'antigravity'])
+export const PROVIDER_IDS = Object.freeze(['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor'])
 
 export function defaultDataDir() {
   return join(homedir(), '.dsh', 'plugins', 'oauth-subs')
@@ -312,6 +312,24 @@ export function publicSession(provider, session) {
       validationUrl: typeof session.validationUrl === 'string' && session.validationUrl.trim()
         ? session.validationUrl.trim()
         : undefined,
+    }
+  }
+  if (provider === 'cursor') {
+    return {
+      account: session.account,
+      planType,
+      planLabel,
+      method: session.source,
+      methodLabel: session.source === 'cli_keychain'
+        ? 'CLI'
+        : session.source === 'ide_vscdb'
+          ? 'IDE'
+          : session.source === 'env'
+            ? 'env'
+            : session.source === 'pkce'
+              ? 'PKCE'
+              : undefined,
+      expiresAt: session.expiresAt,
     }
   }
   return {

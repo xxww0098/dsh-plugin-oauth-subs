@@ -56,6 +56,9 @@ import {
   refreshAntigravity,
 } from './antigravity/index.js'
 import { importAntigravityAuth, importCodexAuth, importGrokAuth, importGlmAuth, importKiroAuth } from './import-auth.js'
+import { CursorPollFlowManager } from './cursor/pkce-flow.js'
+import { refreshCursor, isCursorPermanentRefreshError } from './cursor/index.js'
+import { CURSOR_IMPORT_EMPTY, importCursorAuth } from './cursor/import.js'
 import {
   buildProviders,
   catalogProviders,
@@ -70,7 +73,7 @@ import { QuotaStore } from './quota.js'
 import { fetchLatest, localUpdateInfo, runPluginUpdate, DEFAULT_PROFILE } from '../utils/update.js'
 
 export class AuthController {
-  constructor({ authPath, prefix, origin, settings, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, spawnFn, profile }) {
+  constructor({ authPath, prefix, origin, settings, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, spawnFn, profile, cursorAutoImport, cursorImport }) {
     this.authPath = authPath
     this.prefix = prefix
     this.origin = origin
@@ -84,6 +87,11 @@ export class AuthController {
     this.devices = new DeviceFlowManager()
     this.glmFlows = new GlmCliFlowManager()
     this.kiroFlows = new KiroIdcFlowManager()
+    this.cursorFlows = new CursorPollFlowManager()
+    // node:test sets NODE_TEST_CONTEXT; do not harvest the agent/IDE login into unit snapshots.
+    this.cursorAutoImport = cursorAutoImport ?? !process.env.NODE_TEST_CONTEXT
+    this.cursorImport = cursorImport && typeof cursorImport === 'object' ? cursorImport : {}
+    this.cursorAutoImportTried = false
     this.lastError = new Map()
     this.finalizing = new Set()
     this.claims = new Map()
@@ -138,6 +146,16 @@ export class AuthController {
         isPermanent: isAntigravityPermanentRefreshError,
         onRemoved: () => this.onAuthChanged?.('antigravity'),
       }),
+      cursor: new TokenManager({
+        displayName: 'Cursor',
+        preemptMs: 5 * 60_000,
+        load: () => getSession('cursor', this.authPath),
+        save: (session) => saveSession('cursor', session, this.authPath),
+        remove: () => deleteSession('cursor', this.authPath),
+        refresh: (session) => refreshCursor(session, fetchFn),
+        isPermanent: isCursorPermanentRefreshError,
+        onRemoved: () => this.onAuthChanged?.('cursor'),
+      }),
     }
     this.quota = new QuotaStore({ tokens: this.tokens, fetchFn, ttlMs: quotaTtlMs })
     this.fetchFn = fetchFn
@@ -156,6 +174,7 @@ export class AuthController {
       glm: (await getSession('glm', this.authPath)) !== undefined,
       kiro: (await getSession('kiro', this.authPath)) !== undefined,
       antigravity: (await getSession('antigravity', this.authPath)) !== undefined,
+      cursor: (await getSession('cursor', this.authPath)) !== undefined,
     }
   }
 
@@ -166,7 +185,7 @@ export class AuthController {
     const activeId = session ? accountIdOf(provider, session) : undefined
     return {
       loggedIn: session !== undefined,
-      busy: this.flows.isBusy(provider) || this.devices.isBusy(provider) || this.glmFlows.isBusy(provider) || this.kiroFlows.isBusy(provider) || this.finalizing.has(provider),
+      busy: this.flows.isBusy(provider) || this.devices.isBusy(provider) || this.glmFlows.isBusy(provider) || this.kiroFlows.isBusy(provider) || this.cursorFlows.isBusy(provider) || this.finalizing.has(provider),
       ...pub,
       quota: this.quota.peek(provider, activeId),
       ...(detail === undefined ? {} : { detail }),
@@ -180,6 +199,7 @@ export class AuthController {
   async snapshot() {
     await this.models.ready
     await this.#resolveGlmIdentities()
+    await this.#maybeAutoImportCursor()
     const loggedIn = await this.loggedIn()
     const origin = this.origin()
     const catalog = catalogProviders({ prefix: this.prefix, origin })
@@ -199,13 +219,16 @@ export class AuthController {
     else this.quota.clear('kiro')
     if (loggedIn.antigravity) await this.#ensureAccountQuota('antigravity')
     else this.quota.clear('antigravity')
+    if (loggedIn.cursor) await this.#ensureAccountQuota('cursor')
+    else this.quota.clear('cursor')
     const enabledKeys = this.models.enabledKeys(catalog)
-    const [codexAccounts, grokAccounts, glmAccounts, kiroAccounts, antigravityAccounts] = await Promise.all([
+    const [codexAccounts, grokAccounts, glmAccounts, kiroAccounts, antigravityAccounts, cursorAccounts] = await Promise.all([
       this.#accountsWithQuota('codex'),
       this.#accountsWithQuota('grok'),
       this.#accountsWithQuota('glm'),
       this.#accountsWithQuota('kiro'),
       this.#accountsWithQuota('antigravity'),
+      this.#accountsWithQuota('cursor'),
     ])
     return {
       origin,
@@ -219,13 +242,14 @@ export class AuthController {
         glm: { ...(await this.status('glm')), activeId: glmAccounts.find((row) => row.active)?.id, accounts: glmAccounts },
         kiro: { ...(await this.status('kiro')), activeId: kiroAccounts.find((row) => row.active)?.id, accounts: kiroAccounts },
         antigravity: { ...(await this.status('antigravity')), activeId: antigravityAccounts.find((row) => row.active)?.id, accounts: antigravityAccounts },
+        cursor: { ...(await this.status('cursor')), activeId: cursorAccounts.find((row) => row.active)?.id, accounts: cursorAccounts },
       },
       update: localUpdateInfo(),
     }
   }
 
   async refreshQuota(provider, accountId) {
-    if (provider === 'codex' || provider === 'grok' || provider === 'glm' || provider === 'kiro' || provider === 'antigravity') {
+    if (provider === 'codex' || provider === 'grok' || provider === 'glm' || provider === 'kiro' || provider === 'antigravity' || provider === 'cursor') {
       const rows = await this.#liveAccounts(provider)
       const targets = accountId
         ? rows.filter((row) => row.id === accountId)
@@ -240,14 +264,15 @@ export class AuthController {
       const active = rows.find((row) => row.active)
       return this.quota.peek(provider, active?.id)
     }
-    const [codex, grok, glm, kiro, antigravity] = await Promise.all([
+    const [codex, grok, glm, kiro, antigravity, cursor] = await Promise.all([
       this.refreshQuota('codex'),
       this.refreshQuota('grok'),
       this.refreshQuota('glm'),
       this.refreshQuota('kiro'),
       this.refreshQuota('antigravity'),
+      this.refreshQuota('cursor'),
     ])
-    return { codex, grok, glm, kiro, antigravity }
+    return { codex, grok, glm, kiro, antigravity, cursor }
   }
 
   async consumeReset(provider, accountId) {
@@ -337,6 +362,7 @@ export class AuthController {
       const quota = await this.quota.ensure(provider, row.id, row.session)
       if (provider === 'kiro') await this.#rememberKiroProfile(row, quota)
       if (provider === 'antigravity') await this.#rememberAntigravityPlan(row, quota)
+      if (provider === 'cursor') await this.#rememberCursorPlan(row, quota)
     }))
     return rows
   }
@@ -351,6 +377,48 @@ export class AuthController {
     if (email) next.account = email
     if (planType) next.planType = planType
     await saveSession('kiro', next, this.authPath, { id: row.id, activate: row.active })
+  }
+
+  async #rememberCursorPlan(row, quota) {
+    if (!quota || quota.status !== 'ready') return
+    const email = typeof quota.account === 'string' && quota.account.trim() ? quota.account.trim() : undefined
+    const planType = typeof quota.planType === 'string' && quota.planType.trim() ? quota.planType.trim() : undefined
+    if (!email && !planType) return
+    if ((!email || row.session.account === email) && (!planType || row.session.planType === planType)) return
+    const next = { ...row.session }
+    if (email) next.account = email
+    if (planType) next.planType = planType
+    await saveSession('cursor', next, this.authPath, { id: row.id, activate: row.active })
+  }
+
+  async #maybeAutoImportCursor() {
+    if (!this.cursorAutoImport || this.cursorAutoImportTried) return
+    this.cursorAutoImportTried = true
+    const rows = await listStoredSessions('cursor', this.authPath)
+    if (rows.length > 0) return
+    try {
+      const result = await importCursorAuth({ fetchFn: this.fetchFn, ...this.cursorImport })
+      if (result?.session) {
+        await saveSession('cursor', result.session, this.authPath)
+        this.onAuthChanged?.('cursor')
+        void this.quota.refresh('cursor')
+      }
+    } catch (error) {
+      if (error?.code !== CURSOR_IMPORT_EMPTY && error?.message !== CURSOR_IMPORT_EMPTY) {
+        // empty machine is fine; other faults stay off the Settings banner
+      }
+    }
+  }
+
+  async #importCursor() {
+    const existing = await listStoredSessions('cursor', this.authPath)
+    const result = await importCursorAuth({ fetchFn: this.fetchFn, ...this.cursorImport })
+    const incomingId = accountIdOf('cursor', result.session)
+    const hit = existing.find((row) => row.id === incomingId)
+    if (hit?.session?.source === 'pkce') {
+      return { source: 'pkce', session: hit.session, skipped: true }
+    }
+    return result
   }
 
   async #rememberAntigravityPlan(row, quota) {
@@ -391,6 +459,12 @@ export class AuthController {
       this.finalizing.add('glm')
       void this.completeGlm(attempt)
       return { authorizeUrl: attempt.authorizeUrl, mode: 'cli', region }
+    }
+    if (provider === 'cursor') {
+      const attempt = await this.cursorFlows.start('cursor', { fetchFn: this.fetchFn })
+      this.finalizing.add('cursor')
+      void this.completeCursor(attempt)
+      return { authorizeUrl: attempt.authorizeUrl, mode: 'cli' }
     }
     if (provider === 'antigravity') {
       const attempt = await this.flows.start('antigravity', antigravityFlow)
@@ -536,6 +610,22 @@ export class AuthController {
     }
   }
 
+  async completeCursor(attempt) {
+    try {
+      const session = await attempt.waitToken()
+      await saveSession('cursor', session, this.authPath)
+      this.lastError.delete('cursor')
+      this.onAuthChanged?.('cursor')
+      void this.quota.refresh('cursor')
+    } catch (error) {
+      if (!(error instanceof Error && error.message === 'login cancelled')) {
+        this.lastError.set('cursor', error instanceof Error ? error.message : String(error))
+      }
+    } finally {
+      this.finalizing.delete('cursor')
+    }
+  }
+
   async completeKiroIdc(attempt) {
     try {
       const session = await attempt.waitToken()
@@ -665,6 +755,7 @@ export class AuthController {
     this.devices.pending(provider)?.cancel()
     this.glmFlows.pending(provider)?.cancel()
     this.kiroFlows.pending(provider)?.cancel()
+    this.cursorFlows.pending(provider)?.cancel()
   }
 
   async logout(provider, id) {
@@ -673,6 +764,7 @@ export class AuthController {
     this.devices.pending(provider)?.cancel()
     this.glmFlows.pending(provider)?.cancel()
     this.kiroFlows.pending(provider)?.cancel()
+    this.cursorFlows.pending(provider)?.cancel()
     await deleteSession(provider, this.authPath, id)
     this.lastError.delete(provider)
     this.quota.clear(provider, id)
@@ -696,12 +788,15 @@ export class AuthController {
           ? await importKiroAuth()
         : provider === 'antigravity'
           ? await importAntigravityAuth({ fetchFn: this.fetchFn })
+          : provider === 'cursor'
+            ? await this.#importCursor()
           : await importGrokAuth()
     this.claim(provider)
     this.flows.pending(provider)?.cancel()
     this.devices.pending(provider)?.cancel()
     this.glmFlows.pending(provider)?.cancel()
     this.kiroFlows.pending(provider)?.cancel()
+    this.cursorFlows.pending(provider)?.cancel()
     const sessions = provider === 'kiro' && Array.isArray(result.sessions) && result.sessions.length > 0
       ? result.sessions
       : [result.session]
@@ -725,7 +820,7 @@ export class AuthController {
       await this.models.setEnabled(payload.selected, catalog)
     } else if (typeof payload.key === 'string') {
       await this.models.toggle(payload.key, payload.on !== false, catalog)
-    } else if (payload.family === 'codex' || payload.family === 'grok' || payload.family === 'glm' || payload.family === 'kiro' || payload.family === 'antigravity') {
+    } else if (payload.family === 'codex' || payload.family === 'grok' || payload.family === 'glm' || payload.family === 'kiro' || payload.family === 'antigravity' || payload.family === 'cursor') {
       await this.models.setFamily(payload.family, payload.on !== false, catalog)
     } else if (typeof payload.all === 'boolean') {
       await this.models.setAll(payload.all, catalog)

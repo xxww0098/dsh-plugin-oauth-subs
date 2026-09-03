@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml/badge.svg)](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml)
 
-把 **ChatGPT / Codex**、**xAI Grok**、**智谱 GLM**、**AWS Kiro** 和 **Google Antigravity** 订阅接到 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。登录走官方 OAuth；Kiro 还可贴 `ksk_` API key。
+把 **ChatGPT / Codex**、**xAI Grok**、**智谱 GLM**、**AWS Kiro**、**Google Antigravity** 和 **Cursor** 订阅接到 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。登录走官方 OAuth；Kiro 还可贴 `ksk_` API key；Cursor 可复用本机 CLI / IDE 登录。
 
 本机代理 + `llm-pi-ai` 路由同步。每家从闭集 `openai-responses` | `openai-completions` | `anthropic-messages` 里选一种 DSH `api`。
 
@@ -15,7 +15,7 @@ dsh plugin --profile web add https://github.com/xxww0098/dsh-plugin-oauth-subs
 dsh web
 ```
 
-打开 **设置 → OAuth 订阅**。顶栏图标页签固定不随滚动移出：Codex、Grok、**Z.ai（智谱 GLM）**、**Kiro**、**Antigravity**、模型、关于。每个系列可登录多个账号，**每个账号一张卡片，额度各自显示**；点卡片切换当前对话账号。**GLM** 与 ZCode 欢迎页一样，分 **Z.ai（全球）** 和 **BigModel（中国）** 两套 OAuth，也可粘贴 API key。登录后签发 Coding Plan 密钥。**Kiro** 叠放 Social / GitHub / Google、Builder ID、企业 IdC、Entra / Azure AD，以及 `ksk_` 密钥。**Antigravity** 是和官方 IDE 一样的 Google 登录。**关于** 里有 GitHub 仓库链接。检查更新会对比 GitHub 最新版，有新版本时跑 `dsh plugin --profile web update dsh-plugin-oauth-subs`。重启 `dsh web` 后才会加载新模块。也可以用 `cordis.patch.yml` 手动挂载：
+打开 **设置 → OAuth 订阅**。顶栏图标页签固定不随滚动移出：Codex、Grok、**Z.ai（智谱 GLM）**、**Kiro**、**Antigravity**、**Cursor**、模型、关于。每个系列可登录多个账号，**每个账号一张卡片，额度各自显示**；点卡片切换当前对话账号。**GLM** 与 ZCode 欢迎页一样，分 **Z.ai（全球）** 和 **BigModel（中国）** 两套 OAuth，也可粘贴 API key。登录后签发 Coding Plan 密钥。**Kiro** 叠放 Social / GitHub / Google、Builder ID、企业 IdC、Entra / Azure AD，以及 `ksk_` 密钥。**Antigravity** 是和官方 IDE 一样的 Google 登录。**Cursor** 是 PKCE 轮询，外加 **导入本机 Cursor**（CLI Keychain / IDE `state.vscdb` / `CURSOR_ACCESS_TOKEN`）——用户自己的本机登录复用，不是第二套 OAuth。**关于** 里有 GitHub 仓库链接。检查更新会对比 GitHub 最新版，有新版本时跑 `dsh plugin --profile web update dsh-plugin-oauth-subs`。重启 `dsh web` 后才会加载新模块。也可以用 `cordis.patch.yml` 手动挂载：
 
 ```yaml
 - insert:
@@ -41,8 +41,9 @@ pnpm dsh web --patch ./cordis.patch.yml
 | AWS Kiro · Entra / Azure AD | 粘贴 refresh token；public client `refresh_token` grant | 你的 Entra client id | `*.microsoftonline.com` token 端点 |
 | AWS Kiro · API key | 粘贴 `ksk_…` | — | Bearer，不刷新 |
 | Google Antigravity | Google OAuth，回环 `localhost:51121/oauth-callback`，可粘贴回调 | `1071006060591-…apps.googleusercontent.com` | `daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent`（hub；prod 仅 IDE 回落） |
+| Cursor | `loginDeepControl` PKCE 轮询；或 **导入本机 Cursor** | Cursor CLI / IDE | Connect `agentn.us.api5.cursor.sh` `AgentService/Run` |
 
-已在本机登录过 Codex CLI、Grok CLI、Hermes、ZCode Desktop、Kiro IDE、kiro.rs、Antigravity CLI 或 CLIProxyAPI 时，点 **导入本机会话**：
+已在本机登录过 Codex CLI、Grok CLI、Hermes、ZCode Desktop、Kiro IDE、kiro.rs、Antigravity CLI、CLIProxyAPI 或 Cursor CLI/IDE 时，点 **导入本机会话**（Cursor 按钮文案是 **导入本机 Cursor**）：
 
 - `~/.codex/auth.json`
 - `~/.grok/auth.json`
@@ -54,6 +55,9 @@ pnpm dsh web --patch ./cordis.patch.yml
 - Settings **粘贴凭证**：kiro-manager-lite 卡密 / 精简 JSON / 完整备份 / CSV，或 Social refresh token / `ksk_…`
 - `~/.gemini/antigravity-cli/antigravity-oauth-token`
 - `~/.cli-proxy-api/antigravity-*.json`
+- macOS Keychain `cursor-access-token` / `cursor-refresh-token`（Cursor CLI）
+- Cursor IDE `state.vscdb` 键 `cursorAuth/accessToken` + `cursorAuth/refreshToken`（只读当前用户；WSL 不扫别人的 Windows profile）
+- 环境变量 `CURSOR_ACCESS_TOKEN`（不 refresh）
 
 令牌写在 profile 数据目录 `data/dsh-plugin-oauth-subs/auth.json`，权限 `0600`。每个系列的多个账号存在这个文件的保险库里；旧的单会话文件仍能读。开启/关闭的模型写在同目录的 `models.json`。
 
@@ -67,11 +71,11 @@ DeepSeek Harness（调用面）
   └─ llm-pi-ai
        └─ http://127.0.0.1:8318/{codex,grok}/v1/responses
        └─ http://127.0.0.1:8318/glm/v1/messages
-       └─ http://127.0.0.1:8318/{kiro,antigravity}/v1/chat/completions
+       └─ http://127.0.0.1:8318/{kiro,antigravity,cursor}/v1/chat/completions
             └─ 使用刷新后的订阅令牌访问上游
 ```
 
-Codex / Grok 是 **Responses**（上游原生）。GLM 是 **Anthropic Messages**（ZCode Desktop 默认；Completions 残留 `/glm/v1/chat/completions` 留到下次 sync）。Kiro / Antigravity 继续用 **Completions 翻译层**，因为原生线（AWS EventStream / `generateContent`）三种都对不上。GLM 150% 加成是身份（ZCode Desktop UA），不是协议证明——本插件没有和官方 Desktop 对比过用量斜率。
+Codex / Grok 是 **Responses**（上游原生）。GLM 是 **Anthropic Messages**（ZCode Desktop 默认；Completions 残留 `/glm/v1/chat/completions` 留到下次 sync）。Kiro / Antigravity / Cursor 继续用 **Completions 翻译层**，因为原生线（AWS EventStream / `generateContent` / Connect protobuf）三种都对不上。GLM 150% 加成是身份（ZCode Desktop UA），不是协议证明——本插件没有和官方 Desktop 对比过用量斜率。
 
 本插件不是第二套 LLM 适配器。设置页关闭后，DSH 仍通过 `llm-pi-ai` 调本机代理。代理只监听回环地址，并用本地凭证 `DSH_OAUTH_SUBS_API_KEY` 鉴权。
 
@@ -84,6 +88,7 @@ src/
   oauth/kiro/      Kiro Social / Builder ID / IdC / Entra / API key
   oauth/           代理、PKCE、额度、模型
   oauth/antigravity/ Google OAuth + cloudcode-pa 指纹
+  oauth/cursor/    Cursor PKCE + 本机 CLI/IDE 导入 + AgentService/Run
   ui/              React 设置页（classic-script factory）
   utils/           jwt、pkce、fast/context、会话分析器
 ```
@@ -139,7 +144,7 @@ ChatGPT Codex 即使请求了 Priority，回显也经常是 `created=auto` / `co
 
 ## 模型选择
 
-设置 → OAuth 订阅 → **模型** 会列出 Codex、Grok、GLM、**Kiro** 与 Antigravity 的全部目录（含 Codex `-fast` 与 `-900k` 条目）。每一行是独立开关。每个系列有 **全选** / **全关**。
+设置 → OAuth 订阅 → **模型** 会列出 Codex、Grok、GLM、**Kiro**、Antigravity 与 Cursor 的全部目录（含 Codex `-fast` 与 `-900k` 条目）。每一行是独立开关。每个系列有 **全选** / **全关**。
 
 Kiro 对齐 [kiro.dev/docs/models](https://kiro.dev/docs/models/)（不含 Auto 路由）：GPT-5.6 Sol / Terra / Luna，Claude Opus 5 / 4.8 / 4.7 / 4.6 / 4.5，Claude Sonnet 5 / 4.6 / 4.5 / 4，Claude Haiku 4.5，DeepSeek 3.2，MiniMax M2.5 / M2.1，GLM-5，Qwen3 Coder Next。id 用 Kiro 原生写法（`claude-opus-5`、`claude-sonnet-4.6`、`gpt-5.6-sol`）。Claude 与 GPT-5.6 声明图文输入；开源权重行只有文本。
 
@@ -174,6 +179,7 @@ Kiro GPT-5.6 思考深度为 **off / low / medium / high / xhigh / max**。Off �
 | xAI Grok | `cli-chat-proxy.grok.com/v1/billing?format=credits`，并读 `/v1/user?include=subscription` | 套餐等级（SuperGrok / X Premium+ …）+ 本周期用量、预付余额、产品分项 |
 | 智谱 GLM | `api.z.ai` 或 `open.bigmodel.cn` 的 `monitor/usage/quota/limit` | 套餐徽章（Lite / Pro / Max）+ Coding Plan 积分窗口；站点随当前账号 |
 | Google Antigravity | daily-cloudcode-pa 的 `loadCodeAssist` + `fetchAvailableModels`（prod 仅 5xx / 传输失败回落） | 套餐徽章（Pro / Ultra / Free / Standard）+ SkillStar 模型分组剩余条和重置时间 |
+| Cursor | `api2.cursor.sh` `DashboardService/GetCurrentPeriodUsage` | 套餐徽章（Free / Pro / Pro+ / Ultra …）+ 周期剩余百分比 |
 
 额度约每分钟刷新一次，也可点卡片上的 **刷新额度**。读失败不影响对话。
 

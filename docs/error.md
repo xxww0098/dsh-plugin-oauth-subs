@@ -1,5 +1,101 @@
 # 错误记录
 
+## 2026-09-03：Cursor 本机导入 — Keychain 可能弹授权，vscdb 键名可能改
+
+### 现象
+
+Settings → Cursor →「导入本机 Cursor」或空花名册自动导入。用户已在本机登录 Cursor CLI / IDE，但第一次读 macOS Keychain 会弹出系统授权；或 Cursor 改了 `state.vscdb` 的 `ItemTable` 键名后导入变空。
+
+### 证据
+
+- CLI 令牌：`security find-generic-password -s cursor-access-token -a cursor-user -w` 与 `-s cursor-refresh-token`。`security` 在本机第一次读 generic password 时可以弹 Keychain 授权对话框，`execFile` 2s 超时后当空。
+- IDE：`ItemTable` 键 `cursorAuth/accessToken` / `cursorAuth/refreshToken`（pi-cursor MIT `cli-credentials.ts`）。Cursor 升级后键名可能变。缺文件或缺键 = 空，不把 SQLite / `security` 堆栈抛给 UI。
+- 空结果文案：zh「本机没有 Cursor CLI 或 IDE 登录」。
+
+### 根因
+
+本机登录复用，不是第二套 OAuth。Keychain 与 vscdb schema 由 Cursor 官方 CLI / IDE 拥有。
+
+### 修复 / 非修复
+
+- 导入顺序：`CURSOR_ACCESS_TOKEN` → 并行 Keychain+vscdb → 仍有效的本地 access（零网络）→ refresh Keychain，失败再 refresh 不同的 vscdb refresh。
+- `source` 标 `cli_keychain` / `ide_vscdb` / `env`。空花名册才自动导入；已有 PKCE/session 不覆盖。
+- WSL 只解析当前 Windows 用户，不扫 Public / Default / 其他 profile。
+- Keychain 弹窗与 vscdb 键变更：**本插件不能消掉系统授权，也不能钉死官方 schema**。记在这里，导入失败走空文案。
+
+### 验证
+
+- `npm test`：mock `security` stdout + 临时 vscdb；keychain / vscdb / 过期+refresh / 空机器 / WSL 不走别人的 Users。无 live Keychain。
+
+## 2026-09-03：Cursor Run 没有文档化的 cache-read 字段
+
+### 现象
+
+DSH 会话分析器对 Cursor 长对话的 `cacheReadTokens` / 命中率可能一直是 0%，即使 `conversation_id` 粘住了。
+
+### 证据
+
+- 社区 MIT pi-cursor `AgentServerMessage` / usage 映射：没有与 Codex `cacheReadTokens`、Gemini `cachedContentTokenCount`、Kiro `cacheReadInputTokens` 对等的稳定字段。
+- 本 hop 若看见 `cached_tokens` 会映到 OpenAI `prompt_tokens_details.cached_tokens`；没有就不编。
+
+### 根因
+
+Cursor Agent conversation cache（`conversation_id`）。不是 Codex / Grok shard，也不是前缀 hash。
+
+### 修复 / 非修复
+
+粘性 id + system pin 在 `src/oauth/cursor/cache.ts`。命中字段未公开 = **非修复**（本插件不能发明 cache-read）。DSH 命中率 0% 不代表 conversation 断了。
+
+### 验证
+
+- `npm test`：`applyCursorCache` 剥 `prompt_cache_key`，不写 Codex/Grok 头；两轮同一 `conversation_id`。无 live AgentService。
+
+## 2026-09-03：Cursor 非流 Completions 是收集 Run 流后再回一条 JSON
+
+### 现象
+
+llm-pi-ai `openai-completions` 非流 POST `/cursor/v1/chat/completions`。上游 `AgentService/Run` 本身是 Connect 流。
+
+### 证据
+
+- DSH 闭集只有 Completions / Responses / Anthropic。Cursor 原生是 protobuf，只能 Completions + 翻译层。
+- Codex Responses 可以拒非流；Cursor hop **收集整段再回一条 JSON**，不是 SSE-only。
+
+### 根因
+
+协议层。不是登录 / 额度。
+
+### 修复
+
+`forwardCursor` 非流路径等 Run 结束后 `cursorToOpenai`。`stream: true` 仍写 SSE。`POST /cursor/v1/responses` → 501，指向 Completions。
+
+### 验证
+
+- `npm test`：hop Completions body → `decodeAgentClientMessage` 看到 model / user / tools / conversation_id。
+
+## 2026-09-03：Cursor Connect/protobuf 是社区逆向，官方改线会断
+
+### 现象
+
+Cursor 订阅对话走 `agentn.us.api5.cursor.sh` `agent.v1.AgentService/Run`。字段号、host、CLI 指纹随时可能被 Cursor 改掉，表现为 4xx / 空流 / 工具步对不上。
+
+### 证据
+
+- 非正式集成。线来自 MIT [Rahularya01/pi-cursor](https://github.com/Rahularya01/pi-cursor)（`proto/agent.proto`、`h2-session.ts`、`request-build.ts`）。本目录只编 Run / GetUsableModels / GetCurrentPeriodUsage 用到的字段。
+- 指纹钉 `x-cursor-client-version: cli-2026.05.01-eea359f`，不编更新的桌面 IDE 版本。
+
+### 根因
+
+上游未公开稳定 REST。本插件不能拥有 Cursor 的 wire。
+
+### 修复 / 非修复
+
+实现最小编码器 + Node `http2`。**改线后要对照社区协议再改 `src/oauth/cursor/`**，不要从别的家族抄 cache / hop。登录仍是用户自己的 PKCE 或本机 CLI/IDE 复用。
+
+### 验证
+
+- `npm test`：PKCE URL + poll 404→tokens、refresh、目录 `api: openai-completions`、`baseURL` 以 `/cursor` 结尾。无 live Cursor 账号。
+
 ## 2026-09-03：Antigravity Gemini 3.8 Flash 线 id 是 `gemini-3.8-flash-high`
 
 ### 现象
