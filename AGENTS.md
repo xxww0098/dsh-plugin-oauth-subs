@@ -493,12 +493,15 @@ into `TAB_ICONS`.
   (`zai`), not Zhipu.
 - Order: families first (Codex, Grok, GLM, Kiro, Antigravity, Cursor, Ollama), then
   Models, then About (GitHub icon). Insert a new family **before**
-  Models.
+  Models. Layout is **8 icons per row** (`.osubs-tabs` 8-column 36px grid);
+  the 9th (About) wraps. Do not pack all nine on one flex row. Do not
+  `flex: 1 1 0` or shrink tab `min-width` to 0.
 - Add `COPY.zh.<id>Title` / `COPY.en.<id>Title` for the hover string and
   the page heading.
 
 ```text
-[ Codex ] [ Grok ] [ Z.ai ] [ Kiro ] [ Antigravity ] [ Cursor ] [ Ollama ] [ ▦ ] [ GitHub ]
+[ Codex ] [ Grok ] [ Z.ai ] [ Kiro ] [ Antigravity ] [ Cursor ] [ Ollama ] [ ▦ ]
+[ GitHub ]
 ```
 
 ### Settings — one account, one card
@@ -576,6 +579,9 @@ Binding UI rules:
   on screen while the settings scroller moves. Background is
   `--dsw-alias-bg-layer-2` (the panel). Bleed `24px` matches the host
   `.options` side padding so cards cannot peek in the gutter.
+  `.osubs-tabs` is an 8-column 36px grid (`repeat(8, 36px)`); nine tabs
+  wrap — row 1 is families + Models, row 2 is About. Never
+  `flex: 1 1 0` / `min-width: 0` on the tab cells.
 - Cards: 12px radius, 1px `--osubs-line`, 14×16 padding. Active uses
   `--osubs-edge` + `--osubs-fill`.
 - Type: host UI sans (Inter-class), 13px UI, 12.5px emails. No display

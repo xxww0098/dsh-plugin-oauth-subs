@@ -110,8 +110,10 @@ test('Settings Ollama tab is Cloud key paste after Cursor, never localhost', asy
   assert.match(src, /id !== 'glm' && id !== 'kiro' && id !== 'ollama'/)
   assert.equal(src.includes('127.0.0.1:11434'), false)
   assert.equal(src.includes('localhost:11434'), false)
-  assert.match(src, /\.osubs-tabs \{[\s\S]*flex-wrap: wrap/)
-  assert.match(src, /\.osubs-tab \{[\s\S]*flex: 0 0 36px; min-width: 36px; width: 36px/)
+  assert.match(src, /\.osubs-tabs \{[\s\S]*grid-template-columns: repeat\(8, 36px\)/)
+  assert.match(src, /\.osubs-tab \{[\s\S]*width: 36px; height: 36px; min-width: 36px/)
+  assert.equal(/\.osubs-tab \{[\s\S]*flex: 1 1 0/.test(src), false)
+  assert.equal(/\.osubs-tabs \{[\s\S]*flex: 1 1 0/.test(src), false)
   assert.match(src, /\.osubs-nav \{[\s\S]*position: sticky/)
 })
 
