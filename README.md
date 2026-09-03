@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml/badge.svg)](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml)
 
-Use a **ChatGPT / Codex**, **xAI Grok**, **Zhipu GLM**, **AWS Kiro**, **Google Antigravity**, or **Cursor** subscription inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). Official OAuth, plus Kiro API keys and Cursor CLI/IDE reuse.
+Use a **ChatGPT / Codex**, **xAI Grok**, **Zhipu GLM**, **AWS Kiro**, **Google Antigravity**, **Cursor**, or **Ollama Cloud** subscription inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). Official OAuth, plus Kiro API keys, Cursor CLI/IDE reuse, and Ollama API keys.
 
 A loopback proxy plus `llm-pi-ai` route sync. Each family picks one DSH `api` from the closed union `openai-responses` | `openai-completions` | `anthropic-messages`.
 
@@ -15,7 +15,7 @@ dsh plugin --profile web add https://github.com/xxww0098/dsh-plugin-oauth-subs
 dsh web
 ```
 
-Open **Settings → OAuth subs**. Icon tabs stay pinned at the top: Codex, Grok, **Z.ai (GLM)**, **Kiro**, **Antigravity**, **Cursor**, Models, About. Sign in more than once per family; **one card per account, each with its own quota**. Click a card to switch the chat account. **GLM** matches ZCode's welcome screen: **Z.ai (global)** and **BigModel (China)** OAuth, plus paste-an-API-key. **Kiro** stacks Social / GitHub / Google, Builder ID, Enterprise IdC, Entra / Azure AD, and `ksk_` keys. **Antigravity** is Google login like the official IDE. **Cursor** is PKCE poll plus **Import local Cursor** (CLI Keychain / IDE `state.vscdb` / `CURSOR_ACCESS_TOKEN`) — user-owned login reuse, not a second OAuth. **About** links the GitHub repo. Check for updates compares GitHub latest and, when newer, runs `dsh plugin --profile web update dsh-plugin-oauth-subs`. Restart `dsh web` to load the new module. Or mount the bundle patch by hand:
+Open **Settings → OAuth subs**. Icon tabs stay pinned at the top: Codex, Grok, **Z.ai (GLM)**, **Kiro**, **Antigravity**, **Cursor**, **Ollama**, Models, About. Sign in more than once per family; **one card per account, each with its own quota**. Click a card to switch the chat account. **GLM** matches ZCode's welcome screen: **Z.ai (global)** and **BigModel (China)** OAuth, plus paste-an-API-key. **Kiro** stacks Social / GitHub / Google, Builder ID, Enterprise IdC, Entra / Azure AD, and `ksk_` keys. **Antigravity** is Google login like the official IDE. **Cursor** is PKCE poll plus **Import local Cursor** (CLI Keychain / IDE `state.vscdb` / `CURSOR_ACCESS_TOKEN`) — user-owned login reuse, not a second OAuth. **Ollama** is ollama.com Cloud (paste API key / `OLLAMA_API_KEY`), not localhost:11434. **About** links the GitHub repo. Check for updates compares GitHub latest and, when newer, runs `dsh plugin --profile web update dsh-plugin-oauth-subs`. Restart `dsh web` to load the new module. Or mount the bundle patch by hand:
 
 ```yaml
 - insert:
@@ -42,6 +42,7 @@ pnpm dsh web --patch ./cordis.patch.yml
 | AWS Kiro · API key | Paste `ksk_…` | — | Bearer, no refresh |
 | Google Antigravity | Google OAuth on `localhost:51121/oauth-callback`; paste-callback supported | `1071006060591-…apps.googleusercontent.com` | `daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent` (hub; prod is IDE fallback) |
 | Cursor | PKCE poll at `cursor.com/loginDeepControl`; or **Import local Cursor** | Cursor CLI / IDE | Connect `agentn.us.api5.cursor.sh` `AgentService/Run` |
+| Ollama Cloud | Paste API key; or **Import `OLLAMA_API_KEY`** | ollama.com/settings/keys | `https://ollama.com/v1/chat/completions` |
 
 Already signed in on this machine via Codex CLI, Grok CLI, Hermes, ZCode Desktop, Kiro IDE, kiro.rs, Antigravity CLI, CLIProxyAPI, or Cursor CLI/IDE? Use **Import local session** (Cursor button: **Import local Cursor**):
 
@@ -58,6 +59,7 @@ Already signed in on this machine via Codex CLI, Grok CLI, Hermes, ZCode Desktop
 - macOS Keychain `cursor-access-token` / `cursor-refresh-token` (Cursor CLI)
 - Cursor IDE `state.vscdb` keys `cursorAuth/accessToken` + `cursorAuth/refreshToken` (current OS user only; WSL does not walk other Windows profiles)
 - `CURSOR_ACCESS_TOKEN` env (no refresh)
+- `OLLAMA_API_KEY` env (Ollama Cloud; not `~/.ollama/id_ed25519.pub`)
 
 Tokens live at `<profile>/data/dsh-plugin-oauth-subs/auth.json` with mode `0600`. Multiple accounts per family sit in that file as a vault; a legacy single-session file still loads. Enabled-model choices live in `models.json` next to it.
 
@@ -71,11 +73,11 @@ DeepSeek Harness (call plane)
   └─ llm-pi-ai
        └─ http://127.0.0.1:8318/{codex,grok}/v1/responses
        └─ http://127.0.0.1:8318/glm/v1/messages
-       └─ http://127.0.0.1:8318/{kiro,antigravity,cursor}/v1/chat/completions
+       └─ http://127.0.0.1:8318/{kiro,antigravity,cursor,ollama}/v1/chat/completions
             └─ refreshed subscription bearer against upstream
 ```
 
-Codex and Grok are **Responses** (vendor-native). GLM is **Anthropic Messages** (ZCode Desktop default; Completions leftover stays at `/glm/v1/chat/completions` until the next sync). Kiro, Antigravity, and Cursor stay **Completions adapters** because their native wires (AWS EventStream / `generateContent` / Connect protobuf) are none of the three. The 150% GLM Coding Plan boost is identity (ZCode Desktop UA), not a protocol claim — this plugin has not compared quota slope vs official Desktop.
+Codex and Grok are **Responses** (vendor-native). GLM is **Anthropic Messages** (ZCode Desktop default; Completions leftover stays at `/glm/v1/chat/completions` until the next sync). Kiro, Antigravity, Cursor, and Ollama stay **Completions adapters** because their native wires (AWS EventStream / `generateContent` / Connect protobuf / Ollama `/api/chat`) are none of the three. Ollama Cloud still hops Completions because `https://ollama.com/v1/chat/completions` accepts the same Bearer key. The 150% GLM Coding Plan boost is identity (ZCode Desktop UA), not a protocol claim — this plugin has not compared quota slope vs official Desktop.
 
 This is not a second LLM adapter. After you close Settings, DSH still calls the loopback proxy through `llm-pi-ai`. The proxy binds loopback only and checks the local credential `DSH_OAUTH_SUBS_API_KEY`.
 
@@ -89,6 +91,7 @@ src/
   oauth/           proxy, PKCE, quota, models
   oauth/antigravity/ Google OAuth + cloudcode-pa fingerprint
   oauth/cursor/    Cursor PKCE + CLI/IDE import + AgentService/Run hop
+  oauth/ollama/    Ollama Cloud API key + Completions passthrough
   ui/              React Settings (classic-script factory)
   utils/           jwt, pkce, fast/context, session analyzer
 ```

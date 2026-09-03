@@ -13,8 +13,9 @@ import { formatPlanLabel } from './plan.js'
 import { kiroAccountId, kiroMethodLabel } from './kiro/index.js'
 import { displayGlmAccount } from './glm/index.js'
 import { displayCursorAccount } from './cursor/index.js'
+import { ollamaSourceLabel } from './ollama/index.js'
 
-export const PROVIDER_IDS = Object.freeze(['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor'])
+export const PROVIDER_IDS = Object.freeze(['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama'])
 
 export function defaultDataDir() {
   return join(homedir(), '.dsh', 'plugins', 'oauth-subs')
@@ -330,6 +331,16 @@ export function publicSession(provider, session) {
             : session.source === 'pkce'
               ? 'PKCE'
               : undefined,
+      expiresAt: session.expiresAt,
+    }
+  }
+  if (provider === 'ollama') {
+    return {
+      account: session.account,
+      planType,
+      planLabel,
+      method: session.source,
+      methodLabel: ollamaSourceLabel(session.source),
       expiresAt: session.expiresAt,
     }
   }

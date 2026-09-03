@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml/badge.svg)](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml)
 
-把 **ChatGPT / Codex**、**xAI Grok**、**智谱 GLM**、**AWS Kiro**、**Google Antigravity** 和 **Cursor** 订阅接到 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。登录走官方 OAuth；Kiro 还可贴 `ksk_` API key；Cursor 可复用本机 CLI / IDE 登录。
+把 **ChatGPT / Codex**、**xAI Grok**、**智谱 GLM**、**AWS Kiro**、**Google Antigravity**、**Cursor** 和 **Ollama Cloud** 订阅接到 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。登录走官方 OAuth；Kiro 还可贴 `ksk_` API key；Cursor 可复用本机 CLI / IDE 登录；Ollama 贴 ollama.com API key。
 
 本机代理 + `llm-pi-ai` 路由同步。每家从闭集 `openai-responses` | `openai-completions` | `anthropic-messages` 里选一种 DSH `api`。
 
@@ -15,7 +15,7 @@ dsh plugin --profile web add https://github.com/xxww0098/dsh-plugin-oauth-subs
 dsh web
 ```
 
-打开 **设置 → OAuth 订阅**。顶栏图标页签固定不随滚动移出：Codex、Grok、**Z.ai（智谱 GLM）**、**Kiro**、**Antigravity**、**Cursor**、模型、关于。每个系列可登录多个账号，**每个账号一张卡片，额度各自显示**；点卡片切换当前对话账号。**GLM** 与 ZCode 欢迎页一样，分 **Z.ai（全球）** 和 **BigModel（中国）** 两套 OAuth，也可粘贴 API key。登录后签发 Coding Plan 密钥。**Kiro** 叠放 Social / GitHub / Google、Builder ID、企业 IdC、Entra / Azure AD，以及 `ksk_` 密钥。**Antigravity** 是和官方 IDE 一样的 Google 登录。**Cursor** 是 PKCE 轮询，外加 **导入本机 Cursor**（CLI Keychain / IDE `state.vscdb` / `CURSOR_ACCESS_TOKEN`）——用户自己的本机登录复用，不是第二套 OAuth。**关于** 里有 GitHub 仓库链接。检查更新会对比 GitHub 最新版，有新版本时跑 `dsh plugin --profile web update dsh-plugin-oauth-subs`。重启 `dsh web` 后才会加载新模块。也可以用 `cordis.patch.yml` 手动挂载：
+打开 **设置 → OAuth 订阅**。顶栏图标页签固定不随滚动移出：Codex、Grok、**Z.ai（智谱 GLM）**、**Kiro**、**Antigravity**、**Cursor**、**Ollama**、模型、关于。每个系列可登录多个账号，**每个账号一张卡片，额度各自显示**；点卡片切换当前对话账号。**GLM** 与 ZCode 欢迎页一样，分 **Z.ai（全球）** 和 **BigModel（中国）** 两套 OAuth，也可粘贴 API key。登录后签发 Coding Plan 密钥。**Kiro** 叠放 Social / GitHub / Google、Builder ID、企业 IdC、Entra / Azure AD，以及 `ksk_` 密钥。**Antigravity** 是和官方 IDE 一样的 Google 登录。**Cursor** 是 PKCE 轮询，外加 **导入本机 Cursor**（CLI Keychain / IDE `state.vscdb` / `CURSOR_ACCESS_TOKEN`）——用户自己的本机登录复用，不是第二套 OAuth。**Ollama** 是 ollama.com Cloud（粘贴 API key / `OLLAMA_API_KEY`），不是本机 11434。**关于** 里有 GitHub 仓库链接。检查更新会对比 GitHub 最新版，有新版本时跑 `dsh plugin --profile web update dsh-plugin-oauth-subs`。重启 `dsh web` 后才会加载新模块。也可以用 `cordis.patch.yml` 手动挂载：
 
 ```yaml
 - insert:
@@ -42,6 +42,7 @@ pnpm dsh web --patch ./cordis.patch.yml
 | AWS Kiro · API key | 粘贴 `ksk_…` | — | Bearer，不刷新 |
 | Google Antigravity | Google OAuth，回环 `localhost:51121/oauth-callback`，可粘贴回调 | `1071006060591-…apps.googleusercontent.com` | `daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent`（hub；prod 仅 IDE 回落） |
 | Cursor | `loginDeepControl` PKCE 轮询；或 **导入本机 Cursor** | Cursor CLI / IDE | Connect `agentn.us.api5.cursor.sh` `AgentService/Run` |
+| Ollama Cloud | 粘贴 API key；或 **导入 `OLLAMA_API_KEY`** | ollama.com/settings/keys | `https://ollama.com/v1/chat/completions` |
 
 已在本机登录过 Codex CLI、Grok CLI、Hermes、ZCode Desktop、Kiro IDE、kiro.rs、Antigravity CLI、CLIProxyAPI 或 Cursor CLI/IDE 时，点 **导入本机会话**（Cursor 按钮文案是 **导入本机 Cursor**）：
 
@@ -58,6 +59,7 @@ pnpm dsh web --patch ./cordis.patch.yml
 - macOS Keychain `cursor-access-token` / `cursor-refresh-token`（Cursor CLI）
 - Cursor IDE `state.vscdb` 键 `cursorAuth/accessToken` + `cursorAuth/refreshToken`（只读当前用户；WSL 不扫别人的 Windows profile）
 - 环境变量 `CURSOR_ACCESS_TOKEN`（不 refresh）
+- 环境变量 `OLLAMA_API_KEY`（Ollama Cloud；不是 `~/.ollama/id_ed25519.pub`）
 
 令牌写在 profile 数据目录 `data/dsh-plugin-oauth-subs/auth.json`，权限 `0600`。每个系列的多个账号存在这个文件的保险库里；旧的单会话文件仍能读。开启/关闭的模型写在同目录的 `models.json`。
 
@@ -71,11 +73,11 @@ DeepSeek Harness（调用面）
   └─ llm-pi-ai
        └─ http://127.0.0.1:8318/{codex,grok}/v1/responses
        └─ http://127.0.0.1:8318/glm/v1/messages
-       └─ http://127.0.0.1:8318/{kiro,antigravity,cursor}/v1/chat/completions
+       └─ http://127.0.0.1:8318/{kiro,antigravity,cursor,ollama}/v1/chat/completions
             └─ 使用刷新后的订阅令牌访问上游
 ```
 
-Codex / Grok 是 **Responses**（上游原生）。GLM 是 **Anthropic Messages**（ZCode Desktop 默认；Completions 残留 `/glm/v1/chat/completions` 留到下次 sync）。Kiro / Antigravity / Cursor 继续用 **Completions 翻译层**，因为原生线（AWS EventStream / `generateContent` / Connect protobuf）三种都对不上。GLM 150% 加成是身份（ZCode Desktop UA），不是协议证明——本插件没有和官方 Desktop 对比过用量斜率。
+Codex / Grok 是 **Responses**（上游原生）。GLM 是 **Anthropic Messages**（ZCode Desktop 默认；Completions 残留 `/glm/v1/chat/completions` 留到下次 sync）。Kiro / Antigravity / Cursor / Ollama 继续用 **Completions 翻译层**，因为原生线（AWS EventStream / `generateContent` / Connect protobuf / Ollama `/api/chat`）三种都对不上。Ollama Cloud 仍走 Completions，因为 `https://ollama.com/v1/chat/completions` 接受同一把 Bearer。GLM 150% 加成是身份（ZCode Desktop UA），不是协议证明——本插件没有和官方 Desktop 对比过用量斜率。
 
 本插件不是第二套 LLM 适配器。设置页关闭后，DSH 仍通过 `llm-pi-ai` 调本机代理。代理只监听回环地址，并用本地凭证 `DSH_OAUTH_SUBS_API_KEY` 鉴权。
 
@@ -89,6 +91,7 @@ src/
   oauth/           代理、PKCE、额度、模型
   oauth/antigravity/ Google OAuth + cloudcode-pa 指纹
   oauth/cursor/    Cursor PKCE + 本机 CLI/IDE 导入 + AgentService/Run
+  oauth/ollama/    Ollama Cloud API key + Completions 透传
   ui/              React 设置页（classic-script factory）
   utils/           jwt、pkce、fast/context、会话分析器
 ```

@@ -43,21 +43,23 @@ export declare function modelKey(provider: any, id: any): string;
 export declare const FAMILY_IDS: readonly string[];
 export declare function ownedProviderIds(prefix: any): string[];
 export declare function withPickerVariants(models: any): any[];
-export declare function buildProviders({ prefix, origin, loggedIn, cursorModels }: {
+export declare function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaModels }: {
     prefix: any;
     origin: any;
     loggedIn: any;
     cursorModels: any;
+    ollamaModels: any;
 }): {};
 export declare function describeProviders(providers: any): {
     provider: string;
     api: any;
     models: any;
 }[];
-export declare function catalogProviders({ prefix, origin, cursorModels }: {
+export declare function catalogProviders({ prefix, origin, cursorModels, ollamaModels }: {
     prefix: any;
     origin: any;
     cursorModels: any;
+    ollamaModels: any;
 }): {};
 export declare function catalogKeys(providers: any): any[];
 export declare function familyOfProvider(provider: any): string;
@@ -119,13 +121,14 @@ export declare class ModelSwitch {
 export declare function filterProviders(providers: any, selected: any): any;
 /** `undefined` when the host has no readable settings.get; `{}` when the section is empty. */
 export declare function peekPiAiProviders(settings: any): Promise<any>;
-export declare function syncHarnessModels({ settings, prefix, origin, loggedIn, selected, cursorModels }: {
+export declare function syncHarnessModels({ settings, prefix, origin, loggedIn, selected, cursorModels, ollamaModels }: {
     settings: any;
     prefix: any;
     origin: any;
     loggedIn: any;
     selected: any;
     cursorModels: any;
+    ollamaModels: any;
 }): Promise<{
     routes: {
         provider: string;

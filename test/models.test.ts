@@ -95,7 +95,7 @@ test('buildProviders only emits logged-in families with DSH api ids', () => {
   const chat = buildProviders({
     prefix: 'oauth',
     origin: 'http://127.0.0.1:8318',
-    loggedIn: { glm: true, kiro: true, antigravity: true, cursor: true },
+    loggedIn: { glm: true, kiro: true, antigravity: true, cursor: true, ollama: true },
   })
   assert.equal(chat['oauth-glm'].api, HARNESS_ANTHROPIC_API)
   assert.equal(chat['oauth-glm'].baseURL, 'http://127.0.0.1:8318/glm')
@@ -109,6 +109,15 @@ test('buildProviders only emits logged-in families with DSH api ids', () => {
   assert.equal(chat['oauth-cursor'].baseURL.endsWith('/cursor/v1'), false)
   assert.equal(Object.hasOwn(chat['oauth-cursor'].models.find((model) => model.id === 'composer-2').reasoningEfforts, 'none'), false)
   assert.equal(chat['oauth-cursor'].models.find((model) => model.id === 'composer-2').reasoningEfforts.off, 'none')
+  assert.equal(chat['oauth-ollama'].api, HARNESS_COMPLETIONS_API)
+  assert.equal(chat['oauth-ollama'].baseURL, 'http://127.0.0.1:8318/ollama')
+  assert.equal(chat['oauth-ollama'].baseURL.endsWith('/ollama/v1'), false)
+  assert.equal(chat['oauth-ollama'].models.length, 19)
+  assert.equal(Object.hasOwn(chat['oauth-ollama'].models.find((model) => model.id === 'gpt-oss:120b').reasoningEfforts, 'none'), false)
+  assert.equal(chat['oauth-ollama'].models.find((model) => model.id === 'gpt-oss:120b').reasoningEfforts.off, 'none')
+  assert.equal(chat['oauth-ollama'].models.some((model) => model.id === 'kimi-k3'), true)
+  assert.equal(chat['oauth-ollama'].models.some((model) => model.id === 'qwen3.5:397b'), true)
+  assert.deepEqual(chat['oauth-ollama'].models.find((model) => model.id === 'gemma4:31b').input, ['text', 'image'])
   assert.equal(chat['oauth-codex'], undefined)
 })
 
