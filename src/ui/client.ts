@@ -55,8 +55,11 @@ window.__ModuleLoader__.load({
         cursorImportEmpty: '本机没有 Cursor CLI 或 IDE 登录',
         login: '登录',
         addAccount: '添加账号',
-        glmLoginZai: '连接 Z.ai 继续使用',
-        glmLoginBigmodel: '连接 BigModel 继续使用',
+        addAccountTitle: '添加账号',
+        continueAuth: '继续授权',
+        dialogClose: '关闭',
+        glmLoginZai: '连接 Z.ai',
+        glmLoginBigmodel: '连接 BigModel',
         glmAddZai: '添加 Z.ai 账号',
         glmAddBigmodel: '添加 BigModel 账号',
         glmLoginApiKey: '使用 API key',
@@ -65,7 +68,7 @@ window.__ModuleLoader__.load({
         glmKeyLabel: 'API key',
         glmKeyPlaceholder: 'id.secret 或 Coding Plan 密钥',
         glmKeyGo: '保存密钥',
-        glmKeyHint: '贴 Z.ai 或 BigModel 的 Coding Plan 密钥。对话走对应站点的 /api/coding/paas/v4。',
+        glmKeyHint: '贴 Z.ai 或 BigModel 的 Coding Plan 密钥。',
         glmPickRegion: '站点',
         kiroLoginSocial: '连接 Social / GitHub / Google',
         kiroAddSocial: '添加 Social 账号',
@@ -79,18 +82,18 @@ window.__ModuleLoader__.load({
         kiroStartUrl: 'Start URL',
         kiroStartUrlPlaceholder: 'https://d-xxxxxxxxxx.awsapps.com/start',
         kiroStartUrlGo: '继续',
-        kiroStartUrlHint: '企业 IAM Identity Center 的门户 Start URL。',
+        kiroStartUrlHint: 'IAM Identity Center 门户 Start URL。',
         kiroEntraEndpoint: 'Token 端点',
         kiroEntraEndpointPlaceholder: 'https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token',
         kiroEntraClient: 'Client ID',
         kiroEntraRefresh: 'Refresh token',
         kiroEntraScopes: 'Scopes（可选）',
         kiroEntraGo: '保存企业 SSO',
-        kiroEntraHint: 'Public client 的 refresh_token grant。端点必须是 microsoftonline。',
+        kiroEntraHint: 'Public client 的 refresh_token。端点须为 microsoftonline。',
         kiroKeyPlaceholder: 'ksk_…',
         kiroKeyHint: 'Kiro headless API key，作 Bearer 使用。',
-        kiroRefreshPlaceholder: '卡密 / JSON / CSV / Social refresh token / ksk_…',
-        kiroRefreshHint: '一次可导入多个账号。支持 kiro-manager-lite 卡密与完整备份、kiro.rs credentials.json、CSV，以及 Social refresh token 或 ksk_。',
+        kiroRefreshPlaceholder: '卡密 / JSON / CSV / Social refresh / ksk_…',
+        kiroRefreshHint: '支持卡密、JSON、CSV、Social refresh 或 ksk_。可一次导入多个。',
         kiroKeyGo: '保存密钥',
         kiroRefreshGo: '导入凭证',
         switchTo: '切换',
@@ -116,10 +119,10 @@ window.__ModuleLoader__.load({
         quotaRefresh: '刷新额度',
         quotaLoading: '正在读取额度…',
         quotaFailed: '额度读取失败',
-        quotaUnknown: '周额度未返回。点刷新重试。',
+        quotaUnknown: '周额度未返回，点刷新重试',
         quotaReset: '重置',
         quotaResetBank: '重置券',
-        quotaResetHint: '每张券过期时间不同，按钮按券单独渲染。点一次消耗一张，刷新周额度窗口。',
+        quotaResetHint: '每张券过期时间不同。点一次消耗一张，刷新周额度。',
         quotaResetLeft: '重置券 · 剩 {n} 次',
         quotaResetWarnTitle: '警告',
         quotaResetConfirm: '将消耗这张重置券（{n} 过期），并立即刷新 Codex 周额度窗口。此操作无法撤销。',
@@ -130,7 +133,6 @@ window.__ModuleLoader__.load({
         quotaResetEmpty: '没有可用的重置券。',
         quotaResetExpires: '{n} 过期',
         leftPercent: '剩余 {n}%',
-        usedPercent: '已用 {n}%',
         cursorComposer: '补全 & Composer',
         cursorApi: 'API 调用',
         resetIn: '{n}后重置',
@@ -153,7 +155,7 @@ window.__ModuleLoader__.load({
         agGemini: 'Gemini 模型',
         agClaudeGpt: 'Claude 和 GPT 模型',
         modelsTitle: '模型',
-        modelsHint: '勾选即同步。Fast 仅 Codex Priority，更快更耗额度；900K 大上下文，默认关。',
+        modelsHint: '勾选即同步。Fast 仅 Codex Priority，更耗额度；900K 默认关。',
         modelsOn: '已开启 {n}',
         modelsAll: '全选',
         modelsNone: '全关',
@@ -198,6 +200,9 @@ window.__ModuleLoader__.load({
         cursorImportEmpty: 'No Cursor CLI or IDE login on this machine',
         login: 'Sign in',
         addAccount: 'Add account',
+        addAccountTitle: 'Add account',
+        continueAuth: 'Continue authorization',
+        dialogClose: 'Close',
         glmLoginZai: 'Continue with Z.ai',
         glmLoginBigmodel: 'Continue with BigModel',
         glmAddZai: 'Add Z.ai account',
@@ -208,7 +213,7 @@ window.__ModuleLoader__.load({
         glmKeyLabel: 'API key',
         glmKeyPlaceholder: 'id.secret or Coding Plan key',
         glmKeyGo: 'Save key',
-        glmKeyHint: 'Paste a Z.ai or BigModel Coding Plan key. Chat uses that site’s /api/coding/paas/v4.',
+        glmKeyHint: 'Paste a Z.ai or BigModel Coding Plan key.',
         glmPickRegion: 'Site',
         kiroLoginSocial: 'Continue with Social / GitHub / Google',
         kiroAddSocial: 'Add Social account',
@@ -222,18 +227,18 @@ window.__ModuleLoader__.load({
         kiroStartUrl: 'Start URL',
         kiroStartUrlPlaceholder: 'https://d-xxxxxxxxxx.awsapps.com/start',
         kiroStartUrlGo: 'Continue',
-        kiroStartUrlHint: 'The IAM Identity Center portal Start URL for the org.',
+        kiroStartUrlHint: 'IAM Identity Center portal Start URL.',
         kiroEntraEndpoint: 'Token endpoint',
         kiroEntraEndpointPlaceholder: 'https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token',
         kiroEntraClient: 'Client ID',
         kiroEntraRefresh: 'Refresh token',
         kiroEntraScopes: 'Scopes (optional)',
         kiroEntraGo: 'Save enterprise SSO',
-        kiroEntraHint: 'Public-client refresh_token grant. Endpoint must be microsoftonline.',
+        kiroEntraHint: 'Public-client refresh_token. Endpoint must be microsoftonline.',
         kiroKeyPlaceholder: 'ksk_…',
         kiroKeyHint: 'Kiro headless API key, used as the bearer.',
-        kiroRefreshPlaceholder: 'Kami / JSON / CSV / Social refresh token / ksk_…',
-        kiroRefreshHint: 'Import one or many accounts. Accepts kiro-manager-lite kami and backups, kiro.rs credentials.json, CSV, a Social refresh token, or ksk_.',
+        kiroRefreshPlaceholder: 'Kami / JSON / CSV / Social refresh / ksk_…',
+        kiroRefreshHint: 'Kami, JSON, CSV, Social refresh, or ksk_. Import one or many.',
         kiroKeyGo: 'Save key',
         kiroRefreshGo: 'Import credentials',
         switchTo: 'Switch',
@@ -259,10 +264,10 @@ window.__ModuleLoader__.load({
         quotaRefresh: 'Refresh quota',
         quotaLoading: 'Reading quota…',
         quotaFailed: 'Could not read quota',
-        quotaUnknown: 'Weekly usage was not in the xAI payload. Refresh to retry.',
+        quotaUnknown: 'Weekly quota missing. Refresh to retry.',
         quotaReset: 'Reset',
         quotaResetBank: 'Reset credits',
-        quotaResetHint: 'Each credit expires on its own clock. One button per credit; spending one refreshes the weekly window.',
+        quotaResetHint: 'Each credit expires on its own clock. Spend one to refresh the weekly window.',
         quotaResetLeft: 'Reset quota · {n} left',
         quotaResetWarnTitle: 'Warning',
         quotaResetConfirm: 'This spends the credit that expires {n} and immediately refreshes the Codex weekly window. It cannot be undone.',
@@ -273,7 +278,6 @@ window.__ModuleLoader__.load({
         quotaResetEmpty: 'No reset credits left.',
         quotaResetExpires: 'Expires {n}',
         leftPercent: '{n}% left',
-        usedPercent: '{n}% used',
         cursorComposer: 'Tab completion & Composer',
         cursorApi: 'API',
         resetIn: 'resets in {n}',
@@ -296,7 +300,7 @@ window.__ModuleLoader__.load({
         agGemini: 'Gemini Models',
         agClaudeGpt: 'Claude and GPT models',
         modelsTitle: 'Models',
-        modelsHint: 'Check to sync. Fast is Codex Priority only and spends more. 900K is the large window, off by default.',
+        modelsHint: 'Check to sync. Fast is Codex Priority only and spends more. 900K is off by default.',
         modelsOn: '{n} on',
         modelsAll: 'All on',
         modelsNone: 'All off',
@@ -541,6 +545,12 @@ window.__ModuleLoader__.load({
 .osubs ::selection { background: color-mix(in oklab, currentColor 18%, transparent); }
 .osubs p, .osubs h3, .osubs h4 { margin: 0; }
 
+.osubs button,
+.osubs [role="button"],
+.osubs-link,
+.osubs-dsw-mask,
+.osubs-dsw-x,
+.osubs-dsw-btn { cursor: pointer; }
 .osubs-btn {
   display: inline-flex; align-items: center; justify-content: center;
   height: 32px; padding: 0 12px;
@@ -577,9 +587,16 @@ window.__ModuleLoader__.load({
 .osubs-seg .osubs-btn:focus-visible { outline-offset: -2px; }
 
 .osubs-card {
-  display: flex; flex-direction: column; gap: 14px;
+  display: flex; flex-direction: column; gap: 12px;
   padding: 16px 18px 18px;
   border: 1px solid var(--osubs-line); border-radius: 14px;
+}
+.osubs-card-head {
+  display: flex; justify-content: space-between; gap: 12px;
+  align-items: center; flex-wrap: wrap;
+}
+.osubs-card-title {
+  font-size: 15px; font-weight: 600; letter-spacing: -0.01em;
 }
 /* Pin the icon tabs to the top of the host settings scroller
    (options overflow-y auto). Bleed 24px to match that column's
@@ -589,7 +606,7 @@ window.__ModuleLoader__.load({
   margin: 0 -24px; padding: 0 24px 16px;
   background: var(--dsw-alias-bg-layer-2, Canvas);
 }
-.osubs-pane { display: flex; flex-direction: column; gap: 22px; min-width: 0; }
+.osubs-pane { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
 .osubs-tabs {
   display: flex; gap: 4px; padding: 4px;
   border: 1px solid var(--osubs-line); border-radius: 12px;
@@ -696,7 +713,8 @@ window.__ModuleLoader__.load({
 .osubs-tag {
   flex: none; padding: 2px 5px; border-radius: 5px;
   background: var(--osubs-fill-2); color: color-mix(in oklab, currentColor 75%, transparent);
-  font-size: 10px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; line-height: 1.4;
+  font-size: 10px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase;
+  line-height: 1.4; white-space: nowrap;
 }
 .osubs-tag--plain { text-transform: none; letter-spacing: .02em; }
 
@@ -789,7 +807,16 @@ window.__ModuleLoader__.load({
   cursor: pointer;
 }
 .osubs-dsw-x:hover { background: var(--dsw-alias-interactive-bg-hover, color-mix(in oklab, currentColor 8%, transparent)); }
+.osubs-dsw-x:focus-visible,
+.osubs-dsw-btn:focus-visible { outline: 2px solid var(--osubs-ring); outline-offset: 2px; }
+.osubs-dsw-card--add { width: min(480px, 100%); }
 .osubs-dsw-body { display: flex; flex-direction: column; padding: 0 24px; }
+.osubs-dsw-body--stack {
+  gap: 10px;
+  max-height: min(64vh, 520px);
+  overflow: auto;
+  padding-bottom: 8px;
+}
 .osubs-dsw-warning {
   display: flex; align-items: flex-start; gap: 10px;
   color: var(--dsw-alias-label-secondary, color-mix(in oklab, currentColor 72%, transparent));
@@ -863,6 +890,16 @@ window.__ModuleLoader__.load({
     }
 
     ensureStyles()
+
+    function remainingPercentOf(row) {
+      if (typeof row?.remainingPercent === 'number' && Number.isFinite(row.remainingPercent)) {
+        return Math.max(0, Math.min(100, row.remainingPercent))
+      }
+      if (typeof row?.usedPercent === 'number' && Number.isFinite(row.usedPercent)) {
+        return Math.max(0, Math.min(100, 100 - row.usedPercent))
+      }
+      return undefined
+    }
 
     function quotaTone(remaining) {
       if (typeof remaining !== 'number' || !Number.isFinite(remaining)) return null
@@ -962,17 +999,14 @@ window.__ModuleLoader__.load({
           h('span', { className: 'osubs-mono' }, formatAmount(row.remaining)),
         )
       }
-      const remaining = typeof row.remainingPercent === 'number' ? row.remainingPercent : undefined
-      const used = typeof row.usedPercent === 'number' ? row.usedPercent : undefined
-      const showUsed = family === 'cursor' && row.kind === 'product'
-      const percent = showUsed ? used : remaining
-      const tone = quotaTone(showUsed ? (used === undefined ? undefined : 100 - used) : remaining)
+      const remaining = remainingPercentOf(row)
+      const tone = quotaTone(remaining)
       const color = tone ? `var(--osubs-${tone})` : 'inherit'
       const amount = row.used !== undefined && row.total !== undefined
         ? `${formatAmount(row.used)} / ${formatAmount(row.total)}`
         : ''
       const reset = formatReset(row.resetAt, t)
-      const caption = percent === undefined ? '' : fill(showUsed ? t.usedPercent : t.leftPercent, percent)
+      const caption = remaining === undefined ? '' : fill(t.leftPercent, remaining)
       return h('div', { className: 'osubs-qrow' },
         h('div', { className: 'osubs-qrow-head' },
           h('span', { style: { color: 'var(--osubs-muted)' } }, rowLabel(row, t, family)),
@@ -981,11 +1015,11 @@ window.__ModuleLoader__.load({
             caption,
           ),
         ),
-        percent !== undefined && h('div', { className: 'osubs-bar' },
+        remaining !== undefined && h('div', { className: 'osubs-bar' },
           h('i', {
             style: {
               background: color,
-              transform: `scaleX(${Math.max(0, Math.min(100, percent)) / 100})`,
+              transform: `scaleX(${remaining / 100})`,
             },
           }),
         ),
@@ -1022,6 +1056,36 @@ window.__ModuleLoader__.load({
       },
         h('path', { d: 'M14.1168 13.197L13.197 14.1167L1.8833 2.80303L2.80309 1.88324L14.1168 13.197Z', fill: 'currentColor' }),
         h('path', { d: 'M13.197 1.88326L14.1168 2.80305L2.80309 14.1168L1.8833 13.197L13.197 1.88326Z', fill: 'currentColor' }),
+      )
+    }
+
+    function CenterDialog({ titleId, title, closeLabel, onClose, cardClass, bodyClass, children }) {
+      useEffect(() => {
+        const onKey = (event) => {
+          if (event.key === 'Escape') onClose()
+        }
+        window.addEventListener('keydown', onKey)
+        return () => window.removeEventListener('keydown', onKey)
+      }, [onClose])
+      return h('div', { className: 'osubs-dsw', role: 'presentation' },
+        h('div', { className: 'osubs-dsw-mask', 'aria-hidden': 'true', onClick: onClose }),
+        h('div', {
+          className: cardClass || 'osubs-dsw-card',
+          role: 'dialog',
+          'aria-modal': 'true',
+          'aria-labelledby': titleId,
+        },
+          h('div', { className: 'osubs-dsw-head' },
+            h('h2', { id: titleId, className: 'osubs-dsw-title' }, title),
+            h('button', {
+              type: 'button',
+              className: 'osubs-dsw-x',
+              'aria-label': closeLabel,
+              onClick: onClose,
+            }, h(IconClose)),
+          ),
+          h('div', { className: bodyClass || 'osubs-dsw-body' }, children),
+        ),
       )
     }
 
@@ -1272,6 +1336,7 @@ window.__ModuleLoader__.load({
     }
 
     function ProviderCard({ t, id, title, account, pending, onLogin, onImport, onLogout, onCancel, onManual, onSwitch, onRefreshQuota, onResetQuota, onUseKey }) {
+      const [addOpen, setAddOpen] = useState(false)
       const [paste, setPaste] = useState('')
       const [apiKey, setApiKey] = useState('')
       const [keyRegion, setKeyRegion] = useState('zai')
@@ -1288,14 +1353,17 @@ window.__ModuleLoader__.load({
       const loggedIn = Boolean(account?.loggedIn) || roster.length > 0
       const busy = Boolean(account?.busy)
       const status = busy ? t.busy : loggedIn ? t.loggedIn : t.loggedOut
+      const closeAdd = () => setAddOpen(false)
+      useEffect(() => {
+        if (busy) setAddOpen(true)
+      }, [busy])
       return h('section', { className: 'osubs-card' },
-        h('header', { style: { display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' } },
-          h('h3', { style: { fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' } }, title),
+        h('header', { className: 'osubs-card-head' },
+          h('h3', { className: 'osubs-card-title' }, title),
           h('span', {
             className: `osubs-status${loggedIn ? ' osubs-status--on' : busy ? ' osubs-status--busy' : ''}`,
           }, status),
         ),
-        roster.length === 0 && !busy && h('p', { className: 'osubs-note' }, t.noAccounts),
         roster.length > 0 && h('div', { className: 'osubs-accts' },
           roster.map((row) => h(AccountCard, {
             t,
@@ -1321,10 +1389,54 @@ window.__ModuleLoader__.load({
           rel: 'noreferrer',
         }, t.openUrl),
         h('div', { className: 'osubs-actions' },
-          id !== 'glm' && id !== 'kiro' && !busy && h(Button, { variant: 'primary', onClick: () => onLogin(id), label: loggedIn ? t.addAccount : t.login }),
-          id === 'grok' && !busy && h(Button, { onClick: () => onLogin(id, 'pkce'), label: t.pkce }),
-          !busy && h(Button, { onClick: () => onImport(id), label: id === 'cursor' ? t.cursorImport : t.import }),
+          h(Button, {
+            variant: 'primary',
+            onClick: () => setAddOpen(true),
+            label: busy ? t.continueAuth : loggedIn ? t.addAccount : t.login,
+          }),
           busy && h(Button, { onClick: () => onCancel(id), label: t.cancel }),
+        ),
+        addOpen && h(CenterDialog, {
+          titleId: `osubs-add-${id}`,
+          title: t.addAccountTitle,
+          closeLabel: t.dialogClose,
+          onClose: closeAdd,
+          cardClass: 'osubs-dsw-card osubs-dsw-card--add',
+          bodyClass: 'osubs-dsw-body osubs-dsw-body--stack',
+        },
+        pending?.userCode && busy && h('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+          h('span', { className: 'osubs-eyebrow' }, t.userCode),
+          h('code', { style: { fontSize: 20, letterSpacing: '0.14em', fontWeight: 600, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' } }, pending.userCode),
+        ),
+        pending?.authorizeUrl && busy && h('a', {
+          className: 'osubs-link',
+          href: pending.authorizeUrl,
+          target: '_blank',
+          rel: 'noreferrer',
+        }, t.openUrl),
+        busy && h(Button, { onClick: () => onCancel(id), label: t.cancel }),
+        id !== 'glm' && id !== 'kiro' && !busy && h('div', { className: 'osubs-logins' },
+          h('button', {
+            type: 'button',
+            className: 'osubs-login',
+            onClick: () => onLogin(id),
+          },
+            h('span', null, id === 'grok' ? t.device : loggedIn ? t.addAccount : t.login),
+          ),
+          id === 'grok' && h('button', {
+            type: 'button',
+            className: 'osubs-login',
+            onClick: () => onLogin(id, 'pkce'),
+          },
+            h('span', null, t.pkce),
+          ),
+          h('button', {
+            type: 'button',
+            className: 'osubs-login osubs-login-ghost',
+            onClick: () => { onImport(id); closeAdd() },
+          },
+            h('span', null, id === 'cursor' ? t.cursorImport : t.import),
+          ),
         ),
         id === 'glm' && !busy && h('div', { className: 'osubs-glm-logins' },
           h('button', {
@@ -1350,6 +1462,13 @@ window.__ModuleLoader__.load({
           },
             h('span', null, t.glmLoginApiKey),
           ),
+          h('button', {
+            type: 'button',
+            className: 'osubs-glm-login osubs-glm-ghost',
+            onClick: () => { onImport(id); closeAdd() },
+          },
+            h('span', null, t.import),
+          ),
         ),
         id === 'glm' && showKey && !busy && h('form', {
           onSubmit: (event) => {
@@ -1357,6 +1476,7 @@ window.__ModuleLoader__.load({
             onUseKey(id, apiKey, keyRegion)
             setApiKey('')
             setShowKey(false)
+            closeAdd()
           },
           style: { display: 'flex', flexDirection: 'column', gap: 8 },
         },
@@ -1433,6 +1553,13 @@ window.__ModuleLoader__.load({
           },
             h('span', null, t.kiroLoginRefresh),
           ),
+          h('button', {
+            type: 'button',
+            className: 'osubs-login osubs-login-ghost',
+            onClick: () => { onImport(id); closeAdd() },
+          },
+            h('span', null, t.import),
+          ),
         ),
         id === 'kiro' && showIdc && !busy && h('form', {
           className: 'osubs-fields',
@@ -1466,6 +1593,7 @@ window.__ModuleLoader__.load({
             })
             setRefreshToken('')
             setShowEntra(false)
+            closeAdd()
           },
         },
           h('input', {
@@ -1511,6 +1639,7 @@ window.__ModuleLoader__.load({
             onUseKey(id, apiKey, { mode: 'api_key' })
             setApiKey('')
             setShowKey(false)
+            closeAdd()
           },
         },
           h('input', {
@@ -1533,6 +1662,7 @@ window.__ModuleLoader__.load({
             onUseKey(id, refreshToken, { mode: 'social' })
             setRefreshToken('')
             setShowRefresh(false)
+            closeAdd()
           },
         },
           h('textarea', {
@@ -1562,6 +1692,7 @@ window.__ModuleLoader__.load({
             'aria-label': t.paste,
           }),
           h(Button, { type: 'submit', variant: 'primary', label: t.submitPaste }),
+        ),
         ),
       )
     }
