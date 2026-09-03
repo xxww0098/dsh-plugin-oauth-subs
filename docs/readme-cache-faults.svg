@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 220" role="img" aria-labelledby="t d">
-  <title id="t">Codex affinity misses and TRANSPORT  SkillStar session-772f7f3a</title>
+  <title id="t">Codex affinity misses and TRANSPORT - SkillStar session-772f7f3a</title>
   <desc id="d">Two published points per series: affinity misses 47 to 0, TRANSPORT 29 to 0 (2026-08-26 incident vs after 0.0.14).</desc>
   <rect width="640" height="220" fill="none"/>
   <g fill="none" stroke="#64748b" stroke-width="1">
@@ -16,7 +16,7 @@
     <text x="16" y="108" text-anchor="middle" transform="rotate(-90 16 108)">Count</text>
     <text x="180" y="192" text-anchor="middle">2026-08-26 incident</text>
     <text x="500" y="192" text-anchor="middle">After 0.0.14</text>
-    <text x="334" y="16" text-anchor="middle" font-size="13">Affinity misses 47’0 · TRANSPORT 29’0</text>
+    <text x="334" y="16" text-anchor="middle" font-size="13">Affinity misses 47 to 0 | TRANSPORT 29 to 0</text>
   </g>
   <polyline fill="none" stroke="#b45309" stroke-width="2.5" points="180,44.2 500,172"/>
   <polyline fill="none" stroke="#0369a1" stroke-width="2.5" points="180,93.1 500,172"/>
