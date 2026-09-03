@@ -23,7 +23,7 @@
 - 登录：粘贴 API key + 空花名册 `OLLAMA_API_KEY`。`parseOllamaApiKey` 拒绝 PEM 公钥。
 - 不打开 ollama.com/connect，不扫 Keychain / `credentials.json` / `id_ed25519`（schema 未证明是 Bearer）。
 - hop：`POST /ollama/v1/chat/completions` → `https://ollama.com/v1/chat/completions`。不包 `127.0.0.1:11434`，不选 Responses。
-- 目录：登录后 `GET /api/tags`，退役表过滤，失败回落静态 7 行。
+- 目录：登录后 `GET /api/tags`，退役表过滤，失败回落静态 19 行 Cloud 快照。
 - 额度 idle。cache 只剥 Codex/Grok 字段，不发明 `cached_tokens` / sticky conversation id。
 - **本插件不能**把 local signin 变成 Cloud Bearer，也不能画不存在的额度 / cache 命中。
 

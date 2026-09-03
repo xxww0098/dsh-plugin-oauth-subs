@@ -17,6 +17,8 @@ import {
   OLLAMA_MODELS,
   OLLAMA_REASONING,
   OLLAMA_TAGS_URL,
+  inferOllamaContextWindow,
+  inferOllamaInput,
   isOllamaRetiredModel,
   ollamaDefaultAccount,
   ollamaSession,
@@ -96,7 +98,47 @@ test('catalog is Completions at /ollama, not /ollama/v1', () => {
   assert.equal(route.models.find((model) => model.id === 'gpt-oss:120b').reasoningEfforts.off, 'none')
   resetOllamaCatalogCache()
   const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
+  assert.equal(catalog['oauth-ollama'].models.length, 19)
   assert.equal(catalog['oauth-ollama'].models.length, OLLAMA_MODELS.length)
+})
+
+test('static OLLAMA_MODELS is the 19-row Cloud snapshot and matches infer helpers', () => {
+  const ids = [
+    'deepseek-v4-flash:0731',
+    'deepseek-v4-pro:0813',
+    'gemma4:31b',
+    'glm-5.1',
+    'glm-5.2',
+    'glm-5.3',
+    'glm-5.3-flash',
+    'gpt-oss:120b',
+    'gpt-oss:20b',
+    'kimi-k2.6',
+    'kimi-k2.7-code',
+    'kimi-k3',
+    'minimax-m2.7',
+    'minimax-m3',
+    'mistral-large-3:675b',
+    'nemotron-3-nano:30b',
+    'nemotron-3-super',
+    'nemotron-3-ultra',
+    'qwen3.5:397b',
+  ]
+  assert.equal(OLLAMA_MODELS.length, 19)
+  assert.deepEqual(OLLAMA_MODELS.map((model) => model.id), ids)
+  for (const model of OLLAMA_MODELS) {
+    assert.equal(model.contextWindow, inferOllamaContextWindow(model.id))
+    assert.deepEqual(model.input, inferOllamaInput(model.id))
+    assert.equal(isOllamaRetiredModel(model.id), false)
+  }
+  assert.deepEqual(inferOllamaInput('gemma4:31b'), ['text', 'image'])
+  assert.equal(inferOllamaContextWindow('qwen3.5:397b'), 262_144)
+  assert.equal(inferOllamaContextWindow('kimi-k3'), 256_000)
+  assert.equal(inferOllamaContextWindow('glm-5.1'), 200_000)
+  assert.equal(inferOllamaContextWindow('mistral-large-3:675b'), 200_000)
+  assert.equal(inferOllamaContextWindow('minimax-m2.7'), 200_000)
+  assert.equal(inferOllamaContextWindow('nemotron-3-ultra'), 128_000)
+  assert.equal(inferOllamaContextWindow('deepseek-v4-pro:0813'), 128_000)
 })
 
 test('snapshot shows oauth-ollama when logged in; quota stays idle', async () => {

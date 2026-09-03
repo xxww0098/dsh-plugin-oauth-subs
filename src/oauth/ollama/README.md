@@ -75,7 +75,7 @@ GET https://ollama.com/api/tags
 Authorization: Bearer <key>
 ```
 
-`{ models: [{ name, model, … }] }` → picker 一行 / name。`OLLAMA_RETIRED_MODELS` 来自 Cloud retirements 表（含已过期的 2026-07-31 upcoming）。失败或空列表回落静态 7 行，不挡对话。不列本机-only 模型。
+`{ models: [{ name, model, … }] }` → picker 一行 / name。`OLLAMA_RETIRED_MODELS` 来自 Cloud retirements 表（含已过期的 2026-07-31 upcoming）。静态 `OLLAMA_MODELS` 是 2026-09-03 Cloud 快照 19 行，登录后仍被 live `/api/tags` 替换；失败或空列表回落这 19 行，不挡对话。不列本机-only 模型。
 
 `/api/tags` 无 key 也 200（公共 Cloud 目录）。登录后仍带 Bearer，和文档一致。
 

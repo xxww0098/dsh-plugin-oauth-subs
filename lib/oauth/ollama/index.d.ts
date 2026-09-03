@@ -39,13 +39,15 @@ export declare const OLLAMA_SOURCES: readonly string[];
  * 2026-07-31 rows are already past as of this family. Do not list them.
  */
 export declare const OLLAMA_RETIRED_MODELS: Readonly<Set<string>>;
-/** Small static cloud list. Live GET /api/tags replaces this after login. */
+export declare function inferOllamaInput(id: any): string[];
+export declare function inferOllamaContextWindow(id: any): 128000 | 200000 | 256000 | 262144;
+/** 19-row Cloud snapshot from GET /api/tags (same 19 as /v1/models). Live tags replace this after login. */
 export declare const OLLAMA_MODELS: readonly {
     id: any;
     name: any;
     contextWindow: number;
     maxTokens: number;
-    input: readonly string[];
+    input: string[];
     reasoningEfforts: Readonly<{
         off: "none";
         low: "low";
@@ -61,8 +63,6 @@ export declare function ollamaAccountFingerprint(key: any): string;
 export declare function ollamaDefaultAccount(key: any): string;
 export declare function isOllamaRetiredModel(id: any): boolean;
 export declare function ollamaPrettyName(id: any): string;
-export declare function inferOllamaInput(id: any): string[];
-export declare function inferOllamaContextWindow(id: any): 128000 | 200000 | 256000 | 262144;
 export declare function ollamaSession({ accessToken, account, source, }?: {
     source?: string;
 }): {
