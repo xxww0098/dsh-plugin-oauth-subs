@@ -40,7 +40,15 @@ export declare const OLLAMA_SOURCES: readonly string[];
  * 2026-07-31 rows are already past as of this family. Do not list them.
  */
 export declare const OLLAMA_RETIRED_MODELS: Readonly<Set<string>>;
+/** Last-resort name regex when POST /api/show has no `capabilities`. */
 export declare function inferOllamaInput(id: any): string[];
+/**
+ * DSH picker `input` from POST /api/show `capabilities`.
+ * `vision` (any case) → text+image. Missing `capabilities` → undefined
+ * so the catalog can fall back to `inferOllamaInput`. Never invent audio.
+ */
+export declare function ollamaShowInput(show: any): string[];
+export declare function ollamaInput(id: any, show: any): string[];
 /** `model_info.<family>.context_length` from POST /api/show, or a later tags field. */
 export declare function ollamaShowContextLength(value: any): number;
 export declare function ollamaSnapshotContextWindow(id: any): any;
@@ -50,7 +58,11 @@ export declare function ollamaSnapshotContextWindow(id: any): any;
  * not a family-size regex (128k/200k/256k).
  */
 export declare function ollamaContextWindow(id: any, show: any): any;
-/** 19-row Cloud snapshot. Windows are 2026-09-03 POST /api/show `model_info.*.context_length`. Live tags+show replace this after login. */
+/**
+ * 19-row Cloud snapshot. Windows are 2026-09-03 POST /api/show
+ * `model_info.*.context_length`. `input` is that day's `capabilities`
+ * (`vision` → text+image). Live tags+show replace this after login.
+ */
 export declare const OLLAMA_MODELS: readonly {
     id: any;
     name: any;

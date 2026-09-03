@@ -1,6 +1,6 @@
 /**
  * Live Ollama Cloud picker. GET https://ollama.com/api/tags after login,
- * then POST /api/show for `model_info.*.context_length`.
+ * then POST /api/show for `model_info.*.context_length` and `capabilities`.
  * OLLAMA_MODELS is the offline fallback only. Retired Cloud rows stay out.
  */
 export declare const OLLAMA_CATALOG_TTL_MS: number;
