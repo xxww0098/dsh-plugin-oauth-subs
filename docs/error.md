@@ -171,14 +171,15 @@ Gemini 3 若 `contents[0].role === "model"`（助手问候 / leftover），Googl
 - Gemini：`parametersJsonSchema`。Claude / GPT-OSS：allowlist `parameters`，根 `type: object`，type union 收成第一个非 null 标量，非全 string 的 enum 丢掉。
 - Claude / GPT-OSS 配对 `functionCall.id` / `functionResponse.id`。Gemini 3 不发 id。
 - 以 model 开头的 contents 前置 `Hello` user。`systemInstruction.role = "user"`。保留 `pinAntigravitySystemInstruction` / extra-as-user，不换 DSH system。
-- Claude 永远 `VALIDATED`。Gemini 有 tools 时 `AUTO`，除非 DSH `tool_choice` → `NONE`/`ANY`。钳 `maxOutputTokens`。
-- Gemini 3 一组 functionCall 在 #72 映射之后仍无 `thoughtSignature`：丢掉 unsigned `functionCall`，匹配的 tool 结果改成 user observation 文本。不编假签名。
-- Claude 思考请求加 `anthropic-beta: interleaved-thinking-2025-05-14`。Gemini 不加。chat 不加 `Client-Metadata`。
+- Claude 永远 `VALIDATED`。Gemini 有 tools 时 `AUTO`，除非 DSH `tool_choice` → `NONE`/`ANY`。`maxOutputTokens` 只走钳位表，不转发未钳的 DSH `max_tokens`。
+- Gemini 3 一组 functionCall **第一条**在 #72 映射之后仍无 `thoughtSignature`：丢掉这组 unsigned `functionCall`，匹配的 tool 结果改成 user `[Observation from \`name\`:\n…]`。Claude / GPT-OSS 仍发 unsigned `functionCall`。不编假签名 / 空串 / `skip_thought_signature_validator`。
+- `claude-*` / `gpt-oss-*` 不发 `thinkingConfig`。不改写 flash `-high` 线 id。相邻同 role `contents` 合并；快照不得插进 functionCall 与 functionResponse 之间。
+- chat 头只有 User-Agent。**不要**加 `anthropic-beta` / `Client-Metadata` / `x-goog-api-client`。
 - 不改 fingerprint（hub 2.11.0 + daily）、`requestType: "agent"`、picker 线 id。
 
 ### 验证
 
-- `npm test`：Gemini tools 出 `parametersJsonSchema`、`parameters` 里没有 JSON Schema 额外键；Claude/GPT-OSS 只有 allowlist `parameters`；Claude `functionCall.id` 在、Gemini 无 id；model 开头补 Hello；`systemInstruction.role === "user"`；`maxOutputTokens` 被钳；thoughtSignature 往返仍绿。无 live Cloud Code。
+- `npm test`：Gemini tools 出 `parametersJsonSchema`；Claude/GPT-OSS 只有 allowlist `parameters`；Claude `functionCall.id` 在、Gemini 无 id；Gemini 3 unsigned functionCall+tool → observation、无 functionCall；signed 往返仍绿；Claude unsigned 仍有 functionCall；model 开头补 Hello；`systemInstruction.role === "user"`；`maxOutputTokens` 被钳；chat 无 `anthropic-beta`。无 live Cloud Code。
 
 ## 2026-09-03：Antigravity Gemini 3.8 Flash 线 id 是 `gemini-3.8-flash-high`
 

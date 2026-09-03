@@ -55,11 +55,13 @@ DSH chat/completions  →  POST daily-cloudcode-pa.googleapis.com/v1internal:gen
   - Claude（`claude-*`）/ GPT-OSS（`gpt-oss-*`）：只发 allowlist `{type, description, properties, required, items, enum}` 的 legacy `parameters`。递归。`["string","null"]` 收成第一个非 null 标量。enum 必须全是 string，否则丢掉。根 schema 必须是 `type: object`。
 - Claude / GPT-OSS 的 `functionCall` / `functionResponse` 带 `id`（`[A-Za-z0-9_-]`，最长 64）。Gemini 3 **不要**发 `functionCall.id`。工具结果用同一个 sanitized id 配对。
 - Claude：**永远** `request.toolConfig.functionCallingConfig.mode = VALIDATED`（没有 tools 也发）。Gemini 有 tools 时默认 `AUTO`，DSH `tool_choice` 才映射 `NONE` / `ANY`。不要给 Gemini 3 发会改 thoughtSignature 行为的 toolConfig。
-- `generationConfig.maxOutputTokens` 钳到 Cloud Code 线 id 上限（flash 65536，`gemini-3.1-pro` / `gemini-pro-agent` 65535，Claude 64000，GPT-OSS 32768）。超发 400。
+- `generationConfig.maxOutputTokens` 用线 id 钳位表发出。不要把未钳的 DSH `max_tokens` 原样转发。
 - `request.sessionId` = `antigravitySessionIdOf`（有 DSH session 原样；否则 `dsh-antigravity:<model>`）。
 - `request.tools` / `generationConfig.thinkingConfig` 按 session 钉住，避免 DSH 抖前缀。不发 `implicitCacheConfig`。
-- Gemini 3 / Cloud Code 的 `functionCall` part 必须带回原 `thoughtSignature`（[Google thought signatures](https://ai.google.dev/gemini-api/docs/thought-signatures)）。官方 wire 是 **part 级** camelCase，也接受 `thought_signature` / 嵌在 `functionCall` 里的入站。`collectAntigravityParts` 把它抄到 OpenAI `tool_calls` 的 `thoughtSignature` / `thought_signature` / `extra_content.google.thought_signature`；`openaiToAntigravity` 写回 part。DSH 若剥掉未知键，进程内按 `sessionId` + tool id / `name+args` 再贴（#72）。一组 Gemini 3 functionCall **查找后仍无签名** → 丢掉这组 unsigned `functionCall`，配对的 tool 结果改成 user `[Observation from …]` 文本（Pi `droppedToolCallIds`）。**不要**编空串或 `skip_thought_signature_validator`。`part.thought` 仍不进可见文本；若签名只在 thought part 上，转给随后第一条无签名的 functionCall。
-- Claude 思考：chat 请求加 `anthropic-beta: interleaved-thinking-2025-05-14`。Gemini / GPT-OSS / loadCodeAssist **不加**。chat 头仍是 User-Agent + 这一条 beta；不要抄 Pi 的 `Client-Metadata` / `x-goog-api-client`。
+- **thinkingConfig：** `claude-*` / `gpt-oss-*` **整段省略**。不要用 `reasoning_effort` 改写 flash `-high` 线 id。`gemini-3.5-flash*` / `gemini-3-flash-agent` / `gemini-3.1-pro-*` / `gemini-pro-agent` 用 Pi 的 `thinkingBudget`（id 已带 effort 时也可省略）。其它 Gemini flash 仍可用 sticky `thinkingLevel`。
+- 转换后 **合并相邻同 role** 的 `contents`（Cloud Code 否则 400）。多余 system 快照只停在末尾，**不要**插进 model `functionCall` 组和它的 `functionResponse` 之间。
+- Gemini 3 / Cloud Code 的 `functionCall` part 必须带回原 `thoughtSignature`（[Google thought signatures](https://ai.google.dev/gemini-api/docs/thought-signatures)）。官方 wire 是 **part 级** camelCase，也接受 `thought_signature` / 嵌在 `functionCall` 里的入站。`collectAntigravityParts` 把它抄到 OpenAI `tool_calls` 的 `thoughtSignature` / `thought_signature` / `extra_content.google.thought_signature`；`openaiToAntigravity` 写回 part。DSH 若剥掉未知键，进程内按 `sessionId` + tool id / `name+args` 再贴（#72）。一组 Gemini 3 functionCall **第一条查找后仍无签名** → 丢掉这组 unsigned `functionCall`，配对的 tool 结果改成 user `[Observation from \`name\`:\n…]` 文本。Claude / GPT-OSS **仍发** unsigned `functionCall`。**不要**编空串或 `skip_thought_signature_validator`。`part.thought` 仍不进可见文本；若签名只在 thought part 上，转给随后第一条无签名的 functionCall。
+- chat 头 **只有** User-Agent。不要加 `anthropic-beta` / `Client-Metadata` / `x-goog-api-client`。
 - SSE 文本是累积的，用 `incrementalSuffix` 切成 OpenAI delta；终帧带 `mapAntigravityUsage`，否则 DSH 显示「用量 0 tok」。
 
 ## 模型
@@ -108,7 +110,7 @@ DSH 每步再插 runtime-context system，工具 JSON 的 key 顺序也会抖。
 - 不要编造 `thoughtSignature` / 空串 / `skip_thought_signature_validator`。缺就省略字段。Gemini 3 一组都查不到签名时丢掉 functionCall，不要补假签名。
 - 不要把 OpenAI JSON Schema（`additionalProperties` / `anyOf` / `$ref` / `format` / `nullable`）写进 Claude / GPT-OSS 的 protobuf `parameters`。
 - 不要给 Gemini 3 发 `functionCall.id`。
-- 不要在 chat / loadCodeAssist / fetchAvailableModels 上加 `Client-Metadata` 或 `x-goog-api-client`（onboardUser 已有较长 UA + `x-goog-api-client`）。
+- 不要在 chat / loadCodeAssist / fetchAvailableModels 上加 `Client-Metadata`、`x-goog-api-client` 或 `anthropic-beta`（onboardUser 已有较长 UA + `x-goog-api-client`）。
 - 不要抄 Pi 的 2.8.0 UA / `vscode_cloudshelleditor` / `cachedContents` / `implicitCacheConfig`。fingerprint 仍是 hub 2.11.0 + daily-cloudcode-pa。
 - 不要把 picker id 收成裸 `gemini-3.8-flash`。线 id 就是 picker id（`gemini-3.8-flash-high`、`gemini-pro-agent`，…）。
 - 不要用 `currentTier` 当套餐 pill。

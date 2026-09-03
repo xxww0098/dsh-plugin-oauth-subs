@@ -304,13 +304,6 @@ function observationPart(name, droppedArgs, responseText) {
   return { text: `[Observation from ${label}:\n${responseText}]` }
 }
 
-function isFunctionResponseTurn(content) {
-  return content?.role === 'user'
-    && Array.isArray(content.parts)
-    && content.parts.length > 0
-    && content.parts.every((part) => isPlainObject(part?.functionResponse))
-}
-
 function imagePart(url) {
   const raw = trimmed(url)
   if (!raw) return undefined
@@ -449,6 +442,49 @@ function geminiToolChoiceMode(toolChoice) {
   return 'AUTO'
 }
 
+function usesThinkingBudgetWire(model) {
+  const id = String(model ?? '')
+  return id.startsWith('gemini-3.5-flash')
+    || id === 'gemini-3-flash-agent'
+    || id.startsWith('gemini-3.1-pro')
+    || id === 'gemini-pro-agent'
+}
+
+/** Claude / GPT-OSS omit thinkingConfig. Budget-wire ids omit or use thinkingBudget. Never rewrite picker ids. */
+export function antigravityThinkingConfig(model, effort) {
+  if (isClaudeModel(model) || isGptOssModel(model)) return undefined
+  const e = trimmed(effort)
+  if (usesThinkingBudgetWire(model)) {
+    if (!e || e === 'off') return undefined
+    const high = e === 'high' || e === 'xhigh'
+    if (String(model).startsWith('gemini-3.1-pro') || model === 'gemini-pro-agent') {
+      return { includeThoughts: true, thinkingBudget: high ? 10_001 : 1_001 }
+    }
+    return { includeThoughts: true, thinkingBudget: high ? 10_000 : e === 'medium' ? 4_000 : 1_000 }
+  }
+  return e ? { thinkingLevel: e } : undefined
+}
+
+function appendTurn(contents, role, parts) {
+  if (!Array.isArray(parts) || parts.length === 0) return
+  const last = contents[contents.length - 1]
+  if (last && last.role === role) {
+    last.parts.push(...parts)
+    return
+  }
+  contents.push({ role, parts })
+}
+
+function mergeAdjacentContents(contents) {
+  const merged = []
+  for (const turn of contents) {
+    const parts = Array.isArray(turn?.parts) ? turn.parts : []
+    if (!turn?.role || parts.length === 0) continue
+    appendTurn(merged, turn.role, parts)
+  }
+  return merged
+}
+
 export function openaiToAntigravity(payload, { projectId, sessionId } = {}) {
   const project = trimmed(projectId)
   if (!project) throw new Error('antigravity generateContent requires project_id')
@@ -472,13 +508,10 @@ export function openaiToAntigravity(payload, { projectId, sessionId } = {}) {
       const rawId = typeof message?.tool_call_id === 'string' ? message.tool_call_id : ''
       const droppedArgs = requiresSig ? droppedToolArgs(droppedToolCallIds, rawId, name) : undefined
       if (droppedArgs !== undefined) {
-        contents.push({ role: 'user', parts: [observationPart(name, droppedArgs, toolResultText(message))] })
+        appendTurn(contents, 'user', [observationPart(name, droppedArgs, toolResultText(message))])
         continue
       }
-      const part = functionResponsePart(message, model)
-      const last = contents[contents.length - 1]
-      if (isFunctionResponseTurn(last)) last.parts.push(part)
-      else contents.push({ role: 'user', parts: [part] })
+      appendTurn(contents, 'user', [functionResponsePart(message, model)])
       continue
     }
     const parts = []
@@ -498,27 +531,28 @@ export function openaiToAntigravity(payload, { projectId, sessionId } = {}) {
       for (const { part } of built) parts.push(part)
     }
     parts.push(...partsFromContent(message?.content))
-    if (parts.length === 0) continue
-    contents.push({ role: role === 'assistant' ? 'model' : 'user', parts })
+    appendTurn(contents, role === 'assistant' ? 'model' : 'user', parts)
   }
 
   if (contents.length === 0) {
-    contents.push({ role: 'user', parts: [{ text: trimmed(payload?.input) ?? '' }] })
+    appendTurn(contents, 'user', [{ text: trimmed(payload?.input) ?? '' }])
   }
   const pinned = pinAntigravitySystemInstruction(pinnedSession, systemParts)
-  if (pinned.extra) contents.push({ role: 'user', parts: [{ text: pinned.extra }] })
   if (contents[0]?.role === 'model') {
     contents.unshift({ role: 'user', parts: [{ text: 'Hello' }] })
   }
+  // Extra snapshot is trailing only — after every functionResponse — so it cannot
+  // land between a model functionCall group and its matching tool results.
+  if (pinned.extra) appendTurn(contents, 'user', [{ text: pinned.extra }])
 
   const request = {
-    contents,
+    contents: mergeAdjacentContents(contents),
     sessionId: pinnedSession,
   }
   if (pinned.parts.length) request.systemInstruction = { role: 'user', parts: pinned.parts }
   const tools = pinAntigravityTools(pinnedSession, toolDeclarations(payload?.tools, model))
   if (tools) request.tools = tools
-  const thinking = pinAntigravityThinking(pinnedSession, trimmed(payload?.reasoning_effort))
+  const thinking = pinAntigravityThinking(pinnedSession, antigravityThinkingConfig(model, trimmed(payload?.reasoning_effort)))
   const generationConfig = {
     maxOutputTokens: clampMaxOutputTokens(model, payload?.max_tokens),
   }

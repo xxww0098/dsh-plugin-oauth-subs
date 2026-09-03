@@ -18,6 +18,16 @@ export declare function antigravityMaxOutputTokens(model: any): any;
  */
 export declare function functionResponsePayload(value: any): any;
 export declare function partsFromContent(content: any): any[];
+/** Claude / GPT-OSS omit thinkingConfig. Budget-wire ids omit or use thinkingBudget. Never rewrite picker ids. */
+export declare function antigravityThinkingConfig(model: any, effort: any): {
+    includeThoughts: boolean;
+    thinkingBudget: number;
+    thinkingLevel?: undefined;
+} | {
+    thinkingLevel: string;
+    includeThoughts?: undefined;
+    thinkingBudget?: undefined;
+};
 export declare function openaiToAntigravity(payload: any, { projectId, sessionId }?: {}): {
     model: string;
     project: string;

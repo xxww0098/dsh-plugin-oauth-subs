@@ -37,8 +37,8 @@ export declare function pinAntigravitySystemInstruction(sessionId: any, parts: a
 export declare function pinAntigravityTools(sessionId: any, tools: any): any;
 /**
  * Sticky-first thinkingConfig. Once a session has sent (or omitted)
- * thinkingLevel, keep that choice even if a later payload flaps
+ * a thinking object, keep that choice even if a later payload flaps
  * reasoning_effort. Do not invent implicitCacheConfig.
  */
-export declare function pinAntigravityThinking(sessionId: any, effort: any): any;
+export declare function pinAntigravityThinking(sessionId: any, thinking: any): any;
 export declare function antigravitySessionIdOf(payload: {}, explicit: any): any;
