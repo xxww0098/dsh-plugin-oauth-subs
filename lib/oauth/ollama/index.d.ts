@@ -15,7 +15,18 @@ export declare const OLLAMA_CHAT_URL = "https://ollama.com/v1/chat/completions";
 export declare const OLLAMA_TAGS_URL = "https://ollama.com/api/tags";
 export declare const OLLAMA_SHOW_URL = "https://ollama.com/api/show";
 export declare const OLLAMA_ME_URL = "https://ollama.com/api/me";
+export declare const OLLAMA_USAGE_URL = "https://ollama.com/api/usage";
 export declare const OLLAMA_KEYS_URL = "https://ollama.com/settings/keys";
+/** ollama.com /api/me Plan slugs. Not Codex `pro` → Pro 20x. */
+export declare const OLLAMA_PLAN_NAMES: Readonly<{
+    free: "Free";
+    hobby: "Hobby";
+    plus: "Plus";
+    pro: "Pro";
+    max: "Max";
+    team: "Team";
+    enterprise: "Enterprise";
+}>;
 /** Official docs: API keys do not expire. */
 export declare const OLLAMA_NEVER_EXPIRES = 8640000000000000;
 export declare const OLLAMA_DEFAULT_CONTEXT = 128000;
@@ -82,6 +93,8 @@ export declare function parseOllamaApiKey(value: any): string;
 /** Stable vault id that is not the raw key. */
 export declare function ollamaAccountFingerprint(key: any): string;
 export declare function ollamaDefaultAccount(key: any): string;
+/** Vault / card title before /api/me Email lands. */
+export declare function isOllamaOpaqueAccount(value: any): boolean;
 export declare function isOllamaRetiredModel(id: any): boolean;
 export declare function ollamaPrettyName(id: any): string;
 export declare function ollamaSession({ accessToken, account, source, }?: {
@@ -98,6 +111,14 @@ export declare function isOllamaPermanentRefreshError(): boolean;
 export declare function ollamaUpstreamHeaders(session: any): {
     authorization: string;
 };
+/** Live /api/me is PascalCase (`Email`, `Name`, `Plan`). GET is 405. */
+export declare function parseOllamaMe(value: any): {
+    planType?: string;
+    account?: string;
+};
 export declare function resolveOllamaIdentity(session: any, { fetchFn, signal }?: {
     fetchFn?: typeof fetch;
-}): Promise<string>;
+}): Promise<{
+    planType?: string;
+    account?: string;
+}>;

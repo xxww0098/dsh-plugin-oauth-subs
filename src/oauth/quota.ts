@@ -10,6 +10,8 @@
  *                POST daily-cloudcode-pa …/v1internal:retrieveUserQuotaSummary
  *                POST daily-cloudcode-pa …/v1internal:fetchAvailableModels (5h fallback)
  *                Official Model Quota UI is two groups × (weekly + 5-hour).
+ *   Ollama  GET ollama.com/api/usage  (limits.session/weekly.usage = 0..1)
+ *           POST ollama.com/api/me    (Email / Name / Plan; GET is 405)
  *
  * Codex windows report used_percent; remaining is 100 − used.
  * Grok creditUsagePercent is also used-percent. Display remaining in the UI.
@@ -65,6 +67,12 @@ import {
   cursorUsageHeaders,
   pickCursorHumanAccount,
 } from './cursor/index.js'
+import {
+  OLLAMA_ME_URL,
+  OLLAMA_USAGE_URL,
+  ollamaUpstreamHeaders,
+  parseOllamaMe,
+} from './ollama/index.js'
 
 export const QUOTA_TTL_MS = 60_000
 export const QUOTA_TIMEOUT_MS = 10_000
@@ -810,6 +818,86 @@ export async function fetchCursorQuota(session, fetchFn = fetch) {
   }
 }
 
+/** ollama.com /api/usage `limits.*.usage` is a 0..1 fraction, not 0–100. */
+function ollamaUsedPercent(value) {
+  const n = asNumber(value)
+  if (n === undefined) return undefined
+  const used = n <= 1 ? n * 100 : n
+  return Math.max(0, Math.min(100, Math.round(used * 10) / 10))
+}
+
+function ollamaModelsNote(models) {
+  if (!Array.isArray(models) || models.length === 0) return undefined
+  const parts = []
+  for (const item of models) {
+    if (!item || typeof item !== 'object') continue
+    const name = typeof item.name === 'string' && item.name.trim() ? item.name.trim() : undefined
+    if (!name) continue
+    const count = asNumber(item.request_count ?? item.requestCount) ?? 0
+    parts.push(`${name} × ${count}`)
+  }
+  return parts.length > 0 ? parts.join(' · ') : undefined
+}
+
+function parseOllamaLimitWindow(window, kind) {
+  if (!window || typeof window !== 'object') return undefined
+  const usedPercent = ollamaUsedPercent(window.usage)
+  if (usedPercent === undefined) return undefined
+  const remainingPercent = Math.max(0, Math.min(100, Math.round((100 - usedPercent) * 10) / 10))
+  const note = kind === 'weekly' ? ollamaModelsNote(window.models) : undefined
+  return {
+    key: kind,
+    kind,
+    usedPercent,
+    remainingPercent,
+    ...(kind === 'primary' ? { windowMinutes: 300 } : {}),
+    ...(note ? { note } : {}),
+  }
+}
+
+export function parseOllamaUsage(payload, me) {
+  const root = payload && typeof payload === 'object' ? payload : {}
+  const limits = root.limits && typeof root.limits === 'object' ? root.limits : root
+  const identity = parseOllamaMe(me && typeof me === 'object' ? me : root)
+  const rows = []
+  const session = parseOllamaLimitWindow(limits.session, 'primary')
+  const weekly = parseOllamaLimitWindow(limits.weekly, 'weekly')
+  if (session) rows.push(session)
+  if (weekly) rows.push(weekly)
+  return {
+    planType: identity.planType,
+    account: identity.account,
+    rows,
+  }
+}
+
+export async function fetchOllamaQuota(session, fetchFn = fetch) {
+  const headers = ollamaUpstreamHeaders(session)
+  const usageWait = timeoutSignal(QUOTA_TIMEOUT_MS)
+  const meWait = timeoutSignal(QUOTA_TIMEOUT_MS)
+  try {
+    const [usageResult, meResult] = await Promise.allSettled([
+      fetchFn(OLLAMA_USAGE_URL, { method: 'GET', headers, signal: usageWait.signal })
+        .then((response) => readJson(response, 'ollama usage')),
+      fetchFn(OLLAMA_ME_URL, {
+        method: 'POST',
+        headers: { ...headers, 'content-type': 'application/json' },
+        body: '{}',
+        signal: meWait.signal,
+      }).then((response) => readJson(response, 'ollama me')),
+    ])
+    if (usageResult.status === 'rejected' && meResult.status === 'rejected') {
+      throw usageResult.reason
+    }
+    const usage = usageResult.status === 'fulfilled' ? usageResult.value : {}
+    const me = meResult.status === 'fulfilled' ? meResult.value : undefined
+    return parseOllamaUsage(usage, me)
+  } finally {
+    usageWait.cancel()
+    meWait.cancel()
+  }
+}
+
 export async function fetchGlmQuota(session, fetchFn = fetch) {
   const wait = timeoutSignal(QUOTA_TIMEOUT_MS)
   try {
@@ -1423,10 +1511,6 @@ export class QuotaStore {
       this.cache.delete(key)
       return publicQuota()
     }
-    if (provider === 'ollama') {
-      this.cache.delete(key)
-      return publicQuota()
-    }
     const previous = this.cache.get(key)
     this.cache.set(key, {
       ...(previous ?? {}),
@@ -1446,6 +1530,8 @@ export class QuotaStore {
               ? await fetchAntigravityQuota(session, this.fetchFn)
               : provider === 'cursor'
                 ? await fetchCursorQuota(session, this.fetchFn)
+              : provider === 'ollama'
+                ? await fetchOllamaQuota(session, this.fetchFn)
               : await fetchGrokQuota(session, this.fetchFn)
       const entry = {
         status: 'ready',

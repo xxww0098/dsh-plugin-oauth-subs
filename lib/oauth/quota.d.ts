@@ -10,6 +10,8 @@
  *                POST daily-cloudcode-pa …/v1internal:retrieveUserQuotaSummary
  *                POST daily-cloudcode-pa …/v1internal:fetchAvailableModels (5h fallback)
  *                Official Model Quota UI is two groups × (weekly + 5-hour).
+ *   Ollama  GET ollama.com/api/usage  (limits.session/weekly.usage = 0..1)
+ *           POST ollama.com/api/me    (Email / Name / Plan; GET is 405)
  *
  * Codex windows report used_percent; remaining is 100 − used.
  * Grok creditUsagePercent is also used-percent. Display remaining in the UI.
@@ -108,6 +110,16 @@ export declare function fetchCursorQuota(session: any, fetchFn?: typeof fetch): 
         usedPercent: number;
         remainingPercent: number;
     }[];
+}>;
+export declare function parseOllamaUsage(payload: any, me: any): {
+    planType: string;
+    account: string;
+    rows: any[];
+};
+export declare function fetchOllamaQuota(session: any, fetchFn?: typeof fetch): Promise<{
+    planType: string;
+    account: string;
+    rows: any[];
 }>;
 export declare function fetchGlmQuota(session: any, fetchFn?: typeof fetch): Promise<any>;
 /** SkillStar `parse_model_windows` — group fetchAvailableModels into product bars. */

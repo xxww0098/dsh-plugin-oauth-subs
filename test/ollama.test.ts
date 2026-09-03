@@ -14,11 +14,14 @@ import {
 } from '../lib/oauth/models.js'
 import {
   OLLAMA_CHAT_URL,
+  OLLAMA_ME_URL,
   OLLAMA_MODELS,
   OLLAMA_REASONING,
   OLLAMA_SHOW_URL,
   OLLAMA_TAGS_URL,
+  OLLAMA_USAGE_URL,
   inferOllamaInput,
+  isOllamaOpaqueAccount,
   isOllamaRetiredModel,
   ollamaContextWindow,
   ollamaDefaultAccount,
@@ -29,7 +32,10 @@ import {
   ollamaSession,
   ollamaSourceLabel,
   parseOllamaApiKey,
+  parseOllamaMe,
 } from '../lib/oauth/ollama/index.js'
+import { formatPlanLabel } from '../lib/oauth/plan.js'
+import { QuotaStore, parseOllamaUsage } from '../lib/oauth/quota.js'
 import {
   OLLAMA_IMPORT_EMPTY,
   importOllamaAuth,
@@ -164,7 +170,74 @@ test('ollamaShowInput reads capabilities; missing array falls back to name regex
   assert.deepEqual(ollamaInput('gemma4:31b', { details: {} }), ['text', 'image'])
 })
 
-test('snapshot shows oauth-ollama when logged in; quota stays idle', async () => {
+const LIVE_OLLAMA_USAGE = {
+  activity: { cost: '0.00000', period: { type: 'last_4_weeks' }, models: [] },
+  limits: {
+    session: { usage: 0, models: [] },
+    weekly: {
+      usage: 0.095,
+      models: [
+        { name: 'glm-5.3-flash', request_count: 1294 },
+        { name: 'web search', request_count: 3 },
+        { name: 'web fetch', request_count: 2 },
+      ],
+    },
+  },
+}
+
+const LIVE_OLLAMA_ME = {
+  ID: 'user-1',
+  Email: 'cloud@ollama.local',
+  Name: 'Cloud User',
+  Plan: 'pro',
+}
+
+async function ollamaCloudFetch(url, init) {
+  const href = String(url)
+  assert.equal(href.includes('127.0.0.1:11434'), false)
+  assert.equal(href.includes('localhost:11434'), false)
+  if (href === OLLAMA_USAGE_URL) {
+    assert.equal(init?.method ?? 'GET', 'GET')
+    return json(LIVE_OLLAMA_USAGE)
+  }
+  if (href === OLLAMA_ME_URL) {
+    assert.equal(init?.method, 'POST')
+    const auth = String(init?.headers?.authorization ?? '')
+    const email = auth.includes('account-b') ? 'b@ollama.local' : 'a@ollama.local'
+    return json({ ...LIVE_OLLAMA_ME, Email: email })
+  }
+  if (href === OLLAMA_TAGS_URL || href === OLLAMA_SHOW_URL) return json({ models: [] })
+  throw new Error(`unexpected ${href}`)
+}
+
+test('parseOllamaUsage maps 0 / 0.095 fractions to remaining 100 and 90.5', () => {
+  const parsed = parseOllamaUsage(LIVE_OLLAMA_USAGE, LIVE_OLLAMA_ME)
+  assert.equal(parsed.planType, 'pro')
+  assert.equal(formatPlanLabel(parsed.planType, 'ollama'), 'Pro')
+  assert.equal(parsed.account, 'cloud@ollama.local')
+  assert.equal(parsed.rows.length, 2)
+  assert.equal(parsed.rows[0].kind, 'primary')
+  assert.equal(parsed.rows[0].usedPercent, 0)
+  assert.equal(parsed.rows[0].remainingPercent, 100)
+  assert.equal(parsed.rows[0].resetAt, undefined)
+  assert.equal(parsed.rows[1].kind, 'weekly')
+  assert.equal(parsed.rows[1].usedPercent, 9.5)
+  assert.equal(parsed.rows[1].remainingPercent, 90.5)
+  assert.equal(parsed.rows[1].resetAt, undefined)
+  assert.match(parsed.rows[1].note, /glm-5\.3-flash × 1294/)
+  const empty = parseOllamaUsage(undefined, undefined)
+  assert.deepEqual(empty.rows, [])
+  assert.equal(empty.planType, undefined)
+  const meOnly = parseOllamaUsage({ limits: {} }, { Name: 'Only Name', Plan: 'max' })
+  assert.equal(meOnly.account, 'Only Name')
+  assert.equal(meOnly.planType, 'max')
+  assert.deepEqual(meOnly.rows, [])
+  assert.equal(parseOllamaMe({ Email: 'a@b.c', Plan: 'pro' }).account, 'a@b.c')
+  assert.equal(isOllamaOpaqueAccount('ollama-3f67f6bb'), true)
+  assert.equal(isOllamaOpaqueAccount('cloud@ollama.local'), false)
+})
+
+test('snapshot shows quota on every ollama account', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-ollama-'))
   const authPath = join(dir, 'auth.json')
   const sessionA = ollamaSession({ accessToken: 'sk-ollama-account-a', source: 'paste' })
@@ -188,12 +261,23 @@ test('snapshot shows oauth-ollama when logged in; quota stays idle', async () =>
         }
       },
     },
-    fetchFn: async () => json({ models: [] }),
+    fetchFn: ollamaCloudFetch,
   })
   const snap = await controller.snapshot()
   assert.equal(snap.accounts.ollama.loggedIn, true)
   assert.equal(snap.accounts.ollama.accounts.length, 2)
-  assert.equal(snap.accounts.ollama.accounts.every((row) => row.quota?.status === 'idle'), true)
+  assert.equal(snap.accounts.ollama.accounts.every((row) => row.quota?.status === 'ready'), true)
+  for (const row of snap.accounts.ollama.accounts) {
+    assert.equal(row.quota.planLabel, 'Pro')
+    assert.equal(row.quota.rows[0].remainingPercent, 100)
+    assert.equal(row.quota.rows[1].remainingPercent, 90.5)
+    assert.equal(isOllamaOpaqueAccount(row.account), false)
+    assert.match(row.account, /@ollama\.local$/)
+  }
+  assert.deepEqual(snap.accounts.ollama.accounts.map((row) => row.account).sort(), [
+    'a@ollama.local',
+    'b@ollama.local',
+  ])
   assert.equal(snap.catalog.some((row) => row.provider === 'oauth-ollama'), true)
   assert.equal(snap.providers.some((row) => row.provider === 'oauth-ollama'), true)
   const synced = await controller.sync()
@@ -453,4 +537,91 @@ test('applyOllamaCache strips Codex/Grok fields and does not invent a wire id', 
   assert.equal(again.cacheSessionId, cacheSessionId)
   assert.equal(applyOllamaCache({ model: 'gpt-oss:120b' }).cacheSessionId, OLLAMA_STABLE_SESSION)
   assert.equal(/^-\d+$/.test(applyOllamaCache({}).cacheSessionId), false)
+})
+
+test('refreshQuota persists Email and replaceAccountId on ollama-hex vault id', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-ollama-id-'))
+  const authPath = join(dir, 'auth.json')
+  const session = ollamaSession({ accessToken: 'sk-ollama-opaque-key', source: 'paste' })
+  assert.equal(isOllamaOpaqueAccount(session.account), true)
+  await saveSession('ollama', session, authPath)
+  const before = await listStoredSessions('ollama', authPath)
+  assert.equal(before[0].id, session.account)
+  const controller = new AuthController({
+    authPath,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    ollamaAutoImport: false,
+    fetchFn: async (url, init) => {
+      if (String(url) === OLLAMA_USAGE_URL) return json(LIVE_OLLAMA_USAGE)
+      if (String(url) === OLLAMA_ME_URL) return json(LIVE_OLLAMA_ME)
+      if (String(url).includes('11434')) throw new Error('localhost daemon is not this family')
+      return json({ models: [] })
+    },
+  })
+  const quota = await controller.refreshQuota('ollama')
+  assert.equal(quota.status, 'ready')
+  assert.equal(quota.planLabel, 'Pro')
+  assert.equal(quota.rows[0].remainingPercent, 100)
+  assert.equal(quota.rows[1].remainingPercent, 90.5)
+  const rows = await listStoredSessions('ollama', authPath)
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].id, 'cloud@ollama.local')
+  assert.equal(rows[0].session.account, 'cloud@ollama.local')
+  assert.equal(rows[0].session.planType, 'pro')
+  const snap = await controller.snapshot()
+  assert.equal(snap.accounts.ollama.account, 'cloud@ollama.local')
+  assert.equal(snap.accounts.ollama.accounts[0].planLabel, 'Pro')
+})
+
+test('QuotaStore ollama fetches usage+me; missing usage does not crash; no session stays idle', async () => {
+  const session = ollamaSession({ accessToken: 'sk-ollama-quota-store', source: 'paste' })
+  const seen = []
+  const store = new QuotaStore({
+    fetchFn: async (url, init) => {
+      const href = String(url)
+      seen.push({ href, method: init?.method ?? 'GET' })
+      assert.equal(href.includes('11434'), false)
+      if (href === OLLAMA_USAGE_URL) return json(LIVE_OLLAMA_USAGE)
+      if (href === OLLAMA_ME_URL) {
+        assert.equal(init?.method, 'POST')
+        return json(LIVE_OLLAMA_ME)
+      }
+      throw new Error(`unexpected ${href}`)
+    },
+    tokens: { ollama: { session: async () => session } },
+  })
+  const quota = await store.refresh('ollama')
+  assert.equal(quota.status, 'ready')
+  assert.notEqual(quota.status, 'idle')
+  assert.equal(quota.planLabel, 'Pro')
+  assert.equal(quota.account, 'cloud@ollama.local')
+  assert.equal(quota.rows[0].remainingPercent, 100)
+  assert.equal(quota.rows[1].remainingPercent, 90.5)
+  assert.equal(seen.some((row) => row.href === OLLAMA_USAGE_URL && row.method === 'GET'), true)
+  assert.equal(seen.some((row) => row.href === OLLAMA_ME_URL && row.method === 'POST'), true)
+
+  const meOnly = new QuotaStore({
+    fetchFn: async (url) => {
+      if (String(url) === OLLAMA_USAGE_URL) return new Response('nope', { status: 500 })
+      if (String(url) === OLLAMA_ME_URL) return json({ Plan: 'pro', Email: 'cloud@ollama.local' })
+      throw new Error(`unexpected ${url}`)
+    },
+    tokens: { ollama: { session: async () => session } },
+  })
+  const partial = await meOnly.refresh('ollama')
+  assert.equal(partial.status, 'ready')
+  assert.equal(partial.planLabel, 'Pro')
+  assert.deepEqual(partial.rows, [])
+
+  let hits = 0
+  const idle = new QuotaStore({
+    fetchFn: async () => {
+      hits += 1
+      throw new Error('network should stay quiet')
+    },
+  })
+  const empty = await idle.refresh('ollama')
+  assert.equal(empty.status, 'idle')
+  assert.equal(hits, 0)
 })

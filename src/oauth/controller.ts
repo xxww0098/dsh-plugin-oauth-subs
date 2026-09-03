@@ -65,7 +65,7 @@ import {
 } from './cursor/index.js'
 import { CURSOR_IMPORT_EMPTY, importCursorAuth, readCursorVscdbTokens } from './cursor/import.js'
 import { cursorCatalogModels, refreshCursorCatalog } from './cursor/catalog.js'
-import { ollamaSession, refreshOllama, isOllamaPermanentRefreshError, resolveOllamaIdentity } from './ollama/index.js'
+import { ollamaSession, refreshOllama, isOllamaPermanentRefreshError, resolveOllamaIdentity, isOllamaOpaqueAccount } from './ollama/index.js'
 import { OLLAMA_IMPORT_EMPTY, importOllamaAuth } from './ollama/import.js'
 import { ollamaCatalogModels, refreshOllamaCatalog } from './ollama/catalog.js'
 import { kiroCatalogModels, refreshKiroCatalog } from './kiro/catalog.js'
@@ -340,6 +340,9 @@ export class AuthController {
       if (provider === 'cursor') {
         await Promise.all(targets.map((row) => this.#rememberCursorPlan(row, this.quota.peek(provider, row.id))))
       }
+      if (provider === 'ollama') {
+        await Promise.all(targets.map((row) => this.#rememberOllamaIdentity(row, this.quota.peek(provider, row.id))))
+      }
       if (provider === 'antigravity') {
         await Promise.all(targets.map((row) => this.#probeAntigravity(row.session, row.id)))
       }
@@ -364,8 +367,12 @@ export class AuthController {
           await this.sync().catch(() => undefined)
         }
       }
-      if (accountId) return this.quota.peek(provider, accountId)
-      const active = rows.find((row) => row.active)
+      const latest = provider === 'ollama' ? await this.#liveAccounts(provider) : rows
+      if (accountId) {
+        const hit = latest.find((row) => row.id === accountId) ?? latest.find((row) => row.active)
+        return this.quota.peek(provider, hit?.id ?? accountId)
+      }
+      const active = latest.find((row) => row.active)
       return this.quota.peek(provider, active?.id)
     }
     const [codex, grok, glm, kiro, antigravity, cursor, ollama] = await Promise.all([
@@ -468,6 +475,7 @@ export class AuthController {
       if (provider === 'kiro') await this.#rememberKiroProfile(row, quota)
       if (provider === 'antigravity') await this.#rememberAntigravityPlan(row, quota)
       if (provider === 'cursor') await this.#rememberCursorPlan(row, quota)
+      if (provider === 'ollama') await this.#rememberOllamaIdentity(row, quota)
     }))
     return rows
   }
@@ -598,6 +606,7 @@ export class AuthController {
         await saveSession('ollama', session, this.authPath)
         await this.#discoverOllama(session)
         this.onAuthChanged?.('ollama')
+        void this.quota.refresh('ollama')
       }
     } catch (error) {
       if (error?.code !== OLLAMA_IMPORT_EMPTY && error?.message !== OLLAMA_IMPORT_EMPTY) {
@@ -618,9 +627,34 @@ export class AuthController {
   }
 
   async #finishOllamaSession(session) {
-    const email = await resolveOllamaIdentity(session, { fetchFn: this.fetchFn })
-    if (!email || session.account === email) return session
-    return { ...session, account: email }
+    const identity = await resolveOllamaIdentity(session, { fetchFn: this.fetchFn })
+    if (!identity) return session
+    const next = { ...session }
+    if (identity.account) next.account = identity.account
+    if (identity.planType) next.planType = identity.planType
+    return next
+  }
+
+  async #rememberOllamaIdentity(row, quota) {
+    if (!quota || quota.status !== 'ready') return
+    const account = typeof quota.account === 'string' && quota.account.trim() ? quota.account.trim() : undefined
+    const planType = typeof quota.planType === 'string' && quota.planType.trim() ? quota.planType.trim() : undefined
+    if (!account && !planType) return
+    if (
+      (!account || row.session.account === account)
+      && (!planType || row.session.planType === planType)
+    ) return
+    const next = { ...row.session }
+    if (account) next.account = account
+    if (planType) next.planType = planType
+    const nextId = accountIdOf('ollama', next)
+    if (nextId !== row.id && isOllamaOpaqueAccount(row.id)) {
+      await replaceAccountId('ollama', row.id, next, this.authPath)
+      this.quota.clear('ollama', row.id)
+      await this.quota.ensure('ollama', nextId, next)
+      return
+    }
+    await saveSession('ollama', next, this.authPath, { id: row.id, activate: row.active })
   }
 
   async #rememberAntigravityPlan(row, quota) {
@@ -863,6 +897,7 @@ export class AuthController {
       this.lastError.delete('ollama')
       await this.#discoverOllama(session)
       this.onAuthChanged?.('ollama')
+      void this.quota.refresh('ollama')
       return { account: publicSession('ollama', session) }
     }
     if (provider !== 'glm') throw new Error('only GLM, Kiro, and Ollama accept a pasted key')

@@ -499,6 +499,15 @@ window.__ModuleLoader__.load({
         if (slug === 'standard' || slug === 'standard_tier' || slug === 'standardtier') return 'Standard'
         if (slug === 'legacy' || slug === 'legacy_tier' || slug === 'legacytier') return 'Legacy'
       }
+      if (family === 'ollama') {
+        if (slug === 'pro' || compact === 'pro') return 'Pro'
+        if (slug === 'free' || compact === 'free') return 'Free'
+        if (slug === 'max' || compact === 'max') return 'Max'
+        if (slug === 'team' || compact === 'team') return 'Team'
+        if (slug === 'plus' || compact === 'plus') return 'Plus'
+        if (slug === 'hobby' || compact === 'hobby') return 'Hobby'
+        if (slug === 'enterprise' || compact === 'enterprise') return 'Enterprise'
+      }
       return PLAN_LABELS[slug] || PLAN_LABELS[compact] || trimmed
     }
 
@@ -546,10 +555,15 @@ window.__ModuleLoader__.load({
       return false
     }
 
+    function isOllamaOpaqueIdentity(value) {
+      return /^ollama-[0-9a-f]{8}$/i.test(String(value ?? '').trim())
+    }
+
     function identityOf(row, family) {
       const account = typeof row?.account === 'string' ? row.account.trim() : ''
       if (family === 'glm') return account && !isGlmOpaqueIdentity(account) ? account : ''
       if (family === 'cursor') return account && !isCursorOpaqueIdentity(account) ? account : ''
+      if (family === 'ollama') return account && !isOllamaOpaqueIdentity(account) ? account : ''
       if (account && !isGlmAppIdentity(account)) return account
       return account || row?.id || ''
     }
@@ -998,6 +1012,10 @@ window.__ModuleLoader__.load({
     }
 
     function rowLabel(row, t, family) {
+      if (family === 'ollama') {
+        if (row.kind === 'primary') return t.primary
+        if (row.kind === 'weekly') return t.weekly
+      }
       if (family === 'glm' || family === 'antigravity') {
         if (row.kind === 'primary') return t.glmPrimary
         if (row.kind === 'weekly') return t.glmWeekly
@@ -1077,6 +1095,7 @@ window.__ModuleLoader__.load({
           label: rowLabel(row, t, family),
         }),
         reset && h('span', { className: 'osubs-note' }, reset),
+        row.note && h('span', { className: 'osubs-note' }, row.note),
       )
     }
 
