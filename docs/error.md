@@ -2,6 +2,17 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-03：OpenCode Free 带 Bearer 会 401；硬编码目录 delist 后仍 401
+
+### 现象
+匿名 `https://opencode.ai/zen/v1` 打 `*-free` 带任意 Authorization（空串、哨兵 `anonymous`、过期 Zen key）都 401。硬编码 `hy3-free` 在目录轮换后 picker 仍 401。
+
+### 根因
+Hermes `opencode-free` 把 SDK Bearer 盖成空头。本插件 hop 若转发 store 哨兵同样 401。Zen 免费档会 delist。`ox-alpha-free` 看起来免费但是 Go 订阅。`big-pickle` 只给官方 CLI UA。
+
+### 修复
+hop **不带** Authorization。live `GET /zen/v1/models` 只收匿名 `*-free`（去掉 Go keyed）。静态楼是 2026-09-03 live 快照，不含 hy3-free / big-pickle。
+
 ## 2026-09-03：Ollama 周模型 note 一行溢出
 
 ### 现象
@@ -33,9 +44,8 @@ Session / Weekly 没有 `{n}后重置`。官方 Cloud UI 有倒计时。`/api/us
 一个 8 列 `.osubs-tabs` 同时装家族 + Models + About。第 9 个起 wrap 进同一 grid。
 
 ### 修复
-两胶囊。左 OAuth `repeat(8, 36px)` 只放家族；右独立胶囊 Models 上、GitHub 下，`margin-left: auto`。
+两胶囊。左 OAuth `repeat(8, 36px)` 只放家族（OpenCode 是第 9 个，折在本组第二排）；右独立胶囊 Models 上、GitHub 下，`margin-left: auto`。## 2026-09-03：Kimi Code 不能写自定义 api；设备码过期要重开
 
-## 2026-09-03：Kimi Code 不能写自定义 api；设备码过期要重开
 
 ### 现象
 `api: kimi-openai-completions` 整段 `llm-pi-ai` 被丢。设备码过期后一直转圈。Settings 里 `import { Kimi }` 图标空白。

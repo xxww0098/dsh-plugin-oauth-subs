@@ -15,8 +15,9 @@ import { displayGlmAccount } from './glm/index.js'
 import { displayCursorAccount } from './cursor/index.js'
 import { ollamaSourceLabel } from './ollama/index.js'
 import { kimiSourceLabel } from './kimi/index.js'
+import { opencodeSourceLabel } from './opencode/index.js'
 
-export const PROVIDER_IDS = Object.freeze(['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi'])
+export const PROVIDER_IDS = Object.freeze(['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'opencode'])
 
 export function defaultDataDir() {
   return join(homedir(), '.dsh', 'plugins', 'oauth-subs')
@@ -352,6 +353,16 @@ export function publicSession(provider, session) {
       planLabel,
       method: session.source,
       methodLabel: kimiSourceLabel(session.source),
+      expiresAt: session.expiresAt,
+    }
+  }
+  if (provider === 'opencode') {
+    return {
+      account: session.account,
+      planType,
+      planLabel,
+      method: session.source,
+      methodLabel: opencodeSourceLabel(session.source),
       expiresAt: session.expiresAt,
     }
   }

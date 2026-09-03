@@ -11,6 +11,8 @@ import { ANTIGRAVITY_MODELS } from './antigravity/index.js'
 import { CURSOR_MODELS } from './cursor/index.js'
 import { OLLAMA_MODELS } from './ollama/index.js'
 import { KIMI_MODELS } from './kimi/index.js'
+import { OPENCODE_MODELS } from './opencode/index.js'
+
 import { modelSupportsFastMode } from '../utils/fast-mode.js'
 import { readPrivateText, writePrivateText } from './store.js'
 import {
@@ -95,7 +97,7 @@ export function modelKey(provider, id) {
   return `${provider}/${id}`
 }
 
-export const FAMILY_IDS = Object.freeze(['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi'])
+export const FAMILY_IDS = Object.freeze(['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'opencode'])
 
 export function ownedProviderIds(prefix) {
   return FAMILY_IDS.map((id) => `${prefix}-${id}`)
@@ -175,12 +177,17 @@ function kimiHarnessModels(kimiModels) {
   return KIMI_MODELS
 }
 
+function opencodeHarnessModels(opencodeModels) {
+  if (Array.isArray(opencodeModels) && opencodeModels.length > 0) return opencodeModels
+  return OPENCODE_MODELS
+}
+
 function kiroHarnessModels(kiroModels) {
   if (Array.isArray(kiroModels) && kiroModels.length > 0) return kiroModels
   return KIRO_MODELS
 }
 
-export function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaModels, kiroModels, kimiModels }) {
+export function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaModels, kiroModels, kimiModels, opencodeModels }) {
   const providers = {}
   if (loggedIn.codex) {
     providers[`${prefix}-codex`] = {
@@ -257,7 +264,7 @@ export function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaM
   }
   if (loggedIn.ollama) {
     providers[`${prefix}-ollama`] = {
-      displayName: 'OAuth · Ollama',
+      displayName: 'OAuth · Ollama Cloud',
       api: HARNESS_COMPLETIONS_API,
       apiKeyEnv: OAUTH_CREDENTIAL_REF,
       // Completions hop is /ollama/v1/chat/completions. DSH posts
@@ -285,6 +292,19 @@ export function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaM
       models: kimiHarnessModels(kimiModels).map(toHarnessModel),
     }
   }
+  if (loggedIn.opencode) {
+    providers[`${prefix}-opencode`] = {
+      displayName: 'OAuth · OpenCode',
+      api: HARNESS_COMPLETIONS_API,
+      apiKeyEnv: OAUTH_CREDENTIAL_REF,
+      // Completions hop is /opencode/v1/chat/completions. DSH posts
+      // `{baseURL}/v1/chat/completions`, so baseURL is `${origin}/opencode`.
+      // reasoningEfforts is false on every row — do not stamp Completions
+      // compat or assertServiceable drops the whole mutate.
+      baseURL: `${origin}/opencode`,
+      models: opencodeHarnessModels(opencodeModels).map(toHarnessModel),
+    }
+  }
   return providers
 }
 
@@ -296,15 +316,16 @@ export function describeProviders(providers) {
   }))
 }
 
-export function catalogProviders({ prefix, origin, cursorModels, ollamaModels, kiroModels, kimiModels }) {
+export function catalogProviders({ prefix, origin, cursorModels, ollamaModels, kiroModels, kimiModels, opencodeModels }) {
   return buildProviders({
     prefix,
     origin,
-    loggedIn: { codex: true, grok: true, glm: true, kiro: true, antigravity: true, cursor: true, ollama: true, kimi: true },
+    loggedIn: { codex: true, grok: true, glm: true, kiro: true, antigravity: true, cursor: true, ollama: true, kimi: true, opencode: true },
     cursorModels,
     ollamaModels,
     kiroModels,
     kimiModels,
+    opencodeModels,
   })
 }
 
@@ -323,6 +344,7 @@ export function familyOfProvider(provider) {
   if (String(provider).endsWith('-cursor')) return 'cursor'
   if (String(provider).endsWith('-ollama')) return 'ollama'
   if (String(provider).endsWith('-kimi')) return 'kimi'
+  if (String(provider).endsWith('-opencode')) return 'opencode'
   return String(provider)
 }
 
@@ -460,7 +482,7 @@ export class ModelSwitch {
   }
 
   async setFamily(family, on, catalog) {
-    if (!FAMILY_IDS.includes(family)) throw new Error('family must be codex, grok, glm, kiro, antigravity, cursor, ollama, or kimi')
+    if (!FAMILY_IDS.includes(family)) throw new Error('family must be codex, grok, glm, kiro, antigravity, cursor, ollama, kimi, or opencode')
     // Only current catalog ids. Retired leftovers (glm-4.7, …) stay in
     // `disabled` and are not resurrected.
     for (const key of familyCatalogKeys(catalog, family)) {
@@ -547,11 +569,11 @@ async function assertPersistedProviders(settings, expectedIds) {
   }
 }
 
-export async function syncHarnessModels({ settings, prefix, origin, loggedIn, selected, cursorModels, ollamaModels, kiroModels, kimiModels }) {
+export async function syncHarnessModels({ settings, prefix, origin, loggedIn, selected, cursorModels, ollamaModels, kiroModels, kimiModels, opencodeModels }) {
   const routePrefix = String(prefix ?? '').trim()
   if (!routePrefix) throw new Error('Harness route prefix cannot be empty')
   const providers = filterProviders(buildProviders({
-    prefix: routePrefix, origin, loggedIn, cursorModels, ollamaModels, kiroModels, kimiModels,
+    prefix: routePrefix, origin, loggedIn, cursorModels, ollamaModels, kiroModels, kimiModels, opencodeModels,
   }), selected)
   for (const [id, value] of Object.entries(providers)) {
     assertDshServiceableProvider(id, value)

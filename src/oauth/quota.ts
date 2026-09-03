@@ -12,6 +12,7 @@
  *                Official Model Quota UI is two groups × (weekly + 5-hour).
  *   Ollama  GET ollama.com/api/usage  (limits.session/weekly.usage = 0..1)
  *           POST ollama.com/api/me    (Email / Name / Plan; GET is 405)
+ *   OpenCode Free  no anonymous usage API; card stays idle / empty rows, plan Free
  *
  * Codex windows report used_percent; remaining is 100 − used.
  * Grok creditUsagePercent is also used-percent. Display remaining in the UI.
@@ -74,6 +75,7 @@ import {
   parseOllamaMe,
 } from './ollama/index.js'
 import { KIMI_ME_URL, KIMI_USAGE_URL, kimiUpstreamHeaders, parseKimiUserInfo } from './kimi/index.js'
+import { OPENCODE_ACCOUNT } from './opencode/index.js'
 
 export const QUOTA_TTL_MS = 60_000
 export const QUOTA_TIMEOUT_MS = 10_000
@@ -1002,6 +1004,18 @@ export async function fetchKimiQuota(session, fetchFn = fetch) {
   }
 }
 
+/** Anonymous Zen has no usage API. Card still renders; quota rows stay empty. */
+export async function fetchOpencodeQuota(session) {
+  const account = typeof session?.account === 'string' && session.account.trim()
+    ? session.account.trim()
+    : OPENCODE_ACCOUNT
+  return {
+    planType: session?.planType || 'free',
+    account,
+    rows: [],
+  }
+}
+
 export async function fetchGlmQuota(session, fetchFn = fetch) {
   const wait = timeoutSignal(QUOTA_TIMEOUT_MS)
   try {
@@ -1638,6 +1652,8 @@ export class QuotaStore {
                 ? await fetchOllamaQuota(session, this.fetchFn)
               : provider === 'kimi'
                 ? await fetchKimiQuota(session, this.fetchFn)
+              : provider === 'opencode'
+                ? await fetchOpencodeQuota(session)
               : await fetchGrokQuota(session, this.fetchFn)
       const entry = {
         status: 'ready',
