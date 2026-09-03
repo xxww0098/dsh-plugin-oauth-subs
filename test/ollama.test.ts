@@ -192,7 +192,7 @@ const LIVE_OLLAMA_ME = {
   Plan: 'pro',
 }
 
-function ollamaCloudFetch(url, init) {
+async function ollamaCloudFetch(url, init) {
   const href = String(url)
   assert.equal(href.includes('127.0.0.1:11434'), false)
   assert.equal(href.includes('localhost:11434'), false)
