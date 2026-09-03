@@ -31,7 +31,7 @@ The overlay below is what this plugin actually ships.
   on the centered Dialog overlay (`--dsw-mask-blur`).
 - No hardcoded light-theme grays. Dark host stays dark.
 - Icon-only tabs, sticky `.osubs-nav`, 8 icons per row then wrap
-  (family tabs then Models on row 1, About on row 2).
+  (eight family tabs on row 1, Models + About on row 2).
 - No family-level identity row. No shared quota block under the heading.
 
 ## Remaining bars

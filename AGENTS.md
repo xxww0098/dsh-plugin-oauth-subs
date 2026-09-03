@@ -93,6 +93,13 @@ src/
       import.ts            OLLAMA_API_KEY env (not ollama signin)
       catalog.ts           live GET /api/tags; static fallback
       cache.ts             strip Codex/Grok fields; no sticky id (non-fix)
+    kimi/                  Moonshot Kimi Code Plan (device-code)
+      README.md            family design: login, chat, quota, cache (traceable)
+      index.ts             catalog, identity, device endpoints, X-Msh headers
+      import.ts            ~/.kimi-code/credentials/kimi-code.json + KIMI_API_KEY
+      catalog.ts           live GET /coding/v1/models; static fallback
+      request.ts           Completions thinking / thinking.effort
+      cache.ts             prefix-hash; strip Codex/Grok fields
   ui/                      React Settings (classic-script factory)
     client.ts
   utils/                   shared, provider-agnostic
@@ -112,9 +119,9 @@ scripts/                   CLI (TypeScript)
 
 Rules:
 
-- Codex-only code → `src/oauth/codex/`. Grok-only code → `src/oauth/grok/`. GLM-only code → `src/oauth/glm/`. Kiro-only code → `src/oauth/kiro/`. Antigravity-only code → `src/oauth/antigravity/`. Cursor-only code → `src/oauth/cursor/`. Ollama-only code → `src/oauth/ollama/`.
+- Codex-only code → `src/oauth/codex/`. Grok-only code → `src/oauth/grok/`. GLM-only code → `src/oauth/glm/`. Kiro-only code → `src/oauth/kiro/`. Antigravity-only code → `src/oauth/antigravity/`. Cursor-only code → `src/oauth/cursor/`. Ollama-only code → `src/oauth/ollama/`. Kimi-only code → `src/oauth/kimi/`.
 - **Each family has `README.md`.** Login, session, chat hop, models, quota, and cache for that vendor are written there so a later change can be traced to files and to `docs/error.md`. Cross-family rules stay in this file; do not let family READMEs contradict it.
-- **Cache is per family.** Each `src/oauth/<id>/cache.ts` owns that vendor's prompt-cache identity, headers, and prefix pin. Do not import Codex cache helpers from Grok / GLM / Kiro / Antigravity / Cursor / Ollama. Do not share a `codexCacheSessionId` in `src/utils/`. `proxy.ts` only dispatches.
+- **Cache is per family.** Each `src/oauth/<id>/cache.ts` owns that vendor's prompt-cache identity, headers, and prefix pin. Do not import Codex cache helpers from Grok / GLM / Kiro / Antigravity / Cursor / Ollama / Kimi. Do not share a `codexCacheSessionId` in `src/utils/`. `proxy.ts` only dispatches.
 - Shared crypto / session scoring → `src/utils/`.
 - Settings React → `src/ui/`.
 - Do not flatten modules back into a single `lib/*.js` bag.
@@ -138,7 +145,7 @@ two disagree, fix the README — do not weaken these invariants.
   `src/utils/cache-session.ts` or a shared `codexCacheSessionId`.
 - Do **not** stamp `Date.now()` (or any per-request random) as a session /
   conversation / cache id. Missing DSH ids fall back to a **stable
-  constant** owned by that family (`dsh-antigravity`, `dsh-kiro`, `dsh-cursor`, `dsh-ollama`, …).
+  constant** owned by that family (`dsh-antigravity`, `dsh-kiro`, `dsh-cursor`, `dsh-ollama`, `dsh-kimi`, …).
 - DSH may send `session_id` and/or `prompt_cache_key`. Mapping those onto
   the vendor wire is family-owned. Reading DSH's key is fine; writing
   Codex fields upstream is not, unless that vendor actually uses them.
@@ -157,7 +164,7 @@ Export (names may vary, behavior must not):
   `applyGlmAnthropicCache`,
   `antigravitySessionIdOf` + `pinAntigravitySystemInstruction` /
   `pinAntigravityTools` / `pinAntigravityThinking`,
-  `kiroConversationId`, `applyOllamaCache`).
+  `kiroConversationId`, `applyOllamaCache`, `applyKimiCache`).
 3. Header helper if the vendor sticky-routes on headers
    (`codexCacheHeaders`, `grokAffinityHeaders`). GLM headers stay in
    `glm/index.ts` (`x-session-id`, Anthropic `anthropic-version`) and call
@@ -199,6 +206,7 @@ Cursor:    conversationId on AgentRunRequest (fallback `dsh-cursor:<model>`)
            drop Codex/Grok cache fields
            first system pinned in root_prompt_messages_json; extras as extra system blobs
 Ollama:    drop Codex/Grok cache fields; no sticky conversation id (non-fix)
+Kimi:      drop Codex/Grok cache fields; prefix-hash; extra system at messages suffix
 ```
 
 ### Per family
@@ -313,6 +321,18 @@ Ollama:    drop Codex/Grok cache fields; no sticky conversation id (non-fix)
 - No Codex `session-id` / `prompt_cache_key`, no Grok `x-grok-conv-id`.
 - Hits: none documented. DSH hit rate stays 0%.
 
+**Kimi** (`src/oauth/kimi/cache.ts` + thinking in `request.ts`)
+
+- Coding Plan is an implicit **prefix hash** of leading system + history.
+  There is **no** shard key. https://platform.moonshot.cn (Kimi Code).
+- `applyKimiCache` strips `prompt_cache_key` / `session_id` / retention.
+  Pin the first leading `system` run per DSH session; extra snapshots
+  go at the **messages suffix** (Completions shape, not Gemini user).
+- Fallback constant `dsh-kimi` is analyzer-only; it is **not** written
+  upstream. Never `Date.now()`.
+- No Codex `session-id` / `prompt_cache_key`, no Grok `x-grok-conv-id`.
+- Hits: none documented on Completions (`cached_tokens` if a field appears).
+
 ### New family checklist (cache)
 
 When adding `src/oauth/<id>/`:
@@ -338,11 +358,12 @@ When adding `src/oauth/<id>/`:
 | Kiro | CodeWhisperer conversation | `conversationId` + model | system as first history user+ack; extra at history suffix (not between toolUses / toolResults) | `cacheReadInputTokens` → `cached_tokens` |
 | Cursor | Agent conversation (`conversation_id`) | `conversationId` + model; fallback `dsh-cursor:<model>` | extra DSH snapshots as extra `root_prompt_messages_json` system blobs | none documented on Run (`cached_tokens` if a field appears) |
 | Ollama | none documented | no sticky conversation id (non-fix); `dsh-ollama` analyzer-only | n/a | none documented (`cached_tokens` if a field appears) |
+| Kimi | prefix hash of leading system + history | no shard key; `dsh-kimi` analyzer-only | extra system at **messages suffix** | none documented (`cached_tokens` if a field appears) |
 
 ### Do not
 
 - Share one sanitizer / pin map / header helper across families.
-- Write Codex `session-id` or `prompt_cache_key` to GLM / Kiro / Antigravity / Cursor / Ollama.
+- Write Codex `session-id` or `prompt_cache_key` to GLM / Kiro / Antigravity / Cursor / Ollama / Kimi.
 - Write Grok `x-grok-conv-id` to anyone else.
 - Park GLM extras as a Gemini user turn, or Gemini extras as a GLM
   trailing system, “because parking is the same idea”.
@@ -386,6 +407,7 @@ invariant list. When the two disagree, fix the README.
 | Antigravity | `openai-completions` | Native is `generateContent` | Completions adapter |
 | Cursor | `openai-completions` | Native is Connect/protobuf `AgentService/Run` | Completions adapter `POST /cursor/v1/chat/completions` |
 | Ollama | `openai-completions` | Native is `/api/chat`. Cloud also serves OpenAI `https://ollama.com/v1/chat/completions` (401 without Bearer; Factory docs use that `/v1`). | thin passthrough `POST /ollama/v1/chat/completions` → `https://ollama.com/v1/chat/completions` |
+| Kimi | `openai-completions` | Kimi Code Plan default is OpenAI Completions at `api.kimi.com/coding/v1`. Do **not** invent `kimi-openai-completions`. | thin hop `POST /kimi/v1/chat/completions` → `https://api.kimi.com/coding/v1/chat/completions` |
 
 `baseURL` must match how that SDK posts. Anthropic SDK posts
 `{baseURL}/v1/messages`, so GLM is `${origin}/glm` (not `${origin}/glm/v1`).
@@ -408,10 +430,10 @@ already said `ai-sdk/anthropic` while Completions was posted). Do
 ### Do not
 
 - Switch Codex / Grok to Completions.
-- Switch Kiro / Antigravity / Cursor / Ollama to Responses or Anthropic (native is still
-  none of the three; you would keep a translator and lose DSH's native
-  Completions path). Do not pick Responses for Ollama because local
-  `localhost:11434/v1/responses` exists.
+- Switch Kiro / Antigravity / Cursor / Ollama / Kimi to Responses or Anthropic (native is still
+  none of the three for Kiro/AG/Cursor; Kimi's Coding Plan default is Completions).
+  Do not pick Responses for Ollama because local `localhost:11434/v1/responses` exists.
+  Do not invent `kimi-openai-completions`.
 - Set GLM `api: openai-responses` (generic `api.z.ai/api/v1` is not
   Coding Plan).
 - Drop the Completions leftover route until the next `sync()` has
@@ -425,7 +447,7 @@ already said `ai-sdk/anthropic` while Completions was posted). Do
 
 ## Adding a new OAuth family
 
-A family is one top-level tab (Codex / Grok / GLM / Kiro / Antigravity / Cursor / Ollama today) plus its own
+A family is one top-level tab (Codex / Grok / GLM / Kiro / Antigravity / Cursor / Ollama / Kimi today) plus its own
 `src/oauth/<id>/` module. Do not piggyback a new vendor onto an existing
 tab. Follow this checklist in one PR.
 
@@ -464,7 +486,7 @@ tab. Follow this checklist in one PR.
 7. **Plan labels** (`src/oauth/plan.ts`): map wire slugs to the product
    name users see (`Pro 20x`, `SuperGrok Heavy`, `Lite`). Family-specific
    collisions (`glm` `pro` → `Pro`, Codex `pro` → `Pro 20x`) belong here.
-8. **Proxy / tokens / cache**: all seven families chat through the local
+8. **Proxy / tokens / cache**: all eight families chat through the local
    proxy. Pick `api` per the protocol section. Prompt cache **must** be
    a new `src/oauth/<id>/cache.ts`. Do not import another family's cache
    helper, and do not revive `src/utils/cache-session.ts`.
@@ -475,6 +497,10 @@ tab. Follow this checklist in one PR.
    Ollama `OLLAMA_API_KEY` env import is the documented programmatic
    path. Auto-import only when the ollama roster is empty. `ollama
    signin` is local-daemon SSH signing — not a Bearer we can hop.
+   Kimi `kimi-code.json` import is official CLI reuse (plus optional
+   `KIMI_API_KEY`). Auto-import only the CLI json when the kimi roster
+   is empty. Never overwrite a stored session. Never write back to
+   `~/.kimi-code`.
 9. **Tests** under `test/`: login parse, session round-trip, catalog
    input types, and `snapshot shows quota on every <id> account`.
 
@@ -491,17 +517,18 @@ into `TAB_ICONS`.
 - Size 18×18, `viewBox="0 0 24 24"`, `fill="currentColor"`. Match the
   official brand mark, not a generic letter. GLM uses the **Z.ai** icon
   (`zai`), not Zhipu.
-- Order: families first (Codex, Grok, GLM, Kiro, Antigravity, Cursor, Ollama), then
+- Order: families first (Codex, Grok, GLM, Kiro, Antigravity, Cursor, Ollama, Kimi), then
   Models, then About (GitHub icon). Insert a new family **before**
   Models. Layout is **8 icons per row** (`.osubs-tabs` 8-column 36px grid);
-  the 9th (About) wraps. Do not pack all nine on one flex row. Do not
-  `flex: 1 1 0` or shrink tab `min-width` to 0.
+  eight families fill row 1; Models + About wrap to row 2. Do not pack
+  every tab on one flex row. Do not `flex: 1 1 0` or shrink tab
+  `min-width` to 0.
 - Add `COPY.zh.<id>Title` / `COPY.en.<id>Title` for the hover string and
   the page heading.
 
 ```text
-[ Codex ] [ Grok ] [ Z.ai ] [ Kiro ] [ Antigravity ] [ Cursor ] [ Ollama ] [ ▦ ]
-[ GitHub ]
+[ Codex ] [ Grok ] [ Z.ai ] [ Kiro ] [ Antigravity ] [ Cursor ] [ Ollama ] [ Kimi ]
+[ ▦ ] [ GitHub ]
 ```
 
 ### Settings — one account, one card
@@ -579,8 +606,8 @@ Binding UI rules:
   on screen while the settings scroller moves. Background is
   `--dsw-alias-bg-layer-2` (the panel). Bleed `24px` matches the host
   `.options` side padding so cards cannot peek in the gutter.
-  `.osubs-tabs` is an 8-column 36px grid (`repeat(8, 36px)`); nine tabs
-  wrap — row 1 is families + Models, row 2 is About. Never
+  `.osubs-tabs` is an 8-column 36px grid (`repeat(8, 36px)`); ten tabs
+  wrap — row 1 is the eight families, row 2 is Models + About. Never
   `flex: 1 1 0` / `min-width: 0` on the tab cells.
 - Cards: 12px radius, 1px `--osubs-line`, 14×16 padding. Active uses
   `--osubs-edge` + `--osubs-fill`.
@@ -632,6 +659,7 @@ Antigravity hits are `cachedContentTokenCount`. Kiro hits are
 `cacheReadInputTokens`. Cursor sticky-routes on `conversation_id`;
 Run has no documented cache-read field.
 Ollama Cloud has no documented cache-read or conversation id; do not invent one.
+Kimi Code is prefix-hash only; strip Codex/Grok fields and park extra system at the messages suffix. Do not invent a shard id.
 `Error: tool call timed out after 30000ms` is `dsh-tool-fs-search`, not
 this proxy — record it in `docs/error.md`, do not add `toolTimeoutMs` here.
 

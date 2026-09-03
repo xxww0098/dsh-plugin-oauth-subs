@@ -95,7 +95,7 @@ test('buildProviders only emits logged-in families with DSH api ids', () => {
   const chat = buildProviders({
     prefix: 'oauth',
     origin: 'http://127.0.0.1:8318',
-    loggedIn: { glm: true, kiro: true, antigravity: true, cursor: true, ollama: true },
+    loggedIn: { glm: true, kiro: true, antigravity: true, cursor: true, ollama: true, kimi: true },
   })
   assert.equal(chat['oauth-glm'].api, HARNESS_ANTHROPIC_API)
   assert.equal(chat['oauth-glm'].baseURL, 'http://127.0.0.1:8318/glm')
@@ -124,6 +124,11 @@ test('buildProviders only emits logged-in families with DSH api ids', () => {
   assert.deepEqual(chat['oauth-ollama'].models.find((model) => model.id === 'kimi-k3').input, ['text', 'image'])
   assert.deepEqual(chat['oauth-ollama'].models.find((model) => model.id === 'mistral-large-3:675b').input, ['text', 'image'])
   assert.deepEqual(chat['oauth-ollama'].models.find((model) => model.id === 'gpt-oss:120b').input, ['text'])
+  assert.equal(chat['oauth-kimi'].api, HARNESS_COMPLETIONS_API)
+  assert.equal(chat['oauth-kimi'].api, 'openai-completions')
+  assert.equal(chat['oauth-kimi'].baseURL, 'http://127.0.0.1:8318/kimi')
+  assert.equal(chat['oauth-kimi'].baseURL.endsWith('/kimi/v1'), false)
+  assert.equal(chat['oauth-kimi'].models.some((model) => model.id === 'k3'), true)
   assert.equal(chat['oauth-codex'], undefined)
 })
 

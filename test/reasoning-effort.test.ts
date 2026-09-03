@@ -171,6 +171,7 @@ test('decideEffortAction restores on oauth switch and no-ops other providers', (
   assert.deepEqual(omittedDefault, {})
 
   assert.equal(isOwnedOauthProvider('oauth', 'oauth-kiro'), true)
+  assert.equal(isOwnedOauthProvider('oauth', 'oauth-kimi'), true)
   assert.equal(isOwnedOauthProvider('oauth', 'openai'), false)
 })
 

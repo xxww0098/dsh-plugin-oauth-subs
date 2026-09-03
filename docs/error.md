@@ -2,6 +2,17 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-03：Kimi Code 不能写自定义 api；设备码过期要重开
+
+### 现象
+`api: kimi-openai-completions` 整段 `llm-pi-ai` 被丢。设备码过期后一直转圈。Settings 里 `import { Kimi }` 图标空白。
+
+### 根因
+DSH `api` 只有三值。Kimi 上游是 Completions。`expired_token` 必须重新 `device_authorization`。经典脚本 UI 不打包 `@lobehub/icons`。
+
+### 修复
+`api: openai-completions`，hop `/kimi/v1/chat/completions`。`DeviceFlowManager.restartOnExpired`。LobeHub `kimi.svg` path 进 `TAB_ICONS`。
+
 ## 2026-09-03：两张 Cursor 卡刷新时间一种日期一种倒计时
 
 ### 现象
@@ -14,6 +25,17 @@ PRO 卡「9月24日 13:23」，ULTRA 卡「13天9小时50分钟后重置」。�
 额度重置一律相对时间（天/小时/分钟）。`formatStamp` 只留给重置券过期。删 14 天门槛。
 
 ## 2026-09-03：Settings tab 九个 icon 仍挤一行
+
+### 现象
+7 家族 + Models + About 九个 icon-only tab 在宽栏仍并排一行。用户要一行 8 个、第 9 个换到第二行。
+
+### 根因
+`.osubs-tabs` 是 `flex-wrap` 无列数。格子钉 36px 后够宽就 9 个并排，不会在第 8 个后折行。
+
+### 修复
+8 列 grid：`grid-template-columns: repeat(8, 36px)`，About 落到第二行。禁止 `flex: 1 1 0` / 把格子 `min-width` 收到 0。
+
+## 2026-09-03：Ollama 卡无额度条、抬头是 ollama-sha8
 
 ### 现象
 已登录卡只有 KEY / 使用中，无套餐、无剩余条。抬头 `ollama-3f67f6bb`。官方 Cloud usage 是 Pro + Session 0% used + Weekly 9.5% used。

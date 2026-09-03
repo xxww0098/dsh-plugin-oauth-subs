@@ -81,11 +81,11 @@ test('Settings Cursor tab uses Import local Cursor copy and shows source, never 
   assert.match(src, /cursorImport:\s*'导入本机 Cursor'/)
   assert.match(src, /cursorImport:\s*'Import local Cursor'/)
   assert.match(src, /cursorImportEmpty:\s*'本机没有 Cursor CLI 或 IDE 登录'/)
-  assert.match(src, /id === 'cursor' \? t\.cursorImport : t\.import/)
-  assert.match(src, /\(id === 'cursor' \|\| id === 'ollama'\) && row\.methodLabel/)
+  assert.match(src, /id === 'cursor' \? t\.cursorImport : id === 'kimi' \? t\.kimiImport : t\.import/)
+  assert.match(src, /\(id === 'cursor' \|\| id === 'ollama' \|\| id === 'kimi'\) && row\.methodLabel/)
   assert.match(src, /message === 'cursor-import-empty' \? t\.cursorImportEmpty/)
   assert.match(src, /h\(Tab, \{ id: 'cursor'/)
-  assert.match(src, /icons\/\{codex,grok,zai,kiro,antigravity,cursor,ollama,github\}\.svg/)
+  assert.match(src, /icons\/\{codex,grok,zai,kiro,antigravity,cursor,ollama,kimi,github\}\.svg/)
   assert.match(src, /cursor: \{ d: 'M22\.106 5\.68L12\.5\.135a\.998\.998 0 00-\.998 0L1\.893 5\.68/)
   assert.match(src, /cursor: \{ d: '[^']+', clip: true \}/)
   assert.equal(src.includes('M11.925 24l10.425-6'), false)
@@ -93,7 +93,7 @@ test('Settings Cursor tab uses Import local Cursor copy and shows source, never 
   assert.equal(/cursor[\s\S]{0,200}accessToken/.test(src), false)
   const tabOrder = src.match(/h\(Tab, \{ id: '(\w+)'/g) ?? []
   const ids = tabOrder.map((row) => /id: '(\w+)'/.exec(row)?.[1])
-  assert.deepEqual(ids.slice(0, 9), ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'models', 'about'])
+  assert.deepEqual(ids.slice(0, 10), ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'models', 'about'])
 })
 
 test('Settings Ollama tab is Cloud key paste after Cursor, never localhost', async () => {
@@ -115,6 +115,23 @@ test('Settings Ollama tab is Cloud key paste after Cursor, never localhost', asy
   assert.equal(/\.osubs-tab \{[\s\S]*flex: 1 1 0/.test(src), false)
   assert.equal(/\.osubs-tabs \{[\s\S]*flex: 1 1 0/.test(src), false)
   assert.match(src, /\.osubs-nav \{[\s\S]*position: sticky/)
+})
+
+test('Settings Kimi tab uses LobeHub Kimi path, device login, and never @lobehub/icons', async () => {
+  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  assert.match(src, /kimiTitle:\s*'月之暗面'/)
+  assert.match(src, /kimiTitle:\s*'Kimi'/)
+  assert.match(src, /kimiImport:\s*'导入本机 Kimi Code'/)
+  assert.match(src, /kimiImport:\s*'Import local Kimi Code'/)
+  assert.match(src, /LobeHub `Kimi` icon/)
+  assert.match(src, /kimi: \{ d: 'M21\.846 0a1\.923/)
+  assert.match(src, /h\(Tab, \{ id: 'kimi', label: t\.kimiTitle, current: tab, onSelect: setTab, icon: 'kimi' \}/)
+  assert.match(src, /tab === 'kimi' && card\('kimi'/)
+  assert.match(src, /id === 'grok' \|\| id === 'kimi' \? t\.device/)
+  assert.match(src, /id === 'kimi' && showKey && !busy/)
+  assert.match(src, /family === 'kimi'\) return account && !isKimiOpaqueIdentity/)
+  assert.equal(src.includes("from '@lobehub/icons'"), false)
+  assert.equal(src.includes('require(\'@lobehub/icons\')'), false)
 })
 
 test('Settings Antigravity card shows a verify banner, not API-key-invalid', async () => {
@@ -181,7 +198,7 @@ test('Add account opens a centered dialog, not a sheet', async () => {
   assert.match(src, /id === 'glm' && !busy && h\('div', \{ className: 'osubs-glm-logins' \}/)
   assert.match(src, /id === 'kiro' && !busy && h\('div', \{ className: 'osubs-logins' \}/)
   assert.match(src, /id === 'ollama' && !busy && h\('div', \{ className: 'osubs-logins' \}/)
-  assert.match(src, /id === 'cursor' \? t\.cursorImport : t\.import/)
+  assert.match(src, /id === 'cursor' \? t\.cursorImport : id === 'kimi' \? t\.kimiImport : t\.import/)
   assert.match(src, /h\('span', null, t\.ollamaImport\)/)
   assert.equal(/osubs-sheet|osubs-drawer|role: 'sheet'|side.?sheet|侧边抽屉/i.test(src), false)
 })

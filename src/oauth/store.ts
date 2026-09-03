@@ -14,8 +14,9 @@ import { kiroAccountId, kiroMethodLabel } from './kiro/index.js'
 import { displayGlmAccount } from './glm/index.js'
 import { displayCursorAccount } from './cursor/index.js'
 import { ollamaSourceLabel } from './ollama/index.js'
+import { kimiSourceLabel } from './kimi/index.js'
 
-export const PROVIDER_IDS = Object.freeze(['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama'])
+export const PROVIDER_IDS = Object.freeze(['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi'])
 
 export function defaultDataDir() {
   return join(homedir(), '.dsh', 'plugins', 'oauth-subs')
@@ -341,6 +342,16 @@ export function publicSession(provider, session) {
       planLabel,
       method: session.source,
       methodLabel: ollamaSourceLabel(session.source),
+      expiresAt: session.expiresAt,
+    }
+  }
+  if (provider === 'kimi') {
+    return {
+      account: session.account,
+      planType,
+      planLabel,
+      method: session.source,
+      methodLabel: kimiSourceLabel(session.source),
       expiresAt: session.expiresAt,
     }
   }
