@@ -167,6 +167,16 @@ function rewriteUpstreamBody(buffer, family, wire) {
   if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
     throw new RequestError(400, 'request body must contain a JSON object')
   }
+  if (family === 'cursor') {
+    // Cursor Fast is RequestedModel `{ id: 'fast' }`, not Codex Priority.
+    // Keep the picker `-fast` suffix for openaiToCursor; do not peel here.
+    const { payload: next, cacheSessionId } = applyCursorCache(payload)
+    return {
+      body: Buffer.from(JSON.stringify(next)),
+      cacheSessionId,
+      stream: next.stream === true,
+    }
+  }
   const fast = applyFastMode(payload)
   if (family === 'codex') {
     const { payload: next, cacheSessionId } = applyCodexCache(normalizeCodexResponsesBody(fast))
@@ -208,14 +218,6 @@ function rewriteUpstreamBody(buffer, family, wire) {
     return {
       body: Buffer.from(JSON.stringify(next)),
       cacheSessionId: kiroConversationId(next),
-      stream: next.stream === true,
-    }
-  }
-  if (family === 'cursor') {
-    const { payload: next, cacheSessionId } = applyCursorCache(fast)
-    return {
-      body: Buffer.from(JSON.stringify(next)),
-      cacheSessionId,
       stream: next.stream === true,
     }
   }
@@ -951,7 +953,7 @@ async function forwardCursor(request, response, { session, maxRequestBodyBytes, 
   const payload = JSON.parse(rewritten.toString('utf8'))
   const conversationId = cacheSessionId ?? cursorConversationId(payload)
   const built = openaiToCursor(payload, { conversationId })
-  const model = built.modelId
+  const model = built.pickerModel || built.modelId
   const id = `chatcmpl-${Date.now()}`
 
   if (!stream) {

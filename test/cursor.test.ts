@@ -11,12 +11,14 @@ import {
   HARNESS_COMPLETIONS_API,
   buildProviders,
   catalogProviders,
+  describeCatalog,
   ownedProviderIds,
   syncHarnessModels,
 } from '../lib/oauth/models.js'
 import {
   cursorCatalogModels,
   cursorPickerFamilyId,
+  cursorSourceIsFast,
   inferCursorContextWindow,
   inferCursorMaxOutputTokens,
   isCursorInternalModel,
@@ -64,6 +66,7 @@ import {
   cursorCacheHeaders,
   cursorCacheSessionId,
   cursorConversationId,
+  peelCursorFastSuffix,
   pinCursorSystemPrefix,
   resetCursorSystemPins,
 } from '../lib/oauth/cursor/cache.js'
@@ -298,10 +301,17 @@ test('cursor cache sanitizer and sticky conversation id across two turns', () =>
   })
   assert.equal(first.payload.prompt_cache_key, undefined)
   assert.equal(first.payload.prompt_cache_retention, undefined)
+  assert.equal(first.payload.service_tier, undefined)
   assert.equal(first.cacheSessionId, 'sess-cursor:composer-2')
   assert.deepEqual(cursorCacheHeaders(), {})
   const second = cursorConversationId({ session_id: 'sess-cursor', model: 'composer-2' })
   assert.equal(second, first.cacheSessionId)
+  assert.equal(
+    cursorConversationId({ session_id: 'sess-cursor', model: 'gpt-5.5-fast' }),
+    cursorConversationId({ session_id: 'sess-cursor', model: 'gpt-5.5' }),
+  )
+  assert.equal(peelCursorFastSuffix('gpt-5.5-fast').modelId, 'gpt-5.5')
+  assert.equal(peelCursorFastSuffix('gpt-5.5-fast').requestedFast, true)
   assert.notEqual(
     cursorConversationId({ model: 'composer-2' }),
     cursorConversationId({ model: 'gpt-5.5' }),
@@ -338,6 +348,47 @@ test('cursor hop Completions → AgentClientMessage keeps model, user, tools, co
   assert.equal(decoded.userText, 'list files')
   assert.equal(decoded.tools.some((tool) => tool.name === 'glob'), true)
   assert.equal(decoded.hasConversationState, true)
+  resetCursorSystemPins()
+})
+
+test('cursor hop peels -fast to family modelId and sets RequestedModel fast param', () => {
+  resetCursorSystemPins()
+  const built = openaiToCursor({
+    model: 'gpt-5.5-fast',
+    session_id: 'sess-fast',
+    reasoning_effort: 'high',
+    service_tier: 'priority',
+    messages: [{ role: 'user', content: 'hi' }],
+  })
+  const decoded = decodeAgentClientMessage(built.requestBytes)
+  assert.equal(built.modelId, 'gpt-5.5')
+  assert.equal(built.pickerModel, 'gpt-5.5-fast')
+  assert.equal(decoded.modelId, 'gpt-5.5')
+  assert.equal(decoded.modelId.endsWith('-fast'), false)
+  assert.equal(decoded.maxMode, false)
+  assert.deepEqual(decoded.parameters, [
+    { id: 'reasoning', value: 'high' },
+    { id: 'fast', value: 'true' },
+  ])
+  assert.equal(built.conversationId, 'sess-fast:gpt-5.5')
+  assert.equal(decoded.conversationId, 'sess-fast:gpt-5.5')
+  assert.equal(JSON.stringify(decoded).includes('service_tier'), false)
+  const cached = applyCursorCache({
+    model: 'gpt-5.5-fast',
+    session_id: 'sess-fast',
+    service_tier: 'priority',
+  })
+  assert.equal(cached.payload.model, 'gpt-5.5-fast')
+  assert.equal(cached.payload.service_tier, undefined)
+  assert.equal(cached.cacheSessionId, 'sess-fast:gpt-5.5')
+  const plain = openaiToCursor({
+    model: 'gpt-5.5',
+    reasoning_effort: 'high',
+    messages: [{ role: 'user', content: 'hi' }],
+  })
+  const plainDecoded = decodeAgentClientMessage(plain.requestBytes)
+  assert.equal(plainDecoded.modelId, 'gpt-5.5')
+  assert.deepEqual(plainDecoded.parameters, [{ id: 'reasoning', value: 'high' }])
   resetCursorSystemPins()
 })
 
@@ -504,6 +555,7 @@ test('parseCursorTokenResponse and completeCursorLogin tag pkce', async () => {
 test('cursor picker collapses effort/fast/thinking/max-mode and hides tab internals', () => {
   const rows = toCursorPickerModels([
     { id: 'default', name: 'Auto' },
+    { id: 'default-fast', name: 'Auto Fast' },
     { id: 'gpt-5.5-none', name: 'GPT-5.5 272K None' },
     { id: 'gpt-5.5-high-fast', name: 'GPT-5.5 272K High Fast' },
     { id: 'gpt-5.5-1m-extra-high', name: 'GPT-5.5 1M Extra High' },
@@ -520,17 +572,47 @@ test('cursor picker collapses effort/fast/thinking/max-mode and hides tab intern
   assert.equal(rows.find((row) => row.id === 'default').name, 'Auto')
   assert.equal(ids.includes('gpt-5.5'), true)
   assert.equal(ids.includes('gpt-5.5-high-fast'), false)
-  assert.equal(ids.filter((id) => id.startsWith('gpt-5.5')).length, 1)
+  assert.equal(ids.includes('gpt-5.5-none'), false)
+  assert.equal(ids.includes('gpt-5.5-1m-extra-high'), false)
+  assert.equal(ids.includes('claude-4.6-opus-max-thinking'), false)
+  assert.equal(ids.includes('gpt-5.1-codex-max-high-fast'), false)
   assert.equal(ids.includes('claude-4.6-opus'), true)
   assert.equal(ids.includes('gpt-5.1-codex-max'), true)
   assert.equal(ids.includes('composer-2'), true)
+  assert.equal(ids.includes('gpt-5.5-fast'), true)
+  assert.equal(ids.includes('composer-2-fast'), true)
+  assert.equal(ids.includes('gpt-5.1-codex-max-fast'), true)
+  assert.equal(ids.includes('claude-4.6-opus-fast'), false)
+  assert.equal(ids.includes('default-fast'), false)
+  assert.equal(rows.find((row) => row.id === 'gpt-5.5-fast').name, 'GPT-5.5 Fast')
+  assert.equal(rows.find((row) => row.id === 'composer-2-fast').name, 'Composer 2 Fast')
+  assert.equal(ids.filter((id) => id === 'gpt-5.5' || id === 'gpt-5.5-fast').length, 2)
   assert.equal(ids.some((id) => /tab|chat|cursor-small/.test(id)), false)
   assert.equal(isCursorInternalModel('cursor-small', 'Tab'), true)
   assert.equal(cursorPickerFamilyId('gpt-5.5-max-extra-high-fast'), 'gpt-5.5')
+  assert.equal(cursorSourceIsFast('gpt-5.5-high-fast'), true)
+  assert.equal(cursorSourceIsFast('composer-2-fast'), true)
+  assert.equal(cursorSourceIsFast('gpt-5.5-high'), false)
+  assert.equal(cursorSourceIsFast('default'), false)
   assert.equal(inferCursorContextWindow('grok-4.5', 'Grok 4.5'), 256_000)
   assert.equal(inferCursorMaxOutputTokens('gpt-5.5', 'GPT-5.5'), 128_000)
   assert.deepEqual(rows.find((row) => row.id === 'gpt-5.5').reasoningEfforts, CURSOR_REASONING)
   assert.equal(Object.hasOwn(rows.find((row) => row.id === 'gpt-5.5').reasoningEfforts, 'none'), false)
+  const described = describeCatalog(catalogProviders({
+    prefix: 'oauth',
+    origin: 'http://x',
+    cursorModels: rows,
+  }))
+  const cursor = described.find((row) => row.family === 'cursor')
+  assert.equal(cursor.models.find((model) => model.id === 'gpt-5.5-fast').fast, true)
+  assert.equal(cursor.models.find((model) => model.id === 'gpt-5.5').fast, false)
+  assert.equal(cursor.models.find((model) => model.id === 'gpt-5.5-fast').enabled, true)
+  const fromAvailable = toCursorPickerModels([], [
+    { name: 'composer-2-fast', clientDisplayName: 'Composer 2 Fast' },
+    { name: 'kimi-k2.5', clientDisplayName: 'Kimi K2.5' },
+  ])
+  assert.equal(fromAvailable.some((row) => row.id === 'composer-2-fast'), true)
+  assert.equal(fromAvailable.some((row) => row.id === 'kimi-k2.5-fast'), false)
 })
 
 test('mocked GetUsableModels expands cursor catalog and yaml beyond the static 5', async () => {
@@ -540,6 +622,7 @@ test('mocked GetUsableModels expands cursor catalog and yaml beyond the static 5
     { id: 'composer-1.5', name: 'Composer 1.5' },
     { id: 'claude-sonnet-5', name: 'Claude Sonnet 5' },
     { id: 'gpt-5.5', name: 'GPT-5.5' },
+    { id: 'gpt-5.5-high-fast', name: 'GPT-5.5 272K High Fast' },
     { id: 'grok-4.5', name: 'Grok 4.5' },
     { id: 'default', name: 'Auto' },
     { id: 'claude-4.6-sonnet-medium', name: 'Sonnet 4.6 1M' },
@@ -577,6 +660,9 @@ test('mocked GetUsableModels expands cursor catalog and yaml beyond the static 5
   })
   assert.ok(catalog['oauth-cursor'].models.length > CURSOR_MODELS.length)
   assert.equal(catalog['oauth-cursor'].models.length, models.length)
+  assert.equal(models.some((model) => model.id === 'gpt-5.5-fast'), true)
+  assert.equal(models.some((model) => model.id === 'gpt-5.5-high-fast'), false)
+  assert.equal(models.find((model) => model.id === 'gpt-5.5-fast').name, 'GPT-5.5 Fast')
   const yaml = { providers: {} }
   const result = await syncHarnessModels({
     settings: {
@@ -597,6 +683,8 @@ test('mocked GetUsableModels expands cursor catalog and yaml beyond the static 5
   assert.deepEqual(ids, catalog['oauth-cursor'].models.map((model) => model.id))
   assert.deepEqual(result.routes.find((row) => row.provider === 'oauth-cursor').models, ids)
   assert.ok(ids.length > CURSOR_MODELS.length)
+  assert.equal(ids.includes('gpt-5.5-fast'), true)
+  assert.equal(ids.includes('gpt-5.5-high-fast'), false)
   resetCursorCatalogCache()
 })
 
@@ -672,7 +760,9 @@ test('empty GetUsableModels keeps the static five-row fallback', async () => {
   })
   assert.equal(models.length, CURSOR_MODELS.length)
   assert.deepEqual(models.map((model) => model.id), CURSOR_MODELS.map((model) => model.id))
+  assert.equal(models.some((model) => String(model.id).endsWith('-fast')), false)
   const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
   assert.equal(catalog['oauth-cursor'].models.length, CURSOR_MODELS.length)
+  assert.equal(catalog['oauth-cursor'].models.some((model) => String(model.id).endsWith('-fast')), false)
   resetCursorCatalogCache()
 })

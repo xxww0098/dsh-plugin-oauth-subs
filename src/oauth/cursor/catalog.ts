@@ -86,8 +86,37 @@ function peelSuffix(id, suffixes) {
 }
 
 /**
- * One picker id per family: drop effort / fast / thinking / max-mode / window
- * suffixes. Keep `codex-max` as a product name.
+ * After peeling effort / thinking / max-mode / window, does this source id
+ * still end in `-fast`? That is the live catalog's Fast flag — not Codex
+ * `service_tier`. Used to decide whether the picker grows a `{family}-fast`
+ * sibling. `cursorPickerFamilyId` still collapses Fast into the family.
+ */
+export function cursorSourceIsFast(id) {
+  let s = String(id ?? '').trim()
+  if (!s) return false
+  let prev
+  do {
+    prev = s
+    const lower = s.toLowerCase()
+    if (lower.endsWith('-thinking')) s = s.slice(0, -9)
+    else if (lower.endsWith('-max-mode')) s = s.slice(0, -9)
+    else {
+      const effort = peelSuffix(s, EFFORT_SUFFIXES)
+      if (effort !== s) s = effort
+      else {
+        const context = peelSuffix(s, CONTEXT_SUFFIXES)
+        if (context !== s) s = context
+        else if (lower.endsWith('-max') && !/codex-max$/i.test(s)) s = s.slice(0, -4)
+      }
+    }
+  } while (s !== prev && s)
+  return s.toLowerCase().endsWith('-fast')
+}
+
+/**
+ * One picker family id: drop effort / fast / thinking / max-mode / window
+ * suffixes. Keep `codex-max` as a product name. Fast is re-emitted as a
+ * sibling `{family}-fast` when any source id for that family is Fast.
  */
 export function cursorPickerFamilyId(id) {
   let s = String(id ?? '').trim()
@@ -148,6 +177,7 @@ function usableRows(models) {
       contextWindow: asPositive(model.contextWindow ?? model.contextTokenLimit),
       maxTokens: asPositive(model.maxTokens),
       supportsImages: model.supportsImages,
+      hasFast: cursorSourceIsFast(id),
     })
   }
   return out
@@ -164,6 +194,7 @@ function parameterizedRows(models) {
       contextWindow: asPositive(model.contextTokenLimit) ?? asPositive(model.contextTokenLimitForMaxMode),
       maxTokens: undefined,
       supportsImages: model.supportsImages,
+      hasFast: cursorSourceIsFast(id),
     })
   }
   return out
@@ -180,18 +211,19 @@ function cursorModelRow(id, name, contextWindow, maxTokens, input = CURSOR_VISIO
   }
 }
 
-/** Collapse live ids into one picker row per family. Empty input → []. */
+/** Collapse live ids into one picker row per family, plus `{family}-fast` when a source id is Fast. Empty input → []. */
 export function toCursorPickerModels(usable, parameterized = []) {
   const groups = new Map()
   for (const row of [...usableRows(usable), ...parameterizedRows(parameterized)]) {
     if (isCursorInternalModel(row.id, row.name)) continue
     const family = cursorPickerFamilyId(row.id)
     if (!family) continue
-    const current = groups.get(family) ?? { names: [], windows: [], outputs: [], images: [] }
+    const current = groups.get(family) ?? { names: [], windows: [], outputs: [], images: [], hasFast: false }
     current.names.push(row.name)
     if (row.contextWindow) current.windows.push(row.contextWindow)
     if (row.maxTokens) current.outputs.push(row.maxTokens)
     if (row.supportsImages !== undefined) current.images.push(row.supportsImages)
+    if (row.hasFast) current.hasFast = true
     groups.set(family, current)
   }
   const models = []
@@ -211,6 +243,10 @@ export function toCursorPickerModels(usable, parameterized = []) {
       ? ['text']
       : CURSOR_VISION
     models.push(cursorModelRow(id, name, window, maxTokens, input))
+    // Auto / default never grows Fast. Static fallback also stays 5 rows.
+    if (id !== 'default' && group.hasFast) {
+      models.push(cursorModelRow(`${id}-fast`, `${name} Fast`, window, maxTokens, input))
+    }
   }
   models.sort((a, b) => {
     if (a.id === 'default') return -1

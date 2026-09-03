@@ -8,6 +8,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import {
   cursorConversationId,
+  peelCursorFastSuffix,
   pinCursorSystemPrefix,
 } from './cache.js'
 import { CURSOR_REASONING } from './index.js'
@@ -144,9 +145,18 @@ function vendorEffort(value) {
 }
 
 export function cursorModelParameters(payload = {}) {
+  const parameters = []
   const effort = vendorEffort(payload.reasoning_effort)
-  if (!effort) return []
-  return [{ id: 'reasoning', value: effort }]
+  if (effort) parameters.push({ id: 'reasoning', value: effort })
+  if (peelCursorFastSuffix(payload.model).requestedFast) {
+    parameters.push({ id: 'fast', value: 'true' })
+  }
+  return parameters
+}
+
+export function cursorWireModelId(model) {
+  const raw = typeof model === 'string' && model.trim() ? model.trim() : 'composer-2'
+  return peelCursorFastSuffix(raw).modelId || 'composer-2'
 }
 
 export function openaiToCursor(payload = {}, { conversationId } = {}) {
@@ -189,9 +199,10 @@ export function openaiToCursor(payload = {}, { conversationId } = {}) {
     }), blobStore)
   })
 
-  const modelId = typeof payload.model === 'string' && payload.model.trim()
+  const pickerModel = typeof payload.model === 'string' && payload.model.trim()
     ? payload.model.trim()
     : 'composer-2'
+  const modelId = cursorWireModelId(pickerModel)
   const userMessageId = randomUUID()
   const userText = parsed.userText
     || (parsed.inFlight && parsed.inFlight.steps.length ? '' : parsed.turns.at(-1)?.userText)
@@ -223,6 +234,7 @@ export function openaiToCursor(payload = {}, { conversationId } = {}) {
   return {
     conversationId: resolvedId,
     modelId,
+    pickerModel,
     systemPrompt,
     pinnedSystem: pinned,
     extraSystem: extra,

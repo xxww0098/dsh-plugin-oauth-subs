@@ -14,6 +14,21 @@
  */
 
 export const CURSOR_STABLE_SESSION = 'dsh-cursor'
+export const CURSOR_FAST_SUFFIX = '-fast'
+
+/**
+ * Host-side Cursor Fast picker suffix. Not Codex `service_tier`.
+ * Wire `requestedModel.modelId` and the conversation pin use the family id.
+ */
+export function peelCursorFastSuffix(modelId) {
+  const raw = typeof modelId === 'string' ? modelId.trim() : ''
+  if (!raw.toLowerCase().endsWith(CURSOR_FAST_SUFFIX)) {
+    return { modelId: raw, requestedFast: false }
+  }
+  const peeled = raw.slice(0, -CURSOR_FAST_SUFFIX.length)
+  if (!peeled) return { modelId: raw, requestedFast: false }
+  return { modelId: peeled, requestedFast: true }
+}
 
 const SYSTEM_PINS = new Map()
 const SYSTEM_PIN_CAP = 64
@@ -65,7 +80,7 @@ export function cursorConversationId(payload = {}, explicit) {
     ?? cursorCacheSessionId(payload.session_id)
     ?? cursorCacheSessionId(payload.prompt_cache_key)
     ?? CURSOR_STABLE_SESSION
-  return appendCursorModel(base, payload.model)
+  return appendCursorModel(base, peelCursorFastSuffix(payload.model).modelId)
 }
 
 export function applyCursorCache(payload = {}) {
@@ -73,6 +88,7 @@ export function applyCursorCache(payload = {}) {
   delete next.prompt_cache_retention
   delete next.prompt_cache_options
   delete next.prompt_cache_key
+  delete next.service_tier
   return {
     payload: next,
     cacheSessionId: cursorConversationId(next),
