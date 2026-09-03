@@ -35,9 +35,9 @@ DSH POST /opencode/v1/chat/completions
 
 ## 登录
 
-无 OAuth、无 key。Settings 一键「启用免费模型」写入匿名 session（store 里 `accessToken` 是哨兵 `anonymous`，**绝不**当 Bearer 发出）。
+无 OAuth、无 key。**空 roster 自动启用**：plugin start / `snapshot()` / `sync()` 若 `auth.json` 没有 `opencode`，写入 `opencodeSession()`（store 哨兵 `anonymous`）并 `syncHarnessModels`，让 `oauth-opencode` 进 llm-pi-ai。不覆盖已有 session。Settings「启用免费模型」是同一哨兵的幂等写入。
 
-不要假扮 OpenCode CLI 的 User-Agent（`big-pickle` 只给官方 CLI 放行，本插件目录不收它）。
+`accessToken` **绝不**当 Bearer 发出。不要假扮 OpenCode CLI 的 User-Agent（`big-pickle` 只给官方 CLI 放行，本插件目录不收它）。
 
 ## 模型
 
@@ -49,6 +49,8 @@ GET https://opencode.ai/zen/v1/models
 ```
 
 只收 `id` 以 `-free` 结尾、且不在 Go 订阅黑名单（`ox-alpha-free`）里的行。失败或空列表回落静态楼（当前 live 快照）。目录会轮换；delist 的模型必须从楼里删掉，否则 picker 会 401。
+
+Completions 行 **省略** `reasoningEfforts`（不要写 `false`），否则 DSH 可能丢掉整段 `llm-pi-ai` mutate。不要 stamp Completions `compat`。
 
 默认辅助模型：`laguna-s-2.1-free`（Hermes：非 UA 门控里最快的免费档）。
 
@@ -67,6 +69,8 @@ GET https://opencode.ai/zen/v1/models
 ## 不要
 
 - 不要发 `Authorization`（空串 / 哨兵 / 过期 Zen key 都会 401）。
+- 不要把启用藏在 Settings 点击后面；空 roster 必须自动写哨兵并 sync。
+- 不要在 Completions 行写 `reasoningEfforts: false` 或 Completions `compat`。
 - 不要把 Zen 付费或 Go 订阅模型塞进匿名 picker（`ox-alpha-free` 后缀像免费，但是 Go 订阅）。
 - 不要假扮 OpenCode CLI UA 去拿 `big-pickle`。
 - 不要把 `api` 写成 Responses / Anthropic / 自定义字符串。
@@ -76,7 +80,8 @@ GET https://opencode.ai/zen/v1/models
 
 | 问题 | 记录 |
 |---|---|
-| 带 Bearer 打免费档 401 | [`docs/error.md`](../../../docs/error.md) 2026-09-03 OpenCode Free |
+| 带 Bearer 打免费档 401 | [`docs/error.md`](../../../docs/error.md) 2026-09-03 OpenCode Free Bearer |
 | 硬编码目录 delist 后仍 401 | 同条：live `GET /models` |
+| 空 roster 要先点启用才能聊 | [`docs/error.md`](../../../docs/error.md) 2026-09-03 OpenCode Free 自动启用 |
 
 测试：`test/opencode.test.ts`、`test/cache-families.test.ts`。

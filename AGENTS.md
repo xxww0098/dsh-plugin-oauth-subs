@@ -522,8 +522,12 @@ tab. Follow this checklist in one PR.
    `KIMI_API_KEY`). Auto-import only the CLI json when the kimi roster
    is empty. Never overwrite a stored session. Never write back to
    `~/.kimi-code`.
-   OpenCode Free is anonymous. Store sentinel `anonymous` is **never**
-   sent as Authorization. No import, no API key.
+   OpenCode Free is anonymous. Empty-roster auto-enable writes
+   `opencodeSession()` (store sentinel `anonymous`) on plugin start /
+   snapshot / sync and `syncHarnessModels` so `oauth-opencode` lands in
+   llm-pi-ai. Never overwrite a stored session. Sentinel is **never**
+   sent as Authorization. No import, no API key. Omit
+   `reasoningEfforts` on Completions rows (do not write `false`).
 9. **Tests** under `test/`: login parse, session round-trip, catalog
    input types, and `snapshot shows quota on every <id> account`.
 

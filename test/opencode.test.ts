@@ -85,7 +85,7 @@ test('catalog is Completions at /opencode, not a custom api string', () => {
   assert.equal(route.baseURL.endsWith('/opencode/v1'), false)
   assert.equal(route.compat, undefined)
   for (const model of route.models) {
-    assert.equal(model.reasoningEfforts, false)
+    assert.equal(Object.hasOwn(model, 'reasoningEfforts'), false)
     assert.deepEqual(model.input, ['text'])
   }
   assert.equal(route.models.some((model) => model.id === OPENCODE_DEFAULT_MODEL), true)
@@ -250,6 +250,134 @@ test('controller snapshot shows quota on the anonymous account; hop omits Author
   } finally {
     await proxy.close()
   }
+})
+
+test('empty-roster auto-enable writes sentinel, hops without Authorization, and persists oauth-opencode', async () => {
+  resetOpencodeCatalogCache()
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-opencode-auto-'))
+  const authPath = join(dir, 'auth.json')
+  const yaml = { providers: {} }
+  const controller = new AuthController({
+    authPath,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    opencodeAutoEnable: true,
+    opencodeDiscover: (opts) => refreshOpencodeCatalog({ ...opts, force: true }),
+    fetchFn: async (url, init) => {
+      if (String(url) === OPENCODE_MODELS_URL) {
+        assert.equal(Object.hasOwn(init?.headers ?? {}, 'authorization'), false)
+        assert.notEqual(init?.headers?.authorization, `Bearer ${OPENCODE_ANON_TOKEN}`)
+        return json({
+          data: [
+            { id: 'laguna-s-2.1-free' },
+            { id: 'mimo-v2.5-free' },
+            { id: 'ox-alpha-free' },
+            { id: 'big-pickle' },
+          ],
+        })
+      }
+      throw new Error(`unexpected fetch ${url}`)
+    },
+    settings: {
+      get: async (name) => name === 'llm-pi-ai' ? yaml : undefined,
+      mutate: async (target, mutations) => {
+        if (target !== 'llm-pi-ai') return
+        for (const row of mutations) {
+          const key = row.path?.[1]
+          if (row.op === 'unset') delete yaml.providers[key]
+          else if (row.op === 'set') yaml.providers[key] = row.value
+        }
+      },
+    },
+  })
+  assert.equal((await listStoredSessions('opencode', authPath)).length, 0)
+  const snap = await controller.snapshot()
+  assert.equal(snap.accounts.opencode.loggedIn, true)
+  assert.equal(snap.accounts.opencode.accounts.length, 1)
+  assert.equal(snap.accounts.opencode.accounts[0].account, OPENCODE_ACCOUNT)
+  const stored = await listStoredSessions('opencode', authPath)
+  assert.equal(stored.length, 1)
+  assert.equal(stored[0].session.accessToken, OPENCODE_ANON_TOKEN)
+  assert.equal(stored[0].session.source, 'anonymous')
+
+  const synced = await controller.sync()
+  const route = yaml.providers['oauth-opencode']
+  assert.ok(route)
+  assert.equal(route.api, HARNESS_COMPLETIONS_API)
+  assert.equal(route.api, 'openai-completions')
+  assert.equal(route.baseURL, 'http://127.0.0.1:8318/opencode')
+  assert.equal(route.baseURL.endsWith('/opencode/v1'), false)
+  assert.equal(route.apiKeyEnv, 'DSH_OAUTH_SUBS_API_KEY')
+  assert.equal(route.compat, undefined)
+  assert.deepEqual(route.models.map((model) => model.id), ['laguna-s-2.1-free', 'mimo-v2.5-free'])
+  assert.equal(synced.routes.some((row) => row.provider === 'oauth-opencode'), true)
+  for (const model of route.models) {
+    assert.equal(Object.hasOwn(model, 'reasoningEfforts'), false)
+    assert.equal(model.id.endsWith('-free'), true)
+    assert.notEqual(model.id, 'hy3-free')
+    assert.notEqual(model.id, 'big-pickle')
+    assert.notEqual(model.id, 'ox-alpha-free')
+  }
+
+  const hops = []
+  const proxyFetch = async (url, init) => {
+    hops.push({ url: String(url), headers: init.headers })
+    assert.equal(Object.hasOwn(init.headers ?? {}, 'authorization'), false)
+    assert.notEqual(init.headers?.authorization, `Bearer ${OPENCODE_ANON_TOKEN}`)
+    return json({ id: 'chat', choices: [{ message: { role: 'assistant', content: 'pong' } }] })
+  }
+  const proxy = createProxy({
+    port: 0,
+    apiKey: 'proxy-key-opencode-auto-xx',
+    tokens: controller.tokens,
+    fetchFn: proxyFetch,
+  })
+  const server = await proxy.listen()
+  const { port } = server.address()
+  try {
+    const chat = await fetch(`http://127.0.0.1:${port}/opencode/v1/chat/completions`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer proxy-key-opencode-auto-xx', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: OPENCODE_DEFAULT_MODEL,
+        messages: [{ role: 'user', content: 'hi' }],
+      }),
+    })
+    assert.equal(chat.status, 200)
+    assert.equal((await chat.json()).choices[0].message.content, 'pong')
+    assert.equal(hops[0].url, OPENCODE_CHAT_URL)
+    assert.equal(Object.hasOwn(hops[0].headers, 'authorization'), false)
+    assert.equal(hops[0].headers.authorization, undefined)
+    assert.notEqual(hops[0].headers.authorization, 'Bearer anonymous')
+    assert.equal(hops[0].headers['user-agent'], 'dsh-plugin-oauth-subs')
+  } finally {
+    await proxy.close()
+  }
+
+  const again = await controller.login('opencode')
+  assert.equal(again.mode, 'anonymous')
+  assert.equal((await listStoredSessions('opencode', authPath)).length, 1)
+  resetOpencodeCatalogCache()
+})
+
+test('empty-roster auto-enable does not overwrite a stored opencode session', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-opencode-keep-'))
+  const authPath = join(dir, 'auth.json')
+  const kept = { ...opencodeSession(), account: 'KeepMe' }
+  await saveSession('opencode', kept, authPath)
+  const controller = new AuthController({
+    authPath,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    opencodeAutoEnable: true,
+    settings: { mutate: async () => undefined },
+  })
+  await controller.snapshot()
+  const login = await controller.login('opencode')
+  assert.equal(login.account.account, 'KeepMe')
+  const rows = await listStoredSessions('opencode', authPath)
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].session.account, 'KeepMe')
 })
 
 test('saving a second anonymous session stays one account', async () => {

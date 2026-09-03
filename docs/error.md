@@ -2,6 +2,17 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-03：OpenCode Free 空 roster 未登录，settings 没有 oauth-opencode
+
+### 现象
+plugin 0.0.68 重启后 `POST /opencode/v1/chat/completions` 500 `OpenCode Free is not logged in`。`auth.json` 无 `opencode`，`settings.yaml` 无 `oauth-opencode`，用户无法选模型或对话。
+
+### 根因
+匿名 Zen 仍要先点 Settings「启用免费模型」才写哨兵并 sync。空 roster 不自动启用。Completions 行 `reasoningEfforts: false` 可能让 DSH 丢掉整段 mutate。
+
+### 修复
+空 roster 在 start / snapshot / sync 写 `opencodeSession()` 并 `syncHarnessModels`。不覆盖已有 session。hop 仍不带 Authorization。省略 `reasoningEfforts`，不 stamp Completions `compat`。
+
 ## 2026-09-03：OpenCode Free 带 Bearer 会 401；硬编码目录 delist 后仍 401
 
 ### 现象

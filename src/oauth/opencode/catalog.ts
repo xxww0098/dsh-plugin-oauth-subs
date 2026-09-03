@@ -47,7 +47,6 @@ export function toOpencodePickerModels(payload) {
         : OPENCODE_MODELS.find((model) => model.id === id)?.contextWindow ?? 128_000,
       maxTokens: OPENCODE_DEFAULT_MAX_TOKENS,
       input: [...OPENCODE_INPUT],
-      reasoningEfforts: false,
     })
   }
   models.sort((left, right) => left.id.localeCompare(right.id))

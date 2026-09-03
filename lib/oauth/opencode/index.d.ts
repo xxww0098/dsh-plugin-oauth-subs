@@ -37,7 +37,6 @@ export declare const OPENCODE_MODELS: readonly {
     contextWindow: number;
     maxTokens: number;
     input: string[];
-    reasoningEfforts: boolean;
 }[];
 export declare function isOpencodeFreeSlug(id: any): boolean;
 export declare function opencodePrettyName(id: any): string;

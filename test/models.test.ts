@@ -134,8 +134,14 @@ test('buildProviders only emits logged-in families with DSH api ids', () => {
   assert.equal(chat['oauth-opencode'].baseURL, 'http://127.0.0.1:8318/opencode')
   assert.equal(chat['oauth-opencode'].baseURL.endsWith('/opencode/v1'), false)
   assert.equal(chat['oauth-opencode'].compat, undefined)
+  assert.equal(chat['oauth-opencode'].apiKeyEnv, OAUTH_CREDENTIAL_REF)
   assert.equal(chat['oauth-opencode'].models.some((model) => model.id === 'laguna-s-2.1-free'), true)
   assert.equal(chat['oauth-opencode'].models.some((model) => model.id === 'hy3-free'), false)
+  assert.equal(chat['oauth-opencode'].models.some((model) => model.id === 'big-pickle'), false)
+  assert.equal(chat['oauth-opencode'].models.some((model) => model.id === 'ox-alpha-free'), false)
+  for (const model of chat['oauth-opencode'].models) {
+    assert.equal(Object.hasOwn(model, 'reasoningEfforts'), false)
+  }
   assert.equal(chat['oauth-codex'], undefined)
 })
 
