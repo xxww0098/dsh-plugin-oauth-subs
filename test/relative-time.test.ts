@@ -41,11 +41,12 @@ test('formatRelativeReset keeps leftover minutes on multi-day windows', () => {
   assert.equal(formatRelativeReset(at(2 * 86400_000 + 3 * 3600_000 + 12 * 60_000), EN, NOW), 'resets in 2 d 3 h 12 min')
 })
 
-test('formatRelativeReset soon / invalid / far-future stamp sentinel', () => {
+test('formatRelativeReset stays relative past 14 days', () => {
   assert.equal(formatRelativeReset(NOW - 1, ZH, NOW), '即将重置')
   assert.equal(formatRelativeReset(0, ZH, NOW), '')
   assert.equal(formatRelativeReset(NaN, ZH, NOW), '')
-  assert.equal(formatRelativeReset(at(14 * 86400_000), ZH, NOW), undefined)
+  assert.equal(formatRelativeReset(at(14 * 86400_000), ZH, NOW), '14 天后重置')
+  assert.equal(formatRelativeReset(at(21 * 86400_000 + 4 * 3600_000 + 12 * 60_000), ZH, NOW), '21 天 4 小时 12 分钟后重置')
   assert.equal(formatRelativeReset(at(13 * 86400_000 + 23 * 3600_000), ZH, NOW), '13 天 23 小时后重置')
 })
 
@@ -57,4 +58,5 @@ test('Settings formatReset no longer rounds remaining hours', async () => {
   assert.match(src, /resetIn:\s*'resets in \{n\}'/)
   assert.equal(src.includes('Math.round(minutes / 60)'), false)
   assert.equal(src.includes('resetHours:'), false)
+  assert.equal(src.includes('if (days >= 14) return formatStamp(resetAt)'), false)
 })
