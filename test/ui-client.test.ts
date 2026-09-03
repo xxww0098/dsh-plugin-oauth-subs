@@ -200,13 +200,15 @@ function loadFormatQuotaError(src) {
 
 test('Settings quota error wraps and does not dump upstream JSON', async () => {
   const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
-  const hintCss = src.match(/\.osubs-hint \{[^}]*\}/)?.[0] ?? ''
-  const badCss = src.match(/\.osubs-bad \{[^}]*\}/)?.[0] ?? ''
+  const hintCss = src.match(/^\.osubs-hint \{[^}]*\}/m)?.[0] ?? ''
+  const hintBadCss = src.match(/^\.osubs-hint\.osubs-bad \{[^}]*\}/m)?.[0] ?? ''
+  const badCss = src.match(/^\.osubs-bad \{[^}]*\}/m)?.[0] ?? ''
   assert.match(hintCss, /display: block/)
   assert.match(hintCss, /max-width: 100%/)
   assert.match(hintCss, /overflow-wrap: anywhere/)
   assert.match(hintCss, /word-break: break-word/)
   assert.match(hintCss, /white-space: pre-wrap/)
+  assert.match(hintBadCss, /overflow-y: auto/)
   assert.match(badCss, /overflow-wrap: anywhere/)
   assert.match(badCss, /word-break: break-word/)
   assert.match(src, /function formatQuotaError/)
