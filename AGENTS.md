@@ -102,6 +102,7 @@ src/
     update.ts              GitHub latest-release check
 lib/                       tsc + UI tsc — generated, do not edit
 docs/error.md              fault log
+design-system/             Settings workbench design (MASTER + page overrides)
 test/                      node:test TypeScript, import compiled lib/
 scripts/                   CLI (TypeScript)
 ```
@@ -496,6 +497,12 @@ Layout of each card (`.osubs-acct`):
 └─────────────────────────────────────────────────────────┘
 ```
 
+The bar is a **remaining** bar (`remainingPercent`, 100% → 0%). Fill width
+and caption are the leftover share. Copy is `剩余 {n}%` / `{n}% left`.
+
+Workbench tokens and overlay rules: [`design-system/MASTER.md`](design-system/MASTER.md).
+Settings-only deviations: [`design-system/pages/settings-workbench.md`](design-system/pages/settings-workbench.md).
+
 Binding UI rules:
 
 - **One stored session → one card.** Cards stack in `.osubs-accts`
@@ -508,43 +515,73 @@ Binding UI rules:
   Refresh (and Codex-style reset, if any) is per card and
   `stopPropagation` so it does not switch. Switching still selects the
   chat account; it must not be the only way to see quota.
-- **Head row:** `account || id` (mono) · plan tag · in-use tag · optional
-  region tag. Plan sits **after the email**. Do **not** prefix `套餐` /
-  `Plan`. Do **not** put the plan on its own row.
+- **Quota bars are remaining bars.** `QuotaRow` fill and caption use
+  `remainingPercent`. If the API only gives used%, convert
+  `remaining = 100 - used` for the bar. Never caption a bar `已用` /
+  `% used`. Cursor product rows must not special-case `showUsed`.
+  Amounts like `used / total` may stay as secondary text when they are
+  real units; the bar itself is remaining.
+- **Bar color tracks remaining** via `quotaTone`: remaining `>40` ok,
+  `≤40` warn, `≤15` bad (`--osubs-ok` / `--osubs-warn` / `--osubs-bad`).
+  Do not color by family. Do not use a single always-green bar.
+- **Head row:** human title is email (`account`); opaque ids are a
+  separate identity bug (PRs #80 GLM, in-flight Cursor) — do not regress,
+  do not block on those PRs. Plan tag · in-use tag · optional region tag
+  sit **after** the email. Do **not** prefix `套餐` / `Plan`. Do **not**
+  put the plan on its own row.
+- **Chips stay one line.** `.osubs-tag` is `white-space: nowrap`. Show
+  the full value; do not wrap a chip and do not hide it behind `title`
+  only.
 - **No helper copy** under the family title. Heading is the title + a
   status pill (`未登录` / `已登录` / `等待授权…`). No
   “每个账号一张卡片…” paragraph.
-- Login actions sit **below** the cards (or replace `还没有登录账号` when
-  the roster is empty). “添加账号” after the first session; do not
-  restyle the first login as a fake card.
+- **Add-account chrome is a centered Dialog**, not a row of extra
+  buttons under the cards and not a side sheet. Empty roster: one
+  primary CTA opens the dialog. Logged-in: “添加账号” opens the same
+  dialog. GLM Z.ai vs BigModel, Kiro Social/IdC/import, Grok device vs
+  PKCE, Cursor import, paste/API-key/manual flows live **inside** the
+  dialog. Destructive still uses the existing confirm dialog
+  (`.osubs-dsw*` / `WarnDialog`). Reuse that centered pattern; never
+  Sheet / Drawer. `cursor-pointer` on clickable controls; visible
+  focus; Escape / overlay click closes non-destructive dialogs.
 
 ### Settings — design details
 
 - Inherit the host theme. Colors are `currentColor` mixes
-  (`--osubs-line` 16%, `--osubs-fill` 6%, `--osubs-muted` 66%). No
-  hardcoded light-theme grays.
+  (`--osubs-line` 16%, `--osubs-fill` 6%, `--osubs-muted` 66%). B2B
+  slate (`#0F172A` / `#334155`) is accent **intent** only — do not
+  hardcode a light-theme gray page. Optional `backdrop-blur-xs` only on
+  the centered Dialog overlay. No glassmorphism on the shell.
 - Icon tabs live in `.osubs-nav` (`position: sticky; top: 0`). They stay
   on screen while the settings scroller moves. Background is
   `--dsw-alias-bg-layer-2` (the panel). Bleed `24px` matches the host
   `.options` side padding so cards cannot peek in the gutter.
 - Cards: 12px radius, 1px `--osubs-line`, 14×16 padding. Active uses
   `--osubs-edge` + `--osubs-fill`.
-- Type: 13px UI, 12.5px emails. Tags (`osubs-tag`) for plan / in-use /
-  Fast / 900K — small, not a second heading. About kv rows are one 13px
-  face; OS is only `macOS` / `Windows` / `Linux` (no “本机”). Release
-  time is `YYYY-MM-DD HH:mm:ss` in `Asia/Shanghai`, not UTC.
+- Type: host UI sans (Inter-class), 13px UI, 12.5px emails. No display
+  serif. Tags (`osubs-tag`) for plan / in-use / Fast / 900K — small, not
+  a second heading. About kv rows are one 13px face; OS is only
+  `macOS` / `Windows` / `Linux` (no “本机”). Release time is
+  `YYYY-MM-DD HH:mm:ss` in `Asia/Shanghai`, not UTC.
+- Icons are inline SVG (LobeHub mono paths / existing `IconClose` /
+  `IconWarning`). Do not use emoji as UI marks.
 - Model picker: family name + `已开启 n / m`. **No 文本 / 图文 tags.**
   Checkboxes and All/None stay **disabled until that family is signed
   in**.
-- Keep GLM dual-login (Z.ai vs BigModel) as two stacked buttons on that
-  family only. A new family gets one primary login unless it truly has
-  two official OAuth sites.
+- A new family gets one primary CTA that opens the add-account dialog
+  unless it truly has two official OAuth sites. Extra methods (GLM
+  Z.ai / BigModel, Kiro Social / IdC / import, Grok device / PKCE,
+  Cursor import) stay **inside** that dialog, not as extra buttons on
+  the card.
 
 ### Do not
 
 - Merge two vendors into one tab because the icons are similar.
 - Show quota only on the active card.
-- npm-install a React icon package into the classic-script UI.
+- Caption a quota bar as used (`已用` / `% used`) or color it by family.
+- Put add-account / extra login chrome in a side sheet, drawer, or a
+  permanent button row under the cards.
+- npm-install a React icon package or shadcn into the classic-script UI.
 - Hand-edit `lib/`.
 - Auto-release, auto-merge, or bump `package.json` / lockfile version.
   Bug fixes: open the PR and stop. The maintainer merges, bumps, and

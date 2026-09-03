@@ -100,3 +100,60 @@ test('authorize URL and user code hide when the provider is no longer busy', asy
   assert.match(src, /pending\?\.authorizeUrl && busy &&/)
   assert.match(src, /snap\.accounts\[id\]\?\.busy/)
 })
+
+test('QuotaRow is a remaining bar for Codex remainingPercent and Cursor usedPercent', async () => {
+  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  assert.match(src, /function remainingPercentOf\(row\)/)
+  assert.match(src, /typeof row\?\.remainingPercent === 'number'/)
+  assert.match(src, /100 - row\.usedPercent/)
+  assert.match(src, /const remaining = remainingPercentOf\(row\)/)
+  assert.match(src, /fill\(t\.leftPercent, remaining\)/)
+  assert.match(src, /scaleX\(\$\{remaining \/ 100\}\)/)
+  assert.match(src, /leftPercent:\s*'剩余 \{n\}%'/)
+  assert.match(src, /leftPercent:\s*'\{n\}% left'/)
+  assert.match(src, /\.osubs-tag \{[\s\S]*white-space: nowrap/)
+  assert.equal(src.includes('showUsed'), false)
+  assert.equal(src.includes("usedPercent: '已用"), false)
+  assert.equal(src.includes("usedPercent: '{n}% used'"), false)
+  assert.equal(src.includes('t.usedPercent'), false)
+
+  function remainingPercentOf(row) {
+    if (typeof row?.remainingPercent === 'number' && Number.isFinite(row.remainingPercent)) {
+      return Math.max(0, Math.min(100, row.remainingPercent))
+    }
+    if (typeof row?.usedPercent === 'number' && Number.isFinite(row.usedPercent)) {
+      return Math.max(0, Math.min(100, 100 - row.usedPercent))
+    }
+    return undefined
+  }
+  assert.equal(remainingPercentOf({ remainingPercent: 73, kind: 'weekly' }), 73)
+  assert.equal(remainingPercentOf({ usedPercent: 52, kind: 'product', product: 'auto' }), 48)
+  assert.equal(remainingPercentOf({ remainingPercent: 48, usedPercent: 52, kind: 'product' }), 48)
+  assert.equal(remainingPercentOf({ usedPercent: 0, kind: 'product', product: 'api' }), 100)
+})
+
+test('Add account opens a centered dialog, not a sheet', async () => {
+  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  assert.match(src, /addAccountTitle:\s*'添加账号'/)
+  assert.match(src, /addAccountTitle:\s*'Add account'/)
+  assert.match(src, /continueAuth:\s*'继续授权'/)
+  assert.match(src, /function CenterDialog/)
+  assert.match(src, /role: 'dialog'/)
+  assert.match(src, /className: 'osubs-dsw'/)
+  assert.match(src, /setAddOpen\(true\)/)
+  assert.match(src, /busy \? t\.continueAuth : loggedIn \? t\.addAccount : t\.login/)
+  assert.match(src, /id === 'glm' && !busy && h\('div', \{ className: 'osubs-glm-logins' \}/)
+  assert.match(src, /id === 'kiro' && !busy && h\('div', \{ className: 'osubs-logins' \}/)
+  assert.match(src, /id === 'cursor' \? t\.cursorImport : t\.import/)
+  assert.equal(/osubs-sheet|osubs-drawer|role: 'sheet'|side.?sheet|侧边抽屉/i.test(src), false)
+})
+
+test('Reset-credit confirm stays a centered alertdialog', async () => {
+  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  assert.match(src, /function WarnDialog/)
+  assert.match(src, /role: 'alertdialog'/)
+  assert.match(src, /quotaResetAck/)
+  assert.match(src, /quotaResetConfirmOk/)
+  assert.match(src, /event\.key === 'Escape'/)
+  assert.match(src, /pending && h\(WarnDialog/)
+})
