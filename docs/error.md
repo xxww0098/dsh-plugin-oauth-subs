@@ -13,7 +13,38 @@ Hermes `opencode-free` 把 SDK Bearer 盖成空头。本插件 hop 若转发 sto
 ### 修复
 hop **不带** Authorization。live `GET /zen/v1/models` 只收匿名 `*-free`（去掉 Go keyed）。静态楼是 2026-09-03 live 快照，不含 hy3-free / big-pickle。
 
-## 2026-09-03：Kimi Code 不能写自定义 api；设备码过期要重开
+## 2026-09-03：Ollama 周模型 note 一行溢出
+
+### 现象
+Weekly 下 `glm-5.3-flash × 1317 · web search × 3 · web fetch × 2` 挤成一行溢出。
+
+### 根因
+`ollamaModelsNote` 用 ` · ` 拼一条。`span.osubs-note` 不换行。
+
+### 修复
+每条 `name × count` 换行。`.osubs-note` `white-space: pre-wrap` + `overflow-wrap: anywhere`。web search / web fetch 保留。
+
+## 2026-09-03：Ollama 卡不画「n后重置」
+
+### 现象
+Session / Weekly 没有 `{n}后重置`。官方 Cloud UI 有倒计时。`/api/usage` 无 `resets_at`。
+
+### 根因
+`parseOllamaLimitWindow` 不写 `resetAt`。缺 stamp 时 README 禁止编倒计时。
+
+### 修复
+有 stamp 就用。Session 缺 stamp 用下一 UTC 5h unix 桶（`18000-(epoch%18000)`，ollama#12532）。Weekly 只信 wire。不 `now+5h` / `now+7d`，不刮 settings HTML。
+
+## 2026-09-03：模型和 GitHub 掉进 OAuth 第二排左边
+
+### 现象
+8 个家族填满第一排后，Models 和 GitHub 折到 OAuth 胶囊第二排左边，像第 9/10 个家族。
+
+### 根因
+一个 8 列 `.osubs-tabs` 同时装家族 + Models + About。第 9 个起 wrap 进同一 grid。
+
+### 修复
+两胶囊。左 OAuth `repeat(8, 36px)` 只放家族（OpenCode 是第 9 个，折在本组第二排）；右独立胶囊 Models 上、GitHub 下，`margin-left: auto`。## 2026-09-03：Kimi Code 不能写自定义 api；设备码过期要重开
 
 
 ### 现象

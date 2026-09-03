@@ -35,7 +35,7 @@ import {
   parseOllamaMe,
 } from '../lib/oauth/ollama/index.js'
 import { formatPlanLabel } from '../lib/oauth/plan.js'
-import { QuotaStore, parseOllamaUsage } from '../lib/oauth/quota.js'
+import { QuotaStore, ollamaSessionResetAt, parseOllamaUsage } from '../lib/oauth/quota.js'
 import {
   OLLAMA_IMPORT_EMPTY,
   importOllamaAuth,
@@ -211,7 +211,8 @@ async function ollamaCloudFetch(url, init) {
 }
 
 test('parseOllamaUsage maps 0 / 0.095 fractions to remaining 100 and 90.5', () => {
-  const parsed = parseOllamaUsage(LIVE_OLLAMA_USAGE, LIVE_OLLAMA_ME)
+  const now = Date.parse('2026-09-03T12:34:56Z')
+  const parsed = parseOllamaUsage(LIVE_OLLAMA_USAGE, LIVE_OLLAMA_ME, now)
   assert.equal(parsed.planType, 'pro')
   assert.equal(formatPlanLabel(parsed.planType, 'ollama'), 'Pro')
   assert.equal(parsed.account, 'cloud@ollama.local')
@@ -219,12 +220,12 @@ test('parseOllamaUsage maps 0 / 0.095 fractions to remaining 100 and 90.5', () =
   assert.equal(parsed.rows[0].kind, 'primary')
   assert.equal(parsed.rows[0].usedPercent, 0)
   assert.equal(parsed.rows[0].remainingPercent, 100)
-  assert.equal(parsed.rows[0].resetAt, undefined)
+  assert.equal(parsed.rows[0].resetAt, ollamaSessionResetAt(now))
   assert.equal(parsed.rows[1].kind, 'weekly')
   assert.equal(parsed.rows[1].usedPercent, 9.5)
   assert.equal(parsed.rows[1].remainingPercent, 90.5)
   assert.equal(parsed.rows[1].resetAt, undefined)
-  assert.match(parsed.rows[1].note, /glm-5\.3-flash × 1294/)
+  assert.equal(parsed.rows[1].note, 'glm-5.3-flash × 1294\nweb search × 3\nweb fetch × 2')
   const empty = parseOllamaUsage(undefined, undefined)
   assert.deepEqual(empty.rows, [])
   assert.equal(empty.planType, undefined)
@@ -235,6 +236,31 @@ test('parseOllamaUsage maps 0 / 0.095 fractions to remaining 100 and 90.5', () =
   assert.equal(parseOllamaMe({ Email: 'a@b.c', Plan: 'pro' }).account, 'a@b.c')
   assert.equal(isOllamaOpaqueAccount('ollama-3f67f6bb'), true)
   assert.equal(isOllamaOpaqueAccount('cloud@ollama.local'), false)
+})
+
+test('ollama session resetAt is next UTC 5h unix bucket, not now+5h', () => {
+  // ollama/ollama#12532: session remainder = 18000 - (epoch % 18000)
+  assert.equal(ollamaSessionResetAt(0), 18_000_000)
+  assert.equal(ollamaSessionResetAt(1), 18_000_000)
+  assert.equal(ollamaSessionResetAt(17_999_999), 18_000_000)
+  assert.equal(ollamaSessionResetAt(18_000_000), 36_000_000)
+  const now = Date.parse('2026-09-03T12:34:56Z')
+  const parsed = parseOllamaUsage(LIVE_OLLAMA_USAGE, LIVE_OLLAMA_ME, now)
+  assert.equal(parsed.rows[0].resetAt, ollamaSessionResetAt(now))
+  assert.notEqual(parsed.rows[0].resetAt, now + 5 * 3600 * 1000)
+  assert.equal(parsed.rows[1].resetAt, undefined)
+  const stamped = parseOllamaUsage({
+    limits: {
+      session: { usage: 0, resets_at: '2099-01-01T00:00:00Z' },
+      weekly: { usage: 0.1, reset_at: '2099-01-08T00:00:00Z', models: [] },
+    },
+  }, LIVE_OLLAMA_ME, now)
+  assert.equal(stamped.rows[0].resetAt, Date.parse('2099-01-01T00:00:00Z'))
+  assert.equal(stamped.rows[1].resetAt, Date.parse('2099-01-08T00:00:00Z'))
+  const nextReset = parseOllamaUsage({
+    limits: { session: { usage: 0.2, next_reset: 1_800_000_000 } },
+  }, undefined, now)
+  assert.equal(nextReset.rows[0].resetAt, 1_800_000_000_000)
 })
 
 test('snapshot shows quota on every ollama account', async () => {

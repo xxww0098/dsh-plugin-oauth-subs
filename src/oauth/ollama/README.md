@@ -17,7 +17,7 @@ Ollama **Cloud** 订阅（[ollama.com](https://ollama.com)）。**不是**本机
 | [`cache.ts`](cache.ts) | 剥 Codex / Grok 字段。没有文档化的 sticky id / cache-read |
 
 调度：[`../proxy.ts`](../proxy.ts) `family === 'ollama'` 剥 cache 字段，`forward()` 到 `https://ollama.com/v1/chat/completions`。
-额度：[`../quota.ts`](../quota.ts) `fetchOllamaQuota` 并行 `GET /api/usage` + `POST /api/me`。`limits.*.usage` 是 0..1 分数。无 `resets_at`，不编倒计时。
+额度：[`../quota.ts`](../quota.ts) `fetchOllamaQuota` 并行 `GET /api/usage` + `POST /api/me`。`limits.*.usage` 是 0..1 分数。有 `resets_at` / `reset_at` / `resetAt` / `next_reset` 就用。Session 缺 stamp 时用下一 UTC 5h unix 桶（`18000 - (epoch % 18000)`，[ollama#12532](https://github.com/ollama/ollama/issues/12532)），不是从上次点击起算 5h。Weekly 只信 wire stamp，不编 `now+7d`。
 套餐：`me.Plan`（`pro` → Pro），不走 Codex `pro` → Pro 20x。
 
 ## 协议
@@ -97,9 +97,13 @@ POST /api/me      Authorization: Bearer  body {}
 
 `/api/me` 是 PascalCase：`Email` / `Name` / `Plan`。`Plan: "pro"` → 徽章 **Pro**。GET `/api/me` 是 405。
 
-无 `resets_at` / `reset_at`。官方窗口是 session 5 小时、weekly 7 天。**不要**用 5h/7d 编「2 hours」「3 days」倒计时。行标签用已有 `t.primary`（5 小时）/ `t.weekly`（每周）。缺 stamp 就不画重置文案。
+2026-09-03 live `GET /api/usage` 的 `limits.session` / `limits.weekly` 只有 `usage` + `models`，没有 `resets_at`。官方 Cloud UI 仍画 session / weekly 倒计时。定价文案：session 每 5 小时、weekly 每 7 天。社区观察（[ollama#12532](https://github.com/ollama/ollama/issues/12532)）session 是**全局 5h unix 桶**（`18000 - (epoch % 18000)`）。
 
-卡片画两条剩余条（`QuotaMeter` / `RemainingBar`，剩余 N%，减填），不是官方「% used」条。Weekly 下可跟一行 `name × count`（本周 models），不加图表库。
+`parseOllamaLimitWindow`：先读 `resets_at` / `reset_at` / `resetAt` / `next_reset`。Session 缺 stamp → `ollamaSessionResetAt`（下一 UTC 5h 边界）。Weekly 缺 stamp **不**编 `Date.now()+7d`（#12532 的 weekly 公式带未证实的 `- 4 days` 偏移）。有 `resetAt` 后 Settings `formatReset` 画「{n}后重置」（一律相对时间）。
+
+**不要**刮 ollama.com/settings HTML。行标签仍是 `t.primary`（5 小时）/ `t.weekly`（每周）。
+
+卡片画两条剩余条（`QuotaMeter` / `RemainingBar`，剩余 N%，减填），不是官方「% used」条。Weekly `note` 每条 `name × count` 一行（`\n` + `.osubs-note` `pre-wrap`），含 `web search` / `web fetch`，不加图表库。
 
 `QuotaStore` 对 ollama 走 `fetchOllamaQuota`，刷新按钮与别的家族一样。localhost:11434 不在这个家族。
 
@@ -122,7 +126,8 @@ DSH 每步前置的 runtime snapshot 因此无法在 Ollama Cloud 上做 prefix 
 - 假装 `ollama signin` 是公开 PKCE
 - 选 Responses「因为本地 Ollama 也有 `/v1/responses`」
 - 抄 Codex / Grok / GLM / Kiro / Antigravity / Cursor 的 cache 头或停车形状
-- 把 0..1 `usage` 当成已经是百分数，或编 `resets_at` 倒计时
+- 把 0..1 `usage` 当成已经是百分数
+- 从上次点击起算 `now+5h`，或编 `now+7d` weekly；刮 ollama.com/settings HTML
 - 发明 `cached_tokens`
 - 用 128k/200k/256k 家族启发式当 DSH `contextWindow`，或把 launch `extraCloudModelLimits` 抄进 picker
 - 用名字 regex 当 picker `input` 的主路径（`glm-5.3-flash` 对不上 `gemma|vl`，但 show 有 `vision`）
