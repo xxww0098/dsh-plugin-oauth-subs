@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import {
   BUILDER_ID_START_URL,
+  KIRO_MODELS,
   KIRO_PORTAL_URL,
   KIRO_USAGE_VERSION,
   allocateKiroMachineId,
@@ -43,6 +44,19 @@ import {
   parseKiroImportText,
   sessionsFromKiroAuth,
 } from '../lib/oauth/kiro/import.js'
+import {
+  classifyKiroHopError,
+  collectKiroEvents,
+  kiroClientErrorStatus,
+  kiroToOpenai,
+  normalizeToolUseId,
+  openaiToKiro,
+} from '../lib/oauth/kiro/request.js'
+import {
+  originalKiroFallbackIds,
+  refreshKiroCatalog,
+  resetKiroCatalogCache,
+} from '../lib/oauth/kiro/catalog.js'
 
 const RT = `rt_${'x'.repeat(120)}`
 const KEY = 'ksk_live_example1'
@@ -190,7 +204,7 @@ test('formatPlanLabel maps Kiro slugs without colliding with Codex Pro 20x', () 
   assert.equal(formatPlanLabel('KIRO POWERED', 'kiro'), 'Powered')
 })
 
-test('Kiro catalog matches kiro.dev models minus Auto, with native ids', () => {
+test('Kiro catalog matches kiro.dev models plus Auto and Fable 5, with native ids', () => {
   const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
   const kiro = catalog['oauth-kiro']
   assert.deepEqual(kiro.models.map((model) => model.id), [
@@ -203,9 +217,11 @@ test('Kiro catalog matches kiro.dev models minus Auto, with native ids', () => {
     'claude-opus-4.6',
     'claude-opus-4.5',
     'claude-sonnet-5',
+    'claude-fable-5',
     'claude-sonnet-4.6',
     'claude-sonnet-4.5',
     'claude-sonnet-4',
+    'auto',
     'claude-haiku-4.5',
     'deepseek-3.2',
     'minimax-m2.5',
@@ -214,7 +230,8 @@ test('Kiro catalog matches kiro.dev models minus Auto, with native ids', () => {
     'qwen3-coder-next',
   ])
   assert.equal(kiro.models.find((model) => model.id === 'claude-sonnet-4-8'), undefined)
-  assert.equal(kiro.models.find((model) => model.id === 'auto'), undefined)
+  assert.equal(kiro.models.find((model) => model.id === 'auto')?.name, 'Auto')
+  assert.equal(kiro.models.find((model) => model.id === 'claude-fable-5')?.name, 'Claude Fable 5')
   assert.equal(kiro.models.find((model) => model.id === 'claude-opus-5').contextWindow, 1_000_000)
   assert.equal(kiro.models.find((model) => model.id === 'claude-sonnet-5').name, 'Claude Sonnet 5')
   assert.deepEqual(kiro.models.find((model) => model.id === 'claude-opus-4.8').input, ['text', 'image'])
@@ -785,4 +802,165 @@ test('Kiro vault can hold one card per credential method', async () => {
     assert.equal(card.quota.status, 'ready')
     assert.equal(card.account, 'dev@x')
   }
+})
+
+const PIPED_TOOL_ID = 'call_abc123|fc_this_is_an_openai_responses_compound_id_over_sixty_four_chars_xx'
+
+function toolCall(id, name = 'run_code', args = '{}') {
+  return { id, type: 'function', function: { name, arguments: args } }
+}
+
+function toolUseIds(row) {
+  return row?.assistantResponseMessage?.toolUses?.map((item) => item.toolUseId) ?? []
+}
+
+function toolResultIdsOf(row) {
+  const results = row?.userInputMessage?.userInputMessageContext?.toolResults
+    ?? row?.userInputMessageContext?.toolResults
+  return (results ?? []).map((item) => item.toolUseId)
+}
+
+test('piped OpenAI tool ids remap stably on use and result', () => {
+  assert.ok(PIPED_TOOL_ID.includes('|'))
+  assert.ok(PIPED_TOOL_ID.length > 64)
+  const first = normalizeToolUseId(PIPED_TOOL_ID)
+  const second = normalizeToolUseId(PIPED_TOOL_ID)
+  assert.equal(first, second)
+  assert.match(first, /^tooluse_[A-Za-z0-9_-]{1,56}$/)
+  assert.equal(first.includes('|'), false)
+  assert.ok(first.length <= 64)
+  assert.equal(normalizeToolUseId('call_1'), 'tooluse_1')
+  assert.equal(normalizeToolUseId('toolu_bdrk_01Ez5MSML7fNdsjMvkPUTeCd'), 'tooluse_bdrk_01Ez5MSML7fNdsjMvkPUTeCd')
+
+  const body = openaiToKiro({
+    model: 'claude-opus-5',
+    messages: [
+      { role: 'user', content: 'run it' },
+      { role: 'assistant', content: '', tool_calls: [toolCall(PIPED_TOOL_ID)] },
+      { role: 'tool', tool_call_id: PIPED_TOOL_ID, content: '{"ok":true}' },
+    ],
+  })
+  const history = body.conversationState.history
+  const current = body.conversationState.currentMessage.userInputMessage
+  const useId = history.find((row) => row.assistantResponseMessage?.toolUses)?.assistantResponseMessage.toolUses[0].toolUseId
+  assert.equal(useId, first)
+  assert.deepEqual(toolResultIdsOf(current), [first])
+  const again = openaiToKiro({
+    model: 'claude-opus-5',
+    messages: [
+      { role: 'user', content: 'run it' },
+      { role: 'assistant', content: '', tool_calls: [toolCall(PIPED_TOOL_ID)] },
+      { role: 'tool', tool_call_id: PIPED_TOOL_ID, content: '{"ok":true}' },
+    ],
+  })
+  assert.equal(
+    again.conversationState.history.find((row) => row.assistantResponseMessage?.toolUses)
+      ?.assistantResponseMessage.toolUses[0].toolUseId,
+    useId,
+  )
+})
+
+test('interleaved A/B tool results relocate before positional flush', () => {
+  const body = openaiToKiro({
+    model: 'claude-sonnet-5',
+    messages: [
+      { role: 'user', content: 'start' },
+      { role: 'assistant', content: '', tool_calls: [toolCall('call_A', 'alpha')] },
+      { role: 'user', content: 'meanwhile' },
+      { role: 'assistant', content: '', tool_calls: [toolCall('call_B', 'bravo')] },
+      { role: 'tool', tool_call_id: 'call_A', content: '{"a":1}' },
+      { role: 'tool', tool_call_id: 'call_B', content: '{"b":2}' },
+    ],
+  })
+  const history = body.conversationState.history
+  const aIdx = history.findIndex((row) => toolUseIds(row).includes('tooluse_A'))
+  assert.notEqual(aIdx, -1)
+  assert.deepEqual(toolResultIdsOf(history[aIdx + 1]), ['tooluse_A'])
+  // Relocate is a pure reorder — do not merge the intervening user text onto the
+  // tool-result turn. Empty content when toolResults is set (AWS pairing).
+  assert.equal(history[aIdx + 1].userInputMessage.content, '')
+  assert.equal(history.some((row) => row.userInputMessage?.content === 'meanwhile'), true)
+  const bIdx = history.findIndex((row) => toolUseIds(row).includes('tooluse_B'))
+  assert.ok(bIdx > aIdx)
+  assert.deepEqual(toolResultIdsOf(body.conversationState.currentMessage), ['tooluse_B'])
+  assert.equal(body.conversationState.currentMessage.userInputMessage.content, '')
+  assert.equal(JSON.stringify(body).includes('Tool results provided.'), false)
+})
+
+test('live catalog mock expands beyond static fallback and includes auto', async () => {
+  resetKiroCatalogCache()
+  const session = kiroSession({ accessToken: 'live-tok', refreshToken: RT, authMethod: 'social' })
+  const seen = []
+  const models = await refreshKiroCatalog(session, {
+    fetchFn: async (url) => {
+      const href = String(url)
+      seen.push(href)
+      if (href.includes('us-east-1') && href.includes('List-Available-Models')) {
+        return new Response('no profile here', { status: 403 })
+      }
+      if (href.includes('List-Available-Profiles')) {
+        return json({ profiles: [{ arn: 'arn:aws:codewhisperer:eu-central-1:1:profile/X' }] })
+      }
+      return json({
+        models: [
+          { modelId: 'auto', displayName: 'Auto' },
+          { modelId: 'gpt-5.6-sol', displayName: 'GPT-5.6 Sol' },
+          { modelId: 'kiro-live-only', displayName: 'Kiro Live Only' },
+        ],
+      })
+    },
+  })
+  assert.ok(seen.some((href) => href.includes('us-east-1')))
+  assert.ok(seen.some((href) => href.includes('eu-central-1') || href.includes('List-Available-Profiles')))
+  assert.ok(models.length > KIRO_MODELS.length)
+  assert.ok(models.some((model) => model.id === 'auto'))
+  assert.ok(models.some((model) => model.id === 'kiro-live-only'))
+  assert.ok(models.some((model) => model.id === 'gpt-5.6-sol'))
+  assert.ok(models.some((model) => model.id === 'gpt-5.6-terra'))
+  resetKiroCatalogCache()
+})
+
+test('empty ListAvailableModels keeps the static fallback including the original 18', async () => {
+  resetKiroCatalogCache()
+  const session = kiroSession({ accessToken: 'empty-tok', refreshToken: RT, authMethod: 'social' })
+  const models = await refreshKiroCatalog(session, {
+    fetchFn: async () => json({ models: [] }),
+  })
+  assert.deepEqual(models.map((model) => model.id), KIRO_MODELS.map((model) => model.id))
+  const originals = originalKiroFallbackIds()
+  assert.equal(originals.length, 18)
+  for (const id of originals) assert.ok(models.some((model) => model.id === id))
+  resetKiroCatalogCache()
+})
+
+test('MONTHLY_REQUEST_COUNT is not a 429', () => {
+  const body = { reason: 'MONTHLY_REQUEST_COUNT', message: 'monthly request count exceeded' }
+  const classified = classifyKiroHopError(429, body, JSON.stringify(body))
+  assert.equal(classified.status, 400)
+  assert.notEqual(classified.status, 429)
+  assert.equal(classified.code, 'kiro_quota')
+  assert.equal(kiroClientErrorStatus(429, body, JSON.stringify(body)), 400)
+  assert.equal(classifyKiroHopError(429, { reason: 'USER_REQUEST_RATE_EXCEEDED' }, '', { retryAfter: '2' }).status, 429)
+  assert.equal(classifyKiroHopError(503, { reason: 'INSUFFICIENT_MODEL_CAPACITY' }, '').status, 503)
+  assert.equal(classifyKiroHopError(400, { reason: 'CONTENT_LENGTH_EXCEEDS_THRESHOLD' }, '').status, 400)
+  assert.equal(kiroClientErrorStatus(403), 400)
+})
+
+test('thinking events do not leak XML into content', () => {
+  const collected = collectKiroEvents([
+    { type: 'thinkingEvent', payload: { text: 'I will plan the edit' } },
+    { type: 'assistantResponseEvent', payload: { content: 'hello from kiro' } },
+  ])
+  assert.equal(collected.text, 'hello from kiro')
+  assert.equal(collected.thinking, 'I will plan the edit')
+  assert.equal(collected.text.includes('<thinking>'), false)
+  assert.equal(collected.thinking.includes('<thinking>'), false)
+  const openai = kiroToOpenai([
+    { type: 'thinkingEvent', payload: { thinkingEvent: { text: 'step one' } } },
+    { type: 'assistantResponseEvent', payload: { content: 'done' } },
+  ], { model: 'claude-sonnet-5', id: 'chatcmpl-think' })
+  assert.equal(openai.choices[0].message.content, 'done')
+  assert.equal(openai.choices[0].message.reasoning_content, 'step one')
+  assert.equal(String(openai.choices[0].message.content).includes('<thinking>'), false)
+  assert.equal(JSON.stringify(openai.choices[0].message).includes('<thinking>'), false)
 })

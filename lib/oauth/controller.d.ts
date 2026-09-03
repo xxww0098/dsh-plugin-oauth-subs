@@ -4,7 +4,7 @@
  */
 export declare class AuthController {
     #private;
-    constructor({ authPath, prefix, origin, settings, grokLogin, onAuthChanged, models, fetchFn, quotaTtlMs, spawnFn, profile, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover }: {
+    constructor({ authPath, prefix, origin, settings, grokLogin, onAuthChanged, models, fetchFn, quotaTtlMs, spawnFn, profile, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover }: {
         authPath: any;
         prefix: any;
         origin: any;
@@ -21,6 +21,7 @@ export declare class AuthController {
         cursorDiscover: any;
         ollamaAutoImport: any;
         ollamaDiscover: any;
+        kiroDiscover: any;
     });
     claim(provider: any): any;
     loggedIn(): Promise<{

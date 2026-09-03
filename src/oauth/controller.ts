@@ -68,6 +68,7 @@ import { cursorCatalogModels, refreshCursorCatalog } from './cursor/catalog.js'
 import { ollamaSession, refreshOllama, isOllamaPermanentRefreshError, resolveOllamaIdentity } from './ollama/index.js'
 import { OLLAMA_IMPORT_EMPTY, importOllamaAuth } from './ollama/import.js'
 import { ollamaCatalogModels, refreshOllamaCatalog } from './ollama/catalog.js'
+import { kiroCatalogModels, refreshKiroCatalog } from './kiro/catalog.js'
 import {
   buildProviders,
   catalogProviders,
@@ -82,7 +83,7 @@ import { QuotaStore } from './quota.js'
 import { fetchLatest, localUpdateInfo, runPluginUpdate, DEFAULT_PROFILE } from '../utils/update.js'
 
 export class AuthController {
-  constructor({ authPath, prefix, origin, settings, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, spawnFn, profile, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover }) {
+  constructor({ authPath, prefix, origin, settings, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, spawnFn, profile, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover }) {
     this.authPath = authPath
     this.prefix = prefix
     this.origin = origin
@@ -109,6 +110,9 @@ export class AuthController {
     this.ollamaDiscover = typeof ollamaDiscover === 'function'
       ? ollamaDiscover
       : (process.env.NODE_TEST_CONTEXT ? undefined : refreshOllamaCatalog)
+    this.kiroDiscover = typeof kiroDiscover === 'function'
+      ? kiroDiscover
+      : (process.env.NODE_TEST_CONTEXT ? undefined : ((session) => refreshKiroCatalog(session, { fetchFn })))
     this.lastError = new Map()
     this.finalizing = new Set()
     this.claims = new Map()
@@ -226,6 +230,7 @@ export class AuthController {
       origin: this.origin(),
       cursorModels: cursorCatalogModels(),
       ollamaModels: ollamaCatalogModels(),
+      kiroModels: kiroCatalogModels(),
     })
   }
 
@@ -247,6 +252,15 @@ export class AuthController {
     }
   }
 
+  async #discoverKiro(session) {
+    if (!session || typeof this.kiroDiscover !== 'function') return kiroCatalogModels()
+    try {
+      return await this.kiroDiscover(session)
+    } catch {
+      return kiroCatalogModels()
+    }
+  }
+
   async snapshot() {
     await this.models.ready
     await this.#resolveGlmIdentities()
@@ -260,6 +274,7 @@ export class AuthController {
       origin,
       cursorModels: cursorCatalogModels(),
       ollamaModels: ollamaCatalogModels(),
+      kiroModels: kiroCatalogModels(),
     })
     const selected = this.models.selectedForSync(catalog)
     const providers = filterProviders(buildProviders({
@@ -268,6 +283,7 @@ export class AuthController {
       loggedIn,
       cursorModels: cursorCatalogModels(),
       ollamaModels: ollamaCatalogModels(),
+      kiroModels: kiroCatalogModels(),
     }), selected)
     if (loggedIn.codex) await this.#ensureAccountQuota('codex')
     else this.quota.clear('codex')
@@ -335,6 +351,13 @@ export class AuthController {
         const before = ollamaCatalogModels().map((model) => model.id).join('\0')
         await Promise.all(targets.map((row) => this.#discoverOllama(row.session)))
         if (this.settings && ollamaCatalogModels().map((model) => model.id).join('\0') !== before) {
+          await this.sync().catch(() => undefined)
+        }
+      }
+      if (provider === 'kiro') {
+        const before = kiroCatalogModels().map((model) => model.id).join('\0')
+        await Promise.all(targets.map((row) => this.#discoverKiro(row.session)))
+        if (this.settings && kiroCatalogModels().map((model) => model.id).join('\0') !== before) {
           await this.sync().catch(() => undefined)
         }
       }
@@ -726,6 +749,7 @@ export class AuthController {
       if (this.claims.get(provider) !== claim) return
       await saveSession(provider, session, this.authPath)
       this.lastError.delete(provider)
+      if (provider === 'kiro') await this.#discoverKiro(session)
       this.onAuthChanged?.(provider)
       void this.quota.refresh(provider)
       if (provider === 'antigravity') void this.#probeAntigravity(session)
@@ -805,6 +829,7 @@ export class AuthController {
       const session = await attempt.waitToken()
       await saveSession('kiro', session, this.authPath)
       this.lastError.delete('kiro')
+      await this.#discoverKiro(session)
       this.onAuthChanged?.('kiro')
       void this.quota.refresh('kiro')
     } catch (error) {
@@ -891,6 +916,7 @@ export class AuthController {
     }
     await saveSession('kiro', session, this.authPath)
     this.lastError.delete('kiro')
+    await this.#discoverKiro(session)
     this.onAuthChanged?.('kiro')
     void this.quota.refresh('kiro')
     return { method: session.authMethod, account: publicSession('kiro', session), count: 1 }
@@ -920,6 +946,7 @@ export class AuthController {
       throw new Error(errors[0] || 'no Kiro credentials imported')
     }
     this.lastError.delete('kiro')
+    if (saved[0]) await this.#discoverKiro(saved[0])
     this.onAuthChanged?.('kiro')
     void this.quota.refresh('kiro')
     return {
@@ -994,6 +1021,7 @@ export class AuthController {
     this.lastError.delete(provider)
     if (provider === 'cursor') await this.#discoverCursor(sessions[0])
     if (provider === 'ollama') await this.#discoverOllama(sessions[0])
+    if (provider === 'kiro') await this.#discoverKiro(sessions[0])
     this.onAuthChanged?.(provider)
     void this.quota.refresh(provider)
     return {
@@ -1046,6 +1074,7 @@ export class AuthController {
       selected: this.models.selectedForSync(catalog),
       cursorModels: cursorCatalogModels(),
       ollamaModels: ollamaCatalogModels(),
+      kiroModels: kiroCatalogModels(),
     })
   }
 }

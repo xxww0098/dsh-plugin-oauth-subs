@@ -57,7 +57,11 @@ export declare const KIRO_REASONING_GPT: Readonly<{
     xhigh: "xhigh";
     max: "max";
 }>;
-/** Kiro generateAssistantResponse ids (dots). Matches kiro.dev/docs/models, minus Auto. */
+/**
+ * Offline fallback. Matches kiro.dev/docs/models including Auto.
+ * `claude-fable-5` is in the pi-provider-kiro 0.10.2 bootstrap (not the
+ * public docs table). Live ListAvailableModels may add more.
+ */
 export declare const KIRO_MODELS: readonly {
     id: any;
     name: any;
@@ -95,6 +99,10 @@ export declare function kiroMethodLabel(methodOrSession: any): "Builder" | "IdC"
 export declare function kiroAccountId(session?: {}): string;
 export declare function oidcEndpoint(region?: string): string;
 export declare function kiroUsageHost(region?: string): string;
+/** Management plane for ListAvailableProfiles / ListAvailableModels. Chat stays on q.<region>.amazonaws.com. */
+export declare function kiroManagementHost(region?: string): string;
+export declare const KIRO_LIST_PROFILES_PATH = "List-Available-Profiles";
+export declare const KIRO_LIST_MODELS_PATH = "List-Available-Models";
 export declare function kiroUsageRegions(session?: {}): string[];
 export declare function kiroUsageUrl(region: any, profileArn: any): string;
 export declare function validateKiroIdpEndpoint(raw: any): any;
