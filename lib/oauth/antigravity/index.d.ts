@@ -195,7 +195,21 @@ export declare function antigravityOnboardUserHeaders(accessToken: any): {
     'user-agent': string;
     'x-goog-api-client': string;
 };
-export declare function antigravityChatHeaders(session: any): {
+export declare const ANTIGRAVITY_CLAUDE_THINKING_BETA = "interleaved-thinking-2025-05-14";
+/** Claude reasoning only — do not add on Gemini / GPT-OSS / loadCodeAssist. */
+export declare function antigravityClaudeReasoningHeader(model: any): {
+    'anthropic-beta': string;
+} | {
+    'anthropic-beta'?: undefined;
+};
+export declare function antigravityChatHeaders(session: any, { model }?: {}): {
+    'anthropic-beta': string;
+    authorization: string;
+    accept: string;
+    'content-type': string;
+    'user-agent': string;
+} | {
+    'anthropic-beta'?: undefined;
     authorization: string;
     accept: string;
     'content-type': string;
