@@ -74,9 +74,9 @@ test('Settings Ollama card hides ollama-hex title and uses remaining row labels'
   assert.match(src, /if \(row\.kind === 'weekly'\) return t\.weekly/)
   assert.match(src, /row\.note && h\('span', \{ className: 'osubs-note' \}, row\.note\)/)
   assert.match(src, /if \(family === 'ollama'\) \{[\s\S]*return 'Pro'/)
-  assert.match(src, /\.osubs-note \{[\s\S]*white-space: pre-wrap/)
-  assert.match(src, /\.osubs-note \{[\s\S]*overflow-wrap: anywhere/)
-  assert.equal(/\.osubs-note \{[\s\S]*white-space: nowrap/.test(src), false)
+  assert.match(src, /\.osubs-note \{[^}]*white-space: pre-wrap/)
+  assert.match(src, /\.osubs-note \{[^}]*overflow-wrap: anywhere/)
+  assert.equal(/\.osubs-note \{[^}]*white-space: nowrap/.test(src), false)
 })
 
 test('Settings Cursor tab uses Import local Cursor copy and shows source, never tokens', async () => {
