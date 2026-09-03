@@ -5,7 +5,7 @@
  *   1. runs a loopback OpenAI Responses proxy on 127.0.0.1:<port>
  *   2. drives ChatGPT Codex PKCE, xAI Grok device-code / PKCE,
  *      Zhipu GLM Z.ai / BigModel CLI-poll, AWS Kiro (Social / Builder ID /
- *      IdC / Entra / API key), Google Antigravity, and Cursor logins
+ *      IdC / Entra / API key), Google Antigravity, Cursor, and Ollama Cloud logins
  *   3. syncs logged-in catalogs into llm-pi-ai
  *
  * The client half (Settings > OAuth 订阅) is discovered from package.json
@@ -22,6 +22,7 @@ import { authFilePath, defaultDataDir, readPrivateText, writePrivateText } from 
 import { createProxy } from './oauth/proxy.js'
 import { catalogProviders, OAUTH_CREDENTIAL_REF, ModelSwitch } from './oauth/models.js'
 import { cursorCatalogModels } from './oauth/cursor/catalog.js'
+import { ollamaCatalogModels } from './oauth/ollama/catalog.js'
 import { EffortMemory, LAST_EFFORT_FILE, startEffortRestore } from './oauth/reasoning-effort.js'
 import { profileFromBaseUrl } from './utils/update.js'
 
@@ -158,6 +159,7 @@ export function apply(ctx, config = {}) {
         prefix,
         origin: `http://127.0.0.1:${port}`,
         cursorModels: cursorCatalogModels(),
+        ollamaModels: ollamaCatalogModels(),
       })
       return catalog[provider]?.models.find((model) => model.id === modelId)?.reasoningEfforts
     },
@@ -242,6 +244,12 @@ export {
   cursorChatHeaders,
   cursorSession,
 } from './oauth/cursor/index.js'
+export {
+  OLLAMA_MODELS,
+  OLLAMA_CHAT_URL,
+  ollamaSession,
+  ollamaUpstreamHeaders,
+} from './oauth/ollama/index.js'
 export { OAUTH_CREDENTIAL_REF, ModelSwitch } from './oauth/models.js'
 export { defaultDataDir } from './oauth/store.js'
 export { AuthController } from './oauth/controller.js'

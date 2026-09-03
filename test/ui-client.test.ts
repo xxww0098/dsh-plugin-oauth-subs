@@ -70,11 +70,11 @@ test('Settings Cursor tab uses Import local Cursor copy and shows source, never 
   assert.match(src, /cursorImport:\s*'导入本机 Cursor'/)
   assert.match(src, /cursorImport:\s*'Import local Cursor'/)
   assert.match(src, /cursorImportEmpty:\s*'本机没有 Cursor CLI 或 IDE 登录'/)
-  assert.match(src, /id === 'cursor' \? t\.cursorImport : t\.import/)
-  assert.match(src, /id === 'cursor' && row\.methodLabel/)
+  assert.match(src, /id === 'cursor' \? t\.cursorImport : id === 'ollama' \? t\.ollamaImport : t\.import/)
+  assert.match(src, /\(id === 'cursor' \|\| id === 'ollama'\) && row\.methodLabel/)
   assert.match(src, /message === 'cursor-import-empty' \? t\.cursorImportEmpty/)
   assert.match(src, /h\(Tab, \{ id: 'cursor'/)
-  assert.match(src, /icons\/\{codex,grok,zai,kiro,antigravity,cursor,github\}\.svg/)
+  assert.match(src, /icons\/\{codex,grok,zai,kiro,antigravity,cursor,ollama,github\}\.svg/)
   assert.match(src, /cursor: \{ d: 'M22\.106 5\.68L12\.5\.135a\.998\.998 0 00-\.998 0L1\.893 5\.68/)
   assert.match(src, /cursor: \{ d: '[^']+', clip: true \}/)
   assert.equal(src.includes('M11.925 24l10.425-6'), false)
@@ -82,7 +82,20 @@ test('Settings Cursor tab uses Import local Cursor copy and shows source, never 
   assert.equal(/cursor[\s\S]{0,200}accessToken/.test(src), false)
   const tabOrder = src.match(/h\(Tab, \{ id: '(\w+)'/g) ?? []
   const ids = tabOrder.map((row) => /id: '(\w+)'/.exec(row)?.[1])
-  assert.deepEqual(ids.slice(0, 8), ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'models', 'about'])
+  assert.deepEqual(ids.slice(0, 9), ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'models', 'about'])
+})
+
+test('Settings Ollama tab is Cloud key paste after Cursor, never localhost', async () => {
+  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  assert.match(src, /ollamaTitle:\s*'Ollama'/)
+  assert.match(src, /ollamaLoginApiKey:\s*'粘贴 API Key'/)
+  assert.match(src, /ollamaLoginApiKey:\s*'Paste API key'/)
+  assert.match(src, /ollamaImport:\s*'导入 OLLAMA_API_KEY'/)
+  assert.match(src, /h\(Tab, \{ id: 'ollama'/)
+  assert.match(src, /tab === 'ollama' && card\('ollama'/)
+  assert.match(src, /ollama: \{ d: 'M7\.905 1\.09/)
+  assert.equal(src.includes('127.0.0.1:11434'), false)
+  assert.equal(src.includes('localhost:11434'), false)
 })
 
 test('Settings Antigravity card shows a verify banner, not API-key-invalid', async () => {

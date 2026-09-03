@@ -90,6 +90,12 @@ src/
       cache.ts             conversationId (never Date.now())
       proto.ts             minimal Connect/protobuf subset
       h2-session.ts        Node http2 in-process transport
+    ollama/                Ollama Cloud (ollama.com API key — not localhost:11434)
+      README.md            family design: login, chat, quota, cache (traceable)
+      index.ts             catalog, identity, API key session, Bearer headers
+      import.ts            OLLAMA_API_KEY env (not ollama signin)
+      catalog.ts           live GET /api/tags; static fallback
+      cache.ts             strip Codex/Grok fields; no sticky id (non-fix)
   ui/                      React Settings (classic-script factory)
     client.ts
   utils/                   shared, provider-agnostic
@@ -109,9 +115,9 @@ scripts/                   CLI (TypeScript)
 
 Rules:
 
-- Codex-only code → `src/oauth/codex/`. Grok-only code → `src/oauth/grok/`. GLM-only code → `src/oauth/glm/`. Kiro-only code → `src/oauth/kiro/`. Antigravity-only code → `src/oauth/antigravity/`. Cursor-only code → `src/oauth/cursor/`.
+- Codex-only code → `src/oauth/codex/`. Grok-only code → `src/oauth/grok/`. GLM-only code → `src/oauth/glm/`. Kiro-only code → `src/oauth/kiro/`. Antigravity-only code → `src/oauth/antigravity/`. Cursor-only code → `src/oauth/cursor/`. Ollama-only code → `src/oauth/ollama/`.
 - **Each family has `README.md`.** Login, session, chat hop, models, quota, and cache for that vendor are written there so a later change can be traced to files and to `docs/error.md`. Cross-family rules stay in this file; do not let family READMEs contradict it.
-- **Cache is per family.** Each `src/oauth/<id>/cache.ts` owns that vendor's prompt-cache identity, headers, and prefix pin. Do not import Codex cache helpers from Grok / GLM / Kiro / Antigravity / Cursor. Do not share a `codexCacheSessionId` in `src/utils/`. `proxy.ts` only dispatches.
+- **Cache is per family.** Each `src/oauth/<id>/cache.ts` owns that vendor's prompt-cache identity, headers, and prefix pin. Do not import Codex cache helpers from Grok / GLM / Kiro / Antigravity / Cursor / Ollama. Do not share a `codexCacheSessionId` in `src/utils/`. `proxy.ts` only dispatches.
 - Shared crypto / session scoring → `src/utils/`.
 - Settings React → `src/ui/`.
 - Do not flatten modules back into a single `lib/*.js` bag.
@@ -135,7 +141,7 @@ two disagree, fix the README — do not weaken these invariants.
   `src/utils/cache-session.ts` or a shared `codexCacheSessionId`.
 - Do **not** stamp `Date.now()` (or any per-request random) as a session /
   conversation / cache id. Missing DSH ids fall back to a **stable
-  constant** owned by that family (`dsh-antigravity`, `dsh-kiro`, `dsh-cursor`, …).
+  constant** owned by that family (`dsh-antigravity`, `dsh-kiro`, `dsh-cursor`, `dsh-ollama`, …).
 - DSH may send `session_id` and/or `prompt_cache_key`. Mapping those onto
   the vendor wire is family-owned. Reading DSH's key is fine; writing
   Codex fields upstream is not, unless that vendor actually uses them.
@@ -150,11 +156,11 @@ Export (names may vary, behavior must not):
    → `undefined`. Clip is family-owned (today 1–64 of `[A-Za-z0-9._:-]`,
    but the function still lives in that folder so the charset can diverge).
 2. Apply / pin helper used by `request.ts` or `proxy.ts`
-   (`applyCodexCache`, `applyGrokCache`, `applyGlmCache` /
-   `applyGlmAnthropicCache`,
-   `antigravitySessionIdOf` + `pinAntigravitySystemInstruction` /
-   `pinAntigravityTools` / `pinAntigravityThinking`,
-   `kiroConversationId`).
+  (`applyCodexCache`, `applyGrokCache`, `applyGlmCache` /
+  `applyGlmAnthropicCache`,
+  `antigravitySessionIdOf` + `pinAntigravitySystemInstruction` /
+  `pinAntigravityTools` / `pinAntigravityThinking`,
+  `kiroConversationId`, `applyOllamaCache`).
 3. Header helper if the vendor sticky-routes on headers
    (`codexCacheHeaders`, `grokAffinityHeaders`). GLM headers stay in
    `glm/index.ts` (`x-session-id`, Anthropic `anthropic-version`) and call
@@ -195,6 +201,7 @@ Kiro:      conversationState.conversationId (+ model)
 Cursor:    conversationId on AgentRunRequest (fallback `dsh-cursor:<model>`)
            drop Codex/Grok cache fields
            first system pinned in root_prompt_messages_json; extras as extra system blobs
+Ollama:    drop Codex/Grok cache fields; no sticky conversation id (non-fix)
 ```
 
 ### Per family
@@ -299,6 +306,16 @@ Cursor:    conversationId on AgentRunRequest (fallback `dsh-cursor:<model>`)
 - Hits: Run has no documented cache-read field. Map one if the wire
   grows one; otherwise DSH hit rate may stay 0%.
 
+**Ollama** (`src/oauth/ollama/cache.ts`)
+
+- Ollama Cloud `/v1/chat/completions` has no documented conversation /
+  shard / cache-read field. Do **not** invent `cached_tokens` or a sticky
+  id. `applyOllamaCache` only strips Codex/Grok fields.
+- Fallback constant `dsh-ollama` is analyzer-only; it is **not** written
+  upstream. Never `Date.now()`.
+- No Codex `session-id` / `prompt_cache_key`, no Grok `x-grok-conv-id`.
+- Hits: none documented. DSH hit rate stays 0%.
+
 ### New family checklist (cache)
 
 When adding `src/oauth/<id>/`:
@@ -323,11 +340,12 @@ When adding `src/oauth/<id>/`:
 | Antigravity | Gemini `systemInstruction` + contents + tools | `request.sessionId` (fallback + model) | extra as trailing **user** | `cachedContentTokenCount` / `cache_read_tokens` → `cached_tokens` |
 | Kiro | CodeWhisperer conversation | `conversationId` + model | system as first history user+ack; extra at history suffix (not between toolUses / toolResults) | `cacheReadInputTokens` → `cached_tokens` |
 | Cursor | Agent conversation (`conversation_id`) | `conversationId` + model; fallback `dsh-cursor:<model>` | extra DSH snapshots as extra `root_prompt_messages_json` system blobs | none documented on Run (`cached_tokens` if a field appears) |
+| Ollama | none documented | no sticky conversation id (non-fix); `dsh-ollama` analyzer-only | n/a | none documented (`cached_tokens` if a field appears) |
 
 ### Do not
 
 - Share one sanitizer / pin map / header helper across families.
-- Write Codex `session-id` or `prompt_cache_key` to GLM / Kiro / Antigravity / Cursor.
+- Write Codex `session-id` or `prompt_cache_key` to GLM / Kiro / Antigravity / Cursor / Ollama.
 - Write Grok `x-grok-conv-id` to anyone else.
 - Park GLM extras as a Gemini user turn, or Gemini extras as a GLM
   trailing system, “because parking is the same idea”.
@@ -370,6 +388,7 @@ invariant list. When the two disagree, fix the README.
 | Kiro | `openai-completions` | Native is AWS EventStream `GenerateAssistantResponse` | Completions adapter |
 | Antigravity | `openai-completions` | Native is `generateContent` | Completions adapter |
 | Cursor | `openai-completions` | Native is Connect/protobuf `AgentService/Run` | Completions adapter `POST /cursor/v1/chat/completions` |
+| Ollama | `openai-completions` | Native is `/api/chat`. Cloud also serves OpenAI `https://ollama.com/v1/chat/completions` (401 without Bearer; Factory docs use that `/v1`). | thin passthrough `POST /ollama/v1/chat/completions` → `https://ollama.com/v1/chat/completions` |
 
 `baseURL` must match how that SDK posts. Anthropic SDK posts
 `{baseURL}/v1/messages`, so GLM is `${origin}/glm` (not `${origin}/glm/v1`).
@@ -392,9 +411,10 @@ already said `ai-sdk/anthropic` while Completions was posted). Do
 ### Do not
 
 - Switch Codex / Grok to Completions.
-- Switch Kiro / Antigravity / Cursor to Responses or Anthropic (native is still
+- Switch Kiro / Antigravity / Cursor / Ollama to Responses or Anthropic (native is still
   none of the three; you would keep a translator and lose DSH's native
-  Completions path).
+  Completions path). Do not pick Responses for Ollama because local
+  `localhost:11434/v1/responses` exists.
 - Set GLM `api: openai-responses` (generic `api.z.ai/api/v1` is not
   Coding Plan).
 - Drop the Completions leftover route until the next `sync()` has
@@ -408,7 +428,7 @@ already said `ai-sdk/anthropic` while Completions was posted). Do
 
 ## Adding a new OAuth family
 
-A family is one top-level tab (Codex / Grok / GLM / Kiro / Antigravity / Cursor today) plus its own
+A family is one top-level tab (Codex / Grok / GLM / Kiro / Antigravity / Cursor / Ollama today) plus its own
 `src/oauth/<id>/` module. Do not piggyback a new vendor onto an existing
 tab. Follow this checklist in one PR.
 
@@ -447,7 +467,7 @@ tab. Follow this checklist in one PR.
 7. **Plan labels** (`src/oauth/plan.ts`): map wire slugs to the product
    name users see (`Pro 20x`, `SuperGrok Heavy`, `Lite`). Family-specific
    collisions (`glm` `pro` → `Pro`, Codex `pro` → `Pro 20x`) belong here.
-8. **Proxy / tokens / cache**: all six families chat through the local
+8. **Proxy / tokens / cache**: all seven families chat through the local
    proxy. Pick `api` per the protocol section. Prompt cache **must** be
    a new `src/oauth/<id>/cache.ts`. Do not import another family's cache
    helper, and do not revive `src/utils/cache-session.ts`.
@@ -455,6 +475,9 @@ tab. Follow this checklist in one PR.
    **user-owned local login reuse**, not a second OAuth. Auto-import
    only when the cursor roster is empty. Never silently overwrite a
    stored PKCE/session. Never scan sibling OS profiles.
+   Ollama `OLLAMA_API_KEY` env import is the documented programmatic
+   path. Auto-import only when the ollama roster is empty. `ollama
+   signin` is local-daemon SSH signing — not a Bearer we can hop.
 9. **Tests** under `test/`: login parse, session round-trip, catalog
    input types, and `snapshot shows quota on every <id> account`.
 
@@ -471,14 +494,14 @@ into `TAB_ICONS`.
 - Size 18×18, `viewBox="0 0 24 24"`, `fill="currentColor"`. Match the
   official brand mark, not a generic letter. GLM uses the **Z.ai** icon
   (`zai`), not Zhipu.
-- Order: families first (Codex, Grok, GLM, Kiro, Antigravity, Cursor), then
+- Order: families first (Codex, Grok, GLM, Kiro, Antigravity, Cursor, Ollama), then
   Models, then About (GitHub icon). Insert a new family **before**
   Models.
 - Add `COPY.zh.<id>Title` / `COPY.en.<id>Title` for the hover string and
   the page heading.
 
 ```text
-[ Codex ] [ Grok ] [ Z.ai ] [ Kiro ] [ Antigravity ] [ Cursor ] [ ▦ ] [ GitHub ]
+[ Codex ] [ Grok ] [ Z.ai ] [ Kiro ] [ Antigravity ] [ Cursor ] [ Ollama ] [ ▦ ] [ GitHub ]
 ```
 
 ### Settings — one account, one card
@@ -605,6 +628,7 @@ after a leading-system splice is a **prefix break**, not a Grok affinity miss.
 Antigravity hits are `cachedContentTokenCount`. Kiro hits are
 `cacheReadInputTokens`. Cursor sticky-routes on `conversation_id`;
 Run has no documented cache-read field.
+Ollama Cloud has no documented cache-read or conversation id; do not invent one.
 `Error: tool call timed out after 30000ms` is `dsh-tool-fs-search`, not
 this proxy — record it in `docs/error.md`, do not add `toolTimeoutMs` here.
 

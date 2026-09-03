@@ -1,5 +1,36 @@
 # 错误记录
 
+## 2026-09-03：Ollama Cloud — signin 不是 Bearer，无额度 / cache-read
+
+### 现象
+
+接入 Ollama **Cloud**（ollama.com）时，社区会提到 `ollama signin`、macOS Keychain、`~/.ollama/credentials.json`。本机 `~/.ollama/id_ed25519.pub` 看起来像一把 key。用户还指望额度条和 prompt cache 命中率。
+
+### 证据
+
+- 官方认证：https://docs.ollama.com/api/authentication — 本地 `localhost:11434` 无认证；Cloud 直连 `https://ollama.com/api` 要 `Authorization: Bearer $OLLAMA_API_KEY`；`ollama signin` 只给本机 daemon 自动签名。
+- 官方 FAQ：`id_ed25519.pub` 是 **Ollama Public Key**（推模型 / 拉私有模型 / 本机跑 Cloud），不是 settings/keys 上的 API key。
+- 官方 CLI / app store：signin 用 SSH 身份签 `ollama.com/api/me`，桌面库是 `db.sqlite`，没有文档化的 Bearer JSON。
+- Cloud `/v1/chat/completions`：无 key 与坏 Bearer 都是 **401** `Unauthorized`（2026-09-03 探活），不是 404。Factory 集成文档写 `https://ollama.com/v1/` + `OLLAMA_API_KEY`。
+- `GET https://ollama.com/api/tags` 无 key 也 200（公共 Cloud 目录）。`/api/quota` 404；`/api/usage` 无文档。OpenAI compat 页没有 cache-read / conversation id。
+
+### 根因
+
+本家族是 **Cloud API key + Completions 薄透传**，不是本地 daemon 包装，也不是公开 PKCE。`ollama signin` 的身份不能当 Bearer hop。额度与 prompt cache 字段官方没给。
+
+### 修复 / 非修复
+
+- 登录：粘贴 API key + 空花名册 `OLLAMA_API_KEY`。`parseOllamaApiKey` 拒绝 PEM 公钥。
+- 不打开 ollama.com/connect，不扫 Keychain / `credentials.json` / `id_ed25519`（schema 未证明是 Bearer）。
+- hop：`POST /ollama/v1/chat/completions` → `https://ollama.com/v1/chat/completions`。不包 `127.0.0.1:11434`，不选 Responses。
+- 目录：登录后 `GET /api/tags`，退役表过滤，失败回落静态 7 行。
+- 额度 idle。cache 只剥 Codex/Grok 字段，不发明 `cached_tokens` / sticky conversation id。
+- **本插件不能**把 local signin 变成 Cloud Bearer，也不能画不存在的额度 / cache 命中。
+
+### 验证
+
+- `npm test`：key parse、session round-trip、`api: openai-completions`、`baseURL` 以 `/ollama` 结尾、snapshot 有 `oauth-ollama`、env 自动导入不覆盖已存、mock tags 扩目录、空 tags 回落静态、hop 带 Bearer 且无 Codex/Grok 头。无 live key。
+
 ## 2026-09-03：Cursor 卡抬头是 JWT `sub`，不是邮箱 / 用户名
 
 ### 现象

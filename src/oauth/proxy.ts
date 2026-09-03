@@ -44,6 +44,9 @@ import { antigravityToOpenai, createAntigravityOpenaiStream, openaiToAntigravity
 import { antigravitySessionIdOf } from './antigravity/cache.js'
 import { cursorCatalogModels } from './cursor/catalog.js'
 import { applyCursorCache, cursorConversationId } from './cursor/cache.js'
+import { OLLAMA_CHAT_URL, ollamaUpstreamHeaders } from './ollama/index.js'
+import { ollamaCatalogModels } from './ollama/catalog.js'
+import { applyOllamaCache } from './ollama/cache.js'
 import { cursorToOpenai, createCursorOpenaiStream, openaiToCursor } from './cursor/request.js'
 import { runCursorAgent } from './cursor/h2-session.js'
 import { applyFastMode } from '../utils/fast-mode.js'
@@ -221,6 +224,14 @@ function rewriteUpstreamBody(buffer, family, wire) {
       stream: next.stream === true,
     }
   }
+  if (family === 'ollama') {
+    const { payload: next, cacheSessionId } = applyOllamaCache(fast)
+    return {
+      body: Buffer.from(JSON.stringify(next)),
+      cacheSessionId,
+      stream: next.stream === true,
+    }
+  }
   throw new RequestError(400, `unknown oauth family: ${family}`)
 }
 
@@ -295,6 +306,12 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
         if (tokens.cursor) {
           await tokens.cursor.session()
           data.push(...cursorCatalogModels().map((model) => ({ id: model.id, object: 'model', owned_by: 'cursor' })))
+        }
+      } catch { /* not logged in */ }
+      try {
+        if (tokens.ollama) {
+          await tokens.ollama.session()
+          data.push(...ollamaCatalogModels().map((model) => ({ id: model.id, object: 'model', owned_by: 'ollama' })))
         }
       } catch { /* not logged in */ }
       send(response, 200, { object: 'list', data })
@@ -473,6 +490,41 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
       send(response, 501, {
         error: {
           message: 'Cursor chat is Connect AgentService/Run. Point llm-pi-ai at POST /cursor/v1/chat/completions.',
+        },
+      })
+      return
+    }
+
+    if ((path === '/ollama/v1/models' || path === '/ollama/models') && request.method === 'GET') {
+      send(response, 200, {
+        object: 'list',
+        data: ollamaCatalogModels().map((model) => ({ id: model.id, object: 'model', owned_by: 'ollama' })),
+      })
+      return
+    }
+
+    if ((path === '/ollama/v1/chat/completions' || path === '/ollama/chat/completions') && request.method === 'POST') {
+      const client = abortOnDisconnect(request, response)
+      try {
+        await forward(request, response, {
+          url: OLLAMA_CHAT_URL,
+          session: await tokens.ollama.session(),
+          headersOf: ollamaUpstreamHeaders,
+          fetchFn,
+          family: 'ollama',
+          maxRequestBodyBytes,
+          signal: client.signal,
+        })
+      } finally {
+        client.cleanup()
+      }
+      return
+    }
+
+    if (path === '/ollama/v1/responses') {
+      send(response, 501, {
+        error: {
+          message: 'Ollama Cloud is Completions. Point llm-pi-ai at POST /ollama/v1/chat/completions.',
         },
       })
       return

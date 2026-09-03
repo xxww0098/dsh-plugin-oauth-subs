@@ -6,6 +6,7 @@ import { applyGlmAnthropicCache, applyGlmCache, glmCacheSessionId, resetGlmSyste
 import { antigravityCacheSessionId, antigravitySessionIdOf, ANTIGRAVITY_STABLE_SESSION } from '../lib/oauth/antigravity/cache.js'
 import { kiroCacheSessionId, kiroConversationId, pinKiroSystemPrefix, KIRO_STABLE_SESSION, resetKiroSystemPins } from '../lib/oauth/kiro/cache.js'
 import { applyCursorCache, cursorCacheHeaders, cursorCacheSessionId, cursorConversationId, CURSOR_STABLE_SESSION } from '../lib/oauth/cursor/cache.js'
+import { applyOllamaCache, ollamaCacheHeaders, ollamaCacheSessionId, OLLAMA_STABLE_SESSION } from '../lib/oauth/ollama/cache.js'
 
 const dirty = 'session 772f7f3a/foo'
 
@@ -16,6 +17,7 @@ test('each family owns its cache id helper (same clip, separate modules)', () =>
   assert.equal(antigravityCacheSessionId(dirty), 'session-772f7f3a-foo')
   assert.equal(kiroCacheSessionId(dirty), 'session-772f7f3a-foo')
   assert.equal(cursorCacheSessionId(dirty), 'session-772f7f3a-foo')
+  assert.equal(ollamaCacheSessionId(dirty), 'session-772f7f3a-foo')
   assert.equal(codexCacheSessionId(''), undefined)
   assert.equal(grokCacheSessionId(null), undefined)
 })
@@ -145,4 +147,21 @@ test('Cursor cache identity is conversation_id, never Codex/Grok headers', () =>
   assert.equal(Object.hasOwn(cursorCacheHeaders(), 'x-grok-conv-id'), false)
   assert.equal(cursorConversationId({}), CURSOR_STABLE_SESSION)
   assert.equal(cursorConversationId({ session_id: 'sess-cursor', model: 'composer-2' }), cursorConversationId({ session_id: 'sess-cursor', model: 'composer-2' }))
+})
+
+test('Ollama cache strips Codex/Grok fields and does not invent a sticky wire id', () => {
+  const { payload, cacheSessionId } = applyOllamaCache({
+    session_id: 'sess-ollama',
+    prompt_cache_key: 'codex-style',
+    prompt_cache_retention: '24h',
+    model: 'gpt-oss:120b',
+  })
+  assert.equal(cacheSessionId, 'sess-ollama')
+  assert.equal(payload.prompt_cache_key, undefined)
+  assert.equal(payload.prompt_cache_retention, undefined)
+  assert.equal(payload.session_id, undefined)
+  assert.deepEqual(ollamaCacheHeaders(), {})
+  assert.equal(Object.hasOwn(ollamaCacheHeaders(), 'session-id'), false)
+  assert.equal(Object.hasOwn(ollamaCacheHeaders(), 'x-grok-conv-id'), false)
+  assert.equal(applyOllamaCache({}).cacheSessionId, OLLAMA_STABLE_SESSION)
 })

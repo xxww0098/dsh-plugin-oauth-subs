@@ -9,6 +9,7 @@ import { GLM_MODELS } from './glm/index.js'
 import { KIRO_MODELS } from './kiro/index.js'
 import { ANTIGRAVITY_MODELS } from './antigravity/index.js'
 import { CURSOR_MODELS } from './cursor/index.js'
+import { OLLAMA_MODELS } from './ollama/index.js'
 import { modelSupportsFastMode } from '../utils/fast-mode.js'
 import { readPrivateText, writePrivateText } from './store.js'
 import {
@@ -93,7 +94,7 @@ export function modelKey(provider, id) {
   return `${provider}/${id}`
 }
 
-export const FAMILY_IDS = Object.freeze(['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor'])
+export const FAMILY_IDS = Object.freeze(['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama'])
 
 export function ownedProviderIds(prefix) {
   return FAMILY_IDS.map((id) => `${prefix}-${id}`)
@@ -163,7 +164,12 @@ function cursorHarnessModels(cursorModels) {
   return CURSOR_MODELS
 }
 
-export function buildProviders({ prefix, origin, loggedIn, cursorModels }) {
+function ollamaHarnessModels(ollamaModels) {
+  if (Array.isArray(ollamaModels) && ollamaModels.length > 0) return ollamaModels
+  return OLLAMA_MODELS
+}
+
+export function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaModels }) {
   const providers = {}
   if (loggedIn.codex) {
     providers[`${prefix}-codex`] = {
@@ -238,6 +244,21 @@ export function buildProviders({ prefix, origin, loggedIn, cursorModels }) {
       models: cursorHarnessModels(cursorModels).map(toHarnessModel),
     }
   }
+  if (loggedIn.ollama) {
+    providers[`${prefix}-ollama`] = {
+      displayName: 'OAuth · Ollama',
+      api: HARNESS_COMPLETIONS_API,
+      apiKeyEnv: OAUTH_CREDENTIAL_REF,
+      // Completions hop is /ollama/v1/chat/completions. DSH posts
+      // `{baseURL}/v1/chat/completions`, so baseURL is `${origin}/ollama`.
+      baseURL: `${origin}/ollama`,
+      compat: {
+        supportsReasoningEffort: true,
+        thinkingFormat: 'openai',
+      },
+      models: ollamaHarnessModels(ollamaModels).map(toHarnessModel),
+    }
+  }
   return providers
 }
 
@@ -249,12 +270,13 @@ export function describeProviders(providers) {
   }))
 }
 
-export function catalogProviders({ prefix, origin, cursorModels }) {
+export function catalogProviders({ prefix, origin, cursorModels, ollamaModels }) {
   return buildProviders({
     prefix,
     origin,
-    loggedIn: { codex: true, grok: true, glm: true, kiro: true, antigravity: true, cursor: true },
+    loggedIn: { codex: true, grok: true, glm: true, kiro: true, antigravity: true, cursor: true, ollama: true },
     cursorModels,
+    ollamaModels,
   })
 }
 
@@ -271,6 +293,7 @@ export function familyOfProvider(provider) {
   if (String(provider).endsWith('-kiro')) return 'kiro'
   if (String(provider).endsWith('-antigravity')) return 'antigravity'
   if (String(provider).endsWith('-cursor')) return 'cursor'
+  if (String(provider).endsWith('-ollama')) return 'ollama'
   return String(provider)
 }
 
@@ -408,7 +431,7 @@ export class ModelSwitch {
   }
 
   async setFamily(family, on, catalog) {
-    if (!FAMILY_IDS.includes(family)) throw new Error('family must be codex, grok, glm, kiro, antigravity, or cursor')
+    if (!FAMILY_IDS.includes(family)) throw new Error('family must be codex, grok, glm, kiro, antigravity, cursor, or ollama')
     // Only current catalog ids. Retired leftovers (glm-4.7, …) stay in
     // `disabled` and are not resurrected.
     for (const key of familyCatalogKeys(catalog, family)) {
@@ -495,10 +518,10 @@ async function assertPersistedProviders(settings, expectedIds) {
   }
 }
 
-export async function syncHarnessModels({ settings, prefix, origin, loggedIn, selected, cursorModels }) {
+export async function syncHarnessModels({ settings, prefix, origin, loggedIn, selected, cursorModels, ollamaModels }) {
   const routePrefix = String(prefix ?? '').trim()
   if (!routePrefix) throw new Error('Harness route prefix cannot be empty')
-  const providers = filterProviders(buildProviders({ prefix: routePrefix, origin, loggedIn, cursorModels }), selected)
+  const providers = filterProviders(buildProviders({ prefix: routePrefix, origin, loggedIn, cursorModels, ollamaModels }), selected)
   for (const [id, value] of Object.entries(providers)) {
     assertDshServiceableProvider(id, value)
   }
