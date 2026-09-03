@@ -2,6 +2,17 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-03：额度失败红字撑破账号卡
+
+### 现象
+Kimi 卡「额度读取失败」把 429 JSON（`resource_exhausted` / protobuf details）单行贴出，红字冲出卡片右缘。
+
+### 根因
+`QuotaBlock` 原样拼接 `quota.error`。`.osubs-hint` 不换行。上游 body 是无空格长 JSON。
+
+### 修复
+解析 `error.message` / `message` / `code`，截首行 ≤160。`.osubs-hint` / `.osubs-bad` `overflow-wrap: anywhere`。全文只留 `title`。
+
 ## 2026-09-03：OpenCode Free picker 全是 text、没有思考档
 
 ### 现象

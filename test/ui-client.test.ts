@@ -190,6 +190,56 @@ test('authorize URL and user code hide when the provider is no longer busy', asy
   assert.match(src, /snap\.accounts\[id\]\?\.busy/)
 })
 
+function loadFormatQuotaError(src) {
+  const start = src.indexOf('function formatQuotaError')
+  assert.notEqual(start, -1, 'formatQuotaError is missing')
+  const next = src.indexOf('\n    function ', start + 1)
+  assert.notEqual(next, -1, 'formatQuotaError is not followed by another function')
+  return new Function(`${src.slice(start, next)}; return formatQuotaError`)()
+}
+
+test('Settings quota error wraps and does not dump upstream JSON', async () => {
+  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  const hintCss = src.match(/\.osubs-hint \{[^}]*\}/)?.[0] ?? ''
+  const badCss = src.match(/\.osubs-bad \{[^}]*\}/)?.[0] ?? ''
+  assert.match(hintCss, /display: block/)
+  assert.match(hintCss, /max-width: 100%/)
+  assert.match(hintCss, /overflow-wrap: anywhere/)
+  assert.match(hintCss, /word-break: break-word/)
+  assert.match(hintCss, /white-space: pre-wrap/)
+  assert.match(badCss, /overflow-wrap: anywhere/)
+  assert.match(badCss, /word-break: break-word/)
+  assert.match(src, /function formatQuotaError/)
+  assert.match(src, /formatQuotaError\(quota\.error\)/)
+  assert.match(src, /title: quota\.error \|\| undefined/)
+  assert.equal(src.includes('` · ${quota.error}`'), false)
+
+  const formatQuotaError = loadFormatQuotaError(src)
+  const kimi429 = 'kimi usage failed (HTTP 429): {"code":"resource_exhausted","message":"insufficient balance","details":[{"type":"common.error.v1.ErrorDetail","value":"CHQSGQoFZW4tVVMSEENyZWRpdHMgdXNIZCBhbGwgZG93biB0aGUgd2lyZSBhbmQgdGhlbiBzb21lIHByb3RvYnVmIGJsb2IgdGhhdCBnb2VzIG9uIGFuZCBvbiBhbmQgb24={"reason":"'
+  const short = formatQuotaError(kimi429)
+  assert.match(short, /insufficient balance/)
+  assert.match(short, /HTTP 429/)
+  assert.equal(short.includes('resource_exhausted'), false)
+  assert.equal(short.includes('ErrorDetail'), false)
+  assert.equal(short.includes('CHQSGQo'), false)
+  assert.equal(short.includes('details'), false)
+  assert.ok(short.length <= 160)
+
+  const nested = formatQuotaError('glm usage failed (HTTP 403): {"error":{"message":"plan expired","code":"permission_denied"}}')
+  assert.equal(nested, 'plan expired (HTTP 403)')
+
+  const truncated = formatQuotaError('cursor quota failed (HTTP 429): {"message":"too many requests","details":"AAAA')
+  assert.equal(truncated, 'too many requests (HTTP 429)')
+
+  const plain = formatQuotaError('kimi usage failed (HTTP 503)')
+  assert.equal(plain, 'kimi usage failed (HTTP 503)')
+
+  const longPlain = formatQuotaError(`upstream exploded ${'x'.repeat(200)}`)
+  assert.ok(longPlain.endsWith('…'))
+  assert.ok(longPlain.length <= 161)
+  assert.equal(longPlain.includes('x'.repeat(200)), false)
+})
+
 test('QuotaRow is a remaining bar for Codex remainingPercent and Cursor usedPercent', async () => {
   const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
   assert.match(src, /function remainingPercentOf\(row\)/)

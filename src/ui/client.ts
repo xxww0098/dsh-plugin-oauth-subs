@@ -803,9 +803,14 @@ window.__ModuleLoader__.load({
 .osubs-tag--plain { text-transform: none; letter-spacing: .02em; }
 
 .osubs-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; overflow-wrap: anywhere; }
-.osubs-hint { font-size: 12px; line-height: 1.55; color: var(--osubs-muted); }
+.osubs-hint {
+  display: block; max-width: 100%;
+  font-size: 12px; line-height: 1.55; color: var(--osubs-muted);
+  overflow-wrap: anywhere; word-break: break-word; white-space: pre-wrap;
+}
+.osubs-hint.osubs-bad { max-height: 4.65em; overflow-x: hidden; overflow-y: auto; }
 .osubs-note { font-size: 11px; color: var(--osubs-faint); white-space: pre-wrap; overflow-wrap: anywhere; }
-.osubs-bad { color: var(--osubs-bad); }
+.osubs-bad { color: var(--osubs-bad); overflow-wrap: anywhere; word-break: break-word; max-width: 100%; }
 .osubs-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
 .osubs-input {
@@ -975,6 +980,46 @@ window.__ModuleLoader__.load({
     }
 
     ensureStyles()
+
+    function formatQuotaError(raw, limit = 160) {
+      const text = String(raw ?? '').replace(/\s+/g, ' ').trim()
+      if (!text) return ''
+      const http = text.match(/\bHTTP\s+(\d{3})\b/i)?.[1]
+      const jsonAt = text.indexOf('{')
+      let human = ''
+      if (jsonAt >= 0) {
+        const blob = text.slice(jsonAt)
+        let parsed
+        try { parsed = JSON.parse(blob) } catch { parsed = undefined }
+        const err = parsed && typeof parsed === 'object' ? parsed.error : undefined
+        if (err && typeof err === 'object') {
+          if (typeof err.message === 'string' && err.message.trim()) human = err.message.trim()
+          else if (typeof err.code === 'string' && err.code.trim()) human = err.code.trim()
+        } else if (typeof err === 'string' && err.trim()) {
+          human = err.trim()
+        }
+        if (!human && parsed && typeof parsed === 'object') {
+          if (typeof parsed.message === 'string' && parsed.message.trim()) human = parsed.message.trim()
+          else if (typeof parsed.code === 'string' && parsed.code.trim()) human = parsed.code.trim()
+        }
+        if (!human) {
+          const named = blob.match(/"message"\s*:\s*"((?:\\.|[^"\\])*)"/)
+          const coded = blob.match(/"code"\s*:\s*"((?:\\.|[^"\\])*)"/)
+          const pick = named?.[1] || coded?.[1]
+          if (pick) {
+            try { human = JSON.parse(`"${pick}"`) } catch { human = pick }
+          }
+        }
+      }
+      if (!human) {
+        human = (jsonAt >= 0 ? text.slice(0, jsonAt) : text).replace(/:\s*$/, '').trim()
+      }
+      if (http && human && !new RegExp(`\\bHTTP\\s+${http}\\b`, 'i').test(human)) {
+        human = `${human} (HTTP ${http})`
+      }
+      if (human.length <= limit) return human
+      return `${human.slice(0, limit).trimEnd()}…`
+    }
 
     function remainingPercentOf(row) {
       if (typeof row?.remainingPercent === 'number' && Number.isFinite(row.remainingPercent)) {
@@ -1385,7 +1430,10 @@ window.__ModuleLoader__.load({
         ),
         family === 'glm' && h('p', { className: 'osubs-note' }, t.glmBoostHint),
         quota.status === 'loading' && rows.length === 0 && h('p', { className: 'osubs-hint' }, t.quotaLoading),
-        quota.status === 'error' && !hasUsage && h('p', { className: 'osubs-hint osubs-bad' }, `${t.quotaFailed}${quota.error ? ` · ${quota.error}` : ''}`),
+        quota.status === 'error' && !hasUsage && h('p', {
+          className: 'osubs-hint osubs-bad',
+          title: quota.error || undefined,
+        }, `${t.quotaFailed}${quota.error ? ` · ${formatQuotaError(quota.error)}` : ''}`),
         quota.status === 'ready' && !hasUsage && family !== 'opencode' && h('p', { className: 'osubs-hint' }, t.quotaUnknown),
         renderQuotaRows(rows, t, family),
         h(QuotaResetBox, { t, quota, onReset }),
