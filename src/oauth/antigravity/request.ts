@@ -124,7 +124,92 @@ function attachThoughtSignatureFields(target, signature) {
   return target
 }
 
-function functionCallPart(call, sessionId, message) {
+function isClaudeModel(model) {
+  return String(model ?? '').startsWith('claude-')
+}
+
+function isGptOssModel(model) {
+  return String(model ?? '').startsWith('gpt-oss-')
+}
+
+function usesLegacyToolParameters(model) {
+  return isClaudeModel(model) || isGptOssModel(model)
+}
+
+function toolCallIdNeeded(model) {
+  return usesLegacyToolParameters(model)
+}
+
+/** Gemini 3 / gemini-pro-agent need thoughtSignature on functionCall groups. */
+export function geminiRequiresThoughtSignature(model) {
+  const id = String(model ?? '')
+  if (!id.startsWith('gemini-')) return false
+  const match = id.match(/^gemini-(\d+)/)
+  if (match) return Number.parseInt(match[1], 10) >= 3
+  return true
+}
+
+/** Claude / GPT-OSS custom-tool bridge: [A-Za-z0-9_-], cap 64. */
+export function sanitizeAntigravityToolCallId(id, fallbackName) {
+  const cleaned = String(id ?? '').replace(/[^A-Za-z0-9_-]/g, '_')
+  const capped = cleaned.slice(0, 64)
+  if (capped) return capped
+  const fallback = String(fallbackName ?? 'tool').replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 64)
+  return fallback || 'tool'
+}
+
+/**
+ * Cloud Code 400s if maxOutputTokens exceeds the runtime-id cap.
+ * https://github.com/Rahularya01/pi-antigravity (getMaxOutputTokens)
+ */
+const RUNTIME_MAX_OUTPUT_TOKENS = Object.freeze({
+  'gemini-3.8-flash': 65_536,
+  'gemini-3.8-flash-low': 65_536,
+  'gemini-3.8-flash-medium': 65_536,
+  'gemini-3.8-flash-high': 65_536,
+  'gemini-3.7-flash': 65_536,
+  'gemini-3.7-flash-tiered': 65_536,
+  'gemini-3.7-flash-low': 65_536,
+  'gemini-3.7-flash-medium': 65_536,
+  'gemini-3.7-flash-high': 65_536,
+  'gemini-3.6-flash': 65_536,
+  'gemini-3.6-flash-low': 65_536,
+  'gemini-3.6-flash-medium': 65_536,
+  'gemini-3.6-flash-high': 65_536,
+  'gemini-3.5-flash': 65_536,
+  'gemini-3.5-flash-extra-low': 65_536,
+  'gemini-3.5-flash-low': 65_536,
+  'gemini-3-flash-agent': 65_536,
+  'gemini-3-flash': 65_536,
+  'gemini-3.1-pro': 65_535,
+  'gemini-3.1-pro-low': 65_535,
+  'gemini-3.1-pro-high': 65_535,
+  'gemini-pro-agent': 65_535,
+  'claude-opus-4-6': 64_000,
+  'claude-opus-4-6-thinking': 64_000,
+  'claude-sonnet-4-6': 64_000,
+  'gpt-oss-120b': 32_768,
+  'gpt-oss-120b-medium': 32_768,
+})
+
+export function antigravityMaxOutputTokens(model) {
+  const id = String(model ?? '')
+  if (RUNTIME_MAX_OUTPUT_TOKENS[id] !== undefined) return RUNTIME_MAX_OUTPUT_TOKENS[id]
+  if (id.startsWith('claude-')) return 64_000
+  if (id.startsWith('gpt-oss-')) return 32_768
+  if (id.startsWith('gemini-3.1-pro') || id === 'gemini-pro-agent') return 65_535
+  if (id.startsWith('gemini-')) return 65_536
+  return 8192
+}
+
+function clampMaxOutputTokens(model, requested) {
+  const cap = antigravityMaxOutputTokens(model)
+  const n = Number(requested)
+  if (Number.isFinite(n) && n > 0) return Math.min(Math.round(n), cap)
+  return cap
+}
+
+function functionCallPart(call, sessionId, message, model) {
   const name = trimmed(call?.function?.name)
   if (!name) return undefined
   const args = tryJson(call.function?.arguments)
@@ -134,7 +219,11 @@ function functionCallPart(call, sessionId, message) {
   const signature = thoughtSignatureOf(call)
     ?? shared
     ?? lookupThoughtSignature(sessionId, { id: call?.id, name, args })
-  const part = { functionCall: { name, args } }
+  const functionCall = { name, args }
+  if (toolCallIdNeeded(model)) {
+    functionCall.id = sanitizeAntigravityToolCallId(call?.id, name)
+  }
+  const part = { functionCall }
   if (signature) {
     part.thoughtSignature = signature
     rememberThoughtSignature(sessionId, { id: call?.id, name, args, signature })
@@ -163,13 +252,56 @@ export function functionResponsePayload(value) {
   return { result: value }
 }
 
-function functionResponsePart(message) {
-  return {
-    functionResponse: {
-      name: trimmed(message?.name) ?? 'tool',
-      response: functionResponsePayload(message?.content),
-    },
+function functionResponsePart(message, model) {
+  const name = trimmed(message?.name) ?? 'tool'
+  const functionResponse = {
+    name,
+    response: functionResponsePayload(message?.content),
   }
+  if (toolCallIdNeeded(model)) {
+    functionResponse.id = sanitizeAntigravityToolCallId(message?.tool_call_id, name)
+  }
+  return { functionResponse }
+}
+
+function toolResultText(message) {
+  const content = message?.content
+  if (typeof content === 'string') return content
+  if (Array.isArray(content)) {
+    return content
+      .map((item) => (typeof item === 'string' ? item : trimmed(item?.text) ?? ''))
+      .filter(Boolean)
+      .join('\n')
+  }
+  if (content == null) return ''
+  return String(content)
+}
+
+function rememberDroppedToolCall(dropped, rawId, name, args) {
+  let argsText = '{}'
+  try {
+    argsText = JSON.stringify(args ?? {})
+  } catch {
+    argsText = '{}'
+  }
+  if (rawId) {
+    dropped.set(String(rawId), argsText)
+    dropped.set(sanitizeAntigravityToolCallId(rawId, name), argsText)
+  } else {
+    dropped.set(`empty:${name}`, argsText)
+  }
+}
+
+function droppedToolArgs(dropped, rawId, name) {
+  const sanitized = sanitizeAntigravityToolCallId(rawId, name)
+  return dropped.get(rawId)
+    ?? dropped.get(sanitized)
+    ?? (rawId === '' ? dropped.get(`empty:${name}`) : undefined)
+}
+
+function observationPart(name, droppedArgs, responseText) {
+  const label = droppedArgs === '{}' ? `\`${name}\`` : `\`${name}\` (${droppedArgs})`
+  return { text: `[Observation from ${label}:\n${responseText}]` }
 }
 
 function isFunctionResponseTurn(content) {
@@ -202,19 +334,119 @@ export function partsFromContent(content) {
   return parts
 }
 
-function toolDeclarations(tools) {
+function dereferenceSchema(schema, rootDefs = {}, visited = new Set()) {
+  if (!schema || typeof schema !== 'object') return schema
+  if (Array.isArray(schema)) return schema.map((item) => dereferenceSchema(item, rootDefs, visited))
+  if (visited.has(schema)) return schema
+  visited.add(schema)
+  const defs = { ...rootDefs }
+  if (isPlainObject(schema.$defs)) Object.assign(defs, schema.$defs)
+  if (isPlainObject(schema.definitions)) Object.assign(defs, schema.definitions)
+  if (typeof schema.$ref === 'string') {
+    const match = schema.$ref.match(/^#\/(?:\$defs|definitions)\/(.+)$/)
+    if (match?.[1] && defs[match[1]] !== undefined) {
+      const resolved = dereferenceSchema(defs[match[1]], defs, visited)
+      if (isPlainObject(resolved)) {
+        const { $ref: _, ...rest } = schema
+        const restCleaned = dereferenceSchema(rest, defs, visited)
+        return isPlainObject(restCleaned) ? { ...resolved, ...restCleaned } : resolved
+      }
+      return resolved
+    }
+  }
+  const out = {}
+  for (const [key, value] of Object.entries(schema)) {
+    out[key] = dereferenceSchema(value, defs, visited)
+  }
+  return out
+}
+
+function ensureRootObjectSchema(schema) {
+  if (!isPlainObject(schema)) return { type: 'object', properties: {} }
+  if (!schema.type) return { ...schema, type: 'object', properties: schema.properties || {} }
+  return schema
+}
+
+function stripMetaSchema(schema) {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return schema
+  const omit = new Set(['$schema', '$id', '$anchor', '$dynamicAnchor', '$vocabulary', '$comment', '$defs', 'definitions'])
+  const out = {}
+  for (const [key, value] of Object.entries(schema)) {
+    if (!omit.has(key)) out[key] = stripMetaSchema(value)
+  }
+  return out
+}
+
+/**
+ * Protobuf Schema keys Cloud Code's Claude/GPT custom-tool bridge accepts.
+ * additionalProperties / anyOf / $ref / format / nullable → 400 Unknown name.
+ */
+const CUSTOM_TOOL_SCHEMA_ALLOW = new Set(['type', 'description', 'properties', 'required', 'items', 'enum'])
+
+function normalizeCustomToolType(value) {
+  if (typeof value === 'string') return value
+  if (!Array.isArray(value)) return undefined
+  return value.find((entry) => typeof entry === 'string' && entry !== 'null')
+}
+
+function normalizeCustomToolSchema(schema) {
+  if (!schema || typeof schema !== 'object') return schema
+  if (Array.isArray(schema)) return schema.map(normalizeCustomToolSchema)
+  const out = {}
+  for (const [key, value] of Object.entries(schema)) {
+    if (!CUSTOM_TOOL_SCHEMA_ALLOW.has(key)) continue
+    if (key === 'type') {
+      const normalizedType = normalizeCustomToolType(value)
+      if (normalizedType !== undefined) out.type = normalizedType
+      continue
+    }
+    if (key === 'properties' && isPlainObject(value)) {
+      const props = {}
+      for (const [propName, propSchema] of Object.entries(value)) {
+        props[propName] = normalizeCustomToolSchema(propSchema)
+      }
+      out.properties = props
+      continue
+    }
+    if (key === 'enum' && Array.isArray(value) && !value.every((entry) => typeof entry === 'string')) {
+      continue
+    }
+    out[key] = normalizeCustomToolSchema(value)
+  }
+  return out
+}
+
+function jsonSchemaOf(parameters) {
+  if (!parameters) return undefined
+  return stripMetaSchema(ensureRootObjectSchema(dereferenceSchema(parameters)))
+}
+
+function toolDeclarations(tools, model) {
   if (!Array.isArray(tools) || tools.length === 0) return undefined
+  const legacy = usesLegacyToolParameters(model)
   const declarations = tools.flatMap((tool) => {
     const fn = tool?.function ?? tool
     const name = trimmed(fn?.name)
     if (!name) return []
-    return [{
+    const schema = jsonSchemaOf(fn.parameters)
+    const decl = {
       name,
       ...(trimmed(fn.description) ? { description: fn.description } : {}),
-      ...(fn.parameters ? { parameters: fn.parameters } : {}),
-    }]
+    }
+    if (schema) {
+      if (legacy) decl.parameters = normalizeCustomToolSchema(schema)
+      else decl.parametersJsonSchema = schema
+    }
+    return [decl]
   })
   return declarations.length ? [{ functionDeclarations: declarations }] : undefined
+}
+
+function geminiToolChoiceMode(toolChoice) {
+  const value = typeof toolChoice === 'string' ? toolChoice : toolChoice?.type
+  if (value === 'none') return 'NONE'
+  if (value === 'required' || value === 'any' || value === 'function') return 'ANY'
+  return 'AUTO'
 }
 
 export function openaiToAntigravity(payload, { projectId, sessionId } = {}) {
@@ -226,6 +458,8 @@ export function openaiToAntigravity(payload, { projectId, sessionId } = {}) {
   const systemParts = []
   const contents = []
   const pinnedSession = antigravitySessionIdOf(payload, sessionId)
+  const requiresSig = geminiRequiresThoughtSignature(model)
+  const droppedToolCallIds = new Map()
 
   for (const message of messages) {
     const role = message?.role
@@ -234,18 +468,34 @@ export function openaiToAntigravity(payload, { projectId, sessionId } = {}) {
       continue
     }
     if (role === 'tool') {
-      const part = functionResponsePart(message)
+      const name = trimmed(message?.name) ?? 'tool'
+      const rawId = typeof message?.tool_call_id === 'string' ? message.tool_call_id : ''
+      const droppedArgs = requiresSig ? droppedToolArgs(droppedToolCallIds, rawId, name) : undefined
+      if (droppedArgs !== undefined) {
+        contents.push({ role: 'user', parts: [observationPart(name, droppedArgs, toolResultText(message))] })
+        continue
+      }
+      const part = functionResponsePart(message, model)
       const last = contents[contents.length - 1]
       if (isFunctionResponseTurn(last)) last.parts.push(part)
       else contents.push({ role: 'user', parts: [part] })
       continue
     }
     const parts = []
+    const built = []
     if (Array.isArray(message?.tool_calls)) {
       for (const call of message.tool_calls) {
-        const part = functionCallPart(call, pinnedSession, message)
-        if (part) parts.push(part)
+        const part = functionCallPart(call, pinnedSession, message, model)
+        if (part) built.push({ part, call })
       }
+    }
+    const groupIsSigned = built.length > 0 && Boolean(built[0].part.thoughtSignature)
+    if (requiresSig && built.length && !groupIsSigned) {
+      for (const { part, call } of built) {
+        rememberDroppedToolCall(droppedToolCallIds, call?.id, part.functionCall.name, part.functionCall.args)
+      }
+    } else {
+      for (const { part } of built) parts.push(part)
     }
     parts.push(...partsFromContent(message?.content))
     if (parts.length === 0) continue
@@ -257,17 +507,27 @@ export function openaiToAntigravity(payload, { projectId, sessionId } = {}) {
   }
   const pinned = pinAntigravitySystemInstruction(pinnedSession, systemParts)
   if (pinned.extra) contents.push({ role: 'user', parts: [{ text: pinned.extra }] })
+  if (contents[0]?.role === 'model') {
+    contents.unshift({ role: 'user', parts: [{ text: 'Hello' }] })
+  }
 
   const request = {
     contents,
     sessionId: pinnedSession,
   }
-  if (pinned.parts.length) request.systemInstruction = { parts: pinned.parts }
-  const tools = pinAntigravityTools(pinnedSession, toolDeclarations(payload?.tools))
+  if (pinned.parts.length) request.systemInstruction = { role: 'user', parts: pinned.parts }
+  const tools = pinAntigravityTools(pinnedSession, toolDeclarations(payload?.tools, model))
   if (tools) request.tools = tools
   const thinking = pinAntigravityThinking(pinnedSession, trimmed(payload?.reasoning_effort))
-  if (thinking) {
-    request.generationConfig = { thinkingConfig: thinking }
+  const generationConfig = {
+    maxOutputTokens: clampMaxOutputTokens(model, payload?.max_tokens),
+  }
+  if (thinking) generationConfig.thinkingConfig = thinking
+  request.generationConfig = generationConfig
+  if (isClaudeModel(model)) {
+    request.toolConfig = { functionCallingConfig: { mode: 'VALIDATED' } }
+  } else if (tools) {
+    request.toolConfig = { functionCallingConfig: { mode: geminiToolChoiceMode(payload?.tool_choice) } }
   }
 
   return {
@@ -307,7 +567,9 @@ export function collectAntigravityParts(body, { sessionId } = {}) {
       const signature = partSig ?? pendingThoughtSig
       pendingThoughtSig = undefined
       const call = {
-        id: `call_${toolCalls.length + 1}`,
+        id: trimmed(part.functionCall.id)
+          ? sanitizeAntigravityToolCallId(part.functionCall.id, part.functionCall.name)
+          : `call_${toolCalls.length + 1}`,
         type: 'function',
         function: {
           name: part.functionCall.name,

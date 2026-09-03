@@ -72,7 +72,11 @@ function toolsFingerprint(tools) {
     for (const decl of group?.functionDeclarations ?? []) {
       const name = typeof decl?.name === 'string' ? decl.name : ''
       if (!name) continue
-      decls.push(stableJson({ name, parameters: decl.parameters ?? null }))
+      decls.push(stableJson({
+        name,
+        parameters: decl.parameters ?? null,
+        parametersJsonSchema: decl.parametersJsonSchema ?? null,
+      }))
     }
   }
   return decls.sort().join('\n')

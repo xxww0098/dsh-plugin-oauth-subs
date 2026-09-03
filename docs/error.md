@@ -144,6 +144,42 @@ Cursor 订阅对话走 `agentn.us.api5.cursor.sh` `agent.v1.AgentService/Run`。
 
 - `npm test`：PKCE URL + poll 404→tokens、refresh、目录 `api: openai-completions`、`baseURL` 以 `/cursor` 结尾。无 live Cursor 账号。
 
+## 2026-09-03：Antigravity Cloud Code 400 — Claude/GPT JSON Schema、Gemini 3 首条必须是 user、不要抄 Pi Client-Metadata
+
+### 现象
+
+Cloud Code `generateContent` / `streamGenerateContent` 对自定义工具桥和 Gemini 3 会话形状很严。本插件 hop（`openaiToAntigravity`）原先对每个模型都写 `{ parameters: fn.parameters }`，把 OpenAI JSON Schema 原样塞进 protobuf `Schema`。Claude / GPT-OSS 立刻 400：
+
+```text
+Invalid JSON payload received. Unknown name "additionalProperties" (or anyOf / $ref / format / nullable) at '…function_declarations.parameters'
+```
+
+Gemini 3 若 `contents[0].role === "model"`（助手问候 / leftover），Google 400 first-turn-must-be-user。`systemInstruction` 缺 `role: "user"` 同样会被拒。`maxOutputTokens` 超过线 id 上限（flash 65536、`gemini-3.1-pro` / `gemini-pro-agent` 65535、Claude 64000、GPT-OSS 32768）也是 400。
+
+### 证据
+
+- Pi Antigravity `src/stream/stream.ts` `convertTools` / `convertMessages` / `buildRequest`（https://github.com/Rahularya01/pi-antigravity）：Gemini 走 `parametersJsonSchema`（`$ref` deref + 剥 `$schema`/`$defs`）；Claude / GPT-OSS 只发 allowlist `{type, description, properties, required, items, enum}` 的 legacy `parameters`。Claude/GPT-OSS `functionCall`/`functionResponse` 要 sanitized `id`（`[A-Za-z0-9_-]`，64）；Gemini 3 **不**发 `functionCall.id`。首条 contents 若是 model 就前置 `{ role: "user", parts: [{ text: "Hello" }] }`。`systemInstruction.role = user`。Claude 永远 `toolConfig.functionCallingConfig.mode = VALIDATED`。
+- 本仓库 v0.0.60 `toolDeclarations`：`...(fn.parameters ? { parameters: fn.parameters } : {})`，不分 runtime。
+- 官方 hub chat / loadCodeAssist **只有** `User-Agent: antigravity/hub/<ver> <os>/<arch>`。Pi 聊天头上的 `Client-Metadata` / `x-goog-api-client` / 2.8.0 UA / `vscode_cloudshelleditor` **不要抄**。onboardUser 已经有较长 UA + `x-goog-api-client`。
+
+### 根因
+
+代理翻译层（`src/oauth/antigravity/request.ts`）。不是登录 / 指纹 / `sessionId` 前缀 pin，也不是 Codex / Grok / GLM / Kiro。Cloud Code Claude/GPT 桥吃的是 protobuf `Schema`，不是 JSON Schema。Gemini 3 会话协议要求第一条 user + `systemInstruction.role`。
+
+### 修复
+
+- Gemini：`parametersJsonSchema`。Claude / GPT-OSS：allowlist `parameters`，根 `type: object`，type union 收成第一个非 null 标量，非全 string 的 enum 丢掉。
+- Claude / GPT-OSS 配对 `functionCall.id` / `functionResponse.id`。Gemini 3 不发 id。
+- 以 model 开头的 contents 前置 `Hello` user。`systemInstruction.role = "user"`。保留 `pinAntigravitySystemInstruction` / extra-as-user，不换 DSH system。
+- Claude 永远 `VALIDATED`。Gemini 有 tools 时 `AUTO`，除非 DSH `tool_choice` → `NONE`/`ANY`。钳 `maxOutputTokens`。
+- Gemini 3 一组 functionCall 在 #72 映射之后仍无 `thoughtSignature`：丢掉 unsigned `functionCall`，匹配的 tool 结果改成 user observation 文本。不编假签名。
+- Claude 思考请求加 `anthropic-beta: interleaved-thinking-2025-05-14`。Gemini 不加。chat 不加 `Client-Metadata`。
+- 不改 fingerprint（hub 2.11.0 + daily）、`requestType: "agent"`、picker 线 id。
+
+### 验证
+
+- `npm test`：Gemini tools 出 `parametersJsonSchema`、`parameters` 里没有 JSON Schema 额外键；Claude/GPT-OSS 只有 allowlist `parameters`；Claude `functionCall.id` 在、Gemini 无 id；model 开头补 Hello；`systemInstruction.role === "user"`；`maxOutputTokens` 被钳；thoughtSignature 往返仍绿。无 live Cloud Code。
+
 ## 2026-09-03：Antigravity Gemini 3.8 Flash 线 id 是 `gemini-3.8-flash-high`
 
 ### 现象

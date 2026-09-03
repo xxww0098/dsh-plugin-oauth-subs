@@ -24,6 +24,7 @@ import {
   ANTIGRAVITY_ONBOARD_USER_URL,
   ANTIGRAVITY_PROD_API_URL,
   ANTIGRAVITY_STREAM_URL,
+  ANTIGRAVITY_CLAUDE_THINKING_BETA,
   antigravityChatHeaders,
   antigravityFetchModelsUrls,
   antigravityFlow,
@@ -56,9 +57,11 @@ import {
   antigravityToOpenai,
   cachedTokensOf,
   functionResponsePayload,
+  antigravityMaxOutputTokens,
   openaiToAntigravity,
   resetAntigravitySystemPins,
   resetAntigravityThoughtSignatures,
+  sanitizeAntigravityToolCallId,
 } from '../lib/oauth/antigravity/request.js'
 import { antigravitySessionIdOf } from '../lib/oauth/antigravity/cache.js'
 import { createProxy } from '../lib/oauth/proxy.js'
@@ -206,6 +209,14 @@ test('fingerprint is one Antigravity hub identity on loadCodeAssist, onboardUser
   assert.deepEqual(Object.keys(chat).sort(), ['accept', 'authorization', 'content-type', 'user-agent'])
   assert.equal(chat['x-goog-api-client'], undefined)
   assert.equal(chat['Client-Metadata'], undefined)
+  assert.equal(chat['anthropic-beta'], undefined)
+  const claudeChat = antigravityChatHeaders({ accessToken: 'tok', projectId: 'proj' }, { model: 'claude-sonnet-4-6' })
+  assert.equal(claudeChat['anthropic-beta'], ANTIGRAVITY_CLAUDE_THINKING_BETA)
+  assert.equal(claudeChat['Client-Metadata'], undefined)
+  assert.equal(claudeChat['x-goog-api-client'], undefined)
+  const geminiChat = antigravityChatHeaders({ accessToken: 'tok', projectId: 'proj' }, { model: 'gemini-3.7-flash-high' })
+  assert.equal(geminiChat['anthropic-beta'], undefined)
+  assert.equal(geminiChat['Client-Metadata'], undefined)
   assert.deepEqual(antigravityLoadCodeAssistMetadata(), { ideType: 'ANTIGRAVITY' })
   assert.equal(JSON.stringify(antigravityLoadCodeAssistMetadata()).includes('IDE_UNSPECIFIED'), false)
   assert.deepEqual(antigravityLoadCodeAssistBody(), { metadata: { ideType: 'ANTIGRAVITY' } })
@@ -374,8 +385,8 @@ test('consecutive tool messages become multiple functionResponse parts', () => {
         role: 'assistant',
         content: null,
         tool_calls: [
-          { id: 'call_1', type: 'function', function: { name: 'Read', arguments: '{"path":"a.ts"}' } },
-          { id: 'call_2', type: 'function', function: { name: 'Grep', arguments: '{"q":"src"}' } },
+          { id: 'call_1', type: 'function', function: { name: 'Read', arguments: '{"path":"a.ts"}' }, thoughtSignature: 'sig-read' },
+          { id: 'call_2', type: 'function', function: { name: 'Grep', arguments: '{"q":"src"}' }, thoughtSignature: 'sig-grep' },
         ],
       },
       { role: 'tool', tool_call_id: 'call_1', name: 'Read', content: 'file a contents' },
@@ -416,7 +427,7 @@ test('Google 400 fixture: array-shaped functionResponse / response never emitted
       {
         role: 'assistant',
         tool_calls: [
-          { id: 'call_read', type: 'function', function: { name: 'Read', arguments: '{}' } },
+          { id: 'call_read', type: 'function', function: { name: 'Read', arguments: '{}' }, thoughtSignature: 'sig-read' },
         ],
       },
       {
@@ -453,7 +464,10 @@ test('generateContent body is official-shaped and rejects an empty project', () 
   assert.equal(body.project, 'cogent-snow-4mnnp')
   assert.equal(body.userAgent, 'antigravity')
   assert.deepEqual(body.request.systemInstruction.parts, [{ text: 'You are helpful.' }])
+  assert.equal(body.request.systemInstruction.role, 'user')
   assert.equal(body.request.contents[0].role, 'user')
+  assert.equal(body.request.toolConfig.functionCallingConfig.mode, 'VALIDATED')
+  assert.equal(body.request.generationConfig.maxOutputTokens, 64_000)
   assert.equal(body.request.sessionId, `${ANTIGRAVITY_STABLE_SESSION}:claude-sonnet-4-6`)
   assert.equal(/^-\d+$/.test(body.request.sessionId), false)
   assert.equal(body.request.implicitCacheConfig, undefined)
@@ -666,6 +680,9 @@ test('proxy translates OpenAI chat to daily-cloudcode-pa with the same fingerpri
     assert.equal(seen[0].url, 'https://daily-cloudcode-pa.googleapis.com/v1internal:generateContent')
     assert.equal(seen.some((row) => String(row.url).startsWith('https://cloudcode-pa.googleapis.com/')), false)
     assert.equal(seen[0].headers['user-agent'], antigravityRequestUserAgent())
+    assert.equal(seen[0].headers['anthropic-beta'], ANTIGRAVITY_CLAUDE_THINKING_BETA)
+    assert.equal(seen[0].headers['Client-Metadata'], undefined)
+    assert.equal(seen[0].headers['x-goog-api-client'], undefined)
     const body = JSON.parse(seen[0].body)
     assert.equal(body.project, 'cogent-snow-4mnnp')
     assert.equal(body.userAgent, 'antigravity')
@@ -1189,8 +1206,7 @@ test('missing thoughtSignature still emits tool_calls and outbound omits the fie
       },
     ],
   }, { projectId: 'p' })
-  assertNoThoughtSignature(back.request.contents[1].parts[0])
-  assert.deepEqual(back.request.contents[1].parts[0].functionCall, { name: 'Read', args: { path: 'a.ts' } })
+  assert.equal(back.request.contents.some((content) => content.parts.some((part) => part.functionCall)), false)
   resetAntigravityThoughtSignatures()
 })
 
@@ -1601,8 +1617,10 @@ test('antigravity thinkingConfig is sticky-first and never adds implicitCacheCon
     reasoning_effort: 'low',
     messages: [{ role: 'user', content: 'again' }],
   }, { projectId: 'p' })
-  assert.equal(firstOmit.request.generationConfig, undefined)
-  assert.equal(laterEffort.request.generationConfig, undefined)
+  assert.equal(firstOmit.request.generationConfig.thinkingConfig, undefined)
+  assert.equal(laterEffort.request.generationConfig.thinkingConfig, undefined)
+  assert.equal(firstOmit.request.generationConfig.maxOutputTokens, 65_536)
+  assert.equal(laterEffort.request.generationConfig.maxOutputTokens, 65_536)
   resetAntigravitySystemPins()
 })
 
@@ -1633,4 +1651,306 @@ test('antigravity fallback sessionId is per model; DSH session_id stays one conv
     'session-dsh-1',
   )
   resetAntigravitySystemPins()
+})
+
+const JSON_SCHEMA_TOOL = {
+  type: 'function',
+  function: {
+    name: 'Read',
+    description: 'read a file',
+    parameters: {
+      $schema: 'https://json-schema.org/draft/2020-12/schema',
+      $defs: {
+        Path: { type: 'string', format: 'uri-reference', nullable: true },
+      },
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        path: { $ref: '#/$defs/Path' },
+        kind: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+        mode: { type: ['string', 'null'] },
+        flag: { type: 'string', enum: ['a', 1] },
+      },
+      required: ['path'],
+    },
+  },
+}
+
+function declarationOf(body) {
+  return body.request.tools[0].functionDeclarations[0]
+}
+
+test('Gemini tools emit parametersJsonSchema, not protobuf JSON Schema keywords', () => {
+  resetAntigravitySystemPins()
+  const body = openaiToAntigravity({
+    model: 'gemini-3.7-flash-high',
+    tools: [JSON_SCHEMA_TOOL],
+    messages: [{ role: 'user', content: 'hi' }],
+  }, { projectId: 'p' })
+  const decl = declarationOf(body)
+  assert.equal(decl.name, 'Read')
+  assert.equal(decl.parameters, undefined)
+  assert.equal(Object.hasOwn(decl, 'parameters'), false)
+  assert.equal(typeof decl.parametersJsonSchema, 'object')
+  assert.equal(decl.parametersJsonSchema.$schema, undefined)
+  assert.equal(decl.parametersJsonSchema.$defs, undefined)
+  assert.equal(decl.parametersJsonSchema.properties.path.format, 'uri-reference')
+  assert.equal(decl.parametersJsonSchema.properties.path.$ref, undefined)
+  assert.equal(decl.parametersJsonSchema.additionalProperties, false)
+  const wire = JSON.stringify(decl)
+  assert.equal(wire.includes('"parameters":'), false)
+  assert.equal(wire.includes('parametersJsonSchema'), true)
+  resetAntigravitySystemPins()
+})
+
+test('Claude and GPT-OSS tools emit allowlisted parameters only', () => {
+  resetAntigravitySystemPins()
+  for (const model of ['claude-sonnet-4-6', 'gpt-oss-120b-medium']) {
+    const body = openaiToAntigravity({
+      model,
+      tools: [JSON_SCHEMA_TOOL],
+      messages: [{ role: 'user', content: 'hi' }],
+    }, { projectId: 'p' })
+    const decl = declarationOf(body)
+    assert.equal(decl.parametersJsonSchema, undefined)
+    assert.equal(Object.hasOwn(decl, 'parametersJsonSchema'), false)
+    assert.equal(decl.parameters.type, 'object')
+    assert.deepEqual(decl.parameters.required, ['path'])
+    assert.equal(decl.parameters.additionalProperties, undefined)
+    assert.equal(decl.parameters.properties.path.format, undefined)
+    assert.equal(decl.parameters.properties.path.nullable, undefined)
+    assert.equal(decl.parameters.properties.path.$ref, undefined)
+    assert.equal(decl.parameters.properties.kind.anyOf, undefined)
+    assert.equal(decl.parameters.properties.mode.type, 'string')
+    assert.equal(decl.parameters.properties.flag.enum, undefined)
+    const keys = Object.keys(decl.parameters)
+    for (const key of keys) {
+      assert.equal(['type', 'description', 'properties', 'required', 'items', 'enum'].includes(key), true, key)
+    }
+    const nested = Object.keys(decl.parameters.properties.path)
+    for (const key of nested) {
+      assert.equal(['type', 'description', 'properties', 'required', 'items', 'enum'].includes(key), true, key)
+    }
+  }
+  resetAntigravitySystemPins()
+})
+
+test('Claude functionCall.id is present; Gemini functionCall has no id', () => {
+  resetAntigravitySystemPins()
+  const messages = [
+    { role: 'user', content: 'read' },
+    {
+      role: 'assistant',
+      content: null,
+      tool_calls: [
+        { id: 'call/1 extra!', type: 'function', function: { name: 'Read', arguments: '{"path":"a.ts"}' } },
+      ],
+    },
+    { role: 'tool', tool_call_id: 'call/1 extra!', name: 'Read', content: 'file a' },
+  ]
+  const claude = openaiToAntigravity({
+    model: 'claude-sonnet-4-6',
+    messages,
+  }, { projectId: 'p' })
+  const claudeCall = claude.request.contents.find((content) => content.role === 'model').parts[0]
+  const claudeResult = claude.request.contents.find((content) => content.parts.some((part) => part.functionResponse)).parts[0]
+  assert.equal(claudeCall.functionCall.id, sanitizeAntigravityToolCallId('call/1 extra!', 'Read'))
+  assert.equal(claudeCall.functionCall.id, 'call_1_extra_')
+  assert.equal(claudeResult.functionResponse.id, claudeCall.functionCall.id)
+  assert.equal(claudeCall.functionCall.id.length <= 64, true)
+  assert.match(claudeCall.functionCall.id, /^[A-Za-z0-9_-]+$/)
+
+  const gemini = openaiToAntigravity({
+    model: 'gemini-3.7-flash-high',
+    messages: [
+      messages[0],
+      {
+        ...messages[1],
+        tool_calls: messages[1].tool_calls.map((call) => ({ ...call, thoughtSignature: 'sig-keep' })),
+      },
+      messages[2],
+    ],
+  }, { projectId: 'p' })
+  const geminiCall = gemini.request.contents.find((content) => content.role === 'model').parts[0]
+  const geminiResult = gemini.request.contents.find((content) => content.parts.some((part) => part.functionResponse)).parts[0]
+  assert.equal(Object.hasOwn(geminiCall.functionCall, 'id'), false)
+  assert.equal(geminiCall.functionCall.id, undefined)
+  assert.equal(Object.hasOwn(geminiResult.functionResponse, 'id'), false)
+  resetAntigravitySystemPins()
+})
+
+test('contents starting with model get a leading user Hello', () => {
+  resetAntigravitySystemPins()
+  const body = openaiToAntigravity({
+    model: 'gemini-3.7-flash-high',
+    messages: [{ role: 'assistant', content: 'I am ready.' }],
+  }, { projectId: 'p' })
+  assert.equal(body.request.contents[0].role, 'user')
+  assert.deepEqual(body.request.contents[0].parts, [{ text: 'Hello' }])
+  assert.equal(body.request.contents[1].role, 'model')
+  assert.deepEqual(body.request.contents[1].parts, [{ text: 'I am ready.' }])
+  resetAntigravitySystemPins()
+})
+
+test('systemInstruction.role is user and DSH system is not replaced', () => {
+  resetAntigravitySystemPins()
+  const body = openaiToAntigravity({
+    model: 'gemini-3.7-flash-high',
+    messages: [
+      { role: 'system', content: 'You are an AI agent.' },
+      { role: 'user', content: 'hi' },
+    ],
+  }, { projectId: 'p' })
+  assert.equal(body.request.systemInstruction.role, 'user')
+  assert.deepEqual(body.request.systemInstruction.parts, [{ text: 'You are an AI agent.' }])
+  assert.equal(JSON.stringify(body.request.systemInstruction).includes('pair programming'), false)
+  resetAntigravitySystemPins()
+})
+
+test('maxOutputTokens is clamped to Cloud Code runtime caps', () => {
+  resetAntigravitySystemPins()
+  assert.equal(antigravityMaxOutputTokens('gemini-3.7-flash-high'), 65_536)
+  assert.equal(antigravityMaxOutputTokens('gemini-pro-agent'), 65_535)
+  assert.equal(antigravityMaxOutputTokens('gemini-3.1-pro-low'), 65_535)
+  assert.equal(antigravityMaxOutputTokens('claude-sonnet-4-6'), 64_000)
+  assert.equal(antigravityMaxOutputTokens('gpt-oss-120b-medium'), 32_768)
+  const flash = openaiToAntigravity({
+    model: 'gemini-3.7-flash-high',
+    max_tokens: 99_999,
+    messages: [{ role: 'user', content: 'hi' }],
+  }, { projectId: 'p' })
+  assert.equal(flash.request.generationConfig.maxOutputTokens, 65_536)
+  const pro = openaiToAntigravity({
+    model: 'gemini-pro-agent',
+    max_tokens: 65_536,
+    messages: [{ role: 'user', content: 'hi' }],
+  }, { projectId: 'p' })
+  assert.equal(pro.request.generationConfig.maxOutputTokens, 65_535)
+  const claude = openaiToAntigravity({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 80_000,
+    messages: [{ role: 'user', content: 'hi' }],
+  }, { projectId: 'p' })
+  assert.equal(claude.request.generationConfig.maxOutputTokens, 64_000)
+  const oss = openaiToAntigravity({
+    model: 'gpt-oss-120b-medium',
+    max_tokens: 64_000,
+    messages: [{ role: 'user', content: 'hi' }],
+  }, { projectId: 'p' })
+  assert.equal(oss.request.generationConfig.maxOutputTokens, 32_768)
+  resetAntigravitySystemPins()
+})
+
+test('Gemini 3 unsigned functionCall group is dropped to a user observation', () => {
+  resetAntigravityThoughtSignatures()
+  resetAntigravitySystemPins()
+  const body = openaiToAntigravity({
+    model: 'gemini-3.7-flash-high',
+    session_id: 'session-drop-1',
+    messages: [
+      { role: 'user', content: 'read' },
+      {
+        role: 'assistant',
+        content: null,
+        tool_calls: [
+          { id: 'call_1', type: 'function', function: { name: 'Read', arguments: '{"path":"a.ts"}' } },
+        ],
+      },
+      { role: 'tool', tool_call_id: 'call_1', name: 'Read', content: 'file a contents' },
+    ],
+  }, { projectId: 'p' })
+  const json = JSON.stringify(body.request.contents)
+  assert.equal(json.includes('functionCall'), false)
+  assert.equal(json.includes('functionResponse'), false)
+  const observation = body.request.contents.find((content) => content.parts.some((part) => String(part.text ?? '').includes('Observation')))
+  assert.equal(observation.role, 'user')
+  assert.match(observation.parts[0].text, /Observation from `Read`/)
+  assert.match(observation.parts[0].text, /file a contents/)
+  resetAntigravityThoughtSignatures()
+  resetAntigravitySystemPins()
+})
+
+test('Gemini tool_choice maps to NONE/ANY; Claude stays VALIDATED without tools', () => {
+  resetAntigravitySystemPins()
+  const none = openaiToAntigravity({
+    model: 'gemini-3.7-flash-high',
+    tool_choice: 'none',
+    tools: [READ_TOOL],
+    messages: [{ role: 'user', content: 'hi' }],
+  }, { projectId: 'p' })
+  assert.equal(none.request.toolConfig.functionCallingConfig.mode, 'NONE')
+  const any = openaiToAntigravity({
+    model: 'gemini-3.7-flash-high',
+    tool_choice: 'required',
+    tools: [READ_TOOL],
+    messages: [{ role: 'user', content: 'hi' }],
+  }, { projectId: 'p' })
+  assert.equal(any.request.toolConfig.functionCallingConfig.mode, 'ANY')
+  const auto = openaiToAntigravity({
+    model: 'gemini-3.7-flash-high',
+    tools: [READ_TOOL],
+    messages: [{ role: 'user', content: 'hi' }],
+  }, { projectId: 'p' })
+  assert.equal(auto.request.toolConfig.functionCallingConfig.mode, 'AUTO')
+  const claude = openaiToAntigravity({
+    model: 'claude-sonnet-4-6',
+    messages: [{ role: 'user', content: 'hi' }],
+  }, { projectId: 'p' })
+  assert.equal(claude.request.toolConfig.functionCallingConfig.mode, 'VALIDATED')
+  assert.equal(claude.request.tools, undefined)
+  const geminiBare = openaiToAntigravity({
+    model: 'gemini-3.7-flash-high',
+    messages: [{ role: 'user', content: 'hi' }],
+  }, { projectId: 'p' })
+  assert.equal(geminiBare.request.toolConfig, undefined)
+  resetAntigravitySystemPins()
+})
+
+test('proxy Gemini chat does not send anthropic-beta; Claude reasoning does', async () => {
+  const seen = []
+  const fetchFn = async (url, init) => {
+    seen.push({ url: String(url), headers: init.headers })
+    return jsonResponse({
+      response: { candidates: [{ content: { parts: [{ text: 'ok' }] }, finishReason: 'STOP' }] },
+    })
+  }
+  const proxy = createProxy({
+    port: 0,
+    apiKey: 'secret-key',
+    fetchFn,
+    tokens: {
+      antigravity: {
+        session: async () => antigravitySession({
+          accessToken: 'ag-tok',
+          refreshToken: 'r',
+          expiresAt: Date.now() + 60_000,
+          account: 'dev@x',
+          projectId: 'cogent-snow-4mnnp',
+        }),
+      },
+    },
+  })
+  const server = await proxy.listen()
+  try {
+    const port = server.address().port
+    const gemini = await fetch(`http://127.0.0.1:${port}/antigravity/v1/chat/completions`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer secret-key', 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'gemini-3.7-flash-high', messages: [{ role: 'user', content: 'hi' }] }),
+    })
+    assert.equal(gemini.status, 200)
+    assert.equal(seen[0].headers['anthropic-beta'], undefined)
+    assert.equal(seen[0].headers['Client-Metadata'], undefined)
+    const claude = await fetch(`http://127.0.0.1:${port}/antigravity/v1/chat/completions`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer secret-key', 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'claude-opus-4-6-thinking', messages: [{ role: 'user', content: 'hi' }] }),
+    })
+    assert.equal(claude.status, 200)
+    assert.equal(seen[1].headers['anthropic-beta'], ANTIGRAVITY_CLAUDE_THINKING_BETA)
+    assert.equal(seen[1].headers['Client-Metadata'], undefined)
+    assert.equal(seen[1].headers['x-goog-api-client'], undefined)
+  } finally {
+    await proxy.close()
+  }
 })
