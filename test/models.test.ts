@@ -95,7 +95,7 @@ test('buildProviders only emits logged-in families with DSH api ids', () => {
   const chat = buildProviders({
     prefix: 'oauth',
     origin: 'http://127.0.0.1:8318',
-    loggedIn: { glm: true, kiro: true, antigravity: true, cursor: true, ollama: true, kimi: true },
+    loggedIn: { glm: true, kiro: true, antigravity: true, cursor: true, ollama: true, kimi: true, opencode: true },
   })
   assert.equal(chat['oauth-glm'].api, HARNESS_ANTHROPIC_API)
   assert.equal(chat['oauth-glm'].baseURL, 'http://127.0.0.1:8318/glm')
@@ -129,6 +129,13 @@ test('buildProviders only emits logged-in families with DSH api ids', () => {
   assert.equal(chat['oauth-kimi'].baseURL, 'http://127.0.0.1:8318/kimi')
   assert.equal(chat['oauth-kimi'].baseURL.endsWith('/kimi/v1'), false)
   assert.equal(chat['oauth-kimi'].models.some((model) => model.id === 'k3'), true)
+  assert.equal(chat['oauth-opencode'].api, HARNESS_COMPLETIONS_API)
+  assert.equal(chat['oauth-opencode'].api, 'openai-completions')
+  assert.equal(chat['oauth-opencode'].baseURL, 'http://127.0.0.1:8318/opencode')
+  assert.equal(chat['oauth-opencode'].baseURL.endsWith('/opencode/v1'), false)
+  assert.equal(chat['oauth-opencode'].compat, undefined)
+  assert.equal(chat['oauth-opencode'].models.some((model) => model.id === 'laguna-s-2.1-free'), true)
+  assert.equal(chat['oauth-opencode'].models.some((model) => model.id === 'hy3-free'), false)
   assert.equal(chat['oauth-codex'], undefined)
 })
 

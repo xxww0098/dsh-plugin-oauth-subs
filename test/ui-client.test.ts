@@ -85,7 +85,7 @@ test('Settings Cursor tab uses Import local Cursor copy and shows source, never 
   assert.match(src, /\(id === 'cursor' \|\| id === 'ollama' \|\| id === 'kimi'\) && row\.methodLabel/)
   assert.match(src, /message === 'cursor-import-empty' \? t\.cursorImportEmpty/)
   assert.match(src, /h\(Tab, \{ id: 'cursor'/)
-  assert.match(src, /icons\/\{codex,grok,zai,kiro,antigravity,cursor,ollama,kimi,github\}\.svg/)
+  assert.match(src, /icons\/\{codex,grok,zai,kiro,antigravity,cursor,ollama,kimi,opencode,github\}\.svg/)
   assert.match(src, /cursor: \{ d: 'M22\.106 5\.68L12\.5\.135a\.998\.998 0 00-\.998 0L1\.893 5\.68/)
   assert.match(src, /cursor: \{ d: '[^']+', clip: true \}/)
   assert.equal(src.includes('M11.925 24l10.425-6'), false)
@@ -93,7 +93,7 @@ test('Settings Cursor tab uses Import local Cursor copy and shows source, never 
   assert.equal(/cursor[\s\S]{0,200}accessToken/.test(src), false)
   const tabOrder = src.match(/h\(Tab, \{ id: '(\w+)'/g) ?? []
   const ids = tabOrder.map((row) => /id: '(\w+)'/.exec(row)?.[1])
-  assert.deepEqual(ids.slice(0, 10), ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'models', 'about'])
+  assert.deepEqual(ids.slice(0, 11), ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'opencode', 'models', 'about'])
 })
 
 test('Settings Ollama tab is Cloud key paste after Cursor, never localhost', async () => {
@@ -107,7 +107,7 @@ test('Settings Ollama tab is Cloud key paste after Cursor, never localhost', asy
   assert.match(src, /ollama: \{ d: 'M7\.905 1\.09/)
   assert.match(src, /id === 'ollama' && !busy && h\('div', \{ className: 'osubs-logins' \}/)
   assert.match(src, /h\('span', null, t\.ollamaImport\)/)
-  assert.match(src, /id !== 'glm' && id !== 'kiro' && id !== 'ollama'/)
+  assert.match(src, /id !== 'glm' && id !== 'kiro' && id !== 'ollama' && id !== 'opencode'/)
   assert.equal(src.includes('127.0.0.1:11434'), false)
   assert.equal(src.includes('localhost:11434'), false)
   assert.match(src, /\.osubs-tabs \{[\s\S]*grid-template-columns: repeat\(8, 36px\)/)
@@ -211,4 +211,20 @@ test('Reset-credit confirm stays a centered alertdialog', async () => {
   assert.match(src, /quotaResetConfirmOk/)
   assert.match(src, /event\.key === 'Escape'/)
   assert.match(src, /pending && h\(WarnDialog/)
+})
+
+test('Settings OpenCode tab is anonymous enable after Kimi, never Authorization or @lobehub/icons', async () => {
+  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  assert.match(src, /opencodeTitle:\s*'OpenCode'/)
+  assert.match(src, /opencodeEnable:\s*'启用免费模型'/)
+  assert.match(src, /opencodeEnable:\s*'Enable free models'/)
+  assert.match(src, /LobeHub `OpenCode` icon/)
+  assert.match(src, /opencode: \{ d: 'M16 6H8v12h8V6zm4 16H4V2h16v20z', clip: true \}/)
+  assert.match(src, /h\(Tab, \{ id: 'opencode', label: t\.opencodeTitle, current: tab, onSelect: setTab, icon: 'opencode' \}/)
+  assert.match(src, /tab === 'opencode' && card\('opencode'/)
+  assert.match(src, /id === 'opencode' && !busy && h\('div', \{ className: 'osubs-logins' \}/)
+  assert.match(src, /t\.opencodeEnable/)
+  assert.match(src, /quota\.status === 'ready' && !hasUsage && family !== 'opencode'/)
+  assert.equal(src.includes("from '@lobehub/icons'"), false)
+  assert.equal(src.includes('Authorization'), false)
 })

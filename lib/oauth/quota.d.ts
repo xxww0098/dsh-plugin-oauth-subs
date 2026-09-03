@@ -12,6 +12,7 @@
  *                Official Model Quota UI is two groups × (weekly + 5-hour).
  *   Ollama  GET ollama.com/api/usage  (limits.session/weekly.usage = 0..1)
  *           POST ollama.com/api/me    (Email / Name / Plan; GET is 405)
+ *   OpenCode Free  no anonymous usage API; card stays idle / empty rows, plan Free
  *
  * Codex windows report used_percent; remaining is 100 − used.
  * Grok creditUsagePercent is also used-percent. Display remaining in the UI.
@@ -129,6 +130,12 @@ export declare function parseKimiUsage(payload: any, me: any): {
 export declare function fetchKimiQuota(session: any, fetchFn?: typeof fetch): Promise<{
     planType: string;
     account: string;
+    rows: any[];
+}>;
+/** Anonymous Zen has no usage API. Card still renders; quota rows stay empty. */
+export declare function fetchOpencodeQuota(session: any): Promise<{
+    planType: any;
+    account: any;
     rows: any[];
 }>;
 export declare function fetchGlmQuota(session: any, fetchFn?: typeof fetch): Promise<any>;

@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml/badge.svg)](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml)
 
-Use a **ChatGPT / Codex**, **xAI Grok**, **Zhipu GLM**, **AWS Kiro**, **Google Antigravity**, **Cursor**, **Ollama Cloud**, or **Kimi Code Plan** subscription inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). Official OAuth, plus Kiro API keys, Cursor CLI/IDE reuse, Ollama API keys (ollama.com Cloud, not localhost:11434), and Kimi device-code / `kimi-code.json`. Loopback proxy + `llm-pi-ai` route sync; each family picks one DSH `api` from `openai-responses` | `openai-completions` | `anthropic-messages`.
+Use a **ChatGPT / Codex**, **xAI Grok**, **Zhipu GLM**, **AWS Kiro**, **Google Antigravity**, **Cursor**, **Ollama Cloud**, **Kimi Code Plan**, or **OpenCode Free** subscription inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). Official OAuth, plus Kiro API keys, Cursor CLI/IDE reuse, Ollama API keys (ollama.com Cloud, not localhost:11434), Kimi device-code / `kimi-code.json`, and anonymous OpenCode Zen free models. Loopback proxy + `llm-pi-ai` route sync; each family picks one DSH `api` from `openai-responses` | `openai-completions` | `anthropic-messages`.
 
 ## Install
 
@@ -28,6 +28,7 @@ Open **Settings → OAuth subs**. One card per account (quota on every card; Oll
 | Cursor | PKCE poll `cursor.com/loginDeepControl`; or **Import local Cursor** | `openai-completions` | Connect `agentn.us.api5.cursor.sh` `AgentService/Run` |
 | Ollama Cloud | Paste API key / import `OLLAMA_API_KEY` | `openai-completions` | `https://ollama.com/v1/chat/completions` |
 | Kimi Code Plan | Device-code (no PKCE); import `~/.kimi-code/credentials/kimi-code.json`; optional `KIMI_API_KEY` | `openai-completions` | `https://api.kimi.com/coding/v1/chat/completions` |
+| OpenCode Free | One-click anonymous enable (no account, no API key) | `openai-completions` | `https://opencode.ai/zen/v1/chat/completions` (no Authorization) |
 
 | Path | Family |
 |---|---|
@@ -49,7 +50,7 @@ Tokens: `<profile>/data/dsh-plugin-oauth-subs/auth.json` (`0600`). Models: `mode
 |---|---|
 | Settings | OAuth login / import / logout, then model sync |
 | llm-pi-ai | DSH call plane; routes to the loopback proxy |
-| Loopback | `http://127.0.0.1:8318/{codex,grok}/v1/responses`, `/glm/v1/messages` (Completions leftover `/glm/v1/chat/completions` until the next sync), `/{kiro,antigravity,cursor,ollama,kimi}/v1/chat/completions` |
+| Loopback | `http://127.0.0.1:8318/{codex,grok}/v1/responses`, `/glm/v1/messages` (Completions leftover `/glm/v1/chat/completions` until the next sync), `/{kiro,antigravity,cursor,ollama,kimi,opencode}/v1/chat/completions` |
 | Upstream | Refreshed subscription bearer |
 
 Not a second LLM adapter. After Settings closes, DSH still calls the loopback proxy. Bind is loopback-only; local credential is `DSH_OAUTH_SUBS_API_KEY`. GLM 150% Coding Plan boost is identity (ZCode Desktop UA), not a protocol claim. Stack and module tree: [AGENTS.md](AGENTS.md).

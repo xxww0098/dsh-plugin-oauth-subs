@@ -83,6 +83,12 @@ import {
 import { KIMI_IMPORT_EMPTY, importKimiAuth } from './kimi/import.js'
 import { kimiCatalogModels, refreshKimiCatalog } from './kimi/catalog.js'
 import {
+  isOpencodePermanentRefreshError,
+  opencodeSession,
+  refreshOpencode,
+} from './opencode/index.js'
+import { opencodeCatalogModels, refreshOpencodeCatalog } from './opencode/catalog.js'
+import {
   buildProviders,
   catalogProviders,
   describeCatalog,
@@ -96,7 +102,7 @@ import { QuotaStore } from './quota.js'
 import { fetchLatest, localUpdateInfo, runPluginUpdate, DEFAULT_PROFILE } from '../utils/update.js'
 
 export class AuthController {
-  constructor({ authPath, prefix, origin, settings, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, spawnFn, profile, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover }) {
+  constructor({ authPath, prefix, origin, settings, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, spawnFn, profile, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, opencodeDiscover }) {
     this.authPath = authPath
     this.prefix = prefix
     this.origin = origin
@@ -131,6 +137,9 @@ export class AuthController {
     this.kimiDiscover = typeof kimiDiscover === 'function'
       ? kimiDiscover
       : (process.env.NODE_TEST_CONTEXT ? undefined : ((session) => refreshKimiCatalog(session, { fetchFn })))
+    this.opencodeDiscover = typeof opencodeDiscover === 'function'
+      ? opencodeDiscover
+      : (process.env.NODE_TEST_CONTEXT ? undefined : (() => refreshOpencodeCatalog({ fetchFn })))
     configureKimiIdentity(typeof authPath === 'string' ? dirname(authPath) : undefined)
     this.lastError = new Map()
     this.finalizing = new Set()
@@ -216,6 +225,16 @@ export class AuthController {
         isPermanent: isKimiPermanentRefreshError,
         onRemoved: () => this.onAuthChanged?.('kimi'),
       }),
+      opencode: new TokenManager({
+        displayName: 'OpenCode Free',
+        preemptMs: 24 * 60 * 60_000,
+        load: () => getSession('opencode', this.authPath),
+        save: (session) => saveSession('opencode', session, this.authPath),
+        remove: () => deleteSession('opencode', this.authPath),
+        refresh: refreshOpencode,
+        isPermanent: isOpencodePermanentRefreshError,
+        onRemoved: () => this.onAuthChanged?.('opencode'),
+      }),
     }
     this.quota = new QuotaStore({ tokens: this.tokens, fetchFn, ttlMs: quotaTtlMs })
     this.fetchFn = fetchFn
@@ -237,6 +256,7 @@ export class AuthController {
       cursor: (await getSession('cursor', this.authPath)) !== undefined,
       ollama: (await getSession('ollama', this.authPath)) !== undefined,
       kimi: (await getSession('kimi', this.authPath)) !== undefined,
+      opencode: (await getSession('opencode', this.authPath)) !== undefined,
     }
   }
 
@@ -262,6 +282,7 @@ export class AuthController {
       ollamaModels: ollamaCatalogModels(),
       kiroModels: kiroCatalogModels(),
       kimiModels: kimiCatalogModels(),
+      opencodeModels: opencodeCatalogModels(),
     })
   }
 
@@ -301,6 +322,15 @@ export class AuthController {
     }
   }
 
+  async #discoverOpencode() {
+    if (typeof this.opencodeDiscover !== 'function') return opencodeCatalogModels()
+    try {
+      return await this.opencodeDiscover({ fetchFn: this.fetchFn })
+    } catch {
+      return opencodeCatalogModels()
+    }
+  }
+
   async snapshot() {
     await this.models.ready
     await this.#resolveGlmIdentities()
@@ -317,6 +347,7 @@ export class AuthController {
       ollamaModels: ollamaCatalogModels(),
       kiroModels: kiroCatalogModels(),
       kimiModels: kimiCatalogModels(),
+      opencodeModels: opencodeCatalogModels(),
     })
     const selected = this.models.selectedForSync(catalog)
     const providers = filterProviders(buildProviders({
@@ -327,6 +358,7 @@ export class AuthController {
       ollamaModels: ollamaCatalogModels(),
       kiroModels: kiroCatalogModels(),
       kimiModels: kimiCatalogModels(),
+      opencodeModels: opencodeCatalogModels(),
     }), selected)
     if (loggedIn.codex) await this.#ensureAccountQuota('codex')
     else this.quota.clear('codex')
@@ -344,8 +376,10 @@ export class AuthController {
     else this.quota.clear('ollama')
     if (loggedIn.kimi) await this.#ensureAccountQuota('kimi')
     else this.quota.clear('kimi')
+    if (loggedIn.opencode) await this.#ensureAccountQuota('opencode')
+    else this.quota.clear('opencode')
     const enabledKeys = this.models.enabledKeys(catalog)
-    const [codexAccounts, grokAccounts, glmAccounts, kiroAccounts, antigravityAccounts, cursorAccounts, ollamaAccounts, kimiAccounts] = await Promise.all([
+    const [codexAccounts, grokAccounts, glmAccounts, kiroAccounts, antigravityAccounts, cursorAccounts, ollamaAccounts, kimiAccounts, opencodeAccounts] = await Promise.all([
       this.#accountsWithQuota('codex'),
       this.#accountsWithQuota('grok'),
       this.#accountsWithQuota('glm'),
@@ -354,6 +388,7 @@ export class AuthController {
       this.#accountsWithQuota('cursor'),
       this.#accountsWithQuota('ollama'),
       this.#accountsWithQuota('kimi'),
+      this.#accountsWithQuota('opencode'),
     ])
     return {
       origin,
@@ -370,13 +405,14 @@ export class AuthController {
         cursor: { ...(await this.status('cursor')), activeId: cursorAccounts.find((row) => row.active)?.id, accounts: cursorAccounts },
         ollama: { ...(await this.status('ollama')), activeId: ollamaAccounts.find((row) => row.active)?.id, accounts: ollamaAccounts },
         kimi: { ...(await this.status('kimi')), activeId: kimiAccounts.find((row) => row.active)?.id, accounts: kimiAccounts },
+        opencode: { ...(await this.status('opencode')), activeId: opencodeAccounts.find((row) => row.active)?.id, accounts: opencodeAccounts },
       },
       update: localUpdateInfo(),
     }
   }
 
   async refreshQuota(provider, accountId) {
-    if (provider === 'codex' || provider === 'grok' || provider === 'glm' || provider === 'kiro' || provider === 'antigravity' || provider === 'cursor' || provider === 'ollama' || provider === 'kimi') {
+    if (provider === 'codex' || provider === 'grok' || provider === 'glm' || provider === 'kiro' || provider === 'antigravity' || provider === 'cursor' || provider === 'ollama' || provider === 'kimi' || provider === 'opencode') {
       const rows = await this.#liveAccounts(provider)
       const targets = accountId
         ? rows.filter((row) => row.id === accountId)
@@ -422,7 +458,14 @@ export class AuthController {
           await this.sync().catch(() => undefined)
         }
       }
-      const latest = provider === 'ollama' || provider === 'kimi' ? await this.#liveAccounts(provider) : rows
+      if (provider === 'opencode') {
+        const before = opencodeCatalogModels().map((model) => model.id).join('\0')
+        await this.#discoverOpencode()
+        if (this.settings && opencodeCatalogModels().map((model) => model.id).join('\0') !== before) {
+          await this.sync().catch(() => undefined)
+        }
+      }
+      const latest = provider === 'ollama' || provider === 'kimi' || provider === 'opencode' ? await this.#liveAccounts(provider) : rows
       if (accountId) {
         const hit = latest.find((row) => row.id === accountId) ?? latest.find((row) => row.active)
         return this.quota.peek(provider, hit?.id ?? accountId)
@@ -430,7 +473,7 @@ export class AuthController {
       const active = latest.find((row) => row.active)
       return this.quota.peek(provider, active?.id)
     }
-    const [codex, grok, glm, kiro, antigravity, cursor, ollama, kimi] = await Promise.all([
+    const [codex, grok, glm, kiro, antigravity, cursor, ollama, kimi, opencode] = await Promise.all([
       this.refreshQuota('codex'),
       this.refreshQuota('grok'),
       this.refreshQuota('glm'),
@@ -439,8 +482,9 @@ export class AuthController {
       this.refreshQuota('cursor'),
       this.refreshQuota('ollama'),
       this.refreshQuota('kimi'),
+      this.refreshQuota('opencode'),
     ])
-    return { codex, grok, glm, kiro, antigravity, cursor, ollama, kimi }
+    return { codex, grok, glm, kiro, antigravity, cursor, ollama, kimi, opencode }
   }
 
   async consumeReset(provider, accountId) {
@@ -819,6 +863,16 @@ export class AuthController {
     if (provider === 'ollama') {
       throw new Error('ollama uses the paste form, not browser login')
     }
+    if (provider === 'opencode') {
+      const session = opencodeSession()
+      this.claim('opencode')
+      await saveSession('opencode', session, this.authPath)
+      this.lastError.delete('opencode')
+      await this.#discoverOpencode()
+      this.onAuthChanged?.('opencode')
+      void this.quota.refresh('opencode')
+      return { account: publicSession('opencode', session), mode: 'anonymous' }
+    }
     if (provider === 'cursor') {
       const attempt = await this.cursorFlows.start('cursor', { fetchFn: this.fetchFn })
       this.finalizing.add('cursor')
@@ -1063,6 +1117,7 @@ export class AuthController {
       void this.quota.refresh('kimi')
       return { account: publicSession('kimi', session) }
     }
+    if (provider === 'opencode') throw new Error('opencode free is anonymous — no API key')
     if (provider !== 'glm') throw new Error('only GLM, Kiro, Ollama, and Kimi accept a pasted key')
     const accessToken = typeof key === 'string' ? key.trim() : ''
     if (accessToken.length < 8) throw new Error('glm API key is empty')
@@ -1200,6 +1255,7 @@ export class AuthController {
   }
 
   async importFrom(provider) {
+    if (provider === 'opencode') throw new Error('opencode free is anonymous — no import')
     const result = provider === 'codex'
       ? await importCodexAuth()
       : provider === 'glm'
@@ -1248,7 +1304,7 @@ export class AuthController {
       await this.models.setEnabled(payload.selected, catalog)
     } else if (typeof payload.key === 'string') {
       await this.models.toggle(payload.key, payload.on !== false, catalog)
-    } else if (payload.family === 'codex' || payload.family === 'grok' || payload.family === 'glm' || payload.family === 'kiro' || payload.family === 'antigravity' || payload.family === 'cursor' || payload.family === 'ollama' || payload.family === 'kimi') {
+    } else if (payload.family === 'codex' || payload.family === 'grok' || payload.family === 'glm' || payload.family === 'kiro' || payload.family === 'antigravity' || payload.family === 'cursor' || payload.family === 'ollama' || payload.family === 'kimi' || payload.family === 'opencode') {
       await this.models.setFamily(payload.family, payload.on !== false, catalog)
     } else if (typeof payload.all === 'boolean') {
       await this.models.setAll(payload.all, catalog)
@@ -1286,6 +1342,7 @@ export class AuthController {
       ollamaModels: ollamaCatalogModels(),
       kiroModels: kiroCatalogModels(),
       kimiModels: kimiCatalogModels(),
+      opencodeModels: opencodeCatalogModels(),
     })
   }
 }
