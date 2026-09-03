@@ -118,6 +118,12 @@ test('buildProviders only emits logged-in families with DSH api ids', () => {
   assert.equal(chat['oauth-ollama'].models.some((model) => model.id === 'kimi-k3'), true)
   assert.equal(chat['oauth-ollama'].models.some((model) => model.id === 'qwen3.5:397b'), true)
   assert.deepEqual(chat['oauth-ollama'].models.find((model) => model.id === 'gemma4:31b').input, ['text', 'image'])
+  assert.deepEqual(chat['oauth-ollama'].models.find((model) => model.id === 'glm-5.3-flash').input, ['text', 'image'])
+  assert.deepEqual(chat['oauth-ollama'].models.find((model) => model.id === 'glm-5.3').input, ['text'])
+  assert.deepEqual(chat['oauth-ollama'].models.find((model) => model.id === 'qwen3.5:397b').input, ['text', 'image'])
+  assert.deepEqual(chat['oauth-ollama'].models.find((model) => model.id === 'kimi-k3').input, ['text', 'image'])
+  assert.deepEqual(chat['oauth-ollama'].models.find((model) => model.id === 'mistral-large-3:675b').input, ['text', 'image'])
+  assert.deepEqual(chat['oauth-ollama'].models.find((model) => model.id === 'gpt-oss:120b').input, ['text'])
   assert.equal(chat['oauth-codex'], undefined)
 })
 
