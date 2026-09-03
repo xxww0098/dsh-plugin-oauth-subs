@@ -80,6 +80,7 @@ test('catalog is Completions at /opencode, not a custom api string', () => {
   const route = providers['oauth-opencode']
   assert.equal(route.api, HARNESS_COMPLETIONS_API)
   assert.equal(route.api, 'openai-completions')
+  assert.equal(route.displayName, 'OAuth · OpenCode Free')
   assert.equal(route.baseURL, 'http://127.0.0.1:8318/opencode')
   assert.equal(route.baseURL.endsWith('/opencode/v1'), false)
   assert.equal(route.compat, undefined)
