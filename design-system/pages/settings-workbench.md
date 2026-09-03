@@ -10,7 +10,7 @@ No hero, no feature grid, no glass CTA slab. The first catalog hit for
 SaaS (Hero + Features + CTA / Glassmorphism) stops at the overlay
 already recorded in MASTER. Settings is a stacked workbench:
 
-1. Sticky icon tabs (`.osubs-nav`)
+1. Sticky icon tabs (`.osubs-nav`): 8-column grid, 36px cells, 9th wraps
 2. One family card (or Models / About)
 3. Account cards in a column
 4. One primary CTA → centered Dialog
