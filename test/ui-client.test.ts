@@ -67,6 +67,10 @@ test('Settings Cursor tab uses Import local Cursor copy and shows source, never 
   assert.match(src, /id === 'cursor' && row\.methodLabel/)
   assert.match(src, /message === 'cursor-import-empty' \? t\.cursorImportEmpty/)
   assert.match(src, /h\(Tab, \{ id: 'cursor'/)
+  assert.match(src, /icons\/\{codex,grok,zai,kiro,antigravity,cursor,github\}\.svg/)
+  assert.match(src, /cursor: \{ d: 'M22\.106 5\.68L12\.5\.135a\.998\.998 0 00-\.998 0L1\.893 5\.68/)
+  assert.match(src, /cursor: \{ d: '[^']+', clip: true \}/)
+  assert.equal(src.includes('M11.925 24l10.425-6'), false)
   assert.equal(src.includes('session.accessToken'), false)
   assert.equal(/cursor[\s\S]{0,200}accessToken/.test(src), false)
   const tabOrder = src.match(/h\(Tab, \{ id: '(\w+)'/g) ?? []
