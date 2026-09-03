@@ -77,13 +77,13 @@ export declare function parseKiroUsage(payload: any): {
         resetAt: number;
     }[];
 };
-export declare function parseCursorPeriodUsage(payload: any): {
+export declare function parseCursorPeriodUsage(payload: any, extras?: {}): {
     rows: any[];
     planType?: undefined;
     account?: undefined;
 } | {
     planType: string | number;
-    account: any;
+    account: string;
     rows: {
         resetAt?: any;
         key: string;
@@ -99,7 +99,7 @@ export declare function fetchCursorQuota(session: any, fetchFn?: typeof fetch): 
     account?: undefined;
 } | {
     planType: string | number;
-    account: any;
+    account: string;
     rows: {
         resetAt?: any;
         key: string;

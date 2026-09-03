@@ -99,6 +99,9 @@ test('Settings Ollama tab is Cloud key paste after Cursor, never localhost', asy
   assert.match(src, /id !== 'glm' && id !== 'kiro' && id !== 'ollama'/)
   assert.equal(src.includes('127.0.0.1:11434'), false)
   assert.equal(src.includes('localhost:11434'), false)
+  assert.match(src, /\.osubs-tabs \{[\s\S]*flex-wrap: wrap/)
+  assert.match(src, /\.osubs-tab \{[\s\S]*flex: 0 0 36px; min-width: 36px; width: 36px/)
+  assert.match(src, /\.osubs-nav \{[\s\S]*position: sticky/)
 })
 
 test('Settings Antigravity card shows a verify banner, not API-key-invalid', async () => {
@@ -120,11 +123,15 @@ test('authorize URL and user code hide when the provider is no longer busy', asy
 test('QuotaRow is a remaining bar for Codex remainingPercent and Cursor usedPercent', async () => {
   const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
   assert.match(src, /function remainingPercentOf\(row\)/)
+  assert.match(src, /function RemainingBar/)
+  assert.match(src, /function QuotaMeter/)
   assert.match(src, /typeof row\?\.remainingPercent === 'number'/)
   assert.match(src, /100 - row\.usedPercent/)
   assert.match(src, /const remaining = remainingPercentOf\(row\)/)
-  assert.match(src, /fill\(t\.leftPercent, remaining\)/)
-  assert.match(src, /scaleX\(\$\{remaining \/ 100\}\)/)
+  assert.match(src, /h\(QuotaMeter,/)
+  assert.match(src, /h\(RemainingBar, \{ remainingPercent, tone \}\)/)
+  assert.match(src, /fill\(t\.leftPercent, remainingPercent\)/)
+  assert.match(src, /scaleX\(\$\{Math\.max\(0, Math\.min\(100, remainingPercent\)\) \/ 100\}\)/)
   assert.match(src, /leftPercent:\s*'剩余 \{n\}%'/)
   assert.match(src, /leftPercent:\s*'\{n\}% left'/)
   assert.match(src, /\.osubs-tag \{[\s\S]*white-space: nowrap/)

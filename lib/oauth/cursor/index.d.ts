@@ -12,6 +12,11 @@ export declare const CURSOR_AGENT_URL = "https://agentn.us.api5.cursor.sh";
 export declare const CURSOR_API2_URL = "https://api2.cursor.sh";
 export declare const CURSOR_USAGE_PATH = "/aiserver.v1.DashboardService/GetCurrentPeriodUsage";
 export declare const CURSOR_USAGE_URL = "https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage";
+export declare const CURSOR_STRIPE_PROFILE_URL = "https://api2.cursor.sh/auth/full_stripe_profile";
+export declare const CURSOR_GET_EMAIL_PATH = "/aiserver.v1.AuthService/GetEmail";
+export declare const CURSOR_GET_EMAIL_URL = "https://api2.cursor.sh/aiserver.v1.AuthService/GetEmail";
+export declare const CURSOR_GET_ME_PATH = "/aiserver.v1.DashboardService/GetMe";
+export declare const CURSOR_GET_ME_URL = "https://api2.cursor.sh/aiserver.v1.DashboardService/GetMe";
 export declare const CURSOR_RUN_PATH = "/agent.v1.AgentService/Run";
 export declare const CURSOR_MODELS_PATH = "/agent.v1.AgentService/GetUsableModels";
 export declare const CURSOR_AVAILABLE_MODELS_PATH = "/aiserver.v1.AiService/AvailableModels";
@@ -66,6 +71,9 @@ export declare function isCursorOpaqueAccount(value: any): boolean;
 export declare function pickCursorHumanAccount(...candidates: any[]): string;
 export declare function cursorAccountFromToken(token: any): string;
 export declare function displayCursorAccount(session: any): string;
+/** GetEmail `{ email }` or GetMe `{ email, firstName, lastName }`. Email wins. */
+export declare function cursorNameFromProfile(value: any): string;
+export declare function cursorMembershipFromStripe(value: any): string;
 export declare function cursorAccessStillValid(token: any, now?: number): boolean;
 export declare function createCursorPkce(): {
     verifier: string;
@@ -81,9 +89,10 @@ export declare function parseCursorTokenResponse(value: any, endpoint?: string):
     accessToken: string;
     refreshToken: string;
 };
-export declare function cursorSession({ accessToken, refreshToken, expiresAt, account, planType, source, }?: {
+export declare function cursorSession({ accessToken, refreshToken, expiresAt, account, planType, cachedEmail, source, }?: {
     source?: string;
 }): {
+    cachedEmail?: string;
     planType?: any;
     source: string;
     account?: string;
@@ -128,6 +137,7 @@ export declare function isCursorPermanentRefreshError(error: any): boolean;
 export declare function completeCursorLogin(tokens: any, { source }?: {
     source?: string;
 }): Promise<{
+    cachedEmail?: string;
     planType?: any;
     source: string;
     account?: string;
