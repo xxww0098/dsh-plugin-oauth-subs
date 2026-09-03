@@ -267,6 +267,8 @@ export {
 export {
   OPENCODE_MODELS,
   OPENCODE_CHAT_URL,
+  OPENCODE_RESPONSES_URL,
+  isOpencodeResponsesModel,
   opencodeSession,
   opencodeUpstreamHeaders,
 } from './oauth/opencode/index.js'

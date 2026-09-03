@@ -194,7 +194,7 @@ test('OpenCode cache strips Codex/Grok fields and does not invent a sticky wire 
     session_id: 'sess-opencode',
     prompt_cache_key: 'codex-style',
     prompt_cache_retention: '24h',
-    model: 'laguna-s-2.1-free',
+    model: 'ling-3.0-flash-fin-free',
   })
   assert.equal(cacheSessionId, 'sess-opencode')
   assert.equal(payload.prompt_cache_key, undefined)

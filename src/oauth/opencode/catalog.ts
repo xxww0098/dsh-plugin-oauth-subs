@@ -1,6 +1,6 @@
 /**
  * Live OpenCode Free picker. GET https://opencode.ai/zen/v1/models
- * anonymously (no Authorization), keep *-free slugs that are not Go-keyed.
+ * anonymously (no Authorization), keep official Free ids that Zen still lists.
  * Overlay matching models.dev `opencode.models` for windows / input /
  * reasoning. OPENCODE_MODELS is the offline fallback only.
  */

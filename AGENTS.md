@@ -103,8 +103,8 @@ src/
     opencode/              OpenCode Zen anonymous free (opencode.ai/zen/v1)
       README.md            family design: login, chat, quota, cache (traceable)
       index.ts             catalog floor, anonymous session, hop headers (no Authorization)
-      catalog.ts           live GET /zen/v1/models + models.dev overlay; keep *-free minus Go-keyed
-      request.ts           DSH reasoning_effort → OpenAI reasoning_effort (never both thinking)
+      catalog.ts           live GET /zen/v1/models ∩ official Free allowlist; models.dev overlay
+      request.ts           Completions reasoning_effort; Muse chat ↔ Zen /v1/responses
       cache.ts             strip Codex/Grok fields; no sticky id (non-fix)
   ui/                      React Settings (classic-script factory)
     client.ts
@@ -427,7 +427,7 @@ invariant list. When the two disagree, fix the README.
 | Cursor | `openai-completions` | Native is Connect/protobuf `AgentService/Run` | Completions adapter `POST /cursor/v1/chat/completions` |
 | Ollama | `openai-completions` | Native is `/api/chat`. Cloud also serves OpenAI `https://ollama.com/v1/chat/completions` (401 without Bearer; Factory docs use that `/v1`). | thin passthrough `POST /ollama/v1/chat/completions` → `https://ollama.com/v1/chat/completions` |
 | Kimi | `openai-completions` | Kimi Code Plan default is OpenAI Completions at `api.kimi.com/coding/v1`. Do **not** invent `kimi-openai-completions`. | thin hop `POST /kimi/v1/chat/completions` → `https://api.kimi.com/coding/v1/chat/completions` |
-| OpenCode | `openai-completions` | Native is OpenAI Completions at `https://opencode.ai/zen/v1`. Any unrecognized Authorization 401s. Do **not** invent a fourth api. | thin hop `POST /opencode/v1/chat/completions` → `https://opencode.ai/zen/v1/chat/completions` (no Authorization) |
+| OpenCode | `openai-completions` | Native is OpenAI Completions at `https://opencode.ai/zen/v1` for most free models. Muse Spark is Responses-only on Zen. Any unrecognized Authorization 401s. Do **not** invent a fourth api. | thin hop `POST /opencode/v1/chat/completions` → `https://opencode.ai/zen/v1/chat/completions` (no Authorization). Muse (`muse-spark*`): translate chat → Zen `/v1/responses` → chat.completion |
 
 `baseURL` must match how that SDK posts. Anthropic SDK posts
 `{baseURL}/v1/messages`, so GLM is `${origin}/glm` (not `${origin}/glm/v1`).
@@ -452,7 +452,8 @@ already said `ai-sdk/anthropic` while Completions was posted). Do
 - Switch Codex / Grok to Completions.
 - Switch Kiro / Antigravity / Cursor / Ollama / Kimi / OpenCode to Responses or Anthropic (native is still
   none of the three for Kiro/AG/Cursor; Kimi's Coding Plan default is Completions;
-  OpenCode Zen free is Completions).
+  OpenCode Zen free is Completions for most models). Muse Spark is Zen `/v1/responses`
+  but DSH `api` stays `openai-completions` — hop-translate only.
   Do not pick Responses for Ollama because local `localhost:11434/v1/responses` exists.
   Do not invent `kimi-openai-completions`.
   Do not send Authorization on the OpenCode hop (empty / sentinel / stale Zen key all 401).
