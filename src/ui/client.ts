@@ -685,8 +685,8 @@ window.__ModuleLoader__.load({
 }
 .osubs-pane { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
 .osubs-tabs {
-  display: grid; grid-template-columns: repeat(8, 36px); justify-content: start;
-  gap: 4px; padding: 4px; width: max-content; flex: none;
+  display: grid; grid-template-columns: repeat(8, 36px); justify-content: space-between;
+  gap: 4px; padding: 4px; flex: 1 1 auto;
   border: 1px solid var(--osubs-line); border-radius: 12px;
   background: var(--osubs-fill);
 }
@@ -1502,8 +1502,8 @@ window.__ModuleLoader__.load({
         h('div', { className: 'osubs-actions' },
           h(Button, {
             variant: 'primary',
-            onClick: () => setAddOpen(true),
-            label: busy ? t.continueAuth : loggedIn ? t.addAccount : t.login,
+            onClick: () => id === 'opencode' ? onLogin(id) : setAddOpen(true),
+            label: busy ? t.continueAuth : id === 'opencode' ? t.opencodeEnable : loggedIn ? t.addAccount : t.login,
           }),
           busy && h(Button, { onClick: () => onCancel(id), label: t.cancel }),
         ),

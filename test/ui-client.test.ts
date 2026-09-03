@@ -121,18 +121,26 @@ test('Settings Ollama tab is Cloud key paste after Cursor, never localhost', asy
   assert.match(src, /\.osubs-nav \{[\s\S]*position: sticky/)
 })
 
-test('Settings tab bar is two docked capsules with a 4px seam, not a far-right hole', async () => {
+test('Settings tab bar is two docked capsules; OAuth spreads leftover width between 8 icons', async () => {
   const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
   const oauth = src.match(/className: 'osubs-tabs'[\s\S]*?className: 'osubs-tabs-util'/)?.[0] ?? ''
   const util = src.match(/className: 'osubs-tabs-util'[\s\S]*?\),\s*\),/)?.[0] ?? ''
   assert.match(src, /className: 'osubs-nav', role: 'tablist'/)
   const navCss = src.match(/\.osubs-nav \{[^}]*\}/)?.[0] ?? ''
+  const tabsCss = src.match(/\.osubs-tabs \{[^}]*\}/)?.[0] ?? ''
   const utilCss = src.match(/\.osubs-tabs-util \{[^}]*\}/)?.[0] ?? ''
+  const tabCss = src.match(/\.osubs-tab \{[^}]*\}/)?.[0] ?? ''
   assert.match(navCss, /display: flex;/)
   assert.match(navCss, /justify-content: flex-start/)
   assert.match(navCss, /gap: 4px/)
   assert.equal(navCss.includes('space-between'), false)
-  assert.match(src, /\.osubs-tabs \{[\s\S]*grid-template-columns: repeat\(8, 36px\)/)
+  assert.match(tabsCss, /grid-template-columns: repeat\(8, 36px\)/)
+  assert.match(tabsCss, /justify-content: space-between/)
+  assert.match(tabsCss, /flex: 1 1 auto/)
+  assert.equal(tabsCss.includes('max-content'), false)
+  assert.equal(tabsCss.includes('flex: none'), false)
+  assert.match(tabCss, /width: 36px; height: 36px; min-width: 36px/)
+  assert.equal(tabCss.includes('flex: 1 1 0'), false)
   assert.match(utilCss, /grid-template-columns: 36px/)
   assert.equal(utilCss.includes('margin-left: auto'), false)
   assert.match(oauth, /id: 'codex'/)
@@ -226,7 +234,8 @@ test('Add account opens a centered dialog, not a sheet', async () => {
   assert.match(src, /role: 'dialog'/)
   assert.match(src, /className: 'osubs-dsw'/)
   assert.match(src, /setAddOpen\(true\)/)
-  assert.match(src, /busy \? t\.continueAuth : loggedIn \? t\.addAccount : t\.login/)
+  assert.match(src, /id === 'opencode' \? onLogin\(id\) : setAddOpen\(true\)/)
+  assert.match(src, /id === 'opencode' \? t\.opencodeEnable : loggedIn \? t\.addAccount : t\.login/)
   assert.match(src, /id === 'glm' && !busy && h\('div', \{ className: 'osubs-glm-logins' \}/)
   assert.match(src, /id === 'kiro' && !busy && h\('div', \{ className: 'osubs-logins' \}/)
   assert.match(src, /id === 'ollama' && !busy && h\('div', \{ className: 'osubs-logins' \}/)
@@ -257,6 +266,8 @@ test('Settings OpenCode tab is anonymous enable after Kimi, never Authorization 
   assert.match(src, /tab === 'opencode' && card\('opencode'/)
   assert.match(src, /id === 'opencode' && !busy && h\('div', \{ className: 'osubs-logins' \}/)
   assert.match(src, /t\.opencodeEnable/)
+  assert.match(src, /id === 'opencode' \? onLogin\(id\) : setAddOpen\(true\)/)
+  assert.match(src, /id === 'opencode' \? t\.opencodeEnable : loggedIn \? t\.addAccount : t\.login/)
   assert.match(src, /quota\.status === 'ready' && !hasUsage && family !== 'opencode'/)
   assert.equal(src.includes("from '@lobehub/icons'"), false)
   assert.equal(src.includes('Authorization'), false)
