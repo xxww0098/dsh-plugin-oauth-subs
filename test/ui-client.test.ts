@@ -98,7 +98,8 @@ test('Settings Cursor tab uses Import local Cursor copy and shows source, never 
 
 test('Settings Ollama tab is Cloud key paste after Cursor, never localhost', async () => {
   const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
-  assert.match(src, /ollamaTitle:\s*'Ollama'/)
+  assert.match(src, /ollamaTitle:\s*'Ollama Cloud'/)
+  assert.equal((src.match(/ollamaTitle:\s*'Ollama Cloud'/g) || []).length, 2)
   assert.match(src, /ollamaLoginApiKey:\s*'粘贴 API Key'/)
   assert.match(src, /ollamaLoginApiKey:\s*'Paste API key'/)
   assert.match(src, /ollamaImport:\s*'导入 OLLAMA_API_KEY'/)

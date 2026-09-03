@@ -206,7 +206,7 @@ export class AuthController {
         onRemoved: () => this.onAuthChanged?.('cursor'),
       }),
       ollama: new TokenManager({
-        displayName: 'Ollama',
+        displayName: 'Ollama Cloud',
         preemptMs: 24 * 60 * 60_000,
         load: () => getSession('ollama', this.authPath),
         save: (session) => saveSession('ollama', session, this.authPath),
@@ -1118,7 +1118,7 @@ export class AuthController {
       return { account: publicSession('kimi', session) }
     }
     if (provider === 'opencode') throw new Error('opencode free is anonymous — no API key')
-    if (provider !== 'glm') throw new Error('only GLM, Kiro, Ollama, and Kimi accept a pasted key')
+    if (provider !== 'glm') throw new Error('only GLM, Kiro, Ollama Cloud, and Kimi accept a pasted key')
     const accessToken = typeof key === 'string' ? key.trim() : ''
     if (accessToken.length < 8) throw new Error('glm API key is empty')
     this.claim('glm')
