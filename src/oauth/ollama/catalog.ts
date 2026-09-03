@@ -1,16 +1,19 @@
 /**
- * Live Ollama Cloud picker. GET https://ollama.com/api/tags after login.
+ * Live Ollama Cloud picker. GET https://ollama.com/api/tags after login,
+ * then POST /api/show for `model_info.*.context_length`.
  * OLLAMA_MODELS is the offline fallback only. Retired Cloud rows stay out.
  */
 
 import { createHash } from 'node:crypto'
 import {
-  inferOllamaContextWindow,
   inferOllamaInput,
   isOllamaRetiredModel,
+  ollamaContextWindow,
+  ollamaShowContextLength,
   OLLAMA_DEFAULT_MAX_TOKENS,
   OLLAMA_MODELS,
   OLLAMA_REASONING,
+  OLLAMA_SHOW_URL,
   OLLAMA_TAGS_URL,
   ollamaPrettyName,
 } from './index.js'
@@ -46,7 +49,7 @@ export function toOllamaPickerModels(tags) {
     models.push({
       id,
       name: ollamaPrettyName(id),
-      contextWindow: inferOllamaContextWindow(id),
+      contextWindow: ollamaContextWindow(id, row),
       maxTokens: OLLAMA_DEFAULT_MAX_TOKENS,
       input: inferOllamaInput(id),
       reasoningEfforts: { ...OLLAMA_REASONING },
@@ -54,6 +57,33 @@ export function toOllamaPickerModels(tags) {
   }
   models.sort((left, right) => left.id.localeCompare(right.id))
   return models
+}
+
+async function showContextLength(id, { fetchFn, token, signal }) {
+  try {
+    const response = await fetchFn(OLLAMA_SHOW_URL, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ model: id }),
+      signal,
+    })
+    if (!response.ok) return undefined
+    return ollamaShowContextLength(await response.json())
+  } catch {
+    return undefined
+  }
+}
+
+async function applyOllamaShowWindows(models, options) {
+  if (!models.length) return models
+  const lengths = await Promise.all(models.map((model) => showContextLength(model.id, options)))
+  return models.map((model, index) => {
+    const window = lengths[index]
+    return window ? { ...model, contextWindow: window } : model
+  })
 }
 
 export async function refreshOllamaCatalog(session, options = {}) {
@@ -70,8 +100,13 @@ export async function refreshOllamaCatalog(session, options = {}) {
       signal: options.signal,
     })
     if (response.ok) {
-      const models = toOllamaPickerModels(await response.json())
-      if (models.length > 0) {
+      const parsed = toOllamaPickerModels(await response.json())
+      if (parsed.length > 0) {
+        const models = await applyOllamaShowWindows(parsed, {
+          fetchFn,
+          token,
+          signal: options.signal,
+        })
         cached.tokenHash = tokenHash
         cached.models = models
         cached.expiresAt = Date.now() + (options.ttlMs ?? OLLAMA_CATALOG_TTL_MS)

@@ -23,13 +23,39 @@
 - 登录：粘贴 API key + 空花名册 `OLLAMA_API_KEY`。`parseOllamaApiKey` 拒绝 PEM 公钥。
 - 不打开 ollama.com/connect，不扫 Keychain / `credentials.json` / `id_ed25519`（schema 未证明是 Bearer）。
 - hop：`POST /ollama/v1/chat/completions` → `https://ollama.com/v1/chat/completions`。不包 `127.0.0.1:11434`，不选 Responses。
-- 目录：登录后 `GET /api/tags`，退役表过滤，失败回落静态 19 行 Cloud 快照。
+- 目录：登录后 `GET /api/tags` + `POST /api/show`，退役表过滤，失败回落静态 19 行 Cloud 快照。
+- DSH `contextWindow` 是 Cloud `/api/show` `model_info.*.context_length`，不是猜的家族默认。
 - 额度 idle。cache 只剥 Codex/Grok 字段，不发明 `cached_tokens` / sticky conversation id。
 - **本插件不能**把 local signin 变成 Cloud Bearer，也不能画不存在的额度 / cache 命中。
 
 ### 验证
 
 - `npm test`：key parse、session round-trip、`api: openai-completions`、`baseURL` 以 `/ollama` 结尾、snapshot 有 `oauth-ollama`、env 自动导入不覆盖已存、mock tags 扩目录、空 tags 回落静态、hop 带 Bearer 且无 Codex/Grok 头。无 live key。
+
+## 2026-09-03：Ollama contextWindow 不能猜家族默认
+
+### 现象
+
+picker 把 Cloud 窗口写成 128k/200k/256k。`minimax-m2.7` 还 **超报**（200000 vs show 196608）。`glm-5.3` / `kimi-k3` / `deepseek-v4-*` 实际是 1M。
+
+### 证据
+
+- `GET /api/tags` 的 `details` 空。`/v1/models` 只有 id/object/created/owned_by。
+- `POST https://ollama.com/api/show` 返回 `model_info.<family>.context_length`（2026-09-03 19 行实数）。
+- Cloud 忽略 `options.num_ctx`：[ollama#16598](https://github.com/ollama/ollama/issues/16598)；358007 token 打 `nemotron-3-ultra` 得 400 `model maximum context length: 262144`。https://docs.ollama.com/context-length
+- `cmd/launch/models.go` extraCloudModelLimits 过期（`nemotron-3-nano:30b` 写 1048576，show 是 262144）。
+
+### 根因
+
+家族 regex 不是 Cloud cap。tags 不带窗口。
+
+### 修复 / 非修复
+
+DSH `contextWindow` = show `context_length`，钉在 19 行快照；登录后 live show 覆盖；失败回落快照，不回落 128k/200k regex。不抄 launch Output / extraCloudModelLimits。`maxTokens` 仍 `OLLAMA_DEFAULT_MAX_TOKENS`（show 无输出字段）。
+
+### 验证
+
+`npm test`：静态窗口等于 show 快照；mock show 覆盖；无 show 的 tags 对 `glm-5.3` 用 1048576 不是 128000。
 
 ## 2026-09-03：Cursor 卡抬头是 JWT `sub`，不是邮箱 / 用户名
 

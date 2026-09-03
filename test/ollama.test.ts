@@ -16,11 +16,14 @@ import {
   OLLAMA_CHAT_URL,
   OLLAMA_MODELS,
   OLLAMA_REASONING,
+  OLLAMA_SHOW_URL,
   OLLAMA_TAGS_URL,
-  inferOllamaContextWindow,
   inferOllamaInput,
   isOllamaRetiredModel,
+  ollamaContextWindow,
   ollamaDefaultAccount,
+  ollamaShowContextLength,
+  ollamaSnapshotContextWindow,
   ollamaSession,
   ollamaSourceLabel,
   parseOllamaApiKey,
@@ -102,43 +105,40 @@ test('catalog is Completions at /ollama, not /ollama/v1', () => {
   assert.equal(catalog['oauth-ollama'].models.length, OLLAMA_MODELS.length)
 })
 
-test('static OLLAMA_MODELS is the 19-row Cloud snapshot and matches infer helpers', () => {
-  const ids = [
-    'deepseek-v4-flash:0731',
-    'deepseek-v4-pro:0813',
-    'gemma4:31b',
-    'glm-5.1',
-    'glm-5.2',
-    'glm-5.3',
-    'glm-5.3-flash',
-    'gpt-oss:120b',
-    'gpt-oss:20b',
-    'kimi-k2.6',
-    'kimi-k2.7-code',
-    'kimi-k3',
-    'minimax-m2.7',
-    'minimax-m3',
-    'mistral-large-3:675b',
-    'nemotron-3-nano:30b',
-    'nemotron-3-super',
-    'nemotron-3-ultra',
-    'qwen3.5:397b',
-  ]
+test('static OLLAMA_MODELS windows match the Cloud /api/show snapshot', () => {
+  const snapshot = {
+    'deepseek-v4-flash:0731': 1_048_576,
+    'deepseek-v4-pro:0813': 1_048_576,
+    'gemma4:31b': 262_144,
+    'glm-5.1': 202_752,
+    'glm-5.2': 1_048_576,
+    'glm-5.3': 1_048_576,
+    'glm-5.3-flash': 1_048_576,
+    'gpt-oss:120b': 131_072,
+    'gpt-oss:20b': 131_072,
+    'kimi-k2.6': 262_144,
+    'kimi-k2.7-code': 262_144,
+    'kimi-k3': 1_048_576,
+    'minimax-m2.7': 196_608,
+    'minimax-m3': 512_000,
+    'mistral-large-3:675b': 262_144,
+    'nemotron-3-nano:30b': 262_144,
+    'nemotron-3-super': 262_144,
+    'nemotron-3-ultra': 262_144,
+    'qwen3.5:397b': 262_144,
+  }
   assert.equal(OLLAMA_MODELS.length, 19)
-  assert.deepEqual(OLLAMA_MODELS.map((model) => model.id), ids)
+  assert.deepEqual(OLLAMA_MODELS.map((model) => model.id), Object.keys(snapshot))
   for (const model of OLLAMA_MODELS) {
-    assert.equal(model.contextWindow, inferOllamaContextWindow(model.id))
+    assert.equal(model.contextWindow, snapshot[model.id])
+    assert.equal(ollamaSnapshotContextWindow(model.id), snapshot[model.id])
+    assert.equal(ollamaContextWindow(model.id), snapshot[model.id])
     assert.deepEqual(model.input, inferOllamaInput(model.id))
     assert.equal(isOllamaRetiredModel(model.id), false)
   }
   assert.deepEqual(inferOllamaInput('gemma4:31b'), ['text', 'image'])
-  assert.equal(inferOllamaContextWindow('qwen3.5:397b'), 262_144)
-  assert.equal(inferOllamaContextWindow('kimi-k3'), 256_000)
-  assert.equal(inferOllamaContextWindow('glm-5.1'), 200_000)
-  assert.equal(inferOllamaContextWindow('mistral-large-3:675b'), 200_000)
-  assert.equal(inferOllamaContextWindow('minimax-m2.7'), 200_000)
-  assert.equal(inferOllamaContextWindow('nemotron-3-ultra'), 128_000)
-  assert.equal(inferOllamaContextWindow('deepseek-v4-pro:0813'), 128_000)
+  assert.equal(ollamaShowContextLength({ model_info: { 'glm.context_length': 1_048_576 } }), 1_048_576)
+  assert.equal(ollamaContextWindow('new-cloud-model'), 128_000)
 })
 
 test('snapshot shows oauth-ollama when logged in; quota stays idle', async () => {
@@ -228,10 +228,13 @@ test('live tags expand catalog; empty tags keep static fallback; retired stay ou
     ],
   })
   assert.deepEqual(filtered.map((model) => model.id), ['gpt-oss:120b', 'kimi-k2.6'])
+  assert.equal(filtered.find((model) => model.id === 'gpt-oss:120b').contextWindow, 131_072)
+  assert.equal(filtered.find((model) => model.id === 'kimi-k2.6').contextWindow, 262_144)
 
   const session = ollamaSession({ accessToken: 'sk-ollama-tags', source: 'paste' })
   const live = await refreshOllamaCatalog(session, {
     fetchFn: async (url) => {
+      if (String(url) === OLLAMA_SHOW_URL) return json({ details: {} })
       assert.equal(url, OLLAMA_TAGS_URL)
       return json({
         models: [
@@ -245,6 +248,8 @@ test('live tags expand catalog; empty tags keep static fallback; retired stay ou
   })
   assert.equal(live.some((model) => model.id === 'new-cloud-model'), true)
   assert.equal(live.some((model) => model.id === 'glm-4.7'), false)
+  assert.equal(live.find((model) => model.id === 'glm-5.3').contextWindow, 1_048_576)
+  assert.notEqual(live.find((model) => model.id === 'glm-5.3').contextWindow, 128_000)
   assert.equal(ollamaCatalogModels().length, live.length)
 
   resetOllamaCatalogCache()
@@ -252,6 +257,39 @@ test('live tags expand catalog; empty tags keep static fallback; retired stay ou
     fetchFn: async () => json({ models: [] }),
   })
   assert.deepEqual(fallback.map((model) => model.id), OLLAMA_MODELS.map((model) => model.id))
+})
+
+test('live show model_info overrides snapshot; show-less tags keep snapshot not 128000', async () => {
+  resetOllamaCatalogCache()
+  const session = ollamaSession({ accessToken: 'sk-ollama-show', source: 'paste' })
+  const shown = await refreshOllamaCatalog(session, {
+    fetchFn: async (url, init) => {
+      if (String(url) === OLLAMA_SHOW_URL) {
+        const model = JSON.parse(String(init.body ?? '{}')).model
+        if (model === 'glm-5.3') return json({ model_info: { 'glm.context_length': 999_999 } })
+        return json({ model_info: {} })
+      }
+      assert.equal(url, OLLAMA_TAGS_URL)
+      return json({ models: [{ name: 'glm-5.3' }, { name: 'gpt-oss:120b' }] })
+    },
+  })
+  assert.equal(shown.find((model) => model.id === 'glm-5.3').contextWindow, 999_999)
+  assert.equal(shown.find((model) => model.id === 'gpt-oss:120b').contextWindow, 131_072)
+
+  resetOllamaCatalogCache()
+  const noShow = await refreshOllamaCatalog(session, {
+    fetchFn: async (url) => {
+      if (String(url) === OLLAMA_SHOW_URL) return json({ details: {} })
+      return json({ models: [{ name: 'glm-5.3' }] })
+    },
+  })
+  assert.equal(noShow.find((model) => model.id === 'glm-5.3').contextWindow, 1_048_576)
+  assert.notEqual(noShow.find((model) => model.id === 'glm-5.3').contextWindow, 128_000)
+
+  const fromTags = toOllamaPickerModels({
+    models: [{ name: 'glm-5.3', details: { context_length: 777_777 } }],
+  })
+  assert.equal(fromTags[0].contextWindow, 777_777)
 })
 
 test('useKey paste writes oauth-ollama and discovers tags', async () => {

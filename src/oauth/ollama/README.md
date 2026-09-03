@@ -13,7 +13,7 @@ Ollama **Cloud** 订阅（[ollama.com](https://ollama.com)）。**不是**本机
 |---|---|
 | [`index.ts`](index.ts) | 目录、API key session、Bearer 头、`/api/me` 身份（尽力）、退役表 |
 | [`import.ts`](import.ts) | `OLLAMA_API_KEY` 环境变量。不是 `ollama signin` |
-| [`catalog.ts`](catalog.ts) | 登录后 `GET https://ollama.com/api/tags`；静态 `OLLAMA_MODELS` 只做离线 fallback |
+| [`catalog.ts`](catalog.ts) | 登录后 `GET /api/tags` + `POST /api/show`；静态 `OLLAMA_MODELS` 只做离线 fallback |
 | [`cache.ts`](cache.ts) | 剥 Codex / Grok 字段。没有文档化的 sticky id / cache-read |
 
 调度：[`../proxy.ts`](../proxy.ts) `family === 'ollama'` 剥 cache 字段，`forward()` 到 `https://ollama.com/v1/chat/completions`。
@@ -72,10 +72,13 @@ Key 不写 log。
 
 ```text
 GET https://ollama.com/api/tags
+POST https://ollama.com/api/show  { "model": "<id>" }
 Authorization: Bearer <key>
 ```
 
 `{ models: [{ name, model, … }] }` → picker 一行 / name。`OLLAMA_RETIRED_MODELS` 来自 Cloud retirements 表（含已过期的 2026-07-31 upcoming）。静态 `OLLAMA_MODELS` 是 2026-09-03 Cloud 快照 19 行，登录后仍被 live `/api/tags` 替换；失败或空列表回落这 19 行，不挡对话。不列本机-only 模型。
+
+DSH `contextWindow` 是 Cloud `POST /api/show` 的 `model_info.<family>.context_length`（钉在静态快照上；登录后 live show 覆盖），不是猜的家族默认，也不是 `cmd/launch/models.go` extraCloudModelLimits。`/api/tags` 的 `details` 是空的；Cloud 忽略 `options.num_ctx`（[ollama#16598](https://github.com/ollama/ollama/issues/16598)；[docs/context-length](https://docs.ollama.com/context-length)）。
 
 `/api/tags` 无 key 也 200（公共 Cloud 目录）。登录后仍带 Bearer，和文档一致。
 
@@ -103,6 +106,7 @@ DSH 每步前置的 runtime snapshot 因此无法在 Ollama Cloud 上做 prefix 
 - 选 Responses「因为本地 Ollama 也有 `/v1/responses`」
 - 抄 Codex / Grok / GLM / Kiro / Antigravity / Cursor 的 cache 头或停车形状
 - 发明额度条或 `cached_tokens`
+- 用 128k/200k/256k 家族启发式当 DSH `contextWindow`，或把 launch `extraCloudModelLimits` 抄进 picker
 
 ## 归因
 

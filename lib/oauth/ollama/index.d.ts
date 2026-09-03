@@ -13,6 +13,7 @@
 export declare const OLLAMA_CLOUD_ORIGIN = "https://ollama.com";
 export declare const OLLAMA_CHAT_URL = "https://ollama.com/v1/chat/completions";
 export declare const OLLAMA_TAGS_URL = "https://ollama.com/api/tags";
+export declare const OLLAMA_SHOW_URL = "https://ollama.com/api/show";
 export declare const OLLAMA_ME_URL = "https://ollama.com/api/me";
 export declare const OLLAMA_KEYS_URL = "https://ollama.com/settings/keys";
 /** Official docs: API keys do not expire. */
@@ -40,12 +41,20 @@ export declare const OLLAMA_SOURCES: readonly string[];
  */
 export declare const OLLAMA_RETIRED_MODELS: Readonly<Set<string>>;
 export declare function inferOllamaInput(id: any): string[];
-export declare function inferOllamaContextWindow(id: any): 128000 | 200000 | 256000 | 262144;
-/** 19-row Cloud snapshot from GET /api/tags (same 19 as /v1/models). Live tags replace this after login. */
+/** `model_info.<family>.context_length` from POST /api/show, or a later tags field. */
+export declare function ollamaShowContextLength(value: any): number;
+export declare function ollamaSnapshotContextWindow(id: any): any;
+/**
+ * DSH picker window: live show/tags `context_length`, else the pinned Cloud
+ * snapshot. Last resort for an unknown new tag is OLLAMA_DEFAULT_CONTEXT —
+ * not a family-size regex (128k/200k/256k).
+ */
+export declare function ollamaContextWindow(id: any, show: any): any;
+/** 19-row Cloud snapshot. Windows are 2026-09-03 POST /api/show `model_info.*.context_length`. Live tags+show replace this after login. */
 export declare const OLLAMA_MODELS: readonly {
     id: any;
     name: any;
-    contextWindow: number;
+    contextWindow: any;
     maxTokens: number;
     input: string[];
     reasoningEfforts: Readonly<{
