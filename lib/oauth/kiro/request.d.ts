@@ -15,6 +15,16 @@ export declare const KIRO_CHAT_ORIGIN = "AI_EDITOR";
 export declare const KIRO_AMZ_TARGET = "AmazonCodeWhispererStreamingService.GenerateAssistantResponse";
 export declare const KIRO_EVENTSTREAM_TYPE = "application/vnd.amazon.eventstream";
 export declare const KIRO_AMZ_JSON_TYPE = "application/x-amz-json-1.0";
+/** Kiro accepts 1–64 of `[A-Za-z0-9_.:-]`. Piped OpenAI Responses ids 400. */
+export declare const KIRO_TOOL_USE_ID_PATTERN: RegExp;
+export declare const KIRO_REASON_CODES: Readonly<{
+    CONTENT_LENGTH_EXCEEDS_THRESHOLD: "CONTENT_LENGTH_EXCEEDS_THRESHOLD";
+    INPUT_TOO_LONG: "Input is too long";
+    MONTHLY_REQUEST_COUNT: "MONTHLY_REQUEST_COUNT";
+    INSUFFICIENT_MODEL_CAPACITY: "INSUFFICIENT_MODEL_CAPACITY";
+    USER_REQUEST_RATE_EXCEEDED: "USER_REQUEST_RATE_EXCEEDED";
+    REQUEST_BODY_INVALID: "REQUEST_BODY_INVALID";
+}>;
 /** Live AWS often wraps the payload as `{ [eventType]: { … } }`. */
 export declare function unwrapKiroEventPayload(payload: any, type: any): any;
 export declare function kiroContextWindowOf(model: any): any;
@@ -31,6 +41,20 @@ export declare function kiroChatHeaders(session: any): {
     'amz-sdk-invocation-id': `${string}-${string}-${string}-${string}-${string}`;
     'amz-sdk-request': string;
 };
+/**
+ * IDs Kiro already accepts stay (after the existing call_/toolu_/tool_
+ * → tooluse_ prefix). Compound OpenAI Responses ids (`call_…|fc_…`,
+ * over 64 chars) get a stable sha256 remap so the matching tool_result
+ * uses the same wire id. Same map both ways — never Date.now().
+ */
+export declare function normalizeToolUseId(id: any): string;
+/**
+ * Concurrent tools can interleave: assistant(A) / user text / assistant(B)
+ * / toolResult(A). AWS 400s a tool_use without an immediately following
+ * tool_result. Pure reorder by id — no fabricate, no drop of a result
+ * whose call exists. Well-formed transcripts stay unchanged.
+ */
+export declare function relocateDisplacedToolResults(messages: any): any;
 /**
  * DSH `developer` (and any other unknown role) → system, same as GLM.
  * Official wire has no system field (kiro.rs / kiro-proxy PROTOCOL.md):
@@ -69,8 +93,10 @@ export declare function mergeKiroText(previous: any, chunk: any): {
     text: any;
     delta: any;
 };
+export declare function thinkingTextFromPayload(type: any, data: any): any;
 export declare function collectKiroEvents(events: any): {
     text: string;
+    thinking: string;
     toolCalls: {
         id: any;
         type: string;
@@ -127,7 +153,17 @@ export declare function kiroToOpenaiChunk(delta: any, { model, id, done, finishR
         finish_reason: any;
     }[];
 };
-export declare function kiroClientErrorStatus(status: any): any;
+/**
+ * Classify hop errors so DSH does not hammer a hard monthly quota as a
+ * generic 429, or treat size / capacity as AUTH. 401/403 still become
+ * 400 (subscription key stays valid) unless TokenManager already refreshed.
+ */
+export declare function classifyKiroHopError(status: any, parsed: any, text: any, { retryAfter }?: {}): {
+    status: any;
+    code: string;
+    retryAfter: string;
+};
+export declare function kiroClientErrorStatus(status: any, parsed: any, text: any): any;
 export declare function kiroClientErrorBody(status: any, parsed: any, text: any): {
     error: {
         message: string;

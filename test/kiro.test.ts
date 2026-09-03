@@ -869,15 +869,21 @@ test('interleaved A/B tool results relocate before positional flush', () => {
       { role: 'user', content: 'meanwhile' },
       { role: 'assistant', content: '', tool_calls: [toolCall('call_B', 'bravo')] },
       { role: 'tool', tool_call_id: 'call_A', content: '{"a":1}' },
+      { role: 'tool', tool_call_id: 'call_B', content: '{"b":2}' },
     ],
   })
   const history = body.conversationState.history
   const aIdx = history.findIndex((row) => toolUseIds(row).includes('tooluse_A'))
   assert.notEqual(aIdx, -1)
   assert.deepEqual(toolResultIdsOf(history[aIdx + 1]), ['tooluse_A'])
-  assert.equal(history[aIdx + 1].userInputMessage.content, 'meanwhile')
+  // Relocate is a pure reorder — do not merge the intervening user text onto the
+  // tool-result turn. Empty content when toolResults is set (AWS pairing).
+  assert.equal(history[aIdx + 1].userInputMessage.content, '')
+  assert.equal(history.some((row) => row.userInputMessage?.content === 'meanwhile'), true)
   const bIdx = history.findIndex((row) => toolUseIds(row).includes('tooluse_B'))
   assert.ok(bIdx > aIdx)
+  assert.deepEqual(toolResultIdsOf(body.conversationState.currentMessage), ['tooluse_B'])
+  assert.equal(body.conversationState.currentMessage.userInputMessage.content, '')
   assert.equal(JSON.stringify(body).includes('Tool results provided.'), false)
 })
 
