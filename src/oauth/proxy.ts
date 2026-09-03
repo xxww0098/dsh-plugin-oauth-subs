@@ -42,6 +42,10 @@ import {
 } from './antigravity/index.js'
 import { antigravityToOpenai, createAntigravityOpenaiStream, openaiToAntigravity, parseAntigravitySseBlocks } from './antigravity/request.js'
 import { antigravitySessionIdOf } from './antigravity/cache.js'
+import { CURSOR_MODELS } from './cursor/index.js'
+import { applyCursorCache, cursorConversationId } from './cursor/cache.js'
+import { cursorToOpenai, createCursorOpenaiStream, openaiToCursor } from './cursor/request.js'
+import { runCursorAgent } from './cursor/h2-session.js'
 import { applyFastMode } from '../utils/fast-mode.js'
 import { normalizeCodexResponsesBody } from './codex/request.js'
 import { withPickerVariants } from './models.js'
@@ -207,6 +211,14 @@ function rewriteUpstreamBody(buffer, family, wire) {
       stream: next.stream === true,
     }
   }
+  if (family === 'cursor') {
+    const { payload: next, cacheSessionId } = applyCursorCache(fast)
+    return {
+      body: Buffer.from(JSON.stringify(next)),
+      cacheSessionId,
+      stream: next.stream === true,
+    }
+  }
   throw new RequestError(400, `unknown oauth family: ${family}`)
 }
 
@@ -228,7 +240,7 @@ function abortOnDisconnect(request, response) {
   }
 }
 
-export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestBodyBytes = MAX_REQUEST_BODY_BYTES, onAntigravityValidation }) {
+export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestBodyBytes = MAX_REQUEST_BODY_BYTES, onAntigravityValidation, cursorRpc }) {
   let server
 
   const authorized = (request) => {
@@ -275,6 +287,12 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
         if (tokens.antigravity) {
           await tokens.antigravity.session()
           data.push(...ANTIGRAVITY_MODELS.map((model) => ({ id: model.id, object: 'model', owned_by: 'antigravity' })))
+        }
+      } catch { /* not logged in */ }
+      try {
+        if (tokens.cursor) {
+          await tokens.cursor.session()
+          data.push(...CURSOR_MODELS.map((model) => ({ id: model.id, object: 'model', owned_by: 'cursor' })))
         }
       } catch { /* not logged in */ }
       send(response, 200, { object: 'list', data })
@@ -402,6 +420,14 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
       return
     }
 
+    if ((path === '/cursor/v1/models' || path === '/cursor/models') && request.method === 'GET') {
+      send(response, 200, {
+        object: 'list',
+        data: CURSOR_MODELS.map((model) => ({ id: model.id, object: 'model', owned_by: 'cursor' })),
+      })
+      return
+    }
+
     if (path === '/kiro/v1/chat/completions' && request.method === 'POST') {
       const client = abortOnDisconnect(request, response)
       try {
@@ -421,6 +447,30 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
       send(response, 501, {
         error: {
           message: 'Kiro chat is AWS generateAssistantResponse. Point llm-pi-ai at POST /kiro/v1/chat/completions.',
+        },
+      })
+      return
+    }
+
+    if ((path === '/cursor/v1/chat/completions' || path === '/cursor/chat/completions') && request.method === 'POST') {
+      const client = abortOnDisconnect(request, response)
+      try {
+        await forwardCursor(request, response, {
+          session: await tokens.cursor.session(),
+          maxRequestBodyBytes,
+          signal: client.signal,
+          runFn: cursorRpc ?? runCursorAgent,
+        })
+      } finally {
+        client.cleanup()
+      }
+      return
+    }
+
+    if (path === '/cursor/v1/responses') {
+      send(response, 501, {
+        error: {
+          message: 'Cursor chat is Connect AgentService/Run. Point llm-pi-ai at POST /cursor/v1/chat/completions.',
         },
       })
       return
@@ -891,6 +941,46 @@ async function forwardKiro(request, response, { session, fetchFn, maxRequestBody
     finishReason: sawTools ? 'tool_calls' : 'stop',
     usage: resolveKiroUsage({ usage, contextPercentage, text: accText }, model),
   }), signal)
+  response.write('data: [DONE]\n\n')
+  if (!response.writableEnded && !response.destroyed) response.end()
+}
+
+async function forwardCursor(request, response, { session, maxRequestBodyBytes, signal, runFn }) {
+  const raw = await readBody(request, maxRequestBodyBytes)
+  const { body: rewritten, cacheSessionId, stream } = rewriteUpstreamBody(raw, 'cursor')
+  const payload = JSON.parse(rewritten.toString('utf8'))
+  const conversationId = cacheSessionId ?? cursorConversationId(payload)
+  const built = openaiToCursor(payload, { conversationId })
+  const model = built.modelId
+  const id = `chatcmpl-${Date.now()}`
+
+  if (!stream) {
+    const { collected } = await runFn(session, built, { signal })
+    if (collected.error) throw new RequestError(502, collected.error)
+    send(response, 200, cursorToOpenai(collected, { model, id, conversationId: built.conversationId }))
+    return
+  }
+
+  response.writeHead(200, {
+    'content-type': 'text/event-stream; charset=utf-8',
+    'cache-control': 'no-store',
+    'x-content-type-options': 'nosniff',
+  })
+  const mapper = createCursorOpenaiStream({ model, id, conversationId: built.conversationId })
+  const write = async (chunk) => {
+    if (!response.write(`data: ${JSON.stringify(chunk)}\n\n`)) await once(response, 'drain', { signal })
+  }
+  const { collected } = await runFn(session, built, {
+    signal,
+    onEvent: (event) => {
+      const chunks = mapper.push(event)
+      for (const chunk of chunks) void write(chunk)
+    },
+  })
+  if (collected.error && !response.writableEnded) {
+    throw new RequestError(502, collected.error)
+  }
+  await write(mapper.finish())
   response.write('data: [DONE]\n\n')
   if (!response.writableEnded && !response.destroyed) response.end()
 }

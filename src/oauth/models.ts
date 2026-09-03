@@ -8,6 +8,7 @@ import { GROK_MODELS } from './grok/index.js'
 import { GLM_MODELS } from './glm/index.js'
 import { KIRO_MODELS } from './kiro/index.js'
 import { ANTIGRAVITY_MODELS } from './antigravity/index.js'
+import { CURSOR_MODELS } from './cursor/index.js'
 import { modelSupportsFastMode } from '../utils/fast-mode.js'
 import { readPrivateText, writePrivateText } from './store.js'
 import {
@@ -92,7 +93,7 @@ export function modelKey(provider, id) {
   return `${provider}/${id}`
 }
 
-export const FAMILY_IDS = Object.freeze(['codex', 'grok', 'glm', 'kiro', 'antigravity'])
+export const FAMILY_IDS = Object.freeze(['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor'])
 
 export function ownedProviderIds(prefix) {
   return FAMILY_IDS.map((id) => `${prefix}-${id}`)
@@ -217,6 +218,21 @@ export function buildProviders({ prefix, origin, loggedIn }) {
       models: ANTIGRAVITY_MODELS.map(toHarnessModel),
     }
   }
+  if (loggedIn.cursor) {
+    providers[`${prefix}-cursor`] = {
+      displayName: 'OAuth · Cursor',
+      api: HARNESS_COMPLETIONS_API,
+      apiKeyEnv: OAUTH_CREDENTIAL_REF,
+      // Completions hop is /cursor/v1/chat/completions. DSH posts
+      // `{baseURL}/v1/chat/completions`, so baseURL is `${origin}/cursor`.
+      baseURL: `${origin}/cursor`,
+      compat: {
+        supportsReasoningEffort: true,
+        thinkingFormat: 'openai',
+      },
+      models: CURSOR_MODELS.map(toHarnessModel),
+    }
+  }
   return providers
 }
 
@@ -229,7 +245,7 @@ export function describeProviders(providers) {
 }
 
 export function catalogProviders({ prefix, origin }) {
-  return buildProviders({ prefix, origin, loggedIn: { codex: true, grok: true, glm: true, kiro: true, antigravity: true } })
+  return buildProviders({ prefix, origin, loggedIn: { codex: true, grok: true, glm: true, kiro: true, antigravity: true, cursor: true } })
 }
 
 export function catalogKeys(providers) {
@@ -244,6 +260,7 @@ export function familyOfProvider(provider) {
   if (String(provider).endsWith('-glm')) return 'glm'
   if (String(provider).endsWith('-kiro')) return 'kiro'
   if (String(provider).endsWith('-antigravity')) return 'antigravity'
+  if (String(provider).endsWith('-cursor')) return 'cursor'
   return String(provider)
 }
 
@@ -381,7 +398,7 @@ export class ModelSwitch {
   }
 
   async setFamily(family, on, catalog) {
-    if (!FAMILY_IDS.includes(family)) throw new Error('family must be codex, grok, glm, kiro, or antigravity')
+    if (!FAMILY_IDS.includes(family)) throw new Error('family must be codex, grok, glm, kiro, antigravity, or cursor')
     // Only current catalog ids. Retired leftovers (glm-4.7, …) stay in
     // `disabled` and are not resurrected.
     for (const key of familyCatalogKeys(catalog, family)) {

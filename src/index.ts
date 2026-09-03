@@ -5,7 +5,7 @@
  *   1. runs a loopback OpenAI Responses proxy on 127.0.0.1:<port>
  *   2. drives ChatGPT Codex PKCE, xAI Grok device-code / PKCE,
  *      Zhipu GLM Z.ai / BigModel CLI-poll, AWS Kiro (Social / Builder ID /
- *      IdC / Entra / API key), and Google Antigravity logins
+ *      IdC / Entra / API key), Google Antigravity, and Cursor logins
  *   3. syncs logged-in catalogs into llm-pi-ai
  *
  * The client half (Settings > OAuth 订阅) is discovered from package.json
@@ -231,6 +231,12 @@ export {
   antigravityRequestUserAgent,
   antigravityChatHeaders,
 } from './oauth/antigravity/index.js'
+export {
+  CURSOR_CLIENT_VERSION,
+  CURSOR_MODELS,
+  cursorChatHeaders,
+  cursorSession,
+} from './oauth/cursor/index.js'
 export { OAUTH_CREDENTIAL_REF, ModelSwitch } from './oauth/models.js'
 export { defaultDataDir } from './oauth/store.js'
 export { AuthController } from './oauth/controller.js'
@@ -242,7 +248,7 @@ export {
   isCodex900kBase,
   peelContextSuffix,
 } from './utils/context-mode.js'
-export { parseCodexUsage, parseGrokBilling, parseGlmQuota, parseKiroUsage, parseResetCredits, QuotaStore } from './oauth/quota.js'
+export { parseCodexUsage, parseGrokBilling, parseGlmQuota, parseKiroUsage, parseCursorPeriodUsage, parseResetCredits, QuotaStore } from './oauth/quota.js'
 export { formatPlanLabel, CODEX_PLAN_NAMES } from './oauth/plan.js'
 export {
   REPO_URL,

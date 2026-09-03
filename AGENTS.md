@@ -80,6 +80,16 @@ src/
       index.ts             catalog, identity, Google OAuth, fingerprint
       request.ts           OpenAI chat ↔ generateContent
       cache.ts             generateContent sessionId + systemInstruction pin
+    cursor/                Cursor subscription (Connect/protobuf)
+      README.md            family design: login, chat, quota, cache (traceable)
+      index.ts             catalog, identity, PKCE poll, CLI fingerprint, refresh
+      pkce-flow.ts         loginDeepControl + auth/poll
+      import.ts            Keychain / IDE state.vscdb / CURSOR_ACCESS_TOKEN
+      refresh-guard.ts     known-bad refresh backoff
+      request.ts           OpenAI chat ↔ AgentService/Run
+      cache.ts             conversationId (never Date.now())
+      proto.ts             minimal Connect/protobuf subset
+      h2-session.ts        Node http2 in-process transport
   ui/                      React Settings (classic-script factory)
     client.ts
   utils/                   shared, provider-agnostic
@@ -98,9 +108,9 @@ scripts/                   CLI (TypeScript)
 
 Rules:
 
-- Codex-only code → `src/oauth/codex/`. Grok-only code → `src/oauth/grok/`. GLM-only code → `src/oauth/glm/`. Kiro-only code → `src/oauth/kiro/`. Antigravity-only code → `src/oauth/antigravity/`.
+- Codex-only code → `src/oauth/codex/`. Grok-only code → `src/oauth/grok/`. GLM-only code → `src/oauth/glm/`. Kiro-only code → `src/oauth/kiro/`. Antigravity-only code → `src/oauth/antigravity/`. Cursor-only code → `src/oauth/cursor/`.
 - **Each family has `README.md`.** Login, session, chat hop, models, quota, and cache for that vendor are written there so a later change can be traced to files and to `docs/error.md`. Cross-family rules stay in this file; do not let family READMEs contradict it.
-- **Cache is per family.** Each `src/oauth/<id>/cache.ts` owns that vendor's prompt-cache identity, headers, and prefix pin. Do not import Codex cache helpers from Grok / GLM / Kiro / Antigravity. Do not share a `codexCacheSessionId` in `src/utils/`. `proxy.ts` only dispatches.
+- **Cache is per family.** Each `src/oauth/<id>/cache.ts` owns that vendor's prompt-cache identity, headers, and prefix pin. Do not import Codex cache helpers from Grok / GLM / Kiro / Antigravity / Cursor. Do not share a `codexCacheSessionId` in `src/utils/`. `proxy.ts` only dispatches.
 - Shared crypto / session scoring → `src/utils/`.
 - Settings React → `src/ui/`.
 - Do not flatten modules back into a single `lib/*.js` bag.
@@ -124,7 +134,7 @@ two disagree, fix the README — do not weaken these invariants.
   `src/utils/cache-session.ts` or a shared `codexCacheSessionId`.
 - Do **not** stamp `Date.now()` (or any per-request random) as a session /
   conversation / cache id. Missing DSH ids fall back to a **stable
-  constant** owned by that family (`dsh-antigravity`, `dsh-kiro`, …).
+  constant** owned by that family (`dsh-antigravity`, `dsh-kiro`, `dsh-cursor`, …).
 - DSH may send `session_id` and/or `prompt_cache_key`. Mapping those onto
   the vendor wire is family-owned. Reading DSH's key is fine; writing
   Codex fields upstream is not, unless that vendor actually uses them.
@@ -181,6 +191,9 @@ Kiro:      conversationState.conversationId (+ model)
            drop Codex/Grok cache fields
            system as first history user+ack; extra snapshots at history suffix
            (never between assistant toolUses and matching toolResults)
+Cursor:    conversationId on AgentRunRequest (fallback `dsh-cursor:<model>`)
+           drop Codex/Grok cache fields
+           first system pinned in root_prompt_messages_json; extras as extra system blobs
 ```
 
 ### Per family
@@ -272,6 +285,19 @@ Kiro:      conversationState.conversationId (+ model)
 - No Codex `prompt_cache_key`, no Grok `x-grok-conv-id`, no Gemini
   `systemInstruction` field.
 
+**Cursor** (`src/oauth/cursor/cache.ts` + Run hop in `request.ts`)
+
+- Cursor Agent conversation. Sticky: `AgentRunRequest.conversation_id`
+  = DSH pin **plus model id**. Fallback `dsh-cursor:<model>` (bare
+  `dsh-cursor` only when model is unknown). Never `Date.now()`.
+- System lives in `conversationState.root_prompt_messages_json` blobs.
+  Pin the first system text per conversationId; extra DSH snapshots
+  become another system blob in that list (Cursor prefix), not a GLM
+  trailing system or a Gemini trailing user.
+- No Codex `prompt_cache_key` / `session-id`, no Grok `x-grok-conv-id`.
+- Hits: Run has no documented cache-read field. Map one if the wire
+  grows one; otherwise DSH hit rate may stay 0%.
+
 ### New family checklist (cache)
 
 When adding `src/oauth/<id>/`:
@@ -295,11 +321,12 @@ When adding `src/oauth/<id>/`:
 | GLM | content hash of leading system + history | Anthropic: `metadata.user_id` + `x-session-id` + first-block `cache_control`; Completions leftover: `user` + `x-session-id` | Completions: system at **messages suffix**; Anthropic: extra system text blocks without cache_control | `cached_tokens` / `cache_read_input_tokens` |
 | Antigravity | Gemini `systemInstruction` + contents + tools | `request.sessionId` (fallback + model) | extra as trailing **user** | `cachedContentTokenCount` / `cache_read_tokens` → `cached_tokens` |
 | Kiro | CodeWhisperer conversation | `conversationId` + model | system as first history user+ack; extra at history suffix (not between toolUses / toolResults) | `cacheReadInputTokens` → `cached_tokens` |
+| Cursor | Agent conversation (`conversation_id`) | `conversationId` + model; fallback `dsh-cursor:<model>` | extra DSH snapshots as extra `root_prompt_messages_json` system blobs | none documented on Run (`cached_tokens` if a field appears) |
 
 ### Do not
 
 - Share one sanitizer / pin map / header helper across families.
-- Write Codex `session-id` or `prompt_cache_key` to GLM / Kiro / Antigravity.
+- Write Codex `session-id` or `prompt_cache_key` to GLM / Kiro / Antigravity / Cursor.
 - Write Grok `x-grok-conv-id` to anyone else.
 - Park GLM extras as a Gemini user turn, or Gemini extras as a GLM
   trailing system, “because parking is the same idea”.
@@ -341,6 +368,7 @@ invariant list. When the two disagree, fix the README.
 | GLM | `anthropic-messages` | ZCode Desktop default is Anthropic (`ai-sdk/anthropic`). Coding Plan also has Completions `paas/v4`. Generic Responses `api.z.ai/api/v1` is **not** Coding Plan dedicated. | `POST /glm/v1/messages` → `/api/anthropic/v1/messages`. Completions leftover `/glm/v1/chat/completions` until the next `sync()`. |
 | Kiro | `openai-completions` | Native is AWS EventStream `GenerateAssistantResponse` | Completions adapter |
 | Antigravity | `openai-completions` | Native is `generateContent` | Completions adapter |
+| Cursor | `openai-completions` | Native is Connect/protobuf `AgentService/Run` | Completions adapter `POST /cursor/v1/chat/completions` |
 
 `baseURL` must match how that SDK posts. Anthropic SDK posts
 `{baseURL}/v1/messages`, so GLM is `${origin}/glm` (not `${origin}/glm/v1`).
@@ -363,7 +391,7 @@ already said `ai-sdk/anthropic` while Completions was posted). Do
 ### Do not
 
 - Switch Codex / Grok to Completions.
-- Switch Kiro / Antigravity to Responses or Anthropic (native is still
+- Switch Kiro / Antigravity / Cursor to Responses or Anthropic (native is still
   none of the three; you would keep a translator and lose DSH's native
   Completions path).
 - Set GLM `api: openai-responses` (generic `api.z.ai/api/v1` is not
@@ -379,7 +407,7 @@ already said `ai-sdk/anthropic` while Completions was posted). Do
 
 ## Adding a new OAuth family
 
-A family is one top-level tab (Codex / Grok / GLM / Kiro / Antigravity today) plus its own
+A family is one top-level tab (Codex / Grok / GLM / Kiro / Antigravity / Cursor today) plus its own
 `src/oauth/<id>/` module. Do not piggyback a new vendor onto an existing
 tab. Follow this checklist in one PR.
 
@@ -418,10 +446,14 @@ tab. Follow this checklist in one PR.
 7. **Plan labels** (`src/oauth/plan.ts`): map wire slugs to the product
    name users see (`Pro 20x`, `SuperGrok Heavy`, `Lite`). Family-specific
    collisions (`glm` `pro` → `Pro`, Codex `pro` → `Pro 20x`) belong here.
-8. **Proxy / tokens / cache**: all five families chat through the local
+8. **Proxy / tokens / cache**: all six families chat through the local
    proxy. Pick `api` per the protocol section. Prompt cache **must** be
    a new `src/oauth/<id>/cache.ts`. Do not import another family's cache
    helper, and do not revive `src/utils/cache-session.ts`.
+   Cursor Keychain / `state.vscdb` / `CURSOR_ACCESS_TOKEN` import is
+   **user-owned local login reuse**, not a second OAuth. Auto-import
+   only when the cursor roster is empty. Never silently overwrite a
+   stored PKCE/session. Never scan sibling OS profiles.
 9. **Tests** under `test/`: login parse, session round-trip, catalog
    input types, and `snapshot shows quota on every <id> account`.
 
@@ -438,14 +470,14 @@ into `TAB_ICONS`.
 - Size 18×18, `viewBox="0 0 24 24"`, `fill="currentColor"`. Match the
   official brand mark, not a generic letter. GLM uses the **Z.ai** icon
   (`zai`), not Zhipu.
-- Order: families first (Codex, Grok, GLM, Kiro, then the new one), then
-  Models, then About (GitHub icon). Insert the new family **before**
+- Order: families first (Codex, Grok, GLM, Kiro, Antigravity, Cursor), then
+  Models, then About (GitHub icon). Insert a new family **before**
   Models.
 - Add `COPY.zh.<id>Title` / `COPY.en.<id>Title` for the hover string and
   the page heading.
 
 ```text
-[ Codex ] [ Grok ] [ Z.ai ] [ Kiro ] [ Antigravity ] [ New ] [ ▦ ] [ GitHub ]
+[ Codex ] [ Grok ] [ Z.ai ] [ Kiro ] [ Antigravity ] [ Cursor ] [ ▦ ] [ GitHub ]
 ```
 
 ### Settings — one account, one card
@@ -534,7 +566,8 @@ affinity miss (wrong xAI shard), not a prefix rewrite.
 GLM uses a content-hash prefix (`user` / `x-session-id`); a 576-token remnant
 after a leading-system splice is a **prefix break**, not a Grok affinity miss.
 Antigravity hits are `cachedContentTokenCount`. Kiro hits are
-`cacheReadInputTokens`.
+`cacheReadInputTokens`. Cursor sticky-routes on `conversation_id`;
+Run has no documented cache-read field.
 `Error: tool call timed out after 30000ms` is `dsh-tool-fs-search`, not
 this proxy — record it in `docs/error.md`, do not add `toolTimeoutMs` here.
 

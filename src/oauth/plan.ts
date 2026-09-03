@@ -8,6 +8,7 @@ import { GROK_TIER_NAMES } from './grok/index.js'
 import { GLM_PLAN_NAMES } from './glm/index.js'
 import { KIRO_PLAN_NAMES } from './kiro/index.js'
 import { ANTIGRAVITY_PLAN_NAMES } from './antigravity/index.js'
+import { CURSOR_PLAN_NAMES } from './cursor/index.js'
 
 export const CODEX_PLAN_NAMES = Object.freeze({
   free: 'Free',
@@ -101,7 +102,11 @@ export function formatPlanLabel(raw, family) {
     if (ANTIGRAVITY_PLAN_NAMES[slug]) return ANTIGRAVITY_PLAN_NAMES[slug]
     if (ANTIGRAVITY_PLAN_NAMES[compact]) return ANTIGRAVITY_PLAN_NAMES[compact]
   }
-  if (family !== 'glm' && family !== 'grok' && family !== 'kiro' && family !== 'antigravity') {
+  if (family === 'cursor') {
+    if (CURSOR_PLAN_NAMES[slug]) return CURSOR_PLAN_NAMES[slug]
+    if (CURSOR_PLAN_NAMES[compact]) return CURSOR_PLAN_NAMES[compact]
+  }
+  if (family !== 'glm' && family !== 'grok' && family !== 'kiro' && family !== 'antigravity' && family !== 'cursor') {
     if (CODEX_PLAN_NAMES[slug]) return CODEX_PLAN_NAMES[slug]
     if (CODEX_PLAN_NAMES[compact]) return CODEX_PLAN_NAMES[compact]
   }

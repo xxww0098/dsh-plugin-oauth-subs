@@ -5,6 +5,7 @@ import { applyGrokCache, grokAffinityHeaders, grokCacheSessionId } from '../lib/
 import { applyGlmAnthropicCache, applyGlmCache, glmCacheSessionId, resetGlmSystemPins } from '../lib/oauth/glm/cache.js'
 import { antigravityCacheSessionId, antigravitySessionIdOf, ANTIGRAVITY_STABLE_SESSION } from '../lib/oauth/antigravity/cache.js'
 import { kiroCacheSessionId, kiroConversationId, pinKiroSystemPrefix, KIRO_STABLE_SESSION, resetKiroSystemPins } from '../lib/oauth/kiro/cache.js'
+import { applyCursorCache, cursorCacheHeaders, cursorCacheSessionId, cursorConversationId, CURSOR_STABLE_SESSION } from '../lib/oauth/cursor/cache.js'
 
 const dirty = 'session 772f7f3a/foo'
 
@@ -14,6 +15,7 @@ test('each family owns its cache id helper (same clip, separate modules)', () =>
   assert.equal(glmCacheSessionId(dirty), 'session-772f7f3a-foo')
   assert.equal(antigravityCacheSessionId(dirty), 'session-772f7f3a-foo')
   assert.equal(kiroCacheSessionId(dirty), 'session-772f7f3a-foo')
+  assert.equal(cursorCacheSessionId(dirty), 'session-772f7f3a-foo')
   assert.equal(codexCacheSessionId(''), undefined)
   assert.equal(grokCacheSessionId(null), undefined)
 })
@@ -126,4 +128,21 @@ test('Kiro cache identity is conversationId, with a stable fallback', () => {
   assert.equal(first.extra, '')
   assert.equal(extra.pinned, 'You are DSH.')
   assert.equal(extra.extra, 'Snapshot')
+})
+
+test('Cursor cache identity is conversation_id, never Codex/Grok headers', () => {
+  const { payload, cacheSessionId } = applyCursorCache({
+    session_id: 'sess-cursor',
+    prompt_cache_key: 'codex-style',
+    prompt_cache_retention: '24h',
+    model: 'composer-2',
+  })
+  assert.equal(cacheSessionId, 'sess-cursor:composer-2')
+  assert.equal(payload.prompt_cache_key, undefined)
+  assert.equal(payload.prompt_cache_retention, undefined)
+  assert.deepEqual(cursorCacheHeaders(), {})
+  assert.equal(Object.hasOwn(cursorCacheHeaders(), 'session-id'), false)
+  assert.equal(Object.hasOwn(cursorCacheHeaders(), 'x-grok-conv-id'), false)
+  assert.equal(cursorConversationId({}), CURSOR_STABLE_SESSION)
+  assert.equal(cursorConversationId({ session_id: 'sess-cursor', model: 'composer-2' }), cursorConversationId({ session_id: 'sess-cursor', model: 'composer-2' }))
 })
