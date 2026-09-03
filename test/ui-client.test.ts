@@ -247,7 +247,8 @@ test('Reset-credit confirm stays a centered alertdialog', async () => {
 
 test('Settings OpenCode tab is anonymous enable after Kimi, never Authorization or @lobehub/icons', async () => {
   const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
-  assert.match(src, /opencodeTitle:\s*'OpenCode'/)
+  assert.match(src, /opencodeTitle:\s*'OpenCode Free'/)
+  assert.equal((src.match(/opencodeTitle:\s*'OpenCode Free'/g) || []).length, 2)
   assert.match(src, /opencodeEnable:\s*'启用免费模型'/)
   assert.match(src, /opencodeEnable:\s*'Enable free models'/)
   assert.match(src, /LobeHub `OpenCode` icon/)

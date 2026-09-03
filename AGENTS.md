@@ -556,6 +556,7 @@ into `TAB_ICONS`.
     `space-between` (that opens a hole).
 - Add `COPY.zh.<id>Title` / `COPY.en.<id>Title` for the hover string and
   the page heading. Ollama's title is **Ollama Cloud** (not localhost 11434).
+  OpenCode's title is **OpenCode Free** (anonymous Zen free; no login).
 
 ```text
 [ Codex ] [ Grok ] [ Z.ai ] [ Kiro ] [ Antigravity ] [ Cursor ] [ Ollama Cloud ] [ Kimi ]  [ ▦ ]
