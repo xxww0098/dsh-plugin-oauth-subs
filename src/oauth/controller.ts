@@ -337,6 +337,9 @@ export class AuthController {
       if (accountId && targets.length === 0) throw new Error(`${provider} account ${accountId} is not signed in`)
       if (targets.length === 0) return this.quota.peek(provider)
       await Promise.all(targets.map((row) => this.quota.refresh(provider, row.id, row.session)))
+      if (provider === 'cursor') {
+        await Promise.all(targets.map((row) => this.#rememberCursorPlan(row, this.quota.peek(provider, row.id))))
+      }
       if (provider === 'antigravity') {
         await Promise.all(targets.map((row) => this.#probeAntigravity(row.session, row.id)))
       }
@@ -483,13 +486,19 @@ export class AuthController {
 
   async #rememberCursorPlan(row, quota) {
     if (!quota || quota.status !== 'ready') return
-    const email = pickCursorHumanAccount(quota.account)
+    const email = pickCursorHumanAccount(quota.account, row.session.cachedEmail)
     const planType = typeof quota.planType === 'string' && quota.planType.trim() ? quota.planType.trim() : undefined
-    if (!email && !planType) return
-    if ((!email || row.session.account === email) && (!planType || row.session.planType === planType)) return
+    const cachedEmail = pickCursorHumanAccount(email, row.session.cachedEmail)
+    if (!email && !planType && cachedEmail === row.session.cachedEmail) return
+    if (
+      (!email || row.session.account === email)
+      && (!planType || row.session.planType === planType)
+      && row.session.cachedEmail === cachedEmail
+    ) return
     const next = { ...row.session }
     if (email) next.account = email
     if (planType) next.planType = planType
+    if (cachedEmail) next.cachedEmail = cachedEmail
     await this.#rewriteCursorIdentity(row, next)
   }
 

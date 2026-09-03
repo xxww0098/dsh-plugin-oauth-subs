@@ -17,6 +17,11 @@ export const CURSOR_AGENT_URL = 'https://agentn.us.api5.cursor.sh'
 export const CURSOR_API2_URL = 'https://api2.cursor.sh'
 export const CURSOR_USAGE_PATH = '/aiserver.v1.DashboardService/GetCurrentPeriodUsage'
 export const CURSOR_USAGE_URL = `${CURSOR_API2_URL}${CURSOR_USAGE_PATH}`
+export const CURSOR_STRIPE_PROFILE_URL = `${CURSOR_API2_URL}/auth/full_stripe_profile`
+export const CURSOR_GET_EMAIL_PATH = '/aiserver.v1.AuthService/GetEmail'
+export const CURSOR_GET_EMAIL_URL = `${CURSOR_API2_URL}${CURSOR_GET_EMAIL_PATH}`
+export const CURSOR_GET_ME_PATH = '/aiserver.v1.DashboardService/GetMe'
+export const CURSOR_GET_ME_URL = `${CURSOR_API2_URL}${CURSOR_GET_ME_PATH}`
 export const CURSOR_RUN_PATH = '/agent.v1.AgentService/Run'
 export const CURSOR_MODELS_PATH = '/agent.v1.AgentService/GetUsableModels'
 export const CURSOR_AVAILABLE_MODELS_PATH = '/aiserver.v1.AiService/AvailableModels'
@@ -131,9 +136,27 @@ function cursorVaultAccountFromToken(token) {
 export function displayCursorAccount(session) {
   return pickCursorHumanAccount(
     session?.account,
-    cursorAccountFromToken(session?.accessToken),
     session?.cachedEmail,
+    cursorAccountFromToken(session?.accessToken),
   )
+}
+
+/** GetEmail `{ email }` or GetMe `{ email, firstName, lastName }`. Email wins. */
+export function cursorNameFromProfile(value) {
+  if (!value || typeof value !== 'object') return undefined
+  const email = pickCursorHumanAccount(value.email)
+  if (email) return email
+  const first = trimmed(value.firstName)
+  const last = trimmed(value.lastName)
+  const combined = [first, last].filter(Boolean).join(' ')
+  return pickCursorHumanAccount(combined)
+}
+
+export function cursorMembershipFromStripe(value) {
+  if (!value || typeof value !== 'object') return undefined
+  const individual = trimmed(value.individualMembershipType)
+  const membership = trimmed(value.membershipType)
+  return individual || membership
 }
 
 export function cursorAccessStillValid(token, now = Date.now()) {
@@ -178,6 +201,7 @@ export function cursorSession({
   expiresAt,
   account,
   planType,
+  cachedEmail,
   source = 'pkce',
 } = {}) {
   if (!trimmed(accessToken)) throw new Error('cursor session needs an access token')
@@ -185,6 +209,7 @@ export function cursorSession({
   const resolvedExpiry = typeof expiresAt === 'number' && Number.isFinite(expiresAt)
     ? expiresAt
     : cursorTokenExpiry(accessToken)
+  const cached = pickCursorHumanAccount(cachedEmail)
   const human = pickCursorHumanAccount(account, cursorAccountFromToken(accessToken))
   const vault = human
     ?? (trimmed(account) && trimmed(account).toLowerCase() !== 'cursor' ? trimmed(account) : undefined)
@@ -196,6 +221,7 @@ export function cursorSession({
     ...(vault ? { account: vault } : {}),
     source: CURSOR_SOURCES.includes(source) ? source : 'pkce',
     ...(trimmed(planType) ? { planType: planType.trim() } : {}),
+    ...(cached ? { cachedEmail: cached } : {}),
   }
 }
 
@@ -295,6 +321,7 @@ export async function refreshCursor(session, fetchFn = fetch) {
     ...tokens,
     account: session.account,
     planType: session.planType,
+    cachedEmail: session.cachedEmail,
     source: session.source,
   })
 }

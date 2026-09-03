@@ -2,6 +2,17 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-03：Cursor 刷新后仍是 auth0|… / PRO / 已用 0%；Ollama 图标被挤没
+
+### 现象
+PKCE 卡抬头 `auth0|user_…`、PRO、已用 0%/0%。IDE 卡 PRO（实 Ultra）、API 已用 0%（实 0.454%）。点刷新额度不变。Ollama 图标在窄 Settings 栏消失。
+
+### 根因
+`GetCurrentPeriodUsage` 无 email，缺 `membershipType` 时默认 Pro。`clampPct` 把 0.454 收成 0。刷新没打 GetEmail / `full_stripe_profile`。九个 tab `flex:1 1 0` 被 `min-width:0` 压到 0。
+
+### 修复
+刷新并行 GetEmail（必要时 GetMe）+ stripe。回填 `cachedEmail` / opaque `replaceAccountId`。套餐用 `individualMembershipType`。已用>0 且四舍五入为 0 则显示 1。条走 `RemainingBar`/`QuotaMeter`（剩余）。Tab wrap，每格 36px。
+
 ## 2026-09-03：Kiro 复合 tool id / 静态目录缺口 / 思考 XML
 
 ### 现象
@@ -44,7 +55,7 @@ Settings → Cursor 抬头是 WorkOS 形 `provider|user_…`。登录和两条�
 `cursorAccountFromToken` 在无 email 时回落 JWT `sub`。vscdb 没读 `cursorAuth/cachedEmail`。GetCurrentPeriodUsage 经常也没有 email。
 
 ### 修复
-可见身份：JWT `email` / `preferred_username`，然后 cachedEmail，然后 usage email。永不展示 `sub` / `cursor` / `provider|user_*`。没有人类 id 就省略抬头。vault 仍可用 `sub`。
+可见身份：JWT `email` / `preferred_username`，然后 cachedEmail，然后 GetEmail / GetMe，然后 usage email。永不展示 `sub` / `cursor` / `provider|user_*`。没有人类 id 就省略抬头。vault 仍可用 `sub`，刷新后 `replaceAccountId`。
 
 ## 2026-09-03：GLM 账号卡身份显示内部 id，不是邮箱（始 08-30）
 

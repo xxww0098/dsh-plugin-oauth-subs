@@ -35,11 +35,15 @@ import {
   frameConnect,
 } from '../lib/oauth/cursor/proto.js'
 import {
+  CURSOR_GET_EMAIL_URL,
+  CURSOR_GET_ME_URL,
   CURSOR_LOGIN_URL,
   CURSOR_MODELS,
   CURSOR_POLL_URL,
   CURSOR_REASONING,
   CURSOR_REFRESH_URL,
+  CURSOR_STRIPE_PROFILE_URL,
+  CURSOR_USAGE_URL,
   completeCursorLogin,
   createCursorPkce,
   cursorAccessStillValid,
@@ -306,6 +310,36 @@ test('parseCursorPeriodUsage emits two used-percent product bars, not spend cap'
   assert.equal(JSON.stringify(parsed).includes('40000'), false)
   assert.equal(composer.resetAt, Date.parse('2026-10-01T00:00:00.000Z'))
   assert.equal(api.resetAt, composer.resetAt)
+})
+
+test('parseCursorPeriodUsage keeps a sub-1 API percent visible and prefers stripe Ultra', () => {
+  const parsed = parseCursorPeriodUsage({
+    planUsage: {
+      autoPercentUsed: 55.123,
+      apiPercentUsed: 0.454,
+      totalPercentUsed: 47.313,
+    },
+    spendLimitUsage: { limitType: 'user' },
+  }, {
+    stripe: { membershipType: 'ultra', individualMembershipType: 'ultra' },
+  })
+  assert.equal(parsed.planType, 'ultra')
+  assert.equal(formatPlanLabel(parsed.planType, 'cursor'), 'Ultra')
+  assert.equal(parsed.account, undefined)
+  const composer = parsed.rows.find((row) => row.product === 'auto')
+  const api = parsed.rows.find((row) => row.product === 'api')
+  assert.equal(composer.usedPercent, 55)
+  assert.equal(composer.remainingPercent, 45)
+  assert.equal(api.usedPercent, 1)
+  assert.equal(api.remainingPercent, 99)
+  const zero = parseCursorPeriodUsage({
+    planUsage: { autoPercentUsed: 0, apiPercentUsed: 0 },
+  })
+  assert.equal(zero.planType, 'Pro')
+  assert.equal(zero.rows[0].usedPercent, 0)
+  assert.equal(zero.rows[0].remainingPercent, 100)
+  assert.equal(zero.rows[1].usedPercent, 0)
+  assert.equal(zero.rows[1].remainingPercent, 100)
 })
 
 test('parseCursorPeriodUsage always emits both bars at 0% when percents are missing', () => {
@@ -617,11 +651,16 @@ test('snapshot backfills opaque cursor vault when usage has email', async () => 
     origin: () => 'http://127.0.0.1:8318',
     settings: { mutate: async () => undefined },
     cursorAutoImport: false,
-    fetchFn: async () => json({
-      planUsage: { autoPercentUsed: 12, apiPercentUsed: 0 },
-      membershipType: 'pro',
-      email: 'from-usage@x',
-    }),
+    fetchFn: async (url) => {
+      if (String(url).includes('GetCurrentPeriodUsage')) {
+        return json({
+          planUsage: { autoPercentUsed: 12, apiPercentUsed: 0 },
+          membershipType: 'pro',
+          email: 'from-usage@x',
+        })
+      }
+      return new Response('', { status: 404 })
+    },
   })
   const snap = await controller.snapshot()
   assert.equal(snap.accounts.cursor.account, 'from-usage@x')
@@ -669,6 +708,106 @@ test('snapshot backfills opaque cursor vault from vscdb cachedEmail', async () =
   const roster = await listAccounts('cursor', authPath)
   assert.equal(roster[0].id, 'from-ide@x')
   assert.equal(roster.some((row) => row.id === opaque || row.account === opaque), false)
+})
+
+test('refreshQuota GetEmail backfills opaque PKCE and stripe Ultra percents', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-cursor-refresh-'))
+  const authPath = join(dir, 'auth.json')
+  const opaque = 'auth0|user_01TESTGETEMAIL0001'
+  const pkceAccess = jwt({
+    sub: opaque,
+    exp: Math.floor(Date.now() / 1000) + 3600,
+    iss: 'https://authentication.cursor.sh',
+  })
+  const ideAccess = jwt({
+    sub: 'auth0|user_01TESTIDE0002',
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  })
+  await saveSession('cursor', cursorSession({
+    accessToken: pkceAccess,
+    refreshToken: 'rt-pkce',
+    source: 'pkce',
+    account: opaque,
+  }), authPath)
+  await saveSession('cursor', cursorSession({
+    accessToken: ideAccess,
+    refreshToken: 'rt-ide',
+    source: 'ide_vscdb',
+    account: 'ide-user@example.test',
+  }), authPath)
+  const controller = new AuthController({
+    authPath,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+    cursorAutoImport: false,
+    cursorDiscover: async () => undefined,
+    fetchFn: async (url, init) => {
+      const href = String(url)
+      const auth = String(init?.headers?.authorization ?? '')
+      const pkce = auth.includes(pkceAccess)
+      if (href === CURSOR_USAGE_URL) {
+        return json(pkce
+          ? {
+            planUsage: {
+              remaining: 2000,
+              limit: 2000,
+              autoPercentUsed: 0,
+              apiPercentUsed: 0,
+              totalPercentUsed: 0,
+            },
+            spendLimitUsage: { limitType: 'user' },
+            displayMessage: "You've used 0% of your included usage",
+          }
+          : {
+            planUsage: {
+              autoPercentUsed: 55.123,
+              apiPercentUsed: 0.454,
+              totalPercentUsed: 47.313,
+            },
+            spendLimitUsage: { limitType: 'user' },
+            displayMessage: "You've hit your usage limit",
+          })
+      }
+      if (href === CURSOR_STRIPE_PROFILE_URL) {
+        return json(pkce
+          ? { membershipType: 'pro', individualMembershipType: 'pro' }
+          : { membershipType: 'ultra', individualMembershipType: 'ultra' })
+      }
+      if (href === CURSOR_GET_EMAIL_URL) {
+        return json({
+          email: pkce ? 'pkce-user@example.test' : 'ide-user@example.test',
+          signUpType: 'email',
+          isRecentlyCreatedUser: false,
+        })
+      }
+      if (href === CURSOR_GET_ME_URL) {
+        throw new Error('GetMe is only for missing GetEmail')
+      }
+      return new Response('', { status: 404 })
+    },
+  })
+  await controller.refreshQuota('cursor')
+  const snap = await controller.snapshot()
+  const roster = snap.accounts.cursor.accounts
+  const pkceCard = roster.find((row) => row.account === 'pkce-user@example.test')
+  const ideCard = roster.find((row) => row.account === 'ide-user@example.test')
+  assert.ok(pkceCard)
+  assert.ok(ideCard)
+  assert.equal(pkceCard.planLabel, 'Pro')
+  assert.equal(ideCard.planLabel, 'Ultra')
+  assert.equal(pkceCard.quota.rows.find((row) => row.product === 'auto').remainingPercent, 100)
+  assert.equal(pkceCard.quota.rows.find((row) => row.product === 'api').remainingPercent, 100)
+  assert.equal(ideCard.quota.rows.find((row) => row.product === 'auto').remainingPercent, 45)
+  assert.equal(ideCard.quota.rows.find((row) => row.product === 'api').remainingPercent, 99)
+  assert.equal(ideCard.quota.rows.find((row) => row.product === 'api').usedPercent, 1)
+  const stored = await listAccounts('cursor', authPath)
+  assert.equal(stored.some((row) => row.id === opaque || row.account === opaque), false)
+  assert.equal(stored.some((row) => /auth0\||grok\|user_/.test(String(row.id))), false)
+  const pkceStored = (await listStoredSessions('cursor', authPath))
+    .find((row) => row.session.cachedEmail === 'pkce-user@example.test')
+  assert.ok(pkceStored)
+  assert.equal(pkceStored.session.account, 'pkce-user@example.test')
 })
 
 test('parseCursorTokenResponse and completeCursorLogin tag pkce', async () => {

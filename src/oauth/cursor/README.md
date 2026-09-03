@@ -58,12 +58,14 @@ DSH POST /cursor/v1/chat/completions
 可见标题只走人类 id，顺序：
 
 1. JWT `email` / `preferred_username`（`cursorAccountFromToken`，不验签）
-2. IDE `state.vscdb` `cursorAuth/cachedEmail`（本机已有键，不是新 HTTP）
-3. `GetCurrentPeriodUsage` JSON `email`（有才用；Grok/xAI 登录经常没有）
+2. session `cachedEmail` / IDE `state.vscdb` `cursorAuth/cachedEmail`
+3. `POST …/aiserver.v1.AuthService/GetEmail` `{ email }`（刷新额度必打；usage JSON 没有 email）
+4. 必要时 `POST …/aiserver.v1.DashboardService/GetMe`（`email` 优先，否则 `firstName` + `lastName`）
+5. `GetCurrentPeriodUsage` JSON `email`（有才用；活探测里没有）
 
 `displayCursorAccount` / `publicSession('cursor')` **永不**展示 JWT `sub`、字面 `cursor`、`provider|user_*`（WorkOS / Auth0）。没有人类 id 就省略标题（`undefined`），不要用 opaque id 顶上去。
 
-`accountIdOf` 仍可用 JWT `sub` 当 vault 稳定键。已存 `account: 'grok|user_…'` 的行在 snapshot 上若读到 cachedEmail 或 usage email，就改写 session 并 `replaceAccountId`（同 GLM `zcode`）。不要发明 GetMe / 仪表盘抓取 / 新 Connect 方法。
+`accountIdOf` 仍可用 JWT `sub` 当 vault 稳定键。刷新 / snapshot 读到人类 id 就写 `cachedEmail`，opaque vault 走 `replaceAccountId`（同 GLM `zcode`）。不要打 `cursor.com/api/auth/me`（204）或 cookie 的 usage-summary（401）。
 
 ### 本机导入（用户拥有的 Cursor 登录复用）
 
@@ -135,16 +137,25 @@ Settings 勾选仍须登录后才能改。新发现的行默认开，`setModels`
 
 ## 额度
 
-`POST https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage`，JSON `{}` + Bearer。host 是 **api2**，不是 agentn，也不要猜第三个 host。
+刷新额度并行三路（host 都是 **api2**，不是 agentn，也不是 cursor.com）：
 
-两条 `kind: 'product'`，对齐 Cursor 仪表盘的 **已用** 百分比（不是本周期剩余、也不是 `includedSpend/limit` 美分封顶）：
+```text
+POST /aiserver.v1.DashboardService/GetCurrentPeriodUsage  {}
+GET  /auth/full_stripe_profile
+POST /aiserver.v1.AuthService/GetEmail                    {}
+  → 无邮箱再 POST /aiserver.v1.DashboardService/GetMe     {}
+```
+
+套餐优先 stripe `individualMembershipType` / `membershipType`，再 usage `membershipType`，缺省才是 Pro。IDE Ultra 活探测 usage 没有 membershipType，必须读 stripe。
+
+两条 `kind: 'product'`，对齐 Cursor 仪表盘百分比（不是 `includedSpend/limit` 美分封顶）。`0.454` 是 0.454 **百分**，不是分数。`clampUsedPct`：已用 > 0 且四舍五入成 0 则显示 1（对上 Cursor「1% API」）。
 
 | `product` | 字段 | zh | en |
 |---|---|---|---|
 | `auto` | `planUsage.autoPercentUsed` | 补全 & Composer | Tab completion & Composer |
 | `api` | `planUsage.apiPercentUsed` | API 调用 | API |
 
-缺字段当 0%（刚重置不是缺条）。`resetAt` 两边都取 `billingCycleEnd`。卡片 caption 和条填充对 Cursor product 行用 **已用**；别的家族仍是剩余。`formatPlanLabel(..., 'cursor')` 的 `pro` 是 Pro，不是 Codex Pro 20x。
+缺字段当 0%（刚重置不是缺条）。`resetAt` 两边都取 `billingCycleEnd`。Settings 一律 `RemainingBar` / `QuotaMeter`：填充 = `remainingPercent`（`100 − used`），文案 `剩余 {n}%`。PKCE 真 0/0 → 剩余 100%。`formatPlanLabel(..., 'cursor')` 的 `pro` 是 Pro，`ultra` 是 Ultra，不是 Codex Pro 20x。
 
 ## 缓存
 
@@ -169,8 +180,9 @@ Settings 勾选仍须登录后才能改。新发现的行默认开，`setModels`
 - 用 `includedSpend` / `limit` 当额度条 used/total
 - 恢复 `src/utils/cache-session.ts`
 - 扫 WSL / Windows 上别人的 Users 目录
-- 发明 GetMe / 仪表盘抓取 / 新 Connect 方法只为拿邮箱
+- 打 `cursor.com/api/auth/me` 或 cookie `usage-summary`（204 / 401）
 - 把 JWT `sub` / `cursor` / `provider|user_*` 画在 Settings 卡抬头
+- 把 `apiPercentUsed` 0–1 当分数（0.454 不是 45%）
 
 ## 归因
 

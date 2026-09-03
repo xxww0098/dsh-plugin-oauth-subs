@@ -48,6 +48,7 @@ export declare function resolveCursorLocalCredentials({ fetchFn, env, platform, 
     execFileFn?: typeof execFile.__promisify__;
     now?: number;
 }): Promise<{
+    cachedEmail?: string;
     planType?: any;
     source: string;
     account?: string;
@@ -58,6 +59,7 @@ export declare function resolveCursorLocalCredentials({ fetchFn, env, platform, 
 export declare function importCursorAuth(options?: {}): Promise<{
     source: string;
     session: {
+        cachedEmail?: string;
         planType?: any;
         source: string;
         account?: string;
