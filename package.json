@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-oauth-subs",
-  "version": "0.0.68",
+  "version": "0.0.69",
   "description": "ChatGPT Codex, xAI Grok, Zhipu GLM, AWS Kiro, Google Antigravity, and Cursor subscription OAuth for DeepSeek Harness — PKCE / device-code / Google login, local Responses proxy, llm-pi-ai sync.",
   "license": "MIT",
   "repository": {
