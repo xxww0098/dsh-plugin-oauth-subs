@@ -12,10 +12,11 @@
 | 文件 | 职责 |
 |---|---|
 | [`index.ts`](index.ts) | 中继 URL、匿名 session、**不带** Authorization 的 hop 头 |
-| [`catalog.ts`](catalog.ts) | 匿名 `GET /zen/v1/models`，只留可匿名的 `*-free`；静态 `OPENCODE_MODELS` 只做 fallback |
+| [`catalog.ts`](catalog.ts) | 匿名 `GET /zen/v1/models` 只定 id；`GET https://models.dev/api.json` → `opencode.models` overlay 窗口 / input / effort。静态 `OPENCODE_MODELS` 只做 fallback |
+| [`request.ts`](request.ts) | DSH `reasoning_effort` → 顶层 OpenAI `reasoning_effort`。禁止同时发 `thinking` |
 | [`cache.ts`](cache.ts) | 剥 Codex / Grok 字段。禁止抄 `session-id` / `x-grok-conv-id`。不发明 `cached_tokens` |
 
-调度：[`../proxy.ts`](../proxy.ts) `family === 'opencode'` → `applyOpencodeCache`，`forward()` 到 `OPENCODE_CHAT_URL`。
+调度：[`../proxy.ts`](../proxy.ts) `family === 'opencode'` → `applyOpencodeCache` + `applyOpencodeThinking`，`forward()` 到 `OPENCODE_CHAT_URL`。
 额度：没有匿名用量 API。卡仍渲染，quota idle / 空条，套餐固定 Free。
 
 ## 协议
@@ -25,6 +26,7 @@ DSH `api: openai-completions`。不要写第四个 api 字符串。
 ```text
 DSH POST /opencode/v1/chat/completions
   → applyOpencodeCache（剥 prompt_cache_key / session_id / retention）
+  → applyOpencodeThinking（目录有 effort 图才写顶层 reasoning_effort；绝不带 thinking）
   → POST https://opencode.ai/zen/v1/chat/completions
      无 Authorization
      User-Agent: dsh-plugin-oauth-subs
@@ -50,7 +52,20 @@ GET https://opencode.ai/zen/v1/models
 
 只收 `id` 以 `-free` 结尾、且不在 Go 订阅黑名单（`ox-alpha-free`）里的行。失败或空列表回落静态楼（当前 live 快照）。目录会轮换；delist 的模型必须从楼里删掉，否则 picker 会 401。
 
-Completions 行 **省略** `reasoningEfforts`（不要写 `false`），否则 DSH 可能丢掉整段 `llm-pi-ai` mutate。不要 stamp Completions `compat`。
+Zen `/models` 只有 `{id,object,created,owned_by}`。能力来自 models.dev provider `opencode`（同一次 refresh 拉一次，跟 Zen 共用 5 分钟 TTL）。**不要**把 Zen 没列出的 slug 加进 picker（hy3-free / kimi-k2.5-free 等）。models.dev 挂了就用楼默认。
+
+DSH picker：
+
+| models.dev | picker |
+|---|---|
+| `modalities.input` 含 `image` | `['text','image']` |
+| 否则 | `['text']` |
+| `reasoning_options` effort `values` | 同名 DSH 键（`off\|minimal\|low\|medium\|high\|xhigh\|max`）。值是 vendor 拼写。有 `none`/`off` 才写 `off` |
+| `type: toggle` | `{ off: 'none', high: 'high' }`。hop：`off` → `reasoning_effort: "none"`，`high` → `"high"` |
+| `reasoning: true` 且 options 空 | **省略** `reasoningEfforts`（不要 `false`）。模型走 vendor 默认思考 |
+| `limit.context` / `limit.output` | `contextWindow` / `maxTokens` |
+
+不要把 `audio` / `video` / `pdf` 写进 `input`。有任意一行 effort 图才 stamp Completions `compat.supportsReasoningEffort` + `thinkingFormat: 'openai'`。不要全家 `false`。
 
 默认辅助模型：`laguna-s-2.1-free`（Hermes：非 UA 门控里最快的免费档）。
 
@@ -70,7 +85,10 @@ Completions 行 **省略** `reasoningEfforts`（不要写 `false`），否则 DS
 
 - 不要发 `Authorization`（空串 / 哨兵 / 过期 Zen key 都会 401）。
 - 不要把启用藏在 Settings 点击后面；空 roster 必须自动写哨兵并 sync。
-- 不要在 Completions 行写 `reasoningEfforts: false` 或 Completions `compat`。
+- 不要在 Completions 行写 `reasoningEfforts: false`。没有 effort 图就省略字段，也不要全家 stamp `compat`。
+- 不要同时发 `thinking` 和 `reasoning_effort`。
+- 不要把 models.dev 里的 audio/video/pdf 写进 picker `input`。
+- 不要把 Zen 没列出的 models.dev slug 加进 picker。
 - 不要把 Zen 付费或 Go 订阅模型塞进匿名 picker（`ox-alpha-free` 后缀像免费，但是 Go 订阅）。
 - 不要假扮 OpenCode CLI UA 去拿 `big-pickle`。
 - 不要把 `api` 写成 Responses / Anthropic / 自定义字符串。
@@ -83,5 +101,6 @@ Completions 行 **省略** `reasoningEfforts`（不要写 `false`），否则 DS
 | 带 Bearer 打免费档 401 | [`docs/error.md`](../../../docs/error.md) 2026-09-03 OpenCode Free Bearer |
 | 硬编码目录 delist 后仍 401 | 同条：live `GET /models` |
 | 空 roster 要先点启用才能聊 | [`docs/error.md`](../../../docs/error.md) 2026-09-03 OpenCode Free 自动启用 |
+| picker 全是 text / 无 effort | [`docs/error.md`](../../../docs/error.md) 2026-09-03 OpenCode Free models.dev |
 
 测试：`test/opencode.test.ts`、`test/cache-families.test.ts`。

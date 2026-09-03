@@ -103,7 +103,8 @@ src/
     opencode/              OpenCode Zen anonymous free (opencode.ai/zen/v1)
       README.md            family design: login, chat, quota, cache (traceable)
       index.ts             catalog floor, anonymous session, hop headers (no Authorization)
-      catalog.ts           live GET /zen/v1/models; keep *-free minus Go-keyed
+      catalog.ts           live GET /zen/v1/models + models.dev overlay; keep *-free minus Go-keyed
+      request.ts           DSH reasoning_effort → OpenAI reasoning_effort (never both thinking)
       cache.ts             strip Codex/Grok fields; no sticky id (non-fix)
   ui/                      React Settings (classic-script factory)
     client.ts
