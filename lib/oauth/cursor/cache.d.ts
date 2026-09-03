@@ -13,6 +13,15 @@
  * not a GLM trailing system or a Gemini trailing user.
  */
 export declare const CURSOR_STABLE_SESSION = "dsh-cursor";
+export declare const CURSOR_FAST_SUFFIX = "-fast";
+/**
+ * Host-side Cursor Fast picker suffix. Not Codex `service_tier`.
+ * Wire `requestedModel.modelId` and the conversation pin use the family id.
+ */
+export declare function peelCursorFastSuffix(modelId: any): {
+    modelId: string;
+    requestedFast: boolean;
+};
 export declare function cursorCacheSessionId(key: any): string;
 export declare function resetCursorSystemPins(): void;
 export declare function pinCursorSystemPrefix(conversationId: any, systemText: any): {

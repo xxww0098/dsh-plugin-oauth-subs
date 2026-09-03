@@ -19,10 +19,18 @@ export declare function inferCursorMaxOutputTokens(id: any, name?: string): 1280
 /** Tab / chat internals stay out of the Settings grid (`/cursor.models all` is Pi opt-in). */
 export declare function isCursorInternalModel(id: any, name?: string): boolean;
 /**
- * One picker id per family: drop effort / fast / thinking / max-mode / window
- * suffixes. Keep `codex-max` as a product name.
+ * After peeling effort / thinking / max-mode / window, does this source id
+ * still end in `-fast`? That is the live catalog's Fast flag — not Codex
+ * `service_tier`. Used to decide whether the picker grows a `{family}-fast`
+ * sibling. `cursorPickerFamilyId` still collapses Fast into the family.
+ */
+export declare function cursorSourceIsFast(id: any): boolean;
+/**
+ * One picker family id: drop effort / fast / thinking / max-mode / window
+ * suffixes. Keep `codex-max` as a product name. Fast is re-emitted as a
+ * sibling `{family}-fast` when any source id for that family is Fast.
  */
 export declare function cursorPickerFamilyId(id: any): string;
-/** Collapse live ids into one picker row per family. Empty input → []. */
+/** Collapse live ids into one picker row per family, plus `{family}-fast` when a source id is Fast. Empty input → []. */
 export declare function toCursorPickerModels(usable: any, parameterized?: any[]): any[];
 export declare function refreshCursorCatalog(session: any, options?: {}): Promise<any>;
