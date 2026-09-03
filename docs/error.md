@@ -1,5 +1,33 @@
 # 错误记录
 
+## 2026-09-03：Cursor 卡抬头是 JWT `sub`，不是邮箱 / 用户名
+
+### 现象
+
+Settings → Cursor。已登录卡抬头是 WorkOS 形 JWT `sub`（`provider|user_…`），后面 PRO / 使用中 / IDE。额度两条杠正常（补全 & Composer、API 调用）。用户问：Cursor 是不是也拿不到正常用户名或邮箱？登录和额度都没问题。
+
+### 证据
+
+- `cursorAccountFromToken` 原顺序是 JWT `email` || `preferred_username` || `sub`。Grok/xAI 的 Cursor 登录 JWT 没有 email，`sub` 长得像 `grok|user_…`（也有 `auth0|…`）。
+- `cursorSession` 把这个值存成 `account`；`publicSession('cursor')` 原样输出 `session.account`。
+- `#rememberCursorPlan` 已会把 `parseCursorPeriodUsage` 的 `payload.email` 抄进 `quota.account`。额度条能画，抬头仍是 `sub` → 这份 GetCurrentPeriodUsage JSON 对该账号经常没有 `email`。
+- IDE `state.vscdb` 导入只读了 `cursorAuth/accessToken` / `cursorAuth/refreshToken`。同一张 `ItemTable` 还有社区读者用的 `cursorAuth/cachedEmail`（IDE 本地键，不是新的 Cursor HTTP）。Keychain 导入没有邮箱。PKCE poll 只回 access+refresh。
+
+### 根因
+
+身份层（`cursorAccountFromToken` / `cursorSession` / `publicSession` / 导入）。把 JWT `sub` 当人类标题。没有读本机 `cachedEmail`。没有把 opaque vault 行在 snapshot 上回写成邮箱。
+
+### 修复
+
+- 可见身份：JWT `email` / `preferred_username`，然后 vscdb `cursorAuth/cachedEmail`，然后 usage JSON `email`（有才用）。
+- `displayCursorAccount` / `publicSession('cursor')` / Settings `identityOf` 永不展示 `sub`、`cursor`、`provider|user_*`。没有人类 id 就省略标题。
+- `accountIdOf` 仍可用 `sub` 当稳定 vault 键。snapshot 上若 cachedEmail 或 usage email 可用，改写 session 并 `replaceAccountId`（同 GLM `zcode`）。
+- 不发明 GetMe / 仪表盘抓取 / 新 Connect 方法。不改 hop / catalog / 额度条。
+
+### 验证
+
+- `npm test`：仅 `sub` 的 JWT → `displayCursorAccount` / `publicSession` 的 account 为 `undefined`；vscdb 带 `cachedEmail` 的导入用该邮箱；snapshot 把 opaque vault 行回写成 usage / cachedEmail 邮箱。原有导入 / 额度测试保持。
+
 ## 2026-09-03：GLM 账号卡身份显示 poll user.id，不是邮箱
 
 ### 现象

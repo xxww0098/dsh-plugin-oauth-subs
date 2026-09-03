@@ -61,7 +61,11 @@ export declare function cursorSourceLabel(source: any, locale?: string): "env" |
 export declare function cursorClientVersion(): string;
 export declare function cursorAgentUrl(): string;
 export declare function cursorTokenExpiry(token: any, now?: number): number;
+/** JWT `sub` / WorkOS / Auth0 / the literal `cursor` — vault keys only, never a card title. */
+export declare function isCursorOpaqueAccount(value: any): boolean;
+export declare function pickCursorHumanAccount(...candidates: any[]): string;
 export declare function cursorAccountFromToken(token: any): string;
+export declare function displayCursorAccount(session: any): string;
 export declare function cursorAccessStillValid(token: any, now?: number): boolean;
 export declare function createCursorPkce(): {
     verifier: string;
@@ -81,11 +85,11 @@ export declare function cursorSession({ accessToken, refreshToken, expiresAt, ac
     source?: string;
 }): {
     planType?: any;
+    source: string;
+    account?: string;
     accessToken: any;
     refreshToken: any;
     expiresAt: number;
-    account: string;
-    source: string;
 };
 export declare function cursorChatHeaders(session: any, { unary, requestId }?: {
     unary?: boolean;
@@ -125,9 +129,9 @@ export declare function completeCursorLogin(tokens: any, { source }?: {
     source?: string;
 }): Promise<{
     planType?: any;
+    source: string;
+    account?: string;
     accessToken: any;
     refreshToken: any;
     expiresAt: number;
-    account: string;
-    source: string;
 }>;

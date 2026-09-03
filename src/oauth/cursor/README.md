@@ -53,6 +53,18 @@ DSH POST /cursor/v1/chat/completions
 
 **不要**在插件加载时静默扫 Keychain / `state.vscdb` 覆盖已有会话。自动导入只在 cursor 花名册为空时走一次。
 
+### 卡抬头身份
+
+可见标题只走人类 id，顺序：
+
+1. JWT `email` / `preferred_username`（`cursorAccountFromToken`，不验签）
+2. IDE `state.vscdb` `cursorAuth/cachedEmail`（本机已有键，不是新 HTTP）
+3. `GetCurrentPeriodUsage` JSON `email`（有才用；Grok/xAI 登录经常没有）
+
+`displayCursorAccount` / `publicSession('cursor')` **永不**展示 JWT `sub`、字面 `cursor`、`provider|user_*`（WorkOS / Auth0）。没有人类 id 就省略标题（`undefined`），不要用 opaque id 顶上去。
+
+`accountIdOf` 仍可用 JWT `sub` 当 vault 稳定键。已存 `account: 'grok|user_…'` 的行在 snapshot 上若读到 cachedEmail 或 usage email，就改写 session 并 `replaceAccountId`（同 GLM `zcode`）。不要发明 GetMe / 仪表盘抓取 / 新 Connect 方法。
+
 ### 本机导入（用户拥有的 Cursor 登录复用）
 
 顺序：
@@ -78,7 +90,7 @@ IDE `state.vscdb`（只读，`node:sqlite` `DatabaseSync`，用完 close）：
 - Linux: `~/.config/Cursor/User/globalStorage/state.vscdb`
 - WSL: **仅当前** Windows 用户（`USERPROFILE` / `USERNAME` → `/mnt/c/Users/<you>/AppData/Roaming/Cursor/...`）。不扫 Public / Default / 其他 profile。
 
-键：`cursorAuth/accessToken`、`cursorAuth/refreshToken`。缺文件 = 空，不把堆栈抛给 UI。
+键：`cursorAuth/accessToken`、`cursorAuth/refreshToken`、`cursorAuth/cachedEmail`（可选，给卡抬头）。缺文件 = 空，不把堆栈抛给 UI。
 
 空结果：zh「本机没有 Cursor CLI 或 IDE 登录」。Keychain 第一次读可能弹系统授权；vscdb 键名可能被 Cursor 改掉——见 `docs/error.md`。
 
@@ -157,6 +169,8 @@ Settings 勾选仍须登录后才能改。新发现的行默认开，`setModels`
 - 用 `includedSpend` / `limit` 当额度条 used/total
 - 恢复 `src/utils/cache-session.ts`
 - 扫 WSL / Windows 上别人的 Users 目录
+- 发明 GetMe / 仪表盘抓取 / 新 Connect 方法只为拿邮箱
+- 把 JWT `sub` / `cursor` / `provider|user_*` 画在 Settings 卡抬头
 
 ## 归因
 

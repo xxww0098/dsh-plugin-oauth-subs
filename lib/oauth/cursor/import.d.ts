@@ -23,9 +23,11 @@ export declare function cursorVscdbPaths({ platform, env, home }?: {
 declare function defaultReadVscdb(dbPath: any): Promise<{
     accessToken?: undefined;
     refreshToken?: undefined;
+    cachedEmail?: undefined;
 } | {
     accessToken: any;
     refreshToken: any;
+    cachedEmail: any;
 }>;
 export declare function readCursorVscdbTokens({ platform, env, home, paths, readDb, now, }?: {
     platform?: NodeJS.Platform;
@@ -47,21 +49,21 @@ export declare function resolveCursorLocalCredentials({ fetchFn, env, platform, 
     now?: number;
 }): Promise<{
     planType?: any;
+    source: string;
+    account?: string;
     accessToken: any;
     refreshToken: any;
     expiresAt: number;
-    account: string;
-    source: string;
 }>;
 export declare function importCursorAuth(options?: {}): Promise<{
     source: string;
     session: {
         planType?: any;
+        source: string;
+        account?: string;
         accessToken: any;
         refreshToken: any;
         expiresAt: number;
-        account: string;
-        source: string;
     };
 }>;
 export {};

@@ -57,8 +57,13 @@ import {
 } from './antigravity/index.js'
 import { importAntigravityAuth, importCodexAuth, importGrokAuth, importGlmAuth, importKiroAuth } from './import-auth.js'
 import { CursorPollFlowManager } from './cursor/pkce-flow.js'
-import { refreshCursor, isCursorPermanentRefreshError } from './cursor/index.js'
-import { CURSOR_IMPORT_EMPTY, importCursorAuth } from './cursor/import.js'
+import {
+  cursorAccountFromToken,
+  isCursorPermanentRefreshError,
+  pickCursorHumanAccount,
+  refreshCursor,
+} from './cursor/index.js'
+import { CURSOR_IMPORT_EMPTY, importCursorAuth, readCursorVscdbTokens } from './cursor/import.js'
 import { cursorCatalogModels, refreshCursorCatalog } from './cursor/catalog.js'
 import {
   buildProviders,
@@ -217,6 +222,7 @@ export class AuthController {
     await this.models.ready
     await this.#resolveGlmIdentities()
     await this.#maybeAutoImportCursor()
+    await this.#resolveCursorIdentities()
     const loggedIn = await this.loggedIn()
     const origin = this.origin()
     const catalog = catalogProviders({ prefix: this.prefix, origin, cursorModels: cursorCatalogModels() })
@@ -406,13 +412,66 @@ export class AuthController {
 
   async #rememberCursorPlan(row, quota) {
     if (!quota || quota.status !== 'ready') return
-    const email = typeof quota.account === 'string' && quota.account.trim() ? quota.account.trim() : undefined
+    const email = pickCursorHumanAccount(quota.account)
     const planType = typeof quota.planType === 'string' && quota.planType.trim() ? quota.planType.trim() : undefined
     if (!email && !planType) return
     if ((!email || row.session.account === email) && (!planType || row.session.planType === planType)) return
     const next = { ...row.session }
     if (email) next.account = email
     if (planType) next.planType = planType
+    await this.#rewriteCursorIdentity(row, next)
+  }
+
+  async #resolveCursorIdentities() {
+    const rows = await listStoredSessions('cursor', this.authPath)
+    const vscdb = await this.#readCursorVscdbHint()
+    await Promise.all(rows.map(async (row) => {
+      if (pickCursorHumanAccount(row.session?.account)) return
+      const account = pickCursorHumanAccount(
+        cursorAccountFromToken(row.session?.accessToken),
+        this.#cachedEmailFor(row.session, vscdb),
+      )
+      if (!account) return
+      await this.#rewriteCursorIdentity(row, { ...row.session, account })
+    }))
+  }
+
+  #cachedEmailFor(session, vscdb) {
+    const email = pickCursorHumanAccount(vscdb?.cachedEmail)
+    if (!email || !session) return undefined
+    const sameAccess = typeof vscdb.accessToken === 'string' && vscdb.accessToken === session.accessToken
+    const sameRefresh = typeof vscdb.refreshToken === 'string' && vscdb.refreshToken === session.refreshToken
+    if (session.source === 'ide_vscdb' || sameAccess || sameRefresh) return email
+    return undefined
+  }
+
+  async #readCursorVscdbHint() {
+    const opts = this.cursorImport ?? {}
+    if (process.env.NODE_TEST_CONTEXT && !opts.readVscdbFn && !opts.paths && !opts.home) {
+      return {}
+    }
+    try {
+      return await readCursorVscdbTokens({
+        platform: opts.platform,
+        env: opts.env,
+        home: opts.home,
+        paths: opts.paths,
+        readDb: opts.readVscdbFn,
+        now: opts.now,
+      })
+    } catch {
+      return {}
+    }
+  }
+
+  async #rewriteCursorIdentity(row, next) {
+    const nextId = accountIdOf('cursor', next)
+    if (nextId !== row.id) {
+      await replaceAccountId('cursor', row.id, next, this.authPath)
+      this.quota.clear('cursor', row.id)
+      await this.quota.ensure('cursor', nextId, next)
+      return
+    }
     await saveSession('cursor', next, this.authPath, { id: row.id, activate: row.active })
   }
 
