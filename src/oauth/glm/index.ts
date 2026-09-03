@@ -35,7 +35,7 @@ export const GLM_TOOL_USAGE_URL = 'https://api.z.ai/api/monitor/usage/tool-usage
 export const GLM_USERINFO_URL = 'https://chat.z.ai/api/oauth/userinfo'
 export const GLM_BIGMODEL_USERINFO_URL = 'https://open.bigmodel.cn/api/biz/customer/getCustomerInfo'
 export const GLM_KEY_NAME = 'dsh-plugin-oauth-subs'
-/** CLI / site ids. Never show these as the account name on the card. */
+/** CLI / site ids. Never show these as the account name on the card. Opaque poll `user.id` is `isGlmOpaqueAccount`. */
 export const GLM_APP_ACCOUNTS = Object.freeze(['zcode', 'zai', 'bigmodel', 'glm'])
 /** Official ZCode Desktop, latest stable (https://zcode.z.ai/en/changelog). */
 export const GLM_APP_VERSION = '3.10.1'
@@ -161,11 +161,48 @@ export function isGlmAppAccount(value) {
   return GLM_APP_ACCOUNTS.includes(head) && (tail === 'zai' || tail === 'bigmodel')
 }
 
+/** Formatted phone (not a bare numeric uid). Used so +86… can be a card title. */
+function isGlmFormattedPhone(value) {
+  if (typeof value !== 'string' || !value.trim()) return false
+  const raw = value.trim()
+  if (!/^[+]?[\d\s().-]+$/.test(raw)) return false
+  if (!/[+\s().-]/.test(raw)) return false
+  const digits = raw.replace(/\D/g, '')
+  return digits.length >= 7 && digits.length <= 15
+}
+
+/**
+ * Site ids, poll `user.id`, JWT `sub` / numeric uid, and similar opaque Zhipu
+ * handles. Never a Settings card title. Emails and formatted phones pass.
+ */
+export function isGlmOpaqueAccount(value) {
+  if (typeof value !== 'string' || !value.trim()) return false
+  const raw = value.trim()
+  if (isGlmAppAccount(raw)) return true
+  if (raw.includes('@')) return false
+  if (isGlmFormattedPhone(raw)) return false
+  if (/^\d+$/.test(raw)) return true
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw)) return true
+  if (/^[0-9a-f]{16,}$/i.test(raw)) return true
+  return /^[A-Za-z0-9]{2,24}$/.test(raw) && /[A-Za-z]/.test(raw) && /\d/.test(raw)
+}
+
+function pickGlmPhoneAccount(...candidates) {
+  for (const value of candidates) {
+    if (typeof value !== 'string' || !value.trim()) continue
+    const raw = value.trim()
+    if (isGlmAppAccount(raw)) continue
+    const digits = raw.replace(/\D/g, '')
+    if (digits.length >= 7 && digits.length <= 15 && /^\+?[\d\s().-]+$/.test(raw)) return raw
+  }
+  return undefined
+}
+
 export function pickGlmHumanAccount(...candidates) {
   for (const value of candidates) {
     if (typeof value !== 'string' || !value.trim()) continue
     const trimmedValue = value.trim()
-    if (isGlmAppAccount(trimmedValue)) continue
+    if (isGlmOpaqueAccount(trimmedValue)) continue
     return trimmedValue
   }
   return undefined
@@ -191,16 +228,17 @@ function humanFromObject(value) {
     value.mail,
     value.preferred_username,
     value.preferredUsername,
-    value.username,
-    value.userName,
-    value.customerName,
-    value.nickName,
-    value.nickname,
-    value.displayName,
-    value.name,
-    value.phone,
-    value.mobile,
   )
+    ?? pickGlmPhoneAccount(value.phone, value.mobile)
+    ?? pickGlmHumanAccount(
+      value.customerName,
+      value.nickName,
+      value.nickname,
+      value.displayName,
+      value.name,
+      value.username,
+      value.userName,
+    )
 }
 
 export function glmBizBase(region = 'zai') {
@@ -326,6 +364,7 @@ export function parseCliPoll(body) {
     accountFromJwt(zcodeJwt),
     accountFromJwt(oauthAccess),
   )
+  // Keep a non-opaque id for vault keying only. Poll `user.id` is never a title.
   const accountId = pickGlmHumanAccount(rawAccountId)
   return {
     status: 'ready',
@@ -439,7 +478,7 @@ export function glmSession({ accessToken, account, accountId, planType, region =
   if (typeof accessToken !== 'string' || !accessToken) {
     throw new Error('glm session needs an access token')
   }
-  const human = pickGlmHumanAccount(account, accountId, accountFromJwt(zcodeJwt), accountFromJwt(accessToken))
+  const human = pickGlmHumanAccount(account, accountFromJwt(zcodeJwt), accountFromJwt(accessToken))
   return {
     accessToken,
     refreshToken: accessToken,
@@ -488,7 +527,6 @@ export async function resolveGlmIdentity(source, { fetchFn = fetch } = {}) {
   const fromHand = pickGlmHumanAccount(
     source?.email,
     source?.account,
-    source?.accountId,
     accountFromJwt(source?.zcodeJwt),
     accountFromJwt(source?.accessToken),
     accountFromJwt(source?.oauthAccess),
@@ -516,7 +554,6 @@ export async function completeGlmCli(ready, { fetchFn = fetch, region = 'zai' } 
   const account = await resolveGlmIdentity({
     email: ready.email,
     account: ready.account,
-    accountId: ready.accountId,
     accessToken: minted,
     oauthAccess: ready.oauthAccess,
     zcodeJwt: ready.zcodeJwt,

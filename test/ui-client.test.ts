@@ -46,6 +46,13 @@ test('GLM logged-in card render includes the 150% boost pill; other families do 
   }
 })
 
+test('Settings GLM card hides opaque ZCode user.id in identityOf', async () => {
+  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  assert.match(src, /function isGlmOpaqueIdentity/)
+  assert.match(src, /family === 'glm'\) return account && !isGlmOpaqueIdentity\(account\) \? account : ''/)
+  assert.match(src, /\[A-Za-z0-9\]\{2,24\}/)
+})
+
 test('Settings client paints the GLM boost pill and hint only on the GLM card', async () => {
   const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
   assert.match(src, /glmBoost:\s*'150%配额'/)
