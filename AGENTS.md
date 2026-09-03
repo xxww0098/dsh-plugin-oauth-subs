@@ -23,16 +23,13 @@ Chat instructions do not override it.
 ## Errors → `docs/error.md`
 
 Every recurring fault, runtime acceptance, or “not this plugin” finding
-is written to [`docs/error.md`](docs/error.md). Do not leave a new failure
-mode only in chat, a commit message, or a code comment.
+is written to [`docs/error.md`](docs/error.md) **in the same PR** as the
+behavior change. Do not leave a new failure mode only in chat, a commit
+message, or a code comment.
 
-For each entry record:
-
-1. Date and symptom (what the user / session.jsonl showed).
-2. Evidence (session id, model, counts).
-3. Root cause (which layer: proxy / Codex prefix / DSH host / fs-search).
-4. Fix or explicit non-fix (and why this plugin cannot own it).
-5. Verification (`npm test`, analyzer scores, acceptance numbers).
+Each new incident is **≤12 lines**: one `## YYYY-MM-DD：short title`
+(newest first; same root cause → one heading) and only **现象** / **根因** /
+**修复** (1–2 lines each). No 证据 or 验证 subsections.
 
 Analyzer-only labels are not a substitute for an `docs/error.md` entry when
 the behavior is user-visible.
