@@ -35,16 +35,16 @@ Session / Weekly 没有 `{n}后重置`。官方 Cloud UI 有倒计时。`/api/us
 ### 修复
 有 stamp 就用。Session 缺 stamp 用下一 UTC 5h unix 桶（`18000-(epoch%18000)`，ollama#12532）。Weekly 只信 wire。不 `now+5h` / `now+7d`，不刮 settings HTML。
 
-## 2026-09-03：tab 栏中间空白，两胶囊对不齐
+## 2026-09-03：tab 栏右侧空白 / 两胶囊对不齐
 
 ### 现象
-OAuth 胶囊和 Models/GitHub 胶囊被拉开，中间一大块空白。
+OAuth 和 Models/GitHub 两胶囊贴左边后，整条 tab 右侧还有一大块空白。icon 挤在 36px 格子里。
 
 ### 根因
-`.osubs-nav` `space-between` + `.osubs-tabs-util` `margin-left: auto` 把第二胶囊推到最右。
+`.osubs-tabs` `width: max-content` + `flex: none`，8×36 不吃剩余宽度。更早是 nav `space-between` / util `margin-left: auto` 把第二胶囊推到最右。
 
 ### 修复
-两胶囊保留。`.osubs-nav` `flex-start` + `gap: 4px`，去掉 `margin-left: auto`。胶囊对接，中间只留 4px 缝。
+两胶囊保留，nav `flex-start` + `gap: 4px`。OAuth 胶囊 `flex: 1 1 auto`，`repeat(8, 36px)` + `justify-content: space-between`，剩余宽度进 8 个 icon 之间。util 仍 36px。空态 OpenCode 主按钮是「启用免费模型」，不是「登录」。
 
 ## 2026-09-03：Kimi Code 不能写自定义 api；设备码过期要重开
 

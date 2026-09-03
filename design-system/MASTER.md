@@ -31,9 +31,11 @@ The overlay below is what this plugin actually ships.
   on the centered Dialog overlay (`--dsw-mask-blur`).
 - No hardcoded light-theme grays. Dark host stays dark.
 - Icon-only tabs, sticky `.osubs-nav`, **two groups docked** with a 4px
-  seam: left OAuth capsule (`repeat(8, 36px)`, families only; OpenCode
-  wraps inside) then utility capsule (Models over GitHub). Do not
-  `margin-left: auto` / `space-between` (that leaves a hole).
+  seam: left OAuth capsule fills leftover width (`repeat(8, 36px)` +
+  `space-between`, families only; OpenCode Free wraps inside) then
+  utility capsule (Models over GitHub). Do not `margin-left: auto` /
+  nav `space-between` / `.osubs-tabs { width: max-content }` (those
+  leave a hole).
 - No family-level identity row. No shared quota block under the heading.
 
 ## Remaining bars

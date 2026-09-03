@@ -541,26 +541,32 @@ into `TAB_ICONS`.
   official brand mark, not a generic letter. GLM uses the **Z.ai** icon
   (`zai`), not Zhipu.
 - Order: OAuth families first (Codex, Grok, GLM, Kiro, Antigravity,
-  Cursor, Ollama Cloud, Kimi, OpenCode). Insert a new family **in the OAuth group**,
-  never into the utility capsule. Do not `flex: 1 1 0` or shrink tab
-  `min-width` to 0.
+  Cursor, Ollama Cloud, Kimi, OpenCode Free). Insert a new family **in the OAuth group**,
+  never into the utility capsule. Tab **buttons** stay 36×36 — do not
+  `flex: 1 1 0` or shrink `min-width` to 0.
 - **Two tab groups**, docked (confirmed 2026-09-03):
-  - **OAuth (left):** family icons only. `.osubs-tabs` is
-    `repeat(8, 36px)` so eight families fill row 1. A 9th family wraps
-    to row 2 **inside this group**. Same 36px cells, 4px gap, 12px
-    capsule (`--osubs-line` / `--osubs-fill`).
-  - **Utility (next to it):** `.osubs-tabs-util` stacks Models on row 1
-    and GitHub/About on row 2. Never mix Models/GitHub into the OAuth grid.
+  - **OAuth (left, fills leftover width):** family icons only.
+    `.osubs-tabs` is `repeat(8, 36px)` + `justify-content: space-between`
+    + `flex: 1 1 auto`. Eight families fill row 1; extra pane width
+    becomes the gap **between** those 8 icons. A 9th family wraps to
+    row 2 inside this group, still 36px, left-aligned. 12px capsule
+    (`--osubs-line` / `--osubs-fill`).
+  - **Utility (flush after it):** `.osubs-tabs-util` stays 36px,
+    Models on row 1 and GitHub/About on row 2. Never mix Models/GitHub
+    into the OAuth grid.
   - Outer `.osubs-nav` is flex: `flex-start` + `gap: 4px` so the two
     capsules **touch with a 4px seam**. Do not `margin-left: auto` or
-    `space-between` (that opens a hole).
+    `space-between` on the nav (that opens a hole to the right of OAuth).
+    Do not `width: max-content` on `.osubs-tabs` (that leaves a hole
+    after the util capsule).
 - Add `COPY.zh.<id>Title` / `COPY.en.<id>Title` for the hover string and
   the page heading. Ollama's title is **Ollama Cloud** (not localhost 11434).
   OpenCode's title is **OpenCode Free** (anonymous Zen free; no login).
+  Empty OpenCode CTA is **启用免费模型** / **Enable free models**, never 登录.
 
 ```text
-[ Codex ] [ Grok ] [ Z.ai ] [ Kiro ] [ Antigravity ] [ Cursor ] [ Ollama Cloud ] [ Kimi ]  [ ▦ ]
-[ OpenCode ]                                                                          [ GitHub ]
+[ Codex ]  [ Grok ]  [ Z.ai ]  [ Kiro ]  [ Antigravity ]  [ Cursor ]  [ Ollama Cloud ]  [ Kimi ]  [ ▦ ]
+[ OpenCode Free ]                                                                             [ GitHub ]
 ```
 
 ### Settings — one account, one card
@@ -614,11 +620,13 @@ Binding UI rules:
 - **Chips stay one line.** `.osubs-tag` is `white-space: nowrap`. Show
   the full value; do not wrap a chip and do not hide it behind `title`
   only.
-- **Tab bar is two groups, docked.** OAuth capsule on the left (family
-  icons only, `repeat(8, 36px)`; eight families fill row 1; a 9th wraps
-  inside this group). Utility capsule **immediately after it**
+- **Tab bar is two groups, docked.** OAuth capsule on the left
+  (`flex: 1 1 auto`, `repeat(8, 36px)`, `justify-content: space-between`
+  so leftover width is the gap between the eight family icons; a 9th
+  wraps inside this group). Utility capsule **immediately after it**
   (`gap: 4px`, no `margin-left: auto`): Models on row 1, GitHub/About
-  on row 2. Never put Models/GitHub in the OAuth grid.
+  on row 2. Never put Models/GitHub in the OAuth grid. Never
+  `width: max-content` on `.osubs-tabs`.
 - **No helper copy** under the family title. Heading is the title + a
   status pill (`未登录` / `已登录` / `等待授权…`). No
   “每个账号一张卡片…” paragraph.
@@ -644,10 +652,12 @@ Binding UI rules:
   `--dsw-alias-bg-layer-2` (the panel). Bleed `24px` matches the host
   `.options` side padding so cards cannot peek in the gutter.
   `.osubs-nav` is flex (`flex-start`, `gap: 4px`); `.osubs-tabs` is
-  family-only `repeat(8, 36px)` (OpenCode is the 9th and wraps inside
-  this group); `.osubs-tabs-util` is the next capsule, 4px away
-  (Models over GitHub). Never `margin-left: auto` / `space-between`.
-  Never `flex: 1 1 0` / `min-width: 0` on the tab cells.
+  family-only `repeat(8, 36px)` + `space-between` + `flex: 1 1 auto`
+  (OpenCode Free is the 9th and wraps inside this group; leftover
+  width is the gap between the eight icons); `.osubs-tabs-util` is the
+  next capsule, 4px away (Models over GitHub). Never `margin-left: auto`
+  / nav `space-between` / `.osubs-tabs` `width: max-content`. Never
+  `flex: 1 1 0` / `min-width: 0` on the tab **buttons**.
 - Cards: 12px radius, 1px `--osubs-line`, 14×16 padding. Active uses
   `--osubs-edge` + `--osubs-fill`.
 - Type: host UI sans (Inter-class), 13px UI, 12.5px emails. No display
