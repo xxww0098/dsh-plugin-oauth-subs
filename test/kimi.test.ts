@@ -218,7 +218,7 @@ test('controller snapshot shows quota on every kimi account; hop is Completions'
   const first = kimiSession({
     accessToken: 'tok-a',
     refreshToken: 'ref-a',
-    expiresAt: Date.now() + 60_000,
+    expiresAt: Date.now() + 30 * 60_000,
     account: 'one@kimi.com',
     planType: 'Pro',
     source: 'oauth',
@@ -226,7 +226,7 @@ test('controller snapshot shows quota on every kimi account; hop is Completions'
   const second = kimiSession({
     accessToken: 'tok-b',
     refreshToken: 'ref-b',
-    expiresAt: Date.now() + 60_000,
+    expiresAt: Date.now() + 30 * 60_000,
     account: 'two@kimi.com',
     source: 'cli',
   })
@@ -275,9 +275,10 @@ test('controller snapshot shows quota on every kimi account; hop is Completions'
     tokens: controller.tokens,
     fetchFn: proxyFetch,
   })
-  await proxy.listen()
+  const server = await proxy.listen()
+  const { port } = server.address()
   try {
-    const response = await fetch(`${proxy.origin()}/kimi/v1/chat/completions`, {
+    const response = await fetch(`http://127.0.0.1:${port}/kimi/v1/chat/completions`, {
       method: 'POST',
       headers: { authorization: 'Bearer proxy-key-kimi-test-xx', 'content-type': 'application/json' },
       body: JSON.stringify({
