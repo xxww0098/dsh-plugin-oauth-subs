@@ -679,23 +679,22 @@ window.__ModuleLoader__.load({
    side padding so cards cannot peek in the gutter. */
 .osubs-nav {
   position: sticky; top: 0; z-index: 6; flex: none;
-  display: flex; justify-content: space-between; align-items: flex-start;
+  display: flex; justify-content: flex-start; align-items: flex-start; gap: 4px;
   margin: 0 -24px; padding: 0 24px 16px;
   background: var(--dsw-alias-bg-layer-2, Canvas);
 }
 .osubs-pane { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
 .osubs-tabs {
   display: grid; grid-template-columns: repeat(8, 36px); justify-content: start;
-  gap: 4px; padding: 4px;
+  gap: 4px; padding: 4px; width: max-content; flex: none;
   border: 1px solid var(--osubs-line); border-radius: 12px;
   background: var(--osubs-fill);
 }
 .osubs-tabs-util {
   display: grid; grid-template-columns: 36px; grid-auto-rows: 36px;
-  gap: 4px; padding: 4px;
+  gap: 4px; padding: 4px; flex: none;
   border: 1px solid var(--osubs-line); border-radius: 12px;
   background: var(--osubs-fill);
-  margin-left: auto; flex: none;
 }
 .osubs-tab {
   width: 36px; height: 36px; min-width: 36px; padding: 0;

@@ -121,15 +121,20 @@ test('Settings Ollama tab is Cloud key paste after Cursor, never localhost', asy
   assert.match(src, /\.osubs-nav \{[\s\S]*position: sticky/)
 })
 
-test('Settings tab bar is two groups: OAuth 8-col left, Models over GitHub far right', async () => {
+test('Settings tab bar is two docked capsules with a 4px seam, not a far-right hole', async () => {
   const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
   const oauth = src.match(/className: 'osubs-tabs'[\s\S]*?className: 'osubs-tabs-util'/)?.[0] ?? ''
   const util = src.match(/className: 'osubs-tabs-util'[\s\S]*?\),\s*\),/)?.[0] ?? ''
   assert.match(src, /className: 'osubs-nav', role: 'tablist'/)
-  assert.match(src, /\.osubs-nav \{[\s\S]*display: flex;[\s\S]*justify-content: space-between/)
+  const navCss = src.match(/\.osubs-nav \{[^}]*\}/)?.[0] ?? ''
+  const utilCss = src.match(/\.osubs-tabs-util \{[^}]*\}/)?.[0] ?? ''
+  assert.match(navCss, /display: flex;/)
+  assert.match(navCss, /justify-content: flex-start/)
+  assert.match(navCss, /gap: 4px/)
+  assert.equal(navCss.includes('space-between'), false)
   assert.match(src, /\.osubs-tabs \{[\s\S]*grid-template-columns: repeat\(8, 36px\)/)
-  assert.match(src, /\.osubs-tabs-util \{[\s\S]*grid-template-columns: 36px/)
-  assert.match(src, /\.osubs-tabs-util \{[\s\S]*margin-left: auto/)
+  assert.match(utilCss, /grid-template-columns: 36px/)
+  assert.equal(utilCss.includes('margin-left: auto'), false)
   assert.match(oauth, /id: 'codex'/)
   assert.match(oauth, /id: 'kimi'/)
   assert.match(oauth, /id: 'opencode'/)
