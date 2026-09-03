@@ -2,6 +2,17 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-03：Ollama 卡无额度条、抬头是 ollama-sha8
+
+### 现象
+已登录卡只有 KEY / 使用中，无套餐、无剩余条。抬头 `ollama-3f67f6bb`。官方 Cloud usage 是 Pro + Session 0% used + Weekly 9.5% used。
+
+### 根因
+`QuotaStore#load` 对 ollama 直接 idle。`POST /api/me` 字段是 `Email`/`Name`/`Plan`，解析只读了小写 email。`limits.*.usage` 是 0..1 分数。
+
+### 修复
+并行 GET `/api/usage` + POST `/api/me`。`usedPercent = fraction * 100`，剩余条。`pro`→Pro。刷新后把 Email 写回 session，opaque `ollama-<hex>` `replaceAccountId`。无 `resets_at` 不编倒计时。
+
 ## 2026-09-03：Ollama picker 把 glm-5.3-flash 标成纯文本
 
 ### 现象
@@ -35,16 +46,16 @@ Responses 形 `call_…|fc_…` 超 64 且含 `|` → AWS 400。picker 仍是静
 ### 修复
 非法 id 稳定 remap 成 `tooluse_<32>`（use/result 同一函数）。登录后 `ListAvailableModels`（空/403 再探 us-east-1 / eu-central-1）。`MONTHLY_REQUEST_COUNT` → 400。thinking → `reasoning_content`。GPT-5.6 Sol/Terra/Luna 不删。
 
-## 2026-09-03：Ollama Cloud — signin 不是 Bearer，无额度 / cache-read
+## 2026-09-03：Ollama Cloud — signin 不是 Bearer，无 cache-read
 
 ### 现象
-社区把 `ollama signin` / `id_ed25519.pub` 当 Cloud key。还指望额度条和 cache 命中率。
+社区把 `ollama signin` / `id_ed25519.pub` 当 Cloud key。还指望 cache 命中率。
 
 ### 根因
-本家族是 Cloud API key + Completions 薄透传，不是 localhost:11434，也不是 PKCE。signin 身份不能当 Bearer。额度与 cache-read 官方没给。
+本家族是 Cloud API key + Completions 薄透传，不是 localhost:11434，也不是 PKCE。signin 身份不能当 Bearer。cache-read 官方没给。
 
 ### 修复
-粘贴 API key + 空花名册 `OLLAMA_API_KEY`（在添加账号 Dialog 里）。hop：`POST /ollama/v1/chat/completions` → `https://ollama.com/v1/chat/completions`。额度 idle。**不能**把 local signin 变成 Bearer，也不能发明 `cached_tokens`。
+粘贴 API key + 空花名册 `OLLAMA_API_KEY`（在添加账号 Dialog 里）。hop：`POST /ollama/v1/chat/completions` → `https://ollama.com/v1/chat/completions`。**不能**把 local signin 变成 Bearer，也不能发明 `cached_tokens`。额度见上条 `/api/usage`。
 
 ## 2026-09-03：Ollama contextWindow 不能猜家族默认
 

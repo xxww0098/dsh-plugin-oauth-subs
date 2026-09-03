@@ -11,14 +11,14 @@ Ollama **Cloud** 订阅（[ollama.com](https://ollama.com)）。**不是**本机
 
 | 文件 | 职责 |
 |---|---|
-| [`index.ts`](index.ts) | 目录、API key session、Bearer 头、`/api/me` 身份（尽力）、退役表 |
+| [`index.ts`](index.ts) | 目录、API key session、Bearer 头、`/api/me` 身份、`/api/usage` URL、退役表 |
 | [`import.ts`](import.ts) | `OLLAMA_API_KEY` 环境变量。不是 `ollama signin` |
 | [`catalog.ts`](catalog.ts) | 登录后 `GET /api/tags` + `POST /api/show`（窗口 + `capabilities` → `input`）；静态 `OLLAMA_MODELS` 只做离线 fallback |
 | [`cache.ts`](cache.ts) | 剥 Codex / Grok 字段。没有文档化的 sticky id / cache-read |
 
 调度：[`../proxy.ts`](../proxy.ts) `family === 'ollama'` 剥 cache 字段，`forward()` 到 `https://ollama.com/v1/chat/completions`。
-额度：无文档化 quota JSON，卡片 idle。
-套餐：无 plan slug，不走 Codex `pro` → Pro 20x。
+额度：[`../quota.ts`](../quota.ts) `fetchOllamaQuota` 并行 `GET /api/usage` + `POST /api/me`。`limits.*.usage` 是 0..1 分数。无 `resets_at`，不编倒计时。
+套餐：`me.Plan`（`pro` → Pro），不走 Codex `pro` → Pro 20x。
 
 ## 协议
 
@@ -62,7 +62,7 @@ DSH POST /ollama/v1/chat/completions
 
 `~/.ollama/id_ed25519.pub` 是 registry 公钥，**禁止**当 Bearer。`parseOllamaApiKey` 见到 `BEGIN PUBLIC KEY` 直接拒。
 
-身份：`POST https://ollama.com/api/me` 尽力取 email；失败用 `ollama-<sha256 前 8>`，不当账号名打印 key。
+身份：`POST https://ollama.com/api/me`（GET 405）读 `Email` / `Name` / `Plan`。失败用 `ollama-<sha256 前 8>`，不当账号名打印 key。额度刷新后把 Email（或 Name）写回 session；vault id 仍是 `ollama-<hex>` 时 `replaceAccountId`。
 
 Key 不写 log。
 
@@ -86,7 +86,22 @@ DSH `input` 也来自同一份 show JSON：`capabilities` 含 `vision`（大小�
 
 ## 额度
 
-ollama.com **没有**文档化的 usage / quota JSON。`/api/quota` 404；`/api/usage` 无文档。`QuotaStore` 对 ollama 直接 idle。卡片仍渲染，额度块不画。不要发明仪表盘。
+官方 Cloud usage 页（ollama.com Cloud usage）有 Session / Weekly 两条。wire 无公开文档，但 `GET https://ollama.com/api/usage` + Bearer 稳定 200（与 oh-my-pi / pi-ollama-cloud-usage 同形）。
+
+```text
+GET  /api/usage   Authorization: Bearer
+POST /api/me      Authorization: Bearer  body {}
+```
+
+`limits.session.usage` / `limits.weekly.usage` 是 **0..1 分数**，不是 0–100。`0.095` = 已用 9.5% = **剩余 90.5%**。不要把 0.095 当成 0.095%。
+
+`/api/me` 是 PascalCase：`Email` / `Name` / `Plan`。`Plan: "pro"` → 徽章 **Pro**。GET `/api/me` 是 405。
+
+无 `resets_at` / `reset_at`。官方窗口是 session 5 小时、weekly 7 天。**不要**用 5h/7d 编「2 hours」「3 days」倒计时。行标签用已有 `t.primary`（5 小时）/ `t.weekly`（每周）。缺 stamp 就不画重置文案。
+
+卡片画两条剩余条（`QuotaMeter` / `RemainingBar`，剩余 N%，减填），不是官方「% used」条。Weekly 下可跟一行 `name × count`（本周 models），不加图表库。
+
+`QuotaStore` 对 ollama 走 `fetchOllamaQuota`，刷新按钮与别的家族一样。localhost:11434 不在这个家族。
 
 ## 缓存
 
@@ -107,7 +122,8 @@ DSH 每步前置的 runtime snapshot 因此无法在 Ollama Cloud 上做 prefix 
 - 假装 `ollama signin` 是公开 PKCE
 - 选 Responses「因为本地 Ollama 也有 `/v1/responses`」
 - 抄 Codex / Grok / GLM / Kiro / Antigravity / Cursor 的 cache 头或停车形状
-- 发明额度条或 `cached_tokens`
+- 把 0..1 `usage` 当成已经是百分数，或编 `resets_at` 倒计时
+- 发明 `cached_tokens`
 - 用 128k/200k/256k 家族启发式当 DSH `contextWindow`，或把 launch `extraCloudModelLimits` 抄进 picker
 - 用名字 regex 当 picker `input` 的主路径（`glm-5.3-flash` 对不上 `gemma|vl`，但 show 有 `vision`）
 - 发明 `audio` 模态

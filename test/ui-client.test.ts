@@ -65,6 +65,17 @@ test('Settings client paints the GLM boost pill and hint only on the GLM card', 
   assert.equal((src.match(/t\.glmBoostHint\b/g) || []).length, 1)
 })
 
+test('Settings Ollama card hides ollama-hex title and uses remaining row labels', async () => {
+  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  assert.match(src, /function isOllamaOpaqueIdentity/)
+  assert.match(src, /family === 'ollama'\) return account && !isOllamaOpaqueIdentity\(account\) \? account : ''/)
+  assert.match(src, /family === 'ollama'/)
+  assert.match(src, /if \(row\.kind === 'primary'\) return t\.primary/)
+  assert.match(src, /if \(row\.kind === 'weekly'\) return t\.weekly/)
+  assert.match(src, /row\.note && h\('span', \{ className: 'osubs-note' \}, row\.note\)/)
+  assert.match(src, /if \(family === 'ollama'\) \{[\s\S]*return 'Pro'/)
+})
+
 test('Settings Cursor tab uses Import local Cursor copy and shows source, never tokens', async () => {
   const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
   assert.match(src, /cursorImport:\s*'导入本机 Cursor'/)

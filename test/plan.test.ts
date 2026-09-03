@@ -40,6 +40,9 @@ test('formatPlanLabel maps Codex slugs to Plus / Pro 20x / Pro 5x / Team', () =>
   assert.equal(formatPlanLabel('proplus', 'cursor'), 'Pro+')
   assert.equal(formatPlanLabel('ultra', 'cursor'), 'Ultra')
   assert.equal(formatPlanLabel('hobby', 'cursor'), 'Hobby')
+  assert.equal(formatPlanLabel('pro', 'ollama'), 'Pro')
+  assert.equal(formatPlanLabel('max', 'ollama'), 'Max')
+  assert.equal(formatPlanLabel('team', 'ollama'), 'Team')
 })
 
 test('formatPlanLabel maps Grok numeric tiers and aliases', () => {
