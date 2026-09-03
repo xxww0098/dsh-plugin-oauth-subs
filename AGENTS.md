@@ -103,7 +103,8 @@ src/
     opencode/              OpenCode Zen anonymous free (opencode.ai/zen/v1)
       README.md            family design: login, chat, quota, cache (traceable)
       index.ts             catalog floor, anonymous session, hop headers (no Authorization)
-      catalog.ts           live GET /zen/v1/models; keep *-free minus Go-keyed
+      catalog.ts           live GET /zen/v1/models + models.dev overlay; keep *-free minus Go-keyed
+      request.ts           DSH reasoning_effort → OpenAI reasoning_effort (never both thinking)
       cache.ts             strip Codex/Grok fields; no sticky id (non-fix)
   ui/                      React Settings (classic-script factory)
     client.ts
@@ -522,8 +523,12 @@ tab. Follow this checklist in one PR.
    `KIMI_API_KEY`). Auto-import only the CLI json when the kimi roster
    is empty. Never overwrite a stored session. Never write back to
    `~/.kimi-code`.
-   OpenCode Free is anonymous. Store sentinel `anonymous` is **never**
-   sent as Authorization. No import, no API key.
+   OpenCode Free is anonymous. Empty-roster auto-enable writes
+   `opencodeSession()` (store sentinel `anonymous`) on plugin start /
+   snapshot / sync and `syncHarnessModels` so `oauth-opencode` lands in
+   llm-pi-ai. Never overwrite a stored session. Sentinel is **never**
+   sent as Authorization. No import, no API key. Omit
+   `reasoningEfforts` on Completions rows (do not write `false`).
 9. **Tests** under `test/`: login parse, session round-trip, catalog
    input types, and `snapshot shows quota on every <id> account`.
 

@@ -293,16 +293,24 @@ export function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaM
     }
   }
   if (loggedIn.opencode) {
+    const opencodeRows = opencodeHarnessModels(opencodeModels).map(toHarnessModel)
+    const opencodeHasEffort = opencodeRows.some((model) => model.reasoningEfforts && typeof model.reasoningEfforts === 'object')
     providers[`${prefix}-opencode`] = {
       displayName: 'OAuth · OpenCode Free',
       api: HARNESS_COMPLETIONS_API,
       apiKeyEnv: OAUTH_CREDENTIAL_REF,
       // Completions hop is /opencode/v1/chat/completions. DSH posts
       // `{baseURL}/v1/chat/completions`, so baseURL is `${origin}/opencode`.
-      // reasoningEfforts is false on every row — do not stamp Completions
-      // compat or assertServiceable drops the whole mutate.
+      // Stamp Completions compat only when a row has a real effort map.
+      // Never write reasoningEfforts: false — that can drop the mutate.
       baseURL: `${origin}/opencode`,
-      models: opencodeHarnessModels(opencodeModels).map(toHarnessModel),
+      ...(opencodeHasEffort ? {
+        compat: {
+          supportsReasoningEffort: true,
+          thinkingFormat: 'openai',
+        },
+      } : {}),
+      models: opencodeRows,
     }
   }
   return providers

@@ -56,6 +56,7 @@ import { applyKimiThinking } from './kimi/request.js'
 import { OPENCODE_CHAT_URL, opencodeUpstreamHeaders } from './opencode/index.js'
 import { opencodeCatalogModels } from './opencode/catalog.js'
 import { applyOpencodeCache } from './opencode/cache.js'
+import { applyOpencodeThinking } from './opencode/request.js'
 import { cursorToOpenai, createCursorOpenaiStream, openaiToCursor } from './cursor/request.js'
 import { runCursorAgent } from './cursor/h2-session.js'
 import { applyFastMode } from '../utils/fast-mode.js'
@@ -251,7 +252,8 @@ function rewriteUpstreamBody(buffer, family, wire) {
     }
   }
   if (family === 'opencode') {
-    const { payload: next, cacheSessionId } = applyOpencodeCache(fast)
+    const { payload: cached, cacheSessionId } = applyOpencodeCache(fast)
+    const next = applyOpencodeThinking(cached)
     return {
       body: Buffer.from(JSON.stringify(next)),
       cacheSessionId,

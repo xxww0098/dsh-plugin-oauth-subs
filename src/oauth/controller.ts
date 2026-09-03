@@ -102,7 +102,7 @@ import { QuotaStore } from './quota.js'
 import { fetchLatest, localUpdateInfo, runPluginUpdate, DEFAULT_PROFILE } from '../utils/update.js'
 
 export class AuthController {
-  constructor({ authPath, prefix, origin, settings, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, spawnFn, profile, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, opencodeDiscover }) {
+  constructor({ authPath, prefix, origin, settings, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, spawnFn, profile, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, opencodeDiscover, opencodeAutoEnable }) {
     this.authPath = authPath
     this.prefix = prefix
     this.origin = origin
@@ -140,6 +140,10 @@ export class AuthController {
     this.opencodeDiscover = typeof opencodeDiscover === 'function'
       ? opencodeDiscover
       : (process.env.NODE_TEST_CONTEXT ? undefined : (() => refreshOpencodeCatalog({ fetchFn })))
+    // Empty-roster auto-enable writes the anonymous sentinel. Off in node:test
+    // so logged-out snapshots stay empty unless a test opts in.
+    this.opencodeAutoEnable = opencodeAutoEnable ?? !process.env.NODE_TEST_CONTEXT
+    this.opencodeAutoEnableTried = false
     configureKimiIdentity(typeof authPath === 'string' ? dirname(authPath) : undefined)
     this.lastError = new Map()
     this.finalizing = new Set()
@@ -338,6 +342,7 @@ export class AuthController {
     await this.#resolveCursorIdentities()
     await this.#maybeAutoImportOllama()
     await this.#maybeAutoImportKimi()
+    await this.#maybeAutoEnableOpencode()
     const loggedIn = await this.loggedIn()
     const origin = this.origin()
     const catalog = catalogProviders({
@@ -758,6 +763,18 @@ export class AuthController {
     await saveSession('ollama', next, this.authPath, { id: row.id, activate: row.active })
   }
 
+  async #maybeAutoEnableOpencode({ notify = true } = {}) {
+    if (!this.opencodeAutoEnable || this.opencodeAutoEnableTried) return
+    this.opencodeAutoEnableTried = true
+    const rows = await listStoredSessions('opencode', this.authPath)
+    if (rows.length > 0) return
+    const session = opencodeSession()
+    await saveSession('opencode', session, this.authPath)
+    await this.#discoverOpencode()
+    if (notify) this.onAuthChanged?.('opencode')
+    void this.quota.refresh('opencode')
+  }
+
   async #maybeAutoImportKimi() {
     if (!this.kimiAutoImport || this.kimiAutoImportTried) return
     this.kimiAutoImportTried = true
@@ -864,6 +881,10 @@ export class AuthController {
       throw new Error('ollama uses the paste form, not browser login')
     }
     if (provider === 'opencode') {
+      const existing = await listStoredSessions('opencode', this.authPath)
+      if (existing.length > 0) {
+        return { account: publicSession('opencode', existing[0].session), mode: 'anonymous' }
+      }
       const session = opencodeSession()
       this.claim('opencode')
       await saveSession('opencode', session, this.authPath)
@@ -1320,6 +1341,9 @@ export class AuthController {
   }
 
   async sync(selected, options = {}) {
+    // Plugin start calls sync(), not snapshot(). Write the anonymous sentinel
+    // first so hop / yaml do not wait on a Settings click.
+    await this.#maybeAutoEnableOpencode({ notify: false })
     if (this.settings === undefined || typeof this.settings.mutate !== 'function') {
       throw new Error('settings service is not mounted; cannot sync llm-pi-ai routes')
     }
