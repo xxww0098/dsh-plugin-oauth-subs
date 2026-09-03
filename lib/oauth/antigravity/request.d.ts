@@ -6,6 +6,11 @@ export { ANTIGRAVITY_STABLE_SESSION, resetAntigravitySystemPins, } from './cache
 export declare function resetAntigravityThoughtSignatures(): void;
 /** Cloud Code / Gemini REST: part-level thoughtSignature (also accept snake / nested). */
 export declare function thoughtSignatureOf(...sources: any[]): any;
+/** Gemini 3 / gemini-pro-agent need thoughtSignature on functionCall groups. */
+export declare function geminiRequiresThoughtSignature(model: any): boolean;
+/** Claude / GPT-OSS custom-tool bridge: [A-Za-z0-9_-], cap 64. */
+export declare function sanitizeAntigravityToolCallId(id: any, fallbackName: any): string;
+export declare function antigravityMaxOutputTokens(model: any): any;
 /**
  * Gemini `FunctionResponse.response` is a singular protobuf Struct.
  * Arrays / null / number / bool must be wrapped or cloudcode-pa returns 400:
@@ -13,6 +18,16 @@ export declare function thoughtSignatureOf(...sources: any[]): any;
  */
 export declare function functionResponsePayload(value: any): any;
 export declare function partsFromContent(content: any): any[];
+/** Claude / GPT-OSS omit thinkingConfig. Budget-wire ids omit or use thinkingBudget. Never rewrite picker ids. */
+export declare function antigravityThinkingConfig(model: any, effort: any): {
+    includeThoughts: boolean;
+    thinkingBudget: number;
+    thinkingLevel?: undefined;
+} | {
+    thinkingLevel: string;
+    includeThoughts?: undefined;
+    thinkingBudget?: undefined;
+};
 export declare function openaiToAntigravity(payload: any, { projectId, sessionId }?: {}): {
     model: string;
     project: string;

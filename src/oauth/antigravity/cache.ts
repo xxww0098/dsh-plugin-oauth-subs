@@ -72,7 +72,11 @@ function toolsFingerprint(tools) {
     for (const decl of group?.functionDeclarations ?? []) {
       const name = typeof decl?.name === 'string' ? decl.name : ''
       if (!name) continue
-      decls.push(stableJson({ name, parameters: decl.parameters ?? null }))
+      decls.push(stableJson({
+        name,
+        parameters: decl.parameters ?? null,
+        parametersJsonSchema: decl.parametersJsonSchema ?? null,
+      }))
     }
   }
   return decls.sort().join('\n')
@@ -113,13 +117,11 @@ export function pinAntigravityTools(sessionId, tools) {
 
 /**
  * Sticky-first thinkingConfig. Once a session has sent (or omitted)
- * thinkingLevel, keep that choice even if a later payload flaps
+ * a thinking object, keep that choice even if a later payload flaps
  * reasoning_effort. Do not invent implicitCacheConfig.
  */
-export function pinAntigravityThinking(sessionId, effort) {
-  const next = typeof effort === 'string' && effort.trim()
-    ? { thinkingLevel: effort.trim() }
-    : undefined
+export function pinAntigravityThinking(sessionId, thinking) {
+  const next = isPlainThinking(thinking) ? thinking : undefined
   const record = pinRecord(sessionId)
   if (!record) return next
   if (!Object.hasOwn(record, 'thinking')) {
@@ -127,6 +129,10 @@ export function pinAntigravityThinking(sessionId, effort) {
     return next
   }
   return record.thinking ?? undefined
+}
+
+function isPlainThinking(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
 function appendAntigravityModel(base, modelId) {
