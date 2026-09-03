@@ -517,18 +517,26 @@ into `TAB_ICONS`.
 - Size 18×18, `viewBox="0 0 24 24"`, `fill="currentColor"`. Match the
   official brand mark, not a generic letter. GLM uses the **Z.ai** icon
   (`zai`), not Zhipu.
-- Order: families first (Codex, Grok, GLM, Kiro, Antigravity, Cursor, Ollama, Kimi), then
-  Models, then About (GitHub icon). Insert a new family **before**
-  Models. Layout is **8 icons per row** (`.osubs-tabs` 8-column 36px grid);
-  eight families fill row 1; Models + About wrap to row 2. Do not pack
-  every tab on one flex row. Do not `flex: 1 1 0` or shrink tab
+- Order: OAuth families first (Codex, Grok, GLM, Kiro, Antigravity,
+  Cursor, Ollama, Kimi). Insert a new family **in the OAuth group**,
+  never into the utility capsule. Do not `flex: 1 1 0` or shrink tab
   `min-width` to 0.
+- **Two tab groups** (confirmed 2026-09-03), not one wrapping grid:
+  - **OAuth (left):** family icons only. `.osubs-tabs` is
+    `repeat(8, 36px)` so eight families fill row 1. A 9th family wraps
+    to row 2 **inside this group**. Same 36px cells, 4px gap, 12px
+    capsule (`--osubs-line` / `--osubs-fill`).
+  - **Utility (far right), visually split:** `.osubs-tabs-util` stacks
+    Models on row 1 and GitHub/About on row 2. Never mix Models/GitHub
+    into the OAuth grid (do not let them wrap under OAuth on the left).
+  - Outer `.osubs-nav` is flex: OAuth start-aligned; utility
+    `margin-left: auto` / `justify-content: space-between`.
 - Add `COPY.zh.<id>Title` / `COPY.en.<id>Title` for the hover string and
   the page heading.
 
 ```text
-[ Codex ] [ Grok ] [ Z.ai ] [ Kiro ] [ Antigravity ] [ Cursor ] [ Ollama ] [ Kimi ]
-[ ▦ ] [ GitHub ]
+[ Codex ] [ Grok ] [ Z.ai ] [ Kiro ] [ Antigravity ] [ Cursor ] [ Ollama ] [ Kimi ]          [ ▦ ]
+                                                                                            [ GitHub ]
 ```
 
 ### Settings — one account, one card
@@ -582,6 +590,11 @@ Binding UI rules:
 - **Chips stay one line.** `.osubs-tag` is `white-space: nowrap`. Show
   the full value; do not wrap a chip and do not hide it behind `title`
   only.
+- **Tab bar is two groups.** OAuth capsule on the left (family icons
+  only, `repeat(8, 36px)`; eight families fill row 1; a 9th wraps
+  inside this group). Utility capsule on the **far right**
+  (`margin-left: auto`): Models on row 1, GitHub/About on row 2.
+  Never put Models/GitHub in the OAuth grid.
 - **No helper copy** under the family title. Heading is the title + a
   status pill (`未登录` / `已登录` / `等待授权…`). No
   “每个账号一张卡片…” paragraph.
@@ -606,8 +619,9 @@ Binding UI rules:
   on screen while the settings scroller moves. Background is
   `--dsw-alias-bg-layer-2` (the panel). Bleed `24px` matches the host
   `.options` side padding so cards cannot peek in the gutter.
-  `.osubs-tabs` is an 8-column 36px grid (`repeat(8, 36px)`); ten tabs
-  wrap — row 1 is the eight families, row 2 is Models + About. Never
+  `.osubs-nav` is flex (`space-between`); `.osubs-tabs` is family-only
+  `repeat(8, 36px)`; `.osubs-tabs-util` is a separate far-right capsule
+  (Models over GitHub). Never
   `flex: 1 1 0` / `min-width: 0` on the tab cells.
 - Cards: 12px radius, 1px `--osubs-line`, 14×16 padding. Active uses
   `--osubs-edge` + `--osubs-fill`.

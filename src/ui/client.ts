@@ -670,6 +670,7 @@ window.__ModuleLoader__.load({
    side padding so cards cannot peek in the gutter. */
 .osubs-nav {
   position: sticky; top: 0; z-index: 6; flex: none;
+  display: flex; justify-content: space-between; align-items: flex-start;
   margin: 0 -24px; padding: 0 24px 16px;
   background: var(--dsw-alias-bg-layer-2, Canvas);
 }
@@ -679,6 +680,13 @@ window.__ModuleLoader__.load({
   gap: 4px; padding: 4px;
   border: 1px solid var(--osubs-line); border-radius: 12px;
   background: var(--osubs-fill);
+}
+.osubs-tabs-util {
+  display: grid; grid-template-columns: 36px; grid-auto-rows: 36px;
+  gap: 4px; padding: 4px;
+  border: 1px solid var(--osubs-line); border-radius: 12px;
+  background: var(--osubs-fill);
+  margin-left: auto; flex: none;
 }
 .osubs-tab {
   width: 36px; height: 36px; min-width: 36px; padding: 0;
@@ -788,7 +796,7 @@ window.__ModuleLoader__.load({
 
 .osubs-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; overflow-wrap: anywhere; }
 .osubs-hint { font-size: 12px; line-height: 1.55; color: var(--osubs-muted); }
-.osubs-note { font-size: 11px; color: var(--osubs-faint); }
+.osubs-note { font-size: 11px; color: var(--osubs-faint); white-space: pre-wrap; overflow-wrap: anywhere; }
 .osubs-bad { color: var(--osubs-bad); }
 .osubs-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
@@ -2079,8 +2087,8 @@ window.__ModuleLoader__.load({
       })
 
       return h('div', { className: 'osubs' },
-        h('div', { className: 'osubs-nav' },
-          h('div', { className: 'osubs-tabs', role: 'tablist' },
+        h('div', { className: 'osubs-nav', role: 'tablist' },
+          h('div', { className: 'osubs-tabs' },
             h(Tab, { id: 'codex', label: t.codexTitle, current: tab, onSelect: setTab, icon: 'codex' }),
             h(Tab, { id: 'grok', label: t.grokTitle, current: tab, onSelect: setTab, icon: 'grok' }),
             h(Tab, { id: 'glm', label: t.glmTitle, current: tab, onSelect: setTab, icon: 'zai' }),
@@ -2089,6 +2097,8 @@ window.__ModuleLoader__.load({
             h(Tab, { id: 'cursor', label: t.cursorTitle, current: tab, onSelect: setTab, icon: 'cursor' }),
             h(Tab, { id: 'ollama', label: t.ollamaTitle, current: tab, onSelect: setTab, icon: 'ollama' }),
             h(Tab, { id: 'kimi', label: t.kimiTitle, current: tab, onSelect: setTab, icon: 'kimi' }),
+          ),
+          h('div', { className: 'osubs-tabs-util' },
             h(Tab, { id: 'models', label: t.modelsTitle, current: tab, onSelect: setTab, icon: 'models' }),
             h(Tab, { id: 'about', label: t.aboutTitle, current: tab, onSelect: setTab, icon: 'github' }),
           ),

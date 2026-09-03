@@ -74,6 +74,9 @@ test('Settings Ollama card hides ollama-hex title and uses remaining row labels'
   assert.match(src, /if \(row\.kind === 'weekly'\) return t\.weekly/)
   assert.match(src, /row\.note && h\('span', \{ className: 'osubs-note' \}, row\.note\)/)
   assert.match(src, /if \(family === 'ollama'\) \{[\s\S]*return 'Pro'/)
+  assert.match(src, /\.osubs-note \{[\s\S]*white-space: pre-wrap/)
+  assert.match(src, /\.osubs-note \{[\s\S]*overflow-wrap: anywhere/)
+  assert.equal(/\.osubs-note \{[\s\S]*white-space: nowrap/.test(src), false)
 })
 
 test('Settings Cursor tab uses Import local Cursor copy and shows source, never tokens', async () => {
@@ -115,6 +118,27 @@ test('Settings Ollama tab is Cloud key paste after Cursor, never localhost', asy
   assert.equal(/\.osubs-tab \{[\s\S]*flex: 1 1 0/.test(src), false)
   assert.equal(/\.osubs-tabs \{[\s\S]*flex: 1 1 0/.test(src), false)
   assert.match(src, /\.osubs-nav \{[\s\S]*position: sticky/)
+})
+
+test('Settings tab bar is two groups: OAuth 8-col left, Models over GitHub far right', async () => {
+  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  const oauth = src.match(/className: 'osubs-tabs'[\s\S]*?className: 'osubs-tabs-util'/)?.[0] ?? ''
+  const util = src.match(/className: 'osubs-tabs-util'[\s\S]*?\),\s*\),/)?.[0] ?? ''
+  assert.match(src, /className: 'osubs-nav', role: 'tablist'/)
+  assert.match(src, /\.osubs-nav \{[\s\S]*display: flex;[\s\S]*justify-content: space-between/)
+  assert.match(src, /\.osubs-tabs \{[\s\S]*grid-template-columns: repeat\(8, 36px\)/)
+  assert.match(src, /\.osubs-tabs-util \{[\s\S]*grid-template-columns: 36px/)
+  assert.match(src, /\.osubs-tabs-util \{[\s\S]*margin-left: auto/)
+  assert.match(oauth, /id: 'codex'/)
+  assert.match(oauth, /id: 'kimi'/)
+  assert.equal(/id: 'models'/.test(oauth), false)
+  assert.equal(/id: 'about'/.test(oauth), false)
+  assert.match(util, /id: 'models'/)
+  assert.match(util, /id: 'about'/)
+  assert.equal(/id: 'kimi'/.test(util), false)
+  const tabOrder = src.match(/h\(Tab, \{ id: '(\w+)'/g) ?? []
+  const ids = tabOrder.map((row) => /id: '(\w+)'/.exec(row)?.[1])
+  assert.deepEqual(ids, ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'models', 'about'])
 })
 
 test('Settings Kimi tab uses LobeHub Kimi path, device login, and never @lobehub/icons', async () => {
