@@ -643,12 +643,12 @@ window.__ModuleLoader__.load({
 }
 .osubs-pane { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
 .osubs-tabs {
-  display: flex; gap: 4px; padding: 4px;
+  display: flex; flex-wrap: wrap; gap: 4px; padding: 4px;
   border: 1px solid var(--osubs-line); border-radius: 12px;
   background: var(--osubs-fill);
 }
 .osubs-tab {
-  flex: 1 1 0; height: 36px; padding: 0;
+  flex: 0 0 36px; min-width: 36px; width: 36px; height: 36px; padding: 0;
   display: inline-flex; align-items: center; justify-content: center;
   border: 0; border-radius: 9px;
   background: transparent; color: inherit;
@@ -783,6 +783,7 @@ window.__ModuleLoader__.load({
   font-size: 12.5px; font-weight: 600; line-height: 1.35;
   color: var(--osubs-muted);
 }
+.osubs-qmeter { display: contents; }
 .osubs-bar { height: 6px; border-radius: 99px; background: var(--osubs-hair); overflow: hidden; }
 .osubs-bar > i { display: block; height: 100%; border-radius: 99px; transform-origin: left center; transition: transform 340ms cubic-bezier(.2,.8,.2,1), background-color 240ms ease; }
 .osubs-qbox {
@@ -1025,6 +1026,34 @@ window.__ModuleLoader__.load({
       return row.kind ?? t.quota
     }
 
+    function RemainingBar({ remainingPercent, tone }) {
+      const color = tone ? `var(--osubs-${tone})` : undefined
+      return h('div', { className: 'osubs-bar' },
+        h('i', {
+          style: {
+            background: color,
+            transform: `scaleX(${Math.max(0, Math.min(100, remainingPercent)) / 100})`,
+          },
+        }),
+      )
+    }
+
+    function QuotaMeter({ t, remainingPercent, amount, label }) {
+      const tone = quotaTone(remainingPercent)
+      const color = tone ? `var(--osubs-${tone})` : 'inherit'
+      const caption = remainingPercent === undefined ? '' : fill(t.leftPercent, remainingPercent)
+      return h('div', { className: 'osubs-qmeter' },
+        h('div', { className: 'osubs-qrow-head' },
+          h('span', { style: { color: 'var(--osubs-muted)' } }, label),
+          h('span', { style: { color, fontWeight: 500 } },
+            amount ? `${amount} · ` : '',
+            caption,
+          ),
+        ),
+        remainingPercent !== undefined && h(RemainingBar, { remainingPercent, tone }),
+      )
+    }
+
     function QuotaRow({ t, row, family }) {
       if (row.kind === 'heading') {
         return h('div', { className: 'osubs-qgroup' }, antigravityGroupLabel(row.product, t))
@@ -1036,29 +1065,17 @@ window.__ModuleLoader__.load({
         )
       }
       const remaining = remainingPercentOf(row)
-      const tone = quotaTone(remaining)
-      const color = tone ? `var(--osubs-${tone})` : 'inherit'
       const amount = row.used !== undefined && row.total !== undefined
         ? `${formatAmount(row.used)} / ${formatAmount(row.total)}`
         : ''
       const reset = formatReset(row.resetAt, t)
-      const caption = remaining === undefined ? '' : fill(t.leftPercent, remaining)
       return h('div', { className: 'osubs-qrow' },
-        h('div', { className: 'osubs-qrow-head' },
-          h('span', { style: { color: 'var(--osubs-muted)' } }, rowLabel(row, t, family)),
-          h('span', { style: { color, fontWeight: 500 } },
-            amount ? `${amount} · ` : '',
-            caption,
-          ),
-        ),
-        remaining !== undefined && h('div', { className: 'osubs-bar' },
-          h('i', {
-            style: {
-              background: color,
-              transform: `scaleX(${remaining / 100})`,
-            },
-          }),
-        ),
+        h(QuotaMeter, {
+          t,
+          remainingPercent: remaining,
+          amount,
+          label: rowLabel(row, t, family),
+        }),
         reset && h('span', { className: 'osubs-note' }, reset),
       )
     }
