@@ -4,9 +4,7 @@
 
 [![CI](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml/badge.svg)](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml)
 
-Use a **ChatGPT / Codex**, **xAI Grok**, **Zhipu GLM**, **AWS Kiro**, **Google Antigravity**, **Cursor**, or **Ollama Cloud** subscription inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). Official OAuth, plus Kiro API keys, Cursor CLI/IDE reuse, and Ollama API keys.
-
-A loopback proxy plus `llm-pi-ai` route sync. Each family picks one DSH `api` from the closed union `openai-responses` | `openai-completions` | `anthropic-messages`.
+Use a **ChatGPT / Codex**, **xAI Grok**, **Zhipu GLM**, **AWS Kiro**, **Google Antigravity**, **Cursor**, or **Ollama Cloud** subscription inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). Official OAuth, plus Kiro API keys, Cursor CLI/IDE reuse, and Ollama API keys (ollama.com Cloud, not localhost:11434). Loopback proxy + `llm-pi-ai` route sync; each family picks one DSH `api` from `openai-responses` | `openai-completions` | `anthropic-messages`.
 
 ## Install
 
@@ -15,95 +13,46 @@ dsh plugin --profile web add https://github.com/xxww0098/dsh-plugin-oauth-subs
 dsh web
 ```
 
-Open **Settings → OAuth subs**. Icon tabs stay pinned at the top: Codex, Grok, **Z.ai (GLM)**, **Kiro**, **Antigravity**, **Cursor**, **Ollama**, Models, About. Sign in more than once per family; **one card per account, each with its own quota**. Click a card to switch the chat account. **GLM** matches ZCode's welcome screen: **Z.ai (global)** and **BigModel (China)** OAuth, plus paste-an-API-key. **Kiro** stacks Social / GitHub / Google, Builder ID, Enterprise IdC, Entra / Azure AD, and `ksk_` keys. **Antigravity** is Google login like the official IDE. **Cursor** is PKCE poll plus **Import local Cursor** (CLI Keychain / IDE `state.vscdb` / `CURSOR_ACCESS_TOKEN`) — user-owned login reuse, not a second OAuth. **Ollama** is ollama.com Cloud (paste API key / `OLLAMA_API_KEY`), not localhost:11434. **About** links the GitHub repo. Check for updates compares GitHub latest and, when newer, runs `dsh plugin --profile web update dsh-plugin-oauth-subs`. Restart `dsh web` to load the new module. Or mount the bundle patch by hand:
+Open **Settings → OAuth subs**. One card per account (quota on every card; Ollama has no quota bars). About compares GitHub latest and may run `dsh plugin --profile web update dsh-plugin-oauth-subs` — restart `dsh web`. Or `pnpm dsh web --patch ./cordis.patch.yml` (`id: oauth-subs`).
 
-```yaml
-- insert:
-    - id: oauth-subs
-      name: dsh-plugin-oauth-subs
-```
+## Families
 
-```sh
-pnpm dsh web --patch ./cordis.patch.yml
-```
-
-## Sign-in
-
-| Provider | Flow | Client | Upstream |
+| Provider | Auth | DSH api | Upstream hop |
 |---|---|---|---|
-| ChatGPT Codex | PKCE on `localhost:1455` (falls back to `1457`); paste-callback supported | `app_EMoamEEZ73f0CkXaXp7hrann` | `chatgpt.com/backend-api/codex/responses` |
-| xAI Grok | **Device-code (default)**; PKCE on `127.0.0.1:56121` as fallback | `b1a00492-073a-47ea-816f-4c329264a828` | `api.x.ai/v1/responses` |
-| Zhipu GLM · Z.ai (global) | ZCode CLI poll, `provider: zai`, then mint `id.secret` | `client_P8X5CMWmlaRO9gyO-KSqtg` | `api.z.ai/api/anthropic` (Completions leftover `…/coding/paas/v4`) |
-| Zhipu GLM · BigModel (China) | Same CLI poll, `provider: bigmodel`; poll JWT is the bearer | `zcode` | `open.bigmodel.cn/api/anthropic` (Completions leftover `…/coding/paas/v4`) |
-| AWS Kiro · Social | Portal PKCE at `app.kiro.dev`; callback ports 3128…53153 | (none — portal) | Auth `prod.us-east-1.auth.desktop.kiro.dev` |
-| AWS Kiro · Builder ID | AWS SSO OIDC device code; registers a public client each login | issued at login | `https://view.awsapps.com/start` |
-| AWS Kiro · Enterprise / IdC | Same device code against the org Start URL | issued at login | `https://oidc.{region}.amazonaws.com` |
-| AWS Kiro · Entra / Azure AD | Paste refresh token; public-client `refresh_token` grant | your Entra client id | `*.microsoftonline.com` token endpoint |
-| AWS Kiro · API key | Paste `ksk_…` | — | Bearer, no refresh |
-| Google Antigravity | Google OAuth on `localhost:51121/oauth-callback`; paste-callback supported | `1071006060591-…apps.googleusercontent.com` | `daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent` (hub; prod is IDE fallback) |
-| Cursor | PKCE poll at `cursor.com/loginDeepControl`; or **Import local Cursor** | Cursor CLI / IDE | Connect `agentn.us.api5.cursor.sh` `AgentService/Run` |
-| Ollama Cloud | Paste API key; or **Import `OLLAMA_API_KEY`** | ollama.com/settings/keys | `https://ollama.com/v1/chat/completions` |
+| ChatGPT Codex | PKCE `localhost:1455` (`1457` fallback); paste-callback; `app_EMoamEEZ73f0CkXaXp7hrann` | `openai-responses` | `chatgpt.com/backend-api/codex/responses` |
+| xAI Grok | Device-code (default); PKCE `127.0.0.1:56121`; `b1a00492-073a-47ea-816f-4c329264a828` | `openai-responses` | `api.x.ai/v1/responses` |
+| GLM · Z.ai (global) | ZCode CLI poll `provider: zai`; mint `id.secret`; `client_P8X5CMWmlaRO9gyO-KSqtg` | `anthropic-messages` | `api.z.ai/api/anthropic` (Completions leftover `…/coding/paas/v4`) |
+| GLM · BigModel (China) | Same CLI poll, `provider: bigmodel`; poll JWT is the bearer; client `zcode` | `anthropic-messages` | `open.bigmodel.cn/api/anthropic` (Completions leftover `…/coding/paas/v4`) |
+| AWS Kiro | Social PKCE `app.kiro.dev` (3128…53153) / Builder ID / IdC / Entra / `ksk_` | `openai-completions` | `q.<region>.amazonaws.com` `GenerateAssistantResponse` |
+| Google Antigravity | Google OAuth `localhost:51121`; paste-callback; `1071006060591-…apps.googleusercontent.com` | `openai-completions` | `daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent` |
+| Cursor | PKCE poll `cursor.com/loginDeepControl`; or **Import local Cursor** | `openai-completions` | Connect `agentn.us.api5.cursor.sh` `AgentService/Run` |
+| Ollama Cloud | Paste API key / import `OLLAMA_API_KEY` | `openai-completions` | `https://ollama.com/v1/chat/completions` |
 
-Already signed in on this machine via Codex CLI, Grok CLI, Hermes, ZCode Desktop, Kiro IDE, kiro.rs, Antigravity CLI, CLIProxyAPI, or Cursor CLI/IDE? Use **Import local session** (Cursor button: **Import local Cursor**):
+| Path | Family |
+|---|---|
+| `~/.codex/auth.json` | Codex |
+| `~/.grok/auth.json`, `~/.hermes/auth.json` | Grok |
+| `~/.zcode/v2/config.json` (also older `cli/config.json` / `config.json`) | GLM |
+| `~/.kiro/credentials.json`; `credentials.json` (kiro.rs CWD); `~/.aws/sso/cache/kiro-auth-token.json` | Kiro |
+| Settings paste: kami / JSON / CSV / Social refresh / `ksk_…` | Kiro |
+| `~/.gemini/antigravity-cli/antigravity-oauth-token`; `~/.cli-proxy-api/antigravity-*.json` | Antigravity |
+| macOS Keychain `cursor-access-token` / `cursor-refresh-token`; IDE `state.vscdb` (current OS user only); `CURSOR_ACCESS_TOKEN` | Cursor |
+| `OLLAMA_API_KEY` env (not `~/.ollama/id_ed25519.pub`) | Ollama |
 
-- `~/.codex/auth.json`
-- `~/.grok/auth.json`
-- `~/.hermes/auth.json`
-- `~/.zcode/v2/config.json` (ZCode Desktop; also older `~/.zcode/cli/config.json` / `~/.zcode/config.json`)
-- `credentials.json` (kiro.rs CWD dump)
-- `~/.kiro/credentials.json`
-- `~/.aws/sso/cache/kiro-auth-token.json` (IdC pairs the hashed client registration in the same folder)
-- Paste in Settings: kiro-manager-lite kami / compact JSON / full backup / CSV, or a Social refresh token / `ksk_…`
-- `~/.gemini/antigravity-cli/antigravity-oauth-token`
-- `~/.cli-proxy-api/antigravity-*.json`
-- macOS Keychain `cursor-access-token` / `cursor-refresh-token` (Cursor CLI)
-- Cursor IDE `state.vscdb` keys `cursorAuth/accessToken` + `cursorAuth/refreshToken` (current OS user only; WSL does not walk other Windows profiles)
-- `CURSOR_ACCESS_TOKEN` env (no refresh)
-- `OLLAMA_API_KEY` env (Ollama Cloud; not `~/.ollama/id_ed25519.pub`)
-
-Tokens live at `<profile>/data/dsh-plugin-oauth-subs/auth.json` with mode `0600`. Multiple accounts per family sit in that file as a vault; a legacy single-session file still loads. Enabled-model choices live in `models.json` next to it.
+Tokens: `<profile>/data/dsh-plugin-oauth-subs/auth.json` (`0600`). Models: `models.json` beside it.
 
 ## How it works
 
-```text
-Settings (control plane)
-  └─ OAuth login / import / logout, then model sync
+| Plane | Role |
+|---|---|
+| Settings | OAuth login / import / logout, then model sync |
+| llm-pi-ai | DSH call plane; routes to the loopback proxy |
+| Loopback | `http://127.0.0.1:8318/{codex,grok}/v1/responses`, `/glm/v1/messages` (Completions leftover `/glm/v1/chat/completions` until the next sync), `/{kiro,antigravity,cursor,ollama}/v1/chat/completions` |
+| Upstream | Refreshed subscription bearer |
 
-DeepSeek Harness (call plane)
-  └─ llm-pi-ai
-       └─ http://127.0.0.1:8318/{codex,grok}/v1/responses
-       └─ http://127.0.0.1:8318/glm/v1/messages
-       └─ http://127.0.0.1:8318/{kiro,antigravity,cursor,ollama}/v1/chat/completions
-            └─ refreshed subscription bearer against upstream
-```
+Not a second LLM adapter. After Settings closes, DSH still calls the loopback proxy. Bind is loopback-only; local credential is `DSH_OAUTH_SUBS_API_KEY`. GLM 150% Coding Plan boost is identity (ZCode Desktop UA), not a protocol claim. Stack and module tree: [AGENTS.md](AGENTS.md).
 
-Codex and Grok are **Responses** (vendor-native). GLM is **Anthropic Messages** (ZCode Desktop default; Completions leftover stays at `/glm/v1/chat/completions` until the next sync). Kiro, Antigravity, Cursor, and Ollama stay **Completions adapters** because their native wires (AWS EventStream / `generateContent` / Connect protobuf / Ollama `/api/chat`) are none of the three. Ollama Cloud still hops Completions because `https://ollama.com/v1/chat/completions` accepts the same Bearer key. The 150% GLM Coding Plan boost is identity (ZCode Desktop UA), not a protocol claim — this plugin has not compared quota slope vs official Desktop.
-
-This is not a second LLM adapter. After you close Settings, DSH still calls the loopback proxy through `llm-pi-ai`. The proxy binds loopback only and checks the local credential `DSH_OAUTH_SUBS_API_KEY`.
-
-Stack, module tree, and the `docs/error.md` rule are in [AGENTS.md](AGENTS.md). Host code is TypeScript under `src/oauth` and `src/utils`. Settings is React under `src/ui`. Do not edit compiled `lib/`.
-
-```text
-src/
-  oauth/codex/     Codex catalog, identity, Responses body
-  oauth/grok/      Grok catalog, identity, device-code
-  oauth/kiro/      Kiro Social / Builder ID / IdC / Entra / API key
-  oauth/           proxy, PKCE, quota, models
-  oauth/antigravity/ Google OAuth + cloudcode-pa fingerprint
-  oauth/cursor/    Cursor PKCE + CLI/IDE import + AgentService/Run hop
-  oauth/ollama/    Ollama Cloud API key + Completions passthrough
-  ui/              React Settings (classic-script factory)
-  utils/           jwt, pkce, fast/context, session analyzer
-```
-
-## Reliability
-
-The proxy is the cache-affinity and stream-retry path. Two contracts matter on a long Codex turn:
-
-1. **Cache shard (Codex).** A Codex `prompt_cache_key` is forwarded as both `session-id` and `x-client-request-id`. Keys are sanitized to `[A-Za-z0-9._:-]` and clipped to 64 characters instead of dropped — a too-long session id must still pin the shard. Missing or illegal keys fall back to `session_id`. The clipped key is written back into the body so Codex does not 400 on a >64-character value. DSH `session_id` is then stripped from the upstream JSON — chatgpt.com rejects it (`Unsupported parameter: session_id`).
-2. **Cache shard (Grok).** xAI stores prompt cache **per server**. The proxy writes the same sanitized key as Responses `prompt_cache_key` and sends `x-grok-conv-id`. Codex `session-id` / `x-client-request-id` are not copied — they do nothing on this backend. A later call that reuses <10% of the previous prompt, including xAI's 512-token block on the wrong shard, is an affinity miss.
-3. **Stable prefix.** Codex matches the longest prefix of `instructions` then `input`. Duplicate leading developer/system items are stripped; extra plan or header text is parked at the **input suffix** so the conversation prefix can still hit. `prompt_cache_retention` is dropped (gpt-5.6 rejects it).
-4. **Commit gate.** A silent pre-output break is retried before headers are committed, so llm-pi-ai does not see a clean EOF and fire five TRANSPORT retries.
+## Cache
 
 Acceptance on the full `session-772f7f3a-…` SkillStar turn (`oauth-codex` / `gpt-5.6-terra-fast`, 211 calls, 71 min):
 
@@ -115,13 +64,12 @@ Acceptance on the full `session-772f7f3a-…` SkillStar turn (`oauth-codex` / `g
 | Prefix rewrites | — | 1 adapter rebuild + 9 compaction |
 | TRANSPORT faults | 29 | 0 |
 
-The remaining uncached tokens are almost all new tool output (`delta`) plus expected prefix rewrites: leaving plan mode (step 55, 169k) and DSH compaction (330k). The next call after each rewrite reused ~99%. That is not a shard miss.
+![Codex cache hit](docs/readme-cache-hit.svg)
+![Codex affinity misses and TRANSPORT](docs/readme-cache-faults.svg)
 
-Healthy rule: weighted hit ≥ **80%**, **zero affinity misses**, no TRANSPORT. Compaction / `request/header` rebuild zeros do not fail the session. Details: [docs/error.md](docs/error.md).
+Remaining uncached tokens are almost all new tool output (`delta`) plus expected prefix rewrites: leaving plan mode (step 55, 169k) and DSH compaction (330k); the next call after each rewrite reused ~99%. Healthy: weighted hit ≥ **80%**, **zero affinity misses**, no TRANSPORT. Compaction / `request/header` rebuild zeros do not fail the session. Details: [docs/error.md](docs/error.md).
 
-## Diagnose a session
-
-Export the DSH `session.jsonl` (or unzip the session archive) and score it:
+## Diagnose
 
 ```sh
 npm run analyze -- path/to/session.jsonl
@@ -129,51 +77,24 @@ node --experimental-strip-types scripts/analyze-session.ts --json path/to/sessio
 node --experimental-strip-types scripts/analyze-session.ts --fail-below 80 path/to/session.jsonl
 ```
 
-The analyzer reads `assistant/message` usage once per turn+step (the later `assistant/chunk` usage event is a duplicate). It labels each call `cold_start` / `delta` / `compaction` / `rebuild` / `affinity_miss` so a compacted session is not flagged as a shard regression. Tool errors are split into `host_timeout` / `cascade_abort` / `invalid` and are not TRANSPORT. glob/grep's 30s budget lives on `dsh-tool-fs-search`, not this proxy — this plugin cannot raise it. Import as `dsh-plugin-oauth-subs/analyze-session`.
+The analyzer labels each call `cold_start` / `delta` / `compaction` / `rebuild` / `affinity_miss` so a compacted session is not flagged as a shard regression. Import as `dsh-plugin-oauth-subs/analyze-session`.
 
-## Fast mode
+## Fast / models / reasoning
 
-On Codex it is **Priority Processing**, not a different model family. The proxy peels host-side `-fast` and asks the ChatGPT Codex backend the same way Codex CLI 0.149+ does: body `service_tier: "priority"` plus header `x-codex-routing-hint: model=<id>;tier=priority`. `store` is forced `false` (the subscription Responses API 400s otherwise).
+Login and chat use official client identity; UA / fingerprint live in each `src/oauth/<id>/README.md`. Settings → **Models**: per-family checkboxes (default all on except **900K**). Reasoning is set in the Harness session menu, not Settings → Models. Fast and 900K spend quota faster.
 
-| Model | Fast |
-|---|---|
-| GPT-5.6 Sol / Terra / Luna, GPT-5.5, GPT-5.4 | Yes. Pick the `-fast` sibling in the model list. |
-| GPT-5.4 Mini, GPT-5.3 Codex Spark | No. Their catalog rows carry an empty `service_tiers`, so no `-fast` sibling exists. A stale `*-fast` id is peeled locally instead of forwarded. |
-| Grok | No. Grok 4.6 accepts `service_tier: "priority"` on the wire but a 2026-08-30 interleaved run showed no speed gain (83.34 vs 82.80 tok/s, ratio 0.994). Older ids reject the field; the proxy strips it. |
+| Family | Fast | Window | Thinking |
+|---|---|---|---|
+| Codex GPT-5.6 Sol / Terra / Luna | Yes. `-fast` → Priority (`service_tier: "priority"` + `x-codex-routing-hint`; `store: false`) | `-900k` (872K) | low / medium / high / xhigh / **max** |
+| Other Codex | 5.4 / 5.5 Yes; Mini / Spark No (empty `service_tiers`; leftover `*-fast` peeled locally) | GPT-5.4 `-900k` (1M) | low–xhigh (no `minimal`) |
+| Grok | No. 2026-08-30: 83.34 vs 82.80 tok/s (0.994). Older ids reject the field | — | 4.6: low / medium / high / xhigh (unset = **high**); 4.5: no xhigh |
+| GLM | — | — | 5.3 / Flash: low / high / **max** (default max; no `medium`; `disabled` 400s). Turbo: on, no depth. Flash is the only GLM image row |
+| Kiro | — | — | GPT-5.6: off / low / medium / high / xhigh / max (`off` → wire `none`). Opus 5 / 4.8 / 4.7 and Sonnet 5 add **xhigh**; 4.6 family to max; Haiku / OSS: none. Catalog: [kiro.dev/docs/models](https://kiro.dev/docs/models/) (no Auto) |
+| Ollama | No | Live `GET /api/tags` (static 19-row Cloud snapshot fallback). Context from `POST /api/show` `model_info.<family>.context_length`. No quota bars | off / low / medium / high / max (`off` → wire `none`) |
 
-ChatGPT Codex often echoes `created=auto` / `completed=default` even when Priority is requested — that echo is not a confirmation (openai/codex#14204). A 2026-08-26 Luna run measured 88.3 vs 57.5 tok/s (1.54×); a 2026-08-30 interleaved rerun did not reproduce a stable lift (mean 1.33×, pair ratios 1.90 then 0.93). Throughput-only; TTFT and cache are unchanged.
-
-Login, token refresh, chat, and quota use one official client identity: Codex pairs `originator: codex_cli_rs` with `User-Agent: codex_cli_rs/<version>`; Grok sends `x-xai-token-auth: xai-grok-cli` and `User-Agent: grok-cli/<version>`. GLM uses ZCode's CLI poll: global `provider: zai` (client `client_P8X5CMWmlaRO9gyO-KSqtg`, then `api.z.ai/api/auth/z/login` to mint `id.secret`); China `provider: bigmodel` (`bigmodel.cn/login`, poll JWT is the Coding Plan bearer). Chat hops as **ZCode Desktop 3.10.1** (`User-Agent: ZCode/3.10.1 ai-sdk/anthropic/3.0.81`, `X-ZCode-App-Version`, `X-ZCode-Agent: glm`, `Referer` / `X-Title: Z Code`) to `api.z.ai` or `open.bigmodel.cn` **`/api/anthropic/v1/messages`**. Completions leftover `/api/coding/paas/v4` stays until the next sync. Quota still hits `/api/monitor/usage/quota/limit`. CLI init/poll against `zcode.z.ai` stays a CLI-shaped `ZCode/3.10.1` identity. Antigravity chat / loadCodeAssist hop as `antigravity/hub/<ver> <os>/<arch>` (installed **Antigravity.app** or **2.11.0**) to **daily-cloudcode-pa** with body `ideType: ANTIGRAVITY` and User-Agent only. No TLS fingerprint impersonation.
-
-## Models
-
-Settings → OAuth subs → **Models** lists every Codex, Grok, GLM, **Kiro**, Antigravity, and Cursor catalog id, including Codex `-fast` and `-900k` siblings. Each row is an on/off checkbox. **All on** / **All off** apply per family.
-
-Kiro follows [kiro.dev/docs/models](https://kiro.dev/docs/models/) (no Auto router): GPT-5.6 Sol / Terra / Luna, Claude Opus 5 / 4.8 / 4.7 / 4.6 / 4.5, Claude Sonnet 5 / 4.6 / 4.5 / 4, Claude Haiku 4.5, DeepSeek 3.2, MiniMax M2.5 / M2.1, GLM-5, Qwen3 Coder Next. Ids are Kiro native (`claude-opus-5`, `claude-sonnet-4.6`, `gpt-5.6-sol`). Claude and GPT-5.6 advertise image input; the open-weight rows are text.
-
-GLM is three Coding Plan models: **GLM-5.3** (text), **GLM-5.3-Flash** (image + text), **GLM-5-Turbo** (text). Flash is the only multimodal row — text-only GLM models do not advertise image input to the Harness picker.
-
-Default is all on except **900K**. Pick a Codex **Fast** sibling (`gpt-5.6-sol-fast`) for Priority Processing. The `-fast` suffix is host-side only — the proxy strips it and sends `service_tier: "priority"` plus `x-codex-routing-hint`. Grok has no Fast sibling. GPT-5.4 Mini and GPT-5.3 Codex Spark have no Fast sibling; a leftover `gpt-5.4-mini-fast` is peeled to `gpt-5.4-mini`.
-
-GPT-5.6 Sol / Terra / Luna accept **872K** and GPT-5.4 accepts **1M**, well past their default window. Pick `gpt-5.6-sol-900k` (and the Terra / Luna / 5.4 twins) to opt in — the `-900k` suffix is a stable host-side id even though the real ceiling is per-model, and the proxy strips it before the upstream request. GPT-5.5, GPT-5.4 Mini and Spark have no large variant.
-
-Both 900K and Fast spend quota faster.
-
-Turning a model off removes it from the next `llm-pi-ai` sync — it disappears from the Harness picker. Choices persist in `models.json`. A catalog id added later stays on until you turn it off (900K ids stay off until you turn them on).
-
-You can pre-select while signed out; the family applies on the next sign-in. Checking a model rewrites the live routes immediately.
-
-Grok 4.6 thinking depth is **low / medium / high / xhigh**. Grok 4.5 is **low / medium / high** (no xhigh). Reasoning cannot be turned off; if you leave it unset the API uses **high**. Codex GPT-5.6 Sol / Terra / Luna add **max** on top of **low / medium / high / xhigh**. Other Codex models stop at **xhigh**. `minimal` is not offered: every Codex model rejects it.
-
-GLM-5.3 and GLM-5.3-Flash thinking depth is **low / high / max** (default **max**). There is no `medium`, and thinking cannot be turned off — `thinking.type: disabled` 400s. GLM-5-Turbo has no depth control (thinking stays on by default). The session picker only lists levels the catalog declares.
-
-Kiro GPT-5.6 thinking depth is **off / low / medium / high / xhigh / max**. Off sends Kiro's wire value `none` (DSH has no `none` key). Opus 5 / 4.8 / 4.7 and Sonnet 5 add **xhigh**; 4.6 family stops at **max**; Haiku and the open-weight rows have no depth control.
-
-Set the level in the DeepSeek Harness session model menu → **Reasoning**. It is not on Settings → Models. Login, logout, and each checkbox already sync the picker.
+Codex Priority echo `created=auto` / `completed=default` is not a confirmation (openai/codex#14204). 2026-08-26 Luna: 88.3 vs 57.5 tok/s (1.54×); 2026-08-30 interleaved mean 1.33× (1.90 then 0.93). Throughput-only; TTFT and cache unchanged.
 
 ## Quota
-
-After sign-in, each account card shows official remaining quota.
 
 | Subscription | Endpoint | Display |
 |---|---|---|
@@ -184,13 +105,7 @@ After sign-in, each account card shows official remaining quota.
 | Google Antigravity | daily-cloudcode-pa `loadCodeAssist` + `fetchAvailableModels` (prod only on 5xx / transport) | Plan badge (Pro / Ultra / Free / Standard) plus SkillStar model-group remaining bars and reset time |
 | Cursor | `api2.cursor.sh` `DashboardService/GetCurrentPeriodUsage` | Plan badge (Free / Pro / Pro+ / Ultra …) plus cycle remaining percent |
 
-Quota refreshes about once a minute, or immediately from **Refresh quota**. A failed read does not block chat.
-
-After sign-in the account title shows a **Plan** badge. Codex reads JWT `chatgpt_plan_type` and usage `plan_type` (`pro` → **Pro 20x** / $200, `prolite` → **Pro 5x** / $100). Grok reads JWT `tier` and billing / user `subscription_tier`.
-
-Bars interpolate green → yellow → red with remaining percent (`hsl(remaining × 1.2, 78%, 38%)`).
-
-ChatGPT / Codex Plus and Pro may bank extra weekly-window resets. When the account has unused credits, the Codex card nests a **Reset credits** box and draws **one button per credit**, labeled with that credit’s expiry. Clicking **Reset** opens the DeepSeek Harness risk-confirmation dialog (warning icon, checkbox acknowledgement, then confirm). Confirm, then the plugin `POST`s `chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume` with `{ redeem_request_id }` plus `idempotencyKey`. That spend refreshes the **weekly** window. Grok has no equivalent.
+Refresh about once a minute, or **Refresh quota**. Bars: `hsl(remaining × 1.2, 78%, 38%)`. Codex `pro` → **Pro 20x** / $200, `prolite` → **Pro 5x** / $100. Plus/Pro may bank weekly resets — one confirm button per credit on the Codex card (Harness risk dialog, then `POST …/consume` with `{ redeem_request_id }` + `idempotencyKey`). That spend refreshes the **weekly** window. Grok has no equivalent. Ollama Cloud has no documented quota JSON (`/api/quota` 404); the card stays idle with no bars.
 
 ## Options
 
