@@ -6,7 +6,7 @@ import { test } from 'node:test'
 import { AuthController } from '../lib/oauth/controller.js'
 import { parseCursorPeriodUsage } from '../lib/oauth/quota.js'
 import { formatPlanLabel } from '../lib/oauth/plan.js'
-import { accountIdOf, listStoredSessions, publicSession, saveSession } from '../lib/oauth/store.js'
+import { accountIdOf, listAccounts, listStoredSessions, publicSession, saveSession } from '../lib/oauth/store.js'
 import {
   HARNESS_COMPLETIONS_API,
   buildProviders,
@@ -43,9 +43,11 @@ import {
   completeCursorLogin,
   createCursorPkce,
   cursorAccessStillValid,
+  cursorAccountFromToken,
   cursorLoginParams,
   cursorSession,
   cursorSourceLabel,
+  displayCursorAccount,
   parseCursorTokenResponse,
   pollCursorAuth,
   refreshCursorTokens,
@@ -91,7 +93,7 @@ function expiredAccess(email = 'stale@cursor.local') {
   return jwt({ email, exp: Math.floor(Date.now() / 1000) - 120 })
 }
 
-async function writeVscdb(dir, { accessToken, refreshToken } = {}) {
+async function writeVscdb(dir, { accessToken, refreshToken, cachedEmail } = {}) {
   const { DatabaseSync } = await import('node:sqlite')
   const dbPath = join(dir, 'state.vscdb')
   const db = new DatabaseSync(dbPath)
@@ -99,6 +101,7 @@ async function writeVscdb(dir, { accessToken, refreshToken } = {}) {
   const insert = db.prepare('INSERT INTO ItemTable (key, value) VALUES (?, ?)')
   if (accessToken) insert.run('cursorAuth/accessToken', accessToken)
   if (refreshToken) insert.run('cursorAuth/refreshToken', refreshToken)
+  if (cachedEmail) insert.run('cursorAuth/cachedEmail', cachedEmail)
   db.close()
   return dbPath
 }
@@ -175,6 +178,34 @@ test('cursor session round-trip keeps source for doctor/status', () => {
   assert.equal(cursorSourceLabel('ide_vscdb'), 'IDE')
   assert.equal(cursorSourceLabel('env'), 'env')
   assert.equal(cursorSourceLabel('pkce'), 'PKCE')
+})
+
+test('JWT with only WorkOS sub is not a display account', () => {
+  const opaque = 'grok|user_01TESTOPAQUEID0001'
+  const token = jwt({ sub: opaque, exp: Math.floor(Date.now() / 1000) + 3600 })
+  assert.equal(cursorAccountFromToken(token), undefined)
+  assert.equal(displayCursorAccount({ accessToken: token, account: opaque }), undefined)
+  assert.equal(displayCursorAccount({ accessToken: token, account: 'cursor' }), undefined)
+  const session = cursorSession({ accessToken: token, refreshToken: 'rt-opaque' })
+  const pub = publicSession('cursor', session)
+  assert.equal(pub.account, undefined)
+  assert.equal(accountIdOf('cursor', session), session.account)
+})
+
+test('JWT email or preferred_username wins over sub', () => {
+  assert.equal(cursorAccountFromToken(jwt({
+    email: 'named@x',
+    sub: 'grok|user_01TESTOPAQUEID0002',
+  })), 'named@x')
+  assert.equal(cursorAccountFromToken(jwt({
+    preferred_username: 'alice',
+    sub: 'auth0|abc',
+  })), 'alice')
+  const session = cursorSession({
+    accessToken: jwt({ email: 'named@x', sub: 'auth0|abc', exp: Math.floor(Date.now() / 1000) + 3600 }),
+    refreshToken: 'rt-named',
+  })
+  assert.equal(publicSession('cursor', session).account, 'named@x')
 })
 
 test('cursor catalog is Completions at /cursor, not /cursor/v1', () => {
@@ -424,6 +455,28 @@ test('vscdb hit uses ItemTable tokens when Keychain is empty', async () => {
   assert.equal(imported.session.account, 'ide@x')
 })
 
+test('vscdb import with cachedEmail sets that email', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-vscdb-email-'))
+  const access = jwt({
+    sub: 'auth0|opaqueimport',
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  })
+  const dbPath = await writeVscdb(dir, {
+    accessToken: access,
+    refreshToken: 'rt-ide-email',
+    cachedEmail: 'cached@x',
+  })
+  const fromFile = await readCursorVscdbTokens({ paths: [dbPath], platform: 'linux', env: {}, home: dir })
+  assert.equal(fromFile.cachedEmail, 'cached@x')
+  const imported = await importCursorAuth(emptyImport({
+    platform: 'linux',
+    readVscdbFn: async () => fromFile,
+  }))
+  assert.equal(imported.source, 'ide_vscdb')
+  assert.equal(imported.session.account, 'cached@x')
+  assert.equal(publicSession('cursor', imported.session).account, 'cached@x')
+})
+
 test('expired access refreshes Keychain then vscdb when refresh tokens differ', async () => {
   resetCursorRefreshGuard()
   const stale = expiredAccess('stale@x')
@@ -543,6 +596,79 @@ test('empty-roster auto-import saves CLI source; PKCE is not overwritten', async
   const rows = await listStoredSessions('cursor', authPath)
   assert.equal(rows[0].session.source, 'pkce')
   assert.equal(accountIdOf('cursor', rows[0].session), 'auto@x')
+})
+
+test('snapshot backfills opaque cursor vault when usage has email', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-cursor-usage-'))
+  const authPath = join(dir, 'auth.json')
+  const opaque = 'grok|user_01TESTUSAGEBACKFILL'
+  const access = jwt({ sub: opaque, exp: Math.floor(Date.now() / 1000) + 3600 })
+  const session = cursorSession({
+    accessToken: access,
+    refreshToken: 'rt-usage',
+    source: 'pkce',
+    account: opaque,
+  })
+  await saveSession('cursor', session, authPath)
+  assert.equal(accountIdOf('cursor', session), opaque)
+  const controller = new AuthController({
+    authPath,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+    cursorAutoImport: false,
+    fetchFn: async () => json({
+      planUsage: { autoPercentUsed: 12, apiPercentUsed: 0 },
+      membershipType: 'pro',
+      email: 'from-usage@x',
+    }),
+  })
+  const snap = await controller.snapshot()
+  assert.equal(snap.accounts.cursor.account, 'from-usage@x')
+  assert.equal(snap.accounts.cursor.accounts[0].account, 'from-usage@x')
+  assert.equal(snap.accounts.cursor.accounts[0].id, 'from-usage@x')
+  const roster = await listAccounts('cursor', authPath)
+  assert.equal(roster[0].id, 'from-usage@x')
+  assert.equal(roster.some((row) => row.id === opaque || row.account === opaque), false)
+})
+
+test('snapshot backfills opaque cursor vault from vscdb cachedEmail', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-cursor-cached-'))
+  const authPath = join(dir, 'auth.json')
+  const opaque = 'auth0|opaquevault'
+  const access = jwt({ sub: opaque, exp: Math.floor(Date.now() / 1000) + 3600 })
+  const session = cursorSession({
+    accessToken: access,
+    refreshToken: 'rt-cached',
+    source: 'ide_vscdb',
+    account: opaque,
+  })
+  await saveSession('cursor', session, authPath)
+  const controller = new AuthController({
+    authPath,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+    cursorAutoImport: false,
+    cursorImport: emptyImport({
+      readVscdbFn: async () => ({
+        accessToken: access,
+        refreshToken: 'rt-cached',
+        cachedEmail: 'from-ide@x',
+      }),
+    }),
+    fetchFn: async () => json({
+      planUsage: { autoPercentUsed: 8, apiPercentUsed: 0 },
+      membershipType: 'pro',
+    }),
+  })
+  const snap = await controller.snapshot()
+  assert.equal(snap.accounts.cursor.account, 'from-ide@x')
+  assert.equal(snap.accounts.cursor.accounts[0].account, 'from-ide@x')
+  assert.equal(snap.accounts.cursor.accounts[0].id, 'from-ide@x')
+  const roster = await listAccounts('cursor', authPath)
+  assert.equal(roster[0].id, 'from-ide@x')
+  assert.equal(roster.some((row) => row.id === opaque || row.account === opaque), false)
 })
 
 test('parseCursorTokenResponse and completeCursorLogin tag pkce', async () => {

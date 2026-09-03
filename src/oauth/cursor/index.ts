@@ -97,12 +97,43 @@ export function cursorTokenExpiry(token, now = Date.now()) {
   return now + 60 * 60_000
 }
 
+/** JWT `sub` / WorkOS / Auth0 / the literal `cursor` — vault keys only, never a card title. */
+export function isCursorOpaqueAccount(value) {
+  if (typeof value !== 'string' || !value.trim()) return true
+  const raw = value.trim()
+  if (raw.toLowerCase() === 'cursor') return true
+  if (/^cursor-[A-Za-z0-9_-]{4,}$/i.test(raw)) return true
+  if (/^[A-Za-z0-9._-]+\|[A-Za-z0-9._-]+$/.test(raw) && !raw.includes('@')) return true
+  if (/^user_[A-Za-z0-9]{16,}$/i.test(raw)) return true
+  return false
+}
+
+export function pickCursorHumanAccount(...candidates) {
+  for (const value of candidates) {
+    const next = trimmed(value)
+    if (!next || isCursorOpaqueAccount(next)) continue
+    return next
+  }
+  return undefined
+}
+
 export function cursorAccountFromToken(token) {
   const payload = decodeJwtPayload(token)
   if (!payload) return undefined
-  return trimmed(payload.email)
-    || trimmed(payload.preferred_username)
-    || trimmed(payload.sub)
+  return pickCursorHumanAccount(payload.email, payload.preferred_username)
+}
+
+function cursorVaultAccountFromToken(token) {
+  const payload = decodeJwtPayload(token)
+  return payload ? trimmed(payload.sub) : undefined
+}
+
+export function displayCursorAccount(session) {
+  return pickCursorHumanAccount(
+    session?.account,
+    cursorAccountFromToken(session?.accessToken),
+    session?.cachedEmail,
+  )
 }
 
 export function cursorAccessStillValid(token, now = Date.now()) {
@@ -154,12 +185,15 @@ export function cursorSession({
   const resolvedExpiry = typeof expiresAt === 'number' && Number.isFinite(expiresAt)
     ? expiresAt
     : cursorTokenExpiry(accessToken)
-  const email = trimmed(account) ?? cursorAccountFromToken(accessToken) ?? 'cursor'
+  const human = pickCursorHumanAccount(account, cursorAccountFromToken(accessToken))
+  const vault = human
+    ?? (trimmed(account) && trimmed(account).toLowerCase() !== 'cursor' ? trimmed(account) : undefined)
+    ?? cursorVaultAccountFromToken(accessToken)
   return {
     accessToken,
     refreshToken: refresh,
     expiresAt: resolvedExpiry,
-    account: email,
+    ...(vault ? { account: vault } : {}),
     source: CURSOR_SOURCES.includes(source) ? source : 'pkce',
     ...(trimmed(planType) ? { planType: planType.trim() } : {}),
   }

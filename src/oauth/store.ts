@@ -12,6 +12,7 @@ import { homedir } from 'node:os'
 import { formatPlanLabel } from './plan.js'
 import { kiroAccountId, kiroMethodLabel } from './kiro/index.js'
 import { displayGlmAccount } from './glm/index.js'
+import { displayCursorAccount } from './cursor/index.js'
 
 export const PROVIDER_IDS = Object.freeze(['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor'])
 
@@ -316,7 +317,7 @@ export function publicSession(provider, session) {
   }
   if (provider === 'cursor') {
     return {
-      account: session.account,
+      account: displayCursorAccount(session),
       planType,
       planLabel,
       method: session.source,

@@ -79,9 +79,13 @@ async function defaultReadVscdb(dbPath) {
     db = new DatabaseSync(dbPath, { readOnly: true })
     const accessRow = db.prepare("SELECT value FROM ItemTable WHERE key = 'cursorAuth/accessToken'").get()
     const refreshRow = db.prepare("SELECT value FROM ItemTable WHERE key = 'cursorAuth/refreshToken'").get()
+    const emailRow = db.prepare("SELECT value FROM ItemTable WHERE key = 'cursorAuth/cachedEmail'").get()
     return {
       accessToken: typeof accessRow?.value === 'string' ? accessRow.value.trim() : undefined,
       refreshToken: typeof refreshRow?.value === 'string' ? refreshRow.value.trim() : undefined,
+      cachedEmail: typeof emailRow?.value === 'string' && emailRow.value.trim()
+        ? emailRow.value.trim()
+        : undefined,
     }
   } catch {
     return {}
@@ -104,9 +108,19 @@ export async function readCursorVscdbTokens({
     const tokens = await readDb(dbPath)
     const access = typeof tokens.accessToken === 'string' ? tokens.accessToken.trim() : undefined
     const refresh = typeof tokens.refreshToken === 'string' ? tokens.refreshToken.trim() : undefined
-    if (cursorAccessStillValid(access, now)) return { accessToken: access, refreshToken: refresh }
-    if (!fallback.refreshToken && refresh) fallback.refreshToken = refresh
-    if (!fallback.accessToken && access) fallback.accessToken = access
+    const cachedEmail = typeof tokens.cachedEmail === 'string' && tokens.cachedEmail.trim()
+      ? tokens.cachedEmail.trim()
+      : undefined
+    const hit = { accessToken: access, refreshToken: refresh, ...(cachedEmail ? { cachedEmail } : {}) }
+    if (cursorAccessStillValid(access, now)) return hit
+    if (!fallback.refreshToken && refresh) {
+      fallback.refreshToken = refresh
+      if (cachedEmail) fallback.cachedEmail = cachedEmail
+    }
+    if (!fallback.accessToken && access) {
+      fallback.accessToken = access
+      if (cachedEmail && !fallback.cachedEmail) fallback.cachedEmail = cachedEmail
+    }
   }
   return fallback
 }
@@ -178,6 +192,7 @@ export async function resolveCursorLocalCredentials({
     return cursorSession({
       accessToken: vscdb.accessToken,
       refreshToken: vscdb.refreshToken,
+      account: vscdb.cachedEmail,
       source: 'ide_vscdb',
     })
   }
@@ -189,7 +204,7 @@ export async function resolveCursorLocalCredentials({
   if (vscdb.refreshToken && vscdb.refreshToken !== keychain.refreshToken) {
     const vscdbRefresh = await tryRefresh(vscdb.refreshToken, fetchFn)
     if (vscdbRefresh) {
-      return cursorSession({ ...vscdbRefresh, source: 'ide_vscdb' })
+      return cursorSession({ ...vscdbRefresh, account: vscdb.cachedEmail, source: 'ide_vscdb' })
     }
   }
   return undefined
