@@ -10,6 +10,7 @@ export { applyOpencodeCache, opencodeCacheHeaders, opencodeCacheSessionId, reset
 
 export const OPENCODE_ZEN_ORIGIN = 'https://opencode.ai/zen/v1'
 export const OPENCODE_CHAT_URL = `${OPENCODE_ZEN_ORIGIN}/chat/completions`
+export const OPENCODE_RESPONSES_URL = `${OPENCODE_ZEN_ORIGIN}/responses`
 export const OPENCODE_MODELS_URL = `${OPENCODE_ZEN_ORIGIN}/models`
 export const OPENCODE_MODELS_DEV_URL = 'https://models.dev/api.json'
 export const OPENCODE_DOCS_URL = 'https://opencode.ai/docs/zen'
@@ -111,6 +112,13 @@ export function isOpencodeFreeSlug(id) {
   if (!lower) return false
   if (OPENCODE_KEYED_FREE.has(lower)) return false
   return lower.endsWith('-free')
+}
+
+/** Zen lists Muse Spark on `/zen/v1/responses`. Completions 500s. Future `muse-spark*` keep this hop. */
+export function isOpencodeResponsesModel(id) {
+  const bare = String(id ?? '').trim()
+  const slug = bare.includes('/') ? bare.slice(bare.lastIndexOf('/') + 1) : bare
+  return /^muse-spark/i.test(slug)
 }
 
 export function opencodePrettyName(id) {

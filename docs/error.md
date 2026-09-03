@@ -2,6 +2,17 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-03：OpenCode Muse Spark 500 Internal server error
+
+### 现象
+DSH 选 Muse Spark 1.3 Xhigh 五次重试都是 `500 Internal server error`。同 hop 打 `muse-spark-*-contributor-free` completions 500；直连 Zen `/zen/v1/responses` 200。
+
+### 根因
+`proxy.ts` 把 OpenCode 全家转发到 `/zen/v1/chat/completions`，`/opencode/v1/responses` 还 501。Zen 文档把 Muse Spark 放在 `/zen/v1/responses`。
+
+### 修复
+`isOpencodeResponsesModel` 认 `muse-spark*`。Completions hop 把 chat body 译成 Responses 打 Zen `/v1/responses`，再译回 chat.completion。`POST /opencode/v1/responses` 对 Muse 不再 501。
+
 ## 2026-09-03：额度失败红字撑破账号卡
 
 ### 现象

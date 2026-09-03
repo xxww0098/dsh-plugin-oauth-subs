@@ -4,19 +4,19 @@
 跨家族硬约定在仓库根 [`AGENTS.md`](../../../AGENTS.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)。
 
 **不是** ChatGPT Codex / xAI Grok / OpenCode Zen 付费 / OpenCode Go 订阅。
-上游是 OpenCode Zen 中继上的 **匿名免费档**：`https://opencode.ai/zen/v1`（OpenAI Completions）。
+上游是 OpenCode Zen 中继上的 **匿名免费档**：`https://opencode.ai/zen/v1`（多数模型 Completions；Muse Spark 是 Responses）。
 对齐 Nous Hermes `opencode-free`：无账号、无 API key。任何无法识别的 `Authorization` bearer 都会 401。
 
 ## 文件
 
 | 文件 | 职责 |
 |---|---|
-| [`index.ts`](index.ts) | 中继 URL、匿名 session、**不带** Authorization 的 hop 头 |
+| [`index.ts`](index.ts) | Completions / Responses URL、`isOpencodeResponsesModel`、匿名 session、**不带** Authorization 的 hop 头 |
 | [`catalog.ts`](catalog.ts) | 匿名 `GET /zen/v1/models` 只定 id；`GET https://models.dev/api.json` → `opencode.models` overlay 窗口 / input / effort。静态 `OPENCODE_MODELS` 只做 fallback |
-| [`request.ts`](request.ts) | DSH `reasoning_effort` → 顶层 OpenAI `reasoning_effort`。禁止同时发 `thinking` |
+| [`request.ts`](request.ts) | Completions：`reasoning_effort`。Muse：chat ↔ Zen Responses。禁止同时发 `thinking` |
 | [`cache.ts`](cache.ts) | 剥 Codex / Grok 字段。禁止抄 `session-id` / `x-grok-conv-id`。不发明 `cached_tokens` |
 
-调度：[`../proxy.ts`](../proxy.ts) `family === 'opencode'` → `applyOpencodeCache` + `applyOpencodeThinking`，`forward()` 到 `OPENCODE_CHAT_URL`。
+调度：[`../proxy.ts`](../proxy.ts) `family === 'opencode'` → `applyOpencodeCache` + `applyOpencodeThinking`。`isOpencodeResponsesModel`（`muse-spark*`）走 `OPENCODE_RESPONSES_URL`；其余走 `OPENCODE_CHAT_URL`。
 额度：没有匿名用量 API。卡仍渲染，quota idle / 空条，套餐固定 Free。
 
 ## 协议
@@ -27,13 +27,20 @@ DSH `api: openai-completions`。不要写第四个 api 字符串。
 DSH POST /opencode/v1/chat/completions
   → applyOpencodeCache（剥 prompt_cache_key / session_id / retention）
   → applyOpencodeThinking（目录有 effort 图才写顶层 reasoning_effort；绝不带 thinking）
-  → POST https://opencode.ai/zen/v1/chat/completions
+  → muse-spark*：
+       chatToOpencodeResponses（messages → input，max_tokens → max_output_tokens≥16，
+         reasoning_effort → reasoning.effort，tools / stream）
+       POST https://opencode.ai/zen/v1/responses
+       再译回 chat.completion / chat.completion.chunk
+  → 其余 *-free：
+       POST https://opencode.ai/zen/v1/chat/completions
      无 Authorization
      User-Agent: dsh-plugin-oauth-subs
      HTTP-Referer + X-Title 标明本插件
 ```
 
-`baseURL` 是 `${origin}/opencode`。Completions SDK 打到 `/opencode/v1/chat/completions`。
+`baseURL` 是 `${origin}/opencode`。Completions SDK 打到 `/opencode/v1/chat/completions`。DSH `api` 仍是 `openai-completions`，不要改成 Responses。
+`POST /opencode/v1/responses` 只给 Muse 透传到 Zen Responses；非 Muse 回 400。
 
 ## 登录
 
@@ -91,7 +98,9 @@ DSH picker：
 - 不要把 Zen 没列出的 models.dev slug 加进 picker。
 - 不要把 Zen 付费或 Go 订阅模型塞进匿名 picker（`ox-alpha-free` 后缀像免费，但是 Go 订阅）。
 - 不要假扮 OpenCode CLI UA 去拿 `big-pickle`。
-- 不要把 `api` 写成 Responses / Anthropic / 自定义字符串。
+- 不要把 `api` 写成 Responses / Anthropic / 自定义字符串。DSH 仍是 Completions；Muse 只在 hop 里译成 Zen `/v1/responses`。
+- 不要把 Codex `session-id` / `prompt_cache_key` / `store: false` / `include` 抄到 Zen Responses。
+- 不要把 Laguna / MiMo 藏起来或改打 Responses。
 - 不要 npm `@lobehub/icons`。
 
 ## 追溯
@@ -102,5 +111,6 @@ DSH picker：
 | 硬编码目录 delist 后仍 401 | 同条：live `GET /models` |
 | 空 roster 要先点启用才能聊 | [`docs/error.md`](../../../docs/error.md) 2026-09-03 OpenCode Free 自动启用 |
 | picker 全是 text / 无 effort | [`docs/error.md`](../../../docs/error.md) 2026-09-03 OpenCode Free models.dev |
+| Muse Spark completions 500 | [`docs/error.md`](../../../docs/error.md) 2026-09-03 OpenCode Muse Spark 500 |
 
 测试：`test/opencode.test.ts`、`test/cache-families.test.ts`。

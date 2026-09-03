@@ -15,6 +15,7 @@ import {
   OPENCODE_ACCOUNT,
   OPENCODE_ANON_TOKEN,
   OPENCODE_CHAT_URL,
+  OPENCODE_RESPONSES_URL,
   OPENCODE_DEFAULT_MODEL,
   OPENCODE_MODELS,
   OPENCODE_MODELS_DEV_URL,
@@ -24,6 +25,7 @@ import {
   OPENCODE_REASONING_MUSE,
   OPENCODE_REASONING_TOGGLE,
   isOpencodeFreeSlug,
+  isOpencodeResponsesModel,
   opencodeSession,
   opencodeSourceLabel,
   opencodeUpstreamHeaders,
@@ -43,7 +45,15 @@ import {
   resetOpencodeCatalogCache,
   toOpencodePickerModels,
 } from '../lib/oauth/opencode/catalog.js'
-import { applyOpencodeThinking } from '../lib/oauth/opencode/request.js'
+import {
+  OPENCODE_MIN_OUTPUT_TOKENS,
+  applyOpencodeThinking,
+  chatToOpencodeResponses,
+  createOpencodeResponsesChatStream,
+  foldOpencodeReasoningContent,
+  opencodeResponsesToChat,
+  parseOpencodeSseBlocks,
+} from '../lib/oauth/opencode/request.js'
 import { formatPlanLabel } from '../lib/oauth/plan.js'
 import { QuotaStore, fetchOpencodeQuota } from '../lib/oauth/quota.js'
 import { createProxy } from '../lib/oauth/proxy.js'
@@ -303,6 +313,112 @@ test('hop maps reasoning_effort and never sends thinking with it', () => {
   assert.equal(noMap.thinking, undefined)
 })
 
+test('isOpencodeResponsesModel treats muse-spark* as Responses', () => {
+  assert.equal(isOpencodeResponsesModel('muse-spark-1.3-contributor-free'), true)
+  assert.equal(isOpencodeResponsesModel('muse-spark-1.2-contributor-free'), true)
+  assert.equal(isOpencodeResponsesModel('opencode/muse-spark-1.4-contributor-free'), true)
+  assert.equal(isOpencodeResponsesModel('laguna-s-2.1-free'), false)
+  assert.equal(isOpencodeResponsesModel('mimo-v2.5-free'), false)
+  assert.equal(isOpencodeResponsesModel(''), false)
+})
+
+const MUSE_RESPONSES_FIXTURE = {
+  id: 'resp_muse_spark',
+  object: 'response',
+  model: 'muse-spark-1.3-contributor-free',
+  status: 'completed',
+  output: [
+    { type: 'reasoning', summary: [{ type: 'summary_text', text: 'think' }] },
+    { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'pong' }] },
+  ],
+  usage: { input_tokens: 12, output_tokens: 4, total_tokens: 16 },
+}
+
+test('chatToOpencodeResponses builds Zen Responses from a Completions body', () => {
+  const thought = applyOpencodeThinking({
+    model: 'muse-spark-1.3-contributor-free',
+    messages: [
+      { role: 'system', content: 'be brief' },
+      { role: 'user', content: 'ping' },
+    ],
+    max_tokens: 1,
+    reasoning_effort: 'xhigh',
+    thinking: { type: 'enabled' },
+    tools: [{
+      type: 'function',
+      function: { name: 'echo', description: 'say', parameters: { type: 'object' } },
+    }],
+    stream: true,
+    prompt_cache_key: 'codex-style',
+  })
+  const { payload: cached } = applyOpencodeCache(thought)
+  const sent = chatToOpencodeResponses(cached)
+  assert.equal(sent.model, 'muse-spark-1.3-contributor-free')
+  assert.deepEqual(sent.input, [
+    { role: 'system', content: 'be brief' },
+    { role: 'user', content: 'ping' },
+  ])
+  assert.equal(sent.max_output_tokens, OPENCODE_MIN_OUTPUT_TOKENS)
+  assert.deepEqual(sent.reasoning, { effort: 'xhigh' })
+  assert.equal(sent.reasoning_effort, undefined)
+  assert.equal(sent.max_tokens, undefined)
+  assert.equal(sent.messages, undefined)
+  assert.equal(sent.thinking, undefined)
+  assert.equal(sent.prompt_cache_key, undefined)
+  assert.equal(sent.stream, true)
+  assert.deepEqual(sent.tools, [{
+    type: 'function',
+    name: 'echo',
+    description: 'say',
+    parameters: { type: 'object' },
+  }])
+})
+
+test('opencodeResponsesToChat turns a Zen Responses fixture into a chat completion', () => {
+  const chat = opencodeResponsesToChat(MUSE_RESPONSES_FIXTURE)
+  assert.equal(chat.object, 'chat.completion')
+  assert.equal(chat.id, 'resp_muse_spark')
+  assert.equal(chat.model, 'muse-spark-1.3-contributor-free')
+  assert.equal(chat.choices[0].message.role, 'assistant')
+  assert.equal(chat.choices[0].message.content, 'pong')
+  assert.equal(chat.choices[0].message.reasoning_content, 'think')
+  assert.equal(chat.choices[0].finish_reason, 'stop')
+  assert.deepEqual(chat.usage, { prompt_tokens: 12, completion_tokens: 4, total_tokens: 16 })
+})
+
+test('Responses SSE maps to chat.completion.chunk', () => {
+  const mapper = createOpencodeResponsesChatStream({
+    model: 'muse-spark-1.3-contributor-free',
+    id: 'chatcmpl-opencode',
+  })
+  const sse = [
+    'event: response.created',
+    'data: {"type":"response.created","response":{"id":"resp_stream"}}',
+    '',
+    'event: response.output_text.delta',
+    'data: {"type":"response.output_text.delta","delta":"pong"}',
+    '',
+    'event: response.completed',
+    'data: {"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}',
+    '',
+  ].join('\n')
+  const { events } = parseOpencodeSseBlocks(`${sse}\n`)
+  const chunks = events.map((event) => mapper.push(event)).filter(Boolean)
+  assert.equal(chunks[0].id, 'resp_stream')
+  assert.equal(chunks[0].object, 'chat.completion.chunk')
+  assert.equal(chunks[0].choices[0].delta.content, 'pong')
+  assert.equal(chunks[1].choices[0].finish_reason, 'stop')
+  assert.deepEqual(chunks[1].usage, { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 })
+})
+
+test('foldOpencodeReasoningContent fills empty MiMo content from reasoning', () => {
+  const folded = foldOpencodeReasoningContent({
+    object: 'chat.completion',
+    choices: [{ message: { role: 'assistant', content: null, reasoning_content: 'only think' } }],
+  })
+  assert.equal(folded.choices[0].message.content, 'only think')
+})
+
 test('cache strips Codex/Grok fields and does not invent a sticky wire id', () => {
   const { payload, cacheSessionId } = applyOpencodeCache({
     session_id: 'sess-opencode',
@@ -387,7 +503,8 @@ test('controller snapshot shows quota on the anonymous account; hop omits Author
       headers: { authorization: 'Bearer proxy-key-opencode-test-xx', 'content-type': 'application/json' },
       body: JSON.stringify({ model: OPENCODE_DEFAULT_MODEL }),
     })
-    assert.equal(responses.status, 501)
+    assert.equal(responses.status, 400)
+    assert.match((await responses.text()), /Muse Spark/)
 
     const chat = await fetch(`http://127.0.0.1:${port}/opencode/v1/chat/completions`, {
       method: 'POST',
@@ -415,6 +532,149 @@ test('controller snapshot shows quota on the anonymous account; hop omits Author
     assert.equal(Object.hasOwn(hops[0].headers, 'x-grok-conv-id'), false)
     const hopHeaders = opencodeUpstreamHeaders()
     assert.equal(Object.hasOwn(hopHeaders, 'authorization'), false)
+  } finally {
+    await proxy.close()
+  }
+})
+
+test('Muse chat hop targets Zen Responses and other free models stay on Completions', async () => {
+  resetOpencodeCatalogCache()
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-opencode-muse-'))
+  const authPath = join(dir, 'auth.json')
+  const controller = new AuthController({
+    authPath,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    opencodeDiscover: async () => OPENCODE_MODELS,
+  })
+  await controller.login('opencode')
+
+  const hops = []
+  const proxyFetch = async (url, init) => {
+    hops.push({ url: String(url), body: init.body, headers: init.headers })
+    assert.equal(Object.hasOwn(init.headers ?? {}, 'authorization'), false)
+    const target = String(url)
+    if (target === OPENCODE_RESPONSES_URL) {
+      const sent = JSON.parse(init.body)
+      if (sent.stream === true) {
+        const sse = [
+          'event: response.output_text.delta',
+          'data: {"type":"response.output_text.delta","delta":"pong"}',
+          '',
+          'event: response.completed',
+          'data: {"type":"response.completed","response":{"status":"completed"}}',
+          '',
+        ].join('\n')
+        return new Response(sse, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+      }
+      return json(MUSE_RESPONSES_FIXTURE)
+    }
+    if (target === OPENCODE_CHAT_URL) {
+      const sent = JSON.parse(init.body)
+      if (sent.model === 'mimo-v2.5-free') {
+        return json({
+          id: 'chat-mimo',
+          object: 'chat.completion',
+          choices: [{ message: { role: 'assistant', content: null, reasoning_content: 'mimo think' } }],
+        })
+      }
+      return json({ id: 'chat', choices: [{ message: { role: 'assistant', content: 'pong' } }] })
+    }
+    throw new Error(`unexpected url ${url}`)
+  }
+  const proxy = createProxy({
+    port: 0,
+    apiKey: 'proxy-key-opencode-muse-xx',
+    tokens: controller.tokens,
+    fetchFn: proxyFetch,
+  })
+  const server = await proxy.listen()
+  const { port } = server.address()
+  const auth = { authorization: 'Bearer proxy-key-opencode-muse-xx', 'content-type': 'application/json' }
+  try {
+    const muse = await fetch(`http://127.0.0.1:${port}/opencode/v1/chat/completions`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({
+        model: 'muse-spark-1.3-contributor-free',
+        messages: [{ role: 'user', content: 'ping' }],
+        reasoning_effort: 'xhigh',
+        max_tokens: 8,
+        prompt_cache_key: 'codex-style',
+      }),
+    })
+    assert.equal(muse.status, 200)
+    assert.equal(hops[0].url, OPENCODE_RESPONSES_URL)
+    const museSent = JSON.parse(hops[0].body)
+    assert.deepEqual(museSent.input, [{ role: 'user', content: 'ping' }])
+    assert.deepEqual(museSent.reasoning, { effort: 'xhigh' })
+    assert.equal(museSent.max_output_tokens, OPENCODE_MIN_OUTPUT_TOKENS)
+    assert.equal(museSent.messages, undefined)
+    assert.equal(museSent.reasoning_effort, undefined)
+    assert.equal(museSent.prompt_cache_key, undefined)
+    assert.equal(Object.hasOwn(hops[0].headers, 'authorization'), false)
+    assert.equal(Object.hasOwn(hops[0].headers, 'session-id'), false)
+    assert.equal(Object.hasOwn(hops[0].headers, 'x-grok-conv-id'), false)
+    const museBody = await muse.json()
+    assert.equal(museBody.object, 'chat.completion')
+    assert.equal(museBody.choices[0].message.content, 'pong')
+    assert.equal(museBody.choices[0].message.reasoning_content, 'think')
+
+    const streamed = await fetch(`http://127.0.0.1:${port}/opencode/v1/chat/completions`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({
+        model: 'muse-spark-1.2-contributor-free',
+        messages: [{ role: 'user', content: 'ping' }],
+        stream: true,
+      }),
+    })
+    assert.equal(streamed.status, 200)
+    assert.equal(hops[1].url, OPENCODE_RESPONSES_URL)
+    assert.equal(JSON.parse(hops[1].body).stream, true)
+    const sseText = await streamed.text()
+    assert.match(sseText, /chat\.completion\.chunk/)
+    assert.match(sseText, /"content":"pong"/)
+    assert.match(sseText, /data: \[DONE\]/)
+
+    const native = await fetch(`http://127.0.0.1:${port}/opencode/v1/responses`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({
+        model: 'muse-spark-1.3-contributor-free',
+        input: 'ping',
+      }),
+    })
+    assert.equal(native.status, 200)
+    assert.equal(hops[2].url, OPENCODE_RESPONSES_URL)
+    const nativeBody = await native.json()
+    assert.equal(nativeBody.object, 'response')
+    assert.equal(nativeBody.output[1].content[0].text, 'pong')
+
+    const laguna = await fetch(`http://127.0.0.1:${port}/opencode/v1/chat/completions`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({
+        model: OPENCODE_DEFAULT_MODEL,
+        messages: [{ role: 'user', content: 'hi' }],
+        reasoning_effort: 'low',
+      }),
+    })
+    assert.equal(laguna.status, 200)
+    assert.equal(hops[3].url, OPENCODE_CHAT_URL)
+    assert.equal((await laguna.json()).choices[0].message.content, 'pong')
+
+    const mimo = await fetch(`http://127.0.0.1:${port}/opencode/v1/chat/completions`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({
+        model: 'mimo-v2.5-free',
+        messages: [{ role: 'user', content: 'hi' }],
+      }),
+    })
+    assert.equal(mimo.status, 200)
+    assert.equal(hops[4].url, OPENCODE_CHAT_URL)
+    assert.equal((await mimo.json()).choices[0].message.content, 'mimo think')
   } finally {
     await proxy.close()
   }
