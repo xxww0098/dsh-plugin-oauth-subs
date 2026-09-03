@@ -19,6 +19,7 @@ export const CURSOR_USAGE_PATH = '/aiserver.v1.DashboardService/GetCurrentPeriod
 export const CURSOR_USAGE_URL = `${CURSOR_API2_URL}${CURSOR_USAGE_PATH}`
 export const CURSOR_RUN_PATH = '/agent.v1.AgentService/Run'
 export const CURSOR_MODELS_PATH = '/agent.v1.AgentService/GetUsableModels'
+export const CURSOR_AVAILABLE_MODELS_PATH = '/aiserver.v1.AiService/AvailableModels'
 export const CURSOR_CLIENT_VERSION = 'cli-2026.05.01-eea359f'
 export const CURSOR_CLIENT_TYPE = 'cli'
 export const CURSOR_PREEMPT_MS = 5 * 60_000

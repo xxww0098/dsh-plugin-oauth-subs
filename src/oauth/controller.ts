@@ -59,6 +59,7 @@ import { importAntigravityAuth, importCodexAuth, importGrokAuth, importGlmAuth, 
 import { CursorPollFlowManager } from './cursor/pkce-flow.js'
 import { refreshCursor, isCursorPermanentRefreshError } from './cursor/index.js'
 import { CURSOR_IMPORT_EMPTY, importCursorAuth } from './cursor/import.js'
+import { cursorCatalogModels, refreshCursorCatalog } from './cursor/catalog.js'
 import {
   buildProviders,
   catalogProviders,
@@ -73,7 +74,7 @@ import { QuotaStore } from './quota.js'
 import { fetchLatest, localUpdateInfo, runPluginUpdate, DEFAULT_PROFILE } from '../utils/update.js'
 
 export class AuthController {
-  constructor({ authPath, prefix, origin, settings, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, spawnFn, profile, cursorAutoImport, cursorImport }) {
+  constructor({ authPath, prefix, origin, settings, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, spawnFn, profile, cursorAutoImport, cursorImport, cursorDiscover }) {
     this.authPath = authPath
     this.prefix = prefix
     this.origin = origin
@@ -92,6 +93,9 @@ export class AuthController {
     this.cursorAutoImport = cursorAutoImport ?? !process.env.NODE_TEST_CONTEXT
     this.cursorImport = cursorImport && typeof cursorImport === 'object' ? cursorImport : {}
     this.cursorAutoImportTried = false
+    this.cursorDiscover = typeof cursorDiscover === 'function'
+      ? cursorDiscover
+      : (process.env.NODE_TEST_CONTEXT ? undefined : refreshCursorCatalog)
     this.lastError = new Map()
     this.finalizing = new Set()
     this.claims = new Map()
@@ -193,7 +197,20 @@ export class AuthController {
   }
 
   catalog() {
-    return catalogProviders({ prefix: this.prefix, origin: this.origin() })
+    return catalogProviders({
+      prefix: this.prefix,
+      origin: this.origin(),
+      cursorModels: cursorCatalogModels(),
+    })
+  }
+
+  async #discoverCursor(session) {
+    if (!session || typeof this.cursorDiscover !== 'function') return cursorCatalogModels()
+    try {
+      return await this.cursorDiscover(session)
+    } catch {
+      return cursorCatalogModels()
+    }
   }
 
   async snapshot() {
@@ -202,12 +219,13 @@ export class AuthController {
     await this.#maybeAutoImportCursor()
     const loggedIn = await this.loggedIn()
     const origin = this.origin()
-    const catalog = catalogProviders({ prefix: this.prefix, origin })
+    const catalog = catalogProviders({ prefix: this.prefix, origin, cursorModels: cursorCatalogModels() })
     const selected = this.models.selectedForSync(catalog)
     const providers = filterProviders(buildProviders({
       prefix: this.prefix,
       origin,
       loggedIn,
+      cursorModels: cursorCatalogModels(),
     }), selected)
     if (loggedIn.codex) await this.#ensureAccountQuota('codex')
     else this.quota.clear('codex')
@@ -259,6 +277,13 @@ export class AuthController {
       await Promise.all(targets.map((row) => this.quota.refresh(provider, row.id, row.session)))
       if (provider === 'antigravity') {
         await Promise.all(targets.map((row) => this.#probeAntigravity(row.session, row.id)))
+      }
+      if (provider === 'cursor') {
+        const before = cursorCatalogModels().map((model) => model.id).join('\0')
+        await Promise.all(targets.map((row) => this.#discoverCursor(row.session)))
+        if (this.settings && cursorCatalogModels().map((model) => model.id).join('\0') !== before) {
+          await this.sync().catch(() => undefined)
+        }
       }
       if (accountId) return this.quota.peek(provider, accountId)
       const active = rows.find((row) => row.active)
@@ -400,6 +425,7 @@ export class AuthController {
       const result = await importCursorAuth({ fetchFn: this.fetchFn, ...this.cursorImport })
       if (result?.session) {
         await saveSession('cursor', result.session, this.authPath)
+        await this.#discoverCursor(result.session)
         this.onAuthChanged?.('cursor')
         void this.quota.refresh('cursor')
       }
@@ -615,6 +641,7 @@ export class AuthController {
       const session = await attempt.waitToken()
       await saveSession('cursor', session, this.authPath)
       this.lastError.delete('cursor')
+      await this.#discoverCursor(session)
       this.onAuthChanged?.('cursor')
       void this.quota.refresh('cursor')
     } catch (error) {
@@ -804,6 +831,7 @@ export class AuthController {
       await saveSession(provider, sessions[i], this.authPath, { activate: i === 0 })
     }
     this.lastError.delete(provider)
+    if (provider === 'cursor') await this.#discoverCursor(sessions[0])
     this.onAuthChanged?.(provider)
     void this.quota.refresh(provider)
     return {
@@ -854,6 +882,7 @@ export class AuthController {
       origin: this.origin(),
       loggedIn,
       selected: this.models.selectedForSync(catalog),
+      cursorModels: cursorCatalogModels(),
     })
   }
 }

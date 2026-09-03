@@ -12,12 +12,13 @@ Cursor 订阅（Composer / Claude / GPT / Grok via Cursor infra）。原生 wire
 | 文件 | 职责 |
 |---|---|
 | [`index.ts`](index.ts) | 目录、身份、PKCE 参数、poll / refresh、CLI 指纹、session |
+| [`catalog.ts`](catalog.ts) | 登录后 GetUsableModels + AvailableModels 活目录；静态 `CURSOR_MODELS` 只做离线 fallback |
 | [`pkce-flow.ts`](pkce-flow.ts) | 打开 `loginDeepControl` + poll 直到 tokens |
 | [`import.ts`](import.ts) | 本机 CLI Keychain / IDE `state.vscdb` / `CURSOR_ACCESS_TOKEN` |
 | [`refresh-guard.ts`](refresh-guard.ts) | 已知坏 refresh 短退避，避免 stale CLI 卡住 snapshot |
 | [`request.ts`](request.ts) | OpenAI Completions ↔ `AgentClientMessage` / `AgentServerMessage` |
 | [`cache.ts`](cache.ts) | `AgentRunRequest.conversation_id`。禁止 `Date.now()` |
-| [`proto.ts`](proto.ts) | 最小 protobuf + Connect framing |
+| [`proto.ts`](proto.ts) | 最小 protobuf + Connect framing（Run / GetUsableModels / AvailableModels） |
 | [`h2-session.ts`](h2-session.ts) | Node `http2` 进程内会话（unary + streaming） |
 
 调度：[`../proxy.ts`](../proxy.ts) `family === 'cursor'` 剥 Codex retention，取出 `cursorConversationId`；真正组 Run 在 `openaiToCursor`。
@@ -100,13 +101,34 @@ AgentService/Run 与 unary 只发 Cursor **CLI** 头（pi-cursor `h2-session.ts`
 
 ## 模型
 
-静态 fallback（pi-cursor README 公开表）：`composer-2`、`composer-1.5`、`claude-sonnet-5`、`gpt-5.5`、`grok-4.5`。登录后可 unary `GetUsableModels`（`agentn` HTTP/2），picker / yaml 仍以静态目录为准，避免离线空选择器。
+静态 fallback（离线 / RPC 空）：`composer-2`、`composer-1.5`、`claude-sonnet-5`、`gpt-5.5`、`grok-4.5`。登录、本机导入、额度刷新之后走活发现：
 
-`reasoningEfforts` 键只有 DSH 闭集 `off|low|medium|high|xhigh`。vendor 拼写在 **值**（`off: "none"`，`xhigh: "extra-high"`）。不发明 `requestType` / boost。
+```text
+unary GetUsableModels  agentn  /agent.v1.AgentService/GetUsableModels
+unary AvailableModels  api2    /aiserver.v1.AiService/AvailableModels
+  → 按 access-token sha256 前 16 位缓存 5 分钟
+  → toCursorPickerModels 收成一行 / 家族
+  → buildProviders / catalog / llm-pi-ai yaml
+```
+
+`AvailableModels` 用现有 proto 编解码，不加 Bun。任一 RPC 失败或空列表 **不挡对话**，回落静态 5。
+
+不要把 pi-cursor `catalog.json` 的 ~100 个 effort/fast/thinking/max-mode id 铺进 Settings 勾选格。`cursorPickerFamilyId` 剥那些后缀，DSH `reasoningEfforts` 键只有 `off|low|medium|high|xhigh`（值 `off: "none"`，`xhigh: "extra-high"`）。Tab / chat 内部变体隐藏（Pi `/cursor.models all` 才是 opt-in）。账号有 `default` / Auto 就留一行 `default` / Auto。窗口优先活 metadata，否则 `inferCursorContextWindow` / `inferCursorMaxOutputTokens`。
+
+Settings 勾选仍须登录后才能改。新发现的行默认开，`setModels` / `sync()` 写入 `settings.yaml` `oauth-cursor.models`。
 
 ## 额度
 
-`POST https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage`，JSON `{}` + Bearer。host 是 **api2**，不是 agentn，也不要猜第三个 host。`planUsage.totalPercentUsed` → 周期剩余条。
+`POST https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage`，JSON `{}` + Bearer。host 是 **api2**，不是 agentn，也不要猜第三个 host。
+
+两条 `kind: 'product'`，对齐 Cursor 仪表盘的 **已用** 百分比（不是本周期剩余、也不是 `includedSpend/limit` 美分封顶）：
+
+| `product` | 字段 | zh | en |
+|---|---|---|---|
+| `auto` | `planUsage.autoPercentUsed` | 补全 & Composer | Tab completion & Composer |
+| `api` | `planUsage.apiPercentUsed` | API 调用 | API |
+
+缺字段当 0%（刚重置不是缺条）。`resetAt` 两边都取 `billingCycleEnd`。卡片 caption 和条填充对 Cursor product 行用 **已用**；别的家族仍是剩余。`formatPlanLabel(..., 'cursor')` 的 `pro` 是 Pro，不是 Codex Pro 20x。
 
 ## 缓存
 
@@ -127,6 +149,8 @@ AgentService/Run 与 unary 只发 Cursor **CLI** 头（pi-cursor `h2-session.ts`
 - 打印或提交 token
 - 加 Bun
 - 发明 `requestType` / boost 字段
+- 把 pi-cursor `catalog.json` 的 effort/fast/thinking/max-mode 变体铺进勾选格
+- 用 `includedSpend` / `limit` 当额度条 used/total
 - 恢复 `src/utils/cache-session.ts`
 - 扫 WSL / Windows 上别人的 Users 目录
 
