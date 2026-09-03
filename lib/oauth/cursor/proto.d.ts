@@ -78,7 +78,14 @@ export declare function encodeExecThrow({ id, error }: {
 }): Buffer<ArrayBuffer>;
 export declare function encodeCancelAction(): Buffer<ArrayBuffer>;
 export declare function encodeGetUsableModelsRequest(customIds?: any[]): Buffer<ArrayBuffer>;
+/** Connect unary envelope, or the raw proto if the peer skipped framing. */
+export declare function unwrapConnectUnary(buf: any): any;
+export declare function encodeGetUsableModelsResponse(models?: any[]): Buffer<ArrayBuffer>;
 export declare function decodeGetUsableModelsResponse(buf: any): any[];
+/** aiserver.v1.AvailableModelsRequest { use_model_parameters = 5; do_not_use_markdown = 7 } */
+export declare function encodeAvailableModelsRequest(): Buffer<ArrayBuffer>;
+export declare function encodeAvailableModelsResponse(models?: any[]): Buffer<ArrayBuffer>;
+export declare function decodeAvailableModelsResponse(buf: any): any;
 export declare function decodeAgentClientMessage(buf: any): {
     conversationId: any;
     modelId: any;

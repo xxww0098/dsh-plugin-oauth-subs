@@ -14,6 +14,7 @@ export declare const CURSOR_USAGE_PATH = "/aiserver.v1.DashboardService/GetCurre
 export declare const CURSOR_USAGE_URL = "https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage";
 export declare const CURSOR_RUN_PATH = "/agent.v1.AgentService/Run";
 export declare const CURSOR_MODELS_PATH = "/agent.v1.AgentService/GetUsableModels";
+export declare const CURSOR_AVAILABLE_MODELS_PATH = "/aiserver.v1.AiService/AvailableModels";
 export declare const CURSOR_CLIENT_VERSION = "cli-2026.05.01-eea359f";
 export declare const CURSOR_CLIENT_TYPE = "cli";
 export declare const CURSOR_PREEMPT_MS: number;

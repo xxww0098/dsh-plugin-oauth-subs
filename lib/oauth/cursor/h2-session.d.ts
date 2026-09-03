@@ -7,15 +7,17 @@ import http2 from 'node:http2';
 import { CURSOR_AGENT_URL, CURSOR_RUN_PATH } from './index.js';
 import { splitConnectFrames } from './proto.js';
 export declare function describeH2TransportError(error: any, baseUrl: any): string;
-export declare function cursorUnaryRpc({ session, url, path, body, connectFn, signal, }: {
+export declare function cursorUnaryRpc({ session, url, path, body, connectFn, signal, timeoutMs, }: {
     session: any;
     url?: string;
     path: any;
     body?: Buffer<ArrayBuffer>;
     connectFn?: typeof http2.connect;
     signal: any;
+    timeoutMs?: number;
 }): Promise<unknown>;
-export declare function fetchCursorUsableModels(session: any, { connectFn, signal }?: {}): Promise<any[]>;
+export declare function fetchCursorUsableModels(session: any, { connectFn, signal, timeoutMs }?: {}): Promise<any[]>;
+export declare function fetchCursorAvailableModels(session: any, { connectFn, signal, timeoutMs }?: {}): Promise<any>;
 /**
  * Drive AgentService/Run. Answers KV get/set from the local blob store.
  * Native Cursor tools are thrown so DSH Completions can own MCP tools.
