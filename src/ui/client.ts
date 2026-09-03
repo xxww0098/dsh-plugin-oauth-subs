@@ -508,10 +508,20 @@ window.__ModuleLoader__.load({
       return /^(zcode|zai|bigmodel|glm)(@|$)/i.test(value.trim())
     }
 
+    function isGlmOpaqueIdentity(value) {
+      if (typeof value !== 'string' || !value.trim()) return false
+      const raw = value.trim()
+      if (isGlmAppIdentity(raw)) return true
+      if (raw.includes('@')) return false
+      if (/^[+]?[\d\s().-]+$/.test(raw) && /[+\s().-]/.test(raw)) return false
+      if (/^\d+$/.test(raw)) return true
+      return /^[A-Za-z0-9]{2,24}$/.test(raw) && /[A-Za-z]/.test(raw) && /\d/.test(raw)
+    }
+
     function identityOf(row, family) {
       const account = typeof row?.account === 'string' ? row.account.trim() : ''
+      if (family === 'glm') return account && !isGlmOpaqueIdentity(account) ? account : ''
       if (account && !isGlmAppIdentity(account)) return account
-      if (family === 'glm') return ''
       return account || row?.id || ''
     }
 

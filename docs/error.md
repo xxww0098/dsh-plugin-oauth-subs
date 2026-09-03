@@ -1,5 +1,38 @@
 # 错误记录
 
+## 2026-09-03：GLM 账号卡身份显示 poll user.id，不是邮箱
+
+### 现象
+
+设置 → 智谱 GLM。已登录卡抬头是 **opaque ZCode `user.id`**（现场是短字母数字 handle），后面 使用中 / 中国 / 150% 配额。登录本身成功。用户问 ZCode 拿不到正确用户名。
+
+### 证据
+
+用户现场截图。BigModel CLI poll 经常没有 `user.email`，现在会带回看起来像真名的 `user.id`。`pickGlmHumanAccount` 只黑名单 `zcode` / `zai` / `bigmodel` / `glm`，于是收下这个 id。`glmSession` / `resolveGlmIdentity` 把 `accountId` 当展示候选。`AuthController.#resolveGlmIdentities` 见 `pickGlmHumanAccount(session.account)` 为真就提前返回，已存 vault 行不再打 userinfo。
+
+同家族旧条目：2026-08-30「GLM 账号卡身份显示 zcode」（0.0.38）。那次只挡住了站点/客户端 id。
+
+### 根因
+
+身份层。poll `user.id` / 数字 uid / 短字母数字 handle 是智谱内部 id，不是卡抬头。官方展示来自 JWT `email` / `preferred_username`，或 BigModel `getCustomerInfo`（`email`、`customerName`、电话）/ 全球 `chat.z.ai/api/oauth/userinfo`。`accountFromJwt` 本来就不取 `sub` / `id`。
+
+周额度「周额度未返回」是另一条额度解析问题，不是这次身份 bug。
+
+### 修复
+
+- `isGlmOpaqueAccount`：站点 id、纯数字 uid、UUID / 长 hex、`user.id` 形短 handle（字母+数字、无 `@`）一律不是人类名。
+- `pickGlmHumanAccount` / `displayGlmAccount` / `publicSession('glm')` 拒绝上述值。优先邮箱，其次电话，再次 `customerName` / nickname（且不能是那个 opaque id）。
+- `resolveGlmIdentity` / `glmSession` / `completeGlmCli` 不再把 poll `user.id` 当展示候选；没有邮箱就打已有 userinfo URL。失败则省略抬头（`undefined`），不回落 uid。
+- snapshot 对已存 `account: '<opaque id>'` 回填，和 `zcode@bigmodel` 一样：userinfo 成功则改 `session.account`，vault key 变了就 `replaceAccountId`。
+- Settings `identityOf` 对 GLM 同样藏 opaque id，避免 host 漏过时卡上再画出 uid。
+- 内部 `accountIdOf` 仍可用稳定 id 做 vault key；卡抬头不走那条。
+
+不改 hop、额度数学、150% pill、区域标签。不发明新的 ZCode API。
+
+### 验证
+
+- `npm test`：poll `user.id` 无邮箱 → `completeGlmCli` 打 userinfo，存人类名（userinfo 空则省略）；`pickGlmHumanAccount` / `displayGlmAccount` / `publicSession` 拒绝 opaque id；snapshot 回填 vault `account` 为 opaque id 且 JWT/userinfo 有邮箱。旧 zcode 用例仍过。
+
 ## 2026-09-03：Cursor 选择器仍是静态 5 行 — 活目录没接到 picker / yaml
 
 ### 现象

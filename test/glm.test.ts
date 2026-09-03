@@ -14,6 +14,8 @@ import {
   accountFromJwt,
   completeGlmCli,
   displayGlmAccount,
+  isGlmOpaqueAccount,
+  pickGlmHumanAccount,
   glmCliInit,
   glmCliProvider,
   glmAnthropicUrl,
@@ -553,6 +555,70 @@ test('completeGlmCli for BigModel without poll email reads JWT email', async () 
   assert.equal(isGlmAppAccount(session.account), false)
 })
 
+test('pickGlmHumanAccount and displayGlmAccount reject opaque ZCode ids', () => {
+  assert.equal(pickGlmHumanAccount('dnarplz6'), undefined)
+  assert.equal(pickGlmHumanAccount('zcode', 'dnarplz6', '12345'), undefined)
+  assert.equal(isGlmOpaqueAccount('dnarplz6'), true)
+  assert.equal(isGlmOpaqueAccount('zcode'), true)
+  assert.equal(isGlmOpaqueAccount('12345'), true)
+  assert.equal(isGlmAppAccount('dnarplz6'), false)
+  assert.equal(pickGlmHumanAccount('dnarplz6', 'zcode', 'live@bigmodel.cn'), 'live@bigmodel.cn')
+  assert.equal(pickGlmHumanAccount('张三'), '张三')
+  assert.equal(displayGlmAccount({ account: 'dnarplz6', accessToken: 'plain-key' }), undefined)
+  assert.equal(displayGlmAccount({ account: 'zcode', accessToken: 'plain-key' }), undefined)
+  assert.equal(publicSession('glm', {
+    accessToken: 'plain-key',
+    refreshToken: 'plain-key',
+    expiresAt: 1,
+    account: 'dnarplz6',
+    region: 'bigmodel',
+  }).account, undefined)
+  const token = jwt({ sub: 'dnarplz6', user_id: 'dnarplz6', id: 'dnarplz6' })
+  assert.equal(accountFromJwt(token), undefined)
+  assert.equal(glmSession({ accessToken: 'a.b', account: 'dnarplz6', accountId: 'dnarplz6', region: 'bigmodel' }).account, undefined)
+})
+
+test('completeGlmCli for BigModel poll user.id fetches userinfo', async () => {
+  const token = jwt({ sub: 'dnarplz6', user_id: 'dnarplz6' })
+  const calls = []
+  const session = await completeGlmCli(
+    { ready: true, oauthAccess: 'oauth', zcodeJwt: token, accountId: 'dnarplz6' },
+    {
+      fetchFn: async (url) => {
+        calls.push(String(url))
+        if (String(url).includes('getCustomerInfo')) {
+          return json({
+            code: 200,
+            data: { email: 'from-userinfo@bigmodel.cn', customerName: 'dnarplz6', id: 'dnarplz6' },
+          })
+        }
+        throw new Error(`unexpected ${url}`)
+      },
+      region: 'bigmodel',
+    },
+  )
+  assert.equal(session.account, 'from-userinfo@bigmodel.cn')
+  assert.equal(isGlmOpaqueAccount(session.account), false)
+  assert.ok(calls.some((href) => href.includes('open.bigmodel.cn')))
+})
+
+test('completeGlmCli omits account when poll user.id has empty userinfo', async () => {
+  const token = jwt({ sub: 'dnarplz6' })
+  const session = await completeGlmCli(
+    { ready: true, oauthAccess: 'oauth', zcodeJwt: token, accountId: 'dnarplz6' },
+    {
+      fetchFn: async (url) => {
+        if (String(url).includes('getCustomerInfo')) {
+          return json({ code: 200, data: { id: 'dnarplz6', customerName: 'dnarplz6' } })
+        }
+        throw new Error(`unexpected ${url}`)
+      },
+      region: 'bigmodel',
+    },
+  )
+  assert.equal(session.account, undefined)
+})
+
 test('completeGlmCli for BigModel without poll email reads userinfo', async () => {
   const token = jwt({ sub: 'zcode', user_id: 'zcode' })
   const calls = []
@@ -629,6 +695,44 @@ test('snapshot rewrites a zcode@bigmodel vault to the JWT email', async () => {
   const roster = await listAccounts('glm', path)
   assert.equal(roster[0].id, 'rewrite@bigmodel.cn@bigmodel')
   assert.equal(roster.some((row) => row.id === 'zcode@bigmodel' || row.account === 'zcode'), false)
+})
+
+test('snapshot rewrites a vault account opaque user.id to the userinfo email', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const path = join(dir, 'auth.json')
+  const token = jwt({ sub: 'dnarplz6', user_id: 'dnarplz6' })
+  await saveSession('glm', {
+    accessToken: token,
+    refreshToken: token,
+    expiresAt: Date.now() + 1e15,
+    account: 'dnarplz6',
+    region: 'bigmodel',
+    zcodeJwt: token,
+  }, path)
+  assert.equal(accountIdOf('glm', { account: 'dnarplz6', region: 'bigmodel' }), 'dnarplz6@bigmodel')
+  assert.equal(pickGlmHumanAccount('dnarplz6'), undefined)
+  const controller = new AuthController({
+    authPath: path,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+    fetchFn: async (url) => {
+      if (String(url).includes('getCustomerInfo')) {
+        return json({ code: 200, data: { email: 'rewrite@bigmodel.cn', customerName: 'dnarplz6' } })
+      }
+      if (String(url).includes('/quota/limit') || String(url).includes('/tool-usage')) {
+        return json({ code: 200, data: { level: 'lite', limits: [] } })
+      }
+      throw new Error(`unexpected ${url}`)
+    },
+  })
+  const snap = await controller.snapshot()
+  assert.equal(snap.accounts.glm.account, 'rewrite@bigmodel.cn')
+  assert.equal(snap.accounts.glm.accounts[0].account, 'rewrite@bigmodel.cn')
+  assert.equal(snap.accounts.glm.accounts[0].id, 'rewrite@bigmodel.cn@bigmodel')
+  const roster = await listAccounts('glm', path)
+  assert.equal(roster[0].id, 'rewrite@bigmodel.cn@bigmodel')
+  assert.equal(roster.some((row) => row.id === 'dnarplz6@bigmodel' || row.account === 'dnarplz6'), false)
 })
 
 test('replaceAccountId moves the vault key without dropping the session', async () => {

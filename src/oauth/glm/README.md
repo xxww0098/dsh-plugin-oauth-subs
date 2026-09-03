@@ -39,7 +39,7 @@ BigModel： poll JWT 本身就是 Coding Plan bearer，不再铸 biz key
 
 入口：`GlmCliFlowManager.start` → `glmCliInit` / `glmCliPoll` → `completeGlmCli` → `glmSession`。
 刷新：Coding Plan key 不过期（`GLM_NEVER_EXPIRES`），`refreshGlm` 是空操作。
-导入：`importGlmAuth` 读本机 ZCode 配置。卡片身份必须是邮箱（`pickGlmHumanAccount`），**禁止**显示 `zcode` / `zai` / `bigmodel`。
+导入：`importGlmAuth` 读本机 ZCode 配置。卡片身份只走 `pickGlmHumanAccount`：邮箱，其次电话，再次 `customerName` / nickname。**禁止**显示 `zcode` / `zai` / `bigmodel` / `glm`、poll `user.id`、JWT `sub` / `user_id`、数字 uid。userinfo 失败就空着抬头，不要回落到 uid。已存的 opaque `account` 在 snapshot 时打 userinfo 回填（`#resolveGlmIdentities`）。
 
 Settings：两颗堆叠登录按钮（只这一家）。Tab 图标用 **Z.ai**（`zai`），不是智谱字母。
 
@@ -144,7 +144,7 @@ Pin map 的 Anthropic 键是 `${sessionId}\0anthropic`，和 Completions 的 `se
 - 不要给 GLM 写 Codex `prompt_cache_key` 或 Grok `x-grok-conv-id`。
 - 不要把 GLM extras 停成 Gemini trailing user（「停车是同一个思路」也算混用）。
 - 不要用 `zcode` 当 CLI provider。
-- 不要把卡片账号显示成 `zcode`。
+- 不要把卡片账号显示成 `zcode` / poll `user.id`（如 `dnarplz6`）/ JWT `sub`。
 - 不要把 `api` 改成 `openai-responses`（`api.z.ai/api/v1` 不是 Coding Plan）。
 - 不要宣称切 Anthropic 就能吃上 150%。150% 是 Desktop **身份/UA**，没有和官方 Desktop 对比过用量斜率。
 - 不要在 Anthropic 路由上写 Completions-only `compat`（`supportsReasoningEffort` / `thinkingFormat: openai`）。
@@ -162,6 +162,7 @@ Pin map 的 Anthropic 键是 `${sessionId}\0anthropic`，和 Completions 的 `se
 | 第三方 UA 丢掉 1.5 倍额度 | 同文件 2026-08-30 GLM UA |
 | 额度两条「本周期」 | 同文件 2026-08-30 GLM 额度窗口 |
 | 账号显示 zcode | 同文件 2026-08-30 GLM 身份 |
+| 账号显示 poll `user.id` | 同文件 2026-09-03 GLM 身份 user.id |
 | BigModel init 500 | 同文件 2026-08-30 BigModel OAuth |
 | 缓存和 Codex 混用 | 同文件 2026-08-31 缓存混用 |
 

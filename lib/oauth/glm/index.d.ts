@@ -30,7 +30,7 @@ export declare const GLM_TOOL_USAGE_URL = "https://api.z.ai/api/monitor/usage/to
 export declare const GLM_USERINFO_URL = "https://chat.z.ai/api/oauth/userinfo";
 export declare const GLM_BIGMODEL_USERINFO_URL = "https://open.bigmodel.cn/api/biz/customer/getCustomerInfo";
 export declare const GLM_KEY_NAME = "dsh-plugin-oauth-subs";
-/** CLI / site ids. Never show these as the account name on the card. */
+/** CLI / site ids. Never show these as the account name on the card. Opaque poll `user.id` is `isGlmOpaqueAccount`. */
 export declare const GLM_APP_ACCOUNTS: readonly string[];
 /** Official ZCode Desktop, latest stable (https://zcode.z.ai/en/changelog). */
 export declare const GLM_APP_VERSION = "3.10.1";
@@ -114,6 +114,11 @@ export declare function glmQuotaUrl(region?: string): "https://api.z.ai/api/moni
 export declare function glmToolUsageUrl(region?: string): "https://api.z.ai/api/monitor/usage/tool-usage" | "https://open.bigmodel.cn/api/monitor/usage/tool-usage";
 export declare function glmUserinfoUrl(region?: string): "https://chat.z.ai/api/oauth/userinfo" | "https://open.bigmodel.cn/api/biz/customer/getCustomerInfo";
 export declare function isGlmAppAccount(value: any): boolean;
+/**
+ * Site ids, poll `user.id`, JWT `sub` / numeric uid, and similar opaque Zhipu
+ * handles. Never a Settings card title. Emails and formatted phones pass.
+ */
+export declare function isGlmOpaqueAccount(value: any): boolean;
 export declare function pickGlmHumanAccount(...candidates: any[]): string;
 export declare function accountFromJwt(token: any): string;
 export declare function glmBizBase(region?: string): "https://open.bigmodel.cn" | "https://api.z.ai";
