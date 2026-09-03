@@ -13,7 +13,7 @@ Ollama **Cloud** 订阅（[ollama.com](https://ollama.com)）。**不是**本机
 |---|---|
 | [`index.ts`](index.ts) | 目录、API key session、Bearer 头、`/api/me` 身份（尽力）、退役表 |
 | [`import.ts`](import.ts) | `OLLAMA_API_KEY` 环境变量。不是 `ollama signin` |
-| [`catalog.ts`](catalog.ts) | 登录后 `GET /api/tags` + `POST /api/show`；静态 `OLLAMA_MODELS` 只做离线 fallback |
+| [`catalog.ts`](catalog.ts) | 登录后 `GET /api/tags` + `POST /api/show`（窗口 + `capabilities` → `input`）；静态 `OLLAMA_MODELS` 只做离线 fallback |
 | [`cache.ts`](cache.ts) | 剥 Codex / Grok 字段。没有文档化的 sticky id / cache-read |
 
 调度：[`../proxy.ts`](../proxy.ts) `family === 'ollama'` 剥 cache 字段，`forward()` 到 `https://ollama.com/v1/chat/completions`。
@@ -80,6 +80,8 @@ Authorization: Bearer <key>
 
 DSH `contextWindow` 是 Cloud `POST /api/show` 的 `model_info.<family>.context_length`（钉在静态快照上；登录后 live show 覆盖），不是猜的家族默认，也不是 `cmd/launch/models.go` extraCloudModelLimits。`/api/tags` 的 `details` 是空的；Cloud 忽略 `options.num_ctx`（[ollama#16598](https://github.com/ollama/ollama/issues/16598)；[docs/context-length](https://docs.ollama.com/context-length)）。
 
+DSH `input` 也来自同一份 show JSON：`capabilities` 含 `vision`（大小写不敏感）→ `['text','image']`，否则 `['text']`。`/api/tags` 没有 capabilities。名字 regex（`gemma|vision|vl`）只在 show 没有 `capabilities` 时兜底。不要发明 `audio`。2026-09-03 快照：`glm-5.3-flash` / `kimi-k3` / `qwen3.5:397b` / `mistral-large-3:675b` 等 8 行图文；`glm-5.3` / `gpt-oss:*` 等 11 行纯文本。
+
 `/api/tags` 无 key 也 200（公共 Cloud 目录）。登录后仍带 Bearer，和文档一致。
 
 ## 额度
@@ -107,6 +109,8 @@ DSH 每步前置的 runtime snapshot 因此无法在 Ollama Cloud 上做 prefix 
 - 抄 Codex / Grok / GLM / Kiro / Antigravity / Cursor 的 cache 头或停车形状
 - 发明额度条或 `cached_tokens`
 - 用 128k/200k/256k 家族启发式当 DSH `contextWindow`，或把 launch `extraCloudModelLimits` 抄进 picker
+- 用名字 regex 当 picker `input` 的主路径（`glm-5.3-flash` 对不上 `gemma|vl`，但 show 有 `vision`）
+- 发明 `audio` 模态
 
 ## 归因
 

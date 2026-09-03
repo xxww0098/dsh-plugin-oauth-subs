@@ -1,14 +1,14 @@
 /**
  * Live Ollama Cloud picker. GET https://ollama.com/api/tags after login,
- * then POST /api/show for `model_info.*.context_length`.
+ * then POST /api/show for `model_info.*.context_length` and `capabilities`.
  * OLLAMA_MODELS is the offline fallback only. Retired Cloud rows stay out.
  */
 
 import { createHash } from 'node:crypto'
 import {
-  inferOllamaInput,
   isOllamaRetiredModel,
   ollamaContextWindow,
+  ollamaInput,
   ollamaShowContextLength,
   OLLAMA_DEFAULT_MAX_TOKENS,
   OLLAMA_MODELS,
@@ -51,7 +51,7 @@ export function toOllamaPickerModels(tags) {
       name: ollamaPrettyName(id),
       contextWindow: ollamaContextWindow(id, row),
       maxTokens: OLLAMA_DEFAULT_MAX_TOKENS,
-      input: inferOllamaInput(id),
+      input: ollamaInput(id, row),
       reasoningEfforts: { ...OLLAMA_REASONING },
     })
   }
@@ -59,7 +59,7 @@ export function toOllamaPickerModels(tags) {
   return models
 }
 
-async function showContextLength(id, { fetchFn, token, signal }) {
+async function showModel(id, { fetchFn, token, signal }) {
   try {
     const response = await fetchFn(OLLAMA_SHOW_URL, {
       method: 'POST',
@@ -71,7 +71,7 @@ async function showContextLength(id, { fetchFn, token, signal }) {
       signal,
     })
     if (!response.ok) return undefined
-    return ollamaShowContextLength(await response.json())
+    return await response.json()
   } catch {
     return undefined
   }
@@ -79,10 +79,16 @@ async function showContextLength(id, { fetchFn, token, signal }) {
 
 async function applyOllamaShowWindows(models, options) {
   if (!models.length) return models
-  const lengths = await Promise.all(models.map((model) => showContextLength(model.id, options)))
+  const shows = await Promise.all(models.map((model) => showModel(model.id, options)))
   return models.map((model, index) => {
-    const window = lengths[index]
-    return window ? { ...model, contextWindow: window } : model
+    const show = shows[index]
+    if (!show || typeof show !== 'object') return model
+    const window = ollamaShowContextLength(show)
+    return {
+      ...model,
+      ...(window ? { contextWindow: window } : {}),
+      input: ollamaInput(model.id, show),
+    }
   })
 }
 

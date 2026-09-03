@@ -2,6 +2,17 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-03：Ollama picker 把 glm-5.3-flash 标成纯文本
+
+### 现象
+DSH 在 `glm-5.3-flash` 上挡图片（不支持图片）。Cloud `POST /api/show` 的 `capabilities` 含 `vision`。
+
+### 根因
+`inferOllamaInput` 只认 `/gemma|vision|\bvl\b|-vl/`。`glm-5.3-flash` / `kimi-k3` / `qwen3.5` / `mistral-large-3` 等 vision 行对不上。`/api/tags` `details` 空，没有 capabilities。
+
+### 修复
+`ollamaShowInput` 读 show.capabilities（大小写不敏感）。`applyOllamaShowWindows` 同时钉 `input`。19 行快照按 2026-09-03 show 表烘焙（flash 图文，`glm-5.3` 纯文本）。无 capabilities 才回落名字 regex。不发明 audio。
+
 ## 2026-09-03：Cursor 刷新后仍是 auth0|… / PRO / 已用 0%；Ollama 图标被挤没
 
 ### 现象

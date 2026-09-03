@@ -22,7 +22,9 @@ import {
   isOllamaRetiredModel,
   ollamaContextWindow,
   ollamaDefaultAccount,
+  ollamaInput,
   ollamaShowContextLength,
+  ollamaShowInput,
   ollamaSnapshotContextWindow,
   ollamaSession,
   ollamaSourceLabel,
@@ -105,40 +107,61 @@ test('catalog is Completions at /ollama, not /ollama/v1', () => {
   assert.equal(catalog['oauth-ollama'].models.length, OLLAMA_MODELS.length)
 })
 
-test('static OLLAMA_MODELS windows match the Cloud /api/show snapshot', () => {
+test('static OLLAMA_MODELS windows and input match the Cloud /api/show snapshot', () => {
   const snapshot = {
-    'deepseek-v4-flash:0731': 1_048_576,
-    'deepseek-v4-pro:0813': 1_048_576,
-    'gemma4:31b': 262_144,
-    'glm-5.1': 202_752,
-    'glm-5.2': 1_048_576,
-    'glm-5.3': 1_048_576,
-    'glm-5.3-flash': 1_048_576,
-    'gpt-oss:120b': 131_072,
-    'gpt-oss:20b': 131_072,
-    'kimi-k2.6': 262_144,
-    'kimi-k2.7-code': 262_144,
-    'kimi-k3': 1_048_576,
-    'minimax-m2.7': 196_608,
-    'minimax-m3': 512_000,
-    'mistral-large-3:675b': 262_144,
-    'nemotron-3-nano:30b': 262_144,
-    'nemotron-3-super': 262_144,
-    'nemotron-3-ultra': 262_144,
-    'qwen3.5:397b': 262_144,
+    'deepseek-v4-flash:0731': { window: 1_048_576, vision: false },
+    'deepseek-v4-pro:0813': { window: 1_048_576, vision: false },
+    'gemma4:31b': { window: 262_144, vision: true },
+    'glm-5.1': { window: 202_752, vision: false },
+    'glm-5.2': { window: 1_048_576, vision: false },
+    'glm-5.3': { window: 1_048_576, vision: false },
+    'glm-5.3-flash': { window: 1_048_576, vision: true },
+    'gpt-oss:120b': { window: 131_072, vision: false },
+    'gpt-oss:20b': { window: 131_072, vision: false },
+    'kimi-k2.6': { window: 262_144, vision: true },
+    'kimi-k2.7-code': { window: 262_144, vision: true },
+    'kimi-k3': { window: 1_048_576, vision: true },
+    'minimax-m2.7': { window: 196_608, vision: false },
+    'minimax-m3': { window: 512_000, vision: true },
+    'mistral-large-3:675b': { window: 262_144, vision: true },
+    'nemotron-3-nano:30b': { window: 262_144, vision: false },
+    'nemotron-3-super': { window: 262_144, vision: false },
+    'nemotron-3-ultra': { window: 262_144, vision: false },
+    'qwen3.5:397b': { window: 262_144, vision: true },
   }
   assert.equal(OLLAMA_MODELS.length, 19)
   assert.deepEqual(OLLAMA_MODELS.map((model) => model.id), Object.keys(snapshot))
   for (const model of OLLAMA_MODELS) {
-    assert.equal(model.contextWindow, snapshot[model.id])
-    assert.equal(ollamaSnapshotContextWindow(model.id), snapshot[model.id])
-    assert.equal(ollamaContextWindow(model.id), snapshot[model.id])
-    assert.deepEqual(model.input, inferOllamaInput(model.id))
+    const row = snapshot[model.id]
+    assert.equal(model.contextWindow, row.window)
+    assert.equal(ollamaSnapshotContextWindow(model.id), row.window)
+    assert.equal(ollamaContextWindow(model.id), row.window)
+    assert.deepEqual(model.input, row.vision ? ['text', 'image'] : ['text'])
+    assert.equal(model.input.includes('audio'), false)
     assert.equal(isOllamaRetiredModel(model.id), false)
   }
+  assert.deepEqual(OLLAMA_MODELS.find((model) => model.id === 'glm-5.3-flash').input, ['text', 'image'])
+  assert.deepEqual(OLLAMA_MODELS.find((model) => model.id === 'glm-5.3').input, ['text'])
+  assert.deepEqual(OLLAMA_MODELS.find((model) => model.id === 'qwen3.5:397b').input, ['text', 'image'])
+  assert.deepEqual(OLLAMA_MODELS.find((model) => model.id === 'kimi-k3').input, ['text', 'image'])
+  assert.deepEqual(OLLAMA_MODELS.find((model) => model.id === 'mistral-large-3:675b').input, ['text', 'image'])
+  assert.deepEqual(OLLAMA_MODELS.find((model) => model.id === 'gpt-oss:120b').input, ['text'])
   assert.deepEqual(inferOllamaInput('gemma4:31b'), ['text', 'image'])
+  assert.deepEqual(inferOllamaInput('glm-5.3-flash'), ['text'])
   assert.equal(ollamaShowContextLength({ model_info: { 'glm.context_length': 1_048_576 } }), 1_048_576)
   assert.equal(ollamaContextWindow('new-cloud-model'), 128_000)
+})
+
+test('ollamaShowInput reads capabilities; missing array falls back to name regex', () => {
+  assert.deepEqual(ollamaShowInput({ capabilities: ['completion', 'vision'] }), ['text', 'image'])
+  assert.deepEqual(ollamaShowInput({ capabilities: ['VISION'] }), ['text', 'image'])
+  assert.deepEqual(ollamaShowInput({ capabilities: ['completion'] }), ['text'])
+  assert.deepEqual(ollamaShowInput({ capabilities: ['completion', 'audio'] }), ['text'])
+  assert.equal(ollamaShowInput({ details: {} }), undefined)
+  assert.equal(ollamaShowInput(null), undefined)
+  assert.deepEqual(ollamaInput('glm-5.3-flash', { capabilities: ['vision'] }), ['text', 'image'])
+  assert.deepEqual(ollamaInput('glm-5.3-flash', { details: {} }), ['text'])
+  assert.deepEqual(ollamaInput('gemma4:31b', { details: {} }), ['text', 'image'])
 })
 
 test('snapshot shows oauth-ollama when logged in; quota stays idle', async () => {
@@ -257,6 +280,37 @@ test('live tags expand catalog; empty tags keep static fallback; retired stay ou
     fetchFn: async () => json({ models: [] }),
   })
   assert.deepEqual(fallback.map((model) => model.id), OLLAMA_MODELS.map((model) => model.id))
+})
+
+test('live show capabilities override a wrong static/regex input row', async () => {
+  resetOllamaCatalogCache()
+  const session = ollamaSession({ accessToken: 'sk-ollama-show-input', source: 'paste' })
+  assert.deepEqual(inferOllamaInput('glm-5.3-flash'), ['text'])
+  const shown = await refreshOllamaCatalog(session, {
+    fetchFn: async (url, init) => {
+      if (String(url) === OLLAMA_SHOW_URL) {
+        const model = JSON.parse(String(init.body ?? '{}')).model
+        if (model === 'glm-5.3-flash') return json({ capabilities: ['completion', 'vision'] })
+        if (model === 'glm-5.3') return json({ capabilities: ['completion'] })
+        if (model === 'qwen3.5:397b') return json({ capabilities: ['vision'] })
+        if (model === 'gemma4:31b') return json({ capabilities: ['completion'] })
+        return json({ details: {} })
+      }
+      assert.equal(url, OLLAMA_TAGS_URL)
+      return json({
+        models: [
+          { name: 'glm-5.3-flash' },
+          { name: 'glm-5.3' },
+          { name: 'gemma4:31b' },
+          { name: 'qwen3.5:397b' },
+        ],
+      })
+    },
+  })
+  assert.deepEqual(shown.find((model) => model.id === 'glm-5.3-flash').input, ['text', 'image'])
+  assert.deepEqual(shown.find((model) => model.id === 'glm-5.3').input, ['text'])
+  assert.deepEqual(shown.find((model) => model.id === 'gemma4:31b').input, ['text'])
+  assert.deepEqual(shown.find((model) => model.id === 'qwen3.5:397b').input, ['text', 'image'])
 })
 
 test('live show model_info overrides snapshot; show-less tags keep snapshot not 128000', async () => {
