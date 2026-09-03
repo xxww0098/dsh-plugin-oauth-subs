@@ -7,6 +7,7 @@ import { antigravityCacheSessionId, antigravitySessionIdOf, ANTIGRAVITY_STABLE_S
 import { kiroCacheSessionId, kiroConversationId, pinKiroSystemPrefix, KIRO_STABLE_SESSION, resetKiroSystemPins } from '../lib/oauth/kiro/cache.js'
 import { applyCursorCache, cursorCacheHeaders, cursorCacheSessionId, cursorConversationId, CURSOR_STABLE_SESSION } from '../lib/oauth/cursor/cache.js'
 import { applyOllamaCache, ollamaCacheHeaders, ollamaCacheSessionId, OLLAMA_STABLE_SESSION } from '../lib/oauth/ollama/cache.js'
+import { applyKimiCache, kimiCacheHeaders, kimiCacheSessionId, KIMI_STABLE_SESSION, resetKimiPins } from '../lib/oauth/kimi/cache.js'
 
 const dirty = 'session 772f7f3a/foo'
 
@@ -18,6 +19,7 @@ test('each family owns its cache id helper (same clip, separate modules)', () =>
   assert.equal(kiroCacheSessionId(dirty), 'session-772f7f3a-foo')
   assert.equal(cursorCacheSessionId(dirty), 'session-772f7f3a-foo')
   assert.equal(ollamaCacheSessionId(dirty), 'session-772f7f3a-foo')
+  assert.equal(kimiCacheSessionId(dirty), 'session-772f7f3a-foo')
   assert.equal(codexCacheSessionId(''), undefined)
   assert.equal(grokCacheSessionId(null), undefined)
 })
@@ -164,4 +166,23 @@ test('Ollama cache strips Codex/Grok fields and does not invent a sticky wire id
   assert.equal(Object.hasOwn(ollamaCacheHeaders(), 'session-id'), false)
   assert.equal(Object.hasOwn(ollamaCacheHeaders(), 'x-grok-conv-id'), false)
   assert.equal(applyOllamaCache({}).cacheSessionId, OLLAMA_STABLE_SESSION)
+})
+
+test('Kimi cache strips Codex/Grok fields and does not invent a shard header', () => {
+  resetKimiPins()
+  const { payload, cacheSessionId } = applyKimiCache({
+    session_id: 'sess-kimi',
+    prompt_cache_key: 'codex-style',
+    prompt_cache_retention: '24h',
+    model: 'k3',
+  })
+  assert.equal(cacheSessionId, 'sess-kimi')
+  assert.equal(payload.prompt_cache_key, undefined)
+  assert.equal(payload.prompt_cache_retention, undefined)
+  assert.equal(payload.session_id, undefined)
+  assert.deepEqual(kimiCacheHeaders(), {})
+  assert.equal(Object.hasOwn(kimiCacheHeaders(), 'session-id'), false)
+  assert.equal(Object.hasOwn(kimiCacheHeaders(), 'x-grok-conv-id'), false)
+  assert.equal(applyKimiCache({}).cacheSessionId, KIMI_STABLE_SESSION)
+  resetKimiPins()
 })

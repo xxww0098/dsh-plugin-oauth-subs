@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml/badge.svg)](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml)
 
-Use a **ChatGPT / Codex**, **xAI Grok**, **Zhipu GLM**, **AWS Kiro**, **Google Antigravity**, **Cursor**, or **Ollama Cloud** subscription inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). Official OAuth, plus Kiro API keys, Cursor CLI/IDE reuse, and Ollama API keys (ollama.com Cloud, not localhost:11434). Loopback proxy + `llm-pi-ai` route sync; each family picks one DSH `api` from `openai-responses` | `openai-completions` | `anthropic-messages`.
+Use a **ChatGPT / Codex**, **xAI Grok**, **Zhipu GLM**, **AWS Kiro**, **Google Antigravity**, **Cursor**, **Ollama Cloud**, or **Kimi Code Plan** subscription inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). Official OAuth, plus Kiro API keys, Cursor CLI/IDE reuse, Ollama API keys (ollama.com Cloud, not localhost:11434), and Kimi device-code / `kimi-code.json`. Loopback proxy + `llm-pi-ai` route sync; each family picks one DSH `api` from `openai-responses` | `openai-completions` | `anthropic-messages`.
 
 ## Install
 
@@ -27,6 +27,7 @@ Open **Settings → OAuth subs**. One card per account (quota on every card; Oll
 | Google Antigravity | Google OAuth `localhost:51121`; paste-callback; `1071006060591-…apps.googleusercontent.com` | `openai-completions` | `daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent` |
 | Cursor | PKCE poll `cursor.com/loginDeepControl`; or **Import local Cursor** | `openai-completions` | Connect `agentn.us.api5.cursor.sh` `AgentService/Run` |
 | Ollama Cloud | Paste API key / import `OLLAMA_API_KEY` | `openai-completions` | `https://ollama.com/v1/chat/completions` |
+| Kimi Code Plan | Device-code (no PKCE); import `~/.kimi-code/credentials/kimi-code.json`; optional `KIMI_API_KEY` | `openai-completions` | `https://api.kimi.com/coding/v1/chat/completions` |
 
 | Path | Family |
 |---|---|
@@ -38,6 +39,7 @@ Open **Settings → OAuth subs**. One card per account (quota on every card; Oll
 | `~/.gemini/antigravity-cli/antigravity-oauth-token`; `~/.cli-proxy-api/antigravity-*.json` | Antigravity |
 | macOS Keychain `cursor-access-token` / `cursor-refresh-token`; IDE `state.vscdb` (current OS user only); `CURSOR_ACCESS_TOKEN` | Cursor |
 | `OLLAMA_API_KEY` env (not `~/.ollama/id_ed25519.pub`) | Ollama |
+| `~/.kimi-code/credentials/kimi-code.json`; read-only `~/.kimi/credentials/kimi-code.json`; `KIMI_API_KEY` | Kimi |
 
 Tokens: `<profile>/data/dsh-plugin-oauth-subs/auth.json` (`0600`). Models: `models.json` beside it.
 
@@ -47,7 +49,7 @@ Tokens: `<profile>/data/dsh-plugin-oauth-subs/auth.json` (`0600`). Models: `mode
 |---|---|
 | Settings | OAuth login / import / logout, then model sync |
 | llm-pi-ai | DSH call plane; routes to the loopback proxy |
-| Loopback | `http://127.0.0.1:8318/{codex,grok}/v1/responses`, `/glm/v1/messages` (Completions leftover `/glm/v1/chat/completions` until the next sync), `/{kiro,antigravity,cursor,ollama}/v1/chat/completions` |
+| Loopback | `http://127.0.0.1:8318/{codex,grok}/v1/responses`, `/glm/v1/messages` (Completions leftover `/glm/v1/chat/completions` until the next sync), `/{kiro,antigravity,cursor,ollama,kimi}/v1/chat/completions` |
 | Upstream | Refreshed subscription bearer |
 
 Not a second LLM adapter. After Settings closes, DSH still calls the loopback proxy. Bind is loopback-only; local credential is `DSH_OAUTH_SUBS_API_KEY`. GLM 150% Coding Plan boost is identity (ZCode Desktop UA), not a protocol claim. Stack and module tree: [AGENTS.md](AGENTS.md).
@@ -91,6 +93,7 @@ Login and chat use official client identity; UA / fingerprint live in each `src/
 | GLM | — | — | 5.3 / Flash: low / high / **max** (default max; no `medium`; `disabled` 400s). Turbo: on, no depth. Flash is the only GLM image row |
 | Kiro | — | — | GPT-5.6: off / low / medium / high / xhigh / max (`off` → wire `none`). Opus 5 / 4.8 / 4.7 and Sonnet 5 add **xhigh**; 4.6 family to max; Haiku / OSS: none. Catalog: [kiro.dev/docs/models](https://kiro.dev/docs/models/) (no Auto) |
 | Ollama | No | Live `GET /api/tags` (static 19-row Cloud snapshot fallback). Context from `POST /api/show` `model_info.<family>.context_length`. No quota bars | off / low / medium / high / max (`off` → wire `none`) |
+| Kimi | No | Live `GET /coding/v1/models` (static `kimi-for-coding` / highspeed / `k3`, 256k/32k). Prefix-hash cache | off / minimal / low / medium / high / xhigh / max → `thinking.effort` |
 
 Codex Priority echo `created=auto` / `completed=default` is not a confirmation (openai/codex#14204). 2026-08-26 Luna: 88.3 vs 57.5 tok/s (1.54×); 2026-08-30 interleaved mean 1.33× (1.90 then 0.93). Throughput-only; TTFT and cache unchanged.
 
@@ -104,6 +107,7 @@ Codex Priority echo `created=auto` / `completed=default` is not a confirmation (
 | Zhipu GLM | `api.z.ai` or `open.bigmodel.cn` `monitor/usage/quota/limit` | Plan badge (Lite / Pro / Max) plus Coding Plan credit windows; host follows the active account |
 | Google Antigravity | daily-cloudcode-pa `loadCodeAssist` + `fetchAvailableModels` (prod only on 5xx / transport) | Plan badge (Pro / Ultra / Free / Standard) plus SkillStar model-group remaining bars and reset time |
 | Cursor | `api2.cursor.sh` `DashboardService/GetCurrentPeriodUsage` | Plan badge (Free / Pro / Pro+ / Ultra …) plus cycle remaining percent |
+| Kimi Code | `api.kimi.com/coding/v1/usages` + `/me` | Plan badge from `/me.user_level_name` plus remaining bars; no invented reset times |
 
 Refresh about once a minute, or **Refresh quota**. Bars: `hsl(remaining × 1.2, 78%, 38%)`. Codex `pro` → **Pro 20x** / $200, `prolite` → **Pro 5x** / $100. Plus/Pro may bank weekly resets — one confirm button per credit on the Codex card (Harness risk dialog, then `POST …/consume` with `{ redeem_request_id }` + `idempotencyKey`). That spend refreshes the **weekly** window. Grok has no equivalent. Ollama Cloud has no documented quota JSON (`/api/quota` 404); the card stays idle with no bars.
 

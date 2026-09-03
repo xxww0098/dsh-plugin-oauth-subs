@@ -121,6 +121,16 @@ export declare function fetchOllamaQuota(session: any, fetchFn?: typeof fetch): 
     account: string;
     rows: any[];
 }>;
+export declare function parseKimiUsage(payload: any, me: any): {
+    planType: string;
+    account: string;
+    rows: any[];
+};
+export declare function fetchKimiQuota(session: any, fetchFn?: typeof fetch): Promise<{
+    planType: string;
+    account: string;
+    rows: any[];
+}>;
 export declare function fetchGlmQuota(session: any, fetchFn?: typeof fetch): Promise<any>;
 /** SkillStar `parse_model_windows` — group fetchAvailableModels into product bars. */
 export declare function parseAntigravityModelQuota(payload: any): {

@@ -42,6 +42,66 @@ test('device flow polls until access_token and honors slow_down', async () => {
   assert.equal(devices.isBusy('grok'), false)
 })
 
+test('device flow omits scope when spec has none', async () => {
+  const calls = []
+  const fetchFn = async (url, init) => {
+    calls.push(String(init.body ?? ''))
+    if (String(url).includes('device')) {
+      return jsonResponse(200, {
+        device_code: 'dev',
+        user_code: 'ABCD',
+        verification_uri: 'https://auth.kimi.com/device',
+        interval: 0.01,
+        expires_in: 5,
+      })
+    }
+    return jsonResponse(400, { error: 'authorization_pending' })
+  }
+  const devices = new DeviceFlowManager()
+  const attempt = await devices.start('kimi', {
+    clientId: '17e5f671-d194-4dfb-9706-5516cb48c098',
+    deviceCodeUrl: 'https://auth.kimi.com/api/oauth/device_authorization',
+    tokenUrl: 'https://auth.kimi.com/api/oauth/token',
+    fetchFn,
+  })
+  assert.equal(calls[0].includes('client_id='), true)
+  assert.equal(calls[0].includes('scope='), false)
+  attempt.cancel()
+})
+
+test('device flow restarts device auth on expired_token when spec.restartOnExpired', async () => {
+  let devices = 0
+  let polls = 0
+  const fetchFn = async (url) => {
+    if (String(url).includes('device')) {
+      devices += 1
+      return jsonResponse(200, {
+        device_code: `dev-${devices}`,
+        user_code: devices === 1 ? 'OLD-CODE' : 'NEW-CODE',
+        verification_uri: 'https://auth.kimi.com/device',
+        verification_uri_complete: `https://auth.kimi.com/device?user_code=${devices === 1 ? 'OLD-CODE' : 'NEW-CODE'}`,
+        interval: 0.01,
+        expires_in: 30,
+      })
+    }
+    polls += 1
+    if (polls === 1) return jsonResponse(400, { error: 'expired_token' })
+    return jsonResponse(200, { access_token: 'tok', refresh_token: 'ref', expires_in: 3600 })
+  }
+  const manager = new DeviceFlowManager()
+  const attempt = await manager.start('kimi', {
+    clientId: '17e5f671-d194-4dfb-9706-5516cb48c098',
+    deviceCodeUrl: 'https://auth.kimi.com/api/oauth/device_authorization',
+    tokenUrl: 'https://auth.kimi.com/api/oauth/token',
+    fetchFn,
+    restartOnExpired: true,
+  })
+  const tokens = await attempt.waitToken()
+  assert.equal(tokens.access_token, 'tok')
+  assert.equal(devices, 2)
+  assert.equal(attempt.userCode, 'NEW-CODE')
+})
+
 test('grokDiscovery rejects non-x.ai endpoints', async () => {
   resetGrokDiscovery()
   const fetchFn = async () => jsonResponse(200, {
