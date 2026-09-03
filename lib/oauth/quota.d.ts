@@ -85,14 +85,12 @@ export declare function parseCursorPeriodUsage(payload: any): {
     planType: string | number;
     account: any;
     rows: {
+        resetAt?: any;
         key: string;
         kind: string;
+        product: any;
         usedPercent: number;
         remainingPercent: number;
-        used: number;
-        total: number;
-        remaining: number;
-        resetAt: number;
     }[];
 };
 export declare function fetchCursorQuota(session: any, fetchFn?: typeof fetch): Promise<{
@@ -103,14 +101,12 @@ export declare function fetchCursorQuota(session: any, fetchFn?: typeof fetch): 
     planType: string | number;
     account: any;
     rows: {
+        resetAt?: any;
         key: string;
         kind: string;
+        product: any;
         usedPercent: number;
         remainingPercent: number;
-        used: number;
-        total: number;
-        remaining: number;
-        resetAt: number;
     }[];
 }>;
 export declare function fetchGlmQuota(session: any, fetchFn?: typeof fetch): Promise<any>;

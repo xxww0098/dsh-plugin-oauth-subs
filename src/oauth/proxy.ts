@@ -42,7 +42,7 @@ import {
 } from './antigravity/index.js'
 import { antigravityToOpenai, createAntigravityOpenaiStream, openaiToAntigravity, parseAntigravitySseBlocks } from './antigravity/request.js'
 import { antigravitySessionIdOf } from './antigravity/cache.js'
-import { CURSOR_MODELS } from './cursor/index.js'
+import { cursorCatalogModels } from './cursor/catalog.js'
 import { applyCursorCache, cursorConversationId } from './cursor/cache.js'
 import { cursorToOpenai, createCursorOpenaiStream, openaiToCursor } from './cursor/request.js'
 import { runCursorAgent } from './cursor/h2-session.js'
@@ -292,7 +292,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
       try {
         if (tokens.cursor) {
           await tokens.cursor.session()
-          data.push(...CURSOR_MODELS.map((model) => ({ id: model.id, object: 'model', owned_by: 'cursor' })))
+          data.push(...cursorCatalogModels().map((model) => ({ id: model.id, object: 'model', owned_by: 'cursor' })))
         }
       } catch { /* not logged in */ }
       send(response, 200, { object: 'list', data })
@@ -423,7 +423,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
     if ((path === '/cursor/v1/models' || path === '/cursor/models') && request.method === 'GET') {
       send(response, 200, {
         object: 'list',
-        data: CURSOR_MODELS.map((model) => ({ id: model.id, object: 'model', owned_by: 'cursor' })),
+        data: cursorCatalogModels().map((model) => ({ id: model.id, object: 'model', owned_by: 'cursor' })),
       })
       return
     }

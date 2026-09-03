@@ -158,7 +158,12 @@ export function withPickerVariants(models) {
   return out
 }
 
-export function buildProviders({ prefix, origin, loggedIn }) {
+function cursorHarnessModels(cursorModels) {
+  if (Array.isArray(cursorModels) && cursorModels.length > 0) return cursorModels
+  return CURSOR_MODELS
+}
+
+export function buildProviders({ prefix, origin, loggedIn, cursorModels }) {
   const providers = {}
   if (loggedIn.codex) {
     providers[`${prefix}-codex`] = {
@@ -230,7 +235,7 @@ export function buildProviders({ prefix, origin, loggedIn }) {
         supportsReasoningEffort: true,
         thinkingFormat: 'openai',
       },
-      models: CURSOR_MODELS.map(toHarnessModel),
+      models: cursorHarnessModels(cursorModels).map(toHarnessModel),
     }
   }
   return providers
@@ -244,8 +249,13 @@ export function describeProviders(providers) {
   }))
 }
 
-export function catalogProviders({ prefix, origin }) {
-  return buildProviders({ prefix, origin, loggedIn: { codex: true, grok: true, glm: true, kiro: true, antigravity: true, cursor: true } })
+export function catalogProviders({ prefix, origin, cursorModels }) {
+  return buildProviders({
+    prefix,
+    origin,
+    loggedIn: { codex: true, grok: true, glm: true, kiro: true, antigravity: true, cursor: true },
+    cursorModels,
+  })
 }
 
 export function catalogKeys(providers) {
@@ -485,10 +495,10 @@ async function assertPersistedProviders(settings, expectedIds) {
   }
 }
 
-export async function syncHarnessModels({ settings, prefix, origin, loggedIn, selected }) {
+export async function syncHarnessModels({ settings, prefix, origin, loggedIn, selected, cursorModels }) {
   const routePrefix = String(prefix ?? '').trim()
   if (!routePrefix) throw new Error('Harness route prefix cannot be empty')
-  const providers = filterProviders(buildProviders({ prefix: routePrefix, origin, loggedIn }), selected)
+  const providers = filterProviders(buildProviders({ prefix: routePrefix, origin, loggedIn, cursorModels }), selected)
   for (const [id, value] of Object.entries(providers)) {
     assertDshServiceableProvider(id, value)
   }

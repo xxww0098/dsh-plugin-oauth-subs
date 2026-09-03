@@ -1,5 +1,53 @@
 # 错误记录
 
+## 2026-09-03：Cursor 选择器仍是静态 5 行 — 活目录没接到 picker / yaml
+
+### 现象
+
+Settings Models 与 `llm-pi-ai` `oauth-cursor.models` 只有 `composer-2` / `composer-1.5` / `claude-sonnet-5` / `gpt-5.5` / `grok-4.5`。账号在 Cursor 里能用的 Auto / Claude / Gemini 等进不了勾选格。`fetchCursorUsableModels` 已经能 unary `GetUsableModels`，但 `buildProviders` 只读冻结的 `CURSOR_MODELS`。
+
+### 证据
+
+- `src/oauth/cursor/index.ts` `CURSOR_MODELS` 五行。测试断言 `catalog['oauth-cursor'].models.length === CURSOR_MODELS.length`。
+- 社区 MIT pi-cursor `src/stream/model-discovery.ts` 同时打 GetUsableModels（agentn）和 `AvailableModels`（api2），按 access-token hash 缓存。
+- 同一份 `catalog.json` 会炸出约 100 个 effort/fast/thinking/max-mode id；DSH 勾选格不能照搬。
+
+### 根因
+
+发现层写了、目录层没用。失败若挡住登录会比静态 5 更糟。
+
+### 修复
+
+`src/oauth/cursor/catalog.ts`：登录 / 导入 / 额度刷新后 `refreshCursorCatalog`。两路 unary（无 Bun）。失败或空列表回落静态 5，不挡对话。`toCursorPickerModels` 收成一行 / 家族，藏 tab/chat 内部变体，保留 Auto/`default`。`reasoningEfforts` 键只有 `off|low|medium|high|xhigh`。活列表进 `buildProviders` / snapshot catalog / `syncHarnessModels` yaml。
+
+### 验证
+
+- `npm test`：mock GetUsableModels proto → catalog 与 yaml `oauth-cursor.models` 长度 > 5 且一致；空 RPC 仍是 5。无 live agentn。
+
+## 2026-09-03：Cursor 额度条把美分封顶画成「40000 / 40000」且只剩一条「本周期」
+
+### 现象
+
+活卡片 `40000 / 40000`、`剩余 56%` 标「本周期」。用户 Cursor 仪表盘是「补全 & Composer」51%、「API 调用」0%。`includedSpend` / `limit` 是美元美分封顶，不是 token。`autoPercentUsed` / `apiPercentUsed` 被忽略。
+
+### 证据
+
+- `GetCurrentPeriodUsage` JSON：`planUsage.totalPercentUsed` / `autoPercentUsed` / `apiPercentUsed` / `includedSpend` / `limit`。
+- pi-cursor `parseConnectPeriodUsage` 已经把 auto/api 当 **已用** 百分比。
+- `QuotaRow` 一律填 `remainingPercent`、文案 `leftPercent`。
+
+### 根因
+
+`parseCursorPeriodUsage` 只发一条 `kind: 'cycle'`，used/total 取 spend cap。UI 没有 Cursor 已用态。
+
+### 修复
+
+两条 `kind: 'product'`（`auto` / `api`），`usedPercent` 来自 auto/api，缺省 0%。不写 includedSpend/limit。`resetAt` = `billingCycleEnd`。Settings 对 `family==='cursor'` 的 product 行 caption 和条用已用百分比。`formatPlanLabel('pro', 'cursor')` 已是 Pro。
+
+### 验证
+
+- `npm test`：`{ totalPercentUsed:44, autoPercentUsed:51, apiPercentUsed:0, includedSpend:40000, limit:40000 }` → 正好两行 product，无 40000/40000，Composer 51、API 0。
+
 ## 2026-09-03：Cursor 本机导入 — Keychain 可能弹授权，vscdb 键名可能改
 
 ### 现象

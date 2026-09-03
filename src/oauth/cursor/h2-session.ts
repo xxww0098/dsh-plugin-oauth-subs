@@ -8,16 +8,19 @@ import http2 from 'node:http2'
 import {
   CURSOR_AGENT_URL,
   CURSOR_API2_URL,
+  CURSOR_AVAILABLE_MODELS_PATH,
   CURSOR_MODELS_PATH,
   CURSOR_RUN_PATH,
   cursorAgentUrl,
   cursorChatHeaders,
 } from './index.js'
 import {
+  encodeAvailableModelsRequest,
   encodeCancelAction,
   encodeExecThrow,
   encodeGetUsableModelsRequest,
   encodeKvClientMessage,
+  decodeAvailableModelsResponse,
   decodeGetUsableModelsResponse,
   frameConnect,
   splitConnectFrames,
@@ -56,13 +59,25 @@ export async function cursorUnaryRpc({
   body = Buffer.alloc(0),
   connectFn = http2.connect,
   signal,
+  timeoutMs = 8_000,
 }) {
   return new Promise((resolve, reject) => {
+    let settled = false
     const client = connectFn(url)
-    const fail = (error) => {
+    const finish = (error, value) => {
+      if (settled) return
+      settled = true
+      if (timer) clearTimeout(timer)
+      signal?.removeEventListener('abort', onAbort)
       try { client.close() } catch { /* */ }
-      reject(error instanceof Error ? error : new Error(String(error)))
+      if (error) reject(error instanceof Error ? error : new Error(String(error)))
+      else resolve(value)
     }
+    const fail = (error) => finish(error)
+    const timer = timeoutMs > 0
+      ? setTimeout(() => fail(new Error('cursor unary timeout')), timeoutMs)
+      : undefined
+    if (typeof timer?.unref === 'function') timer.unref()
     const onAbort = () => fail(new Error('aborted'))
     signal?.addEventListener('abort', onAbort, { once: true })
     client.on('error', (error) => fail(new Error(describeH2TransportError(error, url))))
@@ -70,16 +85,12 @@ export async function cursorUnaryRpc({
     const chunks = []
     stream.on('data', (chunk) => chunks.push(Buffer.from(chunk)))
     stream.on('error', fail)
-    stream.on('end', () => {
-      signal?.removeEventListener('abort', onAbort)
-      try { client.close() } catch { /* */ }
-      resolve(Buffer.concat(chunks))
-    })
+    stream.on('end', () => finish(undefined, Buffer.concat(chunks)))
     stream.end(body)
   })
 }
 
-export async function fetchCursorUsableModels(session, { connectFn, signal } = {}) {
+export async function fetchCursorUsableModels(session, { connectFn, signal, timeoutMs } = {}) {
   const raw = await cursorUnaryRpc({
     session,
     url: cursorAgentUrl() || CURSOR_AGENT_URL,
@@ -87,8 +98,22 @@ export async function fetchCursorUsableModels(session, { connectFn, signal } = {
     body: encodeGetUsableModelsRequest(),
     connectFn,
     signal,
+    timeoutMs,
   })
   return decodeGetUsableModelsResponse(raw)
+}
+
+export async function fetchCursorAvailableModels(session, { connectFn, signal, timeoutMs } = {}) {
+  const raw = await cursorUnaryRpc({
+    session,
+    url: CURSOR_API2_URL,
+    path: CURSOR_AVAILABLE_MODELS_PATH,
+    body: encodeAvailableModelsRequest(),
+    connectFn,
+    signal,
+    timeoutMs,
+  })
+  return decodeAvailableModelsResponse(raw)
 }
 
 /**

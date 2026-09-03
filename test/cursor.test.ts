@@ -12,7 +12,26 @@ import {
   buildProviders,
   catalogProviders,
   ownedProviderIds,
+  syncHarnessModels,
 } from '../lib/oauth/models.js'
+import {
+  cursorCatalogModels,
+  cursorPickerFamilyId,
+  inferCursorContextWindow,
+  inferCursorMaxOutputTokens,
+  isCursorInternalModel,
+  refreshCursorCatalog,
+  resetCursorCatalogCache,
+  toCursorPickerModels,
+} from '../lib/oauth/cursor/catalog.js'
+import {
+  decodeAvailableModelsResponse,
+  decodeGetUsableModelsResponse,
+  encodeAvailableModelsRequest,
+  encodeAvailableModelsResponse,
+  encodeGetUsableModelsResponse,
+  frameConnect,
+} from '../lib/oauth/cursor/proto.js'
 import {
   CURSOR_LOGIN_URL,
   CURSOR_MODELS,
@@ -174,6 +193,7 @@ test('cursor catalog is Completions at /cursor, not /cursor/v1', () => {
     }
   }
   assert.deepEqual(route.models.find((model) => model.id === 'composer-2').reasoningEfforts, CURSOR_REASONING)
+  resetCursorCatalogCache()
   const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
   assert.equal(catalog['oauth-cursor'].models.length, CURSOR_MODELS.length)
 })
@@ -213,21 +233,57 @@ test('snapshot shows quota on every cursor account', async () => {
   const second = roster.find((row) => row.account === 'b@x')
   assert.equal(first.quota.status, 'ready')
   assert.equal(second.quota.status, 'ready')
-  assert.equal(first.quota.rows[0].remainingPercent, 60)
-  assert.equal(second.quota.rows[0].remainingPercent, 90)
+  assert.equal(first.quota.rows.length, 2)
+  assert.equal(first.quota.rows.every((row) => row.kind === 'product'), true)
+  assert.equal(first.quota.rows.find((row) => row.product === 'auto').usedPercent, 0)
+  assert.equal(second.quota.rows.find((row) => row.product === 'auto').usedPercent, 0)
   assert.equal(second.methodLabel, 'IDE')
 })
 
-test('parseCursorPeriodUsage maps planUsage.totalPercentUsed', () => {
+test('parseCursorPeriodUsage emits two used-percent product bars, not spend cap', () => {
   const parsed = parseCursorPeriodUsage({
-    planUsage: { totalPercentUsed: 27, includedSpend: 2.7, limit: 10 },
-    membershipType: 'proplus',
+    planUsage: {
+      totalPercentUsed: 44,
+      autoPercentUsed: 51,
+      apiPercentUsed: 0,
+      includedSpend: 40000,
+      limit: 40000,
+    },
+    membershipType: 'pro',
+    billingCycleEnd: '2026-10-01T00:00:00.000Z',
     email: 'q@x',
   })
-  assert.equal(parsed.planType, 'proplus')
-  assert.equal(formatPlanLabel(parsed.planType, 'cursor'), 'Pro+')
+  assert.equal(parsed.planType, 'pro')
+  assert.equal(formatPlanLabel(parsed.planType, 'cursor'), 'Pro')
   assert.equal(parsed.account, 'q@x')
-  assert.equal(parsed.rows[0].remainingPercent, 73)
+  assert.equal(parsed.rows.length, 2)
+  assert.equal(parsed.rows.every((row) => row.kind === 'product'), true)
+  assert.equal(parsed.rows.some((row) => row.kind === 'cycle'), false)
+  const composer = parsed.rows.find((row) => row.product === 'auto')
+  const api = parsed.rows.find((row) => row.product === 'api')
+  assert.equal(composer.usedPercent, 51)
+  assert.equal(composer.remainingPercent, 49)
+  assert.equal(api.usedPercent, 0)
+  assert.equal(api.remainingPercent, 100)
+  assert.equal(composer.used, undefined)
+  assert.equal(composer.total, undefined)
+  assert.equal(api.used, undefined)
+  assert.equal(api.total, undefined)
+  assert.equal(JSON.stringify(parsed).includes('40000'), false)
+  assert.equal(composer.resetAt, Date.parse('2026-10-01T00:00:00.000Z'))
+  assert.equal(api.resetAt, composer.resetAt)
+})
+
+test('parseCursorPeriodUsage always emits both bars at 0% when percents are missing', () => {
+  const parsed = parseCursorPeriodUsage({
+    planUsage: { totalPercentUsed: 0, includedSpend: 0, limit: 40000 },
+    membershipType: 'proplus',
+  })
+  assert.equal(formatPlanLabel(parsed.planType, 'cursor'), 'Pro+')
+  assert.equal(parsed.rows.length, 2)
+  assert.equal(parsed.rows[0].usedPercent, 0)
+  assert.equal(parsed.rows[1].usedPercent, 0)
+  assert.equal(parsed.rows[0].total, undefined)
 })
 
 test('cursor cache sanitizer and sticky conversation id across two turns', () => {
@@ -443,4 +499,180 @@ test('parseCursorTokenResponse and completeCursorLogin tag pkce', async () => {
   const session = await completeCursorLogin(parsed)
   assert.equal(session.source, 'pkce')
   assert.equal(session.refreshToken, 'r')
+})
+
+test('cursor picker collapses effort/fast/thinking/max-mode and hides tab internals', () => {
+  const rows = toCursorPickerModels([
+    { id: 'default', name: 'Auto' },
+    { id: 'gpt-5.5-none', name: 'GPT-5.5 272K None' },
+    { id: 'gpt-5.5-high-fast', name: 'GPT-5.5 272K High Fast' },
+    { id: 'gpt-5.5-1m-extra-high', name: 'GPT-5.5 1M Extra High' },
+    { id: 'claude-4.6-opus-max-thinking', name: 'Opus 4.6 1M Max Thinking' },
+    { id: 'claude-4.6-opus-high', name: 'Opus 4.6 1M' },
+    { id: 'gpt-5.1-codex-max-high-fast', name: 'GPT-5.1 Codex Max High Fast' },
+    { id: 'composer-2-fast', name: 'Composer 2 Fast' },
+    { id: 'cursor-small', name: 'Tab' },
+    { id: 'tab-completion', name: 'Tab completion' },
+    { id: 'cursor-chat', name: 'Chat' },
+  ])
+  const ids = rows.map((row) => row.id)
+  assert.equal(ids.includes('default'), true)
+  assert.equal(rows.find((row) => row.id === 'default').name, 'Auto')
+  assert.equal(ids.includes('gpt-5.5'), true)
+  assert.equal(ids.includes('gpt-5.5-high-fast'), false)
+  assert.equal(ids.filter((id) => id.startsWith('gpt-5.5')).length, 1)
+  assert.equal(ids.includes('claude-4.6-opus'), true)
+  assert.equal(ids.includes('gpt-5.1-codex-max'), true)
+  assert.equal(ids.includes('composer-2'), true)
+  assert.equal(ids.some((id) => /tab|chat|cursor-small/.test(id)), false)
+  assert.equal(isCursorInternalModel('cursor-small', 'Tab'), true)
+  assert.equal(cursorPickerFamilyId('gpt-5.5-max-extra-high-fast'), 'gpt-5.5')
+  assert.equal(inferCursorContextWindow('grok-4.5', 'Grok 4.5'), 256_000)
+  assert.equal(inferCursorMaxOutputTokens('gpt-5.5', 'GPT-5.5'), 128_000)
+  assert.deepEqual(rows.find((row) => row.id === 'gpt-5.5').reasoningEfforts, CURSOR_REASONING)
+  assert.equal(Object.hasOwn(rows.find((row) => row.id === 'gpt-5.5').reasoningEfforts, 'none'), false)
+})
+
+test('mocked GetUsableModels expands cursor catalog and yaml beyond the static 5', async () => {
+  resetCursorCatalogCache()
+  const payload = frameConnect(encodeGetUsableModelsResponse([
+    { id: 'composer-2', name: 'Composer 2' },
+    { id: 'composer-1.5', name: 'Composer 1.5' },
+    { id: 'claude-sonnet-5', name: 'Claude Sonnet 5' },
+    { id: 'gpt-5.5', name: 'GPT-5.5' },
+    { id: 'grok-4.5', name: 'Grok 4.5' },
+    { id: 'default', name: 'Auto' },
+    { id: 'claude-4.6-sonnet-medium', name: 'Sonnet 4.6 1M' },
+    { id: 'claude-4.6-sonnet-medium-thinking', name: 'Sonnet 4.6 1M Thinking' },
+    { id: 'gemini-3.1-pro', name: 'Gemini 3.1 Pro' },
+    { id: 'cursor-small', name: 'Tab' },
+  ]))
+  const decoded = decodeGetUsableModelsResponse(payload)
+  assert.ok(decoded.length > CURSOR_MODELS.length)
+  const available = decodeAvailableModelsResponse(encodeAvailableModelsResponse([
+    { name: 'kimi-k2.5', clientDisplayName: 'Kimi K2.5', contextTokenLimit: 262_000 },
+  ]))
+  assert.equal(available[0].name, 'kimi-k2.5')
+  assert.equal(encodeAvailableModelsRequest().length > 0, true)
+  const session = cursorSession({
+    accessToken: validAccess('live@x'),
+    refreshToken: 'rt-live',
+    source: 'pkce',
+  })
+  const models = await refreshCursorCatalog(session, {
+    fetchUsable: async () => decoded,
+    fetchAvailable: async () => available,
+  })
+  assert.ok(models.length > CURSOR_MODELS.length)
+  assert.equal(models.some((model) => model.id === 'default'), true)
+  assert.equal(models.some((model) => model.id === 'claude-4.6-sonnet'), true)
+  assert.equal(models.some((model) => model.id === 'gemini-3.1-pro'), true)
+  assert.equal(models.some((model) => model.id === 'kimi-k2.5'), true)
+  assert.equal(models.some((model) => model.id === 'cursor-small'), false)
+  assert.deepEqual(cursorCatalogModels().map((model) => model.id), models.map((model) => model.id))
+  const catalog = catalogProviders({
+    prefix: 'oauth',
+    origin: 'http://127.0.0.1:8318',
+    cursorModels: models,
+  })
+  assert.ok(catalog['oauth-cursor'].models.length > CURSOR_MODELS.length)
+  assert.equal(catalog['oauth-cursor'].models.length, models.length)
+  const yaml = { providers: {} }
+  const result = await syncHarnessModels({
+    settings: {
+      mutate: async (_target, mutations) => {
+        for (const op of mutations) {
+          if (op.op === 'unset') delete yaml.providers[op.path[1]]
+          if (op.op === 'set') yaml.providers[op.path[1]] = op.value
+        }
+      },
+      get: async () => ({ providers: yaml.providers }),
+    },
+    prefix: 'oauth',
+    origin: 'http://127.0.0.1:8318',
+    loggedIn: { cursor: true },
+    cursorModels: models,
+  })
+  const ids = yaml.providers['oauth-cursor'].models.map((model) => model.id)
+  assert.deepEqual(ids, catalog['oauth-cursor'].models.map((model) => model.id))
+  assert.deepEqual(result.routes.find((row) => row.provider === 'oauth-cursor').models, ids)
+  assert.ok(ids.length > CURSOR_MODELS.length)
+  resetCursorCatalogCache()
+})
+
+test('refreshQuota discovery persists live cursor models into settings.yaml', async () => {
+  resetCursorCatalogCache()
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-cursor-live-'))
+  const authPath = join(dir, 'auth.json')
+  const session = cursorSession({
+    accessToken: validAccess('yaml@x'),
+    refreshToken: 'rt-yaml',
+    source: 'pkce',
+    account: 'yaml@x',
+  })
+  await saveSession('cursor', session, authPath)
+  const yaml = { providers: {} }
+  const decoded = decodeGetUsableModelsResponse(encodeGetUsableModelsResponse([
+    { id: 'composer-2', name: 'Composer 2' },
+    { id: 'composer-1.5', name: 'Composer 1.5' },
+    { id: 'claude-sonnet-5', name: 'Claude Sonnet 5' },
+    { id: 'gpt-5.5', name: 'GPT-5.5' },
+    { id: 'grok-4.5', name: 'Grok 4.5' },
+    { id: 'default', name: 'Auto' },
+    { id: 'gemini-3.1-pro', name: 'Gemini 3.1 Pro' },
+  ]))
+  const controller = new AuthController({
+    authPath,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    cursorAutoImport: false,
+    cursorDiscover: (live) => refreshCursorCatalog(live, {
+      fetchUsable: async () => decoded,
+      fetchAvailable: async () => [],
+    }),
+    settings: {
+      mutate: async (_target, mutations) => {
+        for (const op of mutations) {
+          if (op.op === 'unset') delete yaml.providers[op.path[1]]
+          if (op.op === 'set') yaml.providers[op.path[1]] = op.value
+        }
+      },
+      get: async () => ({ providers: yaml.providers }),
+    },
+    fetchFn: async () => json({
+      planUsage: { totalPercentUsed: 44, autoPercentUsed: 51, apiPercentUsed: 0, includedSpend: 40000, limit: 40000 },
+      membershipType: 'pro',
+      email: 'yaml@x',
+    }),
+  })
+  await controller.refreshQuota('cursor')
+  const snap = await controller.snapshot()
+  const cursorGroup = snap.catalog.find((row) => row.family === 'cursor')
+  assert.ok(cursorGroup.models.length > CURSOR_MODELS.length)
+  assert.equal(cursorGroup.models.some((model) => model.id === 'gemini-3.1-pro'), true)
+  const ids = yaml.providers['oauth-cursor'].models.map((model) => model.id)
+  assert.ok(ids.length > CURSOR_MODELS.length)
+  assert.deepEqual(ids, cursorGroup.models.map((model) => model.id))
+  const enabled = await controller.setModels({ key: 'oauth-cursor/gemini-3.1-pro', on: true })
+  assert.equal(enabled.catalog.find((row) => row.family === 'cursor').models.find((model) => model.id === 'gemini-3.1-pro').enabled, true)
+  assert.equal(yaml.providers['oauth-cursor'].models.some((model) => model.id === 'gemini-3.1-pro'), true)
+  resetCursorCatalogCache()
+})
+
+test('empty GetUsableModels keeps the static five-row fallback', async () => {
+  resetCursorCatalogCache()
+  const session = cursorSession({
+    accessToken: validAccess('empty@x'),
+    refreshToken: 'rt-empty',
+    source: 'pkce',
+  })
+  const models = await refreshCursorCatalog(session, {
+    fetchUsable: async () => [],
+    fetchAvailable: async () => [],
+  })
+  assert.equal(models.length, CURSOR_MODELS.length)
+  assert.deepEqual(models.map((model) => model.id), CURSOR_MODELS.map((model) => model.id))
+  const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
+  assert.equal(catalog['oauth-cursor'].models.length, CURSOR_MODELS.length)
+  resetCursorCatalogCache()
 })

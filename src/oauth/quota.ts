@@ -705,6 +705,18 @@ export function parseKiroUsage(payload) {
   }
 }
 
+function cursorProductRow(key, usedPercent, resetAt) {
+  const used = clampPct(usedPercent) ?? 0
+  return {
+    key: `product:${key}`,
+    kind: 'product',
+    product: key,
+    usedPercent: used,
+    remainingPercent: 100 - used,
+    ...(resetAt === undefined ? {} : { resetAt }),
+  }
+}
+
 export function parseCursorPeriodUsage(payload) {
   if (!payload || typeof payload !== 'object') return { rows: [] }
   const planUsage = payload.planUsage && typeof payload.planUsage === 'object' ? payload.planUsage : {}
@@ -713,26 +725,14 @@ export function parseCursorPeriodUsage(payload) {
   const membership = typeof payload.membershipType === 'string' && payload.membershipType.trim()
     ? payload.membershipType.trim()
     : limitType === 'team' ? 'Team' : 'Pro'
-  const usedPercent = clampPct(planUsage.totalPercentUsed)
-  const includedSpend = asNumber(planUsage.includedSpend)
-  const limit = asNumber(planUsage.limit)
-  const remaining = limit !== undefined && includedSpend !== undefined
-    ? Math.max(0, limit - includedSpend)
-    : undefined
   const resetAt = stampOf(payload.billingCycleEnd)
   return {
     planType: pickPlanRaw(membership, payload.planType, limitType),
     account: typeof payload.email === 'string' ? payload.email.trim() : undefined,
-    rows: [{
-      key: 'cycle',
-      kind: 'cycle',
-      usedPercent,
-      remainingPercent: usedPercent === undefined ? undefined : 100 - usedPercent,
-      used: includedSpend,
-      total: limit,
-      remaining,
-      resetAt,
-    }],
+    rows: [
+      cursorProductRow('auto', planUsage.autoPercentUsed, resetAt),
+      cursorProductRow('api', planUsage.apiPercentUsed, resetAt),
+    ],
   }
 }
 

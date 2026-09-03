@@ -21,6 +21,7 @@ import { AuthController } from './oauth/controller.js'
 import { authFilePath, defaultDataDir, readPrivateText, writePrivateText } from './oauth/store.js'
 import { createProxy } from './oauth/proxy.js'
 import { catalogProviders, OAUTH_CREDENTIAL_REF, ModelSwitch } from './oauth/models.js'
+import { cursorCatalogModels } from './oauth/cursor/catalog.js'
 import { EffortMemory, LAST_EFFORT_FILE, startEffortRestore } from './oauth/reasoning-effort.js'
 import { profileFromBaseUrl } from './utils/update.js'
 
@@ -153,7 +154,11 @@ export function apply(ctx, config = {}) {
     memory: effort,
     prefix,
     effortsFor: (provider, modelId) => {
-      const catalog = catalogProviders({ prefix, origin: `http://127.0.0.1:${port}` })
+      const catalog = catalogProviders({
+        prefix,
+        origin: `http://127.0.0.1:${port}`,
+        cursorModels: cursorCatalogModels(),
+      })
       return catalog[provider]?.models.find((model) => model.id === modelId)?.reasoningEfforts
     },
   }), 'dsh-plugin-oauth-subs: remember reasoning effort')
