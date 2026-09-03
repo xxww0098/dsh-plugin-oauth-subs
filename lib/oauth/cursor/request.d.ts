@@ -4,13 +4,12 @@
  * Native wire is Connect/protobuf over HTTP/2. Completions is the DSH api
  * because that wire is none of the three closed harness protocols.
  */
-export declare function cursorModelParameters(payload?: {}): {
-    id: string;
-    value: any;
-}[];
+export declare function cursorModelParameters(payload?: {}): any[];
+export declare function cursorWireModelId(model: any): string;
 export declare function openaiToCursor(payload?: {}, { conversationId }?: {}): {
     conversationId: any;
-    modelId: any;
+    modelId: string;
+    pickerModel: any;
     systemPrompt: any;
     pinnedSystem: any;
     extraSystem: string;
