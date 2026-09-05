@@ -2,6 +2,17 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-05：OpenCode Go Free 被做成了 Zen 匿名免费档
+
+### 现象
+Settings 家族叫 OpenCode Free，picker 是 `big-pickle` / `ling-3.0-flash-fin-free` / Muse Contributor Free 等 Zen `/zen/v1` 行。
+
+### 根因
+实现抄了 Hermes `opencode-free`（匿名 Zen）。产品意图是 OpenCode Go（`/zen/go/v1` + API key），不是 Zen 免费档。
+
+### 修复
+hop 改 `https://opencode.ai/zen/go/v1`，目录 live Go ∩ 去掉 `OPENCODE_ZEN_FREE`，贴 Go API key；废匿名哨兵。
+
 ## 2026-09-05：Copilot 用 OpenCode Ov23li8 换不出 tid=
 
 ### 现象
@@ -23,6 +34,7 @@ hop 对齐 hermes「不发 Authorization」，`opencodeCacheHeaders()` 为空。
 
 ### 修复
 对齐 [anomalyco/opencode](https://github.com/anomalyco/opencode) v1.18.29。`Bearer public` 是无 key 哨兵（不是 store 的 `anonymous`）。session 头写 DSH pin。Zen 若回 `cache_read_*` 再译成 `cached_tokens`。
+
 ## 2026-09-05：Cursor 选择器只有 Composer 2 / 1.5 等 5 个
 
 ### 现象

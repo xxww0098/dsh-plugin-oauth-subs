@@ -1,18 +1,11 @@
 /**
- * OpenCode Free prompt cache.
+ * OpenCode Go Free prompt cache.
  *
- * anomalyco/opencode v1.18.29 sends `x-opencode-session` (sticky provider
- * + prompt cache), `x-opencode-request` (user message id), and
- * `x-opencode-client`. Zen `handler.ts` uses session as `stickyId`; empty
- * falls back to IP and mixes unrelated chats. Go docs: include
- * `x-opencode-session` so they can optimize prompt caching.
- *
- * Body still strips Codex / Grok fields — Zen Completions does not take
- * `prompt_cache_key`. Never stamp Date.now() as the session id.
- * `x-opencode-request` is one UUID per DSH request (retries replay it).
+ * Go `/v1/chat/completions` has no documented cache-read field. Official
+ * Go docs ask for `x-opencode-session` so the relay can sticky-route
+ * prompt cache. Strip Codex / Grok fields. Do not invent `cached_tokens`
+ * or write Codex `session-id` / `prompt_cache_key`. Never stamp Date.now().
  */
-
-import { randomUUID } from 'node:crypto'
 
 export const OPENCODE_STABLE_SESSION = 'dsh-opencode'
 
@@ -24,7 +17,7 @@ export function opencodeCacheSessionId(key) {
 }
 
 export function resetOpencodePins() {
-  // No in-process prefix map — OpenCode Free parks nothing.
+  // No in-process prefix map — Go has no documented prefix pin.
 }
 
 export function applyOpencodeCache(payload = {}) {
@@ -41,16 +34,8 @@ export function applyOpencodeCache(payload = {}) {
   }
 }
 
-/**
- * Official CLI `session/llm/request.ts` headers for providerID opencode.
- * `reqId` is one UUID per DSH request so retries keep the same id.
- * Do not invent `x-opencode-project` / `x-parent-session-id`.
- * Do not copy Codex `session-id` or non-opencode `x-session-affinity`.
- */
-export function opencodeCacheHeaders(cacheSessionId, extra = {}) {
-  const session = opencodeCacheSessionId(cacheSessionId) || OPENCODE_STABLE_SESSION
-  return {
-    'x-opencode-session': session,
-    'x-opencode-request': typeof extra.reqId === 'string' && extra.reqId ? extra.reqId : randomUUID(),
-  }
+/** Official Go: `x-opencode-session` only. No Codex / Grok headers. */
+export function opencodeCacheHeaders(sessionId) {
+  const id = opencodeCacheSessionId(sessionId) ?? OPENCODE_STABLE_SESSION
+  return { 'x-opencode-session': id }
 }

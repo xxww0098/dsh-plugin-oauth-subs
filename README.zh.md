@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml/badge.svg)](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml)
 
-把 **ChatGPT / Codex**、**xAI Grok**、**智谱 GLM**、**AWS Kiro**、**Google Antigravity**、**Cursor**、**Ollama Cloud**、**Kimi Code Plan**、**OpenCode Free** 和 **GitHub Copilot** 接到 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。登录走官方 OAuth；Kiro 还可贴 `ksk_` API key；Cursor 可复用本机 CLI / IDE 登录；Ollama 贴 ollama.com API key（Cloud，不是本机 11434）；Kimi 走设备码 / `kimi-code.json`；OpenCode Free 一键匿名启用；Copilot 走设备码 / `hosts.json`。本机代理 + `llm-pi-ai` 路由同步；每家从闭集 `openai-responses` | `openai-completions` | `anthropic-messages` 里选一种 DSH `api`。
+把 **ChatGPT / Codex**、**xAI Grok**、**智谱 GLM**、**AWS Kiro**、**Google Antigravity**、**Cursor**、**Ollama Cloud**、**Kimi Code Plan**、**OpenCode Go Free** 和 **GitHub Copilot** 接到 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。登录走官方 OAuth；Kiro 还可贴 `ksk_` API key；Cursor 可复用本机 CLI / IDE 登录；Ollama 贴 ollama.com API key（Cloud，不是本机 11434）；Kimi 走设备码 / `kimi-code.json`；OpenCode Go Free 贴 Go API key；Copilot 走设备码 / `hosts.json`。本机代理 + `llm-pi-ai` 路由同步；每家从闭集 `openai-responses` | `openai-completions` | `anthropic-messages` 里选一种 DSH `api`。
 
 ## 安装
 
@@ -28,7 +28,7 @@ dsh web
 | Cursor | PKCE 轮询 `cursor.com/loginDeepControl`；或 **导入本机 Cursor** | `openai-completions` | Connect `agentn.us.api5.cursor.sh` `AgentService/Run` |
 | Ollama Cloud | 粘贴 API key / 导入 `OLLAMA_API_KEY` | `openai-completions` | `https://ollama.com/v1/chat/completions` |
 | Kimi Code Plan | 设备码（无 PKCE）；导入 `~/.kimi-code/credentials/kimi-code.json`；可选 `KIMI_API_KEY` | `openai-completions` | `https://api.kimi.com/coding/v1/chat/completions` |
-| OpenCode Free | 一键匿名启用（无账号、无 API key） | `openai-completions` | `https://opencode.ai/zen/v1/chat/completions`（`Bearer public` + `x-opencode-session`） |
+| OpenCode Go Free | 粘贴 API key / 导入 `OPENCODE_API_KEY` | `openai-completions` | `https://opencode.ai/zen/go/v1/chat/completions`（Bearer） |
 | GitHub Copilot | 设备码（无 PKCE）；导入 `~/.config/github-copilot/hosts.json`；可选 `GITHUB_TOKEN` | `openai-completions` | `https://api.githubcopilot.com/chat/completions`（`tid=` session） |
 | 路径 | 系列 |
 |---|---|

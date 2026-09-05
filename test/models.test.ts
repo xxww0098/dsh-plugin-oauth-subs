@@ -150,19 +150,23 @@ test('buildProviders only emits logged-in families with DSH api ids', () => {
   assert.equal(chat['oauth-opencode'].compat.supportsReasoningEffort, true)
   assert.equal(chat['oauth-opencode'].compat.thinkingFormat, 'openai')
   assert.equal(chat['oauth-opencode'].apiKeyEnv, OAUTH_CREDENTIAL_REF)
-  assert.equal(chat['oauth-opencode'].models.some((model) => model.id === 'ling-3.0-flash-fin-free'), true)
-  assert.equal(chat['oauth-opencode'].models.some((model) => model.id === 'big-pickle'), true)
+  assert.equal(chat['oauth-opencode'].models.some((model) => model.id === 'glm-5.3-flash'), true)
+  assert.equal(chat['oauth-opencode'].models.some((model) => model.id === 'muse-spark-1.3-contributor'), true)
+  assert.equal(chat['oauth-opencode'].models.some((model) => model.id === 'ling-3.0-flash-fin-free'), false)
+  assert.equal(chat['oauth-opencode'].models.some((model) => model.id === 'big-pickle'), false)
+  assert.equal(chat['oauth-opencode'].models.some((model) => model.id === 'mimo-v2.5-free'), false)
   assert.equal(chat['oauth-opencode'].models.some((model) => model.id === 'hy3-free'), false)
   assert.equal(chat['oauth-opencode'].models.some((model) => model.id === 'laguna-s-2.1-free'), false)
   assert.equal(chat['oauth-opencode'].models.some((model) => model.id === 'deepseek-v4-flash-free'), false)
   assert.equal(chat['oauth-opencode'].models.some((model) => model.id === 'ox-alpha-free'), false)
-  assert.deepEqual(chat['oauth-opencode'].models.find((model) => model.id === 'ling-3.0-flash-fin-free').reasoningEfforts, {
-    off: 'none',
+  assert.deepEqual(chat['oauth-opencode'].models.find((model) => model.id === 'glm-5.3-flash').reasoningEfforts, {
+    low: 'low',
     high: 'high',
+    max: 'max',
   })
-  assert.equal(Object.hasOwn(chat['oauth-opencode'].models.find((model) => model.id === 'big-pickle'), 'reasoningEfforts'), false)
-  assert.equal(Object.hasOwn(chat['oauth-opencode'].models.find((model) => model.id === 'mimo-v2.5-free'), 'reasoningEfforts'), false)
-  assert.deepEqual(chat['oauth-opencode'].models.find((model) => model.id === 'mimo-v2.5-free').input, ['text', 'image'])
+  assert.deepEqual(chat['oauth-opencode'].models.find((model) => model.id === 'glm-5.3-flash').input, ['text', 'image'])
+  assert.equal(Object.hasOwn(chat['oauth-opencode'].models.find((model) => model.id === 'kimi-k2.7-code'), 'reasoningEfforts'), false)
+  assert.deepEqual(chat['oauth-opencode'].models.find((model) => model.id === 'mimo-v2.5').input, ['text', 'image'])
   assert.equal(chat['oauth-copilot'].api, HARNESS_COMPLETIONS_API)
   assert.equal(chat['oauth-copilot'].api, 'openai-completions')
   assert.equal(chat['oauth-copilot'].baseURL, 'http://127.0.0.1:8318/copilot')

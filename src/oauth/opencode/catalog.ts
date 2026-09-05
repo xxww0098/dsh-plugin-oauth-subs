@@ -1,20 +1,22 @@
 /**
- * Live OpenCode Free picker. GET https://opencode.ai/zen/v1/models
- * with official no-key `Bearer public`, keep official Free ids that Zen
- * still lists. Overlay matching models.dev `opencode.models` for windows /
- * input / reasoning. OPENCODE_MODELS is the offline fallback only.
+ * Live OpenCode Go Free picker. GET https://opencode.ai/zen/go/v1/models
+ * (catalog is unauthenticated), keep Go ids, drop Zen-only free slugs.
+ * Overlay matching models.dev `opencode-go.models` for windows / input /
+ * reasoning. OPENCODE_MODELS is the offline fallback only.
  */
 
 import {
   OPENCODE_DEFAULT_MAX_TOKENS,
   OPENCODE_INPUT,
-  OPENCODE_KEYED_FREE,
   OPENCODE_MODELS,
   OPENCODE_MODELS_DEV_URL,
   OPENCODE_MODELS_URL,
+  OPENCODE_REFERER,
+  OPENCODE_TITLE,
   OPENCODE_USER_AGENT,
   OPENCODE_VISION_INPUT,
-  isOpencodeFreeSlug,
+  isOpencodeGoSlug,
+  isOpencodeZenFreeSlug,
   opencodePrettyName,
   opencodeUpstreamHeaders,
 } from './index.js'
@@ -75,12 +77,12 @@ export function opencodeReasoningEffortsOf(dev) {
   return undefined
 }
 
-export function modelsDevOpencodeMap(payload) {
-  const models = payload?.opencode?.models
+export function modelsDevOpencodeGoMap(payload) {
+  const models = payload?.['opencode-go']?.models ?? payload?.opencodeGo?.models
   if (!models || typeof models !== 'object' || Array.isArray(models)) return new Map()
   const map = new Map()
   for (const [id, row] of Object.entries(models)) {
-    if (row && typeof row === 'object') map.set(id, row)
+    if (row && typeof row === 'object' && !isOpencodeZenFreeSlug(id)) map.set(id, row)
   }
   return map
 }
@@ -111,10 +113,12 @@ export function applyOpencodeModelsDev(model, dev) {
   return next
 }
 
-/** Overlay models.dev onto Zen ids only. Never add a slug Zen did not list. */
+/** Overlay models.dev `opencode-go` onto Go ids only. Never add a Zen free slug. */
 export function overlayOpencodeModelsDev(models, payload) {
-  const spec = modelsDevOpencodeMap(payload)
-  return (Array.isArray(models) ? models : []).map((model) => applyOpencodeModelsDev(model, spec.get(model.id)))
+  const spec = modelsDevOpencodeGoMap(payload)
+  return (Array.isArray(models) ? models : [])
+    .filter((model) => !isOpencodeZenFreeSlug(model?.id))
+    .map((model) => applyOpencodeModelsDev(model, spec.get(model.id)))
 }
 
 export function toOpencodePickerModels(payload) {
@@ -123,7 +127,7 @@ export function toOpencodePickerModels(payload) {
   const models = []
   for (const row of rows) {
     const id = typeof row?.id === 'string' ? row.id.trim() : ''
-    if (!id || !isOpencodeFreeSlug(id) || OPENCODE_KEYED_FREE.has(id.toLowerCase()) || seen.has(id)) continue
+    if (!id || !isOpencodeGoSlug(id) || isOpencodeZenFreeSlug(id) || seen.has(id)) continue
     seen.add(id)
     models.push({
       id,
@@ -159,19 +163,22 @@ async function fetchOpencodeModelsDev({ fetchFn, signal }) {
 export async function refreshOpencodeCatalog({ fetchFn = fetch, signal, force = false } = {}) {
   if (!force && cached.models?.length && Date.now() < cached.expiresAt) return cached.models
   try {
-    const [zenResponse, devPayload] = await Promise.all([
+    const [goResponse, devPayload] = await Promise.all([
       fetchFn(OPENCODE_MODELS_URL, {
         method: 'GET',
         headers: {
           accept: 'application/json',
           ...opencodeUpstreamHeaders(),
+          'user-agent': OPENCODE_USER_AGENT,
+          'http-referer': OPENCODE_REFERER,
+          'x-title': OPENCODE_TITLE,
         },
         signal,
       }),
       fetchOpencodeModelsDev({ fetchFn, signal }),
     ])
-    if (!zenResponse.ok) return opencodeCatalogModels()
-    const listed = toOpencodePickerModels(await zenResponse.json())
+    if (!goResponse.ok) return opencodeCatalogModels()
+    const listed = toOpencodePickerModels(await goResponse.json())
     if (!listed.length) return opencodeCatalogModels()
     const models = overlayOpencodeModelsDev(listed, devPayload)
     cached.models = models

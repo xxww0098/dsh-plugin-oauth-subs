@@ -23,8 +23,9 @@
 | Cursor | Cursor CLI `loginDeepControl` | [Rahularya01/pi-cursor](https://github.com/Rahularya01/pi-cursor)；[fitchmultz/pi-cursor-sdk](https://github.com/fitchmultz/pi-cursor-sdk)（`@cursor/sdk@1.0.27`） | 指纹 `cli-2026.07.23-e383d2b`；`x-cursor-client-type: cli` | [`cursor/README.md`](../src/oauth/cursor/README.md) |
 | Ollama Cloud | [docs.ollama.com/cloud](https://docs.ollama.com/cloud) | [ollama/ollama#12532](https://github.com/ollama/ollama/issues/12532)、[#16598](https://github.com/ollama/ollama/issues/16598) | Bearer `OLLAMA_API_KEY` → `ollama.com/v1` | [`ollama/README.md`](../src/oauth/ollama/README.md) |
 | Kimi | 官方 Kimi Code CLI | [Leechael/pi-provider-kimi-code](https://github.com/Leechael/pi-provider-kimi-code) | 设备码、无 PKCE | [`kimi/README.md`](../src/oauth/kimi/README.md) |
-| OpenCode Free | [anomalyco/opencode](https://github.com/anomalyco/opencode) `v1.18.29` | [opencode.ai/docs/zen](https://opencode.ai/docs/zen)；[hermes-agent opencode-free](https://github.com/NousResearch/hermes-agent/tree/main/plugins/model-providers/opencode-free)；[anomalyco/models.dev](https://github.com/anomalyco/models.dev) | UA `opencode/1.18.29`；`Bearer public` | [`opencode/README.md`](../src/oauth/opencode/README.md) |
-| GitHub Copilot | [anomalyco/opencode](https://github.com/anomalyco/opencode) `plugin/github-copilot` | [goose githubcopilot.rs](https://github.com/aaif-goose/goose)；[Cherry Studio CopilotService.ts](https://github.com/CherryHQ/cherry-studio)；[hermes-agent copilot_auth.py](https://github.com/NousResearch/hermes-agent/blob/main/hermes_cli/copilot_auth.py) | UA `GitHubCopilotChat/0.35.0`；client `Iv1.b507a08c87ecfe98` | [`copilot/README.md`](../src/oauth/copilot/README.md) || 宿主 | [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) | DSH `llm-pi-ai` `api` 闭集 | 本机回环代理 | [`README.md`](../README.md) |
+| OpenCode Go Free | [opencode.ai/docs/go](https://opencode.ai/docs/go) | [anomalyco/opencode](https://github.com/anomalyco/opencode)；[sst/models.dev](https://github.com/sst/models.dev) `opencode-go`；[hermes-agent opencode-go](https://github.com/NousResearch/hermes-agent/tree/main/plugins/model-providers/opencode-zen) | Bearer Go API key → `/zen/go/v1`；`x-opencode-session` | [`opencode/README.md`](../src/oauth/opencode/README.md) |
+| GitHub Copilot | [anomalyco/opencode](https://github.com/anomalyco/opencode) `plugin/github-copilot` | [goose githubcopilot.rs](https://github.com/aaif-goose/goose)；[Cherry Studio CopilotService.ts](https://github.com/CherryHQ/cherry-studio)；[hermes-agent copilot_auth.py](https://github.com/NousResearch/hermes-agent/blob/main/hermes_cli/copilot_auth.py) | UA `GitHubCopilotChat/0.35.0`；client `Iv1.b507a08c87ecfe98` | [`copilot/README.md`](../src/oauth/copilot/README.md) |
+| 宿主 | [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) | DSH `llm-pi-ai` `api` 闭集 | 本机回环代理 | [`README.md`](../README.md) |
 
 CLIProxyAPI 同时包了 Codex / Grok / Antigravity 等多家。**只**在 Antigravity 上抄它的公开 client / UA / `models.json` 形状。不要把它的多家族共用层抄进本仓库的 `cache.ts`。
 
@@ -128,20 +129,13 @@ pi-cursor-sdk 自己走 **API key + `Agent.create`**，不是 OAuth。本 hop �
 
 **不要发明：** PKCE；第四种 DSH `api` 字符串；Codex / Grok 缓存头；把 UA 扮成 `pi-provider-kimi-code`。不要 vendoring `moonshot_search` / `moonshot_fetch`。
 
-## OpenCode Free
+## OpenCode Go Free
 
-一线：[anomalyco/opencode](https://github.com/anomalyco/opencode) tag **`v1.18.29`**（2026-09-04）。定价页：[Zen](https://opencode.ai/docs/zen)。能力 overlay：[anomalyco/models.dev](https://github.com/anomalyco/models.dev) `GET https://models.dev/api.json`。社区逆向旁路：[hermes-agent `opencode-free`](https://github.com/NousResearch/hermes-agent/tree/main/plugins/model-providers/opencode-free)（不要发无法识别的 Bearer）。
+一线：[Go 文档](https://opencode.ai/docs/go) + [anomalyco/opencode](https://github.com/anomalyco/opencode)。hop 是 `https://opencode.ai/zen/go/v1`，Bearer `OPENCODE_API_KEY` / `OPENCODE_GO_API_KEY`。能力 overlay：[sst/models.dev](https://github.com/sst/models.dev) `opencode-go.models`。Hermes 对照是 `opencode-go`，**不是** Zen 匿名 `opencode-free`。
 
-官方 Free 白名单以 Zen 定价页为准，不是 `*-free` 后缀启发式。无 key 时官方 CLI 只留 `cost.input === 0` 的模型。
+live `GET /zen/go/v1/models` 去掉 Zen-only free slug（`big-pickle` / `ling-3.0-flash-fin-free` / `mimo-v2.5-free` / `muse-spark-*-contributor-free` / `nemotron-*-free` 等）。`ox-alpha-free` 是 Go 历史上的 $0 行，live 没列出不加。
 
-| 抄 | 路径 | 本 hop |
-|---|---|---|
-| `apiKey: "public"` | `packages/opencode/src/provider/provider.ts` 无 key loader | `Authorization: Bearer public`。Zen `handler.ts` / `GET /models` 把 `public` 当没 key |
-| `x-opencode-session` | `packages/opencode/src/session/llm/request.ts`；Go 文档「optimize prompt caching」；`handler.ts` `stickyId` | `opencodeCacheHeaders`：DSH pin，缺省 `dsh-opencode` |
-| `x-opencode-request` | 同上，`input.user.id` | 本跳 UUID，重试回放 |
-| `x-opencode-client` + UA | Flag 默认 `cli`；`User-Agent: opencode/${InstallationVersion}` | `cli` + `opencode/1.18.29` |
-
-**不要发明：** `x-opencode-project`、`x-parent-session-id`（官方有条件才发）。不要把非 opencode 提供商的 `x-session-affinity` / `X-Session-Id` 抄到 Zen。不要把 store 哨兵 `anonymous` 当 Bearer。不要把 Codex `session-id` / `store: false` 抄到 Zen Responses。不要把 Zen 没列出的 models.dev slug 加进 picker。
+**不要发明：** 打 `/zen/v1`；把 Zen free 行加进 picker；OpenCode CLI UA；Codex `session-id` / `store: false` 抄到 Go Responses。官方要求的 `x-opencode-session` 用 DSH pin，不要 `Date.now()`。
 
 ## GitHub Copilot
 

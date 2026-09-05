@@ -302,7 +302,7 @@ export function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaM
     const opencodeRows = opencodeHarnessModels(opencodeModels).map(toHarnessModel)
     const opencodeHasEffort = opencodeRows.some((model) => model.reasoningEfforts && typeof model.reasoningEfforts === 'object')
     providers[`${prefix}-opencode`] = {
-      displayName: 'OAuth · OpenCode Free',
+      displayName: 'OAuth · OpenCode Go Free',
       api: HARNESS_COMPLETIONS_API,
       apiKeyEnv: OAUTH_CREDENTIAL_REF,
       // Completions hop is /opencode/v1/chat/completions. DSH posts

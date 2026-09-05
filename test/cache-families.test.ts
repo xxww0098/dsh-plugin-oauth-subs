@@ -224,35 +224,22 @@ test('Kimi cache strips Codex/Grok fields and does not invent a shard header', (
   resetKimiPins()
 })
 
-test('OpenCode cache strips Codex/Grok fields and writes Zen session headers', () => {
+test('OpenCode cache strips Codex/Grok fields and stamps official x-opencode-session', () => {
   const { payload, cacheSessionId } = applyOpencodeCache({
     session_id: 'sess-opencode',
     prompt_cache_key: 'codex-style',
     prompt_cache_retention: '24h',
-    model: 'ling-3.0-flash-fin-free',
+    model: 'glm-5.3-flash',
   })
   assert.equal(cacheSessionId, 'sess-opencode')
   assert.equal(payload.prompt_cache_key, undefined)
   assert.equal(payload.prompt_cache_retention, undefined)
   assert.equal(payload.session_id, undefined)
-  const headers = opencodeCacheHeaders(cacheSessionId, { reqId: 'req-1' })
-  assert.deepEqual(headers, {
-    'x-opencode-session': 'sess-opencode',
-    'x-opencode-request': 'req-1',
-  })
-  assert.equal(Object.hasOwn(headers, 'session-id'), false)
-  assert.equal(Object.hasOwn(headers, 'thread-id'), false)
-  assert.equal(Object.hasOwn(headers, 'x-client-request-id'), false)
-  assert.equal(Object.hasOwn(headers, 'x-grok-conv-id'), false)
-  assert.equal(Object.hasOwn(headers, 'x-session-affinity'), false)
-  assert.equal(Object.hasOwn(headers, 'x-opencode-project'), false)
-  assert.equal(Object.hasOwn(headers, 'x-parent-session-id'), false)
-  const retry = opencodeCacheHeaders(cacheSessionId, { reqId: 'req-1' })
-  assert.equal(retry['x-opencode-request'], 'req-1')
-  const neither = applyOpencodeCache({ model: 'ling-3.0-flash-fin-free' })
-  assert.equal(neither.cacheSessionId, OPENCODE_STABLE_SESSION)
-  assert.equal(opencodeCacheHeaders()['x-opencode-session'], OPENCODE_STABLE_SESSION)
-  assert.match(opencodeCacheHeaders()['x-opencode-request'], /^[0-9a-f-]{36}$/i)
+  assert.deepEqual(opencodeCacheHeaders(), { 'x-opencode-session': OPENCODE_STABLE_SESSION })
+  assert.deepEqual(opencodeCacheHeaders(cacheSessionId), { 'x-opencode-session': 'sess-opencode' })
+  assert.equal(Object.hasOwn(opencodeCacheHeaders(), 'session-id'), false)
+  assert.equal(Object.hasOwn(opencodeCacheHeaders(), 'x-grok-conv-id'), false)
+  assert.equal(applyOpencodeCache({}).cacheSessionId, OPENCODE_STABLE_SESSION)
 })
 
 test('Copilot cache strips Codex/Grok fields and writes X-Interaction-Id', () => {

@@ -12,7 +12,7 @@
  *                Official Model Quota UI is two groups × (weekly + 5-hour).
  *   Ollama  GET ollama.com/api/usage  (limits.session/weekly.usage = 0..1)
  *           POST ollama.com/api/me    (Email / Name / Plan; GET is 405)
- *   OpenCode Free  no anonymous usage API; card stays idle / empty rows, plan Free
+ *   OpenCode Go Free  no public usage API; card stays idle / empty rows, plan Go
  *   Copilot GET api.github.com/copilot_internal/user (premium_interactions remaining %)
  *
  * Codex windows report used_percent; remaining is 100 − used.
@@ -76,7 +76,7 @@ import {
   parseOllamaMe,
 } from './ollama/index.js'
 import { KIMI_ME_URL, KIMI_USAGE_URL, kimiUpstreamHeaders, parseKimiUserInfo } from './kimi/index.js'
-import { OPENCODE_ACCOUNT } from './opencode/index.js'
+import { opencodeDefaultAccount } from './opencode/index.js'
 import { COPILOT_QUOTA_URL, copilotIdentityHeaders, isGithubUserToken, parseCopilotUser } from './copilot/index.js'
 
 export const QUOTA_TTL_MS = 60_000
@@ -1006,13 +1006,13 @@ export async function fetchKimiQuota(session, fetchFn = fetch) {
   }
 }
 
-/** Anonymous Zen has no usage API. Card still renders; quota rows stay empty. */
+/** Go has no public usage API. Card still renders; quota rows stay empty. */
 export async function fetchOpencodeQuota(session) {
   const account = typeof session?.account === 'string' && session.account.trim()
     ? session.account.trim()
-    : OPENCODE_ACCOUNT
+    : opencodeDefaultAccount(session?.accessToken)
   return {
-    planType: session?.planType || 'free',
+    planType: session?.planType === 'free' ? 'free' : 'go',
     account,
     rows: [],
   }

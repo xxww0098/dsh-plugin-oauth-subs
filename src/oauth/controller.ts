@@ -83,10 +83,12 @@ import {
 import { KIMI_IMPORT_EMPTY, importKimiAuth } from './kimi/import.js'
 import { kimiCatalogModels, refreshKimiCatalog } from './kimi/catalog.js'
 import {
+  isOpencodeAnonSession,
   isOpencodePermanentRefreshError,
   opencodeSession,
   refreshOpencode,
 } from './opencode/index.js'
+import { OPENCODE_IMPORT_EMPTY, importOpencodeAuth } from './opencode/import.js'
 import { opencodeCatalogModels, refreshOpencodeCatalog } from './opencode/catalog.js'
 import {
   completeCopilotDevice as sessionFromCopilotDevice,
@@ -114,7 +116,7 @@ import { QuotaStore } from './quota.js'
 import { fetchLatest, localUpdateInfo, applyHostUpdate, compareVersions, DEFAULT_PROFILE } from '../utils/update.js'
 
 export class AuthController {
-  constructor({ authPath, prefix, origin, settings, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, spawnFn, profile, readFileFn, updateEnv, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, opencodeDiscover, opencodeAutoEnable, copilotAutoImport, copilotDiscover }) {
+  constructor({ authPath, prefix, origin, settings, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, spawnFn, profile, readFileFn, updateEnv, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, opencodeDiscover, opencodeAutoImport, copilotAutoImport, copilotDiscover }) {
     this.authPath = authPath
     this.prefix = prefix
     this.origin = origin
@@ -154,10 +156,8 @@ export class AuthController {
     this.opencodeDiscover = typeof opencodeDiscover === 'function'
       ? opencodeDiscover
       : (process.env.NODE_TEST_CONTEXT ? undefined : (() => refreshOpencodeCatalog({ fetchFn })))
-    // Empty-roster auto-enable writes the anonymous sentinel. Off in node:test
-    // so logged-out snapshots stay empty unless a test opts in.
-    this.opencodeAutoEnable = opencodeAutoEnable ?? !process.env.NODE_TEST_CONTEXT
-    this.opencodeAutoEnableTried = false
+    this.opencodeAutoImport = opencodeAutoImport ?? !process.env.NODE_TEST_CONTEXT
+    this.opencodeAutoImportTried = false
     this.copilotAutoImport = copilotAutoImport ?? !process.env.NODE_TEST_CONTEXT
     this.copilotAutoImportTried = false
     this.copilotDiscover = typeof copilotDiscover === 'function'
@@ -259,7 +259,7 @@ export class AuthController {
         onRemoved: () => this.onAuthChanged?.('copilot'),
       }),
       opencode: new TokenManager({
-        displayName: 'OpenCode Free',
+        displayName: 'OpenCode Go Free',
         preemptMs: 24 * 60 * 60_000,
         load: () => getSession('opencode', this.authPath),
         save: (session) => saveSession('opencode', session, this.authPath),
@@ -383,7 +383,8 @@ export class AuthController {
     await this.#maybeAutoImportOllama()
     await this.#maybeAutoImportKimi()
     await this.#maybeAutoImportCopilot()
-    await this.#maybeAutoEnableOpencode()
+    await this.#forgetAnonymousOpencode()
+    await this.#maybeAutoImportOpencode()
     const loggedIn = await this.loggedIn()
     const origin = this.origin()
     const catalog = catalogProviders({
@@ -844,16 +845,45 @@ export class AuthController {
     await saveSession('ollama', next, this.authPath, { id: row.id, activate: row.active })
   }
 
-  async #maybeAutoEnableOpencode({ notify = true } = {}) {
-    if (!this.opencodeAutoEnable || this.opencodeAutoEnableTried) return
-    this.opencodeAutoEnableTried = true
+  async #forgetAnonymousOpencode() {
+    const rows = await listStoredSessions('opencode', this.authPath)
+    for (const row of rows) {
+      if (!isOpencodeAnonSession(row.session)) continue
+      await deleteSession('opencode', this.authPath, row.id)
+      this.quota.clear('opencode', row.id)
+    }
+  }
+
+  async #maybeAutoImportOpencode() {
+    if (!this.opencodeAutoImport || this.opencodeAutoImportTried) return
+    this.opencodeAutoImportTried = true
+    await this.#forgetAnonymousOpencode()
     const rows = await listStoredSessions('opencode', this.authPath)
     if (rows.length > 0) return
-    const session = opencodeSession()
-    await saveSession('opencode', session, this.authPath)
-    await this.#discoverOpencode()
-    if (notify) this.onAuthChanged?.('opencode')
-    void this.quota.refresh('opencode')
+    try {
+      const result = await importOpencodeAuth({ env: process.env })
+      if (result?.session) {
+        await saveSession('opencode', result.session, this.authPath)
+        await this.#discoverOpencode()
+        this.onAuthChanged?.('opencode')
+        void this.quota.refresh('opencode')
+      }
+    } catch (error) {
+      if (error?.code !== OPENCODE_IMPORT_EMPTY && error?.message !== OPENCODE_IMPORT_EMPTY) {
+        // empty env is fine
+      }
+    }
+  }
+
+  async #importOpencode() {
+    const existing = await listStoredSessions('opencode', this.authPath)
+    const result = await importOpencodeAuth({ env: process.env })
+    const incomingId = accountIdOf('opencode', result.session)
+    const hit = existing.find((row) => row.id === incomingId)
+    if (hit) {
+      return { source: hit.session.source, session: hit.session, skipped: true }
+    }
+    return result
   }
 
   async #maybeAutoImportKimi() {
@@ -1034,18 +1064,7 @@ export class AuthController {
       throw new Error('ollama uses the paste form, not browser login')
     }
     if (provider === 'opencode') {
-      const existing = await listStoredSessions('opencode', this.authPath)
-      if (existing.length > 0) {
-        return { account: publicSession('opencode', existing[0].session), mode: 'anonymous' }
-      }
-      const session = opencodeSession()
-      this.claim('opencode')
-      await saveSession('opencode', session, this.authPath)
-      this.lastError.delete('opencode')
-      await this.#discoverOpencode()
-      this.onAuthChanged?.('opencode')
-      void this.quota.refresh('opencode')
-      return { account: publicSession('opencode', session), mode: 'anonymous' }
+      throw new Error('opencode uses the paste form, not browser login')
     }
     if (provider === 'cursor') {
       const attempt = await this.cursorFlows.start('cursor', { fetchFn: this.fetchFn })
@@ -1334,8 +1353,20 @@ export class AuthController {
       void this.quota.refresh('copilot')
       return { account: publicSession('copilot', session) }
     }
-    if (provider === 'opencode') throw new Error('opencode free is anonymous — no API key')
-    if (provider !== 'glm') throw new Error('only GLM, Kiro, Ollama Cloud, Kimi, and Copilot accept a pasted key')
+    if (provider === 'opencode') {
+      const session = opencodeSession({
+        accessToken: key,
+        source: 'paste',
+      })
+      this.claim('opencode')
+      await saveSession('opencode', session, this.authPath)
+      this.lastError.delete('opencode')
+      await this.#discoverOpencode()
+      this.onAuthChanged?.('opencode')
+      void this.quota.refresh('opencode')
+      return { account: publicSession('opencode', session) }
+    }
+    if (provider !== 'glm') throw new Error('only GLM, Kiro, Ollama Cloud, Kimi, OpenCode Go Free, and Copilot accept a pasted key')
     const accessToken = typeof key === 'string' ? key.trim() : ''
     if (accessToken.length < 8) throw new Error('glm API key is empty')
     this.claim('glm')
@@ -1472,8 +1503,9 @@ export class AuthController {
   }
 
   async importFrom(provider) {
-    if (provider === 'opencode') throw new Error('opencode free is anonymous — no import')
-    const result = provider === 'codex'
+    const result = provider === 'opencode'
+      ? await this.#importOpencode()
+      : provider === 'codex'
       ? await importCodexAuth()
       : provider === 'glm'
         ? await importGlmAuth()
@@ -1540,9 +1572,8 @@ export class AuthController {
   }
 
   async sync(selected, options = {}) {
-    // Plugin start calls sync(), not snapshot(). Write the anonymous sentinel
-    // first so hop / yaml do not wait on a Settings click.
-    await this.#maybeAutoEnableOpencode({ notify: false })
+    await this.#forgetAnonymousOpencode()
+    await this.#maybeAutoImportOpencode()
     if (this.settings === undefined || typeof this.settings.mutate !== 'function') {
       throw new Error('settings service is not mounted; cannot sync llm-pi-ai routes')
     }
