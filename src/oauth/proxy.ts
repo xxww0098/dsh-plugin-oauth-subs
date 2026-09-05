@@ -96,7 +96,23 @@ const EVENT_TYPE = /"type"\s*:\s*"([^"]+)"/g
 /** Commit anyway rather than risk the client's own header timeout. */
 const COMMIT_DEADLINE_MS = 120_000
 
-class RetryableUpstream extends Error {}
+class RetryableUpstream extends Error {
+  constructor(message, extra = {}) {
+    super(message)
+    if (typeof extra.turnState === 'string' && extra.turnState.trim()) {
+      this.turnState = extra.turnState.trim()
+    }
+  }
+}
+
+function retryableUpstream(message, family, upstream) {
+  const extra = {}
+  if (family === 'codex') {
+    const turnState = upstream?.headers?.get?.('x-codex-turn-state')
+    if (typeof turnState === 'string' && turnState.trim()) extra.turnState = turnState.trim()
+  }
+  return new RetryableUpstream(message, extra)
+}
 
 class RequestError extends Error {
   constructor(status, message) {
@@ -732,6 +748,7 @@ async function forward(request, response, { url, session, headersOf, fetchFn, fa
   }
 
   let lastFailure
+  let codexTurnState
   for (let attempt = 0; attempt < STREAM_ATTEMPTS; attempt++) {
     if (attempt > 0) {
       await delay(RETRY_BACKOFF_MS[attempt - 1], signal)
@@ -744,12 +761,14 @@ async function forward(request, response, { url, session, headersOf, fetchFn, fa
         reqId: grokReqId,
         retryAttempt: attempt,
       }) : {}),
+      ...(family === 'codex' && codexTurnState ? { 'x-codex-turn-state': codexTurnState } : {}),
     }
     try {
       return await attemptUpstream(response, { url, headers, body, stream, fetchFn, family, signal })
     } catch (error) {
       if (signal.aborted || response.headersSent || !(error instanceof RetryableUpstream)) throw error
       lastFailure = error.message
+      if (typeof error.turnState === 'string' && error.turnState) codexTurnState = error.turnState
     }
   }
   throw new RequestError(502, `${family} upstream failed ${STREAM_ATTEMPTS} times: ${lastFailure}`)
@@ -768,7 +787,7 @@ async function attemptUpstream(response, { url, headers, body, stream, fetchFn, 
     upstream = await fetchFn(url, { method: 'POST', headers, body, signal })
   } catch (error) {
     if (signal.aborted) throw error
-    throw new RetryableUpstream(describeError(error))
+    throw retryableUpstream(describeError(error), family)
   }
 
   if (upstream.status >= 400) {
@@ -814,7 +833,7 @@ async function attemptUpstream(response, { url, headers, body, stream, fetchFn, 
       response.destroy(error)
       throw error
     }
-    throw new RetryableUpstream(detail)
+    throw retryableUpstream(detail, family, upstream)
   }
 
   if (!gate.committed) {
@@ -822,7 +841,7 @@ async function attemptUpstream(response, { url, headers, body, stream, fetchFn, 
     // nothing but `response.created`, and stopped. Any other shape is forwarded
     // as-is — an unrecognised body is the upstream's answer, not a fault.
     if (gate.gated && (gate.bytes === 0 || gate.sawPreamble)) {
-      throw new RetryableUpstream(`stream ended with no output events (${gate.bytes}B, silent ${Date.now() - lastByteAt}ms)`)
+      throw retryableUpstream(`stream ended with no output events (${gate.bytes}B, silent ${Date.now() - lastByteAt}ms)`, family, upstream)
     }
     await gate.release(signal)
   }

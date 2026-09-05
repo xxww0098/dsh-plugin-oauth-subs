@@ -53,7 +53,7 @@ src/
       README.md            family design: login, chat, quota, cache (traceable)
       index.ts             catalog, identity, session, OAuth endpoints
       request.ts           Responses body: prefix stabilize, strip retention
-      cache.ts             prompt_cache_key + session-id / x-client-request-id
+      cache.ts             prompt_cache_key + session-id / thread-id / x-client-request-id
     grok/                  xAI Grok only
       README.md
       index.ts             catalog, identity, device/PKCE endpoints
@@ -193,7 +193,7 @@ rewrite busts any prefix cache. Parking is family-owned and the park
 ```text
 DSH body:  session_id?  prompt_cache_key?  messages/input  (volatile leading system)
 
-Codex:     prompt_cache_key + headers session-id / x-client-request-id; drop session_id
+Codex:     prompt_cache_key + headers session-id / thread-id / x-client-request-id; drop session_id
            extra developer parked at input suffix
 Grok:      prompt_cache_key + grok-build headers (conv-id / session-id / req-id / model-override)
            extra developer parked at input suffix; no Codex session-id headers
@@ -225,7 +225,10 @@ OpenCode:  drop Codex/Grok cache fields; no sticky conversation id (non-fix)
 - Backend matches the longest stable prefix of top-level `instructions`
   then `input`. Extra leading `developer` / `system` in `input` (plan
   dumps, header rebuilds) must not stay at the front.
-- Sticky: `session-id` = `x-client-request-id` = `prompt_cache_key`.
+- Sticky: `session-id` = body `prompt_cache_key`. Official CLI also sends
+  `thread-id` (= `x-client-request-id`). DSH is one thread per conversation
+  so all three equal the pin. Replay `x-codex-turn-state` on retries of the
+  same DSH request.
 - Strip DSH `session_id` after copying onto `prompt_cache_key` (chatgpt.com `Unsupported parameter`).
 - Strip `prompt_cache_retention` / `prompt_cache_options` (gpt-5.6 400).
 - Healthy long session: weighted hit ≥ 80%, **zero** affinity misses.
@@ -377,7 +380,7 @@ When adding `src/oauth/<id>/`:
 
 | Family | Backend cache | Sticky identity | Park extras | Hit field |
 |---|---|---|---|---|
-| Codex | prefix of `instructions` then `input` | `session-id` + `x-client-request-id` = `prompt_cache_key`; drop DSH `session_id` | developer at **input suffix** | `cacheReadTokens` |
+| Codex | prefix of `instructions` then `input` | `session-id` = `prompt_cache_key`; `thread-id` = `x-client-request-id` (DSH: same pin); drop DSH `session_id` | developer at **input suffix** | `cacheReadTokens` |
 | Grok | shard + prefix of `input` | `x-grok-conv-id` = `x-grok-session-id` = `prompt_cache_key`; `x-grok-req-id` + `x-grok-model-override` | developer at **input suffix** | `cacheReadTokens`; 512 + reuse<10% = affinity miss |
 | GLM | content hash of leading system + history | Anthropic: `metadata.user_id` + `x-session-id` + first-block `cache_control`; Completions leftover: `user` + `x-session-id` | Completions: system at **messages suffix**; Anthropic: extra system text blocks without cache_control | `cached_tokens` / `cache_read_input_tokens` |
 | Antigravity | Gemini `systemInstruction` + contents + tools | `request.sessionId` (fallback + model) | extra as trailing **user** | `cachedContentTokenCount` / `cache_read_tokens` → `cached_tokens` |
@@ -712,7 +715,10 @@ npm run analyze -- path/to/session.jsonl
 ```
 
 Healthy long Codex session: weighted cache hit ≥ 80%, **zero** affinity
-misses, no TRANSPORT. Compaction / plan rebuild zeros are not shard misses.
+misses, no TRANSPORT. Sticky is `session-id` (prompt cache) plus
+`thread-id` (= `x-client-request-id`); DSH is one thread per conversation
+so all three equal the pin. Replay `x-codex-turn-state` on retries of the
+same request. Compaction / plan rebuild zeros are not shard misses.
 Grok uses grok-build headers (`x-grok-conv-id` / `x-grok-session-id` /
 `x-grok-req-id` / `x-grok-model-override`) + body `prompt_cache_key`, not
 Codex `session-id` headers; extra DSH snapshots park at the input suffix.

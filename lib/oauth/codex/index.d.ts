@@ -13,9 +13,9 @@ export declare const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usa
 export declare const CODEX_RESET_CREDITS_URL = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits";
 export declare const CODEX_RESET_CONSUME_URL = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume";
 export declare const CODEX_MODELS_URL = "https://chatgpt.com/backend-api/codex/models";
-export declare const CODEX_CLIENT_VERSION = "0.153.3";
+export declare const CODEX_CLIENT_VERSION = "0.153.4";
 export declare const CODEX_ORIGINATOR = "codex_cli_rs";
-export declare const CODEX_USER_AGENT = "codex_cli_rs/0.153.3";
+export declare const CODEX_USER_AGENT = "codex_cli_rs/0.153.4";
 export declare const CODEX_SCOPE = "openid profile email offline_access api.connectors.read api.connectors.invoke";
 export declare const CODEX_CALLBACK_PATH = "/auth/callback";
 export declare const CODEX_PREEMPT_MS: number;
@@ -57,7 +57,7 @@ export declare const CODEX_REASONING_EFFORTS_56: Readonly<{
     off: any;
 }>;
 /**
- * Mirrors Codex CLI `models.json` (openai/codex 0.153.3, 2026-09-03) plus
+ * Mirrors Codex CLI `models.json` (openai/codex 0.153.4, 2026-09-04) plus
  * GET chatgpt.com/backend-api/codex/models — the one place model facts live,
  * so the picker, the context aliases and the Fast tier cannot drift apart.
  *

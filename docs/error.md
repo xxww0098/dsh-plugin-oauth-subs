@@ -740,16 +740,16 @@ xAI prompt cache **按服务器分片**（粒度 512），粘性头是 grok-buil
 ### 修复
 完整 grok-build sticky 头（**仍然不**发送 Codex `session-id` / `x-client-request-id`）。每个 conv 钉第一次 system/developer，增量 snapshot 挂 **input 后缀**。`prompt_cache_key` 默认 conv id。分析器：512 + 复用 <10% = `affinity_miss`。健康：加权 ≥80%，亲和丢失 0。
 
-## 2026-08-26：本地 DSH Codex 缓存命中率异常偏低
+## 2026-09-05：本地 DSH Codex 缓存命中率异常偏低
 
 ### 现象
 长会话加权命中约 27%。同一会话不能稳打到同一缓存分片；退出 plan / header 重建时 leading developer 顶掉已缓存前缀。
 
 ### 根因
-转发只重建 OAuth 头，丢掉 `session-id` / `x-client-request-id`。Codex 按 `instructions` 再 `input` 最长前缀匹配；DSH 多出来的 leading developer 留在 `input` 开头会 bust。
+转发丢掉 `session-id` / `thread-id` / `x-client-request-id`。Codex CLI 0.153.4 `build_session_headers` 同时发 session（prompt cache）和 thread（粘滞）；chatgpt.com 按前者命中前缀、按后者粘分片。DSH 多出来的 leading developer 留在 `input` 开头会 bust。
 
 ### 修复
-`session-id` = `x-client-request-id` = `prompt_cache_key`（可回退 `session_id`）。剥与 `instructions` 重复的 leading developer/system，多余文本停到 **input 后缀**。剥 `prompt_cache_retention` / `prompt_cache_options`。Grok 不继承这两颗头。压缩 / plan 重建零缓存不是分片丢失。健康：加权 ≥80%，**亲和丢失 0**，无 TRANSPORT。
+`session-id` = `thread-id` = `x-client-request-id` = `prompt_cache_key`（DSH 一轮对话就是一条 thread；可回退 `session_id`）。同一 DSH 请求的重试回放 `x-codex-turn-state`。剥与 `instructions` 重复的 leading developer/system，多余文本停到 **input 后缀**。剥 `prompt_cache_retention` / `prompt_cache_options`。Grok 不继承这套头。压缩 / plan 重建零缓存不是分片丢失。健康：加权 ≥80%，**亲和丢失 0**，无 TRANSPORT。
 
 ## 2026-08-26：`Error: tool call timed out after 30000ms` 不是本插件
 
