@@ -357,7 +357,7 @@ test('GLM catalog is three models with official input types; Codex stays image-c
   assert.deepEqual(described.models.find((model) => model.id === 'glm-5.3').input, ['text'])
 })
 
-test('Start Plan GLM catalog is Flash Free only', () => {
+test('glmModels override replaces the GLM catalog', () => {
   const catalog = catalogProviders({
     prefix: 'oauth',
     origin: 'http://x',

@@ -221,7 +221,7 @@ test('glmAuthSearchPaths includes ZCode Desktop v2 config', () => {
   assert.equal(paths[0].endsWith(join('.zcode', 'v2', 'config.json')), true)
 })
 
-test('glmKeyFromZcodeConfig prefers a non-JWT coding-plan key over start-plan JWT', () => {
+test('glmKeyFromZcodeConfig skips the unsupported start-plan JWT', () => {
   const jwtKey = jwt({ sub: 'start-plan', email: 'dev@bigmodel.cn' })
   const found = glmKeyFromZcodeConfig({
     provider: {
@@ -234,10 +234,9 @@ test('glmKeyFromZcodeConfig prefers a non-JWT coding-plan key over start-plan JW
   })
   assert.equal(found.apiKey, 'coding-plan-key-not-a-jwt')
   assert.equal(found.region, 'bigmodel')
-  assert.equal(found.planKind, 'coding')
 })
 
-test('glmKeyFromZcodeConfig prefers enabled start-plan JWT when coding-plan is disabled', () => {
+test('glmKeyFromZcodeConfig returns undefined on a trial-only config', () => {
   const jwtKey = jwt({ sub: 'start-plan', email: 'dev@bigmodel.cn' })
   const found = glmKeyFromZcodeConfig({
     provider: {
@@ -255,9 +254,7 @@ test('glmKeyFromZcodeConfig prefers enabled start-plan JWT when coding-plan is d
       },
     },
   })
-  assert.equal(found.apiKey, jwtKey)
-  assert.equal(found.region, 'bigmodel')
-  assert.equal(found.planKind, 'start')
+  assert.equal(found, undefined)
 })
 
 test('importGlmAuth reads ~/.zcode/v2/config.json and sets region from the provider key', async () => {
@@ -280,11 +277,10 @@ test('importGlmAuth reads ~/.zcode/v2/config.json and sets region from the provi
   assert.equal(result.source, v2Path)
   assert.equal(result.session.accessToken, 'bm-coding-plan-fixture')
   assert.equal(result.session.region, 'bigmodel')
-  assert.equal(result.session.planKind, 'coding')
   assert.notEqual(result.session.account, 'zcode')
 })
 
-test('importGlmAuth trial-only ZCode config stores Start Plan JWT and planKind', async () => {
+test('importGlmAuth trial-only ZCode config fails instead of importing a dead key', async () => {
   const root = await mkdtemp(join(tmpdir(), 'zcode-start-import-'))
   const v2Dir = join(root, '.zcode', 'v2')
   await mkdir(v2Dir, { recursive: true })
@@ -306,11 +302,7 @@ test('importGlmAuth trial-only ZCode config stores Start Plan JWT and planKind',
       },
     },
   }))
-  const result = await importGlmAuth([v2Path])
-  assert.equal(result.session.accessToken, jwtKey)
-  assert.equal(result.session.region, 'bigmodel')
-  assert.equal(result.session.planKind, 'start')
-  assert.equal(result.session.planType, 'start')
+  await assert.rejects(importGlmAuth([v2Path]), /no GLM \/ ZCode session found/)
 })
 
 test('importGrokAuth lists both paths when nothing is found', async () => {

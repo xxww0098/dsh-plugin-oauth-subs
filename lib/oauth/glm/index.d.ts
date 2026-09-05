@@ -24,9 +24,6 @@ export declare const GLM_BUSINESS_LOGIN_URL = "https://api.z.ai/api/auth/z/login
 export declare const GLM_BIZ_BASE = "https://api.z.ai";
 export declare const GLM_CODING_URL = "https://api.z.ai/api/coding/paas/v4/chat/completions";
 export declare const GLM_ANTHROPIC_URL = "https://api.z.ai/api/anthropic/v1/messages";
-/** ZCode Desktop `options.baseURL` for Start Plan. Anthropic SDK posts `{baseURL}/v1/messages`. */
-export declare const GLM_START_ANTHROPIC_BASE = "https://zcode.z.ai/api/v1/zcode-plan/anthropic";
-export declare const GLM_START_ANTHROPIC_URL = "https://zcode.z.ai/api/v1/zcode-plan/anthropic/v1/messages";
 export declare const GLM_ANTHROPIC_VERSION = "2023-06-01";
 export declare const GLM_QUOTA_URL = "https://api.z.ai/api/monitor/usage/quota/limit";
 export declare const GLM_TOOL_USAGE_URL = "https://api.z.ai/api/monitor/usage/tool-usage";
@@ -96,43 +93,6 @@ export declare const GLM_MODELS: readonly ({
     reasoningEfforts: boolean;
     input: readonly string[];
 })[];
-/**
- * Start Plan (体验套餐) lists only Flash. Wire id stays `glm-5.3-flash`
- * (ZCode provider.models + zcode-plan Anthropic). Display adds Free.
- * Do not invent `glm-5.3-flash-free` — the hop 401s before model check
- * without a JWT; official/ZCode id is glm-5.3-flash.
- */
-export declare const GLM_START_MODELS: readonly {
-    id: string;
-    name: string;
-    contextWindow: number;
-    maxTokens: number;
-    reasoningEfforts: Readonly<{
-        low: "low";
-        high: "high";
-        max: "max";
-    }>;
-    input: readonly string[];
-}[];
-export declare function glmCatalogModels(session: any): readonly ({
-    id: string;
-    name: string;
-    contextWindow: number;
-    maxTokens: number;
-    reasoningEfforts: Readonly<{
-        low: "low";
-        high: "high";
-        max: "max";
-    }>;
-    input: readonly string[];
-} | {
-    id: string;
-    name: string;
-    contextWindow: number;
-    maxTokens: number;
-    reasoningEfforts: boolean;
-    input: readonly string[];
-})[];
 export { GLM_BOOST_HINT, GLM_BOOST_LABEL, glmCardBoost } from './boost.js';
 export declare const GLM_PLAN_NAMES: Readonly<{
     lite: "Lite";
@@ -141,22 +101,15 @@ export declare const GLM_PLAN_NAMES: Readonly<{
     coding_lite: "Lite";
     coding_pro: "Pro";
     coding_max: "Max";
-    start: "Start";
-    start_plan: "Start";
-    trial: "Start";
     individual: "Individual";
     team: "Team";
 }>;
 export declare function normalizeGlmRegion(value: any): "zai" | "bigmodel";
-/** Start Plan trial vs paid Coding Plan. Missing / unknown → coding (CLI mint + leftover sessions). */
-export declare function normalizeGlmPlanKind(value: any): "start" | "coding";
-export declare function isGlmStartPlan(session: any): boolean;
-export declare function glmPlanKindFromZcode(key: any, options: any): "start" | "coding";
 export declare function glmCliProvider(region: any): "zai" | "bigmodel";
 export declare function glmPlanLabel(raw: any): any;
 export declare function glmCodingUrl(region?: string): "https://api.z.ai/api/coding/paas/v4/chat/completions" | "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions";
 /** ZCode default protocol. https://docs.z.ai/devpack/quick-start */
-export declare function glmAnthropicUrl(region?: string, planKind?: any): "https://api.z.ai/api/anthropic/v1/messages" | "https://zcode.z.ai/api/v1/zcode-plan/anthropic/v1/messages" | "https://open.bigmodel.cn/api/anthropic/v1/messages";
+export declare function glmAnthropicUrl(region?: string): "https://api.z.ai/api/anthropic/v1/messages" | "https://open.bigmodel.cn/api/anthropic/v1/messages";
 export declare function glmQuotaUrl(region?: string): "https://api.z.ai/api/monitor/usage/quota/limit" | "https://open.bigmodel.cn/api/monitor/usage/quota/limit";
 export declare function glmToolUsageUrl(region?: string): "https://api.z.ai/api/monitor/usage/tool-usage" | "https://open.bigmodel.cn/api/monitor/usage/tool-usage";
 export declare function glmUserinfoUrl(region?: string): "https://chat.z.ai/api/oauth/userinfo" | "https://open.bigmodel.cn/api/biz/customer/getCustomerInfo";
@@ -211,8 +164,6 @@ export declare function glmAnthropicHeaders(session: any, sessionId: any): {
     authorization: string;
     accept: string;
 };
-/** zcode-plan inference is captcha-gated. Annotate 3007; do not invent a verify-param. */
-export declare function annotateGlmStartPlanError(parsed: any, url: any): any;
 export declare function isSuccessCode(code: any): boolean;
 export declare function unwrapEnvelope(body: any, operation: any): any;
 export declare function createPollToken(): string;
@@ -274,12 +225,10 @@ export declare function mintGlmApiKey(oauthAccessToken: any, { fetchFn, region }
     fetchFn?: typeof fetch;
     region?: string;
 }): Promise<string>;
-export declare function glmSession({ accessToken, account, accountId, planType, planKind, region, zcodeJwt }?: {
+export declare function glmSession({ accessToken, account, accountId, region, zcodeJwt }?: {
     region?: string;
 }): {
     zcodeJwt?: any;
-    planKind?: string;
-    planType?: any;
     region: string;
     account?: string;
     accessToken: string;
@@ -298,8 +247,6 @@ export declare function completeGlmCli(ready: any, { fetchFn, region }?: {
     region?: string;
 }): Promise<{
     zcodeJwt?: any;
-    planKind?: string;
-    planType?: any;
     region: string;
     account?: string;
     accessToken: string;
