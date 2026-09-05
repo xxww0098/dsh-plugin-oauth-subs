@@ -9,6 +9,7 @@ import {
   hostPlatform,
   pickDownloads,
   applyHostUpdate,
+  localUpdateInfo,
   pluginAddArgs,
   pluginUpdateArgs,
   pluginUpdateCommand,
@@ -118,6 +119,45 @@ test('pluginUpdateArgs targets this package on the named profile', () => {
 test('profilePluginPackageJson reads $DSH_HOME/profiles/<name>/node_modules', () => {
   const path = profilePluginPackageJson('web', { DSH_HOME: '/tmp/dsh-home' })
   assert.equal(path.replace(/\\/g, '/'), '/tmp/dsh-home/profiles/web/node_modules/dsh-plugin-oauth-subs/package.json')
+})
+
+test('localUpdateInfo prefers the profile disk copy over a stale running module', () => {
+  const readFileFn = (path) => {
+    const p = String(path).replace(/\\/g, '/')
+    if (p.includes('/node_modules/dsh-plugin-oauth-subs/package.json')) return '{"version":"0.0.71"}'
+    return '{"version":"0.0.70"}'
+  }
+  const info = localUpdateInfo('linux', { profile: 'web', env: { DSH_HOME: '/tmp/dsh-home' }, readFileFn })
+  assert.equal(info.version, '0.0.71')
+  assert.equal(info.disk, '0.0.71')
+  assert.equal(info.running, '0.0.70')
+  assert.equal(info.staleProcess, true)
+})
+
+test('fetchLatest is current when the profile disk already matches GitHub latest', async () => {
+  const fetchFn = async () => new Response(JSON.stringify({
+    tag_name: 'v0.0.71',
+    name: '0.0.71',
+    html_url: 'https://github.com/xxww0098/dsh-plugin-oauth-subs/releases/tag/v0.0.71',
+    published_at: '2026-09-05T03:08:56Z',
+    assets: [],
+  }), { status: 200, headers: { 'content-type': 'application/json' } })
+  const readFileFn = (path) => {
+    const p = String(path).replace(/\\/g, '/')
+    if (p.includes('/node_modules/dsh-plugin-oauth-subs/package.json')) return '{"version":"0.0.71"}'
+    return '{"version":"0.0.70"}'
+  }
+  const update = await fetchLatest({
+    fetchFn,
+    platform: 'linux',
+    profile: 'web',
+    env: { DSH_HOME: '/tmp/dsh-home' },
+    readFileFn,
+  })
+  assert.equal(update.status, 'current')
+  assert.equal(update.version, '0.0.71')
+  assert.equal(update.staleProcess, true)
+  assert.equal(update.running, '0.0.70')
 })
 
 test('readPackageVersion and versionAdvanced require a real bump', () => {

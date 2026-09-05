@@ -194,6 +194,7 @@ window.__ModuleLoader__.load({
         updateUnknown: 'GitHub 没有可用的版本号',
         updateError: '检查失败',
         updateInstalled: '已写入 web profile。当前进程仍是旧模块，请重启 dsh web 后生效。',
+        updateStaleProcess: '磁盘已是最新，当前进程仍是 {n}。请退出全部 dsh web（含后台 / nohup）后再启动。',
         updateFailed: '更新失败：{n}',
         updateUnchanged: '命令已成功但磁盘版本未变：{n}',
         updateMissingDsh: 'PATH 上找不到 dsh。确认已安装 DeepSeek Harness，再点检查更新。',
@@ -357,6 +358,7 @@ window.__ModuleLoader__.load({
         updateUnknown: 'GitHub did not return a version',
         updateError: 'Update check failed',
         updateInstalled: 'Written to the web profile. This process still has the old module — restart dsh web to load it.',
+        updateStaleProcess: 'On-disk install is current; this process is still {n}. Quit every dsh web (including background / nohup) and start again.',
         updateFailed: 'Update failed: {n}',
         updateUnchanged: 'Command finished but the on-disk version did not change: {n}',
         updateMissingDsh: 'dsh was not found on PATH. Confirm DeepSeek Harness is installed, then try again.',
@@ -2020,11 +2022,13 @@ window.__ModuleLoader__.load({
     function AboutPanel({ t, local, update, busy, applying, onCheck }) {
       const repo = local?.repo || update?.repo || 'https://github.com/xxww0098/dsh-plugin-oauth-subs'
       const slug = local?.repoSlug || update?.repoSlug || 'xxww0098/dsh-plugin-oauth-subs'
-      const version = local?.version || update?.version || '—'
+      const version = update?.version || local?.version || '—'
       const host = local?.platform || update?.platform
       const latest = update?.latest
       const apply = applyLabel(t, update)
       const applyTone = update?.apply?.status === 'installed' ? '' : 'osubs-bad'
+      const stale = update?.staleProcess || local?.staleProcess
+      const running = update?.running || local?.running
       const tone = update?.status === 'update' ? 'osubs-warn' : update?.status === 'error' ? 'osubs-bad' : ''
       return h('section', { className: 'osubs-card' },
         h('header', { style: { display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' } },
@@ -2051,6 +2055,7 @@ window.__ModuleLoader__.load({
             ),
             latest?.publishedAt && h('p', { className: 'osubs-note' }, fill(t.published, latest.publishedAt)),
             update?.status && h('p', { className: `osubs-hint${tone ? ` ${tone}` : ''}` }, statusLabel(t, update)),
+            stale && running && h('p', { className: 'osubs-hint osubs-warn' }, fill(t.updateStaleProcess, running)),
             apply && h('p', { className: `osubs-hint${applyTone ? ` ${applyTone}` : ''}` }, apply),
           ),
         ),

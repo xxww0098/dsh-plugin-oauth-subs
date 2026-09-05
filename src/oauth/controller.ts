@@ -99,7 +99,7 @@ import {
 } from './models.js'
 import { TokenManager } from './tokens.js'
 import { QuotaStore } from './quota.js'
-import { fetchLatest, localUpdateInfo, applyHostUpdate, DEFAULT_PROFILE } from '../utils/update.js'
+import { fetchLatest, localUpdateInfo, applyHostUpdate, compareVersions, DEFAULT_PROFILE } from '../utils/update.js'
 
 export class AuthController {
   constructor({ authPath, prefix, origin, settings, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, spawnFn, profile, readFileFn, updateEnv, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, opencodeDiscover, opencodeAutoEnable }) {
@@ -414,7 +414,7 @@ export class AuthController {
         kimi: { ...(await this.status('kimi')), activeId: kimiAccounts.find((row) => row.active)?.id, accounts: kimiAccounts },
         opencode: { ...(await this.status('opencode')), activeId: opencodeAccounts.find((row) => row.active)?.id, accounts: opencodeAccounts },
       },
-      update: localUpdateInfo(),
+      update: localUpdateInfo(process.platform, { profile: this.profile, env: this.updateEnv ?? process.env }),
     }
   }
 
@@ -505,7 +505,8 @@ export class AuthController {
   async checkUpdate(payload = {}) {
     const apply = payload?.apply === true
     try {
-      const info = await fetchLatest({ fetchFn: this.fetchFn, platform: process.platform })
+      const profileOpts = { profile: this.profile, env: this.updateEnv ?? process.env }
+      const info = await fetchLatest({ fetchFn: this.fetchFn, platform: process.platform, ...profileOpts })
       if (!apply || info.status !== 'update') {
         return { ...info, apply: { status: 'none' } }
       }
@@ -514,18 +515,26 @@ export class AuthController {
         profile: this.profile,
         latest: info.latest?.tag,
         readFileFn: this.readFileFn,
-        env: this.updateEnv,
+        env: profileOpts.env,
       })
+      const next = localUpdateInfo(process.platform, profileOpts)
       if (result.ok) {
-        return { ...info, apply: { status: 'installed', restart: true, command: result.command } }
+        const caughtUp = Boolean(next.version && info.latest?.tag && compareVersions(next.version, info.latest.tag) >= 0)
+        return {
+          ...info,
+          ...next,
+          status: caughtUp ? 'current' : info.status,
+          apply: { status: 'installed', restart: true, command: result.command },
+        }
       }
       return {
         ...info,
+        ...next,
         apply: { status: result.status, error: result.error, command: result.command },
       }
     } catch (error) {
       return {
-        ...localUpdateInfo(),
+        ...localUpdateInfo(process.platform, { profile: this.profile, env: this.updateEnv ?? process.env }),
         status: 'error',
         error: error instanceof Error ? error.message : String(error),
         latest: undefined,

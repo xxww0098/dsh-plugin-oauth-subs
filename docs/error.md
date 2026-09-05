@@ -5,13 +5,13 @@
 ## 2026-09-05：关于页更新成功但重启后版本仍旧
 
 ### 现象
-`dsh plugin --profile web update dsh-plugin-oauth-subs` exit 0，重启 `dsh web` 后 Settings → About 仍是旧 `package.json` 版本，不是 GitHub latest。
+`dsh plugin update` exit 0，磁盘 `profiles/web/node_modules/dsh-plugin-oauth-subs/package.json` 已是 latest，关于页仍显示旧版本。
 
 ### 根因
-DSH `plugin` 只是 profile 目录里的 `pnpm <args>`。本包按 GitHub URL 安装；`pnpm update <name>` 对 commit 钉死的 git spec 常 no-op 仍 exit 0。本插件把 exit 0 当成已写入。
+关于页读运行中模块的 `require('../../package.json')`（进程内缓存），不是 profile 磁盘。`dsh web` 若 nohup 仍活着，用户以为重启了。`.dsh-module-fallback` 只投影 bundle 闭包，pnpm 条目优先，不是第二份本包。
 
 ### 修复
-成功只看 `$DSH_HOME/profiles/<p>/node_modules/dsh-plugin-oauth-subs/package.json` 是否前进。`update` 没动则再 `add <repo>#vX.Y.Z`。仍不动则报 unchanged，提示 remove + 从 GitHub URL 重装。
+About / compare 以 profile `node_modules` 为准。磁盘已最新则显示已是最新；与运行中不一致则提示退出全部 dsh web。`update` 仍校验磁盘前进，no-op 再 `add #tag`。
 
 ## 2026-09-03：OpenCode Free 目录漏 Big Pickle、含过期 DeepSeek/Laguna
 

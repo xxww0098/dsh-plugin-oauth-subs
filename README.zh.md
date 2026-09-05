@@ -13,7 +13,7 @@ dsh plugin --profile web add https://github.com/xxww0098/dsh-plugin-oauth-subs
 dsh web
 ```
 
-打开 **设置 → OAuth 订阅**。每个账号一张卡片（额度都在卡片上；Ollama Cloud 没有额度条）。关于页会对比 GitHub 最新版，有新版本时先跑 `dsh plugin --profile web update`，版本没动再 `add https://github.com/xxww0098/dsh-plugin-oauth-subs#<tag>`——重启 `dsh web`。`dsh plugin update` 对 git 钉死的安装可能 exit 0 却不换版本；关于页仍是旧版时，先移除再从 GitHub URL 重装。或 `pnpm dsh web --patch ./cordis.patch.yml`（`id: oauth-subs`）。
+打开 **设置 → OAuth 订阅**。每个账号一张卡片（额度都在卡片上；Ollama Cloud 没有额度条）。关于页 **当前版本** 读 profile `node_modules`。磁盘已是最新但进程仍旧时，退出全部 `dsh web`（含后台 / nohup）再开。写入会先 `dsh plugin update`，没动再 `add …#<tag>`。或 `pnpm dsh web --patch ./cordis.patch.yml`（`id: oauth-subs`）。
 
 ## 系列
 

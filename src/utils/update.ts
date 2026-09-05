@@ -1,15 +1,17 @@
 /**
  * Local version + GitHub latest-release check, then the host plugin updater.
  *
- * Compare is GitHub latest vs the running module's package.json.
- * `dsh plugin update` is a thin pnpm forwarder in the profile directory
- * (`pnpm update dsh-plugin-oauth-subs`). This package is installed from a
- * GitHub URL, and `pnpm update` often exits 0 without moving a commit-pinned
- * git spec. Apply therefore: try `update`, then `add <repo>#vX.Y.Z`, and
- * treat success only when
- * `$DSH_HOME/profiles/<name>/node_modules/dsh-plugin-oauth-subs/package.json`
- * advanced. After a real write the running process still has the old
- * module; the user must restart `dsh web`.
+ * Compare and About "当前版本" are the profile on-disk package.json
+ * (`$DSH_HOME/profiles/<name>/node_modules/dsh-plugin-oauth-subs`), not the
+ * process-lifetime `require` of the running module. A nohup / leftover
+ * `dsh web` keeps serving the old in-memory version after a successful
+ * write. `.dsh-module-fallback` only projects bundle-carried packages;
+ * pnpm's `node_modules` entry wins, so it is not a second copy of this
+ * plugin.
+ *
+ * `dsh plugin update` is `pnpm update` in the profile and can no-op on a
+ * git-pinned spec. Apply tries `update`, then `add <repo>#vX.Y.Z`, and
+ * treats success only when the profile package.json advanced.
  */
 
 import { spawn } from 'node:child_process'
@@ -22,6 +24,10 @@ import { fileURLToPath } from 'node:url'
 const require = createRequire(import.meta.url)
 const pkg = require('../../package.json')
 
+export function modulePackageJsonPath() {
+  return fileURLToPath(new URL('../../package.json', import.meta.url))
+}
+
 export const REPO_SLUG = 'xxww0098/dsh-plugin-oauth-subs'
 export const REPO_URL = 'https://github.com/xxww0098/dsh-plugin-oauth-subs'
 export const RELEASES_API = `https://api.github.com/repos/${REPO_SLUG}/releases/latest`
@@ -31,8 +37,9 @@ export const DEFAULT_PROFILE = 'web'
 export const DSH_BIN = 'dsh'
 export const PLUGIN_UPDATE_TIMEOUT_MS = 180_000
 
-export function installedVersion() {
-  return String(pkg.version ?? '')
+/** Version of the module this process actually loaded (fresh disk read). */
+export function installedVersion({ readFileFn } = {}) {
+  return readPackageVersion(modulePackageJsonPath(), { readFileFn }) || String(pkg.version ?? '')
 }
 
 export function parseVersion(tag) {
@@ -87,9 +94,20 @@ export function pickDownloads(assets, host) {
   })
 }
 
-export function localUpdateInfo(platform = process.platform) {
+export function localUpdateInfo(platform = process.platform, opts = {}) {
+  const running = installedVersion({ readFileFn: opts.readFileFn })
+  const disk = readPackageVersion(profilePluginPackageJson(opts.profile, opts.env), {
+    readFileFn: opts.readFileFn,
+  })
+  const version = disk || running
+  const staleProcess = Boolean(
+    disk && running && parseVersion(disk) && parseVersion(running) && compareVersions(disk, running) !== 0,
+  )
   return {
-    version: installedVersion(),
+    version,
+    running,
+    disk: disk || undefined,
+    staleProcess,
     platform: hostPlatform(platform),
     repo: REPO_URL,
     repoSlug: REPO_SLUG,
@@ -116,8 +134,16 @@ export function formatPublishedAt(iso) {
   return `${pick('year')}-${pick('month')}-${pick('day')} ${hour}:${pick('minute')}:${pick('second')}`
 }
 
-export async function fetchLatest({ fetchFn = fetch, current, platform = process.platform, timeoutMs = 10_000 } = {}) {
-  const local = localUpdateInfo(platform)
+export async function fetchLatest({
+  fetchFn = fetch,
+  current,
+  platform = process.platform,
+  timeoutMs = 10_000,
+  profile,
+  env,
+  readFileFn,
+} = {}) {
+  const local = localUpdateInfo(platform, { profile, env, readFileFn })
   const installed = parseVersion(current ?? local.version)?.raw ?? local.version
   const wait = new AbortController()
   const timer = setTimeout(() => wait.abort(), timeoutMs)
