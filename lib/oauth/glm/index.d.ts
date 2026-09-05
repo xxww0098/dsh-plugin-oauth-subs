@@ -211,6 +211,8 @@ export declare function glmAnthropicHeaders(session: any, sessionId: any): {
     authorization: string;
     accept: string;
 };
+/** zcode-plan inference is captcha-gated. Annotate 3007; do not invent a verify-param. */
+export declare function annotateGlmStartPlanError(parsed: any, url: any): any;
 export declare function isSuccessCode(code: any): boolean;
 export declare function unwrapEnvelope(body: any, operation: any): any;
 export declare function createPollToken(): string;
