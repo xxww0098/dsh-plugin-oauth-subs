@@ -66,6 +66,13 @@ import {
   opencodeResponsesToChat,
   parseOpencodeSseBlocks,
 } from './opencode/request.js'
+import {
+  copilotChatUrl,
+  copilotUpstreamHeaders,
+} from './copilot/index.js'
+import { copilotCatalogModels } from './copilot/catalog.js'
+import { applyCopilotCache, copilotHasVision, copilotInitiatorOf } from './copilot/cache.js'
+import { applyCopilotThinking } from './copilot/request.js'
 import { cursorToOpenai, createCursorOpenaiStream, openaiToCursor } from './cursor/request.js'
 import { runCursorAgent } from './cursor/h2-session.js'
 import { applyFastMode } from '../utils/fast-mode.js'
@@ -290,6 +297,17 @@ function rewriteUpstreamBody(buffer, family, wire) {
       stream: next.stream === true,
     }
   }
+  if (family === 'copilot') {
+    const { payload: cached, cacheSessionId } = applyCopilotCache(fast)
+    const next = applyCopilotThinking(cached)
+    return {
+      body: Buffer.from(JSON.stringify(next)),
+      cacheSessionId,
+      stream: next.stream === true,
+      copilotVision: copilotHasVision(next.messages),
+      copilotInitiator: copilotInitiatorOf(next.messages),
+    }
+  }
   throw new RequestError(400, `unknown oauth family: ${family}`)
 }
 
@@ -382,6 +400,12 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
         if (tokens.opencode) {
           await tokens.opencode.session()
           data.push(...opencodeCatalogModels().map((model) => ({ id: model.id, object: 'model', owned_by: 'opencode' })))
+        }
+      } catch { /* not logged in */ }
+      try {
+        if (tokens.copilot) {
+          await tokens.copilot.session()
+          data.push(...copilotCatalogModels().map((model) => ({ id: model.id, object: 'model', owned_by: 'copilot' })))
         }
       } catch { /* not logged in */ }
       send(response, 200, { object: 'list', data })
@@ -675,6 +699,42 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
       return
     }
 
+    if ((path === '/copilot/v1/models' || path === '/copilot/models') && request.method === 'GET') {
+      send(response, 200, {
+        object: 'list',
+        data: copilotCatalogModels().map((model) => ({ id: model.id, object: 'model', owned_by: 'copilot' })),
+      })
+      return
+    }
+
+    if ((path === '/copilot/v1/chat/completions' || path === '/copilot/chat/completions') && request.method === 'POST') {
+      const client = abortOnDisconnect(request, response)
+      try {
+        const session = await tokens.copilot.session()
+        await forward(request, response, {
+          url: copilotChatUrl(session),
+          session,
+          headersOf: (sess, pin) => copilotUpstreamHeaders(sess, pin),
+          fetchFn,
+          family: 'copilot',
+          maxRequestBodyBytes,
+          signal: client.signal,
+        })
+      } finally {
+        client.cleanup()
+      }
+      return
+    }
+
+    if (path === '/copilot/v1/responses') {
+      send(response, 501, {
+        error: {
+          message: 'GitHub Copilot is Completions. Point llm-pi-ai at POST /copilot/v1/chat/completions.',
+        },
+      })
+      return
+    }
+
     if (path === '/antigravity/v1/chat/completions' && request.method === 'POST') {
       const client = abortOnDisconnect(request, response)
       try {
@@ -735,7 +795,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
 
 async function forward(request, response, { url, session, headersOf, fetchFn, family, wire, maxRequestBodyBytes, signal }) {
   const raw = await readBody(request, maxRequestBodyBytes)
-  const { body, cacheSessionId, stream, routingHint, grokModel } = rewriteUpstreamBody(raw, family, wire)
+  const { body, cacheSessionId, stream, routingHint, grokModel, copilotVision, copilotInitiator } = rewriteUpstreamBody(raw, family, wire)
   const grokReqId = family === 'grok' ? randomUUID() : undefined
   const baseHeaders = {
     ...headersOf(session, cacheSessionId),
@@ -744,6 +804,10 @@ async function forward(request, response, { url, session, headersOf, fetchFn, fa
     ...(family === 'codex' ? {
       ...codexCacheHeaders(cacheSessionId),
       ...(routingHint ? { 'x-codex-routing-hint': routingHint } : {}),
+    } : {}),
+    ...(family === 'copilot' ? {
+      'x-initiator': copilotInitiator === 'agent' ? 'agent' : 'user',
+      ...(copilotVision ? { 'copilot-vision-request': 'true' } : {}),
     } : {}),
   }
 

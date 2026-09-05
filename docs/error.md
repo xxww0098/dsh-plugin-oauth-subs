@@ -2,6 +2,17 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-05：Copilot 用 OpenCode Ov23li8 换不出 tid=
+
+### 现象
+设备码登录后预览模型 400 `model_not_supported`，Business 403。`GET /copilot_internal/v2/token` 404。
+
+### 根因
+OpenCode 自家 OAuth App `Ov23li8tweQw6odWQebz` 发 `gho_`，GitHub 不给 vscode-chat session。VS Code / goose / Cherry Studio / hermes 走公开 `Iv1.b507a08c87ecfe98`（`ghu_`）。
+
+### 修复
+设备码 `client_id` 用 `Iv1.b507a08c87ecfe98`，换 `tid=` 再打 `api.githubcopilot.com`。导入的 OpenCode `gho_` 404 时退回 raw Bearer（只保 GA 模型）。
+
 ## 2026-09-05：Cursor 选择器只有 Composer 2 / 1.5 等 5 个
 
 ### 现象

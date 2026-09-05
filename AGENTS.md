@@ -115,6 +115,13 @@ src/
       catalog.ts           live GET /zen/v1/models ∩ official Free allowlist; models.dev overlay
       request.ts           Completions reasoning_effort; Muse chat ↔ Zen /v1/responses
       cache.ts             strip Codex/Grok fields; no sticky id (non-fix)
+    copilot/               GitHub Copilot Chat (api.githubcopilot.com)
+      README.md            family design: login, chat, quota, cache (traceable)
+      index.ts             catalog, identity, device-code (Iv1), tid= exchange, vscode-chat headers
+      import.ts            hosts.json / OpenCode auth.json / COPILOT_GITHUB_TOKEN
+      catalog.ts           live GET {api}/models; static fallback
+      request.ts           Completions reasoning_effort; GPT omit max_tokens
+      cache.ts             prefix-hash + X-Interaction-Id; extra system at messages suffix
   ui/                      React Settings (classic-script factory)
     client.ts
   utils/                   shared, provider-agnostic
@@ -135,9 +142,9 @@ scripts/                   CLI (TypeScript)
 
 Rules:
 
-- Codex-only code → `src/oauth/codex/`. Grok-only code → `src/oauth/grok/`. GLM-only code → `src/oauth/glm/`. Kiro-only code → `src/oauth/kiro/`. Antigravity-only code → `src/oauth/antigravity/`. Cursor-only code → `src/oauth/cursor/`. Ollama-only code → `src/oauth/ollama/`. Kimi-only code → `src/oauth/kimi/`. OpenCode-only code → `src/oauth/opencode/`.
+- Codex-only code → `src/oauth/codex/`. Grok-only code → `src/oauth/grok/`. GLM-only code → `src/oauth/glm/`. Kiro-only code → `src/oauth/kiro/`. Antigravity-only code → `src/oauth/antigravity/`. Cursor-only code → `src/oauth/cursor/`. Ollama-only code → `src/oauth/ollama/`. Kimi-only code → `src/oauth/kimi/`. OpenCode-only code → `src/oauth/opencode/`. Copilot-only code → `src/oauth/copilot/`.
 - **Each family has `README.md`.** Login, session, chat hop, models, quota, and cache for that vendor are written there so a later change can be traced to files and to `docs/error.md`. Cross-family rules stay in this file; do not let family READMEs contradict it. Reference repos for that hop live in `docs/oauth.md` and in the family README 归因.
-- **Cache is per family.** Each `src/oauth/<id>/cache.ts` owns that vendor's prompt-cache identity, headers, and prefix pin. Do not import Codex cache helpers from Grok / GLM / Kiro / Antigravity / Cursor / Ollama / Kimi / OpenCode. Do not share a `codexCacheSessionId` in `src/utils/`. `proxy.ts` only dispatches.
+- **Cache is per family.** Each `src/oauth/<id>/cache.ts` owns that vendor's prompt-cache identity, headers, and prefix pin. Do not import Codex cache helpers from Grok / GLM / Kiro / Antigravity / Cursor / Ollama / Kimi / OpenCode / Copilot. Do not share a `codexCacheSessionId` in `src/utils/`. `proxy.ts` only dispatches.
 - Shared crypto / session scoring → `src/utils/`.
 - Settings React → `src/ui/`.
 - Do not flatten modules back into a single `lib/*.js` bag.
@@ -161,7 +168,7 @@ two disagree, fix the README — do not weaken these invariants.
   `src/utils/cache-session.ts` or a shared `codexCacheSessionId`.
 - Do **not** stamp `Date.now()` (or any per-request random) as a session /
   conversation / cache id. Missing DSH ids fall back to a **stable
-  constant** owned by that family (`dsh-antigravity`, `dsh-kiro`, `dsh-cursor`, `dsh-ollama`, `dsh-kimi`, `dsh-opencode`, …).
+  constant** owned by that family (`dsh-antigravity`, `dsh-kiro`, `dsh-cursor`, `dsh-ollama`, `dsh-kimi`, `dsh-opencode`, `dsh-copilot`, …).
 - DSH may send `session_id` and/or `prompt_cache_key`. Mapping those onto
   the vendor wire is family-owned. Reading DSH's key is fine; writing
   Codex fields upstream is not, unless that vendor actually uses them.
@@ -181,7 +188,7 @@ Export (names may vary, behavior must not):
   `antigravitySessionIdOf` + `pinAntigravitySystemInstruction` /
   `pinAntigravityTools` / `pinAntigravityThinking`,
   `kiroConversationId`, `applyOllamaCache`, `applyKimiCache`,
-  `applyOpencodeCache`).
+  `applyOpencodeCache`, `applyCopilotCache`).
 3. Header helper if the vendor sticky-routes on headers
    (`codexCacheHeaders`, `grokAffinityHeaders`). GLM headers stay in
    `glm/index.ts` (`x-session-id`, Anthropic `anthropic-version`) and call
@@ -226,6 +233,8 @@ Cursor:    conversationId on AgentRunRequest (fallback `dsh-cursor:<model>`)
 Ollama:    drop Codex/Grok cache fields; no sticky conversation id (non-fix)
 Kimi:      drop Codex/Grok cache fields; prefix-hash; extra system at messages suffix
 OpenCode:  drop Codex/Grok cache fields; no sticky conversation id (non-fix)
+Copilot:   drop Codex/Grok cache fields; prefix-hash; extra system at messages suffix
+           sticky `X-Interaction-Id` (fallback `dsh-copilot` is written)
 ```
 
 ### Per family
@@ -379,6 +388,20 @@ OpenCode:  drop Codex/Grok cache fields; no sticky conversation id (non-fix)
 - No Codex `session-id` / `prompt_cache_key`, no Grok `x-grok-conv-id`.
 - Hits: none documented. DSH hit rate stays 0%.
 
+**Copilot** (`src/oauth/copilot/cache.ts`)
+
+- Copilot Completions is an implicit **prefix hash** of leading system +
+  history, plus OpenCode's `X-Interaction-Id` session sticky.
+- `applyCopilotCache` strips `prompt_cache_key` / `session_id` / retention.
+  Pin the first leading `system` run per DSH session; extra snapshots
+  go at the **messages suffix**.
+- Sticky: `X-Interaction-Id` = DSH pin. Fallback `dsh-copilot` **is**
+  written (official always sends a session id). Never `Date.now()`.
+- No Codex `session-id` / `prompt_cache_key`, no Grok `x-grok-conv-id`.
+  Do not invent `X-Interaction-Type: agent-session-name-generation`.
+- Hits: `prompt_tokens_details.cached_tokens` / `cache_read_input_tokens`
+  → `mapCopilotUsage`.
+
 ### New family checklist (cache)
 
 When adding `src/oauth/<id>/`:
@@ -406,11 +429,12 @@ When adding `src/oauth/<id>/`:
 | Ollama | none documented | no sticky conversation id (non-fix); `dsh-ollama` analyzer-only | n/a | none documented (`cached_tokens` if a field appears) |
 | Kimi | prefix hash of leading system + history | no shard key; `dsh-kimi` analyzer-only | extra system at **messages suffix** | none documented (`cached_tokens` if a field appears) |
 | OpenCode | none documented | no sticky conversation id (non-fix); `dsh-opencode` analyzer-only | n/a | none documented (`cached_tokens` if a field appears) |
+| Copilot | prefix hash of leading system + history | `X-Interaction-Id` (fallback `dsh-copilot` is written) | extra system at **messages suffix** | `cached_tokens` / `cache_read_input_tokens` |
 
 ### Do not
 
 - Share one sanitizer / pin map / header helper across families.
-- Write Codex `session-id` or `prompt_cache_key` to GLM / Kiro / Antigravity / Cursor / Ollama / Kimi / OpenCode.
+- Write Codex `session-id` or `prompt_cache_key` to GLM / Kiro / Antigravity / Cursor / Ollama / Kimi / OpenCode / Copilot.
 - Write Grok `x-grok-conv-id` to anyone else.
 - Park GLM extras as a Gemini user turn, or Gemini extras as a GLM
   trailing system, “because parking is the same idea”.
@@ -456,6 +480,7 @@ invariant list. When the two disagree, fix the README.
 | Ollama | `openai-completions` | Native is `/api/chat`. Cloud also serves OpenAI `https://ollama.com/v1/chat/completions` (401 without Bearer; Factory docs use that `/v1`). | thin passthrough `POST /ollama/v1/chat/completions` → `https://ollama.com/v1/chat/completions` |
 | Kimi | `openai-completions` | Kimi Code Plan default is OpenAI Completions at `api.kimi.com/coding/v1`. Do **not** invent `kimi-openai-completions`. | thin hop `POST /kimi/v1/chat/completions` → `https://api.kimi.com/coding/v1/chat/completions` |
 | OpenCode | `openai-completions` | Native is OpenAI Completions at `https://opencode.ai/zen/v1` for most free models. Muse Spark is Responses-only on Zen. Any unrecognized Authorization 401s. Do **not** invent a fourth api. | thin hop `POST /opencode/v1/chat/completions` → `https://opencode.ai/zen/v1/chat/completions` (no Authorization). Muse (`muse-spark*`): translate chat → Zen `/v1/responses` → chat.completion |
+| Copilot | `openai-completions` | Native is OpenAI Completions at `https://api.githubcopilot.com/chat/completions` (`tid=` session). Claude on Copilot still Completions in v1. Do **not** invent a fourth api or `/v1/messages`. | thin hop `POST /copilot/v1/chat/completions` → `{endpoints.api}/chat/completions` |
 
 `baseURL` must match how that SDK posts. Anthropic SDK posts
 `{baseURL}/v1/messages`, so GLM is `${origin}/glm` (not `${origin}/glm/v1`).
@@ -478,13 +503,14 @@ already said `ai-sdk/anthropic` while Completions was posted). Do
 ### Do not
 
 - Switch Codex / Grok to Completions.
-- Switch Kiro / Antigravity / Cursor / Ollama / Kimi / OpenCode to Responses or Anthropic (native is still
+- Switch Kiro / Antigravity / Cursor / Ollama / Kimi / OpenCode / Copilot to Responses or Anthropic (native is still
   none of the three for Kiro/AG/Cursor; Kimi's Coding Plan default is Completions;
-  OpenCode Zen free is Completions for most models). Muse Spark is Zen `/v1/responses`
+  OpenCode Zen free is Completions for most models; Copilot Chat is Completions). Muse Spark is Zen `/v1/responses`
   but DSH `api` stays `openai-completions` — hop-translate only.
   Do not pick Responses for Ollama because local `localhost:11434/v1/responses` exists.
   Do not invent `kimi-openai-completions`.
   Do not send Authorization on the OpenCode hop (empty / sentinel / stale Zen key all 401).
+  Do not send Copilot `ghu_` as `Bearer` to `api.githubcopilot.com` (exchange to `tid=` first).
 - Set GLM `api: openai-responses` (generic `api.z.ai/api/v1` is not
   Coding Plan).
 - Drop the Completions leftover route until the next `sync()` has
@@ -498,7 +524,7 @@ already said `ai-sdk/anthropic` while Completions was posted). Do
 
 ## Adding a new OAuth family
 
-A family is one top-level tab (Codex / Grok / GLM / Kiro / Antigravity / Cursor / Ollama / Kimi / OpenCode today) plus its own
+A family is one top-level tab (Codex / Grok / GLM / Kiro / Antigravity / Cursor / Ollama / Kimi / OpenCode / Copilot today) plus its own
 `src/oauth/<id>/` module. Do not piggyback a new vendor onto an existing
 tab. Follow this checklist in one PR.
 
@@ -539,7 +565,7 @@ tab. Follow this checklist in one PR.
 7. **Plan labels** (`src/oauth/plan.ts`): map wire slugs to the product
    name users see (`Pro 20x`, `SuperGrok Heavy`, `Lite`). Family-specific
    collisions (`glm` `pro` → `Pro`, Codex `pro` → `Pro 20x`) belong here.
-8. **Proxy / tokens / cache**: all nine families chat through the local
+8. **Proxy / tokens / cache**: all ten families chat through the local
    proxy. Pick `api` per the protocol section. Prompt cache **must** be
    a new `src/oauth/<id>/cache.ts`. Do not import another family's cache
    helper, and do not revive `src/utils/cache-session.ts`.
@@ -560,6 +586,10 @@ tab. Follow this checklist in one PR.
    llm-pi-ai. Never overwrite a stored session. Sentinel is **never**
    sent as Authorization. No import, no API key. Omit
    `reasoningEfforts` on Completions rows (do not write `false`).
+   Copilot device-code uses VS Code GitHub App `Iv1.b507a08c87ecfe98`
+   (not OpenCode `Ov23li8`). Auto-import `hosts.json` / OpenCode
+   `auth.json` only when the copilot roster is empty. Never overwrite a
+   stored session. Exchange `ghu_` → `tid=` before hopping.
 9. **Tests** under `test/`: login parse, session round-trip, catalog
    input types, and `snapshot shows quota on every <id> account`.
 
@@ -577,14 +607,14 @@ into `TAB_ICONS`.
   official brand mark, not a generic letter. GLM uses the **Z.ai** icon
   (`zai`), not Zhipu.
 - Order: OAuth families first (Codex, Grok, GLM, Kiro, Antigravity,
-  Cursor, Ollama Cloud, Kimi, OpenCode Free). Insert a new family **in the OAuth group**,
+  Cursor, Ollama Cloud, Kimi, OpenCode Free, GitHub Copilot). Insert a new family **in the OAuth group**,
   never into the utility capsule. Tab **buttons** stay 36×36 — do not
   `flex: 1 1 0` or shrink `min-width` to 0.
 - **Two tab groups**, docked (confirmed 2026-09-03):
   - **OAuth (left, fills leftover width):** family icons only.
     `.osubs-tabs` is `repeat(8, 36px)` + `justify-content: space-between`
     + `flex: 1 1 auto`. Eight families fill row 1; extra pane width
-    becomes the gap **between** those 8 icons. A 9th family wraps to
+    becomes the gap **between** those 8 icons. A 9th+ family wraps to
     row 2 inside this group, still 36px, left-aligned. 12px capsule
     (`--osubs-line` / `--osubs-fill`).
   - **Utility (flush after it):** `.osubs-tabs-util` stays 36px,
@@ -602,7 +632,7 @@ into `TAB_ICONS`.
 
 ```text
 [ Codex ]  [ Grok ]  [ Z.ai ]  [ Kiro ]  [ Antigravity ]  [ Cursor ]  [ Ollama Cloud ]  [ Kimi ]  [ ▦ ]
-[ OpenCode Free ]                                                                             [ GitHub ]
+[ OpenCode Free ] [ Copilot ]                                                             [ GitHub ]
 ```
 
 ### Settings — one account, one card
@@ -658,7 +688,7 @@ Binding UI rules:
   only.
 - **Tab bar is two groups, docked.** OAuth capsule on the left
   (`flex: 1 1 auto`, `repeat(8, 36px)`, `justify-content: space-between`
-  so leftover width is the gap between the eight family icons; a 9th
+  so leftover width is the gap between the eight family icons; a 9th+
   wraps inside this group). Utility capsule **immediately after it**
   (`gap: 4px`, no `margin-left: auto`): Models on row 1, GitHub/About
   on row 2. Never put Models/GitHub in the OAuth grid. Never
@@ -689,7 +719,7 @@ Binding UI rules:
   `.options` side padding so cards cannot peek in the gutter.
   `.osubs-nav` is flex (`flex-start`, `gap: 4px`); `.osubs-tabs` is
   family-only `repeat(8, 36px)` + `space-between` + `flex: 1 1 auto`
-  (OpenCode Free is the 9th and wraps inside this group; leftover
+  (OpenCode Free / Copilot wrap inside this group; leftover
   width is the gap between the eight icons); `.osubs-tabs-util` is the
   next capsule, 4px away (Models over GitHub). Never `margin-left: auto`
   / nav `space-between` / `.osubs-tabs` `width: max-content`. Never
@@ -752,6 +782,7 @@ content hashes; `x-request-id` = `x-original-request-id`.
 Ollama Cloud has no documented cache-read or conversation id; do not invent one.
 Kimi Code is prefix-hash only; strip Codex/Grok fields and park extra system at the messages suffix. Do not invent a shard id.
 OpenCode Free has no documented cache-read or conversation id; never send Authorization on the Zen hop.
+Copilot Completions is prefix-hash + `X-Interaction-Id` (fallback `dsh-copilot` is written); exchange `ghu_` → `tid=` before hopping.
 `Error: tool call timed out after 30000ms` is `dsh-tool-fs-search`, not
 this proxy — record it in `docs/error.md`, do not add `toolTimeoutMs` here.
 

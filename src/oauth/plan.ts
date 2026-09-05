@@ -11,6 +11,7 @@ import { ANTIGRAVITY_PLAN_NAMES } from './antigravity/index.js'
 import { CURSOR_PLAN_NAMES } from './cursor/index.js'
 import { OLLAMA_PLAN_NAMES } from './ollama/index.js'
 import { OPENCODE_PLAN_NAMES } from './opencode/index.js'
+import { COPILOT_PLAN_NAMES } from './copilot/index.js'
 
 export const CODEX_PLAN_NAMES = Object.freeze({
   free: 'Free',
@@ -116,7 +117,11 @@ export function formatPlanLabel(raw, family) {
     if (OPENCODE_PLAN_NAMES[slug]) return OPENCODE_PLAN_NAMES[slug]
     if (OPENCODE_PLAN_NAMES[compact]) return OPENCODE_PLAN_NAMES[compact]
   }
-  if (family !== 'glm' && family !== 'grok' && family !== 'kiro' && family !== 'antigravity' && family !== 'cursor' && family !== 'ollama' && family !== 'kimi' && family !== 'opencode') {
+  if (family === 'copilot') {
+    if (COPILOT_PLAN_NAMES[slug]) return COPILOT_PLAN_NAMES[slug]
+    if (COPILOT_PLAN_NAMES[compact]) return COPILOT_PLAN_NAMES[compact]
+  }
+  if (family !== 'glm' && family !== 'grok' && family !== 'kiro' && family !== 'antigravity' && family !== 'cursor' && family !== 'ollama' && family !== 'kimi' && family !== 'opencode' && family !== 'copilot') {
     if (CODEX_PLAN_NAMES[slug]) return CODEX_PLAN_NAMES[slug]
     if (CODEX_PLAN_NAMES[compact]) return CODEX_PLAN_NAMES[compact]
   }

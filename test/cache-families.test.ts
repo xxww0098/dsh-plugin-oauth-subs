@@ -9,6 +9,7 @@ import { applyCursorCache, cursorCacheHeaders, cursorCacheSessionId, cursorConve
 import { applyOllamaCache, ollamaCacheHeaders, ollamaCacheSessionId, OLLAMA_STABLE_SESSION } from '../lib/oauth/ollama/cache.js'
 import { applyKimiCache, kimiCacheHeaders, kimiCacheSessionId, KIMI_STABLE_SESSION, resetKimiPins } from '../lib/oauth/kimi/cache.js'
 import { applyOpencodeCache, opencodeCacheHeaders, opencodeCacheSessionId, OPENCODE_STABLE_SESSION } from '../lib/oauth/opencode/cache.js'
+import { applyCopilotCache, copilotCacheHeaders, copilotCacheSessionId, COPILOT_STABLE_SESSION, resetCopilotPins } from '../lib/oauth/copilot/cache.js'
 
 const dirty = 'session 772f7f3a/foo'
 
@@ -22,6 +23,7 @@ test('each family owns its cache id helper (same clip, separate modules)', () =>
   assert.equal(ollamaCacheSessionId(dirty), 'session-772f7f3a-foo')
   assert.equal(kimiCacheSessionId(dirty), 'session-772f7f3a-foo')
   assert.equal(opencodeCacheSessionId(dirty), 'session-772f7f3a-foo')
+  assert.equal(copilotCacheSessionId(dirty), 'session-772f7f3a-foo')
   assert.equal(codexCacheSessionId(''), undefined)
   assert.equal(grokCacheSessionId(null), undefined)
 })
@@ -237,4 +239,24 @@ test('OpenCode cache strips Codex/Grok fields and does not invent a sticky wire 
   assert.equal(Object.hasOwn(opencodeCacheHeaders(), 'session-id'), false)
   assert.equal(Object.hasOwn(opencodeCacheHeaders(), 'x-grok-conv-id'), false)
   assert.equal(applyOpencodeCache({}).cacheSessionId, OPENCODE_STABLE_SESSION)
+})
+
+test('Copilot cache strips Codex/Grok fields and writes X-Interaction-Id', () => {
+  resetCopilotPins()
+  const { payload, cacheSessionId } = applyCopilotCache({
+    session_id: 'sess-copilot',
+    prompt_cache_key: 'codex-style',
+    prompt_cache_retention: '24h',
+    model: 'gpt-4.1',
+  })
+  assert.equal(cacheSessionId, 'sess-copilot')
+  assert.equal(payload.prompt_cache_key, undefined)
+  assert.equal(payload.prompt_cache_retention, undefined)
+  assert.equal(payload.session_id, undefined)
+  assert.deepEqual(copilotCacheHeaders(cacheSessionId), { 'x-interaction-id': 'sess-copilot' })
+  assert.equal(Object.hasOwn(copilotCacheHeaders(cacheSessionId), 'session-id'), false)
+  assert.equal(Object.hasOwn(copilotCacheHeaders(cacheSessionId), 'x-grok-conv-id'), false)
+  assert.equal(applyCopilotCache({}).cacheSessionId, COPILOT_STABLE_SESSION)
+  assert.deepEqual(copilotCacheHeaders(), { 'x-interaction-id': COPILOT_STABLE_SESSION })
+  resetCopilotPins()
 })

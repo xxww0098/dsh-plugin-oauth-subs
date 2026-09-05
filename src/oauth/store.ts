@@ -16,8 +16,9 @@ import { displayCursorAccount } from './cursor/index.js'
 import { ollamaSourceLabel } from './ollama/index.js'
 import { kimiSourceLabel } from './kimi/index.js'
 import { opencodeSourceLabel } from './opencode/index.js'
+import { copilotSourceLabel } from './copilot/index.js'
 
-export const PROVIDER_IDS = Object.freeze(['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'opencode'])
+export const PROVIDER_IDS = Object.freeze(['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'opencode', 'copilot'])
 
 export function defaultDataDir() {
   return join(homedir(), '.dsh', 'plugins', 'oauth-subs')
@@ -353,6 +354,16 @@ export function publicSession(provider, session) {
       planLabel,
       method: session.source,
       methodLabel: kimiSourceLabel(session.source),
+      expiresAt: session.expiresAt,
+    }
+  }
+  if (provider === 'copilot') {
+    return {
+      account: session.account,
+      planType,
+      planLabel,
+      method: session.source,
+      methodLabel: copilotSourceLabel(session.source),
       expiresAt: session.expiresAt,
     }
   }
