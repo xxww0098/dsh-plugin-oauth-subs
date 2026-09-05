@@ -13,7 +13,7 @@ dsh plugin --profile web add https://github.com/xxww0098/dsh-plugin-oauth-subs
 dsh web
 ```
 
-Open **Settings → OAuth subs**. One card per account (quota on every card; Ollama Cloud has no quota bars). About compares GitHub latest and may run `dsh plugin --profile web update dsh-plugin-oauth-subs` — restart `dsh web`. Or `pnpm dsh web --patch ./cordis.patch.yml` (`id: oauth-subs`).
+Open **Settings → OAuth subs**. One card per account (quota on every card; Ollama Cloud has no quota bars). About compares GitHub latest and may run `dsh plugin --profile web update` then `add https://github.com/xxww0098/dsh-plugin-oauth-subs#<tag>` — restart `dsh web`. `dsh plugin update` can exit 0 without moving a git-pinned install; if About still shows the old version, remove and re-add from the GitHub URL. Or `pnpm dsh web --patch ./cordis.patch.yml` (`id: oauth-subs`).
 
 ## Families
 

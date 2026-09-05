@@ -195,8 +195,9 @@ window.__ModuleLoader__.load({
         updateError: '检查失败',
         updateInstalled: '已写入 web profile。当前进程仍是旧模块，请重启 dsh web 后生效。',
         updateFailed: '更新失败：{n}',
+        updateUnchanged: '命令已成功但磁盘版本未变：{n}',
         updateMissingDsh: 'PATH 上找不到 dsh。确认已安装 DeepSeek Harness，再点检查更新。',
-        updateTimeout: 'dsh plugin update 超时。可在终端手动跑：dsh plugin --profile web update dsh-plugin-oauth-subs',
+        updateTimeout: 'dsh plugin update 超时。可先移除再从 GitHub 重装：dsh plugin --profile web remove dsh-plugin-oauth-subs && dsh plugin --profile web add https://github.com/xxww0098/dsh-plugin-oauth-subs',
         platformWin: 'Windows',
         platformMac: 'macOS',
         platformLinux: 'Linux',
@@ -357,8 +358,9 @@ window.__ModuleLoader__.load({
         updateError: 'Update check failed',
         updateInstalled: 'Written to the web profile. This process still has the old module — restart dsh web to load it.',
         updateFailed: 'Update failed: {n}',
+        updateUnchanged: 'Command finished but the on-disk version did not change: {n}',
         updateMissingDsh: 'dsh was not found on PATH. Confirm DeepSeek Harness is installed, then try again.',
-        updateTimeout: 'dsh plugin update timed out. Run by hand: dsh plugin --profile web update dsh-plugin-oauth-subs',
+        updateTimeout: 'dsh plugin update timed out. Remove and re-add from GitHub: dsh plugin --profile web remove dsh-plugin-oauth-subs && dsh plugin --profile web add https://github.com/xxww0098/dsh-plugin-oauth-subs',
         platformWin: 'Windows',
         platformMac: 'macOS',
         platformLinux: 'Linux',
@@ -2010,6 +2012,7 @@ window.__ModuleLoader__.load({
       if (apply.status === 'installed') return t.updateInstalled
       if (apply.status === 'missing-dsh') return t.updateMissingDsh
       if (apply.status === 'timeout') return t.updateTimeout
+      if (apply.status === 'unchanged') return fill(t.updateUnchanged, apply.error || '')
       if (apply.status === 'failed') return fill(t.updateFailed, apply.error || '')
       return ''
     }

@@ -499,6 +499,10 @@ test('checkUpdate compare-only never spawns dsh', async () => {
     fetchFn: githubLatest('v9.9.9'),
     spawnFn: () => { spawned += 1; return spawnChild(0) },
     profile: 'web',
+    readFileFn: (() => {
+      let n = 0
+      return () => JSON.stringify({ version: n++ === 0 ? '0.0.1' : '9.9.9' })
+    })(),
   })
   const check = await controller.checkUpdate({ apply: false })
   assert.equal(check.status, 'update')
@@ -510,6 +514,27 @@ test('checkUpdate compare-only never spawns dsh', async () => {
   assert.equal(current.apply.restart, true)
   assert.equal(current.apply.command, 'dsh plugin --profile web update dsh-plugin-oauth-subs')
   assert.equal(spawned, 1)
+})
+
+test('checkUpdate does not claim installed when dsh exits 0 but version stays', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  let spawned = 0
+  const controller = new AuthController({
+    authPath: join(dir, 'auth.json'),
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+    fetchFn: githubLatest('v9.9.9'),
+    spawnFn: () => { spawned += 1; return spawnChild(0) },
+    profile: 'web',
+    readFileFn: () => JSON.stringify({ version: '0.0.1' }),
+  })
+  const result = await controller.checkUpdate({ apply: true })
+  assert.equal(result.status, 'update')
+  assert.equal(result.apply.status, 'unchanged')
+  assert.match(result.apply.error, /still 0\.0\.1/)
+  assert.match(result.apply.command, /dsh plugin --profile web add /)
+  assert.equal(spawned, 2)
 })
 
 test('checkUpdate does not reinstall when already current', async () => {
@@ -544,5 +569,5 @@ test('checkUpdate reports a failed dsh plugin update', async () => {
   const result = await controller.checkUpdate({ apply: true })
   assert.equal(result.status, 'update')
   assert.equal(result.apply.status, 'failed')
-  assert.match(result.apply.command, /dsh plugin --profile web update/)
+  assert.match(result.apply.command, /dsh plugin --profile web (update|add)/)
 })

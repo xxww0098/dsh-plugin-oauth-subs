@@ -99,10 +99,10 @@ import {
 } from './models.js'
 import { TokenManager } from './tokens.js'
 import { QuotaStore } from './quota.js'
-import { fetchLatest, localUpdateInfo, runPluginUpdate, DEFAULT_PROFILE } from '../utils/update.js'
+import { fetchLatest, localUpdateInfo, applyHostUpdate, DEFAULT_PROFILE } from '../utils/update.js'
 
 export class AuthController {
-  constructor({ authPath, prefix, origin, settings, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, spawnFn, profile, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, opencodeDiscover, opencodeAutoEnable }) {
+  constructor({ authPath, prefix, origin, settings, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, spawnFn, profile, readFileFn, updateEnv, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, opencodeDiscover, opencodeAutoEnable }) {
     this.authPath = authPath
     this.prefix = prefix
     this.origin = origin
@@ -110,6 +110,8 @@ export class AuthController {
     this.grokLogin = grokLogin
     this.spawnFn = spawnFn
     this.profile = profile || DEFAULT_PROFILE
+    this.readFileFn = readFileFn
+    this.updateEnv = updateEnv
     this.onAuthChanged = onAuthChanged
     this.models = models ?? new ModelSwitch()
     this.flows = new OAuthFlowManager()
@@ -507,9 +509,12 @@ export class AuthController {
       if (!apply || info.status !== 'update') {
         return { ...info, apply: { status: 'none' } }
       }
-      const result = await runPluginUpdate({
+      const result = await applyHostUpdate({
         spawnFn: this.spawnFn,
         profile: this.profile,
+        latest: info.latest?.tag,
+        readFileFn: this.readFileFn,
+        env: this.updateEnv,
       })
       if (result.ok) {
         return { ...info, apply: { status: 'installed', restart: true, command: result.command } }

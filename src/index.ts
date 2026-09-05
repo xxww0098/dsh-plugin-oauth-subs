@@ -294,4 +294,5 @@ export {
   profileFromBaseUrl,
   pluginUpdateCommand,
   runPluginUpdate,
+  applyHostUpdate,
 } from './utils/update.js'

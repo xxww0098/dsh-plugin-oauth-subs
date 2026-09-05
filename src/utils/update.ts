@@ -1,15 +1,19 @@
 /**
  * Local version + GitHub latest-release check, then the host plugin updater.
  *
- * Compare is GitHub latest vs package.json. Apply is
- * `dsh plugin --profile <web> update dsh-plugin-oauth-subs` — the same
- * pnpm-forward DSH CLI as `dsh plugin add`, not a GitHub zip. A generic
- * zip is not a download row. After a successful apply the running process
- * still has the old module; the user must restart `dsh web`.
+ * Compare is GitHub latest vs the running module's package.json.
+ * `dsh plugin update` is a thin pnpm forwarder in the profile directory
+ * (`pnpm update dsh-plugin-oauth-subs`). This package is installed from a
+ * GitHub URL, and `pnpm update` often exits 0 without moving a commit-pinned
+ * git spec. Apply therefore: try `update`, then `add <repo>#vX.Y.Z`, and
+ * treat success only when
+ * `$DSH_HOME/profiles/<name>/node_modules/dsh-plugin-oauth-subs/package.json`
+ * advanced. After a real write the running process still has the old
+ * module; the user must restart `dsh web`.
  */
 
 import { spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -171,6 +175,50 @@ export function pluginUpdateCommand(profile = DEFAULT_PROFILE) {
   return [DSH_BIN, ...pluginUpdateArgs(profile)].join(' ')
 }
 
+export function pluginAddArgs(profile = DEFAULT_PROFILE, source = REPO_URL) {
+  return ['plugin', '--profile', String(profile || DEFAULT_PROFILE), 'add', String(source || REPO_URL)]
+}
+
+export function pluginRemoveArgs(profile = DEFAULT_PROFILE) {
+  return ['plugin', '--profile', String(profile || DEFAULT_PROFILE), 'remove', PLUGIN_NAME]
+}
+
+/** GitHub tag → `dsh plugin add` source. `v0.0.71` and `0.0.71` both pin `#v0.0.71`. */
+export function releaseInstallSource(tag) {
+  const parsed = parseVersion(tag)
+  if (!parsed) return REPO_URL
+  return `${REPO_URL}#v${parsed.raw}`
+}
+
+export function workaroundCommand(profile = DEFAULT_PROFILE, source = REPO_URL) {
+  return `${[DSH_BIN, ...pluginRemoveArgs(profile)].join(' ')} && ${[DSH_BIN, ...pluginAddArgs(profile, source)].join(' ')}`
+}
+
+export function profilePluginPackageJson(profile = DEFAULT_PROFILE, env = process.env) {
+  return join(dshHome(env), 'profiles', String(profile || DEFAULT_PROFILE), 'node_modules', PLUGIN_NAME, 'package.json')
+}
+
+export function readPackageVersion(path, { readFileFn = readFileSync } = {}) {
+  try {
+    const raw = readFileFn(path, 'utf8')
+    const text = typeof raw === 'string' ? raw : String(raw ?? '')
+    const parsed = JSON.parse(text)
+    return typeof parsed?.version === 'string' ? parsed.version : ''
+  } catch {
+    return ''
+  }
+}
+
+/** True when `after` reached `latest`, or moved forward when latest is unknown. */
+export function versionAdvanced(before, after, latest) {
+  const next = parseVersion(after)
+  if (!next) return false
+  const want = parseVersion(latest)
+  if (want && compareVersions(next.raw, want.raw) >= 0) return true
+  const prev = parseVersion(before)
+  return Boolean(prev && compareVersions(next.raw, prev.raw) > 0)
+}
+
 function dshHome(env = process.env) {
   const home = env.DSH_HOME
   if (typeof home === 'string' && home.trim()) return home.trim()
@@ -189,24 +237,32 @@ function describeSpawnError(error) {
   return error instanceof Error ? error.message : String(error)
 }
 
+function unchangedHint(profile, onDisk, latest) {
+  const source = releaseInstallSource(latest)
+  const ver = parseVersion(onDisk)?.raw || onDisk || 'unknown'
+  const want = parseVersion(latest)?.raw || latest || 'unknown'
+  return `on-disk version is still ${ver} (latest ${want}). Remove and re-add from GitHub: ${workaroundCommand(profile, source)}`
+}
+
 /**
- * Spawn PATH `dsh` with the profile plugin updater. Does not install
- * `@deepseek-ai/dsh` and does not kill the running profile.
+ * Spawn PATH `dsh` with the given plugin args. Exit 0 is only a spawn
+ * success — `applyHostUpdate` re-reads the profile package.json.
  */
-export function runPluginUpdate({
+export function runDshPlugin({
   spawnFn = spawn,
   profile = DEFAULT_PROFILE,
+  args,
   timeoutMs = PLUGIN_UPDATE_TIMEOUT_MS,
   env = process.env,
 } = {}) {
-  const args = pluginUpdateArgs(profile)
-  const command = pluginUpdateCommand(profile)
+  const argv = Array.isArray(args) && args.length ? args : pluginUpdateArgs(profile)
+  const command = [DSH_BIN, ...argv].join(' ')
   const home = dshHome(env)
   const cwd = existsSync(home) ? home : undefined
   return new Promise((resolve) => {
     let child
     try {
-      child = spawnFn(DSH_BIN, args, {
+      child = spawnFn(DSH_BIN, argv, {
         env,
         ...(cwd ? { cwd } : {}),
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -242,11 +298,93 @@ export function runPluginUpdate({
     })
     child.once('close', (code) => {
       if (code === 0) {
-        finish({ ok: true, status: 'installed', command })
+        finish({ ok: true, status: 'spawned', command })
         return
       }
       const detail = clip(stderr) || clip(stdout) || `dsh plugin update exited ${code}`
       finish({ ok: false, status: 'failed', command, error: detail })
     })
   })
+}
+
+/**
+ * Spawn PATH `dsh plugin update`. Exit 0 is spawn-only; prefer
+ * `applyHostUpdate` when the on-disk version must have moved.
+ */
+export function runPluginUpdate({
+  spawnFn = spawn,
+  profile = DEFAULT_PROFILE,
+  timeoutMs = PLUGIN_UPDATE_TIMEOUT_MS,
+  env = process.env,
+} = {}) {
+  return runDshPlugin({ spawnFn, profile, args: pluginUpdateArgs(profile), timeoutMs, env })
+}
+
+/**
+ * Apply a host update and confirm the profile's package.json moved.
+ * `dsh plugin update` is `pnpm update` and can no-op on a git-pinned
+ * install; if the version did not reach `latest`, retry
+ * `dsh plugin add <repo>#vX.Y.Z`.
+ */
+export async function applyHostUpdate({
+  spawnFn = spawn,
+  profile = DEFAULT_PROFILE,
+  latest,
+  timeoutMs = PLUGIN_UPDATE_TIMEOUT_MS,
+  env,
+  readFileFn,
+} = {}) {
+  const homeEnv = env ?? process.env
+  const fileFn = readFileFn ?? readFileSync
+  const manifest = profilePluginPackageJson(profile, homeEnv)
+  const before = readPackageVersion(manifest, { readFileFn: fileFn })
+  const want = parseVersion(latest)?.raw
+  const first = await runDshPlugin({
+    spawnFn,
+    profile,
+    args: pluginUpdateArgs(profile),
+    timeoutMs,
+    env: homeEnv,
+  })
+  if (!first.ok && first.status !== 'failed') {
+    return { ...first, before, after: before }
+  }
+  let after = readPackageVersion(manifest, { readFileFn: fileFn })
+  if (first.ok && versionAdvanced(before, after, want)) {
+    return { ok: true, status: 'installed', command: first.command, before, after }
+  }
+  if (want) {
+    const second = await runDshPlugin({
+      spawnFn,
+      profile,
+      args: pluginAddArgs(profile, releaseInstallSource(latest)),
+      timeoutMs,
+      env: homeEnv,
+    })
+    after = readPackageVersion(manifest, { readFileFn: fileFn })
+    if (!second.ok && second.status !== 'failed') {
+      return { ...second, before, after }
+    }
+    if (second.ok && versionAdvanced(before, after, want)) {
+      return { ok: true, status: 'installed', command: second.command, before, after }
+    }
+    if (!second.ok) return { ...second, before, after }
+    return {
+      ok: false,
+      status: 'unchanged',
+      command: second.command,
+      before,
+      after,
+      error: unchangedHint(profile, after || before, latest),
+    }
+  }
+  if (!first.ok) return { ...first, before, after }
+  return {
+    ok: false,
+    status: 'unchanged',
+    command: first.command,
+    before,
+    after,
+    error: unchangedHint(profile, after || before, latest),
+  }
 }

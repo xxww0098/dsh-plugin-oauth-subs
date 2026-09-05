@@ -8,10 +8,18 @@ import {
   formatPublishedAt,
   hostPlatform,
   pickDownloads,
+  applyHostUpdate,
+  pluginAddArgs,
   pluginUpdateArgs,
   pluginUpdateCommand,
   profileFromBaseUrl,
+  profilePluginPackageJson,
+  readPackageVersion,
+  releaseInstallSource,
   runPluginUpdate,
+  versionAdvanced,
+  workaroundCommand,
+  REPO_URL,
   RELEASES_API,
 } from '../lib/utils/update.js'
 
@@ -99,6 +107,26 @@ test('profileFromBaseUrl reads $DSH_HOME/profiles/<name>', () => {
 test('pluginUpdateArgs targets this package on the named profile', () => {
   assert.deepEqual(pluginUpdateArgs('web'), ['plugin', '--profile', 'web', 'update', 'dsh-plugin-oauth-subs'])
   assert.equal(pluginUpdateCommand('web'), 'dsh plugin --profile web update dsh-plugin-oauth-subs')
+  assert.deepEqual(pluginAddArgs('web', `${REPO_URL}#v0.0.71`), [
+    'plugin', '--profile', 'web', 'add', `${REPO_URL}#v0.0.71`,
+  ])
+  assert.equal(releaseInstallSource('v0.0.71'), `${REPO_URL}#v0.0.71`)
+  assert.equal(releaseInstallSource('0.0.71'), `${REPO_URL}#v0.0.71`)
+  assert.match(workaroundCommand('web'), /plugin --profile web remove dsh-plugin-oauth-subs && dsh plugin --profile web add /)
+})
+
+test('profilePluginPackageJson reads $DSH_HOME/profiles/<name>/node_modules', () => {
+  const path = profilePluginPackageJson('web', { DSH_HOME: '/tmp/dsh-home' })
+  assert.equal(path.replace(/\\/g, '/'), '/tmp/dsh-home/profiles/web/node_modules/dsh-plugin-oauth-subs/package.json')
+})
+
+test('readPackageVersion and versionAdvanced require a real bump', () => {
+  assert.equal(readPackageVersion('/nope.json', { readFileFn: () => { throw new Error('missing') } }), '')
+  assert.equal(readPackageVersion('/x.json', { readFileFn: () => '{"version":"0.0.71"}' }), '0.0.71')
+  assert.equal(versionAdvanced('0.0.70', '0.0.70', '0.0.71'), false)
+  assert.equal(versionAdvanced('0.0.70', '0.0.71', '0.0.71'), true)
+  assert.equal(versionAdvanced('', '0.0.71', '0.0.71'), true)
+  assert.equal(versionAdvanced('', '', '0.0.71'), false)
 })
 
 function fakeChild({ code = 0, error, stderr = '', stdout = '' } = {}) {
@@ -117,7 +145,7 @@ function fakeChild({ code = 0, error, stderr = '', stdout = '' } = {}) {
   }
 }
 
-test('runPluginUpdate spawns PATH dsh and reports success', async () => {
+test('runPluginUpdate spawns PATH dsh and reports spawn success', async () => {
   const seen = []
   const spawnFn = (cmd, args, opts) => {
     seen.push({ cmd, args, cwd: opts.cwd, stdio: opts.stdio })
@@ -125,10 +153,65 @@ test('runPluginUpdate spawns PATH dsh and reports success', async () => {
   }
   const result = await runPluginUpdate({ spawnFn, profile: 'web', env: { DSH_HOME: process.cwd() } })
   assert.equal(result.ok, true)
-  assert.equal(result.status, 'installed')
+  assert.equal(result.status, 'spawned')
   assert.equal(result.command, 'dsh plugin --profile web update dsh-plugin-oauth-subs')
   assert.equal(seen[0].cmd, 'dsh')
   assert.deepEqual(seen[0].args, ['plugin', '--profile', 'web', 'update', 'dsh-plugin-oauth-subs'])
+})
+
+function versionReader(versions) {
+  let i = 0
+  return () => JSON.stringify({ version: versions[Math.min(i++, versions.length - 1)] })
+}
+
+test('applyHostUpdate reports installed only when the on-disk version advanced', async () => {
+  const result = await applyHostUpdate({
+    spawnFn: fakeChild({ code: 0 }),
+    profile: 'web',
+    latest: 'v0.0.71',
+    env: { DSH_HOME: process.cwd() },
+    readFileFn: versionReader(['0.0.70', '0.0.71']),
+  })
+  assert.equal(result.ok, true)
+  assert.equal(result.status, 'installed')
+  assert.equal(result.before, '0.0.70')
+  assert.equal(result.after, '0.0.71')
+  assert.equal(result.command, 'dsh plugin --profile web update dsh-plugin-oauth-subs')
+})
+
+test('applyHostUpdate retries add #tag when update exits 0 but version is unchanged', async () => {
+  const seen = []
+  const spawnFn = (cmd, args, opts) => {
+    seen.push(args)
+    return fakeChild({ code: 0 })(cmd, args, opts)
+  }
+  const result = await applyHostUpdate({
+    spawnFn,
+    profile: 'web',
+    latest: 'v0.0.71',
+    env: { DSH_HOME: process.cwd() },
+    readFileFn: versionReader(['0.0.70', '0.0.70', '0.0.71']),
+  })
+  assert.equal(result.ok, true)
+  assert.equal(result.status, 'installed')
+  assert.deepEqual(seen[0], ['plugin', '--profile', 'web', 'update', 'dsh-plugin-oauth-subs'])
+  assert.deepEqual(seen[1], ['plugin', '--profile', 'web', 'add', `${REPO_URL}#v0.0.71`])
+  assert.equal(result.command, `dsh plugin --profile web add ${REPO_URL}#v0.0.71`)
+})
+
+test('applyHostUpdate does not claim installed when the on-disk version stays put', async () => {
+  const result = await applyHostUpdate({
+    spawnFn: fakeChild({ code: 0 }),
+    profile: 'web',
+    latest: 'v0.0.71',
+    env: { DSH_HOME: process.cwd() },
+    readFileFn: versionReader(['0.0.70', '0.0.70', '0.0.70']),
+  })
+  assert.equal(result.ok, false)
+  assert.equal(result.status, 'unchanged')
+  assert.match(result.error, /still 0\.0\.70/)
+  assert.match(result.error, /remove dsh-plugin-oauth-subs/)
+  assert.match(result.error, /add https:\/\/github.com\/xxww0098\/dsh-plugin-oauth-subs#v0\.0\.71/)
 })
 
 test('runPluginUpdate maps ENOENT to missing-dsh', async () => {

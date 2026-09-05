@@ -2,6 +2,17 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-05：关于页更新成功但重启后版本仍旧
+
+### 现象
+`dsh plugin --profile web update dsh-plugin-oauth-subs` exit 0，重启 `dsh web` 后 Settings → About 仍是旧 `package.json` 版本，不是 GitHub latest。
+
+### 根因
+DSH `plugin` 只是 profile 目录里的 `pnpm <args>`。本包按 GitHub URL 安装；`pnpm update <name>` 对 commit 钉死的 git spec 常 no-op 仍 exit 0。本插件把 exit 0 当成已写入。
+
+### 修复
+成功只看 `$DSH_HOME/profiles/<p>/node_modules/dsh-plugin-oauth-subs/package.json` 是否前进。`update` 没动则再 `add <repo>#vX.Y.Z`。仍不动则报 unchanged，提示 remove + 从 GitHub URL 重装。
+
 ## 2026-09-03：OpenCode Free 目录漏 Big Pickle、含过期 DeepSeek/Laguna
 
 ### 现象
