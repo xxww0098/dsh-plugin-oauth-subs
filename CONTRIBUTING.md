@@ -1,6 +1,6 @@
 # Contributing
 
-Read [`AGENTS.md`](AGENTS.md) first. Host code is TypeScript under `src/`. Settings UI is React under `src/ui`. Recurring faults go in [`docs/error.md`](docs/error.md).
+Read [`AGENTS.md`](AGENTS.md) first. Host code is TypeScript under `src/`. Settings UI is React under `src/ui`. Recurring faults go in [`docs/error.md`](docs/error.md). Reference hops (official CLI + community reverse) go in [`docs/oauth.md`](docs/oauth.md).
 
 ## Tests
 
@@ -32,4 +32,5 @@ A healthy long session should stay above **80%** weighted cache hit with **zero 
 | `src/ui/client.ts` | Settings UI (React classic-script, compiled to `lib/ui/client.js`) |
 | `src/utils/analyze-session.ts` | Session.jsonl scoring |
 | `docs/error.md` | Recurring faults and the acceptance that closed them |
+| `docs/oauth.md` | Official / community repos each family hop is aligned to |
 | `AGENTS.md` | Binding stack, tree, and error-log rules |

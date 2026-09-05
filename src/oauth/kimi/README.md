@@ -1,7 +1,7 @@
 # Kimi Code Plan OAuth
 
 本文件是 `src/oauth/kimi/` 的设计源。改登录、额度、对话或缓存先改这里再改代码。
-跨家族硬约定在仓库根 [`AGENTS.md`](../../../AGENTS.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)。
+跨家族硬约定在仓库根 [`AGENTS.md`](../../../AGENTS.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)；对照仓库在 [`docs/oauth.md`](../../../docs/oauth.md)。
 
 **不是** ChatGPT Codex / xAI Grok。上游是 Moonshot Kimi Code Plan
 `https://api.kimi.com/coding/v1/chat/completions`（OpenAI Completions 方言）。
@@ -98,6 +98,10 @@ Kimi 是 **前缀哈希**，没有分片键。
 - 不要 vendoring moonshot 工具。
 - 不要假装成 Pi（UA / `X-Msh-Platform` 用本插件，不是 `pi-provider-kimi-code`）。
 - 不要 npm `@lobehub/icons`。Settings 图标是 LobeHub static SVG path。
+
+## 归因
+
+设备码对照 MIT [Leechael/pi-provider-kimi-code](https://github.com/Leechael/pi-provider-kimi-code)；`client_id` 与官方 Kimi Code CLI 相同。不要扮成 Pi。总表见 [`docs/oauth.md`](../../../docs/oauth.md)。
 
 ## 追溯
 

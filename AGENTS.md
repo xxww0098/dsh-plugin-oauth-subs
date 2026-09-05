@@ -34,6 +34,14 @@ Each new incident is **≤12 lines**: one `## YYYY-MM-DD：short title`
 Analyzer-only labels are not a substitute for an `docs/error.md` entry when
 the behavior is user-visible.
 
+## OAuth hops → `docs/oauth.md`
+
+Official CLI and community reverse repos for each family live in
+[`docs/oauth.md`](docs/oauth.md). Family README 归因 must point there.
+When a hop copies a new client version or a new reverse, update that
+table in the same PR. Do not invent headers the pinned client does not
+send. Do not vendor the other tree.
+
 ## Source tree
 
 ```text
@@ -119,6 +127,7 @@ src/
     update.ts              GitHub latest-release check
 lib/                       tsc + UI tsc — generated, do not edit
 docs/error.md              fault log
+docs/oauth.md              official / community repos for each family hop
 design-system/             Settings workbench design (MASTER + page overrides)
 test/                      node:test TypeScript, import compiled lib/
 scripts/                   CLI (TypeScript)
@@ -127,7 +136,7 @@ scripts/                   CLI (TypeScript)
 Rules:
 
 - Codex-only code → `src/oauth/codex/`. Grok-only code → `src/oauth/grok/`. GLM-only code → `src/oauth/glm/`. Kiro-only code → `src/oauth/kiro/`. Antigravity-only code → `src/oauth/antigravity/`. Cursor-only code → `src/oauth/cursor/`. Ollama-only code → `src/oauth/ollama/`. Kimi-only code → `src/oauth/kimi/`. OpenCode-only code → `src/oauth/opencode/`.
-- **Each family has `README.md`.** Login, session, chat hop, models, quota, and cache for that vendor are written there so a later change can be traced to files and to `docs/error.md`. Cross-family rules stay in this file; do not let family READMEs contradict it.
+- **Each family has `README.md`.** Login, session, chat hop, models, quota, and cache for that vendor are written there so a later change can be traced to files and to `docs/error.md`. Cross-family rules stay in this file; do not let family READMEs contradict it. Reference repos for that hop live in `docs/oauth.md` and in the family README 归因.
 - **Cache is per family.** Each `src/oauth/<id>/cache.ts` owns that vendor's prompt-cache identity, headers, and prefix pin. Do not import Codex cache helpers from Grok / GLM / Kiro / Antigravity / Cursor / Ollama / Kimi / OpenCode. Do not share a `codexCacheSessionId` in `src/utils/`. `proxy.ts` only dispatches.
 - Shared crypto / session scoring → `src/utils/`.
 - Settings React → `src/ui/`.
@@ -497,9 +506,11 @@ tab. Follow this checklist in one PR.
 
 1. **README** `src/oauth/<id>/README.md` in the same PR: what the vendor
    is, file map, login, session, **protocol** (`api` + hop), chat hop,
-   models, quota, **cache**, do-not, and links into `docs/error.md`. Keep
-   it traceable (function names, endpoints, wire fields). AGENTS.md is
-   the cross-family contract; the family README is the design source for
+   models, quota, **cache**, do-not, **归因** (official + community
+   repos), and links into `docs/error.md`. Add a row to
+   [`docs/oauth.md`](docs/oauth.md) in the same PR. Keep it traceable
+   (function names, endpoints, wire fields). AGENTS.md is the
+   cross-family contract; the family README is the design source for
    that folder.
 2. **Module** `src/oauth/<id>/index.ts`: catalog (`id`, `name`,
    `contextWindow`, `maxTokens`, `input`, `reasoningEfforts`), OAuth
@@ -713,7 +724,7 @@ Binding UI rules:
 - Auto-release, auto-merge, or bump `package.json` / lockfile version.
   Bug fixes: open the PR and stop. The maintainer merges, bumps, and
   tags. One task → one PR.
-- Add a family without `src/oauth/<id>/README.md`.
+- Add a family without `src/oauth/<id>/README.md` or a `docs/oauth.md` row.
 ## Commands
 
 ```sh
@@ -747,6 +758,8 @@ this proxy — record it in `docs/error.md`, do not add `toolTimeoutMs` here.
 ## PR
 
 - Keep `docs/error.md` in the same PR as the behavior change.
+- Keep `docs/oauth.md` in the same PR when a hop copies a new official
+  or community client.
 - Do not merge generated `lib/` that was hand-patched.
 - Tests stay green on Node 22 (`npm test`).
 - One task, one PR. Open it; do not squash-merge. Do not bump

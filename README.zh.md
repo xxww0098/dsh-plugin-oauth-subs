@@ -53,7 +53,7 @@ dsh web
 | 回环 | `http://127.0.0.1:8318/{codex,grok}/v1/responses`、`/glm/v1/messages`（Completions 残留 `/glm/v1/chat/completions` 留到下次 sync）、`/{kiro,antigravity,cursor,ollama,kimi,opencode}/v1/chat/completions` |
 | 上游 | 使用刷新后的订阅令牌 |
 
-不是第二套 LLM 适配器。设置页关闭后，DSH 仍通过本机代理调用。代理只监听回环地址，并用本地凭证 `DSH_OAUTH_SUBS_API_KEY` 鉴权。GLM 150% Coding Plan 加成是身份（ZCode Desktop UA），不是协议证明。技术栈与模块树：[AGENTS.md](AGENTS.md)。
+不是第二套 LLM 适配器。设置页关闭后，DSH 仍通过本机代理调用。代理只监听回环地址，并用本地凭证 `DSH_OAUTH_SUBS_API_KEY` 鉴权。GLM 150% Coding Plan 加成是身份（ZCode Desktop UA），不是协议证明。技术栈与模块树：[AGENTS.md](AGENTS.md)。各家 hop 对照的官方 / 社区仓库：[docs/oauth.md](docs/oauth.md)。
 
 ## 缓存
 
@@ -84,7 +84,7 @@ node --experimental-strip-types scripts/analyze-session.ts --fail-below 80 path/
 
 ## Fast / 模型 / 推理
 
-登录和对话走官方客户端身份；UA / 指纹见各 `src/oauth/<id>/README.md`。设置 → **模型**：按系列勾选（默认全开，**900K 除外**）。推理等级在 Harness **会话**模型菜单里设，不在「设置 → 模型」。Fast 和 900K 都更耗额度。
+登录和对话走官方客户端身份；UA / 指纹见各 `src/oauth/<id>/README.md`。对照仓库见 [docs/oauth.md](docs/oauth.md)。设置 → **模型**：按系列勾选（默认全开，**900K 除外**）。推理等级在 Harness **会话**模型菜单里设，不在「设置 → 模型」。Fast 和 900K 都更耗额度。
 
 | 系列 | Fast | 窗口 | 思考 |
 |---|---|---|---|
