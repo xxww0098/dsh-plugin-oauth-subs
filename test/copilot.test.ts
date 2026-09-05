@@ -211,7 +211,7 @@ test('catalog is Completions at /copilot, not a custom api string', () => {
   assert.equal(route.api, 'openai-completions')
   assert.equal(route.baseURL, 'http://127.0.0.1:8318/copilot')
   assert.equal(route.baseURL.endsWith('/copilot/v1'), false)
-  assert.equal(route.displayName, 'OAuth · Copilot')
+  assert.equal(route.displayName, 'OAuth · GitHub Copilot')
   for (const model of route.models) {
     for (const key of Object.keys(model.reasoningEfforts ?? {})) {
       assert.match(key, /^(off|minimal|low|medium|high|xhigh|max)$/)
@@ -219,6 +219,41 @@ test('catalog is Completions at /copilot, not a custom api string', () => {
   }
   assert.deepEqual(route.models.find((model) => model.id === 'gpt-5.5').reasoningEfforts, COPILOT_REASONING)
   assert.equal(catalogProviders({ prefix: 'oauth', origin: 'http://x' })['oauth-copilot'].models.length, COPILOT_MODELS.length)
+})
+
+test('logged-out catalog still lists Copilot; sync writes oauth-copilot after login', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'copilot-sync-'))
+  const authPath = join(dir, 'auth.json')
+  const ops = []
+  const controller = new AuthController({
+    authPath,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async (target, mutations) => { ops.push({ target, mutations }) } },
+    copilotAutoImport: false,
+  })
+  const empty = await controller.snapshot()
+  const group = empty.catalog.find((row) => row.family === 'copilot')
+  assert.equal(group.loggedIn, false)
+  assert.equal(group.displayName, 'OAuth · GitHub Copilot')
+  assert.ok(group.models.some((model) => model.id === 'gpt-4.1'))
+  assert.equal(empty.providers.some((row) => row.provider === 'oauth-copilot'), false)
+
+  await saveSession('copilot', copilotSession({
+    accessToken: 'tid=sync',
+    refreshToken: 'ghu_sync',
+    expiresAt: Date.now() + 30 * 60_000,
+    account: 'octocat',
+    githubToken: 'ghu_sync',
+    source: 'oauth',
+  }), authPath)
+  const result = await controller.sync()
+  assert.equal(result.routes.some((row) => row.provider === 'oauth-copilot'), true)
+  assert.equal(result.routes.find((row) => row.provider === 'oauth-copilot').models.includes('gpt-4.1'), true)
+  const set = ops.at(-1).mutations.filter((row) => row.op === 'set').map((row) => row.path.join('.'))
+  assert.equal(set.includes('providers.oauth-copilot'), true)
+  const after = await controller.snapshot()
+  assert.equal(after.catalog.find((row) => row.family === 'copilot').loggedIn, true)
 })
 
 test('live picker drops disabled rows and keeps vision / effort', () => {

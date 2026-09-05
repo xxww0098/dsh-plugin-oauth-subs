@@ -338,6 +338,19 @@ test('Settings has no OpenCode Go Free tab or harness family', async () => {
   assert.equal(src.includes('opencode: {'), false)
 })
 
+test('Settings Models keeps locked Copilot visible and jumps to the family tab', async () => {
+  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  const family = src.match(/function ModelFamily\([\s\S]*?\n    \}/)?.[0] ?? ''
+  assert.match(family, /osubs-family--locked/)
+  assert.match(family, /t\.modelsNeedLogin/)
+  assert.match(family, /onOpenFamily\?\.\(group\.family\)/)
+  assert.match(family, /label: t\.login/)
+  assert.match(family, /!locked && h\('div', \{ className: 'osubs-models'/)
+  assert.equal(family.includes('style: { opacity: locked'), false)
+  assert.match(src, /onOpenFamily: setTab/)
+  assert.match(src, /\.osubs-family--locked \{ opacity: 0\.88/)
+})
+
 test('Settings Copilot tab is device-code after Kimi, never @lobehub/icons', async () => {
   const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
   assert.match(src, /copilotTitle:\s*'GitHub Copilot'/)
