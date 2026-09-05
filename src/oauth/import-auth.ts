@@ -22,7 +22,7 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { codexProfileClaims, codexSession } from './codex/index.js'
 import { GROK_CLIENT_ID, grokSession } from './grok/index.js'
-import { glmPlanKindFromZcode, glmSession } from './glm/index.js'
+import { glmSession } from './glm/index.js'
 import { kiroAccountId } from './kiro/index.js'
 import {
   hydrateKiroSsoToken,
@@ -314,7 +314,6 @@ function glmKeyScore(key, apiKey) {
   const lower = String(key).toLowerCase()
   let score = 0
   if (/coding[._-]?plan/.test(lower)) score += 20
-  if (/start[._-]?plan/.test(lower)) score += 10
   if (!looksLikeJwt(apiKey)) score += 5
   return score
 }
@@ -342,19 +341,23 @@ export function glmKeyFromZcodeConfig(raw) {
     const apiKey = options?.apiKey ?? options?.api_key ?? value?.apiKey
     if (typeof apiKey !== 'string' || !apiKey.trim()) continue
     const trimmed = apiKey.trim()
-    const planKind = glmPlanKindFromZcode(key, options)
+    // Start Plan (体验套餐) is unsupported: its zcode-plan hop is captcha-gated,
+    // so a start-plan JWT can never chat. Skip it rather than import a dead key.
+    if (looksLikeJwt(trimmed) && /start[._-]?plan|zcode-plan/.test(
+      `${key} ${options?.baseURL ?? options?.baseUrl ?? options?.base_url ?? ''}`.toLowerCase(),
+    )) continue
     found.push({
       apiKey: trimmed,
       region: /bigmodel|zcode|\bcn\b|china/i.test(key) ? 'bigmodel' : 'zai',
-      planKind,
       usable: glmZcodeProviderUsable(value),
       score: glmKeyScore(key, trimmed),
     })
   }
   if (found.length === 0) return undefined
-  const pool = found.some((row) => row.usable) ? found.filter((row) => row.usable) : found
+  const pool = found.filter((row) => row.usable)
+  if (pool.length === 0) return undefined
   pool.sort((a, b) => b.score - a.score)
-  return { apiKey: pool[0].apiKey, region: pool[0].region, planKind: pool[0].planKind }
+  return { apiKey: pool[0].apiKey, region: pool[0].region }
 }
 
 export function glmAuthSearchPaths() {
@@ -474,8 +477,6 @@ export async function importGlmAuth(paths = glmAuthSearchPaths()) {
       session: glmSession({
         accessToken: found.apiKey,
         region: found.region,
-        planKind: found.planKind,
-        planType: found.planKind === 'start' ? 'start' : undefined,
       }),
       source: path,
     }

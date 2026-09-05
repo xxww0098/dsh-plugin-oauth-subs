@@ -3,7 +3,7 @@
 本文件是 `src/oauth/glm/` 的设计源。改登录、额度、对话或缓存先改这里再改代码。
 跨家族硬约定在仓库根 [`AGENTS.md`](../../../AGENTS.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)；对照仓库在 [`docs/oauth.md`](../../../docs/oauth.md)。
 
-Zhipu **Coding Plan**（付费 Lite/Pro/Max）和 **Start Plan**（体验套餐 / trial）。两个站点、同一套 ZCode CLI poll。默认对话走 **Anthropic Messages**（ZCode Desktop 默认协议），**不**走 chatgpt.com。
+Zhipu **Coding Plan**（付费 Lite/Pro/Max）。两个站点、同一套 ZCode CLI poll。默认对话走 **Anthropic Messages**（ZCode Desktop 默认协议），**不**走 chatgpt.com。
 
 官方 Anthropic：<https://docs.z.ai/devpack/quick-start>
 官方缓存：<https://docs.z.ai/guides/capabilities/cache>
@@ -21,11 +21,9 @@ Zhipu **Coding Plan**（付费 Lite/Pro/Max）和 **Start Plan**（体验套餐 
 
 调度：[`../proxy.ts`](../proxy.ts) `family === 'glm'` + `wire === 'anthropic'` → `normalizeGlmAnthropicBody`；Completions 残留 → `normalizeGlmChatBody`。`x-session-id` 在 `glmDesktopHeaders`；Anthropic 另加 `anthropic-version`。
 额度：[`../quota.ts`](../quota.ts) `fetchGlmQuota` / `parseGlmQuota` / `mergeGlmToolUsage`。
-套餐：`GLM_PLAN_NAMES`（`coding_pro` → **Pro**，`start` → **Start**，不要和 Codex `pro` → Pro 20x 搞混）。
+套餐：`GLM_PLAN_NAMES`（`coding_pro` → **Pro**，不要和 Codex `pro` → Pro 20x 搞混）。
 协议：[`../models.ts`](../models.ts) `api: anthropic-messages`，`baseURL: ${origin}/glm`（Anthropic SDK 打 `{baseURL}/v1/messages`）。
-Start Plan hop：`session.planKind === 'start'` → `https://zcode.z.ai/api/v1/zcode-plan/anthropic/v1/messages`（Desktop `options.baseURL` 是 `…/zcode-plan/anthropic`，SDK 再拼 `/v1/messages`）。Coding Plan 仍走 `glmAnthropicUrl(region)`。
-模型：`glmCatalogModels(session)`。Start 只露 `glm-5.3-flash`，展示名 **GLM-5.3-Flash Free**（线上 id 仍是 `glm-5.3-flash`，不要造 `glm-5.3-flash-free`）。Coding Plan 仍是三行。
-**推理墙（3007）：** Start Anthropic URL 是对的（`…/zcode-plan/anthropic` + `/v1/messages`）。Desktop 3.11.2 `zcode.cjs` 对 `isZcodePlanOpenAiCompatibleBaseUrl`（base 以 `/zcode-plan` 结尾）注入 **`x-aliyun-captcha-verify-param`**。没有这颗头，网关 `400 code 3007 captcha verify failed`。JWT + UA / `X-ZCode-*` 过不了。本 hop **不**伪造、不接 captcha SDK。导入 / 路由 / Flash Free 目录留下。Harness 试用对话先堵住，直到付费 Coding Plan，或以后做 captcha-bridge。试用请在 ZCode.app 里聊。
+**体验套餐（Start Plan）不支持：** ZCode Desktop 对 zcode-plan hop 强制注入阿里云 captcha 头，插件不伪造、不接 captcha SDK，没这颗头网关 `400 code 3007 captcha verify failed`。目录 / 路由只留 Coding Plan；导入跳过 start-plan JWT。试用对话请在 ZCode.app。
 
 ## 登录
 
@@ -42,7 +40,7 @@ BigModel： poll JWT 本身就是 Coding Plan bearer，不再铸 biz key
 
 入口：`GlmCliFlowManager.start` → `glmCliInit` / `glmCliPoll` → `completeGlmCli` → `glmSession`。
 刷新：Coding Plan key 不过期（`GLM_NEVER_EXPIRES`），`refreshGlm` 是空操作。
-导入：`importGlmAuth` 读本机 ZCode 配置。`glmKeyFromZcodeConfig` 认 `builtin:*-coding-plan` / `builtin:*-start-plan` 和 `options.baseURL` 含 `zcode-plan`。Coding Plan 可用（未 `enabled: false` / `coding_plan_not_entitled`）时仍优先非 JWT coding-plan key；试用机只有 Start 可用则导入 JWT 并写 `planKind: 'start'`。不读加密 `credentials.json`，也不读 `coding-plan-cache.json`（`enabled` 已够）。卡片身份只走 `pickGlmHumanAccount`：邮箱，其次电话，再次 `customerName` / nickname。**禁止**显示 `zcode` / `zai` / `bigmodel` / `glm`、poll `user.id`、JWT `sub` / `user_id`、数字 uid。userinfo 失败就空着抬头，不要回落到 uid。已存的 opaque `account` 在 snapshot 时打 userinfo 回填（`#resolveGlmIdentities`）。
+导入：`importGlmAuth` 读本机 ZCode 配置。`glmKeyFromZcodeConfig` 认 `builtin:*-coding-plan`（含 `options.baseURL` 含 `zcode-plan` 的 JWT key——那是 start-plan，直接跳过）。可用（未 `enabled: false` / `coding_plan_not_entitled`）的 key 里优先非 JWT coding-plan；没有可用的就导入失败，不捡死 key。不读加密 `credentials.json`，也不读 `coding-plan-cache.json`（`enabled` 已够）。卡片身份只走 `pickGlmHumanAccount`：邮箱，其次电话，再次 `customerName` / nickname。**禁止**显示 `zcode` / `zai` / `bigmodel` / `glm`、poll `user.id`、JWT `sub` / `user_id`、数字 uid。userinfo 失败就空着抬头，不要回落到 uid。已存的 opaque `account` 在 snapshot 时打 userinfo 回填（`#resolveGlmIdentities`）。
 
 Settings：两颗堆叠登录按钮（只这一家）。Tab 图标用 **Z.ai**（`zai`），不是智谱字母。
 
@@ -66,9 +64,8 @@ Z.AI Coding Plan 同时开三条：
 DSH anthropic-messages  →  本机代理 POST /glm/v1/messages  →
   Coding Plan zai:      api.z.ai/api/anthropic/v1/messages
   Coding Plan bigmodel: open.bigmodel.cn/api/anthropic/v1/messages
-  Start Plan:           zcode.z.ai/api/v1/zcode-plan/anthropic/v1/messages
 
-残留（下次 sync 前；Start Plan 501，不打 paas/v4）：
+残留（下次 sync 前）：
 DSH openai-completions  →  POST /glm/v1/chat/completions  →
   …/api/coding/paas/v4/chat/completions
 ```
@@ -92,15 +89,13 @@ DSH openai-completions  →  POST /glm/v1/chat/completions  →
 
 ## 模型
 
-Coding Plan 三行（`GLM_MODELS`）。Start Plan 只露 Flash（`GLM_START_MODELS` / `glmCatalogModels`）：
+Coding Plan 三行（`GLM_MODELS`）：
 
-| id | 名称 | 何时 | 输入 | 思考深度 |
-|---|---|---|---|---|
-| `glm-5.3` | GLM-5.3 | Coding | text | `low` / `high` / `max`（默认 max，关不掉，无 `medium`） |
-| `glm-5.3-flash` | GLM-5.3-Flash / **GLM-5.3-Flash Free** | Coding / Start | text + image | 同上 |
-| `glm-5-turbo` | GLM-5-Turbo | Coding | text | `false`（混合 on/off，无档位） |
-
-Start 的线上 id 仍是 `glm-5.3-flash`（ZCode `provider.models` 写 `GLM-5.3-Flash`）。不要造 `glm-5.3-flash-free`。
+| id | 名称 | 输入 | 思考深度 |
+|---|---|---|---|
+| `glm-5.3` | GLM-5.3 | text | `low` / `high` / `max`（默认 max，关不掉，无 `medium`） |
+| `glm-5.3-flash` | GLM-5.3-Flash | text + image | 同上 |
+| `glm-5-turbo` | GLM-5-Turbo | text | `false`（混合 on/off，无档位） |
 
 Anthropic 路由**不要**写任何 Completions-only `compat`（`supportsReasoningEffort`、`thinkingFormat`）。思考是 hop 上的 `thinking: { type: enabled }`，不是那两个开关。DSH `assertServiceable` 会拒掉 Anthropic 路由上的 Completions compat，整段原子 mutate 失败，`oauth-kiro` 也写不进 settings.yaml。Kiro / Antigravity 仍是 `openai-completions`，可以保留 `supportsReasoningEffort`。
 
@@ -155,10 +150,8 @@ Pin map 的 Anthropic 键是 `${sessionId}\0anthropic`，和 Completions 的 `se
 - 不要宣称切 Anthropic 就能吃上 150%。150% 是 Desktop **身份/UA**，没有和官方 Desktop 对比过用量斜率。
 - 不要在 Anthropic 路由上写 Completions-only `compat`（`supportsReasoningEffort` / `thinkingFormat: openai`）。
 - 不要在下次 `sync()` 改写残留设置之前拆掉 Completions hop。
-- 不要把 Start Plan JWT 打到 `open.bigmodel.cn` / `api.z.ai` Coding Plan Anthropic。试用机优先 **enabled** Start，不要捡 `enabled: false` 的短 coding-plan key。
-- 不要把 Start Plan 的 Desktop `baseURL`（`…/zcode-plan/anthropic`）当成 hop URL；hop 必须再拼 `/v1/messages`。也不要把这段 `/v1/` 当成重复路径删掉。
-- 不要给 Start 造 `glm-5.3-flash-free` 线上 id，也不要把 Coding Plan 三行写进 Start 的 harness / `/glm/v1/models`。
-- 不要伪造 `x-aliyun-captcha-verify-param`，本 PR 不接阿里云 captcha SDK。3007 不是指纹缺口；Start URL 是对的。
+- 不要导入 start-plan JWT（体验套餐不支持，zcode-plan hop 是 captcha 墙），也不要捡 `enabled: false` 的死 coding-plan key——没有可用的就导入失败。
+- 不要把体验套餐的 Desktop `baseURL`（`…/zcode-plan/anthropic`）当成 hop URL，也不要伪造阿里云 captcha 头。试用对话在 ZCode.app。
 
 ## 归因
 
@@ -177,8 +170,7 @@ Pin map 的 Anthropic 键是 `${sessionId}\0anthropic`，和 Completions 的 `se
 | 额度两条「本周期」 | 同文件 2026-08-30 GLM 额度窗口 |
 | 账号显示 zcode | 同文件 2026-08-30 GLM 身份 |
 | 账号显示 poll `user.id` | 同文件 2026-09-03 GLM 身份 user.id |
-| 试用机导入死 coding-plan key，对话打到 Coding Plan 端点 | 同文件 2026-09-05 GLM Start Plan |
-| zcode-plan 对话 3007 captcha | 同文件 2026-09-05 GLM Start Plan captcha |
+| 体验套餐（Start Plan）3007 captcha 墙，决定不支持 | 同文件 2026-09-05 GLM 体验套餐 |
 | BigModel init 500 | 同文件 2026-08-30 BigModel OAuth |
 | 缓存和 Codex 混用 | 同文件 2026-08-31 缓存混用 |
 
