@@ -52,7 +52,7 @@ Fast：body `service_tier` 从 `fast` 改成 `priority`，并带 `x-codex-routin
 ## 模型
 
 `CODEX_MODELS` 是唯一目录源（对照 Codex CLI `models.json` 0.153.3 / 2026-09-03）。
-`gpt-6-astra` 排第一（Fast + 872K + `max`）。`gpt-5.3-codex` 不收录：订阅账号 400 “not supported when using Codex with a ChatGPT account”。
+`gpt-6-astra` 排第一（默认 258K input，Fast + 872K `-900k` + `max`）。`gpt-5.3-codex` 不收录：订阅账号 400 “not supported when using Codex with a ChatGPT account”。
 思考深度：5.4 / 5.5 / Spark → `low`–`xhigh`（无 `minimal` / `ultra`）；Astra 和 5.6 Sol/Terra/Luna 加 `max`。
 
 ## 额度

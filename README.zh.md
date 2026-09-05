@@ -88,7 +88,7 @@ node --experimental-strip-types scripts/analyze-session.ts --fail-below 80 path/
 
 | 系列 | Fast | 窗口 | 思考 |
 |---|---|---|---|
-| Codex GPT-6 Astra / GPT-5.6 Sol / Terra / Luna | 可以。`-fast` → Priority（`service_tier: "priority"` + `x-codex-routing-hint`；`store: false`） | `-900k`（872K） | low / medium / high / xhigh / **max** |
+| Codex GPT-6 Astra / GPT-5.6 Sol / Terra / Luna | 可以。`-fast` → Priority（`service_tier: "priority"` + `x-codex-routing-hint`；`store: false`） | **258K** 默认；`-900k`（872K） | low / medium / high / xhigh / **max** |
 | 其余 Codex | 5.4 / 5.5 可以；Mini / Spark 不行（`service_tiers` 为空；残留 `*-fast` 只在本地剥掉） | GPT-5.4 `-900k`（1M） | low–xhigh（无 `minimal`） |
 | Grok | 不行。2026-08-30：83.34 对 82.80 tok/s（0.994）。更早的 id 拒绝该字段 | — | 4.6：low / medium / high / xhigh（不选 = **high**）；4.5：无 xhigh |
 | GLM | — | — | 5.3 / Flash：low / high / **max**（默认 max；无 `medium`；`disabled` 会 400）。Turbo：开着，无深度。只有 Flash 是 GLM 图文行 |

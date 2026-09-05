@@ -19,7 +19,9 @@ export declare const CODEX_USER_AGENT = "codex_cli_rs/0.153.3";
 export declare const CODEX_SCOPE = "openid profile email offline_access api.connectors.read api.connectors.invoke";
 export declare const CODEX_CALLBACK_PATH = "/auth/callback";
 export declare const CODEX_PREEMPT_MS: number;
-/** Codex CLI targets ~258K usable; the raw model window is 272K. */
+/** Codex CLI targets ~258K usable input; the raw model window is 272K.
+ *  GPT-6 Astra and GPT-5.6 share this default. The 1.05M API window is
+ *  not the ChatGPT Codex subscription default. */
 export declare const CODEX_CONTEXT_WINDOW = 258000;
 export declare const CODEX_DEFAULT_MAX_TOKENS = 128000;
 /** Spark is the one Codex model with a smaller window. */
