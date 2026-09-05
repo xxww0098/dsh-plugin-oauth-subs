@@ -147,7 +147,7 @@ export function glmCodingUrl(region = 'zai') {
 }
 
 /** ZCode default protocol. https://docs.z.ai/devpack/quick-start */
-export function glmAnthropicUrl(region = 'zai', planKind) {
+export function glmAnthropicUrl(region = 'zai', planKind = undefined) {
   if (normalizeGlmPlanKind(planKind) === 'start') return GLM_START_ANTHROPIC_URL
   return normalizeGlmRegion(region) === 'bigmodel'
     ? 'https://open.bigmodel.cn/api/anthropic/v1/messages'

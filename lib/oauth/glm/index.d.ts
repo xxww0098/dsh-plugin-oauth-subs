@@ -24,6 +24,9 @@ export declare const GLM_BUSINESS_LOGIN_URL = "https://api.z.ai/api/auth/z/login
 export declare const GLM_BIZ_BASE = "https://api.z.ai";
 export declare const GLM_CODING_URL = "https://api.z.ai/api/coding/paas/v4/chat/completions";
 export declare const GLM_ANTHROPIC_URL = "https://api.z.ai/api/anthropic/v1/messages";
+/** ZCode Desktop `options.baseURL` for Start Plan. Anthropic SDK posts `{baseURL}/v1/messages`. */
+export declare const GLM_START_ANTHROPIC_BASE = "https://zcode.z.ai/api/v1/zcode-plan/anthropic";
+export declare const GLM_START_ANTHROPIC_URL = "https://zcode.z.ai/api/v1/zcode-plan/anthropic/v1/messages";
 export declare const GLM_ANTHROPIC_VERSION = "2023-06-01";
 export declare const GLM_QUOTA_URL = "https://api.z.ai/api/monitor/usage/quota/limit";
 export declare const GLM_TOOL_USAGE_URL = "https://api.z.ai/api/monitor/usage/tool-usage";
@@ -101,15 +104,22 @@ export declare const GLM_PLAN_NAMES: Readonly<{
     coding_lite: "Lite";
     coding_pro: "Pro";
     coding_max: "Max";
+    start: "Start";
+    start_plan: "Start";
+    trial: "Start";
     individual: "Individual";
     team: "Team";
 }>;
 export declare function normalizeGlmRegion(value: any): "zai" | "bigmodel";
+/** Start Plan trial vs paid Coding Plan. Missing / unknown → coding (CLI mint + leftover sessions). */
+export declare function normalizeGlmPlanKind(value: any): "start" | "coding";
+export declare function isGlmStartPlan(session: any): boolean;
+export declare function glmPlanKindFromZcode(key: any, options: any): "start" | "coding";
 export declare function glmCliProvider(region: any): "zai" | "bigmodel";
 export declare function glmPlanLabel(raw: any): any;
 export declare function glmCodingUrl(region?: string): "https://api.z.ai/api/coding/paas/v4/chat/completions" | "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions";
 /** ZCode default protocol. https://docs.z.ai/devpack/quick-start */
-export declare function glmAnthropicUrl(region?: string): "https://api.z.ai/api/anthropic/v1/messages" | "https://open.bigmodel.cn/api/anthropic/v1/messages";
+export declare function glmAnthropicUrl(region?: string, planKind?: any): "https://api.z.ai/api/anthropic/v1/messages" | "https://zcode.z.ai/api/v1/zcode-plan/anthropic/v1/messages" | "https://open.bigmodel.cn/api/anthropic/v1/messages";
 export declare function glmQuotaUrl(region?: string): "https://api.z.ai/api/monitor/usage/quota/limit" | "https://open.bigmodel.cn/api/monitor/usage/quota/limit";
 export declare function glmToolUsageUrl(region?: string): "https://api.z.ai/api/monitor/usage/tool-usage" | "https://open.bigmodel.cn/api/monitor/usage/tool-usage";
 export declare function glmUserinfoUrl(region?: string): "https://chat.z.ai/api/oauth/userinfo" | "https://open.bigmodel.cn/api/biz/customer/getCustomerInfo";
@@ -225,10 +235,11 @@ export declare function mintGlmApiKey(oauthAccessToken: any, { fetchFn, region }
     fetchFn?: typeof fetch;
     region?: string;
 }): Promise<string>;
-export declare function glmSession({ accessToken, account, accountId, planType, region, zcodeJwt }?: {
+export declare function glmSession({ accessToken, account, accountId, planType, planKind, region, zcodeJwt }?: {
     region?: string;
 }): {
     zcodeJwt?: any;
+    planKind?: string;
     planType?: any;
     region: string;
     account?: string;
@@ -248,6 +259,7 @@ export declare function completeGlmCli(ready: any, { fetchFn, region }?: {
     region?: string;
 }): Promise<{
     zcodeJwt?: any;
+    planKind?: string;
     planType?: any;
     region: string;
     account?: string;
