@@ -1115,3 +1115,66 @@ test('Grok hop parks extra leading system snapshots after the conversation', asy
     resetGrokSystemPins()
   }
 })
+
+test('cursor streaming surfaces an upstream run error as JSON, not a naked stream end', async () => {
+  const proxy = createProxy({
+    port: 0,
+    apiKey: 'secret-key',
+    fetchFn: async () => { throw new Error('unused') },
+    tokens: {
+      cursor: {
+        session: async () => ({ accessToken: 'cursor-tok' }),
+      },
+    },
+    cursorRpc: async () => {
+      throw new Error("Composer 2 is retired: We're upgrading you to Composer 2.5, our most powerful model yet.")
+    },
+  })
+  const server = await proxy.listen()
+  const { port } = server.address()
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/cursor/v1/chat/completions`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer secret-key', 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'composer-2', stream: true, messages: [{ role: 'user', content: 'hi' }] }),
+    })
+    assert.equal(res.status, 502)
+    const body = await res.json()
+    assert.equal(body.error.message, "Composer 2 is retired: We're upgrading you to Composer 2.5, our most powerful model yet.")
+  } finally {
+    await proxy.close()
+  }
+})
+
+test('cursor mid-stream failure surfaces the reason as content, not a bare stream end', async () => {
+  const proxy = createProxy({
+    port: 0,
+    apiKey: 'secret-key',
+    fetchFn: async () => { throw new Error('unused') },
+    tokens: {
+      cursor: {
+        session: async () => ({ accessToken: 'cursor-tok' }),
+      },
+    },
+    cursorRpc: async (_session, _built, { onEvent }) => {
+      onEvent({ kind: 'interaction', turnEnded: false })
+      throw new Error("Composer 2 is retired: We're upgrading you to Composer 2.5, our most powerful model yet.")
+    },
+  })
+  const server = await proxy.listen()
+  const { port } = server.address()
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/cursor/v1/chat/completions`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer secret-key', 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'composer-2', stream: true, messages: [{ role: 'user', content: 'hi' }] }),
+    })
+    assert.equal(res.status, 200)
+    const text = await res.text()
+    assert.match(text, /Composer 2 is retired: We're upgrading you to Composer 2\.5/)
+    assert.match(text, /"finish_reason":"stop"/)
+    assert.match(text, /data: \[DONE\]/)
+  } finally {
+    await proxy.close()
+  }
+})

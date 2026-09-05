@@ -66,8 +66,6 @@ export const CURSOR_MODELS = Object.freeze([
   cursorModel('composer-2.5', 'Composer 2.5', 200_000, 64_000),
   cursorModel('grok-4.6', 'Grok 4.6', 256_000, 64_000),
   cursorModel('grok-4.5', 'Grok 4.5', 256_000, 64_000),
-  cursorModel('composer-2', 'Composer 2', 200_000, 64_000),
-  cursorModel('composer-1.5', 'Composer 1.5', 200_000, 64_000),
   cursorModel('claude-fable-5-1', 'Claude Fable 5.1', 300_000, 128_000),
   cursorModel('claude-opus-5', 'Claude Opus 5', 300_000, 128_000),
   cursorModel('claude-sonnet-5', 'Claude Sonnet 5', 200_000, 128_000),

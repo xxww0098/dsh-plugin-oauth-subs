@@ -62,7 +62,7 @@ import {
 import { copilotCatalogModels } from './copilot/catalog.js'
 import { applyCopilotCache, copilotHasVision, copilotInitiatorOf } from './copilot/cache.js'
 import { applyCopilotThinking } from './copilot/request.js'
-import { cursorToOpenai, createCursorOpenaiStream, openaiToCursor } from './cursor/request.js'
+import { cursorToOpenai, cursorToOpenaiChunk, createCursorOpenaiStream, openaiToCursor } from './cursor/request.js'
 import { runCursorAgent } from './cursor/h2-session.js'
 import { applyFastMode } from '../utils/fast-mode.js'
 import { normalizeCodexResponsesBody } from './codex/request.js'
@@ -1193,25 +1193,53 @@ async function forwardCursor(request, response, { session, maxRequestBodyBytes, 
     return
   }
 
-  response.writeHead(200, {
-    'content-type': 'text/event-stream; charset=utf-8',
-    'cache-control': 'no-store',
-    'x-content-type-options': 'nosniff',
-  })
   const mapper = createCursorOpenaiStream({ model, id, conversationId: built.conversationId })
+  let headSent = false
+  const head = () => {
+    if (headSent) return
+    headSent = true
+    response.writeHead(200, {
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-store',
+      'x-content-type-options': 'nosniff',
+    })
+  }
   const write = async (chunk) => {
     if (!response.write(`data: ${JSON.stringify(chunk)}\n\n`)) await once(response, 'drain', { signal })
   }
-  const { collected } = await runFn(session, built, {
-    signal,
-    onEvent: (event) => {
-      const chunks = mapper.push(event)
-      for (const chunk of chunks) void write(chunk)
-    },
-  })
-  if (collected.error && !response.writableEnded) {
-    throw new RequestError(502, collected.error)
+  const fail = async (message) => {
+    if (!headSent) {
+      send(response, 502, { error: { message } })
+      return
+    }
+    // Head already committed as 200 SSE; surface the reason as content so the
+    // client sees why the run failed instead of a bare stream end.
+    console.error(`[oauth-subs] cursor upstream error mid-stream: ${message}`)
+    await write(cursorToOpenaiChunk({ text: message }, { model, id }))
+    await write(mapper.finish())
+    response.write('data: [DONE]\n\n')
+    if (!response.writableEnded && !response.destroyed) response.end()
   }
+  let collected
+  try {
+    collected = (await runFn(session, built, {
+      signal,
+      onEvent: (event) => {
+        const chunks = mapper.push(event)
+        if (chunks.length) head()
+        for (const chunk of chunks) void write(chunk)
+      },
+    })).collected
+  } catch (error) {
+    if (signal.aborted) throw error
+    await fail(describeError(error))
+    return
+  }
+  if (collected.error) {
+    await fail(collected.error)
+    return
+  }
+  head()
   await write(mapper.finish())
   response.write('data: [DONE]\n\n')
   if (!response.writableEnded && !response.destroyed) response.end()
