@@ -979,6 +979,7 @@ window.__ModuleLoader__.load({
 
 .osubs-family { display: flex; flex-direction: column; gap: 10px; }
 .osubs-family + .osubs-family { padding-top: 18px; border-top: 1px solid var(--osubs-hair); }
+.osubs-family--locked { opacity: 0.88; }
 .osubs-family-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .osubs-models { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(215px, 100%), 1fr)); column-gap: 14px; row-gap: 1px; }
 .osubs-model {
@@ -1997,29 +1998,31 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function ModelFamily({ t, group, onToggle, onFamily }) {
+    function ModelFamily({ t, group, onToggle, onFamily, onOpenFamily }) {
       const models = Array.isArray(group.models) ? group.models : []
       const enabledCount = models.filter((model) => model.enabled).length
       const locked = !group.loggedIn
-      return h('div', { className: 'osubs-family', style: { opacity: locked ? 0.72 : 1 } },
+      return h('div', { className: `osubs-family${locked ? ' osubs-family--locked' : ''}` },
         h('div', { className: 'osubs-family-head' },
           h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' } },
             h('h4', { style: { fontSize: 13, fontWeight: 600 } }, group.displayName),
             h('span', { className: 'osubs-note' }, fill(t.modelsOn, `${enabledCount} / ${models.length}`)),
             locked && h('span', { className: 'osubs-note' }, `· ${t.modelsNeedLogin}`),
           ),
-          h('div', { className: 'osubs-seg' },
-            h(Button, { size: 'sm', disabled: locked, onClick: () => onFamily(group.family, true), label: t.modelsAll }),
-            h(Button, { size: 'sm', disabled: locked, onClick: () => onFamily(group.family, false), label: t.modelsNone }),
-          ),
+          locked
+            ? h(Button, { size: 'sm', variant: 'primary', onClick: () => onOpenFamily?.(group.family), label: t.login })
+            : h('div', { className: 'osubs-seg' },
+              h(Button, { size: 'sm', onClick: () => onFamily(group.family, true), label: t.modelsAll }),
+              h(Button, { size: 'sm', onClick: () => onFamily(group.family, false), label: t.modelsNone }),
+            ),
         ),
-        h('div', { className: 'osubs-models' },
+        !locked && h('div', { className: 'osubs-models' },
           models.map((model) => h(ModelRow, { t, model, onToggle, locked, key: model.key })),
         ),
       )
     }
 
-    function ModelPicker({ t, catalog, onToggle, onFamily }) {
+    function ModelPicker({ t, catalog, onToggle, onFamily, onOpenFamily }) {
       const groups = Array.isArray(catalog) ? catalog : []
       const total = groups.reduce((sum, group) => sum + (group.models?.length ?? 0), 0)
       const enabled = groups.reduce((sum, group) => sum + (group.models ?? []).filter((model) => model.enabled).length, 0)
@@ -2032,7 +2035,7 @@ window.__ModuleLoader__.load({
           ),
           h('span', { className: 'osubs-badge' }, fill(t.modelsOn, `${enabled} / ${total}`)),
         ),
-        groups.map((group) => h(ModelFamily, { t, group, onToggle, onFamily, key: group.provider })),
+        groups.map((group) => h(ModelFamily, { t, group, onToggle, onFamily, onOpenFamily, key: group.provider })),
       )
     }
 
@@ -2273,6 +2276,7 @@ window.__ModuleLoader__.load({
             catalog: snap?.catalog,
             onToggle: (key, on) => run('models', { key, on }),
             onFamily: (family, on) => run('models', { family, on }),
+            onOpenFamily: setTab,
           }),
           tab === 'about' && h(AboutPanel, {
             t,

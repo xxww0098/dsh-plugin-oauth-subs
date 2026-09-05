@@ -2,6 +2,17 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-05：模型里看不到 GitHub Copilot
+
+### 现象
+0.0.74 用户说「模型里面没有显示 GitHub Copilot 的模型」。本机 `auth.json` 无 `copilot` session。
+
+### 根因
+Harness picker 只在登录后写入 `oauth-copilot`。Settings 目录虽有锁定组，标题是 `OAuth · Copilot`，且九家长 checkbox 把最后的 Copilot 顶出视口。
+
+### 修复
+展示名改为 `OAuth · GitHub Copilot`。未登录家族只留标题 +「登录后同步」+ 登录跳转，不再铺禁用 checkbox。
+
 ## 2026-09-05：移除 OpenCode Go Free
 
 ### 现象

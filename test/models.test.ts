@@ -152,6 +152,7 @@ test('buildProviders only emits logged-in families with DSH api ids', () => {
   assert.equal(chat['oauth-copilot'].baseURL.endsWith('/copilot/v1'), false)
   assert.equal(chat['oauth-copilot'].compat.supportsReasoningEffort, true)
   assert.equal(chat['oauth-copilot'].compat.thinkingFormat, 'openai')
+  assert.equal(chat['oauth-copilot'].displayName, 'OAuth · GitHub Copilot')
   assert.equal(chat['oauth-copilot'].models.some((model) => model.id === 'gpt-4.1'), true)
   assert.deepEqual(chat['oauth-copilot'].models.find((model) => model.id === 'gpt-5.5').reasoningEfforts, {
     low: 'low',

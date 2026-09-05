@@ -76,6 +76,8 @@ DSH POST /copilot/v1/chat/completions
 
 ## 模型
 
+Settings → 模型始终列出 `OAuth · GitHub Copilot`（未登录锁定 +「登录后同步」）。Harness picker 的 `oauth-copilot/...` **只在有 session 之后** `sync()` 才写入。
+
 登录 / 导入 / 额度刷新后 `refreshCopilotCatalog`：
 
 ```text
