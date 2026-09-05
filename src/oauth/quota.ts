@@ -844,16 +844,26 @@ function ollamaModelsNote(models) {
 
 /** Global 5h unix buckets. ollama/ollama#12532: `18000 - (epoch % 18000)`. */
 export const OLLAMA_SESSION_WINDOW_S = 18_000
+/** Global 7d unix buckets, −4d from epoch (Mon 00:00 UTC). ollama/ollama#12532. */
+export const OLLAMA_WEEKLY_WINDOW_S = 604_800
+const OLLAMA_WEEKLY_SHIFT_S = 4 * 86_400
 
 export function ollamaSessionResetAt(now = Date.now()) {
   const epoch = Math.floor(now / 1000)
   return (Math.floor(epoch / OLLAMA_SESSION_WINDOW_S) + 1) * OLLAMA_SESSION_WINDOW_S * 1000
 }
 
+export function ollamaWeeklyResetAt(now = Date.now()) {
+  const epoch = Math.floor(now / 1000)
+  const shifted = epoch - OLLAMA_WEEKLY_SHIFT_S
+  return ((Math.floor(shifted / OLLAMA_WEEKLY_WINDOW_S) + 1) * OLLAMA_WEEKLY_WINDOW_S + OLLAMA_WEEKLY_SHIFT_S) * 1000
+}
+
 function ollamaWindowResetAt(window, kind, now = Date.now()) {
   const stamp = resetAtOf(window) ?? stampOf(window?.next_reset ?? window?.nextReset)
   if (stamp !== undefined) return stamp
   if (kind === 'primary') return ollamaSessionResetAt(now)
+  if (kind === 'weekly') return ollamaWeeklyResetAt(now)
   return undefined
 }
 

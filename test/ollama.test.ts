@@ -35,7 +35,7 @@ import {
   parseOllamaMe,
 } from '../lib/oauth/ollama/index.js'
 import { formatPlanLabel } from '../lib/oauth/plan.js'
-import { QuotaStore, ollamaSessionResetAt, parseOllamaUsage } from '../lib/oauth/quota.js'
+import { QuotaStore, ollamaSessionResetAt, ollamaWeeklyResetAt, parseOllamaUsage } from '../lib/oauth/quota.js'
 import {
   OLLAMA_IMPORT_EMPTY,
   importOllamaAuth,
@@ -224,7 +224,7 @@ test('parseOllamaUsage maps 0 / 0.095 fractions to remaining 100 and 90.5', () =
   assert.equal(parsed.rows[1].kind, 'weekly')
   assert.equal(parsed.rows[1].usedPercent, 9.5)
   assert.equal(parsed.rows[1].remainingPercent, 90.5)
-  assert.equal(parsed.rows[1].resetAt, undefined)
+  assert.equal(parsed.rows[1].resetAt, ollamaWeeklyResetAt(now))
   assert.equal(parsed.rows[1].note, 'glm-5.3-flash × 1294\nweb search × 3\nweb fetch × 2')
   const empty = parseOllamaUsage(undefined, undefined)
   assert.deepEqual(empty.rows, [])
@@ -248,7 +248,7 @@ test('ollama session resetAt is next UTC 5h unix bucket, not now+5h', () => {
   const parsed = parseOllamaUsage(LIVE_OLLAMA_USAGE, LIVE_OLLAMA_ME, now)
   assert.equal(parsed.rows[0].resetAt, ollamaSessionResetAt(now))
   assert.notEqual(parsed.rows[0].resetAt, now + 5 * 3600 * 1000)
-  assert.equal(parsed.rows[1].resetAt, undefined)
+  assert.equal(parsed.rows[1].resetAt, ollamaWeeklyResetAt(now))
   const stamped = parseOllamaUsage({
     limits: {
       session: { usage: 0, resets_at: '2099-01-01T00:00:00Z' },
@@ -261,6 +261,23 @@ test('ollama session resetAt is next UTC 5h unix bucket, not now+5h', () => {
     limits: { session: { usage: 0.2, next_reset: 1_800_000_000 } },
   }, undefined, now)
   assert.equal(nextReset.rows[0].resetAt, 1_800_000_000_000)
+})
+
+test('ollama weekly resetAt is next UTC 7d unix bucket shifted -4d, not now+7d', () => {
+  // ollama/ollama#12532: weekly remainder = 604800 - ((epoch - 4d) % 604800)
+  // Unix epoch Thu + 4d = Mon 1970-01-05 00:00 UTC
+  const monday = 4 * 86_400 * 1000
+  const nextMonday = monday + 604_800 * 1000
+  assert.equal(ollamaWeeklyResetAt(monday), nextMonday)
+  assert.equal(ollamaWeeklyResetAt(monday + 1), nextMonday)
+  assert.equal(ollamaWeeklyResetAt(nextMonday - 1), nextMonday)
+  assert.equal(ollamaWeeklyResetAt(nextMonday), nextMonday + 604_800 * 1000)
+  const now = Date.parse('2026-09-03T12:34:56Z')
+  assert.equal(ollamaWeeklyResetAt(now), Date.parse('2026-09-07T00:00:00Z'))
+  assert.notEqual(ollamaWeeklyResetAt(now), now + 7 * 24 * 3600 * 1000)
+  const parsed = parseOllamaUsage(LIVE_OLLAMA_USAGE, LIVE_OLLAMA_ME, now)
+  assert.equal(parsed.rows[0].resetAt, ollamaSessionResetAt(now))
+  assert.equal(parsed.rows[1].resetAt, ollamaWeeklyResetAt(now))
 })
 
 test('snapshot shows quota on every ollama account', async () => {
