@@ -2,6 +2,17 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-05：GLM Start Plan 模型目录露出 Coding Plan 三行
+
+### 现象
+体验套餐登录后 Settings / harness 仍列出 glm-5.3 和 glm-5-turbo。ZCode Start 只有 GLM-5.3-Flash。
+
+### 根因
+`GLM_MODELS` 写死三行。`catalogProviders` / `/glm/v1/models` 不看 `planKind`。
+
+### 修复
+`glmCatalogModels(session)`：Start 只露线 id `glm-5.3-flash`（展示名 **GLM-5.3-Flash Free**）。Coding Plan 仍三行。不要造 `glm-5.3-flash-free`。
+
 ## 2026-09-05：GLM Start Plan 导入死 key、对话打错端点
 
 ### 现象

@@ -91,6 +91,20 @@ export const GLM_MODELS = Object.freeze([
   { id: 'glm-5-turbo', name: 'GLM-5-Turbo', contextWindow: GLM_TURBO_CONTEXT, maxTokens: 128_000, reasoningEfforts: false, input: GLM_TEXT_INPUT },
 ])
 
+/**
+ * Start Plan (体验套餐) lists only Flash. Wire id stays `glm-5.3-flash`
+ * (ZCode provider.models + zcode-plan Anthropic). Display adds Free.
+ * Do not invent `glm-5.3-flash-free` — the hop 401s before model check
+ * without a JWT; official/ZCode id is glm-5.3-flash.
+ */
+export const GLM_START_MODELS = Object.freeze([
+  { id: 'glm-5.3-flash', name: 'GLM-5.3-Flash Free', contextWindow: GLM_LARGE_CONTEXT, maxTokens: 128_000, reasoningEfforts: GLM_REASONING, input: GLM_VISION_INPUT },
+])
+
+export function glmCatalogModels(session) {
+  return isGlmStartPlan(session) ? GLM_START_MODELS : GLM_MODELS
+}
+
 export { GLM_BOOST_HINT, GLM_BOOST_LABEL, glmCardBoost } from './boost.js'
 
 export const GLM_PLAN_NAMES = Object.freeze({

@@ -23,7 +23,8 @@ Zhipu **Coding Plan**（付费 Lite/Pro/Max）和 **Start Plan**（体验套餐 
 额度：[`../quota.ts`](../quota.ts) `fetchGlmQuota` / `parseGlmQuota` / `mergeGlmToolUsage`。
 套餐：`GLM_PLAN_NAMES`（`coding_pro` → **Pro**，`start` → **Start**，不要和 Codex `pro` → Pro 20x 搞混）。
 协议：[`../models.ts`](../models.ts) `api: anthropic-messages`，`baseURL: ${origin}/glm`（Anthropic SDK 打 `{baseURL}/v1/messages`）。
-Start Plan hop：`session.planKind === 'start'` → `https://zcode.z.ai/api/v1/zcode-plan/anthropic/v1/messages`（Desktop `options.baseURL` 是 `…/zcode-plan/anthropic`，SDK 再拼 `/v1/messages`）。Coding Plan 仍走 `glmAnthropicUrl(region)`。模型目录本 PR 不按套餐裁（Start 线上常只有 Flash，跟进另开）。
+Start Plan hop：`session.planKind === 'start'` → `https://zcode.z.ai/api/v1/zcode-plan/anthropic/v1/messages`（Desktop `options.baseURL` 是 `…/zcode-plan/anthropic`，SDK 再拼 `/v1/messages`）。Coding Plan 仍走 `glmAnthropicUrl(region)`。
+模型：`glmCatalogModels(session)`。Start 只露 `glm-5.3-flash`，展示名 **GLM-5.3-Flash Free**（线上 id 仍是 `glm-5.3-flash`，不要造 `glm-5.3-flash-free`）。Coding Plan 仍是三行。
 
 ## 登录
 
@@ -90,13 +91,15 @@ DSH openai-completions  →  POST /glm/v1/chat/completions  →
 
 ## 模型
 
-只三行（`GLM_MODELS`）：
+Coding Plan 三行（`GLM_MODELS`）。Start Plan 只露 Flash（`GLM_START_MODELS` / `glmCatalogModels`）：
 
-| id | 输入 | 思考深度 |
-|---|---|---|
-| `glm-5.3` | text | `low` / `high` / `max`（默认 max，关不掉，无 `medium`） |
-| `glm-5.3-flash` | text + image | 同上 |
-| `glm-5-turbo` | text | `false`（混合 on/off，无档位） |
+| id | 名称 | 何时 | 输入 | 思考深度 |
+|---|---|---|---|---|
+| `glm-5.3` | GLM-5.3 | Coding | text | `low` / `high` / `max`（默认 max，关不掉，无 `medium`） |
+| `glm-5.3-flash` | GLM-5.3-Flash / **GLM-5.3-Flash Free** | Coding / Start | text + image | 同上 |
+| `glm-5-turbo` | GLM-5-Turbo | Coding | text | `false`（混合 on/off，无档位） |
+
+Start 的线上 id 仍是 `glm-5.3-flash`（ZCode `provider.models` 写 `GLM-5.3-Flash`）。不要造 `glm-5.3-flash-free`。
 
 Anthropic 路由**不要**写任何 Completions-only `compat`（`supportsReasoningEffort`、`thinkingFormat`）。思考是 hop 上的 `thinking: { type: enabled }`，不是那两个开关。DSH `assertServiceable` 会拒掉 Anthropic 路由上的 Completions compat，整段原子 mutate 失败，`oauth-kiro` 也写不进 settings.yaml。Kiro / Antigravity 仍是 `openai-completions`，可以保留 `supportsReasoningEffort`。
 
@@ -153,6 +156,7 @@ Pin map 的 Anthropic 键是 `${sessionId}\0anthropic`，和 Completions 的 `se
 - 不要在下次 `sync()` 改写残留设置之前拆掉 Completions hop。
 - 不要把 Start Plan JWT 打到 `open.bigmodel.cn` / `api.z.ai` Coding Plan Anthropic。试用机优先 **enabled** Start，不要捡 `enabled: false` 的短 coding-plan key。
 - 不要把 Start Plan 的 Desktop `baseURL`（`…/zcode-plan/anthropic`）当成 hop URL；hop 必须再拼 `/v1/messages`。也不要把这段 `/v1/` 当成重复路径删掉。
+- 不要给 Start 造 `glm-5.3-flash-free` 线上 id，也不要把 Coding Plan 三行写进 Start 的 harness / `/glm/v1/models`。
 
 ## 归因
 

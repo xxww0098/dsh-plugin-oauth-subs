@@ -190,7 +190,12 @@ function kiroHarnessModels(kiroModels) {
   return KIRO_MODELS
 }
 
-export function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels }) {
+function glmHarnessModels(glmModels) {
+  if (Array.isArray(glmModels) && glmModels.length > 0) return glmModels
+  return GLM_MODELS
+}
+
+export function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, glmModels }) {
   const providers = {}
   if (loggedIn.codex) {
     providers[`${prefix}-codex`] = {
@@ -221,7 +226,7 @@ export function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaM
       // completions-only compat. DSH rejects `supportsReasoningEffort` /
       // `thinkingFormat` on this protocol and the whole atomic mutate dies.
       baseURL: `${origin}/glm`,
-      models: GLM_MODELS.map(toHarnessModel),
+      models: glmHarnessModels(glmModels).map(toHarnessModel),
     }
   }
   if (loggedIn.kiro) {
@@ -325,7 +330,7 @@ export function describeProviders(providers) {
   }))
 }
 
-export function catalogProviders({ prefix, origin, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels }) {
+export function catalogProviders({ prefix, origin, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, glmModels }) {
   return buildProviders({
     prefix,
     origin,
@@ -335,6 +340,7 @@ export function catalogProviders({ prefix, origin, cursorModels, ollamaModels, k
     kiroModels,
     kimiModels,
     copilotModels,
+    glmModels,
   })
 }
 
@@ -578,11 +584,11 @@ async function assertPersistedProviders(settings, expectedIds) {
   }
 }
 
-export async function syncHarnessModels({ settings, prefix, origin, loggedIn, selected, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels }) {
+export async function syncHarnessModels({ settings, prefix, origin, loggedIn, selected, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, glmModels }) {
   const routePrefix = String(prefix ?? '').trim()
   if (!routePrefix) throw new Error('Harness route prefix cannot be empty')
   const providers = filterProviders(buildProviders({
-    prefix: routePrefix, origin, loggedIn, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels,
+    prefix: routePrefix, origin, loggedIn, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, glmModels,
   }), selected)
   for (const [id, value] of Object.entries(providers)) {
     assertDshServiceableProvider(id, value)

@@ -20,6 +20,8 @@ import {
   glmCliProvider,
   glmAnthropicUrl,
   GLM_START_ANTHROPIC_URL,
+  GLM_START_MODELS,
+  glmCatalogModels,
   isGlmStartPlan,
   normalizeGlmPlanKind,
   glmCodingUrl,
@@ -828,6 +830,33 @@ test('catalog includes GLM as Anthropic Messages (ZCode default)', () => {
   assert.equal(providers['oauth-glm'].compat?.supportsReasoningEffort, undefined)
   assert.equal(providers['oauth-glm'].compat?.thinkingFormat, undefined)
   assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.2'), undefined)
+})
+
+test('glmCatalogModels is Flash Free only for Start Plan', () => {
+  const start = glmCatalogModels({ planKind: 'start' })
+  assert.equal(start, GLM_START_MODELS)
+  assert.deepEqual(start.map((model) => model.id), ['glm-5.3-flash'])
+  assert.equal(start[0].name, 'GLM-5.3-Flash Free')
+  assert.equal(start.find((model) => model.id === 'glm-5.3'), undefined)
+  assert.equal(start.find((model) => model.id === 'glm-5-turbo'), undefined)
+  const coding = glmCatalogModels({ planKind: 'coding', region: 'zai' })
+  assert.deepEqual(coding.map((model) => model.id), ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
+  assert.equal(coding.find((model) => model.id === 'glm-5.3-flash').name, 'GLM-5.3-Flash')
+  assert.deepEqual(glmCatalogModels().map((model) => model.id), ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
+})
+
+test('Start Plan harness catalog is Flash Free only', () => {
+  const providers = buildProviders({
+    prefix: 'oauth',
+    origin: 'http://127.0.0.1:8318',
+    loggedIn: { glm: true },
+    glmModels: GLM_START_MODELS,
+  })
+  const ids = providers['oauth-glm'].models.map((model) => model.id)
+  const names = providers['oauth-glm'].models.map((model) => model.name)
+  assert.deepEqual(ids, ['glm-5.3-flash'])
+  assert.deepEqual(names, ['GLM-5.3-Flash Free'])
+  assert.equal(providers['oauth-glm'].models[0].id.includes('free'), false)
 })
 
 test('Z.ai and BigModel accounts can coexist in the glm vault', async () => {

@@ -256,6 +256,43 @@ test('proxy GLM Start Plan Anthropic hop uses zcode-plan, not Coding Plan hosts'
   }
 })
 
+test('proxy GLM /v1/models is Flash Free only for Start Plan', async () => {
+  const start = createProxy({
+    port: 0,
+    apiKey: 'secret-key',
+    tokens: {
+      glm: { session: async () => ({ accessToken: 'start-jwt', region: 'bigmodel', planKind: 'start' }) },
+    },
+  })
+  const coding = createProxy({
+    port: 0,
+    apiKey: 'secret-key',
+    tokens: {
+      glm: { session: async () => ({ accessToken: 'id.secret', region: 'zai' }) },
+    },
+  })
+  const startServer = await start.listen()
+  const codingServer = await coding.listen()
+  const startPort = startServer.address().port
+  const codingPort = codingServer.address().port
+  const headers = { authorization: 'Bearer secret-key' }
+  try {
+    const startList = await fetch(`http://127.0.0.1:${startPort}/glm/v1/models`, { headers })
+    const startBody = await startList.json()
+    assert.equal(startList.status, 200)
+    assert.deepEqual(startBody.data.map((row) => row.id), ['glm-5.3-flash'])
+    assert.equal(startBody.data[0].owned_by, 'glm')
+
+    const codingList = await fetch(`http://127.0.0.1:${codingPort}/glm/v1/models`, { headers })
+    const codingBody = await codingList.json()
+    assert.equal(codingList.status, 200)
+    assert.deepEqual(codingBody.data.map((row) => row.id), ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
+  } finally {
+    await start.close()
+    await coding.close()
+  }
+})
+
 test('proxy asks upstream for SSE when the body streams', async () => {
   const seen = []
   const fetchFn = async (url, init) => {

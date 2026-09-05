@@ -357,6 +357,26 @@ test('GLM catalog is three models with official input types; Codex stays image-c
   assert.deepEqual(described.models.find((model) => model.id === 'glm-5.3').input, ['text'])
 })
 
+test('Start Plan GLM catalog is Flash Free only', () => {
+  const catalog = catalogProviders({
+    prefix: 'oauth',
+    origin: 'http://x',
+    glmModels: [{
+      id: 'glm-5.3-flash',
+      name: 'GLM-5.3-Flash Free',
+      contextWindow: 1_000_000,
+      maxTokens: 128_000,
+      reasoningEfforts: { low: 'low', high: 'high', max: 'max' },
+      input: ['text', 'image'],
+    }],
+  })
+  const glm = catalog['oauth-glm'].models
+  assert.deepEqual(glm.map((model) => model.id), ['glm-5.3-flash'])
+  assert.equal(glm[0].name, 'GLM-5.3-Flash Free')
+  assert.equal(glm.find((model) => model.id === 'glm-5.3'), undefined)
+  assert.equal(glm.find((model) => model.id === 'glm-5-turbo'), undefined)
+})
+
 test('Antigravity catalog is cloudcode-pa Claude / Gemini / GPT-OSS', () => {
   const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
   const rows = catalog['oauth-antigravity'].models
