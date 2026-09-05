@@ -19,6 +19,12 @@ import {
   glmCliInit,
   glmCliProvider,
   glmAnthropicUrl,
+  GLM_START_ANTHROPIC_URL,
+  GLM_START_MODELS,
+  annotateGlmStartPlanError,
+  glmCatalogModels,
+  isGlmStartPlan,
+  normalizeGlmPlanKind,
   glmCodingUrl,
   glmDesktopHeaders,
   glmQuotaUrl,
@@ -262,6 +268,11 @@ test('normalizeGlmRegion maps ZCode ids to zai / bigmodel', () => {
   assert.equal(glmCliProvider('bigmodel'), 'bigmodel')
   assert.equal(glmAnthropicUrl('zai'), 'https://api.z.ai/api/anthropic/v1/messages')
   assert.equal(glmAnthropicUrl('bigmodel'), 'https://open.bigmodel.cn/api/anthropic/v1/messages')
+  assert.equal(glmAnthropicUrl('bigmodel', 'start'), GLM_START_ANTHROPIC_URL)
+  assert.equal(glmAnthropicUrl('zai', 'start'), 'https://zcode.z.ai/api/v1/zcode-plan/anthropic/v1/messages')
+  assert.equal(glmAnthropicUrl('bigmodel', 'coding'), 'https://open.bigmodel.cn/api/anthropic/v1/messages')
+  assert.equal(normalizeGlmPlanKind('start_plan'), 'start')
+  assert.equal(normalizeGlmPlanKind(undefined), 'coding')
 })
 
 test('parseCliInit reads flow_id and authorize_url', () => {
@@ -315,7 +326,14 @@ test('glmSession stores a durable never-expiring key', () => {
   assert.equal(session.refreshToken, 'id.secret')
   assert.equal(session.account, 'dev@z.ai')
   assert.equal(session.region, 'zai')
+  assert.equal(session.planKind, undefined)
+  assert.equal(isGlmStartPlan(session), false)
   assert.ok(session.expiresAt > Date.now() + 1e12)
+  const start = glmSession({ accessToken: 'start-jwt', region: 'bigmodel', planKind: 'start', planType: 'start' })
+  assert.equal(start.planKind, 'start')
+  assert.equal(start.planType, 'start')
+  assert.equal(start.region, 'bigmodel')
+  assert.equal(isGlmStartPlan(start), true)
 })
 
 function assertZcodeDesktopFingerprint(headers) {
@@ -813,6 +831,53 @@ test('catalog includes GLM as Anthropic Messages (ZCode default)', () => {
   assert.equal(providers['oauth-glm'].compat?.supportsReasoningEffort, undefined)
   assert.equal(providers['oauth-glm'].compat?.thinkingFormat, undefined)
   assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.2'), undefined)
+})
+
+test('glmCatalogModels is Flash Free only for Start Plan', () => {
+  const start = glmCatalogModels({ planKind: 'start' })
+  assert.equal(start, GLM_START_MODELS)
+  assert.deepEqual(start.map((model) => model.id), ['glm-5.3-flash'])
+  assert.equal(start[0].name, 'GLM-5.3-Flash Free')
+  assert.equal(start.find((model) => model.id === 'glm-5.3'), undefined)
+  assert.equal(start.find((model) => model.id === 'glm-5-turbo'), undefined)
+  const coding = glmCatalogModels({ planKind: 'coding', region: 'zai' })
+  assert.deepEqual(coding.map((model) => model.id), ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
+  assert.equal(coding.find((model) => model.id === 'glm-5.3-flash').name, 'GLM-5.3-Flash')
+  assert.deepEqual(glmCatalogModels().map((model) => model.id), ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
+})
+
+test('Start Plan harness catalog is Flash Free only', () => {
+  const providers = buildProviders({
+    prefix: 'oauth',
+    origin: 'http://127.0.0.1:8318',
+    loggedIn: { glm: true },
+    glmModels: GLM_START_MODELS,
+  })
+  const ids = providers['oauth-glm'].models.map((model) => model.id)
+  const names = providers['oauth-glm'].models.map((model) => model.name)
+  assert.deepEqual(ids, ['glm-5.3-flash'])
+  assert.deepEqual(names, ['GLM-5.3-Flash Free'])
+  assert.equal(providers['oauth-glm'].models[0].id.includes('free'), false)
+})
+
+test('annotateGlmStartPlanError explains 3007 on zcode-plan only', () => {
+  const raw = { code: 3007, msg: 'captcha verify failed' }
+  const annotated = annotateGlmStartPlanError(raw, GLM_START_ANTHROPIC_URL)
+  assert.equal(annotated.code, 3007)
+  assert.match(annotated.error.message, /x-aliyun-captcha-verify-param/)
+  assert.match(annotated.error.message, /3007/)
+  assert.match(annotated.error.message, /captcha-bridge/)
+  assert.equal(JSON.stringify(annotated).includes('x-aliyun-captcha-verify-param'), true)
+  const coding = annotateGlmStartPlanError(raw, 'https://open.bigmodel.cn/api/anthropic/v1/messages')
+  assert.equal(coding, raw)
+  assert.equal(annotateGlmStartPlanError({ code: 401, msg: 'token invalid' }, GLM_START_ANTHROPIC_URL).error, undefined)
+})
+
+test('glmDesktopHeaders does not invent Aliyun captcha proof', () => {
+  const headers = glmAnthropicHeaders(glmSession({ accessToken: 'start-jwt', planKind: 'start' }), 'sess')
+  assert.equal(headers['X-Aliyun-Captcha-Verify-Param'], undefined)
+  assert.equal(headers['x-aliyun-captcha-verify-param'], undefined)
+  assert.equal(JSON.stringify(headers).toLowerCase().includes('captcha'), false)
 })
 
 test('Z.ai and BigModel accounts can coexist in the glm vault', async () => {

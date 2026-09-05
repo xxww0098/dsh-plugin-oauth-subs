@@ -28,6 +28,8 @@ test('formatPlanLabel maps Codex slugs to Plus / Pro 20x / Pro 5x / Team', () =>
   assert.equal(formatPlanLabel('pro', 'glm'), 'Pro')
   assert.equal(formatPlanLabel('coding_pro', 'glm'), 'Pro')
   assert.equal(formatPlanLabel('lite', 'glm'), 'Lite')
+  assert.equal(formatPlanLabel('start', 'glm'), 'Start')
+  assert.equal(formatPlanLabel('start_plan', 'glm'), 'Start')
   assert.equal(formatPlanLabel('pro', 'kiro'), 'Pro')
   assert.equal(formatPlanLabel('KIRO PRO+', 'kiro'), 'Pro+')
   assert.equal(formatPlanLabel('g1-pro-tier', 'antigravity'), 'Pro')

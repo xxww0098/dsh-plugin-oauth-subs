@@ -228,6 +228,33 @@ test('snapshot marks GLM catalog loggedIn for a vault account', async () => {
   assert.equal(snap.accounts.glm.account, 'dev@x')
   assert.equal(glm.loggedIn, true)
   assert.equal(glm.models.length, 3)
+  assert.deepEqual(glm.models.map((model) => model.id), ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
+  assert.equal(glm.models.find((model) => model.id === 'glm-5.3-flash').name, 'GLM-5.3-Flash')
+})
+
+test('snapshot Start Plan GLM catalog is Flash Free only', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const authPath = join(dir, 'auth.json')
+  await saveSession('glm', glmSession({
+    accessToken: 'start-jwt',
+    account: 'trial@x',
+    region: 'bigmodel',
+    planKind: 'start',
+    planType: 'start',
+  }), authPath)
+  const controller = new AuthController({
+    authPath,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+    models: new ModelSwitch(),
+    fetchFn: glmQuotaFetch(),
+  })
+  const snap = await controller.snapshot()
+  const glm = snap.catalog.find((row) => row.family === 'glm')
+  assert.equal(glm.loggedIn, true)
+  assert.deepEqual(glm.models.map((model) => model.id), ['glm-5.3-flash'])
+  assert.equal(glm.models[0].name, 'GLM-5.3-Flash Free')
 })
 
 test('toggle glm-5.3 on writes oauth-glm when all current GLM keys were disabled', async () => {

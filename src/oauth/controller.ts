@@ -24,6 +24,7 @@ import {
   refreshGrok,
 } from './grok/index.js'
 import {
+  glmCatalogModels,
   glmSession,
   isGlmPermanentRefreshError,
   normalizeGlmRegion,
@@ -284,7 +285,11 @@ export class AuthController {
     }
   }
 
-  catalog() {
+  async #glmModels() {
+    return glmCatalogModels(await getSession('glm', this.authPath))
+  }
+
+  async catalog() {
     return catalogProviders({
       prefix: this.prefix,
       origin: this.origin(),
@@ -293,6 +298,7 @@ export class AuthController {
       kiroModels: kiroCatalogModels(),
       kimiModels: kimiCatalogModels(),
       copilotModels: copilotCatalogModels(),
+      glmModels: await this.#glmModels(),
     })
   }
 
@@ -351,6 +357,7 @@ export class AuthController {
     await this.#maybeAutoImportCopilot()
     const loggedIn = await this.loggedIn()
     const origin = this.origin()
+    const glmModels = await this.#glmModels()
     const catalog = catalogProviders({
       prefix: this.prefix,
       origin,
@@ -359,6 +366,7 @@ export class AuthController {
       kiroModels: kiroCatalogModels(),
       kimiModels: kimiCatalogModels(),
       copilotModels: copilotCatalogModels(),
+      glmModels,
     })
     const selected = this.models.selectedForSync(catalog)
     const providers = filterProviders(buildProviders({
@@ -370,6 +378,7 @@ export class AuthController {
       kiroModels: kiroCatalogModels(),
       kimiModels: kimiCatalogModels(),
       copilotModels: copilotCatalogModels(),
+      glmModels,
     }), selected)
     if (loggedIn.codex) await this.#ensureAccountQuota('codex')
     else this.quota.clear('codex')
@@ -1442,7 +1451,7 @@ export class AuthController {
 
   async setModels(payload = {}) {
     await this.models.ready
-    const catalog = this.catalog()
+    const catalog = await this.catalog()
     if (Array.isArray(payload.selected)) {
       await this.models.setEnabled(payload.selected, catalog)
     } else if (typeof payload.key === 'string') {
@@ -1467,7 +1476,7 @@ export class AuthController {
       throw new Error('settings service is not mounted; cannot sync llm-pi-ai routes')
     }
     await this.models.ready
-    const catalog = this.catalog()
+    const catalog = await this.catalog()
     if (selected !== undefined) {
       await this.models.setEnabled(selected, catalog)
     }
@@ -1486,6 +1495,7 @@ export class AuthController {
       kiroModels: kiroCatalogModels(),
       kimiModels: kimiCatalogModels(),
       copilotModels: copilotCatalogModels(),
+      glmModels: await this.#glmModels(),
     })
   }
 }
