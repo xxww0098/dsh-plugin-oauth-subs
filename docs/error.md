@@ -2,6 +2,17 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-05：本地 DSH Cursor 缓存命中率显示为 0%
+
+### 现象
+长 Cursor 会话 DSH `cacheReadTokens` 一直是 0。同一 `conversation_id` 的后续轮次仍像全新 prompt。
+
+### 根因
+`TurnEndedUpdate` 在 `@cursor/sdk` 1.0.27 已有 `cache_read_tokens`，hop 只把 field 14 当结束标志。历史 turn 的 `messageId` / `requestId` 每跳 `randomUUID()`，conversationState prefix 字节全变。CLI 指纹停在 `cli-2026.05.01-eea359f`。
+
+### 修复
+解码 field 3 → `prompt_tokens_details.cached_tokens`。turn id 改内容哈希。`x-request-id` = `x-original-request-id`。CLI 指纹对齐 pi-cursor `cli-2026.07.23-e383d2b`。不改 `client-type: sdk`（本 hop 是 CLI OAuth）。
+
 ## 2026-09-05：关于页更新成功但重启后版本仍旧
 
 ### 现象
@@ -299,7 +310,7 @@ DSH `openai-completions` 非流 POST `/cursor/v1/chat/completions`。上游 `Age
 上游未公开稳定 REST。本插件不能拥有 Cursor 的 wire。
 
 ### 修复
-最小编码器 + Node `http2`。**改线后对照社区协议再改 `src/oauth/cursor/`**，不要从别的家族抄 cache / hop。指纹钉 `x-cursor-client-version: cli-2026.05.01-eea359f`。
+最小编码器 + Node `http2`。**改线后对照社区协议与 `@cursor/sdk` 再改 `src/oauth/cursor/`**，不要从别的家族抄 cache / hop。指纹钉 `x-cursor-client-version: cli-2026.07.23-e383d2b`。
 
 ## 2026-09-03：Antigravity Cloud Code 400 — JSON Schema、首条必须是 user
 

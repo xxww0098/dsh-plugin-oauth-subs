@@ -3,7 +3,7 @@
 本文件是 `src/oauth/cursor/` 的设计源。改登录、额度、对话或缓存先改这里再改代码。
 跨家族硬约定在仓库根 [`AGENTS.md`](../../../AGENTS.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)。
 
-Cursor 订阅（Composer / Claude / GPT / Grok via Cursor infra）。原生 wire 是 **Connect RPC v1 protobuf over HTTP/2**，不是 OpenAI REST。社区逆向来自 MIT [`Rahularya01/pi-cursor`](https://github.com/Rahularya01/pi-cursor)（`src/auth/oauth.ts`、`docs/protocol.md`、`src/client/h2-session.ts`、`src/stream/request-build.ts`、`proto/agent.proto`）。本目录只抽 Run / GetUsableModels / GetCurrentPeriodUsage 用到的字段，不 vendor 整棵树，也不引入 Bun。
+Cursor 订阅（Composer / Claude / GPT / Grok via Cursor infra）。原生 wire 是 **Connect RPC v1 protobuf over HTTP/2**，不是 OpenAI REST。社区逆向来自 MIT [`Rahularya01/pi-cursor`](https://github.com/Rahularya01/pi-cursor)（`src/auth/oauth.ts`、`docs/protocol.md`、`src/client/h2-session.ts`、`src/stream/request-build.ts`、`proto/agent.proto`）。缓存命中字段与 Run handshake 头对照 [`fitchmultz/pi-cursor-sdk`](https://github.com/fitchmultz/pi-cursor-sdk) 钉的 `@cursor/sdk@1.0.27`（`TurnEndedUpdate.cache_read_tokens`、`x-original-request-id`）。本目录只抽 Run / GetUsableModels / GetCurrentPeriodUsage 用到的字段，不 vendor 整棵树，也不引入 Bun / `@cursor/sdk`。
 
 > 非正式集成。Cursor 随时可能改线。只用用户自己有权使用的账号。
 
@@ -17,7 +17,7 @@ Cursor 订阅（Composer / Claude / GPT / Grok via Cursor infra）。原生 wire
 | [`import.ts`](import.ts) | 本机 CLI Keychain / IDE `state.vscdb` / `CURSOR_ACCESS_TOKEN` |
 | [`refresh-guard.ts`](refresh-guard.ts) | 已知坏 refresh 短退避，避免 stale CLI 卡住 snapshot |
 | [`request.ts`](request.ts) | OpenAI Completions ↔ `AgentClientMessage` / `AgentServerMessage` |
-| [`cache.ts`](cache.ts) | `AgentRunRequest.conversation_id`。禁止 `Date.now()` |
+| [`cache.ts`](cache.ts) | `AgentRunRequest.conversation_id` + 稳定 turn id。禁止 `Date.now()` / 每次 `randomUUID()` |
 | [`proto.ts`](proto.ts) | 最小 protobuf + Connect framing（Run / GetUsableModels / AvailableModels） |
 | [`h2-session.ts`](h2-session.ts) | Node `http2` 进程内会话（unary + streaming） |
 
@@ -98,7 +98,7 @@ IDE `state.vscdb`（只读，`node:sqlite` `DatabaseSync`，用完 close）：
 
 ## 指纹
 
-AgentService/Run 与 unary 只发 Cursor **CLI** 头（pi-cursor `h2-session.ts` 默认，钉死文档值，不编更新的版本）：
+AgentService/Run 与 unary 发 Cursor **CLI** 头。CLI 版本对齐 [Rahularya01/pi-cursor](https://github.com/Rahularya01/pi-cursor) `DEFAULT_CURSOR_CLIENT_VERSION`（`cli-2026.07.23-e383d2b`）。`x-original-request-id` 对齐 `@cursor/sdk` Run handshake。本 hop 是 `loginDeepControl` OAuth，**不要**改成 `x-cursor-client-type: sdk`（那是 API key 的 `Agent.create`）。
 
 | 头 | 值 |
 |---|---|
@@ -107,11 +107,12 @@ AgentService/Run 与 unary 只发 Cursor **CLI** 头（pi-cursor `h2-session.ts`
 | `content-type` | 流 `application/connect+proto`；unary `application/proto` |
 | `te` | `trailers` |
 | `x-ghost-mode` | `true` |
-| `x-cursor-client-version` | `cli-2026.05.01-eea359f`（`PI_CURSOR_CLIENT_VERSION` 可覆盖） |
+| `x-cursor-client-version` | `cli-2026.07.23-e383d2b`（`PI_CURSOR_CLIENT_VERSION` 可覆盖） |
 | `x-cursor-client-type` | `cli` |
-| `x-request-id` | 每请求 UUID |
+| `x-request-id` | 每条 DSH 请求一个 UUID |
+| `x-original-request-id` | 与 `x-request-id` 相同（DSH 一轮就是一次 Run；重试保持原 id） |
 
-不要假装 Cursor 桌面 IDE。`conversationState.client_name` 用 `dsh`。
+不要假装 Cursor 桌面 IDE。不要发明 `x-parent-request-id` / `x-root-parent-request-id` / `x-parent-agent-tool-call-id`（官方 SDK 给子 agent 用，本 hop 不发）。`conversationState.client_name` 用 `dsh`。
 
 ## 模型
 
@@ -161,10 +162,11 @@ POST /aiserver.v1.AuthService/GetEmail                    {}
 
 | | |
 |---|---|
-| 后端 | Cursor Agent 会话（`AgentRunRequest.conversation_id`） |
-| 粘性 id | DSH `session_id` / `prompt_cache_key` **加上 model**；缺 pin 时 `dsh-cursor:<model>`（裸 `dsh-cursor` 只在没有 model 时）。禁止 `Date.now()` |
+| 后端 | Cursor Agent 会话（`AgentRunRequest.conversation_id`）。prefix 是 conversationState blobs |
+| 粘性 id | DSH `session_id` / `prompt_cache_key` **加上 model**；缺 pin 时 `dsh-cursor:<model>`（裸 `dsh-cursor` 只在没有 model 时）。禁止 `Date.now()`。历史 turn 的 `messageId` / `requestId` 用内容哈希，禁止每跳 `randomUUID()` |
+| HTTP | `x-request-id` = `x-original-request-id`（SDK handshake）。不写 Codex `session-id` / Grok `x-grok-conv-id` |
 | 停额外 snapshot | 第一条 system 钉在 `root_prompt_messages_json`；后续 DSH snapshot 再追加一条 system blob（Cursor 前缀列表，不是 GLM 尾 system，也不是 Gemini 尾 user） |
-| 命中字段 | Run 流没有文档化的 cache-read 字段。有则映到 `prompt_tokens_details.cached_tokens`；否则 DSH 命中率可为 0% |
+| 命中字段 | `TurnEndedUpdate.cache_read_tokens`（field 3）→ OpenAI `prompt_tokens_details.cached_tokens`。`input_tokens` 是整段 prompt（含 cache），与 `@cursor/sdk` `toTokenUsage` 一致 |
 
 不写 Codex `session-id` / `prompt_cache_key`，不写 Grok `x-grok-conv-id`。
 
@@ -181,6 +183,7 @@ POST /aiserver.v1.AuthService/GetEmail                    {}
 - 恢复 `src/utils/cache-session.ts`
 - 扫 WSL / Windows 上别人的 Users 目录
 - 打 `cursor.com/api/auth/me` 或 cookie `usage-summary`（204 / 401）
+- 发明 `x-parent-request-id` / `x-root-parent-request-id` / `x-cursor-client-type: sdk`（官方 SDK 有，本 hop 是 CLI OAuth 不发）
 - 把 JWT `sub` / `cursor` / `provider|user_*` 画在 Settings 卡抬头
 - 把 `apiPercentUsed` 0–1 当分数（0.454 不是 45%）
 
@@ -190,3 +193,7 @@ Wire / PKCE / Keychain+vscdb 顺序改编自 MIT：
 
 - [Rahularya01/pi-cursor](https://github.com/Rahularya01/pi-cursor)
 - [ephraimduncan/opencode-cursor](https://github.com/ephraimduncan/opencode-cursor)
+
+`TurnEndedUpdate` 字段号、`cacheReadTokens` 分区、`x-original-request-id` 对照：
+
+- [fitchmultz/pi-cursor-sdk](https://github.com/fitchmultz/pi-cursor-sdk)（`@cursor/sdk@1.0.27`）

@@ -85,7 +85,7 @@ src/
       import.ts            Keychain / IDE state.vscdb / CURSOR_ACCESS_TOKEN
       refresh-guard.ts     known-bad refresh backoff
       request.ts           OpenAI chat ↔ AgentService/Run
-      cache.ts             conversationId (never Date.now())
+      cache.ts             conversationId + stable turn ids; TurnEnded cache_read_tokens
       proto.ts             minimal Connect/protobuf subset
       h2-session.ts        Node http2 in-process transport
     ollama/                Ollama Cloud (ollama.com API key — not localhost:11434)
@@ -213,6 +213,7 @@ Kiro:      conversationState.conversationId (+ model)
 Cursor:    conversationId on AgentRunRequest (fallback `dsh-cursor:<model>`)
            drop Codex/Grok cache fields
            first system pinned in root_prompt_messages_json; extras as extra system blobs
+           historical messageId/requestId hashed (not randomUUID); TurnEnded cache_read_tokens
 Ollama:    drop Codex/Grok cache fields; no sticky conversation id (non-fix)
 Kimi:      drop Codex/Grok cache fields; prefix-hash; extra system at messages suffix
 OpenCode:  drop Codex/Grok cache fields; no sticky conversation id (non-fix)
@@ -322,13 +323,20 @@ OpenCode:  drop Codex/Grok cache fields; no sticky conversation id (non-fix)
 - Cursor Agent conversation. Sticky: `AgentRunRequest.conversation_id`
   = DSH pin **plus model id**. Fallback `dsh-cursor:<model>` (bare
   `dsh-cursor` only when model is unknown). Never `Date.now()`.
+- Historical turn `messageId` / `requestId` are content hashes
+  (`cursorStableId`). A fresh `randomUUID()` every hop rewrites the
+  prefix blobs. HTTP: `x-request-id` = `x-original-request-id` (SDK
+  handshake). Stay `x-cursor-client-type: cli` — this hop is
+  loginDeepControl OAuth, not `@cursor/sdk` API keys.
 - System lives in `conversationState.root_prompt_messages_json` blobs.
   Pin the first system text per conversationId; extra DSH snapshots
   become another system blob in that list (Cursor prefix), not a GLM
   trailing system or a Gemini trailing user.
 - No Codex `prompt_cache_key` / `session-id`, no Grok `x-grok-conv-id`.
-- Hits: Run has no documented cache-read field. Map one if the wire
-  grows one; otherwise DSH hit rate may stay 0%.
+  Do not invent `x-parent-request-id`.
+- Hits: `TurnEndedUpdate.cache_read_tokens` → OpenAI
+  `prompt_tokens_details.cached_tokens`. `input_tokens` is the full
+  prompt (cache is a partition), matching `@cursor/sdk` 1.0.27.
 
 **Ollama** (`src/oauth/ollama/cache.ts`)
 
@@ -385,7 +393,7 @@ When adding `src/oauth/<id>/`:
 | GLM | content hash of leading system + history | Anthropic: `metadata.user_id` + `x-session-id` + first-block `cache_control`; Completions leftover: `user` + `x-session-id` | Completions: system at **messages suffix**; Anthropic: extra system text blocks without cache_control | `cached_tokens` / `cache_read_input_tokens` |
 | Antigravity | Gemini `systemInstruction` + contents + tools | `request.sessionId` (fallback + model) | extra as trailing **user** | `cachedContentTokenCount` / `cache_read_tokens` → `cached_tokens` |
 | Kiro | CodeWhisperer conversation | `conversationId` + model | system as first history user+ack; extra at history suffix (not between toolUses / toolResults) | `cacheReadInputTokens` → `cached_tokens` |
-| Cursor | Agent conversation (`conversation_id`) | `conversationId` + model; fallback `dsh-cursor:<model>` | extra DSH snapshots as extra `root_prompt_messages_json` system blobs | none documented on Run (`cached_tokens` if a field appears) |
+| Cursor | Agent conversation (`conversation_id`) | `conversationId` + model; fallback `dsh-cursor:<model>`; `x-request-id` = `x-original-request-id`; hashed turn ids | extra DSH snapshots as extra `root_prompt_messages_json` system blobs | `TurnEndedUpdate.cache_read_tokens` → `cached_tokens` |
 | Ollama | none documented | no sticky conversation id (non-fix); `dsh-ollama` analyzer-only | n/a | none documented (`cached_tokens` if a field appears) |
 | Kimi | prefix hash of leading system + history | no shard key; `dsh-kimi` analyzer-only | extra system at **messages suffix** | none documented (`cached_tokens` if a field appears) |
 | OpenCode | none documented | no sticky conversation id (non-fix); `dsh-opencode` analyzer-only | n/a | none documented (`cached_tokens` if a field appears) |
@@ -728,7 +736,8 @@ GLM uses a content-hash prefix (`user` / `x-session-id`); a 576-token remnant
 after a leading-system splice is a **prefix break**, not a Grok affinity miss.
 Antigravity hits are `cachedContentTokenCount`. Kiro hits are
 `cacheReadInputTokens`. Cursor sticky-routes on `conversation_id`;
-Run has no documented cache-read field.
+hits are `TurnEndedUpdate.cache_read_tokens`. Historical turn ids are
+content hashes; `x-request-id` = `x-original-request-id`.
 Ollama Cloud has no documented cache-read or conversation id; do not invent one.
 Kimi Code is prefix-hash only; strip Codex/Grok fields and park extra system at the messages suffix. Do not invent a shard id.
 OpenCode Free has no documented cache-read or conversation id; never send Authorization on the Zen hop.

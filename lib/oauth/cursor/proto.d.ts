@@ -77,6 +77,19 @@ export declare function encodeExecThrow({ id, error }: {
     error?: string;
 }): Buffer<ArrayBuffer>;
 export declare function encodeCancelAction(): Buffer<ArrayBuffer>;
+/**
+ * agent.v1.TurnEndedUpdate (@cursor/sdk 1.0.27):
+ * 1 input_tokens, 2 output_tokens, 3 cache_read_tokens,
+ * 4 cache_write_tokens, 5 reasoning_tokens — all optional int64.
+ */
+export declare function encodeTurnEndedUpdate({ inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, reasoningTokens, }?: {}): Buffer<ArrayBuffer>;
+export declare function decodeTurnEndedUpdate(buf: any): {
+    promptTokens: any;
+    completionTokens: any;
+    cachedTokens: any;
+    cacheWriteTokens: any;
+    reasoningTokens: any;
+};
 export declare function encodeGetUsableModelsRequest(customIds?: any[]): Buffer<ArrayBuffer>;
 /** Connect unary envelope, or the raw proto if the peer skipped framing. */
 export declare function unwrapConnectUnary(buf: any): any;
@@ -104,6 +117,13 @@ export declare function decodeAgentClientMessage(buf: any): {
     parameters: any;
 };
 export declare function decodeAgentServerMessage(buf: any): {
+    usage?: {
+        promptTokens: any;
+        completionTokens: any;
+        cachedTokens: any;
+        cacheWriteTokens: any;
+        reasoningTokens: any;
+    };
     kind: string;
     text: any;
     thinking: any;
@@ -124,11 +144,6 @@ export declare function decodeAgentServerMessage(buf: any): {
         name: any;
         toolCallId: any;
     };
-    text?: undefined;
-    thinking?: undefined;
-    tokens?: undefined;
-    toolCall?: undefined;
-    turnEnded?: undefined;
     blobId?: undefined;
     blobData?: undefined;
     set?: undefined;
@@ -138,21 +153,11 @@ export declare function decodeAgentServerMessage(buf: any): {
     blobId: any;
     blobData: any;
     set: boolean;
-    text?: undefined;
-    thinking?: undefined;
-    tokens?: undefined;
-    toolCall?: undefined;
-    turnEnded?: undefined;
     execId?: undefined;
     mcp?: undefined;
 } | {
     kind: string;
     id: any;
-    text?: undefined;
-    thinking?: undefined;
-    tokens?: undefined;
-    toolCall?: undefined;
-    turnEnded?: undefined;
     execId?: undefined;
     mcp?: undefined;
     blobId?: undefined;
@@ -160,11 +165,6 @@ export declare function decodeAgentServerMessage(buf: any): {
     set?: undefined;
 } | {
     kind: string;
-    text?: undefined;
-    thinking?: undefined;
-    tokens?: undefined;
-    toolCall?: undefined;
-    turnEnded?: undefined;
     id?: undefined;
     execId?: undefined;
     mcp?: undefined;

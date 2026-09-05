@@ -5,9 +5,10 @@
  * because that wire is none of the three closed harness protocols.
  */
 
-import { createHash, randomUUID } from 'node:crypto'
+import { createHash } from 'node:crypto'
 import {
   cursorConversationId,
+  cursorStableId,
   peelCursorFastSuffix,
   pinCursorSystemPrefix,
 } from './cache.js'
@@ -173,8 +174,8 @@ export function openaiToCursor(payload = {}, { conversationId } = {}) {
     rootPromptBlobs.push(storeBlob(Buffer.from(JSON.stringify({ role: 'system', content: extra }), 'utf8'), blobStore))
   }
 
-  const turnBlobs = parsed.turns.map((turn) => {
-    const messageId = randomUUID()
+  const turnBlobs = parsed.turns.map((turn, index) => {
+    const messageId = cursorStableId(resolvedId, 'turn', index, turn.userText, JSON.stringify(turn.steps))
     const userBlob = storeBlob(encodeUserMessage({
       text: turn.userText,
       messageId,
@@ -195,7 +196,7 @@ export function openaiToCursor(payload = {}, { conversationId } = {}) {
     return storeBlob(encodeConversationTurn({
       userMessageBlob: userBlob,
       stepBlobs,
-      requestId: randomUUID(),
+      requestId: cursorStableId(resolvedId, 'req', index, turn.userText, JSON.stringify(turn.steps)),
     }), blobStore)
   })
 
@@ -203,12 +204,18 @@ export function openaiToCursor(payload = {}, { conversationId } = {}) {
     ? payload.model.trim()
     : 'composer-2'
   const modelId = cursorWireModelId(pickerModel)
-  const userMessageId = randomUUID()
   const userText = parsed.userText
     || (parsed.inFlight && parsed.inFlight.steps.length ? '' : parsed.turns.at(-1)?.userText)
     || ''
+  const currentText = userText || (parsed.inFlight ? parsed.inFlight.userText : '')
+  const userMessageId = cursorStableId(
+    resolvedId,
+    'user',
+    currentText,
+    JSON.stringify(parsed.inFlight?.steps ?? []),
+  )
   const userMessage = encodeUserMessage({
-    text: userText || (parsed.inFlight ? parsed.inFlight.userText : ''),
+    text: currentText,
     messageId: userMessageId,
     mode: 1,
   })
@@ -343,6 +350,11 @@ export function createCursorOpenaiStream({ model, id, conversationId }) {
       }
       if (event?.tokens) {
         collected.usage.completionTokens = (collected.usage.completionTokens ?? 0) + event.tokens
+      }
+      if (event?.usage) {
+        if (Number.isFinite(event.usage.promptTokens)) collected.usage.promptTokens = event.usage.promptTokens
+        if (Number.isFinite(event.usage.completionTokens)) collected.usage.completionTokens = event.usage.completionTokens
+        if (Number.isFinite(event.usage.cachedTokens)) collected.usage.cachedTokens = event.usage.cachedTokens
       }
       if (event?.cachedTokens) collected.usage.cachedTokens = event.cachedTokens
       if (event?.promptTokens) collected.usage.promptTokens = event.promptTokens
