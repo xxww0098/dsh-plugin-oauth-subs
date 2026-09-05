@@ -5,13 +5,14 @@
 ## 2026-09-05：关于页更新成功但重启后版本仍旧
 
 ### 现象
-pnpm-lock 已解析 0.0.71，磁盘 `package.json` 也是 0.0.71，About 仍显示 0.0.70（含 `dsh plugin update` 后、甚至以为已重启时）。
+磁盘与 pnpm-lock 已是 0.0.71，About 仍显示 0.0.70。触发是周四夜起一直活着的 Homebrew `dsh web`；zsh wrapper 的 `~/.dsh.pid` 杀不到那个 PID，用户以为已重启。
 
 ### 根因
-`installedVersion()` 模块加载时 `require('../../package.json')` 冻结；About 优先 snapshot 的旧 `version`；`checkUpdate` 成功后仍返回 apply 前的 `info.version`。
+旧进程仍加载更新前模块，且 `installedVersion()` 把 `require('../../package.json')` 冻在加载时。
+About 优先 snapshot 旧 version；apply 成功后仍返回更新前的 `info.version`。
 
 ### 修复
-每次读 package.json（失败返回空，不用冻结值）。About 取检查结果与 snapshot 的较新者。apply 成功后再读一遍再返回。
+每次读 package.json（失败返回空）。About 取检查结果与 snapshot 的较新者。apply 成功后再读一遍再返回。
 
 ## 2026-09-03：OpenCode Free 目录漏 Big Pickle、含过期 DeepSeek/Laguna
 
