@@ -1,28 +1,24 @@
 /**
- * OpenCode Free — anonymous Zen relay (https://opencode.ai/zen/v1).
+ * OpenCode Go Free — OpenCode Go relay (https://opencode.ai/zen/go/v1).
  *
- * First-line: anomalyco/opencode v1.18.29. No-key CLI loader sets
- * `apiKey: "public"` (Zen treats that bearer as no key). Store still
- * keeps sentinel `anonymous` so auth.json is non-empty — that value is
- * never sent as Authorization (Zen would treat it as a real key).
+ * This is not OpenCode Zen anonymous free (`/zen/v1` big-pickle / *-free).
+ * Official Go is a keyed subscription: paste an API key from
+ * https://opencode.ai/auth (env OPENCODE_API_KEY / OPENCODE_GO_API_KEY).
+ * Store never sends a sentinel as Bearer.
  */
 export { applyOpencodeCache, opencodeCacheHeaders, opencodeCacheSessionId, resetOpencodePins } from './cache.js';
-export declare const OPENCODE_ZEN_ORIGIN = "https://opencode.ai/zen/v1";
-export declare const OPENCODE_CHAT_URL = "https://opencode.ai/zen/v1/chat/completions";
-export declare const OPENCODE_RESPONSES_URL = "https://opencode.ai/zen/v1/responses";
-export declare const OPENCODE_MODELS_URL = "https://opencode.ai/zen/v1/models";
+export declare const OPENCODE_GO_ORIGIN = "https://opencode.ai/zen/go/v1";
+export declare const OPENCODE_CHAT_URL = "https://opencode.ai/zen/go/v1/chat/completions";
+export declare const OPENCODE_RESPONSES_URL = "https://opencode.ai/zen/go/v1/responses";
+export declare const OPENCODE_MODELS_URL = "https://opencode.ai/zen/go/v1/models";
 export declare const OPENCODE_MODELS_DEV_URL = "https://models.dev/api.json";
-export declare const OPENCODE_DOCS_URL = "https://opencode.ai/docs/zen";
-/** anomalyco/opencode release this hop is pinned to. */
-export declare const OPENCODE_CLIENT_VERSION = "1.18.29";
-export declare const OPENCODE_USER_AGENT = "opencode/1.18.29";
-/** Official Flag.OPENCODE_CLIENT default. Desktop sends `desktop`. */
-export declare const OPENCODE_CLIENT = "cli";
-/** Official no-key sentinel. Zen `handler.ts`: `raw === "public"` → undefined. */
-export declare const OPENCODE_PUBLIC_TOKEN = "public";
-/** Store sentinel — never sent as Authorization. */
+export declare const OPENCODE_DOCS_URL = "https://opencode.ai/docs/go";
+export declare const OPENCODE_AUTH_URL = "https://opencode.ai/auth";
+export declare const OPENCODE_USER_AGENT = "dsh-plugin-oauth-subs";
+export declare const OPENCODE_REFERER = "https://github.com/xxww0098/dsh-plugin-oauth-subs";
+export declare const OPENCODE_TITLE = "dsh-plugin-oauth-subs";
+/** Leftover vault sentinel from the old Zen-anonymous family. Never send. */
 export declare const OPENCODE_ANON_TOKEN = "anonymous";
-export declare const OPENCODE_ACCOUNT = "Anonymous";
 export declare const OPENCODE_NEVER_EXPIRES = 8640000000000000;
 export declare const OPENCODE_DEFAULT_CONTEXT = 128000;
 export declare const OPENCODE_DEFAULT_MAX_TOKENS = 16384;
@@ -35,27 +31,46 @@ export declare const OPENCODE_REASONING_MUSE: Readonly<{
     high: "high";
     xhigh: "xhigh";
 }>;
-/** models.dev `type: toggle`. Completions hop: off → `reasoning_effort: none`. */
-export declare const OPENCODE_REASONING_TOGGLE: Readonly<{
+export declare const OPENCODE_REASONING_GLM: Readonly<{
+    low: "low";
+    high: "high";
+    max: "max";
+}>;
+export declare const OPENCODE_REASONING_HY3: Readonly<{
     off: "none";
+    low: "low";
     high: "high";
 }>;
+export declare const OPENCODE_REASONING_LUNA: Readonly<{
+    off: "none";
+    low: "low";
+    medium: "medium";
+    high: "high";
+    xhigh: "xhigh";
+    max: "max";
+}>;
+export declare const OPENCODE_REASONING_GROK: Readonly<{
+    low: "low";
+    medium: "medium";
+    high: "high";
+    xhigh: "xhigh";
+}>;
 export declare const OPENCODE_SOURCES: readonly string[];
-/** Go-subscription slugs that look free. Never put these on the keyless picker. */
-export declare const OPENCODE_KEYED_FREE: Readonly<Set<string>>;
 /**
- * Official Zen Free pricing ids (https://opencode.ai/docs/zen).
- * Suffix `-free` is not the rule — `big-pickle` is free; stale `*-free` rows are not.
+ * Zen-only free slugs. Never put these on the Go picker even if a stale
+ * models.dev `opencode` row or a mistaken live payload lists them.
  */
-export declare const OPENCODE_OFFICIAL_FREE: Readonly<Set<string>>;
-export declare const OPENCODE_DEFAULT_MODEL = "ling-3.0-flash-fin-free";
+export declare const OPENCODE_ZEN_FREE: Readonly<Set<string>>;
+export declare const OPENCODE_DEFAULT_MODEL = "glm-5.3-flash";
 export declare const OPENCODE_PLAN_NAMES: Readonly<{
-    free: "Free";
+    go: "Go Free";
+    free: "Go Free";
+    gofree: "Go Free";
+    go_free: "Go Free";
 }>;
 /**
- * Offline floor: official Zen Free ids + models.dev caps (2026-09-03).
- * Stale Zen slugs (deepseek-v4-flash-free, laguna-s-2.1-free) stay out.
- * Empty reasoning_options + reasoning true omit reasoningEfforts.
+ * Offline floor: live Go Completions / Responses ids + models.dev
+ * `opencode-go` caps (2026-09-05). Zen free slugs stay out.
  */
 export declare const OPENCODE_MODELS: readonly {
     reasoningEfforts?: any;
@@ -65,12 +80,23 @@ export declare const OPENCODE_MODELS: readonly {
     maxTokens: any;
     input: any[];
 }[];
-export declare function isOpencodeFreeSlug(id: any): boolean;
-/** Zen lists Muse Spark on `/zen/v1/responses`. Completions 500s. Future `muse-spark*` keep this hop. */
+export declare function opencodeBareId(id: any): string;
+export declare function isOpencodeZenFreeSlug(id: any): boolean;
+/** Live Go row is eligible unless it is a Zen-only free slug. */
+export declare function isOpencodeGoSlug(id: any): boolean;
+/** Go docs: Luna / Grok 4.x / Muse Spark Contributor are `/zen/go/v1/responses`. */
 export declare function isOpencodeResponsesModel(id: any): boolean;
 export declare function opencodePrettyName(id: any): string;
-export declare function opencodeSourceLabel(source: any): any;
-export declare function opencodeSession(): {
+export declare function opencodeSourceLabel(source: any): string;
+export declare function parseOpencodeApiKey(value: any): string;
+export declare function opencodeAccountFingerprint(key: any): string;
+export declare function opencodeDefaultAccount(key: any): string;
+export declare function isOpencodeOpaqueAccount(value: any): boolean;
+export declare function isOpencodeAnonSession(session: any): boolean;
+export declare function opencodeSession({ accessToken, account, source, planType, }?: {
+    source?: string;
+    planType?: string;
+}): {
     accessToken: string;
     refreshToken: string;
     expiresAt: number;
@@ -80,13 +106,9 @@ export declare function opencodeSession(): {
 };
 export declare function refreshOpencode(session: any): Promise<any>;
 export declare function isOpencodePermanentRefreshError(): boolean;
-/**
- * Official no-key hop identity. `Bearer public` is the CLI sentinel
- * (`provider.ts` `apiKey: "public"`). Never send the store sentinel
- * `anonymous` — GET /models treats any other bearer as a real key.
- */
-export declare function opencodeUpstreamHeaders(): {
-    authorization: string;
+/** Catalog GETs stay keyless. Chat hops pass the session so Bearer is set. */
+export declare function opencodeUpstreamHeaders(session: any): {
     'user-agent': string;
-    'x-opencode-client': string;
+    'http-referer': string;
+    'x-title': string;
 };

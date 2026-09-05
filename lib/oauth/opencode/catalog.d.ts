@@ -1,8 +1,8 @@
 /**
- * Live OpenCode Free picker. GET https://opencode.ai/zen/v1/models
- * with official no-key `Bearer public`, keep official Free ids that Zen
- * still lists. Overlay matching models.dev `opencode.models` for windows /
- * input / reasoning. OPENCODE_MODELS is the offline fallback only.
+ * Live OpenCode Go Free picker. GET https://opencode.ai/zen/go/v1/models
+ * (catalog is unauthenticated), keep Go ids, drop Zen-only free slugs.
+ * Overlay matching models.dev `opencode-go.models` for windows / input /
+ * reasoning. OPENCODE_MODELS is the offline fallback only.
  */
 export declare const OPENCODE_CATALOG_TTL_MS: number;
 export declare function resetOpencodeCatalogCache(): void;
@@ -15,9 +15,9 @@ export declare function opencodePickerInput(modalities: any): string[];
  * toggle → `{ off: 'none', high: 'high' }`.
  */
 export declare function opencodeReasoningEffortsOf(dev: any): {};
-export declare function modelsDevOpencodeMap(payload: any): Map<any, any>;
+export declare function modelsDevOpencodeGoMap(payload: any): Map<any, any>;
 export declare function applyOpencodeModelsDev(model: any, dev: any): any;
-/** Overlay models.dev onto Zen ids only. Never add a slug Zen did not list. */
+/** Overlay models.dev `opencode-go` onto Go ids only. Never add a Zen free slug. */
 export declare function overlayOpencodeModelsDev(models: any, payload: any): any[];
 export declare function toOpencodePickerModels(payload: any): any[];
 export declare function refreshOpencodeCatalog({ fetchFn, signal, force }?: {
