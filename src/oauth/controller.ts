@@ -83,14 +83,6 @@ import {
 import { KIMI_IMPORT_EMPTY, importKimiAuth } from './kimi/import.js'
 import { kimiCatalogModels, refreshKimiCatalog } from './kimi/catalog.js'
 import {
-  isOpencodeAnonSession,
-  isOpencodePermanentRefreshError,
-  opencodeSession,
-  refreshOpencode,
-} from './opencode/index.js'
-import { OPENCODE_IMPORT_EMPTY, importOpencodeAuth } from './opencode/import.js'
-import { opencodeCatalogModels, refreshOpencodeCatalog } from './opencode/catalog.js'
-import {
   completeCopilotDevice as sessionFromCopilotDevice,
   isCopilotOpaqueAccount,
   isCopilotPermanentRefreshError,
@@ -116,7 +108,7 @@ import { QuotaStore } from './quota.js'
 import { fetchLatest, localUpdateInfo, applyHostUpdate, compareVersions, DEFAULT_PROFILE } from '../utils/update.js'
 
 export class AuthController {
-  constructor({ authPath, prefix, origin, settings, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, spawnFn, profile, readFileFn, updateEnv, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, opencodeDiscover, opencodeAutoImport, copilotAutoImport, copilotDiscover }) {
+  constructor({ authPath, prefix, origin, settings, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, spawnFn, profile, readFileFn, updateEnv, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover }) {
     this.authPath = authPath
     this.prefix = prefix
     this.origin = origin
@@ -153,11 +145,6 @@ export class AuthController {
     this.kimiDiscover = typeof kimiDiscover === 'function'
       ? kimiDiscover
       : (process.env.NODE_TEST_CONTEXT ? undefined : ((session) => refreshKimiCatalog(session, { fetchFn })))
-    this.opencodeDiscover = typeof opencodeDiscover === 'function'
-      ? opencodeDiscover
-      : (process.env.NODE_TEST_CONTEXT ? undefined : (() => refreshOpencodeCatalog({ fetchFn })))
-    this.opencodeAutoImport = opencodeAutoImport ?? !process.env.NODE_TEST_CONTEXT
-    this.opencodeAutoImportTried = false
     this.copilotAutoImport = copilotAutoImport ?? !process.env.NODE_TEST_CONTEXT
     this.copilotAutoImportTried = false
     this.copilotDiscover = typeof copilotDiscover === 'function'
@@ -258,16 +245,6 @@ export class AuthController {
         isPermanent: isCopilotPermanentRefreshError,
         onRemoved: () => this.onAuthChanged?.('copilot'),
       }),
-      opencode: new TokenManager({
-        displayName: 'OpenCode Go Free',
-        preemptMs: 24 * 60 * 60_000,
-        load: () => getSession('opencode', this.authPath),
-        save: (session) => saveSession('opencode', session, this.authPath),
-        remove: () => deleteSession('opencode', this.authPath),
-        refresh: refreshOpencode,
-        isPermanent: isOpencodePermanentRefreshError,
-        onRemoved: () => this.onAuthChanged?.('opencode'),
-      }),
     }
     this.quota = new QuotaStore({ tokens: this.tokens, fetchFn, ttlMs: quotaTtlMs })
     this.fetchFn = fetchFn
@@ -290,7 +267,6 @@ export class AuthController {
       ollama: (await getSession('ollama', this.authPath)) !== undefined,
       kimi: (await getSession('kimi', this.authPath)) !== undefined,
       copilot: (await getSession('copilot', this.authPath)) !== undefined,
-      opencode: (await getSession('opencode', this.authPath)) !== undefined,
     }
   }
 
@@ -316,7 +292,6 @@ export class AuthController {
       ollamaModels: ollamaCatalogModels(),
       kiroModels: kiroCatalogModels(),
       kimiModels: kimiCatalogModels(),
-      opencodeModels: opencodeCatalogModels(),
       copilotModels: copilotCatalogModels(),
     })
   }
@@ -357,15 +332,6 @@ export class AuthController {
     }
   }
 
-  async #discoverOpencode() {
-    if (typeof this.opencodeDiscover !== 'function') return opencodeCatalogModels()
-    try {
-      return await this.opencodeDiscover({ fetchFn: this.fetchFn })
-    } catch {
-      return opencodeCatalogModels()
-    }
-  }
-
   async #discoverCopilot(session) {
     if (!session || typeof this.copilotDiscover !== 'function') return copilotCatalogModels()
     try {
@@ -383,8 +349,6 @@ export class AuthController {
     await this.#maybeAutoImportOllama()
     await this.#maybeAutoImportKimi()
     await this.#maybeAutoImportCopilot()
-    await this.#forgetAnonymousOpencode()
-    await this.#maybeAutoImportOpencode()
     const loggedIn = await this.loggedIn()
     const origin = this.origin()
     const catalog = catalogProviders({
@@ -394,7 +358,6 @@ export class AuthController {
       ollamaModels: ollamaCatalogModels(),
       kiroModels: kiroCatalogModels(),
       kimiModels: kimiCatalogModels(),
-      opencodeModels: opencodeCatalogModels(),
       copilotModels: copilotCatalogModels(),
     })
     const selected = this.models.selectedForSync(catalog)
@@ -406,7 +369,6 @@ export class AuthController {
       ollamaModels: ollamaCatalogModels(),
       kiroModels: kiroCatalogModels(),
       kimiModels: kimiCatalogModels(),
-      opencodeModels: opencodeCatalogModels(),
       copilotModels: copilotCatalogModels(),
     }), selected)
     if (loggedIn.codex) await this.#ensureAccountQuota('codex')
@@ -427,10 +389,8 @@ export class AuthController {
     else this.quota.clear('kimi')
     if (loggedIn.copilot) await this.#ensureAccountQuota('copilot')
     else this.quota.clear('copilot')
-    if (loggedIn.opencode) await this.#ensureAccountQuota('opencode')
-    else this.quota.clear('opencode')
     const enabledKeys = this.models.enabledKeys(catalog)
-    const [codexAccounts, grokAccounts, glmAccounts, kiroAccounts, antigravityAccounts, cursorAccounts, ollamaAccounts, kimiAccounts, copilotAccounts, opencodeAccounts] = await Promise.all([
+    const [codexAccounts, grokAccounts, glmAccounts, kiroAccounts, antigravityAccounts, cursorAccounts, ollamaAccounts, kimiAccounts, copilotAccounts] = await Promise.all([
       this.#accountsWithQuota('codex'),
       this.#accountsWithQuota('grok'),
       this.#accountsWithQuota('glm'),
@@ -440,7 +400,6 @@ export class AuthController {
       this.#accountsWithQuota('ollama'),
       this.#accountsWithQuota('kimi'),
       this.#accountsWithQuota('copilot'),
-      this.#accountsWithQuota('opencode'),
     ])
     return {
       origin,
@@ -458,7 +417,6 @@ export class AuthController {
         ollama: { ...(await this.status('ollama')), activeId: ollamaAccounts.find((row) => row.active)?.id, accounts: ollamaAccounts },
         kimi: { ...(await this.status('kimi')), activeId: kimiAccounts.find((row) => row.active)?.id, accounts: kimiAccounts },
         copilot: { ...(await this.status('copilot')), activeId: copilotAccounts.find((row) => row.active)?.id, accounts: copilotAccounts },
-        opencode: { ...(await this.status('opencode')), activeId: opencodeAccounts.find((row) => row.active)?.id, accounts: opencodeAccounts },
       },
       update: localUpdateInfo(process.platform, {
         profile: this.profile,
@@ -469,7 +427,7 @@ export class AuthController {
   }
 
   async refreshQuota(provider, accountId) {
-    if (provider === 'codex' || provider === 'grok' || provider === 'glm' || provider === 'kiro' || provider === 'antigravity' || provider === 'cursor' || provider === 'ollama' || provider === 'kimi' || provider === 'opencode' || provider === 'copilot') {
+    if (provider === 'codex' || provider === 'grok' || provider === 'glm' || provider === 'kiro' || provider === 'antigravity' || provider === 'cursor' || provider === 'ollama' || provider === 'kimi' || provider === 'copilot') {
       const rows = await this.#liveAccounts(provider)
       const targets = accountId
         ? rows.filter((row) => row.id === accountId)
@@ -523,14 +481,7 @@ export class AuthController {
           await this.sync().catch(() => undefined)
         }
       }
-      if (provider === 'opencode') {
-        const before = opencodeCatalogModels().map((model) => model.id).join('\0')
-        await this.#discoverOpencode()
-        if (this.settings && opencodeCatalogModels().map((model) => model.id).join('\0') !== before) {
-          await this.sync().catch(() => undefined)
-        }
-      }
-      const latest = provider === 'ollama' || provider === 'kimi' || provider === 'opencode' || provider === 'copilot' ? await this.#liveAccounts(provider) : rows
+      const latest = provider === 'ollama' || provider === 'kimi' || provider === 'copilot' ? await this.#liveAccounts(provider) : rows
       if (accountId) {
         const hit = latest.find((row) => row.id === accountId) ?? latest.find((row) => row.active)
         return this.quota.peek(provider, hit?.id ?? accountId)
@@ -538,7 +489,7 @@ export class AuthController {
       const active = latest.find((row) => row.active)
       return this.quota.peek(provider, active?.id)
     }
-    const [codex, grok, glm, kiro, antigravity, cursor, ollama, kimi, copilot, opencode] = await Promise.all([
+    const [codex, grok, glm, kiro, antigravity, cursor, ollama, kimi, copilot] = await Promise.all([
       this.refreshQuota('codex'),
       this.refreshQuota('grok'),
       this.refreshQuota('glm'),
@@ -548,9 +499,8 @@ export class AuthController {
       this.refreshQuota('ollama'),
       this.refreshQuota('kimi'),
       this.refreshQuota('copilot'),
-      this.refreshQuota('opencode'),
     ])
-    return { codex, grok, glm, kiro, antigravity, cursor, ollama, kimi, copilot, opencode }
+    return { codex, grok, glm, kiro, antigravity, cursor, ollama, kimi, copilot }
   }
 
   async consumeReset(provider, accountId) {
@@ -845,47 +795,6 @@ export class AuthController {
     await saveSession('ollama', next, this.authPath, { id: row.id, activate: row.active })
   }
 
-  async #forgetAnonymousOpencode() {
-    const rows = await listStoredSessions('opencode', this.authPath)
-    for (const row of rows) {
-      if (!isOpencodeAnonSession(row.session)) continue
-      await deleteSession('opencode', this.authPath, row.id)
-      this.quota.clear('opencode', row.id)
-    }
-  }
-
-  async #maybeAutoImportOpencode() {
-    if (!this.opencodeAutoImport || this.opencodeAutoImportTried) return
-    this.opencodeAutoImportTried = true
-    await this.#forgetAnonymousOpencode()
-    const rows = await listStoredSessions('opencode', this.authPath)
-    if (rows.length > 0) return
-    try {
-      const result = await importOpencodeAuth({ env: process.env })
-      if (result?.session) {
-        await saveSession('opencode', result.session, this.authPath)
-        await this.#discoverOpencode()
-        this.onAuthChanged?.('opencode')
-        void this.quota.refresh('opencode')
-      }
-    } catch (error) {
-      if (error?.code !== OPENCODE_IMPORT_EMPTY && error?.message !== OPENCODE_IMPORT_EMPTY) {
-        // empty env is fine
-      }
-    }
-  }
-
-  async #importOpencode() {
-    const existing = await listStoredSessions('opencode', this.authPath)
-    const result = await importOpencodeAuth({ env: process.env })
-    const incomingId = accountIdOf('opencode', result.session)
-    const hit = existing.find((row) => row.id === incomingId)
-    if (hit) {
-      return { source: hit.session.source, session: hit.session, skipped: true }
-    }
-    return result
-  }
-
   async #maybeAutoImportKimi() {
     if (!this.kimiAutoImport || this.kimiAutoImportTried) return
     this.kimiAutoImportTried = true
@@ -1062,9 +971,6 @@ export class AuthController {
     }
     if (provider === 'ollama') {
       throw new Error('ollama uses the paste form, not browser login')
-    }
-    if (provider === 'opencode') {
-      throw new Error('opencode uses the paste form, not browser login')
     }
     if (provider === 'cursor') {
       const attempt = await this.cursorFlows.start('cursor', { fetchFn: this.fetchFn })
@@ -1353,20 +1259,7 @@ export class AuthController {
       void this.quota.refresh('copilot')
       return { account: publicSession('copilot', session) }
     }
-    if (provider === 'opencode') {
-      const session = opencodeSession({
-        accessToken: key,
-        source: 'paste',
-      })
-      this.claim('opencode')
-      await saveSession('opencode', session, this.authPath)
-      this.lastError.delete('opencode')
-      await this.#discoverOpencode()
-      this.onAuthChanged?.('opencode')
-      void this.quota.refresh('opencode')
-      return { account: publicSession('opencode', session) }
-    }
-    if (provider !== 'glm') throw new Error('only GLM, Kiro, Ollama Cloud, Kimi, OpenCode Go Free, and Copilot accept a pasted key')
+    if (provider !== 'glm') throw new Error('only GLM, Kiro, Ollama Cloud, Kimi, and Copilot accept a pasted key')
     const accessToken = typeof key === 'string' ? key.trim() : ''
     if (accessToken.length < 8) throw new Error('glm API key is empty')
     this.claim('glm')
@@ -1503,9 +1396,7 @@ export class AuthController {
   }
 
   async importFrom(provider) {
-    const result = provider === 'opencode'
-      ? await this.#importOpencode()
-      : provider === 'codex'
+    const result = provider === 'codex'
       ? await importCodexAuth()
       : provider === 'glm'
         ? await importGlmAuth()
@@ -1540,7 +1431,6 @@ export class AuthController {
     if (provider === 'kiro') await this.#discoverKiro(sessions[0])
     if (provider === 'kimi') await this.#discoverKimi(sessions[0])
     if (provider === 'copilot') await this.#discoverCopilot(sessions[0])
-    if (provider === 'opencode') await this.#discoverOpencode()
     this.onAuthChanged?.(provider)
     void this.quota.refresh(provider)
     return {
@@ -1557,7 +1447,7 @@ export class AuthController {
       await this.models.setEnabled(payload.selected, catalog)
     } else if (typeof payload.key === 'string') {
       await this.models.toggle(payload.key, payload.on !== false, catalog)
-    } else if (payload.family === 'codex' || payload.family === 'grok' || payload.family === 'glm' || payload.family === 'kiro' || payload.family === 'antigravity' || payload.family === 'cursor' || payload.family === 'ollama' || payload.family === 'kimi' || payload.family === 'opencode' || payload.family === 'copilot') {
+    } else if (payload.family === 'codex' || payload.family === 'grok' || payload.family === 'glm' || payload.family === 'kiro' || payload.family === 'antigravity' || payload.family === 'cursor' || payload.family === 'ollama' || payload.family === 'kimi' || payload.family === 'copilot') {
       await this.models.setFamily(payload.family, payload.on !== false, catalog)
     } else if (typeof payload.all === 'boolean') {
       await this.models.setAll(payload.all, catalog)
@@ -1573,8 +1463,6 @@ export class AuthController {
   }
 
   async sync(selected, options = {}) {
-    await this.#forgetAnonymousOpencode()
-    await this.#maybeAutoImportOpencode()
     if (this.settings === undefined || typeof this.settings.mutate !== 'function') {
       throw new Error('settings service is not mounted; cannot sync llm-pi-ai routes')
     }
@@ -1597,7 +1485,6 @@ export class AuthController {
       ollamaModels: ollamaCatalogModels(),
       kiroModels: kiroCatalogModels(),
       kimiModels: kimiCatalogModels(),
-      opencodeModels: opencodeCatalogModels(),
       copilotModels: copilotCatalogModels(),
     })
   }

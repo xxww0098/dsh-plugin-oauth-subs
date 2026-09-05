@@ -2,6 +2,17 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-05：移除 OpenCode Go Free
+
+### 现象
+Settings 仍有 OpenCode Go Free 页签，`oauth-opencode` 还在 llm-pi-ai。
+
+### 根因
+维护者要求整条产品线下架（Zen 匿名免费档与 Go Free 都不要），不是再改名。
+
+### 修复
+删 `src/oauth/opencode/`。FAMILY_IDS / 目录 / 代理 hop / Settings 页签去掉。`RETIRED_FAMILY_IDS` 仍 unset 残留 `oauth-opencode`。
+
 ## 2026-09-05：额度「n后重置」夹在两条进度条中间
 
 ### 现象

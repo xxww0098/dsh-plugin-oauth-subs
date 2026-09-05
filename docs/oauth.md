@@ -23,7 +23,6 @@
 | Cursor | Cursor CLI `loginDeepControl` | [Rahularya01/pi-cursor](https://github.com/Rahularya01/pi-cursor)；[fitchmultz/pi-cursor-sdk](https://github.com/fitchmultz/pi-cursor-sdk)（`@cursor/sdk@1.0.27`） | 指纹 `cli-2026.07.23-e383d2b`；`x-cursor-client-type: cli` | [`cursor/README.md`](../src/oauth/cursor/README.md) |
 | Ollama Cloud | [docs.ollama.com/cloud](https://docs.ollama.com/cloud) | [ollama/ollama#12532](https://github.com/ollama/ollama/issues/12532)、[#16598](https://github.com/ollama/ollama/issues/16598) | Bearer `OLLAMA_API_KEY` → `ollama.com/v1` | [`ollama/README.md`](../src/oauth/ollama/README.md) |
 | Kimi | 官方 Kimi Code CLI | [Leechael/pi-provider-kimi-code](https://github.com/Leechael/pi-provider-kimi-code) | 设备码、无 PKCE | [`kimi/README.md`](../src/oauth/kimi/README.md) |
-| OpenCode Go Free | [opencode.ai/docs/go](https://opencode.ai/docs/go) | [anomalyco/opencode](https://github.com/anomalyco/opencode)；[sst/models.dev](https://github.com/sst/models.dev) `opencode-go`；[hermes-agent opencode-go](https://github.com/NousResearch/hermes-agent/tree/main/plugins/model-providers/opencode-zen) | Bearer Go API key → `/zen/go/v1`；`x-opencode-session` | [`opencode/README.md`](../src/oauth/opencode/README.md) |
 | GitHub Copilot | [anomalyco/opencode](https://github.com/anomalyco/opencode) `plugin/github-copilot` | [goose githubcopilot.rs](https://github.com/aaif-goose/goose)；[Cherry Studio CopilotService.ts](https://github.com/CherryHQ/cherry-studio)；[hermes-agent copilot_auth.py](https://github.com/NousResearch/hermes-agent/blob/main/hermes_cli/copilot_auth.py) | UA `GitHubCopilotChat/0.35.0`；client `Iv1.b507a08c87ecfe98` | [`copilot/README.md`](../src/oauth/copilot/README.md) |
 | 宿主 | [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) | DSH `llm-pi-ai` `api` 闭集 | 本机回环代理 | [`README.md`](../README.md) |
 
@@ -128,14 +127,6 @@ pi-cursor-sdk 自己走 **API key + `Agent.create`**，不是 OAuth。本 hop �
 一线：官方 Kimi Code CLI。设备码（无 PKCE）对照 MIT [Leechael/pi-provider-kimi-code](https://github.com/Leechael/pi-provider-kimi-code)。`client_id` `17e5f671-d194-4dfb-9706-5516cb48c098`。导入 `~/.kimi-code/credentials/kimi-code.json`。
 
 **不要发明：** PKCE；第四种 DSH `api` 字符串；Codex / Grok 缓存头；把 UA 扮成 `pi-provider-kimi-code`。不要 vendoring `moonshot_search` / `moonshot_fetch`。
-
-## OpenCode Go Free
-
-一线：[Go 文档](https://opencode.ai/docs/go) + [anomalyco/opencode](https://github.com/anomalyco/opencode)。hop 是 `https://opencode.ai/zen/go/v1`，Bearer `OPENCODE_API_KEY` / `OPENCODE_GO_API_KEY`。能力 overlay：[sst/models.dev](https://github.com/sst/models.dev) `opencode-go.models`。Hermes 对照是 `opencode-go`，**不是** Zen 匿名 `opencode-free`。
-
-live `GET /zen/go/v1/models` 去掉 Zen-only free slug（`big-pickle` / `ling-3.0-flash-fin-free` / `mimo-v2.5-free` / `muse-spark-*-contributor-free` / `nemotron-*-free` 等）。`ox-alpha-free` 是 Go 历史上的 $0 行，live 没列出不加。
-
-**不要发明：** 打 `/zen/v1`；把 Zen free 行加进 picker；OpenCode CLI UA；Codex `session-id` / `store: false` 抄到 Go Responses。官方要求的 `x-opencode-session` 用 DSH pin，不要 `Date.now()`。
 
 ## GitHub Copilot
 

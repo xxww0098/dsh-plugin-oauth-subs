@@ -6,7 +6,7 @@
  *   2. drives ChatGPT Codex PKCE, xAI Grok device-code / PKCE,
  *      Zhipu GLM Z.ai / BigModel CLI-poll, AWS Kiro (Social / Builder ID /
  *      IdC / Entra / API key), Google Antigravity, Cursor, Ollama Cloud,
- *      Kimi Code Plan, OpenCode Go Free, and GitHub Copilot logins
+ *      Kimi Code Plan, and GitHub Copilot logins
  *   3. syncs logged-in catalogs into llm-pi-ai
  *
  * The client half (Settings > OAuth 订阅) is discovered from package.json
@@ -36,7 +36,6 @@ export { ANTIGRAVITY_CLIENT_ID, ANTIGRAVITY_API_URL, ANTIGRAVITY_STREAM_URL, ant
 export { CURSOR_CLIENT_VERSION, CURSOR_MODELS, cursorChatHeaders, cursorSession, } from './oauth/cursor/index.js';
 export { OLLAMA_MODELS, OLLAMA_CHAT_URL, ollamaSession, ollamaUpstreamHeaders, } from './oauth/ollama/index.js';
 export { KIMI_CLIENT_ID, KIMI_MODELS, KIMI_CHAT_URL, kimiSession, kimiUpstreamHeaders, } from './oauth/kimi/index.js';
-export { OPENCODE_MODELS, OPENCODE_CHAT_URL, OPENCODE_RESPONSES_URL, isOpencodeResponsesModel, opencodeSession, opencodeUpstreamHeaders, } from './oauth/opencode/index.js';
 export { COPILOT_CLIENT_ID, COPILOT_MODELS, copilotChatUrl, copilotSession, copilotUpstreamHeaders, } from './oauth/copilot/index.js';
 export { OAUTH_CREDENTIAL_REF, ModelSwitch } from './oauth/models.js';
 export { defaultDataDir } from './oauth/store.js';
