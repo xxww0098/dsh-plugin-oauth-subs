@@ -13,9 +13,9 @@ export declare const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usa
 export declare const CODEX_RESET_CREDITS_URL = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits";
 export declare const CODEX_RESET_CONSUME_URL = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume";
 export declare const CODEX_MODELS_URL = "https://chatgpt.com/backend-api/codex/models";
-export declare const CODEX_CLIENT_VERSION = "0.151.0";
+export declare const CODEX_CLIENT_VERSION = "0.153.3";
 export declare const CODEX_ORIGINATOR = "codex_cli_rs";
-export declare const CODEX_USER_AGENT = "codex_cli_rs/0.151.0";
+export declare const CODEX_USER_AGENT = "codex_cli_rs/0.153.3";
 export declare const CODEX_SCOPE = "openid profile email offline_access api.connectors.read api.connectors.invoke";
 export declare const CODEX_CALLBACK_PATH = "/auth/callback";
 export declare const CODEX_PREEMPT_MS: number;
@@ -44,7 +44,8 @@ export declare const CODEX_REASONING_EFFORTS: Readonly<{
     xhigh: "xhigh";
     off: any;
 }>;
-/** GPT-5.6 Sol / Terra / Luna add `max`. */
+/** GPT-5.6 Sol / Terra / Luna and GPT-6 Astra add `max`. `ultra` is a
+ *  Codex CLI multi-agent mode, not an API effort — it 400s. */
 export declare const CODEX_REASONING_EFFORTS_56: Readonly<{
     max: "max";
     low: "low";
@@ -54,15 +55,15 @@ export declare const CODEX_REASONING_EFFORTS_56: Readonly<{
     off: any;
 }>;
 /**
- * Mirrors GET chatgpt.com/backend-api/codex/models (probed 2026-08-26) — the
- * one place model facts live, so the picker, the context aliases and the Fast
- * tier cannot drift apart.
+ * Mirrors Codex CLI `models.json` (openai/codex 0.153.3, 2026-09-03) plus
+ * GET chatgpt.com/backend-api/codex/models — the one place model facts live,
+ * so the picker, the context aliases and the Fast tier cannot drift apart.
  *
  * `largeContext` is the row's `max_context_window` and `fastTier` whether its
  * `service_tiers` offers Fast. Models the subscription backend does not serve
  * stay out entirely:
  * `gpt-5.3-codex` answers 400 "not supported when using Codex with a ChatGPT
- * account".
+ * account". Daybreak / auto-review slugs stay out (CLI-internal).
  */
 export declare const CODEX_MODELS: readonly ({
     id: string;

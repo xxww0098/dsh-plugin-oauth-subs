@@ -10,7 +10,8 @@ import {
 import { applyFastMode } from '../lib/utils/fast-mode.js'
 import { withPickerVariants } from '../lib/oauth/models.js'
 
-test('only gpt-5.4 and gpt-5.6 Sol/Terra/Luna get a large-context variant', () => {
+test('only gpt-5.4, gpt-6-astra and gpt-5.6 Sol/Terra/Luna get a large-context variant', () => {
+  assert.equal(isCodex900kBase('gpt-6-astra'), true)
   assert.equal(isCodex900kBase('gpt-5.6-sol'), true)
   assert.equal(isCodex900kBase('gpt-5.6-terra'), true)
   assert.equal(isCodex900kBase('gpt-5.6-luna'), true)
@@ -58,6 +59,7 @@ test('applyFastMode peels -900k then -fast before the wire', () => {
 })
 
 test('codexLargeContext reports each row max_context_window', () => {
+  assert.equal(codexLargeContext('gpt-6-astra'), 872_000)
   assert.equal(codexLargeContext('gpt-5.6-sol'), 872_000)
   assert.equal(codexLargeContext('gpt-5.6-terra'), 872_000)
   assert.equal(codexLargeContext('gpt-5.6-luna'), 872_000)

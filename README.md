@@ -88,7 +88,7 @@ Login and chat use official client identity; UA / fingerprint live in each `src/
 
 | Family | Fast | Window | Thinking |
 |---|---|---|---|
-| Codex GPT-5.6 Sol / Terra / Luna | Yes. `-fast` → Priority (`service_tier: "priority"` + `x-codex-routing-hint`; `store: false`) | `-900k` (872K) | low / medium / high / xhigh / **max** |
+| Codex GPT-6 Astra / GPT-5.6 Sol / Terra / Luna | Yes. `-fast` → Priority (`service_tier: "priority"` + `x-codex-routing-hint`; `store: false`) | `-900k` (872K) | low / medium / high / xhigh / **max** |
 | Other Codex | 5.4 / 5.5 Yes; Mini / Spark No (empty `service_tiers`; leftover `*-fast` peeled locally) | GPT-5.4 `-900k` (1M) | low–xhigh (no `minimal`) |
 | Grok | No. 2026-08-30: 83.34 vs 82.80 tok/s (0.994). Older ids reject the field | — | 4.6: low / medium / high / xhigh (unset = **high**); 4.5: no xhigh |
 | GLM | — | — | 5.3 / Flash: low / high / **max** (default max; no `medium`; `disabled` 400s). Turbo: on, no depth. Flash is the only GLM image row |
