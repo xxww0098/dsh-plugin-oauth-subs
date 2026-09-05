@@ -1,8 +1,8 @@
 /**
  * Live OpenCode Free picker. GET https://opencode.ai/zen/v1/models
- * anonymously (no Authorization), keep official Free ids that Zen still lists.
- * Overlay matching models.dev `opencode.models` for windows / input /
- * reasoning. OPENCODE_MODELS is the offline fallback only.
+ * with official no-key `Bearer public`, keep official Free ids that Zen
+ * still lists. Overlay matching models.dev `opencode.models` for windows /
+ * input / reasoning. OPENCODE_MODELS is the offline fallback only.
  */
 
 import {
@@ -12,8 +12,6 @@ import {
   OPENCODE_MODELS,
   OPENCODE_MODELS_DEV_URL,
   OPENCODE_MODELS_URL,
-  OPENCODE_REFERER,
-  OPENCODE_TITLE,
   OPENCODE_USER_AGENT,
   OPENCODE_VISION_INPUT,
   isOpencodeFreeSlug,
@@ -167,9 +165,6 @@ export async function refreshOpencodeCatalog({ fetchFn = fetch, signal, force = 
         headers: {
           accept: 'application/json',
           ...opencodeUpstreamHeaders(),
-          'user-agent': OPENCODE_USER_AGENT,
-          'http-referer': OPENCODE_REFERER,
-          'x-title': OPENCODE_TITLE,
         },
         signal,
       }),

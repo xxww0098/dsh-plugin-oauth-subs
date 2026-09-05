@@ -28,7 +28,7 @@ Open **Settings → OAuth subs**. One card per account (quota on every card; Oll
 | Cursor | PKCE poll `cursor.com/loginDeepControl`; or **Import local Cursor** | `openai-completions` | Connect `agentn.us.api5.cursor.sh` `AgentService/Run` |
 | Ollama Cloud | Paste API key / import `OLLAMA_API_KEY` | `openai-completions` | `https://ollama.com/v1/chat/completions` |
 | Kimi Code Plan | Device-code (no PKCE); import `~/.kimi-code/credentials/kimi-code.json`; optional `KIMI_API_KEY` | `openai-completions` | `https://api.kimi.com/coding/v1/chat/completions` |
-| OpenCode Free | One-click anonymous enable (no account, no API key) | `openai-completions` | `https://opencode.ai/zen/v1/chat/completions` (no Authorization) |
+| OpenCode Free | One-click anonymous enable (no account, no API key) | `openai-completions` | `https://opencode.ai/zen/v1/chat/completions` (`Bearer public` + `x-opencode-session`) |
 
 | Path | Family |
 |---|---|

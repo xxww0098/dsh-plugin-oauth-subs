@@ -111,10 +111,10 @@ src/
       cache.ts             prefix-hash; strip Codex/Grok fields
     opencode/              OpenCode Zen anonymous free (opencode.ai/zen/v1)
       README.md            family design: login, chat, quota, cache (traceable)
-      index.ts             catalog floor, anonymous session, hop headers (no Authorization)
+      index.ts             catalog floor, anonymous session, hop headers (`Bearer public`)
       catalog.ts           live GET /zen/v1/models ∩ official Free allowlist; models.dev overlay
       request.ts           Completions reasoning_effort; Muse chat ↔ Zen /v1/responses
-      cache.ts             strip Codex/Grok fields; no sticky id (non-fix)
+      cache.ts             strip Codex/Grok fields; x-opencode-session / x-opencode-request
   ui/                      React Settings (classic-script factory)
     client.ts
   utils/                   shared, provider-agnostic
@@ -371,13 +371,19 @@ OpenCode:  drop Codex/Grok cache fields; no sticky conversation id (non-fix)
 
 **OpenCode** (`src/oauth/opencode/cache.ts`)
 
-- Zen `/v1/chat/completions` has no documented conversation / shard /
-  cache-read field. Do **not** invent `cached_tokens` or a sticky id.
-  `applyOpencodeCache` only strips Codex/Grok fields.
-- Fallback constant `dsh-opencode` is analyzer-only; it is **not** written
-  upstream. Never `Date.now()`.
-- No Codex `session-id` / `prompt_cache_key`, no Grok `x-grok-conv-id`.
-- Hits: none documented. DSH hit rate stays 0%.
+- Zen sticky provider + prompt cache key off `x-opencode-session`
+  (anomalyco/opencode v1.18.29 `handler.ts` `stickyId`; Go docs).
+  `x-opencode-request` is one UUID per DSH request. `x-opencode-client: cli`
+  is Flag default (on `opencodeUpstreamHeaders`). Body still strips Codex/Grok
+  fields — Zen does not take `prompt_cache_key`.
+- Fallback `dsh-opencode` **is** written as `x-opencode-session` (official
+  always sends a session id; empty falls back to IP and mixes chats).
+  Never `Date.now()`.
+- No Codex `session-id` / `prompt_cache_key`, no Grok `x-grok-conv-id`,
+  no non-opencode `x-session-affinity` / `X-Session-Id`, no invented
+  `x-opencode-project` / `x-parent-session-id`.
+- Hits: `cache_read_input_tokens` / `cached_tokens` →
+  `prompt_tokens_details.cached_tokens` when the field appears.
 
 ### New family checklist (cache)
 
@@ -405,7 +411,7 @@ When adding `src/oauth/<id>/`:
 | Cursor | Agent conversation (`conversation_id`) | `conversationId` + model; fallback `dsh-cursor:<model>`; `x-request-id` = `x-original-request-id`; hashed turn ids | extra DSH snapshots as extra `root_prompt_messages_json` system blobs | `TurnEndedUpdate.cache_read_tokens` → `cached_tokens` |
 | Ollama | none documented | no sticky conversation id (non-fix); `dsh-ollama` analyzer-only | n/a | none documented (`cached_tokens` if a field appears) |
 | Kimi | prefix hash of leading system + history | no shard key; `dsh-kimi` analyzer-only | extra system at **messages suffix** | none documented (`cached_tokens` if a field appears) |
-| OpenCode | none documented | no sticky conversation id (non-fix); `dsh-opencode` analyzer-only | n/a | none documented (`cached_tokens` if a field appears) |
+| OpenCode | Zen sticky + prefix cache | `x-opencode-session` = DSH pin; `x-opencode-request` per hop; `x-opencode-client: cli` | n/a | `cache_read_input_tokens` / `cached_tokens` |
 
 ### Do not
 
@@ -455,7 +461,7 @@ invariant list. When the two disagree, fix the README.
 | Cursor | `openai-completions` | Native is Connect/protobuf `AgentService/Run` | Completions adapter `POST /cursor/v1/chat/completions` |
 | Ollama | `openai-completions` | Native is `/api/chat`. Cloud also serves OpenAI `https://ollama.com/v1/chat/completions` (401 without Bearer; Factory docs use that `/v1`). | thin passthrough `POST /ollama/v1/chat/completions` → `https://ollama.com/v1/chat/completions` |
 | Kimi | `openai-completions` | Kimi Code Plan default is OpenAI Completions at `api.kimi.com/coding/v1`. Do **not** invent `kimi-openai-completions`. | thin hop `POST /kimi/v1/chat/completions` → `https://api.kimi.com/coding/v1/chat/completions` |
-| OpenCode | `openai-completions` | Native is OpenAI Completions at `https://opencode.ai/zen/v1` for most free models. Muse Spark is Responses-only on Zen. Any unrecognized Authorization 401s. Do **not** invent a fourth api. | thin hop `POST /opencode/v1/chat/completions` → `https://opencode.ai/zen/v1/chat/completions` (no Authorization). Muse (`muse-spark*`): translate chat → Zen `/v1/responses` → chat.completion |
+| OpenCode | `openai-completions` | Native is OpenAI Completions at `https://opencode.ai/zen/v1` for most free models. Muse Spark is Responses-only on Zen. Official no-key is `Authorization: Bearer public` (Zen treats `public` as no key; any other bearer including store sentinel `anonymous` is a real key). Do **not** invent a fourth api. | thin hop `POST /opencode/v1/chat/completions` → `https://opencode.ai/zen/v1/chat/completions` (`Bearer public` + `x-opencode-session`). Muse (`muse-spark*`): translate chat → Zen `/v1/responses` → chat.completion |
 
 `baseURL` must match how that SDK posts. Anthropic SDK posts
 `{baseURL}/v1/messages`, so GLM is `${origin}/glm` (not `${origin}/glm/v1`).
