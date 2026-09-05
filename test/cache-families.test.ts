@@ -26,12 +26,13 @@ test('each family owns its cache id helper (same clip, separate modules)', () =>
   assert.equal(grokCacheSessionId(null), undefined)
 })
 
-test('Codex cache writes prompt_cache_key and session-id headers', () => {
+test('Codex cache writes prompt_cache_key and session/thread headers', () => {
   const { payload, cacheSessionId } = applyCodexCache({ session_id: 'sess-codex', prompt_cache_retention: '24h' })
   assert.equal(payload.prompt_cache_key, 'sess-codex')
   assert.equal(Object.hasOwn(payload, 'session_id'), false)
   assert.deepEqual(codexCacheHeaders(cacheSessionId), {
     'session-id': 'sess-codex',
+    'thread-id': 'sess-codex',
     'x-client-request-id': 'sess-codex',
   })
 })
@@ -72,6 +73,7 @@ test('Grok cache writes prompt_cache_key and grok-build headers, never Codex hea
     'x-grok-model-override': 'grok-4.6',
   })
   assert.equal(Object.hasOwn(headers, 'session-id'), false)
+  assert.equal(Object.hasOwn(headers, 'thread-id'), false)
   assert.equal(Object.hasOwn(headers, 'x-client-request-id'), false)
 
   const retry = grokAffinityHeaders(cacheSessionId, { reqId: 'req-1', retryAttempt: 2 })

@@ -11,7 +11,7 @@
 |---|---|
 | [`index.ts`](index.ts) | 客户端 id、端点、目录、PKCE authorize、换票、刷新、上游头 |
 | [`request.ts`](request.ts) | Responses 体：把 `input` 里的 system/developer 抬到 `instructions`，后缀停放，剥 gpt-5.6 拒收字段 |
-| [`cache.ts`](cache.ts) | `prompt_cache_key` + `session-id` / `x-client-request-id`。禁止给别的家族用 |
+| [`cache.ts`](cache.ts) | `prompt_cache_key` + `session-id` / `thread-id` / `x-client-request-id`。禁止给别的家族用 |
 
 调度：[`../proxy.ts`](../proxy.ts) `family === 'codex'` → `normalizeCodexResponsesBody` + `applyCodexCache` + `codexCacheHeaders`。
 额度：[`../quota.ts`](../quota.ts) `fetchCodexQuota` / `parseCodexUsage` / `consumeCodexReset`。
@@ -26,7 +26,7 @@
 | `client_id` | `app_EMoamEEZ73f0CkXaXp7hrann` |
 | authorize | `https://auth.openai.com/oauth/authorize` |
 | token | `https://auth.openai.com/oauth/token` |
-| originator / UA | `codex_cli_rs` / `codex_cli_rs/0.153.3` |
+| originator / UA | `codex_cli_rs` / `codex_cli_rs/0.153.4` |
 | loopback | `localhost:1455`，失败再 `1457`；path `/auth/callback` |
 | 换票 | `application/x-www-form-urlencoded` + PKCE |
 | 刷新 | JSON `{ client_id, grant_type, refresh_token }` |
@@ -45,13 +45,13 @@ DSH `api: openai-responses`。ChatGPT 订阅后端就是 Responses，三种闭�
 DSH  →  本机 Responses 代理  →  POST chatgpt.com/backend-api/codex/responses
 ```
 
-头：`codexUpstreamHeaders`（`Authorization`、`chatgpt-account-id`、`originator`、`openai-beta: responses=experimental`）。
+头：`codexUpstreamHeaders`（`Authorization`、`chatgpt-account-id`、`originator`、`openai-beta: responses=experimental`）+ `session-id` / `thread-id` / `x-client-request-id`。同一 DSH 请求重试时回放 `x-codex-turn-state`。
 Fast：body `service_tier` 从 `fast` 改成 `priority`，并带 `x-codex-routing-hint`（`codexRoutingHint`，见 openai/codex#37345）。
 `store` 必须 `false`。`include` 默认 `reasoning.encrypted_content`。剥掉 `prompt_cache_retention` / `prompt_cache_options` / `safety_identifier` / `max_output_tokens`（gpt-5.6 400，Codex #39397）。
 
 ## 模型
 
-`CODEX_MODELS` 是唯一目录源（对照 Codex CLI `models.json` 0.153.3 / 2026-09-03）。
+`CODEX_MODELS` 是唯一目录源（对照 Codex CLI `models.json` 0.153.4 / 2026-09-04）。
 `gpt-6-astra` 排第一（默认 258K input，Fast + 872K `-900k` + `max`）。`gpt-5.3-codex` 不收录：订阅账号 400 “not supported when using Codex with a ChatGPT account”。
 思考深度：5.4 / 5.5 / Spark → `low`–`xhigh`（无 `minimal` / `ultra`）；Astra 和 5.6 Sol/Terra/Luna 加 `max`。
 
@@ -73,15 +73,16 @@ Fast：body `service_tier` 从 `fast` 改成 `priority`，并带 `x-codex-routin
 | 1 | `liftInstructions` | 前缀 system/developer 抬成顶层 `instructions` |
 | 2 | `stabilizeInputPrefix` | 已有 `instructions` 不变；多出来的快照改成 **input 末尾** 的 developer |
 | 3 | `applyCodexCache` | `prompt_cache_key` ← DSH `prompt_cache_key` 或 `session_id`（`codexCacheSessionId` 清洗，最长 64）。抄完后从上游 JSON **删掉** `session_id`（chatgpt.com `Unsupported parameter`） |
-| 4 | `codexCacheHeaders` | `session-id` **等于** `x-client-request-id` **等于** `prompt_cache_key` |
+| 4 | `codexCacheHeaders` | `session-id` = body `prompt_cache_key`；`thread-id` = `x-client-request-id`。DSH 一轮对话就是一条 thread，三值相同。官方 CLI 子代理共享 session、各有 thread |
 
-健康长会话：加权命中 ≥ 80%，**零** affinity miss。压缩 / 计划重建造成的 0 命中不是分片 miss。
+健康长会话：加权命中 ≥ 80%，**零** affinity miss。压缩 / 计划重建造成的 0 命中不是分片 miss。同一 DSH 请求的重试回放 `x-codex-turn-state`（CLI 同 turn 粘滞）。
 
 **禁止**把这套头抄给 Grok / GLM / Kiro / Antigravity。Grok 忽略 Codex `session-id`。
 
 ## 不要
 
 - 不要用 `Date.now()` 当 `session-id`。
+- 不要发明 `x-codex-installation-id` / `x-codex-turn-metadata` / `parent-thread-id`（官方 CLI 有，本 hop 不发）。
 - 不要把 DSH `session_id` 送上 chatgpt.com（抄到 `prompt_cache_key` 和亲和头之后删掉）。
 - 不要把 `prompt_cache_retention` 送上去。
 - 不要把 Fast 只写 body 不写 `x-codex-routing-hint`（回显会一直是 default）。

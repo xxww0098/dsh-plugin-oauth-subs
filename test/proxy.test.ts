@@ -61,9 +61,10 @@ test('proxy requires the local bearer and forwards Codex Responses', async () =>
     assert.equal(seen[0].headers.authorization, 'Bearer codex-tok')
     assert.equal(seen[0].headers['chatgpt-account-id'], 'acct')
     assert.equal(seen[0].headers.originator, 'codex_cli_rs')
-    assert.equal(seen[0].headers['user-agent'], 'codex_cli_rs/0.153.3')
-    assert.equal(seen[0].headers['openai-version'], '0.153.3')
+    assert.equal(seen[0].headers['user-agent'], 'codex_cli_rs/0.153.4')
+    assert.equal(seen[0].headers['openai-version'], '0.153.4')
     assert.equal(seen[0].headers['session-id'], 'session-cache-1')
+    assert.equal(seen[0].headers['thread-id'], 'session-cache-1')
     assert.equal(seen[0].headers['x-client-request-id'], 'session-cache-1')
     assert.equal(seen[0].headers['x-grok-conv-id'], undefined)
   } finally {
@@ -587,14 +588,14 @@ const CREATED = { type: 'response.created', response: { id: 'r1' } }
 const DELTA = { type: 'response.output_text.delta', delta: 'hi' }
 const DONE = { type: 'response.completed', response: { id: 'r1' } }
 
-function streamingUpstream(chunks, { failAfter } = {}) {
+function streamingUpstream(chunks, { failAfter, headers = SSE } = {}) {
   return new Response(new ReadableStream({
     start(controller) {
       for (const chunk of chunks) controller.enqueue(new TextEncoder().encode(chunk))
       if (failAfter === undefined) controller.close()
       else setTimeout(() => controller.error(Object.assign(new Error('terminated'), { code: 'UND_ERR_SOCKET' })), failAfter)
     },
-  }), { status: 200, headers: SSE })
+  }), { status: 200, headers })
 }
 
 async function withProxy(fetchFn, run) {
@@ -640,6 +641,26 @@ test('a stream that ends carrying only the preamble is retried, and the client s
     assert.equal(response.status, 200)
     assert.equal(text.match(/response\.created/g).length, 1, 'the retried preamble must not reach the client twice')
     assert.match(text, /response\.completed/)
+  })
+})
+
+test('Codex retries replay x-codex-turn-state from the failed attempt', async () => {
+  const seen = []
+  let calls = 0
+  const fetchFn = async (_url, init) => {
+    calls += 1
+    seen.push(init.headers)
+    return calls === 1
+      ? streamingUpstream([sse(CREATED)], { headers: { ...SSE, 'x-codex-turn-state': 'turn-abc' } })
+      : streamingUpstream([sse(CREATED, DELTA, DONE)])
+  }
+  await withProxy(fetchFn, async (port) => {
+    const response = await post(port)
+    await response.text()
+    assert.equal(response.status, 200)
+    assert.equal(calls, 2)
+    assert.equal(seen[0]['x-codex-turn-state'], undefined)
+    assert.equal(seen[1]['x-codex-turn-state'], 'turn-abc')
   })
 })
 
@@ -812,6 +833,7 @@ test('proxy falls back to session_id and writes the clipped cache key back into 
       body: JSON.stringify({ model: 'gpt-5.6-terra', session_id: 'sess-from-dsh' }),
     })
     assert.equal(seen[0].headers['session-id'], 'sess-from-dsh')
+    assert.equal(seen[0].headers['thread-id'], 'sess-from-dsh')
     assert.equal(seen[0].headers['x-client-request-id'], 'sess-from-dsh')
     assert.equal(seen[0].body.prompt_cache_key, 'sess-from-dsh')
     assert.equal(Object.hasOwn(seen[0].body, 'session_id'), false)
@@ -826,6 +848,7 @@ test('proxy falls back to session_id and writes the clipped cache key back into 
       }),
     })
     assert.equal(seen[1].headers['session-id'], 'sess-from-dsh')
+    assert.equal(seen[1].headers['thread-id'], 'sess-from-dsh')
     assert.equal(seen[1].body.prompt_cache_key, 'sess-from-dsh')
     assert.equal(Object.hasOwn(seen[1].body, 'session_id'), false)
 
@@ -836,6 +859,8 @@ test('proxy falls back to session_id and writes the clipped cache key back into 
       body: JSON.stringify({ model: 'gpt-5.6-terra', prompt_cache_key: long }),
     })
     assert.equal(seen[2].headers['session-id'].length, 64)
+    assert.equal(seen[2].headers['thread-id'], seen[2].headers['session-id'])
+    assert.equal(seen[2].headers['x-client-request-id'], seen[2].headers['session-id'])
     assert.equal(seen[2].body.prompt_cache_key.length, 64)
     assert.equal(seen[2].body.prompt_cache_key, seen[2].headers['session-id'])
     assert.equal(seen[2].body.prompt_cache_key, long.replace(/[^A-Za-z0-9._:-]/g, '-').slice(0, 64))
@@ -850,6 +875,7 @@ test('proxy drops an unusable Codex cache key rather than forwarding it', async 
       body: JSON.stringify({ model: 'gpt-5.6-terra', prompt_cache_key: '   ' }),
     })
     assert.equal(seen[0].headers['session-id'], undefined)
+    assert.equal(seen[0].headers['thread-id'], undefined)
     assert.equal(seen[0].headers['x-client-request-id'], undefined)
     assert.equal(seen[0].body.prompt_cache_key, undefined)
   })
@@ -880,6 +906,8 @@ test('proxy parks extra leading developer and strips prompt_cache_retention on t
     assert.equal(seen[0].body.input[2].role, 'developer')
     assert.deepEqual(seen[0].body.input[2].content, [{ type: 'input_text', text: 'Plan: toggle all skills.' }])
     assert.equal(seen[0].headers['session-id'], 'session-cache-1')
+    assert.equal(seen[0].headers['thread-id'], 'session-cache-1')
+    assert.equal(seen[0].headers['x-client-request-id'], 'session-cache-1')
   })
 })
 
@@ -995,6 +1023,7 @@ test('Grok pins cache with grok-build headers and does not inherit Codex headers
       body: JSON.stringify({ model: 'grok-4.6', session_id: 'sess-from-dsh', prompt_cache_key: 'k1' }),
     })
     assert.equal(seen[0].headers['session-id'], undefined)
+    assert.equal(seen[0].headers['thread-id'], undefined)
     assert.equal(seen[0].headers['x-client-request-id'], undefined)
     assert.equal(seen[0].headers['x-grok-conv-id'], 'k1')
     assert.equal(seen[0].headers['x-grok-session-id'], 'k1')
