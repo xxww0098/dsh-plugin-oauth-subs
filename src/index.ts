@@ -289,9 +289,11 @@ export {
   REPO_URL,
   REPO_SLUG,
   installedVersion,
+  fresherVersion,
   fetchLatest,
   localUpdateInfo,
   profileFromBaseUrl,
   pluginUpdateCommand,
   runPluginUpdate,
+  applyHostUpdate,
 } from './utils/update.js'

@@ -4,7 +4,7 @@
  */
 export declare class AuthController {
     #private;
-    constructor({ authPath, prefix, origin, settings, grokLogin, onAuthChanged, models, fetchFn, quotaTtlMs, spawnFn, profile, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, opencodeDiscover, opencodeAutoEnable }: {
+    constructor({ authPath, prefix, origin, settings, grokLogin, onAuthChanged, models, fetchFn, quotaTtlMs, spawnFn, profile, readFileFn, updateEnv, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, opencodeDiscover, opencodeAutoEnable }: {
         authPath: any;
         prefix: any;
         origin: any;
@@ -16,6 +16,8 @@ export declare class AuthController {
         quotaTtlMs: any;
         spawnFn: any;
         profile: any;
+        readFileFn: any;
+        updateEnv: any;
         cursorAutoImport: any;
         cursorImport: any;
         cursorDiscover: any;
@@ -4059,7 +4061,19 @@ export declare class AuthController {
             };
         };
         update: {
-            version: string;
+            version: any;
+            running: any;
+            disk: any;
+            resolved: any;
+            runningPath: string;
+            diskPath: string;
+            resolvedPath: any;
+            copies: {
+                path: string;
+                version: any;
+            }[];
+            staleProcess: boolean;
+            staleLoad: boolean;
             platform: string;
             repo: string;
             repoSlug: string;
@@ -4074,7 +4088,7 @@ export declare class AuthController {
             command?: undefined;
             error?: undefined;
         };
-        version: string;
+        version: any;
         status: string;
         latest: {
             tag: string;
@@ -4089,18 +4103,45 @@ export declare class AuthController {
             url: any;
             size: any;
         }[];
+        running: any;
+        disk: any;
+        resolved: any;
+        runningPath: string;
+        diskPath: string;
+        resolvedPath: any;
+        copies: {
+            path: string;
+            version: any;
+        }[];
+        staleProcess: boolean;
+        staleLoad: boolean;
         platform: string;
         repo: string;
         repoSlug: string;
     } | {
+        version: any;
+        disk: any;
+        status: string;
         apply: {
             status: string;
             restart: boolean;
             command: any;
             error?: undefined;
         };
-        version: string;
-        status: string;
+        running: any;
+        resolved: any;
+        runningPath: string;
+        diskPath: string;
+        resolvedPath: any;
+        copies: {
+            path: string;
+            version: any;
+        }[];
+        staleProcess: boolean;
+        staleLoad: boolean;
+        platform: string;
+        repo: string;
+        repoSlug: string;
         latest: {
             tag: string;
             name: any;
@@ -4114,17 +4155,29 @@ export declare class AuthController {
             url: any;
             size: any;
         }[];
-        platform: string;
-        repo: string;
-        repoSlug: string;
     } | {
+        version: any;
         apply: {
             status: any;
             error: any;
             command: any;
             restart?: undefined;
         };
-        version: string;
+        running: any;
+        disk: any;
+        resolved: any;
+        runningPath: string;
+        diskPath: string;
+        resolvedPath: any;
+        copies: {
+            path: string;
+            version: any;
+        }[];
+        staleProcess: boolean;
+        staleLoad: boolean;
+        platform: string;
+        repo: string;
+        repoSlug: string;
         status: string;
         latest: {
             tag: string;
@@ -4139,9 +4192,6 @@ export declare class AuthController {
             url: any;
             size: any;
         }[];
-        platform: string;
-        repo: string;
-        repoSlug: string;
     } | {
         status: string;
         error: string;
@@ -4153,7 +4203,19 @@ export declare class AuthController {
             command?: undefined;
             error?: undefined;
         };
-        version: string;
+        version: any;
+        running: any;
+        disk: any;
+        resolved: any;
+        runningPath: string;
+        diskPath: string;
+        resolvedPath: any;
+        copies: {
+            path: string;
+            version: any;
+        }[];
+        staleProcess: boolean;
+        staleLoad: boolean;
         platform: string;
         repo: string;
         repoSlug: string;
@@ -8345,7 +8407,19 @@ export declare class AuthController {
             };
         };
         update: {
-            version: string;
+            version: any;
+            running: any;
+            disk: any;
+            resolved: any;
+            runningPath: string;
+            diskPath: string;
+            resolvedPath: any;
+            copies: {
+                path: string;
+                version: any;
+            }[];
+            staleProcess: boolean;
+            staleLoad: boolean;
             platform: string;
             repo: string;
             repoSlug: string;
@@ -12354,7 +12428,19 @@ export declare class AuthController {
             };
         };
         update: {
-            version: string;
+            version: any;
+            running: any;
+            disk: any;
+            resolved: any;
+            runningPath: string;
+            diskPath: string;
+            resolvedPath: any;
+            copies: {
+                path: string;
+                version: any;
+            }[];
+            staleProcess: boolean;
+            staleLoad: boolean;
             platform: string;
             repo: string;
             repoSlug: string;

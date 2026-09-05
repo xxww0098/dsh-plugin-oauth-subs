@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
-import { mkdtemp } from 'node:fs/promises'
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { test } from 'node:test'
 import { AuthController } from '../lib/oauth/controller.js'
 import { saveSession } from '../lib/oauth/store.js'
@@ -491,6 +491,63 @@ function spawnChild(code = 0) {
 test('checkUpdate compare-only never spawns dsh', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
   let spawned = 0
+  let running = '0.0.1'
+  const controller = new AuthController({
+    authPath: join(dir, 'auth.json'),
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+    fetchFn: githubLatest('v9.9.9'),
+    spawnFn: () => { spawned += 1; running = '9.9.9'; return spawnChild(0) },
+    profile: 'web',
+    updateEnv: { DSH_HOME: dir },
+    readFileFn: (path) => {
+      const p = String(path).replace(/\\/g, '/')
+      if (p.includes('/node_modules/dsh-plugin-oauth-subs/package.json')) {
+        return JSON.stringify({ version: running })
+      }
+      return JSON.stringify({ version: running })
+    },
+  })
+  const check = await controller.checkUpdate({ apply: false })
+  assert.equal(check.status, 'update')
+  assert.equal(check.version, '0.0.1')
+  assert.equal(check.apply.status, 'none')
+  assert.equal(spawned, 0)
+  const current = await controller.checkUpdate({ apply: true })
+  assert.equal(current.apply.status, 'installed')
+  assert.equal(current.apply.restart, true)
+  assert.equal(current.version, '9.9.9')
+  assert.match(current.apply.command, /dsh plugin --profile web (update dsh-plugin-oauth-subs|add https:\/\/github.com\/xxww0098\/dsh-plugin-oauth-subs#v9\.9\.9)/)
+  assert.equal(spawned >= 1, true)
+})
+
+test('checkUpdate re-reads installed version after a successful apply', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  let running = '0.0.70'
+  const controller = new AuthController({
+    authPath: join(dir, 'auth.json'),
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+    fetchFn: githubLatest('v0.0.71'),
+    spawnFn: () => { running = '0.0.71'; return spawnChild(0) },
+    profile: 'web',
+    updateEnv: { DSH_HOME: dir },
+    readFileFn: () => JSON.stringify({ version: running }),
+  })
+  const before = await controller.checkUpdate({ apply: false })
+  assert.equal(before.version, '0.0.70')
+  assert.equal(before.status, 'update')
+  const after = await controller.checkUpdate({ apply: true })
+  assert.equal(after.apply.status, 'installed')
+  assert.equal(after.version, '0.0.71')
+  assert.notEqual(after.version, before.version)
+})
+
+test('checkUpdate does not claim installed when dsh exits 0 but version stays', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  let spawned = 0
   const controller = new AuthController({
     authPath: join(dir, 'auth.json'),
     prefix: 'oauth',
@@ -499,17 +556,15 @@ test('checkUpdate compare-only never spawns dsh', async () => {
     fetchFn: githubLatest('v9.9.9'),
     spawnFn: () => { spawned += 1; return spawnChild(0) },
     profile: 'web',
+    updateEnv: { DSH_HOME: dir },
+    readFileFn: () => JSON.stringify({ version: '0.0.1' }),
   })
-  const check = await controller.checkUpdate({ apply: false })
-  assert.equal(check.status, 'update')
-  assert.equal(check.apply.status, 'none')
-  assert.equal(spawned, 0)
-  const current = await controller.checkUpdate({ apply: true })
-  assert.equal(current.status, 'update')
-  assert.equal(current.apply.status, 'installed')
-  assert.equal(current.apply.restart, true)
-  assert.equal(current.apply.command, 'dsh plugin --profile web update dsh-plugin-oauth-subs')
-  assert.equal(spawned, 1)
+  const result = await controller.checkUpdate({ apply: true })
+  assert.equal(result.status, 'update')
+  assert.equal(result.apply.status, 'unchanged')
+  assert.match(result.apply.error, /still 0\.0\.1/)
+  assert.match(result.apply.command, /dsh plugin --profile web add /)
+  assert.equal(spawned, 2)
 })
 
 test('checkUpdate does not reinstall when already current', async () => {
@@ -523,6 +578,7 @@ test('checkUpdate does not reinstall when already current', async () => {
     fetchFn: githubLatest(`v${installedVersion()}`),
     spawnFn: () => { spawned += 1; return spawnChild(0) },
     profile: 'web',
+    updateEnv: { DSH_HOME: dir },
   })
   const result = await controller.checkUpdate({ apply: true })
   assert.equal(result.status, 'current')
@@ -540,9 +596,36 @@ test('checkUpdate reports a failed dsh plugin update', async () => {
     fetchFn: githubLatest('v9.9.9'),
     spawnFn: () => spawnChild(1),
     profile: 'web',
+    updateEnv: { DSH_HOME: dir },
   })
   const result = await controller.checkUpdate({ apply: true })
   assert.equal(result.status, 'update')
   assert.equal(result.apply.status, 'failed')
-  assert.match(result.apply.command, /dsh plugin --profile web update/)
+  assert.match(result.apply.command, /dsh plugin --profile web (update|add)/)
+})
+
+test('checkUpdate stays update when disk is latest but this process is older', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const home = join(dir, 'dsh-home')
+  const manifest = join(home, 'profiles', 'web', 'node_modules', 'dsh-plugin-oauth-subs', 'package.json')
+  await mkdir(dirname(manifest), { recursive: true })
+  await writeFile(manifest, `${JSON.stringify({ name: 'dsh-plugin-oauth-subs', version: '9.9.9' })}\n`)
+  const controller = new AuthController({
+    authPath: join(dir, 'auth.json'),
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+    fetchFn: githubLatest('v9.9.9'),
+    spawnFn: () => spawnChild(0),
+    profile: 'web',
+    updateEnv: { DSH_HOME: home },
+  })
+  const snap = await controller.snapshot()
+  assert.equal(snap.update.disk, '9.9.9')
+  assert.equal(snap.update.version, installedVersion())
+  assert.equal(snap.update.staleProcess, snap.update.running !== '9.9.9')
+  const result = await controller.checkUpdate({ apply: false })
+  assert.equal(result.status, 'update')
+  assert.equal(result.disk, '9.9.9')
+  assert.equal(result.version, installedVersion())
 })
