@@ -320,6 +320,26 @@ export function glmAnthropicHeaders(session, sessionId) {
   }
 }
 
+const GLM_START_CAPTCHA_MESSAGE = 'GLM Start Plan inference is ZCode Desktop-only. zcode-plan returns 3007 captcha verify failed. The imported JWT routes correctly, but chat needs Aliyun captcha (X-Aliyun-Captcha-Verify-Param) that only the Desktop renderer issues. This hop does not solve captcha. Use ZCode.app for trial chat, or a paid Coding Plan key on api.z.ai / open.bigmodel.cn.'
+
+/** zcode-plan inference is captcha-gated. Annotate 3007; do not invent a verify-param. */
+export function annotateGlmStartPlanError(parsed, url) {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return parsed
+  if (!String(url ?? '').includes('zcode-plan')) return parsed
+  const code = parsed.code ?? parsed.error?.code
+  const msg = String(parsed.msg ?? parsed.message ?? parsed.error?.message ?? '')
+  if (code !== 3007 && !/captcha verify failed/i.test(msg)) return parsed
+  return {
+    ...parsed,
+    error: {
+      ...(typeof parsed.error === 'object' && parsed.error ? parsed.error : {}),
+      type: parsed.error?.type ?? 'invalid_request_error',
+      code: 3007,
+      message: GLM_START_CAPTCHA_MESSAGE,
+    },
+  }
+}
+
 function codingPlanJsonHeaders(extra = {}) {
   return {
     accept: 'application/json',

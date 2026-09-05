@@ -293,6 +293,41 @@ test('proxy GLM /v1/models is Flash Free only for Start Plan', async () => {
   }
 })
 
+test('proxy GLM Start Plan 3007 is annotated as Desktop-only captcha', async () => {
+  const fetchFn = async () => new Response(JSON.stringify({ code: 3007, msg: 'captcha verify failed' }), {
+    status: 400,
+    headers: { 'content-type': 'application/json' },
+  })
+  const proxy = createProxy({
+    port: 0,
+    apiKey: 'secret-key',
+    fetchFn,
+    tokens: {
+      glm: { session: async () => ({ accessToken: 'start-jwt', region: 'bigmodel', planKind: 'start' }) },
+    },
+  })
+  const server = await proxy.listen()
+  const { port } = server.address()
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/glm/v1/messages`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer secret-key', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'glm-5.3-flash',
+        system: 'You are GLM.',
+        messages: [{ role: 'user', content: 'hi' }],
+      }),
+    })
+    const body = await res.json()
+    assert.equal(res.status, 400)
+    assert.equal(body.code, 3007)
+    assert.match(body.error.message, /Desktop-only/)
+    assert.match(body.error.message, /does not solve captcha/)
+  } finally {
+    await proxy.close()
+  }
+})
+
 test('proxy asks upstream for SSE when the body streams', async () => {
   const seen = []
   const fetchFn = async (url, init) => {

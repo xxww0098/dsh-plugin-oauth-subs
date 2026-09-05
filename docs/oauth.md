@@ -79,7 +79,7 @@ CLIProxyAPI 同时包了 Codex / Grok / Antigravity 等多家。**只**在 Antig
 
 指纹来自 Desktop `zcode.cjs`（`eao` / `rao`），不是第三方包装。CLI poll 走 `zcode.z.ai`，provider 只能是 `zai` / `bigmodel`。
 
-**不要发明：** Codex `prompt_cache_key`、Grok 分片头、第四种 DSH `api`。不要宣称切 Anthropic 就能吃 150%（那是 Desktop 身份，不是协议）。
+**不要发明：** Codex `prompt_cache_key`、Grok 分片头、第四种 DSH `api`。不要宣称切 Anthropic 就能吃 150%（那是 Desktop 身份，不是协议）。不要发明 `X-Aliyun-Captcha-Verify-Param` 或在本 hop 解 zcode-plan 验证码（3007 是 Desktop 渲染墙，不是指纹缺口）。
 
 ## Kiro
 

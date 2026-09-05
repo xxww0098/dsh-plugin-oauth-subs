@@ -21,6 +21,7 @@ import {
   glmAnthropicUrl,
   GLM_START_ANTHROPIC_URL,
   GLM_START_MODELS,
+  annotateGlmStartPlanError,
   glmCatalogModels,
   isGlmStartPlan,
   normalizeGlmPlanKind,
@@ -857,6 +858,25 @@ test('Start Plan harness catalog is Flash Free only', () => {
   assert.deepEqual(ids, ['glm-5.3-flash'])
   assert.deepEqual(names, ['GLM-5.3-Flash Free'])
   assert.equal(providers['oauth-glm'].models[0].id.includes('free'), false)
+})
+
+test('annotateGlmStartPlanError explains 3007 on zcode-plan only', () => {
+  const raw = { code: 3007, msg: 'captcha verify failed' }
+  const annotated = annotateGlmStartPlanError(raw, GLM_START_ANTHROPIC_URL)
+  assert.equal(annotated.code, 3007)
+  assert.match(annotated.error.message, /Desktop-only/)
+  assert.match(annotated.error.message, /3007/)
+  assert.equal(JSON.stringify(annotated).includes('X-Aliyun-Captcha-Verify-Param'), true)
+  const coding = annotateGlmStartPlanError(raw, 'https://open.bigmodel.cn/api/anthropic/v1/messages')
+  assert.equal(coding, raw)
+  assert.equal(annotateGlmStartPlanError({ code: 401, msg: 'token invalid' }, GLM_START_ANTHROPIC_URL).error, undefined)
+})
+
+test('glmDesktopHeaders does not invent Aliyun captcha proof', () => {
+  const headers = glmAnthropicHeaders(glmSession({ accessToken: 'start-jwt', planKind: 'start' }), 'sess')
+  assert.equal(headers['X-Aliyun-Captcha-Verify-Param'], undefined)
+  assert.equal(headers['x-aliyun-captcha-verify-param'], undefined)
+  assert.equal(JSON.stringify(headers).toLowerCase().includes('captcha'), false)
 })
 
 test('Z.ai and BigModel accounts can coexist in the glm vault', async () => {

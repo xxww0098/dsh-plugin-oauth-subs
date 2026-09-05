@@ -2,6 +2,17 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-05：GLM Start Plan 对话 3007 captcha verify failed
+
+### 现象
+本机 Start JWT  hop `https://zcode.z.ai/api/v1/zcode-plan/anthropic/v1/messages`（有/无 Desktop 指纹、UA 3.10.1 / 3.11.2）都 `400 {"code":3007,"msg":"captcha verify failed"}`。同一 JWT 打 `open.bigmodel.cn` 是 401。去 `/v1/messages` 是 404。
+
+### 根因
+zcode-plan **推理**走阿里云风控。Desktop 渲染进程解 captcha 后带 `X-Aliyun-Captcha-Verify-Param`。config JWT + 指纹不够。不是 hop URL / 模型 id 错。
+
+### 修复
+不解开、不发明验证码头。导入 / `planKind` / Flash Free 目录留下。代理把 3007 注成 Desktop-only。试用对话用 ZCode.app；付费 Coding Plan 仍走区域 Anthropic。
+
 ## 2026-09-05：GLM Start Plan 模型目录露出 Coding Plan 三行
 
 ### 现象

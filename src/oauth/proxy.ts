@@ -12,7 +12,7 @@ import { applyCodexCache, codexCacheHeaders } from './codex/cache.js'
 import { GROK_API_URL, GROK_MODELS, grokAffinityHeaders, grokUpstreamHeaders } from './grok/index.js'
 import { applyGrokCache } from './grok/cache.js'
 import { normalizeGrokResponsesBody } from './grok/request.js'
-import { glmAnthropicHeaders, glmAnthropicUrl, glmCatalogModels, glmCodingUrl, glmUpstreamHeaders, isGlmStartPlan } from './glm/index.js'
+import { annotateGlmStartPlanError, glmAnthropicHeaders, glmAnthropicUrl, glmCatalogModels, glmCodingUrl, glmUpstreamHeaders, isGlmStartPlan } from './glm/index.js'
 import { glmCacheSessionId } from './glm/cache.js'
 import { normalizeGlmAnthropicBody, normalizeGlmChatBody } from './glm/request.js'
 import { kiroStreamingProfileArn } from './kiro/index.js'
@@ -813,6 +813,7 @@ async function attemptUpstream(response, { url, headers, body, stream, fetchFn, 
         },
       }
     }
+    if (family === 'glm') parsed = annotateGlmStartPlanError(parsed, url)
     send(response, upstream.status, parsed)
     return
   }
