@@ -117,7 +117,7 @@ export declare class AuthController {
         loggedIn: boolean;
         busy: any;
     }>;
-    catalog(): {};
+    catalog(): Promise<{}>;
     snapshot(): Promise<{
         origin: any;
         grokLogin: any;

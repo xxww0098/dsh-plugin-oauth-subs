@@ -96,6 +96,43 @@ export declare const GLM_MODELS: readonly ({
     reasoningEfforts: boolean;
     input: readonly string[];
 })[];
+/**
+ * Start Plan (体验套餐) lists only Flash. Wire id stays `glm-5.3-flash`
+ * (ZCode provider.models + zcode-plan Anthropic). Display adds Free.
+ * Do not invent `glm-5.3-flash-free` — the hop 401s before model check
+ * without a JWT; official/ZCode id is glm-5.3-flash.
+ */
+export declare const GLM_START_MODELS: readonly {
+    id: string;
+    name: string;
+    contextWindow: number;
+    maxTokens: number;
+    reasoningEfforts: Readonly<{
+        low: "low";
+        high: "high";
+        max: "max";
+    }>;
+    input: readonly string[];
+}[];
+export declare function glmCatalogModels(session: any): readonly ({
+    id: string;
+    name: string;
+    contextWindow: number;
+    maxTokens: number;
+    reasoningEfforts: Readonly<{
+        low: "low";
+        high: "high";
+        max: "max";
+    }>;
+    input: readonly string[];
+} | {
+    id: string;
+    name: string;
+    contextWindow: number;
+    maxTokens: number;
+    reasoningEfforts: boolean;
+    input: readonly string[];
+})[];
 export { GLM_BOOST_HINT, GLM_BOOST_LABEL, glmCardBoost } from './boost.js';
 export declare const GLM_PLAN_NAMES: Readonly<{
     lite: "Lite";
