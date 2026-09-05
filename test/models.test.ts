@@ -90,6 +90,9 @@ test('buildProviders only emits logged-in families with DSH api ids', () => {
   assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-6-astra-fast').reasoningEfforts.max, 'max')
   assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-6-astra-900k').reasoningEfforts.max, 'max')
   assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-6-astra-ultra'), undefined)
+  assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-6-astra').contextWindow, 258_000)
+  assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-6-astra-fast').contextWindow, 258_000)
+  assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-6-astra-900k').contextWindow, 872_000)
   assert.deepEqual(both['oauth-codex'].models.find((model) => model.id === 'gpt-5.6-sol').reasoningEfforts, {
     off: null,
     low: 'low',
