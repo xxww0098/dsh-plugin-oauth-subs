@@ -22,6 +22,7 @@ import {
   inferCursorContextWindow,
   inferCursorMaxOutputTokens,
   isCursorInternalModel,
+  mergeCursorStaticFloor,
   refreshCursorCatalog,
   resetCursorCatalogCache,
   toCursorPickerModels,
@@ -877,6 +878,35 @@ test('parseCursorTokenResponse and completeCursorLogin tag pkce', async () => {
   assert.equal(session.refreshToken, 'r')
 })
 
+test('cursor static catalog matches current Cursor docs and has no Fast rows', () => {
+  const ids = CURSOR_MODELS.map((model) => model.id)
+  assert.deepEqual(ids, [
+    'composer-2.5',
+    'grok-4.6',
+    'grok-4.5',
+    'composer-2',
+    'composer-1.5',
+    'claude-fable-5-1',
+    'claude-opus-5',
+    'claude-sonnet-5',
+    'gemini-3.1-pro',
+    'gemini-3.8-flash',
+    'gpt-5.6-sol',
+    'gpt-5.6-terra',
+    'gpt-5.6-luna',
+    'gpt-5.5',
+  ])
+  assert.equal(ids.some((id) => id.endsWith('-fast')), false)
+  assert.equal(ids.includes('default'), false)
+  assert.equal(CURSOR_MODELS.find((model) => model.id === 'grok-4.5').contextWindow, 256_000)
+  assert.equal(CURSOR_MODELS.find((model) => model.id === 'claude-opus-5').contextWindow, 300_000)
+  assert.equal(CURSOR_MODELS.find((model) => model.id === 'gpt-5.6-sol').contextWindow, 272_000)
+  assert.equal(CURSOR_MODELS.find((model) => model.id === 'claude-fable-5-1').maxTokens, 128_000)
+  const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
+  assert.equal(catalog['oauth-cursor'].models.length, CURSOR_MODELS.length)
+  assert.equal(catalog['oauth-cursor'].models[0].id, 'composer-2.5')
+})
+
 test('cursor picker collapses effort/fast/thinking/max-mode and hides tab internals', () => {
   const rows = toCursorPickerModels([
     { id: 'default', name: 'Auto' },
@@ -920,7 +950,13 @@ test('cursor picker collapses effort/fast/thinking/max-mode and hides tab intern
   assert.equal(cursorSourceIsFast('gpt-5.5-high'), false)
   assert.equal(cursorSourceIsFast('default'), false)
   assert.equal(inferCursorContextWindow('grok-4.5', 'Grok 4.5'), 256_000)
+  assert.equal(inferCursorContextWindow('grok-4.6', 'Grok 4.6'), 256_000)
+  assert.equal(inferCursorContextWindow('claude-opus-5', 'Claude Opus 5'), 300_000)
+  assert.equal(inferCursorContextWindow('claude-fable-5-1', 'Claude Fable 5.1'), 300_000)
   assert.equal(inferCursorMaxOutputTokens('gpt-5.5', 'GPT-5.5'), 128_000)
+  assert.equal(inferCursorMaxOutputTokens('claude-sonnet-5', 'Claude Sonnet 5'), 128_000)
+  assert.equal(inferCursorMaxOutputTokens('claude-fable-5-1', 'Claude Fable 5.1'), 128_000)
+
   assert.deepEqual(rows.find((row) => row.id === 'gpt-5.5').reasoningEfforts, CURSOR_REASONING)
   assert.equal(Object.hasOwn(rows.find((row) => row.id === 'gpt-5.5').reasoningEfforts, 'none'), false)
   const described = describeCatalog(catalogProviders({
@@ -942,7 +978,7 @@ test('cursor picker collapses effort/fast/thinking/max-mode and hides tab intern
 
 test('mocked GetUsableModels expands cursor catalog and yaml beyond the static 5', async () => {
   resetCursorCatalogCache()
-  const payload = frameConnect(encodeGetUsableModelsResponse([
+  const usableSource = [
     { id: 'composer-2', name: 'Composer 2' },
     { id: 'composer-1.5', name: 'Composer 1.5' },
     { id: 'claude-sonnet-5', name: 'Claude Sonnet 5' },
@@ -954,9 +990,10 @@ test('mocked GetUsableModels expands cursor catalog and yaml beyond the static 5
     { id: 'claude-4.6-sonnet-medium-thinking', name: 'Sonnet 4.6 1M Thinking' },
     { id: 'gemini-3.1-pro', name: 'Gemini 3.1 Pro' },
     { id: 'cursor-small', name: 'Tab' },
-  ]))
+  ]
+  const payload = frameConnect(encodeGetUsableModelsResponse(usableSource))
   const decoded = decodeGetUsableModelsResponse(payload)
-  assert.ok(decoded.length > CURSOR_MODELS.length)
+  assert.equal(decoded.length, usableSource.length)
   const available = decodeAvailableModelsResponse(encodeAvailableModelsResponse([
     { name: 'kimi-k2.5', clientDisplayName: 'Kimi K2.5', contextTokenLimit: 262_000 },
   ]))
@@ -1073,7 +1110,7 @@ test('refreshQuota discovery persists live cursor models into settings.yaml', as
   resetCursorCatalogCache()
 })
 
-test('empty GetUsableModels keeps the static five-row fallback', async () => {
+test('empty GetUsableModels keeps the static floor and does not invent Fast', async () => {
   resetCursorCatalogCache()
   const session = cursorSession({
     accessToken: validAccess('empty@x'),
@@ -1092,3 +1129,38 @@ test('empty GetUsableModels keeps the static five-row fallback', async () => {
   assert.equal(catalog['oauth-cursor'].models.some((model) => String(model.id).endsWith('-fast')), false)
   resetCursorCatalogCache()
 })
+
+test('stale GetUsableModels still keeps official static models on the picker', async () => {
+  resetCursorCatalogCache()
+  const session = cursorSession({
+    accessToken: validAccess('stale@x'),
+    refreshToken: 'rt-stale',
+    source: 'pkce',
+  })
+  const live = toCursorPickerModels([
+    { id: 'composer-2', name: 'Composer 2' },
+    { id: 'composer-1.5', name: 'Composer 1.5' },
+    { id: 'claude-sonnet-5', name: 'Claude Sonnet 5' },
+    { id: 'gpt-5.5', name: 'GPT-5.5' },
+    { id: 'grok-4.5', name: 'Grok 4.5' },
+  ])
+  assert.equal(live.length, 5)
+  const merged = mergeCursorStaticFloor(live)
+  assert.ok(merged.some((model) => model.id === 'composer-2.5'))
+  assert.ok(merged.some((model) => model.id === 'grok-4.6'))
+  assert.ok(merged.some((model) => model.id === 'claude-opus-5'))
+  assert.ok(merged.some((model) => model.id === 'claude-fable-5-1'))
+  assert.ok(merged.some((model) => model.id === 'gpt-5.6-sol'))
+  assert.ok(merged.some((model) => model.id === 'gemini-3.8-flash'))
+  assert.ok(merged.some((model) => model.id === 'composer-2'))
+  assert.equal(merged[0].id, 'composer-2.5')
+  const models = await refreshCursorCatalog(session, {
+    fetchUsable: async () => live,
+    fetchAvailable: async () => [],
+  })
+  assert.ok(models.some((model) => model.id === 'composer-2.5'))
+  assert.ok(models.some((model) => model.id === 'grok-4.6'))
+  assert.ok(models.length > live.length)
+  resetCursorCatalogCache()
+})
+

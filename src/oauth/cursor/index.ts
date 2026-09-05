@@ -61,13 +61,22 @@ function cursorModel(id, name, contextWindow, maxTokens, reasoningEfforts = CURS
   return { id, name, contextWindow, maxTokens, input: CURSOR_VISION, reasoningEfforts }
 }
 
-/** Static fallback so the picker is not empty offline. Live GetUsableModels may add more. */
+/** Static fallback aligned to cursor.com/docs/models-and-pricing. Live GetUsableModels may add Auto / Fast / extra families. */
 export const CURSOR_MODELS = Object.freeze([
+  cursorModel('composer-2.5', 'Composer 2.5', 200_000, 64_000),
+  cursorModel('grok-4.6', 'Grok 4.6', 256_000, 64_000),
+  cursorModel('grok-4.5', 'Grok 4.5', 256_000, 64_000),
   cursorModel('composer-2', 'Composer 2', 200_000, 64_000),
   cursorModel('composer-1.5', 'Composer 1.5', 200_000, 64_000),
-  cursorModel('claude-sonnet-5', 'Claude Sonnet 5', 200_000, 64_000),
+  cursorModel('claude-fable-5-1', 'Claude Fable 5.1', 300_000, 128_000),
+  cursorModel('claude-opus-5', 'Claude Opus 5', 300_000, 128_000),
+  cursorModel('claude-sonnet-5', 'Claude Sonnet 5', 200_000, 128_000),
+  cursorModel('gemini-3.1-pro', 'Gemini 3.1 Pro', 200_000, 64_000),
+  cursorModel('gemini-3.8-flash', 'Gemini 3.8 Flash', 200_000, 64_000),
+  cursorModel('gpt-5.6-sol', 'GPT-5.6 Sol', 272_000, 128_000),
+  cursorModel('gpt-5.6-terra', 'GPT-5.6 Terra', 272_000, 128_000),
+  cursorModel('gpt-5.6-luna', 'GPT-5.6 Luna', 272_000, 128_000),
   cursorModel('gpt-5.5', 'GPT-5.5', 200_000, 128_000),
-  cursorModel('grok-4.5', 'Grok 4.5', 200_000, 64_000),
 ])
 
 export const CURSOR_SOURCES = Object.freeze(['pkce', 'cli_keychain', 'ide_vscdb', 'env'])

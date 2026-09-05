@@ -47,7 +47,7 @@ export declare const CURSOR_REASONING: Readonly<{
     high: "high";
     xhigh: "extra-high";
 }>;
-/** Static fallback so the picker is not empty offline. Live GetUsableModels may add more. */
+/** Static fallback aligned to cursor.com/docs/models-and-pricing. Live GetUsableModels may add Auto / Fast / extra families. */
 export declare const CURSOR_MODELS: readonly {
     id: any;
     name: any;
