@@ -32,7 +32,7 @@ The overlay below is what this plugin actually ships.
 - No hardcoded light-theme grays. Dark host stays dark.
 - Icon-only tabs, sticky `.osubs-nav`, **two groups docked** with a 4px
   seam: left OAuth capsule fills leftover width (`repeat(8, 36px)` +
-  `space-between`, families only; OpenCode Free / Copilot wrap inside) then
+  `space-between`, families only; OpenCode Go Free / Copilot wrap inside) then
   utility capsule (Models over GitHub). Do not `margin-left: auto` /
   nav `space-between` / `.osubs-tabs { width: max-content }` (those
   leave a hole).

@@ -109,12 +109,13 @@ src/
       catalog.ts           live GET /coding/v1/models; static fallback
       request.ts           Completions thinking / thinking.effort
       cache.ts             prefix-hash; strip Codex/Grok fields
-    opencode/              OpenCode Zen anonymous free (opencode.ai/zen/v1)
+    opencode/              OpenCode Go Free (opencode.ai/zen/go/v1 — not Zen /zen/v1)
       README.md            family design: login, chat, quota, cache (traceable)
-      index.ts             catalog floor, anonymous session, hop headers (`Bearer public`)
-      catalog.ts           live GET /zen/v1/models ∩ official Free allowlist; models.dev overlay
-      request.ts           Completions reasoning_effort; Muse chat ↔ Zen /v1/responses
-      cache.ts             strip Codex/Grok fields; x-opencode-session / x-opencode-request
+      index.ts             catalog floor, API-key session, Bearer + Go endpoints
+      catalog.ts           live GET /zen/go/v1/models minus Zen-free slugs; models.dev opencode-go overlay
+      import.ts            OPENCODE_API_KEY / OPENCODE_GO_API_KEY env (not Zen anonymous)
+      request.ts           Completions reasoning_effort; Luna/Grok/Muse chat ↔ Go /v1/responses
+      cache.ts             strip Codex/Grok fields; x-opencode-session (official Go)
     copilot/               GitHub Copilot Chat (api.githubcopilot.com)
       README.md            family design: login, chat, quota, cache (traceable)
       index.ts             catalog, identity, device-code (Iv1), tid= exchange, vscode-chat headers
@@ -232,8 +233,7 @@ Cursor:    conversationId on AgentRunRequest (fallback `dsh-cursor:<model>`)
            historical messageId/requestId hashed (not randomUUID); TurnEnded cache_read_tokens
 Ollama:    drop Codex/Grok cache fields; no sticky conversation id (non-fix)
 Kimi:      drop Codex/Grok cache fields; prefix-hash; extra system at messages suffix
-OpenCode:  drop Codex/Grok cache fields; `x-opencode-session` (fallback `dsh-opencode` is written)
-           + `x-opencode-request`; extra system not parked (Zen Completions prefix)
+OpenCode:  drop Codex/Grok cache fields; header x-opencode-session (official Go; fallback `dsh-opencode` is written)
 Copilot:   drop Codex/Grok cache fields; prefix-hash; extra system at messages suffix
            sticky `X-Interaction-Id` (fallback `dsh-copilot` is written)
 ```
@@ -381,19 +381,13 @@ Copilot:   drop Codex/Grok cache fields; prefix-hash; extra system at messages s
 
 **OpenCode** (`src/oauth/opencode/cache.ts`)
 
-- Zen sticky provider + prompt cache key off `x-opencode-session`
-  (anomalyco/opencode v1.18.29 `handler.ts` `stickyId`; Go docs).
-  `x-opencode-request` is one UUID per DSH request. `x-opencode-client: cli`
-  is Flag default (on `opencodeUpstreamHeaders`). Body still strips Codex/Grok
-  fields — Zen does not take `prompt_cache_key`.
-- Fallback `dsh-opencode` **is** written as `x-opencode-session` (official
-  always sends a session id; empty falls back to IP and mixes chats).
-  Never `Date.now()`.
-- No Codex `session-id` / `prompt_cache_key`, no Grok `x-grok-conv-id`,
-  no non-opencode `x-session-affinity` / `X-Session-Id`, no invented
-  `x-opencode-project` / `x-parent-session-id`.
-- Hits: `cache_read_input_tokens` / `cached_tokens` →
-  `prompt_tokens_details.cached_tokens` when the field appears.
+- Go `/v1/chat/completions` has no documented cache-read field. Do **not**
+  invent `cached_tokens`. `applyOpencodeCache` strips Codex/Grok fields.
+- Official Go docs ask for `x-opencode-session` so the relay can optimize
+  prompt cache. Sticky: DSH pin, fallback `dsh-opencode`. Never
+  `Date.now()`. Do not write Codex `session-id` / `prompt_cache_key`.
+- No Grok `x-grok-conv-id`. Do not hop `https://opencode.ai/zen/v1`.
+- Hits: none documented (`cached_tokens` if a field appears).
 
 **Copilot** (`src/oauth/copilot/cache.ts`)
 
@@ -435,7 +429,7 @@ When adding `src/oauth/<id>/`:
 | Cursor | Agent conversation (`conversation_id`) | `conversationId` + model; fallback `dsh-cursor:<model>`; `x-request-id` = `x-original-request-id`; hashed turn ids | extra DSH snapshots as extra `root_prompt_messages_json` system blobs | `TurnEndedUpdate.cache_read_tokens` → `cached_tokens` |
 | Ollama | none documented | no sticky conversation id (non-fix); `dsh-ollama` analyzer-only | n/a | none documented (`cached_tokens` if a field appears) |
 | Kimi | prefix hash of leading system + history | no shard key; `dsh-kimi` analyzer-only | extra system at **messages suffix** | none documented (`cached_tokens` if a field appears) |
-| OpenCode | Zen sticky + prefix cache | `x-opencode-session` = DSH pin; `x-opencode-request` per hop; `x-opencode-client: cli` | n/a | `cache_read_input_tokens` / `cached_tokens` |
+| OpenCode | none documented (Go asks for session header) | `x-opencode-session` = DSH pin; fallback `dsh-opencode`; never Date.now() | n/a | none documented (`cached_tokens` if a field appears) |
 | Copilot | prefix hash of leading system + history | `X-Interaction-Id` (fallback `dsh-copilot` is written) | extra system at **messages suffix** | `cached_tokens` / `cache_read_input_tokens` |
 ### Do not
 
@@ -485,7 +479,7 @@ invariant list. When the two disagree, fix the README.
 | Cursor | `openai-completions` | Native is Connect/protobuf `AgentService/Run` | Completions adapter `POST /cursor/v1/chat/completions` |
 | Ollama | `openai-completions` | Native is `/api/chat`. Cloud also serves OpenAI `https://ollama.com/v1/chat/completions` (401 without Bearer; Factory docs use that `/v1`). | thin passthrough `POST /ollama/v1/chat/completions` → `https://ollama.com/v1/chat/completions` |
 | Kimi | `openai-completions` | Kimi Code Plan default is OpenAI Completions at `api.kimi.com/coding/v1`. Do **not** invent `kimi-openai-completions`. | thin hop `POST /kimi/v1/chat/completions` → `https://api.kimi.com/coding/v1/chat/completions` |
-| OpenCode | `openai-completions` | Native is OpenAI Completions at `https://opencode.ai/zen/v1` for most free models. Muse Spark is Responses-only on Zen. Official no-key is `Authorization: Bearer public` (Zen treats `public` as no key; any other bearer including store sentinel `anonymous` is a real key). Do **not** invent a fourth api. | thin hop `POST /opencode/v1/chat/completions` → `https://opencode.ai/zen/v1/chat/completions` (`Bearer public` + `x-opencode-session`). Muse (`muse-spark*`): translate chat → Zen `/v1/responses` → chat.completion |
+| OpenCode | `openai-completions` | Native is OpenAI Completions at `https://opencode.ai/zen/go/v1` for most Go models. GPT-5.6 Luna / Grok 4.x / Muse Spark Contributor are Responses-only on Go. Do **not** invent a fourth api. Do **not** load Zen `/zen/v1` free rows. | thin hop `POST /opencode/v1/chat/completions` → `https://opencode.ai/zen/go/v1/chat/completions` (Bearer Go API key). Luna / Grok 4.x / Muse (`muse-spark*`): translate chat → Go `/v1/responses` → chat.completion |
 | Copilot | `openai-completions` | Native is OpenAI Completions at `https://api.githubcopilot.com/chat/completions` (`tid=` session). Claude on Copilot still Completions in v1. Do **not** invent a fourth api or `/v1/messages`. | thin hop `POST /copilot/v1/chat/completions` → `{endpoints.api}/chat/completions` |
 `baseURL` must match how that SDK posts. Anthropic SDK posts
 `{baseURL}/v1/messages`, so GLM is `${origin}/glm` (not `${origin}/glm/v1`).
@@ -510,11 +504,12 @@ already said `ai-sdk/anthropic` while Completions was posted). Do
 - Switch Codex / Grok to Completions.
 - Switch Kiro / Antigravity / Cursor / Ollama / Kimi / OpenCode / Copilot to Responses or Anthropic (native is still
   none of the three for Kiro/AG/Cursor; Kimi's Coding Plan default is Completions;
-  OpenCode Zen free is Completions for most models; Copilot Chat is Completions). Muse Spark is Zen `/v1/responses`
-  but DSH `api` stays `openai-completions` — hop-translate only.
+  OpenCode Go is Completions for most models; Copilot Chat is Completions). Luna / Grok 4.x / Muse Spark are Go
+  `/v1/responses` but DSH `api` stays `openai-completions` — hop-translate only.
   Do not pick Responses for Ollama because local `localhost:11434/v1/responses` exists.
   Do not invent `kimi-openai-completions`.
-  Official OpenCode no-key is `Bearer public` (not store sentinel `anonymous`; any other bearer 401s).
+  Do not hop OpenCode to Zen `/zen/v1` or load Zen free models (`big-pickle`, `*-contributor-free`, …).
+  Do send the Go API key as Authorization; never send the old `anonymous` sentinel.
   Do not send Copilot `ghu_` as `Bearer` to `api.githubcopilot.com` (exchange to `tid=` first).
 - Set GLM `api: openai-responses` (generic `api.z.ai/api/v1` is not
   Coding Plan).
@@ -585,12 +580,13 @@ tab. Follow this checklist in one PR.
    `KIMI_API_KEY`). Auto-import only the CLI json when the kimi roster
    is empty. Never overwrite a stored session. Never write back to
    `~/.kimi-code`.
-   OpenCode Free is anonymous. Empty-roster auto-enable writes
-   `opencodeSession()` (store sentinel `anonymous`) on plugin start /
-   snapshot / sync and `syncHarnessModels` so `oauth-opencode` lands in
-   llm-pi-ai. Never overwrite a stored session. Sentinel is **never**
-   sent as Authorization. No import, no API key. Omit
-   `reasoningEfforts` on Completions rows (do not write `false`).
+   OpenCode Go Free is a keyed Go subscription. Paste an API key from
+   opencode.ai/auth, or auto-import `OPENCODE_API_KEY` /
+   `OPENCODE_GO_API_KEY` only when the opencode roster is empty. Never
+   overwrite a stored session. Never send the old `anonymous` sentinel.
+   Drop leftover anonymous vault rows on snapshot / sync. Omit
+   `reasoningEfforts` on Completions rows that have no effort map (do
+   not write `false`). Do not load Zen `/zen/v1` free models.
    Copilot device-code uses VS Code GitHub App `Iv1.b507a08c87ecfe98`
    (not OpenCode `Ov23li8`). Auto-import `hosts.json` / OpenCode
    `auth.json` only when the copilot roster is empty. Never overwrite a
@@ -612,7 +608,7 @@ into `TAB_ICONS`.
   official brand mark, not a generic letter. GLM uses the **Z.ai** icon
   (`zai`), not Zhipu.
 - Order: OAuth families first (Codex, Grok, GLM, Kiro, Antigravity,
-  Cursor, Ollama Cloud, Kimi, OpenCode Free, GitHub Copilot). Insert a new family **in the OAuth group**,
+  Cursor, Ollama Cloud, Kimi, OpenCode Go Free, GitHub Copilot). Insert a new family **in the OAuth group**,
   never into the utility capsule. Tab **buttons** stay 36×36 — do not
   `flex: 1 1 0` or shrink `min-width` to 0.
 - **Two tab groups**, docked (confirmed 2026-09-03):
@@ -632,12 +628,13 @@ into `TAB_ICONS`.
     after the util capsule).
 - Add `COPY.zh.<id>Title` / `COPY.en.<id>Title` for the hover string and
   the page heading. Ollama's title is **Ollama Cloud** (not localhost 11434).
-  OpenCode's title is **OpenCode Free** (anonymous Zen free; no login).
-  Empty OpenCode CTA is **启用免费模型** / **Enable free models**, never 登录.
+  OpenCode's title is **OpenCode Go Free** (Go relay + API key; not Zen
+  anonymous free). Empty OpenCode CTA opens the add-account dialog
+  (paste key), never a one-click anonymous enable.
 
 ```text
 [ Codex ]  [ Grok ]  [ Z.ai ]  [ Kiro ]  [ Antigravity ]  [ Cursor ]  [ Ollama Cloud ]  [ Kimi ]  [ ▦ ]
-[ OpenCode Free ] [ Copilot ]                                                             [ GitHub ]
+[ OpenCode Go Free ] [ Copilot ]                                                          [ GitHub ]
 ```
 
 ### Settings — one account, one card
@@ -724,7 +721,7 @@ Binding UI rules:
   `.options` side padding so cards cannot peek in the gutter.
   `.osubs-nav` is flex (`flex-start`, `gap: 4px`); `.osubs-tabs` is
   family-only `repeat(8, 36px)` + `space-between` + `flex: 1 1 auto`
-  (OpenCode Free / Copilot wrap inside this group; leftover
+  (OpenCode Go Free / Copilot wrap inside this group; leftover
   width is the gap between the eight icons); `.osubs-tabs-util` is the
   next capsule, 4px away (Models over GitHub). Never `margin-left: auto`
   / nav `space-between` / `.osubs-tabs` `width: max-content`. Never
@@ -786,7 +783,7 @@ hits are `TurnEndedUpdate.cache_read_tokens`. Historical turn ids are
 content hashes; `x-request-id` = `x-original-request-id`.
 Ollama Cloud has no documented cache-read or conversation id; do not invent one.
 Kimi Code is prefix-hash only; strip Codex/Grok fields and park extra system at the messages suffix. Do not invent a shard id.
-OpenCode Free sticky-routes on `x-opencode-session` (fallback `dsh-opencode` is written) with `Bearer public`.
+OpenCode Go Free hops `https://opencode.ai/zen/go/v1` with a Go API key and `x-opencode-session`; do not load Zen free models or send the anonymous sentinel.
 Copilot Completions is prefix-hash + `X-Interaction-Id` (fallback `dsh-copilot` is written); exchange `ghu_` → `tid=` before hopping.
 `Error: tool call timed out after 30000ms` is `dsh-tool-fs-search`, not
 this proxy — record it in `docs/error.md`, do not add `toolTimeoutMs` here.

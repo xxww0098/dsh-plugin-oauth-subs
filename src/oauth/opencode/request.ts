@@ -1,8 +1,7 @@
 /**
- * OpenCode Free hop. Completions models keep top-level `reasoning_effort`.
- * Muse Spark is Zen Responses: chat body → `/zen/v1/responses` → chat.completion.
- * Never send both `thinking` and `reasoning_effort`.
- * Hop identity (Bearer public + x-opencode-*) lives in index.ts / cache.ts.
+ * OpenCode Go Free hop. Completions models keep top-level `reasoning_effort`.
+ * Luna / Grok 4.x / Muse Spark are Go Responses: chat → `/zen/go/v1/responses`
+ * → chat.completion. Never send both `thinking` and `reasoning_effort`.
  */
 
 import { opencodeCatalogModels } from './catalog.js'
@@ -144,7 +143,7 @@ function messagesToInput(messages) {
   return items
 }
 
-/** Chat / leftover Completions body → Zen Responses. Does not copy Codex cache fields. */
+/** Chat / leftover Completions body → Go Responses. Does not copy Codex cache fields. */
 export function chatToOpencodeResponses(payload = {}) {
   const next = {}
   if (typeof payload.model === 'string') next.model = payload.model
@@ -213,26 +212,12 @@ function collectResponsesOutput(payload) {
   return { text, reasoning, toolCalls }
 }
 
-/** Map Zen / Responses cache-read fields onto OpenAI `prompt_tokens_details`. Do not invent 0. */
-export function mapOpencodeUsage(usage) {
+function mapResponsesUsage(usage) {
   if (!isPlain(usage)) return { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
   const prompt = firstNumber(usage.input_tokens, usage.prompt_tokens) ?? 0
   const completion = firstNumber(usage.output_tokens, usage.completion_tokens) ?? 0
   const total = firstNumber(usage.total_tokens) ?? (prompt + completion)
-  const details = isPlain(usage.input_tokens_details)
-    ? usage.input_tokens_details
-    : isPlain(usage.prompt_tokens_details)
-      ? usage.prompt_tokens_details
-      : undefined
-  const cached = firstNumber(
-    details?.cached_tokens,
-    usage.cache_read_input_tokens,
-    usage.cache_read_tokens,
-    usage.cached_tokens,
-  )
-  const next = { prompt_tokens: prompt, completion_tokens: completion, total_tokens: total }
-  if (cached !== undefined) next.prompt_tokens_details = { cached_tokens: cached }
-  return next
+  return { prompt_tokens: prompt, completion_tokens: completion, total_tokens: total }
 }
 
 function finishReasonOf(payload, toolCalls) {
@@ -259,9 +244,7 @@ export function foldOpencodeReasoningContent(payload) {
     }
     return choice
   })
-  const next = { ...payload, choices }
-  if (isPlain(payload.usage)) next.usage = mapOpencodeUsage(payload.usage)
-  return next
+  return { ...payload, choices }
 }
 
 export function opencodeResponsesToChat(payload = {}, { model, id } = {}) {
@@ -279,7 +262,7 @@ export function opencodeResponsesToChat(payload = {}, { model, id } = {}) {
       message,
       finish_reason: finishReasonOf(payload, collected.toolCalls),
     }],
-    usage: mapOpencodeUsage(payload.usage),
+    usage: mapResponsesUsage(payload.usage),
   }
 }
 
@@ -354,7 +337,7 @@ export function createOpencodeResponsesChatStream({ model, id = 'chatcmpl-openco
           model,
           {},
           finishReasonOf(response, collected.toolCalls),
-          isPlain(response?.usage) ? mapOpencodeUsage(response.usage) : undefined,
+          isPlain(response?.usage) ? mapResponsesUsage(response.usage) : undefined,
         )
       }
       return undefined

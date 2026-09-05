@@ -74,9 +74,13 @@ window.__ModuleLoader__.load({
         copilotKeyHint: '粘贴 GitHub Copilot 用的 ghu_ / ghp_ token。也可导入本机 ~/.config/github-copilot/hosts.json。',
         copilotImport: '导入本机 Copilot',
         copilotImportEmpty: '未找到 hosts.json、OpenCode auth.json 或 GITHUB_TOKEN',
-        opencodeTitle: 'OpenCode Free',
-        opencodeEnable: '启用免费模型',
-        opencodeEnableHint: '匿名接入 OpenCode Zen 免费档，无需账号或 API key。',
+        opencodeTitle: 'OpenCode Go Free',
+        opencodeLoginApiKey: '粘贴 API Key',
+        opencodeKeyPlaceholder: 'OpenCode Go API key',
+        opencodeKeyGo: '保存密钥',
+        opencodeKeyHint: '在 opencode.ai/auth 订阅 Go 并复制 API key。也可设置 OPENCODE_API_KEY / OPENCODE_GO_API_KEY。',
+        opencodeImport: '导入 OPENCODE_API_KEY',
+        opencodeImportEmpty: '未找到 OPENCODE_API_KEY',
         login: '登录',
         addAccount: '添加账号',
         addAccountTitle: '添加账号',
@@ -247,9 +251,13 @@ window.__ModuleLoader__.load({
         copilotKeyHint: 'Paste a GitHub Copilot ghu_ / ghp_ token. Or import ~/.config/github-copilot/hosts.json.',
         copilotImport: 'Import local Copilot',
         copilotImportEmpty: 'No hosts.json, OpenCode auth.json, or GITHUB_TOKEN found',
-        opencodeTitle: 'OpenCode Free',
-        opencodeEnable: 'Enable free models',
-        opencodeEnableHint: 'Anonymous OpenCode Zen free models. No account or API key.',
+        opencodeTitle: 'OpenCode Go Free',
+        opencodeLoginApiKey: 'Paste API key',
+        opencodeKeyPlaceholder: 'OpenCode Go API key',
+        opencodeKeyGo: 'Save key',
+        opencodeKeyHint: 'Subscribe to Go at opencode.ai/auth and copy the API key. Or set OPENCODE_API_KEY / OPENCODE_GO_API_KEY.',
+        opencodeImport: 'Import OPENCODE_API_KEY',
+        opencodeImportEmpty: 'OPENCODE_API_KEY not found',
         login: 'Sign in',
         addAccount: 'Add account',
         addAccountTitle: 'Add account',
@@ -550,7 +558,7 @@ window.__ModuleLoader__.load({
         if (slug === 'enterprise' || compact === 'enterprise') return 'Enterprise'
       }
       if (family === 'opencode') {
-        if (slug === 'free' || compact === 'free') return 'Free'
+        if (slug === 'go' || compact === 'go' || slug === 'free' || compact === 'free' || slug === 'go_free' || compact === 'gofree') return 'Go Free'
       }
       if (family === 'copilot') {
         if (slug === 'proplus' || slug === 'pro_plus' || compact === 'proplus') return 'Pro+'
@@ -619,6 +627,10 @@ window.__ModuleLoader__.load({
       return /^copilot-[0-9a-f]{8}$/i.test(String(value ?? '').trim())
     }
 
+    function isOpencodeOpaqueIdentity(value) {
+      return /^opencode-[0-9a-f]{8}$/i.test(String(value ?? '').trim())
+    }
+
     function identityOf(row, family) {
       const account = typeof row?.account === 'string' ? row.account.trim() : ''
       if (family === 'glm') return account && !isGlmOpaqueIdentity(account) ? account : ''
@@ -626,6 +638,7 @@ window.__ModuleLoader__.load({
       if (family === 'ollama') return account && !isOllamaOpaqueIdentity(account) ? account : ''
       if (family === 'kimi') return account && !isKimiOpaqueIdentity(account) ? account : ''
       if (family === 'copilot') return account && !isCopilotOpaqueIdentity(account) ? account : ''
+      if (family === 'opencode') return account && !isOpencodeOpaqueIdentity(account) ? account : ''
       if (account && !isGlmAppIdentity(account)) return account
       return account || row?.id || ''
     }
@@ -1502,7 +1515,7 @@ window.__ModuleLoader__.load({
               row.active && h('span', { className: 'osubs-tag' }, t.inUse),
               id === 'glm' && row.region && h('span', { className: 'osubs-tag' }, regionLabel(row.region)),
               id === 'kiro' && row.methodLabel && h('span', { className: 'osubs-tag' }, row.methodLabel),
-              (id === 'cursor' || id === 'ollama' || id === 'kimi' || id === 'copilot') && row.methodLabel && h('span', { className: 'osubs-tag' }, row.methodLabel),
+              (id === 'cursor' || id === 'ollama' || id === 'kimi' || id === 'opencode' || id === 'copilot') && row.methodLabel && h('span', { className: 'osubs-tag' }, row.methodLabel),
               id === 'glm' && h('span', { className: 'osubs-tag osubs-tag--plain' }, t.glmBoost),
             ),
           ),
@@ -1587,8 +1600,8 @@ window.__ModuleLoader__.load({
         h('div', { className: 'osubs-actions' },
           h(Button, {
             variant: 'primary',
-            onClick: () => id === 'opencode' ? onLogin(id) : setAddOpen(true),
-            label: busy ? t.continueAuth : id === 'opencode' ? t.opencodeEnable : loggedIn ? t.addAccount : t.login,
+            onClick: () => setAddOpen(true),
+            label: busy ? t.continueAuth : loggedIn ? t.addAccount : t.login,
           }),
           busy && h(Button, { onClick: () => onCancel(id), label: t.cancel }),
         ),
@@ -1737,12 +1750,41 @@ window.__ModuleLoader__.load({
           h('button', {
             type: 'button',
             className: 'osubs-login',
-            onClick: () => { onLogin(id); closeAdd() },
+            onClick: () => setShowKey((open) => !open),
           },
-            h('span', null, t.opencodeEnable),
+            h('span', null, t.opencodeLoginApiKey),
+          ),
+          h('button', {
+            type: 'button',
+            className: 'osubs-login osubs-login-ghost',
+            onClick: () => { onImport(id); closeAdd() },
+          },
+            h('span', null, t.opencodeImport),
           ),
         ),
-        id === 'opencode' && !busy && h('p', { className: 'osubs-hint' }, t.opencodeEnableHint),
+        id === 'opencode' && showKey && !busy && h('form', {
+          className: 'osubs-fields',
+          onSubmit: (event) => {
+            event.preventDefault()
+            onUseKey(id, apiKey)
+            setApiKey('')
+            setShowKey(false)
+            closeAdd()
+          },
+        },
+          h('input', {
+            className: 'osubs-input',
+            value: apiKey,
+            onChange: (event) => setApiKey(event.target.value),
+            placeholder: t.opencodeKeyPlaceholder,
+            'aria-label': t.opencodeLoginApiKey,
+            autoComplete: 'off',
+          }),
+          h('p', { className: 'osubs-hint' }, t.opencodeKeyHint),
+          h('div', { className: 'osubs-actions' },
+            h(Button, { type: 'submit', variant: 'primary', label: t.opencodeKeyGo }),
+          ),
+        ),
         id === 'glm' && !busy && h('div', { className: 'osubs-glm-logins' },
           h('button', {
             type: 'button',

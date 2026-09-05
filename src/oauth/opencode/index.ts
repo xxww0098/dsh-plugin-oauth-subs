@@ -1,30 +1,28 @@
 /**
- * OpenCode Free — anonymous Zen relay (https://opencode.ai/zen/v1).
+ * OpenCode Go Free — OpenCode Go relay (https://opencode.ai/zen/go/v1).
  *
- * First-line: anomalyco/opencode v1.18.29. No-key CLI loader sets
- * `apiKey: "public"` (Zen treats that bearer as no key). Store still
- * keeps sentinel `anonymous` so auth.json is non-empty — that value is
- * never sent as Authorization (Zen would treat it as a real key).
+ * This is not OpenCode Zen anonymous free (`/zen/v1` big-pickle / *-free).
+ * Official Go is a keyed subscription: paste an API key from
+ * https://opencode.ai/auth (env OPENCODE_API_KEY / OPENCODE_GO_API_KEY).
+ * Store never sends a sentinel as Bearer.
  */
+
+import { createHash } from 'node:crypto'
 
 export { applyOpencodeCache, opencodeCacheHeaders, opencodeCacheSessionId, resetOpencodePins } from './cache.js'
 
-export const OPENCODE_ZEN_ORIGIN = 'https://opencode.ai/zen/v1'
-export const OPENCODE_CHAT_URL = `${OPENCODE_ZEN_ORIGIN}/chat/completions`
-export const OPENCODE_RESPONSES_URL = `${OPENCODE_ZEN_ORIGIN}/responses`
-export const OPENCODE_MODELS_URL = `${OPENCODE_ZEN_ORIGIN}/models`
+export const OPENCODE_GO_ORIGIN = 'https://opencode.ai/zen/go/v1'
+export const OPENCODE_CHAT_URL = `${OPENCODE_GO_ORIGIN}/chat/completions`
+export const OPENCODE_RESPONSES_URL = `${OPENCODE_GO_ORIGIN}/responses`
+export const OPENCODE_MODELS_URL = `${OPENCODE_GO_ORIGIN}/models`
 export const OPENCODE_MODELS_DEV_URL = 'https://models.dev/api.json'
-export const OPENCODE_DOCS_URL = 'https://opencode.ai/docs/zen'
-/** anomalyco/opencode release this hop is pinned to. */
-export const OPENCODE_CLIENT_VERSION = '1.18.29'
-export const OPENCODE_USER_AGENT = `opencode/${OPENCODE_CLIENT_VERSION}`
-/** Official Flag.OPENCODE_CLIENT default. Desktop sends `desktop`. */
-export const OPENCODE_CLIENT = 'cli'
-/** Official no-key sentinel. Zen `handler.ts`: `raw === "public"` → undefined. */
-export const OPENCODE_PUBLIC_TOKEN = 'public'
-/** Store sentinel — never sent as Authorization. */
+export const OPENCODE_DOCS_URL = 'https://opencode.ai/docs/go'
+export const OPENCODE_AUTH_URL = 'https://opencode.ai/auth'
+export const OPENCODE_USER_AGENT = 'dsh-plugin-oauth-subs'
+export const OPENCODE_REFERER = 'https://github.com/xxww0098/dsh-plugin-oauth-subs'
+export const OPENCODE_TITLE = 'dsh-plugin-oauth-subs'
+/** Leftover vault sentinel from the old Zen-anonymous family. Never send. */
 export const OPENCODE_ANON_TOKEN = 'anonymous'
-export const OPENCODE_ACCOUNT = 'Anonymous'
 export const OPENCODE_NEVER_EXPIRES = 8.64e15
 export const OPENCODE_DEFAULT_CONTEXT = 128_000
 export const OPENCODE_DEFAULT_MAX_TOKENS = 16_384
@@ -37,28 +35,53 @@ export const OPENCODE_REASONING_MUSE = Object.freeze({
   high: 'high',
   xhigh: 'xhigh',
 })
-/** models.dev `type: toggle`. Completions hop: off → `reasoning_effort: none`. */
-export const OPENCODE_REASONING_TOGGLE = Object.freeze({ off: 'none', high: 'high' })
-export const OPENCODE_SOURCES = Object.freeze(['anonymous'])
-/** Go-subscription slugs that look free. Never put these on the keyless picker. */
-export const OPENCODE_KEYED_FREE = Object.freeze(new Set(['ox-alpha-free']))
+export const OPENCODE_REASONING_GLM = Object.freeze({ low: 'low', high: 'high', max: 'max' })
+export const OPENCODE_REASONING_HY3 = Object.freeze({ off: 'none', low: 'low', high: 'high' })
+export const OPENCODE_REASONING_LUNA = Object.freeze({
+  off: 'none',
+  low: 'low',
+  medium: 'medium',
+  high: 'high',
+  xhigh: 'xhigh',
+  max: 'max',
+})
+export const OPENCODE_REASONING_GROK = Object.freeze({
+  low: 'low',
+  medium: 'medium',
+  high: 'high',
+  xhigh: 'xhigh',
+})
+export const OPENCODE_SOURCES = Object.freeze(['paste', 'env'])
 /**
- * Official Zen Free pricing ids (https://opencode.ai/docs/zen).
- * Suffix `-free` is not the rule — `big-pickle` is free; stale `*-free` rows are not.
+ * Zen-only free slugs. Never put these on the Go picker even if a stale
+ * models.dev `opencode` row or a mistaken live payload lists them.
  */
-export const OPENCODE_OFFICIAL_FREE = Object.freeze(new Set([
+export const OPENCODE_ZEN_FREE = Object.freeze(new Set([
   'big-pickle',
+  'deepseek-v4-flash-free',
+  'hy3-free',
+  'hy3-preview-free',
+  'laguna-s-2.1-free',
   'ling-3.0-flash-fin-free',
+  'ling-3.0-flash-free',
+  'longcat-2.0-free',
+  'minimax-m2.1-free',
+  'minimax-m3-free',
   'mimo-v2.5-free',
   'muse-spark-1.2-contributor-free',
   'muse-spark-1.3-contributor-free',
   'nemotron-3-ultra-free',
   'nemotron-3.5-lightning-free',
+  'north-mini-code-free',
+  'trinity-large-preview-free',
 ]))
-export const OPENCODE_DEFAULT_MODEL = 'ling-3.0-flash-fin-free'
+export const OPENCODE_DEFAULT_MODEL = 'glm-5.3-flash'
 
 export const OPENCODE_PLAN_NAMES = Object.freeze({
-  free: 'Free',
+  go: 'Go Free',
+  free: 'Go Free',
+  gofree: 'Go Free',
+  go_free: 'Go Free',
 })
 
 function model(id, name, extra = {}) {
@@ -73,95 +96,146 @@ function model(id, name, extra = {}) {
 }
 
 /**
- * Offline floor: official Zen Free ids + models.dev caps (2026-09-03).
- * Stale Zen slugs (deepseek-v4-flash-free, laguna-s-2.1-free) stay out.
- * Empty reasoning_options + reasoning true omit reasoningEfforts.
+ * Offline floor: live Go Completions / Responses ids + models.dev
+ * `opencode-go` caps (2026-09-05). Zen free slugs stay out.
  */
 export const OPENCODE_MODELS = Object.freeze([
-  model('big-pickle', 'Big Pickle', {
-    contextWindow: 200_000,
-    maxTokens: 32_000,
-  }),
-  model('ling-3.0-flash-fin-free', 'Ling 3.0 Flash Fin', {
-    contextWindow: 262_144,
-    maxTokens: 32_768,
-    reasoningEfforts: OPENCODE_REASONING_TOGGLE,
-  }),
-  model('mimo-v2.5-free', 'MiMo V2.5', {
-    contextWindow: 200_000,
-    maxTokens: 32_000,
-    input: OPENCODE_VISION_INPUT,
-  }),
-  model('muse-spark-1.2-contributor-free', 'Muse Spark 1.2', {
-    contextWindow: 1_048_576,
-    maxTokens: 131_072,
-    input: OPENCODE_VISION_INPUT,
-    reasoningEfforts: OPENCODE_REASONING_MUSE,
-  }),
-  model('muse-spark-1.3-contributor-free', 'Muse Spark 1.3', {
-    contextWindow: 1_048_576,
-    maxTokens: 131_072,
-    input: OPENCODE_VISION_INPUT,
-    reasoningEfforts: OPENCODE_REASONING_MUSE,
-  }),
-  model('nemotron-3-ultra-free', 'Nemotron 3 Ultra', {
+  model('deepseek-v4-flash', 'DeepSeek V4 Flash', {
     contextWindow: 1_000_000,
-    maxTokens: 128_000,
+    maxTokens: 384_000,
+    reasoningEfforts: OPENCODE_REASONING_GLM,
   }),
-  model('nemotron-3.5-lightning-free', 'Nemotron 3.5 Lightning', {
+  model('glm-5.3-flash', 'GLM-5.3-Flash', {
+    contextWindow: 1_000_000,
+    maxTokens: 131_072,
+    input: OPENCODE_VISION_INPUT,
+    reasoningEfforts: OPENCODE_REASONING_GLM,
+  }),
+  model('gpt-5.6-luna', 'GPT-5.6 Luna', {
+    contextWindow: 1_050_000,
+    maxTokens: 128_000,
+    input: OPENCODE_VISION_INPUT,
+    reasoningEfforts: OPENCODE_REASONING_LUNA,
+  }),
+  model('grok-4.6', 'Grok 4.6', {
+    contextWindow: 500_000,
+    maxTokens: 500_000,
+    input: OPENCODE_VISION_INPUT,
+    reasoningEfforts: OPENCODE_REASONING_GROK,
+  }),
+  model('hy3', 'Hy3', {
+    contextWindow: 256_000,
+    maxTokens: 128_000,
+    reasoningEfforts: OPENCODE_REASONING_HY3,
+  }),
+  model('kimi-k2.7-code', 'Kimi K2.7 Code', {
     contextWindow: 262_144,
     maxTokens: 262_144,
+    input: OPENCODE_VISION_INPUT,
+  }),
+  model('mimo-v2.5', 'MiMo V2.5', {
+    contextWindow: 1_000_000,
+    maxTokens: 128_000,
+    input: OPENCODE_VISION_INPUT,
+  }),
+  model('muse-spark-1.3-contributor', 'Muse Spark 1.3 Contributor', {
+    contextWindow: 1_048_576,
+    maxTokens: 131_072,
+    input: OPENCODE_VISION_INPUT,
+    reasoningEfforts: OPENCODE_REASONING_MUSE,
   }),
 ])
 
-export function isOpencodeFreeSlug(id) {
+export function opencodeBareId(id) {
   const bare = String(id ?? '').trim()
   const slug = bare.includes('/') ? bare.slice(bare.lastIndexOf('/') + 1) : bare
-  const lower = slug.toLowerCase()
-  if (!lower) return false
-  if (OPENCODE_KEYED_FREE.has(lower)) return false
-  return OPENCODE_OFFICIAL_FREE.has(lower)
+  return slug.toLowerCase()
 }
 
-/** Zen lists Muse Spark on `/zen/v1/responses`. Completions 500s. Future `muse-spark*` keep this hop. */
+export function isOpencodeZenFreeSlug(id) {
+  const lower = opencodeBareId(id)
+  return Boolean(lower) && OPENCODE_ZEN_FREE.has(lower)
+}
+
+/** Live Go row is eligible unless it is a Zen-only free slug. */
+export function isOpencodeGoSlug(id) {
+  const lower = opencodeBareId(id)
+  if (!lower) return false
+  return !OPENCODE_ZEN_FREE.has(lower)
+}
+
+/** Go docs: Luna / Grok 4.x / Muse Spark Contributor are `/zen/go/v1/responses`. */
 export function isOpencodeResponsesModel(id) {
-  const bare = String(id ?? '').trim()
-  const slug = bare.includes('/') ? bare.slice(bare.lastIndexOf('/') + 1) : bare
-  return /^muse-spark/i.test(slug)
+  const slug = opencodeBareId(id)
+  return /^(muse-spark|gpt-5\.6-luna|grok-4\.)/i.test(slug)
 }
 
 export function opencodePrettyName(id) {
   const slug = String(id ?? '').trim()
-  const bare = slug.replace(/-free$/i, '').replace(/[:_]+/g, ' ').replace(/-/g, ' ').trim()
-  return bare.replace(/\b\w/g, (char) => char.toUpperCase()) || 'OpenCode'
+  const bare = slug.replace(/[:_]+/g, ' ').replace(/-/g, ' ').trim()
+  return bare.replace(/\b\w/g, (char) => char.toUpperCase()) || 'OpenCode Go'
 }
 
 export function opencodeSourceLabel(source) {
-  if (source === 'anonymous') return undefined
+  if (source === 'env') return 'env'
+  if (source === 'paste') return undefined
   return undefined
 }
 
-export function opencodeSession() {
+export function parseOpencodeApiKey(value) {
+  const key = typeof value === 'string' ? value.trim() : ''
+  if (!key || key.length < 8) throw new Error('opencode API key is empty')
+  if (key === OPENCODE_ANON_TOKEN) throw new Error('opencode anonymous sentinel is not a Go API key')
+  return key
+}
+
+export function opencodeAccountFingerprint(key) {
+  return createHash('sha256').update(String(key ?? '')).digest('hex').slice(0, 8)
+}
+
+export function opencodeDefaultAccount(key) {
+  return `opencode-${opencodeAccountFingerprint(key)}`
+}
+
+export function isOpencodeOpaqueAccount(value) {
+  return /^opencode-[0-9a-f]{8}$/i.test(String(value ?? '').trim())
+}
+
+export function isOpencodeAnonSession(session) {
+  const token = typeof session?.accessToken === 'string' ? session.accessToken.trim() : ''
+  return token === OPENCODE_ANON_TOKEN || session?.source === 'anonymous'
+}
+
+export function opencodeSession({
+  accessToken,
+  account,
+  source = 'paste',
+  planType = 'go',
+} = {}) {
+  const key = parseOpencodeApiKey(accessToken)
   return {
-    accessToken: OPENCODE_ANON_TOKEN,
-    refreshToken: OPENCODE_ANON_TOKEN,
+    accessToken: key,
+    refreshToken: key,
     expiresAt: OPENCODE_NEVER_EXPIRES,
-    account: OPENCODE_ACCOUNT,
-    source: 'anonymous',
-    planType: 'free',
+    account: typeof account === 'string' && account.trim() ? account.trim() : opencodeDefaultAccount(key),
+    source: OPENCODE_SOURCES.includes(source) ? source : 'paste',
+    planType: planType === 'free' ? 'free' : 'go',
   }
 }
 
 export async function refreshOpencode(session) {
-  if (!session) throw new Error('opencode session missing')
+  if (isOpencodeAnonSession(session)) throw new Error('opencode anonymous sentinel is not a Go API key')
+  if (!session || typeof session.accessToken !== 'string' || !session.accessToken.trim()) {
+    throw new Error('opencode session needs an API key')
+  }
   return {
     ...session,
-    accessToken: OPENCODE_ANON_TOKEN,
-    refreshToken: OPENCODE_ANON_TOKEN,
+    accessToken: session.accessToken.trim(),
+    refreshToken: session.refreshToken?.trim() || session.accessToken.trim(),
     expiresAt: OPENCODE_NEVER_EXPIRES,
-    account: session.account?.trim() || OPENCODE_ACCOUNT,
-    source: 'anonymous',
-    planType: session.planType || 'free',
+    account: session.account?.trim() || opencodeDefaultAccount(session.accessToken),
+    source: OPENCODE_SOURCES.includes(session.source) ? session.source : 'paste',
+    planType: session.planType === 'free' ? 'free' : 'go',
   }
 }
 
@@ -169,15 +243,14 @@ export function isOpencodePermanentRefreshError() {
   return false
 }
 
-/**
- * Official no-key hop identity. `Bearer public` is the CLI sentinel
- * (`provider.ts` `apiKey: "public"`). Never send the store sentinel
- * `anonymous` — GET /models treats any other bearer as a real key.
- */
-export function opencodeUpstreamHeaders() {
-  return {
-    authorization: `Bearer ${OPENCODE_PUBLIC_TOKEN}`,
+/** Catalog GETs stay keyless. Chat hops pass the session so Bearer is set. */
+export function opencodeUpstreamHeaders(session) {
+  const headers = {
     'user-agent': OPENCODE_USER_AGENT,
-    'x-opencode-client': OPENCODE_CLIENT,
+    'http-referer': OPENCODE_REFERER,
+    'x-title': OPENCODE_TITLE,
   }
+  const key = typeof session?.accessToken === 'string' ? session.accessToken.trim() : ''
+  if (key && key !== OPENCODE_ANON_TOKEN) headers.authorization = `Bearer ${key}`
+  return headers
 }
