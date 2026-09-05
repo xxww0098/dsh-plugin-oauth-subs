@@ -5,6 +5,7 @@ import { createProxy, describeError, hasOutputEvent, STREAM_ATTEMPTS } from '../
 import { CODEX_API_URL } from '../lib/oauth/codex/index.js'
 import { GLM_ANTHROPIC_URL, GLM_ANTHROPIC_VERSION, GLM_CODING_URL, GLM_USER_AGENT } from '../lib/oauth/glm/index.js'
 import { resetGlmSystemPins } from '../lib/oauth/glm/cache.js'
+import { GROK_STABLE_SESSION, resetGrokSystemPins } from '../lib/oauth/grok/cache.js'
 import { codexCacheSessionId } from '../lib/oauth/codex/cache.js'
 
 function rawRequest(port, { method = 'GET', path = '/', headers = {}, body } = {}) {
@@ -280,7 +281,9 @@ test('proxy peels -fast and injects Codex Priority; never sets Grok service_tier
       headers,
       body: '{"model":"grok-4.6-fast"}',
     })
-    assert.deepEqual(seen[2].body, { model: 'grok-4.6' })
+    assert.equal(seen[2].body.model, 'grok-4.6')
+    assert.equal(seen[2].body.service_tier, undefined)
+    assert.equal(seen[2].body.prompt_cache_key, GROK_STABLE_SESSION)
     assert.equal(seen[2].headers['x-codex-routing-hint'], undefined)
 
     await fetch(`http://127.0.0.1:${port}/codex/v1/responses`, {
@@ -325,7 +328,7 @@ test('proxy peels -fast and injects Codex Priority; never sets Grok service_tier
   }
 })
 
-test('proxy GLM chat hop remaps developer; Codex and Grok keep theirs', async () => {
+test('proxy GLM chat hop remaps developer; Grok pins leading input as system', async () => {
   const seen = []
   const fetchFn = async (url, init) => {
     seen.push({ url: String(url), body: JSON.parse(String(init.body)) })
@@ -375,7 +378,9 @@ test('proxy GLM chat hop remaps developer; Codex and Grok keep theirs', async ()
     })
     assert.equal(grok.status, 200)
     assert.equal(seen[1].body.messages[0].role, 'developer')
-    assert.equal(seen[1].body.input[0].role, 'developer')
+    assert.equal(seen[1].body.input[0].role, 'system')
+    assert.equal(seen[1].body.input[0].content, 'sys')
+    assert.equal(Object.hasOwn(seen[1].body, 'instructions'), false)
 
     const codex = await fetch(`http://127.0.0.1:${port}/codex/v1/responses`, {
       method: 'POST',
@@ -982,7 +987,7 @@ test('GLM hop parks extra leading system snapshots after the conversation', asyn
   }
 })
 
-test('Grok pins cache with x-grok-conv-id and does not inherit Codex headers', async () => {
+test('Grok pins cache with grok-build headers and does not inherit Codex headers', async () => {
   await captureCodex(async ({ port, headers, seen }) => {
     await fetch(`http://127.0.0.1:${port}/grok/v1/responses`, {
       method: 'POST',
@@ -992,7 +997,12 @@ test('Grok pins cache with x-grok-conv-id and does not inherit Codex headers', a
     assert.equal(seen[0].headers['session-id'], undefined)
     assert.equal(seen[0].headers['x-client-request-id'], undefined)
     assert.equal(seen[0].headers['x-grok-conv-id'], 'k1')
+    assert.equal(seen[0].headers['x-grok-session-id'], 'k1')
+    assert.equal(seen[0].headers['x-grok-model-override'], 'grok-4.6')
+    assert.match(seen[0].headers['x-grok-req-id'], /^[0-9a-f-]{36}$/i)
+    assert.equal(seen[0].headers['x-grok-transient-retry'], undefined)
     assert.equal(seen[0].body.prompt_cache_key, 'k1')
+    assert.equal(Object.hasOwn(seen[0].body, 'session_id'), false)
 
     await fetch(`http://127.0.0.1:${port}/grok/v1/responses`, {
       method: 'POST',
@@ -1000,8 +1010,10 @@ test('Grok pins cache with x-grok-conv-id and does not inherit Codex headers', a
       body: JSON.stringify({ model: 'grok-4.6', session_id: 'sess-from-dsh' }),
     })
     assert.equal(seen[1].headers['x-grok-conv-id'], 'sess-from-dsh')
+    assert.equal(seen[1].headers['x-grok-session-id'], 'sess-from-dsh')
     assert.equal(seen[1].headers['session-id'], undefined)
     assert.equal(seen[1].body.prompt_cache_key, 'sess-from-dsh')
+    assert.notEqual(seen[1].headers['x-grok-req-id'], seen[0].headers['x-grok-req-id'])
 
     const long = `session-${'a'.repeat(80)}`
     await fetch(`http://127.0.0.1:${port}/grok/v1/responses`, {
@@ -1010,6 +1022,7 @@ test('Grok pins cache with x-grok-conv-id and does not inherit Codex headers', a
       body: JSON.stringify({ model: 'grok-4.6', prompt_cache_key: long }),
     })
     assert.equal(seen[2].headers['x-grok-conv-id'].length, 64)
+    assert.equal(seen[2].headers['x-grok-session-id'], seen[2].headers['x-grok-conv-id'])
     assert.equal(seen[2].body.prompt_cache_key, seen[2].headers['x-grok-conv-id'])
 
     await fetch(`http://127.0.0.1:${port}/grok/v1/responses`, {
@@ -1017,8 +1030,59 @@ test('Grok pins cache with x-grok-conv-id and does not inherit Codex headers', a
       headers,
       body: JSON.stringify({ model: 'grok-4.6', prompt_cache_key: '   ' }),
     })
-    assert.equal(seen[3].headers['x-grok-conv-id'], undefined)
+    assert.equal(seen[3].headers['x-grok-conv-id'], GROK_STABLE_SESSION)
+    assert.equal(seen[3].headers['x-grok-session-id'], GROK_STABLE_SESSION)
     assert.equal(seen[3].headers['session-id'], undefined)
-    assert.equal(seen[3].body.prompt_cache_key, undefined)
+    assert.equal(seen[3].body.prompt_cache_key, GROK_STABLE_SESSION)
   })
+})
+
+test('Grok hop parks extra leading system snapshots after the conversation', async () => {
+  resetGrokSystemPins()
+  try {
+    await captureCodex(async ({ port, headers, seen }) => {
+      await fetch(`http://127.0.0.1:${port}/grok/v1/responses`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          model: 'grok-4.6',
+          session_id: 'session-grok-park',
+          input: [
+            { role: 'developer', content: 'You are DSH.' },
+            { role: 'user', content: [{ type: 'input_text', text: 'hi' }] },
+          ],
+        }),
+      })
+      await fetch(`http://127.0.0.1:${port}/grok/v1/responses`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          model: 'grok-4.6',
+          session_id: 'session-grok-park',
+          input: [
+            { role: 'developer', content: 'You are DSH.\n\nCurrent runtime context. This snapshot supersedes earlier runtime-context snapshots.' },
+            { role: 'user', content: [{ type: 'input_text', text: 'hi' }] },
+            { role: 'assistant', content: [{ type: 'output_text', text: 'ok' }] },
+          ],
+        }),
+      })
+      assert.equal(seen[0].body.input[0].role, 'system')
+      assert.equal(seen[0].body.input[0].content, 'You are DSH.')
+      assert.equal(Object.hasOwn(seen[0].body, 'instructions'), false)
+      assert.equal(seen[1].body.input[0].role, 'system')
+      assert.equal(seen[1].body.input[0].content, 'You are DSH.')
+      assert.equal(seen[1].body.input[1].role, 'user')
+      assert.equal(seen[1].body.input[2].role, 'assistant')
+      assert.equal(seen[1].body.input[3].role, 'developer')
+      assert.deepEqual(seen[1].body.input[3].content, [{
+        type: 'input_text',
+        text: 'Current runtime context. This snapshot supersedes earlier runtime-context snapshots.',
+      }])
+      assert.equal(seen[1].body.prompt_cache_key, 'session-grok-park')
+      assert.equal(seen[1].headers['x-grok-conv-id'], 'session-grok-park')
+      assert.equal(seen[1].headers['session-id'], undefined)
+    })
+  } finally {
+    resetGrokSystemPins()
+  }
 })

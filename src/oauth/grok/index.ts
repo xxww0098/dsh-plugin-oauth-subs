@@ -9,7 +9,14 @@
 import { decodeJwtPayload } from '../../utils/jwt.js'
 import { OAuthEndpointError, oauthError } from '../codex/index.js'
 
-export { grokAffinityHeaders, grokCacheSessionId, applyGrokCache } from './cache.js'
+export {
+  grokAffinityHeaders,
+  grokCacheSessionId,
+  applyGrokCache,
+  GROK_STABLE_SESSION,
+  pinGrokSystemPrefix,
+  resetGrokSystemPins,
+} from './cache.js'
 
 export const GROK_CLIENT_ID = 'b1a00492-073a-47ea-816f-4c329264a828'
 export const GROK_DISCOVERY_URL = 'https://auth.x.ai/.well-known/openid-configuration'

@@ -12,9 +12,10 @@
 | [`index.ts`](index.ts) | OIDC 发现、device/PKCE、换票、刷新、Responses 头、套餐档位 |
 | [`device-flow.ts`](device-flow.ts) | RFC 8628 设备码（默认登录，无 loopback） |
 | [`credits-frame.ts`](credits-frame.ts) | grok.com `GetGrokCreditsConfig` 的 gRPC-web 帧解码 |
-| [`cache.ts`](cache.ts) | `prompt_cache_key` + **`x-grok-conv-id`**。禁止带 Codex `session-id` |
+| [`request.ts`](request.ts) | DSH Responses body：钉 leading system，多余 snapshot 挂 **input 后缀**。不抬顶层 `instructions` |
+| [`cache.ts`](cache.ts) | `prompt_cache_key` + grok-build 头（`x-grok-conv-id` / `session-id` / `req-id` / `model-override`）。禁止带 Codex `session-id` |
 
-调度：[`../proxy.ts`](../proxy.ts) `family === 'grok'` → `applyGrokCache` + `grokAffinityHeaders`。
+调度：[`../proxy.ts`](../proxy.ts) `family === 'grok'` → `normalizeGrokResponsesBody` + `applyGrokCache` + `grokAffinityHeaders`。
 额度：[`../quota.ts`](../quota.ts) `fetchGrokQuota` / `parseGrokBilling` / `applyGrokCreditsSnapshot`。
 套餐：[`../plan.ts`](../plan.ts) + `GROK_TIER_NAMES`（JWT 数字档 0–7）。
 
@@ -40,7 +41,7 @@ DSH `api: openai-responses`。上游就是 xAI `api.x.ai/v1/responses`。不要�
 DSH  →  本机 Responses 代理  →  POST https://api.x.ai/v1/responses
 ```
 
-头：`grokUpstreamHeaders` + `x-grok-conv-id`（有缓存 id 时）。**不要**抄 Codex 的 `session-id` / `x-client-request-id`：xAI 忽略它们，缓存会打到错误分片。
+头：`grokUpstreamHeaders` + grok-build `GrokRequestHeaders`（`x-grok-conv-id`、`x-grok-session-id`、`x-grok-req-id`、`x-grok-model-override`；重试再加 `x-grok-transient-retry`）。**不要**抄 Codex 的 `session-id` / `x-client-request-id`：xAI 忽略它们，缓存会打到错误分片。
 
 模型：`GROK_MODELS` 只有 **Grok 4.6**（`low`–`xhigh`）和 **Grok 4.5**（`low`–`high`）。Grok 4 已下架。思考关不掉。
 
@@ -57,21 +58,24 @@ DSH  →  本机 Responses 代理  →  POST https://api.x.ai/v1/responses
 
 ## 缓存
 
-xAI 按 **会话分片** 粘滞，键是 `x-grok-conv-id`，不是前缀哈希。
+对照 grok-build（`xai-org/grok-build` Responses）：分片粘滞 **和** 字节前缀都要。
 
 | 步骤 | 函数 | 做什么 |
 |---|---|---|
-| 1 | `grokCacheSessionId` | 清洗 DSH `prompt_cache_key` / `session_id`（1–64，`[A-Za-z0-9._:-]`） |
-| 2 | `applyGrokCache` | body 仍带 `prompt_cache_key`（同一 id） |
-| 3 | `grokAffinityHeaders` | **只**设 `x-grok-conv-id` |
+| 1 | `grokConversationId` | 清洗 DSH `prompt_cache_key` / `session_id`；都空则 `dsh-grok` |
+| 2 | `pinGrokSystemPrefix` | 每个 conv id 钉住第一次的 leading system/developer |
+| 3 | `normalizeGrokResponsesBody` | 钉住的前缀放 `input` 最前（`role: system`）；DSH 多出来的快照挂 **input 后缀** developer。不抬成顶层 `instructions`（grok-build 发 `instructions: null`） |
+| 4 | `applyGrokCache` | body `prompt_cache_key` = conv id；删 `session_id` / `prompt_cache_retention` |
+| 5 | `grokAffinityHeaders` | `x-grok-conv-id` = `x-grok-session-id` = conv id；每请求一个 `x-grok-req-id`；`x-grok-model-override`；重试 `x-grok-transient-retry` |
 
 判定：后面一块 **512 token** 的 cache 且复用 < 10% = **affinity miss**（打到错误分片），不是前缀被改写。分析器标签在 `src/utils/analyze-session.ts`，不要把 GLM 的 576 token 残骸当成这件事。
 
-没有「把 DSH 快照停到 suffix」：Grok 不靠字节稳定前缀。
+健康长会话：加权命中 ≥ 80%，**零** affinity miss。压缩 / 计划重建造成的 0 命中不是分片 miss。
 
 ## 不要
 
 - 不要给 Grok 写 Codex `session-id` / `x-client-request-id`。
+- 不要把 DSH 每步 snapshot 留在 `input` 最前（grok-build：下一次必须 byte-for-byte 重放前缀）。
 - 不要把 Grok 4 加回目录。
 - 不要只用 billing JSON 填额度条（Heavy / Premium+ 会空）。
 - 不要把 `api` 改成 Completions / Anthropic。
@@ -84,4 +88,4 @@ xAI 按 **会话分片** 粘滞，键是 `x-grok-conv-id`，不是前缀哈希�
 | xAI 额度拿不到 | 同文件 xAI 额度 |
 | Fast 无加速 | 同文件 2026-08-30 Grok/Codex Fast |
 
-测试：`test/proxy.test.ts`（Grok hop 必须带 `x-grok-conv-id`、禁止 Codex session 头）、`test/cache-families.test.ts`。
+测试：`test/proxy.test.ts`（Grok hop 必须带 grok-build 头、禁止 Codex session 头）、`test/cache-families.test.ts`、`test/grok-request.test.ts`。

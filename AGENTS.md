@@ -58,7 +58,8 @@ src/
       README.md
       index.ts             catalog, identity, device/PKCE endpoints
       device-flow.ts       RFC 8628
-      cache.ts             prompt_cache_key + x-grok-conv-id (not Codex headers)
+      request.ts           Responses body: pin leading system, park extras at suffix
+      cache.ts             prompt_cache_key + grok-build headers (not Codex headers)
     glm/                   Zhipu GLM Coding Plan (Z.ai global + BigModel China)
       README.md
       index.ts             catalog, CLI poll OAuth, key mint, headers
@@ -194,8 +195,8 @@ DSH body:  session_id?  prompt_cache_key?  messages/input  (volatile leading sys
 
 Codex:     prompt_cache_key + headers session-id / x-client-request-id; drop session_id
            extra developer parked at input suffix
-Grok:      prompt_cache_key + header x-grok-conv-id
-           no Codex session-id headers
+Grok:      prompt_cache_key + grok-build headers (conv-id / session-id / req-id / model-override)
+           extra developer parked at input suffix; no Codex session-id headers
 GLM:       drop prompt_cache_key / retention / options
            Anthropic default: metadata.user_id + header x-session-id
            first system block cache_control: ephemeral
@@ -230,12 +231,19 @@ OpenCode:  drop Codex/Grok cache fields; no sticky conversation id (non-fix)
 - Healthy long session: weighted hit ≥ 80%, **zero** affinity misses.
   Compaction / plan-rebuild zeros are not shard misses.
 
-**Grok** (`src/oauth/grok/cache.ts`)
+**Grok** (`src/oauth/grok/cache.ts` + prefix park in `request.ts`)
 
-- xAI sticky-routes the prompt cache by **shard**, keyed on
-  `x-grok-conv-id`. Codex `session-id` / `x-client-request-id` are ignored
-  and must not be copied.
-- Body still carries `prompt_cache_key` with the same cleaned id.
+- grok-build Responses: sticky-route **and** replay `input` byte for byte.
+  Shard key is `x-grok-conv-id` (= `x-grok-session-id` = body
+  `prompt_cache_key`). Also send `x-grok-req-id` (one UUID per DSH
+  request) and `x-grok-model-override`. Retries add
+  `x-grok-transient-retry`. Codex `session-id` / `x-client-request-id`
+  are ignored and must not be copied.
+- Extra leading `developer` / `system` in `input` (DSH snapshots) park
+  at the **input suffix**. Do not lift into top-level `instructions`
+  (grok-build sends `instructions: null`).
+- Strip DSH `session_id` after copying onto `prompt_cache_key`. Empty
+  id falls back to `dsh-grok`.
 - A later **512-token** cache block with <10% reuse is an **affinity miss**
   (wrong shard), not a prefix rewrite.
 
@@ -370,7 +378,7 @@ When adding `src/oauth/<id>/`:
 | Family | Backend cache | Sticky identity | Park extras | Hit field |
 |---|---|---|---|---|
 | Codex | prefix of `instructions` then `input` | `session-id` + `x-client-request-id` = `prompt_cache_key`; drop DSH `session_id` | developer at **input suffix** | `cacheReadTokens` |
-| Grok | conversation shard | `x-grok-conv-id` (+ body `prompt_cache_key`) | n/a (shard, not prefix) | `cacheReadTokens`; 512 + reuse<10% = affinity miss |
+| Grok | shard + prefix of `input` | `x-grok-conv-id` = `x-grok-session-id` = `prompt_cache_key`; `x-grok-req-id` + `x-grok-model-override` | developer at **input suffix** | `cacheReadTokens`; 512 + reuse<10% = affinity miss |
 | GLM | content hash of leading system + history | Anthropic: `metadata.user_id` + `x-session-id` + first-block `cache_control`; Completions leftover: `user` + `x-session-id` | Completions: system at **messages suffix**; Anthropic: extra system text blocks without cache_control | `cached_tokens` / `cache_read_input_tokens` |
 | Antigravity | Gemini `systemInstruction` + contents + tools | `request.sessionId` (fallback + model) | extra as trailing **user** | `cachedContentTokenCount` / `cache_read_tokens` → `cached_tokens` |
 | Kiro | CodeWhisperer conversation | `conversationId` + model | system as first history user+ack; extra at history suffix (not between toolUses / toolResults) | `cacheReadInputTokens` → `cached_tokens` |
@@ -705,9 +713,11 @@ npm run analyze -- path/to/session.jsonl
 
 Healthy long Codex session: weighted cache hit ≥ 80%, **zero** affinity
 misses, no TRANSPORT. Compaction / plan rebuild zeros are not shard misses.
-Grok uses `x-grok-conv-id` + body `prompt_cache_key`, not Codex
-`session-id` headers; a later 512-token cache block with <10% reuse is an
-affinity miss (wrong xAI shard), not a prefix rewrite.
+Grok uses grok-build headers (`x-grok-conv-id` / `x-grok-session-id` /
+`x-grok-req-id` / `x-grok-model-override`) + body `prompt_cache_key`, not
+Codex `session-id` headers; extra DSH snapshots park at the input suffix.
+A later 512-token cache block with <10% reuse is an affinity miss (wrong
+xAI shard), not a prefix rewrite.
 GLM uses a content-hash prefix (`user` / `x-session-id`); a 576-token remnant
 after a leading-system splice is a **prefix break**, not a Grok affinity miss.
 Antigravity hits are `cachedContentTokenCount`. Kiro hits are

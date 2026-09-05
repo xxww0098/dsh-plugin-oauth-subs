@@ -729,16 +729,16 @@ GLM-5.3 / Flash 没有 low / high / max，请求不带 `reasoning_effort`，上�
 ### 修复
 并行 CLI billing + user + gRPC credits。JSON 已有 percent 用 JSON；缺了用 gRPC weekly。预付 0 和没有数字的产品行不画。
 
-## 2026-08-30：Grok 缓存命中率卡在 ~70%，热身后反复出现 512 token 块
+## 2026-09-04：Grok 缓存命中率卡在 ~70%，热身后反复出现 512 token 块
 
 ### 现象
-多数步 ~99% 复用，中间几拍 `cacheReadTokens` **正好 512**、命中 <1%，下一拍立刻回到 ~99%。加权被拉到 ~70%。
+多数步 ~99% 复用，中间几拍 `cacheReadTokens` **正好 512**、命中 <1%，下一拍立刻回到 ~99%。加权被拉到 ~70%。只带 `x-grok-conv-id` 后长会话仍会掉下来。
 
 ### 根因
-xAI prompt cache **按服务器分片**，粘性头是 `x-grok-conv-id`（body 等价 `prompt_cache_key`）。粒度 512。不带粘性就打到只有全局系统前缀的机器。分析器若只认 `cacheReadTokens === 0` 会把 512 块误判成 `prefix_break`。
+xAI prompt cache **按服务器分片**（粒度 512），粘性头是 grok-build 整套：`x-grok-conv-id` / `x-grok-session-id` / `x-grok-req-id` / `x-grok-model-override`（body 等价 `prompt_cache_key`）。不带粘性就打到只有全局系统前缀的机器。同时 grok-build Responses 要求下一次 **byte-for-byte** 重放 `input`；DSH 每步把 snapshot 插到 `input` 最前。分析器若只认 `cacheReadTokens === 0` 会把 512 块误判成 `prefix_break`。
 
 ### 修复
-Grok：写 `prompt_cache_key` + `x-grok-conv-id`。**仍然不**发送 Codex `session-id` / `x-client-request-id`。分析器：512 + 复用 <10% = `affinity_miss`。健康：加权 ≥80%，亲和丢失 0。
+完整 grok-build sticky 头（**仍然不**发送 Codex `session-id` / `x-client-request-id`）。每个 conv 钉第一次 system/developer，增量 snapshot 挂 **input 后缀**。`prompt_cache_key` 默认 conv id。分析器：512 + 复用 <10% = `affinity_miss`。健康：加权 ≥80%，亲和丢失 0。
 
 ## 2026-08-26：本地 DSH Codex 缓存命中率异常偏低
 

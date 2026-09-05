@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { applyCodexCache, codexCacheHeaders, codexCacheSessionId } from '../lib/oauth/codex/cache.js'
-import { applyGrokCache, grokAffinityHeaders, grokCacheSessionId } from '../lib/oauth/grok/cache.js'
+import { applyGrokCache, grokAffinityHeaders, grokCacheSessionId, GROK_STABLE_SESSION, pinGrokSystemPrefix, resetGrokSystemPins } from '../lib/oauth/grok/cache.js'
 import { applyGlmAnthropicCache, applyGlmCache, glmCacheSessionId, resetGlmSystemPins } from '../lib/oauth/glm/cache.js'
 import { antigravityCacheSessionId, antigravitySessionIdOf, ANTIGRAVITY_STABLE_SESSION } from '../lib/oauth/antigravity/cache.js'
 import { kiroCacheSessionId, kiroConversationId, pinKiroSystemPrefix, KIRO_STABLE_SESSION, resetKiroSystemPins } from '../lib/oauth/kiro/cache.js'
@@ -59,11 +59,42 @@ test('Codex cache strips session_id after copying onto prompt_cache_key', () => 
   assert.equal(Object.hasOwn(payload, 'session_id'), false)
 })
 
-test('Grok cache writes prompt_cache_key and x-grok-conv-id, never Codex headers', () => {
-  const { payload, cacheSessionId } = applyGrokCache({ session_id: 'sess-grok' })
+test('Grok cache writes prompt_cache_key and grok-build headers, never Codex headers', () => {
+  const { payload, cacheSessionId } = applyGrokCache({ session_id: 'sess-grok', prompt_cache_retention: '24h' })
   assert.equal(payload.prompt_cache_key, 'sess-grok')
-  assert.deepEqual(grokAffinityHeaders(cacheSessionId), { 'x-grok-conv-id': 'sess-grok' })
-  assert.equal(Object.hasOwn(grokAffinityHeaders(cacheSessionId), 'session-id'), false)
+  assert.equal(Object.hasOwn(payload, 'session_id'), false)
+  assert.equal(Object.hasOwn(payload, 'prompt_cache_retention'), false)
+  const headers = grokAffinityHeaders(cacheSessionId, { reqId: 'req-1', model: 'grok-4.6' })
+  assert.deepEqual(headers, {
+    'x-grok-conv-id': 'sess-grok',
+    'x-grok-session-id': 'sess-grok',
+    'x-grok-req-id': 'req-1',
+    'x-grok-model-override': 'grok-4.6',
+  })
+  assert.equal(Object.hasOwn(headers, 'session-id'), false)
+  assert.equal(Object.hasOwn(headers, 'x-client-request-id'), false)
+
+  const retry = grokAffinityHeaders(cacheSessionId, { reqId: 'req-1', retryAttempt: 2 })
+  assert.equal(retry['x-grok-req-id'], 'req-1')
+  assert.equal(retry['x-grok-transient-retry'], '2')
+
+  const neither = applyGrokCache({ model: 'grok-4.6' })
+  assert.equal(neither.payload.prompt_cache_key, GROK_STABLE_SESSION)
+  assert.equal(neither.cacheSessionId, GROK_STABLE_SESSION)
+})
+
+test('Grok pins the first system blob per conv and returns extras for suffix parking', () => {
+  resetGrokSystemPins()
+  const first = pinGrokSystemPrefix('sess-a', 'You are DSH.')
+  assert.deepEqual(first, { pinned: 'You are DSH.', extra: '' })
+  const extra = pinGrokSystemPrefix('sess-a', 'You are DSH.\n\nCurrent runtime context.')
+  assert.equal(extra.pinned, 'You are DSH.')
+  assert.equal(extra.extra, 'Current runtime context.')
+  const other = pinGrokSystemPrefix('sess-b', 'Other agent.')
+  assert.deepEqual(other, { pinned: 'Other agent.', extra: '' })
+  const fallback = pinGrokSystemPrefix(GROK_STABLE_SESSION, 'You are DSH.\n\nSnapshot.')
+  assert.deepEqual(fallback, { pinned: 'You are DSH.\n\nSnapshot.', extra: '' })
+  resetGrokSystemPins()
 })
 
 test('GLM cache strips Codex/Grok fields and pins user', () => {

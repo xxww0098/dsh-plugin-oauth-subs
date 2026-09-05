@@ -6,10 +6,12 @@
 
 import { createServer } from 'node:http'
 import { once } from 'node:events'
+import { randomUUID } from 'node:crypto'
 import { CODEX_API_URL, CODEX_CLIENT_VERSION, CODEX_MODELS, CODEX_MODELS_URL, codexRoutingHint, codexUpstreamHeaders } from './codex/index.js'
 import { applyCodexCache, codexCacheHeaders } from './codex/cache.js'
 import { GROK_API_URL, GROK_MODELS, grokAffinityHeaders, grokUpstreamHeaders } from './grok/index.js'
 import { applyGrokCache } from './grok/cache.js'
+import { normalizeGrokResponsesBody } from './grok/request.js'
 import { GLM_MODELS, glmAnthropicHeaders, glmAnthropicUrl, glmCodingUrl, glmUpstreamHeaders } from './glm/index.js'
 import { glmCacheSessionId } from './glm/cache.js'
 import { normalizeGlmAnthropicBody, normalizeGlmChatBody } from './glm/request.js'
@@ -208,8 +210,13 @@ function rewriteUpstreamBody(buffer, family, wire) {
     }
   }
   if (family === 'grok') {
-    const { payload: next, cacheSessionId } = applyGrokCache(fast)
-    return { body: Buffer.from(JSON.stringify(next)), cacheSessionId, stream: next.stream === true }
+    const { payload: next, cacheSessionId } = applyGrokCache(normalizeGrokResponsesBody(fast))
+    return {
+      body: Buffer.from(JSON.stringify(next)),
+      cacheSessionId,
+      stream: next.stream === true,
+      grokModel: typeof next.model === 'string' ? next.model : undefined,
+    }
   }
   if (family === 'glm') {
     const next = wire === 'anthropic' ? normalizeGlmAnthropicBody(fast) : normalizeGlmChatBody(fast)
@@ -712,8 +719,9 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
 
 async function forward(request, response, { url, session, headersOf, fetchFn, family, wire, maxRequestBodyBytes, signal }) {
   const raw = await readBody(request, maxRequestBodyBytes)
-  const { body, cacheSessionId, stream, routingHint } = rewriteUpstreamBody(raw, family, wire)
-  const headers = {
+  const { body, cacheSessionId, stream, routingHint, grokModel } = rewriteUpstreamBody(raw, family, wire)
+  const grokReqId = family === 'grok' ? randomUUID() : undefined
+  const baseHeaders = {
     ...headersOf(session, cacheSessionId),
     'content-type': request.headers['content-type'] ?? 'application/json',
     ...(stream ? { accept: 'text/event-stream' } : {}),
@@ -721,7 +729,6 @@ async function forward(request, response, { url, session, headersOf, fetchFn, fa
       ...codexCacheHeaders(cacheSessionId),
       ...(routingHint ? { 'x-codex-routing-hint': routingHint } : {}),
     } : {}),
-    ...(family === 'grok' ? grokAffinityHeaders(cacheSessionId) : {}),
   }
 
   let lastFailure
@@ -729,6 +736,14 @@ async function forward(request, response, { url, session, headersOf, fetchFn, fa
     if (attempt > 0) {
       await delay(RETRY_BACKOFF_MS[attempt - 1], signal)
       console.error(`[oauth-subs] ${family} retrying upstream (attempt ${attempt + 1}/${STREAM_ATTEMPTS}): ${lastFailure}`)
+    }
+    const headers = {
+      ...baseHeaders,
+      ...(family === 'grok' ? grokAffinityHeaders(cacheSessionId, {
+        model: grokModel,
+        reqId: grokReqId,
+        retryAttempt: attempt,
+      }) : {}),
     }
     try {
       return await attemptUpstream(response, { url, headers, body, stream, fetchFn, family, signal })

@@ -5,7 +5,7 @@
  * (`b1a00492-073a-47ea-816f-4c329264a828`, https://auth.x.ai). Default login is
  * RFC 8628 device-code (no loopback); PKCE on 127.0.0.1:56121 is the fallback.
  */
-export { grokAffinityHeaders, grokCacheSessionId, applyGrokCache } from './cache.js';
+export { grokAffinityHeaders, grokCacheSessionId, applyGrokCache, GROK_STABLE_SESSION, pinGrokSystemPrefix, resetGrokSystemPins, } from './cache.js';
 export declare const GROK_CLIENT_ID = "b1a00492-073a-47ea-816f-4c329264a828";
 export declare const GROK_DISCOVERY_URL = "https://auth.x.ai/.well-known/openid-configuration";
 export declare const GROK_API_URL = "https://api.x.ai/v1/responses";
