@@ -2,6 +2,17 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-05：Cursor 选择器只有 Composer 2 / 1.5 等 5 个
+
+### 现象
+Settings OAuth · Cursor `已开启 2/5`。没有 Composer 2.5、Grok 4.6、Claude Opus 5、Fable 5.1、GPT-5.6、Gemini。
+
+### 根因
+静态 `CURSOR_MODELS` 停在年中 5 行。活目录非空时整表替换静态，GetUsableModels 仍返回旧 5 个时官方新模型进不了 picker。
+
+### 修复
+静态对齐 [cursor.com/docs/models-and-pricing](https://cursor.com/docs/models-and-pricing)（Composer 2.5 / Grok 4.6 / Fable 5.1 / Opus 5 / Gemini 3.1 Pro / 3.8 Flash / GPT-5.6 Sol·Terra·Luna）。`mergeCursorStaticFloor` 把活家族叠在静态楼上。
+
 ## 2026-09-05：本地 DSH Cursor 缓存命中率显示为 0%
 
 ### 现象

@@ -1,6 +1,7 @@
 /**
  * Live Cursor picker catalog. GetUsableModels + AvailableModels collapse
- * into one DSH row per family. CURSOR_MODELS is the offline fallback only.
+ * into one DSH row per family, then merge onto CURSOR_MODELS so a stale
+ * live list cannot hide Composer 2.5 / Grok 4.6 / GPT-5.6 / Gemini.
  */
 
 import { createHash } from 'node:crypto'
@@ -51,8 +52,10 @@ export function inferCursorContextWindow(id, name = '') {
     return GPT56_DEFAULT_CONTEXT_WINDOW
   }
   if (/\b1\s*m\b|(?:^|-)1m(?:-|$)/.test(text)) return 1_000_000
+  if (/\b300\s*k\b|(?:^|-)300k(?:-|$)/.test(text)) return 300_000
   if (/\b272\s*k\b|(?:^|-)272k(?:-|$)/.test(text)) return 272_000
   if (/\b256\s*k\b|(?:^|-)256k(?:-|$)/.test(text)) return 256_000
+  if (/claude-(?:opus-5|fable-5)/.test(text)) return 300_000
   if (/grok[- ]4\.[56](?:\b|-)/.test(text)) return 256_000
   return DEFAULT_CURSOR_CONTEXT_WINDOW
 }
@@ -60,8 +63,9 @@ export function inferCursorContextWindow(id, name = '') {
 /** pi-cursor `inferCursorMaxOutputTokens`. */
 export function inferCursorMaxOutputTokens(id, name = '') {
   const text = `${id} ${name}`.toLowerCase()
+  if (/claude-(?:fable|opus|sonnet)/.test(text)) return 128_000
   if (/claude-(?:[5-9]|4\.(?:[6-9]|\d{2,}))/.test(text)) return 128_000
-  if (/\b(?:sonnet|opus)\s*(?:[5-9]|4\.(?:[6-9]|\d{2,}))/.test(text)) return 128_000
+  if (/\b(?:sonnet|opus|fable)\s*-?\s*(?:[5-9]|4\.(?:[6-9]|\d{2,}))/.test(text)) return 128_000
   if (/\bgpt-5/.test(text)) return 128_000
   return DEFAULT_CURSOR_MAX_OUTPUT
 }
@@ -211,6 +215,47 @@ function cursorModelRow(id, name, contextWindow, maxTokens, input = CURSOR_VISIO
   }
 }
 
+function cloneCursorRow(row) {
+  return {
+    ...row,
+    input: Array.isArray(row.input) ? [...row.input] : [...CURSOR_VISION],
+    reasoningEfforts: row.reasoningEfforts && typeof row.reasoningEfforts === 'object'
+      ? { ...row.reasoningEfforts }
+      : { ...CURSOR_REASONING },
+  }
+}
+
+function cursorPickerRank(id) {
+  if (id === 'default') return { group: -1, index: 0, fast: 0, key: id }
+  const fast = String(id).endsWith('-fast') ? 1 : 0
+  const base = fast ? id.slice(0, -5) : id
+  const index = CURSOR_MODELS.findIndex((model) => model.id === base)
+  if (index >= 0) return { group: 0, index, fast, key: base }
+  return { group: 1, index: 0, fast, key: base }
+}
+
+function compareCursorPicker(a, b) {
+  const left = cursorPickerRank(a.id)
+  const right = cursorPickerRank(b.id)
+  if (left.group !== right.group) return left.group - right.group
+  if (left.group === 0 && left.index !== right.index) return left.index - right.index
+  if (left.key !== right.key) return left.key.localeCompare(right.key)
+  return left.fast - right.fast
+}
+
+/** Live families overlay the official static floor. Empty live → a copy of CURSOR_MODELS. */
+export function mergeCursorStaticFloor(live) {
+  const rows = (live ?? []).map(cloneCursorRow)
+  const have = new Set(rows.map((row) => row.id))
+  for (const row of CURSOR_MODELS) {
+    if (have.has(row.id)) continue
+    rows.push(cloneCursorRow(row))
+    have.add(row.id)
+  }
+  rows.sort(compareCursorPicker)
+  return rows
+}
+
 /** Collapse live ids into one picker row per family, plus `{family}-fast` when a source id is Fast. Empty input → []. */
 export function toCursorPickerModels(usable, parameterized = []) {
   const groups = new Map()
@@ -243,22 +288,18 @@ export function toCursorPickerModels(usable, parameterized = []) {
       ? ['text']
       : CURSOR_VISION
     models.push(cursorModelRow(id, name, window, maxTokens, input))
-    // Auto / default never grows Fast. Static fallback also stays 5 rows.
+    // Auto / default never grows Fast. Static floor also stays family-only (no Fast).
     if (id !== 'default' && group.hasFast) {
       models.push(cursorModelRow(`${id}-fast`, `${name} Fast`, window, maxTokens, input))
     }
   }
-  models.sort((a, b) => {
-    if (a.id === 'default') return -1
-    if (b.id === 'default') return 1
-    return a.id.localeCompare(b.id)
-  })
+  models.sort(compareCursorPicker)
   return models
 }
 
 export async function refreshCursorCatalog(session, options = {}) {
   const token = typeof session?.accessToken === 'string' ? session.accessToken.trim() : ''
-  if (!token) return [...CURSOR_MODELS]
+  if (!token) return mergeCursorStaticFloor([])
   const tokenHash = cursorCatalogTokenHash(token)
   if (cached.tokenHash === tokenHash && cached.models?.length && Date.now() < cached.expiresAt) {
     return cached.models
@@ -270,7 +311,7 @@ export async function refreshCursorCatalog(session, options = {}) {
       Promise.resolve(fetchUsable(session, options)).catch(() => []),
       Promise.resolve(fetchAvailable(session, options)).catch(() => []),
     ])
-    const models = toCursorPickerModels(usable, available)
+    const models = mergeCursorStaticFloor(toCursorPickerModels(usable, available))
     if (models.length > 0) {
       cached.tokenHash = tokenHash
       cached.models = models
@@ -281,5 +322,5 @@ export async function refreshCursorCatalog(session, options = {}) {
     // Discovery must not block chat or login.
   }
   if (cached.tokenHash === tokenHash && cached.models?.length) return cached.models
-  return [...CURSOR_MODELS]
+  return mergeCursorStaticFloor([])
 }
