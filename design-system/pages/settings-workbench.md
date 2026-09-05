@@ -29,8 +29,11 @@ buttons 32px (primary 36px). Still 13px UI / 12.5px emails.
 ## Quota
 
 `QuotaRow` is remaining-only on this page. Cursor `kind === 'product'`
-is not a used-bar exception. Codex reset credits stay in the card and
-still open `WarnDialog`, not the add-account Dialog.
+is not a used-bar exception. Each window's reset sits inside that
+row's `QuotaMeter` (under the percent row, above the bar). A missing
+`resetAt` draws nothing on that bar — never a shared line between
+meters. Codex reset credits stay in the card and still open
+`WarnDialog`, not the add-account Dialog.
 
 ## Dialog vs card
 

@@ -677,6 +677,10 @@ Binding UI rules:
   `% used`. Cursor product rows must not special-case `showUsed`.
   Amounts like `used / total` may stay as secondary text when they are
   real units; the bar itself is remaining.
+- **Reset time belongs to its bar.** `formatReset(row.resetAt)` lives
+  inside that row's `QuotaMeter` (under the percent row, above the
+  bar). A missing `resetAt` draws nothing on that window. Never float
+  one shared reset between primary and weekly.
 - **Bar color tracks remaining** via `quotaTone`: remaining `>40` ok,
   `≤40` warn, `≤15` bad (`--osubs-ok` / `--osubs-warn` / `--osubs-bad`).
   Do not color by family. Do not use a single always-green bar.

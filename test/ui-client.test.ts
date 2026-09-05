@@ -253,6 +253,8 @@ test('QuotaRow is a remaining bar for Codex remainingPercent and Cursor usedPerc
   assert.match(src, /100 - row\.usedPercent/)
   assert.match(src, /const remaining = remainingPercentOf\(row\)/)
   assert.match(src, /h\(QuotaMeter,/)
+  assert.match(src, /function QuotaMeter\(\{ t, remainingPercent, amount, label, reset \}\)/)
+  assert.match(src, /reset && h\('span', \{ className: 'osubs-qreset' \}, reset\)/)
   assert.match(src, /h\(RemainingBar, \{ remainingPercent, tone \}\)/)
   assert.match(src, /fill\(t\.leftPercent, remainingPercent\)/)
   assert.match(src, /scaleX\(\$\{Math\.max\(0, Math\.min\(100, remainingPercent\)\) \/ 100\}\)/)
@@ -277,6 +279,23 @@ test('QuotaRow is a remaining bar for Codex remainingPercent and Cursor usedPerc
   assert.equal(remainingPercentOf({ usedPercent: 52, kind: 'product', product: 'auto' }), 48)
   assert.equal(remainingPercentOf({ remainingPercent: 48, usedPercent: 52, kind: 'product' }), 48)
   assert.equal(remainingPercentOf({ usedPercent: 0, kind: 'product', product: 'api' }), 100)
+})
+
+test('QuotaMeter owns each window reset; nothing floats between bars', async () => {
+  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  const meter = src.match(/function QuotaMeter\([\s\S]*?\n    \}/)?.[0] ?? ''
+  const row = src.match(/function QuotaRow\([\s\S]*?\n    \}/)?.[0] ?? ''
+  const qmeterCss = src.match(/\.osubs-qmeter \{[^}]*\}/)?.[0] ?? ''
+  const qresetCss = src.match(/\.osubs-qreset \{[^}]*\}/)?.[0] ?? ''
+  assert.match(meter, /reset && h\('span', \{ className: 'osubs-qreset' \}, reset\)/)
+  assert.match(meter, /osubs-qreset[\s\S]*RemainingBar/)
+  assert.match(row, /reset,\s*\}\),/)
+  assert.equal(/reset && h\('span', \{ className: 'osubs-note' \}, reset\)/.test(row), false)
+  assert.match(qmeterCss, /display: flex/)
+  assert.match(qmeterCss, /flex-direction: column/)
+  assert.equal(qmeterCss.includes('display: contents'), false)
+  assert.match(qresetCss, /text-align: right/)
+  assert.match(src, /const reset = formatReset\(row\.resetAt, t\)/)
 })
 
 test('Add account opens a centered dialog, not a sheet', async () => {

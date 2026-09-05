@@ -874,9 +874,9 @@ window.__ModuleLoader__.load({
 
 .osubs-quota { display: flex; flex-direction: column; gap: 12px; padding-top: 12px; border-top: 1px solid var(--osubs-hair); }
 .osubs-quota-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
-.osubs-qrow { display: flex; flex-direction: column; gap: 5px; }
+.osubs-qrow { display: flex; flex-direction: column; gap: 6px; }
 .osubs-qrow-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 12px; }
-.osubs-qcluster { display: flex; flex-direction: column; gap: 8px; }
+.osubs-qcluster { display: flex; flex-direction: column; gap: 10px; }
 .osubs-qcluster + .osubs-qcluster {
   margin-top: 2px; padding-top: 10px;
   border-top: 1px solid var(--osubs-hair);
@@ -885,7 +885,8 @@ window.__ModuleLoader__.load({
   font-size: 12.5px; font-weight: 600; line-height: 1.35;
   color: var(--osubs-muted);
 }
-.osubs-qmeter { display: contents; }
+.osubs-qmeter { display: flex; flex-direction: column; gap: 4px; }
+.osubs-qreset { font-size: 11px; color: var(--osubs-faint); text-align: right; line-height: 1.35; }
 .osubs-bar { height: 6px; border-radius: 99px; background: var(--osubs-hair); overflow: hidden; }
 .osubs-bar > i { display: block; height: 100%; border-radius: 99px; transform-origin: left center; transition: transform 340ms cubic-bezier(.2,.8,.2,1), background-color 240ms ease; }
 .osubs-qbox {
@@ -1190,7 +1191,7 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function QuotaMeter({ t, remainingPercent, amount, label }) {
+    function QuotaMeter({ t, remainingPercent, amount, label, reset }) {
       const tone = quotaTone(remainingPercent)
       const color = tone ? `var(--osubs-${tone})` : 'inherit'
       const caption = remainingPercent === undefined ? '' : fill(t.leftPercent, remainingPercent)
@@ -1202,6 +1203,7 @@ window.__ModuleLoader__.load({
             caption,
           ),
         ),
+        reset && h('span', { className: 'osubs-qreset' }, reset),
         remainingPercent !== undefined && h(RemainingBar, { remainingPercent, tone }),
       )
     }
@@ -1227,8 +1229,8 @@ window.__ModuleLoader__.load({
           remainingPercent: remaining,
           amount,
           label: rowLabel(row, t, family),
+          reset,
         }),
-        reset && h('span', { className: 'osubs-note' }, reset),
         row.note && h('span', { className: 'osubs-note' }, row.note),
       )
     }
