@@ -1,7 +1,7 @@
 # Cursor OAuth
 
 本文件是 `src/oauth/cursor/` 的设计源。改登录、额度、对话或缓存先改这里再改代码。
-跨家族硬约定在仓库根 [`AGENTS.md`](../../../AGENTS.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)。
+跨家族硬约定在仓库根 [`AGENTS.md`](../../../AGENTS.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)；对照仓库在 [`docs/oauth.md`](../../../docs/oauth.md)。
 
 Cursor 订阅（Composer / Claude / GPT / Grok via Cursor infra）。原生 wire 是 **Connect RPC v1 protobuf over HTTP/2**，不是 OpenAI REST。社区逆向来自 MIT [`Rahularya01/pi-cursor`](https://github.com/Rahularya01/pi-cursor)（`src/auth/oauth.ts`、`docs/protocol.md`、`src/client/h2-session.ts`、`src/stream/request-build.ts`、`proto/agent.proto`）。缓存命中字段与 Run handshake 头对照 [`fitchmultz/pi-cursor-sdk`](https://github.com/fitchmultz/pi-cursor-sdk) 钉的 `@cursor/sdk@1.0.27`（`TurnEndedUpdate.cache_read_tokens`、`x-original-request-id`）。本目录只抽 Run / GetUsableModels / GetCurrentPeriodUsage 用到的字段，不 vendor 整棵树，也不引入 Bun / `@cursor/sdk`。
 
@@ -197,3 +197,6 @@ Wire / PKCE / Keychain+vscdb 顺序改编自 MIT：
 `TurnEndedUpdate` 字段号、`cacheReadTokens` 分区、`x-original-request-id` 对照：
 
 - [fitchmultz/pi-cursor-sdk](https://github.com/fitchmultz/pi-cursor-sdk)（`@cursor/sdk@1.0.27`）
+
+总表见 [`docs/oauth.md`](../../../docs/oauth.md)。
+pi-cursor-sdk 走 API key + `Agent.create`，本 hop 仍是 CLI OAuth，不要改 `x-cursor-client-type: sdk`。

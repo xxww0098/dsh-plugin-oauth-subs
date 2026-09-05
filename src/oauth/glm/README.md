@@ -1,7 +1,7 @@
 # GLM OAuth（Z.ai / BigModel）
 
 本文件是 `src/oauth/glm/` 的设计源。改登录、额度、对话或缓存先改这里再改代码。
-跨家族硬约定在仓库根 [`AGENTS.md`](../../../AGENTS.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)。
+跨家族硬约定在仓库根 [`AGENTS.md`](../../../AGENTS.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)；对照仓库在 [`docs/oauth.md`](../../../docs/oauth.md)。
 
 Zhipu **Coding Plan**。两个站点、同一套 ZCode CLI poll。默认对话走 **Anthropic Messages**（ZCode Desktop 默认协议），**不**走 chatgpt.com。
 
@@ -149,6 +149,10 @@ Pin map 的 Anthropic 键是 `${sessionId}\0anthropic`，和 Completions 的 `se
 - 不要宣称切 Anthropic 就能吃上 150%。150% 是 Desktop **身份/UA**，没有和官方 Desktop 对比过用量斜率。
 - 不要在 Anthropic 路由上写 Completions-only `compat`（`supportsReasoningEffort` / `thinkingFormat: openai`）。
 - 不要在下次 `sync()` 改写残留设置之前拆掉 Completions hop。
+
+## 归因
+
+一线是闭源 ZCode Desktop 3.10.1（[changelog](https://zcode.z.ai/en/changelog)）+ [docs.z.ai](https://docs.z.ai/devpack/quick-start)，没有公开源码仓。缓存 / 思考文档见家族头。总表见 [`docs/oauth.md`](../../../docs/oauth.md)。
 
 ## 追溯
 

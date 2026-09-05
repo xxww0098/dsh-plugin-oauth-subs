@@ -1,7 +1,7 @@
 # Ollama Cloud
 
 本文件是 `src/oauth/ollama/` 的设计源。改登录、目录、对话或缓存先改这里再改代码。
-跨家族硬约定在仓库根 [`AGENTS.md`](../../../AGENTS.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)。
+跨家族硬约定在仓库根 [`AGENTS.md`](../../../AGENTS.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)；对照仓库在 [`docs/oauth.md`](../../../docs/oauth.md)。
 
 Ollama **Cloud** 订阅（[ollama.com](https://ollama.com)）。**不是**本机 `127.0.0.1:11434` daemon，也不是 `ollama launch dsh`。那个本地宿主已经在 DSH 里，这个 tab 不包一层 localhost。
 
@@ -139,3 +139,5 @@ DSH 每步前置的 runtime snapshot 因此无法在 Ollama Cloud 上做 prefix 
 - Cloud：https://docs.ollama.com/cloud（`https://ollama.com/api/chat` + Bearer；`GET /api/tags`；retirements）
 - OpenAI compat（localhost only in that page）：https://docs.ollama.com/api/openai-compatibility
 - Cloud `/v1`：docs.ollama.com Factory 集成 `https://ollama.com/v1/` + `OLLAMA_API_KEY`；本仓库 2026-09-03 探活 401≠404
+
+总表见 [`docs/oauth.md`](../../../docs/oauth.md)。

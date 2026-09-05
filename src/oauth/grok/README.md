@@ -1,7 +1,7 @@
 # Grok OAuth
 
 本文件是 `src/oauth/grok/` 的设计源。改登录、额度、对话或缓存先改这里再改代码。
-跨家族硬约定在仓库根 [`AGENTS.md`](../../../AGENTS.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)。
+跨家族硬约定在仓库根 [`AGENTS.md`](../../../AGENTS.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)；对照仓库在 [`docs/oauth.md`](../../../docs/oauth.md)。
 
 **不是** OpenAI Responses。上游是 xAI `api.x.ai/v1/responses`，登录对齐 Grok CLI。
 
@@ -79,6 +79,10 @@ DSH  →  本机 Responses 代理  →  POST https://api.x.ai/v1/responses
 - 不要把 Grok 4 加回目录。
 - 不要只用 billing JSON 填额度条（Heavy / Premium+ 会空）。
 - 不要把 `api` 改成 Completions / Anthropic。
+
+## 归因
+
+一线：[xai-org/grok-build](https://github.com/xai-org/grok-build) Responses（`GrokRequestHeaders` + 前缀 byte-for-byte）。导入旁路：[NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) `~/.hermes/auth.json`。总表见 [`docs/oauth.md`](../../../docs/oauth.md)。
 
 ## 追溯
 

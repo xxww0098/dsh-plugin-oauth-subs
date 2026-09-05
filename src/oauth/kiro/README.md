@@ -1,7 +1,7 @@
 # Kiro OAuth
 
 本文件是 `src/oauth/kiro/` 的设计源。改登录、额度、对话或缓存先改这里再改代码。
-跨家族硬约定在仓库根 [`AGENTS.md`](../../../AGENTS.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)。
+跨家族硬约定在仓库根 [`AGENTS.md`](../../../AGENTS.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)；对照仓库在 [`docs/oauth.md`](../../../docs/oauth.md)。
 
 AWS **Kiro / CodeWhisperer**。协议对齐 [ZyphrZero/kiro.rs](https://github.com/ZyphrZero/kiro.rs) 与 Kiro IDE。对话 **不是** OpenAI Responses，是 `GenerateAssistantResponse` eventstream。
 
@@ -131,6 +131,10 @@ proxy 只删 `prompt_cache_retention` / `prompt_cache_options`，**不**把 `pro
 - 不要把 `api` 改成 Responses / Anthropic。
 - 不要把 `none` 写成 `reasoningEfforts` 的键（DSH 只认 `off|minimal|low|medium|high|xhigh|max`）。
 - 不要把 kiro-manager-lite 的 AGPL 源码贴进来；只蒸馏格式，解析器写自己的。
+
+## 归因
+
+协议：[ZyphrZero/kiro.rs](https://github.com/ZyphrZero/kiro.rs)。导入格式蒸馏自 AGPL [lucks-cloud/kiro-manager-lite](https://github.com/lucks-cloud/kiro-manager-lite)（不抄源码）。`claude-fable-5`：[mikeyobrien/pi-provider-kiro](https://github.com/mikeyobrien/pi-provider-kiro) `0.10.2`。总表见 [`docs/oauth.md`](../../../docs/oauth.md)。
 
 ## 追溯
 

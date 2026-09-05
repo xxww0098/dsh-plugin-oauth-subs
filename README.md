@@ -53,7 +53,7 @@ Tokens: `<profile>/data/dsh-plugin-oauth-subs/auth.json` (`0600`). Models: `mode
 | Loopback | `http://127.0.0.1:8318/{codex,grok}/v1/responses`, `/glm/v1/messages` (Completions leftover `/glm/v1/chat/completions` until the next sync), `/{kiro,antigravity,cursor,ollama,kimi,opencode}/v1/chat/completions` |
 | Upstream | Refreshed subscription bearer |
 
-Not a second LLM adapter. After Settings closes, DSH still calls the loopback proxy. Bind is loopback-only; local credential is `DSH_OAUTH_SUBS_API_KEY`. GLM 150% Coding Plan boost is identity (ZCode Desktop UA), not a protocol claim. Stack and module tree: [AGENTS.md](AGENTS.md).
+Not a second LLM adapter. After Settings closes, DSH still calls the loopback proxy. Bind is loopback-only; local credential is `DSH_OAUTH_SUBS_API_KEY`. GLM 150% Coding Plan boost is identity (ZCode Desktop UA), not a protocol claim. Stack and module tree: [AGENTS.md](AGENTS.md). Reference hops (official CLI + community reverse): [docs/oauth.md](docs/oauth.md).
 
 ## Cache
 
@@ -84,7 +84,7 @@ The analyzer labels each call `cold_start` / `delta` / `compaction` / `rebuild` 
 
 ## Fast / models / reasoning
 
-Login and chat use official client identity; UA / fingerprint live in each `src/oauth/<id>/README.md`. Settings → **Models**: per-family checkboxes (default all on except **900K**). Reasoning is set in the Harness session menu, not Settings → Models. Fast and 900K spend quota faster.
+Login and chat use official client identity; UA / fingerprint live in each `src/oauth/<id>/README.md`. The repos those fingerprints were copied from are listed in [docs/oauth.md](docs/oauth.md). Settings → **Models**: per-family checkboxes (default all on except **900K**). Reasoning is set in the Harness session menu, not Settings → Models. Fast and 900K spend quota faster.
 
 | Family | Fast | Window | Thinking |
 |---|---|---|---|

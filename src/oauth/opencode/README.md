@@ -1,7 +1,7 @@
 # OpenCode Free
 
 本文件是 `src/oauth/opencode/` 的设计源。改登录、目录、对话或缓存先改这里再改代码。
-跨家族硬约定在仓库根 [`AGENTS.md`](../../../AGENTS.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)。
+跨家族硬约定在仓库根 [`AGENTS.md`](../../../AGENTS.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)；对照仓库在 [`docs/oauth.md`](../../../docs/oauth.md)。
 
 **不是** ChatGPT Codex / xAI Grok / OpenCode Zen 付费 / OpenCode Go 订阅。
 上游是 OpenCode Zen 中继上的 **匿名免费档**：`https://opencode.ai/zen/v1`（多数模型 Completions；Muse Spark 是 Responses）。
@@ -104,6 +104,10 @@ DSH picker：
 - 不要把 Codex `session-id` / `prompt_cache_key` / `store: false` / `include` 抄到 Zen Responses。
 - 不要把官方 Free（含 MiMo / Big Pickle）藏起来或把非 Muse 改打 Responses。
 - 不要 npm `@lobehub/icons`。
+
+## 归因
+
+匿名免费档对齐 [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) `plugins/model-providers/opencode-free`。Zen 源码 / 定价：[anomalyco/opencode](https://github.com/anomalyco/opencode)、[opencode.ai/docs/zen](https://opencode.ai/docs/zen)。能力 overlay：[sst/models.dev](https://github.com/sst/models.dev)。总表见 [`docs/oauth.md`](../../../docs/oauth.md)。
 
 ## 追溯
 

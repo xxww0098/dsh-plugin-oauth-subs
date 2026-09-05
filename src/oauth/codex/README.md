@@ -1,7 +1,7 @@
 # Codex OAuth
 
 本文件是 `src/oauth/codex/` 的设计源。改登录、额度、对话或缓存先改这里再改代码。
-跨家族硬约定在仓库根 [`AGENTS.md`](../../../AGENTS.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)。
+跨家族硬约定在仓库根 [`AGENTS.md`](../../../AGENTS.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)；对照仓库在 [`docs/oauth.md`](../../../docs/oauth.md)。
 
 **不是** `api.openai.com` 付费 key。走的是 ChatGPT 订阅后端 `chatgpt.com/backend-api/codex`。
 
@@ -87,6 +87,11 @@ Fast：body `service_tier` 从 `fast` 改成 `priority`，并带 `x-codex-routin
 - 不要把 `prompt_cache_retention` 送上去。
 - 不要把 Fast 只写 body 不写 `x-codex-routing-hint`（回显会一直是 default）。
 - 不要把 `api` 改成 Completions / Anthropic。
+
+## 归因
+
+一线：[openai/codex](https://github.com/openai/codex) tag `rust-v0.153.4`。
+`build_session_headers`（`session-id` / `thread-id` / `x-client-request-id`）、`x-codex-turn-state` 回放、`models.json`、[#37345](https://github.com/openai/codex/issues/37345) routing-hint。总表见 [`docs/oauth.md`](../../../docs/oauth.md)。
 
 ## 追溯
 

@@ -1,7 +1,7 @@
 # Antigravity OAuth
 
 本文件是 `src/oauth/antigravity/` 的设计源。改登录、额度、对话或缓存先改这里再改代码。
-跨家族硬约定在仓库根 [`AGENTS.md`](../../../AGENTS.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)。
+跨家族硬约定在仓库根 [`AGENTS.md`](../../../AGENTS.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)；对照仓库在 [`docs/oauth.md`](../../../docs/oauth.md)。
 
 Google **Antigravity hub**（`Antigravity.app`），Cloud Code `daily-cloudcode-pa`。不要模仿 **Antigravity IDE.app** / prod `cloudcode-pa`（除非 daily 5xx 才回落）。
 
@@ -117,6 +117,10 @@ DSH 每步再插 runtime-context system，工具 JSON 的 key 顺序也会抖。
 - 不要把 Antigravity extras 停成 GLM trailing system。
 - 不要 fingerprint 成第三方包装（Google 会封）。
 - 不要把 `api` 改成 Responses / Anthropic。
+
+## 归因
+
+公开 client / UA / `models.json`：[router-for-me/CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)。`maxOutputTokens` 钳位：[Rahularya01/pi-antigravity](https://github.com/Rahularya01/pi-antigravity)。指纹仍是本机 Antigravity.app hub 2.11.0。总表见 [`docs/oauth.md`](../../../docs/oauth.md)。
 
 ## 追溯
 
