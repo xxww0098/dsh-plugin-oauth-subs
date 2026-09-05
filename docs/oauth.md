@@ -117,7 +117,7 @@ pi-cursor-sdk 自己走 **API key + `Agent.create`**，不是 OAuth。本 hop �
 | [Authentication](https://docs.ollama.com/api/authentication) | `OLLAMA_API_KEY` Bearer |
 | [Cloud](https://docs.ollama.com/cloud) | `https://ollama.com/api/chat` + `GET /api/tags` |
 | Factory 集成 `https://ollama.com/v1/` | Completions 透传 |
-| [ollama#12532](https://github.com/ollama/ollama/issues/12532) | session 窗口 = UTC 5h unix 桶 |
+| [ollama#12532](https://github.com/ollama/ollama/issues/12532) | session = UTC 5h unix 桶；weekly = UTC 7d 桶偏移 −4d（周一 00:00 UTC） |
 | [ollama#16598](https://github.com/ollama/ollama/issues/16598) | Cloud 忽略 `num_ctx`；窗口来自 `/api/show` |
 
 **不要发明：** `cached_tokens`、sticky conversation id、把 `id_ed25519.pub` 当 API key、包一层 `localhost:11434`。

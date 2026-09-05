@@ -114,7 +114,10 @@ export declare function fetchCursorQuota(session: any, fetchFn?: typeof fetch): 
 }>;
 /** Global 5h unix buckets. ollama/ollama#12532: `18000 - (epoch % 18000)`. */
 export declare const OLLAMA_SESSION_WINDOW_S = 18000;
+/** Global 7d unix buckets, −4d from epoch (Mon 00:00 UTC). ollama/ollama#12532. */
+export declare const OLLAMA_WEEKLY_WINDOW_S = 604800;
 export declare function ollamaSessionResetAt(now?: number): number;
+export declare function ollamaWeeklyResetAt(now?: number): number;
 export declare function parseOllamaUsage(payload: any, me: any, now?: number): {
     planType: string;
     account: string;

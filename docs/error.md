@@ -2,6 +2,17 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-05：Ollama 每周条不画「n后重置」
+
+### 现象
+5 小时条有「3 小时 17 分钟后重置」。每周条只剩剩余 %，倒计时空。官方 Cloud UI 两条都有。`GET /api/usage` 的 `limits.weekly` 仍只有 `usage` + `models`。
+
+### 根因
+`ollamaWindowResetAt` 缺 stamp 时只给 session 推 5h unix 桶。Weekly 只信 wire。#12532 的 `604800-((epoch-4d)%604800)` 当时当未证实偏移留下。
+
+### 修复
+Weekly 缺 stamp → `ollamaWeeklyResetAt`（下一 UTC 7d 桶、偏移 −4d = 周一 00:00 UTC）。Wire stamp 仍优先。不 `now+7d`，不刮 settings HTML。
+
 ## 2026-09-05：GLM Start Plan 对话 3007 captcha verify failed
 
 ### 现象
@@ -211,17 +222,6 @@ Weekly 下 `glm-5.3-flash × 1317 · web search × 3 · web fetch × 2` 挤成�
 
 ### 修复
 每条 `name × count` 换行。`.osubs-note` `white-space: pre-wrap` + `overflow-wrap: anywhere`。web search / web fetch 保留。
-
-## 2026-09-03：Ollama 卡不画「n后重置」
-
-### 现象
-Session / Weekly 没有 `{n}后重置`。官方 Cloud UI 有倒计时。`/api/usage` 无 `resets_at`。
-
-### 根因
-`parseOllamaLimitWindow` 不写 `resetAt`。缺 stamp 时 README 禁止编倒计时。
-
-### 修复
-有 stamp 就用。Session 缺 stamp 用下一 UTC 5h unix 桶（`18000-(epoch%18000)`，ollama#12532）。Weekly 只信 wire。不 `now+5h` / `now+7d`，不刮 settings HTML。
 
 ## 2026-09-03：tab 栏右侧空白 / 两胶囊对不齐
 
