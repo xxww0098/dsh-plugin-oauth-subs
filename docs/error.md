@@ -2,6 +2,17 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-05：GLM Start Plan 导入死 key、对话打错端点
+
+### 现象
+本机只有 ZCode 体验套餐（`builtin:*-start-plan` JWT + `zcode-plan/anthropic`）。导入仍拿走 `enabled: false` 的短 coding-plan key；对话打到 `open.bigmodel.cn` / `api.z.ai` Coding Plan Anthropic。
+
+### 根因
+`glmKeyScore` 给 coding-plan 非 JWT 更高分，不看 `enabled` / `coding_plan_not_entitled`。hop 一律 `glmAnthropicUrl(region)`，没有 `planKind: start`。
+
+### 修复
+可用池先滤掉 disabled / not entitled。试用机导入 Start JWT 并写 `planKind: 'start'`。Anthropic hop 走 `https://zcode.z.ai/api/v1/zcode-plan/anthropic/v1/messages`。Coding Plan 仍优先非 JWT。Completions 残留对 Start 501。
+
 ## 2026-09-05：模型里看不到 GitHub Copilot
 
 ### 现象
@@ -761,7 +772,7 @@ xAI 接受 `priority` 但不给吞吐。Codex CLI 还要 `x-codex-routing-hint` 
 `glmAuthSearchPaths` 只扫了旧 CLI 路径。
 
 ### 修复
-搜索路径最前加 `~/.zcode/v2/config.json`。多钥匙优先 coding-plan / start-plan，非 JWT 压过 JWT。不读加密 `credentials.json`。
+搜索路径最前加 `~/.zcode/v2/config.json`。多钥匙优先 **可用** coding-plan / start-plan，非 JWT 压过 JWT；`enabled: false` 的 coding-plan 让给 Start。不读加密 `credentials.json`。
 
 ## 2026-08-30：智谱 GLM 双站 OAuth / BigModel init 500
 

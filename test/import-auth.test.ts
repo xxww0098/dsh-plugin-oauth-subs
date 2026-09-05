@@ -234,6 +234,30 @@ test('glmKeyFromZcodeConfig prefers a non-JWT coding-plan key over start-plan JW
   })
   assert.equal(found.apiKey, 'coding-plan-key-not-a-jwt')
   assert.equal(found.region, 'bigmodel')
+  assert.equal(found.planKind, 'coding')
+})
+
+test('glmKeyFromZcodeConfig prefers enabled start-plan JWT when coding-plan is disabled', () => {
+  const jwtKey = jwt({ sub: 'start-plan', email: 'dev@bigmodel.cn' })
+  const found = glmKeyFromZcodeConfig({
+    provider: {
+      'builtin:bigmodel-start-plan': {
+        enabled: true,
+        options: {
+          apiKey: jwtKey,
+          baseURL: 'https://zcode.z.ai/api/v1/zcode-plan/anthropic',
+        },
+      },
+      'builtin:bigmodel-coding-plan': {
+        enabled: false,
+        error: 'coding_plan_not_entitled',
+        options: { apiKey: 'dead-coding-plan-key', baseURL: 'https://open.bigmodel.cn/api/anthropic' },
+      },
+    },
+  })
+  assert.equal(found.apiKey, jwtKey)
+  assert.equal(found.region, 'bigmodel')
+  assert.equal(found.planKind, 'start')
 })
 
 test('importGlmAuth reads ~/.zcode/v2/config.json and sets region from the provider key', async () => {
@@ -256,7 +280,37 @@ test('importGlmAuth reads ~/.zcode/v2/config.json and sets region from the provi
   assert.equal(result.source, v2Path)
   assert.equal(result.session.accessToken, 'bm-coding-plan-fixture')
   assert.equal(result.session.region, 'bigmodel')
+  assert.equal(result.session.planKind, 'coding')
   assert.notEqual(result.session.account, 'zcode')
+})
+
+test('importGlmAuth trial-only ZCode config stores Start Plan JWT and planKind', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'zcode-start-import-'))
+  const v2Dir = join(root, '.zcode', 'v2')
+  await mkdir(v2Dir, { recursive: true })
+  const v2Path = join(v2Dir, 'config.json')
+  const jwtKey = jwt({ sub: 'start-user', email: 'trial@bigmodel.cn' })
+  await writeFile(v2Path, JSON.stringify({
+    provider: {
+      'builtin:bigmodel-start-plan': {
+        enabled: true,
+        options: {
+          apiKey: jwtKey,
+          baseURL: 'https://zcode.z.ai/api/v1/zcode-plan/anthropic',
+        },
+      },
+      'builtin:bigmodel-coding-plan': {
+        enabled: false,
+        error: 'coding_plan_not_entitled',
+        options: { apiKey: 'dead-coding-plan-key' },
+      },
+    },
+  }))
+  const result = await importGlmAuth([v2Path])
+  assert.equal(result.session.accessToken, jwtKey)
+  assert.equal(result.session.region, 'bigmodel')
+  assert.equal(result.session.planKind, 'start')
+  assert.equal(result.session.planType, 'start')
 })
 
 test('importGrokAuth lists both paths when nothing is found', async () => {

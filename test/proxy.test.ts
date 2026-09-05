@@ -3,7 +3,7 @@ import { request as httpRequest } from 'node:http'
 import { test } from 'node:test'
 import { createProxy, describeError, hasOutputEvent, STREAM_ATTEMPTS } from '../lib/oauth/proxy.js'
 import { CODEX_API_URL } from '../lib/oauth/codex/index.js'
-import { GLM_ANTHROPIC_URL, GLM_ANTHROPIC_VERSION, GLM_CODING_URL, GLM_USER_AGENT } from '../lib/oauth/glm/index.js'
+import { GLM_ANTHROPIC_URL, GLM_ANTHROPIC_VERSION, GLM_CODING_URL, GLM_START_ANTHROPIC_URL, GLM_USER_AGENT } from '../lib/oauth/glm/index.js'
 import { resetGlmSystemPins } from '../lib/oauth/glm/cache.js'
 import { GROK_STABLE_SESSION, resetGrokSystemPins } from '../lib/oauth/grok/cache.js'
 import { codexCacheSessionId } from '../lib/oauth/codex/cache.js'
@@ -200,6 +200,56 @@ test('proxy GLM Anthropic hop is ZCode default: /api/anthropic + cache_control',
     assert.equal(seen[1].body.system[1].text.includes('Current runtime context'), true)
     assert.equal(seen[1].body.system[1].cache_control, undefined)
     assert.equal(seen[1].body.metadata.user_id, 'session-dsh-glm-anth')
+  } finally {
+    await proxy.close()
+    resetGlmSystemPins()
+  }
+})
+
+test('proxy GLM Start Plan Anthropic hop uses zcode-plan, not Coding Plan hosts', async () => {
+  resetGlmSystemPins()
+  const seen = []
+  const fetchFn = async (url, init) => {
+    seen.push({ url: String(url), headers: init.headers })
+    return new Response('{"id":"msg"}', { status: 200, headers: { 'content-type': 'application/json' } })
+  }
+  const startJwt = 'eyJhbGciOiJub25lIn0.eyJzdWIiOiJzdGFydCJ9.x'
+  const proxy = createProxy({
+    port: 0,
+    apiKey: 'secret-key',
+    fetchFn,
+    tokens: {
+      glm: { session: async () => ({ accessToken: startJwt, region: 'bigmodel', planKind: 'start' }) },
+    },
+  })
+  const server = await proxy.listen()
+  const { port } = server.address()
+  try {
+    const ok = await fetch(`http://127.0.0.1:${port}/glm/v1/messages`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer secret-key', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'glm-5.3-flash',
+        system: 'You are GLM.',
+        messages: [{ role: 'user', content: 'hi' }],
+      }),
+    })
+    const leftover = await fetch(`http://127.0.0.1:${port}/glm/v1/chat/completions`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer secret-key', 'content-type': 'application/json' },
+      body: '{"model":"glm-5.3-flash","messages":[{"role":"user","content":"hi"}]}',
+    })
+    assert.equal(ok.status, 200)
+    assert.equal(seen.length, 1)
+    assert.equal(seen[0].url, GLM_START_ANTHROPIC_URL)
+    assert.equal(seen[0].url, 'https://zcode.z.ai/api/v1/zcode-plan/anthropic/v1/messages')
+    assert.equal(seen[0].url.includes('open.bigmodel.cn'), false)
+    assert.equal(seen[0].url.includes('api.z.ai'), false)
+    assert.equal(seen[0].headers.authorization, `Bearer ${startJwt}`)
+    assert.equal(seen[0].headers['anthropic-version'], GLM_ANTHROPIC_VERSION)
+    assert.equal(seen[0].headers['user-agent'], GLM_USER_AGENT)
+    assert.equal(leftover.status, 501)
+    assert.match(await leftover.text(), /Start Plan is Anthropic-only/)
   } finally {
     await proxy.close()
     resetGlmSystemPins()

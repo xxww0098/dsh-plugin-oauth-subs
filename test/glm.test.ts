@@ -19,6 +19,9 @@ import {
   glmCliInit,
   glmCliProvider,
   glmAnthropicUrl,
+  GLM_START_ANTHROPIC_URL,
+  isGlmStartPlan,
+  normalizeGlmPlanKind,
   glmCodingUrl,
   glmDesktopHeaders,
   glmQuotaUrl,
@@ -262,6 +265,11 @@ test('normalizeGlmRegion maps ZCode ids to zai / bigmodel', () => {
   assert.equal(glmCliProvider('bigmodel'), 'bigmodel')
   assert.equal(glmAnthropicUrl('zai'), 'https://api.z.ai/api/anthropic/v1/messages')
   assert.equal(glmAnthropicUrl('bigmodel'), 'https://open.bigmodel.cn/api/anthropic/v1/messages')
+  assert.equal(glmAnthropicUrl('bigmodel', 'start'), GLM_START_ANTHROPIC_URL)
+  assert.equal(glmAnthropicUrl('zai', 'start'), 'https://zcode.z.ai/api/v1/zcode-plan/anthropic/v1/messages')
+  assert.equal(glmAnthropicUrl('bigmodel', 'coding'), 'https://open.bigmodel.cn/api/anthropic/v1/messages')
+  assert.equal(normalizeGlmPlanKind('start_plan'), 'start')
+  assert.equal(normalizeGlmPlanKind(undefined), 'coding')
 })
 
 test('parseCliInit reads flow_id and authorize_url', () => {
@@ -315,7 +323,14 @@ test('glmSession stores a durable never-expiring key', () => {
   assert.equal(session.refreshToken, 'id.secret')
   assert.equal(session.account, 'dev@z.ai')
   assert.equal(session.region, 'zai')
+  assert.equal(session.planKind, undefined)
+  assert.equal(isGlmStartPlan(session), false)
   assert.ok(session.expiresAt > Date.now() + 1e12)
+  const start = glmSession({ accessToken: 'start-jwt', region: 'bigmodel', planKind: 'start', planType: 'start' })
+  assert.equal(start.planKind, 'start')
+  assert.equal(start.planType, 'start')
+  assert.equal(start.region, 'bigmodel')
+  assert.equal(isGlmStartPlan(start), true)
 })
 
 function assertZcodeDesktopFingerprint(headers) {

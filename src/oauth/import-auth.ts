@@ -22,7 +22,7 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { codexProfileClaims, codexSession } from './codex/index.js'
 import { GROK_CLIENT_ID, grokSession } from './grok/index.js'
-import { glmSession } from './glm/index.js'
+import { glmPlanKindFromZcode, glmSession } from './glm/index.js'
 import { kiroAccountId } from './kiro/index.js'
 import {
   hydrateKiroSsoToken,
@@ -319,25 +319,42 @@ function glmKeyScore(key, apiKey) {
   return score
 }
 
+function glmZcodeProviderUsable(value) {
+  if (!value || typeof value !== 'object') return false
+  if (value.enabled === false || value.available === false) return false
+  if (value.options?.enabled === false || value.options?.available === false) return false
+  if (value.entitled === false || value.options?.entitled === false) return false
+  if (value.coding_plan_not_entitled === true) return false
+  const status = [value.status, value.error, value.reason, value.code, value.options?.status, value.options?.error]
+    .filter((part) => part != null && part !== '')
+    .join(' ')
+  if (/not[_-]?entitled|coding_plan_not_entitled/i.test(status)) return false
+  return true
+}
+
 export function glmKeyFromZcodeConfig(raw) {
   const providers = raw?.provider ?? raw?.providers ?? raw
   if (!providers || typeof providers !== 'object') return undefined
   const found = []
   for (const [key, value] of Object.entries(providers)) {
-    if (!/zai|glm|coding.?plan|bigmodel|zcode/i.test(key)) continue
+    if (!/zai|glm|coding.?plan|start.?plan|bigmodel|zcode/i.test(key)) continue
     const options = value?.options ?? value
     const apiKey = options?.apiKey ?? options?.api_key ?? value?.apiKey
     if (typeof apiKey !== 'string' || !apiKey.trim()) continue
     const trimmed = apiKey.trim()
+    const planKind = glmPlanKindFromZcode(key, options)
     found.push({
       apiKey: trimmed,
       region: /bigmodel|zcode|\bcn\b|china/i.test(key) ? 'bigmodel' : 'zai',
+      planKind,
+      usable: glmZcodeProviderUsable(value),
       score: glmKeyScore(key, trimmed),
     })
   }
   if (found.length === 0) return undefined
-  found.sort((a, b) => b.score - a.score)
-  return { apiKey: found[0].apiKey, region: found[0].region }
+  const pool = found.some((row) => row.usable) ? found.filter((row) => row.usable) : found
+  pool.sort((a, b) => b.score - a.score)
+  return { apiKey: pool[0].apiKey, region: pool[0].region, planKind: pool[0].planKind }
 }
 
 export function glmAuthSearchPaths() {
@@ -454,7 +471,12 @@ export async function importGlmAuth(paths = glmAuthSearchPaths()) {
     const found = glmKeyFromZcodeConfig(raw)
     if (!found) continue
     return {
-      session: glmSession({ accessToken: found.apiKey, region: found.region }),
+      session: glmSession({
+        accessToken: found.apiKey,
+        region: found.region,
+        planKind: found.planKind,
+        planType: found.planKind === 'start' ? 'start' : undefined,
+      }),
       source: path,
     }
   }
