@@ -2,8 +2,9 @@
  * Cursor subscription family. Auth is PKCE loginDeepControl + poll, or
  * local CLI Keychain / IDE state.vscdb reuse. Chat is Connect/protobuf
  * AgentService/Run — not OpenAI REST. Fingerprint is the official CLI
- * (`cli-2026.05.01-eea359f` from pi-cursor h2-session / config), not
- * the desktop IDE.
+ * (`cli-2026.07.23-e383d2b` from Rahularya01/pi-cursor h2-session), not
+ * the desktop IDE and not `@cursor/sdk` `client-type: sdk` (that path is
+ * API-key Agent.create, not this OAuth hop).
  */
 export declare const CURSOR_LOGIN_URL = "https://cursor.com/loginDeepControl";
 export declare const CURSOR_POLL_URL = "https://api2.cursor.sh/auth/poll";
@@ -20,7 +21,7 @@ export declare const CURSOR_GET_ME_URL = "https://api2.cursor.sh/aiserver.v1.Das
 export declare const CURSOR_RUN_PATH = "/agent.v1.AgentService/Run";
 export declare const CURSOR_MODELS_PATH = "/agent.v1.AgentService/GetUsableModels";
 export declare const CURSOR_AVAILABLE_MODELS_PATH = "/aiserver.v1.AiService/AvailableModels";
-export declare const CURSOR_CLIENT_VERSION = "cli-2026.05.01-eea359f";
+export declare const CURSOR_CLIENT_VERSION = "cli-2026.07.23-e383d2b";
 export declare const CURSOR_CLIENT_TYPE = "cli";
 export declare const CURSOR_PREEMPT_MS: number;
 export declare const CURSOR_POLL_MAX_ATTEMPTS = 150;
@@ -100,7 +101,7 @@ export declare function cursorSession({ accessToken, refreshToken, expiresAt, ac
     refreshToken: any;
     expiresAt: number;
 };
-export declare function cursorChatHeaders(session: any, { unary, requestId }?: {
+export declare function cursorChatHeaders(session: any, { unary, requestId, originalRequestId }?: {
     unary?: boolean;
 }): {
     authorization: string;
@@ -110,7 +111,8 @@ export declare function cursorChatHeaders(session: any, { unary, requestId }?: {
     'x-ghost-mode': string;
     'x-cursor-client-version': string;
     'x-cursor-client-type': string;
-    'x-request-id': any;
+    'x-request-id': string;
+    'x-original-request-id': string;
 };
 export declare function cursorUsageHeaders(session: any): {
     authorization: string;

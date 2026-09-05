@@ -2,8 +2,9 @@
  * Cursor subscription family. Auth is PKCE loginDeepControl + poll, or
  * local CLI Keychain / IDE state.vscdb reuse. Chat is Connect/protobuf
  * AgentService/Run — not OpenAI REST. Fingerprint is the official CLI
- * (`cli-2026.05.01-eea359f` from pi-cursor h2-session / config), not
- * the desktop IDE.
+ * (`cli-2026.07.23-e383d2b` from Rahularya01/pi-cursor h2-session), not
+ * the desktop IDE and not `@cursor/sdk` `client-type: sdk` (that path is
+ * API-key Agent.create, not this OAuth hop).
  */
 
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
@@ -25,7 +26,7 @@ export const CURSOR_GET_ME_URL = `${CURSOR_API2_URL}${CURSOR_GET_ME_PATH}`
 export const CURSOR_RUN_PATH = '/agent.v1.AgentService/Run'
 export const CURSOR_MODELS_PATH = '/agent.v1.AgentService/GetUsableModels'
 export const CURSOR_AVAILABLE_MODELS_PATH = '/aiserver.v1.AiService/AvailableModels'
-export const CURSOR_CLIENT_VERSION = 'cli-2026.05.01-eea359f'
+export const CURSOR_CLIENT_VERSION = 'cli-2026.07.23-e383d2b'
 export const CURSOR_CLIENT_TYPE = 'cli'
 export const CURSOR_PREEMPT_MS = 5 * 60_000
 export const CURSOR_POLL_MAX_ATTEMPTS = 150
@@ -225,7 +226,11 @@ export function cursorSession({
   }
 }
 
-export function cursorChatHeaders(session, { unary = false, requestId } = {}) {
+export function cursorChatHeaders(session, { unary = false, requestId, originalRequestId } = {}) {
+  const id = typeof requestId === 'string' && requestId.trim() ? requestId.trim() : randomUUID()
+  const original = typeof originalRequestId === 'string' && originalRequestId.trim()
+    ? originalRequestId.trim()
+    : id
   return {
     authorization: `Bearer ${session.accessToken}`,
     'connect-protocol-version': '1',
@@ -234,7 +239,8 @@ export function cursorChatHeaders(session, { unary = false, requestId } = {}) {
     'x-ghost-mode': 'true',
     'x-cursor-client-version': cursorClientVersion(),
     'x-cursor-client-type': CURSOR_CLIENT_TYPE,
-    'x-request-id': requestId || randomUUID(),
+    'x-request-id': id,
+    'x-original-request-id': original,
   }
 }
 

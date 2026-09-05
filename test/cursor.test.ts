@@ -27,14 +27,19 @@ import {
   toCursorPickerModels,
 } from '../lib/oauth/cursor/catalog.js'
 import {
+  decodeAgentClientMessage,
+  decodeAgentServerMessage,
   decodeAvailableModelsResponse,
   decodeGetUsableModelsResponse,
   encodeAvailableModelsRequest,
   encodeAvailableModelsResponse,
   encodeGetUsableModelsResponse,
+  encodeMessage,
+  encodeTurnEndedUpdate,
   frameConnect,
 } from '../lib/oauth/cursor/proto.js'
 import {
+  CURSOR_CLIENT_VERSION,
   CURSOR_GET_EMAIL_URL,
   CURSOR_GET_ME_URL,
   CURSOR_LOGIN_URL,
@@ -48,6 +53,7 @@ import {
   createCursorPkce,
   cursorAccessStillValid,
   cursorAccountFromToken,
+  cursorChatHeaders,
   cursorLoginParams,
   cursorSession,
   cursorSourceLabel,
@@ -72,12 +78,12 @@ import {
   cursorCacheHeaders,
   cursorCacheSessionId,
   cursorConversationId,
+  cursorStableId,
   peelCursorFastSuffix,
   pinCursorSystemPrefix,
   resetCursorSystemPins,
 } from '../lib/oauth/cursor/cache.js'
-import { openaiToCursor } from '../lib/oauth/cursor/request.js'
-import { decodeAgentClientMessage } from '../lib/oauth/cursor/proto.js'
+import { mapCursorUsage, openaiToCursor } from '../lib/oauth/cursor/request.js'
 
 function jwt(payload) {
   const header = Buffer.from(JSON.stringify({ alg: 'none' })).toString('base64url')
@@ -455,6 +461,60 @@ test('cursor hop peels -fast to family modelId and sets RequestedModel fast para
   assert.equal(plainDecoded.modelId, 'gpt-5.5')
   assert.deepEqual(plainDecoded.parameters, [{ id: 'reasoning', value: 'high' }])
   resetCursorSystemPins()
+})
+
+test('cursor CLI fingerprint stays cli and matches SDK original-request-id', () => {
+  assert.equal(CURSOR_CLIENT_VERSION, 'cli-2026.07.23-e383d2b')
+  const headers = cursorChatHeaders({ accessToken: 'tok' }, { requestId: 'req-cursor-1' })
+  assert.equal(headers['x-cursor-client-version'], 'cli-2026.07.23-e383d2b')
+  assert.equal(headers['x-cursor-client-type'], 'cli')
+  assert.equal(headers['x-request-id'], 'req-cursor-1')
+  assert.equal(headers['x-original-request-id'], 'req-cursor-1')
+  assert.equal(Object.hasOwn(headers, 'x-parent-request-id'), false)
+  assert.equal(Object.hasOwn(headers, 'x-root-parent-request-id'), false)
+  assert.equal(Object.hasOwn(headers, 'session-id'), false)
+  assert.equal(Object.hasOwn(headers, 'x-grok-conv-id'), false)
+})
+
+test('cursor hop keeps conversation prefix bytes stable across identical turns', () => {
+  resetCursorSystemPins()
+  const payload = {
+    model: 'composer-2',
+    session_id: 'sess-stable-cursor',
+    messages: [
+      { role: 'system', content: 'You are DSH.' },
+      { role: 'user', content: 'hello' },
+      { role: 'assistant', content: 'hi' },
+      { role: 'user', content: 'again' },
+    ],
+  }
+  const first = openaiToCursor(payload)
+  const second = openaiToCursor(payload)
+  assert.equal(first.requestBytes.equals(second.requestBytes), true)
+  assert.equal(cursorStableId('a', 'b'), cursorStableId('a', 'b'))
+  assert.notEqual(cursorStableId('a', 'b'), cursorStableId('a', 'c'))
+  resetCursorSystemPins()
+})
+
+test('TurnEndedUpdate cache_read_tokens maps to OpenAI cached_tokens', () => {
+  const payload = encodeMessage(1, encodeMessage(14, encodeTurnEndedUpdate({
+    inputTokens: 1000,
+    outputTokens: 40,
+    cacheReadTokens: 800,
+    cacheWriteTokens: 50,
+    reasoningTokens: 12,
+  })))
+  const msg = decodeAgentServerMessage(payload)
+  assert.equal(msg.turnEnded, true)
+  assert.equal(msg.usage.promptTokens, 1000)
+  assert.equal(msg.usage.completionTokens, 40)
+  assert.equal(msg.usage.cachedTokens, 800)
+  assert.equal(msg.usage.cacheWriteTokens, 50)
+  const usage = mapCursorUsage(msg.usage)
+  assert.equal(usage.prompt_tokens, 1000)
+  assert.equal(usage.completion_tokens, 40)
+  assert.equal(usage.prompt_tokens_details.cached_tokens, 800)
+  assert.equal(mapCursorUsage({ promptTokens: 10, completionTokens: 2 }).prompt_tokens_details, undefined)
 })
 
 test('keychain hit prefers a still-valid access token with zero network', async () => {

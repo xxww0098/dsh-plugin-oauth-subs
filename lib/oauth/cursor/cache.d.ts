@@ -7,6 +7,16 @@
  * header, and no Kiro conversationState field copied onto this hop.
  * Never stamp the id with `Date.now()`.
  *
+ * @cursor/sdk 1.0.27 (pi-cursor-sdk 0.3.6) reports cache hits on
+ * `TurnEndedUpdate.cache_read_tokens`. Historical `messageId` / turn
+ * `requestId` must be stable for the same conversation content — a fresh
+ * `randomUUID()` every hop rewrites the prefix blobs and busts the cache.
+ *
+ * HTTP sticky headers are `x-request-id` + `x-original-request-id` (SDK
+ * Run handshake). Conversation id stays on the protobuf body. Do not
+ * invent parent/subagent request headers, and do not switch
+ * `x-cursor-client-type` to `sdk` (this hop is CLI OAuth).
+ *
  * Cursor publishes the system prompt as `root_prompt_messages_json` blobs.
  * The first system text per conversationId is pinned; later DSH runtime
  * snapshots become extra system blobs in that same list (Cursor prefix),
@@ -24,6 +34,11 @@ export declare function peelCursorFastSuffix(modelId: any): {
 };
 export declare function cursorCacheSessionId(key: any): string;
 export declare function resetCursorSystemPins(): void;
+/**
+ * Deterministic UUID for conversation blobs. Same seed → same id so a
+ * replayed DSH history encodes the same prefix as the previous turn.
+ */
+export declare function cursorStableId(...parts: any[]): string;
 export declare function pinCursorSystemPrefix(conversationId: any, systemText: any): {
     pinned: any;
     extra: string;

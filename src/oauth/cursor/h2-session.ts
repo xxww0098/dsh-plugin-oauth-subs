@@ -192,6 +192,11 @@ export async function runCursorAgent(session, built, {
         if (msg.tokens) {
           collected.usage.completionTokens = (collected.usage.completionTokens ?? 0) + msg.tokens
         }
+        if (msg.usage) {
+          if (Number.isFinite(msg.usage.promptTokens)) collected.usage.promptTokens = msg.usage.promptTokens
+          if (Number.isFinite(msg.usage.completionTokens)) collected.usage.completionTokens = msg.usage.completionTokens
+          if (Number.isFinite(msg.usage.cachedTokens)) collected.usage.cachedTokens = msg.usage.cachedTokens
+        }
         if (msg.toolCall) {
           collected.toolCalls.push({
             id: msg.toolCall.id,
