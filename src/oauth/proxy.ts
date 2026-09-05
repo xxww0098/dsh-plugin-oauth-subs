@@ -57,7 +57,7 @@ import { applyKimiCache } from './kimi/cache.js'
 import { applyKimiThinking } from './kimi/request.js'
 import { OPENCODE_CHAT_URL, OPENCODE_RESPONSES_URL, isOpencodeResponsesModel, opencodeUpstreamHeaders } from './opencode/index.js'
 import { opencodeCatalogModels } from './opencode/catalog.js'
-import { applyOpencodeCache } from './opencode/cache.js'
+import { applyOpencodeCache, opencodeCacheHeaders } from './opencode/cache.js'
 import {
   applyOpencodeThinking,
   chatToOpencodeResponses,
@@ -1232,11 +1232,11 @@ async function writeOpencodeSse(response, chunk, signal) {
 /**
  * OpenCode Free hop. Laguna / MiMo stay on Zen Completions.
  * Muse Spark (`muse-spark*`) is Zen Responses: chat → /zen/v1/responses → chat.
- * Never attach Authorization.
+ * Official no-key: Bearer public + x-opencode-session (never store sentinel).
  */
 async function forwardOpencode(request, response, { fetchFn, maxRequestBodyBytes, signal, asChat }) {
   const raw = await readBody(request, maxRequestBodyBytes)
-  const { body: rewritten, stream } = rewriteUpstreamBody(raw, 'opencode')
+  const { body: rewritten, stream, cacheSessionId } = rewriteUpstreamBody(raw, 'opencode')
   const payload = JSON.parse(rewritten.toString('utf8'))
   const model = typeof payload.model === 'string' ? payload.model : ''
   const muse = isOpencodeResponsesModel(model)
@@ -1252,8 +1252,10 @@ async function forwardOpencode(request, response, { fetchFn, maxRequestBodyBytes
 
   const url = muse ? OPENCODE_RESPONSES_URL : OPENCODE_CHAT_URL
   const body = muse ? Buffer.from(JSON.stringify(chatToOpencodeResponses(payload))) : rewritten
+  const reqId = randomUUID()
   const headers = {
     ...opencodeUpstreamHeaders(),
+    ...opencodeCacheHeaders(cacheSessionId, { reqId }),
     'content-type': request.headers['content-type'] ?? 'application/json',
     ...(stream ? { accept: 'text/event-stream' } : {}),
   }

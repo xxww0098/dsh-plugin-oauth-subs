@@ -28,7 +28,7 @@ dsh web
 | Cursor | PKCE 轮询 `cursor.com/loginDeepControl`；或 **导入本机 Cursor** | `openai-completions` | Connect `agentn.us.api5.cursor.sh` `AgentService/Run` |
 | Ollama Cloud | 粘贴 API key / 导入 `OLLAMA_API_KEY` | `openai-completions` | `https://ollama.com/v1/chat/completions` |
 | Kimi Code Plan | 设备码（无 PKCE）；导入 `~/.kimi-code/credentials/kimi-code.json`；可选 `KIMI_API_KEY` | `openai-completions` | `https://api.kimi.com/coding/v1/chat/completions` |
-| OpenCode Free | 一键匿名启用（无账号、无 API key） | `openai-completions` | `https://opencode.ai/zen/v1/chat/completions`（不带 Authorization） |
+| OpenCode Free | 一键匿名启用（无账号、无 API key） | `openai-completions` | `https://opencode.ai/zen/v1/chat/completions`（`Bearer public` + `x-opencode-session`） |
 
 | 路径 | 系列 |
 |---|---|

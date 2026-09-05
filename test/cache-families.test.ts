@@ -222,7 +222,7 @@ test('Kimi cache strips Codex/Grok fields and does not invent a shard header', (
   resetKimiPins()
 })
 
-test('OpenCode cache strips Codex/Grok fields and does not invent a sticky wire id', () => {
+test('OpenCode cache strips Codex/Grok fields and writes Zen session headers', () => {
   const { payload, cacheSessionId } = applyOpencodeCache({
     session_id: 'sess-opencode',
     prompt_cache_key: 'codex-style',
@@ -233,8 +233,22 @@ test('OpenCode cache strips Codex/Grok fields and does not invent a sticky wire 
   assert.equal(payload.prompt_cache_key, undefined)
   assert.equal(payload.prompt_cache_retention, undefined)
   assert.equal(payload.session_id, undefined)
-  assert.deepEqual(opencodeCacheHeaders(), {})
-  assert.equal(Object.hasOwn(opencodeCacheHeaders(), 'session-id'), false)
-  assert.equal(Object.hasOwn(opencodeCacheHeaders(), 'x-grok-conv-id'), false)
-  assert.equal(applyOpencodeCache({}).cacheSessionId, OPENCODE_STABLE_SESSION)
+  const headers = opencodeCacheHeaders(cacheSessionId, { reqId: 'req-1' })
+  assert.deepEqual(headers, {
+    'x-opencode-session': 'sess-opencode',
+    'x-opencode-request': 'req-1',
+  })
+  assert.equal(Object.hasOwn(headers, 'session-id'), false)
+  assert.equal(Object.hasOwn(headers, 'thread-id'), false)
+  assert.equal(Object.hasOwn(headers, 'x-client-request-id'), false)
+  assert.equal(Object.hasOwn(headers, 'x-grok-conv-id'), false)
+  assert.equal(Object.hasOwn(headers, 'x-session-affinity'), false)
+  assert.equal(Object.hasOwn(headers, 'x-opencode-project'), false)
+  assert.equal(Object.hasOwn(headers, 'x-parent-session-id'), false)
+  const retry = opencodeCacheHeaders(cacheSessionId, { reqId: 'req-1' })
+  assert.equal(retry['x-opencode-request'], 'req-1')
+  const neither = applyOpencodeCache({ model: 'ling-3.0-flash-fin-free' })
+  assert.equal(neither.cacheSessionId, OPENCODE_STABLE_SESSION)
+  assert.equal(opencodeCacheHeaders()['x-opencode-session'], OPENCODE_STABLE_SESSION)
+  assert.match(opencodeCacheHeaders()['x-opencode-request'], /^[0-9a-f-]{36}$/i)
 })

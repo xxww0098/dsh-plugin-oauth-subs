@@ -15,6 +15,9 @@ import {
   OPENCODE_ACCOUNT,
   OPENCODE_ANON_TOKEN,
   OPENCODE_CHAT_URL,
+  OPENCODE_CLIENT,
+  OPENCODE_CLIENT_VERSION,
+  OPENCODE_PUBLIC_TOKEN,
   OPENCODE_RESPONSES_URL,
   OPENCODE_DEFAULT_MODEL,
   OPENCODE_MODELS,
@@ -23,6 +26,7 @@ import {
   OPENCODE_OFFICIAL_FREE,
   OPENCODE_REASONING_MUSE,
   OPENCODE_REASONING_TOGGLE,
+  OPENCODE_USER_AGENT,
   isOpencodeFreeSlug,
   isOpencodeResponsesModel,
   opencodeSession,
@@ -50,6 +54,7 @@ import {
   chatToOpencodeResponses,
   createOpencodeResponsesChatStream,
   foldOpencodeReasoningContent,
+  mapOpencodeUsage,
   opencodeResponsesToChat,
   parseOpencodeSseBlocks,
 } from '../lib/oauth/opencode/request.js'
@@ -59,6 +64,28 @@ import { createProxy } from '../lib/oauth/proxy.js'
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+}
+
+function assertZenPublicHeaders(headers, { session } = {}) {
+  assert.equal(headers.authorization, `Bearer ${OPENCODE_PUBLIC_TOKEN}`)
+  assert.notEqual(headers.authorization, `Bearer ${OPENCODE_ANON_TOKEN}`)
+  assert.equal(headers['user-agent'], OPENCODE_USER_AGENT)
+  assert.equal(headers['user-agent'], `opencode/${OPENCODE_CLIENT_VERSION}`)
+  assert.equal(headers['x-opencode-client'], OPENCODE_CLIENT)
+  assert.equal(Object.hasOwn(headers, 'session-id'), false)
+  assert.equal(Object.hasOwn(headers, 'thread-id'), false)
+  assert.equal(Object.hasOwn(headers, 'x-client-request-id'), false)
+  assert.equal(Object.hasOwn(headers, 'x-grok-conv-id'), false)
+  assert.equal(Object.hasOwn(headers, 'x-session-affinity'), false)
+  assert.equal(Object.hasOwn(headers, 'X-Session-Id'), false)
+  assert.equal(Object.hasOwn(headers, 'x-parent-session-id'), false)
+  assert.equal(Object.hasOwn(headers, 'x-opencode-project'), false)
+  assert.equal(Object.hasOwn(headers, 'http-referer'), false)
+  assert.equal(Object.hasOwn(headers, 'x-title'), false)
+  if (session) {
+    assert.equal(headers['x-opencode-session'], session)
+    assert.match(headers['x-opencode-request'], /^[0-9a-f-]{36}$/i)
+  }
 }
 
 test('anonymous session uses a sentinel that is never a public token', () => {
@@ -167,7 +194,12 @@ test('live catalog keeps official Free ∩ Zen list and falls back to the floor'
   const calls = []
   const fetchFn = async (url, init) => {
     calls.push({ url: String(url), headers: init.headers })
-    assert.equal(Object.hasOwn(init.headers ?? {}, 'authorization'), false)
+    if (String(url) === OPENCODE_MODELS_URL) {
+      assertZenPublicHeaders(init.headers ?? {})
+    }
+    if (String(url) === OPENCODE_MODELS_DEV_URL) {
+      assert.notEqual(init.headers?.authorization, `Bearer ${OPENCODE_ANON_TOKEN}`)
+    }
     if (String(url) === OPENCODE_MODELS_DEV_URL) return json({ opencode: { models: {} } })
     return json({ data: [{ id: 'laguna-s-2.1-free' }, { id: 'ox-alpha-free' }, { id: 'nemotron-3-ultra-free' }, { id: 'big-pickle' }] })
   }
@@ -396,6 +428,32 @@ test('opencodeResponsesToChat turns a Zen Responses fixture into a chat completi
   assert.deepEqual(chat.usage, { prompt_tokens: 12, completion_tokens: 4, total_tokens: 16 })
 })
 
+test('mapOpencodeUsage copies cache-read onto prompt_tokens_details and does not invent zero', () => {
+  assert.deepEqual(
+    mapOpencodeUsage({ input_tokens: 20, output_tokens: 3, cache_read_input_tokens: 8 }),
+    { prompt_tokens: 20, completion_tokens: 3, total_tokens: 23, prompt_tokens_details: { cached_tokens: 8 } },
+  )
+  assert.deepEqual(
+    mapOpencodeUsage({ prompt_tokens: 10, completion_tokens: 2, total_tokens: 12, prompt_tokens_details: { cached_tokens: 4 } }),
+    { prompt_tokens: 10, completion_tokens: 2, total_tokens: 12, prompt_tokens_details: { cached_tokens: 4 } },
+  )
+  assert.deepEqual(
+    mapOpencodeUsage({ prompt_tokens: 5, completion_tokens: 1, total_tokens: 6 }),
+    { prompt_tokens: 5, completion_tokens: 1, total_tokens: 6 },
+  )
+  const folded = foldOpencodeReasoningContent({
+    object: 'chat.completion',
+    choices: [{ message: { role: 'assistant', content: 'ok' } }],
+    usage: { prompt_tokens: 40, completion_tokens: 2, cache_read_tokens: 11 },
+  })
+  assert.deepEqual(folded.usage, {
+    prompt_tokens: 40,
+    completion_tokens: 2,
+    total_tokens: 42,
+    prompt_tokens_details: { cached_tokens: 11 },
+  })
+})
+
 test('Responses SSE maps to chat.completion.chunk', () => {
   const mapper = createOpencodeResponsesChatStream({
     model: 'muse-spark-1.3-contributor-free',
@@ -429,7 +487,7 @@ test('foldOpencodeReasoningContent fills empty MiMo content from reasoning', () 
   assert.equal(folded.choices[0].message.content, 'only think')
 })
 
-test('cache strips Codex/Grok fields and does not invent a sticky wire id', () => {
+test('cache strips Codex/Grok fields and writes Zen session headers', () => {
   const { payload, cacheSessionId } = applyOpencodeCache({
     session_id: 'sess-opencode',
     prompt_cache_key: 'codex-style',
@@ -442,12 +500,21 @@ test('cache strips Codex/Grok fields and does not invent a sticky wire id', () =
   assert.equal(payload.prompt_cache_retention, undefined)
   assert.equal(payload.prompt_cache_options, undefined)
   assert.equal(payload.session_id, undefined)
-  assert.deepEqual(opencodeCacheHeaders(), {})
-  assert.equal(Object.hasOwn(opencodeCacheHeaders(), 'session-id'), false)
-  assert.equal(Object.hasOwn(opencodeCacheHeaders(), 'x-grok-conv-id'), false)
+  const headers = opencodeCacheHeaders(cacheSessionId, { reqId: 'req-1' })
+  assert.deepEqual(headers, {
+    'x-opencode-session': 'sess-opencode',
+    'x-opencode-request': 'req-1',
+  })
+  assert.equal(Object.hasOwn(headers, 'session-id'), false)
+  assert.equal(Object.hasOwn(headers, 'x-grok-conv-id'), false)
   assert.equal(applyOpencodeCache({}).cacheSessionId, OPENCODE_STABLE_SESSION)
   assert.equal(opencodeCacheSessionId('session 1'), 'session-1')
   assert.equal(opencodeCacheSessionId(''), undefined)
+  const hop = opencodeUpstreamHeaders()
+  assert.equal(hop.authorization, `Bearer ${OPENCODE_PUBLIC_TOKEN}`)
+  assert.equal(hop['user-agent'], OPENCODE_USER_AGENT)
+  assert.equal(hop['x-opencode-client'], OPENCODE_CLIENT)
+  assert.equal(Object.hasOwn(hop, 'http-referer'), false)
 })
 
 test('quota is idle-shaped Free with empty rows and no network', async () => {
@@ -462,7 +529,7 @@ test('quota is idle-shaped Free with empty rows and no network', async () => {
   assert.deepEqual(quota.rows, [])
 })
 
-test('controller snapshot shows quota on the anonymous account; hop omits Authorization', async () => {
+test('controller snapshot shows quota on the anonymous account; hop uses Bearer public + session headers', async () => {
   resetOpencodeCatalogCache()
   const dir = await mkdtemp(join(tmpdir(), 'oauth-opencode-'))
   const authPath = join(dir, 'auth.json')
@@ -535,13 +602,10 @@ test('controller snapshot shows quota on the anonymous account; hop omits Author
     assert.equal(sent.session_id, undefined)
     assert.equal(sent.reasoning_effort, 'high')
     assert.equal(sent.thinking, undefined)
-    assert.equal(Object.hasOwn(hops[0].headers, 'authorization'), false)
-    assert.equal(hops[0].headers.authorization, undefined)
-    assert.equal(hops[0].headers['user-agent'], 'dsh-plugin-oauth-subs')
-    assert.equal(Object.hasOwn(hops[0].headers, 'session-id'), false)
-    assert.equal(Object.hasOwn(hops[0].headers, 'x-grok-conv-id'), false)
+    assertZenPublicHeaders(hops[0].headers, { session: 'sess-opencode' })
     const hopHeaders = opencodeUpstreamHeaders()
-    assert.equal(Object.hasOwn(hopHeaders, 'authorization'), false)
+    assert.equal(hopHeaders.authorization, `Bearer ${OPENCODE_PUBLIC_TOKEN}`)
+    assert.notEqual(hopHeaders.authorization, `Bearer ${OPENCODE_ANON_TOKEN}`)
   } finally {
     await proxy.close()
   }
@@ -562,7 +626,8 @@ test('Muse chat hop targets Zen Responses and other free models stay on Completi
   const hops = []
   const proxyFetch = async (url, init) => {
     hops.push({ url: String(url), body: init.body, headers: init.headers })
-    assert.equal(Object.hasOwn(init.headers ?? {}, 'authorization'), false)
+    assertZenPublicHeaders(init.headers ?? {})
+    assert.notEqual(init.headers?.authorization, `Bearer ${OPENCODE_ANON_TOKEN}`)
     const target = String(url)
     if (target === OPENCODE_RESPONSES_URL) {
       const sent = JSON.parse(init.body)
@@ -622,9 +687,7 @@ test('Muse chat hop targets Zen Responses and other free models stay on Completi
     assert.equal(museSent.messages, undefined)
     assert.equal(museSent.reasoning_effort, undefined)
     assert.equal(museSent.prompt_cache_key, undefined)
-    assert.equal(Object.hasOwn(hops[0].headers, 'authorization'), false)
-    assert.equal(Object.hasOwn(hops[0].headers, 'session-id'), false)
-    assert.equal(Object.hasOwn(hops[0].headers, 'x-grok-conv-id'), false)
+    assertZenPublicHeaders(hops[0].headers, { session: 'codex-style' })
     const museBody = await muse.json()
     assert.equal(museBody.object, 'chat.completion')
     assert.equal(museBody.choices[0].message.content, 'pong')
@@ -697,13 +760,13 @@ test('Muse chat hop targets Zen Responses and other free models stay on Completi
     assert.equal(pickle.status, 200)
     assert.equal(hops[5].url, OPENCODE_CHAT_URL)
     assert.equal((await pickle.json()).choices[0].message.content, 'pong')
-    assert.equal(Object.hasOwn(hops[5].headers, 'authorization'), false)
+    assertZenPublicHeaders(hops[5].headers, { session: OPENCODE_STABLE_SESSION })
   } finally {
     await proxy.close()
   }
 })
 
-test('empty-roster auto-enable writes sentinel, hops without Authorization, and persists oauth-opencode', async () => {
+test('empty-roster auto-enable writes sentinel, hops with Bearer public, and persists oauth-opencode', async () => {
   resetOpencodeCatalogCache()
   const dir = await mkdtemp(join(tmpdir(), 'oauth-opencode-auto-'))
   const authPath = join(dir, 'auth.json')
@@ -716,7 +779,7 @@ test('empty-roster auto-enable writes sentinel, hops without Authorization, and 
     opencodeDiscover: (opts) => refreshOpencodeCatalog({ ...opts, force: true }),
     fetchFn: async (url, init) => {
       if (String(url) === OPENCODE_MODELS_URL) {
-        assert.equal(Object.hasOwn(init?.headers ?? {}, 'authorization'), false)
+        assertZenPublicHeaders(init?.headers ?? {})
         assert.notEqual(init?.headers?.authorization, `Bearer ${OPENCODE_ANON_TOKEN}`)
         return json({
           data: [
@@ -729,7 +792,7 @@ test('empty-roster auto-enable writes sentinel, hops without Authorization, and 
         })
       }
       if (String(url) === OPENCODE_MODELS_DEV_URL) {
-        assert.equal(Object.hasOwn(init?.headers ?? {}, 'authorization'), false)
+        assert.notEqual(init?.headers?.authorization, `Bearer ${OPENCODE_ANON_TOKEN}`)
         return json({
           opencode: {
             models: {
@@ -811,7 +874,7 @@ test('empty-roster auto-enable writes sentinel, hops without Authorization, and 
   const hops = []
   const proxyFetch = async (url, init) => {
     hops.push({ url: String(url), headers: init.headers })
-    assert.equal(Object.hasOwn(init.headers ?? {}, 'authorization'), false)
+    assertZenPublicHeaders(init.headers ?? {}, { session: OPENCODE_STABLE_SESSION })
     assert.notEqual(init.headers?.authorization, `Bearer ${OPENCODE_ANON_TOKEN}`)
     return json({ id: 'chat', choices: [{ message: { role: 'assistant', content: 'pong' } }] })
   }
@@ -835,10 +898,9 @@ test('empty-roster auto-enable writes sentinel, hops without Authorization, and 
     assert.equal(chat.status, 200)
     assert.equal((await chat.json()).choices[0].message.content, 'pong')
     assert.equal(hops[0].url, OPENCODE_CHAT_URL)
-    assert.equal(Object.hasOwn(hops[0].headers, 'authorization'), false)
-    assert.equal(hops[0].headers.authorization, undefined)
+    assertZenPublicHeaders(hops[0].headers, { session: OPENCODE_STABLE_SESSION })
     assert.notEqual(hops[0].headers.authorization, 'Bearer anonymous')
-    assert.equal(hops[0].headers['user-agent'], 'dsh-plugin-oauth-subs')
+    assert.equal(hops[0].headers['user-agent'], OPENCODE_USER_AGENT)
   } finally {
     await proxy.close()
   }
