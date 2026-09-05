@@ -321,8 +321,9 @@ test('proxy GLM Start Plan 3007 is annotated as Desktop-only captcha', async () 
     const body = await res.json()
     assert.equal(res.status, 400)
     assert.equal(body.code, 3007)
-    assert.match(body.error.message, /Desktop-only/)
-    assert.match(body.error.message, /does not solve captcha/)
+    assert.match(body.error.message, /x-aliyun-captcha-verify-param/)
+    assert.match(body.error.message, /does not mint or solve captcha/)
+    assert.match(body.error.message, /captcha-bridge/)
   } finally {
     await proxy.close()
   }

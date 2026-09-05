@@ -864,9 +864,10 @@ test('annotateGlmStartPlanError explains 3007 on zcode-plan only', () => {
   const raw = { code: 3007, msg: 'captcha verify failed' }
   const annotated = annotateGlmStartPlanError(raw, GLM_START_ANTHROPIC_URL)
   assert.equal(annotated.code, 3007)
-  assert.match(annotated.error.message, /Desktop-only/)
+  assert.match(annotated.error.message, /x-aliyun-captcha-verify-param/)
   assert.match(annotated.error.message, /3007/)
-  assert.equal(JSON.stringify(annotated).includes('X-Aliyun-Captcha-Verify-Param'), true)
+  assert.match(annotated.error.message, /captcha-bridge/)
+  assert.equal(JSON.stringify(annotated).includes('x-aliyun-captcha-verify-param'), true)
   const coding = annotateGlmStartPlanError(raw, 'https://open.bigmodel.cn/api/anthropic/v1/messages')
   assert.equal(coding, raw)
   assert.equal(annotateGlmStartPlanError({ code: 401, msg: 'token invalid' }, GLM_START_ANTHROPIC_URL).error, undefined)
