@@ -84,7 +84,7 @@ import {
   pinCursorSystemPrefix,
   resetCursorSystemPins,
 } from '../lib/oauth/cursor/cache.js'
-import { mapCursorUsage, openaiToCursor } from '../lib/oauth/cursor/request.js'
+import { consumeCursorFrames, mapCursorUsage, openaiToCursor } from '../lib/oauth/cursor/request.js'
 
 function jwt(payload) {
   const header = Buffer.from(JSON.stringify({ alg: 'none' })).toString('base64url')
@@ -237,7 +237,7 @@ test('cursor catalog is Completions at /cursor, not /cursor/v1', () => {
       assert.match(key, /^(off|minimal|low|medium|high|xhigh|max)$/)
     }
   }
-  assert.deepEqual(route.models.find((model) => model.id === 'composer-2').reasoningEfforts, CURSOR_REASONING)
+  assert.deepEqual(route.models.find((model) => model.id === 'composer-2.5').reasoningEfforts, CURSOR_REASONING)
   resetCursorCatalogCache()
   const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
   assert.equal(catalog['oauth-cursor'].models.length, CURSOR_MODELS.length)
@@ -884,8 +884,6 @@ test('cursor static catalog matches current Cursor docs and has no Fast rows', (
     'composer-2.5',
     'grok-4.6',
     'grok-4.5',
-    'composer-2',
-    'composer-1.5',
     'claude-fable-5-1',
     'claude-opus-5',
     'claude-sonnet-5',
@@ -1008,20 +1006,21 @@ test('mocked GetUsableModels expands cursor catalog and yaml beyond the static 5
     fetchUsable: async () => decoded,
     fetchAvailable: async () => available,
   })
-  assert.ok(models.length > CURSOR_MODELS.length)
   assert.equal(models.some((model) => model.id === 'default'), true)
   assert.equal(models.find((model) => model.id === 'default').name, 'Cursor Auto')
   assert.equal(models.some((model) => model.id === 'claude-4.6-sonnet'), true)
   assert.equal(models.some((model) => model.id === 'gemini-3.1-pro'), true)
   assert.equal(models.some((model) => model.id === 'kimi-k2.5'), true)
   assert.equal(models.some((model) => model.id === 'cursor-small'), false)
+  // Non-empty live is trusted: retired static models are not force-added.
+  assert.equal(models.some((model) => model.id === 'composer-2.5'), false)
+  assert.equal(models.some((model) => model.id === 'grok-4.6'), false)
   assert.deepEqual(cursorCatalogModels().map((model) => model.id), models.map((model) => model.id))
   const catalog = catalogProviders({
     prefix: 'oauth',
     origin: 'http://127.0.0.1:8318',
     cursorModels: models,
   })
-  assert.ok(catalog['oauth-cursor'].models.length > CURSOR_MODELS.length)
   assert.equal(catalog['oauth-cursor'].models.length, models.length)
   assert.equal(models.some((model) => model.id === 'gpt-5.5-fast'), true)
   assert.equal(models.some((model) => model.id === 'gpt-5.5-high-fast'), false)
@@ -1045,7 +1044,6 @@ test('mocked GetUsableModels expands cursor catalog and yaml beyond the static 5
   const ids = yaml.providers['oauth-cursor'].models.map((model) => model.id)
   assert.deepEqual(ids, catalog['oauth-cursor'].models.map((model) => model.id))
   assert.deepEqual(result.routes.find((row) => row.provider === 'oauth-cursor').models, ids)
-  assert.ok(ids.length > CURSOR_MODELS.length)
   assert.equal(ids.includes('gpt-5.5-fast'), true)
   assert.equal(ids.includes('gpt-5.5-high-fast'), false)
   resetCursorCatalogCache()
@@ -1099,10 +1097,9 @@ test('refreshQuota discovery persists live cursor models into settings.yaml', as
   await controller.refreshQuota('cursor')
   const snap = await controller.snapshot()
   const cursorGroup = snap.catalog.find((row) => row.family === 'cursor')
-  assert.ok(cursorGroup.models.length > CURSOR_MODELS.length)
   assert.equal(cursorGroup.models.some((model) => model.id === 'gemini-3.1-pro'), true)
+  assert.equal(cursorGroup.models.some((model) => model.id === 'composer-2.5'), false)
   const ids = yaml.providers['oauth-cursor'].models.map((model) => model.id)
-  assert.ok(ids.length > CURSOR_MODELS.length)
   assert.deepEqual(ids, cursorGroup.models.map((model) => model.id))
   const enabled = await controller.setModels({ key: 'oauth-cursor/gemini-3.1-pro', on: true })
   assert.equal(enabled.catalog.find((row) => row.family === 'cursor').models.find((model) => model.id === 'gemini-3.1-pro').enabled, true)
@@ -1130,7 +1127,7 @@ test('empty GetUsableModels keeps the static floor and does not invent Fast', as
   resetCursorCatalogCache()
 })
 
-test('stale GetUsableModels still keeps official static models on the picker', async () => {
+test('non-empty GetUsableModels is trusted: retired static models are not re-added', async () => {
   resetCursorCatalogCache()
   const session = cursorSession({
     accessToken: validAccess('stale@x'),
@@ -1146,21 +1143,38 @@ test('stale GetUsableModels still keeps official static models on the picker', a
   ])
   assert.equal(live.length, 5)
   const merged = mergeCursorStaticFloor(live)
-  assert.ok(merged.some((model) => model.id === 'composer-2.5'))
-  assert.ok(merged.some((model) => model.id === 'grok-4.6'))
-  assert.ok(merged.some((model) => model.id === 'claude-opus-5'))
-  assert.ok(merged.some((model) => model.id === 'claude-fable-5-1'))
-  assert.ok(merged.some((model) => model.id === 'gpt-5.6-sol'))
-  assert.ok(merged.some((model) => model.id === 'gemini-3.8-flash'))
-  assert.ok(merged.some((model) => model.id === 'composer-2'))
-  assert.equal(merged[0].id, 'composer-2.5')
+  assert.deepEqual(merged.map((model) => model.id), live.map((model) => model.id))
+  assert.equal(merged.some((model) => model.id === 'composer-2.5'), false)
+  assert.equal(merged.some((model) => model.id === 'grok-4.6'), false)
   const models = await refreshCursorCatalog(session, {
     fetchUsable: async () => live,
     fetchAvailable: async () => [],
   })
-  assert.ok(models.some((model) => model.id === 'composer-2.5'))
-  assert.ok(models.some((model) => model.id === 'grok-4.6'))
-  assert.ok(models.length > live.length)
+  assert.deepEqual(models.map((model) => model.id), live.map((model) => model.id))
   resetCursorCatalogCache()
+})
+
+test('consumeCursorFrames surfaces the Connect error detail, not the bare "Error"', () => {
+  const endFrame = frameConnect(Buffer.from(JSON.stringify({
+    error: {
+      code: 'invalid_argument',
+      message: 'Error',
+      details: [{
+        type: 'aiserver.v1.ErrorDetails',
+        debug: {
+          error: 'ERROR_MODEL_NO_LONGER_SUPPORTED',
+          details: {
+            title: 'Composer 2 is retired',
+            detail: "We're upgrading you to Composer 2.5, our most powerful model yet.",
+          },
+        },
+      }],
+    },
+  })), true)
+  const messages = []
+  consumeCursorFrames(endFrame, Buffer.alloc(0), (msg) => messages.push(msg))
+  assert.equal(messages.length, 1)
+  assert.equal(messages[0].kind, 'error')
+  assert.equal(messages[0].message, "Composer 2 is retired: We're upgrading you to Composer 2.5, our most powerful model yet.")
 })
 
