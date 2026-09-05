@@ -99,7 +99,7 @@ POST /api/me      Authorization: Bearer  body {}
 
 2026-09-03 live `GET /api/usage` 的 `limits.session` / `limits.weekly` 只有 `usage` + `models`，没有 `resets_at`。官方 Cloud UI 仍画 session / weekly 倒计时。定价文案：session 每 5 小时、weekly 每 7 天。社区观察（[ollama#12532](https://github.com/ollama/ollama/issues/12532)）session 是**全局 5h unix 桶**（`18000 - (epoch % 18000)`）。
 
-`parseOllamaLimitWindow`：先读 `resets_at` / `reset_at` / `resetAt` / `next_reset`。Session 缺 stamp → `ollamaSessionResetAt`（下一 UTC 5h 边界）。Weekly 缺 stamp **不**编 `Date.now()+7d`（#12532 的 weekly 公式带未证实的 `- 4 days` 偏移）。有 `resetAt` 后 Settings `formatReset` 画「{n}后重置」（一律相对时间）。
+`parseOllamaLimitWindow`：先读 `resets_at` / `reset_at` / `resetAt` / `next_reset`。Session 缺 stamp → `ollamaSessionResetAt`（下一 UTC 5h 边界）。Weekly 缺 stamp **不**编 `Date.now()+7d`（#12532 的 weekly 公式带未证实的 `- 4 days` 偏移）。有 `resetAt` 后 Settings `formatReset` 画「{n}后重置」（一律相对时间），写在该条 `QuotaMeter` 百分比行下方，不夹在两条中间。
 
 **不要**刮 ollama.com/settings HTML。行标签仍是 `t.primary`（5 小时）/ `t.weekly`（每周）。
 
