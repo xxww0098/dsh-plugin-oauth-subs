@@ -29,9 +29,6 @@ export const GLM_BUSINESS_LOGIN_URL = 'https://api.z.ai/api/auth/z/login'
 export const GLM_BIZ_BASE = 'https://api.z.ai'
 export const GLM_CODING_URL = 'https://api.z.ai/api/coding/paas/v4/chat/completions'
 export const GLM_ANTHROPIC_URL = 'https://api.z.ai/api/anthropic/v1/messages'
-/** ZCode Desktop `options.baseURL` for Start Plan. Anthropic SDK posts `{baseURL}/v1/messages`. */
-export const GLM_START_ANTHROPIC_BASE = 'https://zcode.z.ai/api/v1/zcode-plan/anthropic'
-export const GLM_START_ANTHROPIC_URL = `${GLM_START_ANTHROPIC_BASE}/v1/messages`
 export const GLM_ANTHROPIC_VERSION = '2023-06-01'
 export const GLM_QUOTA_URL = 'https://api.z.ai/api/monitor/usage/quota/limit'
 export const GLM_TOOL_USAGE_URL = 'https://api.z.ai/api/monitor/usage/tool-usage'
@@ -91,20 +88,6 @@ export const GLM_MODELS = Object.freeze([
   { id: 'glm-5-turbo', name: 'GLM-5-Turbo', contextWindow: GLM_TURBO_CONTEXT, maxTokens: 128_000, reasoningEfforts: false, input: GLM_TEXT_INPUT },
 ])
 
-/**
- * Start Plan (体验套餐) lists only Flash. Wire id stays `glm-5.3-flash`
- * (ZCode provider.models + zcode-plan Anthropic). Display adds Free.
- * Do not invent `glm-5.3-flash-free` — the hop 401s before model check
- * without a JWT; official/ZCode id is glm-5.3-flash.
- */
-export const GLM_START_MODELS = Object.freeze([
-  { id: 'glm-5.3-flash', name: 'GLM-5.3-Flash Free', contextWindow: GLM_LARGE_CONTEXT, maxTokens: 128_000, reasoningEfforts: GLM_REASONING, input: GLM_VISION_INPUT },
-])
-
-export function glmCatalogModels(session) {
-  return isGlmStartPlan(session) ? GLM_START_MODELS : GLM_MODELS
-}
-
 export { GLM_BOOST_HINT, GLM_BOOST_LABEL, glmCardBoost } from './boost.js'
 
 export const GLM_PLAN_NAMES = Object.freeze({
@@ -114,9 +97,6 @@ export const GLM_PLAN_NAMES = Object.freeze({
   coding_lite: 'Lite',
   coding_pro: 'Pro',
   coding_max: 'Max',
-  start: 'Start',
-  start_plan: 'Start',
-  trial: 'Start',
   individual: 'Individual',
   team: 'Team',
 })
@@ -125,23 +105,6 @@ export function normalizeGlmRegion(value) {
   const raw = typeof value === 'string' ? value.trim().toLowerCase() : ''
   if (raw === 'bigmodel' || raw === 'cn' || raw === 'zcode' || raw === 'china') return 'bigmodel'
   return 'zai'
-}
-
-/** Start Plan trial vs paid Coding Plan. Missing / unknown → coding (CLI mint + leftover sessions). */
-export function normalizeGlmPlanKind(value) {
-  const raw = typeof value === 'string' ? value.trim().toLowerCase().replace(/[_\-\s]+/g, '_') : ''
-  if (raw === 'start' || raw === 'start_plan' || raw === 'trial') return 'start'
-  return 'coding'
-}
-
-export function isGlmStartPlan(session) {
-  return normalizeGlmPlanKind(session?.planKind) === 'start'
-}
-
-export function glmPlanKindFromZcode(key, options) {
-  const hay = `${key} ${options?.baseURL ?? options?.baseUrl ?? options?.base_url ?? ''}`.toLowerCase()
-  if (/zcode-plan|start[._-]?plan/.test(hay)) return 'start'
-  return 'coding'
 }
 
 export function glmCliProvider(region) {
@@ -161,8 +124,7 @@ export function glmCodingUrl(region = 'zai') {
 }
 
 /** ZCode default protocol. https://docs.z.ai/devpack/quick-start */
-export function glmAnthropicUrl(region = 'zai', planKind = undefined) {
-  if (normalizeGlmPlanKind(planKind) === 'start') return GLM_START_ANTHROPIC_URL
+export function glmAnthropicUrl(region = 'zai') {
   return normalizeGlmRegion(region) === 'bigmodel'
     ? 'https://open.bigmodel.cn/api/anthropic/v1/messages'
     : GLM_ANTHROPIC_URL
@@ -317,26 +279,6 @@ export function glmAnthropicHeaders(session, sessionId) {
   return {
     ...glmUpstreamHeaders(session, sessionId),
     'anthropic-version': GLM_ANTHROPIC_VERSION,
-  }
-}
-
-const GLM_START_CAPTCHA_MESSAGE = 'GLM Start Plan Anthropic URL is correct, but live hops need Desktop x-aliyun-captcha-verify-param (zcode.cjs isZcodePlanOpenAiCompatibleBaseUrl). Without it zcode-plan returns 3007 captcha verify failed. This hop does not mint or solve captcha. Harness trial chat is blocked until a paid Coding Plan or a future captcha-bridge. Use ZCode.app for trial chat.'
-
-/** zcode-plan inference is captcha-gated. Annotate 3007; do not invent a verify-param. */
-export function annotateGlmStartPlanError(parsed, url) {
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return parsed
-  if (!String(url ?? '').includes('zcode-plan')) return parsed
-  const code = parsed.code ?? parsed.error?.code
-  const msg = String(parsed.msg ?? parsed.message ?? parsed.error?.message ?? '')
-  if (code !== 3007 && !/captcha verify failed/i.test(msg)) return parsed
-  return {
-    ...parsed,
-    error: {
-      ...(typeof parsed.error === 'object' && parsed.error ? parsed.error : {}),
-      type: parsed.error?.type ?? 'invalid_request_error',
-      code: 3007,
-      message: GLM_START_CAPTCHA_MESSAGE,
-    },
   }
 }
 
@@ -532,20 +474,17 @@ export async function mintGlmApiKey(oauthAccessToken, { fetchFn = fetch, region 
   return `${apiKey}.${secretKey}`
 }
 
-export function glmSession({ accessToken, account, accountId, planType, planKind, region = 'zai', zcodeJwt } = {}) {
+export function glmSession({ accessToken, account, accountId, region = 'zai', zcodeJwt } = {}) {
   if (typeof accessToken !== 'string' || !accessToken) {
     throw new Error('glm session needs an access token')
   }
   const human = pickGlmHumanAccount(account, accountFromJwt(zcodeJwt), accountFromJwt(accessToken))
-  const kind = planKind === undefined ? undefined : normalizeGlmPlanKind(planKind)
   return {
     accessToken,
     refreshToken: accessToken,
     expiresAt: GLM_NEVER_EXPIRES,
     ...(human === undefined ? {} : { account: human }),
     region: normalizeGlmRegion(region),
-    ...(planType === undefined ? {} : { planType }),
-    ...(kind === undefined ? {} : { planKind: kind }),
     ...(zcodeJwt === undefined ? {} : { zcodeJwt }),
   }
 }

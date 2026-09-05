@@ -12,7 +12,7 @@ import { applyCodexCache, codexCacheHeaders } from './codex/cache.js'
 import { GROK_API_URL, GROK_MODELS, grokAffinityHeaders, grokUpstreamHeaders } from './grok/index.js'
 import { applyGrokCache } from './grok/cache.js'
 import { normalizeGrokResponsesBody } from './grok/request.js'
-import { annotateGlmStartPlanError, glmAnthropicHeaders, glmAnthropicUrl, glmCatalogModels, glmCodingUrl, glmUpstreamHeaders, isGlmStartPlan } from './glm/index.js'
+import { GLM_MODELS, glmAnthropicHeaders, glmAnthropicUrl, glmCodingUrl, glmUpstreamHeaders } from './glm/index.js'
 import { glmCacheSessionId } from './glm/cache.js'
 import { normalizeGlmAnthropicBody, normalizeGlmChatBody } from './glm/request.js'
 import { kiroStreamingProfileArn } from './kiro/index.js'
@@ -343,8 +343,8 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
         data.push(...withPickerVariants(GROK_MODELS).map((model) => ({ id: model.id, object: 'model', owned_by: 'grok' })))
       } catch { /* not logged in */ }
       try {
-        const session = await tokens.glm.session()
-        data.push(...glmCatalogModels(session).map((model) => ({ id: model.id, object: 'model', owned_by: 'glm' })))
+        await tokens.glm.session()
+        data.push(...GLM_MODELS.map((model) => ({ id: model.id, object: 'model', owned_by: 'glm' })))
       } catch { /* not logged in */ }
       try {
         if (tokens.kiro) {
@@ -448,14 +448,6 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
       const client = abortOnDisconnect(request, response)
       try {
         const session = await tokens.glm.session()
-        if (isGlmStartPlan(session)) {
-          send(response, 501, {
-            error: {
-              message: 'GLM Start Plan is Anthropic-only. Point llm-pi-ai at POST /glm/v1/messages.',
-            },
-          })
-          return
-        }
         await forward(request, response, {
           url: glmCodingUrl(session.region),
           session,
@@ -476,7 +468,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
       try {
         const session = await tokens.glm.session()
         await forward(request, response, {
-          url: glmAnthropicUrl(session.region, session.planKind),
+          url: glmAnthropicUrl(session.region),
           session,
           headersOf: glmAnthropicHeaders,
           fetchFn,
@@ -492,13 +484,9 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
     }
 
     if (path === '/glm/v1/models' && request.method === 'GET') {
-      let session
-      try {
-        session = await tokens.glm?.session?.()
-      } catch { /* not logged in — Coding Plan catalog */ }
       send(response, 200, {
         object: 'list',
-        data: glmCatalogModels(session).map((model) => ({ id: model.id, object: 'model', owned_by: 'glm' })),
+        data: GLM_MODELS.map((model) => ({ id: model.id, object: 'model', owned_by: 'glm' })),
       })
       return
     }
@@ -813,7 +801,6 @@ async function attemptUpstream(response, { url, headers, body, stream, fetchFn, 
         },
       }
     }
-    if (family === 'glm') parsed = annotateGlmStartPlanError(parsed, url)
     send(response, upstream.status, parsed)
     return
   }

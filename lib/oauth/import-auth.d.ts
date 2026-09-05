@@ -57,7 +57,6 @@ export declare function importGrokAuth(paths?: string[]): Promise<{
 export declare function glmKeyFromZcodeConfig(raw: any): {
     apiKey: any;
     region: any;
-    planKind: any;
 };
 export declare function glmAuthSearchPaths(): string[];
 export declare function antigravityAuthSearchPaths(): string[];
@@ -79,8 +78,6 @@ export declare function importAntigravityAuth({ paths, fetchFn }?: {
 export declare function importGlmAuth(paths?: string[]): Promise<{
     session: {
         zcodeJwt?: any;
-        planKind?: string;
-        planType?: any;
         region: string;
         account?: string;
         accessToken: string;

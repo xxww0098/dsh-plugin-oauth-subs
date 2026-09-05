@@ -24,7 +24,7 @@ import {
   refreshGrok,
 } from './grok/index.js'
 import {
-  glmCatalogModels,
+  GLM_MODELS,
   glmSession,
   isGlmPermanentRefreshError,
   normalizeGlmRegion,
@@ -286,7 +286,8 @@ export class AuthController {
   }
 
   async #glmModels() {
-    return glmCatalogModels(await getSession('glm', this.authPath))
+    void (await getSession('glm', this.authPath))
+    return GLM_MODELS
   }
 
   async catalog() {

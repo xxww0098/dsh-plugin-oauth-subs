@@ -2,38 +2,16 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
-## 2026-09-05：GLM Start Plan 对话 3007 captcha verify failed
+## 2026-09-05：GLM 体验套餐（Start Plan）对话 3007，决定不支持
 
 ### 现象
-本机 Start JWT  hop `https://zcode.z.ai/api/v1/zcode-plan/anthropic/v1/messages`（有/无 Desktop 指纹、UA 3.10.1 / 3.11.2）都 `400 {"code":3007,"msg":"captcha verify failed"}`。同一 JWT 打 `open.bigmodel.cn` 是 401。去 `/v1/messages` 是 404。
+体验套餐 JWT 打 `https://zcode.z.ai/api/v1/zcode-plan/anthropic/v1/messages` 一直 `400 {"code":3007,"msg":"captcha verify failed"}`（有/无 Desktop 指纹都一样）；同一 JWT 打 `open.bigmodel.cn` 是 401。
 
 ### 根因
-Desktop 3.11.2 `zcode.cjs` 对 zcode-plan OpenAI 兼容 base（`isZcodePlanOpenAiCompatibleBaseUrl` / 以 `/zcode-plan` 结尾）注入 **`x-aliyun-captcha-verify-param`**。本 hop 没有这颗头。URL / JWT / 指纹都对，仍 3007。
+ZCode Desktop 对 zcode-plan hop 注入阿里云 captcha 头。插件不伪造、不接 captcha SDK，这颗头过不去。
 
 ### 修复
-不伪造 captcha、不接 SDK。导入 / hop / Flash Free 目录留下。代理把 3007 注成「Harness 试用堵住，直到 Coding Plan 或以后的 captcha-bridge」。试用在 ZCode.app。
-
-## 2026-09-05：GLM Start Plan 模型目录露出 Coding Plan 三行
-
-### 现象
-体验套餐登录后 Settings / harness 仍列出 glm-5.3 和 glm-5-turbo。ZCode Start 只有 GLM-5.3-Flash。
-
-### 根因
-`GLM_MODELS` 写死三行。`catalogProviders` / `/glm/v1/models` 不看 `planKind`。
-
-### 修复
-`glmCatalogModels(session)`：Start 只露线 id `glm-5.3-flash`（展示名 **GLM-5.3-Flash Free**）。Coding Plan 仍三行。不要造 `glm-5.3-flash-free`。
-
-## 2026-09-05：GLM Start Plan 导入死 key、对话打错端点
-
-### 现象
-本机只有 ZCode 体验套餐（`builtin:*-start-plan` JWT + `zcode-plan/anthropic`）。导入仍拿走 `enabled: false` 的短 coding-plan key；对话打到 `open.bigmodel.cn` / `api.z.ai` Coding Plan Anthropic。
-
-### 根因
-`glmKeyScore` 给 coding-plan 非 JWT 更高分，不看 `enabled` / `coding_plan_not_entitled`。hop 一律 `glmAnthropicUrl(region)`，没有 `planKind: start`。
-
-### 修复
-可用池先滤掉 disabled / not entitled。试用机导入 Start JWT 并写 `planKind: 'start'`。Anthropic hop 走 `https://zcode.z.ai/api/v1/zcode-plan/anthropic/v1/messages`。Coding Plan 仍优先非 JWT。Completions 残留对 Start 501。
+不支持体验套餐：`glmKeyFromZcodeConfig` 跳过 start-plan JWT、不捡 `enabled: false` 的死 coding-plan key（没有可用的就导入失败）；目录 / 路由只留 Coding Plan 三行。试用对话在 ZCode.app。
 
 ## 2026-09-05：模型里看不到 GitHub Copilot
 
@@ -794,7 +772,7 @@ xAI 接受 `priority` 但不给吞吐。Codex CLI 还要 `x-codex-routing-hint` 
 `glmAuthSearchPaths` 只扫了旧 CLI 路径。
 
 ### 修复
-搜索路径最前加 `~/.zcode/v2/config.json`。多钥匙优先 **可用** coding-plan / start-plan，非 JWT 压过 JWT；`enabled: false` 的 coding-plan 让给 Start。不读加密 `credentials.json`。
+搜索路径最前加 `~/.zcode/v2/config.json`。多钥匙优先 **可用** coding-plan，非 JWT 压过 JWT（start-plan JWT 后按体验套餐不支持处理）。不读加密 `credentials.json`。
 
 ## 2026-08-30：智谱 GLM 双站 OAuth / BigModel init 500
 
