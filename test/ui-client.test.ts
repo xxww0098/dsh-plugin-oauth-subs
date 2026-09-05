@@ -84,11 +84,11 @@ test('Settings Cursor tab uses Import local Cursor copy and shows source, never 
   assert.match(src, /cursorImport:\s*'导入本机 Cursor'/)
   assert.match(src, /cursorImport:\s*'Import local Cursor'/)
   assert.match(src, /cursorImportEmpty:\s*'本机没有 Cursor CLI 或 IDE 登录'/)
-  assert.match(src, /id === 'cursor' \? t\.cursorImport : id === 'kimi' \? t\.kimiImport : t\.import/)
-  assert.match(src, /\(id === 'cursor' \|\| id === 'ollama' \|\| id === 'kimi'\) && row\.methodLabel/)
+  assert.match(src, /id === 'cursor' \? t\.cursorImport : id === 'kimi' \? t\.kimiImport : id === 'copilot' \? t\.copilotImport : t\.import/)
+  assert.match(src, /\(id === 'cursor' \|\| id === 'ollama' \|\| id === 'kimi' \|\| id === 'copilot'\) && row\.methodLabel/)
   assert.match(src, /message === 'cursor-import-empty' \? t\.cursorImportEmpty/)
   assert.match(src, /h\(Tab, \{ id: 'cursor'/)
-  assert.match(src, /icons\/\{codex,grok,zai,kiro,antigravity,cursor,ollama,kimi,opencode,github\}\.svg/)
+  assert.match(src, /icons\/\{codex,grok,zai,kiro,antigravity,cursor,ollama,kimi,opencode,copilot,github\}\.svg/)
   assert.match(src, /cursor: \{ d: 'M22\.106 5\.68L12\.5\.135a\.998\.998 0 00-\.998 0L1\.893 5\.68/)
   assert.match(src, /cursor: \{ d: '[^']+', clip: true \}/)
   assert.equal(src.includes('M11.925 24l10.425-6'), false)
@@ -96,7 +96,7 @@ test('Settings Cursor tab uses Import local Cursor copy and shows source, never 
   assert.equal(/cursor[\s\S]{0,200}accessToken/.test(src), false)
   const tabOrder = src.match(/h\(Tab, \{ id: '(\w+)'/g) ?? []
   const ids = tabOrder.map((row) => /id: '(\w+)'/.exec(row)?.[1])
-  assert.deepEqual(ids.slice(0, 11), ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'opencode', 'models', 'about'])
+  assert.deepEqual(ids.slice(0, 12), ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'opencode', 'copilot', 'models', 'about'])
 })
 
 test('Settings Ollama tab is Cloud key paste after Cursor, never localhost', async () => {
@@ -146,15 +146,17 @@ test('Settings tab bar is two docked capsules; OAuth spreads leftover width betw
   assert.match(oauth, /id: 'codex'/)
   assert.match(oauth, /id: 'kimi'/)
   assert.match(oauth, /id: 'opencode'/)
+  assert.match(oauth, /id: 'copilot'/)
   assert.equal(/id: 'models'/.test(oauth), false)
   assert.equal(/id: 'about'/.test(oauth), false)
   assert.match(util, /id: 'models'/)
   assert.match(util, /id: 'about'/)
   assert.equal(/id: 'kimi'/.test(util), false)
   assert.equal(/id: 'opencode'/.test(util), false)
+  assert.equal(/id: 'copilot'/.test(util), false)
   const tabOrder = src.match(/h\(Tab, \{ id: '(\w+)'/g) ?? []
   const ids = tabOrder.map((row) => /id: '(\w+)'/.exec(row)?.[1])
-  assert.deepEqual(ids, ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'opencode', 'models', 'about'])
+  assert.deepEqual(ids, ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'opencode', 'copilot', 'models', 'about'])
 })
 
 test('Settings Kimi tab uses LobeHub Kimi path, device login, and never @lobehub/icons', async () => {
@@ -167,7 +169,7 @@ test('Settings Kimi tab uses LobeHub Kimi path, device login, and never @lobehub
   assert.match(src, /kimi: \{ d: 'M21\.846 0a1\.923/)
   assert.match(src, /h\(Tab, \{ id: 'kimi', label: t\.kimiTitle, current: tab, onSelect: setTab, icon: 'kimi' \}/)
   assert.match(src, /tab === 'kimi' && card\('kimi'/)
-  assert.match(src, /id === 'grok' \|\| id === 'kimi' \? t\.device/)
+  assert.match(src, /id === 'grok' \|\| id === 'kimi' \|\| id === 'copilot' \? t\.device/)
   assert.match(src, /id === 'kimi' && showKey && !busy/)
   assert.match(src, /family === 'kimi'\) return account && !isKimiOpaqueIdentity/)
   assert.equal(src.includes("from '@lobehub/icons'"), false)
@@ -291,7 +293,7 @@ test('Add account opens a centered dialog, not a sheet', async () => {
   assert.match(src, /id === 'glm' && !busy && h\('div', \{ className: 'osubs-glm-logins' \}/)
   assert.match(src, /id === 'kiro' && !busy && h\('div', \{ className: 'osubs-logins' \}/)
   assert.match(src, /id === 'ollama' && !busy && h\('div', \{ className: 'osubs-logins' \}/)
-  assert.match(src, /id === 'cursor' \? t\.cursorImport : id === 'kimi' \? t\.kimiImport : t\.import/)
+  assert.match(src, /id === 'cursor' \? t\.cursorImport : id === 'kimi' \? t\.kimiImport : id === 'copilot' \? t\.copilotImport : t\.import/)
   assert.match(src, /h\('span', null, t\.ollamaImport\)/)
   assert.equal(/osubs-sheet|osubs-drawer|role: 'sheet'|side.?sheet|侧边抽屉/i.test(src), false)
 })
@@ -323,6 +325,22 @@ test('Settings OpenCode tab is anonymous enable after Kimi, never Authorization 
   assert.match(src, /quota\.status === 'ready' && !hasUsage && family !== 'opencode'/)
   assert.equal(src.includes("from '@lobehub/icons'"), false)
   assert.equal(src.includes('Authorization'), false)
+})
+
+test('Settings Copilot tab is device-code after OpenCode, never @lobehub/icons', async () => {
+  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  assert.match(src, /copilotTitle:\s*'GitHub Copilot'/)
+  assert.equal((src.match(/copilotTitle:\s*'GitHub Copilot'/g) || []).length, 2)
+  assert.match(src, /copilotLoginApiKey:\s*'粘贴 GitHub Token'/)
+  assert.match(src, /copilotLoginApiKey:\s*'Paste GitHub token'/)
+  assert.match(src, /copilotImport:\s*'导入本机 Copilot'/)
+  assert.match(src, /LobeHub `Copilot` icon/)
+  assert.match(src, /h\(Tab, \{ id: 'copilot', label: t\.copilotTitle, current: tab, onSelect: setTab, icon: 'copilot' \}/)
+  assert.match(src, /tab === 'copilot' && card\('copilot'/)
+  assert.match(src, /id === 'grok' \|\| id === 'kimi' \|\| id === 'copilot' \? t\.device/)
+  assert.match(src, /id === 'copilot' && h\('button'/)
+  assert.match(src, /t\.copilotImport/)
+  assert.equal(src.includes("from '@lobehub/icons'"), false)
 })
 
 test('About Installed prefers the fresher of checkUpdate and snapshot', async () => {

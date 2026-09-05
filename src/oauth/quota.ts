@@ -13,6 +13,7 @@
  *   Ollama  GET ollama.com/api/usage  (limits.session/weekly.usage = 0..1)
  *           POST ollama.com/api/me    (Email / Name / Plan; GET is 405)
  *   OpenCode Free  no anonymous usage API; card stays idle / empty rows, plan Free
+ *   Copilot GET api.github.com/copilot_internal/user (premium_interactions remaining %)
  *
  * Codex windows report used_percent; remaining is 100 − used.
  * Grok creditUsagePercent is also used-percent. Display remaining in the UI.
@@ -76,6 +77,7 @@ import {
 } from './ollama/index.js'
 import { KIMI_ME_URL, KIMI_USAGE_URL, kimiUpstreamHeaders, parseKimiUserInfo } from './kimi/index.js'
 import { OPENCODE_ACCOUNT } from './opencode/index.js'
+import { COPILOT_QUOTA_URL, copilotIdentityHeaders, isGithubUserToken, parseCopilotUser } from './copilot/index.js'
 
 export const QUOTA_TTL_MS = 60_000
 export const QUOTA_TIMEOUT_MS = 10_000
@@ -1016,6 +1018,100 @@ export async function fetchOpencodeQuota(session) {
   }
 }
 
+function copilotResetAt(value) {
+  if (typeof value !== 'string' || !value.trim()) return undefined
+  const stamp = Date.parse(value.trim())
+  if (!Number.isFinite(stamp)) return undefined
+  return stamp
+}
+
+function parseCopilotQuotaSnapshot(snap, kind, label, resetAt) {
+  if (!snap || typeof snap !== 'object') return undefined
+  if (snap.unlimited === true) {
+    return {
+      key: kind,
+      kind,
+      label,
+      unlimited: true,
+      remainingPercent: 100,
+      usedPercent: 0,
+      ...(resetAt !== undefined ? { resetAt } : {}),
+    }
+  }
+  const remaining = typeof snap.percent_remaining === 'number' && Number.isFinite(snap.percent_remaining)
+    ? snap.percent_remaining
+    : undefined
+  if (remaining === undefined) return undefined
+  const remainingPercent = Math.max(0, Math.min(100, Math.round(remaining * 10) / 10))
+  return {
+    key: kind,
+    kind,
+    label,
+    remainingPercent,
+    usedPercent: Math.max(0, Math.min(100, 100 - remainingPercent)),
+    ...(resetAt !== undefined ? { resetAt } : {}),
+  }
+}
+
+export function parseCopilotUsage(payload, user) {
+  const root = payload && typeof payload === 'object' ? payload : {}
+  const snapshots = root.quota_snapshots && typeof root.quota_snapshots === 'object' ? root.quota_snapshots : {}
+  const resetAt = copilotResetAt(root.quota_reset_date)
+  const identity = parseCopilotUser(user) ?? parseCopilotUser(root) ?? {}
+  const planType = typeof root.copilot_plan === 'string' && root.copilot_plan.trim()
+    ? root.copilot_plan.trim()
+    : undefined
+  const rows = []
+  const premium = parseCopilotQuotaSnapshot(snapshots.premium_interactions, 'primary', 'Premium', resetAt)
+  if (premium) rows.push(premium)
+  const chat = parseCopilotQuotaSnapshot(snapshots.chat, 'chat', 'Chat', resetAt)
+  if (chat) rows.push(chat)
+  const completions = parseCopilotQuotaSnapshot(snapshots.completions, 'completions', 'Completions', resetAt)
+  if (completions) rows.push(completions)
+  return {
+    planType,
+    account: identity.account,
+    rows,
+  }
+}
+
+function copilotQuotaToken(session) {
+  const github = typeof session?.githubToken === 'string' && session.githubToken.trim()
+    ? session.githubToken.trim()
+    : undefined
+  if (github) return { authorization: `token ${github}` }
+  if (isGithubUserToken(session?.refreshToken)) return { authorization: `token ${session.refreshToken.trim()}` }
+  if (isGithubUserToken(session?.accessToken)) return { authorization: `token ${session.accessToken.trim()}` }
+  const access = typeof session?.accessToken === 'string' && session.accessToken.trim()
+    ? session.accessToken.trim()
+    : undefined
+  if (access) return { authorization: `Bearer ${access}` }
+  throw new Error('copilot session needs a GitHub token')
+}
+
+export async function fetchCopilotQuota(session, fetchFn = fetch) {
+  const wait = timeoutSignal(QUOTA_TIMEOUT_MS)
+  try {
+    const response = await fetchFn(COPILOT_QUOTA_URL, {
+      method: 'GET',
+      headers: {
+        accept: 'application/json',
+        ...copilotQuotaToken(session),
+        ...copilotIdentityHeaders(),
+      },
+      signal: wait.signal,
+    })
+    const parsed = parseCopilotUsage(await readJson(response, 'copilot quota'))
+    return {
+      ...parsed,
+      account: parsed.account || session.account,
+      planType: parsed.planType || session.planType,
+    }
+  } finally {
+    wait.cancel()
+  }
+}
+
 export async function fetchGlmQuota(session, fetchFn = fetch) {
   const wait = timeoutSignal(QUOTA_TIMEOUT_MS)
   try {
@@ -1654,6 +1750,8 @@ export class QuotaStore {
                 ? await fetchKimiQuota(session, this.fetchFn)
               : provider === 'opencode'
                 ? await fetchOpencodeQuota(session)
+              : provider === 'copilot'
+                ? await fetchCopilotQuota(session, this.fetchFn)
               : await fetchGrokQuota(session, this.fetchFn)
       const entry = {
         status: 'ready',

@@ -13,7 +13,7 @@ already recorded in MASTER. Settings is a stacked workbench:
 1. Sticky icon tabs (`.osubs-nav`): **two capsules**, docked with
    `gap: 4px`. Left `.osubs-tabs` is family-only `repeat(8, 36px)` +
    `justify-content: space-between` + `flex: 1 1 auto` (8 families fill
-   row 1 and stretch their gaps; a 9th wraps inside this group). Right
+   row 1 and stretch their gaps; a 9th+ wraps inside this group). Right
    `.osubs-tabs-util` stays 36px, Models on row 1 and GitHub/About on
    row 2. Do not `margin-left: auto`, nav `space-between`, or
    `width: max-content` on the OAuth capsule.

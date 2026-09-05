@@ -43,16 +43,19 @@ export class DeviceFlowManager {
     }
     const fetchFn = spec.fetchFn ?? fetch
     const extraHeaders = spec.headers && typeof spec.headers === 'object' ? spec.headers : {}
-    const deviceBody = new URLSearchParams({ client_id: spec.clientId })
-    if (typeof spec.scope === 'string' && spec.scope) deviceBody.set('scope', spec.scope)
+    const useJson = spec.jsonBody === true
+    const devicePayload = { client_id: spec.clientId }
+    if (typeof spec.scope === 'string' && spec.scope) devicePayload.scope = spec.scope
+    const encode = (payload) => (useJson ? JSON.stringify(payload) : new URLSearchParams(payload).toString())
+    const contentType = useJson ? 'application/json' : 'application/x-www-form-urlencoded'
     const requestDevice = () => fetchFn(spec.deviceCodeUrl, {
       method: 'POST',
       headers: {
         accept: 'application/json',
-        'content-type': 'application/x-www-form-urlencoded',
+        'content-type': contentType,
         ...extraHeaders,
       },
-      body: deviceBody.toString(),
+      body: encode(devicePayload),
     })
     const response = await requestDevice()
     if (!response.ok) {
@@ -102,14 +105,14 @@ export class DeviceFlowManager {
           method: 'POST',
           headers: {
             accept: 'application/json',
-            'content-type': 'application/x-www-form-urlencoded',
+            'content-type': contentType,
             ...extraHeaders,
           },
-          body: new URLSearchParams({
+          body: encode({
             client_id: spec.clientId,
             device_code: current.device_code,
             grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
-          }).toString(),
+          }),
           signal: controller.signal,
         })
         const result = await pollResponse.json().catch(() => ({}))

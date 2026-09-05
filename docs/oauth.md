@@ -24,7 +24,7 @@
 | Ollama Cloud | [docs.ollama.com/cloud](https://docs.ollama.com/cloud) | [ollama/ollama#12532](https://github.com/ollama/ollama/issues/12532)、[#16598](https://github.com/ollama/ollama/issues/16598) | Bearer `OLLAMA_API_KEY` → `ollama.com/v1` | [`ollama/README.md`](../src/oauth/ollama/README.md) |
 | Kimi | 官方 Kimi Code CLI | [Leechael/pi-provider-kimi-code](https://github.com/Leechael/pi-provider-kimi-code) | 设备码、无 PKCE | [`kimi/README.md`](../src/oauth/kimi/README.md) |
 | OpenCode Free | [anomalyco/opencode](https://github.com/anomalyco/opencode) `v1.18.29` | [opencode.ai/docs/zen](https://opencode.ai/docs/zen)；[hermes-agent opencode-free](https://github.com/NousResearch/hermes-agent/tree/main/plugins/model-providers/opencode-free)；[anomalyco/models.dev](https://github.com/anomalyco/models.dev) | UA `opencode/1.18.29`；`Bearer public` | [`opencode/README.md`](../src/oauth/opencode/README.md) |
-| 宿主 | [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) | DSH `llm-pi-ai` `api` 闭集 | 本机回环代理 | [`README.md`](../README.md) |
+| GitHub Copilot | [anomalyco/opencode](https://github.com/anomalyco/opencode) `plugin/github-copilot` | [goose githubcopilot.rs](https://github.com/aaif-goose/goose)；[Cherry Studio CopilotService.ts](https://github.com/CherryHQ/cherry-studio)；[hermes-agent copilot_auth.py](https://github.com/NousResearch/hermes-agent/blob/main/hermes_cli/copilot_auth.py) | UA `GitHubCopilotChat/0.35.0`；client `Iv1.b507a08c87ecfe98` | [`copilot/README.md`](../src/oauth/copilot/README.md) || 宿主 | [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) | DSH `llm-pi-ai` `api` 闭集 | 本机回环代理 | [`README.md`](../README.md) |
 
 CLIProxyAPI 同时包了 Codex / Grok / Antigravity 等多家。**只**在 Antigravity 上抄它的公开 client / UA / `models.json` 形状。不要把它的多家族共用层抄进本仓库的 `cache.ts`。
 
@@ -142,6 +142,23 @@ pi-cursor-sdk 自己走 **API key + `Agent.create`**，不是 OAuth。本 hop �
 | `x-opencode-client` + UA | Flag 默认 `cli`；`User-Agent: opencode/${InstallationVersion}` | `cli` + `opencode/1.18.29` |
 
 **不要发明：** `x-opencode-project`、`x-parent-session-id`（官方有条件才发）。不要把非 opencode 提供商的 `x-session-affinity` / `X-Session-Id` 抄到 Zen。不要把 store 哨兵 `anonymous` 当 Bearer。不要把 Codex `session-id` / `store: false` 抄到 Zen Responses。不要把 Zen 没列出的 models.dev slug 加进 picker。
+
+## GitHub Copilot
+
+一线设备流形状：[anomalyco/opencode](https://github.com/anomalyco/opencode) `packages/opencode/src/plugin/github-copilot/copilot.ts`（JSON 设备码、`X-Interaction-Id`、`x-initiator`、`Copilot-Vision-Request`）。
+
+**client_id 不抄 OpenCode `Ov23li8tweQw6odWQebz`**（发 `gho_`，`/copilot_internal/v2/token` 404）。本 hop 用 VS Code GitHub App 公开 `Iv1.b507a08c87ecfe98`（`ghu_` → `tid=`），对照 goose / Cherry Studio / hermes-agent。
+
+| 抄 | 本 hop |
+|---|---|
+| 设备码 RFC 8628 JSON `{client_id,scope:read:user}` | `copilotDeviceSpec` `jsonBody: true` |
+| `GET copilot_internal/v2/token` | `exchangeCopilotToken`；401/403 永久 |
+| vscode-chat 身份头 | `Copilot-Integration-Id: vscode-chat`；UA `GitHubCopilotChat/0.35.0` |
+| `X-Interaction-Id` = session | `copilotCacheHeaders` / `copilotUpstreamHeaders` |
+| GPT 不发 `maxOutputTokens` | `applyCopilotThinking` 剥 `max_tokens` |
+| `GET copilot_internal/user` | `fetchCopilotQuota`（`token ghu_`，不是 `tid=`） |
+
+**不要发明：** OpenCode `Ov23li8` client_id；PKCE / GHES；`X-Interaction-Type: agent-session-name-generation`；把 Copilot `pro` 显示成 Codex Pro 20x；第四种 DSH `api`；把 Claude 改打 `/v1/messages`。
 
 ## 新家族
 

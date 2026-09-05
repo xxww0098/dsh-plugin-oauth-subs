@@ -102,6 +102,38 @@ test('device flow restarts device auth on expired_token when spec.restartOnExpir
   assert.equal(attempt.userCode, 'NEW-CODE')
 })
 
+test('jsonBody posts JSON client_id and scope', async () => {
+  const calls = []
+  const fetchFn = async (url, init) => {
+    calls.push({ url: String(url), body: String(init.body ?? ''), type: init.headers?.['content-type'] })
+    if (String(url).includes('/device/code')) {
+      return jsonResponse(200, {
+        device_code: 'dev',
+        user_code: 'ABCD-EFGH',
+        verification_uri: 'https://github.com/login/device',
+        interval: 0.01,
+        expires_in: 5,
+      })
+    }
+    return jsonResponse(200, { error: 'authorization_pending' })
+  }
+  const devices = new DeviceFlowManager()
+  const attempt = await devices.start('copilot', {
+    clientId: 'Iv1.b507a08c87ecfe98',
+    scope: 'read:user',
+    deviceCodeUrl: 'https://github.com/login/device/code',
+    tokenUrl: 'https://github.com/login/oauth/access_token',
+    jsonBody: true,
+    fetchFn,
+  })
+  assert.equal(attempt.userCode, 'ABCD-EFGH')
+  const first = calls[0]
+  assert.equal(first.type, 'application/json')
+  assert.equal(JSON.parse(first.body).client_id, 'Iv1.b507a08c87ecfe98')
+  assert.equal(JSON.parse(first.body).scope, 'read:user')
+  attempt.cancel()
+})
+
 test('grokDiscovery rejects non-x.ai endpoints', async () => {
   resetGrokDiscovery()
   const fetchFn = async () => jsonResponse(200, {

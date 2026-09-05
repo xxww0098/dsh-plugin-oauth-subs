@@ -13,6 +13,7 @@
  *   Ollama  GET ollama.com/api/usage  (limits.session/weekly.usage = 0..1)
  *           POST ollama.com/api/me    (Email / Name / Plan; GET is 405)
  *   OpenCode Free  no anonymous usage API; card stays idle / empty rows, plan Free
+ *   Copilot GET api.github.com/copilot_internal/user (premium_interactions remaining %)
  *
  * Codex windows report used_percent; remaining is 100 − used.
  * Grok creditUsagePercent is also used-percent. Display remaining in the UI.
@@ -139,6 +140,16 @@ export declare function fetchKimiQuota(session: any, fetchFn?: typeof fetch): Pr
 export declare function fetchOpencodeQuota(session: any): Promise<{
     planType: any;
     account: any;
+    rows: any[];
+}>;
+export declare function parseCopilotUsage(payload: any, user: any): {
+    planType: any;
+    account: any;
+    rows: any[];
+};
+export declare function fetchCopilotQuota(session: any, fetchFn?: typeof fetch): Promise<{
+    account: any;
+    planType: any;
     rows: any[];
 }>;
 export declare function fetchGlmQuota(session: any, fetchFn?: typeof fetch): Promise<any>;

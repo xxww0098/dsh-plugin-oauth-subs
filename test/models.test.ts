@@ -109,7 +109,7 @@ test('buildProviders only emits logged-in families with DSH api ids', () => {
   const chat = buildProviders({
     prefix: 'oauth',
     origin: 'http://127.0.0.1:8318',
-    loggedIn: { glm: true, kiro: true, antigravity: true, cursor: true, ollama: true, kimi: true, opencode: true },
+    loggedIn: { glm: true, kiro: true, antigravity: true, cursor: true, ollama: true, kimi: true, opencode: true, copilot: true },
   })
   assert.equal(chat['oauth-glm'].api, HARNESS_ANTHROPIC_API)
   assert.equal(chat['oauth-glm'].baseURL, 'http://127.0.0.1:8318/glm')
@@ -163,6 +163,18 @@ test('buildProviders only emits logged-in families with DSH api ids', () => {
   assert.equal(Object.hasOwn(chat['oauth-opencode'].models.find((model) => model.id === 'big-pickle'), 'reasoningEfforts'), false)
   assert.equal(Object.hasOwn(chat['oauth-opencode'].models.find((model) => model.id === 'mimo-v2.5-free'), 'reasoningEfforts'), false)
   assert.deepEqual(chat['oauth-opencode'].models.find((model) => model.id === 'mimo-v2.5-free').input, ['text', 'image'])
+  assert.equal(chat['oauth-copilot'].api, HARNESS_COMPLETIONS_API)
+  assert.equal(chat['oauth-copilot'].api, 'openai-completions')
+  assert.equal(chat['oauth-copilot'].baseURL, 'http://127.0.0.1:8318/copilot')
+  assert.equal(chat['oauth-copilot'].baseURL.endsWith('/copilot/v1'), false)
+  assert.equal(chat['oauth-copilot'].compat.supportsReasoningEffort, true)
+  assert.equal(chat['oauth-copilot'].compat.thinkingFormat, 'openai')
+  assert.equal(chat['oauth-copilot'].models.some((model) => model.id === 'gpt-4.1'), true)
+  assert.deepEqual(chat['oauth-copilot'].models.find((model) => model.id === 'gpt-5.5').reasoningEfforts, {
+    low: 'low',
+    medium: 'medium',
+    high: 'high',
+  })
   assert.equal(chat['oauth-codex'], undefined)
 })
 
