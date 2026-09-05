@@ -78,8 +78,10 @@ export const OPENCODE_ZEN_FREE = Object.freeze(new Set([
 export const OPENCODE_DEFAULT_MODEL = 'glm-5.3-flash'
 
 export const OPENCODE_PLAN_NAMES = Object.freeze({
-  go: 'Go',
-  free: 'Free',
+  go: 'Go Free',
+  free: 'Go Free',
+  gofree: 'Go Free',
+  go_free: 'Go Free',
 })
 
 function model(id, name, extra = {}) {

@@ -312,6 +312,7 @@ test('Settings OpenCode tab is Go Free paste-key after Kimi, never Zen enable or
   const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
   assert.match(src, /opencodeTitle:\s*'OpenCode Go Free'/)
   assert.equal((src.match(/opencodeTitle:\s*'OpenCode Go Free'/g) || []).length, 2)
+  assert.match(src, /slug === 'go' \|\| compact === 'go' \|\| slug === 'free' \|\| compact === 'free' \|\| slug === 'go_free' \|\| compact === 'gofree'\) return 'Go Free'/)
   assert.match(src, /opencodeLoginApiKey:\s*'粘贴 API Key'/)
   assert.match(src, /opencodeLoginApiKey:\s*'Paste API key'/)
   assert.match(src, /opencodeImport:\s*'导入 OPENCODE_API_KEY'/)

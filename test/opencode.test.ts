@@ -75,12 +75,13 @@ test('keyed session never uses the anonymous sentinel', () => {
   assert.equal(session.planType, 'go')
   assert.match(session.account, /^opencode-[0-9a-f]{8}$/)
   const pub = publicSession('opencode', session)
-  assert.equal(pub.planLabel, 'Go')
+  assert.equal(pub.planLabel, 'Go Free')
   assert.equal(pub.method, 'paste')
   assert.equal(Object.hasOwn(pub, 'accessToken'), false)
   assert.equal(opencodeSourceLabel('paste'), undefined)
   assert.equal(opencodeSourceLabel('env'), 'env')
-  assert.equal(formatPlanLabel('go', 'opencode'), 'Go')
+  assert.equal(formatPlanLabel('go', 'opencode'), 'Go Free')
+  assert.equal(formatPlanLabel('free', 'opencode'), 'Go Free')
   assert.throws(() => parseOpencodeApiKey(OPENCODE_ANON_TOKEN), /sentinel/)
   assert.throws(() => opencodeSession(), /empty/)
 })
@@ -363,7 +364,7 @@ test('quota is idle-shaped Go with empty rows and no network', async () => {
   const store = new QuotaStore({ fetchFn: async () => { throw new Error('no opencode usage API') } })
   const quota = await store.refresh('opencode', 'go-user', session)
   assert.equal(quota.status, 'ready')
-  assert.equal(quota.planLabel, 'Go')
+  assert.equal(quota.planLabel, 'Go Free')
 })
 
 test('controller paste key hops Go Completions with Bearer and x-opencode-session', async () => {
@@ -379,7 +380,7 @@ test('controller paste key hops Go Completions with Bearer and x-opencode-sessio
   await assert.rejects(controller.login('opencode'), /paste form/)
   const login = await controller.useKey('opencode', GO_KEY)
   assert.equal(Object.hasOwn(login.account, 'accessToken'), false)
-  assert.equal(login.account.planLabel, 'Go')
+  assert.equal(login.account.planLabel, 'Go Free')
 
   const snap = await controller.snapshot()
   assert.equal(snap.accounts.opencode.loggedIn, true)
@@ -568,7 +569,7 @@ test('empty roster does not auto-enable; env import writes a key and syncs Go mo
   try {
     const imported = await controller.importFrom('opencode')
     assert.equal(imported.source, 'env')
-    assert.equal(imported.account.planLabel, 'Go')
+    assert.equal(imported.account.planLabel, 'Go Free')
     const stored = await listStoredSessions('opencode', authPath)
     assert.equal(stored[0].session.accessToken, GO_KEY)
     const snap = await controller.snapshot()

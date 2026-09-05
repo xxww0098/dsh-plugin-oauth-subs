@@ -20,7 +20,7 @@
 | [`cache.ts`](cache.ts) | 剥 Codex / Grok 字段。官方 `x-opencode-session` = DSH pin（缺省 `dsh-opencode`）。不发明 `cached_tokens` |
 
 调度：[`../proxy.ts`](../proxy.ts) `family === 'opencode'` → `applyOpencodeCache` + `applyOpencodeThinking`。`isOpencodeResponsesModel`（`muse-spark*` / `gpt-5.6-luna` / `grok-4.*`）走 `OPENCODE_RESPONSES_URL`；其余走 `OPENCODE_CHAT_URL`。
-额度：没有公开用量 API。卡仍渲染，quota idle / 空条，套餐默认 Go。
+额度：没有公开用量 API。卡仍渲染，quota idle / 空条，套餐芯片 **Go Free**。
 
 ## 协议
 

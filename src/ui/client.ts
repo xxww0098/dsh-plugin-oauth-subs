@@ -558,8 +558,7 @@ window.__ModuleLoader__.load({
         if (slug === 'enterprise' || compact === 'enterprise') return 'Enterprise'
       }
       if (family === 'opencode') {
-        if (slug === 'go' || compact === 'go') return 'Go'
-        if (slug === 'free' || compact === 'free') return 'Free'
+        if (slug === 'go' || compact === 'go' || slug === 'free' || compact === 'free' || slug === 'go_free' || compact === 'gofree') return 'Go Free'
       }
       if (family === 'copilot') {
         if (slug === 'proplus' || slug === 'pro_plus' || compact === 'proplus') return 'Pro+'
