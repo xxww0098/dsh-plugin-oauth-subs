@@ -1,9 +1,10 @@
 /**
  * OpenCode Free — anonymous Zen relay (https://opencode.ai/zen/v1).
  *
- * Matches Hermes `opencode-free`: no account, no API key. The relay 401s
- * any unrecognized Authorization bearer, so hop headers never include one.
- * Store keeps a sentinel token so auth.json shape stays non-empty.
+ * First-line: anomalyco/opencode v1.18.29. No-key CLI loader sets
+ * `apiKey: "public"` (Zen treats that bearer as no key). Store still
+ * keeps sentinel `anonymous` so auth.json is non-empty — that value is
+ * never sent as Authorization (Zen would treat it as a real key).
  */
 export { applyOpencodeCache, opencodeCacheHeaders, opencodeCacheSessionId, resetOpencodePins } from './cache.js';
 export declare const OPENCODE_ZEN_ORIGIN = "https://opencode.ai/zen/v1";
@@ -12,9 +13,13 @@ export declare const OPENCODE_RESPONSES_URL = "https://opencode.ai/zen/v1/respon
 export declare const OPENCODE_MODELS_URL = "https://opencode.ai/zen/v1/models";
 export declare const OPENCODE_MODELS_DEV_URL = "https://models.dev/api.json";
 export declare const OPENCODE_DOCS_URL = "https://opencode.ai/docs/zen";
-export declare const OPENCODE_USER_AGENT = "dsh-plugin-oauth-subs";
-export declare const OPENCODE_REFERER = "https://github.com/xxww0098/dsh-plugin-oauth-subs";
-export declare const OPENCODE_TITLE = "dsh-plugin-oauth-subs";
+/** anomalyco/opencode release this hop is pinned to. */
+export declare const OPENCODE_CLIENT_VERSION = "1.18.29";
+export declare const OPENCODE_USER_AGENT = "opencode/1.18.29";
+/** Official Flag.OPENCODE_CLIENT default. Desktop sends `desktop`. */
+export declare const OPENCODE_CLIENT = "cli";
+/** Official no-key sentinel. Zen `handler.ts`: `raw === "public"` → undefined. */
+export declare const OPENCODE_PUBLIC_TOKEN = "public";
 /** Store sentinel — never sent as Authorization. */
 export declare const OPENCODE_ANON_TOKEN = "anonymous";
 export declare const OPENCODE_ACCOUNT = "Anonymous";
@@ -75,9 +80,13 @@ export declare function opencodeSession(): {
 };
 export declare function refreshOpencode(session: any): Promise<any>;
 export declare function isOpencodePermanentRefreshError(): boolean;
-/** Never send Authorization. Empty / sentinel / stale Zen keys all 401. */
+/**
+ * Official no-key hop identity. `Bearer public` is the CLI sentinel
+ * (`provider.ts` `apiKey: "public"`). Never send the store sentinel
+ * `anonymous` — GET /models treats any other bearer as a real key.
+ */
 export declare function opencodeUpstreamHeaders(): {
+    authorization: string;
     'user-agent': string;
-    'http-referer': string;
-    'x-title': string;
+    'x-opencode-client': string;
 };

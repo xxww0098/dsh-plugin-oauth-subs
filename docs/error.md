@@ -13,6 +13,16 @@ OpenCode 自家 OAuth App `Ov23li8tweQw6odWQebz` 发 `gho_`，GitHub 不给 vsco
 ### 修复
 设备码 `client_id` 用 `Iv1.b507a08c87ecfe98`，换 `tid=` 再打 `api.githubcopilot.com`。导入的 OpenCode `gho_` 404 时退回 raw Bearer（只保 GA 模型）。
 
+## 2026-09-05：OpenCode Free 无 x-opencode-session，缓存按 IP 混
+
+### 现象
+长聊 DSH `cacheReadTokens` 一直是 0。同一对话后续轮次像全新 prompt。匿名流量和别的会话挤在同一 sticky 提供商上。
+
+### 根因
+hop 对齐 hermes「不发 Authorization」，`opencodeCacheHeaders()` 为空。官方 CLI v1.18.29 发 `Bearer public` + `x-opencode-session`（Zen `stickyId`；空则回落到 IP）+ `x-opencode-request` + `x-opencode-client: cli`。
+
+### 修复
+对齐 [anomalyco/opencode](https://github.com/anomalyco/opencode) v1.18.29。`Bearer public` 是无 key 哨兵（不是 store 的 `anonymous`）。session 头写 DSH pin。Zen 若回 `cache_read_*` 再译成 `cached_tokens`。
 ## 2026-09-05：Cursor 选择器只有 Composer 2 / 1.5 等 5 个
 
 ### 现象
@@ -111,7 +121,7 @@ plugin 0.0.68 重启后 `POST /opencode/v1/chat/completions` 500 `OpenCode Free 
 Hermes `opencode-free` 把 SDK Bearer 盖成空头。本插件 hop 若转发 store 哨兵同样 401。Zen 免费档会 delist。`ox-alpha-free` 看起来免费但是 Go 订阅。`big-pickle` 只给官方 CLI UA。
 
 ### 修复
-hop **不带** Authorization。live `GET /zen/v1/models` 只收匿名 `*-free`（去掉 Go keyed）。静态楼是 2026-09-03 live 快照，不含 hy3-free / big-pickle。
+store 哨兵 `anonymous` / 空串 / 过期 Zen key 不当 Bearer。官方无 key 是 `Bearer public`（见上条 session 头）。live `GET /zen/v1/models` ∩ 官方 Free 白名单，不含 hy3-free / Go keyed。
 
 ## 2026-09-03：Ollama 周模型 note 一行溢出
 

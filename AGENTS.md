@@ -111,10 +111,10 @@ src/
       cache.ts             prefix-hash; strip Codex/Grok fields
     opencode/              OpenCode Zen anonymous free (opencode.ai/zen/v1)
       README.md            family design: login, chat, quota, cache (traceable)
-      index.ts             catalog floor, anonymous session, hop headers (no Authorization)
+      index.ts             catalog floor, anonymous session, hop headers (`Bearer public`)
       catalog.ts           live GET /zen/v1/models ∩ official Free allowlist; models.dev overlay
       request.ts           Completions reasoning_effort; Muse chat ↔ Zen /v1/responses
-      cache.ts             strip Codex/Grok fields; no sticky id (non-fix)
+      cache.ts             strip Codex/Grok fields; x-opencode-session / x-opencode-request
     copilot/               GitHub Copilot Chat (api.githubcopilot.com)
       README.md            family design: login, chat, quota, cache (traceable)
       index.ts             catalog, identity, device-code (Iv1), tid= exchange, vscode-chat headers
@@ -232,7 +232,8 @@ Cursor:    conversationId on AgentRunRequest (fallback `dsh-cursor:<model>`)
            historical messageId/requestId hashed (not randomUUID); TurnEnded cache_read_tokens
 Ollama:    drop Codex/Grok cache fields; no sticky conversation id (non-fix)
 Kimi:      drop Codex/Grok cache fields; prefix-hash; extra system at messages suffix
-OpenCode:  drop Codex/Grok cache fields; no sticky conversation id (non-fix)
+OpenCode:  drop Codex/Grok cache fields; `x-opencode-session` (fallback `dsh-opencode` is written)
+           + `x-opencode-request`; extra system not parked (Zen Completions prefix)
 Copilot:   drop Codex/Grok cache fields; prefix-hash; extra system at messages suffix
            sticky `X-Interaction-Id` (fallback `dsh-copilot` is written)
 ```
@@ -380,13 +381,19 @@ Copilot:   drop Codex/Grok cache fields; prefix-hash; extra system at messages s
 
 **OpenCode** (`src/oauth/opencode/cache.ts`)
 
-- Zen `/v1/chat/completions` has no documented conversation / shard /
-  cache-read field. Do **not** invent `cached_tokens` or a sticky id.
-  `applyOpencodeCache` only strips Codex/Grok fields.
-- Fallback constant `dsh-opencode` is analyzer-only; it is **not** written
-  upstream. Never `Date.now()`.
-- No Codex `session-id` / `prompt_cache_key`, no Grok `x-grok-conv-id`.
-- Hits: none documented. DSH hit rate stays 0%.
+- Zen sticky provider + prompt cache key off `x-opencode-session`
+  (anomalyco/opencode v1.18.29 `handler.ts` `stickyId`; Go docs).
+  `x-opencode-request` is one UUID per DSH request. `x-opencode-client: cli`
+  is Flag default (on `opencodeUpstreamHeaders`). Body still strips Codex/Grok
+  fields — Zen does not take `prompt_cache_key`.
+- Fallback `dsh-opencode` **is** written as `x-opencode-session` (official
+  always sends a session id; empty falls back to IP and mixes chats).
+  Never `Date.now()`.
+- No Codex `session-id` / `prompt_cache_key`, no Grok `x-grok-conv-id`,
+  no non-opencode `x-session-affinity` / `X-Session-Id`, no invented
+  `x-opencode-project` / `x-parent-session-id`.
+- Hits: `cache_read_input_tokens` / `cached_tokens` →
+  `prompt_tokens_details.cached_tokens` when the field appears.
 
 **Copilot** (`src/oauth/copilot/cache.ts`)
 
@@ -428,9 +435,8 @@ When adding `src/oauth/<id>/`:
 | Cursor | Agent conversation (`conversation_id`) | `conversationId` + model; fallback `dsh-cursor:<model>`; `x-request-id` = `x-original-request-id`; hashed turn ids | extra DSH snapshots as extra `root_prompt_messages_json` system blobs | `TurnEndedUpdate.cache_read_tokens` → `cached_tokens` |
 | Ollama | none documented | no sticky conversation id (non-fix); `dsh-ollama` analyzer-only | n/a | none documented (`cached_tokens` if a field appears) |
 | Kimi | prefix hash of leading system + history | no shard key; `dsh-kimi` analyzer-only | extra system at **messages suffix** | none documented (`cached_tokens` if a field appears) |
-| OpenCode | none documented | no sticky conversation id (non-fix); `dsh-opencode` analyzer-only | n/a | none documented (`cached_tokens` if a field appears) |
+| OpenCode | Zen sticky + prefix cache | `x-opencode-session` = DSH pin; `x-opencode-request` per hop; `x-opencode-client: cli` | n/a | `cache_read_input_tokens` / `cached_tokens` |
 | Copilot | prefix hash of leading system + history | `X-Interaction-Id` (fallback `dsh-copilot` is written) | extra system at **messages suffix** | `cached_tokens` / `cache_read_input_tokens` |
-
 ### Do not
 
 - Share one sanitizer / pin map / header helper across families.
@@ -479,9 +485,8 @@ invariant list. When the two disagree, fix the README.
 | Cursor | `openai-completions` | Native is Connect/protobuf `AgentService/Run` | Completions adapter `POST /cursor/v1/chat/completions` |
 | Ollama | `openai-completions` | Native is `/api/chat`. Cloud also serves OpenAI `https://ollama.com/v1/chat/completions` (401 without Bearer; Factory docs use that `/v1`). | thin passthrough `POST /ollama/v1/chat/completions` → `https://ollama.com/v1/chat/completions` |
 | Kimi | `openai-completions` | Kimi Code Plan default is OpenAI Completions at `api.kimi.com/coding/v1`. Do **not** invent `kimi-openai-completions`. | thin hop `POST /kimi/v1/chat/completions` → `https://api.kimi.com/coding/v1/chat/completions` |
-| OpenCode | `openai-completions` | Native is OpenAI Completions at `https://opencode.ai/zen/v1` for most free models. Muse Spark is Responses-only on Zen. Any unrecognized Authorization 401s. Do **not** invent a fourth api. | thin hop `POST /opencode/v1/chat/completions` → `https://opencode.ai/zen/v1/chat/completions` (no Authorization). Muse (`muse-spark*`): translate chat → Zen `/v1/responses` → chat.completion |
+| OpenCode | `openai-completions` | Native is OpenAI Completions at `https://opencode.ai/zen/v1` for most free models. Muse Spark is Responses-only on Zen. Official no-key is `Authorization: Bearer public` (Zen treats `public` as no key; any other bearer including store sentinel `anonymous` is a real key). Do **not** invent a fourth api. | thin hop `POST /opencode/v1/chat/completions` → `https://opencode.ai/zen/v1/chat/completions` (`Bearer public` + `x-opencode-session`). Muse (`muse-spark*`): translate chat → Zen `/v1/responses` → chat.completion |
 | Copilot | `openai-completions` | Native is OpenAI Completions at `https://api.githubcopilot.com/chat/completions` (`tid=` session). Claude on Copilot still Completions in v1. Do **not** invent a fourth api or `/v1/messages`. | thin hop `POST /copilot/v1/chat/completions` → `{endpoints.api}/chat/completions` |
-
 `baseURL` must match how that SDK posts. Anthropic SDK posts
 `{baseURL}/v1/messages`, so GLM is `${origin}/glm` (not `${origin}/glm/v1`).
 `/glm/v1/v1/messages` is leftover-settings safety only.
@@ -509,7 +514,7 @@ already said `ai-sdk/anthropic` while Completions was posted). Do
   but DSH `api` stays `openai-completions` — hop-translate only.
   Do not pick Responses for Ollama because local `localhost:11434/v1/responses` exists.
   Do not invent `kimi-openai-completions`.
-  Do not send Authorization on the OpenCode hop (empty / sentinel / stale Zen key all 401).
+  Official OpenCode no-key is `Bearer public` (not store sentinel `anonymous`; any other bearer 401s).
   Do not send Copilot `ghu_` as `Bearer` to `api.githubcopilot.com` (exchange to `tid=` first).
 - Set GLM `api: openai-responses` (generic `api.z.ai/api/v1` is not
   Coding Plan).
@@ -781,7 +786,7 @@ hits are `TurnEndedUpdate.cache_read_tokens`. Historical turn ids are
 content hashes; `x-request-id` = `x-original-request-id`.
 Ollama Cloud has no documented cache-read or conversation id; do not invent one.
 Kimi Code is prefix-hash only; strip Codex/Grok fields and park extra system at the messages suffix. Do not invent a shard id.
-OpenCode Free has no documented cache-read or conversation id; never send Authorization on the Zen hop.
+OpenCode Free sticky-routes on `x-opencode-session` (fallback `dsh-opencode` is written) with `Bearer public`.
 Copilot Completions is prefix-hash + `X-Interaction-Id` (fallback `dsh-copilot` is written); exchange `ghu_` → `tid=` before hopping.
 `Error: tool call timed out after 30000ms` is `dsh-tool-fs-search`, not
 this proxy — record it in `docs/error.md`, do not add `toolTimeoutMs` here.

@@ -5,18 +5,18 @@
 
 **不是** ChatGPT Codex / xAI Grok / OpenCode Zen 付费 / OpenCode Go 订阅。
 上游是 OpenCode Zen 中继上的 **匿名免费档**：`https://opencode.ai/zen/v1`（多数模型 Completions；Muse Spark 是 Responses）。
-对齐 Nous Hermes `opencode-free`：无账号、无 API key。任何无法识别的 `Authorization` bearer 都会 401。
+一线对照 [anomalyco/opencode](https://github.com/anomalyco/opencode) **v1.18.29**。无账号时官方 CLI 过滤 `cost.input === 0` 并把 `apiKey` 设成 `"public"`。
 
 ## 文件
 
 | 文件 | 职责 |
 |---|---|
-| [`index.ts`](index.ts) | Completions / Responses URL、官方 Free 白名单、`isOpencodeResponsesModel`、匿名 session、**不带** Authorization 的 hop 头 |
-| [`catalog.ts`](catalog.ts) | 匿名 `GET /zen/v1/models` ∩ `OPENCODE_OFFICIAL_FREE`；models.dev overlay。静态楼 7 个官方 id |
-| [`request.ts`](request.ts) | Completions：`reasoning_effort`。Muse：chat ↔ Zen Responses。禁止同时发 `thinking` |
-| [`cache.ts`](cache.ts) | 剥 Codex / Grok 字段。禁止抄 `session-id` / `x-grok-conv-id`。不发明 `cached_tokens` |
+| [`index.ts`](index.ts) | Completions / Responses URL、官方 Free 白名单、`isOpencodeResponsesModel`、匿名 session、`Bearer public` + `opencode/1.18.29` hop 头 |
+| [`catalog.ts`](catalog.ts) | `GET /zen/v1/models` ∩ `OPENCODE_OFFICIAL_FREE`；models.dev overlay。静态楼 7 个官方 id |
+| [`request.ts`](request.ts) | Completions：`reasoning_effort`。Muse：chat ↔ Zen Responses。禁止同时发 `thinking`。`cache_read_*` → `cached_tokens` |
+| [`cache.ts`](cache.ts) | 剥 Codex / Grok 字段。`x-opencode-session` / `x-opencode-request`。禁止抄 `session-id` / `x-grok-conv-id` / `x-session-affinity` |
 
-调度：[`../proxy.ts`](../proxy.ts) `family === 'opencode'` → `applyOpencodeCache` + `applyOpencodeThinking`。`isOpencodeResponsesModel`（`muse-spark*`）走 `OPENCODE_RESPONSES_URL`；其余走 `OPENCODE_CHAT_URL`。
+调度：[`../proxy.ts`](../proxy.ts) `family === 'opencode'` → `applyOpencodeCache` + `applyOpencodeThinking` + `opencodeCacheHeaders`。`isOpencodeResponsesModel`（`muse-spark*`）走 `OPENCODE_RESPONSES_URL`；其余走 `OPENCODE_CHAT_URL`。
 额度：没有匿名用量 API。卡仍渲染，quota idle / 空条，套餐固定 Free。
 
 ## 协议
@@ -34,9 +34,11 @@ DSH POST /opencode/v1/chat/completions
        再译回 chat.completion / chat.completion.chunk
   → 其余官方 Free（big-pickle / mimo / ling / nemotron）：
        POST https://opencode.ai/zen/v1/chat/completions
-     无 Authorization
-     User-Agent: dsh-plugin-oauth-subs
-     HTTP-Referer + X-Title 标明本插件
+     Authorization: Bearer public
+     User-Agent: opencode/1.18.29
+     x-opencode-client: cli
+     x-opencode-session: DSH pin（缺省 dsh-opencode）
+     x-opencode-request: 本跳 UUID
 ```
 
 `baseURL` 是 `${origin}/opencode`。Completions SDK 打到 `/opencode/v1/chat/completions`。DSH `api` 仍是 `openai-completions`，不要改成 Responses。
@@ -46,7 +48,7 @@ DSH POST /opencode/v1/chat/completions
 
 无 OAuth、无 key。**空 roster 自动启用**：plugin start / `snapshot()` / `sync()` 若 `auth.json` 没有 `opencode`，写入 `opencodeSession()`（store 哨兵 `anonymous`）并 `syncHarnessModels`，让 `oauth-opencode` 进 llm-pi-ai。不覆盖已有 session。Settings「启用免费模型」是同一哨兵的幂等写入。
 
-`accessToken` **绝不**当 Bearer 发出。不要假扮 OpenCode CLI 的 User-Agent。`big-pickle` 是官方 Free，用本插件 UA 打 Completions。
+`accessToken` **绝不**当 Bearer 发出。官方无 key 哨兵是 `public`（Zen `raw === "public"` 当成没 key；`GET /models` 也一样）。store 哨兵 `anonymous` 当 Bearer 会走付费 key 路径然后 401。
 
 ## 模型
 
@@ -54,7 +56,8 @@ DSH POST /opencode/v1/chat/completions
 
 ```text
 GET https://opencode.ai/zen/v1/models
-（匿名，不带 Authorization）
+Authorization: Bearer public
+User-Agent: opencode/1.18.29
 ```
 
 只收官方 Free 白名单（`OPENCODE_OFFICIAL_FREE`，7 个 id）且仍出现在 live `/models` 里的行。`big-pickle` 官方免费但不带 `-free`；`deepseek-v4-flash-free` / `laguna-s-2.1-free` 带 `-free` 但已不在官方定价。失败或空列表回落静态楼（同样 7 个）。不要用后缀启发式。
@@ -78,19 +81,30 @@ DSH picker：
 
 ## 缓存
 
-官方 `/v1/chat/completions` 没有文档化的 conversation / shard / cache-read 字段。
+官方 CLI `packages/opencode/src/session/llm/request.ts` 对 `providerID.startsWith("opencode")` 发：
+
+| 头 | 官方 | 本 hop |
+|---|---|---|
+| `x-opencode-session` | `input.sessionID` | DSH pin（`session_id` / `prompt_cache_key`，缺省 `dsh-opencode`） |
+| `x-opencode-request` | `input.user.id` | 本跳 UUID（重试回放） |
+| `x-opencode-client` | Flag 默认 `cli` | `cli` |
+| `User-Agent` | `opencode/${InstallationVersion}` | `opencode/1.18.29` |
+| `x-opencode-project` | 有 `Instance.project.id` 才发 | **不发** |
+| `x-parent-session-id` | 子代理 | **不发** |
+
+Zen `handler.ts`：`stickyId = sessionId || workspaceID || ip`。空 session 按 IP 混会话，prompt cache 对不齐。Go 文档要求带 `x-opencode-session` 才能优化缓存。
 
 | 步骤 | 函数 | 做什么 |
 |---|---|---|
 | 1 | `opencodeCacheSessionId` | 清洗 DSH id（1–64，`[A-Za-z0-9._:-]`） |
-| 2 | `applyOpencodeCache` | 剥 Codex/Grok 字段 |
-| 3 | `opencodeCacheHeaders` | 空。不写 `session-id` / `x-grok-conv-id` |
+| 2 | `applyOpencodeCache` | 剥 Codex/Grok 字段。pin **不**写进 body |
+| 3 | `opencodeCacheHeaders` | `x-opencode-session` + `x-opencode-request`。不写 `session-id` / `x-grok-conv-id` / `x-session-affinity` |
 
-`dsh-opencode` 只给分析器标签，**不**写进 upstream body。不要发明 `cached_tokens`。不要 `Date.now()`。
+命中：Zen 若回 `cache_read_input_tokens` / `cached_tokens` / `prompt_tokens_details.cached_tokens`，`mapOpencodeUsage` 译成 OpenAI `prompt_tokens_details.cached_tokens`。没有字段不发明 0。不要 `Date.now()`。
 
 ## 不要
 
-- 不要发 `Authorization`（空串 / 哨兵 / 过期 Zen key 都会 401）。
+- 不要把 store 哨兵 `anonymous`、空串或过期 Zen key 当 Bearer（只有官方 `public` 是无 key 哨兵）。
 - 不要把启用藏在 Settings 点击后面；空 roster 必须自动写哨兵并 sync。
 - 不要在 Completions 行写 `reasoningEfforts: false`。没有 effort 图就省略字段，也不要全家 stamp `compat`。
 - 不要同时发 `thinking` 和 `reasoning_effort`。
@@ -99,21 +113,24 @@ DSH picker：
 - 不要把 Zen 付费或 Go 订阅模型塞进匿名 picker（`ox-alpha-free` 后缀像免费，但是 Go 订阅）。
 - 不要用 `*-free` 后缀决定匿名资格。白名单是官方 7 个 id。
 - 不要把过期 `deepseek-v4-flash-free` / `laguna-s-2.1-free` 加回 picker。
-- 不要假扮 OpenCode CLI UA。
-- 不要把 `api` 写成 Responses / Anthropic / 自定义字符串。DSH 仍是 Completions；Muse 只在 hop 里译成 Zen `/v1/responses`。
+- 不要发明 `x-opencode-project` / `x-parent-session-id`（官方有条件才发）。
+- 不要把非 opencode 提供商的 `x-session-affinity` / `X-Session-Id` 抄到 Zen。
 - 不要把 Codex `session-id` / `prompt_cache_key` / `store: false` / `include` 抄到 Zen Responses。
+- 不要把 OpenRouter 的 `http-referer` / `x-title` 发到 Zen（官方 CLI 不发）。
+- 不要把 `api` 写成 Responses / Anthropic / 自定义字符串。DSH 仍是 Completions；Muse 只在 hop 里译成 Zen `/v1/responses`。
 - 不要把官方 Free（含 MiMo / Big Pickle）藏起来或把非 Muse 改打 Responses。
 - 不要 npm `@lobehub/icons`。
 
 ## 归因
 
-匿名免费档对齐 [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) `plugins/model-providers/opencode-free`。Zen 源码 / 定价：[anomalyco/opencode](https://github.com/anomalyco/opencode)、[opencode.ai/docs/zen](https://opencode.ai/docs/zen)。能力 overlay：[sst/models.dev](https://github.com/sst/models.dev)。总表见 [`docs/oauth.md`](../../../docs/oauth.md)。
+一线：[anomalyco/opencode](https://github.com/anomalyco/opencode) **v1.18.29**（`provider.ts` `apiKey: "public"`；`session/llm/request.ts` 头；`console/.../zen/util/handler.ts` `stickyId` / `public`）。Zen 定价：[opencode.ai/docs/zen](https://opencode.ai/docs/zen)。社区逆向旁路：[NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) `plugins/model-providers/opencode-free`（不要发无法识别的 Bearer）。能力 overlay：[anomalyco/models.dev](https://github.com/anomalyco/models.dev)（原 sst/models.dev）`GET https://models.dev/api.json`。总表见 [`docs/oauth.md`](../../../docs/oauth.md)。
 
 ## 追溯
 
 | 问题 | 记录 |
 |---|---|
-| 带 Bearer 打免费档 401 | [`docs/error.md`](../../../docs/error.md) 2026-09-03 OpenCode Free Bearer |
+| 不发 `x-opencode-session`，缓存按 IP 混 | [`docs/error.md`](../../../docs/error.md) 2026-09-05 OpenCode Free session 头 |
+| 带非 `public` Bearer 打免费档 401 | [`docs/error.md`](../../../docs/error.md) 2026-09-03 OpenCode Free Bearer |
 | 硬编码目录 delist 后仍 401 | 同条：live `GET /models` |
 | 空 roster 要先点启用才能聊 | [`docs/error.md`](../../../docs/error.md) 2026-09-03 OpenCode Free 自动启用 |
 | picker 全是 text / 无 effort | [`docs/error.md`](../../../docs/error.md) 2026-09-03 OpenCode Free models.dev |
