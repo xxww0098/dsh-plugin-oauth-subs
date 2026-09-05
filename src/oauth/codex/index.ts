@@ -16,7 +16,7 @@ export const CODEX_USAGE_URL = 'https://chatgpt.com/backend-api/wham/usage'
 export const CODEX_RESET_CREDITS_URL = 'https://chatgpt.com/backend-api/wham/rate-limit-reset-credits'
 export const CODEX_RESET_CONSUME_URL = 'https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume'
 export const CODEX_MODELS_URL = 'https://chatgpt.com/backend-api/codex/models'
-export const CODEX_CLIENT_VERSION = '0.151.0'
+export const CODEX_CLIENT_VERSION = '0.153.3'
 export const CODEX_ORIGINATOR = 'codex_cli_rs'
 export const CODEX_USER_AGENT = `${CODEX_ORIGINATOR}/${CODEX_CLIENT_VERSION}`
 export const CODEX_SCOPE = 'openid profile email offline_access api.connectors.read api.connectors.invoke'
@@ -54,24 +54,26 @@ export const CODEX_REASONING_EFFORTS = Object.freeze({
   ...CODEX_REASONING,
 })
 
-/** GPT-5.6 Sol / Terra / Luna add `max`. */
+/** GPT-5.6 Sol / Terra / Luna and GPT-6 Astra add `max`. `ultra` is a
+ *  Codex CLI multi-agent mode, not an API effort — it 400s. */
 export const CODEX_REASONING_EFFORTS_56 = Object.freeze({
   ...CODEX_REASONING_EFFORTS,
   max: 'max',
 })
 
 /**
- * Mirrors GET chatgpt.com/backend-api/codex/models (probed 2026-08-26) — the
- * one place model facts live, so the picker, the context aliases and the Fast
- * tier cannot drift apart.
+ * Mirrors Codex CLI `models.json` (openai/codex 0.153.3, 2026-09-03) plus
+ * GET chatgpt.com/backend-api/codex/models — the one place model facts live,
+ * so the picker, the context aliases and the Fast tier cannot drift apart.
  *
  * `largeContext` is the row's `max_context_window` and `fastTier` whether its
  * `service_tiers` offers Fast. Models the subscription backend does not serve
  * stay out entirely:
  * `gpt-5.3-codex` answers 400 "not supported when using Codex with a ChatGPT
- * account".
+ * account". Daybreak / auto-review slugs stay out (CLI-internal).
  */
 export const CODEX_MODELS = Object.freeze([
+  { id: 'gpt-6-astra', name: 'GPT-6 Astra', contextWindow: CODEX_CONTEXT_WINDOW, maxTokens: CODEX_DEFAULT_MAX_TOKENS, reasoningEfforts: CODEX_REASONING_EFFORTS_56, largeContext: 872_000, fastTier: true },
   { id: 'gpt-5.6-sol', name: 'GPT-5.6 Sol', contextWindow: CODEX_CONTEXT_WINDOW, maxTokens: CODEX_DEFAULT_MAX_TOKENS, reasoningEfforts: CODEX_REASONING_EFFORTS_56, largeContext: 872_000, fastTier: true },
   { id: 'gpt-5.6-terra', name: 'GPT-5.6 Terra', contextWindow: CODEX_CONTEXT_WINDOW, maxTokens: CODEX_DEFAULT_MAX_TOKENS, reasoningEfforts: CODEX_REASONING_EFFORTS_56, largeContext: 872_000, fastTier: true },
   { id: 'gpt-5.6-luna', name: 'GPT-5.6 Luna', contextWindow: CODEX_CONTEXT_WINDOW, maxTokens: CODEX_DEFAULT_MAX_TOKENS, reasoningEfforts: CODEX_REASONING_EFFORTS_56, largeContext: 872_000, fastTier: true },

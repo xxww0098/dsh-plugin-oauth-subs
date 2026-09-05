@@ -26,7 +26,7 @@
 | `client_id` | `app_EMoamEEZ73f0CkXaXp7hrann` |
 | authorize | `https://auth.openai.com/oauth/authorize` |
 | token | `https://auth.openai.com/oauth/token` |
-| originator / UA | `codex_cli_rs` / `codex_cli_rs/0.151.0` |
+| originator / UA | `codex_cli_rs` / `codex_cli_rs/0.153.3` |
 | loopback | `localhost:1455`，失败再 `1457`；path `/auth/callback` |
 | 换票 | `application/x-www-form-urlencoded` + PKCE |
 | 刷新 | JSON `{ client_id, grant_type, refresh_token }` |
@@ -51,9 +51,9 @@ Fast：body `service_tier` 从 `fast` 改成 `priority`，并带 `x-codex-routin
 
 ## 模型
 
-`CODEX_MODELS` 是唯一目录源（对照 `GET .../codex/models`，2026-08-26）。
-`gpt-5.3-codex` 不收录：订阅账号 400 “not supported when using Codex with a ChatGPT account”。
-思考深度：5.4 / 5.5 / Spark → `low`–`xhigh`（无 `minimal` / `ultra`）；5.6 Sol/Terra/Luna 加 `max`。
+`CODEX_MODELS` 是唯一目录源（对照 Codex CLI `models.json` 0.153.3 / 2026-09-03）。
+`gpt-6-astra` 排第一（Fast + 872K + `max`）。`gpt-5.3-codex` 不收录：订阅账号 400 “not supported when using Codex with a ChatGPT account”。
+思考深度：5.4 / 5.5 / Spark → `low`–`xhigh`（无 `minimal` / `ultra`）；Astra 和 5.6 Sol/Terra/Luna 加 `max`。
 
 ## 额度
 

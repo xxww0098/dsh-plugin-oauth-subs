@@ -1,8 +1,8 @@
 /**
  * Fast / Priority Processing for the DSH proxy.
  *
- * Fast is Codex-only. Eligible catalog rows (gpt-5.6-sol/terra/luna, gpt-5.5,
- * gpt-5.4 — not mini, not Spark) grow a host-side `-fast` sibling. The suffix
+ * Fast is Codex-only. Eligible catalog rows (gpt-6-astra, gpt-5.6-sol/terra/luna,
+ * gpt-5.5, gpt-5.4 — not mini, not Spark) grow a host-side `-fast` sibling. The suffix
  * is peeled before the wire; the request then asks for Priority the way Codex
  * CLI does: body `service_tier: "priority"` plus
  * `x-codex-routing-hint: model=<id>;tier=priority`.

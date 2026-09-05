@@ -79,6 +79,17 @@ test('buildProviders only emits logged-in families with DSH api ids', () => {
   assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4.6').maxTokens, 500_000)
   assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-5.5').reasoningEfforts.off, null)
   assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-5.5').reasoningEfforts.max, undefined)
+  assert.deepEqual(both['oauth-codex'].models.find((model) => model.id === 'gpt-6-astra').reasoningEfforts, {
+    off: null,
+    low: 'low',
+    medium: 'medium',
+    high: 'high',
+    xhigh: 'xhigh',
+    max: 'max',
+  })
+  assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-6-astra-fast').reasoningEfforts.max, 'max')
+  assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-6-astra-900k').reasoningEfforts.max, 'max')
+  assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-6-astra-ultra'), undefined)
   assert.deepEqual(both['oauth-codex'].models.find((model) => model.id === 'gpt-5.6-sol').reasoningEfforts, {
     off: null,
     low: 'low',
@@ -171,6 +182,10 @@ test('syncHarnessModels unsets owned routes then sets the live catalog', async (
   const set = ops[0].mutations.filter((row) => row.op === 'set')
   assert.equal(set.length, 1)
   assert.deepEqual(set[0].path, ['providers', 'oauth-codex'])
+  assert.equal(result.routes[0].models.includes('gpt-6-astra'), true)
+  assert.equal(result.routes[0].models.includes('gpt-6-astra-fast'), true)
+  assert.equal(result.routes[0].models.includes('gpt-6-astra-900k'), true)
+  assert.equal(result.routes[0].models.includes('gpt-6-astra-ultra'), false)
   assert.equal(result.routes[0].models.includes('gpt-5.3-codex'), false)
   assert.equal(result.routes[0].models.includes('gpt-5.3-codex-spark'), true)
   assert.equal(result.routes[0].models.includes('gpt-5.4-mini-fast'), false)
@@ -192,6 +207,10 @@ test('filterProviders keeps only selected keys', () => {
 test('catalogProviders always lists both families with Fast and 900K siblings', () => {
   const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
   const keys = catalogKeys(catalog)
+  assert.equal(keys.includes('oauth-codex/gpt-6-astra'), true)
+  assert.equal(keys.includes('oauth-codex/gpt-6-astra-fast'), true)
+  assert.equal(keys.includes('oauth-codex/gpt-6-astra-900k'), true)
+  assert.equal(keys.includes('oauth-codex/gpt-6-astra-ultra'), false)
   assert.equal(keys.includes('oauth-codex/gpt-5.5'), true)
   assert.equal(keys.includes('oauth-codex/gpt-5.5-fast'), true)
   assert.equal(keys.includes('oauth-codex/gpt-5.6-sol-900k'), true)
