@@ -85,7 +85,7 @@ test('Settings Cursor tab uses Import local Cursor copy and shows source, never 
   assert.match(src, /cursorImport:\s*'Import local Cursor'/)
   assert.match(src, /cursorImportEmpty:\s*'本机没有 Cursor CLI 或 IDE 登录'/)
   assert.match(src, /id === 'cursor' \? t\.cursorImport : id === 'kimi' \? t\.kimiImport : id === 'copilot' \? t\.copilotImport : t\.import/)
-  assert.match(src, /\(id === 'cursor' \|\| id === 'ollama' \|\| id === 'kimi' \|\| id === 'copilot'\) && row\.methodLabel/)
+  assert.match(src, /\(id === 'cursor' \|\| id === 'ollama' \|\| id === 'kimi' \|\| id === 'opencode' \|\| id === 'copilot'\) && row\.methodLabel/)
   assert.match(src, /message === 'cursor-import-empty' \? t\.cursorImportEmpty/)
   assert.match(src, /h\(Tab, \{ id: 'cursor'/)
   assert.match(src, /icons\/\{codex,grok,zai,kiro,antigravity,cursor,ollama,kimi,opencode,copilot,github\}\.svg/)

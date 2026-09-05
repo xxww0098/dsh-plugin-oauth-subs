@@ -567,7 +567,10 @@ test('empty roster does not auto-enable; env import writes a key and syncs Go mo
   process.env.OPENCODE_API_KEY = GO_KEY
   try {
     const imported = await controller.importFrom('opencode')
-    assert.equal(imported.session.accessToken, GO_KEY)
+    assert.equal(imported.source, 'env')
+    assert.equal(imported.account.planLabel, 'Go')
+    const stored = await listStoredSessions('opencode', authPath)
+    assert.equal(stored[0].session.accessToken, GO_KEY)
     const snap = await controller.snapshot()
     assert.equal(snap.accounts.opencode.loggedIn, true)
     const synced = await controller.sync()

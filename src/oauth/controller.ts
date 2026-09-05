@@ -1540,6 +1540,7 @@ export class AuthController {
     if (provider === 'kiro') await this.#discoverKiro(sessions[0])
     if (provider === 'kimi') await this.#discoverKimi(sessions[0])
     if (provider === 'copilot') await this.#discoverCopilot(sessions[0])
+    if (provider === 'opencode') await this.#discoverOpencode()
     this.onAuthChanged?.(provider)
     void this.quota.refresh(provider)
     return {
