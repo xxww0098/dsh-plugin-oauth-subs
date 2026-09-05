@@ -85,10 +85,10 @@ test('Settings Cursor tab uses Import local Cursor copy and shows source, never 
   assert.match(src, /cursorImport:\s*'Import local Cursor'/)
   assert.match(src, /cursorImportEmpty:\s*'本机没有 Cursor CLI 或 IDE 登录'/)
   assert.match(src, /id === 'cursor' \? t\.cursorImport : id === 'kimi' \? t\.kimiImport : id === 'copilot' \? t\.copilotImport : t\.import/)
-  assert.match(src, /\(id === 'cursor' \|\| id === 'ollama' \|\| id === 'kimi' \|\| id === 'opencode' \|\| id === 'copilot'\) && row\.methodLabel/)
+  assert.match(src, /\(id === 'cursor' \|\| id === 'ollama' \|\| id === 'kimi' \|\| id === 'copilot'\) && row\.methodLabel/)
   assert.match(src, /message === 'cursor-import-empty' \? t\.cursorImportEmpty/)
   assert.match(src, /h\(Tab, \{ id: 'cursor'/)
-  assert.match(src, /icons\/\{codex,grok,zai,kiro,antigravity,cursor,ollama,kimi,opencode,copilot,github\}\.svg/)
+  assert.match(src, /icons\/\{codex,grok,zai,kiro,antigravity,cursor,ollama,kimi,copilot,github\}\.svg/)
   assert.match(src, /cursor: \{ d: 'M22\.106 5\.68L12\.5\.135a\.998\.998 0 00-\.998 0L1\.893 5\.68/)
   assert.match(src, /cursor: \{ d: '[^']+', clip: true \}/)
   assert.equal(src.includes('M11.925 24l10.425-6'), false)
@@ -96,7 +96,7 @@ test('Settings Cursor tab uses Import local Cursor copy and shows source, never 
   assert.equal(/cursor[\s\S]{0,200}accessToken/.test(src), false)
   const tabOrder = src.match(/h\(Tab, \{ id: '(\w+)'/g) ?? []
   const ids = tabOrder.map((row) => /id: '(\w+)'/.exec(row)?.[1])
-  assert.deepEqual(ids.slice(0, 12), ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'opencode', 'copilot', 'models', 'about'])
+  assert.deepEqual(ids.slice(0, 11), ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'models', 'about'])
 })
 
 test('Settings Ollama tab is Cloud key paste after Cursor, never localhost', async () => {
@@ -111,7 +111,7 @@ test('Settings Ollama tab is Cloud key paste after Cursor, never localhost', asy
   assert.match(src, /ollama: \{ d: 'M7\.905 1\.09/)
   assert.match(src, /id === 'ollama' && !busy && h\('div', \{ className: 'osubs-logins' \}/)
   assert.match(src, /h\('span', null, t\.ollamaImport\)/)
-  assert.match(src, /id !== 'glm' && id !== 'kiro' && id !== 'ollama' && id !== 'opencode'/)
+  assert.match(src, /id !== 'glm' && id !== 'kiro' && id !== 'ollama' && !busy/)
   assert.equal(src.includes('127.0.0.1:11434'), false)
   assert.equal(src.includes('localhost:11434'), false)
   assert.match(src, /\.osubs-tabs \{[\s\S]*grid-template-columns: repeat\(8, 36px\)/)
@@ -145,7 +145,7 @@ test('Settings tab bar is two docked capsules; OAuth spreads leftover width betw
   assert.equal(utilCss.includes('margin-left: auto'), false)
   assert.match(oauth, /id: 'codex'/)
   assert.match(oauth, /id: 'kimi'/)
-  assert.match(oauth, /id: 'opencode'/)
+  assert.equal(/id: 'opencode'/.test(oauth), false)
   assert.match(oauth, /id: 'copilot'/)
   assert.equal(/id: 'models'/.test(oauth), false)
   assert.equal(/id: 'about'/.test(oauth), false)
@@ -156,7 +156,7 @@ test('Settings tab bar is two docked capsules; OAuth spreads leftover width betw
   assert.equal(/id: 'copilot'/.test(util), false)
   const tabOrder = src.match(/h\(Tab, \{ id: '(\w+)'/g) ?? []
   const ids = tabOrder.map((row) => /id: '(\w+)'/.exec(row)?.[1])
-  assert.deepEqual(ids, ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'opencode', 'copilot', 'models', 'about'])
+  assert.deepEqual(ids, ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'models', 'about'])
 })
 
 test('Settings Kimi tab uses LobeHub Kimi path, device login, and never @lobehub/icons', async () => {
@@ -327,30 +327,18 @@ test('Reset-credit confirm stays a centered alertdialog', async () => {
   assert.match(src, /pending && h\(WarnDialog/)
 })
 
-test('Settings OpenCode tab is Go Free paste-key after Kimi, never Zen enable or @lobehub/icons', async () => {
+test('Settings has no OpenCode Go Free tab or harness family', async () => {
   const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
-  assert.match(src, /opencodeTitle:\s*'OpenCode Go Free'/)
-  assert.equal((src.match(/opencodeTitle:\s*'OpenCode Go Free'/g) || []).length, 2)
-  assert.match(src, /slug === 'go' \|\| compact === 'go' \|\| slug === 'free' \|\| compact === 'free' \|\| slug === 'go_free' \|\| compact === 'gofree'\) return 'Go Free'/)
-  assert.match(src, /opencodeLoginApiKey:\s*'粘贴 API Key'/)
-  assert.match(src, /opencodeLoginApiKey:\s*'Paste API key'/)
-  assert.match(src, /opencodeImport:\s*'导入 OPENCODE_API_KEY'/)
-  assert.equal(src.includes('opencodeEnable'), false)
+  assert.equal(src.includes("id: 'opencode'"), false)
+  assert.equal(src.includes('opencodeTitle'), false)
+  assert.equal(src.includes('OpenCode Go Free'), false)
+  assert.equal(src.includes('OpenCode Free'), false)
   assert.equal(src.includes('启用免费模型'), false)
   assert.equal(src.includes('Enable free models'), false)
-  assert.match(src, /LobeHub `OpenCode` icon/)
-  assert.match(src, /opencode: \{ d: 'M16 6H8v12h8V6zm4 16H4V2h16v20z', clip: true \}/)
-  assert.match(src, /h\(Tab, \{ id: 'opencode', label: t\.opencodeTitle, current: tab, onSelect: setTab, icon: 'opencode' \}/)
-  assert.match(src, /tab === 'opencode' && card\('opencode'/)
-  assert.match(src, /id === 'opencode' && !busy && h\('div', \{ className: 'osubs-logins' \}/)
-  assert.match(src, /h\('span', null, t\.opencodeImport\)/)
-  assert.match(src, /onClick: \(\) => setAddOpen\(true\)/)
-  assert.match(src, /quota\.status === 'ready' && !hasUsage && family !== 'opencode'/)
-  assert.equal(src.includes("from '@lobehub/icons'"), false)
-  assert.equal(src.includes('Authorization'), false)
+  assert.equal(src.includes('opencode: {'), false)
 })
 
-test('Settings Copilot tab is device-code after OpenCode, never @lobehub/icons', async () => {
+test('Settings Copilot tab is device-code after Kimi, never @lobehub/icons', async () => {
   const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
   assert.match(src, /copilotTitle:\s*'GitHub Copilot'/)
   assert.equal((src.match(/copilotTitle:\s*'GitHub Copilot'/g) || []).length, 2)

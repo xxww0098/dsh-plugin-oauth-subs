@@ -11,7 +11,6 @@ import { ANTIGRAVITY_MODELS } from './antigravity/index.js'
 import { CURSOR_MODELS } from './cursor/index.js'
 import { OLLAMA_MODELS } from './ollama/index.js'
 import { KIMI_MODELS } from './kimi/index.js'
-import { OPENCODE_MODELS } from './opencode/index.js'
 import { COPILOT_MODELS } from './copilot/index.js'
 
 import { modelSupportsFastMode } from '../utils/fast-mode.js'
@@ -98,10 +97,13 @@ export function modelKey(provider, id) {
   return `${provider}/${id}`
 }
 
-export const FAMILY_IDS = Object.freeze(['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'opencode', 'copilot'])
+export const FAMILY_IDS = Object.freeze(['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot'])
+
+/** Dropped families. Still unset leftover harness routes; never written back. */
+export const RETIRED_FAMILY_IDS = Object.freeze(['opencode'])
 
 export function ownedProviderIds(prefix) {
-  return FAMILY_IDS.map((id) => `${prefix}-${id}`)
+  return [...FAMILY_IDS, ...RETIRED_FAMILY_IDS].map((id) => `${prefix}-${id}`)
 }
 
 function harnessInput(model) {
@@ -178,11 +180,6 @@ function kimiHarnessModels(kimiModels) {
   return KIMI_MODELS
 }
 
-function opencodeHarnessModels(opencodeModels) {
-  if (Array.isArray(opencodeModels) && opencodeModels.length > 0) return opencodeModels
-  return OPENCODE_MODELS
-}
-
 function copilotHarnessModels(copilotModels) {
   if (Array.isArray(copilotModels) && copilotModels.length > 0) return copilotModels
   return COPILOT_MODELS
@@ -193,7 +190,7 @@ function kiroHarnessModels(kiroModels) {
   return KIRO_MODELS
 }
 
-export function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaModels, kiroModels, kimiModels, opencodeModels, copilotModels }) {
+export function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels }) {
   const providers = {}
   if (loggedIn.codex) {
     providers[`${prefix}-codex`] = {
@@ -298,27 +295,6 @@ export function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaM
       models: kimiHarnessModels(kimiModels).map(toHarnessModel),
     }
   }
-  if (loggedIn.opencode) {
-    const opencodeRows = opencodeHarnessModels(opencodeModels).map(toHarnessModel)
-    const opencodeHasEffort = opencodeRows.some((model) => model.reasoningEfforts && typeof model.reasoningEfforts === 'object')
-    providers[`${prefix}-opencode`] = {
-      displayName: 'OAuth · OpenCode Go Free',
-      api: HARNESS_COMPLETIONS_API,
-      apiKeyEnv: OAUTH_CREDENTIAL_REF,
-      // Completions hop is /opencode/v1/chat/completions. DSH posts
-      // `{baseURL}/v1/chat/completions`, so baseURL is `${origin}/opencode`.
-      // Stamp Completions compat only when a row has a real effort map.
-      // Never write reasoningEfforts: false — that can drop the mutate.
-      baseURL: `${origin}/opencode`,
-      ...(opencodeHasEffort ? {
-        compat: {
-          supportsReasoningEffort: true,
-          thinkingFormat: 'openai',
-        },
-      } : {}),
-      models: opencodeRows,
-    }
-  }
   if (loggedIn.copilot) {
     const copilotRows = copilotHarnessModels(copilotModels).map(toHarnessModel)
     const copilotHasEffort = copilotRows.some((model) => model.reasoningEfforts && typeof model.reasoningEfforts === 'object')
@@ -349,16 +325,15 @@ export function describeProviders(providers) {
   }))
 }
 
-export function catalogProviders({ prefix, origin, cursorModels, ollamaModels, kiroModels, kimiModels, opencodeModels, copilotModels }) {
+export function catalogProviders({ prefix, origin, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels }) {
   return buildProviders({
     prefix,
     origin,
-    loggedIn: { codex: true, grok: true, glm: true, kiro: true, antigravity: true, cursor: true, ollama: true, kimi: true, opencode: true, copilot: true },
+    loggedIn: { codex: true, grok: true, glm: true, kiro: true, antigravity: true, cursor: true, ollama: true, kimi: true, copilot: true },
     cursorModels,
     ollamaModels,
     kiroModels,
     kimiModels,
-    opencodeModels,
     copilotModels,
   })
 }
@@ -378,7 +353,6 @@ export function familyOfProvider(provider) {
   if (String(provider).endsWith('-cursor')) return 'cursor'
   if (String(provider).endsWith('-ollama')) return 'ollama'
   if (String(provider).endsWith('-kimi')) return 'kimi'
-  if (String(provider).endsWith('-opencode')) return 'opencode'
   if (String(provider).endsWith('-copilot')) return 'copilot'
   return String(provider)
 }
@@ -517,7 +491,7 @@ export class ModelSwitch {
   }
 
   async setFamily(family, on, catalog) {
-    if (!FAMILY_IDS.includes(family)) throw new Error('family must be codex, grok, glm, kiro, antigravity, cursor, ollama, kimi, opencode, or copilot')
+    if (!FAMILY_IDS.includes(family)) throw new Error('family must be codex, grok, glm, kiro, antigravity, cursor, ollama, kimi, or copilot')
     // Only current catalog ids. Retired leftovers (glm-4.7, …) stay in
     // `disabled` and are not resurrected.
     for (const key of familyCatalogKeys(catalog, family)) {
@@ -604,11 +578,11 @@ async function assertPersistedProviders(settings, expectedIds) {
   }
 }
 
-export async function syncHarnessModels({ settings, prefix, origin, loggedIn, selected, cursorModels, ollamaModels, kiroModels, kimiModels, opencodeModels, copilotModels }) {
+export async function syncHarnessModels({ settings, prefix, origin, loggedIn, selected, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels }) {
   const routePrefix = String(prefix ?? '').trim()
   if (!routePrefix) throw new Error('Harness route prefix cannot be empty')
   const providers = filterProviders(buildProviders({
-    prefix: routePrefix, origin, loggedIn, cursorModels, ollamaModels, kiroModels, kimiModels, opencodeModels, copilotModels,
+    prefix: routePrefix, origin, loggedIn, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels,
   }), selected)
   for (const [id, value] of Object.entries(providers)) {
     assertDshServiceableProvider(id, value)

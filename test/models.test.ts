@@ -16,6 +16,8 @@ import {
   describeCatalog,
   filterProviders,
   modelKey,
+  FAMILY_IDS,
+  RETIRED_FAMILY_IDS,
   ownedProviderIds,
   peekPiAiProviders,
   syncHarnessModels,
@@ -109,7 +111,7 @@ test('buildProviders only emits logged-in families with DSH api ids', () => {
   const chat = buildProviders({
     prefix: 'oauth',
     origin: 'http://127.0.0.1:8318',
-    loggedIn: { glm: true, kiro: true, antigravity: true, cursor: true, ollama: true, kimi: true, opencode: true, copilot: true },
+    loggedIn: { glm: true, kiro: true, antigravity: true, cursor: true, ollama: true, kimi: true, copilot: true },
   })
   assert.equal(chat['oauth-glm'].api, HARNESS_ANTHROPIC_API)
   assert.equal(chat['oauth-glm'].baseURL, 'http://127.0.0.1:8318/glm')
@@ -143,30 +145,7 @@ test('buildProviders only emits logged-in families with DSH api ids', () => {
   assert.equal(chat['oauth-kimi'].baseURL, 'http://127.0.0.1:8318/kimi')
   assert.equal(chat['oauth-kimi'].baseURL.endsWith('/kimi/v1'), false)
   assert.equal(chat['oauth-kimi'].models.some((model) => model.id === 'k3'), true)
-  assert.equal(chat['oauth-opencode'].api, HARNESS_COMPLETIONS_API)
-  assert.equal(chat['oauth-opencode'].api, 'openai-completions')
-  assert.equal(chat['oauth-opencode'].baseURL, 'http://127.0.0.1:8318/opencode')
-  assert.equal(chat['oauth-opencode'].baseURL.endsWith('/opencode/v1'), false)
-  assert.equal(chat['oauth-opencode'].compat.supportsReasoningEffort, true)
-  assert.equal(chat['oauth-opencode'].compat.thinkingFormat, 'openai')
-  assert.equal(chat['oauth-opencode'].apiKeyEnv, OAUTH_CREDENTIAL_REF)
-  assert.equal(chat['oauth-opencode'].models.some((model) => model.id === 'glm-5.3-flash'), true)
-  assert.equal(chat['oauth-opencode'].models.some((model) => model.id === 'muse-spark-1.3-contributor'), true)
-  assert.equal(chat['oauth-opencode'].models.some((model) => model.id === 'ling-3.0-flash-fin-free'), false)
-  assert.equal(chat['oauth-opencode'].models.some((model) => model.id === 'big-pickle'), false)
-  assert.equal(chat['oauth-opencode'].models.some((model) => model.id === 'mimo-v2.5-free'), false)
-  assert.equal(chat['oauth-opencode'].models.some((model) => model.id === 'hy3-free'), false)
-  assert.equal(chat['oauth-opencode'].models.some((model) => model.id === 'laguna-s-2.1-free'), false)
-  assert.equal(chat['oauth-opencode'].models.some((model) => model.id === 'deepseek-v4-flash-free'), false)
-  assert.equal(chat['oauth-opencode'].models.some((model) => model.id === 'ox-alpha-free'), false)
-  assert.deepEqual(chat['oauth-opencode'].models.find((model) => model.id === 'glm-5.3-flash').reasoningEfforts, {
-    low: 'low',
-    high: 'high',
-    max: 'max',
-  })
-  assert.deepEqual(chat['oauth-opencode'].models.find((model) => model.id === 'glm-5.3-flash').input, ['text', 'image'])
-  assert.equal(Object.hasOwn(chat['oauth-opencode'].models.find((model) => model.id === 'kimi-k2.7-code'), 'reasoningEfforts'), false)
-  assert.deepEqual(chat['oauth-opencode'].models.find((model) => model.id === 'mimo-v2.5').input, ['text', 'image'])
+  assert.equal(chat['oauth-opencode'], undefined)
   assert.equal(chat['oauth-copilot'].api, HARNESS_COMPLETIONS_API)
   assert.equal(chat['oauth-copilot'].api, 'openai-completions')
   assert.equal(chat['oauth-copilot'].baseURL, 'http://127.0.0.1:8318/copilot')
@@ -196,8 +175,12 @@ test('syncHarnessModels unsets owned routes then sets the live catalog', async (
     loggedIn: { codex: true, grok: false },
   })
   assert.equal(ops[0].target, 'llm-pi-ai')
+  assert.equal(FAMILY_IDS.includes('opencode'), false)
+  assert.deepEqual([...RETIRED_FAMILY_IDS], ['opencode'])
+  assert.equal(ownedProviderIds('oauth').includes('oauth-opencode'), true)
   const unset = ops[0].mutations.filter((row) => row.op === 'unset').map((row) => row.path.join('.'))
   assert.deepEqual(unset, ownedProviderIds('oauth').map((id) => `providers.${id}`))
+  assert.equal(unset.includes('providers.oauth-opencode'), true)
   const set = ops[0].mutations.filter((row) => row.op === 'set')
   assert.equal(set.length, 1)
   assert.deepEqual(set[0].path, ['providers', 'oauth-codex'])

@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml/badge.svg)](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml)
 
-把 **ChatGPT / Codex**、**xAI Grok**、**智谱 GLM**、**AWS Kiro**、**Google Antigravity**、**Cursor**、**Ollama Cloud**、**Kimi Code Plan**、**OpenCode Go Free** 和 **GitHub Copilot** 接到 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。登录走官方 OAuth；Kiro 还可贴 `ksk_` API key；Cursor 可复用本机 CLI / IDE 登录；Ollama 贴 ollama.com API key（Cloud，不是本机 11434）；Kimi 走设备码 / `kimi-code.json`；OpenCode Go Free 贴 Go API key；Copilot 走设备码 / `hosts.json`。本机代理 + `llm-pi-ai` 路由同步；每家从闭集 `openai-responses` | `openai-completions` | `anthropic-messages` 里选一种 DSH `api`。
+把 **ChatGPT / Codex**、**xAI Grok**、**智谱 GLM**、**AWS Kiro**、**Google Antigravity**、**Cursor**、**Ollama Cloud**、**Kimi Code Plan** 和 **GitHub Copilot** 接到 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。登录走官方 OAuth；Kiro 还可贴 `ksk_` API key；Cursor 可复用本机 CLI / IDE 登录；Ollama 贴 ollama.com API key（Cloud，不是本机 11434）；Kimi 走设备码 / `kimi-code.json`；Copilot 走设备码 / `hosts.json`。本机代理 + `llm-pi-ai` 路由同步；每家从闭集 `openai-responses` | `openai-completions` | `anthropic-messages` 里选一种 DSH `api`。
 
 ## 安装
 
@@ -28,7 +28,6 @@ dsh web
 | Cursor | PKCE 轮询 `cursor.com/loginDeepControl`；或 **导入本机 Cursor** | `openai-completions` | Connect `agentn.us.api5.cursor.sh` `AgentService/Run` |
 | Ollama Cloud | 粘贴 API key / 导入 `OLLAMA_API_KEY` | `openai-completions` | `https://ollama.com/v1/chat/completions` |
 | Kimi Code Plan | 设备码（无 PKCE）；导入 `~/.kimi-code/credentials/kimi-code.json`；可选 `KIMI_API_KEY` | `openai-completions` | `https://api.kimi.com/coding/v1/chat/completions` |
-| OpenCode Go Free | 粘贴 API key / 导入 `OPENCODE_API_KEY` | `openai-completions` | `https://opencode.ai/zen/go/v1/chat/completions`（Bearer） |
 | GitHub Copilot | 设备码（无 PKCE）；导入 `~/.config/github-copilot/hosts.json`；可选 `GITHUB_TOKEN` | `openai-completions` | `https://api.githubcopilot.com/chat/completions`（`tid=` session） |
 | 路径 | 系列 |
 |---|---|
@@ -51,7 +50,7 @@ dsh web
 |---|---|
 | 设置页 | OAuth 登录 / 导入 / 退出，同步模型 |
 | llm-pi-ai | DSH 调用面；把请求打到本机代理 |
-| 回环 | `http://127.0.0.1:8318/{codex,grok}/v1/responses`、`/glm/v1/messages`（Completions 残留 `/glm/v1/chat/completions` 留到下次 sync）、`/{kiro,antigravity,cursor,ollama,kimi,opencode,copilot}/v1/chat/completions` |
+| 回环 | `http://127.0.0.1:8318/{codex,grok}/v1/responses`、`/glm/v1/messages`（Completions 残留 `/glm/v1/chat/completions` 留到下次 sync）、`/{kiro,antigravity,cursor,ollama,kimi,copilot}/v1/chat/completions` |
 | 上游 | 使用刷新后的订阅令牌 |
 
 不是第二套 LLM 适配器。设置页关闭后，DSH 仍通过本机代理调用。代理只监听回环地址，并用本地凭证 `DSH_OAUTH_SUBS_API_KEY` 鉴权。GLM 150% Coding Plan 加成是身份（ZCode Desktop UA），不是协议证明。技术栈与模块树：[AGENTS.md](AGENTS.md)。各家 hop 对照的官方 / 社区仓库：[docs/oauth.md](docs/oauth.md)。

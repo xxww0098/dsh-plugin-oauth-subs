@@ -6,7 +6,7 @@
  *   2. drives ChatGPT Codex PKCE, xAI Grok device-code / PKCE,
  *      Zhipu GLM Z.ai / BigModel CLI-poll, AWS Kiro (Social / Builder ID /
  *      IdC / Entra / API key), Google Antigravity, Cursor, Ollama Cloud,
- *      Kimi Code Plan, OpenCode Go Free, and GitHub Copilot logins
+ *      Kimi Code Plan, and GitHub Copilot logins
  *   3. syncs logged-in catalogs into llm-pi-ai
  *
  * The client half (Settings > OAuth 订阅) is discovered from package.json
@@ -26,7 +26,6 @@ import { cursorCatalogModels } from './oauth/cursor/catalog.js'
 import { ollamaCatalogModels } from './oauth/ollama/catalog.js'
 import { kiroCatalogModels } from './oauth/kiro/catalog.js'
 import { kimiCatalogModels } from './oauth/kimi/catalog.js'
-import { opencodeCatalogModels } from './oauth/opencode/catalog.js'
 import { copilotCatalogModels } from './oauth/copilot/catalog.js'
 import { EffortMemory, LAST_EFFORT_FILE, startEffortRestore } from './oauth/reasoning-effort.js'
 import { profileFromBaseUrl } from './utils/update.js'
@@ -167,7 +166,6 @@ export function apply(ctx, config = {}) {
         ollamaModels: ollamaCatalogModels(),
         kiroModels: kiroCatalogModels(),
         kimiModels: kimiCatalogModels(),
-        opencodeModels: opencodeCatalogModels(),
         copilotModels: copilotCatalogModels(),
       })
       return catalog[provider]?.models.find((model) => model.id === modelId)?.reasoningEfforts
@@ -266,14 +264,6 @@ export {
   kimiSession,
   kimiUpstreamHeaders,
 } from './oauth/kimi/index.js'
-export {
-  OPENCODE_MODELS,
-  OPENCODE_CHAT_URL,
-  OPENCODE_RESPONSES_URL,
-  isOpencodeResponsesModel,
-  opencodeSession,
-  opencodeUpstreamHeaders,
-} from './oauth/opencode/index.js'
 export {
   COPILOT_CLIENT_ID,
   COPILOT_MODELS,

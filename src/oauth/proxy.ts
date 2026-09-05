@@ -55,17 +55,6 @@ import { KIMI_CHAT_URL, kimiUpstreamHeaders } from './kimi/index.js'
 import { kimiCatalogModels } from './kimi/catalog.js'
 import { applyKimiCache } from './kimi/cache.js'
 import { applyKimiThinking } from './kimi/request.js'
-import { OPENCODE_CHAT_URL, OPENCODE_RESPONSES_URL, isOpencodeResponsesModel, opencodeUpstreamHeaders } from './opencode/index.js'
-import { opencodeCatalogModels } from './opencode/catalog.js'
-import { applyOpencodeCache, opencodeCacheHeaders } from './opencode/cache.js'
-import {
-  applyOpencodeThinking,
-  chatToOpencodeResponses,
-  createOpencodeResponsesChatStream,
-  foldOpencodeReasoningContent,
-  opencodeResponsesToChat,
-  parseOpencodeSseBlocks,
-} from './opencode/request.js'
 import {
   copilotChatUrl,
   copilotUpstreamHeaders,
@@ -288,15 +277,6 @@ function rewriteUpstreamBody(buffer, family, wire) {
       stream: next.stream === true,
     }
   }
-  if (family === 'opencode') {
-    const { payload: cached, cacheSessionId } = applyOpencodeCache(fast)
-    const next = applyOpencodeThinking(cached)
-    return {
-      body: Buffer.from(JSON.stringify(next)),
-      cacheSessionId,
-      stream: next.stream === true,
-    }
-  }
   if (family === 'copilot') {
     const { payload: cached, cacheSessionId } = applyCopilotCache(fast)
     const next = applyCopilotThinking(cached)
@@ -394,12 +374,6 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
         if (tokens.kimi) {
           await tokens.kimi.session()
           data.push(...kimiCatalogModels().map((model) => ({ id: model.id, object: 'model', owned_by: 'kimi' })))
-        }
-      } catch { /* not logged in */ }
-      try {
-        if (tokens.opencode) {
-          await tokens.opencode.session()
-          data.push(...opencodeCatalogModels().map((model) => ({ id: model.id, object: 'model', owned_by: 'opencode' })))
         }
       } catch { /* not logged in */ }
       try {
@@ -656,46 +630,6 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
           message: 'Kimi Code is Completions. Point llm-pi-ai at POST /kimi/v1/chat/completions.',
         },
       })
-      return
-    }
-
-    if ((path === '/opencode/v1/models' || path === '/opencode/models') && request.method === 'GET') {
-      send(response, 200, {
-        object: 'list',
-        data: opencodeCatalogModels().map((model) => ({ id: model.id, object: 'model', owned_by: 'opencode' })),
-      })
-      return
-    }
-
-    if ((path === '/opencode/v1/chat/completions' || path === '/opencode/chat/completions') && request.method === 'POST') {
-      const client = abortOnDisconnect(request, response)
-      try {
-        await forwardOpencode(request, response, {
-          session: await tokens.opencode.session(),
-          fetchFn,
-          maxRequestBodyBytes,
-          signal: client.signal,
-          asChat: true,
-        })
-      } finally {
-        client.cleanup()
-      }
-      return
-    }
-
-    if ((path === '/opencode/v1/responses' || path === '/opencode/responses') && request.method === 'POST') {
-      const client = abortOnDisconnect(request, response)
-      try {
-        await forwardOpencode(request, response, {
-          session: await tokens.opencode.session(),
-          fetchFn,
-          maxRequestBodyBytes,
-          signal: client.signal,
-          asChat: false,
-        })
-      } finally {
-        client.cleanup()
-      }
       return
     }
 
@@ -1279,130 +1213,6 @@ async function forwardCursor(request, response, { session, maxRequestBodyBytes, 
     throw new RequestError(502, collected.error)
   }
   await write(mapper.finish())
-  response.write('data: [DONE]\n\n')
-  if (!response.writableEnded && !response.destroyed) response.end()
-}
-
-function sendOpencodeUpstreamError(response, status, text) {
-  let parsed
-  try { parsed = text ? JSON.parse(text) : null } catch { parsed = { error: { message: text } } }
-  send(response, status, parsed ?? { error: { message: `opencode upstream ${status}` } })
-}
-
-async function writeOpencodeSse(response, chunk, signal) {
-  if (!response.write(`data: ${JSON.stringify(chunk)}\n\n`)) await once(response, 'drain', { signal })
-}
-
-/**
- * OpenCode Go Free hop. Completions stay on /zen/go/v1/chat/completions.
- * Luna / Grok 4.x / Muse Spark are Go Responses: chat → /zen/go/v1/responses.
- * Bearer comes from the stored Go API key. Official `x-opencode-session`
- * is the DSH pin (never Date.now()).
- */
-async function forwardOpencode(request, response, { session, fetchFn, maxRequestBodyBytes, signal, asChat }) {
-  const raw = await readBody(request, maxRequestBodyBytes)
-  const { body: rewritten, stream, cacheSessionId } = rewriteUpstreamBody(raw, 'opencode')
-  const payload = JSON.parse(rewritten.toString('utf8'))
-  const model = typeof payload.model === 'string' ? payload.model : ''
-  const muse = isOpencodeResponsesModel(model)
-
-  if (!asChat && !muse) {
-    send(response, 400, {
-      error: {
-        message: 'OpenCode Go Free Responses is Luna / Grok 4.x / Muse Spark only. Point other Go models at POST /opencode/v1/chat/completions.',
-      },
-    })
-    return
-  }
-
-  const url = muse ? OPENCODE_RESPONSES_URL : OPENCODE_CHAT_URL
-  const body = muse ? Buffer.from(JSON.stringify(chatToOpencodeResponses(payload))) : rewritten
-  const headers = {
-    ...opencodeUpstreamHeaders(session),
-    ...opencodeCacheHeaders(cacheSessionId),
-    'content-type': request.headers['content-type'] ?? 'application/json',
-    ...(stream ? { accept: 'text/event-stream' } : {}),
-  }
-
-  if (!muse) {
-    if (!stream) {
-      let upstream
-      try {
-        upstream = await fetchFn(url, { method: 'POST', headers, body, signal })
-      } catch (error) {
-        if (signal.aborted) throw error
-        throw new RequestError(502, describeError(error))
-      }
-      const text = await upstream.text()
-      if (upstream.status >= 400) {
-        sendOpencodeUpstreamError(response, upstream.status, text)
-        return
-      }
-      let parsed
-      try { parsed = text ? JSON.parse(text) : {} } catch {
-        throw new RequestError(502, 'opencode upstream returned invalid JSON')
-      }
-      send(response, 200, foldOpencodeReasoningContent(parsed))
-      return
-    }
-    return attemptUpstream(response, { url, headers, body, stream, fetchFn, family: 'opencode', signal })
-  }
-
-  if (!asChat) {
-    return attemptUpstream(response, { url, headers, body, stream, fetchFn, family: 'opencode', signal })
-  }
-
-  let upstream
-  try {
-    upstream = await fetchFn(url, { method: 'POST', headers, body, signal })
-  } catch (error) {
-    if (signal.aborted) throw error
-    throw new RequestError(502, describeError(error))
-  }
-
-  if (upstream.status >= 400) {
-    sendOpencodeUpstreamError(response, upstream.status, await upstream.text())
-    return
-  }
-
-  if (!stream) {
-    const text = await upstream.text()
-    let parsed
-    try { parsed = text ? JSON.parse(text) : {} } catch {
-      throw new RequestError(502, 'opencode upstream returned invalid JSON')
-    }
-    send(response, 200, opencodeResponsesToChat(parsed, { model }))
-    return
-  }
-
-  response.writeHead(200, {
-    'content-type': 'text/event-stream; charset=utf-8',
-    'cache-control': 'no-store',
-    'x-content-type-options': 'nosniff',
-  })
-  const mapper = createOpencodeResponsesChatStream({ model, id: 'chatcmpl-opencode' })
-  let rest = ''
-  const reader = upstream.body?.getReader()
-  if (!reader) {
-    const done = mapper.finish()
-    if (done) await writeOpencodeSse(response, done, signal)
-    response.write('data: [DONE]\n\n')
-    response.end()
-    return
-  }
-  while (true) {
-    const { done, value } = await reader.read()
-    rest += value ? Buffer.from(value).toString('utf8') : ''
-    const parsed = parseOpencodeSseBlocks(done ? `${rest}\n\n` : rest)
-    rest = parsed.rest
-    for (const event of parsed.events) {
-      const chunk = mapper.push(event)
-      if (chunk) await writeOpencodeSse(response, chunk, signal)
-    }
-    if (done) break
-  }
-  const tail = mapper.finish()
-  if (tail) await writeOpencodeSse(response, tail, signal)
   response.write('data: [DONE]\n\n')
   if (!response.writableEnded && !response.destroyed) response.end()
 }

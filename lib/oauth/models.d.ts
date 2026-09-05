@@ -41,9 +41,11 @@ export declare function assertDshServiceableProvider(provider: any, value: any):
 export declare function isOptInKey(key: any): boolean;
 export declare function modelKey(provider: any, id: any): string;
 export declare const FAMILY_IDS: readonly string[];
+/** Dropped families. Still unset leftover harness routes; never written back. */
+export declare const RETIRED_FAMILY_IDS: readonly string[];
 export declare function ownedProviderIds(prefix: any): string[];
 export declare function withPickerVariants(models: any): any[];
-export declare function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaModels, kiroModels, kimiModels, opencodeModels, copilotModels }: {
+export declare function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels }: {
     prefix: any;
     origin: any;
     loggedIn: any;
@@ -51,7 +53,6 @@ export declare function buildProviders({ prefix, origin, loggedIn, cursorModels,
     ollamaModels: any;
     kiroModels: any;
     kimiModels: any;
-    opencodeModels: any;
     copilotModels: any;
 }): {};
 export declare function describeProviders(providers: any): {
@@ -59,14 +60,13 @@ export declare function describeProviders(providers: any): {
     api: any;
     models: any;
 }[];
-export declare function catalogProviders({ prefix, origin, cursorModels, ollamaModels, kiroModels, kimiModels, opencodeModels, copilotModels }: {
+export declare function catalogProviders({ prefix, origin, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels }: {
     prefix: any;
     origin: any;
     cursorModels: any;
     ollamaModels: any;
     kiroModels: any;
     kimiModels: any;
-    opencodeModels: any;
     copilotModels: any;
 }): {};
 export declare function catalogKeys(providers: any): any[];
@@ -129,7 +129,7 @@ export declare class ModelSwitch {
 export declare function filterProviders(providers: any, selected: any): any;
 /** `undefined` when the host has no readable settings.get; `{}` when the section is empty. */
 export declare function peekPiAiProviders(settings: any): Promise<any>;
-export declare function syncHarnessModels({ settings, prefix, origin, loggedIn, selected, cursorModels, ollamaModels, kiroModels, kimiModels, opencodeModels, copilotModels }: {
+export declare function syncHarnessModels({ settings, prefix, origin, loggedIn, selected, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels }: {
     settings: any;
     prefix: any;
     origin: any;
@@ -139,7 +139,6 @@ export declare function syncHarnessModels({ settings, prefix, origin, loggedIn, 
     ollamaModels: any;
     kiroModels: any;
     kimiModels: any;
-    opencodeModels: any;
     copilotModels: any;
 }): Promise<{
     routes: {
