@@ -13,7 +13,7 @@ dsh plugin --profile web add https://github.com/xxww0098/dsh-plugin-oauth-subs
 dsh web
 ```
 
-Open **Settings → OAuth subs**. One card per account (quota on every card; Ollama Cloud has no quota bars). About **Installed** is the profile `node_modules` copy. If that is already latest but this process is older, quit every `dsh web` (including background / nohup) and start again. Apply may run `dsh plugin update` then `add …#<tag>`; `update` can exit 0 on a git-pinned install. Or `pnpm dsh web --patch ./cordis.patch.yml` (`id: oauth-subs`).
+Open **Settings → OAuth subs**. One card per account (quota on every card; Ollama Cloud has no quota bars). About **Installed** is the copy this process loaded. If profile `node_modules` is newer, About lists **On disk** and may `add …#<tag>` even when that file is already latest. Or `pnpm dsh web --patch ./cordis.patch.yml` (`id: oauth-subs`).
 
 ## Families
 

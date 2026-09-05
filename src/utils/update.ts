@@ -1,21 +1,20 @@
 /**
  * Local version + GitHub latest-release check, then the host plugin updater.
  *
- * Compare and About "当前版本" are the profile on-disk package.json
- * (`$DSH_HOME/profiles/<name>/node_modules/dsh-plugin-oauth-subs`), not the
- * process-lifetime `require` of the running module. A nohup / leftover
- * `dsh web` keeps serving the old in-memory version after a successful
- * write. `.dsh-module-fallback` only projects bundle-carried packages;
- * pnpm's `node_modules` entry wins, so it is not a second copy of this
- * plugin.
+ * About "当前版本" is the package this process actually loaded
+ * (`import.meta.url` → `../../package.json`). Profile
+ * `node_modules/dsh-plugin-oauth-subs/package.json` can already be newer
+ * (pnpm `github:` write) while Cordis still requires another copy.
+ * Compare GitHub against the running module. When disk is latest but the
+ * process is behind, still `add <repo>#vX.Y.Z`. `.dsh-module-fallback` and
+ * `$DSH_HOME/profiles/node_modules` are extra copies we report, not the
+ * About version.
  *
- * `dsh plugin update` is `pnpm update` in the profile and can no-op on a
- * git-pinned spec. Apply tries `update`, then `add <repo>#vX.Y.Z`, and
- * treats success only when the profile package.json advanced.
+ * `dsh plugin update` is `pnpm update` and can no-op on a git spec.
  */
 
 import { spawn } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -95,19 +94,32 @@ export function pickDownloads(assets, host) {
 }
 
 export function localUpdateInfo(platform = process.platform, opts = {}) {
+  const runningPath = modulePackageJsonPath()
   const running = installedVersion({ readFileFn: opts.readFileFn })
-  const disk = readPackageVersion(profilePluginPackageJson(opts.profile, opts.env), {
-    readFileFn: opts.readFileFn,
-  })
-  const version = disk || running
+  const diskPath = profilePluginPackageJson(opts.profile, opts.env)
+  const disk = readPackageVersion(diskPath, { readFileFn: opts.readFileFn })
+  const resolvedPath = resolveProfilePluginManifest(opts.profile, opts.env, { resolveFn: opts.resolveFn })
+  const resolved = resolvedPath ? readPackageVersion(resolvedPath, { readFileFn: opts.readFileFn }) : ''
+  const copies = extraPluginManifests(opts.profile, opts.env)
+    .map((path) => ({ path, version: readPackageVersion(path, { readFileFn: opts.readFileFn }) }))
+    .filter((row) => row.version)
   const staleProcess = Boolean(
     disk && running && parseVersion(disk) && parseVersion(running) && compareVersions(disk, running) !== 0,
   )
+  const staleLoad = Boolean(
+    staleProcess && canonicalPath(runningPath, opts) !== canonicalPath(diskPath, opts),
+  )
   return {
-    version,
+    version: running,
     running,
     disk: disk || undefined,
+    resolved: resolved || undefined,
+    runningPath,
+    diskPath,
+    resolvedPath,
+    copies,
     staleProcess,
+    staleLoad,
     platform: hostPlatform(platform),
     repo: REPO_URL,
     repoSlug: REPO_SLUG,
@@ -222,6 +234,34 @@ export function workaroundCommand(profile = DEFAULT_PROFILE, source = REPO_URL) 
 
 export function profilePluginPackageJson(profile = DEFAULT_PROFILE, env = process.env) {
   return join(dshHome(env), 'profiles', String(profile || DEFAULT_PROFILE), 'node_modules', PLUGIN_NAME, 'package.json')
+}
+
+export function extraPluginManifests(profile = DEFAULT_PROFILE, env = process.env) {
+  const home = dshHome(env)
+  const name = String(profile || DEFAULT_PROFILE)
+  return [
+    join(home, 'profiles', 'node_modules', PLUGIN_NAME, 'package.json'),
+    join(home, 'profiles', name, '.dsh-module-fallback', 'node_modules', PLUGIN_NAME, 'package.json'),
+  ]
+}
+
+export function resolveProfilePluginManifest(profile = DEFAULT_PROFILE, env = process.env, { resolveFn } = {}) {
+  const manifest = join(dshHome(env), 'profiles', String(profile || DEFAULT_PROFILE), 'package.json')
+  try {
+    const resolve = resolveFn || createRequire(existsSync(manifest) ? manifest : import.meta.url).resolve
+    return resolve(`${PLUGIN_NAME}/package.json`)
+  } catch {
+    return undefined
+  }
+}
+
+export function canonicalPath(path, { realpathFn } = {}) {
+  if (!path) return ''
+  try {
+    return String((realpathFn || realpathSync)(path))
+  } catch {
+    return String(path)
+  }
 }
 
 export function readPackageVersion(path, { readFileFn = readFileSync } = {}) {
@@ -362,9 +402,12 @@ export async function applyHostUpdate({
 } = {}) {
   const homeEnv = env ?? process.env
   const fileFn = readFileFn ?? readFileSync
+  const running = installedVersion({ readFileFn: fileFn })
   const manifest = profilePluginPackageJson(profile, homeEnv)
   const before = readPackageVersion(manifest, { readFileFn: fileFn })
   const want = parseVersion(latest)?.raw
+  const runningBehind = Boolean(want && parseVersion(running) && compareVersions(running, want) < 0)
+  const diskReady = (value) => Boolean(want && parseVersion(value) && compareVersions(value, want) >= 0)
   const first = await runDshPlugin({
     spawnFn,
     profile,
@@ -376,7 +419,7 @@ export async function applyHostUpdate({
     return { ...first, before, after: before }
   }
   let after = readPackageVersion(manifest, { readFileFn: fileFn })
-  if (first.ok && versionAdvanced(before, after, want)) {
+  if (first.ok && diskReady(after) && !runningBehind) {
     return { ok: true, status: 'installed', command: first.command, before, after }
   }
   if (want) {
@@ -391,7 +434,7 @@ export async function applyHostUpdate({
     if (!second.ok && second.status !== 'failed') {
       return { ...second, before, after }
     }
-    if (second.ok && versionAdvanced(before, after, want)) {
+    if (second.ok && (diskReady(after) || versionAdvanced(before, after, want))) {
       return { ok: true, status: 'installed', command: second.command, before, after }
     }
     if (!second.ok) return { ...second, before, after }

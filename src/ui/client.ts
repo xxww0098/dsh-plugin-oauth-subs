@@ -183,6 +183,8 @@ window.__ModuleLoader__.load({
         repo: '仓库',
         repoOpen: '打开仓库',
         installed: '当前版本',
+        onDisk: '磁盘',
+        loadedFrom: '加载自',
         latest: '最新版本',
         os: '系统',
         checkUpdate: '检查更新',
@@ -194,7 +196,7 @@ window.__ModuleLoader__.load({
         updateUnknown: 'GitHub 没有可用的版本号',
         updateError: '检查失败',
         updateInstalled: '已写入 web profile。当前进程仍是旧模块，请重启 dsh web 后生效。',
-        updateStaleProcess: '磁盘已是最新，当前进程仍是 {n}。请退出全部 dsh web（含后台 / nohup）后再启动。',
+        updateStaleProcess: '磁盘已是 {n}，但本进程加载的是另一份。退出全部 dsh web 后若仍如此，请 remove 再从 GitHub 重装。',
         updateFailed: '更新失败：{n}',
         updateUnchanged: '命令已成功但磁盘版本未变：{n}',
         updateMissingDsh: 'PATH 上找不到 dsh。确认已安装 DeepSeek Harness，再点检查更新。',
@@ -347,6 +349,8 @@ window.__ModuleLoader__.load({
         repo: 'Repository',
         repoOpen: 'Open repo',
         installed: 'Installed',
+        onDisk: 'On disk',
+        loadedFrom: 'Loaded from',
         latest: 'Latest',
         os: 'OS',
         checkUpdate: 'Check for updates',
@@ -358,7 +362,7 @@ window.__ModuleLoader__.load({
         updateUnknown: 'GitHub did not return a version',
         updateError: 'Update check failed',
         updateInstalled: 'Written to the web profile. This process still has the old module — restart dsh web to load it.',
-        updateStaleProcess: 'On-disk install is current; this process is still {n}. Quit every dsh web (including background / nohup) and start again.',
+        updateStaleProcess: 'On disk is {n}, but this process loaded a different copy. If that remains after quitting every dsh web, remove and re-add from GitHub.',
         updateFailed: 'Update failed: {n}',
         updateUnchanged: 'Command finished but the on-disk version did not change: {n}',
         updateMissingDsh: 'dsh was not found on PATH. Confirm DeepSeek Harness is installed, then try again.',
@@ -2028,8 +2032,13 @@ window.__ModuleLoader__.load({
       const apply = applyLabel(t, update)
       const applyTone = update?.apply?.status === 'installed' ? '' : 'osubs-bad'
       const stale = update?.staleProcess || local?.staleProcess
-      const running = update?.running || local?.running
+      const disk = update?.disk || local?.disk
+      const loaded = update?.runningPath || local?.runningPath
       const tone = update?.status === 'update' ? 'osubs-warn' : update?.status === 'error' ? 'osubs-bad' : ''
+      const shortPath = (path) => {
+        const s = String(path || '').replace(/\\/g, '/')
+        return s.length > 72 ? `…${s.slice(-70)}` : s
+      }
       return h('section', { className: 'osubs-card' },
         h('header', { style: { display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' } },
           h('h3', { style: { fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' } }, t.aboutTitle),
@@ -2045,6 +2054,14 @@ window.__ModuleLoader__.load({
               h('span', null, t.installed),
               h('span', null, version),
             ),
+            disk && disk !== version && h('div', { className: 'osubs-kv-row' },
+              h('span', null, t.onDisk),
+              h('span', null, disk),
+            ),
+            stale && loaded && h('div', { className: 'osubs-kv-row' },
+              h('span', null, t.loadedFrom),
+              h('span', { className: 'osubs-note', title: loaded }, shortPath(loaded)),
+            ),
             h('div', { className: 'osubs-kv-row' },
               h('span', null, t.os),
               h('span', null, platformLabel(t, host)),
@@ -2055,7 +2072,7 @@ window.__ModuleLoader__.load({
             ),
             latest?.publishedAt && h('p', { className: 'osubs-note' }, fill(t.published, latest.publishedAt)),
             update?.status && h('p', { className: `osubs-hint${tone ? ` ${tone}` : ''}` }, statusLabel(t, update)),
-            stale && running && h('p', { className: 'osubs-hint osubs-warn' }, fill(t.updateStaleProcess, running)),
+            stale && disk && h('p', { className: 'osubs-hint osubs-warn' }, fill(t.updateStaleProcess, disk)),
             apply && h('p', { className: `osubs-hint${applyTone ? ` ${applyTone}` : ''}` }, apply),
           ),
         ),

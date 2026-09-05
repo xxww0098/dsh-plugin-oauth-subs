@@ -121,20 +121,27 @@ test('profilePluginPackageJson reads $DSH_HOME/profiles/<name>/node_modules', ()
   assert.equal(path.replace(/\\/g, '/'), '/tmp/dsh-home/profiles/web/node_modules/dsh-plugin-oauth-subs/package.json')
 })
 
-test('localUpdateInfo prefers the profile disk copy over a stale running module', () => {
-  const readFileFn = (path) => {
+function splitVersionReader(running, disk) {
+  return (path) => {
     const p = String(path).replace(/\\/g, '/')
-    if (p.includes('/node_modules/dsh-plugin-oauth-subs/package.json')) return '{"version":"0.0.71"}'
-    return '{"version":"0.0.70"}'
+    if (p.includes('/node_modules/dsh-plugin-oauth-subs/package.json')) return JSON.stringify({ version: disk })
+    return JSON.stringify({ version: running })
   }
-  const info = localUpdateInfo('linux', { profile: 'web', env: { DSH_HOME: '/tmp/dsh-home' }, readFileFn })
-  assert.equal(info.version, '0.0.71')
+}
+
+test('localUpdateInfo reports the running module when profile disk is newer', () => {
+  const info = localUpdateInfo('linux', {
+    profile: 'web',
+    env: { DSH_HOME: '/tmp/dsh-home' },
+    readFileFn: splitVersionReader('0.0.70', '0.0.71'),
+  })
+  assert.equal(info.version, '0.0.70')
   assert.equal(info.disk, '0.0.71')
   assert.equal(info.running, '0.0.70')
   assert.equal(info.staleProcess, true)
 })
 
-test('fetchLatest is current when the profile disk already matches GitHub latest', async () => {
+test('fetchLatest stays update when the process is behind even if disk matches GitHub', async () => {
   const fetchFn = async () => new Response(JSON.stringify({
     tag_name: 'v0.0.71',
     name: '0.0.71',
@@ -142,22 +149,17 @@ test('fetchLatest is current when the profile disk already matches GitHub latest
     published_at: '2026-09-05T03:08:56Z',
     assets: [],
   }), { status: 200, headers: { 'content-type': 'application/json' } })
-  const readFileFn = (path) => {
-    const p = String(path).replace(/\\/g, '/')
-    if (p.includes('/node_modules/dsh-plugin-oauth-subs/package.json')) return '{"version":"0.0.71"}'
-    return '{"version":"0.0.70"}'
-  }
   const update = await fetchLatest({
     fetchFn,
     platform: 'linux',
     profile: 'web',
     env: { DSH_HOME: '/tmp/dsh-home' },
-    readFileFn,
+    readFileFn: splitVersionReader('0.0.70', '0.0.71'),
   })
-  assert.equal(update.status, 'current')
-  assert.equal(update.version, '0.0.71')
+  assert.equal(update.status, 'update')
+  assert.equal(update.version, '0.0.70')
   assert.equal(update.staleProcess, true)
-  assert.equal(update.running, '0.0.70')
+  assert.equal(update.disk, '0.0.71')
 })
 
 test('readPackageVersion and versionAdvanced require a real bump', () => {
@@ -205,18 +207,42 @@ function versionReader(versions) {
 }
 
 test('applyHostUpdate reports installed only when the on-disk version advanced', async () => {
+  let diskReads = 0
   const result = await applyHostUpdate({
     spawnFn: fakeChild({ code: 0 }),
     profile: 'web',
     latest: 'v0.0.71',
     env: { DSH_HOME: process.cwd() },
-    readFileFn: versionReader(['0.0.70', '0.0.71']),
+    readFileFn: (path) => {
+      const p = String(path).replace(/\\/g, '/')
+      if (p.includes('/node_modules/dsh-plugin-oauth-subs/package.json')) {
+        return JSON.stringify({ version: diskReads++ === 0 ? '0.0.70' : '0.0.71' })
+      }
+      return '{"version":"0.0.71"}'
+    },
   })
   assert.equal(result.ok, true)
   assert.equal(result.status, 'installed')
   assert.equal(result.before, '0.0.70')
   assert.equal(result.after, '0.0.71')
   assert.equal(result.command, 'dsh plugin --profile web update dsh-plugin-oauth-subs')
+})
+
+test('applyHostUpdate still adds #tag when disk is latest but the process is behind', async () => {
+  const seen = []
+  const result = await applyHostUpdate({
+    spawnFn: (cmd, args, opts) => {
+      seen.push(args)
+      return fakeChild({ code: 0 })(cmd, args, opts)
+    },
+    profile: 'web',
+    latest: 'v0.0.71',
+    env: { DSH_HOME: process.cwd() },
+    readFileFn: splitVersionReader('0.0.70', '0.0.71'),
+  })
+  assert.equal(result.ok, true)
+  assert.equal(result.status, 'installed')
+  assert.deepEqual(seen[1], ['plugin', '--profile', 'web', 'add', `${REPO_URL}#v0.0.71`])
 })
 
 test('applyHostUpdate retries add #tag when update exits 0 but version is unchanged', async () => {
