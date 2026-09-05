@@ -2023,10 +2023,29 @@ window.__ModuleLoader__.load({
       return ''
     }
 
+    function parseAboutVersion(tag) {
+      const match = String(tag ?? '').trim().match(/(\d+)\.(\d+)\.(\d+)/)
+      if (!match) return
+      return { major: Number(match[1]), minor: Number(match[2]), patch: Number(match[3]), raw: `${match[1]}.${match[2]}.${match[3]}` }
+    }
+
+    function fresherAboutVersion(left, right) {
+      const a = parseAboutVersion(left)
+      const b = parseAboutVersion(right)
+      if (a && b) {
+        if (a.major !== b.major) return a.major > b.major ? a.raw : b.raw
+        if (a.minor !== b.minor) return a.minor > b.minor ? a.raw : b.raw
+        return a.patch >= b.patch ? a.raw : b.raw
+      }
+      if (a) return a.raw
+      if (b) return b.raw
+      return left || right || ''
+    }
+
     function AboutPanel({ t, local, update, busy, applying, onCheck }) {
       const repo = local?.repo || update?.repo || 'https://github.com/xxww0098/dsh-plugin-oauth-subs'
       const slug = local?.repoSlug || update?.repoSlug || 'xxww0098/dsh-plugin-oauth-subs'
-      const version = update?.version || local?.version || '—'
+      const version = fresherAboutVersion(update?.version, local?.version) || '—'
       const host = local?.platform || update?.platform
       const latest = update?.latest
       const apply = applyLabel(t, update)
@@ -2134,6 +2153,7 @@ window.__ModuleLoader__.load({
           }
           if (method === 'update') {
             setUpdate(result)
+            setSnap((current) => current ? { ...current, update: { ...current.update, ...result } } : current)
             return result
           }
           await refresh()

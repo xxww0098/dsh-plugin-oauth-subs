@@ -6,7 +6,9 @@ import {
   compareVersions,
   fetchLatest,
   formatPublishedAt,
+  fresherVersion,
   hostPlatform,
+  installedVersion,
   pickDownloads,
   applyHostUpdate,
   localUpdateInfo,
@@ -41,6 +43,20 @@ test('compareVersions orders semver tags', () => {
   assert.equal(compareVersions('v0.0.16', '0.0.15') > 0, true)
   assert.equal(compareVersions('0.0.15', 'v0.0.15'), 0)
   assert.equal(compareVersions('0.0.14', '0.0.15') < 0, true)
+})
+
+test('installedVersion re-reads package.json and never falls back to a module-load freeze', () => {
+  assert.equal(installedVersion({ readFileFn: () => { throw new Error('no') } }), '')
+  assert.equal(installedVersion({ readFileFn: () => '{"version":"0.0.70"}' }), '0.0.70')
+  assert.equal(installedVersion({ readFileFn: () => '{"version":"0.0.71"}' }), '0.0.71')
+})
+
+test('fresherVersion picks the newer of two installed labels', () => {
+  assert.equal(fresherVersion('0.0.71', '0.0.70'), '0.0.71')
+  assert.equal(fresherVersion('0.0.70', '0.0.71'), '0.0.71')
+  assert.equal(fresherVersion(undefined, '0.0.70'), '0.0.70')
+  assert.equal(fresherVersion('0.0.71', undefined), '0.0.71')
+  assert.equal(fresherVersion('', ''), '')
 })
 
 test('formatPublishedAt converts GitHub UTC to Asia/Shanghai', () => {

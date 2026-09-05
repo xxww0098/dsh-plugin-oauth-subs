@@ -20,9 +20,6 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const require = createRequire(import.meta.url)
-const pkg = require('../../package.json')
-
 export function modulePackageJsonPath() {
   return fileURLToPath(new URL('../../package.json', import.meta.url))
 }
@@ -36,9 +33,20 @@ export const DEFAULT_PROFILE = 'web'
 export const DSH_BIN = 'dsh'
 export const PLUGIN_UPDATE_TIMEOUT_MS = 180_000
 
-/** Version of the module this process actually loaded (fresh disk read). */
+/** Version of the module this process actually loaded. Always re-reads disk. */
 export function installedVersion({ readFileFn } = {}) {
-  return readPackageVersion(modulePackageJsonPath(), { readFileFn }) || String(pkg.version ?? '')
+  return readPackageVersion(modulePackageJsonPath(), { readFileFn })
+}
+
+/** Newer of two semver-ish tags. Empty / unparseable values lose. */
+export function fresherVersion(left, right) {
+  const a = parseVersion(left)
+  const b = parseVersion(right)
+  if (a && b) return compareVersions(a.raw, b.raw) >= 0 ? a.raw : b.raw
+  if (a) return a.raw
+  if (b) return b.raw
+  const fallback = [left, right].find((value) => typeof value === 'string' && value.trim())
+  return fallback ? String(fallback).trim() : ''
 }
 
 export function parseVersion(tag) {

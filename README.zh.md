@@ -13,7 +13,7 @@ dsh plugin --profile web add https://github.com/xxww0098/dsh-plugin-oauth-subs
 dsh web
 ```
 
-打开 **设置 → OAuth 订阅**。每个账号一张卡片（额度都在卡片上；Ollama Cloud 没有额度条）。关于页 **当前版本** 是本进程加载的那一份。profile `node_modules` 更新时另列 **磁盘**，即使该文件已是 latest 也可能再 `add …#<tag>`。或 `pnpm dsh web --patch ./cordis.patch.yml`（`id: oauth-subs`）。
+打开 **设置 → OAuth 订阅**。每个账号一张卡片（额度都在卡片上；Ollama Cloud 没有额度条）。关于页 **当前版本** 每次重读本进程加载的 `package.json`（不冻结模块加载时的值）。profile `node_modules` 更新时另列 **磁盘**，即使该文件已是 latest 也可能再 `add …#<tag>`。或 `pnpm dsh web --patch ./cordis.patch.yml`（`id: oauth-subs`）。
 
 ## 系列
 

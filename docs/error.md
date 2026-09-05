@@ -5,13 +5,13 @@
 ## 2026-09-05：关于页更新成功但重启后版本仍旧
 
 ### 现象
-磁盘 `profiles/web/node_modules/dsh-plugin-oauth-subs/package.json` 已是 0.0.71，重启后 About 仍显示 0.0.70。依赖是未钉 tag 的 `github:xxww0098/dsh-plugin-oauth-subs`。
+pnpm-lock 已解析 0.0.71，磁盘 `package.json` 也是 0.0.71，About 仍显示 0.0.70（含 `dsh plugin update` 后、甚至以为已重启时）。
 
 ### 根因
-About 读本进程 `import.meta.url` 那份 package.json。pnpm `github:` 可把 profile `node_modules` 写成 0.0.71，Cordis 仍 require 另一份（旧 store / `profiles/node_modules`）。只看磁盘会误报已是最新。
+`installedVersion()` 模块加载时 `require('../../package.json')` 冻结；About 优先 snapshot 的旧 `version`；`checkUpdate` 成功后仍返回 apply 前的 `info.version`。
 
 ### 修复
-当前版本 = 运行中模块。磁盘不同则另列并提示。GitHub 对比运行中版本；磁盘已最新但进程落后仍 `add #tag`。
+每次读 package.json（失败返回空，不用冻结值）。About 取检查结果与 snapshot 的较新者。apply 成功后再读一遍再返回。
 
 ## 2026-09-03：OpenCode Free 目录漏 Big Pickle、含过期 DeepSeek/Laguna
 

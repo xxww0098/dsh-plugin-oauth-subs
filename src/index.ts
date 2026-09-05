@@ -289,6 +289,7 @@ export {
   REPO_URL,
   REPO_SLUG,
   installedVersion,
+  fresherVersion,
   fetchLatest,
   localUpdateInfo,
   profileFromBaseUrl,

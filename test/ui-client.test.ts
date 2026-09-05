@@ -324,3 +324,11 @@ test('Settings OpenCode tab is anonymous enable after Kimi, never Authorization 
   assert.equal(src.includes("from '@lobehub/icons'"), false)
   assert.equal(src.includes('Authorization'), false)
 })
+
+test('About Installed prefers the fresher of checkUpdate and snapshot', async () => {
+  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  assert.match(src, /function fresherAboutVersion/)
+  assert.match(src, /const version = fresherAboutVersion\(update\?\.version, local\?\.version\)/)
+  assert.equal(src.includes('const version = local?.version || update?.version'), false)
+  assert.match(src, /setSnap\(\(current\) => current \? \{ \.\.\.current, update: \{ \.\.\.current\.update, \.\.\.result \} \}/)
+})

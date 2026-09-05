@@ -414,7 +414,11 @@ export class AuthController {
         kimi: { ...(await this.status('kimi')), activeId: kimiAccounts.find((row) => row.active)?.id, accounts: kimiAccounts },
         opencode: { ...(await this.status('opencode')), activeId: opencodeAccounts.find((row) => row.active)?.id, accounts: opencodeAccounts },
       },
-      update: localUpdateInfo(process.platform, { profile: this.profile, env: this.updateEnv ?? process.env }),
+      update: localUpdateInfo(process.platform, {
+        profile: this.profile,
+        env: this.updateEnv ?? process.env,
+        readFileFn: this.readFileFn,
+      }),
     }
   }
 
@@ -504,8 +508,12 @@ export class AuthController {
 
   async checkUpdate(payload = {}) {
     const apply = payload?.apply === true
+    const profileOpts = {
+      profile: this.profile,
+      env: this.updateEnv ?? process.env,
+      readFileFn: this.readFileFn,
+    }
     try {
-      const profileOpts = { profile: this.profile, env: this.updateEnv ?? process.env }
       const info = await fetchLatest({ fetchFn: this.fetchFn, platform: process.platform, ...profileOpts })
       if (!apply || info.status !== 'update') {
         return { ...info, apply: { status: 'none' } }
@@ -518,11 +526,15 @@ export class AuthController {
         env: profileOpts.env,
       })
       const next = localUpdateInfo(process.platform, profileOpts)
+      const version = next.version || result.after || ''
+      const disk = result.after || next.disk
       if (result.ok) {
-        const caughtUp = Boolean(next.version && info.latest?.tag && compareVersions(next.version, info.latest.tag) >= 0)
+        const caughtUp = Boolean(version && info.latest?.tag && compareVersions(version, info.latest.tag) >= 0)
         return {
           ...info,
           ...next,
+          version,
+          disk: disk || undefined,
           status: caughtUp ? 'current' : info.status,
           apply: { status: 'installed', restart: true, command: result.command },
         }
@@ -530,11 +542,12 @@ export class AuthController {
       return {
         ...info,
         ...next,
+        version: next.version || info.version,
         apply: { status: result.status, error: result.error, command: result.command },
       }
     } catch (error) {
       return {
-        ...localUpdateInfo(process.platform, { profile: this.profile, env: this.updateEnv ?? process.env }),
+        ...localUpdateInfo(process.platform, profileOpts),
         status: 'error',
         error: error instanceof Error ? error.message : String(error),
         latest: undefined,
