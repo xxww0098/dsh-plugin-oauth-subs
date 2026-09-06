@@ -787,6 +787,29 @@ window.__ModuleLoader__.load({
   border-color: color-mix(in oklab, var(--osubs-bad) 58%, transparent);
 }
 .osubs-btn--sm { height: 28px; padding: 0 10px; font-size: 11px; }
+.osubs-btn--update {
+  color: var(--osubs-warn);
+  border-color: color-mix(in oklab, var(--osubs-warn) 55%, transparent);
+  background: color-mix(in oklab, var(--osubs-warn) 10%, transparent);
+  animation: osubs-btn-glow 1.8s ease-in-out infinite;
+}
+.osubs-btn--update::after {
+  content: ''; width: 6px; height: 6px; margin-left: 6px; border-radius: 50%;
+  background: var(--osubs-warn); flex: none;
+  animation: osubs-dot-pulse 1.2s ease-in-out infinite;
+}
+.osubs-btn--update:hover {
+  background: color-mix(in oklab, var(--osubs-warn) 16%, transparent);
+  border-color: color-mix(in oklab, var(--osubs-warn) 70%, transparent);
+}
+@keyframes osubs-btn-glow {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--osubs-warn) 0%, transparent); }
+  50% { box-shadow: 0 0 0 3px color-mix(in oklab, var(--osubs-warn) 22%, transparent); }
+}
+@keyframes osubs-dot-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: .35; transform: scale(.7); }
+}
 
 .osubs-seg { display: inline-flex; border: 1px solid var(--osubs-edge); border-radius: 8px; overflow: hidden; flex: none; }
 .osubs-seg .osubs-btn { border: 0; border-radius: 0; }
@@ -1205,10 +1228,11 @@ window.__ModuleLoader__.load({
       return 'ok'
     }
 
-    function Button({ label, onClick, variant, size, type = 'button', disabled }) {
+    function Button({ label, onClick, variant, size, type = 'button', disabled, mark }) {
       const classes = ['osubs-btn']
       if (variant) classes.push(`osubs-btn--${variant}`)
       if (size) classes.push(`osubs-btn--${size}`)
+      if (mark) classes.push('osubs-btn--update')
       return h('button', { type, onClick, disabled, className: classes.join(' ') }, label)
     }
 
@@ -2438,7 +2462,7 @@ window.__ModuleLoader__.load({
               ),
             ),
             h(HoldTip, { label: update?.status === 'update' ? fill(t.willUpdate, latest?.tag || '') : t.checkUpdate },
-              h(Button, { size: 'sm', onClick: onCheck, disabled: busy, label: busy ? (applying ? t.updateInstalling : t.checking) : t.checkUpdate }),
+              h(Button, { size: 'sm', mark: update?.status === 'update', onClick: onCheck, disabled: busy, label: busy ? (applying ? t.updateInstalling : t.checking) : t.checkUpdate }),
             ),
           ),
         ),
@@ -2472,7 +2496,7 @@ window.__ModuleLoader__.load({
               h('span', null, t.publishedAt),
               h('span', null, latest?.publishedAt || '—'),
             ),
-            update?.status && h('p', { className: `osubs-hint${tone ? ` ${tone}` : ''}` }, statusLabel(t, update)),
+            update?.status && update.status !== 'update' && h('p', { className: `osubs-hint${tone ? ` ${tone}` : ''}` }, statusLabel(t, update)),
             stale && disk && h('p', { className: 'osubs-hint osubs-warn' }, fill(t.updateStaleProcess, disk)),
             apply && h('p', { className: `osubs-hint${applyTone ? ` ${applyTone}` : ''}` }, apply),
           ),
@@ -2519,6 +2543,7 @@ window.__ModuleLoader__.load({
               h(Button, {
                 size: 'sm',
                 disabled: dshBusy,
+                mark: Boolean((dshUpdate?.canUpdate || dshUpdate?.status === 'update') && dshNpm?.version),
                 label: dshBtnLabel,
                 onClick: () => {
                   const npmVer = dshNpm?.version
@@ -2579,7 +2604,7 @@ window.__ModuleLoader__.load({
                 ),
               ),
             ),
-            dshHint && h('p', { className: 'osubs-hint' + (dshTone ? ' ' + dshTone : '') }, dshHint),
+            dshHint && dshUpdate?.status !== 'update' && h('p', { className: 'osubs-hint' + (dshTone ? ' ' + dshTone : '') }, dshHint),
             dshApply && h('p', { className: 'osubs-hint' + (dshApplyTone ? ' ' + dshApplyTone : '') }, dshApply),
           ),
         ),
