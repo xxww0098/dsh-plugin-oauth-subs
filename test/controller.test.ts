@@ -703,3 +703,35 @@ test('checkDshUpdate with apply: true spawns npm install', async () => {
   assert.deepEqual(seen[0].args, ['install', '-g', '@deepseek-ai/dsh@0.1.3'])
 })
 
+test('checkDshUpdate apply rolls back to an older npm version', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const seen = []
+  const fetchFn = async (url) => {
+    const s = String(url)
+    if (s.includes('/tags')) return new Response(JSON.stringify([{ name: 'dsh-v0.1.2-rc.1' }]))
+    if (s.includes('registry.npmjs.org')) {
+      return new Response(JSON.stringify({
+        'dist-tags': { latest: '0.1.2-rc.1', alpha: '0.1.2-alpha.5' },
+        versions: { '0.1.2-rc.1': {}, '0.1.2-alpha.5': {} },
+      }))
+    }
+    return new Response('{}')
+  }
+  const controller = new AuthController({
+    authPath: join(dir, 'auth.json'),
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+    fetchFn,
+    spawnFn: (cmd, args, opts) => {
+      seen.push({ cmd, args })
+      return spawnChild(0)
+    },
+  })
+  const result = await controller.checkDshUpdate({ apply: true, targetVersion: '0.1.2-alpha.5' })
+  assert.equal(seen[0].cmd, 'npm')
+  assert.deepEqual(seen[0].args, ['install', '-g', '@deepseek-ai/dsh@0.1.2-alpha.5'])
+  assert.equal(result.apply.status, 'installed')
+  assert.equal(result.apply.restart, true)
+})
+

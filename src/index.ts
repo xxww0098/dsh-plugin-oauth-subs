@@ -152,6 +152,7 @@ export function apply(ctx, config = {}) {
       })
     },
     profile: profileFromBaseUrl(ctx.baseUrl),
+    exitFn: (code) => process.exit(code),
   })
 
   ctx.effect(() => startEffortRestore({
@@ -303,4 +304,6 @@ export {
   fetchDshLatest,
   dshUpdateCommand,
   applyHostDshUpdate,
+  listDshInstallVersions,
+  scheduleDshWebRestart,
 } from './utils/update.js'

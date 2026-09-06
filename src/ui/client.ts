@@ -219,6 +219,9 @@ window.__ModuleLoader__.load({
         dshTagPublished: 'Tag 发布于 {n}',
         dshCheckUpdate: '检查更新',
         dshUpdateAction: '更新宿主',
+        dshRollbackAction: '回退',
+        dshInstallAction: '安装',
+        dshPickVersion: '安装版本',
         dshUpdating: '正在更新…',
         dshStatusUpdate: 'npm 发现新版本 {n}，可点击更新',
         dshStatusGithubOnly: 'GitHub 发现新 Tag {n}（npm 尚未发布）',
@@ -226,7 +229,7 @@ window.__ModuleLoader__.load({
         dshStatusAhead: '本机版本领先官方发布',
         dshStatusUnknown: '未能获取版本信息',
         dshStatusError: '检查失败',
-        dshUpdateInstalled: '已更新完毕。请在终端重启 dsh web 后生效。',
+        dshUpdateInstalled: '已安装 {n}，正在自动重启 dsh web…',
         dshUpdateFailed: '更新失败：{n}',
         dshUpdateUnchanged: 'npm 执行成功但版本未变：{n}',
         dshUpdateMissingNpm: 'PATH 上找不到 npm。确认已安装 Node.js 与 npm。',
@@ -410,6 +413,9 @@ window.__ModuleLoader__.load({
         dshTagPublished: 'Tag published {n}',
         dshCheckUpdate: 'Check for updates',
         dshUpdateAction: 'Update DSH',
+        dshRollbackAction: 'Roll back',
+        dshInstallAction: 'Install',
+        dshPickVersion: 'Install version',
         dshUpdating: 'Updating…',
         dshStatusUpdate: 'New version {n} available on npm',
         dshStatusGithubOnly: 'New GitHub tag {n} (not yet on npm)',
@@ -417,7 +423,7 @@ window.__ModuleLoader__.load({
         dshStatusAhead: 'Local version is ahead',
         dshStatusUnknown: 'Version unknown',
         dshStatusError: 'Check failed',
-        dshUpdateInstalled: 'Update installed. Restart dsh web in your terminal to apply.',
+        dshUpdateInstalled: 'Installed {n}. Restarting dsh web…',
         dshUpdateFailed: 'Update failed: {n}',
         dshUpdateUnchanged: 'Command succeeded but version unchanged: {n}',
         dshUpdateMissingNpm: 'npm was not found on PATH. Confirm Node.js and npm are installed.',
@@ -786,6 +792,18 @@ window.__ModuleLoader__.load({
 }
 .osubs-kv-row > :first-child { color: var(--osubs-muted); flex: none; }
 .osubs-kv-row > :last-child { text-align: right; }
+.osubs-select {
+  appearance: none; font: inherit; font-size: 13px; line-height: 1.45;
+  color: inherit; cursor: pointer; text-align: right;
+  background: color-mix(in oklab, currentColor 6%, transparent);
+  border: 1px solid color-mix(in oklab, currentColor 16%, transparent);
+  border-radius: 8px; padding: 4px 28px 4px 10px;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 14px) 50%, calc(100% - 9px) 50%;
+  background-size: 5px 5px, 5px 5px; background-repeat: no-repeat;
+}
+.osubs-select:focus-visible { outline: 2px solid var(--osubs-ring); outline-offset: 1px; }
+.osubs-select:disabled { opacity: 0.55; cursor: default; }
 .osubs-acct {
   display: flex; flex-direction: column; gap: 12px; width: 100%;
   padding: 14px 16px 16px;
@@ -2128,7 +2146,7 @@ window.__ModuleLoader__.load({
       if (dsh.status === 'github-only') return fill(t.dshStatusGithubOnly, dsh.latestTag?.tag || dsh.latestTag?.version || '')
       if (dsh.status === 'current') return t.dshStatusCurrent
       if (dsh.status === 'ahead') return t.dshStatusAhead
-      if (dsh.status === 'unknown') return t.dshStatusUnknown
+      if (dsh.status === 'unknown') return ''
       if (dsh.status === 'error') return `${t.dshStatusError}${dsh.error ? ` · ${dsh.error}` : ''}`
       return ''
     }
@@ -2136,7 +2154,7 @@ window.__ModuleLoader__.load({
     function dshApplyLabel(t, dsh) {
       const apply = dsh?.apply
       if (!apply || apply.status === 'none') return ''
-      if (apply.status === 'installed') return t.dshUpdateInstalled
+      if (apply.status === 'installed') return fill(t.dshUpdateInstalled, apply.after || dsh?.version || '')
       if (apply.status === 'missing-npm') return t.dshUpdateMissingNpm
       if (apply.status === 'timeout') return t.dshUpdateTimeout
       if (apply.status === 'unchanged' || apply.status === 'installed-unchanged') return fill(t.dshUpdateUnchanged, apply.error || apply.after || '')
@@ -2152,20 +2170,102 @@ window.__ModuleLoader__.load({
       return { major: Number(match[1]), minor: Number(match[2]), patch: Number(match[3]), prerelease, raw }
     }
 
+    function compareAboutVersions(left, right) {
+      const a = parseAboutVersion(left)
+      const b = parseAboutVersion(right)
+      if (!a || !b) return 0
+      if (a.major !== b.major) return a.major - b.major
+      if (a.minor !== b.minor) return a.minor - b.minor
+      if (a.patch !== b.patch) return a.patch - b.patch
+      if (!a.prerelease && b.prerelease) return 1
+      if (a.prerelease && !b.prerelease) return -1
+      if (!a.prerelease && !b.prerelease) return 0
+      return a.prerelease.localeCompare(b.prerelease)
+    }
+
     function fresherAboutVersion(left, right) {
       const a = parseAboutVersion(left)
       const b = parseAboutVersion(right)
-      if (a && b) {
-        if (a.major !== b.major) return a.major > b.major ? a.raw : b.raw
-        if (a.minor !== b.minor) return a.minor > b.minor ? a.raw : b.raw
-        if (a.patch !== b.patch) return a.patch > b.patch ? a.raw : b.raw
-        if (!a.prerelease && b.prerelease) return a.raw
-        if (a.prerelease && !b.prerelease) return b.raw
-        return a.raw
-      }
+      if (a && b) return compareAboutVersions(a.raw, b.raw) >= 0 ? a.raw : b.raw
       if (a) return a.raw
       if (b) return b.raw
       return left || right || ''
+    }
+
+    function formatPublishedAt(iso) {
+      if (typeof iso !== 'string' || !iso.trim()) return undefined
+      const date = new Date(iso)
+      if (Number.isNaN(date.getTime())) return iso.trim()
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Shanghai',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      }).formatToParts(date)
+      const pick = (type) => parts.find((part) => part.type === type)?.value || ''
+      const hour = pick('hour') === '24' ? '00' : pick('hour')
+      return `${pick('year')}-${pick('month')}-${pick('day')} ${hour}:${pick('minute')}:${pick('second')}`
+    }
+
+    async function fetchClientDshLatest() {
+      const ghHeaders = { accept: 'application/vnd.github+json' }
+      let latestTag
+      try {
+        const tagsResp = await fetch('https://api.github.com/repos/deepseek-ai/deepseek-harness/tags', { headers: ghHeaders })
+        if (tagsResp.ok) {
+          const tags = await tagsResp.json()
+          if (Array.isArray(tags) && tags.length > 0) {
+            const first = tags[0]
+            const tag = typeof first?.name === 'string' ? first.name : undefined
+            let publishedAt
+            let url = tag ? `https://github.com/deepseek-ai/deepseek-harness/releases/tag/${tag}` : undefined
+            let name
+            if (tag) {
+              try {
+                const relResp = await fetch(`https://api.github.com/repos/deepseek-ai/deepseek-harness/releases/tags/${tag}`, { headers: ghHeaders })
+                if (relResp.ok) {
+                  const rel = await relResp.json()
+                  publishedAt = formatPublishedAt(rel?.published_at)
+                  if (typeof rel?.html_url === 'string') url = rel.html_url
+                  if (typeof rel?.name === 'string') name = rel.name
+                }
+              } catch {}
+            }
+            latestTag = {
+              tag,
+              version: parseAboutVersion(tag)?.raw || tag,
+              name,
+              url,
+              publishedAt,
+            }
+          }
+        }
+      } catch {}
+
+      let npm
+      try {
+        const npmResp = await fetch('https://registry.npmjs.org/@deepseek-ai/dsh', { headers: { accept: 'application/json' } })
+        if (npmResp.ok) {
+          const npmData = await npmResp.json()
+          const distTags = npmData?.['dist-tags'] || {}
+          const version = distTags.latest || distTags.next || distTags.alpha
+          const versions = Object.keys(npmData?.versions || {})
+            .concat(Object.values(distTags).filter((value) => typeof value === 'string'))
+            .filter((value, index, all) => all.indexOf(value) === index && parseAboutVersion(value))
+            .sort((left, right) => compareAboutVersions(right, left))
+          let publishedAt
+          if (version && npmData?.time?.[version]) {
+            publishedAt = formatPublishedAt(npmData.time[version])
+          }
+          npm = { version, publishedAt, distTags, versions }
+        }
+      } catch {}
+
+      return { latestTag, npm }
     }
 
     function AboutPanel({
@@ -2240,26 +2340,38 @@ window.__ModuleLoader__.load({
       const dshRepo = dshEffective?.repo || 'https://github.com/deepseek-ai/deepseek-harness'
       const dshSlug = dshEffective?.repoSlug || 'deepseek-ai/deepseek-harness'
       const dshVersion = fresherAboutVersion(dshUpdate?.version, dshLocal?.version) || '—'
-      const dshTag = dshUpdate?.latestTag
-      const dshNpm = dshUpdate?.npm
+      const dshTag = dshUpdate?.latestTag || dshLocal?.latestTag
+      const dshNpm = dshUpdate?.npm || dshLocal?.npm
+      const dshVersions = Array.isArray(dshNpm?.versions) && dshNpm.versions.length
+        ? dshNpm.versions
+        : [dshNpm?.version, dshNpm?.distTags?.latest, dshNpm?.distTags?.next, dshNpm?.distTags?.alpha].filter((value, index, all) => value && all.indexOf(value) === index)
+      const [dshPicked, setDshPicked] = useState('')
+      const dshChoice = dshPicked || (dshVersion !== '—' && dshVersions.includes(dshVersion) ? dshVersion : (dshNpm?.version || dshVersions[0] || ''))
       const dshHint = dshStatusLabel(t, dshUpdate)
       const dshTone = dshUpdate?.status === 'update' || dshUpdate?.status === 'github-only' ? 'osubs-warn' : dshUpdate?.status === 'error' ? 'osubs-bad' : ''
       const dshApply = dshApplyLabel(t, dshUpdate)
       const dshApplyTone = dshUpdate?.apply?.status === 'installed' ? '' : 'osubs-bad'
+      const dshCmp = dshChoice && dshVersion !== '—' ? compareAboutVersions(dshChoice, dshVersion) : 0
+      const dshCanInstall = Boolean(dshChoice) && (dshVersion === '—' || dshCmp !== 0)
       const dshBtnLabel = dshBusy
         ? (dshApplying ? t.dshUpdating : t.checking)
-        : (dshUpdate?.canUpdate ? t.dshUpdateAction : t.dshCheckUpdate)
+        : (dshCanInstall ? (dshVersion === '—' ? t.dshInstallAction : dshCmp < 0 ? t.dshRollbackAction : t.dshUpdateAction) : t.dshCheckUpdate)
 
       const dshCard = h('section', { className: 'osubs-card' },
         h('header', { style: { display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' } },
           h('h3', { style: { fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' } }, t.dshTitle),
-          h(Button, { size: 'sm', onClick: onDshCheck, disabled: dshBusy, label: dshBtnLabel }),
+          h(Button, {
+            size: 'sm',
+            disabled: dshBusy,
+            label: dshBtnLabel,
+            onClick: () => onDshCheck(dshCanInstall, dshChoice),
+          }),
         ),
         h('div', { className: 'osubs-about' },
           h('div', { className: 'osubs-kv' },
             h('div', { className: 'osubs-kv-row' },
               h('span', null, t.dshRepo),
-              h('a', { className: 'osubs-link', href: `${dshRepo}/tags`, target: '_blank', rel: 'noreferrer' }, dshSlug),
+              h('a', { className: 'osubs-link', href: dshRepo + '/tags', target: '_blank', rel: 'noreferrer' }, dshSlug),
             ),
             h('div', { className: 'osubs-kv-row' },
               h('span', null, t.dshInstalled),
@@ -2273,9 +2385,23 @@ window.__ModuleLoader__.load({
               h('span', null, t.dshNpmVersion),
               h('span', null, dshNpm.version),
             ),
+            dshVersions.length > 0 && h('div', { className: 'osubs-kv-row' },
+              h('span', null, t.dshPickVersion),
+              h('select', {
+                className: 'osubs-select',
+                value: dshChoice,
+                disabled: dshBusy,
+                onChange: (event) => setDshPicked(event.target.value),
+              }, dshVersions.map((ver) => {
+                const tags = dshNpm?.distTags || {}
+                const marks = Object.keys(tags).filter((key) => tags[key] === ver)
+                const label = marks.length ? ver + ' (' + marks.join(', ') + ')' : ver
+                return h('option', { key: ver, value: ver }, label)
+              })),
+            ),
             dshTag?.publishedAt && h('p', { className: 'osubs-note' }, fill(t.dshTagPublished, dshTag.publishedAt)),
-            dshHint && h('p', { className: `osubs-hint${dshTone ? ` ${dshTone}` : ''}` }, dshHint),
-            dshApply && h('p', { className: `osubs-hint${dshApplyTone ? ` ${dshApplyTone}` : ''}` }, dshApply),
+            dshHint && h('p', { className: 'osubs-hint' + (dshTone ? ' ' + dshTone : '') }, dshHint),
+            dshApply && h('p', { className: 'osubs-hint' + (dshApplyTone ? ' ' + dshApplyTone : '') }, dshApply),
           ),
         ),
       )
@@ -2368,11 +2494,54 @@ window.__ModuleLoader__.load({
         }
       }
 
-      const checkDshUpdate = async (apply = false) => {
+      const checkDshUpdate = async (apply = false, targetVersion?) => {
         setDshBusy(true)
         if (apply) setDshApplying(true)
         try {
-          await run('dshUpdate', { apply })
+          let res
+          try {
+            res = await callRpc(rpc, 'dshUpdate', { apply, targetVersion })
+            if (res && typeof res === 'object') {
+              setDshUpdate(res)
+              setSnap((current) => current ? { ...current, dshUpdate: { ...current.dshUpdate, ...res } } : current)
+              if (apply || res.latestTag || res.npm || res.version) return res
+            }
+          } catch (rpcErr) {
+            if (apply) throw rpcErr
+          }
+          if (!apply) {
+            const fallback = await fetchClientDshLatest()
+            const currentVer = fresherAboutVersion(res?.version || snap?.dshUpdate?.version, dshUpdate?.version) || ''
+            const canUpdate = Boolean(fallback.npm?.version && currentVer && compareAboutVersions(fallback.npm.version, currentVer) > 0)
+            let status = 'unknown'
+            if (canUpdate) {
+              status = 'update'
+            } else if (fallback.latestTag?.version && currentVer && compareAboutVersions(fallback.latestTag.version, currentVer) > 0) {
+              status = 'github-only'
+            } else if (currentVer && fallback.npm?.version && compareAboutVersions(currentVer, fallback.npm.version) === 0) {
+              status = 'current'
+            } else if (currentVer && fallback.latestTag?.version && compareAboutVersions(currentVer, fallback.latestTag.version) > 0) {
+              status = 'ahead'
+            } else if (currentVer) {
+              status = 'current'
+            }
+            const merged = {
+              version: currentVer,
+              repo: res?.repo || snap?.dshUpdate?.repo || 'https://github.com/deepseek-ai/deepseek-harness',
+              repoSlug: res?.repoSlug || snap?.dshUpdate?.repoSlug || 'deepseek-ai/deepseek-harness',
+              npmPackage: res?.npmPackage || snap?.dshUpdate?.npmPackage || '@deepseek-ai/dsh',
+              ...fallback,
+              status,
+              canUpdate,
+              apply: { status: 'none' },
+            }
+            setDshUpdate(merged)
+            setSnap((current) => current ? { ...current, dshUpdate: { ...current.dshUpdate, ...merged } } : current)
+            return merged
+          }
+        } catch (caught) {
+          const message = caught instanceof Error ? caught.message : String(caught)
+          setError(message)
         } finally {
           setDshBusy(false)
           setDshApplying(false)
@@ -2449,12 +2618,12 @@ window.__ModuleLoader__.load({
             update,
             busy: updateBusy,
             applying,
-            onCheck: () => checkUpdate(true),
+            onCheck: () => checkUpdate(Boolean(update?.status === 'update')),
             dshLocal: snap?.dshUpdate,
             dshUpdate,
             dshBusy,
             dshApplying,
-            onDshCheck: () => checkDshUpdate(true),
+            onDshCheck: (apply, targetVersion) => checkDshUpdate(apply, targetVersion),
           }),
         ),
       )

@@ -115,16 +115,18 @@ import {
   fetchDshLatest,
   localDshInfo,
   applyHostDshUpdate,
+  scheduleDshWebRestart,
 } from '../utils/update.js'
 
 export class AuthController {
-  constructor({ authPath, prefix, origin, settings, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, spawnFn, profile, readFileFn, updateEnv, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover }) {
+  constructor({ authPath, prefix, origin, settings, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, spawnFn, profile, readFileFn, updateEnv, exitFn, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover }) {
     this.authPath = authPath
     this.prefix = prefix
     this.origin = origin
     this.settings = settings
     this.grokLogin = grokLogin
     this.spawnFn = spawnFn
+    this.exitFn = exitFn
     this.profile = profile || DEFAULT_PROFILE
     this.readFileFn = readFileFn
     this.updateEnv = updateEnv
@@ -597,26 +599,37 @@ export class AuthController {
       if (!apply) {
         return { ...info, apply: { status: 'none' } }
       }
+      const want = targetVersion || (info.canUpdate ? info.npm?.version : undefined)
+      if (!want) {
+        return { ...info, apply: { status: 'none' } }
+      }
       const result = await applyHostDshUpdate({
         spawnFn: this.spawnFn,
-        targetVersion: targetVersion || (info.canUpdate ? info.npm?.version : undefined),
+        targetVersion: want,
         readFileFn: this.readFileFn,
         env: opts.env,
       })
       const next = localDshInfo(process.platform, opts)
       const version = next.version || result.after || info.version
+      if (result.ok) {
+        scheduleDshWebRestart({ spawnFn: this.spawnFn, env: opts.env })
+        if (typeof this.exitFn === 'function') {
+          setTimeout(() => this.exitFn(0), 200)
+        }
+      }
       return {
         ...info,
         ...next,
         version,
         status: result.ok
-          ? (next.version && info.npm?.version && compareVersions(next.version, info.npm.version) >= 0 ? 'current' : info.status)
+          ? (next.version && want && compareVersions(next.version, want) === 0 ? 'current' : info.status)
           : info.status,
         apply: {
           status: result.status,
           error: result.error,
           command: result.command,
           restart: result.ok,
+          after: result.after,
         },
       }
     } catch (error) {

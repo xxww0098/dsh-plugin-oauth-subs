@@ -4,7 +4,7 @@
  */
 export declare class AuthController {
     #private;
-    constructor({ authPath, prefix, origin, settings, grokLogin, onAuthChanged, models, fetchFn, quotaTtlMs, spawnFn, profile, readFileFn, updateEnv, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover }: {
+    constructor({ authPath, prefix, origin, settings, grokLogin, onAuthChanged, models, fetchFn, quotaTtlMs, spawnFn, profile, readFileFn, updateEnv, exitFn, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover }: {
         authPath: any;
         prefix: any;
         origin: any;
@@ -18,6 +18,7 @@ export declare class AuthController {
         profile: any;
         readFileFn: any;
         updateEnv: any;
+        exitFn: any;
         cursorAutoImport: any;
         cursorImport: any;
         cursorDiscover: any;
@@ -4236,6 +4237,7 @@ export declare class AuthController {
             error?: undefined;
             command?: undefined;
             restart?: undefined;
+            after?: undefined;
         };
         version: any;
         status: string;
@@ -4251,6 +4253,7 @@ export declare class AuthController {
             version: any;
             publishedAt: any;
             distTags: {};
+            versions: any[];
         };
         binPath: any;
         realPath: string;
@@ -4267,6 +4270,7 @@ export declare class AuthController {
             error: any;
             command: any;
             restart: any;
+            after: any;
         };
         binPath: any;
         realPath: string;
@@ -4287,6 +4291,7 @@ export declare class AuthController {
             version: any;
             publishedAt: any;
             distTags: {};
+            versions: any[];
         };
     } | {
         status: string;
@@ -4299,6 +4304,7 @@ export declare class AuthController {
             error?: undefined;
             command?: undefined;
             restart?: undefined;
+            after?: undefined;
         };
         version: any;
         binPath: any;
