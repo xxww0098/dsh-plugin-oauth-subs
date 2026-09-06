@@ -2224,7 +2224,7 @@ window.__ModuleLoader__.load({
               h(Button, { size: 'sm', onClick: () => onFamily(group.family, false), label: t.modelsNone }),
             ),
         ),
-        !locked && h('div', { className: 'osubs-models' },
+        h('div', { className: 'osubs-models' },
           models.map((model) => h(ModelRow, { t, model, onToggle, locked, key: model.key })),
         ),
       )
