@@ -236,6 +236,9 @@ window.__ModuleLoader__.load({
         dshUpdateMissingNpm: 'PATH 上找不到 npm。确认已安装 Node.js 与 npm。',
         dshUpdateTimeout: '更新命令执行超时。',
         autoUpdate: '检测到新版本时自动更新',
+        willInstall: '将安装 {n}',
+        willUpdate: '将更新到 {n}',
+        willRollback: '将回退到 {n}',
       },
       en: {
         nav: 'OAuth subs',
@@ -431,6 +434,9 @@ window.__ModuleLoader__.load({
         dshUpdateMissingNpm: 'npm was not found on PATH. Confirm Node.js and npm are installed.',
         dshUpdateTimeout: 'Update timed out.',
         autoUpdate: 'Auto-update when a new version is found',
+        willInstall: 'Will install {n}',
+        willUpdate: 'Will update to {n}',
+        willRollback: 'Will roll back to {n}',
       },
     }
 
@@ -843,6 +849,17 @@ window.__ModuleLoader__.load({
   accent-color: currentColor; cursor: pointer;
 }
 .osubs-auto:has(input:focus-visible) { outline: 2px solid var(--osubs-ring); outline-offset: 2px; border-radius: 6px; }
+.osubs-about-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+.osubs-hold { position: relative; display: inline-flex; align-items: center; user-select: none; }
+.osubs-hold-tip {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 8;
+  max-width: 240px; padding: 6px 8px;
+  font-size: 12px; line-height: 1.4; white-space: normal; text-align: left;
+  color: inherit;
+  background: var(--dsw-alias-bg-layer-2);
+  border: 1px solid var(--osubs-line); border-radius: 8px;
+  pointer-events: none;
+}
 .osubs-acct {
   display: flex; flex-direction: column; gap: 12px; width: 100%;
   padding: 14px 16px 16px;
@@ -1171,6 +1188,32 @@ window.__ModuleLoader__.load({
       if (variant) classes.push(`osubs-btn--${variant}`)
       if (size) classes.push(`osubs-btn--${size}`)
       return h('button', { type, onClick, disabled, className: classes.join(' ') }, label)
+    }
+
+    const HOLD_TIP_MS = 450
+
+    function HoldTip({ label, children }) {
+      const [open, setOpen] = useState(false)
+      const timer = useRef(0)
+      const clear = () => {
+        clearTimeout(timer.current)
+        timer.current = 0
+        setOpen(false)
+      }
+      const start = (event) => {
+        if (event.pointerType === 'mouse' && event.button !== 0) return
+        clearTimeout(timer.current)
+        timer.current = setTimeout(() => setOpen(true), HOLD_TIP_MS)
+      }
+      useEffect(() => () => clearTimeout(timer.current), [])
+      if (!label) return children
+      return h('span', {
+        className: 'osubs-hold',
+        onPointerDown: start,
+        onPointerUp: clear,
+        onPointerCancel: clear,
+        onPointerLeave: clear,
+      }, children, open && h('span', { className: 'osubs-hold-tip', role: 'tooltip' }, label))
     }
 
     // LobeHub mono SVG paths from @lobehub/icons-static-svg@1.94.0
@@ -2341,7 +2384,21 @@ window.__ModuleLoader__.load({
       const pluginCard = h('section', { className: 'osubs-card' },
         h('header', { style: { display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' } },
           h('h3', { style: { fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' } }, t.pluginAboutTitle || t.aboutTitle),
-          h(Button, { size: 'sm', onClick: onCheck, disabled: busy, label: busy ? (applying ? t.updateInstalling : t.checking) : t.checkUpdate }),
+          h('div', { className: 'osubs-about-actions' },
+            h(HoldTip, { label: t.autoUpdate },
+              h('label', { className: 'osubs-auto' },
+                h('input', {
+                  type: 'checkbox',
+                  checked: Boolean(autoUpdate?.plugin),
+                  'aria-label': t.autoUpdate,
+                  onChange: (event) => onAutoUpdate({ plugin: event.currentTarget.checked }),
+                }),
+              ),
+            ),
+            h(HoldTip, { label: update?.status === 'update' ? fill(t.willUpdate, latest?.tag || '') : t.checkUpdate },
+              h(Button, { size: 'sm', onClick: onCheck, disabled: busy, label: busy ? (applying ? t.updateInstalling : t.checking) : t.checkUpdate }),
+            ),
+          ),
         ),
         h('div', { className: 'osubs-about' },
           h('div', { className: 'osubs-kv' },
@@ -2370,14 +2427,6 @@ window.__ModuleLoader__.load({
               h('span', null, latest.tag),
             ),
             latest?.publishedAt && h('p', { className: 'osubs-note' }, fill(t.published, latest.publishedAt)),
-            h('label', { className: 'osubs-auto' },
-              h('input', {
-                type: 'checkbox',
-                checked: Boolean(autoUpdate?.plugin),
-                onChange: (event) => onAutoUpdate({ plugin: event.currentTarget.checked }),
-              }),
-              h('span', null, t.autoUpdate),
-            ),
             update?.status && h('p', { className: `osubs-hint${tone ? ` ${tone}` : ''}` }, statusLabel(t, update)),
             stale && disk && h('p', { className: 'osubs-hint osubs-warn' }, fill(t.updateStaleProcess, disk)),
             apply && h('p', { className: `osubs-hint${applyTone ? ` ${applyTone}` : ''}` }, apply),
@@ -2402,19 +2451,34 @@ window.__ModuleLoader__.load({
       const dshApplyTone = dshUpdate?.apply?.status === 'installed' ? '' : 'osubs-bad'
       const dshCmp = dshChoice && dshVersion !== '—' ? compareAboutVersions(dshChoice, dshVersion) : 0
       const dshCanInstall = Boolean(dshChoice) && (dshVersion === '—' || dshCmp !== 0)
-      const dshBtnLabel = dshBusy
-        ? (dshApplying ? t.dshUpdating : t.checking)
-        : (dshCanInstall ? (dshVersion === '—' ? t.dshInstallAction : dshCmp < 0 ? t.dshRollbackAction : t.dshUpdateAction) : t.dshCheckUpdate)
+      const dshBtnLabel = dshBusy ? (dshApplying ? t.dshUpdating : t.checking) : t.dshCheckUpdate
+      const dshBtnTip = dshCanInstall
+        ? (dshVersion === '—' ? fill(t.willInstall, dshChoice) : dshCmp < 0 ? fill(t.willRollback, dshChoice) : fill(t.willUpdate, dshChoice))
+        : t.dshCheckUpdate
 
       const dshCard = h('section', { className: 'osubs-card' },
         h('header', { style: { display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' } },
           h('h3', { style: { fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' } }, t.dshTitle),
-          h(Button, {
-            size: 'sm',
-            disabled: dshBusy,
-            label: dshBtnLabel,
-            onClick: () => onDshCheck(dshCanInstall, dshChoice),
-          }),
+          h('div', { className: 'osubs-about-actions' },
+            h(HoldTip, { label: t.autoUpdate },
+              h('label', { className: 'osubs-auto' },
+                h('input', {
+                  type: 'checkbox',
+                  checked: Boolean(autoUpdate?.dsh),
+                  'aria-label': t.autoUpdate,
+                  onChange: (event) => onAutoUpdate({ dsh: event.currentTarget.checked }),
+                }),
+              ),
+            ),
+            h(HoldTip, { label: dshBtnTip },
+              h(Button, {
+                size: 'sm',
+                disabled: dshBusy,
+                label: dshBtnLabel,
+                onClick: () => onDshCheck(dshCanInstall, dshChoice),
+              }),
+            ),
+          ),
         ),
         h('div', { className: 'osubs-about' },
           h('div', { className: 'osubs-kv' },
@@ -2449,14 +2513,6 @@ window.__ModuleLoader__.load({
               })),
             ),
             dshTag?.publishedAt && h('p', { className: 'osubs-note' }, fill(t.dshTagPublished, dshTag.publishedAt)),
-            h('label', { className: 'osubs-auto' },
-              h('input', {
-                type: 'checkbox',
-                checked: Boolean(autoUpdate?.dsh),
-                onChange: (event) => onAutoUpdate({ dsh: event.currentTarget.checked }),
-              }),
-              h('span', null, t.autoUpdate),
-            ),
             dshHint && h('p', { className: 'osubs-hint' + (dshTone ? ' ' + dshTone : '') }, dshHint),
             dshApply && h('p', { className: 'osubs-hint' + (dshApplyTone ? ' ' + dshApplyTone : '') }, dshApply),
           ),
