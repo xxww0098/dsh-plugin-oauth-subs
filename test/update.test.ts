@@ -34,6 +34,7 @@ import {
   applyHostDshUpdate,
   listDshInstallVersions,
   scheduleDshWebRestart,
+  stampDshHostVersion,
 } from '../lib/utils/update.js'
 
 test('hostPlatform maps node platforms', () => {
@@ -519,5 +520,15 @@ test('scheduleDshWebRestart spawns a delayed detached re-exec', () => {
   assert.match(seen[0].args[1], /sleep 2; exec /)
   assert.match(seen[0].args[1], /dsh/)
   assert.equal(seen[0].detached, true)
+})
+
+test('stampDshHostVersion rewrites the served client.js sentinel', () => {
+  let written = ''
+  const ok = stampDshHostVersion('client.js', '0.1.2-rc.1', {
+    readFileFn: () => "const DSH_HOST_VERSION_STAMP = ''\nconst x = 1\n",
+    writeFileFn: (_path, text) => { written = String(text) },
+  })
+  assert.equal(ok, true)
+  assert.match(written, /const DSH_HOST_VERSION_STAMP = "0\.1\.2-rc\.1"/)
 })
 

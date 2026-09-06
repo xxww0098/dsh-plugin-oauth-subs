@@ -13,7 +13,7 @@
  * `dsh plugin update` is `pnpm update` and can no-op on a git spec.
  */
 import { spawn } from 'node:child_process';
-import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 export declare function modulePackageJsonPath(): string;
 export declare const REPO_SLUG = "xxww0098/dsh-plugin-oauth-subs";
 export declare const REPO_URL = "https://github.com/xxww0098/dsh-plugin-oauth-subs";
@@ -209,6 +209,13 @@ export declare function fetchDshLatest({ fetchFn, current, platform, timeoutMs, 
 }>;
 export declare function dshUpdateArgs(targetVersion: any): string[];
 export declare function dshUpdateCommand(targetVersion: any): string;
+export declare const DSH_HOST_VERSION_STAMP_RE: RegExp;
+export declare function pluginClientJsPath(): string;
+/** Write local DSH version into the served client.js static file. */
+export declare function stampDshHostVersion(clientPath: any, version: any, { readFileFn, writeFileFn }?: {
+    readFileFn?: typeof readFileSync;
+    writeFileFn?: typeof writeFileSync;
+}): boolean;
 /** Detached re-exec of this dsh web process after the listen port is free. */
 export declare function scheduleDshWebRestart({ spawnFn, env, delaySec, execPath, argv, cwd, platform, }?: {
     spawnFn?: typeof spawn;

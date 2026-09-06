@@ -37,6 +37,18 @@ window.__ModuleLoader__.load({
     }
     const primitives = tryHost('@deepseek-ai/dsh-client-ui-primitives')
     const HostRisk = primitives && (primitives.RiskConfirmation || primitives.default && primitives.default.RiskConfirmation)
+    const DSH_HOST_VERSION_STAMP = ''
+    function staticDshVersion() {
+      const stamped = String(DSH_HOST_VERSION_STAMP || '').trim()
+      if (stamped) return stamped
+      for (const id of ['@deepseek-ai/dsh-client-ui-primitives/package.json', '@deepseek-ai/dsh-client-modules/package.json']) {
+        try {
+          const pkg = require(id)
+          if (pkg && typeof pkg.version === 'string' && pkg.version.trim()) return pkg.version.trim()
+        } catch { /* module table has no package.json row */ }
+      }
+      return ''
+    }
 
     const name = 'dsh-plugin-oauth-subs-client'
     const inject = ['slots', 'connection']
@@ -2437,7 +2449,7 @@ window.__ModuleLoader__.load({
       const dshEffective = dshUpdate || dshLocal
       const dshRepo = dshEffective?.repo || 'https://github.com/deepseek-ai/deepseek-harness'
       const dshSlug = dshEffective?.repoSlug || 'deepseek-ai/deepseek-harness'
-      const dshVersion = fresherAboutVersion(dshUpdate?.version, dshLocal?.version) || '—'
+      const dshVersion = fresherAboutVersion(dshUpdate?.version, fresherAboutVersion(dshLocal?.version, staticDshVersion())) || '—'
       const dshTag = dshUpdate?.latestTag || dshLocal?.latestTag
       const dshNpm = dshUpdate?.npm || dshLocal?.npm
       const dshVersions = Array.isArray(dshNpm?.versions) && dshNpm.versions.length
@@ -2627,7 +2639,7 @@ window.__ModuleLoader__.load({
           }
           if (!apply) {
             const fallback = await fetchClientDshLatest()
-            const currentVer = fresherAboutVersion(res?.version || snap?.dshUpdate?.version, dshUpdate?.version) || ''
+            const currentVer = fresherAboutVersion(res?.version || snap?.dshUpdate?.version, fresherAboutVersion(dshUpdate?.version, staticDshVersion())) || ''
             const canUpdate = Boolean(fallback.npm?.version && currentVer && compareAboutVersions(fallback.npm.version, currentVer) > 0)
             let status = 'unknown'
             if (canUpdate) {

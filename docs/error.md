@@ -2,6 +2,17 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-06：关于页本机 DSH 版本无法从已下发静态资源读取
+
+### 现象
+本机版本一直是 —。GitHub Tag / npm 能显示。HTML、manifest、shell JS、client-modules bundle 均无 semver。
+
+### 根因
+dsh web 不下发 package.json；boot 图只有 content hash。宿主 RPC 未重启时也读不到 CLI 版本。
+
+### 修复
+把本机版本写入已下发的 `lib/ui/client.js` 哨兵 `DSH_HOST_VERSION_STAMP`；插件 apply 时盖戳，前端优先读该静态常量。
+
 ## 2026-09-06：自动更新勾选报 unknown oauth-subs method autoUpdate
 
 ### 现象
