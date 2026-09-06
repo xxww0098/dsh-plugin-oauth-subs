@@ -76,7 +76,7 @@ test('Settings Ollama card hides ollama-hex title and uses remaining row labels'
   assert.match(src, /if \(family === 'ollama'\) \{[\s\S]*return 'Pro'/)
   assert.match(src, /\.osubs-note \{[^}]*white-space: pre-wrap/)
   assert.match(src, /\.osubs-note \{[^}]*overflow-wrap: anywhere/)
-  assert.equal(/\.osubs-note \{[^}]*white-space: nowrap/.test(src), false)
+  assert.equal(/\.osubs-note \{ font-size: 11px;[^}]*white-space: nowrap/.test(src), false)
 })
 
 test('Settings Cursor tab uses Import local Cursor copy and shows source, never tokens', async () => {
@@ -107,7 +107,7 @@ test('Settings Ollama tab is Cloud key paste after Cursor, never localhost', asy
   assert.match(src, /ollamaLoginApiKey:\s*'Paste API key'/)
   assert.match(src, /ollamaImport:\s*'导入 OLLAMA_API_KEY'/)
   assert.match(src, /h\(Tab, \{ id: 'ollama'/)
-  assert.match(src, /tab === 'ollama' && card\('ollama'/)
+  assert.match(src, /panel\('ollama', card\('ollama'/) 
   assert.match(src, /ollama: \{ d: 'M7\.905 1\.09/)
   assert.match(src, /id === 'ollama' && !busy && h\('div', \{ className: 'osubs-logins' \}/)
   assert.match(src, /h\('span', null, t\.ollamaImport\)/)
@@ -168,7 +168,7 @@ test('Settings Kimi tab uses LobeHub Kimi path, device login, and never @lobehub
   assert.match(src, /LobeHub `Kimi` icon/)
   assert.match(src, /kimi: \{ d: 'M21\.846 0a1\.923/)
   assert.match(src, /h\(Tab, \{ id: 'kimi', label: t\.kimiTitle, current: tab, onSelect: setTab, icon: 'kimi' \}/)
-  assert.match(src, /tab === 'kimi' && card\('kimi'/)
+  assert.match(src, /panel\('kimi', card\('kimi'/) 
   assert.match(src, /id === 'grok' \|\| id === 'kimi' \|\| id === 'copilot' \? t\.device/)
   assert.match(src, /id === 'kimi' && showKey && !busy/)
   assert.match(src, /family === 'kimi'\) return account && !isKimiOpaqueIdentity/)
@@ -341,14 +341,14 @@ test('Settings has no OpenCode Go Free tab or harness family', async () => {
 test('Settings Models keeps locked Copilot visible and jumps to the family tab', async () => {
   const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
   const family = src.match(/function ModelFamily\([\s\S]*?\n    \}/)?.[0] ?? ''
-  assert.match(family, /osubs-family--locked/)
-  assert.match(family, /t\.modelsNeedLogin/)
+  assert.equal(family.includes('osubs-family--locked'), false)
+  assert.equal(family.includes('t.modelsNeedLogin'), false)
   assert.match(family, /onOpenFamily\?\.\(group\.family\)/)
   assert.match(family, /label: t\.login/)
-  assert.match(family, /!locked && h\('div', \{ className: 'osubs-models'/)
+  assert.match(family, /h\('div', \{ className: 'osubs-models'/)
   assert.equal(family.includes('style: { opacity: locked'), false)
   assert.match(src, /onOpenFamily: setTab/)
-  assert.match(src, /\.osubs-family--locked \{ opacity: 0\.88/)
+  assert.match(src, /hidden: tab !== id/)
 })
 
 test('Settings Copilot tab is device-code after Kimi, never @lobehub/icons', async () => {
@@ -360,7 +360,7 @@ test('Settings Copilot tab is device-code after Kimi, never @lobehub/icons', asy
   assert.match(src, /copilotImport:\s*'导入本机 Copilot'/)
   assert.match(src, /LobeHub `Copilot` icon/)
   assert.match(src, /h\(Tab, \{ id: 'copilot', label: t\.copilotTitle, current: tab, onSelect: setTab, icon: 'copilot' \}/)
-  assert.match(src, /tab === 'copilot' && card\('copilot'/)
+  assert.match(src, /panel\('copilot', card\('copilot'/) 
   assert.match(src, /id === 'grok' \|\| id === 'kimi' \|\| id === 'copilot' \? t\.device/)
   assert.match(src, /id === 'copilot' && h\('button'/)
   assert.match(src, /t\.copilotImport/)
