@@ -796,24 +796,14 @@ window.__ModuleLoader__.load({
   color: var(--osubs-warn);
   border-color: color-mix(in oklab, var(--osubs-warn) 55%, transparent);
   background: color-mix(in oklab, var(--osubs-warn) 10%, transparent);
-  animation: osubs-btn-glow 1.8s ease-in-out infinite;
 }
 .osubs-btn--update::after {
   content: ''; width: 6px; height: 6px; margin-left: 6px; border-radius: 50%;
   background: var(--osubs-warn); flex: none;
-  animation: osubs-dot-pulse 1.2s ease-in-out infinite;
 }
 .osubs-btn--update:hover {
   background: color-mix(in oklab, var(--osubs-warn) 16%, transparent);
   border-color: color-mix(in oklab, var(--osubs-warn) 70%, transparent);
-}
-@keyframes osubs-btn-glow {
-  0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--osubs-warn) 0%, transparent); }
-  50% { box-shadow: 0 0 0 3px color-mix(in oklab, var(--osubs-warn) 22%, transparent); }
-}
-@keyframes osubs-dot-pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: .35; transform: scale(.7); }
 }
 
 .osubs-seg { display: inline-flex; border: 1px solid var(--osubs-edge); border-radius: 8px; overflow: hidden; flex: none; }
@@ -829,10 +819,6 @@ window.__ModuleLoader__.load({
 .osubs-card-head {
   display: flex; justify-content: space-between; gap: var(--osubs-s3);
   align-items: center; flex-wrap: wrap;
-}
-.osubs-card-lede {
-  display: flex; flex-direction: column; gap: var(--osubs-s2);
-  flex: 1 1 280px; max-width: 62ch;
 }
 .osubs-card-title {
   font-size: 15px; font-weight: 600; letter-spacing: -0.01em;
@@ -984,21 +970,12 @@ window.__ModuleLoader__.load({
 }
 .osubs-textarea::placeholder { color: var(--osubs-faint); }
 .osubs-textarea:focus-visible { outline: 2px solid var(--osubs-ring); outline-offset: 1px; }
-.osubs-grid { display: grid; gap: 16px; align-items: start; grid-template-columns: repeat(auto-fit, minmax(min(290px, 100%), 1fr)); }
-
 .osubs-status { display: inline-flex; align-items: center; gap: 6px; flex: none; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--osubs-muted); }
 .osubs-status::before { content: ""; width: 6px; height: 6px; border-radius: 99px; background: var(--osubs-faint); }
 .osubs-status--on::before { background: var(--osubs-ok); }
 .osubs-status--busy::before { background: var(--osubs-warn); animation: osubs-pulse 1.4s ease-in-out infinite; }
 
 .osubs-eyebrow { font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--osubs-muted); }
-.osubs-badge {
-  display: inline-flex; align-items: baseline; gap: 6px; flex: none;
-  padding: 3px 9px; border-radius: 99px;
-  border: 1px solid var(--osubs-line); background: var(--osubs-fill);
-  font-size: 12px; font-weight: 600; line-height: 1.25; white-space: nowrap;
-}
-.osubs-badge > i { font-style: normal; font-size: 9.5px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--osubs-muted); }
 .osubs-tag {
   flex: none; padding: 2px 5px; border-radius: 5px;
   background: var(--osubs-fill-2); color: color-mix(in oklab, currentColor 75%, transparent);
@@ -1180,8 +1157,8 @@ window.__ModuleLoader__.load({
 
 @keyframes osubs-pulse { 0%, 100% { opacity: 1 } 50% { opacity: .3 } }
 @keyframes osubs-pane-in {
-  from { opacity: 0; clip-path: inset(0 0 10% 0); filter: blur(4px); }
-  to { opacity: 1; clip-path: inset(0); filter: none; }
+  from { opacity: 0; clip-path: inset(0 0 8% 0); }
+  to { opacity: 1; clip-path: inset(0); }
 }
 @keyframes osubs-fade { from { opacity: 0 } to { opacity: 1 } }
 @keyframes osubs-dialog-in {
@@ -1197,8 +1174,6 @@ window.__ModuleLoader__.load({
   .osubs-dsw-mask,
   .osubs-dsw-card,
   .osubs-hold-tip { animation: none !important; }
-  .osubs-btn--update,
-  .osubs-btn--update::after,
   .osubs-status--busy::before { animation: none !important; }
   .osubs-bar > i { transition: background-color 160ms ease; }
   .osubs-dsw-card { transform: none; }
@@ -2259,7 +2234,6 @@ window.__ModuleLoader__.load({
           h('div', { className: 'osubs-family-meta' },
             h('h4', { className: 'osubs-family-title' }, group.displayName),
             h('span', { className: 'osubs-note' }, fill(t.modelsOn, `${enabledCount} / ${models.length}`)),
-            locked && h('span', { className: 'osubs-note' }, `· ${t.modelsNeedLogin}`),
           ),
           locked
             ? h(Button, { size: 'sm', variant: 'primary', onClick: () => onOpenFamily?.(group.family), label: t.login })
@@ -2276,26 +2250,13 @@ window.__ModuleLoader__.load({
 
     function ModelPicker({ t, catalog, onToggle, onFamily, onOpenFamily }) {
       const groups = Array.isArray(catalog) ? catalog : []
-      const total = groups.reduce((sum, group) => sum + (group.models?.length ?? 0), 0)
-      const enabled = groups.reduce((sum, group) => sum + (group.models ?? []).filter((model) => model.enabled).length, 0)
       if (groups.length === 0) return null
       return h('section', { className: 'osubs-card' },
         h('header', { className: 'osubs-card-head' },
-          h('div', { className: 'osubs-card-lede' },
-            h('h3', { className: 'osubs-card-title' }, t.modelsTitle),
-            h('p', { className: 'osubs-hint' }, t.modelsHint),
-          ),
-          h('span', { className: 'osubs-badge' }, fill(t.modelsOn, `${enabled} / ${total}`)),
+          h('h3', { className: 'osubs-card-title' }, t.modelsTitle),
         ),
         groups.map((group) => h(ModelFamily, { t, group, onToggle, onFamily, onOpenFamily, key: group.provider })),
       )
-    }
-
-    function platformLabel(t, id) {
-      if (id === 'win') return t.platformWin
-      if (id === 'mac') return t.platformMac
-      if (id === 'linux') return t.platformLinux
-      return '—'
     }
 
     function aboutLink(href, text) {
@@ -2478,7 +2439,6 @@ window.__ModuleLoader__.load({
       const repo = local?.repo || update?.repo || 'https://github.com/xxww0098/dsh-plugin-oauth-subs'
       const slug = local?.repoSlug || update?.repoSlug || 'xxww0098/dsh-plugin-oauth-subs'
       const version = fresherAboutVersion(update?.version, local?.version) || '—'
-      const host = local?.platform || update?.platform
       const latest = update?.latest
       const apply = applyLabel(t, update)
       const applyTone = update?.apply?.status === 'installed' ? '' : 'osubs-bad'
@@ -2527,16 +2487,11 @@ window.__ModuleLoader__.load({
               h('span', { className: 'osubs-note', title: loaded }, shortPath(loaded)),
             ),
             h('div', { className: 'osubs-kv-row' },
-              h('span', null, t.os),
-              h('span', null, platformLabel(t, host)),
-            ),
-            h('div', { className: 'osubs-kv-row' },
               h('span', null, t.latest),
-              aboutLink(latest?.url, latest?.tag),
-            ),
-            h('div', { className: 'osubs-kv-row' },
-              h('span', null, t.publishedAt),
-              h('span', null, latest?.publishedAt || '—'),
+              h('div', { className: 'osubs-kv-value' },
+                aboutLink(latest?.url, latest?.tag),
+                Boolean(latest?.publishedAt) && h('span', { className: 'osubs-note' }, latest.publishedAt),
+              ),
             ),
             update?.status && update.status !== 'update' && h('p', { className: `osubs-hint${tone ? ` ${tone}` : ''}` }, statusLabel(t, update)),
             stale && disk && h('p', { className: 'osubs-hint osubs-warn' }, fill(t.updateStaleProcess, disk)),
