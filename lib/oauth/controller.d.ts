@@ -4078,6 +4078,16 @@ export declare class AuthController {
             repo: string;
             repoSlug: string;
         };
+        dshUpdate: {
+            version: any;
+            binPath: any;
+            realPath: string;
+            packagePath: string;
+            platform: string;
+            repo: string;
+            repoSlug: string;
+            npmPackage: string;
+        };
     }>;
     refreshQuota(provider: any, accountId: any): any;
     consumeReset(provider: any, accountId: any): Promise<any>;
@@ -4219,6 +4229,85 @@ export declare class AuthController {
         platform: string;
         repo: string;
         repoSlug: string;
+    }>;
+    checkDshUpdate(payload?: {}): Promise<{
+        apply: {
+            status: string;
+            error?: undefined;
+            command?: undefined;
+            restart?: undefined;
+        };
+        version: any;
+        status: string;
+        canUpdate: boolean;
+        latestTag: {
+            tag: any;
+            version: any;
+            name: any;
+            url: any;
+            publishedAt: any;
+        };
+        npm: {
+            version: any;
+            publishedAt: any;
+            distTags: {};
+        };
+        binPath: any;
+        realPath: string;
+        packagePath: string;
+        platform: string;
+        repo: string;
+        repoSlug: string;
+        npmPackage: string;
+    } | {
+        version: any;
+        status: string;
+        apply: {
+            status: any;
+            error: any;
+            command: any;
+            restart: any;
+        };
+        binPath: any;
+        realPath: string;
+        packagePath: string;
+        platform: string;
+        repo: string;
+        repoSlug: string;
+        npmPackage: string;
+        canUpdate: boolean;
+        latestTag: {
+            tag: any;
+            version: any;
+            name: any;
+            url: any;
+            publishedAt: any;
+        };
+        npm: {
+            version: any;
+            publishedAt: any;
+            distTags: {};
+        };
+    } | {
+        status: string;
+        error: string;
+        latestTag: any;
+        npm: any;
+        canUpdate: boolean;
+        apply: {
+            status: string;
+            error?: undefined;
+            command?: undefined;
+            restart?: undefined;
+        };
+        version: any;
+        binPath: any;
+        realPath: string;
+        packagePath: string;
+        platform: string;
+        repo: string;
+        repoSlug: string;
+        npmPackage: string;
     }>;
     login(provider: any, options: any): Promise<{
         authorizeUrl: any;
@@ -8358,6 +8447,16 @@ export declare class AuthController {
             repo: string;
             repoSlug: string;
         };
+        dshUpdate: {
+            version: any;
+            binPath: any;
+            realPath: string;
+            packagePath: string;
+            platform: string;
+            repo: string;
+            repoSlug: string;
+            npmPackage: string;
+        };
     }>;
     importFrom(provider: any): Promise<{
         source: any;
@@ -12378,6 +12477,16 @@ export declare class AuthController {
             platform: string;
             repo: string;
             repoSlug: string;
+        };
+        dshUpdate: {
+            version: any;
+            binPath: any;
+            realPath: string;
+            packagePath: string;
+            platform: string;
+            repo: string;
+            repoSlug: string;
+            npmPackage: string;
         };
     }>;
     sync(selected: any, options?: {}): Promise<{

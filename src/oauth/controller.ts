@@ -106,7 +106,16 @@ import {
 } from './models.js'
 import { TokenManager } from './tokens.js'
 import { QuotaStore } from './quota.js'
-import { fetchLatest, localUpdateInfo, applyHostUpdate, compareVersions, DEFAULT_PROFILE } from '../utils/update.js'
+import {
+  fetchLatest,
+  localUpdateInfo,
+  applyHostUpdate,
+  compareVersions,
+  DEFAULT_PROFILE,
+  fetchDshLatest,
+  localDshInfo,
+  applyHostDshUpdate,
+} from '../utils/update.js'
 
 export class AuthController {
   constructor({ authPath, prefix, origin, settings, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, spawnFn, profile, readFileFn, updateEnv, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover }) {
@@ -433,6 +442,10 @@ export class AuthController {
         env: this.updateEnv ?? process.env,
         readFileFn: this.readFileFn,
       }),
+      dshUpdate: localDshInfo(process.platform, {
+        env: this.updateEnv ?? process.env,
+        readFileFn: this.readFileFn,
+      }),
     }
   }
 
@@ -567,6 +580,53 @@ export class AuthController {
         error: error instanceof Error ? error.message : String(error),
         latest: undefined,
         assets: [],
+        apply: { status: 'none' },
+      }
+    }
+  }
+
+  async checkDshUpdate(payload = {}) {
+    const apply = payload?.apply === true
+    const targetVersion = payload?.targetVersion
+    const opts = {
+      env: this.updateEnv ?? process.env,
+      readFileFn: this.readFileFn,
+    }
+    try {
+      const info = await fetchDshLatest({ fetchFn: this.fetchFn, platform: process.platform, ...opts })
+      if (!apply) {
+        return { ...info, apply: { status: 'none' } }
+      }
+      const result = await applyHostDshUpdate({
+        spawnFn: this.spawnFn,
+        targetVersion: targetVersion || (info.canUpdate ? info.npm?.version : undefined),
+        readFileFn: this.readFileFn,
+        env: opts.env,
+      })
+      const next = localDshInfo(process.platform, opts)
+      const version = next.version || result.after || info.version
+      return {
+        ...info,
+        ...next,
+        version,
+        status: result.ok
+          ? (next.version && info.npm?.version && compareVersions(next.version, info.npm.version) >= 0 ? 'current' : info.status)
+          : info.status,
+        apply: {
+          status: result.status,
+          error: result.error,
+          command: result.command,
+          restart: result.ok,
+        },
+      }
+    } catch (error) {
+      return {
+        ...localDshInfo(process.platform, opts),
+        status: 'error',
+        error: error instanceof Error ? error.message : String(error),
+        latestTag: undefined,
+        npm: undefined,
+        canUpdate: false,
         apply: { status: 'none' },
       }
     }

@@ -13,7 +13,7 @@
  * `dsh plugin update` is `pnpm update` and can no-op on a git spec.
  */
 import { spawn } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 export declare function modulePackageJsonPath(): string;
 export declare const REPO_SLUG = "xxww0098/dsh-plugin-oauth-subs";
 export declare const REPO_URL = "https://github.com/xxww0098/dsh-plugin-oauth-subs";
@@ -31,6 +31,7 @@ export declare function parseVersion(tag: any): {
     major: number;
     minor: number;
     patch: number;
+    prerelease: string;
     raw: string;
 };
 export declare function compareVersions(left: any, right: any): number;
@@ -148,3 +149,63 @@ export declare function applyHostUpdate({ spawnFn, profile, latest, timeoutMs, e
     profile?: string;
     timeoutMs?: number;
 }): Promise<any>;
+export declare const DSH_REPO_SLUG = "deepseek-ai/deepseek-harness";
+export declare const DSH_REPO_URL = "https://github.com/deepseek-ai/deepseek-harness";
+export declare const DSH_TAGS_API = "https://api.github.com/repos/deepseek-ai/deepseek-harness/tags";
+export declare const DSH_RELEASES_API = "https://api.github.com/repos/deepseek-ai/deepseek-harness/releases";
+export declare const DSH_NPM_PACKAGE = "@deepseek-ai/dsh";
+export declare const DSH_NPM_REGISTRY_API = "https://registry.npmjs.org/@deepseek-ai/dsh";
+export declare const DSH_UPDATE_TIMEOUT_MS = 180000;
+export declare function resolveDshInstall(platform?: NodeJS.Platform, env?: NodeJS.ProcessEnv, { realpathFn, readFileFn }?: {
+    realpathFn?: typeof realpathSync;
+    readFileFn?: typeof readFileSync;
+}): {
+    binPath: any;
+    realPath: string;
+    packagePath: string;
+    version: any;
+};
+export declare function localDshInfo(platform?: NodeJS.Platform, opts?: {}): {
+    version: any;
+    binPath: any;
+    realPath: string;
+    packagePath: string;
+    platform: string;
+    repo: string;
+    repoSlug: string;
+    npmPackage: string;
+};
+export declare function fetchDshLatest({ fetchFn, current, platform, timeoutMs, env, readFileFn, realpathFn, }?: {
+    fetchFn?: typeof fetch;
+    platform?: NodeJS.Platform;
+    timeoutMs?: number;
+}): Promise<{
+    version: any;
+    status: string;
+    canUpdate: boolean;
+    latestTag: {
+        tag: any;
+        version: any;
+        name: any;
+        url: any;
+        publishedAt: any;
+    };
+    npm: {
+        version: any;
+        publishedAt: any;
+        distTags: {};
+    };
+    binPath: any;
+    realPath: string;
+    packagePath: string;
+    platform: string;
+    repo: string;
+    repoSlug: string;
+    npmPackage: string;
+}>;
+export declare function dshUpdateArgs(targetVersion: any): string[];
+export declare function dshUpdateCommand(targetVersion: any): string;
+export declare function applyHostDshUpdate({ spawnFn, targetVersion, timeoutMs, env, readFileFn, realpathFn, }?: {
+    spawnFn?: typeof spawn;
+    timeoutMs?: number;
+}): Promise<unknown>;

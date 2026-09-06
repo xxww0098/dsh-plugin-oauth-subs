@@ -100,6 +100,7 @@ function registerRpc(ctx, controller) {
       quota: (payload) => controller.refreshQuota(payload?.provider, payload?.id),
       reset: (payload) => controller.consumeReset(payload?.provider, payload?.id),
       update: (payload) => controller.checkUpdate(payload),
+      dshUpdate: (payload) => controller.checkDshUpdate(payload),
     }
     return rpc.handle('/oauth-subs-auth', async (endpoint, payload) => {
       const fn = methods[endpoint]
@@ -295,4 +296,11 @@ export {
   pluginUpdateCommand,
   runPluginUpdate,
   applyHostUpdate,
+  DSH_REPO_URL,
+  DSH_REPO_SLUG,
+  DSH_NPM_PACKAGE,
+  localDshInfo,
+  fetchDshLatest,
+  dshUpdateCommand,
+  applyHostDshUpdate,
 } from './utils/update.js'

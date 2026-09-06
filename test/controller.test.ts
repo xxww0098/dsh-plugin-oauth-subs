@@ -637,3 +637,69 @@ test('checkUpdate stays update when disk is latest but this process is older', a
   assert.equal(result.disk, '9.9.9')
   assert.equal(result.version, installedVersion())
 })
+
+test('controller.snapshot includes dshUpdate info', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const controller = new AuthController({
+    authPath: join(dir, 'auth.json'),
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+  })
+  const snap = await controller.snapshot()
+  assert.equal(typeof snap.dshUpdate, 'object')
+  assert.equal(snap.dshUpdate.repoSlug, 'deepseek-ai/deepseek-harness')
+  assert.equal(snap.dshUpdate.npmPackage, '@deepseek-ai/dsh')
+})
+
+test('checkDshUpdate compare-only fetches info without spawning npm', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  let spawned = false
+  const fetchFn = async (url) => {
+    const s = String(url)
+    if (s.includes('/tags')) return new Response(JSON.stringify([{ name: 'dsh-v0.1.3' }]))
+    if (s.includes('registry.npmjs.org')) return new Response(JSON.stringify({ 'dist-tags': { latest: '0.1.3' } }))
+    return new Response('{}')
+  }
+  const controller = new AuthController({
+    authPath: join(dir, 'auth.json'),
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+    fetchFn,
+    spawnFn: () => { spawned = true; throw new Error('spawn') },
+  })
+  const info = await controller.checkDshUpdate({ apply: false })
+  assert.equal(spawned, false)
+  assert.equal(info.status, 'update')
+  assert.equal(info.canUpdate, true)
+  assert.equal(info.apply.status, 'none')
+})
+
+test('checkDshUpdate with apply: true spawns npm install', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const seen = []
+  const fetchFn = async (url) => {
+    const s = String(url)
+    if (s.includes('/tags')) return new Response(JSON.stringify([{ name: 'dsh-v0.1.3' }]))
+    if (s.includes('registry.npmjs.org')) return new Response(JSON.stringify({ 'dist-tags': { latest: '0.1.3' } }))
+    return new Response('{}')
+  }
+  const controller = new AuthController({
+    authPath: join(dir, 'auth.json'),
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+    fetchFn,
+    spawnFn: (cmd, args, opts) => {
+      seen.push({ cmd, args })
+      return spawnChild(0)
+    },
+  })
+  const result = await controller.checkDshUpdate({ apply: true })
+  assert.equal(result.apply.status, 'installed')
+  assert.equal(result.apply.restart, true)
+  assert.equal(seen[0].cmd, 'npm')
+  assert.deepEqual(seen[0].args, ['install', '-g', '@deepseek-ai/dsh@0.1.3'])
+})
+

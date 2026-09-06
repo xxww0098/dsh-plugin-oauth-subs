@@ -24,6 +24,14 @@ import {
   workaroundCommand,
   REPO_URL,
   RELEASES_API,
+  DSH_REPO_URL,
+  DSH_NPM_PACKAGE,
+  resolveDshInstall,
+  localDshInfo,
+  fetchDshLatest,
+  dshUpdateArgs,
+  dshUpdateCommand,
+  applyHostDshUpdate,
 } from '../lib/utils/update.js'
 
 test('hostPlatform maps node platforms', () => {
@@ -317,3 +325,125 @@ test('runPluginUpdate surfaces a nonzero exit', async () => {
   assert.equal(result.status, 'failed')
   assert.match(result.error, /no pnpm-workspace/)
 })
+
+test('compareVersions handles prerelease semver comparisons correctly', () => {
+  assert.equal(compareVersions('0.1.3-alpha.1', '0.1.2-rc.1') > 0, true)
+  assert.equal(compareVersions('0.1.2-rc.1', '0.1.2-alpha.5') > 0, true)
+  assert.equal(compareVersions('0.1.2', '0.1.2-rc.1') > 0, true)
+  assert.equal(compareVersions('0.1.2-rc.1', '0.1.2') < 0, true)
+  assert.equal(compareVersions('dsh-v0.1.3-alpha.1', '0.1.3-alpha.1'), 0)
+})
+
+test('dshUpdateArgs and dshUpdateCommand construct global npm install args', () => {
+  assert.deepEqual(dshUpdateArgs(), ['install', '-g', '@deepseek-ai/dsh@latest'])
+  assert.deepEqual(dshUpdateArgs('0.1.3-alpha.1'), ['install', '-g', '@deepseek-ai/dsh@0.1.3-alpha.1'])
+  assert.equal(dshUpdateCommand(), 'npm install -g @deepseek-ai/dsh@latest')
+  assert.equal(dshUpdateCommand('0.1.2-rc.1'), 'npm install -g @deepseek-ai/dsh@0.1.2-rc.1')
+})
+
+test('localDshInfo returns default repo info even if DSH binary is not found', () => {
+  const info = localDshInfo('linux', { env: { PATH: '' } })
+  assert.equal(info.repo, DSH_REPO_URL)
+  assert.equal(info.npmPackage, DSH_NPM_PACKAGE)
+  assert.equal(info.platform, 'linux')
+})
+
+test('fetchDshLatest reports update when npm has a newer version', async () => {
+  const fetchFn = async (url) => {
+    const s = String(url)
+    if (s.includes('/tags')) {
+      return new Response(JSON.stringify([{ name: 'dsh-v0.1.3' }]))
+    }
+    if (s.includes('registry.npmjs.org')) {
+      return new Response(JSON.stringify({
+        'dist-tags': { latest: '0.1.3' },
+        time: { '0.1.3': '2026-09-05T10:00:00Z' },
+      }))
+    }
+    return new Response('{}')
+  }
+  const info = await fetchDshLatest({ fetchFn, current: '0.1.2-rc.1', env: { PATH: '' } })
+  assert.equal(info.status, 'update')
+  assert.equal(info.canUpdate, true)
+  assert.equal(info.npm?.version, '0.1.3')
+  assert.equal(info.latestTag?.tag, 'dsh-v0.1.3')
+})
+
+test('fetchDshLatest reports github-only when GitHub tag is newer but npm is not', async () => {
+  const fetchFn = async (url) => {
+    const s = String(url)
+    if (s.includes('/tags')) {
+      return new Response(JSON.stringify([{ name: 'dsh-v0.1.3-alpha.1' }]))
+    }
+    if (s.includes('registry.npmjs.org')) {
+      return new Response(JSON.stringify({
+        'dist-tags': { latest: '0.1.2-rc.1' },
+        time: { '0.1.2-rc.1': '2026-09-03T06:21:52Z' },
+      }))
+    }
+    return new Response('{}')
+  }
+  const info = await fetchDshLatest({ fetchFn, current: '0.1.2-rc.1', env: { PATH: '' } })
+  assert.equal(info.status, 'github-only')
+  assert.equal(info.canUpdate, false)
+  assert.equal(info.latestTag?.tag, 'dsh-v0.1.3-alpha.1')
+  assert.equal(info.npm?.version, '0.1.2-rc.1')
+})
+
+test('fetchDshLatest reports current when installed matches latest release', async () => {
+  const fetchFn = async (url) => {
+    const s = String(url)
+    if (s.includes('/tags')) {
+      return new Response(JSON.stringify([{ name: 'dsh-v0.1.2' }]))
+    }
+    if (s.includes('registry.npmjs.org')) {
+      return new Response(JSON.stringify({
+        'dist-tags': { latest: '0.1.2' },
+      }))
+    }
+    return new Response('{}')
+  }
+  const info = await fetchDshLatest({ fetchFn, current: '0.1.2', env: { PATH: '' } })
+  assert.equal(info.status, 'current')
+  assert.equal(info.canUpdate, false)
+})
+
+test('applyHostDshUpdate spawns npm and reports installed on exit 0', async () => {
+  const seen = []
+  const spawnFn = (cmd, args, opts) => {
+    seen.push({ cmd, args })
+    return fakeChild({ code: 0 })(cmd, args, opts)
+  }
+  const result = await applyHostDshUpdate({
+    spawnFn,
+    targetVersion: '0.1.3',
+    env: { PATH: '/bin:/usr/bin' },
+  })
+  assert.equal(result.ok, true)
+  assert.equal(result.status, 'installed')
+  assert.equal(seen[0].cmd, 'npm')
+  assert.deepEqual(seen[0].args, ['install', '-g', '@deepseek-ai/dsh@0.1.3'])
+})
+
+test('applyHostDshUpdate reports failed on nonzero exit', async () => {
+  const spawnFn = fakeChild({ code: 1, stderr: 'EACCES permission denied' })
+  const result = await applyHostDshUpdate({
+    spawnFn,
+    env: { PATH: '/bin:/usr/bin' },
+  })
+  assert.equal(result.ok, false)
+  assert.equal(result.status, 'failed')
+  assert.match(result.error, /permission denied/)
+})
+
+test('applyHostDshUpdate reports missing-npm on ENOENT', async () => {
+  const spawnFn = () => {
+    const err = new Error('spawn npm ENOENT')
+    err.code = 'ENOENT'
+    throw err
+  }
+  const result = await applyHostDshUpdate({ spawnFn, env: { PATH: '' } })
+  assert.equal(result.ok, false)
+  assert.equal(result.status, 'missing-npm')
+})
+

@@ -2,6 +2,17 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-06：DSH 官方 GitHub Tag 无法直接通过 git/tarball 作为 npm 包安装
+
+### 现象
+尝试通过 GitHub Tag（如 `dsh-v0.1.3-alpha.1`）的 Git URL 或 Tarball 直接执行 `npm install -g` 报错退出，未能作为全局 CLI 安装。
+
+### 根因
+DSH 官方仓库为 pnpm monorepo，根目录为 `private: true` 且无构建产物 `lib/bin.js`（被 gitignore），必须依赖官方 CI 编译发布至 npm。
+
+### 修复
+监控分别请求 GitHub Tags 与 npm registry；仅在 npm 发布新版时允许更新，仅有 GitHub Tag 时展示提示且不盲目调用安装。
+
 ## 2026-09-06：Cursor composer-2 下线致流中断「Stream ended without finish_reason」
 
 ### 现象

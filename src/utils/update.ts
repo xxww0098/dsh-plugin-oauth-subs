@@ -17,7 +17,7 @@ import { spawn } from 'node:child_process'
 import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 export function modulePackageJsonPath() {
@@ -50,9 +50,17 @@ export function fresherVersion(left, right) {
 }
 
 export function parseVersion(tag) {
-  const match = String(tag ?? '').trim().match(/(\d+)\.(\d+)\.(\d+)/)
+  const match = String(tag ?? '').trim().match(/(?:v|dsh-v)?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?/)
   if (!match) return undefined
-  return { major: Number(match[1]), minor: Number(match[2]), patch: Number(match[3]), raw: `${match[1]}.${match[2]}.${match[3]}` }
+  const prerelease = match[4] || ''
+  const raw = prerelease ? `${match[1]}.${match[2]}.${match[3]}-${prerelease}` : `${match[1]}.${match[2]}.${match[3]}`
+  return {
+    major: Number(match[1]),
+    minor: Number(match[2]),
+    patch: Number(match[3]),
+    prerelease,
+    raw,
+  }
 }
 
 export function compareVersions(left, right) {
@@ -61,7 +69,34 @@ export function compareVersions(left, right) {
   if (!a || !b) return 0
   if (a.major !== b.major) return a.major - b.major
   if (a.minor !== b.minor) return a.minor - b.minor
-  return a.patch - b.patch
+  if (a.patch !== b.patch) return a.patch - b.patch
+
+  // Non-prerelease is greater than prerelease (e.g. 0.1.2 > 0.1.2-rc.1)
+  if (!a.prerelease && b.prerelease) return 1
+  if (a.prerelease && !b.prerelease) return -1
+  if (!a.prerelease && !b.prerelease) return 0
+
+  const aParts = a.prerelease.split('.')
+  const bParts = b.prerelease.split('.')
+  const len = Math.max(aParts.length, bParts.length)
+  for (let i = 0; i < len; i++) {
+    const aPart = aParts[i]
+    const bPart = bParts[i]
+    if (aPart === undefined) return -1
+    if (bPart === undefined) return 1
+    if (aPart === bPart) continue
+
+    const aNum = Number(aPart)
+    const bNum = Number(bPart)
+    const aIsNum = !Number.isNaN(aNum) && String(aNum) === aPart
+    const bIsNum = !Number.isNaN(bNum) && String(bNum) === bPart
+
+    if (aIsNum && bIsNum) return aNum - bNum
+    if (aIsNum && !bIsNum) return -1
+    if (!aIsNum && bIsNum) return 1
+    return aPart.localeCompare(bPart)
+  }
+  return 0
 }
 
 export function hostPlatform(platform = process.platform) {
@@ -465,3 +500,311 @@ export async function applyHostUpdate({
     error: unchangedHint(profile, after || before, latest),
   }
 }
+export const DSH_REPO_SLUG = 'deepseek-ai/deepseek-harness'
+export const DSH_REPO_URL = 'https://github.com/deepseek-ai/deepseek-harness'
+export const DSH_TAGS_API = `https://api.github.com/repos/${DSH_REPO_SLUG}/tags`
+export const DSH_RELEASES_API = `https://api.github.com/repos/${DSH_REPO_SLUG}/releases`
+export const DSH_NPM_PACKAGE = '@deepseek-ai/dsh'
+export const DSH_NPM_REGISTRY_API = `https://registry.npmjs.org/${DSH_NPM_PACKAGE}`
+export const DSH_UPDATE_TIMEOUT_MS = 180_000
+
+export function resolveDshInstall(
+  platform = process.platform,
+  env = process.env,
+  { realpathFn = realpathSync, readFileFn = readFileSync } = {},
+) {
+  const isWin = platform === 'win32'
+  const candidates = []
+  if (env.DSH_BIN_PATH) candidates.push(env.DSH_BIN_PATH)
+  if (isWin) {
+    const userHome = homedir()
+    candidates.push(
+      join(userHome, 'AppData', 'Roaming', 'npm', 'dsh.cmd'),
+      join(userHome, 'AppData', 'Roaming', 'npm', 'dsh'),
+    )
+  } else {
+    const userHome = homedir()
+    candidates.push(
+      join(userHome, '.local', 'bin', 'dsh'),
+      '/usr/local/bin/dsh',
+      '/opt/homebrew/bin/dsh',
+    )
+  }
+  const pathDirs = (env.PATH || '').split(isWin ? ';' : ':').filter(Boolean)
+  for (const dir of pathDirs) {
+    candidates.push(join(dir, isWin ? 'dsh.cmd' : 'dsh'))
+  }
+
+  for (const bin of candidates) {
+    if (existsSync(bin)) {
+      try {
+        const real = realpathFn(bin)
+        let dir = dirname(real)
+        for (let i = 0; i < 3; i++) {
+          const pkgPath = join(dir, 'package.json')
+          if (existsSync(pkgPath)) {
+            const raw = readFileFn(pkgPath, 'utf8')
+            const text = typeof raw === 'string' ? raw : String(raw ?? '')
+            const parsed = JSON.parse(text)
+            if (parsed?.name === DSH_NPM_PACKAGE) {
+              return {
+                binPath: bin,
+                realPath: real,
+                packagePath: pkgPath,
+                version: typeof parsed.version === 'string' ? parsed.version : '',
+              }
+            }
+          }
+          dir = dirname(dir)
+        }
+      } catch {
+        // try next
+      }
+    }
+  }
+  return undefined
+}
+
+export function localDshInfo(platform = process.platform, opts = {}) {
+  const env = opts.env ?? process.env
+  const fileFn = opts.readFileFn ?? readFileSync
+  const realFn = opts.realpathFn ?? realpathSync
+  const resolved = resolveDshInstall(platform, env, { realpathFn: realFn, readFileFn: fileFn })
+  const version = resolved?.version || ''
+  return {
+    version,
+    binPath: resolved?.binPath,
+    realPath: resolved?.realPath,
+    packagePath: resolved?.packagePath,
+    platform: hostPlatform(platform),
+    repo: DSH_REPO_URL,
+    repoSlug: DSH_REPO_SLUG,
+    npmPackage: DSH_NPM_PACKAGE,
+  }
+}
+
+export async function fetchDshLatest({
+  fetchFn = fetch,
+  current,
+  platform = process.platform,
+  timeoutMs = 10_000,
+  env,
+  readFileFn,
+  realpathFn,
+} = {}) {
+  const local = localDshInfo(platform, { env, readFileFn, realpathFn })
+  const installed = parseVersion(current ?? local.version)?.raw ?? local.version
+  const wait = new AbortController()
+  const timer = setTimeout(() => wait.abort(), timeoutMs)
+  try {
+    let githubTag
+    let githubVersion
+    let githubTagPublishedAt
+    let githubTagUrl
+    let githubName
+
+    const ghHeaders = {
+      accept: 'application/vnd.github+json',
+      'user-agent': `dsh-plugin-oauth-subs/${installed || 'dev'}`,
+    }
+
+    try {
+      const tagsResp = await fetchFn(DSH_TAGS_API, { headers: ghHeaders, signal: wait.signal })
+      if (tagsResp.ok) {
+        const tags = await tagsResp.json()
+        if (Array.isArray(tags) && tags.length > 0) {
+          const first = tags[0]
+          githubTag = typeof first?.name === 'string' ? first.name : undefined
+          githubVersion = parseVersion(githubTag)?.raw || githubTag
+          githubTagUrl = `${DSH_REPO_URL}/releases/tag/${githubTag}`
+        }
+      }
+    } catch {
+      // ignore tag fetch failure
+    }
+
+    if (githubTag) {
+      try {
+        const relResp = await fetchFn(`${DSH_RELEASES_API}/tags/${githubTag}`, { headers: ghHeaders, signal: wait.signal })
+        if (relResp.ok) {
+          const rel = await relResp.json()
+          githubName = typeof rel?.name === 'string' ? rel.name : undefined
+          githubTagPublishedAt = formatPublishedAt(rel?.published_at)
+          if (typeof rel?.html_url === 'string') githubTagUrl = rel.html_url
+        }
+      } catch {
+        // ignore release fetch failure
+      }
+    }
+
+    let npmVersion
+    let npmPublishedAt
+    let npmDistTags = {}
+    try {
+      const npmResp = await fetchFn(DSH_NPM_REGISTRY_API, {
+        headers: { accept: 'application/json' },
+        signal: wait.signal,
+      })
+      if (npmResp.ok) {
+        const npmData = await npmResp.json()
+        npmDistTags = npmData?.['dist-tags'] || {}
+        npmVersion = npmDistTags.latest || npmDistTags.next || npmDistTags.alpha
+        if (npmVersion && npmData?.time?.[npmVersion]) {
+          npmPublishedAt = formatPublishedAt(npmData.time[npmVersion])
+        }
+      }
+    } catch {
+      // ignore npm fetch failure
+    }
+
+    const canUpdate = Boolean(npmVersion && installed && compareVersions(npmVersion, installed) > 0)
+
+    let status = 'unknown'
+    if (canUpdate) {
+      status = 'update'
+    } else if (githubVersion && installed && compareVersions(githubVersion, installed) > 0) {
+      status = 'github-only'
+    } else if (installed && npmVersion && compareVersions(installed, npmVersion) === 0) {
+      status = 'current'
+    } else if (installed && githubVersion && compareVersions(installed, githubVersion) > 0) {
+      status = 'ahead'
+    } else if (installed) {
+      status = 'current'
+    }
+
+    return {
+      ...local,
+      version: installed,
+      status,
+      canUpdate,
+      latestTag: githubTag ? {
+        tag: githubTag,
+        version: githubVersion,
+        name: githubName,
+        url: githubTagUrl || `${DSH_REPO_URL}/tags`,
+        publishedAt: githubTagPublishedAt,
+      } : undefined,
+      npm: npmVersion ? {
+        version: npmVersion,
+        publishedAt: npmPublishedAt,
+        distTags: npmDistTags,
+      } : undefined,
+    }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+export function dshUpdateArgs(targetVersion) {
+  const pkg = targetVersion ? `${DSH_NPM_PACKAGE}@${targetVersion}` : `${DSH_NPM_PACKAGE}@latest`
+  return ['install', '-g', pkg]
+}
+
+export function dshUpdateCommand(targetVersion) {
+  return ['npm', ...dshUpdateArgs(targetVersion)].join(' ')
+}
+
+export async function applyHostDshUpdate({
+  spawnFn = spawn,
+  targetVersion,
+  timeoutMs = DSH_UPDATE_TIMEOUT_MS,
+  env,
+  readFileFn,
+  realpathFn,
+} = {}) {
+  const homeEnv = env ?? process.env
+  const beforeInfo = localDshInfo(process.platform, { env: homeEnv, readFileFn, realpathFn })
+  const before = beforeInfo.version || 'unknown'
+  const argv = dshUpdateArgs(targetVersion)
+  const command = ['npm', ...argv].join(' ')
+
+  const pathWithDefaults = (current) => {
+    const isWin = process.platform === 'win32'
+    const userHome = homedir()
+    const extras = isWin
+      ? [join(userHome, 'AppData', 'Roaming', 'npm')]
+      : [join(userHome, '.local', 'bin'), '/usr/local/bin', '/opt/homebrew/bin', '/usr/bin', '/bin']
+    const sep = isWin ? ';' : ':'
+    const existing = (current || '').split(sep).filter(Boolean)
+    for (const extra of extras) {
+      if (!existing.includes(extra)) existing.unshift(extra)
+    }
+    return existing.join(sep)
+  }
+
+  const runEnv = {
+    ...homeEnv,
+    PATH: pathWithDefaults(homeEnv.PATH),
+  }
+
+  return new Promise((resolve) => {
+    let child
+    try {
+      child = spawnFn('npm', argv, {
+        env: runEnv,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
+    } catch (error) {
+      resolve({
+        ok: false,
+        status: error?.code === 'ENOENT' ? 'missing-npm' : 'failed',
+        command,
+        before,
+        after: before,
+        error: describeSpawnError(error),
+      })
+      return
+    }
+
+    let stdout = ''
+    let stderr = ''
+    let settled = false
+    const finish = (result) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolve(result)
+    }
+    const timer = setTimeout(() => {
+      try { child.kill('SIGTERM') } catch { /* no-op */ }
+      finish({ ok: false, status: 'timeout', command, before, after: before, error: `npm install -g timed out after ${timeoutMs}ms` })
+    }, timeoutMs)
+
+    child.stdout?.on?.('data', (chunk) => { stdout += chunk })
+    child.stderr?.on?.('data', (chunk) => { stderr += chunk })
+    child.once('error', (error) => {
+      finish({
+        ok: false,
+        status: error?.code === 'ENOENT' ? 'missing-npm' : 'failed',
+        command,
+        before,
+        after: before,
+        error: describeSpawnError(error),
+      })
+    })
+    child.once('close', (code) => {
+      const afterInfo = localDshInfo(process.platform, { env: homeEnv, readFileFn, realpathFn })
+      const after = afterInfo.version || before
+      if (code === 0) {
+        finish({
+          ok: true,
+          status: 'installed',
+          command,
+          before,
+          after,
+        })
+        return
+      }
+      const detail = clip(stderr) || clip(stdout) || `npm install -g exited ${code}`
+      finish({
+        ok: false,
+        status: 'failed',
+        command,
+        before,
+        after,
+        error: detail,
+      })
+    })
+  })
+}
+
