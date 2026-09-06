@@ -234,9 +234,11 @@ window.__ModuleLoader__.load({
         dshUpdateAction: '更新宿主',
         dshRollbackAction: '回退',
         dshInstallAction: '安装',
-        dshPickVersion: '安装版本',
+        dshApplyUpdate: '更新',
+        dshPickVersion: '版本',
+        dshOnThisMachine: '本机',
         dshUpdating: '正在更新…',
-        dshStatusUpdate: 'npm 发现新版本 {n}，可点击更新',
+        dshStatusUpdate: 'npm 有新版本 {n}',
         dshStatusGithubOnly: 'GitHub 发现新 Tag {n}（npm 尚未发布）',
         dshStatusCurrent: '已是最新版本',
         dshStatusAhead: '本机版本领先官方发布',
@@ -432,9 +434,11 @@ window.__ModuleLoader__.load({
         dshUpdateAction: 'Update DSH',
         dshRollbackAction: 'Roll back',
         dshInstallAction: 'Install',
-        dshPickVersion: 'Install version',
+        dshApplyUpdate: 'Update',
+        dshPickVersion: 'Version',
+        dshOnThisMachine: 'current',
         dshUpdating: 'Updating…',
-        dshStatusUpdate: 'New version {n} available on npm',
+        dshStatusUpdate: 'New npm version {n}',
         dshStatusGithubOnly: 'New GitHub tag {n} (not yet on npm)',
         dshStatusCurrent: 'Up to date',
         dshStatusAhead: 'Local version is ahead',
@@ -852,6 +856,7 @@ window.__ModuleLoader__.load({
 }
 .osubs-select:focus-visible { outline: 2px solid var(--osubs-ring); outline-offset: 1px; }
 .osubs-select:disabled { opacity: 0.55; cursor: default; }
+.osubs-version-pick { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 .osubs-auto {
   display: flex; align-items: center; gap: 8px;
   font-size: 13px; line-height: 1.45; cursor: pointer; color: inherit;
@@ -2277,6 +2282,13 @@ window.__ModuleLoader__.load({
       return a.prerelease.localeCompare(b.prerelease)
     }
 
+    function matchListedVersion(list, version) {
+      if (!version || version === '—') return ''
+      const raw = parseAboutVersion(version)?.raw || version
+      const rows = Array.isArray(list) ? list : []
+      return rows.find((item) => item === version || (parseAboutVersion(item)?.raw || item) === raw) || ''
+    }
+
     function fresherAboutVersion(left, right) {
       const a = parseAboutVersion(left)
       const b = parseAboutVersion(right)
@@ -2455,18 +2467,18 @@ window.__ModuleLoader__.load({
       const dshVersions = Array.isArray(dshNpm?.versions) && dshNpm.versions.length
         ? dshNpm.versions
         : [dshNpm?.version, dshNpm?.distTags?.latest, dshNpm?.distTags?.next, dshNpm?.distTags?.alpha].filter((value, index, all) => value && all.indexOf(value) === index)
+      const listedLocal = matchListedVersion(dshVersions, dshVersion)
+      const dshVersionOptions = listedLocal || dshVersion === '—' ? dshVersions : [dshVersion, ...dshVersions]
       const [dshPicked, setDshPicked] = useState('')
-      const dshChoice = dshPicked || (dshVersion !== '—' && dshVersions.includes(dshVersion) ? dshVersion : (dshNpm?.version || dshVersions[0] || ''))
+      const dshChoice = dshPicked || listedLocal || (dshVersion !== '—' ? dshVersion : (dshNpm?.version || dshVersions[0] || ''))
       const dshHint = dshStatusLabel(t, dshUpdate)
       const dshTone = dshUpdate?.status === 'update' || dshUpdate?.status === 'github-only' ? 'osubs-warn' : dshUpdate?.status === 'error' ? 'osubs-bad' : ''
       const dshApply = dshApplyLabel(t, dshUpdate)
       const dshApplyTone = dshUpdate?.apply?.status === 'installed' ? '' : 'osubs-bad'
       const dshCmp = dshChoice && dshVersion !== '—' ? compareAboutVersions(dshChoice, dshVersion) : 0
-      const dshCanInstall = Boolean(dshChoice) && (dshVersion === '—' || dshCmp !== 0)
-      const dshBtnLabel = dshBusy ? (dshApplying ? t.dshUpdating : t.checking) : t.dshCheckUpdate
-      const dshBtnTip = dshCanInstall
-        ? (dshVersion === '—' ? fill(t.willInstall, dshChoice) : dshCmp < 0 ? fill(t.willRollback, dshChoice) : fill(t.willUpdate, dshChoice))
-        : t.dshCheckUpdate
+      const dshCanApply = Boolean(dshChoice) && matchListedVersion(dshVersions, dshChoice) && (dshVersion === '—' || !listedLocal || dshChoice !== listedLocal)
+      const dshSwitchLabel = dshVersion === '—' ? t.dshInstallAction : dshCmp < 0 ? t.dshRollbackAction : t.dshApplyUpdate
+      const dshBtnLabel = dshBusy && !dshApplying ? t.checking : t.dshCheckUpdate
 
       const dshCard = h('section', { className: 'osubs-card' },
         h('header', { style: { display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' } },
@@ -2482,12 +2494,12 @@ window.__ModuleLoader__.load({
                 }),
               ),
             ),
-            h(HoldTip, { label: dshBtnTip },
+            h(HoldTip, { label: t.dshCheckUpdate },
               h(Button, {
                 size: 'sm',
                 disabled: dshBusy,
                 label: dshBtnLabel,
-                onClick: () => onDshCheck(dshCanInstall, dshChoice),
+                onClick: () => onDshCheck(false),
               }),
             ),
           ),
@@ -2515,19 +2527,30 @@ window.__ModuleLoader__.load({
                 rel: 'noreferrer',
               }, dshNpm.version),
             ),
-            dshVersions.length > 0 && h('div', { className: 'osubs-kv-row' },
+            dshVersionOptions.length > 0 && h('div', { className: 'osubs-kv-row' },
               h('span', null, t.dshPickVersion),
-              h('select', {
-                className: 'osubs-select',
-                value: dshChoice,
-                disabled: dshBusy,
-                onChange: (event) => setDshPicked(event.target.value),
-              }, dshVersions.map((ver) => {
-                const tags = dshNpm?.distTags || {}
-                const marks = Object.keys(tags).filter((key) => tags[key] === ver)
-                const label = marks.length ? ver + ' (' + marks.join(', ') + ')' : ver
-                return h('option', { key: ver, value: ver }, label)
-              })),
+              h('div', { className: 'osubs-version-pick' },
+                h('select', {
+                  className: 'osubs-select',
+                  value: dshChoice,
+                  disabled: dshBusy,
+                  onChange: (event) => setDshPicked(event.target.value),
+                }, dshVersionOptions.map((ver) => {
+                  const tags = dshNpm?.distTags || {}
+                  const marks = Object.keys(tags).filter((key) => tags[key] === ver)
+                  if (listedLocal === ver || ver === dshVersion) marks.unshift(t.dshOnThisMachine)
+                  const label = marks.length ? ver + ' (' + marks.join(', ') + ')' : ver
+                  return h('option', { key: ver, value: ver }, label)
+                })),
+                dshCanApply && h(HoldTip, { label: fill(dshCmp < 0 ? t.willRollback : dshVersion === '—' ? t.willInstall : t.willUpdate, dshChoice) },
+                  h(Button, {
+                    size: 'sm',
+                    disabled: dshBusy,
+                    label: dshApplying ? t.dshUpdating : dshSwitchLabel,
+                    onClick: () => onDshCheck(true, dshChoice),
+                  }),
+                ),
+              ),
             ),
             dshTag?.publishedAt && h('p', { className: 'osubs-note' }, fill(t.dshTagPublished, dshTag.publishedAt)),
             dshHint && h('p', { className: 'osubs-hint' + (dshTone ? ' ' + dshTone : '') }, dshHint),
