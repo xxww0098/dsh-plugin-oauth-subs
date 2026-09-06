@@ -2508,7 +2508,12 @@ window.__ModuleLoader__.load({
             ),
             dshNpm?.version && h('div', { className: 'osubs-kv-row' },
               h('span', null, t.dshNpmVersion),
-              h('span', null, dshNpm.version),
+              h('a', {
+                className: 'osubs-link',
+                href: 'https://www.npmjs.com/package/' + (dshEffective?.npmPackage || '@deepseek-ai/dsh') + '/v/' + dshNpm.version,
+                target: '_blank',
+                rel: 'noreferrer',
+              }, dshNpm.version),
             ),
             dshVersions.length > 0 && h('div', { className: 'osubs-kv-row' },
               h('span', null, t.dshPickVersion),
