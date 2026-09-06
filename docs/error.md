@@ -11,7 +11,7 @@
 `tab === id && card()` 卸载再挂载，加上 `.osubs-pane > *` clip/opacity 入场。
 
 ### 修复
-各 tab 面板常驻 `hidden` 切换；去掉 pane 入场动画；只更新账号/额度数据。
+各 tab 面板常驻 `hidden` 切换；去掉 pane 入场动画。Settings 重挂时用 localStorage 上次 status 先画出账号卡，避免空壳再整卡灌入。额度条不再从 100% scale 过渡到真实剩余。
 
 ## 2026-09-06：未登录 Copilot 模型列表被收成「登录后同步」
 
