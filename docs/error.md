@@ -2,6 +2,17 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-06：Cursor composer-2 下线致流中断「Stream ended without finish_reason」
+
+### 现象
+Cursor 官方下线 composer-2 / composer-1.5，对话报错 `ERROR_MODEL_NO_LONGER_SUPPORTED`；代理丢弃 Connect 错误详情且直接截断流，客户端显示「Stream ended without finish_reason」。
+
+### 根因
+静态模型底表强制把 composer-2 / composer-1.5 重新塞入已发现列表；流式代理在收到上游首包前过早发送 SSE 200 头，中间出错未以内容形式输出并干净终止。
+
+### 修复
+`mergeCursorStaticFloor` 优先信任非空在线列表并从静态底表移除已下线模型；`consumeCursorFrames` 提取 Connect 错误说明；`forwardCursor` 延迟首包并安全收尾。
+
 ## 2026-09-05：Ollama 每周条不画「n后重置」
 
 ### 现象

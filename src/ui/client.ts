@@ -1375,6 +1375,17 @@ window.__ModuleLoader__.load({
       const pendingWhen = pending
         ? (formatStamp(pending.expiresAt) || formatReset(pending.expiresAt, t, 'expires') || '—')
         : ''
+      let closestIndex = credits.length > 0 ? 0 : -1
+      let minExpiresAt = Infinity
+      for (let i = 0; i < credits.length; i++) {
+        const exp = credits[i]?.expiresAt
+        if (typeof exp === 'number' && Number.isFinite(exp) && exp > 0) {
+          if (exp < minExpiresAt) {
+            minExpiresAt = exp
+            closestIndex = i
+          }
+        }
+      }
       return h('div', { className: 'osubs-qbox' },
         h('div', { className: 'osubs-qbox-head' },
           h('span', { className: 'osubs-eyebrow' }, t.quotaResetBank),
@@ -1387,6 +1398,8 @@ window.__ModuleLoader__.load({
             const relative = formatReset(credit.expiresAt, t, 'expires')
             const key = credit.id ?? `credit-${index}`
             const busy = busyId !== null
+            const isClosest = index === closestIndex
+            const disabled = busy || !isClosest
             return h('div', { className: 'osubs-reset-row', key },
               h('div', { className: 'osubs-reset-meta' },
                 h('span', { className: 'osubs-reset-when' },
@@ -1396,8 +1409,8 @@ window.__ModuleLoader__.load({
               ),
               h(Button, {
                 size: 'sm',
-                disabled: busy,
-                onClick: () => ask(credit),
+                disabled,
+                onClick: isClosest ? () => ask(credit) : undefined,
                 label: busyId === key ? t.quotaResetBusy : t.quotaReset,
               }),
             )

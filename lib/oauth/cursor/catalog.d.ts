@@ -32,7 +32,12 @@ export declare function cursorSourceIsFast(id: any): boolean;
  * sibling `{family}-fast` when any source id for that family is Fast.
  */
 export declare function cursorPickerFamilyId(id: any): string;
-/** Live families overlay the official static floor. Empty live → a copy of CURSOR_MODELS. */
+/**
+ * Live families overlay the official static floor. Empty live → a copy of
+ * CURSOR_MODELS. Non-empty live is the upstream's truth: forcing static rows
+ * back in re-offers retired models (e.g. Composer 2) that the account can no
+ * longer call.
+ */
 export declare function mergeCursorStaticFloor(live: any): any;
 /** Collapse live ids into one picker row per family, plus `{family}-fast` when a source id is Fast. Empty input → []. */
 export declare function toCursorPickerModels(usable: any, parameterized?: any[]): any[];
