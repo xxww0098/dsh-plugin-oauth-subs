@@ -77,7 +77,7 @@ import {
 import { KIMI_ME_URL, KIMI_USAGE_URL, kimiUpstreamHeaders, parseKimiUserInfo } from './kimi/index.js'
 import { COPILOT_QUOTA_URL, copilotIdentityHeaders, isGithubUserToken, parseCopilotUser } from './copilot/index.js'
 
-export const QUOTA_TTL_MS = 60_000
+export const QUOTA_TTL_MS = 10_000
 export const QUOTA_TIMEOUT_MS = 10_000
 const USED_RESET_STATUS = new Set(['redeemed', 'used', 'consumed', 'expired'])
 

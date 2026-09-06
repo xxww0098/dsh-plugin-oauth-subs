@@ -28,7 +28,7 @@ import { kiroCatalogModels } from './oauth/kiro/catalog.js'
 import { kimiCatalogModels } from './oauth/kimi/catalog.js'
 import { copilotCatalogModels } from './oauth/copilot/catalog.js'
 import { EffortMemory, LAST_EFFORT_FILE, startEffortRestore } from './oauth/reasoning-effort.js'
-import { profileFromBaseUrl } from './utils/update.js'
+import { localDshInfo, pluginClientJsPath, profileFromBaseUrl, stampDshHostVersion } from './utils/update.js'
 
 export const name = 'dsh-plugin-oauth-subs'
 export const inject = ['settings', 'credentials']
@@ -101,6 +101,7 @@ function registerRpc(ctx, controller) {
       reset: (payload) => controller.consumeReset(payload?.provider, payload?.id),
       update: (payload) => controller.checkUpdate(payload),
       dshUpdate: (payload) => controller.checkDshUpdate(payload),
+      autoUpdate: (payload) => controller.setAutoUpdate(payload),
     }
     return rpc.handle('/oauth-subs-auth', async (endpoint, payload) => {
       const fn = methods[endpoint]
@@ -152,6 +153,7 @@ export function apply(ctx, config = {}) {
       })
     },
     profile: profileFromBaseUrl(ctx.baseUrl),
+    exitFn: (code) => process.exit(code),
   })
 
   ctx.effect(() => startEffortRestore({
@@ -203,6 +205,14 @@ export function apply(ctx, config = {}) {
   }, 'dsh-plugin-oauth-subs: local responses proxy')
 
   registerRpc(ctx, controller)
+  try {
+    stampDshHostVersion(pluginClientJsPath(), localDshInfo().version)
+  } catch { /* client.js stamp is best-effort */ }
+
+  ctx.effect(() => {
+    controller.startAutoUpdateWatch()
+    return () => controller.stopAutoUpdateWatch()
+  }, 'dsh-plugin-oauth-subs: auto-update watch')
 }
 
 export {
@@ -303,4 +313,6 @@ export {
   fetchDshLatest,
   dshUpdateCommand,
   applyHostDshUpdate,
+  listDshInstallVersions,
+  scheduleDshWebRestart,
 } from './utils/update.js'

@@ -32,6 +32,9 @@ import {
   dshUpdateArgs,
   dshUpdateCommand,
   applyHostDshUpdate,
+  listDshInstallVersions,
+  scheduleDshWebRestart,
+  stampDshHostVersion,
 } from '../lib/utils/update.js'
 
 test('hostPlatform maps node platforms', () => {
@@ -342,10 +345,33 @@ test('dshUpdateArgs and dshUpdateCommand construct global npm install args', () 
 })
 
 test('localDshInfo returns default repo info even if DSH binary is not found', () => {
-  const info = localDshInfo('linux', { env: { PATH: '' } })
+  const info = localDshInfo('linux', { env: { PATH: '' }, existsSyncFn: () => false })
   assert.equal(info.repo, DSH_REPO_URL)
   assert.equal(info.npmPackage, DSH_NPM_PACKAGE)
   assert.equal(info.platform, 'linux')
+})
+
+test('resolveDshInstall locates package via direct package.json when bin is absent', () => {
+  const existsSyncFn = (p) => p.includes('node_modules/@deepseek-ai/dsh/package.json')
+  const readFileFn = () => JSON.stringify({ name: '@deepseek-ai/dsh', version: '0.1.2-rc.1' })
+  const result = resolveDshInstall('linux', { PATH: '' }, { existsSyncFn, readFileFn })
+  assert.equal(result?.version, '0.1.2-rc.1')
+  assert.match(result?.packagePath || '', /@deepseek-ai\/dsh\/package\.json/)
+})
+
+test('resolveDshInstall locates package via binary realpath tree', () => {
+  const existsSyncFn = (p) => p === '/custom/bin/dsh' || p === '/custom/package.json'
+  const realpathFn = () => '/custom/bin/dsh'
+  const readFileFn = (p) => {
+    if (p === '/custom/package.json') {
+      return JSON.stringify({ name: '@deepseek-ai/dsh', version: '0.1.2' })
+    }
+    return ''
+  }
+  const result = resolveDshInstall('linux', { DSH_BIN_PATH: '/custom/bin/dsh', PATH: '' }, { existsSyncFn, realpathFn, readFileFn })
+  assert.equal(result?.version, '0.1.2')
+  assert.equal(result?.binPath, '/custom/bin/dsh')
+  assert.equal(result?.packagePath, '/custom/package.json')
 })
 
 test('fetchDshLatest reports update when npm has a newer version', async () => {
@@ -445,5 +471,64 @@ test('applyHostDshUpdate reports missing-npm on ENOENT', async () => {
   const result = await applyHostDshUpdate({ spawnFn, env: { PATH: '' } })
   assert.equal(result.ok, false)
   assert.equal(result.status, 'missing-npm')
+})
+
+
+test('listDshInstallVersions sorts npm versions newest first and includes dist-tags', () => {
+  const rows = listDshInstallVersions({
+    versions: { '0.1.2-alpha.5': {}, '0.1.2-rc.1': {}, '0.1.1': {} },
+    'dist-tags': { latest: '0.1.2-rc.1', alpha: '0.1.2-alpha.5' },
+  })
+  assert.deepEqual(rows, ['0.1.2-rc.1', '0.1.2-alpha.5', '0.1.1'])
+})
+
+test('fetchDshLatest returns installable npm versions for the picker', async () => {
+  const fetchFn = async (url) => {
+    const s = String(url)
+    if (s.includes('/tags')) return new Response(JSON.stringify([{ name: 'dsh-v0.1.3-alpha.1' }]))
+    if (s.includes('registry.npmjs.org')) {
+      return new Response(JSON.stringify({
+        'dist-tags': { latest: '0.1.2-rc.1', alpha: '0.1.2-alpha.5' },
+        versions: { '0.1.2-rc.1': {}, '0.1.2-alpha.5': {}, '0.1.1': {} },
+        time: { '0.1.2-rc.1': '2026-09-03T06:21:52Z' },
+      }))
+    }
+    return new Response('{}')
+  }
+  const info = await fetchDshLatest({ fetchFn, current: '0.1.2-rc.1', env: { PATH: '' } })
+  assert.deepEqual(info.npm?.versions, ['0.1.2-rc.1', '0.1.2-alpha.5', '0.1.1'])
+})
+
+test('scheduleDshWebRestart spawns a delayed detached re-exec', () => {
+  const seen = []
+  const spawnFn = (cmd, args, opts) => {
+    seen.push({ cmd, args, detached: opts.detached, stdio: opts.stdio })
+    return { unref() {} }
+  }
+  const result = scheduleDshWebRestart({
+    spawnFn,
+    delaySec: 2,
+    execPath: '/usr/bin/node',
+    argv: ['node', '/Users/me/.local/bin/dsh', 'web'],
+    cwd: '/tmp',
+    platform: 'linux',
+    env: { PATH: '/bin' },
+  })
+  assert.equal(result.ok, true)
+  assert.equal(seen[0].cmd, '/bin/sh')
+  assert.equal(seen[0].args[0], '-c')
+  assert.match(seen[0].args[1], /sleep 2; exec /)
+  assert.match(seen[0].args[1], /dsh/)
+  assert.equal(seen[0].detached, true)
+})
+
+test('stampDshHostVersion rewrites the served client.js sentinel', () => {
+  let written = ''
+  const ok = stampDshHostVersion('client.js', '0.1.2-rc.1', {
+    readFileFn: () => "const DSH_HOST_VERSION_STAMP = ''\nconst x = 1\n",
+    writeFileFn: (_path, text) => { written = String(text) },
+  })
+  assert.equal(ok, true)
+  assert.match(written, /const DSH_HOST_VERSION_STAMP = "0\.1\.2-rc\.1"/)
 })
 

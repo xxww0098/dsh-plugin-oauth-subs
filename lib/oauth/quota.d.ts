@@ -19,7 +19,7 @@
  * Unified-billing SuperGrok / X Premium+ payloads often omit that percent
  * on the CLI JSON; the grok.com gRPC-web path still has the weekly pool.
  */
-export declare const QUOTA_TTL_MS = 60000;
+export declare const QUOTA_TTL_MS = 10000;
 export declare const QUOTA_TIMEOUT_MS = 10000;
 export declare function asNumber(value: any): number;
 export declare function creditBagAmounts(value: any): any;

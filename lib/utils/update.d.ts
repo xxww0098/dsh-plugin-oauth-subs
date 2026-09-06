@@ -13,7 +13,7 @@
  * `dsh plugin update` is `pnpm update` and can no-op on a git spec.
  */
 import { spawn } from 'node:child_process';
-import { readFileSync, realpathSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 export declare function modulePackageJsonPath(): string;
 export declare const REPO_SLUG = "xxww0098/dsh-plugin-oauth-subs";
 export declare const REPO_URL = "https://github.com/xxww0098/dsh-plugin-oauth-subs";
@@ -156,9 +156,12 @@ export declare const DSH_RELEASES_API = "https://api.github.com/repos/deepseek-a
 export declare const DSH_NPM_PACKAGE = "@deepseek-ai/dsh";
 export declare const DSH_NPM_REGISTRY_API = "https://registry.npmjs.org/@deepseek-ai/dsh";
 export declare const DSH_UPDATE_TIMEOUT_MS = 180000;
-export declare function resolveDshInstall(platform?: NodeJS.Platform, env?: NodeJS.ProcessEnv, { realpathFn, readFileFn }?: {
+/** npm registry versions newest-first; only these can be installed with npm -g. */
+export declare function listDshInstallVersions(npmData: any): string[];
+export declare function resolveDshInstall(platform?: NodeJS.Platform, env?: NodeJS.ProcessEnv, { realpathFn, readFileFn, existsSyncFn }?: {
     realpathFn?: typeof realpathSync;
     readFileFn?: typeof readFileSync;
+    existsSyncFn?: typeof existsSync;
 }): {
     binPath: any;
     realPath: string;
@@ -175,7 +178,7 @@ export declare function localDshInfo(platform?: NodeJS.Platform, opts?: {}): {
     repoSlug: string;
     npmPackage: string;
 };
-export declare function fetchDshLatest({ fetchFn, current, platform, timeoutMs, env, readFileFn, realpathFn, }?: {
+export declare function fetchDshLatest({ fetchFn, current, platform, timeoutMs, env, readFileFn, realpathFn, existsSyncFn, }?: {
     fetchFn?: typeof fetch;
     platform?: NodeJS.Platform;
     timeoutMs?: number;
@@ -194,6 +197,7 @@ export declare function fetchDshLatest({ fetchFn, current, platform, timeoutMs, 
         version: any;
         publishedAt: any;
         distTags: {};
+        versions: any[];
     };
     binPath: any;
     realPath: string;
@@ -205,7 +209,27 @@ export declare function fetchDshLatest({ fetchFn, current, platform, timeoutMs, 
 }>;
 export declare function dshUpdateArgs(targetVersion: any): string[];
 export declare function dshUpdateCommand(targetVersion: any): string;
-export declare function applyHostDshUpdate({ spawnFn, targetVersion, timeoutMs, env, readFileFn, realpathFn, }?: {
+export declare const DSH_HOST_VERSION_STAMP_RE: RegExp;
+export declare function pluginClientJsPath(): string;
+/** Write local DSH version into the served client.js static file. */
+export declare function stampDshHostVersion(clientPath: any, version: any, { readFileFn, writeFileFn }?: {
+    readFileFn?: typeof readFileSync;
+    writeFileFn?: typeof writeFileSync;
+}): boolean;
+/** Detached re-exec of this dsh web process after the listen port is free. */
+export declare function scheduleDshWebRestart({ spawnFn, env, delaySec, execPath, argv, cwd, platform, }?: {
+    spawnFn?: typeof spawn;
+    env?: NodeJS.ProcessEnv;
+    delaySec?: number;
+    execPath?: string;
+    argv?: string[];
+    cwd?: string;
+    platform?: NodeJS.Platform;
+}): {
+    ok: boolean;
+    command: string;
+};
+export declare function applyHostDshUpdate({ spawnFn, targetVersion, timeoutMs, env, readFileFn, realpathFn, existsSyncFn, }?: {
     spawnFn?: typeof spawn;
     timeoutMs?: number;
 }): Promise<unknown>;

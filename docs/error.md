@@ -2,6 +2,61 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-06：切到 Codex 整卡闪入
+
+### 现象
+每次打开 Codex（及其他家族）整张卡重新出现，入场动画一闪，刺眼。
+
+### 根因
+`tab === id && card()` 卸载再挂载，加上 `.osubs-pane > *` clip/opacity 入场。
+
+### 修复
+各 tab 面板常驻 `hidden` 切换；去掉 pane 入场动画。Settings 重挂时用 localStorage 上次 status 先画出账号卡，避免空壳再整卡灌入。额度条不再从 100% scale 过渡到真实剩余。
+
+## 2026-09-06：未登录 Copilot 模型列表被收成「登录后同步」
+
+### 现象
+模型页 GitHub Copilot 未登录时只剩标题、已开启 10/10 和登录按钮，没有和其他 OAuth 一样列出禁用 checkbox。
+
+### 根因
+`ModelFamily` 在 `!loggedIn` 时不渲染 `.osubs-models`。
+
+### 修复
+未登录仍画出模型行，checkbox 保持 disabled；全选/全关仍换成登录。
+
+## 2026-09-06：关于页本机 DSH 版本无法从已下发静态资源读取
+
+### 现象
+本机版本一直是 —。GitHub Tag / npm 能显示。HTML、manifest、shell JS、client-modules bundle 均无 semver。
+
+### 根因
+dsh web 不下发 package.json；boot 图只有 content hash。宿主 RPC 未重启时也读不到 CLI 版本。
+
+### 修复
+把本机版本写入已下发的 `lib/ui/client.js` 哨兵 `DSH_HOST_VERSION_STAMP`；插件 apply 时盖戳，前端优先读该静态常量。
+
+## 2026-09-06：自动更新勾选报 unknown oauth-subs method autoUpdate
+
+### 现象
+关于页勾选「检测到新版本时自动更新」立刻失败，红字 `unknown oauth-subs method autoUpdate`，checkbox 弹回未选。
+
+### 根因
+前端已热更，宿主 Cordis 进程仍是旧 RPC 表，没有 `autoUpdate`。失败后 `snap.autoUpdate` 仍为空，受控 checkbox 被打回。
+
+### 修复
+勾选先写入 localStorage 并乐观更新 UI；RPC 缺失时静默忽略；宿主就绪后再把本地偏好同步上去。
+
+## 2026-09-06：关于页未展示 DSH 本机与官方/npm 最新版本
+
+### 现象
+关于页 DeepSeek Harness 本机版本为 —；官方 Tag / npm 版本曾整块缺失。后来 Tag 与 npm 能显示，但仍提示「请在终端重启 dsh web」，且无法选定版本回退。
+
+### 根因
+宿主进程未加载新后端时 `dshUpdate` RPC 不存在；本机探测不能在浏览器里完成。安装成功后只提示手动重启，没有版本下拉。
+
+### 修复
+去掉重启提示；npm 版本下拉支持升级/回退；安装成功后自动重启 `dsh web`。
+
 ## 2026-09-06：DSH 官方 GitHub Tag 无法直接通过 git/tarball 作为 npm 包安装
 
 ### 现象
