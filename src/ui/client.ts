@@ -778,9 +778,14 @@ window.__ModuleLoader__.load({
 .osubs-btn[disabled] { opacity: .45; cursor: default; background: transparent; border-color: var(--osubs-edge); }
 .osubs-btn--primary {
   height: 36px; padding: 0 16px; font-size: 13px; font-weight: 600;
-  border-color: transparent; background: var(--osubs-fill-2);
+  border-color: transparent;
+  background: var(--dsw-alias-button-primary-fill, var(--osubs-fill-2));
+  color: var(--dsw-alias-label-primary-foreground, inherit);
 }
-.osubs-btn--primary:hover { background: color-mix(in oklab, currentColor 19%, transparent); border-color: transparent; }
+.osubs-btn--primary:hover {
+  background: var(--dsw-alias-button-primary-hover, color-mix(in oklab, currentColor 19%, transparent));
+  border-color: transparent;
+}
 .osubs-btn--danger {
   font-weight: 600;
   color: var(--osubs-bad);
@@ -856,7 +861,7 @@ window.__ModuleLoader__.load({
   cursor: pointer;
   transition: background-color 160ms cubic-bezier(0.16, 1, 0.3, 1), color 160ms cubic-bezier(0.16, 1, 0.3, 1);
 }
-.osubs-tab--on { background: var(--osubs-fill-2); }
+.osubs-tab--on { background: var(--osubs-fill-2); box-shadow: inset 0 0 0 1px var(--osubs-edge); }
 .osubs-tab:focus-visible { outline: 2px solid var(--osubs-ring); outline-offset: 1px; }
 .osubs-tab-icon { width: 18px; height: 18px; display: block; flex: none; }
 .osubs-about { display: flex; flex-direction: column; gap: var(--osubs-s3); font-size: 13px; line-height: 1.45; }
@@ -983,6 +988,14 @@ window.__ModuleLoader__.load({
   line-height: 1.4; white-space: nowrap;
 }
 .osubs-tag--plain { text-transform: none; letter-spacing: .02em; }
+.osubs-tag--on {
+  color: var(--osubs-ok);
+  background: color-mix(in oklab, var(--osubs-ok) 16%, transparent);
+}
+.osubs-tag--fast {
+  color: var(--osubs-warn);
+  background: color-mix(in oklab, var(--osubs-warn) 14%, transparent);
+}
 
 .osubs-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; overflow-wrap: anywhere; }
 .osubs-hint {
@@ -1003,7 +1016,7 @@ window.__ModuleLoader__.load({
 .osubs-input::placeholder { color: var(--osubs-faint); }
 .osubs-input:focus-visible { outline: 2px solid var(--osubs-ring); outline-offset: 1px; }
 
-.osubs-link { font-size: 12.5px; color: inherit; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: color-mix(in oklab, currentColor 35%, transparent); width: fit-content; transition: text-decoration-color 140ms cubic-bezier(0.16, 1, 0.3, 1); }
+.osubs-link { font-size: 12.5px; color: inherit; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: color-mix(in oklab, currentColor 55%, transparent); width: fit-content; transition: text-decoration-color 140ms cubic-bezier(0.16, 1, 0.3, 1); }
 .osubs-link:hover { text-decoration-color: currentColor; }
 
 .osubs-quota { display: flex; flex-direction: column; gap: 12px; padding-top: 12px; border-top: 1px solid var(--osubs-hair); }
@@ -1718,7 +1731,7 @@ window.__ModuleLoader__.load({
             h('div', { className: 'osubs-acct-row' },
               h('span', { className: 'osubs-mono' }, identityOf(row, id)),
               planLabel && h('span', { className: 'osubs-tag' }, planLabel),
-              row.active && h('span', { className: 'osubs-tag' }, t.inUse),
+              row.active && h('span', { className: 'osubs-tag osubs-tag--on' }, t.inUse),
               id === 'glm' && row.region && h('span', { className: 'osubs-tag' }, regionLabel(row.region)),
               id === 'kiro' && row.methodLabel && h('span', { className: 'osubs-tag' }, row.methodLabel),
               (id === 'cursor' || id === 'ollama' || id === 'kimi' || id === 'copilot') && row.methodLabel && h('span', { className: 'osubs-tag' }, row.methodLabel),
@@ -2221,7 +2234,7 @@ window.__ModuleLoader__.load({
         }),
         h('span', null, model.name),
         model.large && h('span', { className: 'osubs-tag' }, t.largeTag),
-        model.fast && h('span', { className: 'osubs-tag' }, t.fastTag),
+        model.fast && h('span', { className: 'osubs-tag osubs-tag--fast' }, t.fastTag),
       )
     }
 
