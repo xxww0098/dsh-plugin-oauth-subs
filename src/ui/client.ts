@@ -839,9 +839,7 @@ window.__ModuleLoader__.load({
   box-shadow: 0 1px 0 var(--osubs-line);
 }
 .osubs-pane { display: flex; flex-direction: column; gap: var(--osubs-s4); min-width: 0; }
-.osubs-pane > * {
-  animation: osubs-pane-in 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
-}
+.osubs-pane-panel[hidden] { display: none !important; }
 .osubs-tabs {
   display: grid; grid-template-columns: repeat(8, 36px); justify-content: space-between;
   gap: 4px; padding: 4px; flex: 1 1 auto;
@@ -1172,10 +1170,6 @@ window.__ModuleLoader__.load({
 .osubs-model > span { flex: 1 1 auto; font-size: 12.5px; overflow-wrap: anywhere; }
 
 @keyframes osubs-pulse { 0%, 100% { opacity: 1 } 50% { opacity: .3 } }
-@keyframes osubs-pane-in {
-  from { opacity: 0; clip-path: inset(0 0 8% 0); }
-  to { opacity: 1; clip-path: inset(0); }
-}
 @keyframes osubs-fade { from { opacity: 0 } to { opacity: 1 } }
 @keyframes osubs-dialog-in {
   from { opacity: 0; transform: translateY(10px) scale(0.98); }
@@ -1186,7 +1180,6 @@ window.__ModuleLoader__.load({
   to { opacity: 1; transform: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .osubs-pane > *,
   .osubs-dsw-mask,
   .osubs-dsw-card,
   .osubs-hold-tip { animation: none !important; }
@@ -2269,7 +2262,6 @@ window.__ModuleLoader__.load({
 
     function ModelPicker({ t, catalog, onToggle, onFamily, onOpenFamily }) {
       const groups = Array.isArray(catalog) ? catalog : []
-      if (groups.length === 0) return null
       return h('section', { className: 'osubs-card' },
         h('header', { className: 'osubs-card-head' },
           h('h3', { className: 'osubs-card-title' }, t.modelsTitle),
@@ -2823,6 +2815,13 @@ window.__ModuleLoader__.load({
         return h('p', { className: 'osubs-hint' }, t.noRpc)
       }
 
+      const panel = (id, child) => h('div', {
+        key: id,
+        hidden: tab !== id,
+        className: 'osubs-pane-panel',
+        role: 'tabpanel',
+      }, child)
+
       const card = (id, title) => h(ProviderCard, {
         t,
         id,
@@ -2860,23 +2859,23 @@ window.__ModuleLoader__.load({
         ),
         h('div', { className: 'osubs-pane' },
           error && h('p', { className: 'osubs-hint osubs-bad' }, error),
-          tab === 'codex' && card('codex', t.codexTitle),
-          tab === 'grok' && card('grok', t.grokTitle),
-          tab === 'glm' && card('glm', t.glmTitle),
-          tab === 'kiro' && card('kiro', t.kiroTitle),
-          tab === 'antigravity' && card('antigravity', t.antigravityTitle),
-          tab === 'cursor' && card('cursor', t.cursorTitle),
-          tab === 'ollama' && card('ollama', t.ollamaTitle),
-          tab === 'kimi' && card('kimi', t.kimiTitle),
-          tab === 'copilot' && card('copilot', t.copilotTitle),
-          tab === 'models' && h(ModelPicker, {
+          panel('codex', card('codex', t.codexTitle)),
+          panel('grok', card('grok', t.grokTitle)),
+          panel('glm', card('glm', t.glmTitle)),
+          panel('kiro', card('kiro', t.kiroTitle)),
+          panel('antigravity', card('antigravity', t.antigravityTitle)),
+          panel('cursor', card('cursor', t.cursorTitle)),
+          panel('ollama', card('ollama', t.ollamaTitle)),
+          panel('kimi', card('kimi', t.kimiTitle)),
+          panel('copilot', card('copilot', t.copilotTitle)),
+          panel('models', h(ModelPicker, {
             t,
             catalog: snap?.catalog,
             onToggle: (key, on) => run('models', { key, on }),
             onFamily: (family, on) => run('models', { family, on }),
             onOpenFamily: setTab,
-          }),
-          tab === 'about' && h(AboutPanel, {
+          })),
+          panel('about', h(AboutPanel, {
             t,
             local: snap?.update,
             update,
@@ -2890,7 +2889,7 @@ window.__ModuleLoader__.load({
             onDshCheck: (apply, targetVersion) => checkDshUpdate(apply, targetVersion),
             autoUpdate,
             onAutoUpdate: applyAutoUpdate,
-          }),
+          })),
         ),
       )
     }
