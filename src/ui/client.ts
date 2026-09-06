@@ -19,6 +19,7 @@ type ReactLike = {
   useCallback: (fn: any, deps?: any[]) => any
   useEffect: (fn: () => any, deps?: any[]) => void
   useState: <T>(initial: T | (() => T)) => [T, (next: T | ((prev: T) => T)) => void]
+  useRef: (initial?: any) => { current: any }
   Fragment?: any
 }
 
@@ -29,7 +30,7 @@ window.__ModuleLoader__.load({
   factory: (require) => {
     const module = { exports: {} as { name?: string; inject?: string[]; apply?: (ctx: any) => void } }
     const exports = module.exports
-    const { createElement: h, useCallback, useEffect, useState, Fragment } = require('react') as ReactLike
+    const { createElement: h, useCallback, useEffect, useState, useRef, Fragment } = require('react') as ReactLike
 
     function tryHost(id) {
       try { return require(id) } catch { return undefined }
@@ -454,6 +455,33 @@ window.__ModuleLoader__.load({
       const nested = rpc?.['/oauth-subs-auth'] ?? rpc?.oauthSubs
       if (nested && typeof nested[method] === 'function') return nested[method](payload)
       throw new Error('rpc')
+    }
+
+    const AUTO_UPDATE_STORE = 'dsh-plugin-oauth-subs.autoUpdate'
+
+    function readStoredAutoUpdate() {
+      try {
+        const raw = typeof localStorage === 'undefined' ? null : localStorage.getItem(AUTO_UPDATE_STORE)
+        if (!raw) return { plugin: false, dsh: false }
+        const parsed = JSON.parse(raw)
+        return { plugin: parsed?.plugin === true, dsh: parsed?.dsh === true }
+      } catch {
+        return { plugin: false, dsh: false }
+      }
+    }
+
+    function writeStoredAutoUpdate(prefs) {
+      try {
+        if (typeof localStorage === 'undefined') return
+        localStorage.setItem(AUTO_UPDATE_STORE, JSON.stringify({
+          plugin: prefs?.plugin === true,
+          dsh: prefs?.dsh === true,
+        }))
+      } catch { /* quota / private mode */ }
+    }
+
+    function isUnknownAutoUpdateMethod(message) {
+      return /unknown oauth-subs method autoUpdate/i.test(String(message || ''))
     }
 
     function fill(template, n) {
@@ -2346,7 +2374,6 @@ window.__ModuleLoader__.load({
               h('input', {
                 type: 'checkbox',
                 checked: Boolean(autoUpdate?.plugin),
-                disabled: busy,
                 onChange: (event) => onAutoUpdate({ plugin: event.currentTarget.checked }),
               }),
               h('span', null, t.autoUpdate),
@@ -2426,7 +2453,6 @@ window.__ModuleLoader__.load({
               h('input', {
                 type: 'checkbox',
                 checked: Boolean(autoUpdate?.dsh),
-                disabled: dshBusy,
                 onChange: (event) => onAutoUpdate({ dsh: event.currentTarget.checked }),
               }),
               h('span', null, t.autoUpdate),
@@ -2452,6 +2478,8 @@ window.__ModuleLoader__.load({
       const [applying, setApplying] = useState(false)
       const [dshUpdate, setDshUpdate] = useState(null)
       const [dshBusy, setDshBusy] = useState(false)
+      const [autoUpdate, setAutoUpdate] = useState(readStoredAutoUpdate)
+      const autoUpdateSynced = useRef(false)
       const [dshApplying, setDshApplying] = useState(false)
 
       const refresh = useCallback(async () => {
@@ -2510,6 +2538,7 @@ window.__ModuleLoader__.load({
           await refresh()
         } catch (caught) {
           const message = caught instanceof Error ? caught.message : String(caught)
+          if (isUnknownAutoUpdateMethod(message)) return
           setError(message === 'cursor-import-empty' ? t.cursorImportEmpty : message === 'ollama-import-empty' ? t.ollamaImportEmpty : message === 'kimi-import-empty' ? t.kimiImportEmpty : message === 'copilot-import-empty' ? t.copilotImportEmpty : message)
         }
       }
@@ -2578,6 +2607,48 @@ window.__ModuleLoader__.load({
           setDshApplying(false)
         }
       }
+
+      const applyAutoUpdate = async (patch) => {
+        const next = {
+          plugin: typeof patch.plugin === 'boolean' ? patch.plugin : autoUpdate.plugin,
+          dsh: typeof patch.dsh === 'boolean' ? patch.dsh : autoUpdate.dsh,
+        }
+        setAutoUpdate(next)
+        writeStoredAutoUpdate(next)
+        setSnap((current) => current ? { ...current, autoUpdate: next } : current)
+        try {
+          const result = await callRpc(rpc, 'autoUpdate', patch)
+          if (result && typeof result === 'object') {
+            const saved = {
+              plugin: result.plugin === true,
+              dsh: result.dsh === true,
+            }
+            setAutoUpdate(saved)
+            writeStoredAutoUpdate(saved)
+            setSnap((current) => current ? { ...current, autoUpdate: saved } : current)
+          }
+        } catch (caught) {
+          const message = caught instanceof Error ? caught.message : String(caught)
+          if (isUnknownAutoUpdateMethod(message)) return
+          setError(message)
+        }
+      }
+
+      useEffect(() => {
+        const host = snap?.autoUpdate
+        if (!host || autoUpdateSynced.current) return
+        autoUpdateSynced.current = true
+        const stored = readStoredAutoUpdate()
+        const merged = {
+          plugin: stored.plugin || host.plugin === true,
+          dsh: stored.dsh || host.dsh === true,
+        }
+        setAutoUpdate(merged)
+        writeStoredAutoUpdate(merged)
+        if (merged.plugin !== Boolean(host.plugin) || merged.dsh !== Boolean(host.dsh)) {
+          void applyAutoUpdate(merged)
+        }
+      }, [snap?.autoUpdate])
 
       useEffect(() => {
         if (tab === 'about') {
@@ -2655,8 +2726,8 @@ window.__ModuleLoader__.load({
             dshBusy,
             dshApplying,
             onDshCheck: (apply, targetVersion) => checkDshUpdate(apply, targetVersion),
-            autoUpdate: snap?.autoUpdate,
-            onAutoUpdate: (patch) => run('autoUpdate', patch),
+            autoUpdate,
+            onAutoUpdate: applyAutoUpdate,
           }),
         ),
       )

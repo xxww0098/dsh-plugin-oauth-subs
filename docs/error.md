@@ -2,6 +2,17 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-06：自动更新勾选报 unknown oauth-subs method autoUpdate
+
+### 现象
+关于页勾选「检测到新版本时自动更新」立刻失败，红字 `unknown oauth-subs method autoUpdate`，checkbox 弹回未选。
+
+### 根因
+前端已热更，宿主 Cordis 进程仍是旧 RPC 表，没有 `autoUpdate`。失败后 `snap.autoUpdate` 仍为空，受控 checkbox 被打回。
+
+### 修复
+勾选先写入 localStorage 并乐观更新 UI；RPC 缺失时静默忽略；宿主就绪后再把本地偏好同步上去。
+
 ## 2026-09-06：关于页未展示 DSH 本机与官方/npm 最新版本
 
 ### 现象
