@@ -848,6 +848,7 @@ window.__ModuleLoader__.load({
 }
 .osubs-kv-row > :first-child { color: var(--osubs-muted); flex: none; }
 .osubs-kv-row > :last-child { text-align: right; }
+.osubs-kv-value { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; text-align: right; }
 .osubs-select {
   appearance: none; font: inherit; font-size: 13px; line-height: 1.45;
   color: inherit; cursor: pointer; text-align: right;
@@ -2540,7 +2541,10 @@ window.__ModuleLoader__.load({
             ),
             h('div', { className: 'osubs-kv-row' },
               h('span', null, t.dshLatestTag),
-              aboutLink(dshTag?.url, dshTag?.tag),
+              h('div', { className: 'osubs-kv-value' },
+                aboutLink(dshTag?.url, dshTag?.tag),
+                h('span', { className: 'osubs-note' }, dshTag?.publishedAt || '—'),
+              ),
             ),
             h('div', { className: 'osubs-kv-row' },
               h('span', null, t.dshNpmVersion),
@@ -2574,10 +2578,6 @@ window.__ModuleLoader__.load({
                   }),
                 ),
               ),
-            ),
-            h('div', { className: 'osubs-kv-row' },
-              h('span', null, t.dshPublishedAt),
-              h('span', null, dshTag?.publishedAt || '—'),
             ),
             dshHint && h('p', { className: 'osubs-hint' + (dshTone ? ' ' + dshTone : '') }, dshHint),
             dshApply && h('p', { className: 'osubs-hint' + (dshApplyTone ? ' ' + dshApplyTone : '') }, dshApply),
