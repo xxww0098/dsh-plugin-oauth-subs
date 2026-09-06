@@ -2461,9 +2461,7 @@ window.__ModuleLoader__.load({
                 }),
               ),
             ),
-            h(HoldTip, { label: update?.status === 'update' ? fill(t.willUpdate, latest?.tag || '') : t.checkUpdate },
-              h(Button, { size: 'sm', mark: update?.status === 'update', onClick: onCheck, disabled: busy, label: busy ? (applying ? t.updateInstalling : t.checking) : t.checkUpdate }),
-            ),
+            h(Button, { size: 'sm', mark: update?.status === 'update', onClick: onCheck, disabled: busy, label: busy ? (applying ? t.updateInstalling : t.checking) : t.checkUpdate }),
           ),
         ),
         h('div', { className: 'osubs-about' },
@@ -2523,7 +2521,7 @@ window.__ModuleLoader__.load({
       const dshCmp = dshChoice && dshVersion !== '—' ? compareAboutVersions(dshChoice, dshVersion) : 0
       const dshCanApply = Boolean(dshChoice) && matchListedVersion(dshVersions, dshChoice) && (dshVersion === '—' || !listedLocal || dshChoice !== listedLocal)
       const dshSwitchLabel = dshVersion === '—' ? t.dshInstallAction : dshCmp < 0 ? t.dshRollbackAction : t.dshApplyUpdate
-      const dshBtnLabel = dshBusy && !dshApplying ? t.checking : t.dshCheckUpdate
+      const dshBtnLabel = dshApplying ? t.dshUpdating : dshBusy ? t.checking : t.dshCheckUpdate
 
       const dshCard = h('section', { className: 'osubs-card' },
         h('header', { style: { display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' } },
@@ -2539,19 +2537,17 @@ window.__ModuleLoader__.load({
                 }),
               ),
             ),
-            h(HoldTip, { label: t.dshCheckUpdate },
-              h(Button, {
-                size: 'sm',
-                disabled: dshBusy,
-                mark: Boolean((dshUpdate?.canUpdate || dshUpdate?.status === 'update') && dshNpm?.version),
-                label: dshBtnLabel,
-                onClick: () => {
-                  const npmVer = dshNpm?.version
-                  const shouldApply = Boolean((dshUpdate?.canUpdate || dshUpdate?.status === 'update') && npmVer)
-                  onDshCheck(shouldApply, shouldApply ? npmVer : undefined)
-                },
-              }),
-            ),
+            h(Button, {
+              size: 'sm',
+              disabled: dshBusy,
+              mark: Boolean((dshUpdate?.canUpdate || dshUpdate?.status === 'update') && dshNpm?.version),
+              label: dshBtnLabel,
+              onClick: () => {
+                const npmVer = dshNpm?.version
+                const shouldApply = Boolean((dshUpdate?.canUpdate || dshUpdate?.status === 'update') && npmVer)
+                onDshCheck(shouldApply, shouldApply ? npmVer : undefined)
+              },
+            }),
           ),
         ),
         h('div', { className: 'osubs-about' },
