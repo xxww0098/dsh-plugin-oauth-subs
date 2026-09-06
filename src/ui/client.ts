@@ -506,8 +506,8 @@ window.__ModuleLoader__.load({
       } catch { /* quota / private mode */ }
     }
 
-    function isUnknownAutoUpdateMethod(message) {
-      return /unknown oauth-subs method autoUpdate/i.test(String(message || ''))
+    function isUnknownOauthMethod(message) {
+      return /unknown oauth-subs method /i.test(String(message || ''))
     }
 
     function fill(template, n) {
@@ -1216,15 +1216,21 @@ window.__ModuleLoader__.load({
     function HoldTip({ label, children }) {
       const [open, setOpen] = useState(false)
       const timer = useRef(0)
+      const shown = useRef(false)
       const clear = () => {
         clearTimeout(timer.current)
         timer.current = 0
+        if (!shown.current) return
+        shown.current = false
         setOpen(false)
       }
       const start = (event) => {
-        if (event.pointerType === 'mouse' && event.button !== 0) return
+        if (event.button != null && event.button !== 0) return
         clearTimeout(timer.current)
-        timer.current = setTimeout(() => setOpen(true), HOLD_TIP_MS)
+        timer.current = setTimeout(() => {
+          shown.current = true
+          setOpen(true)
+        }, HOLD_TIP_MS)
       }
       useEffect(() => () => clearTimeout(timer.current), [])
       if (!label) return children
@@ -2513,7 +2519,11 @@ window.__ModuleLoader__.load({
                 size: 'sm',
                 disabled: dshBusy,
                 label: dshBtnLabel,
-                onClick: () => onDshCheck(false),
+                onClick: () => {
+                  const npmVer = dshNpm?.version
+                  const shouldApply = Boolean((dshUpdate?.canUpdate || dshUpdate?.status === 'update') && npmVer)
+                  onDshCheck(shouldApply, shouldApply ? npmVer : undefined)
+                },
               }),
             ),
           ),
@@ -2650,7 +2660,7 @@ window.__ModuleLoader__.load({
           await refresh()
         } catch (caught) {
           const message = caught instanceof Error ? caught.message : String(caught)
-          if (isUnknownAutoUpdateMethod(message)) return
+          if (isUnknownOauthMethod(message)) return
           setError(message === 'cursor-import-empty' ? t.cursorImportEmpty : message === 'ollama-import-empty' ? t.ollamaImportEmpty : message === 'kimi-import-empty' ? t.kimiImportEmpty : message === 'copilot-import-empty' ? t.copilotImportEmpty : message)
         }
       }
@@ -2679,9 +2689,10 @@ window.__ModuleLoader__.load({
               if (apply || res.latestTag || res.npm || res.version) return res
             }
           } catch (rpcErr) {
-            if (apply) throw rpcErr
+            const message = rpcErr instanceof Error ? rpcErr.message : String(rpcErr)
+            if (apply && !isUnknownOauthMethod(message)) throw rpcErr
           }
-          if (!apply) {
+          if (!apply || !res) {
             const fallback = await fetchClientDshLatest()
             const currentVer = fresherAboutVersion(res?.version || snap?.dshUpdate?.version, fresherAboutVersion(dshUpdate?.version, staticDshVersion())) || ''
             const canUpdate = Boolean(fallback.npm?.version && currentVer && compareAboutVersions(fallback.npm.version, currentVer) > 0)
@@ -2741,7 +2752,7 @@ window.__ModuleLoader__.load({
           }
         } catch (caught) {
           const message = caught instanceof Error ? caught.message : String(caught)
-          if (isUnknownAutoUpdateMethod(message)) return
+          if (isUnknownOauthMethod(message)) return
           setError(message)
         }
       }
