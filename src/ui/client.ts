@@ -765,7 +765,7 @@ window.__ModuleLoader__.load({
   background: transparent; color: inherit;
   font: inherit; font-size: 12px; font-weight: 500; line-height: 1;
   white-space: nowrap; cursor: pointer; appearance: none; -webkit-appearance: none;
-  transition: background-color 120ms ease, border-color 120ms ease;
+  transition: background-color 140ms cubic-bezier(0.16, 1, 0.3, 1), border-color 140ms cubic-bezier(0.16, 1, 0.3, 1), color 140ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 140ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 .osubs-btn:hover { background: var(--osubs-fill); border-color: color-mix(in oklab, currentColor 45%, transparent); }
 .osubs-btn:active { background: var(--osubs-fill-2); }
@@ -838,6 +838,9 @@ window.__ModuleLoader__.load({
   background: var(--dsw-alias-bg-layer-2, Canvas);
 }
 .osubs-pane { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.osubs-pane > * {
+  animation: osubs-pane-in 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
 .osubs-tabs {
   display: grid; grid-template-columns: repeat(8, 36px); justify-content: space-between;
   gap: 4px; padding: 4px; flex: 1 1 auto;
@@ -856,6 +859,7 @@ window.__ModuleLoader__.load({
   border: 0; border-radius: 9px;
   background: transparent; color: inherit;
   cursor: pointer;
+  transition: background-color 160ms cubic-bezier(0.16, 1, 0.3, 1), color 160ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 .osubs-tab--on { background: var(--osubs-fill-2); }
 .osubs-tab:focus-visible { outline: 2px solid var(--osubs-ring); outline-offset: 1px; }
@@ -904,6 +908,7 @@ window.__ModuleLoader__.load({
   background: var(--dsw-alias-bg-layer-2);
   border: 1px solid var(--osubs-line); border-radius: 8px;
   pointer-events: none;
+  animation: osubs-tip-in 140ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 .osubs-acct {
   display: flex; flex-direction: column; gap: 12px; width: 100%;
@@ -911,6 +916,7 @@ window.__ModuleLoader__.load({
   border: 1px solid var(--osubs-line); border-radius: 12px;
   background: transparent; color: inherit; font: inherit; text-align: left;
   cursor: pointer;
+  transition: border-color 180ms cubic-bezier(0.16, 1, 0.3, 1), background-color 180ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 .osubs-acct--on { border-color: var(--osubs-edge); background: var(--osubs-fill); }
 .osubs-acct-head {
@@ -1009,7 +1015,7 @@ window.__ModuleLoader__.load({
 .osubs-input::placeholder { color: var(--osubs-faint); }
 .osubs-input:focus-visible { outline: 2px solid var(--osubs-ring); outline-offset: 1px; }
 
-.osubs-link { font-size: 12.5px; color: inherit; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: color-mix(in oklab, currentColor 35%, transparent); width: fit-content; }
+.osubs-link { font-size: 12.5px; color: inherit; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: color-mix(in oklab, currentColor 35%, transparent); width: fit-content; transition: text-decoration-color 140ms cubic-bezier(0.16, 1, 0.3, 1); }
 .osubs-link:hover { text-decoration-color: currentColor; }
 
 .osubs-quota { display: flex; flex-direction: column; gap: 12px; padding-top: 12px; border-top: 1px solid var(--osubs-hair); }
@@ -1028,7 +1034,7 @@ window.__ModuleLoader__.load({
 .osubs-qmeter { display: flex; flex-direction: column; gap: 4px; }
 .osubs-qreset { font-size: 11px; color: var(--osubs-faint); text-align: right; line-height: 1.35; }
 .osubs-bar { height: 6px; border-radius: 99px; background: var(--osubs-hair); overflow: hidden; }
-.osubs-bar > i { display: block; height: 100%; border-radius: 99px; transform-origin: left center; transition: transform 340ms cubic-bezier(.2,.8,.2,1), background-color 240ms ease; }
+.osubs-bar > i { display: block; height: 100%; border-radius: 99px; transform-origin: left center; transition: transform 340ms cubic-bezier(0.16, 1, 0.3, 1), background-color 220ms cubic-bezier(0.16, 1, 0.3, 1); }
 .osubs-qbox {
   display: flex; flex-direction: column; gap: 10px;
   margin-top: 2px; padding: 12px;
@@ -1056,9 +1062,11 @@ window.__ModuleLoader__.load({
   position: absolute; inset: 0;
   background: var(--dsw-alias-bg-mask-1, rgba(0, 0, 0, .24));
   backdrop-filter: var(--dsw-mask-blur, blur(2px));
+  animation: osubs-fade 240ms ease-out both;
 }
 .osubs-dsw-card {
   position: relative; z-index: 1;
+  animation: osubs-dialog-in 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
   display: flex; flex-direction: column; gap: 20px;
   width: min(440px, 100%);
   max-height: calc(100vh - 48px);
@@ -1158,7 +1166,30 @@ window.__ModuleLoader__.load({
 .osubs-model > span { flex: 1 1 auto; font-size: 12.5px; overflow-wrap: anywhere; }
 
 @keyframes osubs-pulse { 0%, 100% { opacity: 1 } 50% { opacity: .3 } }
-@media (prefers-reduced-motion: reduce) { .osubs *, .osubs *::before { animation: none !important; transition: none !important; } }
+@keyframes osubs-pane-in {
+  from { opacity: 0; clip-path: inset(0 0 10% 0); filter: blur(4px); }
+  to { opacity: 1; clip-path: inset(0); filter: none; }
+}
+@keyframes osubs-fade { from { opacity: 0 } to { opacity: 1 } }
+@keyframes osubs-dialog-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes osubs-tip-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .osubs-pane > *,
+  .osubs-dsw-mask,
+  .osubs-dsw-card,
+  .osubs-hold-tip { animation: none !important; }
+  .osubs-btn--update,
+  .osubs-btn--update::after,
+  .osubs-status--busy::before { animation: none !important; }
+  .osubs-bar > i { transition: background-color 160ms ease; }
+  .osubs-dsw-card { transform: none; }
+}
 `
 
     function ensureStyles() {
