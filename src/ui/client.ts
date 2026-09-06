@@ -223,6 +223,7 @@ window.__ModuleLoader__.load({
         platformMac: 'macOS',
         platformLinux: 'Linux',
         published: '发布于 {n}',
+        publishedAt: '发布于',
         pluginAboutTitle: 'OAuth 订阅插件',
         dshTitle: 'DeepSeek Harness',
         dshRepo: '官方仓库',
@@ -230,6 +231,7 @@ window.__ModuleLoader__.load({
         dshLatestTag: 'GitHub 最新 Tag',
         dshNpmVersion: 'npm 最新版本',
         dshTagPublished: 'Tag 发布于 {n}',
+        dshPublishedAt: 'Tag 发布于',
         dshCheckUpdate: '检查更新',
         dshUpdateAction: '更新宿主',
         dshRollbackAction: '回退',
@@ -423,6 +425,7 @@ window.__ModuleLoader__.load({
         platformMac: 'macOS',
         platformLinux: 'Linux',
         published: 'Published {n}',
+        publishedAt: 'Published',
         pluginAboutTitle: 'OAuth Subs Plugin',
         dshTitle: 'DeepSeek Harness',
         dshRepo: 'Official Repo',
@@ -430,6 +433,7 @@ window.__ModuleLoader__.load({
         dshLatestTag: 'Latest GitHub Tag',
         dshNpmVersion: 'Latest npm Release',
         dshTagPublished: 'Tag published {n}',
+        dshPublishedAt: 'Tag published',
         dshCheckUpdate: 'Check for updates',
         dshUpdateAction: 'Update DSH',
         dshRollbackAction: 'Roll back',
@@ -2215,7 +2219,14 @@ window.__ModuleLoader__.load({
     function platformLabel(t, id) {
       if (id === 'win') return t.platformWin
       if (id === 'mac') return t.platformMac
-      return t.platformLinux
+      if (id === 'linux') return t.platformLinux
+      return '—'
+    }
+
+    function aboutLink(href, text) {
+      const label = text || '—'
+      if (!href || label === '—') return h('span', null, label)
+      return h('a', { className: 'osubs-link', href, target: '_blank', rel: 'noreferrer' }, label)
     }
 
     function statusLabel(t, update) {
@@ -2446,11 +2457,14 @@ window.__ModuleLoader__.load({
               h('span', null, t.os),
               h('span', null, platformLabel(t, host)),
             ),
-            latest?.tag && h('div', { className: 'osubs-kv-row' },
+            h('div', { className: 'osubs-kv-row' },
               h('span', null, t.latest),
-              h('span', null, latest.tag),
+              aboutLink(latest?.url, latest?.tag),
             ),
-            latest?.publishedAt && h('p', { className: 'osubs-note' }, fill(t.published, latest.publishedAt)),
+            h('div', { className: 'osubs-kv-row' },
+              h('span', null, t.publishedAt),
+              h('span', null, latest?.publishedAt || '—'),
+            ),
             update?.status && h('p', { className: `osubs-hint${tone ? ` ${tone}` : ''}` }, statusLabel(t, update)),
             stale && disk && h('p', { className: 'osubs-hint osubs-warn' }, fill(t.updateStaleProcess, disk)),
             apply && h('p', { className: `osubs-hint${applyTone ? ` ${applyTone}` : ''}` }, apply),
@@ -2514,28 +2528,27 @@ window.__ModuleLoader__.load({
               h('span', null, t.dshInstalled),
               h('span', null, dshVersion),
             ),
-            dshTag?.tag && h('div', { className: 'osubs-kv-row' },
+            h('div', { className: 'osubs-kv-row' },
               h('span', null, t.dshLatestTag),
-              h('a', { className: 'osubs-link', href: dshTag.url, target: '_blank', rel: 'noreferrer' }, dshTag.tag),
+              aboutLink(dshTag?.url, dshTag?.tag),
             ),
-            dshNpm?.version && h('div', { className: 'osubs-kv-row' },
+            h('div', { className: 'osubs-kv-row' },
               h('span', null, t.dshNpmVersion),
-              h('a', {
-                className: 'osubs-link',
-                href: 'https://www.npmjs.com/package/' + (dshEffective?.npmPackage || '@deepseek-ai/dsh') + '/v/' + dshNpm.version,
-                target: '_blank',
-                rel: 'noreferrer',
-              }, dshNpm.version),
+              aboutLink(
+                dshNpm?.version ? 'https://www.npmjs.com/package/' + (dshEffective?.npmPackage || '@deepseek-ai/dsh') + '/v/' + dshNpm.version : '',
+                dshNpm?.version,
+              ),
             ),
-            dshVersionOptions.length > 0 && h('div', { className: 'osubs-kv-row' },
+            h('div', { className: 'osubs-kv-row' },
               h('span', null, t.dshPickVersion),
               h('div', { className: 'osubs-version-pick' },
                 h('select', {
                   className: 'osubs-select',
-                  value: dshChoice,
-                  disabled: dshBusy,
+                  value: dshChoice || '',
+                  disabled: dshBusy || dshVersionOptions.length === 0,
                   onChange: (event) => setDshPicked(event.target.value),
-                }, dshVersionOptions.map((ver) => {
+                }, (dshVersionOptions.length ? dshVersionOptions : ['']).map((ver) => {
+                  if (!ver) return h('option', { key: '', value: '' }, '—')
                   const tags = dshNpm?.distTags || {}
                   const marks = Object.keys(tags).filter((key) => tags[key] === ver)
                   if (listedLocal === ver || ver === dshVersion) marks.unshift(t.dshOnThisMachine)
@@ -2552,7 +2565,10 @@ window.__ModuleLoader__.load({
                 ),
               ),
             ),
-            dshTag?.publishedAt && h('p', { className: 'osubs-note' }, fill(t.dshTagPublished, dshTag.publishedAt)),
+            h('div', { className: 'osubs-kv-row' },
+              h('span', null, t.dshPublishedAt),
+              h('span', null, dshTag?.publishedAt || '—'),
+            ),
             dshHint && h('p', { className: 'osubs-hint' + (dshTone ? ' ' + dshTone : '') }, dshHint),
             dshApply && h('p', { className: 'osubs-hint' + (dshApplyTone ? ' ' + dshApplyTone : '') }, dshApply),
           ),
