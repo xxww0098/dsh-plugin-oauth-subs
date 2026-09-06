@@ -3,7 +3,7 @@
  * Codex PKCE (+ paste callback + import), Grok device-code (primary) + PKCE fallback.
  */
 
-import { dirname } from 'node:path'
+import { dirname, join } from 'node:path'
 import { OAuthFlowManager } from './flow.js'
 import { DeviceFlowManager } from './grok/device-flow.js'
 import { GlmCliFlowManager } from './glm/cli-flow.js'
@@ -117,9 +117,10 @@ import {
   applyHostDshUpdate,
   scheduleDshWebRestart,
 } from '../utils/update.js'
+import { AUTO_UPDATE_INTERVAL_MS, defaultUpdatePrefs, readUpdatePrefs, updatePrefsPath, writeUpdatePrefs } from '../utils/update-prefs.js'
 
 export class AuthController {
-  constructor({ authPath, prefix, origin, settings, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, spawnFn, profile, readFileFn, updateEnv, exitFn, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover }) {
+  constructor({ authPath, prefix, origin, settings, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, spawnFn, profile, readFileFn, updateEnv, exitFn, prefsPath, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover }) {
     this.authPath = authPath
     this.prefix = prefix
     this.origin = origin
@@ -127,6 +128,11 @@ export class AuthController {
     this.grokLogin = grokLogin
     this.spawnFn = spawnFn
     this.exitFn = exitFn
+    this.prefsPath = prefsPath || updatePrefsPath(dirname(authPath))
+    this.autoUpdate = defaultUpdatePrefs()
+    this.prefsReady = this.#loadUpdatePrefs()
+    this.autoUpdateBusy = false
+    this.autoUpdateTimer = undefined
     this.profile = profile || DEFAULT_PROFILE
     this.readFileFn = readFileFn
     this.updateEnv = updateEnv
@@ -361,6 +367,7 @@ export class AuthController {
 
   async snapshot() {
     await this.models.ready
+    await this.prefsReady
     await this.#resolveGlmIdentities()
     await this.#maybeAutoImportCursor()
     await this.#resolveCursorIdentities()
@@ -448,6 +455,7 @@ export class AuthController {
         env: this.updateEnv ?? process.env,
         readFileFn: this.readFileFn,
       }),
+      autoUpdate: { ...this.autoUpdate },
     }
   }
 
@@ -560,6 +568,10 @@ export class AuthController {
       const disk = result.after || next.disk
       if (result.ok) {
         const caughtUp = Boolean(version && info.latest?.tag && compareVersions(version, info.latest.tag) >= 0)
+        if (payload.restart === true) {
+          scheduleDshWebRestart({ spawnFn: this.spawnFn, env: profileOpts.env })
+          if (typeof this.exitFn === 'function') setTimeout(() => this.exitFn(0), 200)
+        }
         return {
           ...info,
           ...next,
@@ -642,6 +654,59 @@ export class AuthController {
         canUpdate: false,
         apply: { status: 'none' },
       }
+    }
+  }
+
+  async #loadUpdatePrefs() {
+    this.autoUpdate = await readUpdatePrefs(this.prefsPath)
+    return this.autoUpdate
+  }
+
+  async setAutoUpdate(payload = {}) {
+    await this.prefsReady
+    const next = {
+      plugin: typeof payload.plugin === 'boolean' ? payload.plugin : this.autoUpdate.plugin,
+      dsh: typeof payload.dsh === 'boolean' ? payload.dsh : this.autoUpdate.dsh,
+    }
+    this.autoUpdate = await writeUpdatePrefs(this.prefsPath, next)
+    if (this.autoUpdate.plugin || this.autoUpdate.dsh) await this.runAutoUpdate()
+    return { ...this.autoUpdate }
+  }
+
+  startAutoUpdateWatch({ intervalMs = AUTO_UPDATE_INTERVAL_MS } = {}) {
+    if (this.autoUpdateTimer) return
+    void this.runAutoUpdate()
+    this.autoUpdateTimer = setInterval(() => void this.runAutoUpdate(), intervalMs)
+    this.autoUpdateTimer.unref?.()
+  }
+
+  stopAutoUpdateWatch() {
+    if (!this.autoUpdateTimer) return
+    clearInterval(this.autoUpdateTimer)
+    this.autoUpdateTimer = undefined
+  }
+
+  async runAutoUpdate() {
+    if (this.autoUpdateBusy) return { plugin: null, dsh: null }
+    this.autoUpdateBusy = true
+    try {
+      await this.prefsReady
+      let plugin = null
+      let dsh = null
+      if (this.autoUpdate.plugin) {
+        plugin = await this.checkUpdate({ apply: true, restart: false })
+      }
+      if (this.autoUpdate.dsh) {
+        dsh = await this.checkDshUpdate({ apply: true })
+        if (dsh?.apply?.restart) return { plugin, dsh }
+      }
+      if (plugin?.apply?.status === 'installed') {
+        scheduleDshWebRestart({ spawnFn: this.spawnFn, env: this.updateEnv ?? process.env })
+        if (typeof this.exitFn === 'function') setTimeout(() => this.exitFn(0), 200)
+      }
+      return { plugin, dsh }
+    } finally {
+      this.autoUpdateBusy = false
     }
   }
 

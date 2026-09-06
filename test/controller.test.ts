@@ -735,3 +735,67 @@ test('checkDshUpdate apply rolls back to an older npm version', async () => {
   assert.equal(result.apply.restart, true)
 })
 
+test('snapshot includes autoUpdate prefs defaulting to off', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const controller = new AuthController({
+    authPath: join(dir, 'auth.json'),
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+  })
+  const snap = await controller.snapshot()
+  assert.deepEqual(snap.autoUpdate, { plugin: false, dsh: false })
+})
+
+test('setAutoUpdate persists plugin and dsh flags independently', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const controller = new AuthController({
+    authPath: join(dir, 'auth.json'),
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+    spawnFn: () => { throw new Error('spawn') },
+    fetchFn: async () => new Response('{}'),
+  })
+  const pluginOn = await controller.setAutoUpdate({ plugin: true })
+  assert.deepEqual(pluginOn, { plugin: true, dsh: false })
+  const both = await controller.setAutoUpdate({ dsh: true })
+  assert.deepEqual(both, { plugin: true, dsh: true })
+  const pluginOff = await controller.setAutoUpdate({ plugin: false })
+  assert.deepEqual(pluginOff, { plugin: false, dsh: true })
+  const snap = await controller.snapshot()
+  assert.deepEqual(snap.autoUpdate, { plugin: false, dsh: true })
+})
+
+test('runAutoUpdate applies DSH when checkbox is on and npm has a newer version', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const seen = []
+  const fetchFn = async (url) => {
+    const s = String(url)
+    if (s.includes('/tags')) return new Response(JSON.stringify([{ name: 'dsh-v0.1.3' }]))
+    if (s.includes('registry.npmjs.org')) {
+      return new Response(JSON.stringify({ 'dist-tags': { latest: '0.1.3' }, versions: { '0.1.3': {} } }))
+    }
+    if (s.includes('/releases/latest')) {
+      return new Response(JSON.stringify({ tag_name: 'v0.0.78', published_at: '2026-09-06T00:00:00Z' }))
+    }
+    return new Response('{}')
+  }
+  const controller = new AuthController({
+    authPath: join(dir, 'auth.json'),
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+    fetchFn,
+    spawnFn: (cmd, args, opts) => {
+      seen.push({ cmd, args })
+      return spawnChild(0)
+    },
+  })
+  await controller.setAutoUpdate({ dsh: true })
+  const result = await controller.runAutoUpdate()
+  assert.equal(seen.some((row) => row.cmd === 'npm' && row.args.includes('@deepseek-ai/dsh@0.1.3')), true)
+  assert.equal(result.dsh.apply.status, 'installed')
+})
+
+

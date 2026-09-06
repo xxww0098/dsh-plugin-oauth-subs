@@ -234,6 +234,7 @@ window.__ModuleLoader__.load({
         dshUpdateUnchanged: 'npm 执行成功但版本未变：{n}',
         dshUpdateMissingNpm: 'PATH 上找不到 npm。确认已安装 Node.js 与 npm。',
         dshUpdateTimeout: '更新命令执行超时。',
+        autoUpdate: '检测到新版本时自动更新',
       },
       en: {
         nav: 'OAuth subs',
@@ -428,6 +429,7 @@ window.__ModuleLoader__.load({
         dshUpdateUnchanged: 'Command succeeded but version unchanged: {n}',
         dshUpdateMissingNpm: 'npm was not found on PATH. Confirm Node.js and npm are installed.',
         dshUpdateTimeout: 'Update timed out.',
+        autoUpdate: 'Auto-update when a new version is found',
       },
     }
 
@@ -804,6 +806,15 @@ window.__ModuleLoader__.load({
 }
 .osubs-select:focus-visible { outline: 2px solid var(--osubs-ring); outline-offset: 1px; }
 .osubs-select:disabled { opacity: 0.55; cursor: default; }
+.osubs-auto {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; line-height: 1.45; cursor: pointer; color: inherit;
+}
+.osubs-auto input {
+  flex: none; width: 14px; height: 14px; margin: 0;
+  accent-color: currentColor; cursor: pointer;
+}
+.osubs-auto:has(input:focus-visible) { outline: 2px solid var(--osubs-ring); outline-offset: 2px; border-radius: 6px; }
 .osubs-acct {
   display: flex; flex-direction: column; gap: 12px; width: 100%;
   padding: 14px 16px 16px;
@@ -2280,6 +2291,8 @@ window.__ModuleLoader__.load({
       dshBusy,
       dshApplying,
       onDshCheck,
+      autoUpdate,
+      onAutoUpdate,
     }) {
       const repo = local?.repo || update?.repo || 'https://github.com/xxww0098/dsh-plugin-oauth-subs'
       const slug = local?.repoSlug || update?.repoSlug || 'xxww0098/dsh-plugin-oauth-subs'
@@ -2329,6 +2342,15 @@ window.__ModuleLoader__.load({
               h('span', null, latest.tag),
             ),
             latest?.publishedAt && h('p', { className: 'osubs-note' }, fill(t.published, latest.publishedAt)),
+            h('label', { className: 'osubs-auto' },
+              h('input', {
+                type: 'checkbox',
+                checked: Boolean(autoUpdate?.plugin),
+                disabled: busy,
+                onChange: (event) => onAutoUpdate({ plugin: event.currentTarget.checked }),
+              }),
+              h('span', null, t.autoUpdate),
+            ),
             update?.status && h('p', { className: `osubs-hint${tone ? ` ${tone}` : ''}` }, statusLabel(t, update)),
             stale && disk && h('p', { className: 'osubs-hint osubs-warn' }, fill(t.updateStaleProcess, disk)),
             apply && h('p', { className: `osubs-hint${applyTone ? ` ${applyTone}` : ''}` }, apply),
@@ -2400,6 +2422,15 @@ window.__ModuleLoader__.load({
               })),
             ),
             dshTag?.publishedAt && h('p', { className: 'osubs-note' }, fill(t.dshTagPublished, dshTag.publishedAt)),
+            h('label', { className: 'osubs-auto' },
+              h('input', {
+                type: 'checkbox',
+                checked: Boolean(autoUpdate?.dsh),
+                disabled: dshBusy,
+                onChange: (event) => onAutoUpdate({ dsh: event.currentTarget.checked }),
+              }),
+              h('span', null, t.autoUpdate),
+            ),
             dshHint && h('p', { className: 'osubs-hint' + (dshTone ? ' ' + dshTone : '') }, dshHint),
             dshApply && h('p', { className: 'osubs-hint' + (dshApplyTone ? ' ' + dshApplyTone : '') }, dshApply),
           ),
@@ -2624,6 +2655,8 @@ window.__ModuleLoader__.load({
             dshBusy,
             dshApplying,
             onDshCheck: (apply, targetVersion) => checkDshUpdate(apply, targetVersion),
+            autoUpdate: snap?.autoUpdate,
+            onAutoUpdate: (patch) => run('autoUpdate', patch),
           }),
         ),
       )

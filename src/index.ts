@@ -101,6 +101,7 @@ function registerRpc(ctx, controller) {
       reset: (payload) => controller.consumeReset(payload?.provider, payload?.id),
       update: (payload) => controller.checkUpdate(payload),
       dshUpdate: (payload) => controller.checkDshUpdate(payload),
+      autoUpdate: (payload) => controller.setAutoUpdate(payload),
     }
     return rpc.handle('/oauth-subs-auth', async (endpoint, payload) => {
       const fn = methods[endpoint]
@@ -204,6 +205,11 @@ export function apply(ctx, config = {}) {
   }, 'dsh-plugin-oauth-subs: local responses proxy')
 
   registerRpc(ctx, controller)
+
+  ctx.effect(() => {
+    controller.startAutoUpdateWatch()
+    return () => controller.stopAutoUpdateWatch()
+  }, 'dsh-plugin-oauth-subs: auto-update watch')
 }
 
 export {

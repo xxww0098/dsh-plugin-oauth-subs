@@ -4,7 +4,7 @@
  */
 export declare class AuthController {
     #private;
-    constructor({ authPath, prefix, origin, settings, grokLogin, onAuthChanged, models, fetchFn, quotaTtlMs, spawnFn, profile, readFileFn, updateEnv, exitFn, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover }: {
+    constructor({ authPath, prefix, origin, settings, grokLogin, onAuthChanged, models, fetchFn, quotaTtlMs, spawnFn, profile, readFileFn, updateEnv, exitFn, prefsPath, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover }: {
         authPath: any;
         prefix: any;
         origin: any;
@@ -19,6 +19,7 @@ export declare class AuthController {
         readFileFn: any;
         updateEnv: any;
         exitFn: any;
+        prefsPath: any;
         cursorAutoImport: any;
         cursorImport: any;
         cursorDiscover: any;
@@ -4089,6 +4090,7 @@ export declare class AuthController {
             repoSlug: string;
             npmPackage: string;
         };
+        autoUpdate: any;
     }>;
     refreshQuota(provider: any, accountId: any): any;
     consumeReset(provider: any, accountId: any): Promise<any>;
@@ -4314,6 +4316,15 @@ export declare class AuthController {
         repo: string;
         repoSlug: string;
         npmPackage: string;
+    }>;
+    setAutoUpdate(payload?: {}): Promise<any>;
+    startAutoUpdateWatch({ intervalMs }?: {
+        intervalMs?: number;
+    }): void;
+    stopAutoUpdateWatch(): void;
+    runAutoUpdate(): Promise<{
+        plugin: any;
+        dsh: any;
     }>;
     login(provider: any, options: any): Promise<{
         authorizeUrl: any;
@@ -8463,6 +8474,7 @@ export declare class AuthController {
             repoSlug: string;
             npmPackage: string;
         };
+        autoUpdate: any;
     }>;
     importFrom(provider: any): Promise<{
         source: any;
@@ -12494,6 +12506,7 @@ export declare class AuthController {
             repoSlug: string;
             npmPackage: string;
         };
+        autoUpdate: any;
     }>;
     sync(selected: any, options?: {}): Promise<{
         routes: {
