@@ -898,6 +898,7 @@ window.__ModuleLoader__.load({
 .osubs-kv-value { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: baseline; gap: 6px var(--osubs-s2); text-align: right; }
 .osubs-kv-value .osubs-note { white-space: nowrap; }
 .osubs-kv-value .osubs-note:not(:first-child)::before { content: '· '; color: var(--osubs-faint); }
+.osubs-kv-value .osubs-note:not(:last-child)::after { content: ' ·'; color: var(--osubs-faint); }
 .osubs-select {
   appearance: none; font: inherit; font-size: 13px; line-height: 1.45;
   color: inherit; cursor: pointer; text-align: right;
@@ -2593,8 +2594,8 @@ window.__ModuleLoader__.load({
             h('div', { className: 'osubs-kv-row' },
               h('span', null, t.dshLatestTag),
               h('div', { className: 'osubs-kv-value' },
-                aboutLink(dshTag?.url, dshTag?.tag),
                 Boolean(dshTag?.publishedAt) && h('span', { className: 'osubs-note' }, dshTag.publishedAt),
+                aboutLink(dshTag?.url, dshTag?.tag),
               ),
             ),
             h('div', { className: 'osubs-kv-row' },

@@ -375,6 +375,14 @@ test('About Installed prefers the fresher of checkUpdate and snapshot', async ()
   assert.match(src, /setSnap\(\(current\) => current \? \{ \.\.\.current, update: \{ \.\.\.current\.update, \.\.\.result \} \}/)
 })
 
+test('About DSH GitHub latest tag shows published time before the tag', async () => {
+  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  const row = src.match(/t\.dshLatestTag[\s\S]*?t\.dshNpmVersion/)?.[0] ?? ''
+  assert.match(row, /Boolean\(dshTag\?\.publishedAt\) && h\('span', \{ className: 'osubs-note' \}, dshTag\.publishedAt\),\s*aboutLink\(dshTag\?\.url, dshTag\?\.tag\)/)
+  assert.equal(/aboutLink\(dshTag\?\.url, dshTag\?\.tag\),\s*Boolean\(dshTag\?\.publishedAt\)/.test(row), false)
+  assert.match(src, /\.osubs-kv-value \.osubs-note:not\(:last-child\)::after \{ content: ' ·'/)
+})
+
 test('QuotaResetBox enables only the earliest expiring credit button and disables the rest', async () => {
   const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
   assert.match(src, /let closestIndex = credits\.length > 0 \? 0 : -1/)
