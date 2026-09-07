@@ -31,6 +31,7 @@ import {
   fetchDshLatest,
   dshUpdateArgs,
   dshUpdateCommand,
+  dshInstallPrefix,
   applyHostDshUpdate,
   listDshInstallVersions,
   scheduleDshWebRestart,
@@ -342,6 +343,14 @@ test('dshUpdateArgs and dshUpdateCommand construct global npm install args', () 
   assert.deepEqual(dshUpdateArgs('0.1.3-alpha.1'), ['install', '-g', '@deepseek-ai/dsh@0.1.3-alpha.1'])
   assert.equal(dshUpdateCommand(), 'npm install -g @deepseek-ai/dsh@latest')
   assert.equal(dshUpdateCommand('0.1.2-rc.1'), 'npm install -g @deepseek-ai/dsh@0.1.2-rc.1')
+  assert.deepEqual(dshUpdateArgs('0.1.2-rc.1', '/opt/homebrew'), ['install', '-g', '--prefix', '/opt/homebrew', '@deepseek-ai/dsh@0.1.2-rc.1'])
+})
+
+test('dshInstallPrefix derives the npm global prefix only from npm layouts', () => {
+  assert.equal(dshInstallPrefix('/opt/homebrew/lib/node_modules/@deepseek-ai/dsh/package.json', 'darwin'), '/opt/homebrew')
+  assert.equal(dshInstallPrefix('C:\\Users\\me\\AppData\\Roaming\\npm\\node_modules\\@deepseek-ai\\dsh\\package.json', 'win32'), 'C:\\Users\\me\\AppData\\Roaming\\npm')
+  assert.equal(dshInstallPrefix('/Users/me/Library/pnpm/global/5/node_modules/@deepseek-ai/dsh/package.json', 'darwin'), '')
+  assert.equal(dshInstallPrefix('', 'darwin'), '')
 })
 
 test('localDshInfo returns default repo info even if DSH binary is not found', () => {
@@ -351,12 +360,12 @@ test('localDshInfo returns default repo info even if DSH binary is not found', (
   assert.equal(info.platform, 'linux')
 })
 
-test('resolveDshInstall locates package via direct package.json when bin is absent', () => {
-  const existsSyncFn = (p) => p.includes('node_modules/@deepseek-ai/dsh/package.json')
+test('resolveDshInstall ignores PATH, $_ and global-prefix copies that are not this process', () => {
+  const existsSyncFn = (p) => p.startsWith('/other/')
+  const realpathFn = () => '/other/lib/node_modules/@deepseek-ai/dsh/lib/bin.js'
   const readFileFn = () => JSON.stringify({ name: '@deepseek-ai/dsh', version: '0.1.2-rc.1' })
-  const result = resolveDshInstall('linux', { PATH: '' }, { existsSyncFn, readFileFn })
-  assert.equal(result?.version, '0.1.2-rc.1')
-  assert.match(result?.packagePath || '', /@deepseek-ai\/dsh\/package\.json/)
+  const env = { PATH: '/other/bin', _: '/other/bin/dsh' }
+  assert.equal(resolveDshInstall('linux', env, { existsSyncFn, realpathFn, readFileFn }), undefined)
 })
 
 test('resolveDshInstall locates package via binary realpath tree', () => {
@@ -434,21 +443,43 @@ test('fetchDshLatest reports current when installed matches latest release', asy
   assert.equal(info.canUpdate, false)
 })
 
-test('applyHostDshUpdate spawns npm and reports installed on exit 0', async () => {
+function fakeDshFs(version) {
+  const bin = '/opt/homebrew/bin/dsh'
+  const pkg = '/opt/homebrew/lib/node_modules/@deepseek-ai/dsh/package.json'
+  const state = { version }
+  return {
+    state,
+    env: { DSH_BIN_PATH: bin, PATH: '' },
+    existsSyncFn: (p) => p === bin || p === pkg,
+    realpathFn: () => '/opt/homebrew/lib/node_modules/@deepseek-ai/dsh/lib/bin.js',
+    readFileFn: (p) => (p === pkg ? JSON.stringify({ name: '@deepseek-ai/dsh', version: state.version }) : ''),
+  }
+}
+
+test('applyHostDshUpdate installs into the running prefix and reports installed once the copy matches', async () => {
+  const fs = fakeDshFs('0.1.2-alpha.5')
   const seen = []
   const spawnFn = (cmd, args, opts) => {
     seen.push({ cmd, args })
+    fs.state.version = '0.1.2-rc.1'
     return fakeChild({ code: 0 })(cmd, args, opts)
   }
-  const result = await applyHostDshUpdate({
-    spawnFn,
-    targetVersion: '0.1.3',
-    env: { PATH: '/bin:/usr/bin' },
-  })
+  const result = await applyHostDshUpdate({ spawnFn, targetVersion: '0.1.2-rc.1', ...fs })
   assert.equal(result.ok, true)
   assert.equal(result.status, 'installed')
+  assert.equal(result.before, '0.1.2-alpha.5')
+  assert.equal(result.after, '0.1.2-rc.1')
   assert.equal(seen[0].cmd, 'npm')
-  assert.deepEqual(seen[0].args, ['install', '-g', '@deepseek-ai/dsh@0.1.3'])
+  assert.deepEqual(seen[0].args, ['install', '-g', '--prefix', '/opt/homebrew', '@deepseek-ai/dsh@0.1.2-rc.1'])
+})
+
+test('applyHostDshUpdate is not ok when npm exits 0 but the running copy keeps the old version', async () => {
+  const fs = fakeDshFs('0.1.2-alpha.5')
+  const result = await applyHostDshUpdate({ spawnFn: fakeChild({ code: 0 }), targetVersion: '0.1.2-rc.1', ...fs })
+  assert.equal(result.ok, false)
+  assert.equal(result.status, 'installed-unchanged')
+  assert.equal(result.after, '0.1.2-alpha.5')
+  assert.match(result.error, /0\.1\.2-alpha\.5 · \/opt\/homebrew\/lib\/node_modules\/@deepseek-ai\/dsh/)
 })
 
 test('applyHostDshUpdate reports failed on nonzero exit', async () => {

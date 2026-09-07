@@ -133,6 +133,8 @@ export class AuthController {
     this.prefsReady = this.#loadUpdatePrefs()
     this.autoUpdateBusy = false
     this.autoUpdateTimer = undefined
+    /** npm target that exited 0 but never reached the running copy; auto ticks skip it, a click retries. */
+    this.dshStuckTarget = undefined
     this.profile = profile || DEFAULT_PROFILE
     this.readFileFn = readFileFn
     this.updateEnv = updateEnv
@@ -612,7 +614,7 @@ export class AuthController {
         return { ...info, apply: { status: 'none' } }
       }
       const want = targetVersion || (info.canUpdate ? info.npm?.version : undefined)
-      if (!want) {
+      if (!want || (payload?.auto === true && want === this.dshStuckTarget)) {
         return { ...info, apply: { status: 'none' } }
       }
       const result = await applyHostDshUpdate({
@@ -621,6 +623,7 @@ export class AuthController {
         readFileFn: this.readFileFn,
         env: opts.env,
       })
+      this.dshStuckTarget = result.status === 'installed-unchanged' ? want : undefined
       const next = localDshInfo(process.platform, opts)
       const version = next.version || result.after || info.version
       if (result.ok) {
@@ -697,7 +700,7 @@ export class AuthController {
         plugin = await this.checkUpdate({ apply: true, restart: false })
       }
       if (this.autoUpdate.dsh) {
-        dsh = await this.checkDshUpdate({ apply: true })
+        dsh = await this.checkDshUpdate({ apply: true, auto: true })
         if (dsh?.apply?.restart) return { plugin, dsh }
       }
       if (plugin?.apply?.status === 'installed') {

@@ -312,6 +312,7 @@ export {
   localDshInfo,
   fetchDshLatest,
   dshUpdateCommand,
+  dshInstallPrefix,
   applyHostDshUpdate,
   listDshInstallVersions,
   scheduleDshWebRestart,

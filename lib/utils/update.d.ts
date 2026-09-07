@@ -158,19 +158,27 @@ export declare const DSH_NPM_REGISTRY_API = "https://registry.npmjs.org/@deepsee
 export declare const DSH_UPDATE_TIMEOUT_MS = 180000;
 /** npm registry versions newest-first; only these can be installed with npm -g. */
 export declare function listDshInstallVersions(npmData: any): string[];
-export declare function resolveDshInstall(platform?: NodeJS.Platform, env?: NodeJS.ProcessEnv, { realpathFn, readFileFn, existsSyncFn }?: {
+/**
+ * The `@deepseek-ai/dsh` copy this process runs from: `DSH_BIN_PATH`, else the
+ * entry script (`process.argv[1]`), realpath'd and walked up to its
+ * package.json. Nothing else is consulted: `$_`, PATH `dsh`, global prefixes
+ * and `dsh --version` all named some *other* install (the running Homebrew
+ * copy vs `npm prefix -g`), so About flipped between versions and the updater
+ * chased a copy that was not the one serving the page.
+ */
+export declare function resolveDshInstall(_platform?: NodeJS.Platform, env?: NodeJS.ProcessEnv, { realpathFn, readFileFn, existsSyncFn }?: {
     realpathFn?: typeof realpathSync;
     readFileFn?: typeof readFileSync;
     existsSyncFn?: typeof existsSync;
 }): {
-    binPath: any;
+    binPath: string;
     realPath: string;
     packagePath: string;
     version: any;
 };
 export declare function localDshInfo(platform?: NodeJS.Platform, opts?: {}): {
     version: any;
-    binPath: any;
+    binPath: string;
     realPath: string;
     packagePath: string;
     platform: string;
@@ -199,7 +207,7 @@ export declare function fetchDshLatest({ fetchFn, current, platform, timeoutMs, 
         distTags: {};
         versions: any[];
     };
-    binPath: any;
+    binPath: string;
     realPath: string;
     packagePath: string;
     platform: string;
@@ -207,8 +215,14 @@ export declare function fetchDshLatest({ fetchFn, current, platform, timeoutMs, 
     repoSlug: string;
     npmPackage: string;
 }>;
-export declare function dshUpdateArgs(targetVersion: any): string[];
-export declare function dshUpdateCommand(targetVersion: any): string;
+/**
+ * npm global prefix that owns `packagePath` — `<prefix>/lib/node_modules/…`
+ * on POSIX, `<prefix>/node_modules/…` on Windows. '' for pnpm / bun / unknown
+ * layouts, which fall back to npm's own `prefix -g`.
+ */
+export declare function dshInstallPrefix(packagePath: any, platform?: NodeJS.Platform): string;
+export declare function dshUpdateArgs(targetVersion: any, prefix?: string): string[];
+export declare function dshUpdateCommand(targetVersion: any, prefix?: string): string;
 export declare const DSH_HOST_VERSION_STAMP_RE: RegExp;
 export declare function pluginClientJsPath(): string;
 /** Write local DSH version into the served client.js static file. */

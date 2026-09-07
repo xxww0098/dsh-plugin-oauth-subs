@@ -13,7 +13,7 @@
  * `dsh plugin update` is `pnpm update` and can no-op on a git spec.
  */
 
-import { spawn, spawnSync } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
@@ -516,142 +516,46 @@ export function listDshInstallVersions(npmData) {
   return unique.filter((value) => parseVersion(value)).sort((left, right) => compareVersions(right, left))
 }
 
+/**
+ * The `@deepseek-ai/dsh` copy this process runs from: `DSH_BIN_PATH`, else the
+ * entry script (`process.argv[1]`), realpath'd and walked up to its
+ * package.json. Nothing else is consulted: `$_`, PATH `dsh`, global prefixes
+ * and `dsh --version` all named some *other* install (the running Homebrew
+ * copy vs `npm prefix -g`), so About flipped between versions and the updater
+ * chased a copy that was not the one serving the page.
+ */
 export function resolveDshInstall(
-  platform = process.platform,
+  _platform = process.platform,
   env = process.env,
   { realpathFn = realpathSync, readFileFn = readFileSync, existsSyncFn = existsSync } = {},
 ) {
-  const isWin = platform === 'win32'
-  const userHome = homedir()
-  const candidates = []
-  if (env.DSH_BIN_PATH) candidates.push(env.DSH_BIN_PATH)
-  if (typeof process.argv?.[1] === 'string' && process.argv[1]) candidates.push(process.argv[1])
-  if (typeof env._ === 'string' && env._) candidates.push(env._)
-  if (isWin) {
-    candidates.push(
-      join(userHome, 'AppData', 'Roaming', 'npm', 'dsh.cmd'),
-      join(userHome, 'AppData', 'Roaming', 'npm', 'dsh'),
-    )
-  } else {
-    candidates.push(
-      join(userHome, '.local', 'bin', 'dsh'),
-      '/usr/local/bin/dsh',
-      '/opt/homebrew/bin/dsh',
-    )
-  }
-  const pathDirs = (env.PATH || '').split(isWin ? ';' : ':').filter(Boolean)
-  for (const dir of pathDirs) {
-    candidates.push(join(dir, isWin ? 'dsh.cmd' : 'dsh'))
-  }
-
+  const candidates = [env.DSH_BIN_PATH, process.argv?.[1]].filter((value) => typeof value === 'string' && value)
   for (const bin of candidates) {
-    if (existsSyncFn(bin)) {
-      try {
-        const real = realpathFn(bin)
-        let dir = dirname(real)
-        for (let i = 0; i < 5; i++) {
-          const pkgPath = join(dir, 'package.json')
-          if (existsSyncFn(pkgPath)) {
-            const raw = readFileFn(pkgPath, 'utf8')
-            const text = typeof raw === 'string' ? raw : String(raw ?? '')
-            const parsed = JSON.parse(text)
-            if (parsed?.name === DSH_NPM_PACKAGE) {
-              return {
-                binPath: bin,
-                realPath: real,
-                packagePath: pkgPath,
-                version: typeof parsed.version === 'string' ? parsed.version : '',
-              }
+    if (!existsSyncFn(bin)) continue
+    try {
+      const real = realpathFn(bin)
+      let dir = dirname(real)
+      for (let i = 0; i < 5; i++) {
+        const pkgPath = join(dir, 'package.json')
+        if (existsSyncFn(pkgPath)) {
+          const parsed = JSON.parse(String(readFileFn(pkgPath, 'utf8') ?? ''))
+          if (parsed?.name === DSH_NPM_PACKAGE) {
+            return {
+              binPath: bin,
+              realPath: real,
+              packagePath: pkgPath,
+              version: typeof parsed.version === 'string' ? parsed.version : '',
             }
           }
-          const parent = dirname(dir)
-          if (parent === dir) break
-          dir = parent
         }
-      } catch {
-        // try next
-      }
-    }
-  }
-
-  const directPkgPaths = isWin
-    ? [
-        join(userHome, 'AppData', 'Roaming', 'npm', 'node_modules', '@deepseek-ai', 'dsh', 'package.json'),
-        join(userHome, 'AppData', 'Local', 'pnpm', 'global', '5', 'node_modules', '@deepseek-ai', 'dsh', 'package.json'),
-      ]
-    : [
-        join(userHome, '.local', 'lib', 'node_modules', '@deepseek-ai', 'dsh', 'package.json'),
-        '/opt/homebrew/lib/node_modules/@deepseek-ai/dsh/package.json',
-        '/usr/local/lib/node_modules/@deepseek-ai/dsh/package.json',
-        join(userHome, '.config', 'yarn', 'global', 'node_modules', '@deepseek-ai', 'dsh', 'package.json'),
-        join(userHome, 'Library', 'pnpm', 'global', '5', 'node_modules', '@deepseek-ai', 'dsh', 'package.json'),
-        join(userHome, '.local', 'share', 'pnpm', 'global', '5', 'node_modules', '@deepseek-ai', 'dsh', 'package.json'),
-        join(userHome, '.bun', 'install', 'global', 'node_modules', '@deepseek-ai', 'dsh', 'package.json'),
-      ]
-
-  for (const pkgPath of directPkgPaths) {
-    if (existsSyncFn(pkgPath)) {
-      try {
-        const raw = readFileFn(pkgPath, 'utf8')
-        const text = typeof raw === 'string' ? raw : String(raw ?? '')
-        const parsed = JSON.parse(text)
-        if (parsed?.name === DSH_NPM_PACKAGE) {
-          return {
-            binPath: 'dsh',
-            realPath: pkgPath,
-            packagePath: pkgPath,
-            version: typeof parsed.version === 'string' ? parsed.version : '',
-          }
-        }
-      } catch {
-        // try next
-      }
-    }
-  }
-
-  const profilePkg = join(dshHome(env), 'profiles', 'web', 'package.json')
-  if (existsSyncFn(profilePkg)) {
-    try {
-      const req = createRequire(profilePkg)
-      const resolvedPkg = req.resolve(`${DSH_NPM_PACKAGE}/package.json`)
-      if (existsSyncFn(resolvedPkg)) {
-        const raw = readFileFn(resolvedPkg, 'utf8')
-        const text = typeof raw === 'string' ? raw : String(raw ?? '')
-        const parsed = JSON.parse(text)
-        if (parsed?.name === DSH_NPM_PACKAGE) {
-          return {
-            binPath: 'dsh',
-            realPath: resolvedPkg,
-            packagePath: resolvedPkg,
-            version: typeof parsed.version === 'string' ? parsed.version : '',
-          }
-        }
+        const parent = dirname(dir)
+        if (parent === dir) break
+        dir = parent
       }
     } catch {
       // try next
     }
   }
-
-  try {
-    const result = spawnSync(DSH_BIN, ['--version'], {
-      encoding: 'utf8',
-      timeout: 4000,
-      env,
-      stdio: ['ignore', 'pipe', 'ignore'],
-    })
-    const parsed = parseVersion(result.stdout)
-    if (parsed) {
-      return {
-        binPath: DSH_BIN,
-        realPath: DSH_BIN,
-        packagePath: '',
-        version: parsed.raw,
-      }
-    }
-  } catch {
-    // dsh --version unavailable
-  }
-
   return undefined
 }
 
@@ -790,13 +694,28 @@ export async function fetchDshLatest({
   }
 }
 
-export function dshUpdateArgs(targetVersion) {
-  const pkg = targetVersion ? `${DSH_NPM_PACKAGE}@${targetVersion}` : `${DSH_NPM_PACKAGE}@latest`
-  return ['install', '-g', pkg]
+/**
+ * npm global prefix that owns `packagePath` — `<prefix>/lib/node_modules/…`
+ * on POSIX, `<prefix>/node_modules/…` on Windows. '' for pnpm / bun / unknown
+ * layouts, which fall back to npm's own `prefix -g`.
+ */
+export function dshInstallPrefix(packagePath, platform = process.platform) {
+  const parts = String(packagePath || '').split(/[\\/]/)
+  const idx = parts.lastIndexOf('node_modules')
+  if (idx < 1 || parts.slice(idx + 1).join('/') !== `${DSH_NPM_PACKAGE}/package.json`) return ''
+  const head = parts.slice(0, idx)
+  if (platform === 'win32') return head.join('\\')
+  if (head.pop() !== 'lib') return ''
+  return head.join('/')
 }
 
-export function dshUpdateCommand(targetVersion) {
-  return ['npm', ...dshUpdateArgs(targetVersion)].join(' ')
+export function dshUpdateArgs(targetVersion, prefix = '') {
+  const pkg = targetVersion ? `${DSH_NPM_PACKAGE}@${targetVersion}` : `${DSH_NPM_PACKAGE}@latest`
+  return ['install', '-g', ...(prefix ? ['--prefix', prefix] : []), pkg]
+}
+
+export function dshUpdateCommand(targetVersion, prefix = '') {
+  return ['npm', ...dshUpdateArgs(targetVersion, prefix)].join(' ')
 }
 
 export const DSH_HOST_VERSION_STAMP_RE = /const DSH_HOST_VERSION_STAMP = (['"])([^'"]*)\1/
@@ -860,7 +779,8 @@ export async function applyHostDshUpdate({
   const homeEnv = env ?? process.env
   const beforeInfo = localDshInfo(process.platform, { env: homeEnv, readFileFn, realpathFn, existsSyncFn })
   const before = beforeInfo.version || 'unknown'
-  const argv = dshUpdateArgs(targetVersion)
+  // Install over the copy this process runs from; `npm prefix -g` may point elsewhere and leave it untouched.
+  const argv = dshUpdateArgs(targetVersion, dshInstallPrefix(beforeInfo.packagePath, process.platform))
   const command = ['npm', ...argv].join(' ')
 
   const pathWithDefaults = (current) => {
@@ -931,12 +851,21 @@ export async function applyHostDshUpdate({
       const afterInfo = localDshInfo(process.platform, { env: homeEnv, readFileFn, realpathFn, existsSyncFn })
       const after = afterInfo.version || before
       if (code === 0) {
+        // Exit 0 only proves npm ran. Restart only once the running copy reports the target exactly;
+        // otherwise the re-exec'd dsh is still behind, sees the same update, installs and restarts forever.
+        const want = parseVersion(targetVersion)?.raw
+        const landed = want ? parseVersion(after)?.raw === want : after !== before
+        if (landed) {
+          finish({ ok: true, status: 'installed', command, before, after })
+          return
+        }
         finish({
-          ok: true,
-          status: 'installed',
+          ok: false,
+          status: 'installed-unchanged',
           command,
           before,
           after,
+          error: afterInfo.packagePath ? `${after} · ${dirname(afterInfo.packagePath)}` : after,
         })
         return
       }
