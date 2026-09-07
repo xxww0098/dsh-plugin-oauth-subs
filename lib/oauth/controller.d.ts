@@ -4082,7 +4082,7 @@ export declare class AuthController {
         };
         dshUpdate: {
             version: any;
-            binPath: any;
+            binPath: string;
             realPath: string;
             packagePath: string;
             platform: string;
@@ -4257,7 +4257,7 @@ export declare class AuthController {
             distTags: {};
             versions: any[];
         };
-        binPath: any;
+        binPath: string;
         realPath: string;
         packagePath: string;
         platform: string;
@@ -4274,7 +4274,7 @@ export declare class AuthController {
             restart: any;
             after: any;
         };
-        binPath: any;
+        binPath: string;
         realPath: string;
         packagePath: string;
         platform: string;
@@ -4309,7 +4309,7 @@ export declare class AuthController {
             after?: undefined;
         };
         version: any;
-        binPath: any;
+        binPath: string;
         realPath: string;
         packagePath: string;
         platform: string;
@@ -8466,7 +8466,7 @@ export declare class AuthController {
         };
         dshUpdate: {
             version: any;
-            binPath: any;
+            binPath: string;
             realPath: string;
             packagePath: string;
             platform: string;
@@ -12498,7 +12498,7 @@ export declare class AuthController {
         };
         dshUpdate: {
             version: any;
-            binPath: any;
+            binPath: string;
             realPath: string;
             packagePath: string;
             platform: string;
