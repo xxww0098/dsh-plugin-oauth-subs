@@ -420,6 +420,8 @@ function decodePayload(text) {
   }
 }
 
+const KIRO_EVENTSTREAM_MAX_FRAME_BYTES = 16 * 1024 * 1024
+
 export class KiroEventStreamParser {
   constructor() {
     this.buf = Buffer.alloc(0)
@@ -430,15 +432,16 @@ export class KiroEventStreamParser {
     const events = []
     while (this.buf.length >= 12) {
       const totalLen = this.buf.readUInt32BE(0)
-      if (totalLen < 16 || totalLen > 16 * 1024 * 1024) break
-      if (this.buf.length < totalLen) break
+      if (totalLen < 16 || totalLen > KIRO_EVENTSTREAM_MAX_FRAME_BYTES) {
+        throw new Error(`kiro eventstream invalid frame length ${totalLen}; expected 16..${KIRO_EVENTSTREAM_MAX_FRAME_BYTES} bytes`)
+      }
       const headersLen = this.buf.readUInt32BE(4)
       const headerEnd = 12 + headersLen
       const payloadEnd = totalLen - 4
       if (headerEnd > payloadEnd) {
-        this.buf = this.buf.subarray(totalLen)
-        continue
+        throw new Error(`kiro eventstream invalid header length ${headersLen}; frame length ${totalLen} permits at most ${totalLen - 16} bytes`)
       }
+      if (this.buf.length < totalLen) break
       const headers = parseEventHeaders(this.buf.subarray(12, headerEnd))
       const payload = decodePayload(this.buf.subarray(headerEnd, payloadEnd).toString('utf8'))
       events.push({
@@ -449,6 +452,12 @@ export class KiroEventStreamParser {
       this.buf = this.buf.subarray(totalLen)
     }
     return events
+  }
+
+  finish() {
+    if (this.buf.length) {
+      throw new Error(`kiro eventstream truncated frame at EOF; ${this.buf.length} buffered bytes remain`)
+    }
   }
 }
 
@@ -461,7 +470,10 @@ export function parseKiroEventStream(buffer) {
       // fall through to frame parse
     }
   }
-  return new KiroEventStreamParser().feed(buf)
+  const parser = new KiroEventStreamParser()
+  const events = parser.feed(buf)
+  parser.finish()
+  return events
 }
 
 export function mergeKiroText(previous, chunk) {

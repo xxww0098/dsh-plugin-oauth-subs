@@ -739,9 +739,9 @@ test('replaceAccountId moves the vault key without dropping the session', async 
   const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
   const path = join(dir, 'auth.json')
   const session = glmSession({ accessToken: 'a.b', account: 'zcode', region: 'bigmodel' })
-  await saveSession('glm', { ...session, account: 'zcode' }, path)
+  const source = await saveSession('glm', { ...session, account: 'zcode' }, path)
   const next = { ...session, account: 'moved@bigmodel.cn' }
-  await replaceAccountId('glm', 'zcode@bigmodel', next, path)
+  await replaceAccountId('glm', source, next, path)
   const roster = await listAccounts('glm', path)
   assert.equal(roster.length, 1)
   assert.equal(roster[0].id, 'moved@bigmodel.cn@bigmodel')

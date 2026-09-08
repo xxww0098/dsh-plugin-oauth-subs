@@ -20,6 +20,7 @@ Cursor 订阅（Composer / Claude / GPT / Grok via Cursor infra）。原生 wire
 | [`cache.ts`](cache.ts) | `AgentRunRequest.conversation_id` + 稳定 turn id。禁止 `Date.now()` / 每次 `randomUUID()` |
 | [`proto.ts`](proto.ts) | 最小 protobuf + Connect framing（Run / GetUsableModels / AvailableModels） |
 | [`h2-session.ts`](h2-session.ts) | Node `http2` 进程内会话（unary + streaming） |
+| [`transport.ts`](transport.ts) | Completions HTTP / SSE 输出与 Run 事件消费背压 |
 
 调度：[`../proxy.ts`](../proxy.ts) `family === 'cursor'` 剥 Codex retention，取出 `cursorConversationId`；真正组 Run 在 `openaiToCursor`。
 额度：[`../quota.ts`](../quota.ts) `fetchCursorQuota` / `parseCursorPeriodUsage`（`api2.cursor.sh` JSON，不是 agentn）。
@@ -40,6 +41,8 @@ DSH POST /cursor/v1/chat/completions
 `baseURL` 是 `${origin}/cursor`，Completions SDK 会打到 `/cursor/v1/chat/completions`。不要写成 `/cursor/v1`。
 
 非流 Completions：Run 本身是流；hop **收集整段再回一条 JSON**。不是 Codex 那种 SSE-only 拒非流。
+
+HTTP/2 请求取消 / unary 超时必须销毁该请求独占的连接，`close()` 的优雅关闭不会终止活动流；已结算后不再消费消息或写 KV 回复。预取消信号不建立连接。`onEvent` 的异步消费完成前暂停接收，SSE 背压沿调用链传回 Run。EOF 的 Connect 残帧必须报错；已输出后的异常发 OpenAI error SSE，不混入回答文字或追加 DONE。见[故障记录](../../../docs/error.md)。
 
 ## 登录
 

@@ -47,8 +47,8 @@ send. Do not vendor the other tree.
 ```text
 src/
   index.ts                 Cordis plugin apply / Config / public re-exports
-  oauth/                   subscription auth + loopback Responses proxy
-    proxy.ts
+  oauth/                   subscription auth + loopback LLM proxy
+    proxy.ts               loopback auth, routing, passthrough stream commit/retry
     controller.ts
     flow.ts                shared PKCE (Codex; Grok fallback)
     store.ts
@@ -80,11 +80,13 @@ src/
       import.ts            kami / JSON / CSV / kiro.rs / IDE SSO-cache pairing
       idc-flow.ts          AWS SSO OIDC register + JSON device poll
       request.ts           OpenAI chat ↔ generateAssistantResponse eventstream
+      transport.ts         AWS HTTP lifecycle, stream errors, tool-call deltas
       cache.ts             conversationId (never Date.now())
     antigravity/           Google Antigravity (cloudcode-pa)
       README.md
       index.ts             catalog, identity, Google OAuth, fingerprint
       request.ts           OpenAI chat ↔ generateContent
+      transport.ts         Cloud Code HTTP lifecycle and incremental UTF-8 SSE
       cache.ts             generateContent sessionId + systemInstruction pin
     cursor/                Cursor subscription (Connect/protobuf)
       README.md            family design: login, chat, quota, cache (traceable)
@@ -96,6 +98,7 @@ src/
       cache.ts             conversationId + stable turn ids; TurnEnded cache_read_tokens
       proto.ts             minimal Connect/protobuf subset
       h2-session.ts        Node http2 in-process transport
+      transport.ts         OpenAI HTTP/SSE output and Run event backpressure
     ollama/                Ollama Cloud (ollama.com API key — not localhost:11434)
       README.md            family design: login, chat, quota, cache (traceable)
       index.ts             catalog, identity, API key session, Bearer headers
@@ -119,6 +122,7 @@ src/
   ui/                      React Settings (classic-script factory)
     client.ts
   utils/                   shared, provider-agnostic
+    http.ts                HTTP responses and transport error descriptions
     jwt.ts
     pkce.ts
     fast-mode.ts

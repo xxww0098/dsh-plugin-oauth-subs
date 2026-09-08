@@ -1,13 +1,12 @@
 /**
- * Local OpenAI Responses proxy. DSH talks to 127.0.0.1:<port> via llm-pi-ai;
- * this process attaches a fresh OAuth bearer and forwards to ChatGPT Codex
- * or xAI Grok. Settings operations stay on the host-owned RPC channel.
+ * Loopback LLM proxy: authenticates DSH calls, dispatches family transports,
+ * and gates/retries passthrough streams before output. Settings operations
+ * stay on the host-owned RPC channel; vendor translation lives in each family.
  */
 export declare const MAX_REQUEST_BODY_BYTES: number;
 /** Upstream attempts before the client is told the stream failed. */
 export declare const STREAM_ATTEMPTS = 3;
-/** undici reports socket faults as a bare "fetch failed"; the cause carries the reason. */
-export declare function describeError(error: any): string;
+export { describeError } from '../utils/http.js';
 export declare function createProxy({ port, apiKey, tokens, fetchFn, maxRequestBodyBytes, onAntigravityValidation, cursorRpc }: {
     port: any;
     apiKey: any;

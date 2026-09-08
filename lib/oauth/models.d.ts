@@ -85,10 +85,11 @@ export declare function describeCatalog(providers: any, { enabledKeys, loggedIn 
 /**
  * Persisted enable/disable set for the Settings picker.
  * Default is all-on except `-900k` (opt-in; it burns quota).
- * New non-opt-in catalog ids stay on. Stored as
- * `{ "disabled": ["oauth-codex/gpt-5.4-mini"], "enabled": ["oauth-codex/gpt-5.4-900k"] }`.
+ * New non-opt-in catalog ids stay on. Explicit picker choices persist across
+ * restarts so automatic recovery cannot mistake all-off for leftover settings.
  */
 export declare class ModelSwitch {
+    #private;
     constructor({ path }?: {});
     load(): Promise<void>;
     save(): Promise<void>;
@@ -119,6 +120,7 @@ export declare class ModelSwitch {
      * Leftover 全关: every *current* catalog key for a signed-in family is
      * off (often after a catalog shrink left stale ids in `disabled`).
      * Enable the current keys so login/sync can write the DSH route.
+     * Only unmarked settings need recovery; an explicit picker choice stays off.
      * Does not resurrect retired ids or opt-in `-900k` rows.
      */
     recoverEmptyLoggedInFamilies(catalog: any, loggedIn: any): Promise<boolean>;

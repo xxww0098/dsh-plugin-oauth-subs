@@ -11,6 +11,7 @@ Google **Antigravity hub**（`Antigravity.app`），Cloud Code `daily-cloudcode-
 |---|---|
 | [`index.ts`](index.ts) | 公开 Google 客户端、hub 指纹、onboard、loadCodeAssist、套餐、模型目录 |
 | [`request.ts`](request.ts) | OpenAI chat ↔ `generateContent` / SSE；用量映射（含缓存 token） |
+| [`transport.ts`](transport.ts) | Cloud Code HTTP 生命周期、验证错误回传、增量 UTF-8 解码与 SSE 输出 |
 | [`cache.ts`](cache.ts) | `request.sessionId` + 钉住首段 `systemInstruction` / 等价 tools / `thinkingConfig`。多余快照变 **trailing user** |
 
 调度：[`../proxy.ts`](../proxy.ts) `family === 'antigravity'` 剥 retention，取出 `antigravitySessionIdOf`；真正 pin 在 `openaiToAntigravity`。
@@ -62,7 +63,7 @@ DSH chat/completions  →  POST daily-cloudcode-pa.googleapis.com/v1internal:gen
 - 转换后 **合并相邻同 role** 的 `contents`（Cloud Code 否则 400）。多余 system 快照只停在末尾，**不要**插进 model `functionCall` 组和它的 `functionResponse` 之间。
 - Gemini 3 / Cloud Code 的 `functionCall` part 必须带回原 `thoughtSignature`（[Google thought signatures](https://ai.google.dev/gemini-api/docs/thought-signatures)）。官方 wire 是 **part 级** camelCase，也接受 `thought_signature` / 嵌在 `functionCall` 里的入站。`collectAntigravityParts` 把它抄到 OpenAI `tool_calls` 的 `thoughtSignature` / `thought_signature` / `extra_content.google.thought_signature`；`openaiToAntigravity` 写回 part。DSH 若剥掉未知键，进程内按 `sessionId` + tool id / `name+args` 再贴（#72）。一组 Gemini 3 functionCall **第一条查找后仍无签名** → 丢掉这组 unsigned `functionCall`，配对的 tool 结果改成 user `[Observation from \`name\`:\n…]` 文本。Claude / GPT-OSS **仍发** unsigned `functionCall`。**不要**编空串或 `skip_thought_signature_validator`。`part.thought` 仍不进可见文本；若签名只在 thought part 上，转给随后第一条无签名的 functionCall。
 - chat 头 **只有** User-Agent。不要加 `anthropic-beta` / `Client-Metadata` / `x-goog-api-client`。
-- SSE 文本是累积的，用 `incrementalSuffix` 切成 OpenAI delta；终帧带 `mapAntigravityUsage`，否则 DSH 显示「用量 0 tok」。
+- SSE 文本是累积的，用 `incrementalSuffix` 切成 OpenAI delta；终帧带 `mapAntigravityUsage`，否则 DSH 显示「用量 0 tok」。`transport.ts` 跨网络块保持 UTF-8 解码状态，网络分片不能成为字符边界（[故障记录](../../../docs/error.md#2026-09-08antigravity-流式多字节字符损坏)）。
 
 ## 模型
 

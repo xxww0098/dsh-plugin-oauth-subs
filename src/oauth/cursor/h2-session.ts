@@ -1,6 +1,6 @@
 /**
  * In-process Node http2 client for Cursor Connect RPCs.
- * Persistent session is OK; unary GetUsableModels uses a one-shot stream.
+ * Each RPC owns a session that is destroyed when the call settles.
  * Do not add Bun.
  */
 
@@ -61,6 +61,7 @@ export async function cursorUnaryRpc({
   signal,
   timeoutMs = 8_000,
 }) {
+  signal?.throwIfAborted()
   return new Promise((resolve, reject) => {
     let settled = false
     const client = connectFn(url)
@@ -69,8 +70,10 @@ export async function cursorUnaryRpc({
       settled = true
       if (timer) clearTimeout(timer)
       signal?.removeEventListener('abort', onAbort)
-      try { client.close() } catch { /* */ }
-      if (error) reject(error instanceof Error ? error : new Error(String(error)))
+      // Unary sessions are one-shot too; close() would wait forever for a
+      // timed-out response whose stream remains open.
+      client.destroy()
+      if (error !== undefined) reject(error)
       else resolve(value)
     }
     const fail = (error) => finish(error)
@@ -78,14 +81,18 @@ export async function cursorUnaryRpc({
       ? setTimeout(() => fail(new Error('cursor unary timeout')), timeoutMs)
       : undefined
     if (typeof timer?.unref === 'function') timer.unref()
-    const onAbort = () => fail(new Error('aborted'))
+    const onAbort = () => fail(signal.reason)
     signal?.addEventListener('abort', onAbort, { once: true })
     client.on('error', (error) => fail(new Error(describeH2TransportError(error, url))))
     const stream = client.request(requestHeaders(session, { path, unary: true }))
     const chunks = []
-    stream.on('data', (chunk) => chunks.push(Buffer.from(chunk)))
+    stream.on('data', (chunk) => {
+      if (!settled) chunks.push(Buffer.from(chunk))
+    })
     stream.on('error', fail)
-    stream.on('end', () => finish(undefined, Buffer.concat(chunks)))
+    stream.on('end', () => {
+      if (!settled) finish(undefined, Buffer.concat(chunks))
+    })
     stream.end(body)
   })
 }
@@ -126,6 +133,7 @@ export async function runCursorAgent(session, built, {
   url = cursorAgentUrl() || CURSOR_AGENT_URL,
   onEvent,
 } = {}) {
+  signal?.throwIfAborted()
   const blobStore = built.blobStore ?? new Map()
   const events = []
   const collected = { text: '', thinking: '', toolCalls: [], usage: {}, error: undefined }
@@ -137,11 +145,13 @@ export async function runCursorAgent(session, built, {
       if (settled) return
       settled = true
       signal?.removeEventListener('abort', onAbort)
-      try { client.close() } catch { /* */ }
-      if (error) reject(error)
+      // Each Run owns its session. Graceful close waits for the active stream
+      // and would keep consuming upstream work after the caller has left.
+      client.destroy()
+      if (error !== undefined) reject(error)
       else resolve({ events, collected })
     }
-    const onAbort = () => finish(new Error('aborted'))
+    const onAbort = () => finish(signal.reason)
     signal?.addEventListener('abort', onAbort, { once: true })
     client.on('error', (error) => finish(new Error(describeH2TransportError(error, url))))
 
@@ -152,11 +162,12 @@ export async function runCursorAgent(session, built, {
       stream.write(frameConnect(bytes))
     }
 
-    const handle = (msg) => {
+    const handle = async (msg) => {
+      if (settled) return
       if (msg.kind === 'error') {
         collected.error = msg.message
         events.push(msg)
-        onEvent?.(msg)
+        await onEvent?.(msg)
         finish(new Error(msg.message))
         return
       }
@@ -178,7 +189,7 @@ export async function runCursorAgent(session, built, {
           })
           const event = { kind: 'interaction', toolCall: tool }
           events.push(event)
-          onEvent?.(event)
+          await onEvent?.(event)
         }
         return
       }
@@ -205,7 +216,7 @@ export async function runCursorAgent(session, built, {
           })
         }
         events.push(msg)
-        onEvent?.(msg)
+        await onEvent?.(msg)
         if (msg.turnEnded) {
           try { stream.end() } catch { /* */ }
           finish()
@@ -214,11 +225,27 @@ export async function runCursorAgent(session, built, {
       }
     }
 
-    stream.on('data', (chunk) => {
-      rest = consumeCursorFrames(chunk, rest, handle)
-    })
+    const consume = async () => {
+      try {
+        // Pull one chunk at a time: a blocked downstream consumer must stop
+        // HTTP/2 reads, not accumulate unobserved callback promises.
+        for await (const chunk of stream) {
+          if (settled) return
+          const messages = []
+          rest = consumeCursorFrames(chunk, rest, (msg) => messages.push(msg))
+          for (const msg of messages) {
+            if (settled) return
+            await handle(msg)
+          }
+        }
+        if (rest.length) throw new Error('cursor Connect stream truncated at EOF: ' + rest.length + ' buffered bytes')
+        finish()
+      } catch (error) {
+        finish(error)
+      }
+    }
     stream.on('error', (error) => finish(error))
-    stream.on('end', () => finish())
+    void consume()
     stream.write(frameConnect(built.requestBytes))
   })
 }

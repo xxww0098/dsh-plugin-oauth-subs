@@ -1,6 +1,6 @@
 /**
  * In-process Node http2 client for Cursor Connect RPCs.
- * Persistent session is OK; unary GetUsableModels uses a one-shot stream.
+ * Each RPC owns a session that is destroyed when the call settles.
  * Do not add Bun.
  */
 import http2 from 'node:http2';

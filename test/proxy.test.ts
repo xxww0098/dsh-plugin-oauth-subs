@@ -72,6 +72,28 @@ test('proxy requires the local bearer and forwards Codex Responses', async () =>
   }
 })
 
+test('proxy ends an upstream response with no body instead of hanging', async () => {
+  const proxy = createProxy({
+    port: 0,
+    apiKey: 'secret-key',
+    tokens: { codex: { session: async () => ({ accessToken: 'token' }) } },
+    fetchFn: async () => new Response(null, { status: 204 }),
+  })
+  const server = await proxy.listen()
+  try {
+    const response = await fetch('http://127.0.0.1:' + server.address().port + '/codex/v1/responses', {
+      method: 'POST',
+      headers: { authorization: 'Bearer secret-key' },
+      body: JSON.stringify({ model: 'gpt-5.3-codex' }),
+      signal: AbortSignal.timeout(1_000),
+    })
+    assert.equal(response.status, 204)
+    assert.equal(await response.text(), '')
+  } finally {
+    await proxy.close()
+  }
+})
+
 test('proxy GLM chat hop forwards ZCode Desktop 3.10.1 headers', async () => {
   const seen = []
   const fetchFn = async (url, init) => {
@@ -1146,7 +1168,7 @@ test('cursor streaming surfaces an upstream run error as JSON, not a naked strea
   }
 })
 
-test('cursor mid-stream failure surfaces the reason as content, not a bare stream end', async () => {
+test('cursor mid-stream failure surfaces a structured error without a successful terminal event', async () => {
   const proxy = createProxy({
     port: 0,
     apiKey: 'secret-key',
@@ -1156,8 +1178,10 @@ test('cursor mid-stream failure surfaces the reason as content, not a bare strea
         session: async () => ({ accessToken: 'cursor-tok' }),
       },
     },
-    cursorRpc: async (_session, _built, { onEvent }) => {
-      onEvent({ kind: 'interaction', turnEnded: false })
+    cursorRpc: async (session, built, { onEvent }) => {
+      assert.equal(session.accessToken, 'cursor-tok')
+      assert.ok(Buffer.isBuffer(built.requestBytes))
+      await onEvent({ kind: 'interaction', turnEnded: false })
       throw new Error("Composer 2 is retired: We're upgrading you to Composer 2.5, our most powerful model yet.")
     },
   })
@@ -1172,8 +1196,12 @@ test('cursor mid-stream failure surfaces the reason as content, not a bare strea
     assert.equal(res.status, 200)
     const text = await res.text()
     assert.match(text, /Composer 2 is retired: We're upgrading you to Composer 2\.5/)
-    assert.match(text, /"finish_reason":"stop"/)
-    assert.match(text, /data: \[DONE\]/)
+    const chunks = [...text.matchAll(/^data: (.+)$/gm)].map(match => JSON.parse(match[1]))
+    const failure = chunks.find(chunk => chunk.error)
+    assert.equal(failure.error.code, 'cursor_upstream')
+    assert.equal(failure.error.type, 'server_error')
+    assert.equal(chunks.some(chunk => chunk.choices?.[0]?.finish_reason), false)
+    assert.equal(text.includes('[DONE]'), false)
   } finally {
     await proxy.close()
   }

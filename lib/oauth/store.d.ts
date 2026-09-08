@@ -15,6 +15,7 @@ export declare function accountIdOf(provider: any, session: any): any;
 export declare function asVault(provider: any, entry: any): {
     activeId: any;
     accounts: {};
+    generations: {};
 };
 export declare function loadStore(path: any): Promise<any>;
 export declare function getSession(provider: any, path: any): Promise<any>;
@@ -86,14 +87,18 @@ export declare function listAccounts(provider: any, path: any): Promise<({
 })[]>;
 export declare function listStoredSessions(provider: any, path: any): Promise<{
     id: string;
-    session: unknown;
+    session: any;
     active: boolean;
+    generation: any;
+    version: string;
 }[]>;
-export declare function getAccountSession(provider: any, id: any, path: any): Promise<any>;
-export declare function replaceAccountId(provider: any, fromId: any, session: any, path: any): Promise<any>;
+export declare function getStoredSession(provider: any, id: any, path: any): Promise<any>;
+/** Only update the login/credentials that produced the result; never activate it. */
+export declare function updateAccountSession(provider: any, source: any, session: any, path: any, nextId: any): Promise<any>;
+export declare function replaceAccountId(provider: any, source: any, session: any, path: any): Promise<any>;
 export declare function saveSession(provider: any, session: any, path: any, options: any): Promise<any>;
 export declare function switchAccount(provider: any, id: any, path: any): Promise<any>;
-export declare function deleteSession(provider: any, path: any, id: any): Promise<any>;
+export declare function deleteSession(provider: any, path: any, id: any, source: any): Promise<any>;
 export declare function publicSession(provider: any, session: any): {
     account: any;
     planType: any;
