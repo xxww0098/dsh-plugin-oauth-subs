@@ -5,7 +5,9 @@
  * (tmp file + rename) with mode 0600 because they carry bearer tokens.
  */
 
+import { createHash, randomUUID } from 'node:crypto'
 import { constants } from 'node:fs'
+import { isDeepStrictEqual } from 'node:util'
 import { chmod, mkdir, open, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
@@ -110,22 +112,30 @@ function isVaultEntry(value) {
     && !isSessionEntry(value)
 }
 
+function legacyGeneration(provider, id, session) {
+  return createHash('sha256').update(JSON.stringify([provider, id, session])).digest('hex')
+}
+
 export function asVault(provider, entry) {
-  if (entry === undefined) return { activeId: undefined, accounts: {} }
+  if (entry === undefined) return { activeId: undefined, accounts: {}, generations: {} }
   if (isVaultEntry(entry)) {
     const accounts = {}
+    const generations = {}
     for (const [rawId, session] of Object.entries(entry.accounts)) {
       if (!isSessionEntry(session)) continue
       const id = typeof rawId === 'string' && rawId.trim() ? rawId.trim() : accountIdOf(provider, session)
       accounts[id] = session
+      generations[id] = typeof entry.generations?.[rawId] === 'string'
+        ? entry.generations[rawId]
+        : legacyGeneration(provider, id, session)
     }
     const requested = typeof entry.activeId === 'string' ? entry.activeId : undefined
     const activeId = requested && accounts[requested] ? requested : Object.keys(accounts)[0]
-    return { activeId, accounts }
+    return { activeId, accounts, generations }
   }
   if (isSessionEntry(entry)) {
     const id = accountIdOf(provider, entry)
-    return { activeId: id, accounts: { [id]: entry } }
+    return { activeId: id, accounts: { [id]: entry }, generations: { [id]: legacyGeneration(provider, id, entry) } }
   }
   throw new Error(`oauth-subs auth store: entry "${provider}" is not an object; fix or delete the store file`)
 }
@@ -179,9 +189,7 @@ async function serialize(path, action) {
 }
 
 export async function getSession(provider, path) {
-  const vault = asVault(provider, (await loadStore(path))[provider])
-  if (!vault.activeId) return undefined
-  return vault.accounts[vault.activeId]
+  return (await getStoredSession(provider, undefined, path))?.session
 }
 
 export async function listAccounts(provider, path) {
@@ -195,37 +203,72 @@ export async function listAccounts(provider, path) {
     .sort((left, right) => Number(right.active) - Number(left.active) || left.id.localeCompare(right.id))
 }
 
+function storedAccount(vault, id: string | undefined) {
+  if (!id || !Object.hasOwn(vault.accounts, id)) return undefined
+  const session = vault.accounts[id]
+  const generation = vault.generations[id]
+  const version = createHash('sha256').update(JSON.stringify([
+    generation, session.accessToken, session.refreshToken, session.expiresAt,
+  ])).digest('hex')
+  return { id, session, active: id === vault.activeId, generation, version }
+}
+
+function matchingAccount(vault, source) {
+  // Identity hydration may rename the key while a refresh is in flight.
+  const id = vault.generations[source.id] === source.generation
+    ? source.id
+    : Object.keys(vault.accounts).find((key) => vault.generations[key] === source.generation)
+  const current = storedAccount(vault, id)
+  return current?.version === source.version ? current : undefined
+}
+
 export async function listStoredSessions(provider, path) {
   const vault = asVault(provider, (await loadStore(path))[provider])
-  return Object.entries(vault.accounts).map(([id, session]) => ({
-    id,
-    session,
-    active: id === vault.activeId,
-  }))
+  return Object.keys(vault.accounts).map((id) => storedAccount(vault, id))
 }
 
-export async function getAccountSession(provider, id, path) {
-  const vault = asVault(provider, (await loadStore(path))[provider])
-  const key = typeof id === 'string' && id.trim() ? id.trim() : vault.activeId
-  if (!key) return undefined
-  return vault.accounts[key]
+export async function getStoredSession(provider, id, path) {
+  const file = path ?? authFilePath()
+  // A read opened before rotation must settle before that rotation's owner retires.
+  return serialize(file, async () => {
+    const vault = asVault(provider, (await loadStore(file))[provider])
+    const key = typeof id === 'string' && id.trim() ? id.trim() : vault.activeId
+    return storedAccount(vault, key)
+  })
 }
 
-export async function replaceAccountId(provider, fromId, session, path) {
+/** Only update the login/credentials that produced the result; never activate it. */
+export async function updateAccountSession(provider, source, session, path, nextId) {
   const file = path ?? authFilePath()
   return serialize(file, async () => {
     const store = await loadStore(file)
     const vault = asVault(provider, store[provider])
-    const nextId = accountIdOf(provider, session)
-    const previous = typeof fromId === 'string' && fromId.trim() ? fromId.trim() : vault.activeId
-    const wasActive = vault.activeId === previous || vault.activeId === nextId
-    if (previous && previous !== nextId) delete vault.accounts[previous]
-    vault.accounts[nextId] = session
-    if (wasActive || !vault.activeId || !vault.accounts[vault.activeId]) vault.activeId = nextId
+    const current = matchingAccount(vault, source)
+    if (!current) return undefined
+    // An identity label must not overwrite another login already using that id.
+    const id = nextId && (!Object.hasOwn(vault.accounts, nextId) || nextId === current.id)
+      ? nextId : current.id
+    const merged = { ...current.session }
+    const keys = new Set([...Object.keys(source.session), ...Object.keys(session)])
+    for (const key of keys) {
+      if (!Object.hasOwn(session, key)) delete merged[key]
+      else if (!isDeepStrictEqual(session[key], source.session[key])) merged[key] = session[key]
+    }
+    vault.accounts[id] = merged
+    vault.generations[id] = current.generation
+    if (id !== current.id) {
+      delete vault.accounts[current.id]
+      delete vault.generations[current.id]
+      if (vault.activeId === current.id) vault.activeId = id
+    }
     store[provider] = vault
     await writeStore(store, file)
-    return nextId
+    return storedAccount(vault, id)
   })
+}
+
+export async function replaceAccountId(provider, source, session, path) {
+  return updateAccountSession(provider, source, session, path, accountIdOf(provider, session))
 }
 
 export async function saveSession(provider, session, path, options) {
@@ -238,9 +281,11 @@ export async function saveSession(provider, session, path, options) {
       ? options.id.trim()
       : accountIdOf(provider, session)
     vault.accounts[id] = session
+    vault.generations[id] = randomUUID()
     if (activate || !vault.activeId || !vault.accounts[vault.activeId]) vault.activeId = id
     store[provider] = vault
     await writeStore(store, file)
+    return storedAccount(vault, id)
   })
 }
 
@@ -258,20 +303,23 @@ export async function switchAccount(provider, id, path) {
   })
 }
 
-export async function deleteSession(provider, path, id) {
+export async function deleteSession(provider, path, id, source) {
   const file = path ?? authFilePath()
   return serialize(file, async () => {
     const store = await loadStore(file)
     const vault = asVault(provider, store[provider])
-    const target = typeof id === 'string' && id.trim() ? id.trim() : vault.activeId
-    if (!target || !vault.accounts[target]) return
+    const target = source ? matchingAccount(vault, source)?.id
+      : (typeof id === 'string' && id.trim() ? id.trim() : vault.activeId)
+    if (!target || !Object.hasOwn(vault.accounts, target)) return false
     delete vault.accounts[target]
+    delete vault.generations[target]
     if (vault.activeId === target) {
       vault.activeId = Object.keys(vault.accounts)[0]
     }
     if (!vault.activeId) delete store[provider]
     else store[provider] = vault
     await writeStore(store, file)
+    return true
   })
 }
 

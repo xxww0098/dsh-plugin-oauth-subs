@@ -87,6 +87,7 @@ export declare function openaiToKiro(payload: any, { conversationId, profileArn,
 export declare class KiroEventStreamParser {
     constructor();
     feed(chunk: any): any[];
+    finish(): void;
 }
 export declare function parseKiroEventStream(buffer: any): any[];
 export declare function mergeKiroText(previous: any, chunk: any): {

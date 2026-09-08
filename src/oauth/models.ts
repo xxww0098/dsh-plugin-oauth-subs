@@ -406,10 +406,12 @@ function assertKeyList(keys, label) {
 /**
  * Persisted enable/disable set for the Settings picker.
  * Default is all-on except `-900k` (opt-in; it burns quota).
- * New non-opt-in catalog ids stay on. Stored as
- * `{ "disabled": ["oauth-codex/gpt-5.4-mini"], "enabled": ["oauth-codex/gpt-5.4-900k"] }`.
+ * New non-opt-in catalog ids stay on. Explicit picker choices persist across
+ * restarts so automatic recovery cannot mistake all-off for leftover settings.
  */
 export class ModelSwitch {
+  #selectionExplicit = false
+
   constructor({ path } = {}) {
     this.path = path
     this.disabled = new Set()
@@ -426,6 +428,7 @@ export class ModelSwitch {
       const enabled = Array.isArray(raw?.enabled) ? raw.enabled : []
       this.disabled = new Set(disabled.filter((key) => typeof key === 'string' && key.includes('/')))
       this.enabled = new Set(enabled.filter((key) => typeof key === 'string' && key.includes('/')))
+      this.#selectionExplicit = raw?.selectionExplicit === true
     } catch (error) {
       if (error && error.code !== 'ENOENT') {
         // Corrupt file: keep all-on rather than crash the proxy.
@@ -438,6 +441,7 @@ export class ModelSwitch {
     await writePrivateText(this.path, `${JSON.stringify({
       disabled: [...this.disabled].sort(),
       enabled: [...this.enabled].sort(),
+      selectionExplicit: this.#selectionExplicit,
     })}\n`)
   }
 
@@ -475,6 +479,7 @@ export class ModelSwitch {
     const enabled = new Set(keys.filter((key) => known.includes(key)))
     this.disabled = new Set(known.filter((key) => !enabled.has(key)))
     this.enabled = new Set(known.filter((key) => enabled.has(key) && isOptInKey(key)))
+    this.#selectionExplicit = true
     await this.save()
     return this.status(catalog)
   }
@@ -492,6 +497,7 @@ export class ModelSwitch {
       this.enabled.delete(key)
       this.disabled.add(key)
     }
+    this.#selectionExplicit = true
     await this.save()
     return this.status(catalog)
   }
@@ -509,6 +515,7 @@ export class ModelSwitch {
         this.disabled.add(key)
       }
     }
+    this.#selectionExplicit = true
     await this.save()
     return this.status(catalog)
   }
@@ -517,9 +524,11 @@ export class ModelSwitch {
    * Leftover 全关: every *current* catalog key for a signed-in family is
    * off (often after a catalog shrink left stale ids in `disabled`).
    * Enable the current keys so login/sync can write the DSH route.
+   * Only unmarked settings need recovery; an explicit picker choice stays off.
    * Does not resurrect retired ids or opt-in `-900k` rows.
    */
   async recoverEmptyLoggedInFamilies(catalog, loggedIn) {
+    if (this.#selectionExplicit) return false
     let changed = false
     for (const family of FAMILY_IDS) {
       if (!loggedIn?.[family]) continue
@@ -541,6 +550,7 @@ export class ModelSwitch {
       this.disabled = new Set(known)
       this.enabled = new Set()
     }
+    this.#selectionExplicit = true
     await this.save()
     return this.status(catalog)
   }

@@ -1,12 +1,13 @@
 /**
- * Local OpenAI Responses proxy. DSH talks to 127.0.0.1:<port> via llm-pi-ai;
- * this process attaches a fresh OAuth bearer and forwards to ChatGPT Codex
- * or xAI Grok. Settings operations stay on the host-owned RPC channel.
+ * Loopback LLM proxy: authenticates DSH calls, dispatches family transports,
+ * and gates/retries passthrough streams before output. Settings operations
+ * stay on the host-owned RPC channel; vendor translation lives in each family.
  */
 
 import { createServer } from 'node:http'
 import { once } from 'node:events'
 import { randomUUID } from 'node:crypto'
+import { setTimeout as delay } from 'node:timers/promises'
 import { CODEX_API_URL, CODEX_CLIENT_VERSION, CODEX_MODELS, CODEX_MODELS_URL, codexRoutingHint, codexUpstreamHeaders } from './codex/index.js'
 import { applyCodexCache, codexCacheHeaders } from './codex/cache.js'
 import { GROK_API_URL, GROK_MODELS, grokAffinityHeaders, grokUpstreamHeaders } from './grok/index.js'
@@ -15,39 +16,14 @@ import { normalizeGrokResponsesBody } from './grok/request.js'
 import { GLM_MODELS, glmAnthropicHeaders, glmAnthropicUrl, glmCodingUrl, glmUpstreamHeaders } from './glm/index.js'
 import { glmCacheSessionId } from './glm/cache.js'
 import { normalizeGlmAnthropicBody, normalizeGlmChatBody } from './glm/request.js'
-import { kiroStreamingProfileArn } from './kiro/index.js'
 import { kiroCatalogModels } from './kiro/catalog.js'
-import {
-  KIRO_STABLE_SESSION,
-  classifyKiroHopError,
-  kiroChatHeaders,
-  kiroChatUrl,
-  kiroClientErrorBody,
-  kiroConversationId,
-  kiroToOpenai,
-  kiroToOpenaiChunk,
-  KiroEventStreamParser,
-  mapKiroUsage,
-  mergeKiroText,
-  openaiToKiro,
-  resolveKiroUsage,
-  thinkingTextFromPayload,
-  unwrapKiroEventPayload,
-} from './kiro/request.js'
-import {
-  ANTIGRAVITY_GENERATE_URL,
-  ANTIGRAVITY_MODELS,
-  ANTIGRAVITY_STREAM_URL,
-  applyAntigravityValidation,
-  antigravityChatHeaders,
-  antigravityValidationClientError,
-  fetchAntigravityCloudCode,
-  parseAntigravityValidation,
-} from './antigravity/index.js'
-import { antigravityToOpenai, createAntigravityOpenaiStream, openaiToAntigravity, parseAntigravitySseBlocks } from './antigravity/request.js'
+import { kiroConversationId } from './kiro/cache.js'
+import { forwardKiro } from './kiro/transport.js'
+import { ANTIGRAVITY_MODELS } from './antigravity/index.js'
 import { antigravitySessionIdOf } from './antigravity/cache.js'
+import { forwardAntigravity } from './antigravity/transport.js'
 import { cursorCatalogModels } from './cursor/catalog.js'
-import { applyCursorCache, cursorConversationId } from './cursor/cache.js'
+import { applyCursorCache } from './cursor/cache.js'
 import { OLLAMA_CHAT_URL, ollamaUpstreamHeaders } from './ollama/index.js'
 import { ollamaCatalogModels } from './ollama/catalog.js'
 import { applyOllamaCache } from './ollama/cache.js'
@@ -62,13 +38,12 @@ import {
 import { copilotCatalogModels } from './copilot/catalog.js'
 import { applyCopilotCache, copilotHasVision, copilotInitiatorOf } from './copilot/cache.js'
 import { applyCopilotThinking } from './copilot/request.js'
-import { cursorToOpenai, cursorToOpenaiChunk, createCursorOpenaiStream, openaiToCursor } from './cursor/request.js'
-import { runCursorAgent } from './cursor/h2-session.js'
+import { forwardCursor } from './cursor/transport.js'
+import { RequestError, describeError, sendJson } from '../utils/http.js'
 import { applyFastMode } from '../utils/fast-mode.js'
 import { normalizeCodexResponsesBody } from './codex/request.js'
 import { withPickerVariants } from './models.js'
 
-const JSON_TYPE = { 'content-type': 'application/json; charset=utf-8' }
 export const MAX_REQUEST_BODY_BYTES = 64 * 1024 * 1024
 /** Upstream attempts before the client is told the stream failed. */
 export const STREAM_ATTEMPTS = 3
@@ -108,28 +83,6 @@ function retryableUpstream(message, family, upstream) {
     if (typeof turnState === 'string' && turnState.trim()) extra.turnState = turnState.trim()
   }
   return new RetryableUpstream(message, extra)
-}
-
-class RequestError extends Error {
-  constructor(status, message) {
-    super(message)
-    this.status = status
-  }
-}
-
-function send(response, status, body, extraHeaders = {}) {
-  const text = typeof body === 'string' ? body : JSON.stringify(body)
-  const headers = {
-    ...JSON_TYPE,
-    'cache-control': 'no-store',
-    'content-length': Buffer.byteLength(text),
-    'x-content-type-options': 'nosniff',
-  }
-  for (const [key, value] of Object.entries(extraHeaders ?? {})) {
-    if (value != null && String(value) !== '') headers[key] = String(value)
-  }
-  response.writeHead(status, headers)
-  response.end(text)
 }
 
 function readBody(request, limit = MAX_REQUEST_BODY_BYTES) {
@@ -183,12 +136,7 @@ function originOf(port) {
   return `http://127.0.0.1:${port}`
 }
 
-/** undici reports socket faults as a bare "fetch failed"; the cause carries the reason. */
-export function describeError(error) {
-  const cause = error?.cause
-  const detail = cause?.code ?? cause?.message
-  return detail === undefined ? String(error?.message ?? error) : `${error.message}: ${detail}`
-}
+export { describeError } from '../utils/http.js'
 
 function rewriteUpstreamBody(buffer, family, wire) {
   if (!buffer.length) throw new RequestError(400, 'request body must contain JSON')
@@ -206,7 +154,7 @@ function rewriteUpstreamBody(buffer, family, wire) {
     // Keep the picker `-fast` suffix for openaiToCursor; do not peel here.
     const { payload: next, cacheSessionId } = applyCursorCache(payload)
     return {
-      body: Buffer.from(JSON.stringify(next)),
+      payload: next,
       cacheSessionId,
       stream: next.stream === true,
     }
@@ -215,7 +163,7 @@ function rewriteUpstreamBody(buffer, family, wire) {
   if (family === 'codex') {
     const { payload: next, cacheSessionId } = applyCodexCache(normalizeCodexResponsesBody(fast))
     return {
-      body: Buffer.from(JSON.stringify(next)),
+      payload: next,
       cacheSessionId,
       stream: next.stream === true,
       routingHint: codexRoutingHint(typeof next.model === 'string' ? next.model : '', next.service_tier),
@@ -224,7 +172,7 @@ function rewriteUpstreamBody(buffer, family, wire) {
   if (family === 'grok') {
     const { payload: next, cacheSessionId } = applyGrokCache(normalizeGrokResponsesBody(fast))
     return {
-      body: Buffer.from(JSON.stringify(next)),
+      payload: next,
       cacheSessionId,
       stream: next.stream === true,
       grokModel: typeof next.model === 'string' ? next.model : undefined,
@@ -233,7 +181,7 @@ function rewriteUpstreamBody(buffer, family, wire) {
   if (family === 'glm') {
     const next = wire === 'anthropic' ? normalizeGlmAnthropicBody(fast) : normalizeGlmChatBody(fast)
     return {
-      body: Buffer.from(JSON.stringify(next)),
+      payload: next,
       cacheSessionId: glmCacheSessionId(next.user)
         || glmCacheSessionId(next.metadata?.user_id)
         || glmCacheSessionId(next.session_id),
@@ -245,7 +193,7 @@ function rewriteUpstreamBody(buffer, family, wire) {
     delete next.prompt_cache_retention
     delete next.prompt_cache_options
     return {
-      body: Buffer.from(JSON.stringify(next)),
+      payload: next,
       cacheSessionId: antigravitySessionIdOf(next),
       stream: next.stream === true,
     }
@@ -255,7 +203,7 @@ function rewriteUpstreamBody(buffer, family, wire) {
     delete next.prompt_cache_retention
     delete next.prompt_cache_options
     return {
-      body: Buffer.from(JSON.stringify(next)),
+      payload: next,
       cacheSessionId: kiroConversationId(next),
       stream: next.stream === true,
     }
@@ -263,7 +211,7 @@ function rewriteUpstreamBody(buffer, family, wire) {
   if (family === 'ollama') {
     const { payload: next, cacheSessionId } = applyOllamaCache(fast)
     return {
-      body: Buffer.from(JSON.stringify(next)),
+      payload: next,
       cacheSessionId,
       stream: next.stream === true,
     }
@@ -272,7 +220,7 @@ function rewriteUpstreamBody(buffer, family, wire) {
     const { payload: cached, cacheSessionId } = applyKimiCache(fast)
     const next = applyKimiThinking(cached)
     return {
-      body: Buffer.from(JSON.stringify(next)),
+      payload: next,
       cacheSessionId,
       stream: next.stream === true,
     }
@@ -281,7 +229,7 @@ function rewriteUpstreamBody(buffer, family, wire) {
     const { payload: cached, cacheSessionId } = applyCopilotCache(fast)
     const next = applyCopilotThinking(cached)
     return {
-      body: Buffer.from(JSON.stringify(next)),
+      payload: next,
       cacheSessionId,
       stream: next.stream === true,
       copilotVision: copilotHasVision(next.messages),
@@ -323,12 +271,12 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
     const path = url.pathname.replace(/\/+$/, '') || '/'
 
     if (path === '/health' && request.method === 'GET') {
-      send(response, 200, { ok: true, plugin: 'dsh-plugin-oauth-subs' })
+      sendJson(response, 200, { ok: true, plugin: 'dsh-plugin-oauth-subs' })
       return
     }
 
     if (!authorized(request)) {
-      send(response, 401, { error: 'unauthorized' })
+      sendJson(response, 401, { error: 'unauthorized' })
       return
     }
 
@@ -382,7 +330,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
           data.push(...copilotCatalogModels().map((model) => ({ id: model.id, object: 'model', owned_by: 'copilot' })))
         }
       } catch { /* not logged in */ }
-      send(response, 200, { object: 'list', data })
+      sendJson(response, 200, { object: 'list', data })
       return
     }
 
@@ -397,11 +345,11 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
           signal: client.signal,
         })
         if (!upstream.ok) {
-          send(response, upstream.status, { error: await upstream.text() })
+          sendJson(response, upstream.status, { error: await upstream.text() })
           return
         }
         const payload = await upstream.json()
-        send(response, 200, payload)
+        sendJson(response, 200, payload)
       } finally {
         client.cleanup()
       }
@@ -484,7 +432,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
     }
 
     if (path === '/glm/v1/models' && request.method === 'GET') {
-      send(response, 200, {
+      sendJson(response, 200, {
         object: 'list',
         data: GLM_MODELS.map((model) => ({ id: model.id, object: 'model', owned_by: 'glm' })),
       })
@@ -492,7 +440,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
     }
 
     if (path === '/kiro/v1/models' && request.method === 'GET') {
-      send(response, 200, {
+      sendJson(response, 200, {
         object: 'list',
         data: kiroCatalogModels().map((model) => ({ id: model.id, object: 'model', owned_by: 'kiro' })),
       })
@@ -500,7 +448,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
     }
 
     if (path === '/antigravity/v1/models' && request.method === 'GET') {
-      send(response, 200, {
+      sendJson(response, 200, {
         object: 'list',
         data: ANTIGRAVITY_MODELS.map((model) => ({ id: model.id, object: 'model', owned_by: 'antigravity' })),
       })
@@ -508,7 +456,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
     }
 
     if ((path === '/cursor/v1/models' || path === '/cursor/models') && request.method === 'GET') {
-      send(response, 200, {
+      sendJson(response, 200, {
         object: 'list',
         data: cursorCatalogModels().map((model) => ({ id: model.id, object: 'model', owned_by: 'cursor' })),
       })
@@ -518,10 +466,12 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
     if (path === '/kiro/v1/chat/completions' && request.method === 'POST') {
       const client = abortOnDisconnect(request, response)
       try {
-        await forwardKiro(request, response, {
-          session: await tokens.kiro.session(),
+        const session = await tokens.kiro.session()
+        const input = rewriteUpstreamBody(await readBody(request, maxRequestBodyBytes), 'kiro')
+        await forwardKiro(response, {
+          ...input,
+          session,
           fetchFn,
-          maxRequestBodyBytes,
           signal: client.signal,
         })
       } finally {
@@ -531,7 +481,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
     }
 
     if (path === '/kiro/v1/responses') {
-      send(response, 501, {
+      sendJson(response, 501, {
         error: {
           message: 'Kiro chat is AWS generateAssistantResponse. Point llm-pi-ai at POST /kiro/v1/chat/completions.',
         },
@@ -542,11 +492,13 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
     if ((path === '/cursor/v1/chat/completions' || path === '/cursor/chat/completions') && request.method === 'POST') {
       const client = abortOnDisconnect(request, response)
       try {
-        await forwardCursor(request, response, {
-          session: await tokens.cursor.session(),
-          maxRequestBodyBytes,
+        const session = await tokens.cursor.session()
+        const input = rewriteUpstreamBody(await readBody(request, maxRequestBodyBytes), 'cursor')
+        await forwardCursor(response, {
+          ...input,
+          session,
           signal: client.signal,
-          runFn: cursorRpc ?? runCursorAgent,
+          runFn: cursorRpc,
         })
       } finally {
         client.cleanup()
@@ -555,7 +507,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
     }
 
     if (path === '/cursor/v1/responses') {
-      send(response, 501, {
+      sendJson(response, 501, {
         error: {
           message: 'Cursor chat is Connect AgentService/Run. Point llm-pi-ai at POST /cursor/v1/chat/completions.',
         },
@@ -564,7 +516,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
     }
 
     if ((path === '/ollama/v1/models' || path === '/ollama/models') && request.method === 'GET') {
-      send(response, 200, {
+      sendJson(response, 200, {
         object: 'list',
         data: ollamaCatalogModels().map((model) => ({ id: model.id, object: 'model', owned_by: 'ollama' })),
       })
@@ -590,7 +542,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
     }
 
     if (path === '/ollama/v1/responses') {
-      send(response, 501, {
+      sendJson(response, 501, {
         error: {
           message: 'Ollama Cloud is Completions. Point llm-pi-ai at POST /ollama/v1/chat/completions.',
         },
@@ -599,7 +551,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
     }
 
     if ((path === '/kimi/v1/models' || path === '/kimi/models') && request.method === 'GET') {
-      send(response, 200, {
+      sendJson(response, 200, {
         object: 'list',
         data: kimiCatalogModels().map((model) => ({ id: model.id, object: 'model', owned_by: 'kimi' })),
       })
@@ -625,7 +577,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
     }
 
     if (path === '/kimi/v1/responses') {
-      send(response, 501, {
+      sendJson(response, 501, {
         error: {
           message: 'Kimi Code is Completions. Point llm-pi-ai at POST /kimi/v1/chat/completions.',
         },
@@ -634,7 +586,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
     }
 
     if ((path === '/copilot/v1/models' || path === '/copilot/models') && request.method === 'GET') {
-      send(response, 200, {
+      sendJson(response, 200, {
         object: 'list',
         data: copilotCatalogModels().map((model) => ({ id: model.id, object: 'model', owned_by: 'copilot' })),
       })
@@ -661,7 +613,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
     }
 
     if (path === '/copilot/v1/responses') {
-      send(response, 501, {
+      sendJson(response, 501, {
         error: {
           message: 'GitHub Copilot is Completions. Point llm-pi-ai at POST /copilot/v1/chat/completions.',
         },
@@ -672,11 +624,13 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
     if (path === '/antigravity/v1/chat/completions' && request.method === 'POST') {
       const client = abortOnDisconnect(request, response)
       try {
-        await forwardAntigravity(request, response, {
-          session: await tokens.antigravity.session(),
+        const session = await tokens.antigravity.session()
+        const input = rewriteUpstreamBody(await readBody(request, maxRequestBodyBytes), 'antigravity')
+        await forwardAntigravity(response, {
+          ...input,
+          session,
           tokens: tokens.antigravity,
           fetchFn,
-          maxRequestBodyBytes,
           signal: client.signal,
           onValidation: onAntigravityValidation,
         })
@@ -687,7 +641,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
     }
 
     if (path === '/codex/v1/chat/completions' || path === '/grok/v1/chat/completions') {
-      send(response, 400, {
+      sendJson(response, 400, {
         error: {
           message: 'this proxy speaks the OpenAI Responses API (POST /v1/responses). Point llm-pi-ai api at openai-responses.',
         },
@@ -695,7 +649,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
       return
     }
 
-    send(response, 404, { error: `not found: ${path}` })
+    sendJson(response, 404, { error: `not found: ${path}` })
   }
 
   return {
@@ -708,7 +662,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
             if (error?.retryAfter != null && String(error.retryAfter).trim()) {
               extra['retry-after'] = String(error.retryAfter).trim()
             }
-            send(response, error.status ?? 500, { error: describeError(error) }, extra)
+            sendJson(response, error.status ?? 500, { error: describeError(error) }, extra)
           }
           else response.end()
         })
@@ -729,7 +683,8 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
 
 async function forward(request, response, { url, session, headersOf, fetchFn, family, wire, maxRequestBodyBytes, signal }) {
   const raw = await readBody(request, maxRequestBodyBytes)
-  const { body, cacheSessionId, stream, routingHint, grokModel, copilotVision, copilotInitiator } = rewriteUpstreamBody(raw, family, wire)
+  const { payload, cacheSessionId, stream, routingHint, grokModel, copilotVision, copilotInitiator } = rewriteUpstreamBody(raw, family, wire)
+  const body = Buffer.from(JSON.stringify(payload))
   const grokReqId = family === 'grok' ? randomUUID() : undefined
   const baseHeaders = {
     ...headersOf(session, cacheSessionId),
@@ -749,7 +704,7 @@ async function forward(request, response, { url, session, headersOf, fetchFn, fa
   let codexTurnState
   for (let attempt = 0; attempt < STREAM_ATTEMPTS; attempt++) {
     if (attempt > 0) {
-      await delay(RETRY_BACKOFF_MS[attempt - 1], signal)
+      await delay(RETRY_BACKOFF_MS[attempt - 1], undefined, { signal })
       console.error(`[oauth-subs] ${family} retrying upstream (attempt ${attempt + 1}/${STREAM_ATTEMPTS}): ${lastFailure}`)
     }
     const headers = {
@@ -801,19 +756,15 @@ async function attemptUpstream(response, { url, headers, body, stream, fetchFn, 
         },
       }
     }
-    send(response, upstream.status, parsed)
+    sendJson(response, upstream.status, parsed)
     return
   }
 
   const gate = new CommitGate(response, upstream, stream)
   let lastByteAt = Date.now()
+  const reader = upstream.body?.getReader()
   try {
-    if (upstream.body === null) {
-      gate.commit()
-      return
-    }
-    const reader = upstream.body.getReader()
-    while (true) {
+    while (reader) {
       const { done, value } = await reader.read()
       if (done) break
       lastByteAt = Date.now()
@@ -832,6 +783,9 @@ async function attemptUpstream(response, { url, headers, body, stream, fetchFn, 
       throw error
     }
     throw retryableUpstream(detail, family, upstream)
+  } finally {
+    await reader?.cancel().catch(() => {})
+    reader?.releaseLock()
   }
 
   if (!gate.committed) {
@@ -930,317 +884,4 @@ export function hasOutputEvent(text) {
     if (!PREAMBLE_EVENT_TYPES.has(match[1])) return true
   }
   return false
-}
-
-function delay(ms, signal) {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(resolve, ms)
-    signal.addEventListener('abort', () => { clearTimeout(timer); reject(signal.reason) }, { once: true })
-  })
-}
-
-async function rememberAntigravityValidation(session, info, tokens, onValidation) {
-  if (!info?.required) return
-  const next = applyAntigravityValidation(session, info)
-  if (tokens && typeof tokens.remember === 'function') {
-    await tokens.remember({
-      needsValidation: true,
-      ...(next.validationUrl ? { validationUrl: next.validationUrl } : {}),
-    })
-  }
-  onValidation?.(next)
-}
-
-async function forwardAntigravity(request, response, { session, tokens, fetchFn, maxRequestBodyBytes, signal, onValidation }) {
-  const raw = await readBody(request, maxRequestBodyBytes)
-  const { body: rewritten, cacheSessionId, stream } = rewriteUpstreamBody(raw, 'antigravity')
-  const payload = JSON.parse(rewritten.toString('utf8'))
-  const projectId = session.projectId
-  if (typeof projectId !== 'string' || !projectId.trim()) {
-    throw new RequestError(403, 'antigravity session is missing project_id')
-  }
-  const sessionId = cacheSessionId ?? antigravitySessionIdOf(payload)
-  const body = Buffer.from(JSON.stringify(openaiToAntigravity(payload, {
-    projectId,
-    sessionId,
-  })))
-  const url = stream ? ANTIGRAVITY_STREAM_URL : ANTIGRAVITY_GENERATE_URL
-  const headers = {
-    ...antigravityChatHeaders(session),
-    ...(stream ? { accept: 'text/event-stream' } : {}),
-  }
-
-  let upstream
-  try {
-    upstream = await fetchAntigravityCloudCode(url, { method: 'POST', headers, body, signal }, fetchFn)
-  } catch (error) {
-    if (signal.aborted) throw error
-    throw new RequestError(502, describeError(error))
-  }
-
-  if (upstream.status >= 400) {
-    const text = await upstream.text()
-    let parsed
-    try { parsed = text ? JSON.parse(text) : null } catch { parsed = { error: { message: text } } }
-    const validation = parseAntigravityValidation(parsed) ?? parseAntigravityValidation(text)
-    if (validation) {
-      await rememberAntigravityValidation(session, validation, tokens, onValidation)
-      send(response, 400, antigravityValidationClientError(validation))
-      return
-    }
-    send(response, upstream.status, parsed ?? { error: { message: `antigravity upstream ${upstream.status}` } })
-    return
-  }
-
-  const model = typeof payload.model === 'string' ? payload.model : 'antigravity'
-  if (!stream) {
-    const text = await upstream.text()
-    let parsed
-    try { parsed = text ? JSON.parse(text) : {} } catch {
-      throw new RequestError(502, 'antigravity upstream returned invalid JSON')
-    }
-    send(response, 200, antigravityToOpenai(parsed, { model, sessionId }))
-    return
-  }
-
-  response.writeHead(200, {
-    'content-type': 'text/event-stream; charset=utf-8',
-    'cache-control': 'no-store',
-    'x-content-type-options': 'nosniff',
-  })
-  const id = `chatcmpl-${Date.now()}`
-  const streamMapper = createAntigravityOpenaiStream({ model, id, sessionId })
-  let rest = ''
-  const reader = upstream.body?.getReader()
-  if (!reader) {
-    response.write(`data: ${JSON.stringify(streamMapper.finish())}\n\n`)
-    response.write('data: [DONE]\n\n')
-    response.end()
-    return
-  }
-  while (true) {
-    const { done, value } = await reader.read()
-    rest += value ? Buffer.from(value).toString('utf8') : ''
-    const parsed = parseAntigravitySseBlocks(done ? `${rest}\n\n` : rest)
-    rest = parsed.rest
-    for (const event of parsed.events) {
-      const chunk = streamMapper.push(event)
-      if (chunk) {
-        if (!response.write(`data: ${JSON.stringify(chunk)}\n\n`)) await once(response, 'drain', { signal })
-      }
-    }
-    if (done) break
-  }
-  if (!response.write(`data: ${JSON.stringify(streamMapper.finish())}\n\n`)) {
-    await once(response, 'drain', { signal })
-  }
-  response.write('data: [DONE]\n\n')
-  if (!response.writableEnded && !response.destroyed) response.end()
-}
-
-function headerValue(headers, name) {
-  if (!headers) return undefined
-  if (typeof headers.get === 'function') return headers.get(name) ?? undefined
-  return headers[name] ?? headers[name.toLowerCase()]
-}
-
-function sendKiroUpstreamError(response, status, text, headers) {
-  let parsed
-  try { parsed = text ? JSON.parse(text) : null } catch { parsed = null }
-  const classified = classifyKiroHopError(status, parsed, text, {
-    retryAfter: headerValue(headers, 'retry-after'),
-  })
-  send(
-    response,
-    classified.status,
-    kiroClientErrorBody(status, parsed, text),
-    classified.retryAfter ? { 'retry-after': classified.retryAfter } : {},
-  )
-}
-
-async function writeKiroSse(response, chunk, signal) {
-  if (!response.write(`data: ${JSON.stringify(chunk)}\n\n`)) await once(response, 'drain', { signal })
-}
-
-async function forwardKiro(request, response, { session, fetchFn, maxRequestBodyBytes, signal }) {
-  const raw = await readBody(request, maxRequestBodyBytes)
-  const { body: rewritten, cacheSessionId, stream } = rewriteUpstreamBody(raw, 'kiro')
-  const payload = JSON.parse(rewritten.toString('utf8'))
-  const conversationId = cacheSessionId
-    ?? kiroConversationId(payload)
-    ?? KIRO_STABLE_SESSION
-  const body = Buffer.from(JSON.stringify(openaiToKiro(payload, {
-    conversationId,
-    profileArn: kiroStreamingProfileArn(session),
-  })))
-  const url = kiroChatUrl(session)
-  const headers = kiroChatHeaders(session)
-
-  let upstream
-  try {
-    upstream = await fetchFn(url, { method: 'POST', headers, body, signal })
-  } catch (error) {
-    if (signal.aborted) throw error
-    throw new RequestError(502, describeError(error))
-  }
-
-  if (upstream.status >= 400) {
-    sendKiroUpstreamError(response, upstream.status, await upstream.text(), upstream.headers)
-    return
-  }
-
-  const model = typeof payload.model === 'string' ? payload.model : 'kiro'
-  const id = `chatcmpl-${Date.now()}`
-
-  if (!stream) {
-    const buffer = Buffer.from(await upstream.arrayBuffer())
-    const openai = kiroToOpenai(buffer, { model, id })
-    if (openai.error) {
-      send(response, 400, kiroClientErrorBody(400, openai.error, openai.error.message))
-      return
-    }
-    send(response, 200, openai)
-    return
-  }
-
-  response.writeHead(200, {
-    'content-type': 'text/event-stream; charset=utf-8',
-    'cache-control': 'no-store',
-    'x-content-type-options': 'nosniff',
-  })
-  const parser = new KiroEventStreamParser()
-  let accText = ''
-  let accThinking = ''
-  let sawTools = false
-  let usage
-  let contextPercentage
-  const reader = upstream.body?.getReader()
-  if (!reader) {
-    await writeKiroSse(response, kiroToOpenaiChunk({}, { model, id, done: true }), signal)
-    response.write('data: [DONE]\n\n')
-    response.end()
-    return
-  }
-  while (true) {
-    const { done, value } = await reader.read()
-    const events = parser.feed(value ?? Buffer.alloc(0))
-    for (const event of events) {
-      const type = event.type
-      const data = unwrapKiroEventPayload(event.payload, type)
-      const thought = thinkingTextFromPayload(type, data)
-      if (thought) {
-        const merged = mergeKiroText(accThinking, thought)
-        accThinking = merged.text
-        if (merged.delta) {
-          await writeKiroSse(response, kiroToOpenaiChunk({ reasoning_content: merged.delta }, { model, id }), signal)
-        }
-        continue
-      }
-      if ((type === 'assistantResponseEvent' || typeof data.content === 'string') && typeof data.content === 'string' && data.content) {
-        const merged = mergeKiroText(accText, data.content)
-        accText = merged.text
-        if (merged.delta) {
-          await writeKiroSse(response, kiroToOpenaiChunk({ content: merged.delta }, { model, id }), signal)
-        }
-      } else if (type === 'toolUseEvent') {
-        const toolUseId = data.toolUseId ?? data.tool_use_id
-        if (!toolUseId || data.stop) continue
-        sawTools = true
-        const delta = { tool_calls: [{ index: 0, id: toolUseId, type: 'function', function: { name: data.name ?? '', arguments: data.input ?? '' } }] }
-        if (data.input === undefined || data.name) {
-          delta.tool_calls[0].function = {
-            name: data.name ?? '',
-            arguments: typeof data.input === 'string' ? data.input : (data.input ? JSON.stringify(data.input) : ''),
-          }
-        }
-        await writeKiroSse(response, kiroToOpenaiChunk(delta, { model, id }), signal)
-      } else if (type === 'exception' || type === 'invalidStateEvent' || event.messageType === 'exception') {
-        const message = data.message || data.reason || 'kiro upstream exception'
-        await writeKiroSse(response, kiroToOpenaiChunk({ content: '' }, { model, id, done: true, finishReason: 'stop' }), signal)
-        console.error(`[oauth-subs] kiro upstream exception: ${message}`)
-      }
-      const tokens = data.tokenUsage ?? data.token_usage
-      if (tokens) usage = mapKiroUsage(tokens)
-      const percent = data.contextUsagePercentage ?? data.context_usage_percentage
-      if (typeof percent === 'number' && Number.isFinite(percent)) contextPercentage = percent
-    }
-    if (done) break
-  }
-  await writeKiroSse(response, kiroToOpenaiChunk({}, {
-    model,
-    id,
-    done: true,
-    finishReason: sawTools ? 'tool_calls' : 'stop',
-    usage: resolveKiroUsage({ usage, contextPercentage, text: accText }, model),
-  }), signal)
-  response.write('data: [DONE]\n\n')
-  if (!response.writableEnded && !response.destroyed) response.end()
-}
-
-async function forwardCursor(request, response, { session, maxRequestBodyBytes, signal, runFn }) {
-  const raw = await readBody(request, maxRequestBodyBytes)
-  const { body: rewritten, cacheSessionId, stream } = rewriteUpstreamBody(raw, 'cursor')
-  const payload = JSON.parse(rewritten.toString('utf8'))
-  const conversationId = cacheSessionId ?? cursorConversationId(payload)
-  const built = openaiToCursor(payload, { conversationId })
-  const model = built.pickerModel || built.modelId
-  const id = `chatcmpl-${Date.now()}`
-
-  if (!stream) {
-    const { collected } = await runFn(session, built, { signal })
-    if (collected.error) throw new RequestError(502, collected.error)
-    send(response, 200, cursorToOpenai(collected, { model, id, conversationId: built.conversationId }))
-    return
-  }
-
-  const mapper = createCursorOpenaiStream({ model, id, conversationId: built.conversationId })
-  let headSent = false
-  const head = () => {
-    if (headSent) return
-    headSent = true
-    response.writeHead(200, {
-      'content-type': 'text/event-stream; charset=utf-8',
-      'cache-control': 'no-store',
-      'x-content-type-options': 'nosniff',
-    })
-  }
-  const write = async (chunk) => {
-    if (!response.write(`data: ${JSON.stringify(chunk)}\n\n`)) await once(response, 'drain', { signal })
-  }
-  const fail = async (message) => {
-    if (!headSent) {
-      send(response, 502, { error: { message } })
-      return
-    }
-    // Head already committed as 200 SSE; surface the reason as content so the
-    // client sees why the run failed instead of a bare stream end.
-    console.error(`[oauth-subs] cursor upstream error mid-stream: ${message}`)
-    await write(cursorToOpenaiChunk({ text: message }, { model, id }))
-    await write(mapper.finish())
-    response.write('data: [DONE]\n\n')
-    if (!response.writableEnded && !response.destroyed) response.end()
-  }
-  let collected
-  try {
-    collected = (await runFn(session, built, {
-      signal,
-      onEvent: (event) => {
-        const chunks = mapper.push(event)
-        if (chunks.length) head()
-        for (const chunk of chunks) void write(chunk)
-      },
-    })).collected
-  } catch (error) {
-    if (signal.aborted) throw error
-    await fail(describeError(error))
-    return
-  }
-  if (collected.error) {
-    await fail(collected.error)
-    return
-  }
-  head()
-  await write(mapper.finish())
-  response.write('data: [DONE]\n\n')
-  if (!response.writableEnded && !response.destroyed) response.end()
 }

@@ -799,7 +799,11 @@ test('proxy rewrites Cloud Code VALIDATION_REQUIRED to a 400, not a 403', async 
           account: 'dev@x',
           projectId: 'proj-1',
         }),
-        remember: async (fields) => { remembered.push(fields) },
+        remember: async (session, fields) => {
+          assert.equal(session.account, 'dev@x')
+          assert.equal(session.accessToken, 'ag-tok')
+          remembered.push(fields)
+        },
       },
     },
   })
@@ -1386,6 +1390,40 @@ test('proxy stream writes incremental deltas then a terminal usage chunk before 
     assert.equal(terminal.usage.completion_tokens, 60)
     assert.equal(terminal.usage.total_tokens, 180)
     assert.equal(terminal.usage.completion_tokens_details.reasoning_tokens, 42)
+  } finally {
+    await proxy.close()
+  }
+})
+
+test('proxy preserves Unicode across arbitrary upstream SSE byte boundaries', async () => {
+  const text = '你好，café 🌍'
+  const sse = Buffer.from('data: ' + JSON.stringify(googleSseEvent({ text, finishReason: 'STOP' })) + '\n\n')
+  let offset = 0
+  const proxy = createProxy({
+    port: 0,
+    apiKey: 'secret-key',
+    tokens: {
+      antigravity: { session: async () => ({ accessToken: 'ag-token', projectId: 'project' }) },
+    },
+    fetchFn: async () => new Response(new ReadableStream({
+      pull(controller) {
+        if (offset === sse.length) controller.close()
+        else controller.enqueue(sse.subarray(offset, ++offset))
+      },
+    }), { headers: { 'content-type': 'text/event-stream' } }),
+  })
+  const server = await proxy.listen()
+  try {
+    const response = await fetch('http://127.0.0.1:' + server.address().port + '/antigravity/v1/chat/completions', {
+      method: 'POST',
+      headers: { authorization: 'Bearer secret-key', 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'gemini-3.7-flash-high', stream: true, messages: [{ role: 'user', content: 'hi' }] }),
+    })
+    assert.equal(response.status, 200)
+    const { chunks, done } = parseOpenaiSse(await response.text())
+    assert.equal(chunks.map(chunk => chunk.choices[0].delta.content ?? '').join(''), text)
+    assert.equal(chunks.at(-1).choices[0].finish_reason, 'stop')
+    assert.equal(done, true)
   } finally {
     await proxy.close()
   }

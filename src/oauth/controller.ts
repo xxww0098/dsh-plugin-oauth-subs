@@ -8,7 +8,7 @@ import { OAuthFlowManager } from './flow.js'
 import { DeviceFlowManager } from './grok/device-flow.js'
 import { GlmCliFlowManager } from './glm/cli-flow.js'
 import { KiroIdcFlowManager } from './kiro/idc-flow.js'
-import { accountIdOf, deleteSession, getAccountSession, getSession, listStoredSessions, publicSession, replaceAccountId, saveSession, switchAccount } from './store.js'
+import { accountIdOf, deleteSession, getStoredSession, getSession, listStoredSessions, publicSession, replaceAccountId, saveSession, switchAccount, updateAccountSession } from './store.js'
 import {
   codexFlow,
   exchangeCodexCode,
@@ -178,29 +178,26 @@ export class AuthController {
       codex: new TokenManager({
         displayName: 'ChatGPT (Codex)',
         preemptMs: 5 * 60_000,
-        load: () => getSession('codex', this.authPath),
-        save: (session) => saveSession('codex', session, this.authPath),
-        remove: () => deleteSession('codex', this.authPath),
-        refresh: refreshCodex,
+        provider: 'codex',
+        authPath: this.authPath,
+        refresh: (session) => refreshCodex(session, fetchFn),
         isPermanent: isCodexPermanentRefreshError,
         onRemoved: () => this.onAuthChanged?.('codex'),
       }),
       grok: new TokenManager({
         displayName: 'Grok (Subscription)',
         preemptMs: 2 * 60_000,
-        load: () => getSession('grok', this.authPath),
-        save: (session) => saveSession('grok', session, this.authPath),
-        remove: () => deleteSession('grok', this.authPath),
-        refresh: refreshGrok,
+        provider: 'grok',
+        authPath: this.authPath,
+        refresh: (session) => refreshGrok(session, fetchFn),
         isPermanent: isGrokPermanentRefreshError,
         onRemoved: () => this.onAuthChanged?.('grok'),
       }),
       glm: new TokenManager({
         displayName: 'GLM (Coding Plan)',
         preemptMs: 24 * 60 * 60_000,
-        load: () => getSession('glm', this.authPath),
-        save: (session) => saveSession('glm', session, this.authPath),
-        remove: () => deleteSession('glm', this.authPath),
+        provider: 'glm',
+        authPath: this.authPath,
         refresh: refreshGlm,
         isPermanent: isGlmPermanentRefreshError,
         onRemoved: () => this.onAuthChanged?.('glm'),
@@ -208,9 +205,8 @@ export class AuthController {
       kiro: new TokenManager({
         displayName: 'Kiro',
         preemptMs: 2 * 60_000,
-        load: () => getSession('kiro', this.authPath),
-        save: (session) => saveSession('kiro', session, this.authPath),
-        remove: () => deleteSession('kiro', this.authPath),
+        provider: 'kiro',
+        authPath: this.authPath,
         refresh: (session) => refreshKiro(session, { fetchFn }),
         isPermanent: isKiroPermanentRefreshError,
         onRemoved: () => this.onAuthChanged?.('kiro'),
@@ -218,9 +214,8 @@ export class AuthController {
       antigravity: new TokenManager({
         displayName: 'Antigravity',
         preemptMs: ANTIGRAVITY_PREEMPT_MS,
-        load: () => getSession('antigravity', this.authPath),
-        save: (session) => saveSession('antigravity', session, this.authPath),
-        remove: () => deleteSession('antigravity', this.authPath),
+        provider: 'antigravity',
+        authPath: this.authPath,
         refresh: (session) => refreshAntigravity(session, fetchFn),
         isPermanent: isAntigravityPermanentRefreshError,
         onRemoved: () => this.onAuthChanged?.('antigravity'),
@@ -228,9 +223,8 @@ export class AuthController {
       cursor: new TokenManager({
         displayName: 'Cursor',
         preemptMs: 5 * 60_000,
-        load: () => getSession('cursor', this.authPath),
-        save: (session) => saveSession('cursor', session, this.authPath),
-        remove: () => deleteSession('cursor', this.authPath),
+        provider: 'cursor',
+        authPath: this.authPath,
         refresh: (session) => refreshCursor(session, fetchFn),
         isPermanent: isCursorPermanentRefreshError,
         onRemoved: () => this.onAuthChanged?.('cursor'),
@@ -238,9 +232,8 @@ export class AuthController {
       ollama: new TokenManager({
         displayName: 'Ollama Cloud',
         preemptMs: 24 * 60 * 60_000,
-        load: () => getSession('ollama', this.authPath),
-        save: (session) => saveSession('ollama', session, this.authPath),
-        remove: () => deleteSession('ollama', this.authPath),
+        provider: 'ollama',
+        authPath: this.authPath,
         refresh: refreshOllama,
         isPermanent: isOllamaPermanentRefreshError,
         onRemoved: () => this.onAuthChanged?.('ollama'),
@@ -248,9 +241,8 @@ export class AuthController {
       kimi: new TokenManager({
         displayName: 'Kimi (Code Plan)',
         preemptMs: 2 * 60_000,
-        load: () => getSession('kimi', this.authPath),
-        save: (session) => saveSession('kimi', session, this.authPath),
-        remove: () => deleteSession('kimi', this.authPath),
+        provider: 'kimi',
+        authPath: this.authPath,
         refresh: (session) => refreshKimi(session, fetchFn),
         isPermanent: isKimiPermanentRefreshError,
         onRemoved: () => this.onAuthChanged?.('kimi'),
@@ -258,9 +250,8 @@ export class AuthController {
       copilot: new TokenManager({
         displayName: 'GitHub Copilot',
         preemptMs: 2 * 60_000,
-        load: () => getSession('copilot', this.authPath),
-        save: (session) => saveSession('copilot', session, this.authPath),
-        remove: () => deleteSession('copilot', this.authPath),
+        provider: 'copilot',
+        authPath: this.authPath,
         refresh: (session) => refreshCopilot(session, fetchFn),
         isPermanent: isCopilotPermanentRefreshError,
         onRemoved: () => this.onAuthChanged?.('copilot'),
@@ -477,7 +468,7 @@ export class AuthController {
         await Promise.all(targets.map((row) => this.#rememberOllamaIdentity(row, this.quota.peek(provider, row.id))))
       }
       if (provider === 'antigravity') {
-        await Promise.all(targets.map((row) => this.#probeAntigravity(row.session, row.id)))
+        await Promise.all(targets.map((row) => this.#probeAntigravity(row)))
       }
       if (provider === 'cursor') {
         const before = cursorCatalogModels().map((model) => model.id).join('\0')
@@ -540,9 +531,7 @@ export class AuthController {
 
   async consumeReset(provider, accountId) {
     if (provider !== 'codex') throw new Error('only ChatGPT Codex can reset quota')
-    const session = await getAccountSession('codex', accountId, this.authPath)
-    if (!session) throw new Error('ChatGPT Codex is not signed in')
-    const live = await this.#hydrateSession('codex', session)
+    const live = await this.tokens.codex.session(accountId)
     return this.quota.consume('codex', accountIdOf('codex', live), live)
   }
 
@@ -722,34 +711,26 @@ export class AuthController {
       const next = { ...row.session, account }
       const nextId = accountIdOf('glm', next)
       if (nextId !== row.id) {
-        await replaceAccountId('glm', row.id, next, this.authPath)
+        await replaceAccountId('glm', row, next, this.authPath)
         this.quota.clear('glm', row.id)
       } else {
-        await saveSession('glm', next, this.authPath, { activate: false })
+        await updateAccountSession('glm', row, next, this.authPath)
       }
     }))
   }
 
-  async #hydrateSession(provider, session) {
-    const manager = this.tokens[provider]
-    if (!session || !manager) return session
-    if (typeof session.expiresAt !== 'number') return session
-    if (session.expiresAt - Date.now() > manager.preemptMs) return session
-    try {
-      const next = await manager.refresh(session)
-      await saveSession(provider, next, this.authPath, { activate: false })
-      return next
-    } catch {
-      return session
-    }
-  }
-
   async #liveAccounts(provider) {
     const rows = await listStoredSessions(provider, this.authPath)
-    return Promise.all(rows.map(async (row) => ({
-      ...row,
-      session: await this.#hydrateSession(provider, row.session),
-    })))
+    const live = await Promise.all(rows.map(async (row) => {
+      try {
+        return await this.tokens[provider].account(row.id)
+      } catch {
+        // A transient refresh failure can still use the stored access token.
+        // Permanent failures and logout remove the row instead of reviving it.
+        return getStoredSession(provider, row.id, this.authPath)
+      }
+    }))
+    return live.filter(Boolean)
   }
 
   async #ensureAccountQuota(provider) {
@@ -778,7 +759,7 @@ export class AuthController {
     const next = { ...row.session }
     if (email) next.account = email
     if (planType) next.planType = planType
-    await saveSession('kiro', next, this.authPath, { id: row.id, activate: row.active })
+    await updateAccountSession('kiro', row, next, this.authPath)
   }
 
   async #rememberCursorPlan(row, quota) {
@@ -844,12 +825,13 @@ export class AuthController {
   async #rewriteCursorIdentity(row, next) {
     const nextId = accountIdOf('cursor', next)
     if (nextId !== row.id) {
-      await replaceAccountId('cursor', row.id, next, this.authPath)
+      const saved = await replaceAccountId('cursor', row, next, this.authPath)
+      if (!saved) return
       this.quota.clear('cursor', row.id)
-      await this.quota.ensure('cursor', nextId, next)
+      await this.quota.ensure('cursor', saved.id, saved.session)
       return
     }
-    await saveSession('cursor', next, this.authPath, { id: row.id, activate: row.active })
+    await updateAccountSession('cursor', row, next, this.authPath)
   }
 
   async #maybeAutoImportCursor() {
@@ -938,12 +920,13 @@ export class AuthController {
     if (planType) next.planType = planType
     const nextId = accountIdOf('ollama', next)
     if (nextId !== row.id && isOllamaOpaqueAccount(row.id)) {
-      await replaceAccountId('ollama', row.id, next, this.authPath)
+      const saved = await replaceAccountId('ollama', row, next, this.authPath)
+      if (!saved) return
       this.quota.clear('ollama', row.id)
-      await this.quota.ensure('ollama', nextId, next)
+      await this.quota.ensure('ollama', saved.id, saved.session)
       return
     }
-    await saveSession('ollama', next, this.authPath, { id: row.id, activate: row.active })
+    await updateAccountSession('ollama', row, next, this.authPath)
   }
 
   async #maybeAutoImportKimi() {
@@ -1033,12 +1016,13 @@ export class AuthController {
     if (planType) next.planType = planType
     const nextId = accountIdOf('kimi', next)
     if (nextId !== row.id && isKimiOpaqueAccount(row.id)) {
-      await replaceAccountId('kimi', row.id, next, this.authPath)
+      const saved = await replaceAccountId('kimi', row, next, this.authPath)
+      if (!saved) return
       this.quota.clear('kimi', row.id)
-      await this.quota.ensure('kimi', nextId, next)
+      await this.quota.ensure('kimi', saved.id, saved.session)
       return
     }
-    await saveSession('kimi', next, this.authPath, { id: row.id, activate: row.active })
+    await updateAccountSession('kimi', row, next, this.authPath)
   }
 
   async #finishCopilotSession(session) {
@@ -1073,19 +1057,20 @@ export class AuthController {
     if (planType) next.planType = planType
     const nextId = accountIdOf('copilot', next)
     if (nextId !== row.id && isCopilotOpaqueAccount(row.id)) {
-      await replaceAccountId('copilot', row.id, next, this.authPath)
+      const saved = await replaceAccountId('copilot', row, next, this.authPath)
+      if (!saved) return
       this.quota.clear('copilot', row.id)
-      await this.quota.ensure('copilot', nextId, next)
+      await this.quota.ensure('copilot', saved.id, saved.session)
       return
     }
-    await saveSession('copilot', next, this.authPath, { id: row.id, activate: row.active })
+    await updateAccountSession('copilot', row, next, this.authPath)
   }
 
   async #rememberAntigravityPlan(row, quota) {
     if (!quota || quota.status !== 'ready') return
     const planType = typeof quota.planType === 'string' && quota.planType.trim() ? quota.planType.trim() : undefined
     if (!planType || row.session.planType === planType) return
-    await saveSession('antigravity', { ...row.session, planType }, this.authPath, { id: row.id, activate: row.active })
+    await updateAccountSession('antigravity', row, { ...row.session, planType }, this.authPath)
   }
 
   async #existingKiroMachineId() {
@@ -1236,12 +1221,12 @@ export class AuthController {
           ? await exchangeAntigravityCode(code, attempt.redirectUri, { fetchFn: this.fetchFn })
           : await exchangeGrokCode(code, attempt.pkce.verifier, attempt.redirectUri, attempt.pkce.challenge)
       if (this.claims.get(provider) !== claim) return
-      await saveSession(provider, session, this.authPath)
+      const saved = await saveSession(provider, session, this.authPath)
       this.lastError.delete(provider)
       if (provider === 'kiro') await this.#discoverKiro(session)
       this.onAuthChanged?.(provider)
       void this.quota.refresh(provider)
-      if (provider === 'antigravity') void this.#probeAntigravity(session)
+      if (provider === 'antigravity') void this.#probeAntigravity(saved)
     } catch (error) {
       if (this.claims.get(provider) !== claim) return
       if (!(error instanceof Error && error.message === 'login cancelled')) {
@@ -1250,14 +1235,12 @@ export class AuthController {
     }
   }
 
-  async #probeAntigravity(session, accountId) {
+  async #probeAntigravity(source) {
     try {
-      const info = await probeAntigravityValidation(session, { fetchFn: this.fetchFn })
+      const info = await probeAntigravityValidation(source.session, { fetchFn: this.fetchFn })
       if (info === undefined) return
-      const next = applyAntigravityValidation(session, info)
-      await saveSession('antigravity', next, this.authPath, accountId
-        ? { id: accountId, activate: false }
-        : { activate: false })
+      const next = applyAntigravityValidation(source.session, info)
+      await updateAccountSession('antigravity', source, next, this.authPath)
     } catch {
       // probe is best-effort; quota / login must still succeed
     }

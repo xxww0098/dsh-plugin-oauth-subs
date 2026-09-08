@@ -150,6 +150,46 @@ test('Codex and Antigravity callback paths stay exact; Kiro-only extras 404', as
   assert.equal(await attempt.waitCode(), 'abc')
 })
 
+test('OAuth error callbacks require state proof and leave other login attempts intact', async t => {
+  const flows = new OAuthFlowManager()
+  const attempt = await flows.start('codex', {
+    callbackPath: '/auth/callback',
+    listen: { host: '127.0.0.1', ports: [0] },
+    timeoutMs: 5_000,
+    buildAuthorizeUrl: () => 'https://example.test/authorize',
+  })
+  const result = attempt.waitCode().then(code => ({ code }), error => ({ error }))
+  t.after(async () => { attempt.cancel(); await result })
+  for (const suffix of ['', '&state=another-login']) {
+    const response = await fetch(attempt.redirectUri + '?error=access_denied' + suffix)
+    assert.equal(response.status, 400)
+    assert.equal(await response.text(), 'state mismatch')
+    assert.equal(flows.isBusy('codex'), true)
+  }
+  const response = await fetch(attempt.redirectUri + '?code=valid-code&state=' + attempt.state)
+  assert.equal(response.status, 200)
+  assert.deepEqual(await result, { code: 'valid-code' })
+})
+
+test('OAuth error callbacks with matching state still report authorization failure', async () => {
+  const flows = new OAuthFlowManager()
+  const attempt = await flows.start('codex', {
+    callbackPath: '/auth/callback',
+    listen: { host: '127.0.0.1', ports: [0] },
+    timeoutMs: 5_000,
+    buildAuthorizeUrl: () => 'https://example.test/authorize',
+  })
+  const rejected = assert.rejects(attempt.waitCode(), /authorization failed: access_denied/)
+  try {
+    const response = await fetch(attempt.redirectUri + '?error=access_denied&state=' + attempt.state)
+    assert.equal(response.status, 200)
+    await rejected
+    assert.equal(flows.isBusy('codex'), false)
+  } finally {
+    attempt.cancel()
+  }
+})
+
 test('OAuthFlowManager rejects a bare code without state proof', async () => {
   const flows = new OAuthFlowManager()
   const attempt = await flows.start('codex', {

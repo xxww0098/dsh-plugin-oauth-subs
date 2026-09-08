@@ -14,6 +14,7 @@ AWS **Kiro / CodeWhisperer**。协议对齐 [ZyphrZero/kiro.rs](https://github.c
 | [`import.ts`](import.ts) | 卡密 / JSON / CSV / kiro.rs / IDE token 解析；SSO client 配对 |
 | [`idc-flow.ts`](idc-flow.ts) | AWS SSO OIDC register + JSON device poll（Builder ID / 企业 IdC） |
 | [`request.ts`](request.ts) | OpenAI chat ↔ `conversationState` + eventstream → `chat.completion` |
+| [`transport.ts`](transport.ts) | AWS HTTP 生命周期、EventStream 错误传播、按 toolUseId 分配 OpenAI 流索引 |
 | [`cache.ts`](cache.ts) | `conversationState.conversationId`。禁止 `Date.now()` |
 
 调度：[`../proxy.ts`](../proxy.ts) `family === 'kiro'` 剥 Codex retention，取出 `kiroConversationId`；真正组 AWS body 在 `openaiToKiro`。
@@ -73,6 +74,9 @@ DSH chat/completions  →  POST https://q.<region>.amazonaws.com/
 - `normalizeToolUseId`：已符合 `^[a-zA-Z0-9_.:-]{1,64}$` 的 id 只做 `call_` / `toolu_` / `tool_` → `tooluse_`；带 `|` 或超长的 OpenAI Responses 复合 id（`call_…|fc_…`）用稳定 sha256 映成 `tooluse_<32>`，use 和 result 共用同一张表。
 - 上游 401/403 改写成 400（非 AUTH），避免 DSH 把订阅打成「API 密钥无效」。`MONTHLY_REQUEST_COUNT` 也回 400（不要扮成可锤的 429）；`INSUFFICIENT_MODEL_CAPACITY` → 503；`USER_REQUEST_RATE_EXCEEDED` → 429（有则带 Retry-After）；超大 / `TOO_BIG` 保持 400/413。TokenManager 已经会刷新，不要再抄 kiro-cli 403 级联。
 - eventstream 里结构化 thinking / `text`（无 `content`）映成 Completions `reasoning_content`。不要把思考压成 `<thinking>` XML 写进 `content`。
+- 网络块不是帧边界。`KiroEventStreamParser` 拒绝非法帧长 / header 长度，`finish()` 拒绝 EOF 残帧；不能在毒前缀后继续积累数据。见[故障记录](../../../docs/error.md)。
+- 流式工具按 `toolUseId` 分配稳定且互异的 OpenAI `index`，参数片段始终是字符串；交错工具不能拼成同一个调用。
+- 异常 / 畸形帧不是成功结束：发头前回错误 HTTP 状态，发头后发 OpenAI `error` SSE，不追加成功 `finish_reason` / `[DONE]`；停止消费并释放上游 reader。
 
 命中：有 `metadataEvent.tokenUsage`（或嵌套 `metadataEvent` / snake_case）时用精确字段，`cacheReadInputTokens` → `prompt_tokens_details.cached_tokens`。
 

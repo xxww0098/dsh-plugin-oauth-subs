@@ -8,7 +8,9 @@ Read [`AGENTS.md`](AGENTS.md) first. Host code is TypeScript under `src/`. Setti
 npm test
 ```
 
-Node 22. Tests are `node:test` files under `test/` and import **compiled** `lib/`. Do not write credentials or live `auth.json` fixtures.
+Node 22. Tests are `node:test` files under `test/` and import **compiled** `lib/`. Do not write credentials or live `auth.json` fixtures. Use disposable directories and loopback servers for lifecycle and transport regressions.
+
+The host build currently uses `noCheck`: `npm test` proves compilation and runtime tests, **not host type safety**. The UI compiler does check types. Reduce host type debt module by module before removing that switch; do not hide diagnostics with casts or new suppressions.
 
 ## Session diagnosis
 
@@ -20,17 +22,12 @@ node --experimental-strip-types scripts/analyze-session.ts path/to/session.jsonl
 
 A healthy long session should stay above **80%** weighted cache hit with **zero affinity misses**. Compaction and `request/header` rebuilds rewrite the prefix and are labeled separately — do not file those as shard regressions. `Error: tool call timed out after 30000ms` is `dsh-tool-fs-search` + timeout-policy, not this proxy; do not add a fake `toolTimeoutMs` here. Record true affinity misses in `docs/error.md`.
 
-## Layout
+## Ownership boundaries
 
-| Path | Owns |
-| --- | --- |
-| `src/oauth/proxy.ts` | Loopback Responses proxy, cache-affinity headers, stream commit gate |
-| `src/oauth/codex/` | Codex catalog, identity, Responses body (prefix stabilize) |
-| `src/oauth/grok/` | Grok catalog, identity, device-code flow |
-| `src/oauth/kiro/` | Kiro Social / Builder ID / IdC / Entra / API key |
-| `src/oauth/antigravity/` | Antigravity catalog, Google OAuth, cloudcode-pa fingerprint |
-| `src/ui/client.ts` | Settings UI (React classic-script, compiled to `lib/ui/client.js`) |
-| `src/utils/analyze-session.ts` | Session.jsonl scoring |
-| `docs/error.md` | Recurring faults and the acceptance that closed them |
-| `docs/oauth.md` | Official / community repos each family hop is aligned to |
-| `AGENTS.md` | Binding stack, tree, and error-log rules |
+The [audit choices ledger](docs/choices.md) records the tradeoffs behind the current lifecycle and transport boundaries, including compatibility and verification limits.
+
+- `src/oauth/proxy.ts` owns loopback authentication, routing, and passthrough retry/commit policy. It dispatches cache policy rather than sharing identities between vendors.
+- Vendor-specific wire translation and its HTTP/stream lifecycle belong together under that family's folder. The translating transports are documented in [Kiro](src/oauth/kiro/README.md), [Antigravity](src/oauth/antigravity/README.md), and [Cursor](src/oauth/cursor/README.md). Shared HTTP response primitives live in `src/utils/http.ts` and must not know any vendor.
+- `src/oauth/tokens.ts` owns account-scoped refresh coalescing; `src/oauth/store.ts` owns atomic conditional writes. A refresh or metadata result from an old login cannot activate, delete, or recreate a newer login. Chat and background quota hydration must use that same owner.
+- `src/ui/` is the React classic-script settings client; host modules stay framework-free. `src/utils/` is only for provider-independent mechanisms, never shared cache rewrites.
+- Generated `lib/` is rebuilt from source. Cross-family contracts live in [AGENTS.md](AGENTS.md), incidents in [docs/error.md](docs/error.md), and upstream attribution in [docs/oauth.md](docs/oauth.md).
