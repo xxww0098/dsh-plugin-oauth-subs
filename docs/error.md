@@ -2,6 +2,12 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-10：关于页检查失败 GitHub releases 403
+
+**现象**：About 当前版本正常，最新版本 `-`，红字 `检查失败 · GitHub releases 403`；DSH 卡 GitHub Tag 也是 `-`。
+**根因**：未认证 `api.github.com` 每小时 60 次用尽后回 403。`fetchLatest` 把非 200 直接抛错，没有走 github.com 页面。
+**修复**：API 失败后读 `/releases/latest` 的 302 Location 取 tag。有 `GITHUB_TOKEN` / `GH_TOKEN` 时带 Bearer。
+
 ## 2026-09-09：关于页检查更新 405 `/oauth-subs-auth/status`
 
 **现象**：设置 > OAuth 订阅 > About，「检查更新」无反应，红字 `transport failure for /oauth-subs-auth/status: HTTP 405`，最新版本显示 `-`。

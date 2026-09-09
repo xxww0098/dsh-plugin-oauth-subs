@@ -193,6 +193,55 @@ test('fetchLatest stays update when the process is behind even if disk matches G
   assert.equal(update.disk, '0.0.71')
 })
 
+test('fetchLatest uses github.com latest redirect after API 403', async () => {
+  const calls = []
+  const fetchFn = async (url, init) => {
+    calls.push({ url: String(url), redirect: init?.redirect, auth: init?.headers?.authorization })
+    if (String(url).includes('api.github.com')) {
+      return new Response('{"message":"API rate limit exceeded"}', { status: 403 })
+    }
+    return new Response(null, {
+      status: 302,
+      headers: { location: `${REPO_URL}/releases/tag/v0.0.84` },
+    })
+  }
+  const update = await fetchLatest({ fetchFn, current: '0.0.83', platform: 'darwin', env: {} })
+  assert.equal(update.status, 'update')
+  assert.equal(update.latest.tag, 'v0.0.84')
+  assert.equal(update.latest.url, `${REPO_URL}/releases/tag/v0.0.84`)
+  assert.equal(calls.some((call) => call.url.includes('/releases/latest') && call.redirect === 'manual'), true)
+})
+
+test('fetchLatest sends GITHUB_TOKEN as Bearer on the API request', async () => {
+  const calls = []
+  const fetchFn = async (url, init) => {
+    calls.push(init?.headers?.authorization)
+    return new Response(JSON.stringify({ tag_name: 'v0.0.84', html_url: `${REPO_URL}/releases/tag/v0.0.84`, assets: [] }), { status: 200 })
+  }
+  await fetchLatest({ fetchFn, current: '0.0.84', env: { GITHUB_TOKEN: 'ghs_test' } })
+  assert.equal(calls[0], 'Bearer ghs_test')
+})
+
+test('fetchDshLatest uses github.com latest redirect after tags API 403', async () => {
+  const fetchFn = async (url, init) => {
+    const s = String(url)
+    if (s.includes('api.github.com')) return new Response('rate limit', { status: 403 })
+    if (s.includes('registry.npmjs.org')) {
+      return new Response(JSON.stringify({ 'dist-tags': { latest: '0.1.2-rc.1' } }))
+    }
+    if (s.includes('/releases/latest') && init?.redirect === 'manual') {
+      return new Response(null, {
+        status: 302,
+        headers: { location: `${DSH_REPO_URL}/releases/tag/dsh-v0.1.5-alpha.2` },
+      })
+    }
+    return new Response('{}')
+  }
+  const info = await fetchDshLatest({ fetchFn, current: '0.1.5-alpha.2', env: { PATH: '' } })
+  assert.equal(info.latestTag?.tag, 'dsh-v0.1.5-alpha.2')
+  assert.equal(info.npm?.version, '0.1.2-rc.1')
+})
+
 test('readPackageVersion and versionAdvanced require a real bump', () => {
   assert.equal(readPackageVersion('/nope.json', { readFileFn: () => { throw new Error('missing') } }), '')
   assert.equal(readPackageVersion('/x.json', { readFileFn: () => '{"version":"0.0.71"}' }), '0.0.71')

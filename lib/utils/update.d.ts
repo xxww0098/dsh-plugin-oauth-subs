@@ -18,6 +18,7 @@ export declare function modulePackageJsonPath(): string;
 export declare const REPO_SLUG = "xxww0098/dsh-plugin-oauth-subs";
 export declare const REPO_URL = "https://github.com/xxww0098/dsh-plugin-oauth-subs";
 export declare const RELEASES_API = "https://api.github.com/repos/xxww0098/dsh-plugin-oauth-subs/releases/latest";
+export declare const RELEASES_LATEST_HTML = "https://github.com/xxww0098/dsh-plugin-oauth-subs/releases/latest";
 export declare const PLATFORMS: readonly string[];
 export declare const PLUGIN_NAME = "dsh-plugin-oauth-subs";
 export declare const DEFAULT_PROFILE = "web";
@@ -62,6 +63,12 @@ export declare function localUpdateInfo(platform?: NodeJS.Platform, opts?: {}): 
     repo: string;
     repoSlug: string;
 };
+export declare function githubRequestHeaders(userAgent: any, env?: NodeJS.ProcessEnv): {
+    accept: string;
+    'user-agent': any;
+};
+/** `/releases/tag/v0.0.84` or `/tags/dsh-v0.1.5-alpha.2` from a github.com URL. */
+export declare function tagFromGithubReleaseUrl(url: any): string;
 /** GitHub `published_at` as `YYYY-MM-DD HH:mm:ss` in Asia/Shanghai. */
 export declare function formatPublishedAt(iso: any): string;
 export declare function fetchLatest({ fetchFn, current, platform, timeoutMs, profile, env, readFileFn, }?: {
@@ -161,6 +168,7 @@ export declare const DSH_REPO_SLUG = "deepseek-ai/deepseek-harness";
 export declare const DSH_REPO_URL = "https://github.com/deepseek-ai/deepseek-harness";
 export declare const DSH_TAGS_API = "https://api.github.com/repos/deepseek-ai/deepseek-harness/tags";
 export declare const DSH_RELEASES_API = "https://api.github.com/repos/deepseek-ai/deepseek-harness/releases";
+export declare const DSH_RELEASES_LATEST_HTML = "https://github.com/deepseek-ai/deepseek-harness/releases/latest";
 export declare const DSH_NPM_PACKAGE = "@deepseek-ai/dsh";
 export declare const DSH_NPM_REGISTRY_API = "https://registry.npmjs.org/@deepseek-ai/dsh";
 export declare const DSH_UPDATE_TIMEOUT_MS = 180000;
