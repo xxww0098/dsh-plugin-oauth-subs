@@ -2,6 +2,12 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-09：关于页检查更新 405 `/oauth-subs-auth/status`
+
+**现象**：设置 > OAuth 订阅 > About，「检查更新」无反应，红字 `transport failure for /oauth-subs-auth/status: HTTP 405`，最新版本显示 `-`。
+**根因**：`rpc.handle` 用 `this.ctx.webServer.register` 挂前缀。插件没 inject `webServer` 会直接拒读；inject 了 Cordis 仍把 `this.ctx` shadow 成 connection 提供方 fiber，那边也没有 `webServer`。通道没挂上，POST 落到 SPA fallback 回 405。
+**修复**：`registerRpc` 同时 inject `connection` + `webServer`，并把 traced service 的 `ctx` 绑回调用方 scope 再 `handle('/oauth-subs-auth')`。
+
 ## 2026-09-09：关于页更新插件报 PATH 上找不到 dsh
 
 **现象**：About 已显示本机 DSH 版本，点插件「检查更新」红字 `PATH 上找不到 dsh`，0.0.82 装不上。
