@@ -26,8 +26,10 @@ import {
   versionAdvanced,
   workaroundCommand,
   REPO_URL,
+  REPO_SLUG,
   RELEASES_API,
   DSH_REPO_URL,
+  DSH_REPO_SLUG,
   DSH_NPM_PACKAGE,
   resolveDshInstall,
   localDshInfo,
@@ -205,7 +207,7 @@ test('fetchLatest uses github.com latest redirect after API 403', async () => {
       headers: { location: `${REPO_URL}/releases/tag/v0.0.84` },
     })
   }
-  const update = await fetchLatest({ fetchFn, current: '0.0.83', platform: 'darwin', env: {} })
+  const update = await fetchLatest({ fetchFn, spawnFn: missingGh, current: '0.0.83', platform: 'darwin', env: {} })
   assert.equal(update.status, 'update')
   assert.equal(update.latest.tag, 'v0.0.84')
   assert.equal(update.latest.url, `${REPO_URL}/releases/tag/v0.0.84`)
@@ -237,7 +239,7 @@ test('fetchDshLatest uses github.com latest redirect after tags API 403', async 
     }
     return new Response('{}')
   }
-  const info = await fetchDshLatest({ fetchFn, current: '0.1.5-alpha.2', env: { PATH: '' } })
+  const info = await fetchDshLatest({ fetchFn, spawnFn: missingGh, current: '0.1.5-alpha.2', env: { PATH: '' } })
   assert.equal(info.latestTag?.tag, 'dsh-v0.1.5-alpha.2')
   assert.equal(info.npm?.version, '0.1.2-rc.1')
 })
@@ -266,6 +268,66 @@ function fakeChild({ code = 0, error, stderr = '', stdout = '' } = {}) {
     return child
   }
 }
+
+function missingGh() {
+  const err = new Error('spawn gh ENOENT')
+  err.code = 'ENOENT'
+  throw err
+}
+
+test('fetchLatest uses gh api after GitHub API 403', async () => {
+  const seen = []
+  const fetchFn = async (url) => {
+    if (String(url).includes('api.github.com')) return new Response('rate limit', { status: 403 })
+    return new Response('nope', { status: 404 })
+  }
+  const spawnFn = (cmd, args) => {
+    seen.push({ cmd, args })
+    return fakeChild({
+      code: 0,
+      stdout: JSON.stringify({
+        tag_name: 'v0.0.84',
+        html_url: `${REPO_URL}/releases/tag/v0.0.84`,
+        published_at: '2026-09-09T16:22:30Z',
+        assets: [],
+      }),
+    })()
+  }
+  const update = await fetchLatest({
+    fetchFn,
+    spawnFn,
+    current: '0.0.83',
+    platform: 'darwin',
+    env: {},
+  })
+  assert.equal(update.status, 'update')
+  assert.equal(update.latest.tag, 'v0.0.84')
+  assert.equal(update.latest.url, `${REPO_URL}/releases/tag/v0.0.84`)
+  assert.equal(seen[0].cmd, 'gh')
+  assert.deepEqual(seen[0].args, ['api', `repos/${REPO_SLUG}/releases/latest`])
+})
+
+test('fetchDshLatest uses gh api after tags API 403', async () => {
+  const seen = []
+  const fetchFn = async (url) => {
+    if (String(url).includes('api.github.com')) return new Response('rate limit', { status: 403 })
+    if (String(url).includes('registry.npmjs.org')) {
+      return new Response(JSON.stringify({ 'dist-tags': { latest: '0.1.2-rc.1' } }))
+    }
+    return new Response('nope', { status: 404 })
+  }
+  const spawnFn = (cmd, args) => {
+    seen.push({ cmd, args })
+    return fakeChild({
+      code: 0,
+      stdout: JSON.stringify([{ name: 'dsh-v0.1.5-alpha.2' }]),
+    })()
+  }
+  const info = await fetchDshLatest({ fetchFn, spawnFn, current: '0.1.5-alpha.2', env: { PATH: '' } })
+  assert.equal(info.latestTag?.tag, 'dsh-v0.1.5-alpha.2')
+  assert.equal(seen[0].cmd, 'gh')
+  assert.deepEqual(seen[0].args, ['api', `repos/${DSH_REPO_SLUG}/tags`])
+})
 
 test('runPluginUpdate spawns PATH dsh and reports spawn success', async () => {
   const seen = []

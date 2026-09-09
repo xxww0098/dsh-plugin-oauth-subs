@@ -23,7 +23,9 @@ export declare const PLATFORMS: readonly string[];
 export declare const PLUGIN_NAME = "dsh-plugin-oauth-subs";
 export declare const DEFAULT_PROFILE = "web";
 export declare const DSH_BIN = "dsh";
+export declare const GH_BIN = "gh";
 export declare const PLUGIN_UPDATE_TIMEOUT_MS = 180000;
+export declare const GH_API_TIMEOUT_MS = 5000;
 /** Version of the module this process actually loaded. Always re-reads disk. */
 export declare function installedVersion({ readFileFn }?: {}): any;
 /** Newer of two semver-ish tags. Empty / unparseable values lose. */
@@ -71,8 +73,9 @@ export declare function githubRequestHeaders(userAgent: any, env?: NodeJS.Proces
 export declare function tagFromGithubReleaseUrl(url: any): string;
 /** GitHub `published_at` as `YYYY-MM-DD HH:mm:ss` in Asia/Shanghai. */
 export declare function formatPublishedAt(iso: any): string;
-export declare function fetchLatest({ fetchFn, current, platform, timeoutMs, profile, env, readFileFn, }?: {
+export declare function fetchLatest({ fetchFn, spawnFn, current, platform, timeoutMs, profile, env, readFileFn, existsSyncFn, }?: {
     fetchFn?: typeof fetch;
+    spawnFn?: typeof spawn;
     platform?: NodeJS.Platform;
     timeoutMs?: number;
 }): Promise<{
@@ -202,8 +205,9 @@ export declare function localDshInfo(platform?: NodeJS.Platform, opts?: {}): {
     repoSlug: string;
     npmPackage: string;
 };
-export declare function fetchDshLatest({ fetchFn, current, platform, timeoutMs, env, readFileFn, realpathFn, existsSyncFn, }?: {
+export declare function fetchDshLatest({ fetchFn, spawnFn, current, platform, timeoutMs, env, readFileFn, realpathFn, existsSyncFn, }?: {
     fetchFn?: typeof fetch;
+    spawnFn?: typeof spawn;
     platform?: NodeJS.Platform;
     timeoutMs?: number;
 }): Promise<{
