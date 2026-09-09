@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
+import { mkdtemp, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { test } from 'node:test'
 import {
   classifyAsset,
@@ -227,6 +230,49 @@ test('runPluginUpdate spawns PATH dsh and reports spawn success', async () => {
   assert.equal(result.command, 'dsh plugin --profile web update dsh-plugin-oauth-subs')
   assert.equal(seen[0].cmd, 'dsh')
   assert.deepEqual(seen[0].args, ['plugin', '--profile', 'web', 'update', 'dsh-plugin-oauth-subs'])
+})
+
+test('runPluginUpdate spawns the running DSH binary when PATH has no dsh', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-bin-'))
+  await writeFile(join(dir, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh', version: '0.1.5-alpha.1' }))
+  const bin = join(dir, 'dsh')
+  await writeFile(bin, '#!/bin/sh\n')
+  const seen = []
+  const spawnFn = (cmd, args, opts) => {
+    seen.push({ cmd, args })
+    return fakeChild({ code: 0 })(cmd, args, opts)
+  }
+  const result = await runPluginUpdate({
+    spawnFn,
+    profile: 'web',
+    env: { DSH_HOME: process.cwd(), DSH_BIN_PATH: bin, PATH: '' },
+  })
+  assert.equal(result.ok, true)
+  assert.equal(seen[0].cmd, bin)
+  assert.deepEqual(seen[0].args, ['plugin', '--profile', 'web', 'update', 'dsh-plugin-oauth-subs'])
+  assert.equal(result.command, `${bin} plugin --profile web update dsh-plugin-oauth-subs`)
+})
+
+test('runPluginUpdate runs a .js DSH entry with process.execPath', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-js-'))
+  await writeFile(join(dir, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh', version: '0.1.5-alpha.1' }))
+  const bin = join(dir, 'cli.js')
+  await writeFile(bin, '#!/usr/bin/env node\n')
+  const seen = []
+  const spawnFn = (cmd, args, opts) => {
+    seen.push({ cmd, args })
+    return fakeChild({ code: 0 })(cmd, args, opts)
+  }
+  const execPath = '/usr/bin/node'
+  const result = await runPluginUpdate({
+    spawnFn,
+    profile: 'web',
+    execPath,
+    env: { DSH_HOME: process.cwd(), DSH_BIN_PATH: bin, PATH: '' },
+  })
+  assert.equal(result.ok, true)
+  assert.equal(seen[0].cmd, execPath)
+  assert.deepEqual(seen[0].args, [bin, 'plugin', '--profile', 'web', 'update', 'dsh-plugin-oauth-subs'])
 })
 
 function versionReader(versions) {
