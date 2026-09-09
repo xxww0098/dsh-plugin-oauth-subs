@@ -66,3 +66,16 @@ export function mapCopilotUsage(usage) {
   if (typeof details.cached_tokens !== 'number') details.cached_tokens = cached
   return { ...usage, prompt_tokens_details: details }
 }
+
+/** Completions SSE omits usage unless the vendor is asked. Do not override an explicit value. */
+export function applyCopilotStreamUsage(payload = {}) {
+  if (!payload || payload.stream !== true) return payload
+  const current = payload.stream_options
+  if (current && typeof current === 'object' && Object.hasOwn(current, 'include_usage')) return payload
+  return {
+    ...payload,
+    stream_options: current && typeof current === 'object'
+      ? { ...current, include_usage: true }
+      : { include_usage: true },
+  }
+}

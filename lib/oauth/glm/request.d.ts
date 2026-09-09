@@ -15,6 +15,8 @@ export { glmCacheSessionId, resetGlmSystemPins } from './cache.js';
 /** 5.3 / Flash cannot turn thinking off. Turbo is hybrid — do not force it. */
 export declare function glmForcedThinkingModel(model: any): boolean;
 export declare function normalizeGlmChatBody(payload: any): any;
+/** Completions leftover: map cache-read aliases. Anthropic hop is passthrough. */
+export declare function mapGlmChatUsage(usage: any): any;
 /**
  * DSH anthropic-messages body. Anthropic requires `max_tokens`.
  * System pin + cache_control live in applyGlmAnthropicCache.

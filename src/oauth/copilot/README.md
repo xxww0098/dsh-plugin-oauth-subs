@@ -18,7 +18,7 @@
 | [`index.ts`](index.ts) | client_id、设备码 spec、换票、刷新、vscode-chat 身份头、session、`/user` |
 | [`import.ts`](import.ts) | `~/.config/github-copilot/hosts.json`、OpenCode `auth.json`、`COPILOT_GITHUB_TOKEN` / `GITHUB_TOKEN` / `GH_TOKEN` |
 | [`catalog.ts`](catalog.ts) | 登录后 `GET {api}/models`；静态 `COPILOT_MODELS` 只做 fallback |
-| [`request.ts`](request.ts) | GPT 剥 `max_tokens`；`reasoning_effort`；`cache_read_*` → `cached_tokens` |
+| [`request.ts`](request.ts) | GPT 剥 `max_tokens`；`reasoning_effort`；流式要 `include_usage`；`cache_read_*` → `cached_tokens` |
 | [`cache.ts`](cache.ts) | 剥 Codex / Grok 字段。`X-Interaction-Id` = DSH pin。禁止抄 `session-id` / `x-grok-conv-id` |
 
 调度：[`../proxy.ts`](../proxy.ts) `family === 'copilot'` → `applyCopilotCache` + `applyCopilotThinking` + `copilotUpstreamHeaders`，`forward()` 到 `{endpoints.api}/chat/completions`。
@@ -109,7 +109,7 @@ Copilot Completions 是 **前缀哈希** + `X-Interaction-Id` 会话粘滞。官
 | 2 | `applyCopilotCache` | 剥 Codex/Grok 字段；首段 system 钉住，后续快照停到 **messages suffix** |
 | 3 | `copilotCacheHeaders` / `copilotUpstreamHeaders` | `X-Interaction-Id`。不写 `session-id` / `x-grok-conv-id` |
 
-命中：上游 `prompt_tokens_details.cached_tokens` / `cache_read_input_tokens` → `mapCopilotUsage`。没有字段不发明 0。不要 `Date.now()`。缺省 pin `dsh-copilot` **会**写成 `X-Interaction-Id`（官方总是发 session id）。
+命中：上游 `prompt_tokens_details.cached_tokens` / `cache_read_input_tokens` → `mapCopilotUsage`（JSON 和 SSE 都走代理）。流式缺省 `stream_options.include_usage`。没有字段不发明 0。不要 `Date.now()`。缺省 pin `dsh-copilot` **会**写成 `X-Interaction-Id`（官方总是发 session id）。
 
 ## 不要
 

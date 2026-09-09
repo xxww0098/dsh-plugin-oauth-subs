@@ -980,6 +980,42 @@ test('GLM hop pins x-session-id from DSH and strips prompt_cache_retention', asy
   }
 })
 
+test('GLM Completions leftover maps cache_read; Anthropic usage stays native', async () => {
+  const proxy = createProxy({
+    port: 0,
+    apiKey: 'secret-key',
+    fetchFn: async (url) => {
+      if (String(url).includes('/anthropic/')) {
+        return new Response(JSON.stringify({
+          usage: { input_tokens: 20, cache_read_input_tokens: 16 },
+        }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }
+      return new Response(JSON.stringify({
+        usage: { prompt_tokens: 20, cache_read_input_tokens: 16 },
+      }), { status: 200, headers: { 'content-type': 'application/json' } })
+    },
+    tokens: {
+      glm: { session: async () => ({ accessToken: 'id.secret', region: 'zai' }) },
+    },
+  })
+  const server = await proxy.listen()
+  const { port } = server.address()
+  const headers = { authorization: 'Bearer secret-key', 'content-type': 'application/json' }
+  const body = JSON.stringify({ model: 'glm-5.3', messages: [{ role: 'user', content: 'hi' }] })
+  try {
+    const chat = await fetch(`http://127.0.0.1:${port}/glm/v1/chat/completions`, { method: 'POST', headers, body })
+    assert.equal(chat.status, 200)
+    assert.equal((await chat.json()).usage.prompt_tokens_details.cached_tokens, 16)
+    const anth = await fetch(`http://127.0.0.1:${port}/glm/v1/messages`, { method: 'POST', headers, body })
+    assert.equal(anth.status, 200)
+    const anthUsage = (await anth.json()).usage
+    assert.equal(anthUsage.cache_read_input_tokens, 16)
+    assert.equal(anthUsage.prompt_tokens_details, undefined)
+  } finally {
+    await proxy.close()
+  }
+})
+
 test('GLM hop parks extra leading system snapshots after the conversation', async () => {
   resetGlmSystemPins()
   const seen = []
@@ -1206,3 +1242,50 @@ test('cursor mid-stream failure surfaces a structured error without a successful
     await proxy.close()
   }
 })
+
+test('proxy strips upstream content-encoding/content-length after undici decompressed the body', async () => {
+  // undici fetch auto-decompresses gzip, so the proxy reads a plain body while
+  // the upstream headers still say content-encoding: gzip. Forwarding those
+  // headers makes the client gunzip plain JSON (or wait for a body of the
+  // wrong size), so the proxy must drop them and let Node re-frame the body.
+  const fetchFn = async () => new Response('{"id":"resp","ok":true}', {
+    status: 200,
+    headers: {
+      'content-type': 'application/json',
+      'content-encoding': 'gzip',
+      'content-length': '123',
+      'x-upstream-marker': 'kept',
+    },
+  })
+  const proxy = createProxy({
+    port: 0,
+    bind: '0.0.0.0',
+    apiKey: 'secret-key',
+    fetchFn,
+    tokens: {
+      codex: {
+        session: async () => { throw new Error('not logged in') },
+      },
+      grok: {
+        session: async () => ({ accessToken: 'grok-tok' }),
+      },
+    },
+  })
+  const server = await proxy.listen()
+  const { port } = server.address()
+  try {
+    const res = await fetch('http://127.0.0.1:' + port + '/grok/v1/responses', {
+      method: 'POST',
+      headers: { authorization: 'Bearer secret-key', 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'grok-4.6', input: [{ role: 'user', content: [{ type: 'input_text', text: 'ping' }] }] }),
+    })
+    assert.equal(res.status, 200)
+    assert.equal(res.headers.get('content-encoding'), null)
+    assert.equal(res.headers.get('content-length'), null)
+    assert.equal(res.headers.get('x-upstream-marker'), 'kept')
+    assert.equal(await res.text(), '{"id":"resp","ok":true}')
+  } finally {
+    await proxy.close()
+  }
+})
+

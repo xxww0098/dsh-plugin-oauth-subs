@@ -134,7 +134,7 @@ Anthropic 默认：
 
 Pin map 的 Anthropic 键是 `${sessionId}\0anthropic`，和 Completions 的 `sessionId` **不撞**。
 
-命中字段：OpenAI `prompt_tokens_details.cached_tokens` / `cache_read_input_tokens`。Anthropic 靠 `cache_control`。
+命中字段：Completions 残留把 `cached_tokens` / `cache_read_input_tokens` 译到 `prompt_tokens_details.cached_tokens`（流式缺省 `include_usage`）。Anthropic 靠 `cache_control`，SSE 原样转发。没有字段不发明 0。
 
 判定：前缀被切开后剩 **576 token** 残骸 = **prefix break**，不是 Grok affinity miss。思考模型必须 `clear_thinking: false`；Completions 残留还要保留上一轮 `reasoning_content`，否则前缀同样断。
 

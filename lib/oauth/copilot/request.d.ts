@@ -5,3 +5,5 @@
  */
 export declare function applyCopilotThinking(payload: {}, model: any): {};
 export declare function mapCopilotUsage(usage: any): any;
+/** Completions SSE omits usage unless the vendor is asked. Do not override an explicit value. */
+export declare function applyCopilotStreamUsage(payload?: {}): {};

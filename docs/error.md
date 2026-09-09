@@ -2,6 +2,18 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-09：Completions 透传没把 cache_read 交给 DSH
+
+**现象**：Copilot / Kimi / GLM Completions 残留长聊 DSH `cacheReadTokens` 一直是 0%，上游 usage 里其实有 `cache_read_input_tokens`。
+**根因**：`mapCopilotUsage` 只在单测里跑；代理 SSE/JSON 原样转发。流式默认不带 `stream_options.include_usage`，很多 Completions 上游根本不回 usage。
+**修复**：这三家 Completions hop 缺省要 `include_usage`（已显式设置则不改）。JSON 和 SSE 的 `usage` 译成 `prompt_tokens_details.cached_tokens`。没有字段不发明 0。Anthropic / Responses 不改。Completions 流不走 Codex preamble 闸（没有 `response.created`），否则小回复会等到 120s。
+
+## 2026-09-09：代理透传 content-encoding: gzip 但 body 已被解压
+
+**现象**：非流式上游响应（xAI Cloudflare 对 JSON 响应 gzip）经代理后带 `content-encoding: gzip` 头但 body 是明文，客户端 gunzip 报 incorrect header check / terminated，Grok 非流式调用不可用。
+**根因**：undici fetch 自动解压 gzip，代理转发已解压字节却保留上游 `content-encoding` / `content-length`（描述的是上游线上字节）。
+**修复**：`forwardedHeaders` 剥离 `content-encoding` / `content-length`（wire-only），Node 重新分帧；回归测试覆盖。
+
 ## 2026-09-08：账号刷新跨越切换或注销后误写凭据
 
 **现象**：A 刷新期间切到 B 会被切回 A；A 的永久失败可能删除 B；注销后旧刷新 / 额度补全可能复活账号。

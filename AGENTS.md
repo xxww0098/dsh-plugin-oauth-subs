@@ -373,7 +373,7 @@ Copilot:   drop Codex/Grok cache fields; prefix-hash; extra system at messages s
 - Fallback constant `dsh-kimi` is analyzer-only; it is **not** written
   upstream. Never `Date.now()`.
 - No Codex `session-id` / `prompt_cache_key`, no Grok `x-grok-conv-id`.
-- Hits: none documented on Completions (`cached_tokens` if a field appears).
+- Hits: none documented on Completions (`cached_tokens` / `cache_read_*` if a field appears → `mapKimiUsage`).
 
 **Copilot** (`src/oauth/copilot/cache.ts`)
 
@@ -414,7 +414,7 @@ When adding `src/oauth/<id>/`:
 | Kiro | CodeWhisperer conversation | `conversationId` + model | system as first history user+ack; extra at history suffix (not between toolUses / toolResults) | `cacheReadInputTokens` → `cached_tokens` |
 | Cursor | Agent conversation (`conversation_id`) | `conversationId` + model; fallback `dsh-cursor:<model>`; `x-request-id` = `x-original-request-id`; hashed turn ids | extra DSH snapshots as extra `root_prompt_messages_json` system blobs | `TurnEndedUpdate.cache_read_tokens` → `cached_tokens` |
 | Ollama | none documented | no sticky conversation id (non-fix); `dsh-ollama` analyzer-only | n/a | none documented (`cached_tokens` if a field appears) |
-| Kimi | prefix hash of leading system + history | no shard key; `dsh-kimi` analyzer-only | extra system at **messages suffix** | none documented (`cached_tokens` if a field appears) |
+| Kimi | prefix hash of leading system + history | no shard key; `dsh-kimi` analyzer-only | extra system at **messages suffix** | `cached_tokens` / `cache_read_*` if a field appears |
 | Copilot | prefix hash of leading system + history | `X-Interaction-Id` (fallback `dsh-copilot` is written) | extra system at **messages suffix** | `cached_tokens` / `cache_read_input_tokens` |
 ### Do not
 
