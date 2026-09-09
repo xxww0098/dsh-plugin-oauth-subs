@@ -16,7 +16,7 @@
 | [`index.ts`](index.ts) | client_id、设备码 spec、换票、刷新、X-Msh 头、session、`/me` 身份 |
 | [`import.ts`](import.ts) | `~/.kimi-code/credentials/kimi-code.json` + 只读 `~/.kimi/…`；可选 `KIMI_API_KEY` |
 | [`catalog.ts`](catalog.ts) | 登录后 `GET /coding/v1/models`；静态 `KIMI_MODELS` 只做 fallback |
-| [`request.ts`](request.ts) | DSH `reasoning_effort` → `thinking` / `thinking.effort` |
+| [`request.ts`](request.ts) | DSH `reasoning_effort` → `thinking` / `thinking.effort`；流式要 `include_usage`；`cache_read_*` 出现才译成 `cached_tokens` |
 | [`cache.ts`](cache.ts) | 剥 Codex / Grok 字段；前缀哈希停车。禁止抄 `session-id` / `x-grok-conv-id` |
 
 调度：[`../proxy.ts`](../proxy.ts) `family === 'kimi'` → `applyKimiCache` + `applyKimiThinking`，`forward()` 到 `KIMI_CHAT_URL`。
@@ -88,7 +88,7 @@ Kimi 是 **前缀哈希**，没有分片键。
 | 2 | `applyKimiCache` | 剥 Codex/Grok 字段；首段 system 钉住，后续快照停到 **messages suffix** |
 | 3 | `kimiCacheHeaders` | 空。不写 `session-id` / `x-grok-conv-id` |
 
-`dsh-kimi` 只给分析器标签，**不**写进 upstream body。不要发明 `cached_tokens`。不要 `Date.now()`。
+`dsh-kimi` 只给分析器标签，**不**写进 upstream body。上游若带回 `cached_tokens` / `cache_read_*`，hop 译成 `prompt_tokens_details.cached_tokens`；没有字段不发明 0。流式缺省 `include_usage`。不要 `Date.now()`。
 
 ## 不要
 

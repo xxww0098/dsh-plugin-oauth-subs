@@ -31,7 +31,7 @@ import {
   parseCliPoll,
   unwrapEnvelope,
 } from '../lib/oauth/glm/index.js'
-import { normalizeGlmAnthropicBody, normalizeGlmChatBody, resetGlmSystemPins } from '../lib/oauth/glm/request.js'
+import { mapGlmChatUsage, normalizeGlmAnthropicBody, normalizeGlmChatBody, resetGlmSystemPins } from '../lib/oauth/glm/request.js'
 import { fetchGlmQuota, mergeGlmToolUsage, parseGlmQuota } from '../lib/oauth/quota.js'
 import { buildProviders } from '../lib/oauth/models.js'
 import { AuthController } from '../lib/oauth/controller.js'
@@ -226,6 +226,24 @@ test('normalizeGlmAnthropicBody does not force Turbo thinking', () => {
   })
   assert.equal(idle.thinking, undefined)
   assert.equal(idle.max_tokens, 1024)
+})
+
+test('GLM Completions leftover maps cache_read aliases and asks for stream usage', () => {
+  const streamed = normalizeGlmChatBody({
+    model: 'glm-5.3',
+    stream: true,
+    messages: [{ role: 'user', content: 'hi' }],
+  })
+  assert.equal(streamed.stream_options.include_usage, true)
+  const anth = normalizeGlmAnthropicBody({
+    model: 'glm-5.3',
+    stream: true,
+    max_tokens: 16,
+    messages: [{ role: 'user', content: 'hi' }],
+  })
+  assert.equal(anth.stream_options, undefined)
+  assert.equal(mapGlmChatUsage({ prompt_tokens: 12, cache_read_input_tokens: 9 }).prompt_tokens_details.cached_tokens, 9)
+  assert.equal(mapGlmChatUsage({ prompt_tokens: 12 }).prompt_tokens_details, undefined)
 })
 
 test('GLM Completions and Anthropic system pins do not collide', () => {

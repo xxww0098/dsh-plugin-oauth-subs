@@ -27,7 +27,7 @@ import {
 } from '../lib/oauth/kimi/index.js'
 import { KIMI_IMPORT_EMPTY, importKimiAuth, kimiSessionFromCliFile } from '../lib/oauth/kimi/import.js'
 import { applyKimiCache, kimiCacheHeaders, kimiCacheSessionId, resetKimiPins } from '../lib/oauth/kimi/cache.js'
-import { applyKimiThinking } from '../lib/oauth/kimi/request.js'
+import { applyKimiStreamUsage, applyKimiThinking, mapKimiUsage } from '../lib/oauth/kimi/request.js'
 import { DeviceFlowManager } from '../lib/oauth/grok/device-flow.js'
 import { parseKimiUsage } from '../lib/oauth/quota.js'
 import { createProxy } from '../lib/oauth/proxy.js'
@@ -198,6 +198,51 @@ test('thinking maps DSH effort onto thinking.effort', () => {
   assert.equal(Object.hasOwn(on, 'reasoning_effort'), false)
   const off = applyKimiThinking({ model: 'k3', reasoning_effort: 'off' })
   assert.deepEqual(off.thinking, { type: 'disabled' })
+  assert.equal(mapKimiUsage({ prompt_tokens: 10, cache_read_input_tokens: 8 }).prompt_tokens_details.cached_tokens, 8)
+  assert.equal(mapKimiUsage({ prompt_tokens: 10 }).prompt_tokens_details, undefined)
+  assert.equal(applyKimiStreamUsage({ stream: true }).stream_options.include_usage, true)
+  assert.equal(applyKimiStreamUsage({ model: 'k3' }).stream_options, undefined)
+})
+
+test('kimi hop maps cache_read usage and asks the vendor for stream usage', async () => {
+  const seen = []
+  const fetchFn = async (_url, init) => {
+    seen.push(JSON.parse(String(init.body)))
+    const body = [
+      'data: {"id":"chat","choices":[{"delta":{"content":"hi"}}]}\n\n',
+      'data: {"id":"chat","usage":{"prompt_tokens":40,"cache_read_tokens":32}}\n\n',
+      'data: [DONE]\n\n',
+    ].join('')
+    return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+  }
+  const proxy = createProxy({
+    port: 0,
+    apiKey: 'secret-key',
+    fetchFn,
+    tokens: {
+      kimi: { session: async () => ({ accessToken: 'tok' }) },
+    },
+  })
+  const server = await proxy.listen()
+  const { port } = server.address()
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/kimi/v1/chat/completions`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer secret-key', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'k3',
+        stream: true,
+        messages: [{ role: 'user', content: 'hi' }],
+      }),
+    })
+    assert.equal(response.status, 200)
+    assert.equal(seen[0].stream_options.include_usage, true)
+    const text = await response.text()
+    assert.match(text, /"cached_tokens":32/)
+    assert.equal(text.includes('cache_read_tokens'), true)
+  } finally {
+    await proxy.close()
+  }
 })
 
 test('quota remaining bars and plan from /me; no invented reset', () => {

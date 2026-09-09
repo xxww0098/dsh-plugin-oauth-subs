@@ -44,7 +44,7 @@ import {
   copilotInitiatorOf,
   resetCopilotPins,
 } from '../lib/oauth/copilot/cache.js'
-import { applyCopilotThinking, mapCopilotUsage } from '../lib/oauth/copilot/request.js'
+import { applyCopilotStreamUsage, applyCopilotThinking, mapCopilotUsage } from '../lib/oauth/copilot/request.js'
 import { toCopilotPickerModels, resetCopilotCatalogCache } from '../lib/oauth/copilot/catalog.js'
 import { DeviceFlowManager } from '../lib/oauth/grok/device-flow.js'
 import { parseCopilotUsage } from '../lib/oauth/quota.js'
@@ -318,6 +318,71 @@ test('thinking keeps advertised reasoning_effort and strips GPT max_tokens', () 
   assert.equal(Object.hasOwn(claude, 'reasoning_effort'), false)
   assert.equal(claude.max_tokens, 64)
   assert.equal(mapCopilotUsage({ prompt_tokens: 10, cache_read_input_tokens: 4 }).prompt_tokens_details.cached_tokens, 4)
+  assert.equal(mapCopilotUsage({ prompt_tokens: 10 }).prompt_tokens_details, undefined)
+  const streamed = applyCopilotStreamUsage({ stream: true, model: 'gpt-5.5' })
+  assert.equal(streamed.stream_options.include_usage, true)
+  const kept = applyCopilotStreamUsage({ stream: true, stream_options: { include_usage: false } })
+  assert.equal(kept.stream_options.include_usage, false)
+  assert.equal(applyCopilotStreamUsage({ model: 'gpt-5.5' }).stream_options, undefined)
+})
+
+test('copilot hop maps cache_read usage and asks the vendor for stream usage', async () => {
+  const seen = []
+  const fetchFn = async (_url, init) => {
+    seen.push(JSON.parse(String(init.body)))
+    if (JSON.parse(String(init.body)).stream === true) {
+      const body = [
+        'data: {"id":"chat","choices":[{"delta":{"content":"hi"}}]}\n\n',
+        'data: {"id":"chat","choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":20,"completion_tokens":1,"cache_read_input_tokens":16}}\n\n',
+        'data: [DONE]\n\n',
+      ].join('')
+      return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+    }
+    return new Response(JSON.stringify({
+      id: 'chat',
+      choices: [{ message: { role: 'assistant', content: 'ok' } }],
+      usage: { prompt_tokens: 20, cache_read_input_tokens: 16 },
+    }), { status: 200, headers: { 'content-type': 'application/json' } })
+  }
+  const proxy = createProxy({
+    port: 0,
+    apiKey: 'secret-key',
+    fetchFn,
+    tokens: {
+      copilot: { session: async () => ({ accessToken: 'tid=x' }) },
+    },
+  })
+  const server = await proxy.listen()
+  const { port } = server.address()
+  const headers = { authorization: 'Bearer secret-key', 'content-type': 'application/json' }
+  try {
+    const jsonRes = await fetch(`http://127.0.0.1:${port}/copilot/v1/chat/completions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ model: 'gpt-5.5', messages: [{ role: 'user', content: 'hi' }] }),
+    })
+    assert.equal(jsonRes.status, 200)
+    const jsonBody = await jsonRes.json()
+    assert.equal(jsonBody.usage.prompt_tokens_details.cached_tokens, 16)
+    assert.equal(seen[0].stream_options, undefined)
+
+    const streamRes = await fetch(`http://127.0.0.1:${port}/copilot/v1/chat/completions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: 'gpt-5.5',
+        stream: true,
+        messages: [{ role: 'user', content: 'hi' }],
+      }),
+    })
+    assert.equal(streamRes.status, 200)
+    assert.equal(seen[1].stream_options.include_usage, true)
+    const text = await streamRes.text()
+    assert.match(text, /"cached_tokens":16/)
+    assert.match(text, /data: \[DONE\]/)
+  } finally {
+    await proxy.close()
+  }
 })
 
 test('quota remaining bars and plan from copilot_internal/user', () => {

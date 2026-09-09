@@ -52,3 +52,31 @@ export function applyKimiThinking(payload = {}, model) {
   next.thinking = { type: 'enabled', effort: wire }
   return next
 }
+
+/** Map vendor cache-read aliases. Absent field stays absent — do not invent 0. */
+export function mapKimiUsage(usage) {
+  if (!usage || typeof usage !== 'object') return usage
+  const cached = usage.prompt_tokens_details?.cached_tokens
+    ?? usage.cached_tokens
+    ?? usage.cache_read_input_tokens
+    ?? usage.cache_read_tokens
+  if (typeof cached !== 'number' || !Number.isFinite(cached) || cached < 0) return usage
+  const details = usage.prompt_tokens_details && typeof usage.prompt_tokens_details === 'object'
+    ? { ...usage.prompt_tokens_details }
+    : {}
+  if (typeof details.cached_tokens !== 'number') details.cached_tokens = cached
+  return { ...usage, prompt_tokens_details: details }
+}
+
+/** Completions SSE omits usage unless the vendor is asked. Do not override an explicit value. */
+export function applyKimiStreamUsage(payload = {}) {
+  if (!payload || payload.stream !== true) return payload
+  const current = payload.stream_options
+  if (current && typeof current === 'object' && Object.hasOwn(current, 'include_usage')) return payload
+  return {
+    ...payload,
+    stream_options: current && typeof current === 'object'
+      ? { ...current, include_usage: true }
+      : { include_usage: true },
+  }
+}
