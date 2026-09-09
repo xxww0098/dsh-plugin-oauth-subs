@@ -26,6 +26,22 @@ already recorded in MASTER. Settings is a stacked workbench:
 Tighter than a marketing Swiss page. Card gap 12px, pane gap 18px,
 buttons 32px (primary 36px). Still 13px UI / 12.5px emails.
 
+## About cards
+
+The About tab is two update cards (OAuth Subs Plugin / DeepSeek Harness)
+with one shared anatomy — no account cards, no dialog:
+
+- Card head: title + status pill on the left (`osubs-pill` — ok `已是最新`,
+  warn `有新版本`, bad `检查失败`, neutral otherwise); auto-update switch
+  (`osubs-auto`: visually hidden checkbox + `osubs-auto-track`, `title`
+  tooltip) and 检查更新 on the right.
+- kv list (`.osubs-kv`) is hairline-separated rows (`--osubs-hair`):
+  muted label left, value right. Versions/tags are mono
+  (`osubs-mono`); npm dist-tags render as `osubs-tag--plain` chips.
+- Repo rows link out with the LobeHub GitHub mark (`osubs-link--icon`).
+- Error detail, stale-process, and apply-result hints live under the list
+  in `.osubs-hints`; the pill carries the headline state.
+
 ## Quota
 
 `QuotaRow` is remaining-only on this page. Cursor `kind === 'product'`
