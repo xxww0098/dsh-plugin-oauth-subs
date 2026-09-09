@@ -119,24 +119,32 @@ export declare function readPackageVersion(path: any, { readFileFn }?: {
 /** True when `after` reached `latest`, or moved forward when latest is unknown. */
 export declare function versionAdvanced(before: any, after: any, latest: any): boolean;
 /**
- * Spawn PATH `dsh` with the given plugin args. Exit 0 is only a spawn
+ * `dsh plugin …` must hit the copy serving this page. PATH `dsh` is often
+ * missing in a GUI-launched process, and when present it may be a different
+ * install than `DSH_BIN_PATH` / `process.argv[1]`.
+ */
+export declare function dshPluginBin(env?: NodeJS.ProcessEnv): string;
+/**
+ * Spawn the running DSH with the given plugin args. Exit 0 is only a spawn
  * success — `applyHostUpdate` re-reads the profile package.json.
  */
-export declare function runDshPlugin({ spawnFn, profile, args, timeoutMs, env, }?: {
+export declare function runDshPlugin({ spawnFn, profile, args, timeoutMs, env, execPath, }?: {
     spawnFn?: typeof spawn;
     profile?: string;
     timeoutMs?: number;
     env?: NodeJS.ProcessEnv;
+    execPath?: string;
 }): Promise<unknown>;
 /**
- * Spawn PATH `dsh plugin update`. Exit 0 is spawn-only; prefer
- * `applyHostUpdate` when the on-disk version must have moved.
+ * Spawn `dsh plugin update` via the running DSH copy. Exit 0 is spawn-only;
+ * prefer `applyHostUpdate` when the on-disk version must have moved.
  */
-export declare function runPluginUpdate({ spawnFn, profile, timeoutMs, env, }?: {
+export declare function runPluginUpdate({ spawnFn, profile, timeoutMs, env, execPath, }?: {
     spawnFn?: typeof spawn;
     profile?: string;
     timeoutMs?: number;
     env?: NodeJS.ProcessEnv;
+    execPath?: string;
 }): Promise<unknown>;
 /**
  * Apply a host update and confirm the profile's package.json moved.

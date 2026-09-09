@@ -2,6 +2,12 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-09：关于页更新插件报 PATH 上找不到 dsh
+
+**现象**：About 已显示本机 DSH 版本，点插件「检查更新」红字 `PATH 上找不到 dsh`，0.0.82 装不上。
+**根因**：`runDshPlugin` spawn PATH 上的 `dsh`。GUI / Homebrew 启动的进程 PATH 没有那份；关于页用的是 `DSH_BIN_PATH` / `process.argv[1]`。
+**修复**：插件更新 spawn 当前进程那份 DSH（`.js` 入口用 `process.execPath`）。找不到才回落到 PATH `dsh`。
+
 ## 2026-09-09：Completions 透传没把 cache_read 交给 DSH
 
 **现象**：Copilot / Kimi / GLM Completions 残留长聊 DSH `cacheReadTokens` 一直是 0%，上游 usage 里其实有 `cache_read_input_tokens`。

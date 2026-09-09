@@ -339,11 +339,30 @@ function clip(text) {
   return raw.length > 400 ? `${raw.slice(0, 400)}…` : raw
 }
 
-function describeSpawnError(error) {
+function describeSpawnError(error, bin = DSH_BIN) {
   if (error?.code === 'ENOENT') {
+    if (typeof bin === 'string' && bin !== DSH_BIN) {
+      return `could not spawn DSH at ${bin}. Confirm DeepSeek Harness is still installed, then try again.`
+    }
     return 'dsh was not found on PATH. Confirm DeepSeek Harness is installed, then try again.'
   }
   return error instanceof Error ? error.message : String(error)
+}
+
+/**
+ * `dsh plugin …` must hit the copy serving this page. PATH `dsh` is often
+ * missing in a GUI-launched process, and when present it may be a different
+ * install than `DSH_BIN_PATH` / `process.argv[1]`.
+ */
+export function dshPluginBin(env = process.env) {
+  return resolveDshInstall(process.platform, env)?.binPath || DSH_BIN
+}
+
+function dshSpawnSpec(bin, execPath = process.execPath) {
+  if (typeof bin === 'string' && /\.[cm]?js$/i.test(bin)) {
+    return { cmd: execPath, prefix: [bin] }
+  }
+  return { cmd: bin, prefix: [] }
 }
 
 function unchangedHint(profile, onDisk, latest) {
@@ -354,7 +373,7 @@ function unchangedHint(profile, onDisk, latest) {
 }
 
 /**
- * Spawn PATH `dsh` with the given plugin args. Exit 0 is only a spawn
+ * Spawn the running DSH with the given plugin args. Exit 0 is only a spawn
  * success — `applyHostUpdate` re-reads the profile package.json.
  */
 export function runDshPlugin({
@@ -363,21 +382,25 @@ export function runDshPlugin({
   args,
   timeoutMs = PLUGIN_UPDATE_TIMEOUT_MS,
   env = process.env,
+  execPath = process.execPath,
 } = {}) {
   const argv = Array.isArray(args) && args.length ? args : pluginUpdateArgs(profile)
-  const command = [DSH_BIN, ...argv].join(' ')
+  const bin = dshPluginBin(env)
+  const spec = dshSpawnSpec(bin, execPath)
+  const spawnArgs = [...spec.prefix, ...argv]
+  const command = [bin, ...argv].join(' ')
   const home = dshHome(env)
   const cwd = existsSync(home) ? home : undefined
   return new Promise((resolve) => {
     let child
     try {
-      child = spawnFn(DSH_BIN, argv, {
+      child = spawnFn(spec.cmd, spawnArgs, {
         env,
         ...(cwd ? { cwd } : {}),
         stdio: ['ignore', 'pipe', 'pipe'],
       })
     } catch (error) {
-      resolve({ ok: false, status: error?.code === 'ENOENT' ? 'missing-dsh' : 'failed', command, error: describeSpawnError(error) })
+      resolve({ ok: false, status: error?.code === 'ENOENT' ? 'missing-dsh' : 'failed', command, error: describeSpawnError(error, bin) })
       return
     }
 
@@ -402,7 +425,7 @@ export function runDshPlugin({
         ok: false,
         status: error?.code === 'ENOENT' ? 'missing-dsh' : 'failed',
         command,
-        error: describeSpawnError(error),
+        error: describeSpawnError(error, bin),
       })
     })
     child.once('close', (code) => {
@@ -417,16 +440,17 @@ export function runDshPlugin({
 }
 
 /**
- * Spawn PATH `dsh plugin update`. Exit 0 is spawn-only; prefer
- * `applyHostUpdate` when the on-disk version must have moved.
+ * Spawn `dsh plugin update` via the running DSH copy. Exit 0 is spawn-only;
+ * prefer `applyHostUpdate` when the on-disk version must have moved.
  */
 export function runPluginUpdate({
   spawnFn = spawn,
   profile = DEFAULT_PROFILE,
   timeoutMs = PLUGIN_UPDATE_TIMEOUT_MS,
   env = process.env,
+  execPath = process.execPath,
 } = {}) {
-  return runDshPlugin({ spawnFn, profile, args: pluginUpdateArgs(profile), timeoutMs, env })
+  return runDshPlugin({ spawnFn, profile, args: pluginUpdateArgs(profile), timeoutMs, env, execPath })
 }
 
 /**
