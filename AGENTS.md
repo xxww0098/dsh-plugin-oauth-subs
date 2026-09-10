@@ -147,7 +147,7 @@ scripts/                   CLI (TypeScript)
 
 Rules:
 
-- Codex-only code → `src/oauth/codex/`. Grok-only code → `src/oauth/grok/`. GLM-only code → `src/oauth/glm/`. Kiro-only code → `src/oauth/kiro/`. Antigravity-only code → `src/oauth/antigravity/`. Cursor-only code → `src/oauth/cursor/`. Ollama-only code → `src/apikey/ollama/`. Kimi-only code → `src/oauth/kimi/`. Copilot-only code → `src/oauth/copilot/`. OpenCode Go (API key, quota only) → `src/apikey/opencode-go/` — never an OAuth tab and never the loopback hop.
+- Codex-only code → `src/oauth/codex/`. Grok-only code → `src/oauth/grok/`. GLM-only code → `src/oauth/glm/`. Kiro-only code → `src/oauth/kiro/`. Antigravity-only code → `src/oauth/antigravity/`. Cursor-only code → `src/oauth/cursor/`. Ollama-only code → `src/apikey/ollama/`. Kimi-only code → `src/oauth/kimi/`. Copilot-only code → `src/oauth/copilot/`. OpenCode Go (API key, quota only) → `src/apikey/opencode-go/` — never `src/oauth/` and never the loopback hop. Its Settings **tab** still sits in the left family capsule with Copilot.
 - **Each family has `README.md`.** Login, session, chat hop, models, quota, and cache for that vendor are written there so a later change can be traced to files and to `docs/error.md`. Cross-family rules stay in this file; do not let family READMEs contradict it. Reference repos for that hop live in `docs/oauth.md` and in the family README 归因.
 - **Cache is per family.** Each `src/oauth/<id>/cache.ts` owns that vendor's prompt-cache identity, headers, and prefix pin. Do not import Codex cache helpers from Grok / GLM / Kiro / Antigravity / Cursor / Ollama / Kimi / Copilot. Do not share a `codexCacheSessionId` in `src/utils/`. `proxy.ts` only dispatches.
 - Shared crypto / session scoring → `src/utils/`.
@@ -614,20 +614,23 @@ into `TAB_ICONS`.
 - Size 18×18, `viewBox="0 0 24 24"`, `fill="currentColor"`. Match the
   official brand mark, not a generic letter. GLM uses the **Z.ai** icon
   (`zai`), not Zhipu.
-- Order: OAuth families first (Codex, Grok, GLM, Kiro, Antigravity,
-  Cursor, Ollama Cloud, Kimi, GitHub Copilot). Insert a new family **in the OAuth group**,
-  never into the utility capsule. Tab **buttons** stay 36×36 — do not
+- Order: family capsule first (Codex, Grok, GLM, Kiro, Antigravity,
+  Cursor, Ollama Cloud, Kimi, GitHub Copilot, OpenCode Go). Insert a new
+  family **in this group**, never into the utility capsule. OpenCode Go
+  is API-key under `src/apikey/` (no hop) but its **tab** sits here
+  with the other family icons. Tab **buttons** stay 36×36 — do not
   `flex: 1 1 0` or shrink `min-width` to 0.
 - **Two tab groups**, docked (confirmed 2026-09-03):
-  - **OAuth (left, fills leftover width):** family icons only.
+  - **Families (left, fills leftover width):** family icons only.
     `.osubs-tabs` is `repeat(8, 36px)` + `justify-content: space-between`
     + `flex: 1 1 auto`. Eight families fill row 1; extra pane width
     becomes the gap **between** those 8 icons. A 9th+ family wraps to
-    row 2 inside this group, still 36px, left-aligned. 12px capsule
-    (`--osubs-line` / `--osubs-fill`).
+    row 2 inside this group, still 36px, left-aligned (Copilot then
+    OpenCode Go). 12px capsule (`--osubs-line` / `--osubs-fill`).
+    Never a third capsule for API-key.
   - **Utility (flush after it):** `.osubs-tabs-util` stays 36px,
     Models on row 1 and GitHub/About on row 2. Never mix Models/GitHub
-    into the OAuth grid.
+    into the family grid. Never put OpenCode Go here.
   - Outer `.osubs-nav` is flex: `flex-start` + `gap: 4px` so the two
     capsules **touch with a 4px seam**. Do not `margin-left: auto` or
     `space-between` on the nav (that opens a hole to the right of OAuth).
@@ -638,7 +641,7 @@ into `TAB_ICONS`.
 
 ```text
 [ Codex ]  [ Grok ]  [ Z.ai ]  [ Kiro ]  [ Antigravity ]  [ Cursor ]  [ Ollama Cloud ]  [ Kimi ]  [ ▦ ]
-[ Copilot ]                                                          [ GitHub ]
+[ Copilot ]  [ OpenCode Go ]                                             [ GitHub ]
 ```
 
 ### Settings — one account, one card
@@ -696,12 +699,13 @@ Binding UI rules:
 - **Chips stay one line.** `.osubs-tag` is `white-space: nowrap`. Show
   the full value; do not wrap a chip and do not hide it behind `title`
   only.
-- **Tab bar is two groups, docked.** OAuth capsule on the left
+- **Tab bar is two groups, docked.** Family capsule on the left
   (`flex: 1 1 auto`, `repeat(8, 36px)`, `justify-content: space-between`
   so leftover width is the gap between the eight family icons; a 9th+
-  wraps inside this group). Utility capsule **immediately after it**
-  (`gap: 4px`, no `margin-left: auto`): Models on row 1, GitHub/About
-  on row 2. Never put Models/GitHub in the OAuth grid. Never
+  wraps inside this group — Copilot then OpenCode Go). Utility capsule
+  **immediately after it** (`gap: 4px`, no `margin-left: auto`):
+  Models on row 1, GitHub/About on row 2. Never put Models/GitHub or
+  OpenCode Go in the utility grid as a third capsule. Never
   `width: max-content` on `.osubs-tabs`.
 - **No helper copy** under the family title. Heading is the title + a
   status pill (`未登录` / `已登录` / `等待授权…`). No
@@ -729,9 +733,10 @@ Binding UI rules:
   `.options` side padding so cards cannot peek in the gutter.
   `.osubs-nav` is flex (`flex-start`, `gap: 4px`); `.osubs-tabs` is
   family-only `repeat(8, 36px)` + `space-between` + `flex: 1 1 auto`
-  (Copilot wraps inside this group; leftover
+  (Copilot then OpenCode Go wrap inside this group; leftover
   width is the gap between the eight icons); `.osubs-tabs-util` is the
-  next capsule, 4px away (Models over GitHub). Never `margin-left: auto`
+  next capsule, 4px away (Models over GitHub). Never a third API-key
+  capsule. Never `margin-left: auto`
   / nav `space-between` / `.osubs-tabs` `width: max-content`. Never
   `flex: 1 1 0` / `min-width: 0` on the tab **buttons**.
 - Cards: 12px radius, 1px `--osubs-line`, 14×16 padding. Active uses

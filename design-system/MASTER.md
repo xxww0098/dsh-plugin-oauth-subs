@@ -31,9 +31,10 @@ The overlay below is what this plugin actually ships.
   on the centered Dialog overlay (`--dsw-mask-blur`).
 - No hardcoded light-theme grays. Dark host stays dark.
 - Icon-only tabs, sticky `.osubs-nav`, **two groups docked** with a 4px
-  seam: left OAuth capsule fills leftover width (`repeat(8, 36px)` +
-  `space-between`, families only; Copilot wraps inside) then
-  utility capsule (Models over GitHub). Do not `margin-left: auto` /
+  seam: left family capsule fills leftover width (`repeat(8, 36px)` +
+  `space-between`, families only; Copilot then OpenCode Go wrap inside)
+  then utility capsule (Models over GitHub). Do not add a third API-key
+  capsule. Do not `margin-left: auto` /
   nav `space-between` / `.osubs-tabs { width: max-content }` (those
   leave a hole).
 - No family-level identity row. No shared quota block under the heading.

@@ -2,6 +2,12 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-10：OpenCode Go 页签误放右侧工具列
+
+**现象**：Settings 顶栏 OpenCode Go 图标在右侧 Models/About 列，不在左侧家族胶囊。
+**根因**：新增时把 `apikey` tab 放进了 `.osubs-tabs-util`。
+**修复**：`apikey` 放进左侧 `.osubs-tabs`，排在 Copilot 之后换到第 2 行左侧；右侧 util 只留 Models + About。实现仍在 `src/apikey/opencode-go/`，不走 hop、不另开第三胶囊。
+
 ## 2026-09-10：上游静默时代理不主动断流，靠客户端 300s 超时兜底
 
 **现象**：`grok-4.6` 会话最后一步上游一个字节不发，DSH 连续两次 `pi-ai stream idle timeout after 300000ms`，约 15 分钟后用户中止；分析器却报 transport 0 / HEALTHY。

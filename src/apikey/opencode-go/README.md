@@ -19,7 +19,7 @@ OpenCode Go 是 **API key 范围**，不是 OAuth 家族。
 | [`quota.ts`](quota.ts) | cookie + workspace 刮 `/workspace/{id}/go`；缺 workspace 时 `GET /_server?id=` 工作区列表 |
 | [`models.ts`](models.ts) | 28 个模型的 name / id / api / context / maxTokens / input / reasoningEfforts；3 条路由定义 |
 
-调度：Settings API-key 胶囊。额度刷新走 RPC `goSave` / `quota`（`provider: opencode-go`）。**没有** `proxy.ts` hop，**没有** `cache.ts`。
+调度：Settings 左侧家族胶囊（`.osubs-tabs`），排在 Copilot 之后换行；**不是**右侧 util，也**不**另开 API-key 胶囊。额度刷新走 RPC `goSave` / `quota`（`provider: opencode-go`）。**没有** `proxy.ts` hop，**没有** `cache.ts`。
 
 路由：插件启动 / `sync()` 时**缺失才补** 3 条路由（`ensureOpencodeGoRoute`）：`opencode-go`（openai-completions，16）、`opencode-go-responses`（openai-responses，4）、`opencode-go-anthropic`（anthropic-messages，8），共 28 个模型。**已存在的同名路由绝不覆盖**。用户只需在 DSH 存 `OPENCODE_API_KEY`。
 
@@ -77,7 +77,7 @@ cookie → GET https://opencode.ai/workspace/{wrk_}/go
 
 ## 不要
 
-- 把这个 tab 放进 OAuth 胶囊或 `src/oauth/opencode-go/`
+- 把实现放进 `src/oauth/opencode-go/`，或把页签放进 `.osubs-tabs-util` / 单独 API-key 胶囊
 - 复活 `oauth-opencode` hop / Zen 匿名免费档 / `Bearer public`
 - 本机回环网关转发 Go Responses
 - 把 cookie 当 OAuth session 写 `auth.json`

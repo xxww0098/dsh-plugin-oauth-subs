@@ -147,6 +147,7 @@ test('Settings tab bar is two docked capsules; OAuth spreads leftover width betw
   assert.match(oauth, /id: 'kimi'/)
   assert.equal(/id: 'opencode'/.test(oauth), false)
   assert.match(oauth, /id: 'copilot'/)
+  assert.match(oauth, /id: 'apikey'/)
   assert.equal(/id: 'models'/.test(oauth), false)
   assert.equal(/id: 'about'/.test(oauth), false)
   assert.match(util, /id: 'models'/)
@@ -154,6 +155,7 @@ test('Settings tab bar is two docked capsules; OAuth spreads leftover width betw
   assert.equal(/id: 'kimi'/.test(util), false)
   assert.equal(/id: 'opencode'/.test(util), false)
   assert.equal(/id: 'copilot'/.test(util), false)
+  assert.equal(/id: 'apikey'/.test(util), false)
   const tabOrder = src.match(/h\(Tab, \{ id: '(\w+)'/g) ?? []
   const ids = tabOrder.map((row) => /id: '(\w+)'/.exec(row)?.[1])
   assert.deepEqual(ids, ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'apikey', 'models', 'about'])
