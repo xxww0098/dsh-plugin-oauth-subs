@@ -2,6 +2,12 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-11：OpenCode Go 全家族 400 MissingSessionID
+
+**现象**：默认模型 `opencode-go-flash/deepseek-flash` 每轮报 `400 {"type":"MissingSessionID","message":"…missing x-opencode-session…"}`；实测内置 `glm-5.3` 直连同样 400，带上 `x-opencode-session` 才 200。
+**根因**：Console Go 现在硬性要求该头（官方文档 "Your client should … send a stable session ID in `x-opencode-session`"）。DSH 有每会话 `sessionId`，但 pi-ai 0.85.1 的 completions/`sendSessionAffinityHeaders` 都不映射它，llm-pi-ai compat gate 又 withhold 该字段，profile 无法转发会话 id。
+**修复**：`ensureOpencodeGoRoute` 给 `opencode-go`（内置目录）和 `opencode-go-flash` 两条 profile 都写稳定头 `x-opencode-session: dsh-opencode-go`；旧 `{ apiKeyEnv }` 形态自动升级；无 key 仍整条 unset。这是单机单 shard 的常量回退，等 DSH/pi-ai 原生按会话发送后可去掉。
+
 ## 2026-09-11：未登录家族的模型被勾选，OpenCode Go 无 key 仍写进 DSH
 
 **现象**：Settings > 模型 里 Kimi / Copilot / OpenCode Go 未登录时勾选框仍打勾（灰的，`已开启 3 / 3`）；OpenCode Go 没有 `OPENCODE_API_KEY` 也把两条路由写进 `llm-pi-ai`，DSH 模型列表里出现不能用的模型。

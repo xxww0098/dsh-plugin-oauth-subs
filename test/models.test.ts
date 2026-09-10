@@ -27,6 +27,9 @@ import {
 import { OPENCODE_GO_BUILTIN_ROUTE_ID, OPENCODE_GO_EXTRA_ROUTE } from '../lib/apikey/opencode-go/models.js'
 import { KIRO_MODELS, KIRO_REASONING_GPT } from '../lib/oauth/kiro/index.js'
 
+const GO_SESSION = { 'x-opencode-session': 'dsh-opencode-go' }
+const GO_BUILTIN = { apiKeyEnv: OPENCODE_GO_API_KEY_ENV, headers: GO_SESSION }
+
 function createPiAiSettings(initialProviders = {}) {
   const section = { providers: structuredClone(initialProviders) }
   const ops = []
@@ -217,10 +220,11 @@ test('ensureOpencodeGoRoute enables the built-in catalog and only adds the missi
   assert.deepEqual(first.routes, [OPENCODE_GO_BUILTIN_ROUTE_ID, OPENCODE_GO_EXTRA_ROUTE.id])
   // No api / no models: DSH reuses its installed opencode-go catalog provider
   // (the other 27 official models) with ambient OPENCODE_API_KEY auth.
-  assert.deepEqual(empty.section.providers[OPENCODE_GO_BUILTIN_ROUTE_ID], { apiKeyEnv: OPENCODE_GO_API_KEY_ENV })
+  assert.deepEqual(empty.section.providers[OPENCODE_GO_BUILTIN_ROUTE_ID], GO_BUILTIN)
   const extra = empty.section.providers[OPENCODE_GO_EXTRA_ROUTE.id]
   assert.equal(extra.api, 'openai-completions')
   assert.equal(extra.baseURL, 'https://opencode.ai/zen/go/v1')
+  assert.deepEqual(extra.headers, GO_SESSION)
   assert.deepEqual(extra.models.map((model) => model.id), ['deepseek-flash'])
   assert.equal(extra.models[0].name, 'DeepSeek V4.1 Flash')
   assert.deepEqual(extra.models[0].input, ['text', 'image'])
@@ -236,6 +240,13 @@ test('ensureOpencodeGoRoute enables the built-in catalog and only adds the missi
 
   assert.equal((await ensureOpencodeGoRoute(empty)).status, 'present')
   assert.equal(empty.ops.length, 1)
+
+  // A plugin-written pre-session profile is refreshed with the required header.
+  const legacy = createPiAiSettings({ 'opencode-go': { apiKeyEnv: OPENCODE_GO_API_KEY_ENV } })
+  const upgraded = await ensureOpencodeGoRoute(legacy)
+  assert.equal(upgraded.status, 'written')
+  assert.deepEqual(upgraded.routes, [OPENCODE_GO_BUILTIN_ROUTE_ID, OPENCODE_GO_EXTRA_ROUTE.id])
+  assert.deepEqual(legacy.section.providers[OPENCODE_GO_BUILTIN_ROUTE_ID], GO_BUILTIN)
 
   // An existing user-configured built-in profile is never overwritten.
   const custom = createPiAiSettings({ 'opencode-go': { displayName: 'Mine' } })
@@ -256,14 +267,14 @@ test('ensureOpencodeGoRoute follows the picker for the supplemental route only',
   assert.deepEqual(off.routes, [OPENCODE_GO_EXTRA_ROUTE.id])
   const cleared = await peekPiAiProviders(settings)
   assert.equal(cleared[OPENCODE_GO_EXTRA_ROUTE.id], undefined)
-  assert.deepEqual(cleared[OPENCODE_GO_BUILTIN_ROUTE_ID], { apiKeyEnv: OPENCODE_GO_API_KEY_ENV })
+  assert.deepEqual(cleared[OPENCODE_GO_BUILTIN_ROUTE_ID], GO_BUILTIN)
 
   const on = await ensureOpencodeGoRoute(settings, { selected: [`${OPENCODE_GO_EXTRA_ROUTE.id}/deepseek-flash`] })
   assert.equal(on.status, 'written')
   assert.deepEqual(on.routes, [OPENCODE_GO_EXTRA_ROUTE.id])
   const restored = await peekPiAiProviders(settings)
   assert.deepEqual(restored[OPENCODE_GO_EXTRA_ROUTE.id].models.map((model) => model.id), ['deepseek-flash'])
-  assert.deepEqual(restored[OPENCODE_GO_BUILTIN_ROUTE_ID], { apiKeyEnv: OPENCODE_GO_API_KEY_ENV })
+  assert.deepEqual(restored[OPENCODE_GO_BUILTIN_ROUTE_ID], GO_BUILTIN)
 })
 
 test('an empty reasoningEfforts dict is refused like DSH does', () => {

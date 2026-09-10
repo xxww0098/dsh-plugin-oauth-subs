@@ -21,6 +21,22 @@ export declare const OPENCODE_GO_BUILTIN_ROUTE_ID = "opencode-go";
 export declare const OPENCODE_GO_EXTRA_ROUTE_ID = "opencode-go-flash";
 export declare const OPENCODE_GO_OPENAI_BASE_URL = "https://opencode.ai/zen/go/v1";
 /**
+ * Console Go hard-requires a stable session id (400 `MissingSessionID`
+ * otherwise): https://opencode.ai/docs/go/#where-can-i-use-it. DSH passes a
+ * per-conversation `sessionId` into pi-ai, but pi-ai 0.85.1 never writes
+ * `x-opencode-session` (the vendor lists DeepSeek Harness under "Known
+ * Problematic Clients"), and llm-pi-ai withholds `sendSessionAffinityHeaders`,
+ * so a profile cannot forward it either. A stable route header is the only
+ * direct-route value the seam can carry; one shard per DSH install is the
+ * fallback the vendor accepts.
+ */
+export declare const OPENCODE_GO_SESSION_HEADER = "x-opencode-session";
+export declare const OPENCODE_GO_SESSION_ID = "dsh-opencode-go";
+/** The one route header both Go routes carry. */
+export declare function opencodeGoSessionHeaders(): {
+    "x-opencode-session": string;
+};
+/**
  * The one official Go model DSH's installed catalog lacks. Kept on its own
  * route; the built-in `opencode-go` route serves the other 27.
  */
@@ -36,6 +52,9 @@ export declare const OPENCODE_GO_EXTRA_ROUTE: Readonly<{
     displayName: "OpenCode Go · DeepSeek V4.1 Flash";
     api: "openai-completions";
     baseURL: "https://opencode.ai/zen/go/v1";
+    headers: Readonly<{
+        "x-opencode-session": string;
+    }>;
     models: readonly {
         id: any;
         name: any;

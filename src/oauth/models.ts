@@ -12,7 +12,13 @@ import { CURSOR_MODELS } from './cursor/index.js'
 import { OLLAMA_MODELS } from '../apikey/ollama/index.js'
 import { KIMI_MODELS } from './kimi/index.js'
 import { COPILOT_MODELS } from './copilot/index.js'
-import { OPENCODE_GO_BUILTIN_ROUTE_ID, OPENCODE_GO_EXTRA_ROUTE } from '../apikey/opencode-go/models.js'
+import {
+  OPENCODE_GO_BUILTIN_ROUTE_ID,
+  OPENCODE_GO_EXTRA_ROUTE,
+  OPENCODE_GO_SESSION_HEADER,
+  OPENCODE_GO_SESSION_ID,
+  opencodeGoSessionHeaders,
+} from '../apikey/opencode-go/models.js'
 
 import { modelSupportsFastMode } from '../utils/fast-mode.js'
 import { readPrivateText, writePrivateText } from './store.js'
@@ -619,8 +625,14 @@ function opencodeGoRouteValue(route, models) {
     apiKeyEnv: OPENCODE_GO_API_KEY_ENV,
     api: route.api,
     baseURL: route.baseURL,
+    headers: { ...route.headers },
     models,
   }
+}
+
+/** The catalog route profile this plugin writes: enabling key + session header. */
+function opencodeGoBuiltinValue() {
+  return { apiKeyEnv: OPENCODE_GO_API_KEY_ENV, headers: opencodeGoSessionHeaders() }
 }
 
 /** A route this plugin owns: same key env, protocol, origin, and only catalog ids. */
@@ -634,14 +646,33 @@ function isOwnedOpencodeGoRoute(route, existing) {
   return models.every((model) => known.has(model?.id))
 }
 
-/** The catalog-enabling profile this plugin writes: apiKeyEnv and nothing else. */
+/**
+ * The catalog-enabling profile this plugin wrote, in either shape: apiKeyEnv
+ * alone (pre-session release) or apiKeyEnv + the session header. Any extra
+ * user field means the profile is not ours.
+ */
 function isPluginOpencodeGoBuiltin(existing) {
   if (existing == null || typeof existing !== 'object') return false
+  if (existing.apiKeyEnv !== OPENCODE_GO_API_KEY_ENV) return false
   const keys = Object.keys(existing)
-  return keys.length === 1 && existing.apiKeyEnv === OPENCODE_GO_API_KEY_ENV
+  if (keys.length === 1) return true
+  if (keys.length !== 2 || existing.headers == null || typeof existing.headers !== 'object') return false
+  const headerKeys = Object.keys(existing.headers)
+  return headerKeys.length === 1 && existing.headers[OPENCODE_GO_SESSION_HEADER] === OPENCODE_GO_SESSION_ID
 }
 
-function sameOpencodeGoModels(existing, models) {
+function sameOpencodeGoHeaders(existing, route) {
+  const headers = existing?.headers
+  if (headers == null || typeof headers !== 'object') return false
+  const keys = Object.keys(headers)
+  return keys.length === 1 && headers[OPENCODE_GO_SESSION_HEADER] === route.headers?.[OPENCODE_GO_SESSION_HEADER]
+}
+
+function sameOpencodeGoRoute(route, existing, models) {
+  if (existing.displayName !== route.displayName) return false
+  if (existing.api !== route.api || existing.baseURL !== route.baseURL) return false
+  if (existing.apiKeyEnv !== OPENCODE_GO_API_KEY_ENV) return false
+  if (!sameOpencodeGoHeaders(existing, route)) return false
   return Array.isArray(existing.models)
     && existing.models.length === models.length
     && existing.models.every((model, index) => model?.id === models[index]?.id)
@@ -656,9 +687,11 @@ function sameOpencodeGoModels(existing, models) {
  * (ambient auth + per-model protocol/compat/thinking ladder); a non-empty
  * `models` list would replace the whole catalog, so the missing
  * `deepseek-flash` lives on its own supplemental route that follows the
- * picker (`selected` undefined = all). An existing user-configured route is
- * never overwritten, and without `OPENCODE_API_KEY` nothing is served: the
- * plugin's own routes are unset so DSH's model list stays clean.
+ * picker (`selected` undefined = all). Both routes carry the required
+ * `x-opencode-session` header (see `opencodeGoSessionHeaders`). An existing
+ * user-configured route is never overwritten, and without
+ * `OPENCODE_API_KEY` nothing is served: the plugin's own routes are unset so
+ * DSH's model list stays clean.
  */
 export async function ensureOpencodeGoRoute(settings, { selected, apiKeySet = true } = {}) {
   if (settings == null || typeof settings.mutate !== 'function') return { status: 'unavailable' }
@@ -669,16 +702,20 @@ export async function ensureOpencodeGoRoute(settings, { selected, apiKeySet = tr
   const mutations = []
   const routes = []
 
-  // Built-in catalog route: only fill it in when absent; with no key take back
-  // the profile this plugin wrote, but never a user-shaped one.
-  if (!locked && providers[OPENCODE_GO_BUILTIN_ROUTE_ID] === undefined) {
-    mutations.push({
-      op: 'set',
-      path: ['providers', OPENCODE_GO_BUILTIN_ROUTE_ID],
-      value: { apiKeyEnv: OPENCODE_GO_API_KEY_ENV },
-    })
+  // Built-in catalog route: fill it in when absent, refresh the plugin's own
+  // older shape, and with no key take back what this plugin wrote — never a
+  // user-shaped profile.
+  const builtin = providers[OPENCODE_GO_BUILTIN_ROUTE_ID]
+  if (!locked && builtin === undefined) {
+    mutations.push({ op: 'set', path: ['providers', OPENCODE_GO_BUILTIN_ROUTE_ID], value: opencodeGoBuiltinValue() })
     routes.push(OPENCODE_GO_BUILTIN_ROUTE_ID)
-  } else if (locked && isPluginOpencodeGoBuiltin(providers[OPENCODE_GO_BUILTIN_ROUTE_ID])) {
+  } else if (!locked && isPluginOpencodeGoBuiltin(builtin)) {
+    // Refresh the pre-session shape (apiKeyEnv only) with the required header.
+    if (Object.keys(builtin).length === 1) {
+      mutations.push({ op: 'set', path: ['providers', OPENCODE_GO_BUILTIN_ROUTE_ID], value: opencodeGoBuiltinValue() })
+      routes.push(OPENCODE_GO_BUILTIN_ROUTE_ID)
+    }
+  } else if (locked && isPluginOpencodeGoBuiltin(builtin)) {
     mutations.push({ op: 'unset', path: ['providers', OPENCODE_GO_BUILTIN_ROUTE_ID] })
     routes.push(OPENCODE_GO_BUILTIN_ROUTE_ID)
   }
@@ -700,7 +737,7 @@ export async function ensureOpencodeGoRoute(settings, { selected, apiKeySet = tr
     if (models.length === 0) {
       mutations.push({ op: 'unset', path: ['providers', route.id] })
       routes.push(route.id)
-    } else if (!sameOpencodeGoModels(existing, models)) {
+    } else if (!sameOpencodeGoRoute(route, existing, models)) {
       mutations.push({ op: 'set', path: ['providers', route.id], value: opencodeGoRouteValue(route, models) })
       routes.push(route.id)
     }

@@ -214,12 +214,18 @@ test('OpenCode Go unlock needs a key; picker selection filters the supplemental 
   assert.equal(snap.catalog.find((row) => row.family === OPENCODE_GO_EXTRA_ROUTE.id).loggedIn, true)
   await controller.sync()
   // Built-in catalog profile carries no models; the supplemental route adds the one.
-  assert.deepEqual(store.section.providers[OPENCODE_GO_BUILTIN_ROUTE_ID], { apiKeyEnv: 'OPENCODE_API_KEY' })
+  assert.deepEqual(store.section.providers[OPENCODE_GO_BUILTIN_ROUTE_ID], {
+    apiKeyEnv: 'OPENCODE_API_KEY',
+    headers: { 'x-opencode-session': 'dsh-opencode-go' },
+  })
   assert.deepEqual(store.section.providers[OPENCODE_GO_EXTRA_ROUTE.id].models.map((model) => model.id), ['deepseek-flash'])
 
   await controller.setModels({ key: `${OPENCODE_GO_EXTRA_ROUTE.id}/deepseek-flash`, on: false })
   assert.equal(store.section.providers[OPENCODE_GO_EXTRA_ROUTE.id], undefined)
-  assert.deepEqual(store.section.providers[OPENCODE_GO_BUILTIN_ROUTE_ID], { apiKeyEnv: 'OPENCODE_API_KEY' })
+  assert.deepEqual(store.section.providers[OPENCODE_GO_BUILTIN_ROUTE_ID], {
+    apiKeyEnv: 'OPENCODE_API_KEY',
+    headers: { 'x-opencode-session': 'dsh-opencode-go' },
+  })
 
   await controller.setModels({ family: OPENCODE_GO_EXTRA_ROUTE.id, on: true })
   assert.deepEqual(store.section.providers[OPENCODE_GO_EXTRA_ROUTE.id].models.map((model) => model.id), ['deepseek-flash'])
@@ -254,7 +260,10 @@ test('OpenCode Go routes appear only while a key is stored', async () => {
   const saved = await controller.saveOpencodeGo({ apiKey: 'sk-test' })
   assert.equal(keys.get('OPENCODE_API_KEY'), 'sk-test')
   await controller.sync()
-  assert.deepEqual(store.section.providers[OPENCODE_GO_BUILTIN_ROUTE_ID], { apiKeyEnv: 'OPENCODE_API_KEY' })
+  assert.deepEqual(store.section.providers[OPENCODE_GO_BUILTIN_ROUTE_ID], {
+    apiKeyEnv: 'OPENCODE_API_KEY',
+    headers: { 'x-opencode-session': 'dsh-opencode-go' },
+  })
   assert.deepEqual(store.section.providers[OPENCODE_GO_EXTRA_ROUTE.id].models.map((model) => model.id), ['deepseek-flash'])
 
   await controller.clearOpencodeGo('key', saved.activeId)

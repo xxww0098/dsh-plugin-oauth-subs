@@ -152,9 +152,11 @@ export declare const OPENCODE_GO_API_KEY_ENV = "OPENCODE_API_KEY";
  * (ambient auth + per-model protocol/compat/thinking ladder); a non-empty
  * `models` list would replace the whole catalog, so the missing
  * `deepseek-flash` lives on its own supplemental route that follows the
- * picker (`selected` undefined = all). An existing user-configured route is
- * never overwritten, and without `OPENCODE_API_KEY` nothing is served: the
- * plugin's own routes are unset so DSH's model list stays clean.
+ * picker (`selected` undefined = all). Both routes carry the required
+ * `x-opencode-session` header (see `opencodeGoSessionHeaders`). An existing
+ * user-configured route is never overwritten, and without
+ * `OPENCODE_API_KEY` nothing is served: the plugin's own routes are unset so
+ * DSH's model list stays clean.
  */
 export declare function ensureOpencodeGoRoute(settings: any, { selected, apiKeySet }?: {
     apiKeySet?: boolean;
