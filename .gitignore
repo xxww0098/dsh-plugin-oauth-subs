@@ -6,3 +6,4 @@ fast-mode.json
 models.json
 .DS_Store
 *.tsbuildinfo
+.local/
