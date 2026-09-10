@@ -168,6 +168,7 @@ window.__ModuleLoader__.load({
         noRpc: '宿主 RPC 不可用。确认插件已加载到 web profile。',
         quota: '额度',
         quotaRefresh: '刷新额度',
+        quotaUnitToggle: '切换单位 k/M',
         quotaLoading: '正在读取额度…',
         quotaFailed: '额度读取失败',
         quotaUnknown: '周额度未返回，点刷新重试',
@@ -387,6 +388,7 @@ window.__ModuleLoader__.load({
         noRpc: 'Host RPC is unavailable. Confirm the plugin is loaded into the web profile.',
         quota: 'Quota',
         quotaRefresh: 'Refresh quota',
+        quotaUnitToggle: 'Switch k/M units',
         quotaLoading: 'Reading quota…',
         quotaFailed: 'Could not read quota',
         quotaUnknown: 'Weekly quota missing. Refresh to retry.',
@@ -613,6 +615,14 @@ window.__ModuleLoader__.load({
       if (value >= 1e6) return `${Math.round(value / 1e5) / 10}M`
       if (value >= 1e3) return `${Math.round(value / 1e2) / 10}K`
       return String(Math.round(value))
+    }
+
+    const AMOUNT_UNITS_KEY = 'osubs-amount-units'
+    function readExactAmountUnits() {
+      try { return localStorage.getItem(AMOUNT_UNITS_KEY) === 'exact' } catch { return false }
+    }
+    function writeExactAmountUnits(exact) {
+      try { localStorage.setItem(AMOUNT_UNITS_KEY, exact ? 'exact' : 'compact') } catch { /* private mode */ }
     }
 
     const PLAN_LABELS = {
@@ -1505,7 +1515,7 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function QuotaMeter({ t, remainingPercent, amount, label, reset }) {
+    function QuotaMeter({ t, remainingPercent, amount, label, reset, onToggleAmount }) {
       const tone = quotaTone(remainingPercent)
       const color = tone ? `var(--osubs-${tone})` : 'inherit'
       const caption = remainingPercent === undefined ? '' : fill(t.leftPercent, remainingPercent)
@@ -1513,7 +1523,13 @@ window.__ModuleLoader__.load({
         h('div', { className: 'osubs-qrow-head' },
           h('span', { style: { color: 'var(--osubs-muted)' } }, label),
           h('span', { style: { color, fontWeight: 500 } },
-            amount ? `${amount} · ` : '',
+            amount
+              ? h('span', {
+                onClick: onToggleAmount,
+                style: onToggleAmount ? { cursor: 'pointer' } : undefined,
+                title: onToggleAmount ? t.quotaUnitToggle : undefined,
+              }, `${amount} · `)
+              : '',
             caption,
           ),
         ),
@@ -1522,7 +1538,7 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function QuotaRow({ t, row, family }) {
+    function QuotaRow({ t, row, family, exactUnits, onToggleUnits }) {
       if (row.kind === 'heading') {
         return h('div', { className: 'osubs-qgroup' }, antigravityGroupLabel(row.product, t))
       }
@@ -1533,8 +1549,9 @@ window.__ModuleLoader__.load({
         )
       }
       const remaining = remainingPercentOf(row)
+      const tokens = row.unit === 'tokens' && row.used !== undefined && row.total !== undefined
       const amount = row.used !== undefined && row.total !== undefined
-        ? row.unit === 'tokens'
+        ? tokens && !exactUnits
           ? `${formatTokenAmount(row.used)} / ${formatTokenAmount(row.total)}`
           : `${formatAmount(row.used)} / ${formatAmount(row.total)}`
         : ''
@@ -1546,6 +1563,7 @@ window.__ModuleLoader__.load({
           amount,
           label: rowLabel(row, t, family),
           reset,
+          onToggleAmount: tokens ? onToggleUnits : undefined,
         }),
         row.status && row.status !== 'ok' && h('span', { className: 'osubs-tag osubs-tag--warn' }, row.status),
         row.note && h('span', { className: 'osubs-note' }, row.note),
@@ -1766,14 +1784,14 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function renderQuotaRows(rows, t, family) {
+    function renderQuotaRows(rows, t, family, units) {
       const nodes = []
       let cluster
       const flush = () => {
         if (!cluster) return
         nodes.push(h('div', { className: 'osubs-qcluster', key: cluster.key },
           h('div', { className: 'osubs-qgroup' }, antigravityGroupLabel(cluster.title, t)),
-          cluster.rows.map((row) => h(QuotaRow, { t, row, family, key: row.key })),
+          cluster.rows.map((row) => h(QuotaRow, { t, row, family, ...units, key: row.key })),
         ))
         cluster = undefined
       }
@@ -1788,13 +1806,14 @@ window.__ModuleLoader__.load({
           continue
         }
         flush()
-        nodes.push(h(QuotaRow, { t, row, family, key: row.key }))
+        nodes.push(h(QuotaRow, { t, row, family, ...units, key: row.key }))
       }
       flush()
       return nodes
     }
 
     function QuotaBlock({ t, quota, onRefresh, onReset, family }) {
+      const [exactUnits, setExactUnits] = useState(readExactAmountUnits)
       if (!quota || quota.status === 'idle') return null
       const rows = Array.isArray(quota.rows) ? quota.rows : []
       const hasUsage = rows.some((row) => (
@@ -1803,6 +1822,17 @@ window.__ModuleLoader__.load({
         || (row.kind === 'prepaid' && typeof row.remaining === 'number' && row.remaining > 0)
         || (row.used !== undefined && row.total !== undefined)
       ))
+      const hasTokens = rows.some((row) => row.unit === 'tokens' && row.used !== undefined && row.total !== undefined)
+      const units = hasTokens
+        ? {
+          exactUnits,
+          onToggleUnits: () => setExactUnits((current) => {
+            const next = !current
+            writeExactAmountUnits(next)
+            return next
+          }),
+        }
+        : undefined
       return h('div', { className: 'osubs-quota' },
         h('div', { className: 'osubs-quota-head' },
           h('span', { className: 'osubs-eyebrow' }, t.quota),
@@ -1817,7 +1847,7 @@ window.__ModuleLoader__.load({
           title: quota.error || undefined,
         }, `${t.quotaFailed}${quota.error ? ` · ${formatQuotaError(quota.error)}` : ''}`),
         quota.status === 'ready' && !hasUsage && h('p', { className: 'osubs-hint' }, t.quotaUnknown),
-        renderQuotaRows(rows, t, family),
+        renderQuotaRows(rows, t, family, units),
         h(QuotaResetBox, { t, quota, onReset }),
       )
     }

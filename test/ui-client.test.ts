@@ -187,6 +187,9 @@ test('OpenCode Go rows carry tokens, status, workspace name, and balance fallbac
   assert.match(src, /opencodeGoBalance: '余额兜底 \{n\}'/)
   assert.match(src, /opencodeGoBalance: 'Balance fallback \{n\}'/)
   assert.match(src, /\.osubs-tag--warn \{/)
+  assert.match(src, /const AMOUNT_UNITS_KEY = 'osubs-amount-units'/)
+  assert.match(src, /onToggleAmount: tokens \? onToggleUnits : undefined/)
+  assert.match(src, /quotaUnitToggle: '切换单位 k\/M'/)
 })
 
 test('Settings Kimi tab uses LobeHub Kimi path, device login, and never @lobehub/icons', async () => {
@@ -283,7 +286,7 @@ test('QuotaRow is a remaining bar for Codex remainingPercent and Cursor usedPerc
   assert.match(src, /100 - row\.usedPercent/)
   assert.match(src, /const remaining = remainingPercentOf\(row\)/)
   assert.match(src, /h\(QuotaMeter,/)
-  assert.match(src, /function QuotaMeter\(\{ t, remainingPercent, amount, label, reset \}\)/)
+  assert.match(src, /function QuotaMeter\(\{ t, remainingPercent, amount, label, reset, onToggleAmount \}\)/)
   assert.match(src, /reset && h\('span', \{ className: 'osubs-qreset' \}, reset\)/)
   assert.match(src, /h\(RemainingBar, \{ remainingPercent, tone \}\)/)
   assert.match(src, /fill\(t\.leftPercent, remainingPercent\)/)
@@ -319,7 +322,7 @@ test('QuotaMeter owns each window reset; nothing floats between bars', async () 
   const qresetCss = src.match(/\.osubs-qreset \{[^}]*\}/)?.[0] ?? ''
   assert.match(meter, /reset && h\('span', \{ className: 'osubs-qreset' \}, reset\)/)
   assert.match(meter, /osubs-qreset[\s\S]*RemainingBar/)
-  assert.match(row, /reset,\s*\}\),/)
+  assert.match(row, /reset,\s*onToggleAmount: tokens \? onToggleUnits : undefined,\s*\}\),/)
   assert.equal(/reset && h\('span', \{ className: 'osubs-note' \}, reset\)/.test(row), false)
   assert.match(qmeterCss, /display: flex/)
   assert.match(qmeterCss, /flex-direction: column/)
