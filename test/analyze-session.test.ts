@@ -263,3 +263,37 @@ test('a later Grok 512-token block with <10% reuse is an affinity miss, not a pr
   assert.equal(report.healthy, false)
   assert.match(report.verdict, /regression/)
 })
+
+test('a nested assistant/attempt stream idle timeout is a transport fault', () => {
+  const text = sessionJsonl([
+    {
+      type: 'assistant/message',
+      data: { turn: 1, step: 1, usage: { inputTokens: 10, outputTokens: 1, cacheReadTokens: 990 } },
+    },
+    {
+      type: 'assistant/attempt',
+      data: {
+        turn: 1,
+        step: 2,
+        stream: [
+          {
+            type: 'chunk',
+            chunk: {
+              type: 'finish',
+              reason: {
+                kind: 'error',
+                failure: { message: 'pi-ai stream idle timeout after 300000ms', code: 'TIMEOUT' },
+              },
+            },
+          },
+        ],
+      },
+    },
+  ])
+  const report = analyzeSession(text)
+  assert.equal(report.transportFaults.length, 1)
+  assert.match(report.transportFaults[0].message, /stream idle timeout/)
+  assert.equal(report.healthy, false)
+  assert.match(report.verdict, /transport/)
+  assert.match(formatReport(report), /transport 1/)
+})

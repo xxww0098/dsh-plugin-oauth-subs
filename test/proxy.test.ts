@@ -620,11 +620,12 @@ function streamingUpstream(chunks, { failAfter, headers = SSE } = {}) {
   }), { status: 200, headers })
 }
 
-async function withProxy(fetchFn, run) {
+async function withProxy(fetchFn, run, options = {}) {
   const proxy = createProxy({
     port: 0,
     apiKey: 'secret-key',
     fetchFn,
+    ...options,
     tokens: {
       codex: { session: async () => ({ accessToken: 'codex-tok', accountId: 'acct' }) },
       grok: { session: async () => { throw new Error('not logged in') } },
@@ -722,6 +723,21 @@ test('exhausting the retries answers with a real error instead of a silent EOF',
     assert.equal(response.status, 502)
     assert.match((await response.json()).error, /failed 3 times.*no output events/s)
   })
+})
+
+test('an upstream that never sends a byte is cut by the idle watchdog and retried', async () => {
+  let calls = 0
+  const fetchFn = async () => {
+    calls += 1
+    return new Response(new ReadableStream({ start() {} }), { status: 200, headers: SSE })
+  }
+  await withProxy(fetchFn, async (port, logs) => {
+    const response = await post(port)
+    assert.equal(calls, STREAM_ATTEMPTS, 'a silent upstream must be retried, not held for the client timeout')
+    assert.equal(response.status, 502)
+    assert.match((await response.json()).error, /failed 3 times.*no data/s)
+    assert.match(logs.join('\n'), /upstream sent no data for 40ms/)
+  }, { upstreamIdleTimeoutMs: 40 })
 })
 
 test('a pre-header fetch fault is retried too', async () => {

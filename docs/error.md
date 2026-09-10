@@ -2,6 +2,12 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-10：上游静默时代理不主动断流，靠客户端 300s 超时兜底
+
+**现象**：`grok-4.6` 会话最后一步上游一个字节不发，DSH 连续两次 `pi-ai stream idle timeout after 300000ms`，约 15 分钟后用户中止；分析器却报 transport 0 / HEALTHY。
+**根因**：`attemptUpstream` 的 `reader.read()` 没有读空闲看门狗；`CommitGate` 的 120s deadline 只在 `push()` 收到 chunk 时才检查，全静默流永不触发，代理一直挂着，直到 llm-pi-ai 自己的 300s 超时。失败藏在 `assistant/attempt.stream[].chunk.reason.failure`，分析器只扫顶层 error 字段所以漏报。
+**修复**：`withIdleTimeout` 给每次 `reader.read()` 加 `UPSTREAM_IDLE_TIMEOUT_MS`（默认 120s，`createProxy.upstreamIdleTimeoutMs` 可覆盖）；静默即抛 `UpstreamIdleError` → 复用既有 3 次重试。分析器补扫嵌套 failure（`stream idle timeout` = transport）。
+
 ## 2026-09-10：关于页检查失败 GitHub releases 403
 
 **现象**：About 当前版本正常，最新版本 `-`，红字 `检查失败 · GitHub releases 403`；DSH 卡 GitHub Tag 也是 `-`。

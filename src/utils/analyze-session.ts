@@ -16,6 +16,7 @@
 const STREAM_ENDED = /stream ended before a terminal response event/i
 const FETCH_FAILED = /fetch failed/i
 const TRANSPORT = /\bTRANSPORT\b/
+const STREAM_IDLE = /stream idle timeout/i
 
 export const CACHE_KINDS = Object.freeze({
   cold_start: 'cold_start',
@@ -178,6 +179,19 @@ function countToolCauses(errors) {
   return counts
 }
 
+/** Failure text nested in `stream` frames: terminal `finish` reasons on
+ * assistant/attempt and assistant/message. Top-level error fields miss these. */
+function streamFailureTexts(data) {
+  if (!Array.isArray(data?.stream)) return []
+  const out = []
+  for (const frame of data.stream) {
+    const failure = frame?.chunk?.reason?.failure
+    if (failure?.message) out.push(failure.message)
+    if (failure?.code) out.push(failure.code)
+  }
+  return out
+}
+
 function collectTransportFaults(events) {
   const faults = []
   for (const event of events) {
@@ -189,9 +203,10 @@ function collectTransportFaults(events) {
       event.data?.message,
       event.data?.text,
       event.data?.detail,
+      ...streamFailureTexts(event.data),
     ].filter(Boolean).map((value) => (typeof value === 'string' ? value : JSON.stringify(value))).join('\n')
     if (!haystack) continue
-    if (STREAM_ENDED.test(haystack) || FETCH_FAILED.test(haystack) || TRANSPORT.test(haystack)) {
+    if (STREAM_ENDED.test(haystack) || FETCH_FAILED.test(haystack) || TRANSPORT.test(haystack) || STREAM_IDLE.test(haystack)) {
       faults.push({
         kind: 'transport',
         type: event.type,
