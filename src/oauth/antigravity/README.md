@@ -77,7 +77,7 @@ Gemini 3.6 / 3.7 / 3.8 Flash 各一行 picker：`gemini-3.X-flash-high` + `reaso
 两段：
 
 1. `loadCodeAssist` → `paidTier` 套餐（`antigravityPlanType`）+ 预付 credits。**不要**用 Code Assist `currentTier`（那是 `STANDARD TIER`）。
-2. `fetchAvailableModels` → 按 `ANTIGRAVITY_QUOTA_GROUPS` 分组画条（Claude/GPT、Gemini 3.1 Pro Series、…）。每条带 `quotaInfo.resetTime`，标签精确到 **分钟**（`src/utils/relative-time.ts`）。
+2. `fetchAvailableModels` → 按 `ANTIGRAVITY_QUOTA_GROUPS` 分组画条（Claude/GPT、Gemini 3.1 Pro Series、…）。每组的条序固定 **5 小时（`primary`）在上、每周（`weekly`）在下**。每条带 `quotaInfo.resetTime`，标签精确到 **分钟**（`src/utils/relative-time.ts`）。
 
 卡片套餐：Pro / Ultra / Ultra 5x / 20x / Free / Standard / Legacy。空时不要填 Standard。
 
