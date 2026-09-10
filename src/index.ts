@@ -169,6 +169,7 @@ export function apply(ctx, config = {}) {
     prefix,
     origin: () => proxy.origin(),
     settings: ctx.settings,
+    credentials: ctx.credentials,
     grokLogin,
     models,
     onAuthChanged: () => {

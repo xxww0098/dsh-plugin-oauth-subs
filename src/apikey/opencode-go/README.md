@@ -7,8 +7,8 @@ OpenCode Go 是 **API key 范围**，不是 OAuth 家族。
 
 - **不**进 `FAMILY_IDS`，**不**进 OAuth 页签，**不**走本机回环网关。
 - 退役的 `oauth-opencode`（Zen Free / Go Free hop）仍在 `RETIRED_FAMILY_IDS`，继续 unset。
-- 对话 / 部署：用户在 DSH **API Keys** 配 `OPENCODE_API_KEY`。插件把 3 条 `opencode-go*` 路由写进 `llm-pi-ai`（见下），直连 `https://opencode.ai/zen/go`，不走回环网关。
-- 本目录只做两件事：存 **会话 cookie + 工作区 ID**，用它们读额度。
+- 对话 / 部署：本页第一项粘贴 API key，`goSave` 写入宿主凭据 `OPENCODE_API_KEY`。插件把 3 条 `opencode-go*` 路由写进 `llm-pi-ai`（见下），直连 `https://opencode.ai/zen/go`，不走回环网关。
+- 本目录另外存 **会话 cookie + 工作区 ID**，用它们读额度；密钥不进 `opencode-go.json`。
 
 ## 文件
 
@@ -19,7 +19,7 @@ OpenCode Go 是 **API key 范围**，不是 OAuth 家族。
 | [`quota.ts`](quota.ts) | cookie + workspace 刮 `/workspace/{id}/go`；缺 workspace 时 `GET /_server?id=` 工作区列表 |
 | [`models.ts`](models.ts) | 28 个模型的 name / id / api / context / maxTokens / input / reasoningEfforts；3 条路由定义 |
 
-调度：Settings 左侧家族胶囊（`.osubs-tabs`），排在 Copilot 之后换行；**不是**右侧 util，也**不**另开 API-key 胶囊。额度刷新走 RPC `goSave` / `quota`（`provider: opencode-go`）。**没有** `proxy.ts` hop，**没有** `cache.ts`。
+调度：Settings 左侧家族胶囊（`.osubs-tabs`），排在 Copilot 之后换行；**不是**右侧 util，也**不**另开 API-key 胶囊。API key / cookie / workspace 走 RPC `goSave`；额度刷新走 `quota`（`provider: opencode-go`）。**没有** `proxy.ts` hop，**没有** `cache.ts`。
 
 路由：插件启动 / `sync()` 时**缺失才补** 3 条路由（`ensureOpencodeGoRoute`）：`opencode-go`（openai-completions，16）、`opencode-go-responses`（openai-responses，4）、`opencode-go-anthropic`（anthropic-messages，8），共 28 个模型。**已存在的同名路由绝不覆盖**。用户只需在 DSH 存 `OPENCODE_API_KEY`。
 

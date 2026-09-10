@@ -161,6 +161,18 @@ test('Settings tab bar is two docked capsules; OAuth spreads leftover width betw
   assert.deepEqual(ids, ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'apikey', 'models', 'about'])
 })
 
+test('OpenCode Go panel has a compact API-key field plus cookie/workspace', async () => {
+  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  assert.match(src, /opencodeGoKey:\s*'API Key'/)
+  assert.match(src, /opencodeGoKey:\s*'API key'/)
+  assert.match(src, /opencodeGoClearKey:\s*'清除密钥'/)
+  assert.match(src, /apiKey: apiKey\.trim\(\) \? apiKey : undefined/)
+  assert.match(src, /placeholder: go\?\.apiKeySet \? t\.opencodeGoKeySet : t\.opencodeGoKeyPlaceholder/)
+  assert.match(src, /go\?\.apiKeySet && h\(Button, \{ size: 'sm', disabled: busy, label: t\.opencodeGoClearKey/)
+  assert.match(src, /\.osubs-fields > \.osubs-input \{[\s\S]*flex: none; width: 100%; height: 36px/)
+  assert.match(src, /configured = Boolean\(go\?\.apiKeySet \|\| go\?\.cookieSet\)/)
+})
+
 test('Settings Kimi tab uses LobeHub Kimi path, device login, and never @lobehub/icons', async () => {
   const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
   assert.match(src, /kimiTitle:\s*'月之暗面'/)

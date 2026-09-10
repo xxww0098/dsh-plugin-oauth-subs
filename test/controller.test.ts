@@ -89,6 +89,7 @@ test('snapshot reports logged-out accounts and empty providers', async () => {
   assert.equal(snap.accounts.copilot.loggedIn, false)
   assert.equal(snap.accounts.opencode, undefined)
   assert.equal(snap.opencodeGo.cookieSet, false)
+  assert.equal(snap.opencodeGo.apiKeySet, false)
   assert.equal(snap.opencodeGo.quota.status, 'idle')
   assert.deepEqual(snap.providers, [])
   assert.equal(snap.catalog.length, 9)
@@ -105,6 +106,31 @@ test('snapshot reports logged-out accounts and empty providers', async () => {
   assert.equal(typeof snap.update.version, 'string')
   assert.equal(snap.update.repoSlug, 'xxww0098/dsh-plugin-oauth-subs')
   assert.equal(['win', 'mac', 'linux'].includes(snap.update.platform), true)
+})
+
+test('saveOpencodeGo stores OPENCODE_API_KEY in credentials and keeps cookie out of snapshot', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const keys = new Map()
+  const credentials = {
+    async describe(ref) { return { configured: keys.has(ref), writable: true } },
+    async set(ref, value) { keys.set(ref, value) },
+    async unset(ref) { keys.delete(ref) },
+  }
+  const controller = new AuthController({
+    authPath: join(dir, 'auth.json'),
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+    credentials,
+  })
+  const saved = await controller.saveOpencodeGo({ apiKey: 'sk-test' })
+  assert.equal(saved.apiKeySet, true)
+  assert.equal(saved.configured, true)
+  assert.equal(keys.get('OPENCODE_API_KEY'), 'sk-test')
+  assert.equal('cookieHeader' in saved, false)
+  const cleared = await controller.clearOpencodeGo('key')
+  assert.equal(cleared.apiKeySet, false)
+  assert.equal(keys.has('OPENCODE_API_KEY'), false)
 })
 
 test('sync after a stored session writes llm-pi-ai providers', async () => {

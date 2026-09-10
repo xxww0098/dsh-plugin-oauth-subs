@@ -104,6 +104,7 @@ import {
   ensureOpencodeGoRoute,
   filterProviders,
   ModelSwitch,
+  OPENCODE_GO_API_KEY_ENV,
   syncHarnessModels,
 } from './models.js'
 import { TokenManager } from './tokens.js'
@@ -122,11 +123,12 @@ import {
 import { AUTO_UPDATE_INTERVAL_MS, defaultUpdatePrefs, readUpdatePrefs, updatePrefsPath, writeUpdatePrefs } from '../utils/update-prefs.js'
 
 export class AuthController {
-  constructor({ authPath, prefix, origin, settings, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, spawnFn, profile, readFileFn, updateEnv, exitFn, prefsPath, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover }) {
+  constructor({ authPath, prefix, origin, settings, credentials, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, spawnFn, profile, readFileFn, updateEnv, exitFn, prefsPath, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover }) {
     this.authPath = authPath
     this.prefix = prefix
     this.origin = origin
     this.settings = settings
+    this.credentials = credentials
     this.grokLogin = grokLogin
     this.spawnFn = spawnFn
     this.exitFn = exitFn
@@ -458,24 +460,48 @@ export class AuthController {
     }
   }
 
+  async #opencodeGoKeySet() {
+    if (typeof this.credentials?.describe === 'function') {
+      const info = await this.credentials.describe(OPENCODE_GO_API_KEY_ENV)
+      return Boolean(info?.configured)
+    }
+    return Boolean(String(process.env[OPENCODE_GO_API_KEY_ENV] ?? '').trim())
+  }
+
+  async #withOpencodeGoKey(snap) {
+    const apiKeySet = await this.#opencodeGoKeySet()
+    return { ...snap, apiKeySet, configured: Boolean(apiKeySet || snap?.cookieSet) }
+  }
+
   async opencodeGoSnapshot(options) {
-    if (!this.opencodeGo) return { id: 'opencode-go', cookieSet: false, workspaceId: '', configured: false, quota: { status: 'idle' } }
-    return this.opencodeGo.snapshot(options)
+    if (!this.opencodeGo) return { id: 'opencode-go', cookieSet: false, workspaceId: '', configured: false, apiKeySet: false, quota: { status: 'idle' } }
+    return this.#withOpencodeGoKey(await this.opencodeGo.snapshot(options))
   }
 
   async saveOpencodeGo(payload = {}) {
     if (!this.opencodeGo) throw new Error('OpenCode Go store is unavailable')
-    return this.opencodeGo.save({ cookie: payload.cookie, workspace: payload.workspace })
+    const snap = await this.opencodeGo.save({ cookie: payload.cookie, workspace: payload.workspace })
+    const raw = payload.apiKey === undefined ? undefined : String(payload.apiKey ?? '').trim()
+    if (raw) {
+      if (typeof this.credentials?.set !== 'function') throw new Error('credentials store is unavailable')
+      await this.credentials.set(OPENCODE_GO_API_KEY_ENV, raw)
+    }
+    return this.#withOpencodeGoKey(snap)
   }
 
   async clearOpencodeGo(field) {
     if (!this.opencodeGo) throw new Error('OpenCode Go store is unavailable')
-    return this.opencodeGo.clear(field)
+    if (field === 'key') {
+      if (typeof this.credentials?.unset === 'function') await this.credentials.unset(OPENCODE_GO_API_KEY_ENV)
+      return this.#withOpencodeGoKey(await this.opencodeGo.snapshot())
+    }
+    const snap = await this.opencodeGo.clear(field)
+    return this.#withOpencodeGoKey(snap)
   }
 
   async refreshOpencodeGoQuota() {
-    if (!this.opencodeGo) return { id: 'opencode-go', cookieSet: false, workspaceId: '', configured: false, quota: { status: 'idle' } }
-    return this.opencodeGo.refreshQuota()
+    if (!this.opencodeGo) return { id: 'opencode-go', cookieSet: false, workspaceId: '', configured: false, apiKeySet: false, quota: { status: 'idle' } }
+    return this.#withOpencodeGoKey(await this.opencodeGo.refreshQuota())
   }
 
   async refreshQuota(provider, accountId) {

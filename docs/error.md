@@ -2,6 +2,12 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-10：OpenCode Go 页没有 API key 输入，cookie/workspace 框被撑到 240px 高
+
+**现象**：Settings > OpenCode Go 只能填 cookie 和工作区；对话密钥要去 DSH API Keys。两个输入框异常高。
+**根因**：面板没写 `OPENCODE_API_KEY`；`.osubs-fields` 是竖排，子项 `.osubs-input { flex: 1 1 240px }` 把高度拉成 240px。
+**修复**：面板第一项是 API key，`goSave` 经 `credentials.set('OPENCODE_API_KEY')` 写入宿主凭据；cookie/workspace 仍只读额度。`.osubs-fields > .osubs-input` 改为 `flex: none; height: 36px`。
+
 ## 2026-09-10：OpenCode Go 页签误放右侧工具列
 
 **现象**：Settings 顶栏 OpenCode Go 图标在右侧 Models/About 列，不在左侧家族胶囊。
