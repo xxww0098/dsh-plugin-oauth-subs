@@ -2,6 +2,36 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-11：OpenCode Go 只能存一个账号，展示框架也不是通用账号卡
+
+**现象**：Settings > OpenCode Go 只能保存一个 key/cookie/workspace，再加会覆盖；没有其它 OAuth 家族那种账号卡，不能切号、也不能一账号一条额度。
+**根因**：`opencode-go.json` 是单 entry 结构，key 直接写死 `OPENCODE_API_KEY`；页签是自绘面板，没复用 `ProviderCard` / `AccountCard`。
+**修复**：`store.ts` 改多账号 0600 vault（旧单账号文件自动迁移，key 随账号落盘），活动账号 key 镜像到 `OPENCODE_API_KEY`；`switch` / `logout` / `quota` 走通用 RPC；UI 改 `card('opencode-go')`，添加走 `ProviderCard` 的居中 Dialog（`goSave`）。
+
+## 2026-09-11：模型页不显示 OpenCode Go 模型，插件却在重复部署 28 个
+
+**现象**：Settings > 模型 只有 9 个 OAuth 家族，没有 OpenCode Go；`OPENCODE_API_KEY` 未注入时也看不到 Go 模型。DSH 模型设置页里却有内置的 OpenCode Go（27 个）。
+**根因**：`catalogProviders` 只投影 OAuth 家族；插件还试图把官方 28 个模型全写进 3 条 `opencode-go*` 路由，覆盖/复制了 DSH 内置 pi-ai catalog（内置 provider 只缺 `deepseek-flash`）。
+**修复**：改「内置目录 + 单模型补充」——`providers.opencode-go` 只写 `apiKeyEnv`（不带 `api`/`models`，DSH 复用它自带的 27 个模型），插件只写 `opencode-go-flash`（`deepseek-flash`）；picker 只列补充路由，快照按 `OPENCODE_API_KEY` 标记 `loggedIn`（无 key 只锁勾选、不隐藏）。
+
+## 2026-09-11：空 reasoningEfforts 让 3 条 OpenCode Go 路由整段写不进
+
+**现象**：v0.0.87 启动后 `llm-pi-ai.providers` 里没有任何 `opencode-go*`；Composer 选不到 Go 模型，也没有报错文案。
+**根因**：`opencode-go/models.ts` 的 `model()` 用 `{ ...reasoningEfforts }` 存 `false`，JS 展开得到 `{}`；DSH strict 校验把空 dict 当配置错误，`settings.mutate('llm-pi-ai')` 整次原子写被拒，`ensureOpencodeGoRoute` 只吞成 `{status:'error'}`。
+**修复**：`false` 原样保留；`assertDshServiceableProvider` 同步拒绝空 dict。全量 3 路由已改为只补 `deepseek-flash`，不再有 `false` 行。
+
+## 2026-09-11：OpenCode Go 保存报 unknown method；添加还是页内表单不是悬浮窗
+
+**现象**：Settings > OpenCode Go 粘贴 API key/cookie 点保存，红字 `保存失败: unknown oauth-subs method goSave`；添加 UI 是页内表单。
+**根因**：`dsh web` 宿主进程启动早于 v0.0.87；`client.js` 被 live 重载成新版，Node ESM 缓存里的宿主还是旧版 RPC 表，故 `goSave` 不识别。面板也违反「添加账号用居中 Dialog」的 UI 约定。
+**修复**：OpenCode Go 页改为单账号卡片 + `CenterDialog`（key/cookie/workspace、清除、错误都在窗内）；客户端把 unknown method 映射成「重启 dsh web 后再保存」。宿主 RPC 不变，重启宿主后保存生效。
+
+## 2026-09-10：关于页 DSH 只读 latest dist-tag，next 上的 rc 被判成 npm 未发布
+
+**现象**：npm 已有 0.1.5-rc.2（`next` tag），About 仍显示「GitHub 有新 Tag dsh-v0.1.5-rc.2（npm 尚未发布）」；「最新发布」停在 0.1.5-rc.1，「稳定版」显示 —。
+**根因**：`fetchDshLatest` 用 `dist-tags.latest || next || alpha` 当最新发布，`latest`=rc.1 永远压过 `next`=rc.2；服务端 npm 载荷没带 `stable`，覆盖了客户端 fallback 的稳定版字段。
+**修复**：npm 最新发布取全量版本排序首位（与 npm 页一致），`stable` 单独取 `latest` tag 并随载荷返回；rc.2 > rc.1 即 status `update`。
+
 ## 2026-09-10：OpenCode Go 页没有 API key 输入，cookie/workspace 框被撑到 240px 高
 
 **现象**：Settings > OpenCode Go 只能填 cookie 和工作区；对话密钥要去 DSH API Keys。两个输入框异常高。

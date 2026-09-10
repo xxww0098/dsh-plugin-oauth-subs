@@ -96,13 +96,16 @@ import {
 import { COPILOT_IMPORT_EMPTY, importCopilotAuth } from './copilot/import.js'
 import { copilotCatalogModels, refreshCopilotCatalog } from './copilot/catalog.js'
 import { OpencodeGoStore, opencodeGoFilePath } from '../apikey/opencode-go/store.js'
+import { opencodeGoKeyHint } from '../apikey/opencode-go/index.js'
 import {
+  APIKEY_FAMILY_IDS,
   buildProviders,
   catalogProviders,
   describeCatalog,
   describeProviders,
   ensureOpencodeGoRoute,
   filterProviders,
+  MODEL_FAMILY_IDS,
   ModelSwitch,
   OPENCODE_GO_API_KEY_ENV,
   syncHarnessModels,
@@ -266,6 +269,7 @@ export class AuthController {
     this.opencodeGo = (typeof authPath === 'string' && authPath)
       ? new OpencodeGoStore({ path: opencodeGoFilePath(authPath), fetchFn })
       : undefined
+    this.opencodeGoAdopted = false
   }
 
   claim(provider) {
@@ -376,6 +380,7 @@ export class AuthController {
     await this.#maybeAutoImportCopilot()
     const loggedIn = await this.loggedIn()
     const origin = this.origin()
+    const opencodeGoApiKeySet = await this.#opencodeGoKeySet()
     const glmModels = await this.#glmModels()
     const catalog = catalogProviders({
       prefix: this.prefix,
@@ -418,6 +423,7 @@ export class AuthController {
     if (loggedIn.copilot) await this.#ensureAccountQuota('copilot')
     else this.quota.clear('copilot')
     const enabledKeys = this.models.enabledKeys(catalog)
+    const opencodeGo = await this.opencodeGoSnapshot()
     const [codexAccounts, grokAccounts, glmAccounts, kiroAccounts, antigravityAccounts, cursorAccounts, ollamaAccounts, kimiAccounts, copilotAccounts] = await Promise.all([
       this.#accountsWithQuota('codex'),
       this.#accountsWithQuota('grok'),
@@ -432,7 +438,13 @@ export class AuthController {
     return {
       origin,
       grokLogin: this.grokLogin,
-      catalog: describeCatalog(catalog, { enabledKeys, loggedIn }),
+      catalog: describeCatalog(catalog, {
+        enabledKeys,
+        loggedIn: {
+          ...loggedIn,
+          ...Object.fromEntries(APIKEY_FAMILY_IDS.map((family) => [family, opencodeGoApiKeySet])),
+        },
+      }),
       providers: describeProviders(providers),
       selected: enabledKeys,
       accounts: {
@@ -445,8 +457,9 @@ export class AuthController {
         ollama: { ...(await this.status('ollama')), activeId: ollamaAccounts.find((row) => row.active)?.id, accounts: ollamaAccounts },
         kimi: { ...(await this.status('kimi')), activeId: kimiAccounts.find((row) => row.active)?.id, accounts: kimiAccounts },
         copilot: { ...(await this.status('copilot')), activeId: copilotAccounts.find((row) => row.active)?.id, accounts: copilotAccounts },
+        'opencode-go': opencodeGo,
       },
-      opencodeGo: await this.opencodeGoSnapshot(),
+      opencodeGo,
       update: localUpdateInfo(process.platform, {
         profile: this.profile,
         env: this.updateEnv ?? process.env,
@@ -460,7 +473,7 @@ export class AuthController {
     }
   }
 
-  async #opencodeGoKeySet() {
+  async #opencodeGoCredentialSet() {
     if (typeof this.credentials?.describe === 'function') {
       const info = await this.credentials.describe(OPENCODE_GO_API_KEY_ENV)
       return Boolean(info?.configured)
@@ -468,44 +481,116 @@ export class AuthController {
     return Boolean(String(process.env[OPENCODE_GO_API_KEY_ENV] ?? '').trim())
   }
 
-  async #withOpencodeGoKey(snap) {
-    const apiKeySet = await this.#opencodeGoKeySet()
-    return { ...snap, apiKeySet, configured: Boolean(apiKeySet || snap?.cookieSet) }
+  async #opencodeGoKeySet() {
+    if (this.opencodeGo) {
+      await this.opencodeGo.ready
+      if (this.opencodeGo.anyKey()) return true
+    }
+    return this.#opencodeGoCredentialSet()
+  }
+
+  /** Adopt a pre-multi-account key from the host credential into the vault, once. */
+  async #maybeAdoptOpencodeGoKey() {
+    if (this.opencodeGoAdopted || !this.opencodeGo) return
+    this.opencodeGoAdopted = true
+    const id = this.opencodeGo.keylessId()
+    if (!id || typeof this.credentials?.resolve !== 'function') return
+    try {
+      const resolved = await this.credentials.resolve(OPENCODE_GO_API_KEY_ENV)
+      if (resolved?.value) await this.opencodeGo.adoptKey(id, resolved.value)
+    } catch {
+      // Unreadable legacy key stays where it is; chat keeps working.
+    }
+  }
+
+  async #mirrorOpencodeGoKey(id) {
+    const key = id ? this.opencodeGo?.keyOf(id) : undefined
+    if (key) {
+      if (typeof this.credentials?.set === 'function') await this.credentials.set(OPENCODE_GO_API_KEY_ENV, key)
+      return
+    }
+    if (!id && typeof this.credentials?.unset === 'function') await this.credentials.unset(OPENCODE_GO_API_KEY_ENV)
   }
 
   async opencodeGoSnapshot(options) {
-    if (!this.opencodeGo) return { id: 'opencode-go', cookieSet: false, workspaceId: '', configured: false, apiKeySet: false, quota: { status: 'idle' } }
-    return this.#withOpencodeGoKey(await this.opencodeGo.snapshot(options))
+    if (!this.opencodeGo) {
+      return {
+        id: 'opencode-go', loggedIn: false, busy: false, activeId: undefined, accounts: [],
+        cookieSet: false, workspaceId: '', apiKeySet: false, configured: false, quota: { status: 'idle' },
+      }
+    }
+    await this.#maybeAdoptOpencodeGoKey()
+    const raw = await this.opencodeGo.snapshot(options)
+    const credentialSet = await this.#opencodeGoCredentialSet()
+    const accounts = raw.accounts.map((row) => ({
+      ...row,
+      account: row.workspaceId || opencodeGoKeyHint(this.opencodeGo.keyOf(row.id)),
+      apiKeySet: row.apiKeySet || (raw.accounts.length === 1 && credentialSet),
+    }))
+    const active = accounts.find((row) => row.active)
+    return {
+      id: 'opencode-go',
+      loggedIn: accounts.length > 0,
+      busy: false,
+      activeId: raw.activeId,
+      accounts,
+      // Flat mirrors keep a client built before multi-account working.
+      cookieSet: Boolean(active?.cookieSet),
+      workspaceId: active?.workspaceId ?? '',
+      apiKeySet: Boolean(active?.apiKeySet ?? credentialSet),
+      configured: Boolean(active?.apiKeySet ?? credentialSet) || Boolean(active?.cookieSet),
+      quota: active?.quota ?? { status: 'idle' },
+    }
   }
 
   async saveOpencodeGo(payload = {}) {
     if (!this.opencodeGo) throw new Error('OpenCode Go store is unavailable')
-    const snap = await this.opencodeGo.save({ cookie: payload.cookie, workspace: payload.workspace })
     const raw = payload.apiKey === undefined ? undefined : String(payload.apiKey ?? '').trim()
-    if (raw) {
-      if (typeof this.credentials?.set !== 'function') throw new Error('credentials store is unavailable')
-      await this.credentials.set(OPENCODE_GO_API_KEY_ENV, raw)
-    }
-    return this.#withOpencodeGoKey(snap)
+    const result = await this.opencodeGo.save({
+      id: payload.id,
+      apiKey: raw ? raw : undefined,
+      cookie: payload.cookie,
+      workspace: payload.workspace,
+    })
+    await this.#mirrorOpencodeGoKey(result.id)
+    this.lastError.delete('opencode-go')
+    return this.opencodeGoSnapshot()
   }
 
-  async clearOpencodeGo(field) {
+  async switchOpencodeGo(id) {
     if (!this.opencodeGo) throw new Error('OpenCode Go store is unavailable')
-    if (field === 'key') {
-      if (typeof this.credentials?.unset === 'function') await this.credentials.unset(OPENCODE_GO_API_KEY_ENV)
-      return this.#withOpencodeGoKey(await this.opencodeGo.snapshot())
-    }
-    const snap = await this.opencodeGo.clear(field)
-    return this.#withOpencodeGoKey(snap)
+    await this.opencodeGo.switch(id)
+    await this.#mirrorOpencodeGoKey(id)
+    this.lastError.delete('opencode-go')
+    return this.opencodeGoSnapshot()
   }
 
-  async refreshOpencodeGoQuota() {
-    if (!this.opencodeGo) return { id: 'opencode-go', cookieSet: false, workspaceId: '', configured: false, apiKeySet: false, quota: { status: 'idle' } }
-    return this.#withOpencodeGoKey(await this.opencodeGo.refreshQuota())
+  async logoutOpencodeGo(id) {
+    if (!this.opencodeGo) throw new Error('OpenCode Go store is unavailable')
+    const result = await this.opencodeGo.remove(id)
+    await this.#mirrorOpencodeGoKey(result.activeId)
+    this.lastError.delete('opencode-go')
+    return this.opencodeGoSnapshot()
+  }
+
+  async clearOpencodeGo(field, id) {
+    if (!this.opencodeGo) throw new Error('OpenCode Go store is unavailable')
+    await this.opencodeGo.clear(id, field)
+    if (field === 'key') {
+      const active = this.opencodeGo.activeId()
+      await this.#mirrorOpencodeGoKey(this.opencodeGo.keyOf(active) ? active : undefined)
+    }
+    return this.opencodeGoSnapshot()
+  }
+
+  async refreshOpencodeGoQuota(id) {
+    if (!this.opencodeGo) return this.opencodeGoSnapshot()
+    await this.opencodeGo.refreshQuota(id)
+    return this.opencodeGoSnapshot()
   }
 
   async refreshQuota(provider, accountId) {
-    if (provider === 'opencode-go') return this.refreshOpencodeGoQuota()
+    if (provider === 'opencode-go') return this.refreshOpencodeGoQuota(accountId)
     if (provider === 'codex' || provider === 'grok' || provider === 'glm' || provider === 'kiro' || provider === 'antigravity' || provider === 'cursor' || provider === 'ollama' || provider === 'kimi' || provider === 'copilot') {
       const rows = await this.#liveAccounts(provider)
       const targets = accountId
@@ -1562,6 +1647,7 @@ export class AuthController {
   }
 
   async logout(provider, id) {
+    if (provider === 'opencode-go') return this.logoutOpencodeGo(id)
     this.claim(provider)
     this.flows.pending(provider)?.cancel()
     this.devices.pending(provider)?.cancel()
@@ -1576,6 +1662,10 @@ export class AuthController {
   }
 
   async switchAccount(provider, id) {
+    if (provider === 'opencode-go') {
+      await this.switchOpencodeGo(id)
+      return this.snapshot()
+    }
     await switchAccount(provider, id, this.authPath)
     this.lastError.delete(provider)
     this.onAuthChanged?.(provider)
@@ -1634,7 +1724,7 @@ export class AuthController {
       await this.models.setEnabled(payload.selected, catalog)
     } else if (typeof payload.key === 'string') {
       await this.models.toggle(payload.key, payload.on !== false, catalog)
-    } else if (payload.family === 'codex' || payload.family === 'grok' || payload.family === 'glm' || payload.family === 'kiro' || payload.family === 'antigravity' || payload.family === 'cursor' || payload.family === 'ollama' || payload.family === 'kimi' || payload.family === 'copilot') {
+    } else if (MODEL_FAMILY_IDS.includes(payload.family)) {
       await this.models.setFamily(payload.family, payload.on !== false, catalog)
     } else if (typeof payload.all === 'boolean') {
       await this.models.setAll(payload.all, catalog)
@@ -1662,7 +1752,9 @@ export class AuthController {
     if (options.recover !== false && selected === undefined) {
       await this.models.recoverEmptyLoggedInFamilies(catalog, loggedIn)
     }
-    const opencodeGoRoute = await ensureOpencodeGoRoute(this.settings)
+    const opencodeGoRoute = await ensureOpencodeGoRoute(this.settings, {
+      selected: this.models.selectedForSync(catalog),
+    })
     const synced = await syncHarnessModels({
       settings: this.settings,
       prefix: this.prefix,

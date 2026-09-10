@@ -41,6 +41,15 @@ export declare function assertDshServiceableProvider(provider: any, value: any):
 export declare function isOptInKey(key: any): boolean;
 export declare function modelKey(provider: any, id: any): string;
 export declare const FAMILY_IDS: readonly string[];
+/**
+ * OpenCode Go picker families: direct API-key routes, not OAuth logins, and
+ * no loopback hop. The picker lists only the supplemental model(s) the plugin
+ * writes itself; DSH's built-in `opencode-go` catalog route carries the rest.
+ * Without `OPENCODE_API_KEY` the family is only locked (checkbox disabled).
+ */
+export declare const APIKEY_FAMILY_IDS: readonly "opencode-go-flash"[];
+/** Every family the Settings picker can toggle. */
+export declare const MODEL_FAMILY_IDS: readonly string[];
 /** Dropped families. Still unset leftover harness routes; never written back. */
 export declare const RETIRED_FAMILY_IDS: readonly string[];
 export declare function ownedProviderIds(prefix: any): string[];
@@ -135,13 +144,18 @@ export declare function filterProviders(providers: any, selected: any): any;
 export declare function peekPiAiProviders(settings: any): Promise<any>;
 export declare const OPENCODE_GO_API_KEY_ENV = "OPENCODE_API_KEY";
 /**
- * Ensure the three DSH routes OpenCode Go needs are configured so all 28
- * models are served. DSH llm-pi-ai is one provider = one api, so the single
- * Go subscription becomes three routes. Writes only routes that are absent,
- * so a user-configured route (stored credential, explicit models) is never
- * overwritten.
+ * Ensure OpenCode Go is configured while only supplying what the installed
+ * catalog lacks.
+ *
+ * DSH's built-in `opencode-go` catalog provider carries the other 27 official
+ * models. A profile naming no `api` and no `models` reuses that provider
+ * (ambient auth + per-model protocol/compat/thinking ladder); a non-empty
+ * `models` list would replace the whole catalog, so the missing
+ * `deepseek-flash` lives on its own supplemental route that follows the
+ * picker (`selected` undefined = all). An existing user-configured route is
+ * never overwritten.
  */
-export declare function ensureOpencodeGoRoute(settings: any): Promise<{
+export declare function ensureOpencodeGoRoute(settings: any, { selected }?: {}): Promise<{
     status: string;
     error?: undefined;
     routes?: undefined;
@@ -151,7 +165,7 @@ export declare function ensureOpencodeGoRoute(settings: any): Promise<{
     routes?: undefined;
 } | {
     status: string;
-    routes: string[];
+    routes: any[];
     error?: undefined;
 }>;
 export declare function syncHarnessModels({ settings, prefix, origin, loggedIn, selected, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, glmModels }: {

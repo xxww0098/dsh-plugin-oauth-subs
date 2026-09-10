@@ -21,8 +21,10 @@ import {
   ownedProviderIds,
   peekPiAiProviders,
   ensureOpencodeGoRoute,
+  OPENCODE_GO_API_KEY_ENV,
   syncHarnessModels,
 } from '../lib/oauth/models.js'
+import { OPENCODE_GO_BUILTIN_ROUTE_ID, OPENCODE_GO_EXTRA_ROUTE } from '../lib/apikey/opencode-go/models.js'
 import { KIRO_MODELS, KIRO_REASONING_GPT } from '../lib/oauth/kiro/index.js'
 
 function createPiAiSettings(initialProviders = {}) {
@@ -208,37 +210,92 @@ test('filterProviders keeps only selected keys', () => {
   assert.deepEqual(filtered['oauth-grok'].models.map((m) => m.id), ['grok-4.5'])
 })
 
-test('ensureOpencodeGoRoute writes the three Go routes only when absent', async () => {
+test('ensureOpencodeGoRoute enables the built-in catalog and only adds the missing model', async () => {
   const empty = createPiAiSettings()
   const first = await ensureOpencodeGoRoute(empty)
   assert.equal(first.status, 'written')
-  assert.deepEqual(first.routes, ['opencode-go', 'opencode-go-responses', 'opencode-go-anthropic'])
-  assert.equal(empty.section.providers['opencode-go'].api, 'openai-completions')
-  assert.equal(empty.section.providers['opencode-go-responses'].api, 'openai-responses')
-  assert.equal(empty.section.providers['opencode-go-anthropic'].api, 'anthropic-messages')
-  assert.equal(empty.section.providers['opencode-go-anthropic'].baseURL, 'https://opencode.ai/zen/go')
-  assert.equal(empty.section.providers['opencode-go'].models.length, 16)
-  assert.equal(empty.section.providers['opencode-go-responses'].models.length, 4)
-  assert.equal(empty.section.providers['opencode-go-anthropic'].models.length, 8)
+  assert.deepEqual(first.routes, [OPENCODE_GO_BUILTIN_ROUTE_ID, OPENCODE_GO_EXTRA_ROUTE.id])
+  // No api / no models: DSH reuses its installed opencode-go catalog provider
+  // (the other 27 official models) with ambient OPENCODE_API_KEY auth.
+  assert.deepEqual(empty.section.providers[OPENCODE_GO_BUILTIN_ROUTE_ID], { apiKeyEnv: OPENCODE_GO_API_KEY_ENV })
+  const extra = empty.section.providers[OPENCODE_GO_EXTRA_ROUTE.id]
+  assert.equal(extra.api, 'openai-completions')
+  assert.equal(extra.baseURL, 'https://opencode.ai/zen/go/v1')
+  assert.deepEqual(extra.models.map((model) => model.id), ['deepseek-flash'])
+  assert.equal(extra.models[0].name, 'DeepSeek V4.1 Flash')
+  assert.deepEqual(extra.models[0].input, ['text', 'image'])
+  assert.deepEqual(extra.models[0].reasoningEfforts, { low: 'low', high: 'high', max: 'max' })
+  assert.deepEqual(extra.models[0].compat, {
+    supportsStore: false,
+    supportsDeveloperRole: false,
+    maxTokensField: 'max_tokens',
+    requiresReasoningContentOnAssistantMessages: true,
+    thinkingFormat: 'deepseek',
+  })
   assert.equal(empty.ops.length, 1)
-  const deepFlash = empty.section.providers['opencode-go'].models.find((m) => m.id === 'deepseek-flash')
-  assert.equal(deepFlash.name, 'DeepSeek V4.1 Flash')
-  assert.deepEqual(deepFlash.reasoningEfforts, { low: 'low', high: 'high', max: 'max' })
-  assert.equal(empty.section.providers['opencode-go'].models.find((m) => m.id === 'deepseek-v4-pro').reasoningEfforts, undefined)
-  const luna = empty.section.providers['opencode-go-responses'].models.find((m) => m.id === 'gpt-5.6-luna')
-  assert.deepEqual(luna.input, ['text', 'image'])
 
   assert.equal((await ensureOpencodeGoRoute(empty)).status, 'present')
   assert.equal(empty.ops.length, 1)
 
+  // An existing user-configured built-in profile is never overwritten.
   const custom = createPiAiSettings({ 'opencode-go': { displayName: 'Mine' } })
   const second = await ensureOpencodeGoRoute(custom)
   assert.equal(second.status, 'written')
-  assert.deepEqual(second.routes, ['opencode-go-responses', 'opencode-go-anthropic'])
+  assert.deepEqual(second.routes, [OPENCODE_GO_EXTRA_ROUTE.id])
   assert.deepEqual(custom.section.providers['opencode-go'], { displayName: 'Mine' })
 
   assert.deepEqual(await ensureOpencodeGoRoute({ mutate: async () => {} }), { status: 'unreadable' })
   assert.deepEqual(await ensureOpencodeGoRoute(undefined), { status: 'unavailable' })
+})
+
+test('ensureOpencodeGoRoute follows the picker for the supplemental route only', async () => {
+  const settings = createPiAiSettings()
+  await ensureOpencodeGoRoute(settings)
+  const off = await ensureOpencodeGoRoute(settings, { selected: [] })
+  assert.equal(off.status, 'written')
+  assert.deepEqual(off.routes, [OPENCODE_GO_EXTRA_ROUTE.id])
+  const cleared = await peekPiAiProviders(settings)
+  assert.equal(cleared[OPENCODE_GO_EXTRA_ROUTE.id], undefined)
+  assert.deepEqual(cleared[OPENCODE_GO_BUILTIN_ROUTE_ID], { apiKeyEnv: OPENCODE_GO_API_KEY_ENV })
+
+  const on = await ensureOpencodeGoRoute(settings, { selected: [`${OPENCODE_GO_EXTRA_ROUTE.id}/deepseek-flash`] })
+  assert.equal(on.status, 'written')
+  assert.deepEqual(on.routes, [OPENCODE_GO_EXTRA_ROUTE.id])
+  const restored = await peekPiAiProviders(settings)
+  assert.deepEqual(restored[OPENCODE_GO_EXTRA_ROUTE.id].models.map((model) => model.id), ['deepseek-flash'])
+  assert.deepEqual(restored[OPENCODE_GO_BUILTIN_ROUTE_ID], { apiKeyEnv: OPENCODE_GO_API_KEY_ENV })
+})
+
+test('an empty reasoningEfforts dict is refused like DSH does', () => {
+  assert.throws(() => assertDshServiceableProvider('x', {
+    api: HARNESS_COMPLETIONS_API,
+    models: [{ id: 'm', reasoningEfforts: {} }],
+  }), /empty reasoningEfforts/)
+})
+
+test('catalogProviders lists only the supplemental Go route; the picker locks it without a key', () => {
+  const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
+  const keys = catalogKeys(catalog)
+  assert.deepEqual(keys.filter((key) => key.startsWith('opencode-go')), ['opencode-go-flash/deepseek-flash'])
+  const locked = describeCatalog(catalog, { loggedIn: { codex: true } })
+  const go = locked.find((row) => row.family === 'opencode-go-flash')
+  assert.equal(go.loggedIn, false)
+  assert.equal(go.displayName, 'OpenCode Go · DeepSeek V4.1 Flash')
+  assert.equal(go.models.length, 1)
+  assert.equal(go.models[0].enabled, true)
+  const unlocked = describeCatalog(catalog, { loggedIn: { 'opencode-go-flash': true } })
+  assert.equal(unlocked.find((row) => row.family === 'opencode-go-flash').loggedIn, true)
+})
+
+test('setFamily toggles the supplemental OpenCode Go route like any picker family', async () => {
+  const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
+  const models = new ModelSwitch()
+  await models.ready
+  const key = 'opencode-go-flash/deepseek-flash'
+  models.disabled = new Set([key])
+  await models.setFamily('opencode-go-flash', true, catalog)
+  assert.equal(models.isEnabled(key), true)
+  assert.equal(models.status(catalog).selected.includes(key), true)
 })
 
 test('catalogProviders always lists both families with Fast and 900K siblings', () => {

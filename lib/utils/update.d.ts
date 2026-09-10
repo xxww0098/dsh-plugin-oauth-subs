@@ -223,6 +223,7 @@ export declare function fetchDshLatest({ fetchFn, spawnFn, current, platform, ti
     };
     npm: {
         version: any;
+        stable: any;
         publishedAt: any;
         distTags: {};
         versions: any[];

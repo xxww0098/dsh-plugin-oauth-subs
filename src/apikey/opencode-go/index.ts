@@ -4,7 +4,13 @@
  * Chat is DSH's builtin opencode-go + OPENCODE_API_KEY (Responses, no
  * loopback hop). This module stores a web session cookie + workspace id
  * so Settings can show remaining quota.
+ *
+ * Many accounts share the one OPENCODE_API_KEY env: the vault keeps each
+ * account's key, and the controller mirrors the active account's key into
+ * the host credential so DSH keeps reading a single ref.
  */
+
+import { createHash } from 'node:crypto'
 
 export const OPENCODE_GO_ID = 'opencode-go'
 export const OPENCODE_GO_ORIGIN = 'https://opencode.ai'
@@ -51,17 +57,43 @@ export function normalizeOpencodeGoWorkspaceId(raw) {
   return match ? match[0] : undefined
 }
 
-export function publicOpencodeGo(entry, quota) {
-  const cookieSet = Boolean(entry?.cookieHeader)
-  const workspaceId = typeof entry?.workspaceId === 'string' && entry.workspaceId.trim()
-    ? entry.workspaceId.trim()
-    : ''
+/** Stable account id: workspace when known, else a hash of the secret. */
+export function opencodeGoAccountId({ workspaceId, apiKey, cookieHeader } = {}) {
+  const workspace = normalizeOpencodeGoWorkspaceId(workspaceId)
+  if (workspace) return workspace
+  const secret = String(apiKey ?? '').trim() || String(cookieHeader ?? '').trim()
+  if (!secret) return undefined
+  return `go_${createHash('sha256').update(secret).digest('hex').slice(0, 12)}`
+}
+
+/** Masked identity for a keyed account that has no workspace id yet. */
+export function opencodeGoKeyHint(apiKey) {
+  const key = String(apiKey ?? '').trim()
+  if (!key) return ''
+  const tail = key.slice(-4)
+  return key.startsWith('sk-') ? `sk-…${tail}` : `…${tail}`
+}
+
+export function publicOpencodeGoAccount(id, entry, quota, active) {
+  return {
+    id,
+    active: Boolean(active),
+    account: String(entry?.workspaceId ?? '').trim(),
+    workspaceId: String(entry?.workspaceId ?? '').trim(),
+    cookieSet: Boolean(entry?.cookieHeader),
+    apiKeySet: Boolean(entry?.apiKey),
+    quota: quota ?? { status: 'idle' },
+  }
+}
+
+export function publicOpencodeGo(vault, quotas) {
+  const accounts = Object.entries(vault?.accounts ?? {})
+    .map(([id, entry]) => publicOpencodeGoAccount(id, entry, quotas?.get?.(id), id === vault?.activeId))
+    .sort((left, right) => Number(right.active) - Number(left.active) || left.id.localeCompare(right.id))
   return {
     id: OPENCODE_GO_ID,
-    cookieSet,
-    workspaceId,
-    configured: cookieSet,
-    quota: quota ?? { status: cookieSet ? 'idle' : 'idle' },
+    activeId: vault?.activeId,
+    accounts,
   }
 }
 

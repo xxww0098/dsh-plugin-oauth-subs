@@ -832,6 +832,7 @@ export async function fetchDshLatest({
     }
 
     let npmVersion
+    let npmStable
     let npmPublishedAt
     let npmDistTags = {}
     let npmVersions = []
@@ -843,8 +844,13 @@ export async function fetchDshLatest({
       if (npmResp.ok) {
         const npmData = await npmResp.json()
         npmDistTags = npmData?.['dist-tags'] || {}
-        npmVersion = npmDistTags.latest || npmDistTags.next || npmDistTags.alpha
         npmVersions = listDshInstallVersions(npmData)
+        // Newest published version — matches the npm page's version tab. The
+        // `latest` tag can trail `next` (0.1.5-rc.2 shipped under `next` while
+        // `latest` stayed 0.1.5-rc.1), so the tag is only the fallback.
+        npmVersion = npmVersions[0] || npmDistTags.latest || npmDistTags.next || npmDistTags.alpha
+        // Stable channel: the `latest` dist-tag, never the newest prerelease.
+        npmStable = npmDistTags.latest || npmDistTags.next || npmDistTags.alpha
         if (npmVersion && npmData?.time?.[npmVersion]) {
           npmPublishedAt = formatPublishedAt(npmData.time[npmVersion])
         }
@@ -882,6 +888,7 @@ export async function fetchDshLatest({
       } : undefined,
       npm: npmVersion ? {
         version: npmVersion,
+        stable: npmStable,
         publishedAt: npmPublishedAt,
         distTags: npmDistTags,
         versions: npmVersions,

@@ -111,7 +111,7 @@ test('Settings Ollama tab is Cloud key paste after Cursor, never localhost', asy
   assert.match(src, /ollama: \{ d: 'M7\.905 1\.09/)
   assert.match(src, /id === 'ollama' && !busy && h\('div', \{ className: 'osubs-logins' \}/)
   assert.match(src, /h\('span', null, t\.ollamaImport\)/)
-  assert.match(src, /id !== 'glm' && id !== 'kiro' && id !== 'ollama' && !busy/)
+  assert.match(src, /id !== 'glm' && id !== 'kiro' && id !== 'ollama' && id !== 'opencode-go' && !busy/)
   assert.equal(src.includes('127.0.0.1:11434'), false)
   assert.equal(src.includes('localhost:11434'), false)
   assert.match(src, /\.osubs-tabs \{[\s\S]*grid-template-columns: repeat\(8, 36px\)/)
@@ -161,16 +161,20 @@ test('Settings tab bar is two docked capsules; OAuth spreads leftover width betw
   assert.deepEqual(ids, ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'apikey', 'models', 'about'])
 })
 
-test('OpenCode Go panel has a compact API-key field plus cookie/workspace', async () => {
+test('OpenCode Go renders through the shared account cards and add-account dialog', async () => {
   const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
   assert.match(src, /opencodeGoKey:\s*'API Key'/)
   assert.match(src, /opencodeGoKey:\s*'API key'/)
-  assert.match(src, /opencodeGoClearKey:\s*'清除密钥'/)
-  assert.match(src, /apiKey: apiKey\.trim\(\) \? apiKey : undefined/)
-  assert.match(src, /placeholder: go\?\.apiKeySet \? t\.opencodeGoKeySet : t\.opencodeGoKeyPlaceholder/)
-  assert.match(src, /go\?\.apiKeySet && h\(Button, \{ size: 'sm', disabled: busy, label: t\.opencodeGoClearKey/)
+  assert.match(src, /opencodeGoHostStale/)
+  assert.equal(src.includes('OpencodeGoPanel'), false)
+  assert.match(src, /panel\('apikey', card\('opencode-go', t\.opencodeGoTitle\)\)/)
+  assert.match(src, /onGoSave: async \(payload\) => \{\s*await callRpc\(rpc, 'goSave', payload\)\s*await refresh\(\)\s*\}/)
+  assert.match(src, /id === 'opencode-go' && !busy && h\('form'/)
+  assert.match(src, /roster\.some\(\(row\) => row\.apiKeySet\) \? t\.opencodeGoKeySet : t\.opencodeGoKeyPlaceholder/)
+  assert.match(src, /roster\.some\(\(row\) => row\.cookieSet\) \? t\.opencodeGoCookieSet : t\.opencodeGoCookiePlaceholder/)
+  assert.match(src, /id !== 'glm' && id !== 'kiro' && id !== 'ollama' && id !== 'opencode-go'/)
+  assert.match(src, /isUnknownOauthMethod\(text\) \? t\.opencodeGoHostStale/)
   assert.match(src, /\.osubs-fields > \.osubs-input \{[\s\S]*flex: none; width: 100%; height: 36px/)
-  assert.match(src, /configured = Boolean\(go\?\.apiKeySet \|\| go\?\.cookieSet\)/)
 })
 
 test('Settings Kimi tab uses LobeHub Kimi path, device login, and never @lobehub/icons', async () => {
@@ -361,7 +365,7 @@ test('Settings Models keeps locked Copilot visible and jumps to the family tab',
   assert.match(family, /label: t\.login/)
   assert.match(family, /h\('div', \{ className: 'osubs-models'/)
   assert.equal(family.includes('style: { opacity: locked'), false)
-  assert.match(src, /onOpenFamily: setTab/)
+  assert.match(src, /onOpenFamily: \(family\) => setTab\(String\(family\)\.startsWith\('opencode-go'\) \? 'apikey' : family\)/)
   assert.match(src, /hidden: tab !== id/)
 })
 

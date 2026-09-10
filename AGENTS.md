@@ -114,12 +114,12 @@ src/
       request.ts           Completions reasoning_effort; GPT omit max_tokens
       cache.ts             prefix-hash + X-Interaction-Id; extra system at messages suffix
   apikey/                  API-key families (not OAuth, not the loopback hop)
-    opencode-go/           OpenCode Go (API key): cookie/workspace quota + 28-model catalog
+    opencode-go/           OpenCode Go (API key): cookie/workspace quota + supplemental route
       README.md
       index.ts             cookie / workspace parsing, public snapshot
       store.ts             <dataDir>/opencode-go.json (0600); not auth.json
       quota.ts             scrape /workspace/{wrk_}/go; /_server workspace lookup
-      models.ts            28 models -> opencode-go / -responses / -anthropic routes
+      models.ts            deepseek-flash row -> opencode-go-flash route
     ollama/                Ollama Cloud (ollama.com API key — not localhost:11434)
       README.md            family design: login, chat, quota, cache (traceable)
       index.ts             catalog, identity, API key session, Bearer headers
@@ -147,7 +147,7 @@ scripts/                   CLI (TypeScript)
 
 Rules:
 
-- Codex-only code → `src/oauth/codex/`. Grok-only code → `src/oauth/grok/`. GLM-only code → `src/oauth/glm/`. Kiro-only code → `src/oauth/kiro/`. Antigravity-only code → `src/oauth/antigravity/`. Cursor-only code → `src/oauth/cursor/`. Ollama-only code → `src/apikey/ollama/`. Kimi-only code → `src/oauth/kimi/`. Copilot-only code → `src/oauth/copilot/`. OpenCode Go (API key, quota only) → `src/apikey/opencode-go/` — never `src/oauth/` and never the loopback hop. Its Settings **tab** still sits in the left family capsule with Copilot.
+- Codex-only code → `src/oauth/codex/`. Grok-only code → `src/oauth/grok/`. GLM-only code → `src/oauth/glm/`. Kiro-only code → `src/oauth/kiro/`. Antigravity-only code → `src/oauth/antigravity/`. Cursor-only code → `src/oauth/cursor/`. Ollama-only code → `src/apikey/ollama/`. Kimi-only code → `src/oauth/kimi/`. Copilot-only code → `src/oauth/copilot/`. OpenCode Go (API key, quota only) → `src/apikey/opencode-go/` — never `src/oauth/` and never the loopback hop. Its Settings **tab** still sits in the left family capsule with Copilot; DSH's installed pi-ai catalog already deploys the `opencode-go` provider (27 models), so the plugin only writes `opencode-go-flash` (`deepseek-flash`) — the one official model that catalog lacks — and its Settings → 模型 group lists only that row.
 - **Each family has `README.md`.** Login, session, chat hop, models, quota, and cache for that vendor are written there so a later change can be traced to files and to `docs/error.md`. Cross-family rules stay in this file; do not let family READMEs contradict it. Reference repos for that hop live in `docs/oauth.md` and in the family README 归因.
 - **Cache is per family.** Each `src/oauth/<id>/cache.ts` owns that vendor's prompt-cache identity, headers, and prefix pin. Do not import Codex cache helpers from Grok / GLM / Kiro / Antigravity / Cursor / Ollama / Kimi / Copilot. Do not share a `codexCacheSessionId` in `src/utils/`. `proxy.ts` only dispatches.
 - Shared crypto / session scoring → `src/utils/`.
@@ -750,7 +750,7 @@ Binding UI rules:
   `IconWarning`). Do not use emoji as UI marks.
 - Model picker: family name + `已开启 n / m`. **No 文本 / 图文 tags.**
   Checkboxes and All/None stay **disabled until that family is signed
-  in**.
+  in** (OpenCode Go: until `OPENCODE_API_KEY` is set).
 - A new family gets one primary CTA that opens the add-account dialog
   unless it truly has two official OAuth sites. Extra methods (GLM
   Z.ai / BigModel, Kiro Social / IdC / import, Grok device / PKCE,

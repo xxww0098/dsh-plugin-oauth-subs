@@ -1,61 +1,46 @@
 /**
- * OpenCode Go model catalog.
+ * OpenCode Go supplemental catalog.
  *
- * 28 models across three wire protocols. Sources:
- *   - endpoint / api / id / display name: official Go docs "API 端点" table
- *   - contextWindow / maxTokens / input: models.dev provider "opencode-go"
- *     (the upstream catalog at models.opencode.ai)
- *   - reasoningEfforts: installed pi-ai catalog for ids it ships, else the
- *     openclaw opencode-go provider manifest (supportedReasoningEfforts) and
- *     OmniRoute's opencode effort tiers
+ * DSH's installed pi-ai catalog already ships the `opencode-go` provider with
+ * the other 27 official Go models (three wire protocols, per-model
+ * api/baseURL/compat/thinkingLevelMap, ambient `OPENCODE_API_KEY` auth) — the
+ * deployment code lives in `@earendil-works/pi-ai/providers/opencode-go.js`.
+ * llm-pi-ai cannot append to a catalog route: a non-empty `models` list
+ * replaces the whole served catalog, so the one model the installed catalog
+ * lacks — `deepseek-flash` (DeepSeek V4.1 Flash) — lives on its own route
+ * beside the built-in one.
  *
- * Completions models that the installed pi-ai catalog already describes omit
- * reasoningEfforts on purpose: the route keeps that model's own
- * reasoning / thinkingLevelMap (DSH copies the catalog base when the entry
- * declares no efforts), so the picker ladder stays exactly what pi-ai ships.
- * Only ids pi-ai does not describe carry an explicit ladder here.
+ * Sources:
+ *   - official Go docs "API 端点": deepseek-flash -> /v1/chat/completions,
+ *     @ai-sdk/openai-compatible
+ *   - models.dev provider "opencode-go": contextWindow / maxTokens / input
+ *   - installed pi-ai catalog `deepseek-v4-flash`: effort ladder + the
+ *     DeepSeek completions dialect (`compat`)
  */
+export declare const OPENCODE_GO_BUILTIN_ROUTE_ID = "opencode-go";
+export declare const OPENCODE_GO_EXTRA_ROUTE_ID = "opencode-go-flash";
 export declare const OPENCODE_GO_OPENAI_BASE_URL = "https://opencode.ai/zen/go/v1";
-export declare const OPENCODE_GO_ANTHROPIC_BASE_URL = "https://opencode.ai/zen/go";
-/** @ai-sdk/openai-compatible - POST {baseURL}/chat/completions */
-export declare const OPENCODE_GO_COMPLETIONS: {
-    id: any;
-    name: any;
-    contextWindow: any;
-    maxTokens: any;
-    input: any[];
-}[];
-/** @ai-sdk/openai - POST {baseURL}/responses */
-export declare const OPENCODE_GO_RESPONSES: {
-    id: any;
-    name: any;
-    contextWindow: any;
-    maxTokens: any;
-    input: any[];
-}[];
-/** @ai-sdk/anthropic - Anthropic SDK posts {baseURL}/v1/messages */
-export declare const OPENCODE_GO_ANTHROPIC: {
-    id: any;
-    name: any;
-    contextWindow: any;
-    maxTokens: any;
-    input: any[];
-}[];
 /**
- * The three DSH routes OpenCode Go needs: DSH llm-pi-ai is one provider =
- * one api, while Go serves the same subscription over three protocols.
+ * The one official Go model DSH's installed catalog lacks. Kept on its own
+ * route; the built-in `opencode-go` route serves the other 27.
  */
-export declare const OPENCODE_GO_ROUTES: readonly {
-    id: string;
-    displayName: string;
-    api: string;
-    baseURL: string;
-    models: {
+export declare const OPENCODE_GO_EXTRA_MODELS: readonly {
+    id: any;
+    name: any;
+    contextWindow: any;
+    maxTokens: any;
+    input: any[];
+}[];
+export declare const OPENCODE_GO_EXTRA_ROUTE: Readonly<{
+    id: "opencode-go-flash";
+    displayName: "OpenCode Go · DeepSeek V4.1 Flash";
+    api: "openai-completions";
+    baseURL: "https://opencode.ai/zen/go/v1";
+    models: readonly {
         id: any;
         name: any;
         contextWindow: any;
         maxTokens: any;
         input: any[];
     }[];
-}[];
-export declare const OPENCODE_GO_MODEL_COUNT: number;
+}>;

@@ -3,9 +3,10 @@ import { test } from 'node:test'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { parseOpencodeGoCookie, normalizeOpencodeGoWorkspaceId } from '../lib/apikey/opencode-go/index.js'
+import { parseOpencodeGoCookie, normalizeOpencodeGoWorkspaceId, opencodeGoAccountId, opencodeGoKeyHint } from '../lib/apikey/opencode-go/index.js'
 import { parseOpencodeGoUsage } from '../lib/apikey/opencode-go/quota.js'
 import { OpencodeGoStore, opencodeGoFilePath } from '../lib/apikey/opencode-go/store.js'
+import { writePrivateText } from '../lib/utils/private-text.js'
 
 test('parseOpencodeGoCookie keeps only auth cookies or wraps a raw token', () => {
   assert.equal(parseOpencodeGoCookie('Fe26.2abc'), 'auth=Fe26.2abc')
@@ -48,26 +49,92 @@ test('parseOpencodeGoUsage reads JSON usage and serialized dashboard JS', () => 
   assert.throws(() => parseOpencodeGoUsage('nothing', now), /Missing usage fields/)
 })
 
-test('OpencodeGoStore round-trips cookie + workspace and keeps cookie out of the snapshot', async () => {
+test('opencodeGoAccountId prefers workspace and key hints stay masked', () => {
+  assert.equal(opencodeGoAccountId({ workspaceId: 'wrk_abc123', apiKey: 'sk-x' }), 'wrk_abc123')
+  assert.match(opencodeGoAccountId({ apiKey: 'sk-x' }), /^go_[0-9a-f]{12}$/)
+  assert.equal(opencodeGoAccountId({}), undefined)
+  assert.equal(opencodeGoKeyHint('sk-1234567890'), 'sk-…7890')
+  assert.equal(opencodeGoKeyHint('plain-token'), '…oken')
+  assert.equal(opencodeGoKeyHint(''), '')
+})
+
+test('OpencodeGoStore keeps many accounts, activates on save, and never exposes secrets', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'opencode-go-'))
   const path = opencodeGoFilePath(join(dir, 'auth.json'))
   const page = JSON.stringify({ usage: { rolling: { usagePercent: 10, resetInSec: 30 } } })
   const fetchFn = async () => new Response(page, { status: 200, headers: { 'content-type': 'text/javascript' } })
   const store = new OpencodeGoStore({ path, fetchFn })
-  const saved = await store.save({ cookie: 'Fe26.2token', workspace: 'wrk_abc123' })
-  assert.equal(saved.cookieSet, true)
-  assert.equal(saved.workspaceId, 'wrk_abc123')
-  assert.equal(saved.quota.status, 'ready')
-  assert.equal(saved.quota.rows[0].remainingPercent, 90)
-  assert.equal('cookieHeader' in saved, false)
+  const first = await store.save({ apiKey: 'sk-one', cookie: 'Fe26.2one', workspace: 'wrk_abc123' })
+  assert.equal(first.created, true)
+  assert.equal(first.id, 'wrk_abc123')
+  const second = await store.save({ apiKey: 'sk-two', cookie: 'Fe26.2two', workspace: 'wrk_def456' })
+  assert.equal(second.created, true)
+  assert.equal(second.id, 'wrk_def456')
 
   const snap = await store.snapshot()
-  assert.equal(snap.cookieSet, true)
-  assert.equal(snap.workspaceId, 'wrk_abc123')
+  assert.equal(snap.accounts.length, 2)
+  assert.equal(snap.activeId, 'wrk_def456')
+  const active = snap.accounts.find((row) => row.active)
+  assert.equal(active.workspaceId, 'wrk_def456')
+  assert.equal(active.apiKeySet, true)
+  assert.equal(active.cookieSet, true)
+  assert.equal(active.quota.status, 'ready')
+  assert.equal(active.quota.rows[0].remainingPercent, 90)
+  assert.equal('apiKey' in active, false)
+  assert.equal('cookieHeader' in active, false)
+  assert.equal(store.keyOf('wrk_abc123'), 'sk-one')
+  assert.equal(store.anyKey(), true)
 
-  const afterClear = await store.clear('cookie')
-  assert.equal(afterClear.cookieSet, false)
-  assert.equal(afterClear.quota.status, 'idle')
+  const switched = await store.switch('wrk_abc123')
+  assert.equal(switched.activeId, 'wrk_abc123')
+
+  const removed = await store.remove('wrk_abc123')
+  assert.equal(removed.wasActive, true)
+  assert.equal(removed.activeId, 'wrk_def456')
+
+  const afterClear = await store.clear('wrk_def456', 'cookie')
+  const row = afterClear.accounts.find((entry) => entry.id === 'wrk_def456')
+  assert.equal(row.cookieSet, false)
+  assert.equal(row.quota.status, 'idle')
+})
+
+test('OpencodeGoStore dedupes a re-pasted key instead of adding a card', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'opencode-go-'))
+  const store = new OpencodeGoStore({
+    path: opencodeGoFilePath(join(dir, 'auth.json')),
+    fetchFn: async () => new Response('{}', { status: 200 }),
+  })
+  const first = await store.save({ apiKey: 'sk-same' })
+  const again = await store.save({ apiKey: 'sk-same', cookie: 'Fe26.2rotated' })
+  assert.equal(again.id, first.id)
+  assert.equal(again.created, false)
+  const snap = await store.snapshot()
+  assert.equal(snap.accounts.length, 1)
+  const row = snap.accounts[0]
+  assert.equal(row.active, true)
+  assert.equal(row.cookieSet, true)
+})
+
+test('OpencodeGoStore migrates a legacy single-account file', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'opencode-go-'))
+  const path = join(dir, 'opencode-go.json')
+  await writePrivateText(path, JSON.stringify({ cookieHeader: 'auth=Fe26.legacy', workspaceId: 'wrk_legacy' }))
+  const fetchFn = async () => new Response(
+    JSON.stringify({ usage: { rolling: { usagePercent: 5, resetInSec: 10 } } }),
+    { status: 200, headers: { 'content-type': 'text/javascript' } },
+  )
+  const store = new OpencodeGoStore({ path, fetchFn })
+  const snap = await store.snapshot()
+  assert.equal(snap.activeId, 'wrk_legacy')
+  assert.equal(snap.accounts.length, 1)
+  assert.equal(snap.accounts[0].cookieSet, true)
+  assert.equal(snap.accounts[0].apiKeySet, false)
+  assert.equal(snap.accounts[0].quota.status, 'ready')
+  assert.equal(store.keylessId(), 'wrk_legacy')
+
+  await store.adoptKey('wrk_legacy', 'sk-legacy')
+  assert.equal(store.keyOf('wrk_legacy'), 'sk-legacy')
+  assert.equal(store.keylessId(), undefined)
 })
 
 test('OpencodeGoStore rejects a cookie header without an auth cookie', async () => {

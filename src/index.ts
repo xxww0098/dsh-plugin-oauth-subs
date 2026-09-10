@@ -115,7 +115,7 @@ export function registerRpc(ctx, controller) {
       models: (payload) => controller.setModels(payload ?? {}),
       quota: (payload) => controller.refreshQuota(payload?.provider, payload?.id),
       goSave: (payload) => controller.saveOpencodeGo(payload ?? {}),
-      goClear: (payload) => controller.clearOpencodeGo(payload?.field),
+      goClear: (payload) => controller.clearOpencodeGo(payload?.field, payload?.id),
       reset: (payload) => controller.consumeReset(payload?.provider, payload?.id),
       update: (payload) => controller.checkUpdate(payload),
       dshUpdate: (payload) => controller.checkDshUpdate(payload),

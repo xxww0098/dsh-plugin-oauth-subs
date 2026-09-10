@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import { writeFileSync } from 'node:fs'
-import { mkdir, mkdtemp, realpath, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
@@ -10,6 +10,7 @@ import { saveSession } from '../lib/oauth/store.js'
 import { installedVersion } from '../lib/utils/update.js'
 import { HARNESS_ANTHROPIC_API, HARNESS_COMPLETIONS_API, assertDshServiceableProvider, ModelSwitch, catalogKeys, catalogProviders } from '../lib/oauth/models.js'
 import { glmSession } from '../lib/oauth/glm/index.js'
+import { OPENCODE_GO_BUILTIN_ROUTE_ID, OPENCODE_GO_EXTRA_ROUTE } from '../lib/apikey/opencode-go/models.js'
 import { kiroSession, KIRO_MODELS } from '../lib/oauth/kiro/index.js'
 import { antigravitySession } from '../lib/oauth/antigravity/index.js'
 
@@ -88,13 +89,20 @@ test('snapshot reports logged-out accounts and empty providers', async () => {
   assert.equal(snap.accounts.kimi.loggedIn, false)
   assert.equal(snap.accounts.copilot.loggedIn, false)
   assert.equal(snap.accounts.opencode, undefined)
+  assert.equal(snap.accounts['opencode-go'].loggedIn, false)
+  assert.deepEqual(snap.accounts['opencode-go'].accounts, [])
   assert.equal(snap.opencodeGo.cookieSet, false)
   assert.equal(snap.opencodeGo.apiKeySet, false)
   assert.equal(snap.opencodeGo.quota.status, 'idle')
   assert.deepEqual(snap.providers, [])
-  assert.equal(snap.catalog.length, 9)
+  assert.equal(snap.catalog.length, 10)
   assert.equal(snap.catalog.some((row) => row.family === 'kimi'), true)
   assert.equal(snap.catalog.some((row) => row.family === 'opencode'), false)
+  const go = snap.catalog.find((row) => row.family === OPENCODE_GO_EXTRA_ROUTE.id)
+  assert.equal(go.loggedIn, false)
+  assert.deepEqual(go.models.map((model) => model.id), ['deepseek-flash'])
+  assert.equal(go.models.every((model) => model.enabled), true)
+  assert.equal(snap.catalog.filter((row) => row.family.startsWith('opencode-go')).length, 1)
   const copilot = snap.catalog.find((row) => row.family === 'copilot')
   assert.equal(copilot.loggedIn, false)
   assert.equal(copilot.displayName, 'OAuth · GitHub Copilot')
@@ -108,11 +116,12 @@ test('snapshot reports logged-out accounts and empty providers', async () => {
   assert.equal(['win', 'mac', 'linux'].includes(snap.update.platform), true)
 })
 
-test('saveOpencodeGo stores OPENCODE_API_KEY in credentials and keeps cookie out of snapshot', async () => {
+test('saveOpencodeGo stores the key in the vault, mirrors OPENCODE_API_KEY, and hides secrets', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
   const keys = new Map()
   const credentials = {
     async describe(ref) { return { configured: keys.has(ref), writable: true } },
+    async resolve(ref) { return keys.has(ref) ? { value: keys.get(ref), source: 'file' } : undefined },
     async set(ref, value) { keys.set(ref, value) },
     async unset(ref) { keys.delete(ref) },
   }
@@ -124,13 +133,96 @@ test('saveOpencodeGo stores OPENCODE_API_KEY in credentials and keeps cookie out
     credentials,
   })
   const saved = await controller.saveOpencodeGo({ apiKey: 'sk-test' })
-  assert.equal(saved.apiKeySet, true)
-  assert.equal(saved.configured, true)
+  assert.equal(saved.accounts.length, 1)
+  assert.equal(saved.accounts[0].apiKeySet, true)
+  assert.equal(saved.loggedIn, true)
+  assert.equal(saved.activeId, saved.accounts[0].id)
   assert.equal(keys.get('OPENCODE_API_KEY'), 'sk-test')
-  assert.equal('cookieHeader' in saved, false)
-  const cleared = await controller.clearOpencodeGo('key')
-  assert.equal(cleared.apiKeySet, false)
+  assert.equal('cookieHeader' in saved.accounts[0], false)
+  const vault = JSON.parse(await readFile(join(dir, 'opencode-go.json'), 'utf8'))
+  assert.equal(vault.accounts[vault.activeId].apiKey, 'sk-test')
+
+  const cleared = await controller.clearOpencodeGo('key', saved.activeId)
+  assert.equal(cleared.accounts[0].apiKeySet, false)
   assert.equal(keys.has('OPENCODE_API_KEY'), false)
+})
+
+test('OpenCode Go switch mirrors the active account key and logout drops the last one', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const keys = new Map()
+  const credentials = {
+    async describe(ref) { return { configured: keys.has(ref), writable: true } },
+    async resolve(ref) { return keys.has(ref) ? { value: keys.get(ref), source: 'file' } : undefined },
+    async set(ref, value) { keys.set(ref, value) },
+    async unset(ref) { keys.delete(ref) },
+  }
+  const fetchFn = async () => new Response(
+    JSON.stringify({ usage: { rolling: { usagePercent: 10, resetInSec: 30 } } }),
+    { status: 200, headers: { 'content-type': 'text/javascript' } },
+  )
+  const controller = new AuthController({
+    authPath: join(dir, 'auth.json'),
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+    credentials,
+    fetchFn,
+  })
+  await controller.saveOpencodeGo({ apiKey: 'sk-one', cookie: 'Fe26.2one', workspace: 'wrk_one' })
+  assert.equal(keys.get('OPENCODE_API_KEY'), 'sk-one')
+  const second = await controller.saveOpencodeGo({ apiKey: 'sk-two', cookie: 'Fe26.2two', workspace: 'wrk_two' })
+  assert.equal(second.accounts.length, 2)
+  assert.equal(second.activeId, 'wrk_two')
+  assert.equal(keys.get('OPENCODE_API_KEY'), 'sk-two')
+
+  const switched = await controller.switchAccount('opencode-go', 'wrk_one')
+  assert.equal(switched.accounts['opencode-go'].activeId, 'wrk_one')
+  assert.equal(keys.get('OPENCODE_API_KEY'), 'sk-one')
+
+  const afterLogout = await controller.logout('opencode-go', 'wrk_one')
+  assert.equal(afterLogout.activeId, 'wrk_two')
+  assert.equal(afterLogout.accounts.length, 1)
+  assert.equal(keys.get('OPENCODE_API_KEY'), 'sk-two')
+
+  const empty = await controller.logout('opencode-go', 'wrk_two')
+  assert.equal(empty.accounts.length, 0)
+  assert.equal(keys.has('OPENCODE_API_KEY'), false)
+})
+
+test('OpenCode Go unlock needs a key; picker selection filters the supplemental route', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const keys = new Map([['OPENCODE_API_KEY', 'sk-test']])
+  const credentials = {
+    async describe(ref) { return { configured: keys.has(ref), writable: true } },
+    async set(ref, value) { keys.set(ref, value) },
+    async unset(ref) { keys.delete(ref) },
+  }
+  const store = createPiAiSettings()
+  const controller = new AuthController({
+    authPath: join(dir, 'auth.json'),
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: store,
+    credentials,
+    models: new ModelSwitch(),
+    cursorAutoImport: false,
+    ollamaAutoImport: false,
+    kimiAutoImport: false,
+    copilotAutoImport: false,
+  })
+  const snap = await controller.snapshot()
+  assert.equal(snap.catalog.find((row) => row.family === OPENCODE_GO_EXTRA_ROUTE.id).loggedIn, true)
+  await controller.sync()
+  // Built-in catalog profile carries no models; the supplemental route adds the one.
+  assert.deepEqual(store.section.providers[OPENCODE_GO_BUILTIN_ROUTE_ID], { apiKeyEnv: 'OPENCODE_API_KEY' })
+  assert.deepEqual(store.section.providers[OPENCODE_GO_EXTRA_ROUTE.id].models.map((model) => model.id), ['deepseek-flash'])
+
+  await controller.setModels({ key: `${OPENCODE_GO_EXTRA_ROUTE.id}/deepseek-flash`, on: false })
+  assert.equal(store.section.providers[OPENCODE_GO_EXTRA_ROUTE.id], undefined)
+  assert.deepEqual(store.section.providers[OPENCODE_GO_BUILTIN_ROUTE_ID], { apiKeyEnv: 'OPENCODE_API_KEY' })
+
+  await controller.setModels({ family: OPENCODE_GO_EXTRA_ROUTE.id, on: true })
+  assert.deepEqual(store.section.providers[OPENCODE_GO_EXTRA_ROUTE.id].models.map((model) => model.id), ['deepseek-flash'])
 })
 
 test('sync after a stored session writes llm-pi-ai providers', async () => {

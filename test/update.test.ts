@@ -582,6 +582,29 @@ test('fetchDshLatest reports github-only when GitHub tag is newer but npm is not
   assert.equal(info.npm?.version, '0.1.2-rc.1')
 })
 
+test('fetchDshLatest installs the newest published version even when the latest tag trails next', async () => {
+  const fetchFn = async (url) => {
+    const s = String(url)
+    if (s.includes('/tags')) {
+      return new Response(JSON.stringify([{ name: 'dsh-v0.1.5-rc.2' }]))
+    }
+    if (s.includes('registry.npmjs.org')) {
+      return new Response(JSON.stringify({
+        'dist-tags': { latest: '0.1.5-rc.1', next: '0.1.5-rc.2', alpha: '0.1.5-alpha.2' },
+        versions: { '0.1.5-rc.2': {}, '0.1.5-rc.1': {}, '0.1.5-alpha.2': {} },
+        time: { '0.1.5-rc.2': '2026-09-10T14:57:10Z' },
+      }))
+    }
+    return new Response('{}')
+  }
+  const info = await fetchDshLatest({ fetchFn, current: '0.1.5-rc.1', env: { PATH: '' } })
+  assert.equal(info.status, 'update')
+  assert.equal(info.canUpdate, true)
+  assert.equal(info.npm?.version, '0.1.5-rc.2')
+  assert.equal(info.npm?.stable, '0.1.5-rc.1')
+  assert.equal(info.npm?.publishedAt, '2026-09-10 22:57:10')
+})
+
 test('fetchDshLatest reports current when installed matches latest release', async () => {
   const fetchFn = async (url) => {
     const s = String(url)

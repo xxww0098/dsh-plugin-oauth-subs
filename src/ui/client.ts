@@ -90,7 +90,7 @@ window.__ModuleLoader__.load({
         copilotImportEmpty: '未找到 hosts.json、OpenCode auth.json 或 GITHUB_TOKEN',
         apiKeyTitle: 'API Key',
         opencodeGoTitle: 'OpenCode Go',
-        opencodeGoHint: '粘贴 OpenCode Go API key 用于对话。会话 cookie 与工作区 ID 只用来读额度，不走回环网关。',
+        opencodeGoHint: '粘贴 OpenCode Go API key 用于对话；会话 cookie 与工作区 ID 只用来读额度。可添加多个账号，点卡片切换。',
         opencodeGoKey: 'API Key',
         opencodeGoKeyPlaceholder: 'sk-… / OPENCODE_API_KEY',
         opencodeGoKeySet: '已保存，留空保持不变',
@@ -100,11 +100,8 @@ window.__ModuleLoader__.load({
         opencodeGoWorkspace: '工作区 ID（可选）',
         opencodeGoWorkspacePlaceholder: 'wrk_… 或 https://opencode.ai/workspace/wrk_…/go',
         opencodeGoSave: '保存',
-        opencodeGoClear: '清除 cookie',
-        opencodeGoClearKey: '清除密钥',
-        opencodeGoClearWorkspace: '清除工作区',
-        opencodeGoSaved: '已保存',
         opencodeGoFailed: '保存失败',
+        opencodeGoHostStale: '宿主进程还是旧版本，请重启 dsh web 后再保存',
         monthly: '每月',
         login: '登录',
         addAccount: '添加账号',
@@ -311,7 +308,7 @@ window.__ModuleLoader__.load({
         copilotImportEmpty: 'No hosts.json, OpenCode auth.json, or GITHUB_TOKEN found',
         apiKeyTitle: 'API Key',
         opencodeGoTitle: 'OpenCode Go',
-        opencodeGoHint: 'Paste the OpenCode Go API key for chat. Session cookie and workspace id only read quota and do not go through this loopback proxy.',
+        opencodeGoHint: 'Paste the OpenCode Go API key for chat; session cookie and workspace id only read quota. Add several accounts and click a card to switch.',
         opencodeGoKey: 'API key',
         opencodeGoKeyPlaceholder: 'sk-… / OPENCODE_API_KEY',
         opencodeGoKeySet: 'Stored — leave blank to keep',
@@ -321,11 +318,8 @@ window.__ModuleLoader__.load({
         opencodeGoWorkspace: 'Workspace id (optional)',
         opencodeGoWorkspacePlaceholder: 'wrk_… or https://opencode.ai/workspace/wrk_…/go',
         opencodeGoSave: 'Save',
-        opencodeGoClear: 'Clear cookie',
-        opencodeGoClearKey: 'Clear key',
-        opencodeGoClearWorkspace: 'Clear workspace',
-        opencodeGoSaved: 'Saved',
         opencodeGoFailed: 'Save failed',
+        opencodeGoHostStale: 'The host process is outdated — restart dsh web, then save again',
         monthly: 'Monthly',
         login: 'Sign in',
         addAccount: 'Add account',
@@ -1864,96 +1858,7 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function ApiKeyPanel({ t, go, onSave, onClear, onRefreshQuota }) {
-      const [apiKey, setApiKey] = useState('')
-      const [cookie, setCookie] = useState('')
-      const [workspace, setWorkspace] = useState(go?.workspaceId || '')
-      const [busy, setBusy] = useState(false)
-      const [message, setMessage] = useState('')
-      useEffect(() => {
-        setWorkspace(go?.workspaceId || '')
-      }, [go?.workspaceId])
-      const save = async () => {
-        if (busy) return
-        setBusy(true)
-        setMessage('')
-        try {
-          await onSave({
-            apiKey: apiKey.trim() ? apiKey : undefined,
-            cookie: cookie.trim() ? cookie : undefined,
-            workspace,
-          })
-          setApiKey('')
-          setCookie('')
-          setMessage(t.opencodeGoSaved)
-        } catch (error) {
-          setMessage(t.opencodeGoFailed + ': ' + (error instanceof Error ? error.message : String(error)))
-        } finally {
-          setBusy(false)
-        }
-      }
-      const clear = async (field) => {
-        if (busy) return
-        setBusy(true)
-        setMessage('')
-        try {
-          await onClear(field)
-        } catch (error) {
-          setMessage(t.opencodeGoFailed + ': ' + (error instanceof Error ? error.message : String(error)))
-        } finally {
-          setBusy(false)
-        }
-      }
-      const configured = Boolean(go?.apiKeySet || go?.cookieSet)
-      return h('section', { className: 'osubs-card' },
-        h('header', { className: 'osubs-card-head' },
-          h('h3', { className: 'osubs-card-title' }, t.opencodeGoTitle),
-          h('span', { className: 'osubs-status' + (configured ? ' osubs-status--on' : '') }, configured ? t.loggedIn : t.loggedOut),
-        ),
-        h('p', { className: 'osubs-hint' }, t.opencodeGoHint),
-        h('div', { className: 'osubs-fields' },
-          h('span', { className: 'osubs-eyebrow' }, t.opencodeGoKey),
-          h('input', {
-            className: 'osubs-input',
-            type: 'password',
-            autoComplete: 'off',
-            spellCheck: false,
-            placeholder: go?.apiKeySet ? t.opencodeGoKeySet : t.opencodeGoKeyPlaceholder,
-            value: apiKey,
-            onChange: (event) => setApiKey(event.target.value),
-          }),
-          h('span', { className: 'osubs-eyebrow' }, t.opencodeGoCookie),
-          h('input', {
-            className: 'osubs-input',
-            type: 'password',
-            autoComplete: 'off',
-            spellCheck: false,
-            placeholder: go?.cookieSet ? t.opencodeGoCookieSet : t.opencodeGoCookiePlaceholder,
-            value: cookie,
-            onChange: (event) => setCookie(event.target.value),
-          }),
-          h('span', { className: 'osubs-eyebrow' }, t.opencodeGoWorkspace),
-          h('input', {
-            className: 'osubs-input',
-            autoComplete: 'off',
-            spellCheck: false,
-            placeholder: t.opencodeGoWorkspacePlaceholder,
-            value: workspace,
-            onChange: (event) => setWorkspace(event.target.value),
-          }),
-        ),
-        h('div', { className: 'osubs-actions' },
-          h(Button, { variant: 'primary', disabled: busy, label: t.opencodeGoSave, onClick: save }),
-          go?.apiKeySet && h(Button, { size: 'sm', disabled: busy, label: t.opencodeGoClearKey, onClick: () => clear('key') }),
-          go?.cookieSet && h(Button, { size: 'sm', disabled: busy, label: t.opencodeGoClear, onClick: () => clear('cookie') }),
-          go?.workspaceId && h(Button, { size: 'sm', disabled: busy, label: t.opencodeGoClearWorkspace, onClick: () => clear('workspace') }),
-        ),
-        message && h('p', { className: 'osubs-hint' }, message),
-        h(QuotaBlock, { t, family: 'opencode-go', quota: go?.quota, onRefresh: onRefreshQuota }),
-      )
-    }
-
-    function ProviderCard({ t, id, title, account, pending, onLogin, onImport, onLogout, onCancel, onManual, onSwitch, onRefreshQuota, onResetQuota, onUseKey }) {
+    function ProviderCard({ t, id, title, account, pending, onLogin, onImport, onLogout, onCancel, onManual, onSwitch, onRefreshQuota, onResetQuota, onUseKey, onGoSave }) {
       const [addOpen, setAddOpen] = useState(false)
       const [paste, setPaste] = useState('')
       const [apiKey, setApiKey] = useState('')
@@ -1967,11 +1872,18 @@ window.__ModuleLoader__.load({
       const [entraClient, setEntraClient] = useState('')
       const [entraScopes, setEntraScopes] = useState('')
       const [refreshToken, setRefreshToken] = useState('')
+      const [goCookie, setGoCookie] = useState('')
+      const [goWorkspace, setGoWorkspace] = useState('')
+      const [goBusy, setGoBusy] = useState(false)
+      const [goMessage, setGoMessage] = useState('')
       const roster = Array.isArray(account?.accounts) ? account.accounts : []
       const loggedIn = Boolean(account?.loggedIn) || roster.length > 0
       const busy = Boolean(account?.busy)
       const status = busy ? t.busy : loggedIn ? t.loggedIn : t.loggedOut
-      const closeAdd = () => setAddOpen(false)
+      const closeAdd = () => {
+        setGoMessage('')
+        setAddOpen(false)
+      }
       useEffect(() => {
         if (busy) setAddOpen(true)
       }, [busy])
@@ -2033,7 +1945,7 @@ window.__ModuleLoader__.load({
           rel: 'noreferrer',
         }, t.openUrl),
         busy && h(Button, { onClick: () => onCancel(id), label: t.cancel }),
-        id !== 'glm' && id !== 'kiro' && id !== 'ollama' && !busy && h('div', { className: 'osubs-logins' },
+        id !== 'glm' && id !== 'kiro' && id !== 'ollama' && id !== 'opencode-go' && !busy && h('div', { className: 'osubs-logins' },
           h('button', {
             type: 'button',
             className: 'osubs-login',
@@ -2155,6 +2067,66 @@ window.__ModuleLoader__.load({
             h(Button, { type: 'submit', variant: 'primary', label: t.ollamaKeyGo }),
           ),
         ),
+        id === 'opencode-go' && !busy && h('p', { className: 'osubs-hint' }, t.opencodeGoHint),
+        id === 'opencode-go' && !busy && h('form', {
+          className: 'osubs-fields',
+          onSubmit: async (event) => {
+            event.preventDefault()
+            if (goBusy) return
+            setGoBusy(true)
+            setGoMessage('')
+            try {
+              await onGoSave({
+                apiKey: apiKey.trim() ? apiKey : undefined,
+                cookie: goCookie.trim() ? goCookie : undefined,
+                workspace: goWorkspace.trim() ? goWorkspace : undefined,
+              })
+              setApiKey('')
+              setGoCookie('')
+              setGoWorkspace('')
+              closeAdd()
+            } catch (error) {
+              const text = error instanceof Error ? error.message : String(error)
+              setGoMessage(isUnknownOauthMethod(text) ? t.opencodeGoHostStale : t.opencodeGoFailed + ': ' + text)
+            } finally {
+              setGoBusy(false)
+            }
+          },
+        },
+          h('span', { className: 'osubs-eyebrow' }, t.opencodeGoKey),
+          h('input', {
+            className: 'osubs-input',
+            type: 'password',
+            autoComplete: 'off',
+            spellCheck: false,
+            placeholder: roster.some((row) => row.apiKeySet) ? t.opencodeGoKeySet : t.opencodeGoKeyPlaceholder,
+            value: apiKey,
+            onChange: (event) => setApiKey(event.target.value),
+          }),
+          h('span', { className: 'osubs-eyebrow' }, t.opencodeGoCookie),
+          h('input', {
+            className: 'osubs-input',
+            type: 'password',
+            autoComplete: 'off',
+            spellCheck: false,
+            placeholder: roster.some((row) => row.cookieSet) ? t.opencodeGoCookieSet : t.opencodeGoCookiePlaceholder,
+            value: goCookie,
+            onChange: (event) => setGoCookie(event.target.value),
+          }),
+          h('span', { className: 'osubs-eyebrow' }, t.opencodeGoWorkspace),
+          h('input', {
+            className: 'osubs-input',
+            autoComplete: 'off',
+            spellCheck: false,
+            placeholder: t.opencodeGoWorkspacePlaceholder,
+            value: goWorkspace,
+            onChange: (event) => setGoWorkspace(event.target.value),
+          }),
+          h('div', { className: 'osubs-actions' },
+            h(Button, { type: 'submit', variant: 'primary', disabled: goBusy, label: t.opencodeGoSave }),
+          ),
+        ),
+        id === 'opencode-go' && goMessage && h('p', { className: 'osubs-hint osubs-bad' }, goMessage),
         id === 'glm' && !busy && h('div', { className: 'osubs-glm-logins' },
           h('button', {
             type: 'button',
@@ -3106,6 +3078,10 @@ window.__ModuleLoader__.load({
         onRefreshQuota: (provider, accountId) => run('quota', { provider, id: accountId }),
         onResetQuota: id === 'codex' ? (provider, accountId) => run('reset', { provider, id: accountId }) : undefined,
         onUseKey: (provider, key, extra) => run('key', { provider, key, ...(typeof extra === 'string' ? { region: extra } : extra || {}) }),
+        onGoSave: async (payload) => {
+          await callRpc(rpc, 'goSave', payload)
+          await refresh()
+        },
       })
 
       return h('div', { className: 'osubs' },
@@ -3138,27 +3114,13 @@ window.__ModuleLoader__.load({
           panel('ollama', card('ollama', t.ollamaTitle)),
           panel('kimi', card('kimi', t.kimiTitle)),
           panel('copilot', card('copilot', t.copilotTitle)),
-          panel('apikey', h(ApiKeyPanel, {
-            t,
-            go: snap?.opencodeGo,
-            onSave: async (payload) => {
-              const result = await callRpc(rpc, 'goSave', payload)
-              await refresh()
-              return result
-            },
-            onClear: async (field) => {
-              const result = await callRpc(rpc, 'goClear', { field })
-              await refresh()
-              return result
-            },
-            onRefreshQuota: () => run('quota', { provider: 'opencode-go' }),
-          })),
+          panel('apikey', card('opencode-go', t.opencodeGoTitle)),
           panel('models', h(ModelPicker, {
             t,
             catalog: snap?.catalog,
             onToggle: (key, on) => run('models', { key, on }),
             onFamily: (family, on) => run('models', { family, on }),
-            onOpenFamily: setTab,
+            onOpenFamily: (family) => setTab(String(family).startsWith('opencode-go') ? 'apikey' : family),
           })),
           panel('about', h(AboutPanel, {
             t,

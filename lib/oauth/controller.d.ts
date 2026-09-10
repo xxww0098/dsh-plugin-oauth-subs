@@ -4062,8 +4062,31 @@ export declare class AuthController {
                 loggedIn: boolean;
                 busy: any;
             };
+            'opencode-go': {
+                id: string;
+                loggedIn: boolean;
+                busy: boolean;
+                activeId: any;
+                accounts: any;
+                cookieSet: boolean;
+                workspaceId: any;
+                apiKeySet: boolean;
+                configured: boolean;
+                quota: any;
+            };
         };
-        opencodeGo: any;
+        opencodeGo: {
+            id: string;
+            loggedIn: boolean;
+            busy: boolean;
+            activeId: any;
+            accounts: any;
+            cookieSet: boolean;
+            workspaceId: any;
+            apiKeySet: boolean;
+            configured: boolean;
+            quota: any;
+        };
         update: {
             version: any;
             running: any;
@@ -4094,10 +4117,78 @@ export declare class AuthController {
         };
         autoUpdate: any;
     }>;
-    opencodeGoSnapshot(options: any): Promise<any>;
-    saveOpencodeGo(payload?: {}): Promise<any>;
-    clearOpencodeGo(field: any): Promise<any>;
-    refreshOpencodeGoQuota(): Promise<any>;
+    opencodeGoSnapshot(options: any): Promise<{
+        id: string;
+        loggedIn: boolean;
+        busy: boolean;
+        activeId: any;
+        accounts: any;
+        cookieSet: boolean;
+        workspaceId: any;
+        apiKeySet: boolean;
+        configured: boolean;
+        quota: any;
+    }>;
+    saveOpencodeGo(payload?: {}): Promise<{
+        id: string;
+        loggedIn: boolean;
+        busy: boolean;
+        activeId: any;
+        accounts: any;
+        cookieSet: boolean;
+        workspaceId: any;
+        apiKeySet: boolean;
+        configured: boolean;
+        quota: any;
+    }>;
+    switchOpencodeGo(id: any): Promise<{
+        id: string;
+        loggedIn: boolean;
+        busy: boolean;
+        activeId: any;
+        accounts: any;
+        cookieSet: boolean;
+        workspaceId: any;
+        apiKeySet: boolean;
+        configured: boolean;
+        quota: any;
+    }>;
+    logoutOpencodeGo(id: any): Promise<{
+        id: string;
+        loggedIn: boolean;
+        busy: boolean;
+        activeId: any;
+        accounts: any;
+        cookieSet: boolean;
+        workspaceId: any;
+        apiKeySet: boolean;
+        configured: boolean;
+        quota: any;
+    }>;
+    clearOpencodeGo(field: any, id: any): Promise<{
+        id: string;
+        loggedIn: boolean;
+        busy: boolean;
+        activeId: any;
+        accounts: any;
+        cookieSet: boolean;
+        workspaceId: any;
+        apiKeySet: boolean;
+        configured: boolean;
+        quota: any;
+    }>;
+    refreshOpencodeGoQuota(id: any): Promise<{
+        id: string;
+        loggedIn: boolean;
+        busy: boolean;
+        activeId: any;
+        accounts: any;
+        cookieSet: boolean;
+        workspaceId: any;
+        apiKeySet: boolean;
+        configured: boolean;
+        quota: any;
+    }>;
     refreshQuota(provider: any, accountId: any): any;
     consumeReset(provider: any, accountId: any): Promise<any>;
     checkUpdate(payload?: {}): Promise<{
@@ -4259,6 +4350,7 @@ export declare class AuthController {
         };
         npm: {
             version: any;
+            stable: any;
             publishedAt: any;
             distTags: {};
             versions: any[];
@@ -4297,6 +4389,7 @@ export declare class AuthController {
         };
         npm: {
             version: any;
+            stable: any;
             publishedAt: any;
             distTags: {};
             versions: any[];
@@ -4509,7 +4602,18 @@ export declare class AuthController {
     }>;
     manual(provider: any, input: any): Promise<void>;
     cancel(provider: any): Promise<void>;
-    logout(provider: any, id: any): Promise<void>;
+    logout(provider: any, id: any): Promise<{
+        id: string;
+        loggedIn: boolean;
+        busy: boolean;
+        activeId: any;
+        accounts: any;
+        cookieSet: boolean;
+        workspaceId: any;
+        apiKeySet: boolean;
+        configured: boolean;
+        quota: any;
+    }>;
     switchAccount(provider: any, id: any): Promise<{
         origin: any;
         grokLogin: any;
@@ -8451,8 +8555,31 @@ export declare class AuthController {
                 loggedIn: boolean;
                 busy: any;
             };
+            'opencode-go': {
+                id: string;
+                loggedIn: boolean;
+                busy: boolean;
+                activeId: any;
+                accounts: any;
+                cookieSet: boolean;
+                workspaceId: any;
+                apiKeySet: boolean;
+                configured: boolean;
+                quota: any;
+            };
         };
-        opencodeGo: any;
+        opencodeGo: {
+            id: string;
+            loggedIn: boolean;
+            busy: boolean;
+            activeId: any;
+            accounts: any;
+            cookieSet: boolean;
+            workspaceId: any;
+            apiKeySet: boolean;
+            configured: boolean;
+            quota: any;
+        };
         update: {
             version: any;
             running: any;
@@ -12484,8 +12611,31 @@ export declare class AuthController {
                 loggedIn: boolean;
                 busy: any;
             };
+            'opencode-go': {
+                id: string;
+                loggedIn: boolean;
+                busy: boolean;
+                activeId: any;
+                accounts: any;
+                cookieSet: boolean;
+                workspaceId: any;
+                apiKeySet: boolean;
+                configured: boolean;
+                quota: any;
+            };
         };
-        opencodeGo: any;
+        opencodeGo: {
+            id: string;
+            loggedIn: boolean;
+            busy: boolean;
+            activeId: any;
+            accounts: any;
+            cookieSet: boolean;
+            workspaceId: any;
+            apiKeySet: boolean;
+            configured: boolean;
+            quota: any;
+        };
         update: {
             version: any;
             running: any;
@@ -12527,7 +12677,7 @@ export declare class AuthController {
             routes?: undefined;
         } | {
             status: string;
-            routes: string[];
+            routes: any[];
             error?: undefined;
         };
         routes: {

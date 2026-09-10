@@ -12,7 +12,7 @@ import { CURSOR_MODELS } from './cursor/index.js'
 import { OLLAMA_MODELS } from '../apikey/ollama/index.js'
 import { KIMI_MODELS } from './kimi/index.js'
 import { COPILOT_MODELS } from './copilot/index.js'
-import { OPENCODE_GO_ROUTES } from '../apikey/opencode-go/models.js'
+import { OPENCODE_GO_BUILTIN_ROUTE_ID, OPENCODE_GO_EXTRA_ROUTE } from '../apikey/opencode-go/models.js'
 
 import { modelSupportsFastMode } from '../utils/fast-mode.js'
 import { readPrivateText, writePrivateText } from './store.js'
@@ -69,6 +69,11 @@ export function assertDshServiceableProvider(provider, value) {
   for (const model of value.models ?? []) {
     const efforts = model.reasoningEfforts
     if (efforts && typeof efforts === 'object') {
+      if (Object.keys(efforts).length === 0) {
+        throw new Error(
+          `llm-pi-ai: model "${model.id}" has an empty reasoningEfforts; declare the offered levels, set false for a non-reasoning model, or omit the field to keep the installed catalog's capability`,
+        )
+      }
       for (const level of Object.keys(efforts)) {
         if (!DSH_THINKING_LEVELS.includes(level)) {
           throw new Error(
@@ -99,6 +104,17 @@ export function modelKey(provider, id) {
 }
 
 export const FAMILY_IDS = Object.freeze(['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot'])
+
+/**
+ * OpenCode Go picker families: direct API-key routes, not OAuth logins, and
+ * no loopback hop. The picker lists only the supplemental model(s) the plugin
+ * writes itself; DSH's built-in `opencode-go` catalog route carries the rest.
+ * Without `OPENCODE_API_KEY` the family is only locked (checkbox disabled).
+ */
+export const APIKEY_FAMILY_IDS = Object.freeze([OPENCODE_GO_EXTRA_ROUTE.id])
+
+/** Every family the Settings picker can toggle. */
+export const MODEL_FAMILY_IDS = Object.freeze([...FAMILY_IDS, ...APIKEY_FAMILY_IDS])
 
 /** Dropped families. Still unset leftover harness routes; never written back. */
 export const RETIRED_FAMILY_IDS = Object.freeze(['opencode'])
@@ -332,7 +348,7 @@ export function describeProviders(providers) {
 }
 
 export function catalogProviders({ prefix, origin, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, glmModels }) {
-  return buildProviders({
+  const providers = buildProviders({
     prefix,
     origin,
     loggedIn: { codex: true, grok: true, glm: true, kiro: true, antigravity: true, cursor: true, ollama: true, kimi: true, copilot: true },
@@ -343,6 +359,17 @@ export function catalogProviders({ prefix, origin, cursorModels, ollamaModels, k
     copilotModels,
     glmModels,
   })
+  // OpenCode Go is API key, not OAuth: the picker lists only the supplemental
+  // route this plugin writes; the controller decides locked vs usable from
+  // OPENCODE_API_KEY. DSH serves the built-in `opencode-go` catalog itself.
+  providers[OPENCODE_GO_EXTRA_ROUTE.id] = {
+    displayName: OPENCODE_GO_EXTRA_ROUTE.displayName,
+    api: OPENCODE_GO_EXTRA_ROUTE.api,
+    apiKeyEnv: OPENCODE_GO_API_KEY_ENV,
+    baseURL: OPENCODE_GO_EXTRA_ROUTE.baseURL,
+    models: OPENCODE_GO_EXTRA_ROUTE.models.map(toHarnessModel),
+  }
+  return providers
 }
 
 export function catalogKeys(providers) {
@@ -504,7 +531,7 @@ export class ModelSwitch {
   }
 
   async setFamily(family, on, catalog) {
-    if (!FAMILY_IDS.includes(family)) throw new Error('family must be codex, grok, glm, kiro, antigravity, cursor, ollama, kimi, or copilot')
+    if (!MODEL_FAMILY_IDS.includes(family)) throw new Error(`family must be one of ${MODEL_FAMILY_IDS.join(', ')}`)
     // Only current catalog ids. Retired leftovers (glm-4.7, …) stay in
     // `disabled` and are not resurrected.
     for (const key of familyCatalogKeys(catalog, family)) {
@@ -586,35 +613,91 @@ export async function peekPiAiProviders(settings) {
 
 export const OPENCODE_GO_API_KEY_ENV = 'OPENCODE_API_KEY'
 
+function opencodeGoRouteValue(route, models) {
+  return {
+    displayName: route.displayName,
+    apiKeyEnv: OPENCODE_GO_API_KEY_ENV,
+    api: route.api,
+    baseURL: route.baseURL,
+    models,
+  }
+}
+
+/** A route this plugin owns: same key env, protocol, origin, and only catalog ids. */
+function isOwnedOpencodeGoRoute(route, existing) {
+  if (existing == null || typeof existing !== 'object') return false
+  if (existing.apiKeyEnv !== OPENCODE_GO_API_KEY_ENV) return false
+  if (existing.api !== route.api || existing.baseURL !== route.baseURL) return false
+  const known = new Set(route.models.map((model) => model.id))
+  const models = existing.models
+  if (!Array.isArray(models) || models.length === 0) return false
+  return models.every((model) => known.has(model?.id))
+}
+
+function sameOpencodeGoModels(existing, models) {
+  return Array.isArray(existing.models)
+    && existing.models.length === models.length
+    && existing.models.every((model, index) => model?.id === models[index]?.id)
+}
+
 /**
- * Ensure the three DSH routes OpenCode Go needs are configured so all 28
- * models are served. DSH llm-pi-ai is one provider = one api, so the single
- * Go subscription becomes three routes. Writes only routes that are absent,
- * so a user-configured route (stored credential, explicit models) is never
- * overwritten.
+ * Ensure OpenCode Go is configured while only supplying what the installed
+ * catalog lacks.
+ *
+ * DSH's built-in `opencode-go` catalog provider carries the other 27 official
+ * models. A profile naming no `api` and no `models` reuses that provider
+ * (ambient auth + per-model protocol/compat/thinking ladder); a non-empty
+ * `models` list would replace the whole catalog, so the missing
+ * `deepseek-flash` lives on its own supplemental route that follows the
+ * picker (`selected` undefined = all). An existing user-configured route is
+ * never overwritten.
  */
-export async function ensureOpencodeGoRoute(settings) {
+export async function ensureOpencodeGoRoute(settings, { selected } = {}) {
   if (settings == null || typeof settings.mutate !== 'function') return { status: 'unavailable' }
   const providers = await peekPiAiProviders(settings)
   if (providers === undefined) return { status: 'unreadable' }
-  const missing = OPENCODE_GO_ROUTES.filter((route) => providers[route.id] === undefined)
-  if (missing.length === 0) return { status: 'present' }
-  try {
-    await settings.mutate('llm-pi-ai', missing.map((route) => ({
+  const selection = selected === undefined ? null : new Set(selected)
+  const mutations = []
+  const routes = []
+
+  // Built-in catalog route: only fill it in when absent.
+  if (providers[OPENCODE_GO_BUILTIN_ROUTE_ID] === undefined) {
+    mutations.push({
       op: 'set',
-      path: ['providers', route.id],
-      value: {
-        displayName: route.displayName,
-        apiKeyEnv: OPENCODE_GO_API_KEY_ENV,
-        api: route.api,
-        baseURL: route.baseURL,
-        models: route.models,
-      },
-    })))
+      path: ['providers', OPENCODE_GO_BUILTIN_ROUTE_ID],
+      value: { apiKeyEnv: OPENCODE_GO_API_KEY_ENV },
+    })
+    routes.push(OPENCODE_GO_BUILTIN_ROUTE_ID)
+  }
+
+  // Supplemental route: the model(s) the installed catalog lacks.
+  const route = OPENCODE_GO_EXTRA_ROUTE
+  const models = selection === null
+    ? route.models
+    : route.models.filter((model) => selection.has(`${route.id}/${model.id}`))
+  const existing = providers[route.id]
+  if (existing === undefined) {
+    if (models.length > 0) {
+      mutations.push({ op: 'set', path: ['providers', route.id], value: opencodeGoRouteValue(route, models) })
+      routes.push(route.id)
+    }
+  } else if (isOwnedOpencodeGoRoute(route, existing)) {
+    if (models.length === 0) {
+      mutations.push({ op: 'unset', path: ['providers', route.id] })
+      routes.push(route.id)
+    } else if (!sameOpencodeGoModels(existing, models)) {
+      mutations.push({ op: 'set', path: ['providers', route.id], value: opencodeGoRouteValue(route, models) })
+      routes.push(route.id)
+    }
+  }
+
+  if (mutations.length === 0) return { status: 'present' }
+  try {
+    await settings.mutate('llm-pi-ai', mutations)
   } catch (error) {
     return { status: 'error', error: error instanceof Error ? error.message : String(error) }
   }
-  return { status: 'written', routes: missing.map((route) => route.id) }
+  return { status: 'written', routes }
 }
 
 async function assertPersistedProviders(settings, expectedIds) {
