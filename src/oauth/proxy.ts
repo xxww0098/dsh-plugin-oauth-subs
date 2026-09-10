@@ -67,6 +67,13 @@ const EVENT_TYPE = /"type"\s*:\s*"([^"]+)"/g
 /** Commit anyway rather than risk the client's own header timeout. */
 const COMMIT_DEADLINE_MS = 120_000
 
+/**
+ * Abort a read that goes this long without a byte from upstream. llm-pi-ai's
+ * own stream watchdog is 300_000ms; firing first turns a silent stall into a
+ * bounded, retryable proxy fault instead of a client-side timeout.
+ */
+export const UPSTREAM_IDLE_TIMEOUT_MS = 120_000
+
 class RetryableUpstream extends Error {
   constructor(message, extra = {}) {
     super(message)
@@ -83,6 +90,32 @@ function retryableUpstream(message, family, upstream) {
     if (typeof turnState === 'string' && turnState.trim()) extra.turnState = turnState.trim()
   }
   return new RetryableUpstream(message, extra)
+}
+
+/** Upstream accepted the request but stopped sending bytes. */
+class UpstreamIdleError extends Error {
+  constructor(timeoutMs) {
+    super(`upstream sent no data for ${timeoutMs}ms`)
+    this.name = 'UpstreamIdleError'
+    this.timeoutMs = timeoutMs
+  }
+}
+
+/**
+ * Reject when `promise` stays pending longer than `timeoutMs`. The caller owns
+ * cancelling the underlying read: the stream loop's `finally` cancels the
+ * reader, which settles the still-pending `read()` and keeps it unhandled-free.
+ */
+function withIdleTimeout(promise, timeoutMs) {
+  if (!(Number.isFinite(timeoutMs) && timeoutMs > 0)) return promise
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new UpstreamIdleError(timeoutMs)), timeoutMs)
+    timer.unref?.()
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value) },
+      (error) => { clearTimeout(timer); reject(error) },
+    )
+  })
 }
 
 function readBody(request, limit = MAX_REQUEST_BODY_BYTES) {
@@ -257,7 +290,7 @@ function abortOnDisconnect(request, response) {
   }
 }
 
-export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestBodyBytes = MAX_REQUEST_BODY_BYTES, onAntigravityValidation, cursorRpc }) {
+export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestBodyBytes = MAX_REQUEST_BODY_BYTES, upstreamIdleTimeoutMs = UPSTREAM_IDLE_TIMEOUT_MS, onAntigravityValidation, cursorRpc }) {
   let server
 
   const authorized = (request) => {
@@ -366,6 +399,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
           fetchFn,
           family: 'codex',
           maxRequestBodyBytes,
+          upstreamIdleTimeoutMs,
           signal: client.signal,
         })
       } finally {
@@ -384,6 +418,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
           fetchFn,
           family: 'grok',
           maxRequestBodyBytes,
+          upstreamIdleTimeoutMs,
           signal: client.signal,
         })
       } finally {
@@ -403,6 +438,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
           fetchFn,
           family: 'glm',
           maxRequestBodyBytes,
+          upstreamIdleTimeoutMs,
           signal: client.signal,
         })
       } finally {
@@ -423,6 +459,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
           family: 'glm',
           wire: 'anthropic',
           maxRequestBodyBytes,
+          upstreamIdleTimeoutMs,
           signal: client.signal,
         })
       } finally {
@@ -533,6 +570,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
           fetchFn,
           family: 'ollama',
           maxRequestBodyBytes,
+          upstreamIdleTimeoutMs,
           signal: client.signal,
         })
       } finally {
@@ -568,6 +606,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
           fetchFn,
           family: 'kimi',
           maxRequestBodyBytes,
+          upstreamIdleTimeoutMs,
           signal: client.signal,
         })
       } finally {
@@ -604,6 +643,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
           fetchFn,
           family: 'copilot',
           maxRequestBodyBytes,
+          upstreamIdleTimeoutMs,
           signal: client.signal,
         })
       } finally {
@@ -681,7 +721,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
   }
 }
 
-async function forward(request, response, { url, session, headersOf, fetchFn, family, wire, maxRequestBodyBytes, signal }) {
+async function forward(request, response, { url, session, headersOf, fetchFn, family, wire, maxRequestBodyBytes, upstreamIdleTimeoutMs, signal }) {
   const raw = await readBody(request, maxRequestBodyBytes)
   const { payload, cacheSessionId, stream, routingHint, grokModel, copilotVision, copilotInitiator } = rewriteUpstreamBody(raw, family, wire)
   const body = Buffer.from(JSON.stringify(payload))
@@ -717,7 +757,7 @@ async function forward(request, response, { url, session, headersOf, fetchFn, fa
       ...(family === 'codex' && codexTurnState ? { 'x-codex-turn-state': codexTurnState } : {}),
     }
     try {
-      return await attemptUpstream(response, { url, headers, body, stream, fetchFn, family, wire, signal })
+      return await attemptUpstream(response, { url, headers, body, stream, fetchFn, family, wire, upstreamIdleTimeoutMs, signal })
     } catch (error) {
       if (signal.aborted || response.headersSent || !(error instanceof RetryableUpstream)) throw error
       lastFailure = error.message
@@ -741,7 +781,7 @@ function completionsUsageMapper(family, wire) {
  * `response.created` and nothing else — can be retried without the client ever
  * seeing a truncated stream.
  */
-async function attemptUpstream(response, { url, headers, body, stream, fetchFn, family, wire, signal }) {
+async function attemptUpstream(response, { url, headers, body, stream, fetchFn, family, wire, upstreamIdleTimeoutMs, signal }) {
   let upstream
   try {
     upstream = await fetchFn(url, { method: 'POST', headers, body, signal })
@@ -797,7 +837,7 @@ async function attemptUpstream(response, { url, headers, body, stream, fetchFn, 
   const reader = upstream.body?.getReader()
   try {
     while (reader) {
-      const { done, value } = await reader.read()
+      const { done, value } = await withIdleTimeout(reader.read(), upstreamIdleTimeoutMs)
       if (done) break
       lastByteAt = Date.now()
       if (!(await gate.push(value, signal))) continue

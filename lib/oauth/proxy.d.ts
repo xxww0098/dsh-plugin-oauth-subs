@@ -6,13 +6,20 @@
 export declare const MAX_REQUEST_BODY_BYTES: number;
 /** Upstream attempts before the client is told the stream failed. */
 export declare const STREAM_ATTEMPTS = 3;
+/**
+ * Abort a read that goes this long without a byte from upstream. llm-pi-ai's
+ * own stream watchdog is 300_000ms; firing first turns a silent stall into a
+ * bounded, retryable proxy fault instead of a client-side timeout.
+ */
+export declare const UPSTREAM_IDLE_TIMEOUT_MS = 120000;
 export { describeError } from '../utils/http.js';
-export declare function createProxy({ port, apiKey, tokens, fetchFn, maxRequestBodyBytes, onAntigravityValidation, cursorRpc }: {
+export declare function createProxy({ port, apiKey, tokens, fetchFn, maxRequestBodyBytes, upstreamIdleTimeoutMs, onAntigravityValidation, cursorRpc }: {
     port: any;
     apiKey: any;
     tokens: any;
     fetchFn?: typeof fetch;
     maxRequestBodyBytes?: number;
+    upstreamIdleTimeoutMs?: number;
     onAntigravityValidation: any;
     cursorRpc: any;
 }): {
