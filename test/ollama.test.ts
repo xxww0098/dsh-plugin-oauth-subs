@@ -33,27 +33,27 @@ import {
   ollamaSourceLabel,
   parseOllamaApiKey,
   parseOllamaMe,
-} from '../lib/oauth/ollama/index.js'
+} from '../lib/apikey/ollama/index.js'
 import { formatPlanLabel } from '../lib/oauth/plan.js'
 import { QuotaStore, ollamaSessionResetAt, ollamaWeeklyResetAt, parseOllamaUsage } from '../lib/oauth/quota.js'
 import {
   OLLAMA_IMPORT_EMPTY,
   importOllamaAuth,
   resolveOllamaLocalCredentials,
-} from '../lib/oauth/ollama/import.js'
+} from '../lib/apikey/ollama/import.js'
 import {
   ollamaCatalogModels,
   refreshOllamaCatalog,
   resetOllamaCatalogCache,
   toOllamaPickerModels,
-} from '../lib/oauth/ollama/catalog.js'
+} from '../lib/apikey/ollama/catalog.js'
 import {
   OLLAMA_STABLE_SESSION,
   applyOllamaCache,
   ollamaCacheHeaders,
   ollamaCacheSessionId,
   resetOllamaPins,
-} from '../lib/oauth/ollama/cache.js'
+} from '../lib/apikey/ollama/cache.js'
 import { createProxy } from '../lib/oauth/proxy.js'
 
 function json(body, status = 200) {

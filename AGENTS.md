@@ -99,12 +99,6 @@ src/
       proto.ts             minimal Connect/protobuf subset
       h2-session.ts        Node http2 in-process transport
       transport.ts         OpenAI HTTP/SSE output and Run event backpressure
-    ollama/                Ollama Cloud (ollama.com API key — not localhost:11434)
-      README.md            family design: login, chat, quota, cache (traceable)
-      index.ts             catalog, identity, API key session, Bearer headers
-      import.ts            OLLAMA_API_KEY env (not ollama signin)
-      catalog.ts           live GET /api/tags; static fallback
-      cache.ts             strip Codex/Grok fields; no sticky id (non-fix)
     kimi/                  Moonshot Kimi Code Plan (device-code)
       README.md            family design: login, chat, quota, cache (traceable)
       index.ts             catalog, identity, device endpoints, X-Msh headers
@@ -119,6 +113,18 @@ src/
       catalog.ts           live GET {api}/models; static fallback
       request.ts           Completions reasoning_effort; GPT omit max_tokens
       cache.ts             prefix-hash + X-Interaction-Id; extra system at messages suffix
+  apikey/                  API-key families (not OAuth, not the loopback hop)
+    opencode-go/           OpenCode Go quota only; chat is DSH opencode-go + OPENCODE_API_KEY
+      README.md
+      index.ts             cookie / workspace parsing, public snapshot
+      store.ts             <dataDir>/opencode-go.json (0600); not auth.json
+      quota.ts             scrape /workspace/{wrk_}/go; /_server workspace lookup
+    ollama/                Ollama Cloud (ollama.com API key — not localhost:11434)
+      README.md            family design: login, chat, quota, cache (traceable)
+      index.ts             catalog, identity, API key session, Bearer headers
+      import.ts            OLLAMA_API_KEY env (not ollama signin)
+      catalog.ts           live GET /api/tags; static fallback
+      cache.ts             strip Codex/Grok fields; no sticky id (non-fix)
   ui/                      React Settings (classic-script factory)
     client.ts
   utils/                   shared, provider-agnostic
@@ -140,7 +146,7 @@ scripts/                   CLI (TypeScript)
 
 Rules:
 
-- Codex-only code → `src/oauth/codex/`. Grok-only code → `src/oauth/grok/`. GLM-only code → `src/oauth/glm/`. Kiro-only code → `src/oauth/kiro/`. Antigravity-only code → `src/oauth/antigravity/`. Cursor-only code → `src/oauth/cursor/`. Ollama-only code → `src/oauth/ollama/`. Kimi-only code → `src/oauth/kimi/`. Copilot-only code → `src/oauth/copilot/`.
+- Codex-only code → `src/oauth/codex/`. Grok-only code → `src/oauth/grok/`. GLM-only code → `src/oauth/glm/`. Kiro-only code → `src/oauth/kiro/`. Antigravity-only code → `src/oauth/antigravity/`. Cursor-only code → `src/oauth/cursor/`. Ollama-only code → `src/apikey/ollama/`. Kimi-only code → `src/oauth/kimi/`. Copilot-only code → `src/oauth/copilot/`. OpenCode Go (API key, quota only) → `src/apikey/opencode-go/` — never an OAuth tab and never the loopback hop.
 - **Each family has `README.md`.** Login, session, chat hop, models, quota, and cache for that vendor are written there so a later change can be traced to files and to `docs/error.md`. Cross-family rules stay in this file; do not let family READMEs contradict it. Reference repos for that hop live in `docs/oauth.md` and in the family README 归因.
 - **Cache is per family.** Each `src/oauth/<id>/cache.ts` owns that vendor's prompt-cache identity, headers, and prefix pin. Do not import Codex cache helpers from Grok / GLM / Kiro / Antigravity / Cursor / Ollama / Kimi / Copilot. Do not share a `codexCacheSessionId` in `src/utils/`. `proxy.ts` only dispatches.
 - Shared crypto / session scoring → `src/utils/`.
@@ -353,7 +359,7 @@ Copilot:   drop Codex/Grok cache fields; prefix-hash; extra system at messages s
   `prompt_tokens_details.cached_tokens`. `input_tokens` is the full
   prompt (cache is a partition), matching `@cursor/sdk` 1.0.27.
 
-**Ollama** (`src/oauth/ollama/cache.ts`)
+**Ollama** (`src/apikey/ollama/cache.ts`)
 
 - Ollama Cloud `/v1/chat/completions` has no documented conversation /
   shard / cache-read field. Do **not** invent `cached_tokens` or a sticky

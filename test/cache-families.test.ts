@@ -6,7 +6,7 @@ import { applyGlmAnthropicCache, applyGlmCache, glmCacheSessionId, resetGlmSyste
 import { antigravityCacheSessionId, antigravitySessionIdOf, ANTIGRAVITY_STABLE_SESSION } from '../lib/oauth/antigravity/cache.js'
 import { kiroCacheSessionId, kiroConversationId, pinKiroSystemPrefix, KIRO_STABLE_SESSION, resetKiroSystemPins } from '../lib/oauth/kiro/cache.js'
 import { applyCursorCache, cursorCacheHeaders, cursorCacheSessionId, cursorConversationId, CURSOR_STABLE_SESSION } from '../lib/oauth/cursor/cache.js'
-import { applyOllamaCache, ollamaCacheHeaders, ollamaCacheSessionId, OLLAMA_STABLE_SESSION } from '../lib/oauth/ollama/cache.js'
+import { applyOllamaCache, ollamaCacheHeaders, ollamaCacheSessionId, OLLAMA_STABLE_SESSION } from '../lib/apikey/ollama/cache.js'
 import { applyKimiCache, kimiCacheHeaders, kimiCacheSessionId, KIMI_STABLE_SESSION, resetKimiPins } from '../lib/oauth/kimi/cache.js'
 import { applyCopilotCache, copilotCacheHeaders, copilotCacheSessionId, COPILOT_STABLE_SESSION, resetCopilotPins } from '../lib/oauth/copilot/cache.js'
 

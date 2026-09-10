@@ -23,7 +23,7 @@ import { authFilePath, defaultDataDir, readPrivateText, writePrivateText } from 
 import { createProxy } from './oauth/proxy.js'
 import { catalogProviders, OAUTH_CREDENTIAL_REF, ModelSwitch } from './oauth/models.js'
 import { cursorCatalogModels } from './oauth/cursor/catalog.js'
-import { ollamaCatalogModels } from './oauth/ollama/catalog.js'
+import { ollamaCatalogModels } from './apikey/ollama/catalog.js'
 import { kiroCatalogModels } from './oauth/kiro/catalog.js'
 import { kimiCatalogModels } from './oauth/kimi/catalog.js'
 import { copilotCatalogModels } from './oauth/copilot/catalog.js'
@@ -114,6 +114,8 @@ export function registerRpc(ctx, controller) {
       sync: (payload) => controller.sync(payload?.selected),
       models: (payload) => controller.setModels(payload ?? {}),
       quota: (payload) => controller.refreshQuota(payload?.provider, payload?.id),
+      goSave: (payload) => controller.saveOpencodeGo(payload ?? {}),
+      goClear: (payload) => controller.clearOpencodeGo(payload?.field),
       reset: (payload) => controller.consumeReset(payload?.provider, payload?.id),
       update: (payload) => controller.checkUpdate(payload),
       dshUpdate: (payload) => controller.checkDshUpdate(payload),
@@ -289,7 +291,7 @@ export {
   OLLAMA_CHAT_URL,
   ollamaSession,
   ollamaUpstreamHeaders,
-} from './oauth/ollama/index.js'
+} from './apikey/ollama/index.js'
 export {
   KIMI_CLIENT_ID,
   KIMI_MODELS,

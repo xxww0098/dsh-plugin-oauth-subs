@@ -133,6 +133,26 @@ export declare class ModelSwitch {
 export declare function filterProviders(providers: any, selected: any): any;
 /** `undefined` when the host has no readable settings.get; `{}` when the section is empty. */
 export declare function peekPiAiProviders(settings: any): Promise<any>;
+export declare const OPENCODE_GO_ROUTE_ID = "opencode-go";
+/** Slim route: the installed pi-ai catalog supplies api / baseURL / models. */
+export declare const OPENCODE_GO_ROUTE: Readonly<{
+    displayName: "OpenCode Go";
+    apiKeyEnv: "OPENCODE_API_KEY";
+}>;
+/**
+ * Ensure DSH's installed pi-ai `opencode-go` route is configured so its 27
+ * catalog models are served. Writes only when the route is absent, so a
+ * user-configured route (stored credential, explicit models) is never
+ * overwritten. Omits api / baseURL / models on purpose: the installed
+ * catalog supplies them, including the per-model wire protocol.
+ */
+export declare function ensureOpencodeGoRoute(settings: any): Promise<{
+    status: string;
+    error?: undefined;
+} | {
+    status: string;
+    error: string;
+}>;
 export declare function syncHarnessModels({ settings, prefix, origin, loggedIn, selected, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, glmModels }: {
     settings: any;
     prefix: any;

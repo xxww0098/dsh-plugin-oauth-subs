@@ -2,6 +2,12 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-10：OpenCode Go 以 API key 模块加入（cookie + 工作区读额度）
+
+**现象**：需要 OpenCode Go 页签显示剩余额度，但 Go 不属于 OAuth 订阅；对话在 DSH 配 `OPENCODE_API_KEY` 即可，不应再包一层回环网关。
+**根因**：Go 是 API key 制（Responses 直连 `opencode.ai/zen/go/v1`）。额度只在 Web 侧 cookie + 工作区可见，官方未给 Bearer 用量接口。
+**修复**：新增 `src/apikey/opencode-go/`（`store.ts` 存 `<dataDir>/opencode-go.json` 的 cookie + workspace，`quota.ts` 刮 `/workspace/{wrk_}/go`）；`sync()` 用 `ensureOpencodeGoRoute` 在缺失时补 `providers.opencode-go = { displayName, apiKeyEnv: OPENCODE_API_KEY }`（不写 models，pi-ai 内置目录给 27 个模型；已存在不覆盖）；`RETIRED_FAMILY_IDS` 仍 unset `oauth-opencode`，无 `proxy.ts` hop。
+
 ## 2026-09-10：关于页检查失败 GitHub releases 403
 
 **现象**：About 当前版本正常，最新版本 `-`，红字 `检查失败 · GitHub releases 403`；DSH 卡 GitHub Tag 也是 `-`。

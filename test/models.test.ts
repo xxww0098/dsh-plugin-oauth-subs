@@ -20,6 +20,7 @@ import {
   RETIRED_FAMILY_IDS,
   ownedProviderIds,
   peekPiAiProviders,
+  ensureOpencodeGoRoute,
   syncHarnessModels,
 } from '../lib/oauth/models.js'
 import { KIRO_MODELS, KIRO_REASONING_GPT } from '../lib/oauth/kiro/index.js'
@@ -205,6 +206,26 @@ test('filterProviders keeps only selected keys', () => {
   const filtered = filterProviders(providers, [modelKey('oauth-grok', 'grok-4.5')])
   assert.equal(filtered['oauth-codex'], undefined)
   assert.deepEqual(filtered['oauth-grok'].models.map((m) => m.id), ['grok-4.5'])
+})
+
+test('ensureOpencodeGoRoute writes the builtin route only when absent', async () => {
+  const empty = createPiAiSettings()
+  assert.deepEqual(await ensureOpencodeGoRoute(empty), { status: 'written' })
+  assert.deepEqual(empty.section.providers['opencode-go'], {
+    displayName: 'OpenCode Go',
+    apiKeyEnv: 'OPENCODE_API_KEY',
+  })
+  assert.equal(empty.ops.length, 1)
+  assert.deepEqual(await ensureOpencodeGoRoute(empty), { status: 'present' })
+  assert.equal(empty.ops.length, 1)
+
+  const custom = createPiAiSettings({ 'opencode-go': { displayName: 'Mine' } })
+  assert.deepEqual(await ensureOpencodeGoRoute(custom), { status: 'present' })
+  assert.deepEqual(custom.section.providers['opencode-go'], { displayName: 'Mine' })
+  assert.equal(custom.ops.length, 0)
+
+  assert.deepEqual(await ensureOpencodeGoRoute({ mutate: async () => {} }), { status: 'unreadable' })
+  assert.deepEqual(await ensureOpencodeGoRoute(undefined), { status: 'unavailable' })
 })
 
 test('catalogProviders always lists both families with Fast and 900K siblings', () => {

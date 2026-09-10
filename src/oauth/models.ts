@@ -9,7 +9,7 @@ import { GLM_MODELS } from './glm/index.js'
 import { KIRO_MODELS } from './kiro/index.js'
 import { ANTIGRAVITY_MODELS } from './antigravity/index.js'
 import { CURSOR_MODELS } from './cursor/index.js'
-import { OLLAMA_MODELS } from './ollama/index.js'
+import { OLLAMA_MODELS } from '../apikey/ollama/index.js'
 import { KIMI_MODELS } from './kimi/index.js'
 import { COPILOT_MODELS } from './copilot/index.js'
 
@@ -581,6 +581,35 @@ export async function peekPiAiProviders(settings) {
   } catch {
     return undefined
   }
+}
+
+export const OPENCODE_GO_ROUTE_ID = 'opencode-go'
+/** Slim route: the installed pi-ai catalog supplies api / baseURL / models. */
+export const OPENCODE_GO_ROUTE = Object.freeze({
+  displayName: 'OpenCode Go',
+  apiKeyEnv: 'OPENCODE_API_KEY',
+})
+
+/**
+ * Ensure DSH's installed pi-ai `opencode-go` route is configured so its 27
+ * catalog models are served. Writes only when the route is absent, so a
+ * user-configured route (stored credential, explicit models) is never
+ * overwritten. Omits api / baseURL / models on purpose: the installed
+ * catalog supplies them, including the per-model wire protocol.
+ */
+export async function ensureOpencodeGoRoute(settings) {
+  if (settings == null || typeof settings.mutate !== 'function') return { status: 'unavailable' }
+  const providers = await peekPiAiProviders(settings)
+  if (providers === undefined) return { status: 'unreadable' }
+  if (providers[OPENCODE_GO_ROUTE_ID] !== undefined) return { status: 'present' }
+  try {
+    await settings.mutate('llm-pi-ai', [
+      { op: 'set', path: ['providers', OPENCODE_GO_ROUTE_ID], value: OPENCODE_GO_ROUTE },
+    ])
+  } catch (error) {
+    return { status: 'error', error: error instanceof Error ? error.message : String(error) }
+  }
+  return { status: 'written' }
 }
 
 async function assertPersistedProviders(settings, expectedIds) {

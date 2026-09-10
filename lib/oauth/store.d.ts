@@ -4,13 +4,11 @@
  * The file is a JSON object keyed by provider id. Writes are atomic
  * (tmp file + rename) with mode 0600 because they carry bearer tokens.
  */
+import { readPrivateText, writePrivateText } from '../utils/private-text.js';
+export { readPrivateText, writePrivateText };
 export declare const PROVIDER_IDS: readonly string[];
 export declare function defaultDataDir(): string;
 export declare function authFilePath(dataDir?: string): string;
-export declare function readPrivateText(path: any, label: any, { allowBroadMode }?: {
-    allowBroadMode?: boolean;
-}): Promise<any>;
-export declare function writePrivateText(path: any, text: any): Promise<void>;
 export declare function accountIdOf(provider: any, session: any): any;
 export declare function asVault(provider: any, entry: any): {
     activeId: any;

@@ -96,7 +96,7 @@ test('Settings Cursor tab uses Import local Cursor copy and shows source, never 
   assert.equal(/cursor[\s\S]{0,200}accessToken/.test(src), false)
   const tabOrder = src.match(/h\(Tab, \{ id: '(\w+)'/g) ?? []
   const ids = tabOrder.map((row) => /id: '(\w+)'/.exec(row)?.[1])
-  assert.deepEqual(ids.slice(0, 11), ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'models', 'about'])
+  assert.deepEqual(ids.slice(0, 12), ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'apikey', 'models', 'about'])
 })
 
 test('Settings Ollama tab is Cloud key paste after Cursor, never localhost', async () => {
@@ -156,7 +156,7 @@ test('Settings tab bar is two docked capsules; OAuth spreads leftover width betw
   assert.equal(/id: 'copilot'/.test(util), false)
   const tabOrder = src.match(/h\(Tab, \{ id: '(\w+)'/g) ?? []
   const ids = tabOrder.map((row) => /id: '(\w+)'/.exec(row)?.[1])
-  assert.deepEqual(ids, ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'models', 'about'])
+  assert.deepEqual(ids, ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'apikey', 'models', 'about'])
 })
 
 test('Settings Kimi tab uses LobeHub Kimi path, device login, and never @lobehub/icons', async () => {

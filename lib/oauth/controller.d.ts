@@ -4062,6 +4062,7 @@ export declare class AuthController {
                 busy: any;
             };
         };
+        opencodeGo: any;
         update: {
             version: any;
             running: any;
@@ -4092,6 +4093,10 @@ export declare class AuthController {
         };
         autoUpdate: any;
     }>;
+    opencodeGoSnapshot(options: any): Promise<any>;
+    saveOpencodeGo(payload?: {}): Promise<any>;
+    clearOpencodeGo(field: any): Promise<any>;
+    refreshOpencodeGoQuota(): Promise<any>;
     refreshQuota(provider: any, accountId: any): any;
     consumeReset(provider: any, accountId: any): Promise<any>;
     checkUpdate(payload?: {}): Promise<{
@@ -8446,6 +8451,7 @@ export declare class AuthController {
                 busy: any;
             };
         };
+        opencodeGo: any;
         update: {
             version: any;
             running: any;
@@ -12478,6 +12484,7 @@ export declare class AuthController {
                 busy: any;
             };
         };
+        opencodeGo: any;
         update: {
             version: any;
             running: any;
@@ -12509,6 +12516,13 @@ export declare class AuthController {
         autoUpdate: any;
     }>;
     sync(selected: any, options?: {}): Promise<{
+        opencodeGoRoute: {
+            status: string;
+            error?: undefined;
+        } | {
+            status: string;
+            error: string;
+        };
         routes: {
             provider: string;
             api: any;
