@@ -102,6 +102,7 @@ window.__ModuleLoader__.load({
         opencodeGoSave: '保存',
         opencodeGoFailed: '保存失败',
         opencodeGoHostStale: '宿主进程还是旧版本，请重启 dsh web 后再保存',
+        opencodeGoBalance: '余额兜底 {n}',
         monthly: '每月',
         login: '登录',
         addAccount: '添加账号',
@@ -320,6 +321,7 @@ window.__ModuleLoader__.load({
         opencodeGoSave: 'Save',
         opencodeGoFailed: 'Save failed',
         opencodeGoHostStale: 'The host process is outdated — restart dsh web, then save again',
+        opencodeGoBalance: 'Balance fallback {n}',
         monthly: 'Monthly',
         login: 'Sign in',
         addAccount: 'Add account',
@@ -602,6 +604,15 @@ window.__ModuleLoader__.load({
       if (typeof value !== 'number' || !Number.isFinite(value)) return ''
       if (Number.isInteger(value)) return String(value)
       return String(Math.round(value * 10) / 10)
+    }
+
+    /** Compact token counts: 103691253 -> 103.7M, 1200000000 -> 1.2B. */
+    function formatTokenAmount(value) {
+      if (typeof value !== 'number' || !Number.isFinite(value)) return ''
+      if (value >= 1e9) return `${Math.round(value / 1e8) / 10}B`
+      if (value >= 1e6) return `${Math.round(value / 1e5) / 10}M`
+      if (value >= 1e3) return `${Math.round(value / 1e2) / 10}K`
+      return String(Math.round(value))
     }
 
     const PLAN_LABELS = {
@@ -1089,6 +1100,10 @@ window.__ModuleLoader__.load({
   color: var(--osubs-warn);
   background: color-mix(in oklab, var(--osubs-warn) 14%, transparent);
 }
+.osubs-tag--warn {
+  color: var(--osubs-bad);
+  background: color-mix(in oklab, var(--osubs-bad) 14%, transparent);
+}
 
 .osubs-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; overflow-wrap: anywhere; }
 .osubs-hint {
@@ -1519,7 +1534,9 @@ window.__ModuleLoader__.load({
       }
       const remaining = remainingPercentOf(row)
       const amount = row.used !== undefined && row.total !== undefined
-        ? `${formatAmount(row.used)} / ${formatAmount(row.total)}`
+        ? row.unit === 'tokens'
+          ? `${formatTokenAmount(row.used)} / ${formatTokenAmount(row.total)}`
+          : `${formatAmount(row.used)} / ${formatAmount(row.total)}`
         : ''
       const reset = formatReset(row.resetAt, t)
       return h('div', { className: 'osubs-qrow' },
@@ -1530,6 +1547,7 @@ window.__ModuleLoader__.load({
           label: rowLabel(row, t, family),
           reset,
         }),
+        row.status && row.status !== 'ok' && h('span', { className: 'osubs-tag osubs-tag--warn' }, row.status),
         row.note && h('span', { className: 'osubs-note' }, row.note),
       )
     }
@@ -1830,6 +1848,7 @@ window.__ModuleLoader__.load({
               id === 'glm' && row.region && h('span', { className: 'osubs-tag' }, regionLabel(row.region)),
               id === 'kiro' && row.methodLabel && h('span', { className: 'osubs-tag' }, row.methodLabel),
               (id === 'cursor' || id === 'ollama' || id === 'kimi' || id === 'copilot') && row.methodLabel && h('span', { className: 'osubs-tag' }, row.methodLabel),
+              id === 'opencode-go' && row.workspaceName && h('span', { className: 'osubs-tag osubs-tag--plain' }, row.workspaceName),
               id === 'glm' && h('span', { className: 'osubs-tag osubs-tag--plain' }, t.glmBoost),
             ),
           ),
@@ -1854,6 +1873,8 @@ window.__ModuleLoader__.load({
             onRefresh: () => onRefreshQuota(id, row.id),
             onReset: id === 'codex' && onResetQuota ? () => onResetQuota(id, row.id) : undefined,
           }),
+          id === 'opencode-go' && quota?.useBalance && Number(quota.balance) > 0
+            && h('p', { className: 'osubs-hint' }, fill(t.opencodeGoBalance, `$${Number(quota.balance).toFixed(2)}`)),
         ),
       )
     }

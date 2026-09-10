@@ -177,6 +177,18 @@ test('OpenCode Go renders through the shared account cards and add-account dialo
   assert.match(src, /\.osubs-fields > \.osubs-input \{[\s\S]*flex: none; width: 100%; height: 36px/)
 })
 
+test('OpenCode Go rows carry tokens, status, workspace name, and balance fallback', async () => {
+  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  assert.match(src, /function formatTokenAmount/)
+  assert.match(src, /formatTokenAmount\(row\.used\)/)
+  assert.match(src, /row\.status !== 'ok' && h\('span', \{ className: 'osubs-tag osubs-tag--warn' \}, row\.status\)/)
+  assert.match(src, /id === 'opencode-go' && row\.workspaceName && h\('span', \{ className: 'osubs-tag osubs-tag--plain' \}, row\.workspaceName\)/)
+  assert.match(src, /id === 'opencode-go' && quota\?\.useBalance && Number\(quota\.balance\) > 0/)
+  assert.match(src, /opencodeGoBalance: '余额兜底 \{n\}'/)
+  assert.match(src, /opencodeGoBalance: 'Balance fallback \{n\}'/)
+  assert.match(src, /\.osubs-tag--warn \{/)
+})
+
 test('Settings Kimi tab uses LobeHub Kimi path, device login, and never @lobehub/icons', async () => {
   const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
   assert.match(src, /kimiTitle:\s*'月之暗面'/)

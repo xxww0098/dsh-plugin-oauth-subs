@@ -25,7 +25,7 @@ export function opencodeGoFilePath(authPath) {
 }
 
 function emptyAccount() {
-  return { apiKey: '', cookieHeader: '', workspaceId: '', email: '' }
+  return { apiKey: '', cookieHeader: '', workspaceId: '', email: '', workspaceName: '' }
 }
 
 function emptyVault() {
@@ -41,6 +41,7 @@ function normalizeAccount(raw) {
       : '',
     workspaceId: normalizeOpencodeGoWorkspaceId(raw.workspaceId) ?? '',
     email: typeof raw.email === 'string' ? raw.email.trim() : '',
+    workspaceName: typeof raw.workspaceName === 'string' ? raw.workspaceName.trim() : '',
   }
 }
 
@@ -303,12 +304,18 @@ export class OpencodeGoStore {
         entry.email = parsed.email
         changed = true
       }
+      if (parsed.workspaceName && parsed.workspaceName !== entry.workspaceName) {
+        entry.workspaceName = parsed.workspaceName
+        changed = true
+      }
       if (changed) await this.#persist()
       this.quotas.set(id, {
         status: 'ready',
         planType: parsed.planType,
         updatedAt: Date.now(),
         rows: parsed.rows ?? [],
+        ...(parsed.useBalance === undefined ? {} : { useBalance: parsed.useBalance }),
+        ...(parsed.balance === undefined ? {} : { balance: parsed.balance }),
       })
     } catch (error) {
       this.quotas.set(id, {

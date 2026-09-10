@@ -15,6 +15,16 @@ export declare const OPENCODE_GO_PAGE_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS
  * `/zen/go/v1/usage` returns numbers only — so this is cookie-only.
  */
 export declare function parseOpencodeGoEmail(text: any, workspaceId: any): string;
+/** Signed-in workspace name from the dashboard RSC payload. */
+export declare function parseOpencodeGoWorkspaceName(text: any, workspaceId: any): string;
+/**
+ * Billing flags from the dashboard RSC payload. `useBalance` is the Zen
+ * "use balance after limits" toggle; `balance` is its prepaid amount.
+ */
+export declare function parseOpencodeGoBilling(text: any): {
+    useBalance: boolean;
+    balance: number;
+};
 export declare function parseOpencodeGoUsage(text: any, now?: number): {
     rows: {
         key: any;
@@ -30,7 +40,10 @@ export declare function fetchOpencodeGoWorkspaceId(cookieHeader: any, { fetchFn,
 }): Promise<any>;
 export declare function fetchOpencodeGoQuota(entry: any, options?: {}): Promise<{
     workspaceId: any;
+    workspaceName: string;
     email: string;
+    useBalance: boolean;
+    balance: number;
     rows: {
         key: any;
         kind: any;

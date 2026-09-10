@@ -84,7 +84,10 @@ cookie → GET https://opencode.ai/_server?id=<workspaces>   （缺 workspace �
 cookie → GET https://opencode.ai/workspace/{wrk_}/go
   解析 rollingUsage / weeklyUsage / monthlyUsage
   usagePercent 是 0…100；剩余 = 100 − used
-  resetAt = now + resetInSec × 1000
+  resetAt = now + resetInSec × 1000（key `/zen/go/v1/usage` 的 ISO resetsAt 也认）
+  usage / limit → 每行的 token used / total（103.7M / 1.2B）
+  status ≠ "ok" → 该行 warn 标签
+  顺带刮 userEmail / workspace name（"Default"）、useBalance + balance（余额兜底）
 ```
 
 工作区 server-fn id 钉 `def39973159c7f0483d8793a822b8dbb10d067e12c65455fcb4608459ba0234f`。

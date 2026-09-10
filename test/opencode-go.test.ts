@@ -4,7 +4,7 @@ import { mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parseOpencodeGoCookie, normalizeOpencodeGoWorkspaceId, opencodeGoAccountId, opencodeGoKeyHint } from '../lib/apikey/opencode-go/index.js'
-import { parseOpencodeGoEmail, parseOpencodeGoUsage } from '../lib/apikey/opencode-go/quota.js'
+import { parseOpencodeGoEmail, parseOpencodeGoUsage, parseOpencodeGoWorkspaceName, parseOpencodeGoBilling } from '../lib/apikey/opencode-go/quota.js'
 import { OpencodeGoStore, opencodeGoFilePath } from '../lib/apikey/opencode-go/store.js'
 import { writePrivateText } from '../lib/utils/private-text.js'
 
@@ -58,6 +58,44 @@ test('parseOpencodeGoEmail reads the dashboard hydration payload', () => {
   assert.equal(parseOpencodeGoEmail('<p>no identity</p>', 'wrk_abc123'), undefined)
 })
 
+test('parseOpencodeGoUsage reads tokens, status, and serialized dashboard JS', () => {
+  const now = 1_700_000_000_000
+  const page = 'rollingUsage:$R[35]={status:"ok",resetInSec:12126,usagePercent:8.6,usage:103691253,limit:1200000000},'
+    + 'weeklyUsage:$R[36]={status:"throttled",resetInSec:283278,usagePercent:10.7,usage:319783821,limit:3000000000}'
+  const parsed = parseOpencodeGoUsage(page, now)
+  assert.equal(parsed.rows.length, 2)
+  const [rolling, weekly] = parsed.rows
+  assert.equal(rolling.usedPercent, 9)
+  assert.equal(rolling.remainingPercent, 91)
+  assert.equal(rolling.resetAt, now + 12_126_000)
+  assert.equal(rolling.status, 'ok')
+  assert.deepEqual([rolling.used, rolling.total, rolling.unit], [103_691_253, 1_200_000_000, 'tokens'])
+  assert.equal(weekly.status, 'throttled')
+  assert.equal(weekly.used, 319_783_821)
+})
+
+test('parseOpencodeGoUsage reads the key /usage shape with ISO resetsAt', () => {
+  const parsed = parseOpencodeGoUsage(JSON.stringify({
+    usage: {
+      rolling: { status: 'ok', percent: 8, resetsAt: '2026-09-10T20:40:48.869Z' },
+      weekly: { status: 'ok', percent: 10, resetsAt: '2026-09-14T00:00:00.869Z' },
+    },
+  }))
+  assert.equal(parsed.rows[0].usedPercent, 8)
+  assert.equal(parsed.rows[0].remainingPercent, 92)
+  assert.equal(parsed.rows[0].resetAt, Date.parse('2026-09-10T20:40:48.869Z'))
+  assert.equal(parsed.rows[0].used, undefined)
+})
+
+test('parseOpencodeGoWorkspaceName and parseOpencodeGoBilling read the dashboard payload', () => {
+  const html = '$R[29]=[$R[30]={id:"wrk_abc123",name:"Default",slug:null}];'
+    + '$R[33]={mine:!0,useBalance:!0,allowTraining:!1,region:$R[34]=["us"]};'
+    + '$R[31]={customerID:"cus_x",balance:12.5,reload:null,subscriptionPlan:null};'
+  assert.equal(parseOpencodeGoWorkspaceName(html, 'wrk_abc123'), 'Default')
+  assert.deepEqual(parseOpencodeGoBilling(html), { useBalance: true, balance: 12.5 })
+  assert.deepEqual(parseOpencodeGoBilling('useBalance:!1,balance:0'), { useBalance: false, balance: 0 })
+})
+
 test('opencodeGoAccountId prefers workspace and key hints stay masked', () => {
   assert.equal(opencodeGoAccountId({ workspaceId: 'wrk_abc123', apiKey: 'sk-x' }), 'wrk_abc123')
   assert.match(opencodeGoAccountId({ apiKey: 'sk-x' }), /^go_[0-9a-f]{12}$/)
@@ -107,12 +145,16 @@ test('OpencodeGoStore keeps many accounts, activates on save, and never exposes 
   assert.equal(row.quota.status, 'idle')
 })
 
-test('OpencodeGoStore caches the dashboard email as the account title', async () => {
+test('OpencodeGoStore caches email, workspace name, tokens, and billing', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'opencode-go-'))
   const path = opencodeGoFilePath(join(dir, 'auth.json'))
-  const page = 'rollingUsage:$R[35]={status:"ok",resetInSec:30,usagePercent:10},'
+  const page = 'rollingUsage:$R[35]={status:"ok",resetInSec:30,usagePercent:10,usage:100000000,limit:1000000000},'
     + 'weeklyUsage:$R[36]={status:"ok",resetInSec:60,usagePercent:5},'
+    + 'monthlyUsage:$R[37]={status:"ok",resetInSec:90,usagePercent:1},'
     + 'userEmail[\\"wrk_abc123\\"]=$R[0]=$R[2](($R[1]={p:0,s:0,f:0}));$R[28]($R[1],"dev@example.com");'
+    + '$R[29]=[$R[30]={id:"wrk_abc123",name:"Default",slug:null}];'
+    + '$R[33]={mine:!0,useBalance:!0,allowTraining:!1,region:$R[34]=["us"]};'
+    + '$R[31]={customerID:"cus_x",balance:12.5,reload:null};'
   const store = new OpencodeGoStore({
     path,
     fetchFn: async () => new Response(page, { status: 200, headers: { 'content-type': 'text/javascript' } }),
@@ -123,8 +165,17 @@ test('OpencodeGoStore caches the dashboard email as the account title', async ()
   assert.equal(row.email, 'dev@example.com')
   assert.equal(row.account, 'dev@example.com')
   assert.equal(row.workspaceId, 'wrk_abc123')
+  assert.equal(row.workspaceName, 'Default')
+  assert.equal(row.quota.status, 'ready')
+  assert.equal(row.quota.useBalance, true)
+  assert.equal(row.quota.balance, 12.5)
+  assert.deepEqual(
+    row.quota.rows.map((entry) => [entry.kind, entry.used, entry.total, entry.unit]),
+    [['primary', 100_000_000, 1_000_000_000, 'tokens'], ['weekly', undefined, undefined, undefined], ['monthly', undefined, undefined, undefined]],
+  )
   const vault = JSON.parse(await readFile(path, 'utf8'))
   assert.equal(vault.accounts[saved.id].email, 'dev@example.com')
+  assert.equal(vault.accounts[saved.id].workspaceName, 'Default')
 })
 
 test('OpencodeGoStore dedupes a re-pasted key instead of adding a card', async () => {
