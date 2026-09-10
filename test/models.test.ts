@@ -20,6 +20,7 @@ import {
   RETIRED_FAMILY_IDS,
   ownedProviderIds,
   peekPiAiProviders,
+  ensureOpencodeGoRoute,
   syncHarnessModels,
 } from '../lib/oauth/models.js'
 import { KIRO_MODELS, KIRO_REASONING_GPT } from '../lib/oauth/kiro/index.js'
@@ -205,6 +206,39 @@ test('filterProviders keeps only selected keys', () => {
   const filtered = filterProviders(providers, [modelKey('oauth-grok', 'grok-4.5')])
   assert.equal(filtered['oauth-codex'], undefined)
   assert.deepEqual(filtered['oauth-grok'].models.map((m) => m.id), ['grok-4.5'])
+})
+
+test('ensureOpencodeGoRoute writes the three Go routes only when absent', async () => {
+  const empty = createPiAiSettings()
+  const first = await ensureOpencodeGoRoute(empty)
+  assert.equal(first.status, 'written')
+  assert.deepEqual(first.routes, ['opencode-go', 'opencode-go-responses', 'opencode-go-anthropic'])
+  assert.equal(empty.section.providers['opencode-go'].api, 'openai-completions')
+  assert.equal(empty.section.providers['opencode-go-responses'].api, 'openai-responses')
+  assert.equal(empty.section.providers['opencode-go-anthropic'].api, 'anthropic-messages')
+  assert.equal(empty.section.providers['opencode-go-anthropic'].baseURL, 'https://opencode.ai/zen/go')
+  assert.equal(empty.section.providers['opencode-go'].models.length, 16)
+  assert.equal(empty.section.providers['opencode-go-responses'].models.length, 4)
+  assert.equal(empty.section.providers['opencode-go-anthropic'].models.length, 8)
+  assert.equal(empty.ops.length, 1)
+  const deepFlash = empty.section.providers['opencode-go'].models.find((m) => m.id === 'deepseek-flash')
+  assert.equal(deepFlash.name, 'DeepSeek V4.1 Flash')
+  assert.deepEqual(deepFlash.reasoningEfforts, { low: 'low', high: 'high', max: 'max' })
+  assert.equal(empty.section.providers['opencode-go'].models.find((m) => m.id === 'deepseek-v4-pro').reasoningEfforts, undefined)
+  const luna = empty.section.providers['opencode-go-responses'].models.find((m) => m.id === 'gpt-5.6-luna')
+  assert.deepEqual(luna.input, ['text', 'image'])
+
+  assert.equal((await ensureOpencodeGoRoute(empty)).status, 'present')
+  assert.equal(empty.ops.length, 1)
+
+  const custom = createPiAiSettings({ 'opencode-go': { displayName: 'Mine' } })
+  const second = await ensureOpencodeGoRoute(custom)
+  assert.equal(second.status, 'written')
+  assert.deepEqual(second.routes, ['opencode-go-responses', 'opencode-go-anthropic'])
+  assert.deepEqual(custom.section.providers['opencode-go'], { displayName: 'Mine' })
+
+  assert.deepEqual(await ensureOpencodeGoRoute({ mutate: async () => {} }), { status: 'unreadable' })
+  assert.deepEqual(await ensureOpencodeGoRoute(undefined), { status: 'unavailable' })
 })
 
 test('catalogProviders always lists both families with Fast and 900K siblings', () => {

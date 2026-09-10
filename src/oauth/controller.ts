@@ -67,9 +67,9 @@ import {
 } from './cursor/index.js'
 import { CURSOR_IMPORT_EMPTY, importCursorAuth, readCursorVscdbTokens } from './cursor/import.js'
 import { cursorCatalogModels, refreshCursorCatalog } from './cursor/catalog.js'
-import { ollamaSession, refreshOllama, isOllamaPermanentRefreshError, resolveOllamaIdentity, isOllamaOpaqueAccount } from './ollama/index.js'
-import { OLLAMA_IMPORT_EMPTY, importOllamaAuth } from './ollama/import.js'
-import { ollamaCatalogModels, refreshOllamaCatalog } from './ollama/catalog.js'
+import { ollamaSession, refreshOllama, isOllamaPermanentRefreshError, resolveOllamaIdentity, isOllamaOpaqueAccount } from '../apikey/ollama/index.js'
+import { OLLAMA_IMPORT_EMPTY, importOllamaAuth } from '../apikey/ollama/import.js'
+import { ollamaCatalogModels, refreshOllamaCatalog } from '../apikey/ollama/catalog.js'
 import { kiroCatalogModels, refreshKiroCatalog } from './kiro/catalog.js'
 import {
   completeKimiDevice as sessionFromKimiDevice,
@@ -95,11 +95,13 @@ import {
 } from './copilot/index.js'
 import { COPILOT_IMPORT_EMPTY, importCopilotAuth } from './copilot/import.js'
 import { copilotCatalogModels, refreshCopilotCatalog } from './copilot/catalog.js'
+import { OpencodeGoStore, opencodeGoFilePath } from '../apikey/opencode-go/store.js'
 import {
   buildProviders,
   catalogProviders,
   describeCatalog,
   describeProviders,
+  ensureOpencodeGoRoute,
   filterProviders,
   ModelSwitch,
   syncHarnessModels,
@@ -259,6 +261,9 @@ export class AuthController {
     }
     this.quota = new QuotaStore({ tokens: this.tokens, fetchFn, ttlMs: quotaTtlMs })
     this.fetchFn = fetchFn
+    this.opencodeGo = (typeof authPath === 'string' && authPath)
+      ? new OpencodeGoStore({ path: opencodeGoFilePath(authPath), fetchFn })
+      : undefined
   }
 
   claim(provider) {
@@ -439,6 +444,7 @@ export class AuthController {
         kimi: { ...(await this.status('kimi')), activeId: kimiAccounts.find((row) => row.active)?.id, accounts: kimiAccounts },
         copilot: { ...(await this.status('copilot')), activeId: copilotAccounts.find((row) => row.active)?.id, accounts: copilotAccounts },
       },
+      opencodeGo: await this.opencodeGoSnapshot(),
       update: localUpdateInfo(process.platform, {
         profile: this.profile,
         env: this.updateEnv ?? process.env,
@@ -452,7 +458,28 @@ export class AuthController {
     }
   }
 
+  async opencodeGoSnapshot(options) {
+    if (!this.opencodeGo) return { id: 'opencode-go', cookieSet: false, workspaceId: '', configured: false, quota: { status: 'idle' } }
+    return this.opencodeGo.snapshot(options)
+  }
+
+  async saveOpencodeGo(payload = {}) {
+    if (!this.opencodeGo) throw new Error('OpenCode Go store is unavailable')
+    return this.opencodeGo.save({ cookie: payload.cookie, workspace: payload.workspace })
+  }
+
+  async clearOpencodeGo(field) {
+    if (!this.opencodeGo) throw new Error('OpenCode Go store is unavailable')
+    return this.opencodeGo.clear(field)
+  }
+
+  async refreshOpencodeGoQuota() {
+    if (!this.opencodeGo) return { id: 'opencode-go', cookieSet: false, workspaceId: '', configured: false, quota: { status: 'idle' } }
+    return this.opencodeGo.refreshQuota()
+  }
+
   async refreshQuota(provider, accountId) {
+    if (provider === 'opencode-go') return this.refreshOpencodeGoQuota()
     if (provider === 'codex' || provider === 'grok' || provider === 'glm' || provider === 'kiro' || provider === 'antigravity' || provider === 'cursor' || provider === 'ollama' || provider === 'kimi' || provider === 'copilot') {
       const rows = await this.#liveAccounts(provider)
       const targets = accountId
@@ -1609,7 +1636,8 @@ export class AuthController {
     if (options.recover !== false && selected === undefined) {
       await this.models.recoverEmptyLoggedInFamilies(catalog, loggedIn)
     }
-    return syncHarnessModels({
+    const opencodeGoRoute = await ensureOpencodeGoRoute(this.settings)
+    const synced = await syncHarnessModels({
       settings: this.settings,
       prefix: this.prefix,
       origin: this.origin(),
@@ -1622,5 +1650,6 @@ export class AuthController {
       copilotModels: copilotCatalogModels(),
       glmModels: await this.#glmModels(),
     })
+    return { ...synced, opencodeGoRoute }
   }
 }

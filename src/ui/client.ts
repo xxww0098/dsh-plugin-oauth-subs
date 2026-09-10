@@ -88,6 +88,20 @@ window.__ModuleLoader__.load({
         copilotKeyHint: '粘贴 GitHub Copilot 用的 ghu_ / ghp_ token。也可导入本机 ~/.config/github-copilot/hosts.json。',
         copilotImport: '导入本机 Copilot',
         copilotImportEmpty: '未找到 hosts.json、OpenCode auth.json 或 GITHUB_TOKEN',
+        apiKeyTitle: 'API Key',
+        opencodeGoTitle: 'OpenCode Go',
+        opencodeGoHint: '粘贴 opencode.ai 的会话 cookie 与工作区 ID 以读取 Go 额度。对话请在 DSH 的 API Keys 里配置 OPENCODE_API_KEY；本页不走回环网关。',
+        opencodeGoCookie: '会话 cookie',
+        opencodeGoCookiePlaceholder: 'Fe26.2… 或 auth=…; __Host-auth=…',
+        opencodeGoCookieSet: '已保存，留空保持不变',
+        opencodeGoWorkspace: '工作区 ID（可选）',
+        opencodeGoWorkspacePlaceholder: 'wrk_… 或 https://opencode.ai/workspace/wrk_…/go',
+        opencodeGoSave: '保存',
+        opencodeGoClear: '清除 cookie',
+        opencodeGoClearWorkspace: '清除工作区',
+        opencodeGoSaved: '已保存',
+        opencodeGoFailed: '保存失败',
+        monthly: '每月',
         login: '登录',
         addAccount: '添加账号',
         addAccountTitle: '添加账号',
@@ -291,6 +305,20 @@ window.__ModuleLoader__.load({
         copilotKeyHint: 'Paste a GitHub Copilot ghu_ / ghp_ token. Or import ~/.config/github-copilot/hosts.json.',
         copilotImport: 'Import local Copilot',
         copilotImportEmpty: 'No hosts.json, OpenCode auth.json, or GITHUB_TOKEN found',
+        apiKeyTitle: 'API Key',
+        opencodeGoTitle: 'OpenCode Go',
+        opencodeGoHint: 'Paste the opencode.ai session cookie and workspace id to read Go quota. Chat uses DSH API Keys (OPENCODE_API_KEY) and does not go through this loopback proxy.',
+        opencodeGoCookie: 'Session cookie',
+        opencodeGoCookiePlaceholder: 'Fe26.2… or auth=…; __Host-auth=…',
+        opencodeGoCookieSet: 'Stored — leave blank to keep',
+        opencodeGoWorkspace: 'Workspace id (optional)',
+        opencodeGoWorkspacePlaceholder: 'wrk_… or https://opencode.ai/workspace/wrk_…/go',
+        opencodeGoSave: 'Save',
+        opencodeGoClear: 'Clear cookie',
+        opencodeGoClearWorkspace: 'Clear workspace',
+        opencodeGoSaved: 'Saved',
+        opencodeGoFailed: 'Save failed',
+        monthly: 'Monthly',
         login: 'Sign in',
         addAccount: 'Add account',
         addAccountTitle: 'Add account',
@@ -1375,6 +1403,8 @@ window.__ModuleLoader__.load({
       copilot: { d: 'M9 23l.073-.001a2.53 2.53 0 01-2.347-1.838l-.697-2.433a2.529 2.529 0 00-2.426-1.839h-.497l-.104-.002c-4.485 0-2.935-5.278-1.75-9.225l.162-.525C2.412 3.99 3.883 1 6.25 1h8.86c1.12 0 2.106.745 2.422 1.829l.715 2.453a2.53 2.53 0 002.247 1.823l.147.005.534.001c3.557.115 3.088 3.745 2.156 7.206l-.113.413c-.154.548-.315 1.089-.47 1.607l-.163.525C21.588 20.01 20.116 23 17.75 23h-8.75zm8.22-15.89l-3.856.001a2.526 2.526 0 00-2.35 1.615L9.21 15.04a2.529 2.529 0 01-2.43 1.847l3.853.002c1.056 0 1.992-.661 2.361-1.644l1.796-6.287a2.529 2.529 0 012.43-1.848z', clip: true },
       github: { d: 'M12 0c6.63 0 12 5.276 12 11.79-.001 5.067-3.29 9.567-8.175 11.187-.6.118-.825-.25-.825-.56 0-.398.015-1.665.015-3.242 0-1.105-.375-1.813-.81-2.181 2.67-.295 5.475-1.297 5.475-5.822 0-1.297-.465-2.344-1.23-3.169.12-.295.54-1.503-.12-3.125 0 0-1.005-.324-3.3 1.209a11.32 11.32 0 00-3-.398c-1.02 0-2.04.133-3 .398-2.295-1.518-3.3-1.209-3.3-1.209-.66 1.622-.24 2.83-.12 3.125-.765.825-1.23 1.887-1.23 3.169 0 4.51 2.79 5.527 5.46 5.822-.345.294-.66.81-.765 1.577-.69.31-2.415.81-3.495-.973-.225-.354-.9-1.223-1.845-1.209-1.005.015-.405.56.015.781.51.28 1.095 1.327 1.23 1.666.24.663 1.02 1.93 4.035 1.385 0 .988.015 1.916.015 2.196 0 .31-.225.664-.825.56C3.303 21.374-.003 16.867 0 11.791 0 5.276 5.37 0 12 0z' },
       models: { d: 'M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z' },
+      // LobeHub `OpenCode` icon (`@lobehub/icons-static-svg` icons/opencode.svg)
+      opencodeGo: { d: 'M16 6H8v12h8V6zm4 16H4V2h16v20z' },
     }
 
     function TabIcon({ name }) {
@@ -1436,6 +1466,7 @@ window.__ModuleLoader__.load({
         return t.primary
       }
       if (row.kind === 'weekly') return t.weekly
+      if (row.kind === 'monthly') return t.monthly
       if (row.kind === 'cycle') return t.cycle
       if (row.kind === 'prepaid') return t.prepaid
       if (row.kind === 'mcp') return t.glmMcp
@@ -1819,6 +1850,78 @@ window.__ModuleLoader__.load({
             onReset: id === 'codex' && onResetQuota ? () => onResetQuota(id, row.id) : undefined,
           }),
         ),
+      )
+    }
+
+    function ApiKeyPanel({ t, go, onSave, onClear, onRefreshQuota }) {
+      const [cookie, setCookie] = useState('')
+      const [workspace, setWorkspace] = useState(go?.workspaceId || '')
+      const [busy, setBusy] = useState(false)
+      const [message, setMessage] = useState('')
+      useEffect(() => {
+        setWorkspace(go?.workspaceId || '')
+      }, [go?.workspaceId])
+      const save = async () => {
+        if (busy) return
+        setBusy(true)
+        setMessage('')
+        try {
+          await onSave({ cookie: cookie.trim() ? cookie : undefined, workspace })
+          setCookie('')
+          setMessage(t.opencodeGoSaved)
+        } catch (error) {
+          setMessage(t.opencodeGoFailed + ': ' + (error instanceof Error ? error.message : String(error)))
+        } finally {
+          setBusy(false)
+        }
+      }
+      const clear = async (field) => {
+        if (busy) return
+        setBusy(true)
+        setMessage('')
+        try {
+          await onClear(field)
+        } catch (error) {
+          setMessage(t.opencodeGoFailed + ': ' + (error instanceof Error ? error.message : String(error)))
+        } finally {
+          setBusy(false)
+        }
+      }
+      const configured = Boolean(go?.cookieSet)
+      return h('section', { className: 'osubs-card' },
+        h('header', { className: 'osubs-card-head' },
+          h('h3', { className: 'osubs-card-title' }, t.opencodeGoTitle),
+          h('span', { className: 'osubs-status' + (configured ? ' osubs-status--on' : '') }, configured ? t.loggedIn : t.loggedOut),
+        ),
+        h('p', { className: 'osubs-hint' }, t.opencodeGoHint),
+        h('div', { className: 'osubs-fields' },
+          h('span', { className: 'osubs-eyebrow' }, t.opencodeGoCookie),
+          h('input', {
+            className: 'osubs-input',
+            type: 'password',
+            autoComplete: 'off',
+            spellCheck: false,
+            placeholder: configured ? t.opencodeGoCookieSet : t.opencodeGoCookiePlaceholder,
+            value: cookie,
+            onChange: (event) => setCookie(event.target.value),
+          }),
+          h('span', { className: 'osubs-eyebrow' }, t.opencodeGoWorkspace),
+          h('input', {
+            className: 'osubs-input',
+            autoComplete: 'off',
+            spellCheck: false,
+            placeholder: t.opencodeGoWorkspacePlaceholder,
+            value: workspace,
+            onChange: (event) => setWorkspace(event.target.value),
+          }),
+        ),
+        h('div', { className: 'osubs-actions' },
+          h(Button, { variant: 'primary', disabled: busy, label: t.opencodeGoSave, onClick: save }),
+          configured && h(Button, { size: 'sm', disabled: busy, label: t.opencodeGoClear, onClick: () => clear('cookie') }),
+          go?.workspaceId && h(Button, { size: 'sm', disabled: busy, label: t.opencodeGoClearWorkspace, onClick: () => clear('workspace') }),
+        ),
+        message && h('p', { className: 'osubs-hint' }, message),
+        h(QuotaBlock, { t, family: 'opencode-go', quota: go?.quota, onRefresh: onRefreshQuota }),
       )
     }
 
@@ -2991,6 +3094,7 @@ window.__ModuleLoader__.load({
             h(Tab, { id: 'copilot', label: t.copilotTitle, current: tab, onSelect: setTab, icon: 'copilot' }),
           ),
           h('div', { className: 'osubs-tabs-util' },
+            h(Tab, { id: 'apikey', label: t.apiKeyTitle, current: tab, onSelect: setTab, icon: 'opencodeGo' }),
             h(Tab, { id: 'models', label: t.modelsTitle, current: tab, onSelect: setTab, icon: 'models' }),
             h(Tab, { id: 'about', label: t.aboutTitle, current: tab, onSelect: setTab, icon: 'github' }),
           ),
@@ -3006,6 +3110,21 @@ window.__ModuleLoader__.load({
           panel('ollama', card('ollama', t.ollamaTitle)),
           panel('kimi', card('kimi', t.kimiTitle)),
           panel('copilot', card('copilot', t.copilotTitle)),
+          panel('apikey', h(ApiKeyPanel, {
+            t,
+            go: snap?.opencodeGo,
+            onSave: async (payload) => {
+              const result = await callRpc(rpc, 'goSave', payload)
+              await refresh()
+              return result
+            },
+            onClear: async (field) => {
+              const result = await callRpc(rpc, 'goClear', { field })
+              await refresh()
+              return result
+            },
+            onRefreshQuota: () => run('quota', { provider: 'opencode-go' }),
+          })),
           panel('models', h(ModelPicker, {
             t,
             catalog: snap?.catalog,

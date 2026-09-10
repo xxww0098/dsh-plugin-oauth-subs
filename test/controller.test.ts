@@ -88,6 +88,8 @@ test('snapshot reports logged-out accounts and empty providers', async () => {
   assert.equal(snap.accounts.kimi.loggedIn, false)
   assert.equal(snap.accounts.copilot.loggedIn, false)
   assert.equal(snap.accounts.opencode, undefined)
+  assert.equal(snap.opencodeGo.cookieSet, false)
+  assert.equal(snap.opencodeGo.quota.status, 'idle')
   assert.deepEqual(snap.providers, [])
   assert.equal(snap.catalog.length, 9)
   assert.equal(snap.catalog.some((row) => row.family === 'kimi'), true)

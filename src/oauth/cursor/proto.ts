@@ -104,6 +104,68 @@ export function fieldVarint(fields, number) {
   return row?.varint
 }
 
+function decodeProtoStruct(bytes) {
+  const out = {}
+  for (const entry of fieldBytes(decodeFields(bytes), 1)) {
+    const fields = decodeFields(entry)
+    const key = fieldString(fields, 1)
+    if (key == null) continue
+    out[key] = decodeProtoValue(fieldBytes(fields, 2)[0] ?? Buffer.alloc(0))
+  }
+  return out
+}
+
+function decodeProtoList(bytes) {
+  return fieldBytes(decodeFields(bytes), 1).map((item) => decodeProtoValue(item))
+}
+
+/**
+ * google.protobuf.Value → JSON. `decodeFields` stops at wire type 1, which
+ * is exactly how the number branch is framed, so this walks tags directly.
+ * Unknown / empty input yields undefined rather than a fabricated value.
+ */
+export function decodeProtoValue(buffer) {
+  const bytes = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer ?? [])
+  let offset = 0
+  while (offset < bytes.length) {
+    const tag = readVarint(bytes, offset)
+    if (tag.offset === offset) break
+    offset = tag.offset
+    const field = tag.value >>> 3
+    const wire = tag.value & 7
+    if (wire === WIRE_VARINT) {
+      const next = readVarint(bytes, offset)
+      offset = next.offset
+      if (field === 1) return null
+      if (field === 4) return next.value !== 0
+      continue
+    }
+    if (wire === WIRE_LEN) {
+      const len = readVarint(bytes, offset)
+      const start = len.offset
+      const end = Math.min(start + len.value, bytes.length)
+      const payload = bytes.subarray(start, end)
+      offset = end
+      if (field === 3) return payload.toString('utf8')
+      if (field === 5) return decodeProtoStruct(payload)
+      if (field === 6) return decodeProtoList(payload)
+      continue
+    }
+    if (wire === 1) {
+      const payload = bytes.subarray(offset, offset + 8)
+      offset += 8
+      if (field === 2 && payload.length === 8) return payload.readDoubleLE(0)
+      continue
+    }
+    if (wire === 5) {
+      offset += 4
+      continue
+    }
+    break
+  }
+  return undefined
+}
+
 /** google.protobuf.Value — enough JSON for MCP schemas / tool args. */
 export function encodeProtoValue(value) {
   if (value === null || value === undefined) return encodeUint32(1, 0)
@@ -183,15 +245,30 @@ export function encodeRequestedModel({ modelId, maxMode = false, parameters = []
   return Buffer.concat(parts)
 }
 
-export function encodeMcpTools(tools) {
-  const defs = (tools ?? []).map((tool) => encodeMessage(1, Buffer.concat([
+export function encodeMcpToolDefinition(tool) {
+  return Buffer.concat([
     encodeString(1, tool.name ?? ''),
     encodeString(2, tool.description ?? ''),
     encodeBytes(3, tool.inputSchema ?? encodeJsonValueBytes({})),
     encodeString(4, tool.providerIdentifier ?? 'dsh'),
     encodeString(5, tool.toolName ?? tool.name ?? ''),
-  ])))
-  return Buffer.concat(defs)
+  ])
+}
+
+export function encodeMcpTools(tools) {
+  return Buffer.concat((tools ?? []).map((tool) => encodeMessage(1, encodeMcpToolDefinition(tool))))
+}
+
+/**
+ * RequestContext.tools is a repeated McpToolDefinition (field 7); the Run
+ * request carries the same definitions under McpTools field 1. Cursor's
+ * run handshake aborts with "Failed to get request context" unless the
+ * reply is a present RequestContextSuccess.
+ */
+export function encodeRequestContextResult({ id, execId, tools = [] } = {}) {
+  const requestContext = Buffer.concat((tools ?? []).map((tool) => encodeMessage(7, encodeMcpToolDefinition(tool))))
+  const result = encodeMessage(1, encodeMessage(1, requestContext))
+  return encodeExecClientResult({ id, execId, resultField: 10, resultBytes: result })
 }
 
 export function encodeConversationState({
@@ -274,12 +351,11 @@ export function encodeAgentClientMessage(runRequest) {
   return encodeMessage(1, runRequest)
 }
 
-export function encodeKvClientMessage({ id, blobData }) {
-  const result = blobData ? encodeBytes(1, blobData) : Buffer.alloc(0)
-  return encodeMessage(3, Buffer.concat([
-    encodeUint32(1, id),
-    encodeMessage(2, result),
-  ]))
+export function encodeKvClientMessage({ id, blobData, set = false } = {}) {
+  const body = set
+    ? Buffer.concat([encodeUint32(1, id ?? 0), encodeMessage(3, Buffer.alloc(0))])
+    : Buffer.concat([encodeUint32(1, id ?? 0), encodeMessage(2, blobData ? encodeBytes(1, blobData) : Buffer.alloc(0))])
+  return encodeMessage(3, body)
 }
 
 export function encodeExecThrow({ id, error = 'rejected by dsh-plugin-oauth-subs' }) {
@@ -287,6 +363,100 @@ export function encodeExecThrow({ id, error = 'rejected by dsh-plugin-oauth-subs
     encodeUint32(1, id ?? 0),
     encodeString(2, error),
   ])))
+}
+
+/** AgentClientMessage.exec_client_message (field 2) with a oneof result. */
+export function encodeExecClientResult({ id, execId, resultField, resultBytes }) {
+  const parts = [encodeUint32(1, id ?? 0)]
+  if (execId) parts.push(encodeString(15, execId))
+  parts.push(encodeMessage(resultField, resultBytes ?? Buffer.alloc(0)))
+  return encodeMessage(2, Buffer.concat(parts))
+}
+
+export const CURSOR_NATIVE_TOOL_REJECTION =
+  'Tool not available in this environment. Use the MCP tools provided instead.'
+
+function rejectedShell(execArgs) {
+  return Buffer.concat([
+    encodeString(1, execArgs?.command ?? ''),
+    encodeString(2, execArgs?.workingDirectory ?? ''),
+    encodeString(3, CURSOR_NATIVE_TOOL_REJECTION),
+    encodeBool(4, false),
+  ])
+}
+
+function rejectedPath(execArgs) {
+  return Buffer.concat([
+    encodeString(1, execArgs?.path ?? ''),
+    encodeString(2, CURSOR_NATIVE_TOOL_REJECTION),
+  ])
+}
+
+/**
+ * Native Cursor tools (shell / read / write / ...) must be answered with a
+ * typed result so the model falls back to the MCP tools DSH advertised.
+ * Throwing an ExecClientControlMessage aborts the whole run instead.
+ * Returns undefined for requestContextArgs / mcpArgs / unknown cases.
+ */
+export function encodeNativeExecRejection(execMsg = {}) {
+  const { id, execId, execCase, execArgs } = execMsg
+  const common = { id, execId }
+  switch (execCase) {
+    case 'shellArgs':
+      return encodeExecClientResult({ ...common, resultField: 2, resultBytes: encodeMessage(4, rejectedShell(execArgs)) })
+    case 'shellStreamArgs':
+      return encodeExecClientResult({ ...common, resultField: 14, resultBytes: encodeMessage(5, rejectedShell(execArgs)) })
+    case 'backgroundShellSpawnArgs':
+      return encodeExecClientResult({ ...common, resultField: 16, resultBytes: encodeMessage(3, rejectedShell(execArgs)) })
+    case 'readArgs':
+      return encodeExecClientResult({ ...common, resultField: 7, resultBytes: encodeMessage(3, rejectedPath(execArgs)) })
+    case 'lsArgs':
+      return encodeExecClientResult({ ...common, resultField: 8, resultBytes: encodeMessage(3, rejectedPath(execArgs)) })
+    case 'writeArgs':
+      return encodeExecClientResult({ ...common, resultField: 3, resultBytes: encodeMessage(6, rejectedPath(execArgs)) })
+    case 'deleteArgs':
+      return encodeExecClientResult({ ...common, resultField: 4, resultBytes: encodeMessage(6, rejectedPath(execArgs)) })
+    case 'grepArgs':
+      return encodeExecClientResult({ ...common, resultField: 5, resultBytes: encodeMessage(2, encodeString(1, CURSOR_NATIVE_TOOL_REJECTION)) })
+    case 'fetchArgs':
+      return encodeExecClientResult({
+        ...common,
+        resultField: 20,
+        resultBytes: encodeMessage(2, Buffer.concat([
+          encodeString(1, execArgs?.url ?? ''),
+          encodeString(2, CURSOR_NATIVE_TOOL_REJECTION),
+        ])),
+      })
+    case 'diagnosticsArgs':
+      return encodeExecClientResult({ ...common, resultField: 9, resultBytes: Buffer.alloc(0) })
+    case 'listMcpResourcesExecArgs':
+      return encodeExecClientResult({ ...common, resultField: 17, resultBytes: encodeMessage(3, encodeString(1, CURSOR_NATIVE_TOOL_REJECTION)) })
+    case 'readMcpResourceExecArgs':
+      return encodeExecClientResult({
+        ...common,
+        resultField: 18,
+        resultBytes: encodeMessage(3, Buffer.concat([
+          encodeString(1, execArgs?.uri ?? ''),
+          encodeString(2, CURSOR_NATIVE_TOOL_REJECTION),
+        ])),
+      })
+    case 'writeShellStdinArgs':
+      return encodeExecClientResult({ ...common, resultField: 23, resultBytes: encodeMessage(2, encodeString(1, CURSOR_NATIVE_TOOL_REJECTION)) })
+    case 'recordScreenArgs':
+      return encodeExecClientResult({ ...common, resultField: 21, resultBytes: encodeMessage(4, encodeString(1, CURSOR_NATIVE_TOOL_REJECTION)) })
+    case 'computerUseArgs':
+      return encodeExecClientResult({
+        ...common,
+        resultField: 22,
+        resultBytes: encodeMessage(2, Buffer.concat([
+          encodeString(1, CURSOR_NATIVE_TOOL_REJECTION),
+          encodeUint32(2, execArgs?.actionCount ?? 0),
+          encodeUint32(3, 0),
+        ])),
+      })
+    default:
+      return undefined
+  }
 }
 
 export function encodeCancelAction() {
@@ -448,6 +618,58 @@ export function decodeAgentClientMessage(buf) {
   }
 }
 
+const EXEC_SERVER_CASES = Object.freeze([
+  [2, 'shellArgs'],
+  [3, 'writeArgs'],
+  [4, 'deleteArgs'],
+  [5, 'grepArgs'],
+  [7, 'readArgs'],
+  [8, 'lsArgs'],
+  [9, 'diagnosticsArgs'],
+  [10, 'requestContextArgs'],
+  [11, 'mcpArgs'],
+  [14, 'shellStreamArgs'],
+  [16, 'backgroundShellSpawnArgs'],
+  [17, 'listMcpResourcesExecArgs'],
+  [18, 'readMcpResourceExecArgs'],
+  [20, 'fetchArgs'],
+  [21, 'recordScreenArgs'],
+  [22, 'computerUseArgs'],
+  [23, 'writeShellStdinArgs'],
+])
+
+function decodeMcpArgs(mcp) {
+  const fields = decodeFields(mcp)
+  const args = {}
+  for (const entry of fieldBytes(fields, 2)) {
+    const pair = decodeFields(entry)
+    const key = fieldString(pair, 1)
+    if (key == null) continue
+    args[key] = decodeProtoValue(fieldBytes(pair, 2)[0] ?? Buffer.alloc(0))
+  }
+  const name = fieldString(fields, 5) ?? fieldString(fields, 1)
+  return {
+    name,
+    toolName: name,
+    toolCallId: fieldString(fields, 3),
+    providerIdentifier: fieldString(fields, 4),
+    arguments: args,
+  }
+}
+
+function decodeExecArgs(execCase, fields) {
+  const field = EXEC_SERVER_CASES.find(([number, name]) => name === execCase)?.[0]
+  const inner = decodeFields(field ? (fieldBytes(fields, field)[0] ?? Buffer.alloc(0)) : Buffer.alloc(0))
+  return {
+    path: fieldString(inner, 1),
+    command: fieldString(inner, 1),
+    workingDirectory: fieldString(inner, 2),
+    url: fieldString(inner, 1),
+    uri: fieldString(inner, 1),
+    actionCount: fieldBytes(inner, 2).length,
+  }
+}
+
 export function decodeAgentServerMessage(buf) {
   const root = decodeFields(buf)
   const interaction = fieldBytes(root, 1)[0]
@@ -485,15 +707,15 @@ export function decodeAgentServerMessage(buf) {
   const exec = fieldBytes(root, 2)[0]
   if (exec) {
     const fields = decodeFields(exec)
+    const execCase = EXEC_SERVER_CASES.find(([field]) => fieldBytes(fields, field).length > 0)?.[1]
     const mcp = fieldBytes(fields, 11)[0]
-    const args = decodeFields(mcp ?? Buffer.alloc(0))
     return {
       kind: 'exec',
       id: fieldVarint(fields, 1),
       execId: fieldString(fields, 15),
-      mcp: mcp
-        ? { name: fieldString(args, 5) ?? fieldString(args, 1), toolCallId: fieldString(args, 3) }
-        : undefined,
+      execCase,
+      execArgs: decodeExecArgs(execCase, fields),
+      mcp: mcp ? decodeMcpArgs(mcp) : undefined,
     }
   }
   const kv = fieldBytes(root, 4)[0]

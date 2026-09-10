@@ -53,7 +53,7 @@ export declare function parseGrokBilling(billing: any, { cliUser }?: {}): {
     rows: any[];
 };
 export declare function applyGrokCreditsSnapshot(parsed: any, snapshot: any): any;
-export declare function glmWindowKind(item: any): "cycle" | "weekly" | "mcp" | "primary";
+export declare function glmWindowKind(item: any): "primary" | "weekly" | "cycle" | "mcp";
 export declare function parseGlmQuota(payload: any): {
     rows: any[];
     planType?: undefined;

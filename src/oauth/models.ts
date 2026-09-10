@@ -9,9 +9,10 @@ import { GLM_MODELS } from './glm/index.js'
 import { KIRO_MODELS } from './kiro/index.js'
 import { ANTIGRAVITY_MODELS } from './antigravity/index.js'
 import { CURSOR_MODELS } from './cursor/index.js'
-import { OLLAMA_MODELS } from './ollama/index.js'
+import { OLLAMA_MODELS } from '../apikey/ollama/index.js'
 import { KIMI_MODELS } from './kimi/index.js'
 import { COPILOT_MODELS } from './copilot/index.js'
+import { OPENCODE_GO_ROUTES } from '../apikey/opencode-go/models.js'
 
 import { modelSupportsFastMode } from '../utils/fast-mode.js'
 import { readPrivateText, writePrivateText } from './store.js'
@@ -581,6 +582,39 @@ export async function peekPiAiProviders(settings) {
   } catch {
     return undefined
   }
+}
+
+export const OPENCODE_GO_API_KEY_ENV = 'OPENCODE_API_KEY'
+
+/**
+ * Ensure the three DSH routes OpenCode Go needs are configured so all 28
+ * models are served. DSH llm-pi-ai is one provider = one api, so the single
+ * Go subscription becomes three routes. Writes only routes that are absent,
+ * so a user-configured route (stored credential, explicit models) is never
+ * overwritten.
+ */
+export async function ensureOpencodeGoRoute(settings) {
+  if (settings == null || typeof settings.mutate !== 'function') return { status: 'unavailable' }
+  const providers = await peekPiAiProviders(settings)
+  if (providers === undefined) return { status: 'unreadable' }
+  const missing = OPENCODE_GO_ROUTES.filter((route) => providers[route.id] === undefined)
+  if (missing.length === 0) return { status: 'present' }
+  try {
+    await settings.mutate('llm-pi-ai', missing.map((route) => ({
+      op: 'set',
+      path: ['providers', route.id],
+      value: {
+        displayName: route.displayName,
+        apiKeyEnv: OPENCODE_GO_API_KEY_ENV,
+        api: route.api,
+        baseURL: route.baseURL,
+        models: route.models,
+      },
+    })))
+  } catch (error) {
+    return { status: 'error', error: error instanceof Error ? error.message : String(error) }
+  }
+  return { status: 'written', routes: missing.map((route) => route.id) }
 }
 
 async function assertPersistedProviders(settings, expectedIds) {

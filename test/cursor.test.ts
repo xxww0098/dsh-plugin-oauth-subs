@@ -1178,3 +1178,30 @@ test('consumeCursorFrames surfaces the Connect error detail, not the bare "Error
   assert.equal(messages[0].message, "Composer 2 is retired: We're upgrading you to Composer 2.5, our most powerful model yet.")
 })
 
+test('cursor hop replays a completed tool turn and continues with the tool output', () => {
+  resetCursorSystemPins()
+  const built = openaiToCursor({
+    model: 'composer-2',
+    session_id: 'sess-tool-resume',
+    messages: [
+      { role: 'system', content: 'You are DSH.' },
+      { role: 'user', content: 'add 2+3' },
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [{ id: 'call-1', type: 'function', function: { name: 'run_code', arguments: '{"code":"2+3"}' } }],
+      },
+      { role: 'tool', tool_call_id: 'call-1', content: '5' },
+    ],
+    tools: [{ type: 'function', function: { name: 'run_code', description: 'run', parameters: { type: 'object' } } }],
+  })
+  const decoded = decodeAgentClientMessage(built.requestBytes)
+  assert.equal(decoded.userText, '5')
+  assert.equal(built.userText, '5')
+  assert.equal(built.turns.length, 1)
+  assert.equal(built.turns[0].steps[0].kind, 'toolCall')
+  assert.equal(built.turns[0].steps[0].result.content, '5')
+  resetCursorSystemPins()
+})
+
+

@@ -99,12 +99,6 @@ src/
       proto.ts             minimal Connect/protobuf subset
       h2-session.ts        Node http2 in-process transport
       transport.ts         OpenAI HTTP/SSE output and Run event backpressure
-    ollama/                Ollama Cloud (ollama.com API key — not localhost:11434)
-      README.md            family design: login, chat, quota, cache (traceable)
-      index.ts             catalog, identity, API key session, Bearer headers
-      import.ts            OLLAMA_API_KEY env (not ollama signin)
-      catalog.ts           live GET /api/tags; static fallback
-      cache.ts             strip Codex/Grok fields; no sticky id (non-fix)
     kimi/                  Moonshot Kimi Code Plan (device-code)
       README.md            family design: login, chat, quota, cache (traceable)
       index.ts             catalog, identity, device endpoints, X-Msh headers
@@ -119,6 +113,19 @@ src/
       catalog.ts           live GET {api}/models; static fallback
       request.ts           Completions reasoning_effort; GPT omit max_tokens
       cache.ts             prefix-hash + X-Interaction-Id; extra system at messages suffix
+  apikey/                  API-key families (not OAuth, not the loopback hop)
+    opencode-go/           OpenCode Go (API key): cookie/workspace quota + 28-model catalog
+      README.md
+      index.ts             cookie / workspace parsing, public snapshot
+      store.ts             <dataDir>/opencode-go.json (0600); not auth.json
+      quota.ts             scrape /workspace/{wrk_}/go; /_server workspace lookup
+      models.ts            28 models -> opencode-go / -responses / -anthropic routes
+    ollama/                Ollama Cloud (ollama.com API key — not localhost:11434)
+      README.md            family design: login, chat, quota, cache (traceable)
+      index.ts             catalog, identity, API key session, Bearer headers
+      import.ts            OLLAMA_API_KEY env (not ollama signin)
+      catalog.ts           live GET /api/tags; static fallback
+      cache.ts             strip Codex/Grok fields; no sticky id (non-fix)
   ui/                      React Settings (classic-script factory)
     client.ts
   utils/                   shared, provider-agnostic
@@ -140,7 +147,7 @@ scripts/                   CLI (TypeScript)
 
 Rules:
 
-- Codex-only code → `src/oauth/codex/`. Grok-only code → `src/oauth/grok/`. GLM-only code → `src/oauth/glm/`. Kiro-only code → `src/oauth/kiro/`. Antigravity-only code → `src/oauth/antigravity/`. Cursor-only code → `src/oauth/cursor/`. Ollama-only code → `src/oauth/ollama/`. Kimi-only code → `src/oauth/kimi/`. Copilot-only code → `src/oauth/copilot/`.
+- Codex-only code → `src/oauth/codex/`. Grok-only code → `src/oauth/grok/`. GLM-only code → `src/oauth/glm/`. Kiro-only code → `src/oauth/kiro/`. Antigravity-only code → `src/oauth/antigravity/`. Cursor-only code → `src/oauth/cursor/`. Ollama-only code → `src/apikey/ollama/`. Kimi-only code → `src/oauth/kimi/`. Copilot-only code → `src/oauth/copilot/`. OpenCode Go (API key, quota only) → `src/apikey/opencode-go/` — never an OAuth tab and never the loopback hop.
 - **Each family has `README.md`.** Login, session, chat hop, models, quota, and cache for that vendor are written there so a later change can be traced to files and to `docs/error.md`. Cross-family rules stay in this file; do not let family READMEs contradict it. Reference repos for that hop live in `docs/oauth.md` and in the family README 归因.
 - **Cache is per family.** Each `src/oauth/<id>/cache.ts` owns that vendor's prompt-cache identity, headers, and prefix pin. Do not import Codex cache helpers from Grok / GLM / Kiro / Antigravity / Cursor / Ollama / Kimi / Copilot. Do not share a `codexCacheSessionId` in `src/utils/`. `proxy.ts` only dispatches.
 - Shared crypto / session scoring → `src/utils/`.
@@ -353,7 +360,7 @@ Copilot:   drop Codex/Grok cache fields; prefix-hash; extra system at messages s
   `prompt_tokens_details.cached_tokens`. `input_tokens` is the full
   prompt (cache is a partition), matching `@cursor/sdk` 1.0.27.
 
-**Ollama** (`src/oauth/ollama/cache.ts`)
+**Ollama** (`src/apikey/ollama/cache.ts`)
 
 - Ollama Cloud `/v1/chat/completions` has no documented conversation /
   shard / cache-read field. Do **not** invent `cached_tokens` or a sticky
@@ -468,6 +475,31 @@ invariant list. When the two disagree, fix the README.
 `baseURL` must match how that SDK posts. Anthropic SDK posts
 `{baseURL}/v1/messages`, so GLM is `${origin}/glm` (not `${origin}/glm/v1`).
 `/glm/v1/v1/messages` is leftover-settings safety only.
+
+### Model entries — 基本要求
+
+Every model row a family ships (static catalog, live discovery, or a route
+the plugin writes into `llm-pi-ai`) must carry the real values. These are
+not optional:
+
+- **`name` ↔ `id`** — the display name names the model the id calls. No
+  stale generator suffix (`(New)`, `(2x usage)`), and not the bare id.
+- **`contextWindow` / `maxTokens`** — the real vendor numbers. Do not
+  fall back to a family guess or a default when the vendor documents one.
+- **`input`** — only `text` / `image` (the DSH modality union). Claim
+  image only when the vendor serves it; never claim `audio` / `video` /
+  `pdf`.
+- **`reasoningEfforts`** — `off`…`max` keys with the vendor wire as the
+  value. A reasoning model with no selectable ladder still must not drift
+  into a non-reasoning default: prefer the installed pi-ai catalog
+  ladder; when the vendor documents none, set `false` (the vendor default
+  thinking still applies) rather than inventing a level.
+
+Trace every value to a named source (vendor docs, models.dev, the
+installed pi-ai catalog, a pinned reverse) and record that source in the
+family `README.md`. When the plugin inherits an installed catalog route,
+omitting `reasoningEfforts` keeps the catalog ladder — do not override it
+with a guess.
 
 ### `reasoningEfforts` keys
 

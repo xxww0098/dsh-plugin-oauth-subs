@@ -42,6 +42,15 @@ DSH POST /cursor/v1/chat/completions
 
 非流 Completions：Run 本身是流；hop **收集整段再回一条 JSON**。不是 Codex 那种 SSE-only 拒非流。
 
+Run 握手必须按类型回帧，不能一律当原生工具拒绝：
+
+- `ExecServerMessage.request_context_args` → `RequestContextResult.success`（带 DSH 的 `McpToolDefinition`，即 `requestContextArgs.tools`）。回 `ExecClientThrow` 会让上游直接判 `Failed to get request context`，任何模型都跑不起来。
+- `kvServerMessage`：`getBlobArgs` 回 `getBlobResult`，`setBlobArgs` 回 `setBlobResult`（两者是不同的 oneof field）。
+- 原生 Cursor 工具（`shell_args` / `read_args` / `ls_args` / `write_args` / …）回**类型化 rejection**（`Tool not available in this environment. Use the MCP tools provided instead.`），模型据此回退到 DSH 的 MCP 工具；不要用 throw，否则整轮失败。
+- `mcp_args` → 把真实参数（`google.protobuf.Value` map）转成 OpenAI `tool_calls`，然后结束本轮 Run 交给 DSH 执行。
+
+工具结果续跑：Cursor 没有无状态的 tool-result action。下一轮把**完成轮**（user + MCP 调用 + result）写进 `conversationState`（`parseTurns` 只在还有未答复 toolCall 时才算 in-flight），并把工具输出作为**当前 user 消息**（`openaiToCursor` 的 `continuationText`）。只重发原 user 文本会让模型重复调用同一个工具。
+
 HTTP/2 请求取消 / unary 超时必须销毁该请求独占的连接，`close()` 的优雅关闭不会终止活动流；已结算后不再消费消息或写 KV 回复。预取消信号不建立连接。`onEvent` 的异步消费完成前暂停接收，SSE 背压沿调用链传回 Run。EOF 的 Connect 残帧必须报错；已输出后的异常发 OpenAI error SSE，不混入回答文字或追加 DONE。见[故障记录](../../../docs/error.md)。
 
 ## 登录
@@ -177,6 +186,8 @@ POST /aiserver.v1.AuthService/GetEmail                    {}
 ## 不要
 
 - 从 Codex / Grok / GLM / Kiro / Antigravity 抄 cache helper
+- 对 `requestContextArgs` / KV set / 原生工具统一回 `ExecClientThrow`（任一都会让整轮 Run 失败）
+- 工具结果只重发原 user 文本、不把完成轮写进 `conversationState`（模型会重复调用同一工具）
 - 用 Responses 或 Anthropic 当 DSH `api`
 - 插件加载时静默收割 IDE / Keychain 覆盖已有 PKCE
 - 打印或提交 token

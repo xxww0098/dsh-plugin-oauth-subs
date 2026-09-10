@@ -113,6 +113,55 @@ test('dsh-grok fallback does not share a pin across keyless requests', () => {
   resetGrokSystemPins()
 })
 
+test('parks only a prepended snapshot, not the whole leading block', () => {
+  resetGrokSystemPins()
+  const base = 'BASE SYSTEM PROMPT\n\nSTABLE TAIL'
+  normalizeGrokResponsesBody({
+    model: 'grok-4.6',
+    prompt_cache_key: 'sess-prepend',
+    input: [
+      { role: 'developer', content: `SNAP-1\n\n${base}` },
+      { role: 'user', content: 'hi' },
+    ],
+  })
+  const out = normalizeGrokResponsesBody({
+    model: 'grok-4.6',
+    prompt_cache_key: 'sess-prepend',
+    input: [
+      { role: 'developer', content: `SNAP-2\n\n${base}` },
+      { role: 'user', content: 'hi' },
+      { role: 'assistant', content: 'ok' },
+    ],
+  })
+  assert.equal(out.input[0].content, `SNAP-1\n\n${base}`)
+  assert.deepEqual(out.input.at(-1), { role: 'developer', content: [{ type: 'input_text', text: 'SNAP-2' }] })
+  resetGrokSystemPins()
+})
+
+test('parks only the changed line of an in-place edit', () => {
+  resetGrokSystemPins()
+  normalizeGrokResponsesBody({
+    model: 'grok-4.6',
+    prompt_cache_key: 'sess-inplace',
+    input: [
+      { role: 'developer', content: 'BASE\n\nPlan: A\n\nTAIL' },
+      { role: 'user', content: 'hi' },
+    ],
+  })
+  const out = normalizeGrokResponsesBody({
+    model: 'grok-4.6',
+    prompt_cache_key: 'sess-inplace',
+    input: [
+      { role: 'developer', content: 'BASE\n\nPlan: B\n\nTAIL' },
+      { role: 'user', content: 'hi' },
+      { role: 'assistant', content: 'ok' },
+    ],
+  })
+  assert.equal(out.input[0].content, 'BASE\n\nPlan: A\n\nTAIL')
+  assert.deepEqual(out.input.at(-1), { role: 'developer', content: [{ type: 'input_text', text: 'Plan: B' }] })
+  resetGrokSystemPins()
+})
+
 test('leaves non-array input alone', () => {
   const payload = { model: 'grok-4.6', session_id: 'sess-grok', input: 'just text' }
   assert.deepEqual(normalizeGrokResponsesBody(payload), payload)

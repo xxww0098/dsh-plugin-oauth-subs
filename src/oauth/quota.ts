@@ -73,7 +73,7 @@ import {
   OLLAMA_USAGE_URL,
   ollamaUpstreamHeaders,
   parseOllamaMe,
-} from './ollama/index.js'
+} from '../apikey/ollama/index.js'
 import { KIMI_ME_URL, KIMI_USAGE_URL, kimiUpstreamHeaders, parseKimiUserInfo } from './kimi/index.js'
 import { COPILOT_QUOTA_URL, copilotIdentityHeaders, isGithubUserToken, parseCopilotUser } from './copilot/index.js'
 

@@ -2,6 +2,24 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-10：Cursor Run 把 requestContext / KV set / MCP 调用一律当拒绝，模型跑不通
+
+**现象**：Cursor 任一模型一调用即 500 `{"error":"dsh owns tool execution"}`；工具轮次也拿不到结果。
+**根因**：Run 握手的 `ExecServerMessage.request_context_args` 被统一回 `ExecClientThrow`，上游判 `Failed to get request context`；`KvClientMessage` 对 `setBlobArgs` 也回 `getBlobResult`；原生 read/shell 与 MCP 调用同样先 throw，MCP 参数被丢。
+**修复**：`requestContextArgs` 回 `RequestContextResult.success`（带 DSH 工具定义）；KV 按 get/set 回对应 result；原生 Cursor 工具回类型化 rejection 让模型回退 MCP；MCP 调用带真实参数交给 DSH，结束后以工具结果续跑（`parseTurns` 完成轮 + 工具输出作当前动作）。
+
+## 2026-09-10：OpenCode Go 以 API key 模块加入（cookie + 工作区读额度）
+
+**现象**：需要 OpenCode Go 页签显示剩余额度，但 Go 不属于 OAuth 订阅；对话在 DSH 配 `OPENCODE_API_KEY` 即可，不应再包一层回环网关。
+**根因**：Go 是 API key 制（Responses 直连 `opencode.ai/zen/go/v1`）。额度只在 Web 侧 cookie + 工作区可见，官方未给 Bearer 用量接口。
+**修复**：新增 `src/apikey/opencode-go/`（`store.ts` 存 `<dataDir>/opencode-go.json` 的 cookie + workspace，`quota.ts` 刮 `/workspace/{wrk_}/go`）；`sync()` 用 `ensureOpencodeGoRoute` 在缺失时补 3 条路由（`opencode-go` / `-responses` / `-anthropic`，`models.ts` 钉 28 个模型的 name/id/api/context/input/思考档）；已存在不覆盖；`RETIRED_FAMILY_IDS` 仍 unset `oauth-opencode`，无 `proxy.ts` hop。
+
+## 2026-09-10：Grok leading 文本改写后整块重挂，未变前缀不缓存
+
+**现象**：`grok-4.6` 长会话每步约 10k token 命中不到，加权命中卡在 ~90%，热身前段 44–68%；分析器把前段标成 `prefix_break`（`affinity-miss` 0）。
+**根因**：`pinGrokSystemPrefix` 只在「新文本 = 旧文本 + 后缀」时挂增量；前插快照 / 中段改写等任何非后缀变化都把**整段** leading blob 当 extra 重挂到 input 后缀。钉住前缀虽 byte-stable，但重挂的整段每步都变，未变部分也进不了缓存（gap ≈ leading 块大小）。
+**修复**：`changedRegion` 取最长公共前缀 + 最长公共后缀（不重叠），再外扩到整行边界，只把变化区域挂后缀；钉住前缀保持 byte-stable。`test/grok-request.test.ts` 覆盖前插快照与中段改写。
+
 ## 2026-09-10：关于页检查失败 GitHub releases 403
 
 **现象**：About 当前版本正常，最新版本 `-`，红字 `检查失败 · GitHub releases 403`；DSH 卡 GitHub Tag 也是 `-`。

@@ -21,6 +21,12 @@ export declare function decodeFields(buf: any): any[];
 export declare function fieldBytes(fields: any, number: any): any;
 export declare function fieldString(fields: any, number: any): any;
 export declare function fieldVarint(fields: any, number: any): any;
+/**
+ * google.protobuf.Value → JSON. `decodeFields` stops at wire type 1, which
+ * is exactly how the number branch is framed, so this walks tags directly.
+ * Unknown / empty input yields undefined rather than a fabricated value.
+ */
+export declare function decodeProtoValue(buffer: any): any;
 /** google.protobuf.Value — enough JSON for MCP schemas / tool args. */
 export declare function encodeProtoValue(value: any): any;
 export declare function encodeJsonValueBytes(value: any): any;
@@ -40,7 +46,17 @@ export declare function encodeRequestedModel({ modelId, maxMode, parameters }: {
     maxMode?: boolean;
     parameters?: any[];
 }): Buffer<ArrayBuffer>;
+export declare function encodeMcpToolDefinition(tool: any): Buffer<ArrayBuffer>;
 export declare function encodeMcpTools(tools: any): Buffer<ArrayBuffer>;
+/**
+ * RequestContext.tools is a repeated McpToolDefinition (field 7); the Run
+ * request carries the same definitions under McpTools field 1. Cursor's
+ * run handshake aborts with "Failed to get request context" unless the
+ * reply is a present RequestContextSuccess.
+ */
+export declare function encodeRequestContextResult({ id, execId, tools }?: {
+    tools?: any[];
+}): Buffer<ArrayBuffer>;
 export declare function encodeConversationState({ rootPromptBlobs, turnBlobs, mode, clientName, }: {
     rootPromptBlobs?: any[];
     turnBlobs?: any[];
@@ -68,14 +84,28 @@ export declare function encodeAgentRunRequest({ conversationState, userMessage, 
     mcpTools: any;
 }): Buffer<ArrayBuffer>;
 export declare function encodeAgentClientMessage(runRequest: any): Buffer<ArrayBuffer>;
-export declare function encodeKvClientMessage({ id, blobData }: {
-    id: any;
-    blobData: any;
+export declare function encodeKvClientMessage({ id, blobData, set }?: {
+    set?: boolean;
 }): Buffer<ArrayBuffer>;
 export declare function encodeExecThrow({ id, error }: {
     id: any;
     error?: string;
 }): Buffer<ArrayBuffer>;
+/** AgentClientMessage.exec_client_message (field 2) with a oneof result. */
+export declare function encodeExecClientResult({ id, execId, resultField, resultBytes }: {
+    id: any;
+    execId: any;
+    resultField: any;
+    resultBytes: any;
+}): Buffer<ArrayBuffer>;
+export declare const CURSOR_NATIVE_TOOL_REJECTION = "Tool not available in this environment. Use the MCP tools provided instead.";
+/**
+ * Native Cursor tools (shell / read / write / ...) must be answered with a
+ * typed result so the model falls back to the MCP tools DSH advertised.
+ * Throwing an ExecClientControlMessage aborts the whole run instead.
+ * Returns undefined for requestContextArgs / mcpArgs / unknown cases.
+ */
+export declare function encodeNativeExecRejection(execMsg?: {}): Buffer<ArrayBuffer>;
 export declare function encodeCancelAction(): Buffer<ArrayBuffer>;
 /**
  * agent.v1.TurnEndedUpdate (@cursor/sdk 1.0.27):
@@ -132,6 +162,8 @@ export declare function decodeAgentServerMessage(buf: any): {
     turnEnded: boolean;
     id?: undefined;
     execId?: undefined;
+    execCase?: undefined;
+    execArgs?: undefined;
     mcp?: undefined;
     blobId?: undefined;
     blobData?: undefined;
@@ -140,9 +172,21 @@ export declare function decodeAgentServerMessage(buf: any): {
     kind: string;
     id: any;
     execId: any;
+    execCase: string | number;
+    execArgs: {
+        path: any;
+        command: any;
+        workingDirectory: any;
+        url: any;
+        uri: any;
+        actionCount: any;
+    };
     mcp: {
         name: any;
+        toolName: any;
         toolCallId: any;
+        providerIdentifier: any;
+        arguments: {};
     };
     blobId?: undefined;
     blobData?: undefined;
@@ -154,11 +198,15 @@ export declare function decodeAgentServerMessage(buf: any): {
     blobData: any;
     set: boolean;
     execId?: undefined;
+    execCase?: undefined;
+    execArgs?: undefined;
     mcp?: undefined;
 } | {
     kind: string;
     id: any;
     execId?: undefined;
+    execCase?: undefined;
+    execArgs?: undefined;
     mcp?: undefined;
     blobId?: undefined;
     blobData?: undefined;
@@ -167,6 +215,8 @@ export declare function decodeAgentServerMessage(buf: any): {
     kind: string;
     id?: undefined;
     execId?: undefined;
+    execCase?: undefined;
+    execArgs?: undefined;
     mcp?: undefined;
     blobId?: undefined;
     blobData?: undefined;

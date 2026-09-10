@@ -20,6 +20,8 @@ import {
   encodeExecThrow,
   encodeGetUsableModelsRequest,
   encodeKvClientMessage,
+  encodeNativeExecRejection,
+  encodeRequestContextResult,
   decodeAvailableModelsResponse,
   decodeGetUsableModelsResponse,
   frameConnect,
@@ -124,8 +126,10 @@ export async function fetchCursorAvailableModels(session, { connectFn, signal, t
 }
 
 /**
- * Drive AgentService/Run. Answers KV get/set from the local blob store.
- * Native Cursor tools are thrown so DSH Completions can own MCP tools.
+ * Drive AgentService/Run. Answers the run handshake (request context), the
+ * blob KV get/set, and per-case exec messages so a model turn can complete.
+ * Native Cursor tools are rejected with typed results so the model falls back
+ * to the MCP tools; MCP calls are handed to DSH, which owns execution.
  */
 export async function runCursorAgent(session, built, {
   signal,
@@ -175,22 +179,45 @@ export async function runCursorAgent(session, built, {
         const key = hexOf(msg.blobId)
         if (msg.set && msg.blobData && key) blobStore.set(key, Buffer.from(msg.blobData))
         const data = key ? blobStore.get(key) : undefined
-        send(encodeKvClientMessage({ id: msg.id ?? 0, blobData: data }))
+        send(encodeKvClientMessage({ id: msg.id ?? 0, blobData: data, set: msg.set === true }))
         return
       }
       if (msg.kind === 'exec') {
-        send(encodeExecThrow({ id: msg.id, error: 'dsh owns tool execution' }))
-        if (msg.mcp?.name) {
-          const tool = { id: msg.mcp.toolCallId || `call_${events.length + 1}`, name: msg.mcp.name }
+        // Cursor's run handshake always asks for request context. Throwing
+        // here (or returning no result) fails the whole Run with
+        // "Failed to get request context", so answer with the MCP tools DSH
+        // advertised.
+        if (msg.execCase === 'requestContextArgs') {
+          send(encodeRequestContextResult({ id: msg.id, execId: msg.execId, tools: built.tools }))
+          return
+        }
+        if (msg.mcp) {
+          // DSH owns tool execution: surface the call and end this Run so the
+          // client runs the tool and replays the result on the next request.
+          const tool = {
+            id: msg.mcp.toolCallId || `call_${events.length + 1}`,
+            name: msg.mcp.toolName || msg.mcp.name,
+            arguments: msg.mcp.arguments ?? {},
+          }
           collected.toolCalls.push({
             id: tool.id,
             type: 'function',
-            function: { name: tool.name, arguments: '{}' },
+            function: { name: tool.name, arguments: JSON.stringify(tool.arguments) },
           })
           const event = { kind: 'interaction', toolCall: tool }
           events.push(event)
           await onEvent?.(event)
+          finish()
+          return
         }
+        // Native Cursor tools are answered with a typed rejection so the model
+        // falls back to the MCP tools instead of aborting the run.
+        const rejection = encodeNativeExecRejection(msg)
+        if (rejection) {
+          send(rejection)
+          return
+        }
+        send(encodeExecThrow({ id: msg.id, error: 'dsh owns tool execution' }))
         return
       }
       if (msg.kind === 'query') {
@@ -208,15 +235,12 @@ export async function runCursorAgent(session, built, {
           if (Number.isFinite(msg.usage.completionTokens)) collected.usage.completionTokens = msg.usage.completionTokens
           if (Number.isFinite(msg.usage.cachedTokens)) collected.usage.cachedTokens = msg.usage.cachedTokens
         }
-        if (msg.toolCall) {
-          collected.toolCalls.push({
-            id: msg.toolCall.id,
-            type: 'function',
-            function: { name: msg.toolCall.name, arguments: '{}' },
-          })
-        }
-        events.push(msg)
-        await onEvent?.(msg)
+        // tool_call_started is informational; the authoritative MCP call (with
+        // real arguments) arrives as execServerMessage.mcpArgs. Emitting both
+        // would duplicate the OpenAI tool_call, and this update carries no args.
+        const event = msg.toolCall ? { ...msg, toolCall: undefined } : msg
+        events.push(event)
+        await onEvent?.(event)
         if (msg.turnEnded) {
           try { stream.end() } catch { /* */ }
           finish()

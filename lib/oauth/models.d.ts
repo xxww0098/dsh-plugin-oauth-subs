@@ -133,6 +133,27 @@ export declare class ModelSwitch {
 export declare function filterProviders(providers: any, selected: any): any;
 /** `undefined` when the host has no readable settings.get; `{}` when the section is empty. */
 export declare function peekPiAiProviders(settings: any): Promise<any>;
+export declare const OPENCODE_GO_API_KEY_ENV = "OPENCODE_API_KEY";
+/**
+ * Ensure the three DSH routes OpenCode Go needs are configured so all 28
+ * models are served. DSH llm-pi-ai is one provider = one api, so the single
+ * Go subscription becomes three routes. Writes only routes that are absent,
+ * so a user-configured route (stored credential, explicit models) is never
+ * overwritten.
+ */
+export declare function ensureOpencodeGoRoute(settings: any): Promise<{
+    status: string;
+    error?: undefined;
+    routes?: undefined;
+} | {
+    status: string;
+    error: string;
+    routes?: undefined;
+} | {
+    status: string;
+    routes: string[];
+    error?: undefined;
+}>;
 export declare function syncHarnessModels({ settings, prefix, origin, loggedIn, selected, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, glmModels }: {
     settings: any;
     prefix: any;

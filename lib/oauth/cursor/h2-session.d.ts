@@ -19,8 +19,10 @@ export declare function cursorUnaryRpc({ session, url, path, body, connectFn, si
 export declare function fetchCursorUsableModels(session: any, { connectFn, signal, timeoutMs }?: {}): Promise<any[]>;
 export declare function fetchCursorAvailableModels(session: any, { connectFn, signal, timeoutMs }?: {}): Promise<any>;
 /**
- * Drive AgentService/Run. Answers KV get/set from the local blob store.
- * Native Cursor tools are thrown so DSH Completions can own MCP tools.
+ * Drive AgentService/Run. Answers the run handshake (request context), the
+ * blob KV get/set, and per-case exec messages so a model turn can complete.
+ * Native Cursor tools are rejected with typed results so the model falls back
+ * to the MCP tools; MCP calls are handed to DSH, which owns execution.
  */
 export declare function runCursorAgent(session: any, built: any, { signal, connectFn, url, onEvent, }?: {
     connectFn?: typeof http2.connect;

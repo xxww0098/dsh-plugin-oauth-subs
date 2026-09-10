@@ -35,7 +35,7 @@ export { GLM_CLIENT_ID, GLM_CODING_URL, GLM_AUTHORIZE_URL, GLM_APP_VERSION, GLM_
 export { KIRO_PORTAL_URL, KIRO_MODELS, kiroUsageHeaders, kiroSession, } from './oauth/kiro/index.js';
 export { ANTIGRAVITY_CLIENT_ID, ANTIGRAVITY_API_URL, ANTIGRAVITY_STREAM_URL, antigravityRequestUserAgent, antigravityChatHeaders, } from './oauth/antigravity/index.js';
 export { CURSOR_CLIENT_VERSION, CURSOR_MODELS, cursorChatHeaders, cursorSession, } from './oauth/cursor/index.js';
-export { OLLAMA_MODELS, OLLAMA_CHAT_URL, ollamaSession, ollamaUpstreamHeaders, } from './oauth/ollama/index.js';
+export { OLLAMA_MODELS, OLLAMA_CHAT_URL, ollamaSession, ollamaUpstreamHeaders, } from './apikey/ollama/index.js';
 export { KIMI_CLIENT_ID, KIMI_MODELS, KIMI_CHAT_URL, kimiSession, kimiUpstreamHeaders, } from './oauth/kimi/index.js';
 export { COPILOT_CLIENT_ID, COPILOT_MODELS, copilotChatUrl, copilotSession, copilotUpstreamHeaders, } from './oauth/copilot/index.js';
 export { OAUTH_CREDENTIAL_REF, ModelSwitch } from './oauth/models.js';

@@ -5,7 +5,20 @@ import { test } from 'node:test'
 import { setImmediate as nextTurn } from 'node:timers/promises'
 import { cursorUnaryRpc, runCursorAgent } from '../lib/oauth/cursor/h2-session.js'
 import { createProxy } from '../lib/oauth/proxy.js'
-import { encodeMessage, encodeString, frameConnect } from '../lib/oauth/cursor/proto.js'
+import {
+  decodeAgentServerMessage,
+  decodeFields,
+  encodeBytes,
+  encodeMessage,
+  encodeProtoValue,
+  encodeString,
+  encodeUint32,
+  fieldBytes,
+  fieldString,
+  fieldVarint,
+  frameConnect,
+  splitConnectFrames,
+} from '../lib/oauth/cursor/proto.js'
 
 const session = { accessToken: 'offline-test-token' }
 const built = { requestBytes: Buffer.alloc(0) }
@@ -251,3 +264,97 @@ test('Cursor unary timeout closes a peer that never ends its response', async ()
     assert.equal(peer.destroyed, true)
   })
 })
+
+function clientFrameReader(peer) {
+  const frames = []
+  const waiters = []
+  let rest = Buffer.alloc(0)
+  peer.on('data', (chunk) => {
+    rest = Buffer.concat([rest, chunk])
+    const parsed = splitConnectFrames(rest)
+    rest = parsed.rest
+    for (const frame of parsed.frames) frames.push(decodeFields(frame.payload))
+    for (const wake of waiters.splice(0)) wake()
+  })
+  return async (predicate) => {
+    const deadline = Date.now() + 2000
+    for (;;) {
+      const index = frames.findIndex(predicate)
+      if (index >= 0) return frames.splice(index, 1)[0]
+      if (Date.now() > deadline) throw new Error('timed out waiting for an H2 client frame')
+      await new Promise((resolve) => waiters.push(resolve))
+    }
+  }
+}
+
+test('Cursor Run answers requestContext and KV, then hands MCP calls to DSH', async () => {
+  await withH2Peer(async ({ server, url, connectFn }) => {
+    const accepted = once(server, 'stream', { signal: AbortSignal.timeout(2000) })
+    const run = runCursorAgent(session, { requestBytes: Buffer.alloc(0), tools: [] }, { url, connectFn })
+    const [peer] = await accepted
+    peer.on('error', () => {})
+    peer.respond({ ':status': 200 })
+    const next = clientFrameReader(peer)
+
+    // requestContextArgs must be answered with requestContextResult, not a throw.
+    peer.write(frameConnect(encodeMessage(2, encodeMessage(10, Buffer.alloc(0)))))
+    const contextReply = decodeFields(fieldBytes(await next((fields) => fieldBytes(fields, 2).length > 0), 2)[0])
+    assert.ok(fieldBytes(contextReply, 10).length > 0, 'expected requestContextResult')
+
+    // setBlobArgs must be answered with setBlobResult, not a getBlobResult.
+    const blobId = Buffer.from('blob-id-1')
+    peer.write(frameConnect(encodeMessage(4, Buffer.concat([
+      encodeUint32(1, 3),
+      encodeMessage(3, Buffer.concat([encodeBytes(1, blobId), encodeBytes(2, Buffer.from('payload'))])),
+    ]))))
+    const setReply = decodeFields(fieldBytes(await next((fields) => fieldBytes(fields, 3).length > 0), 3)[0])
+    assert.equal(fieldVarint(setReply, 1), 3)
+    assert.ok(fieldBytes(setReply, 3).length > 0, 'expected setBlobResult')
+
+    // getBlobArgs returns the stored bytes.
+    peer.write(frameConnect(encodeMessage(4, Buffer.concat([
+      encodeUint32(1, 4),
+      encodeMessage(2, encodeBytes(1, blobId)),
+    ]))))
+    const getReply = decodeFields(fieldBytes(await next((fields) => fieldBytes(fields, 3).length > 0), 3)[0])
+    assert.equal(fieldVarint(getReply, 1), 4)
+    const getResult = decodeFields(fieldBytes(getReply, 2)[0])
+    assert.equal(fieldBytes(getResult, 1)[0].toString('utf8'), 'payload')
+
+    // An MCP exec is surfaced as an OpenAI tool call and ends the run.
+    peer.write(frameConnect(encodeMessage(2, encodeMessage(11, Buffer.concat([
+      encodeString(1, 'run_code'),
+      encodeMessage(2, Buffer.concat([encodeString(1, 'code'), encodeBytes(2, encodeProtoValue('2 + 3'))])),
+      encodeString(3, 'call-1'),
+      encodeString(5, 'run_code'),
+    ])))))
+    const result = await run
+    assert.equal(result.collected.toolCalls.length, 1)
+    assert.equal(result.collected.toolCalls[0].function.name, 'run_code')
+    assert.equal(result.collected.toolCalls[0].function.arguments, '{"code":"2 + 3"}')
+  })
+})
+
+test('Cursor server messages expose MCP args and native exec cases', () => {
+  const mcp = encodeMessage(2, encodeMessage(11, Buffer.concat([
+    encodeString(1, 'run_code'),
+    encodeMessage(2, Buffer.concat([encodeString(1, 'code'), encodeBytes(2, encodeProtoValue('2 + 3'))])),
+    encodeString(3, 'call-9'),
+    encodeString(5, 'run_code'),
+  ])))
+  const msg = decodeAgentServerMessage(mcp)
+  assert.equal(msg.kind, 'exec')
+  assert.equal(msg.execCase, 'mcpArgs')
+  assert.equal(msg.mcp.toolCallId, 'call-9')
+  assert.deepEqual(msg.mcp.arguments, { code: '2 + 3' })
+
+  const shell = encodeMessage(2, encodeMessage(2, Buffer.concat([
+    encodeString(1, 'echo hi'),
+    encodeString(2, '/tmp'),
+  ])))
+  const shellMsg = decodeAgentServerMessage(shell)
+  assert.equal(shellMsg.execCase, 'shellArgs')
+  assert.equal(shellMsg.execArgs.command, 'echo hi')
+  assert.equal(shellMsg.execArgs.workingDirectory, '/tmp')
+})
+

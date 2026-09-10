@@ -79,8 +79,10 @@ function parseTurns(messages) {
   const systemParts = []
   const turns = []
   let current
+  let lastRole
   for (const msg of messages ?? []) {
     const role = msg?.role
+    lastRole = role
     if (role === 'system' || role === 'developer') {
       const text = textOf(msg.content)
       if (text) systemParts.push(text)
@@ -125,16 +127,32 @@ function parseTurns(messages) {
   }
   let userText = ''
   let inFlight
+  let continuation = false
+  let toolResults = []
   if (current) {
     const last = current.steps.at(-1)
-    if (current.steps.length === 0 || last?.kind === 'toolCall') {
+    const unresolved = current.steps.some((step) => step.kind === 'toolCall' && !step.result)
+    // A turn is in flight only while a tool call is still unanswered or the
+    // user has not been answered at all. Once every tool call has a result,
+    // the turn is history and the results drive a new (resume) action.
+    if (current.steps.length === 0 || (last?.kind === 'toolCall' && unresolved)) {
       userText = current.userText
       inFlight = current
     } else {
       turns.push(current)
+      if (lastRole === 'tool') {
+        toolResults = current.steps
+          .filter((step) => step.kind === 'toolCall' && step.result)
+          .map((step) => ({
+            toolCallId: step.toolCallId,
+            content: step.result.content,
+            isError: step.result.isError === true,
+          }))
+        continuation = toolResults.length > 0
+      }
     }
   }
-  return { systemPrompt: systemParts.join('\n'), turns, userText, inFlight }
+  return { systemPrompt: systemParts.join('\n'), turns, userText, inFlight, continuation, toolResults }
 }
 
 function vendorEffort(value) {
@@ -204,10 +222,22 @@ export function openaiToCursor(payload = {}, { conversationId } = {}) {
     ? payload.model.trim()
     : 'composer-2'
   const modelId = cursorWireModelId(pickerModel)
+  // Cursor has no stateless "tool result" action. The completed turn (with
+  // the MCP result) goes into conversationState, and the results ride the
+  // next user message so the model continues instead of re-calling the tool.
+  const continuationText = parsed.continuation
+    ? parsed.toolResults
+      .map((result) => {
+        const body = typeof result.content === 'string' ? result.content : ''
+        if (result.isError) return `Tool error: ${body || 'unknown error'}`
+        return body || '(no output)'
+      })
+      .join('\n\n')
+    : ''
   const userText = parsed.userText
     || (parsed.inFlight && parsed.inFlight.steps.length ? '' : parsed.turns.at(-1)?.userText)
     || ''
-  const currentText = userText || (parsed.inFlight ? parsed.inFlight.userText : '')
+  const currentText = continuationText || userText || (parsed.inFlight ? parsed.inFlight.userText : '')
   const userMessageId = cursorStableId(
     resolvedId,
     'user',
@@ -245,8 +275,11 @@ export function openaiToCursor(payload = {}, { conversationId } = {}) {
     systemPrompt,
     pinnedSystem: pinned,
     extraSystem: extra,
-    userText: userText || parsed.inFlight?.userText || '',
-    tools: tools.map((tool) => ({ name: tool.name, description: tool.description })),
+    userText: currentText,
+    // Keep the encoded schema: requestContextResult re-advertises these to
+    // Cursor's run handshake (McpToolDefinition), so name+description alone
+    // would advertise empty schemas.
+    tools,
     turns: parsed.turns,
     requestBytes,
     blobStore,

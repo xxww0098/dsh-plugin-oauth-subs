@@ -1,6 +1,6 @@
 # Ollama Cloud
 
-本文件是 `src/oauth/ollama/` 的设计源。改登录、目录、对话或缓存先改这里再改代码。
+本文件是 `src/apikey/ollama/` 的设计源。改登录、目录、对话或缓存先改这里再改代码。
 跨家族硬约定在仓库根 [`AGENTS.md`](../../../AGENTS.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)；对照仓库在 [`docs/oauth.md`](../../../docs/oauth.md)。
 
 Ollama **Cloud** 订阅（[ollama.com](https://ollama.com)）。**不是**本机 `127.0.0.1:11434` daemon，也不是 `ollama launch dsh`。那个本地宿主已经在 DSH 里，这个 tab 不包一层 localhost。
