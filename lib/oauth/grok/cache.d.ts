@@ -19,13 +19,15 @@ export declare const GROK_STABLE_SESSION = "dsh-grok";
 export declare function grokCacheSessionId(key: any): string;
 export declare function resetGrokSystemPins(): void;
 /**
- * Pin the first leading system/developer blob per conversation. Extra /
- * changed DSH snapshots are `extra` so request.ts can park them after
- * the conversation, not at the front.
+ * Pin the first leading system/developer blob per conversation. Later text
+ * that DSH rewrites is `extra` so request.ts can park it after the
+ * conversation, not at the front. Only the changed region is parked: a
+ * prepended snapshot or an in-place edit must not re-park the whole blob,
+ * which would leave its untouched front permanently uncached.
  */
 export declare function pinGrokSystemPrefix(conversationId: any, systemText: any): {
     pinned: any;
-    extra: string;
+    extra: any;
 };
 export declare function grokConversationId(payload?: {}): string;
 /**

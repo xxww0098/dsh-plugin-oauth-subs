@@ -2,6 +2,12 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-10：Grok leading 文本改写后整块重挂，未变前缀不缓存
+
+**现象**：`grok-4.6` 长会话每步约 10k token 命中不到，加权命中卡在 ~90%，热身前段 44–68%；分析器把前段标成 `prefix_break`（`affinity-miss` 0）。
+**根因**：`pinGrokSystemPrefix` 只在「新文本 = 旧文本 + 后缀」时挂增量；前插快照 / 中段改写等任何非后缀变化都把**整段** leading blob 当 extra 重挂到 input 后缀。钉住前缀虽 byte-stable，但重挂的整段每步都变，未变部分也进不了缓存（gap ≈ leading 块大小）。
+**修复**：`changedRegion` 取最长公共前缀 + 最长公共后缀（不重叠），再外扩到整行边界，只把变化区域挂后缀；钉住前缀保持 byte-stable。`test/grok-request.test.ts` 覆盖前插快照与中段改写。
+
 ## 2026-09-10：关于页检查失败 GitHub releases 403
 
 **现象**：About 当前版本正常，最新版本 `-`，红字 `检查失败 · GitHub releases 403`；DSH 卡 GitHub Tag 也是 `-`。

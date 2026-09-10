@@ -35,9 +35,11 @@ export function resetGrokSystemPins() {
 }
 
 /**
- * Pin the first leading system/developer blob per conversation. Extra /
- * changed DSH snapshots are `extra` so request.ts can park them after
- * the conversation, not at the front.
+ * Pin the first leading system/developer blob per conversation. Later text
+ * that DSH rewrites is `extra` so request.ts can park it after the
+ * conversation, not at the front. Only the changed region is parked: a
+ * prepended snapshot or an in-place edit must not re-park the whole blob,
+ * which would leave its untouched front permanently uncached.
  */
 export function pinGrokSystemPrefix(conversationId, systemText) {
   const text = typeof systemText === 'string' ? systemText : ''
@@ -55,10 +57,30 @@ export function pinGrokSystemPrefix(conversationId, systemText) {
     return { pinned: text, extra: '' }
   }
   if (existing === text || existing.startsWith(text)) return { pinned: existing, extra: '' }
-  const extra = text.startsWith(existing)
-    ? text.slice(existing.length).replace(/^\n+/, '').trim()
-    : text
-  return { pinned: existing, extra }
+  if (text.startsWith(existing)) {
+    return { pinned: existing, extra: text.slice(existing.length).replace(/^\n+/, '').trim() }
+  }
+  return { pinned: existing, extra: changedRegion(existing, text) }
+}
+
+/** The smallest whole-line slice of `text` that differs from `existing`:
+ * strip the longest common prefix and suffix (which never overlap), then
+ * widen the change outward to the enclosing line boundaries so the parked
+ * text reads as complete lines. Appending keeps the old tail-only park; a
+ * prepended snapshot or an in-place edit parks just the changed region
+ * instead of the whole blob, keeping its untouched front cacheable. */
+function changedRegion(existing, text) {
+  const max = Math.min(existing.length, text.length)
+  let prefix = 0
+  while (prefix < max && existing.charCodeAt(prefix) === text.charCodeAt(prefix)) prefix += 1
+  let suffix = 0
+  while (suffix < max - prefix
+    && existing.charCodeAt(existing.length - 1 - suffix) === text.charCodeAt(text.length - 1 - suffix)) suffix += 1
+  const lineStart = text.lastIndexOf('\n', prefix - 1)
+  const start = lineStart < 0 ? 0 : lineStart + 1
+  const lineEnd = text.indexOf('\n', text.length - suffix)
+  const end = lineEnd < 0 ? text.length : lineEnd
+  return text.slice(start, end).replace(/^\n+/, '').replace(/\n+$/, '').trim()
 }
 
 export function grokConversationId(payload = {}) {

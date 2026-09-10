@@ -63,7 +63,7 @@ DSH  →  本机 Responses 代理  →  POST https://api.x.ai/v1/responses
 | 步骤 | 函数 | 做什么 |
 |---|---|---|
 | 1 | `grokConversationId` | 清洗 DSH `prompt_cache_key` / `session_id`；都空则 `dsh-grok` |
-| 2 | `pinGrokSystemPrefix` | 每个 conv id 钉住第一次的 leading system/developer |
+| 2 | `pinGrokSystemPrefix` | 每个 conv id 钉住第一次的 leading system/developer；后续改写只取**变化区域**（最长公共前后缀夹出、外扩到整行）当 extra，禁止整块重挂 |
 | 3 | `normalizeGrokResponsesBody` | 钉住的前缀放 `input` 最前（`role: system`）；DSH 多出来的快照挂 **input 后缀** developer。不抬成顶层 `instructions`（grok-build 发 `instructions: null`） |
 | 4 | `applyGrokCache` | body `prompt_cache_key` = conv id；删 `session_id` / `prompt_cache_retention` |
 | 5 | `grokAffinityHeaders` | `x-grok-conv-id` = `x-grok-session-id` = conv id；每请求一个 `x-grok-req-id`；`x-grok-model-override`；重试 `x-grok-transient-retry` |
