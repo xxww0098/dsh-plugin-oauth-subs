@@ -10,6 +10,7 @@ OpenCode Go 是 **API key 范围**，不是 OAuth 家族。
 - 对话 / 部署：`opencode-go.json` 是**多账号 vault**（每个账号 `apiKey` + `cookieHeader` + `workspaceId`）；活动账号的 key 镜像进宿主凭据 `OPENCODE_API_KEY`。DSH 内置 pi-ai `opencode-go` provider 自带 27 个官方模型（3 种协议），插件只补内置目录缺的 `deepseek-flash`（见下），直连 `https://opencode.ai/zen/go`，不走回环网关。
 - Settings 用通用 `ProviderCard` / `AccountCard`：一账号一卡、卡片内额度条、点卡切换、`退出` 删号；主按钮打开居中 Dialog（`CenterDialog`），在窗内粘贴 key / cookie / workspace 后 `goSave`。
 - 账号 id 取工作区 `wrk_…`；没有工作区时取 key/cookie 的 `go_<12hex>` 哈希（同 key 再粘不会多一张卡）。
+- 卡片标题优先显示登录邮箱：dashboard `GET /workspace/{wrk_}/go` 的 RSC payload 里有 `userEmail["wrk_…"]`，刷新额度时刮下来存进 vault（`email`），下次 snapshot 起用；没有 cookie / 刮不到时退回工作区 id，再退回 key 尾巴。**API key 本身拿不到邮箱**（`GET /zen/go/v1/usage` 只返回用量，无身份接口）。
 - Settings > 模型 只列插件自写的补充路由 `opencode-go-flash`（`deepseek-flash` 一条）；DSH 内置 `opencode-go` 的 27 个模型归 DSH 模型设置页。`OPENCODE_API_KEY` 未注入时模型照列但**不勾选**，两条路由都 unset（DSH 模型列表里也不出现）。
 
 ## 文件
@@ -18,7 +19,7 @@ OpenCode Go 是 **API key 范围**，不是 OAuth 家族。
 |---|---|
 | [`index.ts`](index.ts) | cookie / workspace 解析、账号 id / key 遮罩、公开 snapshot（不回传 key/cookie） |
 | [`store.ts`](store.ts) | `<dataDir>/opencode-go.json` 0600 多账号 vault（旧单账号文件自动迁移）。不进 `auth.json` |
-| [`quota.ts`](quota.ts) | cookie + workspace 刮 `/workspace/{id}/go`；缺 workspace 时 `GET /_server?id=` 工作区列表 |
+| [`quota.ts`](quota.ts) | cookie + workspace 刮 `/workspace/{id}/go`（额度 + `userEmail["wrk_…"]` 登录邮箱）；缺 workspace 时 `GET /_server?id=` 工作区列表 |
 | [`models.ts`](models.ts) | 内置目录缺的 `deepseek-flash`：name / id / api / context / maxTokens / input / reasoningEfforts；补充路由定义 |
 
 调度：Settings 左侧家族胶囊（`.osubs-tabs`），排在 Copilot 之后换行；**不是**右侧 util，也**不**另开 API-key 胶囊。新增 / 更新账号走 RPC `goSave`（`{ id?, apiKey?, cookie?, workspace? }`），字段清除走 `goClear`（`{ id?, field }`）；切换 / 删号 / 额度刷新走通用 `switch` / `logout` / `quota`（`provider: 'opencode-go'`），controller 内部分派到本目录。**没有** `proxy.ts` hop，**没有** `cache.ts`。

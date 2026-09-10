@@ -23,6 +23,7 @@ export declare function publicOpencodeGoAccount(id: any, entry: any, quota: any,
     id: any;
     active: boolean;
     account: string;
+    email: string;
     workspaceId: string;
     cookieSet: boolean;
     apiKeySet: boolean;
@@ -35,6 +36,7 @@ export declare function publicOpencodeGo(vault: any, quotas: any): {
         id: any;
         active: boolean;
         account: string;
+        email: string;
         workspaceId: string;
         cookieSet: boolean;
         apiKeySet: boolean;

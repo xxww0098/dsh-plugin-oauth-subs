@@ -75,11 +75,16 @@ export function opencodeGoKeyHint(apiKey) {
 }
 
 export function publicOpencodeGoAccount(id, entry, quota, active) {
+  const workspaceId = String(entry?.workspaceId ?? '').trim()
+  const email = String(entry?.email ?? '').trim()
   return {
     id,
     active: Boolean(active),
-    account: String(entry?.workspaceId ?? '').trim(),
-    workspaceId: String(entry?.workspaceId ?? '').trim(),
+    // Human title first: the dashboard email when the cookie scraped one,
+    // else the workspace id (or the controller's key hint).
+    account: email || workspaceId,
+    email,
+    workspaceId,
     cookieSet: Boolean(entry?.cookieHeader),
     apiKeySet: Boolean(entry?.apiKey),
     quota: quota ?? { status: 'idle' },

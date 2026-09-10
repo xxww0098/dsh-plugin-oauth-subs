@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { mkdtemp } from 'node:fs/promises'
+import { mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parseOpencodeGoCookie, normalizeOpencodeGoWorkspaceId, opencodeGoAccountId, opencodeGoKeyHint } from '../lib/apikey/opencode-go/index.js'
-import { parseOpencodeGoUsage } from '../lib/apikey/opencode-go/quota.js'
+import { parseOpencodeGoEmail, parseOpencodeGoUsage } from '../lib/apikey/opencode-go/quota.js'
 import { OpencodeGoStore, opencodeGoFilePath } from '../lib/apikey/opencode-go/store.js'
 import { writePrivateText } from '../lib/utils/private-text.js'
 
@@ -47,6 +47,15 @@ test('parseOpencodeGoUsage reads JSON usage and serialized dashboard JS', () => 
   assert.equal(js.rows[1].remainingPercent, 98)
 
   assert.throws(() => parseOpencodeGoUsage('nothing', now), /Missing usage fields/)
+})
+
+test('parseOpencodeGoEmail reads the dashboard hydration payload', () => {
+  const html = '<script>_$HY.r["userEmail[\\"wrk_abc123\\"]"]=$R[0]=($R[2]=r=>(r.p=s))(($R[1]={p:0,s:0,f:0}));'
+    + '$R[28]($R[1],"dev@example.com");</script>'
+  assert.equal(parseOpencodeGoEmail(html, 'wrk_abc123'), 'dev@example.com')
+  // RSC call shape drift: fall back to the first email after the key.
+  assert.equal(parseOpencodeGoEmail('userEmail[\\"wrk_abc123\\"] then dev@example.com', 'wrk_abc123'), 'dev@example.com')
+  assert.equal(parseOpencodeGoEmail('<p>no identity</p>', 'wrk_abc123'), undefined)
 })
 
 test('opencodeGoAccountId prefers workspace and key hints stay masked', () => {
@@ -96,6 +105,26 @@ test('OpencodeGoStore keeps many accounts, activates on save, and never exposes 
   const row = afterClear.accounts.find((entry) => entry.id === 'wrk_def456')
   assert.equal(row.cookieSet, false)
   assert.equal(row.quota.status, 'idle')
+})
+
+test('OpencodeGoStore caches the dashboard email as the account title', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'opencode-go-'))
+  const path = opencodeGoFilePath(join(dir, 'auth.json'))
+  const page = 'rollingUsage:$R[35]={status:"ok",resetInSec:30,usagePercent:10},'
+    + 'weeklyUsage:$R[36]={status:"ok",resetInSec:60,usagePercent:5},'
+    + 'userEmail[\\"wrk_abc123\\"]=$R[0]=$R[2](($R[1]={p:0,s:0,f:0}));$R[28]($R[1],"dev@example.com");'
+  const store = new OpencodeGoStore({
+    path,
+    fetchFn: async () => new Response(page, { status: 200, headers: { 'content-type': 'text/javascript' } }),
+  })
+  const saved = await store.save({ apiKey: 'sk-one', cookie: 'Fe26.2one', workspace: 'wrk_abc123' })
+  const snap = await store.snapshot()
+  const row = snap.accounts.find((entry) => entry.id === saved.id)
+  assert.equal(row.email, 'dev@example.com')
+  assert.equal(row.account, 'dev@example.com')
+  assert.equal(row.workspaceId, 'wrk_abc123')
+  const vault = JSON.parse(await readFile(path, 'utf8'))
+  assert.equal(vault.accounts[saved.id].email, 'dev@example.com')
 })
 
 test('OpencodeGoStore dedupes a re-pasted key instead of adding a card', async () => {

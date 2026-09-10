@@ -25,7 +25,7 @@ export function opencodeGoFilePath(authPath) {
 }
 
 function emptyAccount() {
-  return { apiKey: '', cookieHeader: '', workspaceId: '' }
+  return { apiKey: '', cookieHeader: '', workspaceId: '', email: '' }
 }
 
 function emptyVault() {
@@ -40,6 +40,7 @@ function normalizeAccount(raw) {
       ? parseOpencodeGoCookie(raw.cookieHeader) ?? ''
       : '',
     workspaceId: normalizeOpencodeGoWorkspaceId(raw.workspaceId) ?? '',
+    email: typeof raw.email === 'string' ? raw.email.trim() : '',
   }
 }
 
@@ -293,10 +294,16 @@ export class OpencodeGoStore {
   async #loadQuota(id, entry, previous) {
     try {
       const parsed = await fetchOpencodeGoQuota(entry, { fetchFn: this.fetchFn })
+      let changed = false
       if (parsed.workspaceId && parsed.workspaceId !== entry.workspaceId) {
         entry.workspaceId = parsed.workspaceId
-        await this.#persist()
+        changed = true
       }
+      if (parsed.email && parsed.email !== entry.email) {
+        entry.email = parsed.email
+        changed = true
+      }
+      if (changed) await this.#persist()
       this.quotas.set(id, {
         status: 'ready',
         planType: parsed.planType,

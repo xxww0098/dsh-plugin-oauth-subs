@@ -34,6 +34,7 @@ export declare class OpencodeGoStore {
             id: any;
             active: boolean;
             account: string;
+            email: string;
             workspaceId: string;
             cookieSet: boolean;
             apiKeySet: boolean;
@@ -51,6 +52,7 @@ export declare class OpencodeGoStore {
             id: any;
             active: boolean;
             account: string;
+            email: string;
             workspaceId: string;
             cookieSet: boolean;
             apiKeySet: boolean;
@@ -69,6 +71,7 @@ export declare class OpencodeGoStore {
             id: any;
             active: boolean;
             account: string;
+            email: string;
             workspaceId: string;
             cookieSet: boolean;
             apiKeySet: boolean;
@@ -82,6 +85,7 @@ export declare class OpencodeGoStore {
             id: any;
             active: boolean;
             account: string;
+            email: string;
             workspaceId: string;
             cookieSet: boolean;
             apiKeySet: boolean;

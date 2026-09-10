@@ -17,6 +17,35 @@ export const OPENCODE_GO_PAGE_UA =
 
 const WORKSPACE_JS_RE = /id\s*:\s*"((?:wrk_)[^"]+)"/g
 const WORKSPACE_SCAN_RE = /wrk_[A-Za-z0-9]+/g
+const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/
+
+/**
+ * Signed-in email from the dashboard HTML. The page hydrates
+ * `userEmail["wrk_…"]` and resolves it in the RSC flight payload
+ * (`$R[m]($R[n],"email")`). The API key alone never exposes identity —
+ * `/zen/go/v1/usage` returns numbers only — so this is cookie-only.
+ */
+export function parseOpencodeGoEmail(text, workspaceId) {
+  const source = String(text ?? '')
+  const workspace = normalizeOpencodeGoWorkspaceId(workspaceId)
+  if (workspace) {
+    const marker = new RegExp(`userEmail[\\s\\S]{0,40}${workspace}`)
+    const hit = source.match(marker)
+    if (hit) {
+      const window = source.slice(hit.index, hit.index + 4000)
+      const state = window.match(/\$R\[(\d+)\]\s*=\s*\{p:0,s:0,f:0\}/)
+      if (state) {
+        const setter = new RegExp(`\\$R\\[\\d+\\]\\(\\$R\\[${state[1]}\\]\\s*,\\s*"([^"]+@[^"]+)"\\)`)
+        const resolved = window.match(setter)
+        if (resolved) return resolved[1]
+      }
+      const near = window.match(EMAIL_RE)
+      if (near) return near[0]
+    }
+  }
+  const any = source.match(EMAIL_RE)
+  return any ? any[0] : undefined
+}
 
 function clampPct(value) {
   const n = typeof value === 'number' ? value : Number(value)
@@ -218,7 +247,7 @@ export async function fetchOpencodeGoQuota(entry, options = {}) {
       },
     )
     const text = await readBody(response)
-    return { ...parseOpencodeGoUsage(text, now), workspaceId }
+    return { ...parseOpencodeGoUsage(text, now), workspaceId, email: parseOpencodeGoEmail(text, workspaceId) }
   } finally {
     clearTimeout(timer)
   }

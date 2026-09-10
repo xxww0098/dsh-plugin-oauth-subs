@@ -189,6 +189,24 @@ test('OpenCode Go switch mirrors the active account key and logout drops the las
   assert.equal(keys.has('OPENCODE_API_KEY'), false)
 })
 
+test('OpenCode Go card title uses the dashboard email the cookie scrapes', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const page = 'rollingUsage:$R[35]={status:"ok",resetInSec:30,usagePercent:10},'
+    + 'userEmail[\\"wrk_abc123\\"]=$R[0]=$R[2](($R[1]={p:0,s:0,f:0}));$R[28]($R[1],"dev@example.com");'
+  const controller = new AuthController({
+    authPath: join(dir, 'auth.json'),
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+    fetchFn: async () => new Response(page, { status: 200, headers: { 'content-type': 'text/javascript' } }),
+  })
+  const snap = await controller.saveOpencodeGo({ apiKey: 'sk-test', cookie: 'Fe26.2token', workspace: 'wrk_abc123' })
+  const row = snap.accounts.find((entry) => entry.active)
+  assert.equal(row.email, 'dev@example.com')
+  assert.equal(row.account, 'dev@example.com')
+  assert.equal(row.workspaceId, 'wrk_abc123')
+})
+
 test('OpenCode Go unlock needs a key; picker selection filters the supplemental route', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
   const keys = new Map([['OPENCODE_API_KEY', 'sk-test']])
