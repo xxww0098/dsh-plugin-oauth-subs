@@ -365,6 +365,8 @@ test('Settings Models keeps locked Copilot visible and jumps to the family tab',
   assert.match(family, /label: t\.login/)
   assert.match(family, /h\('div', \{ className: 'osubs-models'/)
   assert.equal(family.includes('style: { opacity: locked'), false)
+  assert.match(family, /const enabledCount = locked \? 0 : models\.filter\(\(model\) => model\.enabled\)\.length/)
+  assert.match(src, /checked: Boolean\(model\.enabled\) && !locked/)
   assert.match(src, /onOpenFamily: \(family\) => setTab\(String\(family\)\.startsWith\('opencode-go'\) \? 'apikey' : family\)/)
   assert.match(src, /hidden: tab !== id/)
 })

@@ -273,6 +273,28 @@ test('an empty reasoningEfforts dict is refused like DSH does', () => {
   }), /empty reasoningEfforts/)
 })
 
+test('ensureOpencodeGoRoute serves nothing without a key and takes its routes back', async () => {
+  const settings = createPiAiSettings()
+  assert.deepEqual(await ensureOpencodeGoRoute(settings, { apiKeySet: false }), { status: 'present' })
+  assert.deepEqual(settings.section.providers, {})
+
+  await ensureOpencodeGoRoute(settings)
+  assert.equal(settings.section.providers[OPENCODE_GO_BUILTIN_ROUTE_ID] !== undefined, true)
+  assert.equal(settings.section.providers[OPENCODE_GO_EXTRA_ROUTE.id] !== undefined, true)
+
+  const cleared = await ensureOpencodeGoRoute(settings, { apiKeySet: false })
+  assert.equal(cleared.status, 'written')
+  assert.deepEqual(cleared.routes.sort(), [OPENCODE_GO_BUILTIN_ROUTE_ID, OPENCODE_GO_EXTRA_ROUTE.id].sort())
+  assert.deepEqual(settings.section.providers, {})
+
+  // A user-shaped built-in profile is never taken back.
+  const mine = createPiAiSettings({
+    'opencode-go': { apiKeyEnv: OPENCODE_GO_API_KEY_ENV, models: [{ id: 'my-model' }] },
+  })
+  assert.deepEqual(await ensureOpencodeGoRoute(mine, { apiKeySet: false }), { status: 'present' })
+  assert.deepEqual(mine.section.providers['opencode-go'].models.map((model) => model.id), ['my-model'])
+})
+
 test('catalogProviders lists only the supplemental Go route; the picker locks it without a key', () => {
   const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
   const keys = catalogKeys(catalog)

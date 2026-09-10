@@ -749,8 +749,9 @@ Binding UI rules:
 - Icons are inline SVG (LobeHub mono paths / existing `IconClose` /
   `IconWarning`). Do not use emoji as UI marks.
 - Model picker: family name + `已开启 n / m`. **No 文本 / 图文 tags.**
-  Checkboxes and All/None stay **disabled until that family is signed
-  in** (OpenCode Go: until `OPENCODE_API_KEY` is set).
+  Checkboxes and All/None stay **disabled and unchecked until that family
+  is signed in** (OpenCode Go: until `OPENCODE_API_KEY` is set), and a
+  signed-out family is not written into `llm-pi-ai` at all.
 - A new family gets one primary CTA that opens the add-account dialog
   unless it truly has two official OAuth sites. Extra methods (GLM
   Z.ai / BigModel, Kiro Social / IdC / import, Grok device / PKCE,

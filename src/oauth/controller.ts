@@ -554,6 +554,7 @@ export class AuthController {
     })
     await this.#mirrorOpencodeGoKey(result.id)
     this.lastError.delete('opencode-go')
+    if (raw) this.onAuthChanged?.('opencode-go')
     return this.opencodeGoSnapshot()
   }
 
@@ -562,6 +563,7 @@ export class AuthController {
     await this.opencodeGo.switch(id)
     await this.#mirrorOpencodeGoKey(id)
     this.lastError.delete('opencode-go')
+    this.onAuthChanged?.('opencode-go')
     return this.opencodeGoSnapshot()
   }
 
@@ -570,6 +572,7 @@ export class AuthController {
     const result = await this.opencodeGo.remove(id)
     await this.#mirrorOpencodeGoKey(result.activeId)
     this.lastError.delete('opencode-go')
+    this.onAuthChanged?.('opencode-go')
     return this.opencodeGoSnapshot()
   }
 
@@ -579,6 +582,7 @@ export class AuthController {
     if (field === 'key') {
       const active = this.opencodeGo.activeId()
       await this.#mirrorOpencodeGoKey(this.opencodeGo.keyOf(active) ? active : undefined)
+      this.onAuthChanged?.('opencode-go')
     }
     return this.opencodeGoSnapshot()
   }
@@ -1754,6 +1758,7 @@ export class AuthController {
     }
     const opencodeGoRoute = await ensureOpencodeGoRoute(this.settings, {
       selected: this.models.selectedForSync(catalog),
+      apiKeySet: await this.#opencodeGoKeySet(),
     })
     const synced = await syncHarnessModels({
       settings: this.settings,

@@ -153,9 +153,12 @@ export declare const OPENCODE_GO_API_KEY_ENV = "OPENCODE_API_KEY";
  * `models` list would replace the whole catalog, so the missing
  * `deepseek-flash` lives on its own supplemental route that follows the
  * picker (`selected` undefined = all). An existing user-configured route is
- * never overwritten.
+ * never overwritten, and without `OPENCODE_API_KEY` nothing is served: the
+ * plugin's own routes are unset so DSH's model list stays clean.
  */
-export declare function ensureOpencodeGoRoute(settings: any, { selected }?: {}): Promise<{
+export declare function ensureOpencodeGoRoute(settings: any, { selected, apiKeySet }?: {
+    apiKeySet?: boolean;
+}): Promise<{
     status: string;
     error?: undefined;
     routes?: undefined;

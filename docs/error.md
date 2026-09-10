@@ -2,6 +2,12 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-11：未登录家族的模型被勾选，OpenCode Go 无 key 仍写进 DSH
+
+**现象**：Settings > 模型 里 Kimi / Copilot / OpenCode Go 未登录时勾选框仍打勾（灰的，`已开启 3 / 3`）；OpenCode Go 没有 `OPENCODE_API_KEY` 也把两条路由写进 `llm-pi-ai`，DSH 模型列表里出现不能用的模型。
+**根因**：`describeCatalog.enabled` 只是 ModelSwitch 的用户偏好，`ModelRow` 直接拿它当 `checked`；`ensureOpencodeGoRoute` 不看 key，缺失就补。
+**修复**：锁定的家族一律渲染未勾选、计数 `0 / m`；`sync()` 把 `#opencodeGoKeySet()` 传给 `ensureOpencodeGoRoute(apiKeySet)`，无 key 时插件自写的 `opencode-go` / `opencode-go-flash` 都 unset（用户自建路由不动）；`goSave` / `goClear` / `switch` / `logout` 后触发 sync。
+
 ## 2026-09-11：OpenCode Go 只能存一个账号，展示框架也不是通用账号卡
 
 **现象**：Settings > OpenCode Go 只能保存一个 key/cookie/workspace，再加会覆盖；没有其它 OAuth 家族那种账号卡，不能切号、也不能一账号一条额度。

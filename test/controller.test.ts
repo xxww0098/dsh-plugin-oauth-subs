@@ -225,6 +225,45 @@ test('OpenCode Go unlock needs a key; picker selection filters the supplemental 
   assert.deepEqual(store.section.providers[OPENCODE_GO_EXTRA_ROUTE.id].models.map((model) => model.id), ['deepseek-flash'])
 })
 
+test('OpenCode Go routes appear only while a key is stored', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const keys = new Map()
+  const credentials = {
+    async describe(ref) { return { configured: keys.has(ref), writable: true } },
+    async resolve(ref) { return keys.has(ref) ? { value: keys.get(ref), source: 'file' } : undefined },
+    async set(ref, value) { keys.set(ref, value) },
+    async unset(ref) { keys.delete(ref) },
+  }
+  const store = createPiAiSettings()
+  const controller = new AuthController({
+    authPath: join(dir, 'auth.json'),
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: store,
+    credentials,
+    models: new ModelSwitch(),
+    cursorAutoImport: false,
+    ollamaAutoImport: false,
+    kimiAutoImport: false,
+    copilotAutoImport: false,
+  })
+  await controller.sync()
+  assert.equal(store.section.providers[OPENCODE_GO_BUILTIN_ROUTE_ID], undefined)
+  assert.equal(store.section.providers[OPENCODE_GO_EXTRA_ROUTE.id], undefined)
+
+  const saved = await controller.saveOpencodeGo({ apiKey: 'sk-test' })
+  assert.equal(keys.get('OPENCODE_API_KEY'), 'sk-test')
+  await controller.sync()
+  assert.deepEqual(store.section.providers[OPENCODE_GO_BUILTIN_ROUTE_ID], { apiKeyEnv: 'OPENCODE_API_KEY' })
+  assert.deepEqual(store.section.providers[OPENCODE_GO_EXTRA_ROUTE.id].models.map((model) => model.id), ['deepseek-flash'])
+
+  await controller.clearOpencodeGo('key', saved.activeId)
+  assert.equal(keys.has('OPENCODE_API_KEY'), false)
+  await controller.sync()
+  assert.equal(store.section.providers[OPENCODE_GO_BUILTIN_ROUTE_ID], undefined)
+  assert.equal(store.section.providers[OPENCODE_GO_EXTRA_ROUTE.id], undefined)
+})
+
 test('sync after a stored session writes llm-pi-ai providers', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
   const authPath = join(dir, 'auth.json')

@@ -2390,7 +2390,7 @@ window.__ModuleLoader__.load({
       return h('label', { className: 'osubs-model' },
         h('input', {
           type: 'checkbox',
-          checked: Boolean(model.enabled),
+          checked: Boolean(model.enabled) && !locked,
           disabled: Boolean(locked),
           onChange: () => { if (!locked) onToggle(model.key, !model.enabled) },
         }),
@@ -2402,8 +2402,8 @@ window.__ModuleLoader__.load({
 
     function ModelFamily({ t, group, onToggle, onFamily, onOpenFamily }) {
       const models = Array.isArray(group.models) ? group.models : []
-      const enabledCount = models.filter((model) => model.enabled).length
       const locked = !group.loggedIn
+      const enabledCount = locked ? 0 : models.filter((model) => model.enabled).length
       return h('div', { className: 'osubs-family' },
         h('div', { className: 'osubs-family-head' },
           h('div', { className: 'osubs-family-meta' },
