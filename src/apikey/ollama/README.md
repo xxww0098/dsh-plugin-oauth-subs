@@ -76,11 +76,11 @@ POST https://ollama.com/api/show  { "model": "<id>" }
 Authorization: Bearer <key>
 ```
 
-`{ models: [{ name, model, … }] }` → picker 一行 / name。`OLLAMA_RETIRED_MODELS` 来自 Cloud retirements 表（含已过期的 2026-07-31 upcoming）。静态 `OLLAMA_MODELS` 是 2026-09-03 Cloud 快照 19 行，登录后仍被 live `/api/tags` 替换；失败或空列表回落这 19 行，不挡对话。不列本机-only 模型。
+`{ models: [{ name, model, … }] }` → picker 一行 / name。`OLLAMA_RETIRED_MODELS` 来自 Cloud retirements 表（含已过期的 2026-07-31 upcoming）。静态 `OLLAMA_MODELS` 是 Cloud 快照 20 行（2026-09-03 烘焙 19 行；2026-09-11 补 `deepseek-v4.1-flash`），登录后仍被 live `/api/tags` 替换；失败或空列表回落这 20 行，不挡对话。不列本机-only 模型。
 
 DSH `contextWindow` 是 Cloud `POST /api/show` 的 `model_info.<family>.context_length`（钉在静态快照上；登录后 live show 覆盖），不是猜的家族默认，也不是 `cmd/launch/models.go` extraCloudModelLimits。`/api/tags` 的 `details` 是空的；Cloud 忽略 `options.num_ctx`（[ollama#16598](https://github.com/ollama/ollama/issues/16598)；[docs/context-length](https://docs.ollama.com/context-length)）。
 
-DSH `input` 也来自同一份 show JSON：`capabilities` 含 `vision`（大小写不敏感）→ `['text','image']`，否则 `['text']`。`/api/tags` 没有 capabilities。名字 regex（`gemma|vision|vl`）只在 show 没有 `capabilities` 时兜底。不要发明 `audio`。2026-09-03 快照：`glm-5.3-flash` / `kimi-k3` / `qwen3.5:397b` / `mistral-large-3:675b` 等 8 行图文；`glm-5.3` / `gpt-oss:*` 等 11 行纯文本。
+DSH `input` 也来自同一份 show JSON：`capabilities` 含 `vision`（大小写不敏感）→ `['text','image']`，否则 `['text']`。`/api/tags` 没有 capabilities。名字 regex（`gemma|vision|vl`）只在 show 没有 `capabilities` 时兜底。不要发明 `audio`。2026-09-03 快照：`glm-5.3-flash` / `kimi-k3` / `qwen3.5:397b` / `mistral-large-3:675b` 等 8 行图文；`glm-5.3` / `gpt-oss:*` 等 11 行纯文本。2026-09-11 补的 `deepseek-v4.1-flash`（show `capabilities` 含 `vision`、`deepseek_v41.context_length` 1048576）是第 9 行图文。
 
 `/api/tags` 无 key 也 200（公共 Cloud 目录）。登录后仍带 Bearer，和文档一致。
 
@@ -138,6 +138,7 @@ DSH 每步前置的 runtime snapshot 因此无法在 Ollama Cloud 上做 prefix 
 - Auth：https://docs.ollama.com/api/authentication
 - Cloud：https://docs.ollama.com/cloud（`https://ollama.com/api/chat` + Bearer；`GET /api/tags`；retirements）
 - OpenAI compat（localhost only in that page）：https://docs.ollama.com/api/openai-compatibility
+- 模型行 `deepseek-v4.1-flash`：https://ollama.com/library/deepseek-v4.1-flash（2026-09-11 `POST /api/show` → `deepseek_v41.context_length` 1048576，`capabilities` 含 `vision`）
 - Cloud `/v1`：docs.ollama.com Factory 集成 `https://ollama.com/v1/` + `OLLAMA_API_KEY`；本仓库 2026-09-03 探活 401≠404
 
 总表见 [`docs/oauth.md`](../../../docs/oauth.md)。

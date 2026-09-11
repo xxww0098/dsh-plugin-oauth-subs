@@ -163,13 +163,15 @@ function ollamaModel(id, name, contextWindow, input = OLLAMA_TEXT_INPUT) {
 }
 
 /**
- * 19-row Cloud snapshot. Windows are 2026-09-03 POST /api/show
- * `model_info.*.context_length`. `input` is that day's `capabilities`
- * (`vision` → text+image). Live tags+show replace this after login.
+ * 20-row Cloud snapshot. Windows are POST /api/show
+ * `model_info.*.context_length` (19 rows 2026-09-03; `deepseek-v4.1-flash`
+ * 2026-09-11). `input` is that show's `capabilities` (`vision` →
+ * text+image). Live tags+show replace this after login.
  */
 export const OLLAMA_MODELS = Object.freeze([
   ollamaModel('deepseek-v4-flash:0731', 'DeepSeek V4 Flash', 1_048_576),
   ollamaModel('deepseek-v4-pro:0813', 'DeepSeek V4 Pro', 1_048_576),
+  ollamaModel('deepseek-v4.1-flash', 'DeepSeek V4.1 Flash', 1_048_576, OLLAMA_VISION_INPUT),
   ollamaModel('gemma4:31b', 'Gemma 4 31B', 262_144, OLLAMA_VISION_INPUT),
   ollamaModel('glm-5.1', 'GLM-5.1', 202_752),
   ollamaModel('glm-5.2', 'GLM-5.2', 1_048_576),

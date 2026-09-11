@@ -93,7 +93,7 @@ node --experimental-strip-types scripts/analyze-session.ts --fail-below 80 path/
 | Grok | 不行。2026-08-30：83.34 对 82.80 tok/s（0.994）。更早的 id 拒绝该字段 | — | 4.6：low / medium / high / xhigh（不选 = **high**）；4.5：无 xhigh |
 | GLM | — | — | 5.3 / Flash：low / high / **max**（默认 max；无 `medium`；`disabled` 会 400）。Turbo：开着，无深度。只有 Flash 是 GLM 图文行 |
 | Kiro | — | — | GPT-5.6：off / low / medium / high / xhigh / max（`off` → 线上 `none`）。Opus 5 / 4.8 / 4.7 和 Sonnet 5 另有 **xhigh**；4.6 家族到 max；Haiku / 开源权重：无。目录：[kiro.dev/docs/models](https://kiro.dev/docs/models/)（不含 Auto） |
-| Ollama Cloud | 不行 | 登录后 live `GET /api/tags`（静态 19 行 Cloud 快照作回落）。窗口来自 `POST /api/show` 的 `model_info.<family>.context_length`。无额度条 | off / low / medium / high / max（`off` → 线上 `none`） |
+| Ollama Cloud | 不行 | 登录后 live `GET /api/tags`（静态 20 行 Cloud 快照作回落）。窗口来自 `POST /api/show` 的 `model_info.<family>.context_length`。无额度条 | off / low / medium / high / max（`off` → 线上 `none`） |
 | Kimi | 不行 | 登录后 live `GET /coding/v1/models`（静态 `kimi-for-coding` / highspeed / `k3`，256k/32k）。前缀哈希缓存 | off / minimal / low / medium / high / xhigh / max → `thinking.effort` |
 | Copilot | 不行 | 登录后 live `GET {api}/models`（静态 GPT / Claude / Gemini / Grok 楼）。前缀哈希 + `X-Interaction-Id` | 目录声明才保留 `reasoning_effort` |
 

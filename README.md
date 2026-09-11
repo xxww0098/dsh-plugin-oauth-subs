@@ -93,7 +93,7 @@ Login and chat use official client identity; UA / fingerprint live in each `src/
 | Grok | No. 2026-08-30: 83.34 vs 82.80 tok/s (0.994). Older ids reject the field | — | 4.6: low / medium / high / xhigh (unset = **high**); 4.5: no xhigh |
 | GLM | — | — | 5.3 / Flash: low / high / **max** (default max; no `medium`; `disabled` 400s). Turbo: on, no depth. Flash is the only GLM image row |
 | Kiro | — | — | GPT-5.6: off / low / medium / high / xhigh / max (`off` → wire `none`). Opus 5 / 4.8 / 4.7 and Sonnet 5 add **xhigh**; 4.6 family to max; Haiku / OSS: none. Catalog: [kiro.dev/docs/models](https://kiro.dev/docs/models/) (no Auto) |
-| Ollama Cloud | No | Live `GET /api/tags` (static 19-row Cloud snapshot fallback). Context from `POST /api/show` `model_info.<family>.context_length`. No quota bars | off / low / medium / high / max (`off` → wire `none`) |
+| Ollama Cloud | No | Live `GET /api/tags` (static 20-row Cloud snapshot fallback). Context from `POST /api/show` `model_info.<family>.context_length`. No quota bars | off / low / medium / high / max (`off` → wire `none`) |
 | Kimi | No | Live `GET /coding/v1/models` (static `kimi-for-coding` / highspeed / `k3`, 256k/32k). Prefix-hash cache | off / minimal / low / medium / high / xhigh / max → `thinking.effort` |
 | Copilot | No | Live `GET {api}/models` (static GPT / Claude / Gemini / Grok floor). Prefix-hash + `X-Interaction-Id` | live `reasoning_effort` when the catalog advertises it |
 
