@@ -134,7 +134,7 @@ test('buildProviders only emits logged-in families with DSH api ids', () => {
   assert.equal(chat['oauth-ollama'].api, HARNESS_COMPLETIONS_API)
   assert.equal(chat['oauth-ollama'].baseURL, 'http://127.0.0.1:8318/ollama')
   assert.equal(chat['oauth-ollama'].baseURL.endsWith('/ollama/v1'), false)
-  assert.equal(chat['oauth-ollama'].models.length, 19)
+  assert.equal(chat['oauth-ollama'].models.length, 20)
   assert.equal(Object.hasOwn(chat['oauth-ollama'].models.find((model) => model.id === 'gpt-oss:120b').reasoningEfforts, 'none'), false)
   assert.equal(chat['oauth-ollama'].models.find((model) => model.id === 'gpt-oss:120b').reasoningEfforts.off, 'none')
   assert.equal(chat['oauth-ollama'].models.some((model) => model.id === 'kimi-k3'), true)
