@@ -2,6 +2,12 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-15：OpenCode Go 的内置 27 个模型被插件带进 DSH 模型列表
+
+**现象**：`OPENCODE_API_KEY` 一旦存在，DSH 模型列表就多出内置 `opencode-go` 的 27 个模型；插件 Settings > 模型 家族组只列 `deepseek-flash` 一条，用户没在 DSH 模型设置页开过它，删掉下次 sync 又回来。
+**根因**：llm-pi-ai 只注册 profile 点名的目录路由；`ensureOpencodeGoRoute` 有 key 就补写 `providers.opencode-go = { apiKeyEnv, x-opencode-session }`，等于替用户把内置目录整条激活（旧版裸 `{ apiKeyEnv }` 还会被升级成同一形状）。
+**修复**：sync 不再创建/刷新 `providers.opencode-go`，只写插件自有的 `opencode-go-flash`，并 unset 旧版本插件自己写的同形 profile（裸 `{ apiKeyEnv }` 等用户形状不动）；没有任何账号带 key 时清掉镜像的 `OPENCODE_API_KEY`，路由不再滞留。
+
 ## 2026-09-11：OpenCode Go 全家族 400 MissingSessionID
 
 **现象**：默认模型 `opencode-go-flash/deepseek-flash` 每轮报 `400 {"type":"MissingSessionID","message":"…missing x-opencode-session…"}`；实测内置 `glm-5.3` 直连同样 400，带上 `x-opencode-session` 才 200。

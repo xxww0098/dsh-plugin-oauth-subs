@@ -7,11 +7,11 @@ OpenCode Go 是 **API key 范围**，不是 OAuth 家族。
 
 - **不**进 `FAMILY_IDS`，**不**进 OAuth 页签，**不**走本机回环网关。
 - 退役的 `oauth-opencode`（Zen Free / Go Free hop）仍在 `RETIRED_FAMILY_IDS`，继续 unset。
-- 对话 / 部署：`opencode-go.json` 是**多账号 vault**（每个账号 `apiKey` + `cookieHeader` + `workspaceId`）；活动账号的 key 镜像进宿主凭据 `OPENCODE_API_KEY`。DSH 内置 pi-ai `opencode-go` provider 自带 27 个官方模型（3 种协议），插件只补内置目录缺的 `deepseek-flash`（见下），直连 `https://opencode.ai/zen/go`，不走回环网关。
+- 对话 / 部署：`opencode-go.json` 是**多账号 vault**（每个账号 `apiKey` + `cookieHeader` + `workspaceId`）；活动账号的 key 镜像进宿主凭据 `OPENCODE_API_KEY`，没有任何账号还带 key 时清掉该凭据（否则 DSH 路由会留在模型列表里）。DSH 内置 pi-ai `opencode-go` provider 自带 27 个官方模型（3 种协议），但 llm-pi-ai 只在 profile 点名它时才注册路由，所以插件**不写** `providers.opencode-go`：内置 27 个归 DSH 模型设置页，要用由用户自己开。插件只写内置目录缺的 `deepseek-flash` 补充路由（见下），直连 `https://opencode.ai/zen/go`，不走回环网关。
 - Settings 用通用 `ProviderCard` / `AccountCard`：一账号一卡、卡片内额度条、点卡切换、`退出` 删号；主按钮打开居中 Dialog（`CenterDialog`），在窗内粘贴 key / cookie / workspace 后 `goSave`。
 - 账号 id 取工作区 `wrk_…`；没有工作区时取 key/cookie 的 `go_<12hex>` 哈希（同 key 再粘不会多一张卡）。
 - 卡片标题优先显示登录邮箱：dashboard `GET /workspace/{wrk_}/go` 的 RSC payload 里有 `userEmail["wrk_…"]`，刷新额度时刮下来存进 vault（`email`），下次 snapshot 起用；没有 cookie / 刮不到时退回工作区 id，再退回 key 尾巴。**API key 本身拿不到邮箱**（`GET /zen/go/v1/usage` 只返回用量，无身份接口）。
-- Settings > 模型 只列插件自写的补充路由 `opencode-go-flash`（`deepseek-flash` 一条）；DSH 内置 `opencode-go` 的 27 个模型归 DSH 模型设置页。`OPENCODE_API_KEY` 未注入时模型照列但**不勾选**，两条路由都 unset（DSH 模型列表里也不出现）。
+- Settings > 模型 只列插件自写的补充路由 `opencode-go-flash`（`deepseek-flash` 一条）；DSH 内置 `opencode-go` 的 27 个模型归 DSH 模型设置页。`OPENCODE_API_KEY` 未注入时模型照列但**不勾选**，插件路由 unset（DSH 模型列表里也不出现）。
 
 ## 文件
 
@@ -32,24 +32,24 @@ OpenCode Go 是 **API key 范围**，不是 OAuth 家族。
 - 旧版单账号文件（`{ cookieHeader, workspaceId }`）自动迁移；旧版 key 还在 `OPENCODE_API_KEY` 时，首次 snapshot 用 `credentials.resolve` 回收进 vault（一次性，`resolve` 不可用则跳过）。
 - snapshot 每行只给 `apiKeySet` / `cookieSet` / 遮罩尾巴（`sk-…1234`），不回传 key 或 cookie 明文。
 
-路由：插件启动 / `sync()` 写两条（`ensureOpencodeGoRoute`）：
+路由：插件启动 / `sync()` 只写插件自有的补充路由（`ensureOpencodeGoRoute`）：
 
 ```text
-opencode-go         { apiKeyEnv: OPENCODE_API_KEY,
-                      headers: { x-opencode-session: dsh-opencode-go } }
-                    → 不带 models / api，DSH 复用内置 pi-ai catalog provider，
-                      27 个官方模型按各自协议分发
 opencode-go-flash   openai-completions  https://opencode.ai/zen/go/v1
-                    → 只有 deepseek-flash（内置目录唯一缺的官方模型），同一 header
+                    { apiKeyEnv: OPENCODE_API_KEY,
+                      headers: { x-opencode-session: dsh-opencode-go } }
+                    → 只有 deepseek-flash（内置目录唯一缺的官方模型）
 ```
+
+`providers.opencode-go`（DSH 内置 27 个模型）插件**不创建也不刷新**。llm-pi-ai 只注册 profile 点名的目录路由：早先版本替用户写 `{ apiKeyEnv, headers }`，结果 27 个模型莫名进了 DSH 模型列表。现在这条路由归 DSH 模型设置页；用户要就自己在那里开。旧版本插件自己写的同形 profile（apiKeyEnv + 家族 header，没有 `api` / `models`）在 sync 时被 unset 清掉；裸 `{ apiKeyEnv }`（DSH 模型页自己写的）和其它任何形状都当用户配置，不动。
 
 ### `x-opencode-session`
 
 Console Go 现在硬性要求这个头：缺了直接 400 `MissingSessionID`（`deepseek-flash` 和内置 `glm-5.3` 实测一样）。官方文档 https://opencode.ai/docs/go/#where-can-i-use-it 要求客户端「每个会话发一个稳定 session id」，并把 DeepSeek Harness 列进 "Known Problematic Clients"（会话信息只在部分 adapter 上到达）。
 
-DSH 会把每会话 `sessionId` 交给 pi-ai，但 pi-ai 0.85.1 的 openai-completions 从不写 `x-opencode-session`（`sessionAffinityFormat`/`sendSessionAffinityHeaders` 都不映射这个头），llm-pi-ai 又把 `sendSessionAffinityHeaders` 设为 withhold、profile 转不了会话 id。所以插件两条路由都带家族常量 `dsh-opencode-go`：单机一个路由 shard，满足硬性检查；**不是**每会话值。等 DSH/pi-ai 原生发送会话头后可删掉这个常量。
+DSH 会把每会话 `sessionId` 交给 pi-ai，但 pi-ai 0.85.1 的 openai-completions 从不写 `x-opencode-session`（`sessionAffinityFormat`/`sendSessionAffinityHeaders` 都不映射这个头），llm-pi-ai 又把 `sendSessionAffinityHeaders` 设为 withhold、profile 转不了会话 id。所以插件写出的 `opencode-go-flash` 带家族常量 `dsh-opencode-go`：单机一个路由 shard，满足硬性检查；**不是**每会话值。等 DSH/pi-ai 原生发送会话头后可删掉这个常量。（用户自己开的内置 `opencode-go` 路由插件不碰；缺这个头时 Console Go 会 400，属 DSH/pi-ai 侧问题。）
 
-`llm-pi-ai` 的 `models` 一旦非空就**替换**整条内置目录，追加不了，所以缺失模型只能单独开路由。第一条只在缺失时补，已有用户配置（含 DSH 模型设置页开的）不覆盖；第二条按 picker 选择过滤 `models`，全关则 unset，用户自建同名路由不覆盖。Settings > 模型 picker 只列 `opencode-go-flash` 这条家族组（内置 27 个归 DSH 模型设置页）。**没有 `OPENCODE_API_KEY` 时不显示为已开启：勾选框不勾、两条路由都 unset，DSH 的模型列表里也不出现**。用户只需在 DSH 凭据 / 环境里存 `OPENCODE_API_KEY`。
+`llm-pi-ai` 的 `models` 一旦非空就**替换**整条内置目录，追加不了，所以缺失模型只能单独开路由。这条按 picker 选择过滤 `models`，全关则 unset，用户自建同名路由不覆盖。Settings > 模型 picker 只列 `opencode-go-flash` 这条家族组（内置 27 个归 DSH 模型设置页）。**没有 `OPENCODE_API_KEY` 时不显示为已开启：勾选框不勾、插件路由 unset，DSH 的模型列表里也不出现插件写的东西**。用户只需在 DSH 凭据 / 环境里存 `OPENCODE_API_KEY`。
 
 ## 协议
 
@@ -106,6 +106,7 @@ cookie → GET https://opencode.ai/workspace/{wrk_}/go
 - snapshot 把 key / cookie 明文回给 Settings
 - 给每个账号再开一套 `opencode-go*` 路由或第四种 DSH `api`；聊天的 key 只有活动账号那一个
 - 把内置 27 个模型复制进插件路由（`models` 非空会替换 DSH 内置目录）；插件只补 `deepseek-flash`
+- 写 / 刷新 `providers.opencode-go`（等于替用户把内置 27 个模型注册进 DSH 模型列表；只有旧版本插件自己写的同形 profile 才 unset 清掉）
 - 把 `providers.opencode-go` 写成带 `api` / `models` 的形态（会丢 pi-ai catalog 的 per-model 协议 / compat / 思考档与 env auth）
 - 去掉 `x-opencode-session` 头（除非 DSH / pi-ai 已原生按会话发送；现在缺它 Console Go 直接 400）
 - 抄 Codex / Grok cache 头

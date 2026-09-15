@@ -503,13 +503,21 @@ export class AuthController {
     }
   }
 
+  /**
+   * Mirror a stored account's key into the host `OPENCODE_API_KEY` credential.
+   * A keyless account never clears a key another stored account still holds
+   * (a quota-only account must keep chat working); once no stored account has
+   * a key, the credential is removed so the next `sync()` can take the
+   * plugin's `opencode-go-flash` route back out of DSH.
+   */
   async #mirrorOpencodeGoKey(id) {
     const key = id ? this.opencodeGo?.keyOf(id) : undefined
     if (key) {
       if (typeof this.credentials?.set === 'function') await this.credentials.set(OPENCODE_GO_API_KEY_ENV, key)
       return
     }
-    if (!id && typeof this.credentials?.unset === 'function') await this.credentials.unset(OPENCODE_GO_API_KEY_ENV)
+    if (this.opencodeGo?.anyKey()) return
+    if (typeof this.credentials?.unset === 'function') await this.credentials.unset(OPENCODE_GO_API_KEY_ENV)
   }
 
   async opencodeGoSnapshot(options) {
@@ -579,9 +587,11 @@ export class AuthController {
   async clearOpencodeGo(field, id) {
     if (!this.opencodeGo) throw new Error('OpenCode Go store is unavailable')
     await this.opencodeGo.clear(id, field)
-    if (field === 'key') {
+    // Clearing the key (or the whole account) can remove the last stored key,
+    // which must drop the mirrored credential and re-sync the DSH routes.
+    if (field === undefined || field === 'key') {
       const active = this.opencodeGo.activeId()
-      await this.#mirrorOpencodeGoKey(this.opencodeGo.keyOf(active) ? active : undefined)
+      await this.#mirrorOpencodeGoKey(active)
       this.onAuthChanged?.('opencode-go')
     }
     return this.opencodeGoSnapshot()
