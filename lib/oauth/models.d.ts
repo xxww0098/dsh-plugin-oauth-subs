@@ -148,15 +148,19 @@ export declare const OPENCODE_GO_API_KEY_ENV = "OPENCODE_API_KEY";
  * catalog lacks.
  *
  * DSH's built-in `opencode-go` catalog provider carries the other 27 official
- * models. A profile naming no `api` and no `models` reuses that provider
- * (ambient auth + per-model protocol/compat/thinking ladder); a non-empty
- * `models` list would replace the whole catalog, so the missing
- * `deepseek-flash` lives on its own supplemental route that follows the
- * picker (`selected` undefined = all). Both routes carry the required
- * `x-opencode-session` header (see `opencodeGoSessionHeaders`). An existing
- * user-configured route is never overwritten, and without
- * `OPENCODE_API_KEY` nothing is served: the plugin's own routes are unset so
- * DSH's model list stays clean.
+ * models, but llm-pi-ai registers a catalog route only when a profile names
+ * it — so a plugin-written `providers.opencode-go` profile is what silently
+ * put all 27 models into DSH's model list. The plugin no longer creates or
+ * refreshes it: the user enables that route from DSH's own Models page if
+ * they want it. Only the exact profile older plugin versions auto-wrote
+ * (apiKeyEnv + session header, no api/models) is taken back so an upgrade
+ * stops showing it; every other shape is a user profile and is untouched.
+ *
+ * The plugin writes only the supplemental `opencode-go-flash` route: the one
+ * official model the installed catalog lacks, which follows the picker
+ * (`selected` undefined = all) and carries the required
+ * `x-opencode-session` header. Without `OPENCODE_API_KEY` nothing is served,
+ * so DSH's model list stays clean.
  */
 export declare function ensureOpencodeGoRoute(settings: any, { selected, apiKeySet }?: {
     apiKeySet?: boolean;

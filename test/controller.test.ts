@@ -189,6 +189,47 @@ test('OpenCode Go switch mirrors the active account key and logout drops the las
   assert.equal(keys.has('OPENCODE_API_KEY'), false)
 })
 
+test('OpenCode Go keeps OPENCODE_API_KEY only while some stored account holds a key', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const keys = new Map()
+  const credentials = {
+    async describe(ref) { return { configured: keys.has(ref), writable: true } },
+    async resolve(ref) { return keys.has(ref) ? { value: keys.get(ref), source: 'file' } : undefined },
+    async set(ref, value) { keys.set(ref, value) },
+    async unset(ref) { keys.delete(ref) },
+  }
+  const fetchFn = async () => new Response(
+    JSON.stringify({ usage: { rolling: { usagePercent: 10, resetInSec: 30 } } }),
+    { status: 200, headers: { 'content-type': 'text/javascript' } },
+  )
+  const controller = new AuthController({
+    authPath: join(dir, 'auth.json'),
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+    credentials,
+    fetchFn,
+  })
+  await controller.saveOpencodeGo({ apiKey: 'sk-one', cookie: 'Fe26.2one', workspace: 'wrk_one' })
+  await controller.saveOpencodeGo({ cookie: 'Fe26.2two', workspace: 'wrk_two' })
+  const roster = await controller.switchAccount('opencode-go', 'wrk_two')
+  assert.equal(roster.accounts['opencode-go'].activeId, 'wrk_two')
+  // A keyless quota-only account keeps the other stored account's key alive.
+  assert.equal(keys.get('OPENCODE_API_KEY'), 'sk-one')
+
+  // Removing the last keyed account drops the credential, so sync() takes the
+  // plugin route back out of DSH instead of leaving models with no key.
+  await controller.logout('opencode-go', 'wrk_one')
+  assert.equal(keys.has('OPENCODE_API_KEY'), false)
+
+  // Clearing a whole account (field undefined) mirrors the credential too.
+  await controller.saveOpencodeGo({ apiKey: 'sk-three', workspace: 'wrk_two' })
+  assert.equal(keys.get('OPENCODE_API_KEY'), 'sk-three')
+  const cleared = await controller.clearOpencodeGo(undefined, 'wrk_two')
+  assert.equal(keys.has('OPENCODE_API_KEY'), false)
+  assert.equal(cleared.accounts.length, 1)
+})
+
 test('OpenCode Go card title uses the dashboard email the cookie scrapes', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
   const page = 'rollingUsage:$R[35]={status:"ok",resetInSec:30,usagePercent:10},'
@@ -231,19 +272,14 @@ test('OpenCode Go unlock needs a key; picker selection filters the supplemental 
   const snap = await controller.snapshot()
   assert.equal(snap.catalog.find((row) => row.family === OPENCODE_GO_EXTRA_ROUTE.id).loggedIn, true)
   await controller.sync()
-  // Built-in catalog profile carries no models; the supplemental route adds the one.
-  assert.deepEqual(store.section.providers[OPENCODE_GO_BUILTIN_ROUTE_ID], {
-    apiKeyEnv: 'OPENCODE_API_KEY',
-    headers: { 'x-opencode-session': 'dsh-opencode-go' },
-  })
+  // The plugin only writes its supplemental route; DSH's built-in opencode-go
+  // catalog route is never registered by the plugin.
+  assert.equal(store.section.providers[OPENCODE_GO_BUILTIN_ROUTE_ID], undefined)
   assert.deepEqual(store.section.providers[OPENCODE_GO_EXTRA_ROUTE.id].models.map((model) => model.id), ['deepseek-flash'])
 
-  await controller.setModels({ key: `${OPENCODE_GO_EXTRA_ROUTE.id}/deepseek-flash`, on: false })
+  await controller.setModels({ key: OPENCODE_GO_EXTRA_ROUTE.id + '/deepseek-flash', on: false })
   assert.equal(store.section.providers[OPENCODE_GO_EXTRA_ROUTE.id], undefined)
-  assert.deepEqual(store.section.providers[OPENCODE_GO_BUILTIN_ROUTE_ID], {
-    apiKeyEnv: 'OPENCODE_API_KEY',
-    headers: { 'x-opencode-session': 'dsh-opencode-go' },
-  })
+  assert.equal(store.section.providers[OPENCODE_GO_BUILTIN_ROUTE_ID], undefined)
 
   await controller.setModels({ family: OPENCODE_GO_EXTRA_ROUTE.id, on: true })
   assert.deepEqual(store.section.providers[OPENCODE_GO_EXTRA_ROUTE.id].models.map((model) => model.id), ['deepseek-flash'])
@@ -258,7 +294,14 @@ test('OpenCode Go routes appear only while a key is stored', async () => {
     async set(ref, value) { keys.set(ref, value) },
     async unset(ref) { keys.delete(ref) },
   }
-  const store = createPiAiSettings()
+  // Start from the auto-written built-in profile of older plugin versions:
+  // it must be taken back, and a key must only ever add the supplemental route.
+  const store = createPiAiSettings({
+    'opencode-go': {
+      apiKeyEnv: 'OPENCODE_API_KEY',
+      headers: { 'x-opencode-session': 'dsh-opencode-go' },
+    },
+  })
   const controller = new AuthController({
     authPath: join(dir, 'auth.json'),
     prefix: 'oauth',
@@ -278,10 +321,7 @@ test('OpenCode Go routes appear only while a key is stored', async () => {
   const saved = await controller.saveOpencodeGo({ apiKey: 'sk-test' })
   assert.equal(keys.get('OPENCODE_API_KEY'), 'sk-test')
   await controller.sync()
-  assert.deepEqual(store.section.providers[OPENCODE_GO_BUILTIN_ROUTE_ID], {
-    apiKeyEnv: 'OPENCODE_API_KEY',
-    headers: { 'x-opencode-session': 'dsh-opencode-go' },
-  })
+  assert.equal(store.section.providers[OPENCODE_GO_BUILTIN_ROUTE_ID], undefined)
   assert.deepEqual(store.section.providers[OPENCODE_GO_EXTRA_ROUTE.id].models.map((model) => model.id), ['deepseek-flash'])
 
   await controller.clearOpencodeGo('key', saved.activeId)

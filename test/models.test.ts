@@ -213,14 +213,14 @@ test('filterProviders keeps only selected keys', () => {
   assert.deepEqual(filtered['oauth-grok'].models.map((m) => m.id), ['grok-4.5'])
 })
 
-test('ensureOpencodeGoRoute enables the built-in catalog and only adds the missing model', async () => {
+test('ensureOpencodeGoRoute writes only the supplemental route and takes the old auto profile back', async () => {
   const empty = createPiAiSettings()
   const first = await ensureOpencodeGoRoute(empty)
   assert.equal(first.status, 'written')
-  assert.deepEqual(first.routes, [OPENCODE_GO_BUILTIN_ROUTE_ID, OPENCODE_GO_EXTRA_ROUTE.id])
-  // No api / no models: DSH reuses its installed opencode-go catalog provider
-  // (the other 27 official models) with ambient OPENCODE_API_KEY auth.
-  assert.deepEqual(empty.section.providers[OPENCODE_GO_BUILTIN_ROUTE_ID], GO_BUILTIN)
+  assert.deepEqual(first.routes, [OPENCODE_GO_EXTRA_ROUTE.id])
+  // DSH's installed opencode-go catalog (the other 27 official models) is only
+  // registered by llm-pi-ai when a profile names it; the plugin never adds one.
+  assert.equal(empty.section.providers[OPENCODE_GO_BUILTIN_ROUTE_ID], undefined)
   const extra = empty.section.providers[OPENCODE_GO_EXTRA_ROUTE.id]
   assert.equal(extra.api, 'openai-completions')
   assert.equal(extra.baseURL, 'https://opencode.ai/zen/go/v1')
@@ -241,12 +241,17 @@ test('ensureOpencodeGoRoute enables the built-in catalog and only adds the missi
   assert.equal((await ensureOpencodeGoRoute(empty)).status, 'present')
   assert.equal(empty.ops.length, 1)
 
-  // A plugin-written pre-session profile is refreshed with the required header.
-  const legacy = createPiAiSettings({ 'opencode-go': { apiKeyEnv: OPENCODE_GO_API_KEY_ENV } })
-  const upgraded = await ensureOpencodeGoRoute(legacy)
-  assert.equal(upgraded.status, 'written')
-  assert.deepEqual(upgraded.routes, [OPENCODE_GO_BUILTIN_ROUTE_ID, OPENCODE_GO_EXTRA_ROUTE.id])
-  assert.deepEqual(legacy.section.providers[OPENCODE_GO_BUILTIN_ROUTE_ID], GO_BUILTIN)
+  // The exact auto-written built-in profile of older plugin versions is removed.
+  const legacy = createPiAiSettings({ 'opencode-go': GO_BUILTIN })
+  const cleaned = await ensureOpencodeGoRoute(legacy)
+  assert.equal(cleaned.status, 'written')
+  assert.deepEqual(cleaned.routes, [OPENCODE_GO_BUILTIN_ROUTE_ID, OPENCODE_GO_EXTRA_ROUTE.id])
+  assert.equal(legacy.section.providers[OPENCODE_GO_BUILTIN_ROUTE_ID], undefined)
+
+  // A bare apiKeyEnv profile is what DSH's own Models page writes — not ours.
+  const userBare = createPiAiSettings({ 'opencode-go': { apiKeyEnv: OPENCODE_GO_API_KEY_ENV } })
+  await ensureOpencodeGoRoute(userBare)
+  assert.deepEqual(userBare.section.providers['opencode-go'], { apiKeyEnv: OPENCODE_GO_API_KEY_ENV })
 
   // An existing user-configured built-in profile is never overwritten.
   const custom = createPiAiSettings({ 'opencode-go': { displayName: 'Mine' } })
@@ -267,14 +272,14 @@ test('ensureOpencodeGoRoute follows the picker for the supplemental route only',
   assert.deepEqual(off.routes, [OPENCODE_GO_EXTRA_ROUTE.id])
   const cleared = await peekPiAiProviders(settings)
   assert.equal(cleared[OPENCODE_GO_EXTRA_ROUTE.id], undefined)
-  assert.deepEqual(cleared[OPENCODE_GO_BUILTIN_ROUTE_ID], GO_BUILTIN)
+  assert.equal(cleared[OPENCODE_GO_BUILTIN_ROUTE_ID], undefined)
 
-  const on = await ensureOpencodeGoRoute(settings, { selected: [`${OPENCODE_GO_EXTRA_ROUTE.id}/deepseek-flash`] })
+  const on = await ensureOpencodeGoRoute(settings, { selected: [OPENCODE_GO_EXTRA_ROUTE.id + '/deepseek-flash'] })
   assert.equal(on.status, 'written')
   assert.deepEqual(on.routes, [OPENCODE_GO_EXTRA_ROUTE.id])
   const restored = await peekPiAiProviders(settings)
   assert.deepEqual(restored[OPENCODE_GO_EXTRA_ROUTE.id].models.map((model) => model.id), ['deepseek-flash'])
-  assert.deepEqual(restored[OPENCODE_GO_BUILTIN_ROUTE_ID], GO_BUILTIN)
+  assert.equal(restored[OPENCODE_GO_BUILTIN_ROUTE_ID], undefined)
 })
 
 test('an empty reasoningEfforts dict is refused like DSH does', () => {
@@ -284,21 +289,33 @@ test('an empty reasoningEfforts dict is refused like DSH does', () => {
   }), /empty reasoningEfforts/)
 })
 
-test('ensureOpencodeGoRoute serves nothing without a key and takes its routes back', async () => {
+test('ensureOpencodeGoRoute serves nothing without a key and takes its own route back', async () => {
   const settings = createPiAiSettings()
   assert.deepEqual(await ensureOpencodeGoRoute(settings, { apiKeySet: false }), { status: 'present' })
   assert.deepEqual(settings.section.providers, {})
 
   await ensureOpencodeGoRoute(settings)
-  assert.equal(settings.section.providers[OPENCODE_GO_BUILTIN_ROUTE_ID] !== undefined, true)
+  assert.equal(settings.section.providers[OPENCODE_GO_BUILTIN_ROUTE_ID], undefined)
   assert.equal(settings.section.providers[OPENCODE_GO_EXTRA_ROUTE.id] !== undefined, true)
 
   const cleared = await ensureOpencodeGoRoute(settings, { apiKeySet: false })
   assert.equal(cleared.status, 'written')
-  assert.deepEqual(cleared.routes.sort(), [OPENCODE_GO_BUILTIN_ROUTE_ID, OPENCODE_GO_EXTRA_ROUTE.id].sort())
+  assert.deepEqual(cleared.routes, [OPENCODE_GO_EXTRA_ROUTE.id])
   assert.deepEqual(settings.section.providers, {})
 
-  // A user-shaped built-in profile is never taken back.
+  // The old auto-written built-in profile is taken back with no key too.
+  const legacy = createPiAiSettings({ 'opencode-go': GO_BUILTIN })
+  const cleaned = await ensureOpencodeGoRoute(legacy, { apiKeySet: false })
+  assert.equal(cleaned.status, 'written')
+  assert.deepEqual(cleaned.routes, [OPENCODE_GO_BUILTIN_ROUTE_ID])
+  assert.deepEqual(legacy.section.providers, {})
+
+  // A user-shaped built-in profile — including DSH's own bare apiKeyEnv — is
+  // never taken back.
+  const bare = createPiAiSettings({ 'opencode-go': { apiKeyEnv: OPENCODE_GO_API_KEY_ENV } })
+  assert.deepEqual(await ensureOpencodeGoRoute(bare, { apiKeySet: false }), { status: 'present' })
+  assert.deepEqual(bare.section.providers['opencode-go'], { apiKeyEnv: OPENCODE_GO_API_KEY_ENV })
+
   const mine = createPiAiSettings({
     'opencode-go': { apiKeyEnv: OPENCODE_GO_API_KEY_ENV, models: [{ id: 'my-model' }] },
   })
