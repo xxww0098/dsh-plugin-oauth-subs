@@ -98,6 +98,7 @@ src/
       cache.ts             conversationId + stable turn ids; TurnEnded cache_read_tokens
       proto.ts             minimal Connect/protobuf subset
       h2-session.ts        Node http2 in-process transport
+      upstream-proxy.ts    optional CONNECT/SOCKS5 egress (region-gated models)
       transport.ts         OpenAI HTTP/SSE output and Run event backpressure
     kimi/                  Moonshot Kimi Code Plan (device-code)
       README.md            family design: login, chat, quota, cache (traceable)

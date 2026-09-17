@@ -1,11 +1,12 @@
 /**
  * Live Cursor picker catalog. GetUsableModels + AvailableModels collapse
- * into one DSH row per family, then merge onto CURSOR_MODELS so a stale
- * live list cannot hide Composer 2.5 / Grok 4.6 / GPT-5.6 / Gemini.
+ * into one DSH row per family. A non-empty live list is upstream truth —
+ * region-gated or retired families are simply not offered — while
+ * CURSOR_MODELS stays the offline fallback only.
  */
 
 import { createHash } from 'node:crypto'
-import { CURSOR_MODELS, CURSOR_REASONING } from './index.js'
+import { CURSOR_MODELS, CURSOR_REASONING, cursorUpstreamProxy } from './index.js'
 import { fetchCursorAvailableModels, fetchCursorUsableModels } from './h2-session.js'
 
 export const CURSOR_CATALOG_TTL_MS = 5 * 60_000
@@ -152,6 +153,8 @@ export function cursorPickerFamilyId(id) {
 function cleanPickerName(name) {
   return String(name ?? '')
     .replace(/\s+(None|Low|Medium|High|Extra High|Fast|Thinking|Max(?: Mode)?|1M|272K|256K)\b/gi, '')
+    // Upstream brands third-party rows "Cursor Grok 4.6"; the picker drops it.
+    .replace(/^cursor\s+/i, '')
     .replace(/\s+/g, ' ')
     .trim()
 }
@@ -302,7 +305,10 @@ export function toCursorPickerModels(usable, parameterized = []) {
 export async function refreshCursorCatalog(session, options = {}) {
   const token = typeof session?.accessToken === 'string' ? session.accessToken.trim() : ''
   if (!token) return mergeCursorStaticFloor([])
-  const tokenHash = cursorCatalogTokenHash(token)
+  // The live list is region-filtered: the egress (direct vs configured
+  // upstream proxy) changes which families Cursor offers, so it joins the
+  // cache key alongside the token.
+  const tokenHash = cursorCatalogTokenHash(`${token}\n${cursorUpstreamProxy() ?? ''}`)
   if (cached.tokenHash === tokenHash && cached.models?.length && Date.now() < cached.expiresAt) {
     return cached.models
   }

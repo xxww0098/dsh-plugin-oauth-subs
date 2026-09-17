@@ -121,6 +121,13 @@ export declare class AuthController {
         busy: any;
     }>;
     catalog(): Promise<{}>;
+    /**
+     * Startup discovery for every signed-in family with a live catalog. The
+     * picker otherwise keeps the static floor until someone logs in or hits
+     * quota refresh, which is how region-gated / retired rows stay offered.
+     * Re-syncs once if any family's picker rows changed.
+     */
+    warmCatalogs(): Promise<void>;
     snapshot(): Promise<{
         origin: any;
         grokLogin: any;
