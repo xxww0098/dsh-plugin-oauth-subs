@@ -24,6 +24,7 @@
 | Ollama Cloud | [docs.ollama.com/cloud](https://docs.ollama.com/cloud) | [ollama/ollama#12532](https://github.com/ollama/ollama/issues/12532)、[#16598](https://github.com/ollama/ollama/issues/16598) | Bearer `OLLAMA_API_KEY` → `ollama.com/v1` | [`ollama/README.md`](../src/apikey/ollama/README.md) |
 | Kimi | 官方 Kimi Code CLI | [Leechael/pi-provider-kimi-code](https://github.com/Leechael/pi-provider-kimi-code) | 设备码、无 PKCE | [`kimi/README.md`](../src/oauth/kimi/README.md) |
 | GitHub Copilot | [anomalyco/opencode](https://github.com/anomalyco/opencode) `plugin/github-copilot` | [goose githubcopilot.rs](https://github.com/aaif-goose/goose)；[Cherry Studio CopilotService.ts](https://github.com/CherryHQ/cherry-studio)；[hermes-agent copilot_auth.py](https://github.com/NousResearch/hermes-agent/blob/main/hermes_cli/copilot_auth.py) | UA `GitHubCopilotChat/0.35.0`；client `Iv1.b507a08c87ecfe98` | [`copilot/README.md`](../src/oauth/copilot/README.md) |
+| Devin | Devin CLI `3000.10.31`（app.devin.ai PKCE + server.codeium.com Connect/proto） | [can1357/oh-my-pi](https://github.com/can1357/oh-my-pi) `pi-catalog` devin + vendored `exa.*` protos | MITM 实测指纹 `ide_name: chisel` / `3000.10.31` / `Basic <tok>-<tok>`；`devin-session-token$` 前缀只加一次 | [`devin/README.md`](../src/oauth/devin/README.md) |
 | 宿主 | [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) | DSH `llm-pi-ai` `api` 闭集 | 本机回环代理 | [`README.md`](../README.md) |
 | OpenCode Go（API key） | [opencode.ai/docs/go](https://opencode.ai/docs/go/) | [stablyai/orca](https://github.com/stablyai/orca)；[steipete/CodexBar](https://github.com/steipete/CodexBar) | 对话走宿主内置 pi-ai `opencode-go`（27 模型，由 DSH 模型设置页自行开启；插件不写该 profile）+ 插件补充 `deepseek-flash`；`OPENCODE_API_KEY`；插件那条路由带强制的 `x-opencode-session`（pi-ai 0.85.1 不发会话头）；本插件只读额度 | [`opencode-go/README.md`](../src/apikey/opencode-go/README.md) |
 
@@ -146,10 +147,36 @@ pi-cursor-sdk 自己走 **API key + `Agent.create`**，不是 OAuth。本 hop �
 
 **不要发明：** OpenCode `Ov23li8` client_id；PKCE / GHES；`X-Interaction-Type: agent-session-name-generation`；把 Copilot `pro` 显示成 Codex Pro 20x；第四种 DSH `api`；把 Claude 改打 `/v1/messages`。
 
+## Devin
+
+一线：**Devin CLI 3000.10.31**（`~/.local/share/devin/credentials.toml` + 二进制内嵌 `exa.*` protos）。协议对照 MIT [can1357/oh-my-pi](https://github.com/can1357/oh-my-pi) 的 `pi-catalog` devin provider（`oauth/devin.ts` PKCE 回环 + `providers/devin.ts` Connect/proto + vendored `.proto`）。
+
+| 抄 | 本 hop |
+|---|---|
+| `app.devin.ai/auth/cli/continue?…&cli_pkce_marker=1` → `api.devin.ai/auth/cli/token` `{code, code_verifier, cli_pkce_marker:1}` | `devinFlow` / `exchangeDevinCode` |
+| Connect framing（1B flags + 4B BE len，0x01 gzip / 0x02 end-trailer JSON） | `proto.ts` `frameConnect` / `splitConnectFrames` |
+| `Metadata.api_key` = session token（已带 `devin-session-token$`） | `devinMetadataBytes`；`normalizeDevinToken` 前缀只加一次 |
+| MITM 指纹：`ide_name: chisel` + `ide_version/extension_version: <cli 版本>` + `os` + `Authorization: Basic <token>-<token>`（`ide_name: devin` 只回 1 条 stub config） | `DEVIN_IDE_NAME` / `devinBasicAuth` / `encodeDevinMetadata` |
+| `cascade_id` + 每请求 `execution_id`；历史 `message_id` 内容哈希 | `devin/cache.ts` / `openaiToDevin` |
+| `GetCliModelConfigs` → 家族 + effort/modifier 收成一行 | `toDevinPickerModels`（variants 值是后端 uid） |
+| `GetUserStatus`：`teams_tier`、daily/weekly quota、unix 秒 reset | `fetchDevinQuota` / `parseDevinUserStatus`（proto.ts 已转毫秒） |
+
+**不要发明：** 双前缀 token（活测 401）；`ide_name: devin`/`Devin`/`devin-cli`（stub-gated）；Metadata `f`/`session_id`/`user_agent` 字段（CLI 不发）；用 `api.devin.ai` 当 chat host；把 `-fast` 走 `applyFastMode`（真后端变体）；Response API；`Date.now()` cascade id。
+
 ## 新家族
 
-加 `src/oauth/<id>/` 的同一 PR：
+加 `src/oauth/<id>/` 的同一 PR，全部一次到位：
 
-1. 家族 README 写 **归因**（官方 CLI + 社区仓 + 钉住的版本）。
+1. 家族 README（`src/oauth/<id>/README.md`）写 login / session / hop / models / quota / cache / do-not / **归因**（官方 CLI + 社区仓 + 钉住版本）。
 2. 本文件总表加一行，并补「抄 / 不要发明」。
-3. 不要把对照仓的多家族共用层引进 `src/utils/`。
+3. `index.ts`：catalog（`id`/`name`/`contextWindow`/`maxTokens`/`input`/`reasoningEfforts`）、OAuth 端点、session builder、UA、refresh。
+4. `controller.ts`：login / cancel / logout / switch / import / quota / snapshot 分支对齐 Codex/Grok 既有写法；snapshot 返回 `accounts.<id> = {…status, activeId, accounts}`。
+5. `quota.ts`：cache key `provider\0accountId`；snapshot hydrate 每个已存账号，不只 active。
+6. `models.ts`：`ownedProviderIds` / `buildProviders` / `catalogProviders` / `describeCatalog` 加 `${prefix}-<id>`；`api` 取闭集三值；`baseURL` 对齐该 SDK 的真实 post 路径。
+7. `plan.ts`：wire slug → 用户可见 plan 名。
+8. `proxy.ts`：显式 `family === '<id>'` 分支；prompt cache 进 `src/oauth/<id>/cache.ts`（禁抄别家、禁 `src/utils/`、禁 `Date.now()` id）。
+9. `reasoning-effort.ts` FAMILIES + `store.ts` PROVIDER_IDS/`accountIdOf`/`publicSession`（opaque id 不外露）。
+10. `src/index.ts` re-export 公共件 + `ui/client.ts` tab/图标/copy（zh+en）。
+11. `test/<id>.test.ts`：login parse、session round-trip、catalog、cache 隔离、proxy 路由、`snapshot shows quota on every <id> account`。
+12. `docs/error.md` 记录 hop 活测结论。
+13. 不要把对照仓的多家族共用层引进 `src/utils/`；不要发明钉住客户端不发的 header。

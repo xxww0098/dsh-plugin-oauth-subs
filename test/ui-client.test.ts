@@ -84,11 +84,11 @@ test('Settings Cursor tab uses Import local Cursor copy and shows source, never 
   assert.match(src, /cursorImport:\s*'导入本机 Cursor'/)
   assert.match(src, /cursorImport:\s*'Import local Cursor'/)
   assert.match(src, /cursorImportEmpty:\s*'本机没有 Cursor CLI 或 IDE 登录'/)
-  assert.match(src, /id === 'cursor' \? t\.cursorImport : id === 'kimi' \? t\.kimiImport : id === 'copilot' \? t\.copilotImport : t\.import/)
-  assert.match(src, /\(id === 'cursor' \|\| id === 'ollama' \|\| id === 'kimi' \|\| id === 'copilot'\) && row\.methodLabel/)
+  assert.match(src, /id === 'cursor' \? t\.cursorImport : id === 'kimi' \? t\.kimiImport : id === 'copilot' \? t\.copilotImport : id === 'devin' \? t\.devinImport : t\.import/)
+  assert.match(src, /\(id === 'cursor' \|\| id === 'ollama' \|\| id === 'kimi' \|\| id === 'copilot' \|\| id === 'devin'\) && row\.methodLabel/)
   assert.match(src, /message === 'cursor-import-empty' \? t\.cursorImportEmpty/)
   assert.match(src, /h\(Tab, \{ id: 'cursor'/)
-  assert.match(src, /icons\/\{codex,grok,zai,kiro,antigravity,cursor,ollama,kimi,copilot,github\}\.svg/)
+  assert.match(src, /icons\/\{codex,grok,zai,kiro,antigravity,cursor,ollama,kimi,copilot,devin,github\}\.svg/)
   assert.match(src, /cursor: \{ d: 'M22\.106 5\.68L12\.5\.135a\.998\.998 0 00-\.998 0L1\.893 5\.68/)
   assert.match(src, /cursor: \{ d: '[^']+', clip: true \}/)
   assert.equal(src.includes('M11.925 24l10.425-6'), false)
@@ -96,7 +96,7 @@ test('Settings Cursor tab uses Import local Cursor copy and shows source, never 
   assert.equal(/cursor[\s\S]{0,200}accessToken/.test(src), false)
   const tabOrder = src.match(/h\(Tab, \{ id: '(\w+)'/g) ?? []
   const ids = tabOrder.map((row) => /id: '(\w+)'/.exec(row)?.[1])
-  assert.deepEqual(ids.slice(0, 12), ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'apikey', 'models', 'about'])
+  assert.deepEqual(ids.slice(0, 13), ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'apikey', 'models', 'about'])
 })
 
 test('Settings Ollama tab is Cloud key paste after Cursor, never localhost', async () => {
@@ -114,14 +114,14 @@ test('Settings Ollama tab is Cloud key paste after Cursor, never localhost', asy
   assert.match(src, /id !== 'glm' && id !== 'kiro' && id !== 'ollama' && id !== 'opencode-go' && !busy/)
   assert.equal(src.includes('127.0.0.1:11434'), false)
   assert.equal(src.includes('localhost:11434'), false)
-  assert.match(src, /\.osubs-tabs \{[\s\S]*grid-template-columns: repeat\(8, 36px\)/)
+  assert.match(src, /\.osubs-tabs \{[\s\S]*grid-template-columns: repeat\(9, 36px\)/)
   assert.match(src, /\.osubs-tab \{[\s\S]*width: 36px; height: 36px; min-width: 36px/)
   assert.equal(/\.osubs-tab \{[\s\S]*flex: 1 1 0/.test(src), false)
   assert.equal(/\.osubs-tabs \{[\s\S]*flex: 1 1 0/.test(src), false)
   assert.match(src, /\.osubs-nav \{[\s\S]*position: sticky/)
 })
 
-test('Settings tab bar is two docked capsules; OAuth spreads leftover width between 8 icons', async () => {
+test('Settings tab bar is two docked capsules; OAuth spreads leftover width between 9 icons', async () => {
   const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
   const oauth = src.match(/className: 'osubs-tabs'[\s\S]*?className: 'osubs-tabs-util'/)?.[0] ?? ''
   const util = src.match(/className: 'osubs-tabs-util'[\s\S]*?\),\s*\),/)?.[0] ?? ''
@@ -134,7 +134,7 @@ test('Settings tab bar is two docked capsules; OAuth spreads leftover width betw
   assert.match(navCss, /justify-content: flex-start/)
   assert.match(navCss, /gap: 4px/)
   assert.equal(navCss.includes('space-between'), false)
-  assert.match(tabsCss, /grid-template-columns: repeat\(8, 36px\)/)
+  assert.match(tabsCss, /grid-template-columns: repeat\(9, 36px\)/)
   assert.match(tabsCss, /justify-content: space-between/)
   assert.match(tabsCss, /flex: 1 1 auto/)
   assert.equal(tabsCss.includes('max-content'), false)
@@ -158,7 +158,7 @@ test('Settings tab bar is two docked capsules; OAuth spreads leftover width betw
   assert.equal(/id: 'apikey'/.test(util), false)
   const tabOrder = src.match(/h\(Tab, \{ id: '(\w+)'/g) ?? []
   const ids = tabOrder.map((row) => /id: '(\w+)'/.exec(row)?.[1])
-  assert.deepEqual(ids, ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'apikey', 'models', 'about'])
+  assert.deepEqual(ids, ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'apikey', 'models', 'about'])
 })
 
 test('OpenCode Go renders through the shared account cards and add-account dialog', async () => {
@@ -345,7 +345,7 @@ test('Add account opens a centered dialog, not a sheet', async () => {
   assert.match(src, /id === 'glm' && !busy && h\('div', \{ className: 'osubs-glm-logins' \}/)
   assert.match(src, /id === 'kiro' && !busy && h\('div', \{ className: 'osubs-logins' \}/)
   assert.match(src, /id === 'ollama' && !busy && h\('div', \{ className: 'osubs-logins' \}/)
-  assert.match(src, /id === 'cursor' \? t\.cursorImport : id === 'kimi' \? t\.kimiImport : id === 'copilot' \? t\.copilotImport : t\.import/)
+  assert.match(src, /id === 'cursor' \? t\.cursorImport : id === 'kimi' \? t\.kimiImport : id === 'copilot' \? t\.copilotImport : id === 'devin' \? t\.devinImport : t\.import/)
   assert.match(src, /h\('span', null, t\.ollamaImport\)/)
   assert.equal(/osubs-sheet|osubs-drawer|role: 'sheet'|side.?sheet|侧边抽屉/i.test(src), false)
 })

@@ -6,7 +6,7 @@
  *   2. drives ChatGPT Codex PKCE, xAI Grok device-code / PKCE,
  *      Zhipu GLM Z.ai / BigModel CLI-poll, AWS Kiro (Social / Builder ID /
  *      IdC / Entra / API key), Google Antigravity, Cursor, Ollama Cloud,
- *      Kimi Code Plan, and GitHub Copilot logins
+ *      Kimi Code Plan, GitHub Copilot, and Devin Agent logins
  *   3. syncs logged-in catalogs into llm-pi-ai
  *
  * The client half (Settings > OAuth 订阅) is discovered from package.json
@@ -23,10 +23,12 @@ import { authFilePath, defaultDataDir, readPrivateText, writePrivateText } from 
 import { createProxy } from './oauth/proxy.js'
 import { catalogProviders, OAUTH_CREDENTIAL_REF, ModelSwitch } from './oauth/models.js'
 import { cursorCatalogModels } from './oauth/cursor/catalog.js'
+import { configureCursorUpstreamProxy } from './oauth/cursor/index.js'
 import { ollamaCatalogModels } from './apikey/ollama/catalog.js'
 import { kiroCatalogModels } from './oauth/kiro/catalog.js'
 import { kimiCatalogModels } from './oauth/kimi/catalog.js'
 import { copilotCatalogModels } from './oauth/copilot/catalog.js'
+import { devinCatalogModels } from './oauth/devin/catalog.js'
 import { EffortMemory, LAST_EFFORT_FILE, startEffortRestore } from './oauth/reasoning-effort.js'
 import { localDshInfo, pluginClientJsPath, profileFromBaseUrl, stampDshHostVersion } from './utils/update.js'
 
@@ -40,6 +42,8 @@ export const Config = z.object({
   dataDir: z.string().required(false).description('Override the auth/proxy data directory'),
   grokLogin: z.union(['device', 'pkce']).default('device')
     .description('Grok login: device-code (default) or PKCE loopback'),
+  cursorProxy: z.string().required(false)
+    .description('Cursor upstream proxy (http:// or socks5://) for region-gated Claude/GPT/Gemini'),
 })
 
 function resolveDataDir(ctx, config) {
@@ -155,6 +159,7 @@ export function apply(ctx, config = {}) {
   const port = Number(config.port ?? 8318)
   const prefix = String(config.provider ?? 'oauth').trim() || 'oauth'
   const grokLogin = config.grokLogin === 'pkce' ? 'pkce' : 'device'
+  configureCursorUpstreamProxy(config.cursorProxy)
   const dataDir = resolveDataDir(ctx, config)
   const authPath = authFilePath(dataDir)
   const models = new ModelSwitch({
@@ -195,6 +200,7 @@ export function apply(ctx, config = {}) {
         kiroModels: kiroCatalogModels(),
         kimiModels: kimiCatalogModels(),
         copilotModels: copilotCatalogModels(),
+        devinModels: devinCatalogModels(),
       })
       return catalog[provider]?.models.find((model) => model.id === modelId)?.reasoningEfforts
     },
@@ -219,6 +225,10 @@ export function apply(ctx, config = {}) {
         await controller.sync().catch((error) => {
           ctx.logger?.warn?.(`dsh-plugin-oauth-subs: llm-pi-ai sync failed: ${error.message}`)
         })
+        // Live catalogs refresh on login / quota refresh only; without this
+        // warmup the picker keeps the static floor until the next manual
+        // refresh (e.g. offering region-gated Cursor rows that cannot run).
+        void controller.warmCatalogs().catch(() => undefined)
       } catch (error) {
         if (!closed) ctx.logger?.error?.(`dsh-plugin-oauth-subs: failed to start: ${error.message}`)
       }
@@ -307,6 +317,13 @@ export {
   copilotSession,
   copilotUpstreamHeaders,
 } from './oauth/copilot/index.js'
+export {
+  DEVIN_MODELS,
+  DEVIN_AUTHORIZE_URL,
+  DEVIN_TOKEN_URL,
+  devinSession,
+  normalizeDevinToken,
+} from './oauth/devin/index.js'
 export { OAUTH_CREDENTIAL_REF, ModelSwitch } from './oauth/models.js'
 export { defaultDataDir } from './oauth/store.js'
 export { AuthController } from './oauth/controller.js'
@@ -318,7 +335,7 @@ export {
   isCodex900kBase,
   peelContextSuffix,
 } from './utils/context-mode.js'
-export { parseCodexUsage, parseGrokBilling, parseGlmQuota, parseKiroUsage, parseCursorPeriodUsage, parseKimiUsage, parseCopilotUsage, parseResetCredits, QuotaStore } from './oauth/quota.js'
+export { parseCodexUsage, parseGrokBilling, parseGlmQuota, parseKiroUsage, parseCursorPeriodUsage, parseKimiUsage, parseCopilotUsage, parseDevinUserStatus, parseResetCredits, QuotaStore } from './oauth/quota.js'
 export { formatPlanLabel, CODEX_PLAN_NAMES } from './oauth/plan.js'
 export {
   REPO_URL,
