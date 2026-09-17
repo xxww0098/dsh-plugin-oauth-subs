@@ -20,3 +20,12 @@ test('Config rejects an unknown grokLogin', () => {
   const result = Config['~standard'].validate({ grokLogin: 'sms' })
   assert.equal(Boolean(result.issues?.length), true)
 })
+
+test('Config accepts an optional proxyUrl', () => {
+  const empty = Config['~standard'].validate({})
+  assert.equal(empty.issues, undefined)
+  assert.equal(empty.value.proxyUrl, undefined)
+  const set = Config['~standard'].validate({ proxyUrl: 'http://127.0.0.1:7890' })
+  assert.equal(set.issues, undefined)
+  assert.equal(set.value.proxyUrl, 'http://127.0.0.1:7890')
+})

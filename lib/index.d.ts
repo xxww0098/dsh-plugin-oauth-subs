@@ -21,12 +21,14 @@ export declare const Config: z<Schemastery.ObjectS<{
     provider: z<string, string>;
     dataDir: z<string, string>;
     grokLogin: z<"pkce" | "device", "pkce" | "device">;
+    proxyUrl: z<string, string>;
     cursorProxy: z<string, string>;
 }>, Schemastery.ObjectT<{
     port: z<number, number>;
     provider: z<string, string>;
     dataDir: z<string, string>;
     grokLogin: z<"pkce" | "device", "pkce" | "device">;
+    proxyUrl: z<string, string>;
     cursorProxy: z<string, string>;
 }>>;
 export declare function registerRpc(ctx: any, controller: any): void;

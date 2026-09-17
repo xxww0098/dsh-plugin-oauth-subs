@@ -31,6 +31,7 @@ import { copilotCatalogModels } from './oauth/copilot/catalog.js'
 import { devinCatalogModels } from './oauth/devin/catalog.js'
 import { EffortMemory, LAST_EFFORT_FILE, startEffortRestore } from './oauth/reasoning-effort.js'
 import { localDshInfo, pluginClientJsPath, profileFromBaseUrl, stampDshHostVersion } from './utils/update.js'
+import { createOutboundSession, outboundProxyPath } from './utils/outbound.js'
 
 export const name = 'dsh-plugin-oauth-subs'
 export const inject = ['settings', 'credentials']
@@ -42,6 +43,8 @@ export const Config = z.object({
   dataDir: z.string().required(false).description('Override the auth/proxy data directory'),
   grokLogin: z.union(['device', 'pkce']).default('device')
     .description('Grok login: device-code (default) or PKCE loopback'),
+  proxyUrl: z.string().required(false)
+    .description('Outbound HTTP(S) proxy for model/quota/login hops. Empty uses Settings or HTTPS_PROXY/HTTP_PROXY/ALL_PROXY'),
   cursorProxy: z.string().required(false)
     .description('Cursor upstream proxy (http:// or socks5://) for region-gated Claude/GPT/Gemini'),
 })
@@ -124,6 +127,8 @@ export function registerRpc(ctx, controller) {
       update: (payload) => controller.checkUpdate(payload),
       dshUpdate: (payload) => controller.checkDshUpdate(payload),
       autoUpdate: (payload) => controller.setAutoUpdate(payload),
+      proxyGet: () => controller.outboundProxy(),
+      proxySet: (payload) => controller.setOutboundProxy(payload),
     }
     try {
       rpc.handle('/oauth-subs-auth', async (endpoint, payload) => {
@@ -169,6 +174,11 @@ export function apply(ctx, config = {}) {
     path: join(dataDir, LAST_EFFORT_FILE),
   })
 
+  const outbound = createOutboundSession({
+    path: outboundProxyPath(dataDir),
+    configUrl: config.proxyUrl,
+  })
+
   const controller = new AuthController({
     authPath,
     prefix,
@@ -177,6 +187,8 @@ export function apply(ctx, config = {}) {
     credentials: ctx.credentials,
     grokLogin,
     models,
+    fetchFn: outbound.fetchFn,
+    outbound,
     onAuthChanged: () => {
       controller.sync().catch((error) => {
         ctx.logger?.warn?.(`dsh-plugin-oauth-subs: llm-pi-ai sync failed: ${error.message}`)
@@ -185,6 +197,21 @@ export function apply(ctx, config = {}) {
     profile: profileFromBaseUrl(ctx.baseUrl),
     exitFn: (code) => process.exit(code),
   })
+
+  controller.outboundProxy = async () => {
+    if (outbound.ready) await outbound.ready
+    return outbound.snapshot()
+  }
+  controller.setOutboundProxy = async (payload = {}) => {
+    if (outbound.ready) await outbound.ready
+    return outbound.setUrl(payload?.url)
+  }
+  const snapshot = controller.snapshot.bind(controller)
+  controller.snapshot = async () => {
+    const view = await snapshot()
+    if (outbound.ready) await outbound.ready
+    return { ...view, proxy: outbound.snapshot() }
+  }
 
   ctx.effect(() => startEffortRestore({
     ctx,
@@ -215,10 +242,12 @@ export function apply(ctx, config = {}) {
         await rememberCredential(ctx, apiKey)
         await models.ready
         await effort.ready
+        await outbound.ready
         proxy = createProxy({
           port,
           apiKey,
           tokens: controller.tokens,
+          fetchFn: outbound.fetchFn,
         })
         await proxy.listen()
         ctx.logger?.info?.(`dsh-plugin-oauth-subs: proxy on ${proxy.origin()}`)
