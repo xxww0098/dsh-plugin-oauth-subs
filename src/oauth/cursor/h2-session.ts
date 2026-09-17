@@ -4,7 +4,6 @@
  * Do not add Bun.
  */
 
-import http2 from 'node:http2'
 import {
   CURSOR_AGENT_URL,
   CURSOR_API2_URL,
@@ -13,7 +12,9 @@ import {
   CURSOR_RUN_PATH,
   cursorAgentUrl,
   cursorChatHeaders,
+  cursorUpstreamProxy,
 } from './index.js'
+import { cursorH2Connect } from './upstream-proxy.js'
 import {
   encodeAvailableModelsRequest,
   encodeCancelAction,
@@ -54,19 +55,34 @@ function requestHeaders(session, { path, unary }) {
   }
 }
 
+/**
+ * Region-gated providers refuse the run outright. Point the user at the
+ * upstream proxy knob instead of leaving a bare "unsupported region" error.
+ */
+function describeCursorRunError(message) {
+  const text = typeof message === 'string' ? message : String(message ?? '')
+  if (/not supported in your region/i.test(text) && !cursorUpstreamProxy()) {
+    return (
+      `${text} Route the Cursor hop through a supported-region egress: ` +
+      'plugin config "cursorProxy" or env CURSOR_PROXY / PI_CURSOR_PROXY (http:// or socks5://).'
+    )
+  }
+  return text
+}
+
 export async function cursorUnaryRpc({
   session,
   url = CURSOR_API2_URL,
   path,
   body = Buffer.alloc(0),
-  connectFn = http2.connect,
+  connectFn = cursorH2Connect,
   signal,
   timeoutMs = 8_000,
 }) {
   signal?.throwIfAborted()
   return new Promise((resolve, reject) => {
     let settled = false
-    const client = connectFn(url)
+    let client
     const finish = (error, value) => {
       if (settled) return
       settled = true
@@ -74,7 +90,7 @@ export async function cursorUnaryRpc({
       signal?.removeEventListener('abort', onAbort)
       // Unary sessions are one-shot too; close() would wait forever for a
       // timed-out response whose stream remains open.
-      client.destroy()
+      client?.destroy()
       if (error !== undefined) reject(error)
       else resolve(value)
     }
@@ -85,17 +101,26 @@ export async function cursorUnaryRpc({
     if (typeof timer?.unref === 'function') timer.unref()
     const onAbort = () => fail(signal.reason)
     signal?.addEventListener('abort', onAbort, { once: true })
-    client.on('error', (error) => fail(new Error(describeH2TransportError(error, url))))
-    const stream = client.request(requestHeaders(session, { path, unary: true }))
-    const chunks = []
-    stream.on('data', (chunk) => {
-      if (!settled) chunks.push(Buffer.from(chunk))
-    })
-    stream.on('error', fail)
-    stream.on('end', () => {
-      if (!settled) finish(undefined, Buffer.concat(chunks))
-    })
-    stream.end(body)
+    // connectFn may be async (upstream proxy tunnel): a dial that lands after
+    // settle must still destroy the session it produced.
+    Promise.resolve(connectFn(url)).then((connected) => {
+      if (settled) {
+        connected.destroy()
+        return
+      }
+      client = connected
+      client.on('error', (error) => fail(new Error(describeH2TransportError(error, url))))
+      const stream = client.request(requestHeaders(session, { path, unary: true }))
+      const chunks = []
+      stream.on('data', (chunk) => {
+        if (!settled) chunks.push(Buffer.from(chunk))
+      })
+      stream.on('error', fail)
+      stream.on('end', () => {
+        if (!settled) finish(undefined, Buffer.concat(chunks))
+      })
+      stream.end(body)
+    }, fail)
   })
 }
 
@@ -133,7 +158,7 @@ export async function fetchCursorAvailableModels(session, { connectFn, signal, t
  */
 export async function runCursorAgent(session, built, {
   signal,
-  connectFn = http2.connect,
+  connectFn = cursorH2Connect,
   url = cursorAgentUrl() || CURSOR_AGENT_URL,
   onEvent,
 } = {}) {
@@ -144,133 +169,147 @@ export async function runCursorAgent(session, built, {
 
   return new Promise((resolve, reject) => {
     let settled = false
-    const client = connectFn(url)
+    let client
     const finish = (error) => {
       if (settled) return
       settled = true
       signal?.removeEventListener('abort', onAbort)
       // Each Run owns its session. Graceful close waits for the active stream
       // and would keep consuming upstream work after the caller has left.
-      client.destroy()
+      client?.destroy()
       if (error !== undefined) reject(error)
       else resolve({ events, collected })
     }
-    const onAbort = () => finish(signal.reason)
+    const fail = (error) => finish(error)
+    const onAbort = () => fail(signal.reason)
     signal?.addEventListener('abort', onAbort, { once: true })
-    client.on('error', (error) => finish(new Error(describeH2TransportError(error, url))))
-
-    const stream = client.request(requestHeaders(session, { path: CURSOR_RUN_PATH, unary: false }))
-    let rest = Buffer.alloc(0)
-    const send = (bytes) => {
-      if (stream.destroyed || stream.closed) return
-      stream.write(frameConnect(bytes))
-    }
-
-    const handle = async (msg) => {
-      if (settled) return
-      if (msg.kind === 'error') {
-        collected.error = msg.message
-        events.push(msg)
-        await onEvent?.(msg)
-        finish(new Error(msg.message))
+    // connectFn may be async (upstream proxy tunnel): a dial that lands after
+    // settle must still destroy the session it produced.
+    Promise.resolve(connectFn(url)).then((connected) => {
+      if (settled) {
+        connected.destroy()
         return
       }
-      if (msg.kind === 'kv') {
-        const key = hexOf(msg.blobId)
-        if (msg.set && msg.blobData && key) blobStore.set(key, Buffer.from(msg.blobData))
-        const data = key ? blobStore.get(key) : undefined
-        send(encodeKvClientMessage({ id: msg.id ?? 0, blobData: data, set: msg.set === true }))
-        return
+      client = connected
+      client.on('error', (error) => finish(new Error(describeH2TransportError(error, url))))
+      start(client)
+    }, fail)
+
+    const start = (connected) => {
+      const stream = connected.request(requestHeaders(session, { path: CURSOR_RUN_PATH, unary: false }))
+      let rest = Buffer.alloc(0)
+      const send = (bytes) => {
+        if (stream.destroyed || stream.closed) return
+        stream.write(frameConnect(bytes))
       }
-      if (msg.kind === 'exec') {
-        // Cursor's run handshake always asks for request context. Throwing
-        // here (or returning no result) fails the whole Run with
-        // "Failed to get request context", so answer with the MCP tools DSH
-        // advertised.
-        if (msg.execCase === 'requestContextArgs') {
-          send(encodeRequestContextResult({ id: msg.id, execId: msg.execId, tools: built.tools }))
+
+      const handle = async (msg) => {
+        if (settled) return
+        if (msg.kind === 'error') {
+          const text = describeCursorRunError(msg.message)
+          collected.error = text
+          events.push(msg)
+          await onEvent?.(msg)
+          finish(new Error(text))
           return
         }
-        if (msg.mcp) {
-          // DSH owns tool execution: surface the call and end this Run so the
-          // client runs the tool and replays the result on the next request.
-          const tool = {
-            id: msg.mcp.toolCallId || `call_${events.length + 1}`,
-            name: msg.mcp.toolName || msg.mcp.name,
-            arguments: msg.mcp.arguments ?? {},
+        if (msg.kind === 'kv') {
+          const key = hexOf(msg.blobId)
+          if (msg.set && msg.blobData && key) blobStore.set(key, Buffer.from(msg.blobData))
+          const data = key ? blobStore.get(key) : undefined
+          send(encodeKvClientMessage({ id: msg.id ?? 0, blobData: data, set: msg.set === true }))
+          return
+        }
+        if (msg.kind === 'exec') {
+          // Cursor's run handshake always asks for request context. Throwing
+          // here (or returning no result) fails the whole Run with
+          // "Failed to get request context", so answer with the MCP tools DSH
+          // advertised.
+          if (msg.execCase === 'requestContextArgs') {
+            send(encodeRequestContextResult({ id: msg.id, execId: msg.execId, tools: built.tools }))
+            return
           }
-          collected.toolCalls.push({
-            id: tool.id,
-            type: 'function',
-            function: { name: tool.name, arguments: JSON.stringify(tool.arguments) },
-          })
-          const event = { kind: 'interaction', toolCall: tool }
+          if (msg.mcp) {
+            // DSH owns tool execution: surface the call and end this Run so the
+            // client runs the tool and replays the result on the next request.
+            const tool = {
+              id: msg.mcp.toolCallId || `call_${events.length + 1}`,
+              name: msg.mcp.toolName || msg.mcp.name,
+              arguments: msg.mcp.arguments ?? {},
+            }
+            collected.toolCalls.push({
+              id: tool.id,
+              type: 'function',
+              function: { name: tool.name, arguments: JSON.stringify(tool.arguments) },
+            })
+            const event = { kind: 'interaction', toolCall: tool }
+            events.push(event)
+            await onEvent?.(event)
+            finish()
+            return
+          }
+          // Native Cursor tools are answered with a typed rejection so the model
+          // falls back to the MCP tools instead of aborting the run.
+          const rejection = encodeNativeExecRejection(msg)
+          if (rejection) {
+            send(rejection)
+            return
+          }
+          send(encodeExecThrow({ id: msg.id, error: 'dsh owns tool execution' }))
+          return
+        }
+        if (msg.kind === 'query') {
+          send(encodeCancelAction())
+          return
+        }
+        if (msg.kind === 'interaction') {
+          if (msg.text) collected.text += msg.text
+          if (msg.thinking) collected.thinking += msg.thinking
+          if (msg.tokens) {
+            collected.usage.completionTokens = (collected.usage.completionTokens ?? 0) + msg.tokens
+          }
+          if (msg.usage) {
+            if (Number.isFinite(msg.usage.promptTokens)) collected.usage.promptTokens = msg.usage.promptTokens
+            if (Number.isFinite(msg.usage.completionTokens)) collected.usage.completionTokens = msg.usage.completionTokens
+            if (Number.isFinite(msg.usage.cachedTokens)) collected.usage.cachedTokens = msg.usage.cachedTokens
+          }
+          // tool_call_started is informational; the authoritative MCP call (with
+          // real arguments) arrives as execServerMessage.mcpArgs. Emitting both
+          // would duplicate the OpenAI tool_call, and this update carries no args.
+          const event = msg.toolCall ? { ...msg, toolCall: undefined } : msg
           events.push(event)
           await onEvent?.(event)
-          finish()
-          return
-        }
-        // Native Cursor tools are answered with a typed rejection so the model
-        // falls back to the MCP tools instead of aborting the run.
-        const rejection = encodeNativeExecRejection(msg)
-        if (rejection) {
-          send(rejection)
-          return
-        }
-        send(encodeExecThrow({ id: msg.id, error: 'dsh owns tool execution' }))
-        return
-      }
-      if (msg.kind === 'query') {
-        send(encodeCancelAction())
-        return
-      }
-      if (msg.kind === 'interaction') {
-        if (msg.text) collected.text += msg.text
-        if (msg.thinking) collected.thinking += msg.thinking
-        if (msg.tokens) {
-          collected.usage.completionTokens = (collected.usage.completionTokens ?? 0) + msg.tokens
-        }
-        if (msg.usage) {
-          if (Number.isFinite(msg.usage.promptTokens)) collected.usage.promptTokens = msg.usage.promptTokens
-          if (Number.isFinite(msg.usage.completionTokens)) collected.usage.completionTokens = msg.usage.completionTokens
-          if (Number.isFinite(msg.usage.cachedTokens)) collected.usage.cachedTokens = msg.usage.cachedTokens
-        }
-        // tool_call_started is informational; the authoritative MCP call (with
-        // real arguments) arrives as execServerMessage.mcpArgs. Emitting both
-        // would duplicate the OpenAI tool_call, and this update carries no args.
-        const event = msg.toolCall ? { ...msg, toolCall: undefined } : msg
-        events.push(event)
-        await onEvent?.(event)
-        if (msg.turnEnded) {
-          try { stream.end() } catch { /* */ }
-          finish()
-        }
-        return
-      }
-    }
-
-    const consume = async () => {
-      try {
-        // Pull one chunk at a time: a blocked downstream consumer must stop
-        // HTTP/2 reads, not accumulate unobserved callback promises.
-        for await (const chunk of stream) {
-          if (settled) return
-          const messages = []
-          rest = consumeCursorFrames(chunk, rest, (msg) => messages.push(msg))
-          for (const msg of messages) {
-            if (settled) return
-            await handle(msg)
+          if (msg.turnEnded) {
+            try { stream.end() } catch { /* */ }
+            finish()
           }
+          return
         }
-        if (rest.length) throw new Error('cursor Connect stream truncated at EOF: ' + rest.length + ' buffered bytes')
-        finish()
-      } catch (error) {
-        finish(error)
       }
+
+      const consume = async () => {
+        try {
+          // Pull one chunk at a time: a blocked downstream consumer must stop
+          // HTTP/2 reads, not accumulate unobserved callback promises.
+          for await (const chunk of stream) {
+            if (settled) return
+            const messages = []
+            rest = consumeCursorFrames(chunk, rest, (msg) => messages.push(msg))
+            for (const msg of messages) {
+              if (settled) return
+              await handle(msg)
+            }
+          }
+          if (rest.length) throw new Error('cursor Connect stream truncated at EOF: ' + rest.length + ' buffered bytes')
+          finish()
+        } catch (error) {
+          finish(error)
+        }
+      }
+      stream.on('error', (error) => finish(error))
+      void consume()
+      stream.write(frameConnect(built.requestBytes))
     }
-    stream.on('error', (error) => finish(error))
-    void consume()
-    stream.write(frameConnect(built.requestBytes))
   })
 }
 
