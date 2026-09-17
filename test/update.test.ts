@@ -487,6 +487,50 @@ test('runPluginUpdate surfaces a nonzero exit', async () => {
   assert.match(result.error, /no pnpm-workspace/)
 })
 
+test('runPluginUpdate augments a sparse GUI PATH for the spawned dsh', async () => {
+  const seen = []
+  const spawnFn = (cmd, args, opts) => {
+    seen.push(opts?.env?.PATH)
+    return fakeChild({ code: 0 })(cmd, args, opts)
+  }
+  const result = await runPluginUpdate({
+    spawnFn,
+    profile: 'web',
+    env: { DSH_HOME: process.cwd(), PATH: '/usr/bin' },
+  })
+  assert.equal(result.ok, true)
+  assert.match(seen[0], /usr\/local\/bin/)
+  assert.match(seen[0], /usr\/bin/)
+})
+
+test('applyHostUpdate retries add #tag when dsh plugin update times out', async () => {
+  const seen = []
+  const spawnFn = (cmd, args, opts) => {
+    seen.push(args)
+    if (seen.length === 1) {
+      // First spawn (plugin update) hangs until the timeout kills it.
+      const child = new EventEmitter()
+      child.stdout = new EventEmitter()
+      child.stderr = new EventEmitter()
+      child.kill = () => undefined
+      return child
+    }
+    return fakeChild({ code: 0 })(cmd, args, opts)
+  }
+  const result = await applyHostUpdate({
+    spawnFn,
+    profile: 'web',
+    latest: 'v0.0.71',
+    timeoutMs: 30,
+    env: { DSH_HOME: process.cwd() },
+    readFileFn: versionReader(['0.0.70', '0.0.70', '0.0.70', '0.0.71']),
+  })
+  assert.equal(result.ok, true)
+  assert.equal(result.status, 'installed')
+  assert.deepEqual(seen[0], ['plugin', '--profile', 'web', 'update', 'dsh-plugin-oauth-subs'])
+  assert.deepEqual(seen[1], ['plugin', '--profile', 'web', 'add', `${REPO_URL}#v0.0.71`])
+})
+
 test('compareVersions handles prerelease semver comparisons correctly', () => {
   assert.equal(compareVersions('0.1.3-alpha.1', '0.1.2-rc.1') > 0, true)
   assert.equal(compareVersions('0.1.2-rc.1', '0.1.2-alpha.5') > 0, true)

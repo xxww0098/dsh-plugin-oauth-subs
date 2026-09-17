@@ -135,6 +135,12 @@ export declare function versionAdvanced(before: any, after: any, latest: any): b
  */
 export declare function dshPluginBin(env?: NodeJS.ProcessEnv): string;
 /**
+ * GUI-launched dsh web often carries a minimal PATH (no ~/.local/bin, no
+ * Homebrew). The spawned dsh CLI needs pnpm/node for plugin installs, so
+ * prepend the usual locations before handing env to the child.
+ */
+export declare function pathWithDefaults(current: any, platform?: NodeJS.Platform): any;
+/**
  * Spawn the running DSH with the given plugin args. Exit 0 is only a spawn
  * success — `applyHostUpdate` re-reads the profile package.json.
  */

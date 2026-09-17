@@ -136,10 +136,10 @@ import {
   applyHostDshUpdate,
   scheduleDshWebRestart,
 } from '../utils/update.js'
-import { AUTO_UPDATE_INTERVAL_MS, defaultUpdatePrefs, readUpdatePrefs, updatePrefsPath, writeUpdatePrefs } from '../utils/update-prefs.js'
+import { AUTO_UPDATE_INTERVAL_MS, autoRunOutcome, defaultUpdatePrefs, readUpdatePrefs, readUpdateState, updatePrefsPath, updateStatePath, writeUpdatePrefs, writeUpdateState } from '../utils/update-prefs.js'
 
 export class AuthController {
-  constructor({ authPath, prefix, origin, settings, credentials, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, spawnFn, profile, readFileFn, updateEnv, exitFn, prefsPath, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover, devinAutoImport, devinImport, devinDiscover }) {
+  constructor({ authPath, prefix, origin, settings, credentials, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, spawnFn, profile, readFileFn, updateEnv, exitFn, prefsPath, statePath, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover, devinAutoImport, devinImport, devinDiscover }) {
     this.authPath = authPath
     this.prefix = prefix
     this.origin = origin
@@ -149,7 +149,9 @@ export class AuthController {
     this.spawnFn = spawnFn
     this.exitFn = exitFn
     this.prefsPath = prefsPath || updatePrefsPath(dirname(authPath))
+    this.statePath = statePath || updateStatePath(dirname(authPath))
     this.autoUpdate = defaultUpdatePrefs()
+    this.autoUpdateState = {}
     this.prefsReady = this.#loadUpdatePrefs()
     this.autoUpdateBusy = false
     this.autoUpdateTimer = undefined
@@ -547,6 +549,7 @@ export class AuthController {
         readFileFn: this.readFileFn,
       }),
       autoUpdate: { ...this.autoUpdate },
+      autoUpdateState: { ...this.autoUpdateState },
     }
   }
 
@@ -797,7 +800,12 @@ export class AuthController {
       const disk = result.after || next.disk
       if (result.ok) {
         const caughtUp = Boolean(version && info.latest?.tag && compareVersions(version, info.latest.tag) >= 0)
-        if (payload.restart === true) {
+        // Manual applies restart like auto-update does — installing without a
+        // restart left the old module running and read as "update failed".
+        // Only the auto tick passes restart:false (it restarts itself once
+        // both channels are done).
+        const restart = payload.restart !== false
+        if (restart) {
           scheduleDshWebRestart({ spawnFn: this.spawnFn, env: profileOpts.env })
           if (typeof this.exitFn === 'function') setTimeout(() => this.exitFn(0), 200)
         }
@@ -807,7 +815,7 @@ export class AuthController {
           version,
           disk: disk || undefined,
           status: caughtUp ? 'current' : info.status,
-          apply: { status: 'installed', restart: true, command: result.command },
+          apply: { status: 'installed', restart, command: result.command },
         }
       }
       return {
@@ -888,7 +896,12 @@ export class AuthController {
   }
 
   async #loadUpdatePrefs() {
-    this.autoUpdate = await readUpdatePrefs(this.prefsPath)
+    const [prefs, state] = await Promise.all([
+      readUpdatePrefs(this.prefsPath),
+      readUpdateState(this.statePath),
+    ])
+    this.autoUpdate = prefs
+    this.autoUpdateState = state
     return this.autoUpdate
   }
 
@@ -928,8 +941,18 @@ export class AuthController {
       }
       if (this.autoUpdate.dsh) {
         dsh = await this.checkDshUpdate({ apply: true, auto: true })
-        if (dsh?.apply?.restart) return { plugin, dsh }
       }
+      if (plugin || dsh) {
+        this.autoUpdateState = {
+          at: new Date().toISOString(),
+          ...(plugin ? { plugin: autoRunOutcome(plugin) } : {}),
+          ...(dsh ? { dsh: autoRunOutcome(dsh) } : {}),
+        }
+        try {
+          await writeUpdateState(this.statePath, this.autoUpdateState)
+        } catch { /* state file is best-effort */ }
+      }
+      if (dsh?.apply?.restart) return { plugin, dsh }
       if (plugin?.apply?.status === 'installed') {
         scheduleDshWebRestart({ spawnFn: this.spawnFn, env: this.updateEnv ?? process.env })
         if (typeof this.exitFn === 'function') setTimeout(() => this.exitFn(0), 200)

@@ -34,15 +34,25 @@ The About tab is two update cards (OAuth Subs Plugin / DeepSeek Harness)
 with one shared anatomy — no account cards, no dialog:
 
 - Card head: title + status pill on the left (`osubs-pill` — ok `已是最新`,
-  warn `有新版本`, bad `检查失败`, neutral otherwise); auto-update switch
-  (`osubs-auto`: visually hidden checkbox + `osubs-auto-track`, `title`
-  tooltip) and 检查更新 on the right.
+  warn `有新版本`, bad `检查失败`/`更新失败`, neutral otherwise); a
+  check-only 检查更新 button on the right. It never installs.
+- Version band (`.osubs-ver`): `当前 → 最新` mono numerals with an SVG
+  arrow; the arrow pulses while applying. The apply CTA
+  (`更新到 vX` / `重试更新到 vX`, `osubs-btn--update`) docks right and
+  shows elapsed seconds while running. Check and apply are separate
+  actions — never one button that silently switches roles.
 - kv list (`.osubs-kv`) is hairline-separated rows (`--osubs-hair`):
   muted label left, value right. Versions/tags are mono
   (`osubs-mono`); npm dist-tags render as `osubs-tag--plain` chips.
+  The last row is the auto-update row (`.osubs-auto-row`): the whole
+  row is the label — title + a faint note (`每小时检查一次…` plus
+  `上次检查 HH:mm · 结果` from `update-state.json`) on the left,
+  `osubs-auto-track` switch on the right.
 - Repo rows link out with the LobeHub GitHub mark (`osubs-link--icon`).
 - Error detail, stale-process, and apply-result hints live under the list
-  in `.osubs-hints`; the pill carries the headline state.
+  in `.osubs-hints`; the pill carries the headline state. A successful
+  manual apply auto-restarts dsh web (same as auto-update); only an old
+  host that ignores `restart` falls back to the manual-restart hint.
 
 ## Quota
 

@@ -412,7 +412,7 @@ test('About Installed prefers the fresher of checkUpdate and snapshot', async ()
 
 test('About DSH GitHub latest tag shows published time before the tag', async () => {
   const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
-  const row = src.match(/t\.dshLatestTag[\s\S]*?t\.dshNpmVersion/)?.[0] ?? ''
+  const row = src.match(/t\.dshLatestTag[\s\S]*?t\.dshStableVersion/)?.[0] ?? ''
   assert.match(row, /Boolean\(dshTag\?\.publishedAt\) && h\('span', \{ className: 'osubs-note' \}, dshTag\.publishedAt\),\s*aboutLink\(dshTag\?\.url, dshTag\?\.tag\)/)
   assert.equal(/aboutLink\(dshTag\?\.url, dshTag\?\.tag\),\s*Boolean\(dshTag\?\.publishedAt\)/.test(row), false)
   assert.match(src, /\.osubs-kv-value \.osubs-note:not\(:last-child\)::after \{ content: ' ·'/)
