@@ -193,6 +193,21 @@ export function apply(ctx, config = {}) {
     exitFn: (code) => process.exit(code),
   })
 
+  controller.outboundProxy = async () => {
+    if (outbound.ready) await outbound.ready
+    return outbound.snapshot()
+  }
+  controller.setOutboundProxy = async (payload = {}) => {
+    if (outbound.ready) await outbound.ready
+    return outbound.setUrl(payload?.url)
+  }
+  const snapshot = controller.snapshot.bind(controller)
+  controller.snapshot = async () => {
+    const view = await snapshot()
+    if (outbound.ready) await outbound.ready
+    return { ...view, proxy: outbound.snapshot() }
+  }
+
   ctx.effect(() => startEffortRestore({
     ctx,
     settings: ctx.settings,
