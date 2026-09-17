@@ -66,6 +66,15 @@ export declare const CURSOR_SOURCES: readonly string[];
 export declare function cursorSourceLabel(source: any, locale?: string): "env" | "CLI" | "IDE" | "PKCE";
 export declare function cursorClientVersion(): string;
 export declare function cursorAgentUrl(): string;
+/** Plugin config `cursorProxy` wins over env; empty re-enables env fallback. */
+export declare function configureCursorUpstreamProxy(value: any): void;
+/**
+ * Upstream egress for the Cursor h2 hop (Run + discovery RPCs). Anthropic /
+ * OpenAI / Gemini refuse requests that leave from unsupported regions, so a
+ * supported-region proxy is the only way to run those families — same role
+ * as the IDE's `http.proxy`. Auth poll, refresh, and quota stay direct.
+ */
+export declare function cursorUpstreamProxy(): any;
 export declare function cursorTokenExpiry(token: any, now?: number): number;
 /** JWT `sub` / WorkOS / Auth0 / the literal `cursor` — vault keys only, never a card title. */
 export declare function isCursorOpaqueAccount(value: any): boolean;

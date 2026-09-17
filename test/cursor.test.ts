@@ -1205,3 +1205,70 @@ test('cursor hop replays a completed tool turn and continues with the tool outpu
 })
 
 
+
+test('warmCatalogs discovers the live cursor catalog at startup and re-syncs', async () => {
+  resetCursorCatalogCache()
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-cursor-warm-'))
+  const authPath = join(dir, 'auth.json')
+  const session = cursorSession({
+    accessToken: validAccess('warm@x'),
+    refreshToken: 'rt-warm',
+    source: 'pkce',
+    account: 'warm@x',
+  })
+  await saveSession('cursor', session, authPath)
+  const yaml = { providers: {} }
+  const decoded = decodeGetUsableModelsResponse(encodeGetUsableModelsResponse([
+    { id: 'default', name: 'Auto' },
+    { id: 'kimi-k3', name: 'Kimi K3' },
+    { id: 'glm-5.2-max', name: 'GLM 5.2 Max' },
+  ]))
+  const controller = new AuthController({
+    authPath,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    cursorAutoImport: false,
+    cursorDiscover: (live) => refreshCursorCatalog(live, {
+      fetchUsable: async () => decoded,
+      fetchAvailable: async () => [],
+    }),
+    settings: {
+      mutate: async (_target, mutations) => {
+        for (const op of mutations) {
+          if (op.op === 'unset') delete yaml.providers[op.path[1]]
+          if (op.op === 'set') yaml.providers[op.path[1]] = op.value
+        }
+      },
+      get: async () => ({ providers: yaml.providers }),
+    },
+  })
+  await controller.warmCatalogs()
+  const ids = (yaml.providers['oauth-cursor']?.models ?? []).map((model) => model.id)
+  assert.deepEqual(ids, ['default', 'glm-5.2', 'kimi-k3'])
+  resetCursorCatalogCache()
+})
+
+test('cursor catalog cache is keyed on the upstream proxy egress', async () => {
+  const { configureCursorUpstreamProxy } = await import('../lib/oauth/cursor/index.js')
+  resetCursorCatalogCache()
+  configureCursorUpstreamProxy(undefined)
+  const session = cursorSession({
+    accessToken: validAccess('egress@x'),
+    refreshToken: 'rt-egress',
+    source: 'pkce',
+  })
+  let fetches = 0
+  const fetchUsable = async () => {
+    fetches += 1
+    return decodeGetUsableModelsResponse(encodeGetUsableModelsResponse([{ id: 'kimi-k3', name: 'Kimi K3' }]))
+  }
+  const options = { fetchUsable, fetchAvailable: async () => [], ttlMs: 60_000 }
+  await refreshCursorCatalog(session, options)
+  await refreshCursorCatalog(session, options)
+  assert.equal(fetches, 1)
+  configureCursorUpstreamProxy('http://127.0.0.1:8080')
+  await refreshCursorCatalog(session, options)
+  assert.equal(fetches, 2)
+  configureCursorUpstreamProxy(undefined)
+  resetCursorCatalogCache()
+})

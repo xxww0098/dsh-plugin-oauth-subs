@@ -1,7 +1,8 @@
 /**
  * Live Cursor picker catalog. GetUsableModels + AvailableModels collapse
- * into one DSH row per family, then merge onto CURSOR_MODELS so a stale
- * live list cannot hide Composer 2.5 / Grok 4.6 / GPT-5.6 / Gemini.
+ * into one DSH row per family. A non-empty live list is upstream truth —
+ * region-gated or retired families are simply not offered — while
+ * CURSOR_MODELS stays the offline fallback only.
  */
 export declare const CURSOR_CATALOG_TTL_MS: number;
 export declare const DEFAULT_CURSOR_CONTEXT_WINDOW = 200000;

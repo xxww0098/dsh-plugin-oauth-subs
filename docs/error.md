@@ -2,6 +2,12 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-17：Cursor 区域锁模型全挂 + 勾选格停在静态底表
+
+**现象**：Cursor 勾选格里 Claude / Gemini / GPT-5.x 一跑就 `Model not available: This model provider is not supported in your region`；同时账号实际可用的 `default`(Auto) / `kimi-k3` / `kimi-k2.7-code` / `glm-5.2` / `*-fast` 不进勾选格，活目录（GetUsableModels 23 行）从未落到 picker。
+**根因**：Cursor 按请求出口 IP 做合规区锁（官方解法就是 `http.proxy`，本 hop 的 `http2.connect` 没有任何代理支持）；活目录只在登录 / 导入 / 手动刷额度时拉取，静态底表一直顶在 picker 上。
+**修复**：新增 `cursor/upstream-proxy.ts` —— `PI_CURSOR_PROXY` / `CURSOR_PROXY` / 插件配置 `cursorProxy`（http://、https://、socks5://）时 Run 与目录 RPC 走 CONNECT/SOCKS5 隧道再 TLS+h2（`cursorH2Connect`，connectFn 允许异步）；`warmCatalogs()` 在启动时为已登录家族跑活目录并重 sync；目录缓存键并入代理出口；区域错误追加指向该配置的提示；picker 名字去掉 `Cursor ` 品牌前缀。跑通验证：default / composer-2.5(±fast) / grok-4.5/4.6(±fast) / glm-5.2 / kimi-k2.7-code / kimi-k3 全 200。
+
 ## 2026-09-15：OpenCode Go 的内置 27 个模型被插件带进 DSH 模型列表
 
 **现象**：`OPENCODE_API_KEY` 一旦存在，DSH 模型列表就多出内置 `opencode-go` 的 27 个模型；插件 Settings > 模型 家族组只列 `deepseek-flash` 一条，用户没在 DSH 模型设置页开过它，删掉下次 sync 又回来。
