@@ -264,6 +264,29 @@ test('a later Grok 512-token block with <10% reuse is an affinity miss, not a pr
   assert.match(report.verdict, /regression/)
 })
 
+test('keywords inside a serialized tool-result envelope are content, not transport', () => {
+  // Reading docs/error.md echoes TRANSPORT / stream idle timeout text through
+  // tool-result content — the scan must look past payload keys only.
+  const text = sessionJsonl([
+    {
+      type: 'assistant/message',
+      data: { turn: 1, step: 1, usage: { inputTokens: 10, outputTokens: 1, cacheReadTokens: 90 } },
+    },
+    {
+      type: 'tool/result',
+      data: {
+        message: JSON.stringify({
+          source: { kind: 'tool', callId: 'x' },
+          content: [{ type: 'tool-result', content: [{ type: 'text', text: '92: `attemptUpstream` TRANSPORT … stream idle timeout after 300000ms' }] }],
+        }),
+      },
+    },
+  ])
+  const report = analyzeSession(text)
+  assert.equal(report.transportFaults.length, 0)
+  assert.equal(report.healthy, true)
+})
+
 test('a nested assistant/attempt stream idle timeout is a transport fault', () => {
   const text = sessionJsonl([
     {

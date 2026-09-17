@@ -2,6 +2,11 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-10-21：手动更新「经常失败」——装上了但不重启、update 超时即放弃
+
+**现象**：关于页手动点更新常报失败或装完版本仍旧；自动更新却稳定。根因有三：①手动 apply 不传 restart，装上后进程仍跑旧模块，用户不重启就永远「有新版本」；②`dsh plugin update`（pnpm update，对 git spec 常 no-op）一超时就不再走确定性的 `add <repo>#tag`；③GUI 启动的 dsh web PATH 极简，spawn 的 dsh 找不到 pnpm/node。
+**修复**：手动 apply 默认 `restart !== false`（与自动更新、DSH 卡一致，装完自动重启）；`applyHostUpdate` 在 update 超时后仍重试 `add #tag`；`runDshPlugin` 与 npm 一样补 PATH 默认值。UI 拆开「检查更新」与「更新到 vX」，加版本带、进度秒数与自动更新「上次检查」行（`update-state.json` 记录 lastRun）。
+
 ## 2026-10-20：Devin hop 的三个活测结论（双前缀 / ide_name / fast）
 
 **现象**：接入 Devin 时发现三类会做错的事——①给已带 `devin-session-token$` 的 token 再加前缀，上游 401；②`GetCliModelConfigs` 用 `ide_name: devin` 只回 1 条 stub config（209→1），MITM 真二进制后确认 `chisel`/`3000.10.31` 才是 CLI 真实指纹；③`GetCliModelConfigs` 有 `*-fast` 真后端变体，过 `applyFastMode` 会把模型 id 剥掉 `-fast`。
@@ -16,9 +21,9 @@
 
 ## 2026-09-17：Devin hop 的孤立 cache_read=0 是上游行为，不是 hop bug
 
-**现象**：session 分析 88 跳 96% 命中，但 step 2/10/37/62 四次 `cache_read_tokens=0`（间隔约 6.5min），下一跳立刻恢复读满前缀。
-**根因**：上游 `PromptCacheOptions{type:1}`（ephemeral）缓存是异步提交/定期失效——用真 token 活测同一 cascade 连续 8 跳复现：read 恒落后 1–3 跳，偶发 0。不是 pin 漂移（cascade 恒定、message_id 确定性、无 TTL 关联、无 splice 关联）。
-**修复**：hop 侧无解，真实优化点是另一处——`GetUserJwt` 原每跳都打（实测 RTT ≈2s），jwt `exp`≈15min：新增 `devinChatAuth` 按 exp−90s 复用 per-token，chat 401 丢缓存重试一次 token-only。88 跳会话省 ~2.5min 延迟。
+**现象**：两个 session（88 跳 96% / 115 跳 93%）各有孤立 `cache_read_tokens=0`（墙钟 ~5–8min 一次），下一跳立刻恢复读满前缀；活测同 cascade 连打 8 跳复现——read 恒落后 1–3 跳、偶发 0。
+**根因**：上游 `PromptCacheOptions{type:1}`（ephemeral）缓存异步提交 + 定期失效；与 pin/cascade/effort/splice 无关——A/B 活测证伪 message_id 回传影响（上游自发 `bot-uuid`，回传与否命中率一致）。
+**修复**：hop 侧无解；顺藤摸到 `GetUserJwt` 每跳都打（RTT ≈2s），jwt `exp`≈15min——`devinChatAuth` 按 exp−90s 复用 per-token，chat 401 丢缓存重试一次 token-only。另外修分析器误报：tool/result 序列化 envelope 的 `content`/`arguments`/`parts` 载的是文件文本（读 error.md 触发 `TRANSPORT`/`stream idle timeout` 误报 2 条），现剥掉 payload 键再扫描。
 
 ## 2026-09-17：Cursor 区域锁模型全挂 + 勾选格停在静态底表
 
