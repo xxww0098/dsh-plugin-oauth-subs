@@ -6,7 +6,7 @@
  *   2. drives ChatGPT Codex PKCE, xAI Grok device-code / PKCE,
  *      Zhipu GLM Z.ai / BigModel CLI-poll, AWS Kiro (Social / Builder ID /
  *      IdC / Entra / API key), Google Antigravity, Cursor, Ollama Cloud,
- *      Kimi Code Plan, and GitHub Copilot logins
+ *      Kimi Code Plan, GitHub Copilot, and Devin Agent logins
  *   3. syncs logged-in catalogs into llm-pi-ai
  *
  * The client half (Settings > OAuth 订阅) is discovered from package.json
@@ -28,6 +28,7 @@ import { ollamaCatalogModels } from './apikey/ollama/catalog.js'
 import { kiroCatalogModels } from './oauth/kiro/catalog.js'
 import { kimiCatalogModels } from './oauth/kimi/catalog.js'
 import { copilotCatalogModels } from './oauth/copilot/catalog.js'
+import { devinCatalogModels } from './oauth/devin/catalog.js'
 import { EffortMemory, LAST_EFFORT_FILE, startEffortRestore } from './oauth/reasoning-effort.js'
 import { localDshInfo, pluginClientJsPath, profileFromBaseUrl, stampDshHostVersion } from './utils/update.js'
 
@@ -199,6 +200,7 @@ export function apply(ctx, config = {}) {
         kiroModels: kiroCatalogModels(),
         kimiModels: kimiCatalogModels(),
         copilotModels: copilotCatalogModels(),
+        devinModels: devinCatalogModels(),
       })
       return catalog[provider]?.models.find((model) => model.id === modelId)?.reasoningEfforts
     },
@@ -315,6 +317,13 @@ export {
   copilotSession,
   copilotUpstreamHeaders,
 } from './oauth/copilot/index.js'
+export {
+  DEVIN_MODELS,
+  DEVIN_AUTHORIZE_URL,
+  DEVIN_TOKEN_URL,
+  devinSession,
+  normalizeDevinToken,
+} from './oauth/devin/index.js'
 export { OAUTH_CREDENTIAL_REF, ModelSwitch } from './oauth/models.js'
 export { defaultDataDir } from './oauth/store.js'
 export { AuthController } from './oauth/controller.js'
@@ -326,7 +335,7 @@ export {
   isCodex900kBase,
   peelContextSuffix,
 } from './utils/context-mode.js'
-export { parseCodexUsage, parseGrokBilling, parseGlmQuota, parseKiroUsage, parseCursorPeriodUsage, parseKimiUsage, parseCopilotUsage, parseResetCredits, QuotaStore } from './oauth/quota.js'
+export { parseCodexUsage, parseGrokBilling, parseGlmQuota, parseKiroUsage, parseCursorPeriodUsage, parseKimiUsage, parseCopilotUsage, parseDevinUserStatus, parseResetCredits, QuotaStore } from './oauth/quota.js'
 export { formatPlanLabel, CODEX_PLAN_NAMES } from './oauth/plan.js'
 export {
   REPO_URL,

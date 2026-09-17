@@ -7,3 +7,6 @@ models.json
 .DS_Store
 *.tsbuildinfo
 .local/
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/

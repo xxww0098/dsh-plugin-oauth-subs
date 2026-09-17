@@ -11,6 +11,7 @@ import { ANTIGRAVITY_PLAN_NAMES } from './antigravity/index.js'
 import { CURSOR_PLAN_NAMES } from './cursor/index.js'
 import { OLLAMA_PLAN_NAMES } from '../apikey/ollama/index.js'
 import { COPILOT_PLAN_NAMES } from './copilot/index.js'
+import { DEVIN_PLAN_NAMES, DEVIN_TIER_NAMES } from './devin/index.js'
 
 export const CODEX_PLAN_NAMES = Object.freeze({
   free: 'Free',
@@ -81,6 +82,9 @@ function compactOf(value) {
 
 export function formatPlanLabel(raw, family) {
   if (raw === undefined || raw === null) return undefined
+  if (family === 'devin' && typeof raw === 'number' && Number.isInteger(raw)) {
+    return DEVIN_TIER_NAMES[raw] ?? String(raw)
+  }
   if (typeof raw === 'number' && Number.isInteger(raw)) {
     return GROK_TIER_NAMES[raw] ?? String(raw)
   }
@@ -116,7 +120,14 @@ export function formatPlanLabel(raw, family) {
     if (COPILOT_PLAN_NAMES[slug]) return COPILOT_PLAN_NAMES[slug]
     if (COPILOT_PLAN_NAMES[compact]) return COPILOT_PLAN_NAMES[compact]
   }
-  if (family !== 'glm' && family !== 'grok' && family !== 'kiro' && family !== 'antigravity' && family !== 'cursor' && family !== 'ollama' && family !== 'kimi' && family !== 'copilot') {
+  if (family === 'devin') {
+    if (DEVIN_PLAN_NAMES[slug]) return DEVIN_PLAN_NAMES[slug]
+    if (DEVIN_PLAN_NAMES[compact]) return DEVIN_PLAN_NAMES[compact]
+    // `teams_tier` may arrive as a numeric string (16 = Devin Pro).
+    const tier = Number(trimmed)
+    if (/^\d+$/.test(trimmed) && DEVIN_TIER_NAMES[tier]) return DEVIN_TIER_NAMES[tier]
+  }
+  if (family !== 'glm' && family !== 'grok' && family !== 'kiro' && family !== 'antigravity' && family !== 'cursor' && family !== 'ollama' && family !== 'kimi' && family !== 'copilot' && family !== 'devin') {
     if (CODEX_PLAN_NAMES[slug]) return CODEX_PLAN_NAMES[slug]
     if (CODEX_PLAN_NAMES[compact]) return CODEX_PLAN_NAMES[compact]
   }

@@ -6,7 +6,7 @@
  *   2. drives ChatGPT Codex PKCE, xAI Grok device-code / PKCE,
  *      Zhipu GLM Z.ai / BigModel CLI-poll, AWS Kiro (Social / Builder ID /
  *      IdC / Entra / API key), Google Antigravity, Cursor, Ollama Cloud,
- *      Kimi Code Plan, and GitHub Copilot logins
+ *      Kimi Code Plan, GitHub Copilot, and Devin Agent logins
  *   3. syncs logged-in catalogs into llm-pi-ai
  *
  * The client half (Settings > OAuth 订阅) is discovered from package.json
@@ -40,11 +40,12 @@ export { CURSOR_CLIENT_VERSION, CURSOR_MODELS, cursorChatHeaders, cursorSession,
 export { OLLAMA_MODELS, OLLAMA_CHAT_URL, ollamaSession, ollamaUpstreamHeaders, } from './apikey/ollama/index.js';
 export { KIMI_CLIENT_ID, KIMI_MODELS, KIMI_CHAT_URL, kimiSession, kimiUpstreamHeaders, } from './oauth/kimi/index.js';
 export { COPILOT_CLIENT_ID, COPILOT_MODELS, copilotChatUrl, copilotSession, copilotUpstreamHeaders, } from './oauth/copilot/index.js';
+export { DEVIN_MODELS, DEVIN_AUTHORIZE_URL, DEVIN_TOKEN_URL, devinSession, normalizeDevinToken, } from './oauth/devin/index.js';
 export { OAUTH_CREDENTIAL_REF, ModelSwitch } from './oauth/models.js';
 export { defaultDataDir } from './oauth/store.js';
 export { AuthController } from './oauth/controller.js';
 export { applyFastMode, modelSupportsFastMode } from './utils/fast-mode.js';
 export { CONTEXT_VARIANT_SUFFIX, codexLargeContext, applyContextMode, isCodex900kBase, peelContextSuffix, } from './utils/context-mode.js';
-export { parseCodexUsage, parseGrokBilling, parseGlmQuota, parseKiroUsage, parseCursorPeriodUsage, parseKimiUsage, parseCopilotUsage, parseResetCredits, QuotaStore } from './oauth/quota.js';
+export { parseCodexUsage, parseGrokBilling, parseGlmQuota, parseKiroUsage, parseCursorPeriodUsage, parseKimiUsage, parseCopilotUsage, parseDevinUserStatus, parseResetCredits, QuotaStore } from './oauth/quota.js';
 export { formatPlanLabel, CODEX_PLAN_NAMES } from './oauth/plan.js';
 export { REPO_URL, REPO_SLUG, installedVersion, fresherVersion, fetchLatest, localUpdateInfo, profileFromBaseUrl, pluginUpdateCommand, runPluginUpdate, applyHostUpdate, DSH_REPO_URL, DSH_REPO_SLUG, DSH_NPM_PACKAGE, localDshInfo, fetchDshLatest, dshUpdateCommand, dshInstallPrefix, applyHostDshUpdate, listDshInstallVersions, scheduleDshWebRestart, } from './utils/update.js';
