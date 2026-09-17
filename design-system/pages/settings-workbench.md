@@ -1,8 +1,9 @@
 # Settings workbench — page override
 
 Deviations from [`../MASTER.md`](../MASTER.md) that apply only to the
-OAuth Settings section (`src/ui/client.ts`). Cross-family layout rules
-stay in AGENTS.md; this page does not repeat them.
+OAuth Settings section (`src/ui/client.ts`). The Settings page rules
+(tabs, account cards, quota bars, dialogs) live here — AGENTS.md only
+indexes this page.
 
 ## This page is not a landing
 
@@ -11,9 +12,9 @@ SaaS (Hero + Features + CTA / Glassmorphism) stops at the overlay
 already recorded in MASTER. Settings is a stacked workbench:
 
 1. Sticky icon tabs (`.osubs-nav`): **two capsules**, docked with
-   `gap: 4px`. Left `.osubs-tabs` is family-only `repeat(8, 36px)` +
-   `justify-content: space-between` + `flex: 1 1 auto` (8 families fill
-   row 1 and stretch their gaps; Copilot then OpenCode Go wrap inside
+   `gap: 4px`. Left `.osubs-tabs` is family-only `repeat(9, 36px)` +
+   `justify-content: space-between` + `flex: 1 1 auto` (9 icons fill
+   row 1 and stretch their gaps; Devin then OpenCode Go wrap inside
    this group). Right `.osubs-tabs-util` stays 36px, Models on row 1
    and GitHub/About on row 2. Do not add a third API-key capsule. Do
    not `margin-left: auto`, nav `space-between`, or

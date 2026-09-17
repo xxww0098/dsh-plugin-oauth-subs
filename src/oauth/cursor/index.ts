@@ -102,6 +102,26 @@ export function cursorAgentUrl() {
     || CURSOR_AGENT_URL
 }
 
+let cursorProxyOverride
+
+/** Plugin config `cursorProxy` wins over env; empty re-enables env fallback. */
+export function configureCursorUpstreamProxy(value) {
+  cursorProxyOverride = trimmed(value)
+}
+
+/**
+ * Upstream egress for the Cursor h2 hop (Run + discovery RPCs). Anthropic /
+ * OpenAI / Gemini refuse requests that leave from unsupported regions, so a
+ * supported-region proxy is the only way to run those families — same role
+ * as the IDE's `http.proxy`. Auth poll, refresh, and quota stay direct.
+ */
+export function cursorUpstreamProxy() {
+  return cursorProxyOverride
+    ?? trimmed(process.env.PI_CURSOR_PROXY)
+    ?? trimmed(process.env.CURSOR_PROXY)
+    ?? undefined
+}
+
 export function cursorTokenExpiry(token, now = Date.now()) {
   const payload = decodeJwtPayload(token)
   if (payload && typeof payload.exp === 'number' && Number.isFinite(payload.exp)) {

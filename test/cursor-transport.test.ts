@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
 import http2 from 'node:http2'
+import net from 'node:net'
 import { test } from 'node:test'
 import { setImmediate as nextTurn } from 'node:timers/promises'
 import { cursorUnaryRpc, runCursorAgent } from '../lib/oauth/cursor/h2-session.js'
+import { cursorH2Connect, dialCursorProxy } from '../lib/oauth/cursor/upstream-proxy.js'
+import { configureCursorUpstreamProxy } from '../lib/oauth/cursor/index.js'
 import { createProxy } from '../lib/oauth/proxy.js'
 import {
   decodeAgentServerMessage,
@@ -358,3 +361,149 @@ test('Cursor server messages expose MCP args and native exec cases', () => {
   assert.equal(shellMsg.execArgs.workingDirectory, '/tmp')
 })
 
+
+function connectForwarder(targetPort, seen = [], sockets = new Set()) {
+  const proxy = net.createServer((socket) => {
+    sockets.add(socket)
+    socket.on('error', () => {})
+    socket.once('close', () => sockets.delete(socket))
+    let head = Buffer.alloc(0)
+    const onData = (chunk) => {
+      head = Buffer.concat([head, chunk])
+      const at = head.indexOf('\r\n\r\n')
+      if (at < 0) return
+      socket.off('data', onData)
+      seen.push(head.subarray(0, at).toString('latin1'))
+      socket.write('HTTP/1.1 200 Connection Established\r\n\r\n')
+      const upstream = net.connect(targetPort, '127.0.0.1')
+      sockets.add(upstream)
+      upstream.on('error', () => {})
+      upstream.once('close', () => sockets.delete(upstream))
+      const rest = head.subarray(at + 4)
+      socket.pipe(upstream)
+      upstream.pipe(socket)
+      if (rest.length) upstream.write(rest)
+    }
+    socket.on('data', onData)
+  })
+  proxy.listen(0, '127.0.0.1')
+  return once(proxy, 'listening').then(() => proxy)
+}
+
+async function proxiedH2Peer(t, onStream) {
+  const server = http2.createServer()
+  const peers = new Set()
+  server.on('session', (peer) => {
+    peers.add(peer)
+    peer.on('error', () => {})
+  })
+  server.on('stream', onStream)
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  const h2port = server.address().port
+  const sockets = new Set()
+  const seen = []
+  const proxy = await connectForwarder(h2port, seen, sockets)
+  t.after(() => {
+    for (const peer of peers) peer.destroy()
+    for (const socket of sockets) socket.destroy()
+    server.close()
+    proxy.close()
+    configureCursorUpstreamProxy(undefined)
+  })
+  configureCursorUpstreamProxy(`http://127.0.0.1:${proxy.address().port}`)
+  return { h2port, seen }
+}
+
+test('Cursor unary RPC tunnels through an HTTP CONNECT upstream proxy', async (t) => {
+  const { h2port, seen } = await proxiedH2Peer(t, (peer) => {
+    peer.respond({ ':status': 200 })
+    peer.end(Buffer.from('pong'))
+  })
+  const body = await cursorUnaryRpc({
+    session,
+    url: `http://127.0.0.1:${h2port}`,
+    path: '/x',
+    connectFn: cursorH2Connect,
+    timeoutMs: 5000,
+  })
+  assert.equal(body.toString(), 'pong')
+  assert.match(seen[0], new RegExp(`^CONNECT 127\\.0\\.0\\.1:${h2port} HTTP/1\\.1`))
+})
+
+test('Cursor Run streams through an HTTP CONNECT upstream proxy', async (t) => {
+  const { h2port } = await proxiedH2Peer(t, (peer) => {
+    peer.respond({ ':status': 200 })
+    peer.on('data', () => {})
+    peer.end(Buffer.concat([textFrame('tunneled'), turnEndedFrame()]))
+  })
+  const { collected } = await runCursorAgent(session, built, {
+    url: `http://127.0.0.1:${h2port}`,
+    connectFn: cursorH2Connect,
+  })
+  assert.equal(collected.text, 'tunneled')
+})
+
+test('dialCursorProxy completes a SOCKS5 handshake', async (t) => {
+  const frames = []
+  const socks = net.createServer((socket) => {
+    socket.on('error', () => {})
+    socket.once('data', (greeting) => {
+      frames.push(Buffer.from(greeting))
+      socket.write(Buffer.from([0x05, 0x00]))
+      socket.once('data', (request) => {
+        frames.push(Buffer.from(request))
+        socket.write(Buffer.from([0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0]))
+      })
+    })
+  })
+  socks.listen(0, '127.0.0.1')
+  await once(socks, 'listening')
+  t.after(() => socks.close())
+  const socket = await dialCursorProxy(
+    `socks5://127.0.0.1:${socks.address().port}`,
+    new URL('https://agentn.us.api5.cursor.sh'),
+    { timeoutMs: 3000 },
+  )
+  assert.ok(socket.writable)
+  socket.destroy()
+  assert.deepEqual([...frames[0]], [0x05, 0x01, 0x00])
+  const request = frames[1]
+  assert.equal(request[0], 0x05)
+  assert.equal(request[1], 0x01)
+  assert.equal(request[3], 0x03)
+  const hostLength = request[4]
+  assert.equal(request.subarray(5, 5 + hostLength).toString(), 'agentn.us.api5.cursor.sh')
+  assert.equal(request.readUInt16BE(5 + hostLength), 443)
+})
+
+test('dialCursorProxy rejects a non-2xx CONNECT answer', async (t) => {
+  const proxy = net.createServer((socket) => {
+    socket.on('error', () => {})
+    socket.once('data', () => socket.end('HTTP/1.1 407 Proxy Authentication Required\r\n\r\n'))
+  })
+  proxy.listen(0, '127.0.0.1')
+  await once(proxy, 'listening')
+  t.after(() => proxy.close())
+  await assert.rejects(
+    dialCursorProxy(`http://127.0.0.1:${proxy.address().port}`, new URL('https://agentn.us.api5.cursor.sh'), { timeoutMs: 3000 }),
+    /407/,
+  )
+})
+
+test('Cursor region error points at the upstream proxy knob', async () => {
+  const end = frameConnect(Buffer.from(JSON.stringify({
+    error: { code: 'failed_precondition', message: 'Model not available: This model provider is not supported in your region.' },
+  })), true)
+  await withH2Peer(async ({ server, url, connectFn }) => {
+    const accepted = once(server, 'stream', { signal: AbortSignal.timeout(1000) })
+    const run = runCursorAgent(session, built, { url, connectFn })
+    const rejected = assert.rejects(run, /CURSOR_PROXY/)
+    const [peer] = await accepted
+    peer.on('error', () => {})
+    peer.respond({ ':status': 200 })
+    await once(peer, 'data', { signal: AbortSignal.timeout(1000) })
+    peer.end(end)
+    await rejected
+  })
+})

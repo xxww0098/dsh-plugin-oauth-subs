@@ -2,6 +2,18 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-10-20：Devin hop 的三个活测结论（双前缀 / ide_name / fast）
+
+**现象**：接入 Devin 时发现三类会做错的事——①给已带 `devin-session-token$` 的 token 再加前缀，上游 401；②`GetCliModelConfigs` 用 `ide_name: devin` 只回 1 条 stub config（209→1），MITM 真二进制后确认 `chisel`/`3000.10.31` 才是 CLI 真实指纹；③`GetCliModelConfigs` 有 `*-fast` 真后端变体，过 `applyFastMode` 会把模型 id 剥掉 `-fast`。
+**根因**：token 导入/粘贴/paste 共用入口，不 normalize 就双前缀；服务端按客户端身份区分目录；共享 fast-mode 语义把「快档」当后缀 flag，和 Devin 把它当独立模型冲突。
+**修复**：`normalizeDevinToken` 幂等加前缀；身份按真 CLI MITM 固定 `chisel`/`3000.10.31` + `os` + `Basic <tok>-<tok>`（`windsurf` 也能回全量但那是 windsurf 指纹，不是 devin 的）；Devin 分支跳过 `applyFastMode`，`-fast` 收成独立 picker 行 `*-fast`。
+
+## 2026-09-17：Cursor 区域锁模型全挂 + 勾选格停在静态底表
+
+**现象**：Cursor 勾选格里 Claude / Gemini / GPT-5.x 一跑就 `Model not available: This model provider is not supported in your region`；同时账号实际可用的 `default`(Auto) / `kimi-k3` / `kimi-k2.7-code` / `glm-5.2` / `*-fast` 不进勾选格，活目录（GetUsableModels 23 行）从未落到 picker。
+**根因**：Cursor 按请求出口 IP 做合规区锁（官方解法就是 `http.proxy`，本 hop 的 `http2.connect` 没有任何代理支持）；活目录只在登录 / 导入 / 手动刷额度时拉取，静态底表一直顶在 picker 上。
+**修复**：新增 `cursor/upstream-proxy.ts` —— `PI_CURSOR_PROXY` / `CURSOR_PROXY` / 插件配置 `cursorProxy`（http://、https://、socks5://）时 Run 与目录 RPC 走 CONNECT/SOCKS5 隧道再 TLS+h2（`cursorH2Connect`，connectFn 允许异步）；`warmCatalogs()` 在启动时为已登录家族跑活目录并重 sync；目录缓存键并入代理出口；区域错误追加指向该配置的提示；picker 名字去掉 `Cursor ` 品牌前缀。跑通验证：default / composer-2.5(±fast) / grok-4.5/4.6(±fast) / glm-5.2 / kimi-k2.7-code / kimi-k3 全 200。
+
 ## 2026-09-15：OpenCode Go 的内置 27 个模型被插件带进 DSH 模型列表
 
 **现象**：`OPENCODE_API_KEY` 一旦存在，DSH 模型列表就多出内置 `opencode-go` 的 27 个模型；插件 Settings > 模型 家族组只列 `deepseek-flash` 一条，用户没在 DSH 模型设置页开过它，删掉下次 sync 又回来。

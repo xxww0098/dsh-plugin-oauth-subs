@@ -19,7 +19,8 @@ Cursor 订阅（Composer / Claude / GPT / Grok via Cursor infra）。原生 wire
 | [`request.ts`](request.ts) | OpenAI Completions ↔ `AgentClientMessage` / `AgentServerMessage` |
 | [`cache.ts`](cache.ts) | `AgentRunRequest.conversation_id` + 稳定 turn id。禁止 `Date.now()` / 每次 `randomUUID()` |
 | [`proto.ts`](proto.ts) | 最小 protobuf + Connect framing（Run / GetUsableModels / AvailableModels） |
-| [`h2-session.ts`](h2-session.ts) | Node `http2` 进程内会话（unary + streaming） |
+| [`h2-session.ts`](h2-session.ts) | Node `http2` 进程内会话（unary + streaming）；`connectFn` 允许返回 Promise |
+| [`upstream-proxy.ts`](upstream-proxy.ts) | 可选上游代理：HTTP CONNECT / SOCKS5 隧道（区域锁出口） |
 | [`transport.ts`](transport.ts) | Completions HTTP / SSE 输出与 Run 事件消费背压 |
 
 调度：[`../proxy.ts`](../proxy.ts) `family === 'cursor'` 剥 Codex retention，取出 `cursorConversationId`；真正组 Run 在 `openaiToCursor`。
@@ -52,6 +53,10 @@ Run 握手必须按类型回帧，不能一律当原生工具拒绝：
 工具结果续跑：Cursor 没有无状态的 tool-result action。下一轮把**完成轮**（user + MCP 调用 + result）写进 `conversationState`（`parseTurns` 只在还有未答复 toolCall 时才算 in-flight），并把工具输出作为**当前 user 消息**（`openaiToCursor` 的 `continuationText`）。只重发原 user 文本会让模型重复调用同一个工具。
 
 HTTP/2 请求取消 / unary 超时必须销毁该请求独占的连接，`close()` 的优雅关闭不会终止活动流；已结算后不再消费消息或写 KV 回复。预取消信号不建立连接。`onEvent` 的异步消费完成前暂停接收，SSE 背压沿调用链传回 Run。EOF 的 Connect 残帧必须报错；已输出后的异常发 OpenAI error SSE，不混入回答文字或追加 DONE。见[故障记录](../../../docs/error.md)。
+
+### 上游代理（区域锁出口）
+
+Cursor 按请求**出口 IP** 做合规区锁：Anthropic / OpenAI / Gemini 在受限区域直接 `Model not available: This model provider is not supported in your region`（Composer / Grok / Kimi / GLM 不受限）。官方客户端走 `http.proxy`；本 hop 等价物是**插件配置 `cursorProxy`**，或环境变量 `PI_CURSOR_PROXY` / `CURSOR_PROXY`（`http://`、`https://`、`socks5://`，可带 `user:pass@`）。配置后 `cursorH2Connect` 先对代理做 CONNECT / SOCKS5 握手，再在隧道上做 TLS+h2 —— `connectFn` 因此允许返回 Promise。只有 h2 RPC 面（agentn Run / GetUsableModels、api2 unary）走隧道；auth poll / refresh / quota JSON 仍直连。目录缓存键并入代理出口，切代理即重新拉活目录。未配代理时区域错误会追加指向该配置的提示。
 
 ## 登录
 
@@ -128,18 +133,18 @@ AgentService/Run 与 unary 发 Cursor **CLI** 头。CLI 版本对齐 [Rahularya0
 
 ## 模型
 
-静态 fallback（离线 / RPC 空）对齐 [cursor.com/docs/models-and-pricing](https://cursor.com/docs/models-and-pricing)：`composer-2.5`、`grok-4.6`、`grok-4.5`、`composer-2`、`composer-1.5`、`claude-fable-5-1`、`claude-opus-5`、`claude-sonnet-5`、`gemini-3.1-pro`、`gemini-3.8-flash`、`gpt-5.6-sol` / `terra` / `luna`、`gpt-5.5`。id 抄官方 Model ID（Fable 是 `claude-fable-5-1`，不是点号）。登录、本机导入、额度刷新之后走活发现，**叠在静态楼上**（Kiro 同款 merge，不再整表替换）：
+静态 fallback（离线 / RPC 空）对齐 [cursor.com/docs/models-and-pricing](https://cursor.com/docs/models-and-pricing)：`composer-2.5`、`grok-4.6`、`grok-4.5`、`claude-fable-5-1`、`claude-opus-5`、`claude-sonnet-5`、`gemini-3.1-pro`、`gemini-3.8-flash`、`gpt-5.6-sol` / `terra` / `luna`、`gpt-5.5`。id 抄官方 Model ID（Fable 是 `claude-fable-5-1`，不是点号）。登录、本机导入、额度刷新、以及**启动 warmup**（`controller.warmCatalogs`，只跑已登录家族）走活发现：
 
 ```text
 unary GetUsableModels  agentn  /agent.v1.AgentService/GetUsableModels
 unary AvailableModels  api2    /aiserver.v1.AiService/AvailableModels
-  → 按 access-token sha256 前 16 位缓存 5 分钟
+  → 按 access-token sha256 前 16 位 + 上游代理出口 缓存 5 分钟
   → toCursorPickerModels 收成一行 / 家族；有 `-fast` 源时再加 `{family}-fast`
-  → mergeCursorStaticFloor 把活家族叠在静态楼上
+  → 活目录非空即上游真相（受限区域只给 default/Composer/Grok/Kimi/GLM）
   → buildProviders / catalog / llm-pi-ai yaml
 ```
 
-`AvailableModels` 用现有 proto 编解码，不加 Bun。任一 RPC 失败或空列表 **不挡对话**，回落静态楼。活列表非空也不丢掉官方行（GetUsableModels 仍是旧 5 个时，Composer 2.5 / Grok 4.6 等仍在勾选格）。
+`AvailableModels` 用现有 proto 编解码，不加 Bun。任一 RPC 失败或空列表 **不挡对话**，回落静态楼。活列表非空时**不再回填静态行**——Cursor 服务端只按账号+出口给可跑模型，静态楼里的区域锁家族（Claude/Gemini/GPT）回填了也只会 400（2026-09-17 实测本机出口下仅 default / composer-2.5±fast / grok-4.5·4.6±fast / glm-5.2 / kimi-k2.7-code / kimi-k3 可跑）。picker 名去掉上游 `Cursor ` 品牌前缀（`Cursor Grok 4.6` → `Grok 4.6`）。
 
 不要把 pi-cursor `catalog.json` 的 ~100 个 effort/fast/thinking/max-mode id 铺进 Settings 勾选格。`cursorPickerFamilyId` 剥那些后缀，DSH `reasoningEfforts` 键只有 `off|low|medium|high|xhigh`（值 `off: "none"`，`xhigh: "extra-high"`）。Tab / chat 内部变体隐藏（Pi `/cursor.models all` 才是 opt-in）。账号有 `default` / `auto` 就留一行 id `default`，显示名 **Cursor Auto**（zh/en 同名，不翻译 Auto；wire 仍是 `default`）。窗口优先活 metadata，否则 `inferCursorContextWindow` / `inferCursorMaxOutputTokens`。
 

@@ -13,6 +13,8 @@
  *   Ollama  GET ollama.com/api/usage  (limits.session/weekly.usage = 0..1)
  *           POST ollama.com/api/me    (Email / Name / Plan; GET is 405)
  *   Copilot GET api.github.com/copilot_internal/user (premium_interactions remaining %)
+ *   Devin  POST server.codeium.com SeatManagementService/GetUserStatus
+ *          (plan_status daily/weekly quota remaining % + reset unix)
  *
  * Codex windows report used_percent; remaining is 100 − used.
  * Grok creditUsagePercent is also used-percent. Display remaining in the UI.
@@ -144,6 +146,21 @@ export declare function parseCopilotUsage(payload: any, user: any): {
     rows: any[];
 };
 export declare function fetchCopilotQuota(session: any, fetchFn?: typeof fetch): Promise<{
+    account: any;
+    planType: any;
+    rows: any[];
+}>;
+/**
+ * GetUserStatusResponse → public quota. `plan_status` carries the daily /
+ * weekly quota percents (already *remaining*) and unix-second resets; the
+ * plan label is `plan_name` or the `teams_tier` enum (16 = Devin Pro).
+ */
+export declare function parseDevinUserStatus(payload: any): {
+    planType: any;
+    account: string;
+    rows: any[];
+};
+export declare function fetchDevinQuota(session: any, fetchFn?: typeof fetch): Promise<{
     account: any;
     planType: any;
     rows: any[];

@@ -3,8 +3,8 @@
  * Each RPC owns a session that is destroyed when the call settles.
  * Do not add Bun.
  */
-import http2 from 'node:http2';
 import { CURSOR_AGENT_URL, CURSOR_RUN_PATH } from './index.js';
+import { cursorH2Connect } from './upstream-proxy.js';
 import { splitConnectFrames } from './proto.js';
 export declare function describeH2TransportError(error: any, baseUrl: any): string;
 export declare function cursorUnaryRpc({ session, url, path, body, connectFn, signal, timeoutMs, }: {
@@ -12,7 +12,7 @@ export declare function cursorUnaryRpc({ session, url, path, body, connectFn, si
     url?: string;
     path: any;
     body?: Buffer<ArrayBuffer>;
-    connectFn?: typeof http2.connect;
+    connectFn?: typeof cursorH2Connect;
     signal: any;
     timeoutMs?: number;
 }): Promise<unknown>;
@@ -25,7 +25,7 @@ export declare function fetchCursorAvailableModels(session: any, { connectFn, si
  * to the MCP tools; MCP calls are handed to DSH, which owns execution.
  */
 export declare function runCursorAgent(session: any, built: any, { signal, connectFn, url, onEvent, }?: {
-    connectFn?: typeof http2.connect;
+    connectFn?: typeof cursorH2Connect;
     url?: string;
 }): Promise<unknown>;
 export { CURSOR_AGENT_URL, CURSOR_RUN_PATH, splitConnectFrames };
