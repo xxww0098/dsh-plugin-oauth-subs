@@ -78,6 +78,15 @@ export declare function devinUserStatus(session: any, { fetchFn, signal }?: {
     };
 }>;
 /**
+ * Minted user_jwts carry a ~15min exp — minting one before every chat call
+ * costs a full RTT (~2s measured). Reuse per session token until exp−margin.
+ * A stale jwt surfaces as chat 401; runDevinChat then drops it and retries
+ * once token-only (a proven-good path).
+ */
+export declare function devinChatAuth(session: any, { fetchFn, signal }?: {
+    fetchFn?: typeof fetch;
+}): Promise<any>;
+/**
  * Identity for a stored session: email (or display name) + plan label from
  * GetUserStatus. Opaque ids never become the account name.
  */

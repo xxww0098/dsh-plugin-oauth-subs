@@ -39,7 +39,7 @@ DSH POST /devin/v1/chat/completions
 
 非流 Completions：Connect 是流；hop **收集整段再回一条 JSON**。
 
-`GetUserJwt` 是 best-effort：返回 `user_jwt` 填进 Metadata field 21、可能给 `custom_api_server_url`（per-deployment 后端）。**session token 本身就够聊天**；失败不挡对话。所有 RPC 带 `Authorization: Basic <token>-<token>`（CLI 的 `api_key-session_id` 形状，session id 即 token 本身，MITM 实测）。
+`GetUserJwt` 是 best-effort：返回 `user_jwt` 填进 Metadata field 21、可能给 `custom_api_server_url`（per-deployment 后端）。**session token 本身就够聊天**；失败不挡对话。jwt 约 15 分钟有效，`devinChatAuth` 按 `exp−90s` 复用（每跳一次 RPC ≈2s）；chat 401 时丢掉重试一次 token-only。所有 RPC 带 `Authorization: Basic <token>-<token>`（CLI 的 `api_key-session_id` 形状，session id 即 token 本身，MITM 实测）。
 
 API server 解析顺序：`WINDSURF_API_SERVER_URL` env → session `apiServer`（GetUserJwt 的 `custom_api_server_url`）→ `DEVIN_API_SERVER`。
 
@@ -131,6 +131,7 @@ unary GetUserStatus  server.codeium.com  /exa.seat_management_pb.SeatManagementS
 - 把 209 条 effort/modifier 变体铺进 Settings 勾选格（收成一行 / 家族+桶）
 - 用 Responses 或 Anthropic 当 DSH `api`（`/devin/v1/responses` 固定 501）
 - 插件加载时静默扫 credentials.toml 覆盖已有 PKCE
+- 把不带 `devin-session-token$` 前缀的存量行当 devin 登录（版本错配可把别家会话写进 devin 槽；`isDevinSessionToken` 才算数，auto-import 不被它挡）
 - 打印或提交 token / `user_jwt`
 - 用 `api.devin.ai` 当 chat host（那是 OAuth/control-plane；chat 在 `server.codeium.com`）
 - 把 `user-…` / `devin-team$…` / JWT `sub` 画在 Settings 卡抬头

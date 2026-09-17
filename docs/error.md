@@ -8,6 +8,18 @@
 **根因**：token 导入/粘贴/paste 共用入口，不 normalize 就双前缀；服务端按客户端身份区分目录；共享 fast-mode 语义把「快档」当后缀 flag，和 Devin 把它当独立模型冲突。
 **修复**：`normalizeDevinToken` 幂等加前缀；身份按真 CLI MITM 固定 `chisel`/`3000.10.31` + `os` + `Basic <tok>-<tok>`（`windsurf` 也能回全量但那是 windsurf 指纹，不是 devin 的）；Devin 分支跳过 `applyFastMode`，`-fast` 收成独立 picker 行 `*-fast`。
 
+## 2026-09-17：宿主/页面版本错配时「导入」把 Grok 会话写进 devin 槽
+
+**现象**：`dsh web` 跑着旧版宿主、Settings 页已是新版时，点「导入本机 Devin CLI」无报错也没有 Devin 账户；auth.json 的 `devin` 键却多出一份 Grok 会话（`auth.x.ai` token、`SuperGrok` 套餐），模型界面没有 `oauth-devin` 路由。
+**根因**：旧版 `importFrom` 对不认识的 provider 落到末尾 `importGrokAuth()` fallthrough，再以调用方的 provider 名 `saveSession('devin', grokSession)`；占住槽位后 `#maybeAutoImportDevin` 只看 `rows.length` 永不自动导入。另发现 `sync()` 漏传 `devinModels`，活目录不进 DSH 路由。
+**修复**：`importFrom` 先校验 `PROVIDER_IDS`，未知 provider 抛 `unknown provider`；新增 `isDevinSessionToken`（`devin-session-token$` 前缀）形状检查，auto-import 只认本家族会话（外来行留给 refresh 401 自清）；`sync()` 补传 `devinModels`；页面把 `unknown provider` 错误翻译成 `hostStale`「重启 dsh web」横幅（沿用 `opencodeGoHostStale` 的错配先例）。
+
+## 2026-09-17：Devin hop 的孤立 cache_read=0 是上游行为，不是 hop bug
+
+**现象**：session 分析 88 跳 96% 命中，但 step 2/10/37/62 四次 `cache_read_tokens=0`（间隔约 6.5min），下一跳立刻恢复读满前缀。
+**根因**：上游 `PromptCacheOptions{type:1}`（ephemeral）缓存是异步提交/定期失效——用真 token 活测同一 cascade 连续 8 跳复现：read 恒落后 1–3 跳，偶发 0。不是 pin 漂移（cascade 恒定、message_id 确定性、无 TTL 关联、无 splice 关联）。
+**修复**：hop 侧无解，真实优化点是另一处——`GetUserJwt` 原每跳都打（实测 RTT ≈2s），jwt `exp`≈15min：新增 `devinChatAuth` 按 exp−90s 复用 per-token，chat 401 丢缓存重试一次 token-only。88 跳会话省 ~2.5min 延迟。
+
 ## 2026-09-17：Cursor 区域锁模型全挂 + 勾选格停在静态底表
 
 **现象**：Cursor 勾选格里 Claude / Gemini / GPT-5.x 一跑就 `Model not available: This model provider is not supported in your region`；同时账号实际可用的 `default`(Auto) / `kimi-k3` / `kimi-k2.7-code` / `glm-5.2` / `*-fast` 不进勾选格，活目录（GetUsableModels 23 行）从未落到 picker。

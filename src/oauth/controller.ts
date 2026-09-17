@@ -8,7 +8,7 @@ import { OAuthFlowManager } from './flow.js'
 import { DeviceFlowManager } from './grok/device-flow.js'
 import { GlmCliFlowManager } from './glm/cli-flow.js'
 import { KiroIdcFlowManager } from './kiro/idc-flow.js'
-import { accountIdOf, deleteSession, getStoredSession, getSession, listStoredSessions, publicSession, replaceAccountId, saveSession, switchAccount, updateAccountSession } from './store.js'
+import { accountIdOf, deleteSession, getStoredSession, getSession, listStoredSessions, PROVIDER_IDS, publicSession, replaceAccountId, saveSession, switchAccount, updateAccountSession } from './store.js'
 import {
   codexFlow,
   exchangeCodexCode,
@@ -101,6 +101,7 @@ import {
   exchangeDevinCode,
   isDevinOpaqueAccount,
   isDevinPermanentRefreshError,
+  isDevinSessionToken,
   pickDevinHumanAccount,
   refreshDevin,
 } from './devin/index.js'
@@ -138,7 +139,7 @@ import {
 import { AUTO_UPDATE_INTERVAL_MS, defaultUpdatePrefs, readUpdatePrefs, updatePrefsPath, writeUpdatePrefs } from '../utils/update-prefs.js'
 
 export class AuthController {
-  constructor({ authPath, prefix, origin, settings, credentials, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, spawnFn, profile, readFileFn, updateEnv, exitFn, prefsPath, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover, devinAutoImport, devinDiscover }) {
+  constructor({ authPath, prefix, origin, settings, credentials, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, spawnFn, profile, readFileFn, updateEnv, exitFn, prefsPath, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover, devinAutoImport, devinImport, devinDiscover }) {
     this.authPath = authPath
     this.prefix = prefix
     this.origin = origin
@@ -190,6 +191,7 @@ export class AuthController {
       ? copilotDiscover
       : (process.env.NODE_TEST_CONTEXT ? undefined : ((session) => refreshCopilotCatalog(session, { fetchFn })))
     this.devinAutoImport = devinAutoImport ?? !process.env.NODE_TEST_CONTEXT
+    this.devinImport = devinImport && typeof devinImport === 'object' ? devinImport : {}
     this.devinAutoImportTried = false
     this.devinDiscover = typeof devinDiscover === 'function'
       ? devinDiscover
@@ -1307,9 +1309,11 @@ export class AuthController {
     if (!this.devinAutoImport || this.devinAutoImportTried) return
     this.devinAutoImportTried = true
     const rows = await listStoredSessions('devin', this.authPath)
-    if (rows.length > 0) return
+    // A foreign-shaped row (wrong-prefix token) is not a devin login; it must
+    // not block the CLI import. Its refresh 401s out via isDevinPermanentRefreshError.
+    if (rows.some((row) => isDevinSessionToken(row?.session?.accessToken))) return
     try {
-      const result = await importDevinAuth()
+      const result = await importDevinAuth({ ...this.devinImport })
       if (result?.session) {
         const session = await this.#finishDevinSession(result.session)
         await saveSession('devin', session, this.authPath)
@@ -1326,7 +1330,7 @@ export class AuthController {
 
   async #importDevin() {
     const existing = await listStoredSessions('devin', this.authPath)
-    const result = await importDevinAuth()
+    const result = await importDevinAuth({ ...this.devinImport })
     const incomingId = accountIdOf('devin', result.session)
     const hit = existing.find((row) => row.id === incomingId)
     if (hit) {
@@ -1860,6 +1864,10 @@ export class AuthController {
   }
 
   async importFrom(provider) {
+    // A newer Settings page can name a family this host build does not know;
+    // never fall through to Grok — that writes a foreign session under the
+    // caller's provider key (observed: Grok tokens stored as `devin`).
+    if (!PROVIDER_IDS.includes(provider)) throw new Error(`unknown provider ${provider}`)
     const result = provider === 'codex'
       ? await importCodexAuth()
       : provider === 'glm'
@@ -1957,6 +1965,7 @@ export class AuthController {
       kiroModels: kiroCatalogModels(),
       kimiModels: kimiCatalogModels(),
       copilotModels: copilotCatalogModels(),
+      devinModels: devinCatalogModels(),
       glmModels: await this.#glmModels(),
     })
     return { ...synced, opencodeGoRoute }

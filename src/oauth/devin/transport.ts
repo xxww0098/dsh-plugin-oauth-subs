@@ -67,6 +67,19 @@ export class DevinTransportError extends Error {
   }
 }
 
+const userJwtCache = new Map()
+const USER_JWT_MARGIN_MS = 90_000
+const USER_JWT_FALLBACK_TTL_MS = 60_000
+
+function userJwtExpiresAt(jwt) {
+  try {
+    const decoded = JSON.parse(Buffer.from(String(jwt).split('.')[1] ?? '', 'base64url').toString('utf8'))
+    return typeof decoded?.exp === 'number' && Number.isFinite(decoded.exp) ? decoded.exp * 1000 : undefined
+  } catch {
+    return undefined
+  }
+}
+
 /**
  * Best-effort GetUserJwt: mints metadata.user_jwt and may redirect to a
  * deployment-specific api server (custom_api_server_url). Returns undefined
@@ -121,6 +134,24 @@ export async function devinUserStatus(session, { fetchFn = fetch, signal } = {})
 }
 
 /**
+ * Minted user_jwts carry a ~15min exp — minting one before every chat call
+ * costs a full RTT (~2s measured). Reuse per session token until exp−margin.
+ * A stale jwt surfaces as chat 401; runDevinChat then drops it and retries
+ * once token-only (a proven-good path).
+ */
+export async function devinChatAuth(session, { fetchFn = fetch, signal } = {}) {
+  const key = typeof session?.accessToken === 'string' ? session.accessToken : ''
+  const cached = key ? userJwtCache.get(key) : undefined
+  if (cached && cached.expiresAt - USER_JWT_MARGIN_MS > Date.now()) return cached
+  const minted = await devinUserJwt(session, { fetchFn, signal })
+  if (minted?.userJwt && key) {
+    const exp = userJwtExpiresAt(minted.userJwt)
+    userJwtCache.set(key, { ...minted, expiresAt: exp ?? Date.now() + USER_JWT_FALLBACK_TTL_MS })
+  }
+  return minted
+}
+
+/**
  * Identity for a stored session: email (or display name) + plan label from
  * GetUserStatus. Opaque ids never become the account name.
  */
@@ -146,18 +177,24 @@ export async function resolveDevinIdentity(session, { fetchFn = fetch, statusFn 
  */
 export async function runDevinChat(session, built, { signal, onEvent, fetchFn = fetch } = {}) {
   if (!session?.accessToken) throw new DevinTransportError('Devin chat needs a session token', { status: 401 })
-  const auth = await devinUserJwt(session, { fetchFn, signal })
-  const base = auth?.baseUrl ?? devinApiServer(session)
-  const metadata = devinMetadataBytes(session, { userJwt: auth?.userJwt })
-  const requestBytes = encodeGetChatMessageRequest({ metadata, ...built.fields })
-  const frame = frameConnect(requestBytes, { compress: true })
-
-  const response = await fetchFn(`${base}${DEVIN_CHAT_PATH}`, {
-    method: 'POST',
-    headers: { ...CHAT_HEADERS, authorization: devinBasicAuth(session) },
-    body: frame,
-    signal,
-  })
+  const attempt = (auth) => {
+    const base = auth?.baseUrl ?? devinApiServer(session)
+    const metadata = devinMetadataBytes(session, { userJwt: auth?.userJwt })
+    const frame = frameConnect(encodeGetChatMessageRequest({ metadata, ...built.fields }), { compress: true })
+    return fetchFn(`${base}${DEVIN_CHAT_PATH}`, {
+      method: 'POST',
+      headers: { ...CHAT_HEADERS, authorization: devinBasicAuth(session) },
+      body: frame,
+      signal,
+    })
+  }
+  const auth = await devinChatAuth(session, { fetchFn, signal })
+  let response = await attempt(auth)
+  if (response.status === 401 && auth?.userJwt) {
+    // Cached jwt may be stale despite the margin — token-only is proven good.
+    userJwtCache.delete(session.accessToken)
+    response = await attempt(undefined)
+  }
   if (!response.ok) {
     const text = await response.text().catch(() => '')
     const error = new DevinTransportError(

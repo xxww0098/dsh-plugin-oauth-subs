@@ -75,6 +75,13 @@ export declare const DEVIN_TIER_NAMES: Readonly<{
 }>;
 /** CLI stores `devin-session-token$…`; a pasted raw key gets the prefix once. */
 export declare function normalizeDevinToken(value: any): string;
+/**
+ * Every stored devin session carries the `devin-session-token$` prefix
+ * (devinSession normalizes on the way in). A foreign-shaped row in the devin
+ * vault slot — e.g. written by a host build that misrouted the import — is
+ * not a usable devin login and must not block CLI auto-import.
+ */
+export declare function isDevinSessionToken(value: any): boolean;
 export declare function devinTokenExpiry(token: any, now?: number): number;
 /** `user-…` ids and token-suffix vault keys are not display names. */
 export declare function isDevinOpaqueAccount(value: any): boolean;

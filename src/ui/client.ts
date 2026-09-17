@@ -109,6 +109,7 @@ window.__ModuleLoader__.load({
         opencodeGoSave: '保存',
         opencodeGoFailed: '保存失败',
         opencodeGoHostStale: '宿主进程还是旧版本，请重启 dsh web 后再保存',
+        hostStale: '宿主进程还是旧版本，请重启 dsh web 后再试',
         opencodeGoBalance: '余额兜底 {n}',
         monthly: '每月',
         login: '登录',
@@ -336,6 +337,7 @@ window.__ModuleLoader__.load({
         opencodeGoSave: 'Save',
         opencodeGoFailed: 'Save failed',
         opencodeGoHostStale: 'The host process is outdated — restart dsh web, then save again',
+        hostStale: 'The host process is outdated — restart dsh web and retry',
         opencodeGoBalance: 'Balance fallback {n}',
         monthly: 'Monthly',
         login: 'Sign in',
@@ -3044,6 +3046,12 @@ window.__ModuleLoader__.load({
         } catch (caught) {
           const message = caught instanceof Error ? caught.message : String(caught)
           if (isUnknownOauthMethod(message)) return
+          if (/^unknown provider /i.test(message)) {
+            // Newer page on an older host: the family exists here but not in
+            // the running build (login/import would misbehave or do nothing).
+            setError(t.hostStale)
+            return
+          }
           setError(message === 'cursor-import-empty' ? t.cursorImportEmpty : message === 'ollama-import-empty' ? t.ollamaImportEmpty : message === 'kimi-import-empty' ? t.kimiImportEmpty : message === 'copilot-import-empty' ? t.copilotImportEmpty : message === 'devin-import-empty' ? t.devinImportEmpty : message)
         }
       }

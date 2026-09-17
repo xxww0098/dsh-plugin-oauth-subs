@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { AuthController } from '../lib/oauth/controller.js'
-import { accountIdOf, publicSession, saveSession } from '../lib/oauth/store.js'
+import { accountIdOf, listStoredSessions, publicSession, saveSession } from '../lib/oauth/store.js'
 import {
   HARNESS_COMPLETIONS_API,
   buildProviders,
@@ -18,6 +18,7 @@ import {
   DEVIN_MODELS,
   DEVIN_MODELS_PATH,
   DEVIN_TOKEN_PATH,
+  DEVIN_USER_JWT_PATH,
   DEVIN_USER_STATUS_PATH,
   DEVIN_WEBAPP_URL,
   devinSession,
@@ -25,6 +26,7 @@ import {
   exchangeDevinCode,
   isDevinOpaqueAccount,
   isDevinPermanentRefreshError,
+  isDevinSessionToken,
   normalizeDevinToken,
   pickDevinHumanAccount,
   refreshDevin,
@@ -54,6 +56,7 @@ import {
   encodeMessage,
   encodeString,
   encodeUint,
+  fieldBytes,
   frameConnect,
   splitConnectFrames,
   unframePayload,
@@ -650,4 +653,163 @@ test('runDevinChat surfaces trailer errors and empty streams', async () => {
     runDevinChat(devinSession({ accessToken: 'x' }), openaiToDevin({ model: 'swe-2', messages: [] }, {}), { fetchFn: emptyFetch }),
     /empty body|without a message/,
   )
+})
+
+function fakeJwt(expSeconds) {
+  const b64u = (value) => Buffer.from(JSON.stringify(value)).toString('base64url')
+  return `${b64u({ alg: 'none' })}.${b64u({ exp: expSeconds })}.sig`
+}
+
+function okChatStream() {
+  return new Response(Buffer.concat([
+    frameConnect(encodeString(3, 'ok'), { compress: true }),
+    frameConnect(Buffer.from('{}'), { compress: false, end: true }),
+  ]), { status: 200 })
+}
+
+test('runDevinChat caches the minted user_jwt across calls', async () => {
+  const jwt = fakeJwt(Math.floor(Date.now() / 1000) + 900)
+  let jwtCalls = 0
+  let chatCalls = 0
+  const fetchFn = async (url) => {
+    if (String(url).endsWith(DEVIN_USER_JWT_PATH)) {
+      jwtCalls += 1
+      return new Response(encodeString(1, jwt))
+    }
+    chatCalls += 1
+    return okChatStream()
+  }
+  const session = devinSession({ accessToken: 'devin-session-token$jwt_cache_a' })
+  const built = openaiToDevin({ model: 'swe-2', messages: [{ role: 'user', content: 'ping' }] }, { cascadeId: 'c-jwt' })
+  await runDevinChat(session, built, { fetchFn })
+  await runDevinChat(session, built, { fetchFn })
+  assert.equal(jwtCalls, 1)
+  assert.equal(chatCalls, 2)
+})
+
+test('runDevinChat retries token-only once when a cached jwt 401s', async () => {
+  const jwt = fakeJwt(Math.floor(Date.now() / 1000) + 900)
+  const bodies = []
+  let chatCalls = 0
+  const fetchFn = async (url, init) => {
+    if (String(url).endsWith(DEVIN_USER_JWT_PATH)) return new Response(encodeString(1, jwt))
+    chatCalls += 1
+    bodies.push(Buffer.from(init.body))
+    return chatCalls === 1 ? new Response('unauthorized', { status: 401 }) : okChatStream()
+  }
+  const session = devinSession({ accessToken: 'devin-session-token$jwt_retry' })
+  const built = openaiToDevin({ model: 'swe-2', messages: [{ role: 'user', content: 'ping' }] }, { cascadeId: 'c-retry' })
+  const collected = await runDevinChat(session, built, { fetchFn })
+  assert.equal(chatCalls, 2)
+  assert.equal(collected.text, 'ok')
+  const metadataOf = (body) => decodeFields(fieldBytes(decodeFields(unframePayload(splitConnectFrames(body).frames[0])), 1)[0])
+  assert.ok(metadataOf(bodies[0]).find((f) => f.field === 21))
+  assert.equal(metadataOf(bodies[1]).find((f) => f.field === 21), undefined)
+})
+
+test('an expired minted jwt is not reused', async () => {
+  const stale = fakeJwt(Math.floor(Date.now() / 1000) - 60)
+  let jwtCalls = 0
+  const fetchFn = async (url) => {
+    if (String(url).endsWith(DEVIN_USER_JWT_PATH)) {
+      jwtCalls += 1
+      return new Response(encodeString(1, stale))
+    }
+    return okChatStream()
+  }
+  const session = devinSession({ accessToken: 'devin-session-token$jwt_cache_stale' })
+  const built = openaiToDevin({ model: 'swe-2', messages: [{ role: 'user', content: 'ping' }] }, { cascadeId: 'c-stale' })
+  await runDevinChat(session, built, { fetchFn })
+  await runDevinChat(session, built, { fetchFn })
+  assert.equal(jwtCalls, 2)
+})
+
+test('importFrom rejects an unknown provider instead of importing Grok', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'devin-unknown-'))
+  const authPath = join(dir, 'auth.json')
+  const controller = new AuthController({
+    authPath,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    fetchFn: async () => json({}),
+    devinAutoImport: false,
+  })
+  await assert.rejects(controller.importFrom('devin-typo'), /unknown provider devin-typo/)
+  const store = JSON.parse(await import('node:fs/promises').then((fs) => fs.readFile(authPath, 'utf8').catch(() => '{}')))
+  assert.equal(store['devin-typo'], undefined)
+  assert.equal(store.grok, undefined)
+})
+
+test('importFrom(devin) stores the credentials.toml session', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'devin-ctrl-import-'))
+  const authPath = join(dir, 'auth.json')
+  const file = join(dir, 'credentials.toml')
+  await writeFile(file, 'windsurf_api_key = "devin-session-token$ctrl_import"\n')
+  await chmod(file, 0o600)
+  const fetchFn = async (url) => {
+    if (String(url).endsWith(DEVIN_USER_STATUS_PATH)) {
+      return new Response(devinStatusBytes(), { status: 200, headers: { 'content-type': 'application/proto' } })
+    }
+    return json({})
+  }
+  const controller = new AuthController({
+    authPath,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    fetchFn,
+    devinAutoImport: false,
+    devinImport: { paths: [file] },
+    devinDiscover: async () => DEVIN_MODELS,
+  })
+  const result = await controller.importFrom('devin')
+  assert.equal(result.source, 'cli_toml')
+  const rows = await listStoredSessions('devin', authPath)
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].id, 'ada@example.com')
+  assert.equal(rows[0].session.accessToken, 'devin-session-token$ctrl_import')
+  assert.equal(rows[0].active, true)
+})
+
+test('auto-import proceeds when the devin slot holds a foreign-shaped session', async () => {
+  // A stale host can park another family's session under `devin` (observed:
+  // Grok tokens written by the pre-devin import fallthrough). It must not
+  // count as a devin login and must not block the credentials.toml import.
+  assert.equal(isDevinSessionToken('devin-session-token$x'), true)
+  assert.equal(isDevinSessionToken('eyJ0eXAiOiJhdCtqd3Qi'), false)
+  const dir = await mkdtemp(join(tmpdir(), 'devin-foreign-'))
+  const authPath = join(dir, 'auth.json')
+  const file = join(dir, 'credentials.toml')
+  await writeFile(file, 'windsurf_api_key = "devin-session-token$auto_import"\n')
+  await chmod(file, 0o600)
+  await saveSession('devin', {
+    accessToken: 'eyJ0eXAiOiJhdCtqd3Qi.foreign',
+    refreshToken: 'foreign-refresh',
+    expiresAt: Date.now() + 3_600_000,
+    account: 'foreign@x.ai',
+    tokenEndpoint: 'https://auth.x.ai/oauth2/token',
+  }, authPath)
+  const fetchFn = async (url) => {
+    if (String(url).endsWith(DEVIN_USER_STATUS_PATH)) {
+      return new Response(devinStatusBytes(), { status: 200, headers: { 'content-type': 'application/proto' } })
+    }
+    return json({})
+  }
+  const controller = new AuthController({
+    authPath,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    fetchFn,
+    devinAutoImport: true,
+    devinImport: { paths: [file] },
+    devinDiscover: async () => DEVIN_MODELS,
+  })
+  await controller.snapshot()
+  const rows = await listStoredSessions('devin', authPath)
+  const real = rows.find((row) => isDevinSessionToken(row.session.accessToken))
+  assert.ok(real)
+  assert.equal(real.id, 'ada@example.com')
+  assert.equal(real.active, true)
+  // The foreign row stays parked (quota refresh may rewrite its display
+  // account); it self-purges on the first real refresh-401.
+  assert.equal(rows.some((row) => row.session.accessToken === 'eyJ0eXAiOiJhdCtqd3Qi.foreign'), true)
 })
