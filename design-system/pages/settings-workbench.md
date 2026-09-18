@@ -63,6 +63,12 @@ row's `QuotaMeter` (under the percent row, above the bar). A missing
 meters. Codex reset credits stay in the card and still open
 `WarnDialog`, not the add-account Dialog.
 
+A row's structured `noteItems` (Ollama weekly model usage) renders as
+`.osubs-qnote`: an uppercase faint label (本周模型用量) over a
+flex-wrap row of `osubs-tag--plain` chips, each `name` + a mono
+`×count`. Free-text `note` stays the fallback for families without
+structured items.
+
 ## Dialog vs card
 
 | On the card | In the add-account Dialog |

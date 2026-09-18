@@ -317,8 +317,8 @@ function grokOnDemandBag(billing, config) {
     ?? billing.onDemandCap
     ?? billing.on_demand_cap,
   )
-  if (used === undefined && total === undefined) return undefined
-  const remaining = total !== undefined && used !== undefined ? Math.max(0, total - used) : undefined
+  if (total === undefined || total <= 0) return undefined
+  const remaining = used !== undefined ? Math.max(0, total - used) : undefined
   return { used, total, remaining }
 }
 
@@ -481,7 +481,7 @@ export function applyGrokCreditsSnapshot(parsed, snapshot) {
     remainingPercent: usedPercent === undefined ? undefined : 100 - usedPercent,
     resetAt: snapshot.resetAt ?? current?.resetAt,
     periodType: current?.periodType ?? 'USAGE_PERIOD_TYPE_WEEKLY',
-    periodStart: current?.periodStart,
+    periodStart: current?.periodStart ?? snapshot.periodStart,
     periodEnd: current?.periodEnd,
     used: current?.used,
     total: current?.total,
@@ -833,17 +833,22 @@ function ollamaUsedPercent(value) {
   return Math.max(0, Math.min(100, Math.round(used * 10) / 10))
 }
 
-function ollamaModelsNote(models) {
+function ollamaModelItems(models) {
   if (!Array.isArray(models) || models.length === 0) return undefined
-  const parts = []
+  const items = []
   for (const item of models) {
     if (!item || typeof item !== 'object') continue
     const name = typeof item.name === 'string' && item.name.trim() ? item.name.trim() : undefined
     if (!name) continue
     const count = asNumber(item.request_count ?? item.requestCount) ?? 0
-    parts.push(`${name} × ${count}`)
+    items.push({ name, count })
   }
-  return parts.length > 0 ? parts.join('\n') : undefined
+  return items.length > 0 ? items : undefined
+}
+
+function ollamaModelsNote(models) {
+  const items = ollamaModelItems(models)
+  return items ? items.map((item) => `${item.name} × ${item.count}`).join('\n') : undefined
 }
 
 /** Global 5h unix buckets. ollama/ollama#12532: `18000 - (epoch % 18000)`. */
@@ -877,6 +882,7 @@ function parseOllamaLimitWindow(window, kind, now = Date.now()) {
   if (usedPercent === undefined) return undefined
   const remainingPercent = Math.max(0, Math.min(100, Math.round((100 - usedPercent) * 10) / 10))
   const note = kind === 'weekly' ? ollamaModelsNote(window.models) : undefined
+  const noteItems = kind === 'weekly' ? ollamaModelItems(window.models) : undefined
   const resetAt = ollamaWindowResetAt(window, kind, now)
   return {
     key: kind,
@@ -886,6 +892,7 @@ function parseOllamaLimitWindow(window, kind, now = Date.now()) {
     ...(kind === 'primary' ? { windowMinutes: 300 } : {}),
     ...(resetAt !== undefined ? { resetAt } : {}),
     ...(note ? { note } : {}),
+    ...(noteItems ? { noteItems } : {}),
   }
 }
 

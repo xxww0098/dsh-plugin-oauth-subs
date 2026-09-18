@@ -401,6 +401,21 @@ test('parseGrokBilling hides unified-billing empty prepaid and product shells', 
   assert.equal(parsed.rows.length, 0)
 })
 
+test('parseGrokBilling ignores a disabled on-demand bag (cap 0)', () => {
+  // Unified-billing SuperGrok Heavy: onDemandCap{val:0} + onDemandUsed{val:0}
+  // must not become a bogus "0 / 0" weekly row.
+  const parsed = parseGrokBilling({
+    config: {
+      isUnifiedBillingUser: true,
+      onDemandCap: { val: 0 },
+      onDemandUsed: { val: 0 },
+      prepaidBalance: { val: 0 },
+      currentPeriod: { type: 'USAGE_PERIOD_TYPE_WEEKLY', end: '2026-09-24T00:00:00Z' },
+    },
+  })
+  assert.equal(parsed.rows.length, 0)
+})
+
 test('parseGrokBilling falls back to onDemandUsed / onDemandCap', () => {
   const parsed = parseGrokBilling({
     config: {
@@ -466,6 +481,25 @@ test('decodeGrokCreditsFrame reads 0-1 ratio and timestamp', () => {
 test('decodeGrokCreditsFrame treats a 0-100 float as percent', () => {
   const decoded = decodeGrokCreditsFrame(grokCreditsPayload({ usage: 42.4 }))
   assert.equal(decoded.usedPercent, 42)
+})
+
+test('decodeGrokCreditsFrame reads the 2026-09 field-8 period shape', () => {
+  // Live capture (SuperGrok Heavy): nested field 1 has no usage float at
+  // all; the weekly period moved to nested field 8 {type, start, end}.
+  // Proto3 omits zero values, so a period-bearing frame means 0% used.
+  const start = 1_789_662_637
+  const end = 1_790_267_437
+  const stamp = (field, seconds) => protoLen(field, Buffer.concat([protoTag(1, 0), encodeVarint(seconds)]))
+  const period = protoLen(8, Buffer.concat([
+    Buffer.concat([protoTag(1, 0), encodeVarint(2)]),
+    stamp(2, start),
+    stamp(3, end),
+  ]))
+  const framed = grpcFrame(protoLen(1, period))
+  const decoded = decodeGrokCreditsFrame(framed)
+  assert.equal(decoded.usedPercent, 0)
+  assert.equal(decoded.resetAt, end * 1000)
+  assert.equal(decoded.periodStart, start * 1000)
 })
 
 test('decodeGrokCreditsFrame rejects grpc-status 16 trailers', () => {

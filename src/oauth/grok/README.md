@@ -50,7 +50,7 @@ DSH  →  本机 Responses 代理  →  POST https://api.x.ai/v1/responses
 两条源，缺一不可：
 
 1. `GET https://cli-chat-proxy.grok.com/v1/billing?format=credits` + `/v1/user?include=subscription` → `parseGrokBilling`（周期用量、预付、产品行、档位）。
-2. `POST https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig`（gRPC-web）→ `decodeGrokCreditsFrame`。统一计费的 SuperGrok / X Premium+ 在 JSON billing 里经常没有 `creditUsagePercent`，这个帧才有周池。
+2. `POST https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig`（gRPC-web）→ `decodeGrokCreditsFrame`。统一计费的 SuperGrok / X Premium+ 在 JSON billing 里经常没有 `creditUsagePercent`，这个帧才有周池。2026-09 schema：nested field 1 不再带 usage float，周期挪到 nested field 8 `{type, start, end}`；proto3 省略零值 = 0% 已用（与 grok.com 网页一致）。
 
 没有 Codex 那种重置卷 API。卡片不显示「重置额度」。
 
