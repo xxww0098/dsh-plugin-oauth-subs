@@ -4,7 +4,7 @@
  */
 export declare class AuthController {
     #private;
-    constructor({ authPath, prefix, origin, settings, credentials, grokLogin, onAuthChanged, models, fetchFn, quotaTtlMs, spawnFn, profile, readFileFn, updateEnv, exitFn, prefsPath, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover, devinAutoImport, devinImport, devinDiscover }: {
+    constructor({ authPath, prefix, origin, settings, credentials, grokLogin, onAuthChanged, models, fetchFn, quotaTtlMs, spawnFn, profile, readFileFn, updateEnv, exitFn, prefsPath, statePath, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover, devinAutoImport, devinImport, devinDiscover }: {
         authPath: any;
         prefix: any;
         origin: any;
@@ -21,6 +21,7 @@ export declare class AuthController {
         updateEnv: any;
         exitFn: any;
         prefsPath: any;
+        statePath: any;
         cursorAutoImport: any;
         cursorImport: any;
         cursorDiscover: any;
@@ -4563,6 +4564,7 @@ export declare class AuthController {
             npmPackage: string;
         };
         autoUpdate: any;
+        autoUpdateState: any;
     }>;
     opencodeGoSnapshot(options: any): Promise<{
         id: string;
@@ -9492,6 +9494,7 @@ export declare class AuthController {
             npmPackage: string;
         };
         autoUpdate: any;
+        autoUpdateState: any;
     }>;
     importFrom(provider: any): Promise<{
         source: any;
@@ -13984,6 +13987,7 @@ export declare class AuthController {
             npmPackage: string;
         };
         autoUpdate: any;
+        autoUpdateState: any;
     }>;
     sync(selected: any, options?: {}): Promise<{
         opencodeGoRoute: {

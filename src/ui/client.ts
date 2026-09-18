@@ -238,7 +238,19 @@ window.__ModuleLoader__.load({
         updateAhead: '本地版本领先发布',
         updateUnknown: 'GitHub 没有可用的版本号',
         updateError: '检查失败',
-        updateInstalled: '已写入 web profile。当前进程仍是旧模块，请重启 dsh web 后生效。',
+        updateInstalled: '已安装 {n}，正在自动重启 dsh web…',
+        updateNeedsRestart: '已写入 web profile。当前进程仍是旧模块，请重启 dsh web 后生效。',
+        updateRetryTo: '重试更新到 {n}',
+        updateTo: '更新到 {n}',
+        updateApplyFailed: '更新失败',
+        autoUpdateShort: '自动更新',
+        autoUpdateHourly: '每小时检查一次，装好后自动重启',
+        autoLastCheck: '上次检查 {n}',
+        autoRunInstalled: '已装 {n}',
+        autoRunCurrent: '已是最新',
+        autoRunUpdate: '发现 {n}',
+        autoRunFailed: '失败',
+        autoRunUnknown: '未知',
         updateStaleProcess: '磁盘已是 {n}，但本进程加载的是另一份。退出全部 dsh web 后若仍如此，请 remove 再从 GitHub 重装。',
         updateFailed: '更新失败：{n}',
         updateUnchanged: '命令已成功但磁盘版本未变：{n}',
@@ -466,7 +478,19 @@ window.__ModuleLoader__.load({
         updateAhead: 'Local version is ahead of the latest release',
         updateUnknown: 'GitHub did not return a version',
         updateError: 'Update check failed',
-        updateInstalled: 'Written to the web profile. This process still has the old module — restart dsh web to load it.',
+        updateInstalled: 'Installed {n}. Restarting dsh web…',
+        updateNeedsRestart: 'Written to the web profile. This process still has the old module — restart dsh web to load it.',
+        updateRetryTo: 'Retry update to {n}',
+        updateTo: 'Update to {n}',
+        updateApplyFailed: 'Update failed',
+        autoUpdateShort: 'Auto-update',
+        autoUpdateHourly: 'Checks hourly, restarts after installing',
+        autoLastCheck: 'Last check {n}',
+        autoRunInstalled: 'installed {n}',
+        autoRunCurrent: 'up to date',
+        autoRunUpdate: 'found {n}',
+        autoRunFailed: 'failed',
+        autoRunUnknown: 'unknown',
         updateStaleProcess: 'On disk is {n}, but this process loaded a different copy. If that remains after quitting every dsh web, remove and re-add from GitHub.',
         updateFailed: 'Update failed: {n}',
         updateUnchanged: 'Command finished but the on-disk version did not change: {n}',
@@ -997,12 +1021,34 @@ window.__ModuleLoader__.load({
 .osubs-select:focus-visible { outline: 2px solid var(--osubs-ring); outline-offset: 1px; }
 .osubs-select:disabled { opacity: 0.55; cursor: default; }
 .osubs-version-pick { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
-.osubs-auto {
-  display: inline-flex; align-items: center; gap: 8px;
-  min-height: 28px; padding: 0 2px; position: relative;
-  font-size: 13px; line-height: 1.45; cursor: pointer; color: inherit;
+
+/* About update cards: current → latest band + the apply CTA. */
+.osubs-ver {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 12px;
+  border: 1px solid var(--osubs-hair); border-radius: 10px;
+  background: var(--osubs-fill);
 }
-.osubs-auto input {
+.osubs-ver-cell { display: flex; align-items: baseline; gap: 6px; min-width: 0; flex-wrap: wrap; }
+.osubs-ver-num {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 14px; font-weight: 600; letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+.osubs-ver-num--next { color: var(--osubs-warn); }
+.osubs-ver-arrow { flex: none; display: inline-flex; color: var(--osubs-faint); }
+.osubs-ver-arrow svg { width: 14px; height: 14px; display: block; }
+.osubs-ver--busy .osubs-ver-arrow { color: var(--osubs-warn); animation: osubs-pulse 1.4s ease-in-out infinite; }
+.osubs-ver-cta { margin-left: auto; flex: none; }
+
+/* Auto-update row: whole row toggles, note explains the hourly tick. */
+.osubs-kv-row.osubs-auto-row { align-items: center; position: relative; cursor: pointer; }
+.osubs-kv-row.osubs-auto-row > :first-child { color: inherit; }
+.osubs-auto-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 auto; cursor: pointer; }
+.osubs-auto-name { font-size: 13px; line-height: 1.45; }
+.osubs-auto-note { font-size: 11px; line-height: 1.45; color: var(--osubs-faint); }
+.osubs-auto-row .osubs-auto { flex: none; }
+.osubs-auto-row input {
   position: absolute; width: 1px; height: 1px; margin: 0;
   opacity: 0; pointer-events: none;
 }
@@ -1018,15 +1064,15 @@ window.__ModuleLoader__.load({
   background: color-mix(in oklab, currentColor 62%, transparent);
   transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1), background-color 160ms cubic-bezier(0.16, 1, 0.3, 1);
 }
-.osubs-auto input:checked + .osubs-auto-track {
+.osubs-auto-row input:checked ~ .osubs-auto-track {
   background: color-mix(in oklab, var(--osubs-ok) 30%, transparent);
   border-color: color-mix(in oklab, var(--osubs-ok) 60%, transparent);
 }
-.osubs-auto input:checked + .osubs-auto-track::before {
+.osubs-auto-row input:checked ~ .osubs-auto-track::before {
   transform: translateX(13px);
   background: var(--osubs-ok);
 }
-.osubs-auto:has(input:focus-visible) { outline: 2px solid var(--osubs-ring); outline-offset: 2px; border-radius: 99px; }
+.osubs-auto-row:has(input:focus-visible) { outline: 2px solid var(--osubs-ring); outline-offset: 2px; }
 .osubs-about-actions { display: flex; align-items: center; gap: 8px; flex: none; }
 .osubs-head-main { display: flex; align-items: center; gap: 10px; min-width: 0; flex-wrap: wrap; }
 .osubs-hints { display: flex; flex-direction: column; gap: 8px; }
@@ -1331,6 +1377,7 @@ window.__ModuleLoader__.load({
   .osubs-dsw-card,
   .osubs-hold-tip { animation: none !important; }
   .osubs-status--busy::before { animation: none !important; }
+  .osubs-ver--busy .osubs-ver-arrow { animation: none !important; }
   .osubs-bar > i { transition: background-color 160ms ease; }
   .osubs-auto-track, .osubs-auto-track::before { transition: none !important; }
   .osubs-dsw-card { transform: none; }
@@ -2589,7 +2636,11 @@ window.__ModuleLoader__.load({
     function applyLabel(t, update) {
       const apply = update?.apply
       if (!apply || apply.status === 'none') return ''
-      if (apply.status === 'installed') return t.updateInstalled
+      if (apply.status === 'installed') {
+        return apply.restart === false
+          ? t.updateNeedsRestart
+          : fill(t.updateInstalled, update?.version || update?.latest?.tag || '')
+      }
       if (apply.status === 'missing-dsh') return t.updateMissingDsh
       if (apply.status === 'timeout') return t.updateTimeout
       if (apply.status === 'unchanged') return fill(t.updateUnchanged, apply.error || '')
@@ -2735,6 +2786,81 @@ window.__ModuleLoader__.load({
       return { latestTag, npm }
     }
 
+    function IconArrow() {
+      return h('svg', {
+        width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none',
+        stroke: 'currentColor', strokeWidth: 2.4, strokeLinecap: 'round', strokeLinejoin: 'round',
+        'aria-hidden': 'true',
+      }, h('path', { d: 'M5 12h14' }), h('path', { d: 'm13 6 6 6-6 6' }))
+    }
+
+    /** current → latest band; the apply CTA docks on the right when given. */
+    function VersionBand({ currentLabel, latestLabel, current, latest, latestChips, busy, cta }) {
+      return h('div', { className: 'osubs-ver' + (busy ? ' osubs-ver--busy' : '') },
+        h('div', { className: 'osubs-ver-cell' },
+          h('span', { className: 'osubs-note' }, currentLabel),
+          h('span', { className: 'osubs-ver-num' }, current || '—'),
+        ),
+        h('span', { className: 'osubs-ver-arrow' }, h(IconArrow)),
+        h('div', { className: 'osubs-ver-cell' },
+          h('span', { className: 'osubs-note' }, latestLabel),
+          h('span', { className: 'osubs-ver-num' + (latest ? ' osubs-ver-num--next' : '') }, latest || '—'),
+          ...(Array.isArray(latestChips) ? latestChips : []),
+        ),
+        cta && h('span', { className: 'osubs-ver-cta' }, cta),
+      )
+    }
+
+    /** Whole row toggles the switch; note carries the hourly tick + last run. */
+    function AutoUpdateRow({ t, note, checked, onChange }) {
+      return h('label', { className: 'osubs-kv-row osubs-auto-row', title: t.autoUpdate },
+        h('input', {
+          type: 'checkbox',
+          checked,
+          'aria-label': t.autoUpdate,
+          onChange,
+        }),
+        h('span', { className: 'osubs-auto-main' },
+          h('span', { className: 'osubs-auto-name' }, t.autoUpdateShort),
+          note && h('span', { className: 'osubs-auto-note' }, note),
+        ),
+        h('span', { className: 'osubs-auto-track', 'aria-hidden': 'true' }),
+      )
+    }
+
+    function useElapsedSeconds(active) {
+      const [seconds, setSeconds] = useState(0)
+      useEffect(() => {
+        if (!active) {
+          setSeconds(0)
+          return
+        }
+        const started = Date.now()
+        const timer = setInterval(() => setSeconds(Math.floor((Date.now() - started) / 1000)), 1000)
+        return () => clearInterval(timer)
+      }, [active])
+      return seconds
+    }
+
+    /** HH:mm today, YYYY-MM-DD HH:mm otherwise — for the auto-update last-run note. */
+    function formatClock(iso) {
+      const date = new Date(iso)
+      if (Number.isNaN(date.getTime())) return String(iso || '')
+      const pad = (n) => String(n).padStart(2, '0')
+      const hm = pad(date.getHours()) + ':' + pad(date.getMinutes())
+      if (date.toDateString() === new Date().toDateString()) return hm
+      return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate()) + ' ' + hm
+    }
+
+    function autoRunText(t, entry) {
+      if (!entry) return ''
+      if (entry.status === 'installed') return fill(t.autoRunInstalled, entry.version || '')
+      if (entry.status === 'current') return t.autoRunCurrent
+      if (entry.status === 'update') return fill(t.autoRunUpdate, entry.version || '')
+      if (entry.status === 'failed') return t.autoRunFailed
+      return t.autoRunUnknown
+    }
+
     function AboutPanel({
       t,
       local,
@@ -2742,39 +2868,69 @@ window.__ModuleLoader__.load({
       busy,
       applying,
       onCheck,
+      onApply,
       dshLocal,
       dshUpdate,
       dshBusy,
       dshApplying,
       onDshCheck,
       autoUpdate,
+      autoState,
       onAutoUpdate,
     }) {
       const repo = local?.repo || update?.repo || 'https://github.com/xxww0098/dsh-plugin-oauth-subs'
       const slug = local?.repoSlug || update?.repoSlug || 'xxww0098/dsh-plugin-oauth-subs'
       const version = fresherAboutVersion(update?.version, local?.version) || '—'
       const latest = update?.latest
+      const latestTag = latest?.tag || latest?.name || ''
       const apply = applyLabel(t, update)
       const applyTone = update?.apply?.status === 'installed' ? '' : 'osubs-bad'
+      const applyFailed = Boolean(update?.apply && update.apply.status !== 'none' && update.apply.status !== 'installed')
       const stale = update?.staleProcess || local?.staleProcess
       const disk = update?.disk || local?.disk
       const loaded = update?.runningPath || local?.runningPath
       const shortPath = (path) => {
         const s = String(path || '').replace(/\\/g, '/')
-        return s.length > 72 ? `…${s.slice(-70)}` : s
+        return s.length > 72 ? '…' + s.slice(-70) : s
+      }
+      const pluginElapsed = useElapsedSeconds(applying)
+      const dshElapsed = useElapsedSeconds(dshApplying)
+
+      const autoNote = (channel) => {
+        const bits = [t.autoUpdateHourly]
+        const entry = autoState?.[channel]
+        if (entry) {
+          const outcome = autoRunText(t, entry)
+          bits.push(fill(t.autoLastCheck, formatClock(autoState?.at)) + (outcome ? ' · ' + outcome : ''))
+        }
+        return bits.join(' · ')
       }
 
-      const pluginPill = update?.status === 'update'
-        ? h(StatusPill, { tone: 'warn', label: fill(t.updateReady, latest?.tag || latest?.name || '') })
-        : update?.status === 'current'
-          ? h(StatusPill, { tone: 'ok', icon: h(IconCheck), label: t.updateCurrent })
-          : update?.status === 'ahead'
-            ? h(StatusPill, { label: t.updateAhead })
-            : update?.status === 'unknown'
-              ? h(StatusPill, { label: t.updateUnknown })
-              : update?.status === 'error'
-                ? h(StatusPill, { tone: 'bad', label: t.updateError })
-                : null
+      const pluginPill = applyFailed
+        ? h(StatusPill, { tone: 'bad', label: t.updateApplyFailed })
+        : update?.status === 'update'
+          ? h(StatusPill, { tone: 'warn', label: fill(t.updateReady, latestTag) })
+          : update?.status === 'current'
+            ? h(StatusPill, { tone: 'ok', icon: h(IconCheck), label: t.updateCurrent })
+            : update?.status === 'ahead'
+              ? h(StatusPill, { label: t.updateAhead })
+              : update?.status === 'unknown'
+                ? h(StatusPill, { label: t.updateUnknown })
+                : update?.status === 'error'
+                  ? h(StatusPill, { tone: 'bad', label: t.updateError })
+                  : null
+
+      const pluginCta = update?.status === 'update' && latestTag
+        ? h(Button, {
+            size: 'sm',
+            mark: true,
+            disabled: busy,
+            label: applying
+              ? t.updateInstalling + ' ' + pluginElapsed + 's'
+              : fill(applyFailed ? t.updateRetryTo : t.updateTo, latestTag),
+            onClick: onApply,
+          })
+        : null
 
       const pluginCard = h('section', { className: 'osubs-card' },
         h('header', { className: 'osubs-card-head' },
@@ -2783,30 +2939,28 @@ window.__ModuleLoader__.load({
             pluginPill,
           ),
           h('div', { className: 'osubs-about-actions' },
-            h(HoldTip, { label: t.autoUpdate },
-              h('label', { className: 'osubs-auto', title: t.autoUpdate },
-                h('input', {
-                  type: 'checkbox',
-                  checked: Boolean(autoUpdate?.plugin),
-                  'aria-label': t.autoUpdate,
-                  onChange: (event) => onAutoUpdate({ plugin: event.currentTarget.checked }),
-                }),
-                h('span', { className: 'osubs-auto-track', 'aria-hidden': 'true' }),
-              ),
-            ),
-            h(Button, { size: 'sm', mark: update?.status === 'update', onClick: onCheck, disabled: busy, label: busy ? (applying ? t.updateInstalling : t.checking) : t.checkUpdate }),
+            h(Button, {
+              size: 'sm',
+              onClick: onCheck,
+              disabled: busy,
+              label: busy ? (applying ? t.updateInstalling : t.checking) : t.checkUpdate,
+            }),
           ),
         ),
         h('div', { className: 'osubs-about' },
+          h(VersionBand, {
+            currentLabel: t.installed,
+            latestLabel: t.latest,
+            current: version,
+            latest: latestTag,
+            busy: applying,
+            cta: pluginCta,
+          }),
           h('div', { className: 'osubs-kv' },
             h('div', { className: 'osubs-kv-row' },
               h('span', null, t.repo),
               h('a', { className: 'osubs-link osubs-link--icon', href: repo, target: '_blank', rel: 'noreferrer' },
                 h(TabIcon, { name: 'github' }), slug),
-            ),
-            h('div', { className: 'osubs-kv-row' },
-              h('span', null, t.installed),
-              h('span', { className: 'osubs-mono' }, version),
             ),
             disk && disk !== version && h('div', { className: 'osubs-kv-row' },
               h('span', null, t.onDisk),
@@ -2816,18 +2970,21 @@ window.__ModuleLoader__.load({
               h('span', null, t.loadedFrom),
               h('span', { className: 'osubs-note', title: loaded }, shortPath(loaded)),
             ),
-            h('div', { className: 'osubs-kv-row' },
-              h('span', null, t.latest),
-              h('div', { className: 'osubs-kv-value' },
-                aboutLink(latest?.url, latest?.tag, 'osubs-mono'),
-                Boolean(latest?.publishedAt) && h('span', { className: 'osubs-note' }, latest.publishedAt),
-              ),
+            Boolean(latest?.publishedAt) && h('div', { className: 'osubs-kv-row' },
+              h('span', null, t.publishedAt),
+              h('span', { className: 'osubs-note' }, latest.publishedAt),
             ),
+            h(AutoUpdateRow, {
+              t,
+              note: autoNote('plugin'),
+              checked: Boolean(autoUpdate?.plugin),
+              onChange: (event) => onAutoUpdate({ plugin: event.currentTarget.checked }),
+            }),
           ),
           h('div', { className: 'osubs-hints' },
             update?.status === 'error' && h('p', { className: 'osubs-hint osubs-bad' }, statusLabel(t, update)),
             stale && disk && h('p', { className: 'osubs-hint osubs-warn' }, fill(t.updateStaleProcess, disk)),
-            apply && h('p', { className: `osubs-hint${applyTone ? ` ${applyTone}` : ''}` }, apply),
+            apply && h('p', { className: 'osubs-hint' + (applyTone ? ' ' + applyTone : '') }, apply),
           ),
         ),
       )
@@ -2846,23 +3003,38 @@ window.__ModuleLoader__.load({
       const [dshPicked, setDshPicked] = useState('')
       const dshChoice = dshPicked || listedLocal || (dshVersion !== '—' ? dshVersion : (dshNpm?.version || dshVersions[0] || ''))
       const dshApply = dshApplyLabel(t, dshUpdate)
+      const dshApplyFailed = Boolean(dshUpdate?.apply && dshUpdate.apply.status !== 'none' && dshUpdate.apply.status !== 'installed')
       const dshApplyTone = dshUpdate?.apply?.status === 'installed' ? '' : 'osubs-bad'
       const dshCmp = dshChoice && dshVersion !== '—' ? compareAboutVersions(dshChoice, dshVersion) : 0
       const dshCanApply = Boolean(dshChoice) && matchListedVersion(dshVersions, dshChoice) && (dshVersion === '—' || !listedLocal || dshChoice !== listedLocal)
       const dshSwitchLabel = dshVersion === '—' ? t.dshInstallAction : dshCmp < 0 ? t.dshRollbackAction : t.dshApplyUpdate
-      const dshBtnLabel = dshApplying ? t.dshUpdating : dshBusy ? t.checking : t.dshCheckUpdate
+      const dshCanUpdate = Boolean((dshUpdate?.canUpdate || dshUpdate?.status === 'update') && dshNpm?.version)
 
-      const dshPill = dshUpdate?.status === 'update'
-        ? h(StatusPill, { tone: 'warn', label: fill(t.dshStatusUpdate, dshNpm?.version || '') })
-        : dshUpdate?.status === 'github-only'
-          ? h(StatusPill, { tone: 'warn', label: fill(t.dshStatusGithubOnly, dshTag?.tag || dshTag?.version || '') })
-          : dshUpdate?.status === 'current'
-            ? h(StatusPill, { tone: 'ok', icon: h(IconCheck), label: t.dshStatusCurrent })
-            : dshUpdate?.status === 'ahead'
-              ? h(StatusPill, { label: t.dshStatusAhead })
-              : dshUpdate?.status === 'error'
-                ? h(StatusPill, { tone: 'bad', label: t.dshStatusError })
-                : null
+      const dshPill = dshApplyFailed
+        ? h(StatusPill, { tone: 'bad', label: t.updateApplyFailed })
+        : dshUpdate?.status === 'update'
+          ? h(StatusPill, { tone: 'warn', label: fill(t.dshStatusUpdate, dshNpm?.version || '') })
+          : dshUpdate?.status === 'github-only'
+            ? h(StatusPill, { tone: 'warn', label: fill(t.dshStatusGithubOnly, dshTag?.tag || dshTag?.version || '') })
+            : dshUpdate?.status === 'current'
+              ? h(StatusPill, { tone: 'ok', icon: h(IconCheck), label: t.dshStatusCurrent })
+              : dshUpdate?.status === 'ahead'
+                ? h(StatusPill, { label: t.dshStatusAhead })
+                : dshUpdate?.status === 'error'
+                  ? h(StatusPill, { tone: 'bad', label: t.dshStatusError })
+                  : null
+
+      const dshCta = dshCanUpdate
+        ? h(Button, {
+            size: 'sm',
+            mark: true,
+            disabled: dshBusy,
+            label: dshApplying
+              ? t.dshUpdating + ' ' + dshElapsed + 's'
+              : fill(dshApplyFailed ? t.updateRetryTo : t.updateTo, dshNpm.version),
+            onClick: () => onDshCheck(true, dshNpm.version),
+          })
+        : null
 
       const dshCard = h('section', { className: 'osubs-card' },
         h('header', { className: 'osubs-card-head' },
@@ -2871,31 +3043,25 @@ window.__ModuleLoader__.load({
             dshPill,
           ),
           h('div', { className: 'osubs-about-actions' },
-            h(HoldTip, { label: t.autoUpdate },
-              h('label', { className: 'osubs-auto', title: t.autoUpdate },
-                h('input', {
-                  type: 'checkbox',
-                  checked: Boolean(autoUpdate?.dsh),
-                  'aria-label': t.autoUpdate,
-                  onChange: (event) => onAutoUpdate({ dsh: event.currentTarget.checked }),
-                }),
-                h('span', { className: 'osubs-auto-track', 'aria-hidden': 'true' }),
-              ),
-            ),
             h(Button, {
               size: 'sm',
               disabled: dshBusy,
-              mark: Boolean((dshUpdate?.canUpdate || dshUpdate?.status === 'update') && dshNpm?.version),
-              label: dshBtnLabel,
-              onClick: () => {
-                const npmVer = dshNpm?.version
-                const shouldApply = Boolean((dshUpdate?.canUpdate || dshUpdate?.status === 'update') && npmVer)
-                onDshCheck(shouldApply, shouldApply ? npmVer : undefined)
-              },
+              label: dshBusy ? (dshApplying ? t.dshUpdating : t.checking) : t.dshCheckUpdate,
+              onClick: () => onDshCheck(false),
             }),
           ),
         ),
         h('div', { className: 'osubs-about' },
+          h(VersionBand, {
+            currentLabel: t.dshInstalled,
+            latestLabel: t.dshNpmVersion,
+            current: dshVersion,
+            latest: dshNpm?.version,
+            latestChips: distTagChips(dshNpm?.distTags, dshNpm?.version).map((chip) =>
+              h('span', { className: 'osubs-tag osubs-tag--plain', key: chip }, chip)),
+            busy: dshApplying,
+            cta: dshCta,
+          }),
           h('div', { className: 'osubs-kv' },
             h('div', { className: 'osubs-kv-row' },
               h('span', null, t.dshRepo),
@@ -2903,25 +3069,10 @@ window.__ModuleLoader__.load({
                 h(TabIcon, { name: 'github' }), dshSlug),
             ),
             h('div', { className: 'osubs-kv-row' },
-              h('span', null, t.dshInstalled),
-              h('span', { className: 'osubs-mono' }, dshVersion),
-            ),
-            h('div', { className: 'osubs-kv-row' },
               h('span', null, t.dshLatestTag),
               h('div', { className: 'osubs-kv-value' },
                 Boolean(dshTag?.publishedAt) && h('span', { className: 'osubs-note' }, dshTag.publishedAt),
                 aboutLink(dshTag?.url, dshTag?.tag),
-              ),
-            ),
-            h('div', { className: 'osubs-kv-row' },
-              h('span', null, t.dshNpmVersion),
-              h('div', { className: 'osubs-kv-value' },
-                aboutLink(
-                  dshNpm?.version ? 'https://www.npmjs.com/package/' + (dshEffective?.npmPackage || '@deepseek-ai/dsh') + '/v/' + dshNpm.version : '',
-                  dshNpm?.version,
-                  'osubs-mono',
-                ),
-                distTagChips(dshNpm?.distTags, dshNpm?.version).map((chip) => h('span', { className: 'osubs-tag osubs-tag--plain', key: chip }, chip)),
               ),
             ),
             h('div', { className: 'osubs-kv-row' },
@@ -2951,16 +3102,20 @@ window.__ModuleLoader__.load({
                   const label = marks.length ? ver + ' (' + marks.join(', ') + ')' : ver
                   return h('option', { key: ver, value: ver }, label)
                 })),
-                dshCanApply && h(HoldTip, { label: fill(dshCmp < 0 ? t.willRollback : dshVersion === '—' ? t.willInstall : t.willUpdate, dshChoice) },
-                  h(Button, {
-                    size: 'sm',
-                    disabled: dshBusy,
-                    label: dshApplying ? t.dshUpdating : dshSwitchLabel,
-                    onClick: () => onDshCheck(true, dshChoice),
-                  }),
-                ),
+                dshCanApply && h(Button, {
+                  size: 'sm',
+                  disabled: dshBusy,
+                  label: dshApplying ? t.dshUpdating : dshSwitchLabel + ' ' + dshChoice,
+                  onClick: () => onDshCheck(true, dshChoice),
+                }),
               ),
             ),
+            h(AutoUpdateRow, {
+              t,
+              note: autoNote('dsh'),
+              checked: Boolean(autoUpdate?.dsh),
+              onChange: (event) => onAutoUpdate({ dsh: event.currentTarget.checked }),
+            }),
           ),
           h('div', { className: 'osubs-hints' },
             dshUpdate?.status === 'error' && h('p', { className: 'osubs-hint osubs-bad' }, dshStatusLabel(t, dshUpdate)),
@@ -3060,7 +3215,7 @@ window.__ModuleLoader__.load({
         setUpdateBusy(true)
         if (apply) setApplying(true)
         try {
-          await run('update', { apply })
+          await run('update', { apply, restart: apply })
         } finally {
           setUpdateBusy(false)
           setApplying(false)
@@ -3249,13 +3404,15 @@ window.__ModuleLoader__.load({
             update,
             busy: updateBusy,
             applying,
-            onCheck: () => checkUpdate(Boolean(update?.status === 'update')),
+            onCheck: () => checkUpdate(false),
+            onApply: () => checkUpdate(true),
             dshLocal: snap?.dshUpdate,
             dshUpdate,
             dshBusy,
             dshApplying,
             onDshCheck: (apply, targetVersion) => checkDshUpdate(apply, targetVersion),
             autoUpdate,
+            autoState: snap?.autoUpdateState,
             onAutoUpdate: applyAutoUpdate,
           })),
         ),

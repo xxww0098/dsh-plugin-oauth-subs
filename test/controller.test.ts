@@ -759,6 +759,68 @@ test('checkUpdate compare-only never spawns dsh', async () => {
   assert.equal(spawned >= 1, true)
 })
 
+test('checkUpdate manual apply schedules a restart like auto-update does', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  let running = '0.0.1'
+  const seen = []
+  const controller = new AuthController({
+    authPath: join(dir, 'auth.json'),
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+    fetchFn: githubLatest('v9.9.9'),
+    spawnFn: (cmd, args) => { seen.push({ cmd, args }); running = '9.9.9'; return spawnChild(0) },
+    profile: 'web',
+    updateEnv: { DSH_HOME: dir },
+    readFileFn: () => JSON.stringify({ version: running }),
+  })
+  const result = await controller.checkUpdate({ apply: true })
+  assert.equal(result.apply.status, 'installed')
+  assert.equal(result.apply.restart, true)
+  assert.equal(seen.some((row) => row.cmd === '/bin/sh'), true)
+})
+
+test('checkUpdate apply with restart:false installs without scheduling a restart', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  let running = '0.0.1'
+  const seen = []
+  const controller = new AuthController({
+    authPath: join(dir, 'auth.json'),
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+    fetchFn: githubLatest('v9.9.9'),
+    spawnFn: (cmd, args) => { seen.push({ cmd, args }); running = '9.9.9'; return spawnChild(0) },
+    profile: 'web',
+    updateEnv: { DSH_HOME: dir },
+    readFileFn: () => JSON.stringify({ version: running }),
+  })
+  const result = await controller.checkUpdate({ apply: true, restart: false })
+  assert.equal(result.apply.status, 'installed')
+  assert.equal(result.apply.restart, false)
+  assert.equal(seen.some((row) => row.cmd === '/bin/sh'), false)
+})
+
+test('runAutoUpdate records the last run into update-state.json', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const controller = new AuthController({
+    authPath: join(dir, 'auth.json'),
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+    fetchFn: githubLatest(`v${installedVersion()}`),
+    spawnFn: () => spawnChild(0),
+    profile: 'web',
+    updateEnv: { DSH_HOME: dir },
+  })
+  await controller.setAutoUpdate({ plugin: true })
+  const state = JSON.parse(await readFile(join(dir, 'update-state.json'), 'utf8'))
+  assert.equal(typeof state.at, 'string')
+  assert.equal(state.plugin.status, 'current')
+  const snap = await controller.snapshot()
+  assert.equal(snap.autoUpdateState.plugin.status, 'current')
+})
+
 test('checkUpdate re-reads installed version after a successful apply', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
   let running = '0.0.70'
