@@ -103,61 +103,151 @@ function rpcFrom(scope) {
 }
 
 export function registerRpc(ctx, controller) {
+  const methods = {
+    status: () => controller.snapshot(),
+    login: (payload) => controller.login(payload?.provider, payload),
+    key: (payload) => controller.useKey(payload?.provider, payload?.key, payload),
+    manual: (payload) => controller.manual(payload?.provider, payload?.input),
+    cancel: (payload) => controller.cancel(payload?.provider),
+    logout: (payload) => controller.logout(payload?.provider, payload?.id),
+    switch: (payload) => controller.switchAccount(payload?.provider, payload?.id),
+    import: (payload) => controller.importFrom(payload?.provider),
+    sync: (payload) => controller.sync(payload?.selected),
+    models: (payload) => controller.setModels(payload ?? {}),
+    quota: (payload) => controller.refreshQuota(payload?.provider, payload?.id),
+    goSave: (payload) => controller.saveOpencodeGo(payload ?? {}),
+    goClear: (payload) => controller.clearOpencodeGo(payload?.field, payload?.id),
+    reset: (payload) => controller.consumeReset(payload?.provider, payload?.id),
+    update: (payload) => controller.checkUpdate(payload),
+    dshUpdate: (payload) => controller.checkDshUpdate(payload),
+    autoUpdate: (payload) => controller.setAutoUpdate(payload),
+    proxyGet: () => controller.outboundProxy(),
+    proxySet: (payload) => controller.setOutboundProxy(payload),
+  }
+
+  const dispatch = async (endpoint, payload) => {
+    const raw = String(endpoint ?? '')
+    const method = raw.startsWith('oauth-subs-auth/')
+      ? raw.slice('oauth-subs-auth/'.length)
+      : raw
+    const fn = methods[method]
+    if (typeof fn !== 'function') {
+      return {
+        ok: false,
+        error: { code: 'unknown-command', message: `unknown oauth-subs method ${endpoint}`, details: {} },
+      }
+    }
+    try {
+      return { ok: true, value: await fn(payload ?? {}) }
+    } catch (error) {
+      return {
+        ok: false,
+        error: {
+          code: 'internal',
+          message: error instanceof Error ? error.message : String(error),
+          details: {},
+        },
+      }
+    }
+  }
+
+  const readConnection = (holder) => {
+    if (!holder) return undefined
+    try {
+      if (typeof holder.get === 'function') {
+        const found = holder.get('connection')
+        if (found) return found
+      }
+    } catch {
+      // Cordis throws when the service is not injected on this fiber.
+    }
+    try {
+      return holder.connection
+    } catch {
+      return undefined
+    }
+  }
+
+  let fetchMounted = false
+  const mountFetchRoutes = (connection) => {
+    if (fetchMounted) return true
+    const fetchApi = connection?.fetch
+    if (typeof fetchApi?.register !== 'function') return false
+    for (const name of Object.keys(methods)) {
+      fetchApi.register({
+        path: `/api/oauth-subs-auth/${name}`,
+        methods: ['POST'],
+        requestBody: 'buffered',
+        fetch: async (request) => {
+          let body = {}
+          try {
+            body = await request.json()
+          } catch {
+            body = {}
+          }
+          const rawMethod = typeof body?.method === 'string' && body.method
+            ? body.method
+            : name
+          const result = await dispatch(rawMethod, body?.payload)
+          return new Response(JSON.stringify({
+            type: 'server-response',
+            rpcId: body?.rpcId,
+            result,
+          }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          })
+        },
+      })
+    }
+    fetchMounted = true
+    return true
+  }
+
+  // Web host: rpc.handle needs webServer. Electron desktop disables that
+  // row, so this callback never runs there.
   ctx.inject(['connection', 'webServer'], (scope) => {
     const rpc = rpcFrom(scope)
     if (typeof rpc?.handle !== 'function') {
       ctx.logger?.warn?.('dsh-plugin-oauth-subs: connection.rpc.handle is unavailable')
-      return
+    } else {
+      try {
+        rpc.handle('/oauth-subs-auth', async (endpoint, payload) => dispatch(endpoint, payload))
+      } catch (error) {
+        ctx.logger?.warn?.(
+          `dsh-plugin-oauth-subs: failed to register /oauth-subs-auth: ${error instanceof Error ? error.message : error}`,
+        )
+      }
     }
-    const methods = {
-      status: () => controller.snapshot(),
-      login: (payload) => controller.login(payload?.provider, payload),
-      key: (payload) => controller.useKey(payload?.provider, payload?.key, payload),
-      manual: (payload) => controller.manual(payload?.provider, payload?.input),
-      cancel: (payload) => controller.cancel(payload?.provider),
-      logout: (payload) => controller.logout(payload?.provider, payload?.id),
-      switch: (payload) => controller.switchAccount(payload?.provider, payload?.id),
-      import: (payload) => controller.importFrom(payload?.provider),
-      sync: (payload) => controller.sync(payload?.selected),
-      models: (payload) => controller.setModels(payload ?? {}),
-      quota: (payload) => controller.refreshQuota(payload?.provider, payload?.id),
-      goSave: (payload) => controller.saveOpencodeGo(payload ?? {}),
-      goClear: (payload) => controller.clearOpencodeGo(payload?.field, payload?.id),
-      reset: (payload) => controller.consumeReset(payload?.provider, payload?.id),
-      update: (payload) => controller.checkUpdate(payload),
-      dshUpdate: (payload) => controller.checkDshUpdate(payload),
-      autoUpdate: (payload) => controller.setAutoUpdate(payload),
-      proxyGet: () => controller.outboundProxy(),
-      proxySet: (payload) => controller.setOutboundProxy(payload),
-    }
-    try {
-      rpc.handle('/oauth-subs-auth', async (endpoint, payload) => {
-        const fn = methods[endpoint]
-        if (typeof fn !== 'function') {
-          return {
-            ok: false,
-            error: { code: 'unknown-command', message: `unknown oauth-subs method ${endpoint}`, details: {} },
-          }
-        }
-        try {
-          return { ok: true, value: await fn(payload ?? {}) }
-        } catch (error) {
-          return {
-            ok: false,
-            error: {
-              code: 'internal',
-              message: error instanceof Error ? error.message : String(error),
-              details: {},
-            },
-          }
-        }
-      })
-    } catch (error) {
-      ctx.logger?.warn?.(
-        `dsh-plugin-oauth-subs: failed to register /oauth-subs-auth: ${error instanceof Error ? error.message : error}`,
-      )
-    }
+    mountFetchRoutes(readConnection(scope) ?? readConnection(ctx))
   })
+
+  // Desktop host (and any composition without webServer): exact POST routes
+  // under the shared /api channel. ctx.inject(['connection']) may not fire
+  // here — read the service directly and retry until it appears.
+  const tryMountFetch = () => mountFetchRoutes(readConnection(ctx))
+  if (!tryMountFetch()) {
+    try {
+      ctx.inject(['connection'], (scope) => {
+        mountFetchRoutes(readConnection(scope) ?? readConnection(ctx))
+      })
+    } catch {
+      // inject list rejected on this fiber
+    }
+    if (!fetchMounted) {
+      let attempts = 0
+      const timer = setInterval(() => {
+        attempts += 1
+        if (tryMountFetch() || attempts >= 50) clearInterval(timer)
+      }, 100)
+      timer.unref?.()
+      try {
+        ctx.effect?.(() => () => clearInterval(timer), 'dsh-plugin-oauth-subs: wait for connection.fetch')
+      } catch {
+        // best-effort cleanup
+      }
+    }
+  }
 }
 
 export function apply(ctx, config = {}) {
