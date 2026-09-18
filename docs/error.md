@@ -2,6 +2,18 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-10-23：xAI Grok 额度显示「0 / 0」——上游改了 GetGrokCreditsConfig schema
+
+**现象**：SuperGrok Heavy 账号额度卡只有「每周 0 / 0」和重置倒计时，没有用量条；billing JSON 与 gRPC 帧都 200。
+**根因**：①billing 的 `onDemandCap{val:0}`（pay-as-you-go 关闭）被 `grokOnDemandBag` 当成真额度包，造出 0/0 行；②上游把 GetGrokCreditsConfig 的 usage float 从 nested field 1 移走（周期挪到 nested field 8 `{type,start,end}`），解码器只认旧形状，拿不到 percent 也填不进 0/0 行。
+**修复**：`grokOnDemandBag` 与 monthly 一样要求 `total > 0`；`decodeGrokCreditsFrame` 读 nested field 8 的 start/end（旧 field 4/5 保留回退），有周期无 usage 时按 proto3 省略零值 = 0% 已用（与 grok.com 网页一致）；snapshot 的 `periodStart` 并入行。活测：Heavy 账号返回 weekly 100% 剩余 + 正确 resetAt。
+
+## 2026-10-22：令牌生命周期对齐 CLIProxyAPI——401 刷新重试 / 后台 sweep / 失败退避
+
+**现象**：对照 router-for-me/CLIProxyAPI 后发现三处缺口——①上游 401（令牌被吊销/轮转但未到 expiresAt）直接透传给客户端，用户只能重登；②令牌纯惰性刷新，闲置后首个请求付刷新 RTT，refresh token 静默死亡只在请求中暴露；③token 端点瞬时故障时每个请求都重打端点，且仍有效的旧 access token 被白白丢弃；④同账号重登录整体覆盖 session，丢 projectId / cachedEmail 等水合字段。
+**根因**：`TokenManager` 只有「到期前 preempt 窗口内惰性刷新」一条路径，无强制刷新、无失败退避；`saveSession` 无合并语义。
+**修复**：`refreshNow(id, failedAccessToken)`（已轮转的并发刷新直接复用，不二次兑换 refresh token）；`forward()` 捕获 `UnauthorizedUpstream` 刷新一次重试，失败则原样透传上游 401 body；`startTokenSweep` 每 60s 扫全部已存账号；瞬时刷新失败记 5min 退避且未过期令牌继续服务；`saveSession` 同 id 合并非凭据字段（`SESSION_CREDENTIAL_KEYS` 除外）。Kiro / Cursor / Devin 自有 transport 的 401 不在本次范围（Devin 已有 jwt 401 重试先例）。
+
 ## 2026-10-21：手动更新「经常失败」——装上了但不重启、update 超时即放弃
 
 **现象**：关于页手动点更新常报失败或装完版本仍旧；自动更新却稳定。根因有三：①手动 apply 不传 restart，装上后进程仍跑旧模块，用户不重启就永远「有新版本」；②`dsh plugin update`（pnpm update，对 git spec 常 no-op）一超时就不再走确定性的 `add <repo>#tag`；③GUI 启动的 dsh web PATH 极简，spawn 的 dsh 找不到 pnpm/node。
@@ -78,7 +90,6 @@
 **现象**：npm 已有 0.1.5-rc.2（`next` tag），About 仍显示「GitHub 有新 Tag dsh-v0.1.5-rc.2（npm 尚未发布）」；「最新发布」停在 0.1.5-rc.1，「稳定版」显示 —。
 **根因**：`fetchDshLatest` 用 `dist-tags.latest || next || alpha` 当最新发布，`latest`=rc.1 永远压过 `next`=rc.2；服务端 npm 载荷没带 `stable`，覆盖了客户端 fallback 的稳定版字段。
 **修复**：npm 最新发布取全量版本排序首位（与 npm 页一致），`stable` 单独取 `latest` tag 并随载荷返回；rc.2 > rc.1 即 status `update`。
-
 ## 2026-09-10：OpenCode Go 页没有 API key 输入，cookie/workspace 框被撑到 240px 高
 
 **现象**：Settings > OpenCode Go 只能填 cookie 和工作区；对话密钥要去 DSH API Keys。两个输入框异常高。

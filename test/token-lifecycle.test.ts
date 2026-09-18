@@ -314,3 +314,133 @@ test('successful validation removes old flags without deleting concurrently lear
   assert.equal(Object.hasOwn(stored, 'validationUrl'), false)
   assert.equal(stored.accessToken, 'ag-concurrent')
 })
+
+
+test('an upstream 401 refreshes the login once and retries with the rotated token', { timeout: 5000 }, async (t) => {
+  let refreshes = 0
+  const upstreamCalls = []
+  const { controller, authPath } = await fixture(t, async (url) => {
+    if (String(url) === CODEX_TOKEN_URL) {
+      refreshes++
+      return Response.json({ access_token: 'rotated-access', refresh_token: 'rotated-refresh', expires_in: 3600 })
+    }
+    return Response.json({})
+  })
+  await saveSession('codex', {
+    accessToken: 'stale-access', refreshToken: 'rt', expiresAt: Date.now() + 3_600_000,
+    emailAddress: 'codex@example.test', accountId: 'acct-1',
+  }, authPath)
+  const proxy = createProxy({
+    port: 0, apiKey: 'local-test', tokens: controller.tokens,
+    fetchFn: async (url, init) => {
+      upstreamCalls.push(init.headers.authorization)
+      return upstreamCalls.length === 1
+        ? Response.json({ error: { message: 'token expired' } }, { status: 401 })
+        : Response.json({ ok: true })
+    },
+  })
+  const server = await proxy.listen()
+  t.after(() => proxy.close())
+  const response = await fetch(`http://127.0.0.1:${server.address().port}/codex/v1/responses`, {
+    method: 'POST', headers: { authorization: 'Bearer local-test', 'content-type': 'application/json' },
+    body: JSON.stringify({ model: 'gpt-test', input: 'hi' }),
+  })
+  assert.equal(response.status, 200)
+  assert.deepEqual(upstreamCalls, ['Bearer stale-access', 'Bearer rotated-access'])
+  assert.equal(refreshes, 1)
+  assert.equal((await getSession('codex', authPath)).accessToken, 'rotated-access')
+})
+
+
+test('an upstream 401 forwards the upstream body when the refresh fails', { timeout: 5000 }, async (t) => {
+  let refreshes = 0
+  const upstreamCalls = []
+  const { controller, authPath } = await fixture(t, async (url) => {
+    if (String(url) === CODEX_TOKEN_URL) {
+      refreshes++
+      return Response.json({ error: 'temporarily_unavailable' }, { status: 500 })
+    }
+    return Response.json({})
+  })
+  await saveSession('codex', {
+    accessToken: 'stale-access', refreshToken: 'rt', expiresAt: Date.now() + 3_600_000,
+    emailAddress: 'codex@example.test', accountId: 'acct-1',
+  }, authPath)
+  const proxy = createProxy({
+    port: 0, apiKey: 'local-test', tokens: controller.tokens,
+    fetchFn: async () => {
+      upstreamCalls.push(1)
+      return Response.json({ error: { message: 'token expired' } }, { status: 401 })
+    },
+  })
+  const server = await proxy.listen()
+  t.after(() => proxy.close())
+  const response = await fetch(`http://127.0.0.1:${server.address().port}/codex/v1/responses`, {
+    method: 'POST', headers: { authorization: 'Bearer local-test', 'content-type': 'application/json' },
+    body: JSON.stringify({ model: 'gpt-test', input: 'hi' }),
+  })
+  assert.equal(response.status, 401)
+  assert.equal((await response.json()).error.message, 'token expired')
+  assert.equal(upstreamCalls.length, 1)
+  assert.equal(refreshes, 1)
+})
+
+
+test('a transient refresh failure serves the still-valid token and backs off the endpoint', { timeout: 5000 }, async (t) => {
+  let refreshes = 0
+  const { controller, authPath } = await fixture(t, async (url) => {
+    if (String(url).endsWith('/refreshToken')) {
+      refreshes++
+      return Response.json({ error: 'boom' }, { status: 500 })
+    }
+    return Response.json({})
+  })
+  const a = account('a')
+  // Inside the 2min preempt window but still valid: refresh is due, yet a
+  // transient endpoint failure must not fail the request.
+  a.expiresAt = Date.now() + 60_000
+  await saveSession('kiro', a, authPath)
+  const first = await controller.tokens.kiro.session()
+  assert.equal(first.accessToken, a.accessToken)
+  const second = await controller.tokens.kiro.session()
+  assert.equal(second.accessToken, a.accessToken)
+  assert.equal(refreshes, 1)
+})
+
+
+test('re-login under the same account id keeps hydrated fields but replaces credentials', async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-merge-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const authPath = join(dir, 'auth.json')
+  const account = 'merge@example.test'
+  await saveSession('antigravity', {
+    accessToken: 'old-access', refreshToken: 'old-refresh', expiresAt: Date.now() + 3_600_000,
+    account, projectId: 'hydrated-project', needsValidation: true,
+  }, authPath)
+  await saveSession('antigravity', {
+    accessToken: 'new-access', refreshToken: 'new-refresh', expiresAt: Date.now() + 3_600_000,
+    account,
+  }, authPath)
+  const stored = await getSession('antigravity', authPath)
+  assert.equal(stored.accessToken, 'new-access')
+  assert.equal(stored.refreshToken, 'new-refresh')
+  assert.equal(stored.projectId, 'hydrated-project')
+  assert.equal(stored.needsValidation, true)
+})
+
+
+test('the token sweep refreshes an expired login before any request arrives', { timeout: 5000 }, async (t) => {
+  let refreshes = 0
+  const { controller, authPath } = await fixture(t, async (url) => {
+    if (String(url).endsWith('/refreshToken')) {
+      refreshes++
+      return Response.json({ accessToken: 'swept-access', refreshToken: 'rt_' + 's'.repeat(200), expiresIn: 3600 })
+    }
+    return Response.json({})
+  })
+  await saveSession('kiro', account('a', true), authPath)
+  await controller.sweepTokensOnce()
+  assert.equal(refreshes, 1)
+  assert.equal((await getSession('kiro', authPath)).accessToken, 'swept-access')
+})
+

@@ -63,6 +63,98 @@ npm run analyze -- path/to/session.jsonl
   never bump `package.json`/lockfile, tag, or release — the maintainer
   does.
 
+## 新家族接入顺序（对抗审查定稿）
+
+每个新 `<id>` 家族按 0→7 顺序执行；每步有出口门禁，不过门禁不进
+下一步。`docs/oauth.md` 新家族是**文件清单**，本节是**顺序与理由**。
+
+### 流水线
+
+0. **归因（先于一切代码）** — 钉住一线客户端版本 + 社区对照，写进
+   `docs/oauth.md` 总表。产出：登录方式（PKCE / 设备码 / CLI poll）、
+   chat 端点与 wire 协议、缓存亲和字段、模型目录来源、quota 端点、
+   UA / 指纹、「不要发明」清单。没有归因不动手写代码——后面每一步的
+   「抄」都来自这里。
+1. **登录 / session** — `<id>/index.ts` 端点 + flow + session builder +
+   refresh + UA；`store.ts` `PROVIDER_IDS` / `accountIdOf` /
+   `publicSession`；`controller.ts` login / cancel / logout / switch /
+   import 分支。出口：session round-trip 测试过；opaque id 不外露。
+2. **hop + cache（同一 PR，原子）** — `proxy.ts` `family === '<id>'`
+   分支 + `<id>/cache.ts` + `<id>/request.ts` normalize。出口：cache
+   隔离测试 + proxy 路由测试过。
+3. **quota** — `quota.ts` 分支，cache key `provider\0accountId`；
+   snapshot hydrate 每个已存账号。出口：`snapshot shows quota on every
+   <id> account`。
+4. **models** — 见下「模型参数 → 模型页」。
+5. **UI** — `ui/client.ts` tab / 图标 / copy（zh+en）；`src/index.ts`
+   re-export。
+6. **测试** — `test/<id>.test.ts`：login parse、session round-trip、
+   catalog、cache 隔离、proxy 路由、quota snapshot。
+7. **活测 + 文档收口** — `npm run analyze` 看命中率；`docs/error.md`
+   记活测结论；README 归因补齐。出口：活测结论落 error.md 才算完成。
+
+### 第一步：先缓存还是先 OAuth？
+
+都不是——第一步是归因（步骤 0）。在缓存与 OAuth 之间：**先登录，
+hop 与 cache 同一 PR 原子落地，缓存命中率最后验证**。
+
+- 先做缓存 = 写无法运行的死代码：cache 字段（`session-id` /
+  `x-grok-conv-id` / `cascade_id` / 前缀拼接位置）由该家 wire 协议
+  决定，没有 hop 就没有可验证的 cache。
+- hop 做完再补缓存 = 重复犯过的故障：`Date.now()` 会话 id、别家缓存
+  头串台、把 DSH `session_id` 原样发上游被 400。缓存是 wire 设计的
+  一部分，不是事后优化。
+- 所以：归因钉住缓存字段 → 登录 → hop+cache 同 PR →
+  `npm run analyze` 活测命中率收口。
+
+### 第二步：模型参数 → 模型页
+
+「全部找到再渲染」拆成四段，每段有硬约束：
+
+1. **找全（归因）**：`id` / `name` / `contextWindow` / `maxTokens` /
+   `input` / `reasoningEfforts` 全部要有出处——钉住客户端的
+   `models.json`、官方文档、或厂商目录端点（Cursor `GetUsableModels`、
+   Devin `GetCliModelConfigs`），逐条记进家族 README。不发明数字；
+   订阅后端不服务的模型不进目录（`gpt-5.3-codex` 先例）。
+2. **静态目录**：`<id>/index.ts` `<ID>_MODELS`。`reasoningEfforts`
+   键只用 DSH 闭集七值，厂商拼写进 value；`input` 只 `text`/`image`。
+3. **接线**：`models.ts` `FAMILY_IDS` + `buildProviders` +
+   `catalogProviders` + `familyOfProvider` 后缀；`controller.ts`
+   snapshot / accounts 分支；有活目录的家族加 `<id>CatalogModels()`
+   并在 login / import / 额度刷新 / `warmCatalogs` 时重 sync
+   （Cursor / Devin 先例）。`api` 取闭集三值之一；`baseURL` 对齐该
+   SDK 真实 post 路径（Completions 家 `…/<id>`，Anthropic / Responses
+   按各家注释）；`compat` 只许 `openai-completions`。
+4. **渲染**：`describeCatalog` → Settings 模型页（未登录也列出、
+   锁定 +「登录后同步」）；`sync()` → `settings.yaml` `oauth-<id>`
+   路由（只写已登录 + 已勾选）。变体：`-900k` 走
+   `withPickerVariants` / `context-mode`（默认关）；`-fast` 只在该家
+   有真 Fast 语义时加（Codex Priority / Cursor RequestedModel / Devin
+   后端变体），没有就不发明。
+
+### 对抗审查清单（每个新家族 PR 自答）
+
+- [ ] `grep` 该家 diff：`Date.now()` / `randomUUID()` /
+  `Math.random()` 不出现在会话 / 缓存 id 位置；缺 DSH id 时回退
+  `dsh-<id>` 常量。
+- [ ] DSH `session_id` 不原样发上游（Codex 是复制到
+  `prompt_cache_key` 后 strip，不是透传）。
+- [ ] `<id>/cache.ts` 不 import 别家 cache；`src/utils/` 没有新增
+  缓存改写；对照仓的多家族共用层没有进树。
+- [ ] 别家缓存头没写进本家请求（Codex `session-id` /
+  `prompt_cache_key`、Grok `x-grok-conv-id` 不出现在 `<id>` 分支）。
+- [ ] `api` / `reasoningEfforts` 键 / `compat` 没出闭集——
+  `assertDshServiceableProvider` 是本地闸门，过了它才可能过宿主原子
+  mutate。
+- [ ] `familyOfProvider` 加了 `-<id>` 后缀，否则模型页归错家族。
+- [ ] `publicSession` 不暴露 token / refresh / opaque account id。
+- [ ] quota cache key 是 `provider\0accountId`；snapshot hydrate 每个
+  已存账号，不只 active。
+- [ ] 每个模型参数在 README 有出处；`catalogProviders` /
+  `buildProviders` 该传的 `<id>Models` 都传了（漏传 = 活目录不进
+  picker 的已犯故障）。
+- [ ] 活测命中率与结论进了 `docs/error.md`；单测全绿不等于可合并。
+
 <!-- graft:start -->
 ## Graft — repo context graph
 

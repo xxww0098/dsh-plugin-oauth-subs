@@ -277,6 +277,11 @@ export function apply(ctx, config = {}) {
     controller.startAutoUpdateWatch()
     return () => controller.stopAutoUpdateWatch()
   }, 'dsh-plugin-oauth-subs: auto-update watch')
+
+  ctx.effect(() => {
+    controller.startTokenSweep()
+    return () => controller.stopTokenSweep()
+  }, 'dsh-plugin-oauth-subs: token refresh sweep')
 }
 
 export {
