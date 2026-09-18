@@ -30,6 +30,8 @@
 
 CLIProxyAPI 同时包了 Codex / Grok / Antigravity 等多家。**只**在 Antigravity 上抄它的公开 client / UA / `models.json` 形状。不要把它的多家族共用层抄进本仓库的 `cache.ts`。
 
+跨家族**令牌生命周期**另抄了它的四个模式（不是代码）：`tryRefreshAfterUnauthorized`（上游 401 → `TokenManager.refreshNow` 强制刷新重试一次，`proxy.ts` `UnauthorizedUpstream`）、`authAutoRefreshLoop`（`AuthController.startTokenSweep` 每 60s 按各家 preempt 窗口提前刷新）、`refreshFailureBackoff`（`REFRESH_FAILURE_BACKOFF_MS` 5min；瞬时失败时仍有效的旧 access token 继续服务）、`MergeExistingAuthMetadata`（`saveSession` 同 id 重登录保留非凭据字段）。它的 cooldown / 多凭据调度 / 配额响应头观察（`quota_signals.go`）**未**引入：本插件每家族只用 active 账号，不做静默跨账号 failover。
+
 ## 怎么对照
 
 1. 官方 CLI 有源码 → 钉 tag / 版本，抄 **那一版实际发出的** 头、body 字段、UA。
@@ -165,7 +167,9 @@ pi-cursor-sdk 自己走 **API key + `Agent.create`**，不是 OAuth。本 hop �
 
 ## 新家族
 
-加 `src/oauth/<id>/` 的同一 PR，全部一次到位：
+执行顺序、门禁与「先缓存还是先 OAuth / 模型参数怎么进模型页」的论证见
+[`AGENTS.md`](../AGENTS.md) 新家族接入顺序。加 `src/oauth/<id>/` 的同
+一 PR，文件清单全部一次到位：
 
 1. 家族 README（`src/oauth/<id>/README.md`）写 login / session / hop / models / quota / cache / do-not / **归因**（官方 CLI + 社区仓 + 钉住版本）。
 2. 本文件总表加一行，并补「抄 / 不要发明」。

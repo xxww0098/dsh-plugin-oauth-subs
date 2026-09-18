@@ -95,6 +95,19 @@ function retryableUpstream(message, family, upstream) {
   return new RetryableUpstream(message, extra)
 }
 
+/**
+ * Upstream answered 401 before any output. The proxy may refresh the login
+ * once and retry — CLIProxyAPI's tryRefreshAfterUnauthorized — so the parsed
+ * error payload rides along for the client when no refresh is possible.
+ */
+class UnauthorizedUpstream extends Error {
+  constructor(payload) {
+    super('upstream returned 401')
+    this.name = 'UnauthorizedUpstream'
+    this.payload = payload
+  }
+}
+
 /** Upstream accepted the request but stopped sending bytes. */
 class UpstreamIdleError extends Error {
   constructor(timeoutMs) {
@@ -414,6 +427,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
         await forward(request, response, {
           url: CODEX_API_URL,
           session: await tokens.codex.session(),
+          tokens: tokens.codex,
           headersOf: codexUpstreamHeaders,
           fetchFn,
           family: 'codex',
@@ -433,6 +447,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
         await forward(request, response, {
           url: GROK_API_URL,
           session: await tokens.grok.session(),
+          tokens: tokens.grok,
           headersOf: grokUpstreamHeaders,
           fetchFn,
           family: 'grok',
@@ -453,6 +468,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
         await forward(request, response, {
           url: glmCodingUrl(session.region),
           session,
+          tokens: tokens.glm,
           headersOf: glmUpstreamHeaders,
           fetchFn,
           family: 'glm',
@@ -473,6 +489,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
         await forward(request, response, {
           url: glmAnthropicUrl(session.region),
           session,
+          tokens: tokens.glm,
           headersOf: glmAnthropicHeaders,
           fetchFn,
           family: 'glm',
@@ -585,6 +602,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
         await forward(request, response, {
           url: OLLAMA_CHAT_URL,
           session: await tokens.ollama.session(),
+          tokens: tokens.ollama,
           headersOf: ollamaUpstreamHeaders,
           fetchFn,
           family: 'ollama',
@@ -621,6 +639,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
         await forward(request, response, {
           url: KIMI_CHAT_URL,
           session: await tokens.kimi.session(),
+          tokens: tokens.kimi,
           headersOf: kimiUpstreamHeaders,
           fetchFn,
           family: 'kimi',
@@ -658,6 +677,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
         await forward(request, response, {
           url: copilotChatUrl(session),
           session,
+          tokens: tokens.copilot,
           headersOf: (sess, pin) => copilotUpstreamHeaders(sess, pin),
           fetchFn,
           family: 'copilot',
@@ -775,12 +795,12 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
   }
 }
 
-async function forward(request, response, { url, session, headersOf, fetchFn, family, wire, maxRequestBodyBytes, upstreamIdleTimeoutMs, signal }) {
+async function forward(request, response, { url, session, tokens, headersOf, fetchFn, family, wire, maxRequestBodyBytes, upstreamIdleTimeoutMs, signal }) {
   const raw = await readBody(request, maxRequestBodyBytes)
   const { payload, cacheSessionId, stream, routingHint, grokModel, copilotVision, copilotInitiator } = rewriteUpstreamBody(raw, family, wire)
   const body = Buffer.from(JSON.stringify(payload))
   const grokReqId = family === 'grok' ? randomUUID() : undefined
-  const baseHeaders = {
+  let baseHeaders = {
     ...headersOf(session, cacheSessionId),
     'content-type': request.headers['content-type'] ?? 'application/json',
     ...(stream ? { accept: 'text/event-stream' } : {}),
@@ -796,6 +816,7 @@ async function forward(request, response, { url, session, headersOf, fetchFn, fa
 
   let lastFailure
   let codexTurnState
+  let refreshed = false
   for (let attempt = 0; attempt < STREAM_ATTEMPTS; attempt++) {
     if (attempt > 0) {
       await delay(RETRY_BACKOFF_MS[attempt - 1], undefined, { signal })
@@ -813,12 +834,46 @@ async function forward(request, response, { url, session, headersOf, fetchFn, fa
     try {
       return await attemptUpstream(response, { url, headers, body, stream, fetchFn, family, wire, upstreamIdleTimeoutMs, signal })
     } catch (error) {
-      if (signal.aborted || response.headersSent || !(error instanceof RetryableUpstream)) throw error
+      if (signal.aborted || response.headersSent) throw error
+      if (error instanceof UnauthorizedUpstream) {
+        // One forced refresh per request — the same shape CLIProxyAPI runs
+        // before falling back. No usable account or a failed refresh forwards
+        // the upstream's own 401 body unchanged.
+        const source = !refreshed && typeof tokens?.sourceOf === 'function' ? tokens.sourceOf(session) : undefined
+        const next = source && typeof tokens.refreshNow === 'function'
+          ? await tokens.refreshNow(source.id, session.accessToken).catch(() => undefined)
+          : undefined
+        if (next?.session) {
+          refreshed = true
+          session = next.session
+          baseHeaders = { ...baseHeaders, ...headersOf(session, cacheSessionId) }
+          attempt -= 1
+          continue
+        }
+        sendJson(response, 401, error.payload)
+        return
+      }
+      if (!(error instanceof RetryableUpstream)) throw error
       lastFailure = error.message
       if (typeof error.turnState === 'string' && error.turnState) codexTurnState = error.turnState
     }
   }
   throw new RequestError(502, `${family} upstream failed ${STREAM_ATTEMPTS} times: ${lastFailure}`)
+}
+
+function upstreamErrorPayload(text, family, status) {
+  let parsed
+  try { parsed = text ? JSON.parse(text) : null } catch { parsed = { error: { message: text } } }
+  if (parsed == null || (typeof parsed === 'object' && !Array.isArray(parsed) && Object.keys(parsed).length === 0)) {
+    parsed = {
+      error: {
+        message: `${family} upstream ${status} with empty body`,
+        type: 'invalid_request_error',
+        code: 'invalid_request',
+      },
+    }
+  }
+  return parsed
 }
 
 function completionsUsageMapper(family, wire) {
@@ -845,18 +900,8 @@ async function attemptUpstream(response, { url, headers, body, stream, fetchFn, 
   }
 
   if (upstream.status >= 400) {
-    const text = await upstream.text()
-    let parsed
-    try { parsed = text ? JSON.parse(text) : null } catch { parsed = { error: { message: text } } }
-    if (parsed == null || (typeof parsed === 'object' && !Array.isArray(parsed) && Object.keys(parsed).length === 0)) {
-      parsed = {
-        error: {
-          message: `${family} upstream ${upstream.status} with empty body`,
-          type: 'invalid_request_error',
-          code: 'invalid_request',
-        },
-      }
-    }
+    const parsed = upstreamErrorPayload(await upstream.text(), family, upstream.status)
+    if (upstream.status === 401) throw new UnauthorizedUpstream(parsed)
     sendJson(response, upstream.status, parsed)
     return
   }

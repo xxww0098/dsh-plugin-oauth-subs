@@ -2,6 +2,8 @@
  * Auth controller behind the Settings page RPC.
  * Codex PKCE (+ paste callback + import), Grok device-code (primary) + PKCE fallback.
  */
+/** How often the background sweep re-checks stored credential expiry. */
+export declare const TOKEN_SWEEP_INTERVAL_MS = 60000;
 export declare class AuthController {
     #private;
     constructor({ authPath, prefix, origin, settings, credentials, grokLogin, onAuthChanged, models, fetchFn, quotaTtlMs, spawnFn, profile, readFileFn, updateEnv, exitFn, prefsPath, statePath, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover, devinAutoImport, devinImport, devinDiscover }: {
@@ -4870,6 +4872,18 @@ export declare class AuthController {
         intervalMs?: number;
     }): void;
     stopAutoUpdateWatch(): void;
+    /**
+     * Background credential sweep — CLIProxyAPI's authAutoRefreshLoop shape.
+     * TokenManager refreshes lazily on request; without a sweep the first call
+     * after an idle stretch pays the refresh RTT, and a refresh token that died
+     * while idle only surfaces mid-request. Each family's own preemptMs decides
+     * whether a stored login is due, so the sweep stays provider-agnostic.
+     */
+    startTokenSweep({ intervalMs }?: {
+        intervalMs?: number;
+    }): void;
+    stopTokenSweep(): void;
+    sweepTokensOnce(): Promise<void>;
     runAutoUpdate(): Promise<{
         plugin: any;
         dsh: any;

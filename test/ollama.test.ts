@@ -228,6 +228,11 @@ test('parseOllamaUsage maps 0 / 0.095 fractions to remaining 100 and 90.5', () =
   assert.equal(parsed.rows[1].remainingPercent, 90.5)
   assert.equal(parsed.rows[1].resetAt, ollamaWeeklyResetAt(now))
   assert.equal(parsed.rows[1].note, 'glm-5.3-flash × 1294\nweb search × 3\nweb fetch × 2')
+  assert.deepEqual(parsed.rows[1].noteItems, [
+    { name: 'glm-5.3-flash', count: 1294 },
+    { name: 'web search', count: 3 },
+    { name: 'web fetch', count: 2 },
+  ])
   const empty = parseOllamaUsage(undefined, undefined)
   assert.deepEqual(empty.rows, [])
   assert.equal(empty.planType, undefined)
