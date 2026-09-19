@@ -12,6 +12,7 @@ import { CURSOR_PLAN_NAMES } from './cursor/index.js'
 import { OLLAMA_PLAN_NAMES } from '../apikey/ollama/index.js'
 import { COPILOT_PLAN_NAMES } from './copilot/index.js'
 import { DEVIN_PLAN_NAMES, DEVIN_TIER_NAMES } from './devin/index.js'
+import { CLINE_PLAN_NAMES } from './cline/index.js'
 
 export const CODEX_PLAN_NAMES = Object.freeze({
   free: 'Free',
@@ -120,6 +121,10 @@ export function formatPlanLabel(raw, family) {
     if (COPILOT_PLAN_NAMES[slug]) return COPILOT_PLAN_NAMES[slug]
     if (COPILOT_PLAN_NAMES[compact]) return COPILOT_PLAN_NAMES[compact]
   }
+  if (family === 'cline') {
+    if (CLINE_PLAN_NAMES[slug]) return CLINE_PLAN_NAMES[slug]
+    if (CLINE_PLAN_NAMES[compact]) return CLINE_PLAN_NAMES[compact]
+  }
   if (family === 'devin') {
     if (DEVIN_PLAN_NAMES[slug]) return DEVIN_PLAN_NAMES[slug]
     if (DEVIN_PLAN_NAMES[compact]) return DEVIN_PLAN_NAMES[compact]
@@ -127,7 +132,7 @@ export function formatPlanLabel(raw, family) {
     const tier = Number(trimmed)
     if (/^\d+$/.test(trimmed) && DEVIN_TIER_NAMES[tier]) return DEVIN_TIER_NAMES[tier]
   }
-  if (family !== 'glm' && family !== 'grok' && family !== 'kiro' && family !== 'antigravity' && family !== 'cursor' && family !== 'ollama' && family !== 'kimi' && family !== 'copilot' && family !== 'devin') {
+  if (family !== 'glm' && family !== 'grok' && family !== 'kiro' && family !== 'antigravity' && family !== 'cursor' && family !== 'ollama' && family !== 'kimi' && family !== 'copilot' && family !== 'devin' && family !== 'cline') {
     if (CODEX_PLAN_NAMES[slug]) return CODEX_PLAN_NAMES[slug]
     if (CODEX_PLAN_NAMES[compact]) return CODEX_PLAN_NAMES[compact]
   }

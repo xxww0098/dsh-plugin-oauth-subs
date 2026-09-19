@@ -2,6 +2,24 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-19：Cline 免费档活测——4/5 可用且不扣余额，muse-spark 区域门
+
+**现象**：feed 的 `free` 桶 5 个模型进目录后要确认真能跑：`cline-free/muse-spark-1.3-contributor` 每次 403 `{"error":"access forbidden: … is not available in your region","success":false}`，其余 4 个正常。
+**根因**：区域门在上游按出口 IP 判，与本 hop 无关（同账号、同 token、直接打 `api.cline.bot` 也是 403）；插件没有也不该按地区猜着过滤目录——feed 是 Cline 自己的推荐列表，换个地区/出口就能用。
+**修复**：不改码。活测记录：`cline-free/deepseek-v4.1-flash` / `z-ai/glm-5.3-flash` / `cline-free/solar-pro4` / `poolside/laguna-s-2.1:free` 四条全部 200：流式出字、`reasoning_effort: low` 被接受、非流式解包后 `tool_calls` 返回 `get_weather({"city":"Paris"})`（`finish_reason: tool_calls`）；`/usages` 台账里这些调用的 `creditsUsed` 全是 `0`，余额停在 $0.335787 未动；laguna 第二次还带回 `cached_tokens: 32`。muse-spark 只能靠非受限地区出口（插件出站代理设置，未实测）。
+**踩坑**：免费档里有推理模型，`max_tokens` 给小（32）时 reasoning token 会吃满预算、`content` 为空但 `finish_reason: stop` —— 不是 hop bug；给到 512 就正常出字。
+## 2026-09-19：Cline 卡片只有余额没有进度条——credit 账号没有分母，ClinePass 才有三条窗口
+
+**现象**：Cline 卡片只有「额度余额 $0.34」，没有进度条，看起来像漏做。
+**根因**：`cline` 是 credit（usage-billing）产品：`/balance` 只给余量，`/usages` 只给流水，`/users/me/plan` 对无订阅账号 404——没有「窗口 + 上限」就没有分母。官方 CLI 同样只打 `Credits: $x.xx`（`apps/cli/src/tui/interactive-welcome.ts`），整棵 TUI 搜不到 cline 的百分数字段。
+**修复**：补上只对订阅账号生效的三条窗口条：`GET /users/me/plan/usage-limits` 的 `limits[] = {type: five_hour|weekly|monthly, percentUsed, resetsAt}` 直接给服务端百分比（转成 DSH 的剩余条），cap 取 `plan.entitlements.cline_pass.inferenceCapThreshold`，单位 1e-8 USD；cap 缺失只画纯百分比条，不补默认值；credit 账号行为不变（仍是余额行）。
+**未验证**：本机账号无订阅，两个 plan 端点都 404，三条窗口的**数值**没有活体样本。已验证路由真实存在——`/users/me/plan/usage-limits` 回应用级 404 `{"data":null,"error":"no plan history found for user"}`，未知路由回 `{"error":"Not Found"}`；形状取自 MIT `pi-clinepass` `0.1.5` `src/usage.ts`。拿到订阅账号后需重跑 `fetchClineQuota` 复核。
+## 2026-09-19：Cline hop 活测三条结论（响应信封 / `workos:` 前缀 / 隐式缓存）
+
+**现象**：接入 Cline（CLI 3.0.62，WorkOS 设备码）时本机账号活测暴露三件事——①非流式对话回 `200 {"data":{…choices…},"success":true}`，直通给 DSH 时读不到 `choices`；②裸 JWT 当 bearer 一律 401 `Please make sure you're using the latest version of Cline`；③`anthropic/claude-opus-5` 连打两次 `cached_tokens` 都是 0，`openai/gpt-6-astra` 第二次 1461/1464。
+**根因**：Cline 只给**非流式**回包套 `{success,data}` 信封（SSE 不套），CLI 因为始终 `stream: true` 从没撞上；bearer 必须是 `workos:<jwt>`（`provider-auth-registry.ts` `formatAccessToken` 加的前缀）；Anthropic 经 OpenRouter 要显式 `cache_control` 断点，CLI 不发，隐式前缀缓存只对 OpenAI 系生效。
+**修复**：`unwrapClineEnvelope` 在非流式分支先解包再过 usage 映射；`formatClineAccessToken` 幂等加前缀（导入 / 粘贴 / 刷新同一入口）；`CLINE_REASONING` 无 `off` 键（CLI 禁用思考时不发字段）、`max`→`xhigh`。活测：设备码 → `POST /auth/register` → `/users/me` + `/balance`（微美元）+ `/plan`（无订阅 404）全通，proxy 流式与非流式都拿到 `ok` 与 usage。
+
 ## 2026-10-23：xAI Grok 额度显示「0 / 0」——上游改了 GetGrokCreditsConfig schema
 
 **现象**：SuperGrok Heavy 账号额度卡只有「每周 0 / 0」和重置倒计时，没有用量条；billing JSON 与 gRPC 帧都 200。

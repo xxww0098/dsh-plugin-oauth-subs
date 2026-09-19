@@ -29,6 +29,7 @@ import { kiroCatalogModels } from './oauth/kiro/catalog.js'
 import { kimiCatalogModels } from './oauth/kimi/catalog.js'
 import { copilotCatalogModels } from './oauth/copilot/catalog.js'
 import { devinCatalogModels } from './oauth/devin/catalog.js'
+import { clineCatalogModels } from './oauth/cline/catalog.js'
 import { EffortMemory, LAST_EFFORT_FILE, startEffortRestore } from './oauth/reasoning-effort.js'
 import { localDshInfo, pluginClientJsPath, profileFromBaseUrl, stampDshHostVersion } from './utils/update.js'
 import { createOutboundSession, outboundProxyPath } from './utils/outbound.js'
@@ -318,6 +319,7 @@ export function apply(ctx, config = {}) {
         kimiModels: kimiCatalogModels(),
         copilotModels: copilotCatalogModels(),
         devinModels: devinCatalogModels(),
+        clineModels: clineCatalogModels(),
       })
       return catalog[provider]?.models.find((model) => model.id === modelId)?.reasoningEfforts
     },
@@ -448,6 +450,16 @@ export {
   devinSession,
   normalizeDevinToken,
 } from './oauth/devin/index.js'
+export {
+  CLINE_MODELS,
+  CLINE_API_BASE,
+  CLINE_CHAT_URL,
+  CLINE_WORKOS_CLIENT_ID,
+  clineDeviceSpec,
+  clineSessionFromAuthData,
+  clineUpstreamHeaders,
+  refreshCline,
+} from './oauth/cline/index.js'
 export { OAUTH_CREDENTIAL_REF, ModelSwitch } from './oauth/models.js'
 export { defaultDataDir } from './oauth/store.js'
 export { AuthController } from './oauth/controller.js'
@@ -460,6 +472,7 @@ export {
   peelContextSuffix,
 } from './utils/context-mode.js'
 export { parseCodexUsage, parseGrokBilling, parseGlmQuota, parseKiroUsage, parseCursorPeriodUsage, parseKimiUsage, parseCopilotUsage, parseDevinUserStatus, parseResetCredits, QuotaStore } from './oauth/quota.js'
+export { fetchClineQuota, parseClineBalance, parseClinePlan, parseClineUsage } from './oauth/cline/quota.js'
 export { formatPlanLabel, CODEX_PLAN_NAMES } from './oauth/plan.js'
 export {
   REPO_URL,

@@ -25,6 +25,7 @@
 | Kimi | 官方 Kimi Code CLI | [Leechael/pi-provider-kimi-code](https://github.com/Leechael/pi-provider-kimi-code) | 设备码、无 PKCE | [`kimi/README.md`](../src/oauth/kimi/README.md) |
 | GitHub Copilot | [anomalyco/opencode](https://github.com/anomalyco/opencode) `plugin/github-copilot` | [goose githubcopilot.rs](https://github.com/aaif-goose/goose)；[Cherry Studio CopilotService.ts](https://github.com/CherryHQ/cherry-studio)；[hermes-agent copilot_auth.py](https://github.com/NousResearch/hermes-agent/blob/main/hermes_cli/copilot_auth.py) | UA `GitHubCopilotChat/0.35.0`；client `Iv1.b507a08c87ecfe98` | [`copilot/README.md`](../src/oauth/copilot/README.md) |
 | Devin | Devin CLI `3000.10.31`（app.devin.ai PKCE + server.codeium.com Connect/proto） | [can1357/oh-my-pi](https://github.com/can1357/oh-my-pi) `pi-catalog` devin + vendored `exa.*` protos | MITM 实测指纹 `ide_name: chisel` / `3000.10.31` / `Basic <tok>-<tok>`；`devin-session-token$` 前缀只加一次 | [`devin/README.md`](../src/oauth/devin/README.md) |
+| Cline | Cline CLI `3.0.62`（npm `cline` + `@cline/core 0.0.83`） | [cline/cline](https://github.com/cline/cline) tag `cli-v3.0.62`（Apache-2.0）；[models.dev](https://models.dev/api.json) `openrouter` 桶做模型元数据 | WorkOS 设备码 + `POST /api/v1/auth/register` 兑换；Bearer `workos:<jwt>`；`X-Task-ID` 会话钉 | [`cline/README.md`](../src/oauth/cline/README.md) |
 | 宿主 | [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) | DSH `llm-pi-ai` `api` 闭集 | 本机回环代理 | [`README.md`](../README.md) |
 | OpenCode Go（API key） | [opencode.ai/docs/go](https://opencode.ai/docs/go/) | [stablyai/orca](https://github.com/stablyai/orca)；[steipete/CodexBar](https://github.com/steipete/CodexBar) | 对话走宿主内置 pi-ai `opencode-go`（27 模型，由 DSH 模型设置页自行开启；插件不写该 profile）+ 插件补充 `deepseek-flash`；`OPENCODE_API_KEY`；插件那条路由带强制的 `x-opencode-session`（pi-ai 0.85.1 不发会话头）；本插件只读额度 | [`opencode-go/README.md`](../src/apikey/opencode-go/README.md) |
 
@@ -164,6 +165,31 @@ pi-cursor-sdk 自己走 **API key + `Agent.create`**，不是 OAuth。本 hop �
 | `GetUserStatus`：`teams_tier`、daily/weekly quota、unix 秒 reset | `fetchDevinQuota` / `parseDevinUserStatus`（proto.ts 已转毫秒） |
 
 **不要发明：** 双前缀 token（活测 401）；`ide_name: devin`/`Devin`/`devin-cli`（stub-gated）；Metadata `f`/`session_id`/`user_agent` 字段（CLI 不发）；用 `api.devin.ai` 当 chat host；把 `-fast` 走 `applyFastMode`（真后端变体）；Response API；`Date.now()` cascade id。
+
+## Cline
+
+一线是 **Cline CLI 3.0.62**（npm `cline`，本机装在
+`~/.local/lib/node_modules/cline`），源码 tag
+[`cli-v3.0.62`](https://github.com/cline/cline/tree/cli-v3.0.62)（Apache-2.0）。
+闭源侧只剩 WorkOS 身份：登录是 `api.workos.com` 的 RFC 8628 设备码，
+换票走 Cline 自己的 `/api/v1/auth/register`。
+
+| 抄 | 路径 | 本 hop |
+|---|---|---|
+| 设备码 / poll / refresh | `sdk/packages/core/src/auth/cline.ts` | `clineDeviceSpec`、`refreshCline` |
+| `workos:` 前缀与 API key | `sdk/packages/core/src/auth/provider-auth-registry.ts` | `formatClineAccessToken`（幂等） |
+| 聊天头 `X-CLIENT-TYPE` / `X-Task-ID` … | `sdk/packages/llms/src/providers/request-headers.ts` `buildClineRequestHeaders` | `clineCredentialHeaders` / `clineCacheHeaders` |
+| `max_tokens`→`max_completion_tokens` | `vendors/openai-compatible.ts` + `model-facts.ts` | `applyClineMaxCompletionTokens` |
+| effort 语义（`max`→`xhigh`，禁用不发字段） | `providers/routing/portable-reasoning.ts` | `CLINE_REASONING`（无 `off` 键） |
+| 推荐模型 feed + OpenRouter 元数据 | `catalog/catalog-cline-recommended.ts`、`builtins.ts` `buildClineModels` | `refreshClineCatalog` + `CLINE_MODELS` |
+| 额度三读 / 微美元余额 | `account/cline-account-service.ts`、`apps/cli/src/utils/output.ts` | [`cline/quota.ts`](../src/oauth/cline/quota.ts) |
+| ClinePass 三条窗口（5 小时 / 每周 / 每月） | 不在 CLI 源码里（CLI 只在 429/402 文案认 "5-hour / weekly Clinepass limit"）；形状取自 MIT [`pi-clinepass`](https://www.npmjs.com/package/pi-clinepass) `0.1.5` `src/usage.ts` | `GET /users/me/plan/usage-limits` + `plan.entitlements.cline_pass.inferenceCapThreshold`（1e-8 USD） |
+| 本机凭据文件 | `~/.cline/data/settings/providers.json` | [`cline/import.ts`](../src/oauth/cline/import.ts) |
+
+**不要发明：** credit 账号的进度条（它没有窗口分母，官方 CLI 也只打 `Credits: $x.xx`）；cap 缺失时补默认限额；自己累加 `/usages` 当窗口用量；裸 JWT bearer（必须 `workos:` 前缀）；PKCE / 回环回调（CLI 默认
+设备码，浏览器分支只服务旧 VS Code 扩展）；`cache_control` 断点（CLI 不加，
+Anthropic 走 OpenRouter 因此吃不到隐式缓存）；Codex / Grok / Copilot 的缓存头；
+把 `clinePass` / `clineCloud` 模型列进 credit 账号目录；第四个 DSH `api` 字符串。
 
 ## 新家族
 

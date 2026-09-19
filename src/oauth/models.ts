@@ -13,6 +13,7 @@ import { OLLAMA_MODELS } from '../apikey/ollama/index.js'
 import { KIMI_MODELS } from './kimi/index.js'
 import { COPILOT_MODELS } from './copilot/index.js'
 import { DEVIN_MODELS } from './devin/index.js'
+import { CLINE_MODELS } from './cline/index.js'
 import {
   OPENCODE_GO_BUILTIN_ROUTE_ID,
   OPENCODE_GO_EXTRA_ROUTE,
@@ -109,7 +110,7 @@ export function modelKey(provider, id) {
   return `${provider}/${id}`
 }
 
-export const FAMILY_IDS = Object.freeze(['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin'])
+export const FAMILY_IDS = Object.freeze(['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline'])
 
 /**
  * OpenCode Go picker families: direct API-key routes, not OAuth logins, and
@@ -223,7 +224,12 @@ function glmHarnessModels(glmModels) {
   return GLM_MODELS
 }
 
-export function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels }) {
+function clineHarnessModels(clineModels) {
+  if (Array.isArray(clineModels) && clineModels.length > 0) return clineModels
+  return CLINE_MODELS
+}
+
+export function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels, clineModels }) {
   const providers = {}
   if (loggedIn.codex) {
     providers[`${prefix}-codex`] = {
@@ -366,6 +372,25 @@ export function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaM
       models: devinRows,
     }
   }
+  if (loggedIn.cline) {
+    const clineRows = clineHarnessModels(clineModels).map(toHarnessModel)
+    const clineHasEffort = clineRows.some((model) => model.reasoningEfforts && typeof model.reasoningEfforts === 'object')
+    providers[`${prefix}-cline`] = {
+      displayName: 'OAuth · Cline',
+      api: HARNESS_COMPLETIONS_API,
+      apiKeyEnv: OAUTH_CREDENTIAL_REF,
+      // Completions hop is /cline/v1/chat/completions. DSH posts
+      // `${baseURL}/v1/chat/completions`, so baseURL is `${origin}/cline`.
+      baseURL: `${origin}/cline`,
+      ...(clineHasEffort ? {
+        compat: {
+          supportsReasoningEffort: true,
+          thinkingFormat: 'openai',
+        },
+      } : {}),
+      models: clineRows,
+    }
+  }
   return providers
 }
 
@@ -377,11 +402,11 @@ export function describeProviders(providers) {
   }))
 }
 
-export function catalogProviders({ prefix, origin, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels }) {
+export function catalogProviders({ prefix, origin, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels, clineModels }) {
   const providers = buildProviders({
     prefix,
     origin,
-    loggedIn: { codex: true, grok: true, glm: true, kiro: true, antigravity: true, cursor: true, ollama: true, kimi: true, copilot: true, devin: true },
+    loggedIn: { codex: true, grok: true, glm: true, kiro: true, antigravity: true, cursor: true, ollama: true, kimi: true, copilot: true, devin: true, cline: true },
     cursorModels,
     ollamaModels,
     kiroModels,
@@ -389,6 +414,7 @@ export function catalogProviders({ prefix, origin, cursorModels, ollamaModels, k
     copilotModels,
     devinModels,
     glmModels,
+    clineModels,
   })
   // OpenCode Go is API key, not OAuth: the picker lists only the supplemental
   // route this plugin writes; the controller decides locked vs usable from
@@ -420,6 +446,7 @@ export function familyOfProvider(provider) {
   if (String(provider).endsWith('-kimi')) return 'kimi'
   if (String(provider).endsWith('-copilot')) return 'copilot'
   if (String(provider).endsWith('-devin')) return 'devin'
+  if (String(provider).endsWith('-cline')) return 'cline'
   return String(provider)
 }
 
@@ -780,11 +807,11 @@ async function assertPersistedProviders(settings, expectedIds) {
   }
 }
 
-export async function syncHarnessModels({ settings, prefix, origin, loggedIn, selected, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels }) {
+export async function syncHarnessModels({ settings, prefix, origin, loggedIn, selected, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels, clineModels }) {
   const routePrefix = String(prefix ?? '').trim()
   if (!routePrefix) throw new Error('Harness route prefix cannot be empty')
   const providers = filterProviders(buildProviders({
-    prefix: routePrefix, origin, loggedIn, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels,
+    prefix: routePrefix, origin, loggedIn, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels, clineModels,
   }), selected)
   for (const [id, value] of Object.entries(providers)) {
     assertDshServiceableProvider(id, value)

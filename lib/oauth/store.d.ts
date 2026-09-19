@@ -27,6 +27,7 @@ export declare function listAccounts(provider: any, path: any): Promise<({
     methodLabel?: undefined;
     needsValidation?: undefined;
     validationUrl?: undefined;
+    organizationName?: undefined;
     scopes?: undefined;
     id: string;
     active: boolean;
@@ -40,6 +41,7 @@ export declare function listAccounts(provider: any, path: any): Promise<({
     methodLabel?: undefined;
     needsValidation?: undefined;
     validationUrl?: undefined;
+    organizationName?: undefined;
     scopes?: undefined;
     id: string;
     active: boolean;
@@ -53,6 +55,7 @@ export declare function listAccounts(provider: any, path: any): Promise<({
     region?: undefined;
     needsValidation?: undefined;
     validationUrl?: undefined;
+    organizationName?: undefined;
     scopes?: undefined;
     id: string;
     active: boolean;
@@ -66,6 +69,21 @@ export declare function listAccounts(provider: any, path: any): Promise<({
     region?: undefined;
     method?: undefined;
     methodLabel?: undefined;
+    organizationName?: undefined;
+    scopes?: undefined;
+    id: string;
+    active: boolean;
+} | {
+    account: any;
+    planType: any;
+    planLabel: any;
+    method: any;
+    methodLabel: string;
+    organizationName: any;
+    expiresAt: any;
+    region?: undefined;
+    needsValidation?: undefined;
+    validationUrl?: undefined;
     scopes?: undefined;
     id: string;
     active: boolean;
@@ -80,6 +98,7 @@ export declare function listAccounts(provider: any, path: any): Promise<({
     methodLabel?: undefined;
     needsValidation?: undefined;
     validationUrl?: undefined;
+    organizationName?: undefined;
     id: string;
     active: boolean;
 })[]>;
@@ -107,6 +126,7 @@ export declare function publicSession(provider: any, session: any): {
     methodLabel?: undefined;
     needsValidation?: undefined;
     validationUrl?: undefined;
+    organizationName?: undefined;
     scopes?: undefined;
 } | {
     account: string;
@@ -118,6 +138,7 @@ export declare function publicSession(provider: any, session: any): {
     methodLabel?: undefined;
     needsValidation?: undefined;
     validationUrl?: undefined;
+    organizationName?: undefined;
     scopes?: undefined;
 } | {
     account: any;
@@ -129,6 +150,7 @@ export declare function publicSession(provider: any, session: any): {
     region?: undefined;
     needsValidation?: undefined;
     validationUrl?: undefined;
+    organizationName?: undefined;
     scopes?: undefined;
 } | {
     account: any;
@@ -140,6 +162,19 @@ export declare function publicSession(provider: any, session: any): {
     region?: undefined;
     method?: undefined;
     methodLabel?: undefined;
+    organizationName?: undefined;
+    scopes?: undefined;
+} | {
+    account: any;
+    planType: any;
+    planLabel: any;
+    method: any;
+    methodLabel: string;
+    organizationName: any;
+    expiresAt: any;
+    region?: undefined;
+    needsValidation?: undefined;
+    validationUrl?: undefined;
     scopes?: undefined;
 } | {
     account: any;
@@ -152,4 +187,5 @@ export declare function publicSession(provider: any, session: any): {
     methodLabel?: undefined;
     needsValidation?: undefined;
     validationUrl?: undefined;
+    organizationName?: undefined;
 };

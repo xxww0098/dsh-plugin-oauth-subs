@@ -14,6 +14,9 @@
  *           POST ollama.com/api/me    (Email / Name / Plan; GET is 405)
  *   Copilot GET api.github.com/copilot_internal/user (premium_interactions remaining %)
  *   Devin  POST server.codeium.com SeatManagementService/GetUserStatus
+ *   Cline  GET api.cline.bot/api/v1/users/me
+ *          GET api.cline.bot/api/v1/users/{id}/balance (micro-USD credits)
+ *          GET api.cline.bot/api/v1/users/me/plan (404 when no subscription)
  *          (plan_status daily/weekly quota remaining % + reset unix)
  *
  * Codex windows report used_percent; remaining is 100 − used.

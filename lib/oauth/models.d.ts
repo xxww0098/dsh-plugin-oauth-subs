@@ -54,7 +54,7 @@ export declare const MODEL_FAMILY_IDS: readonly string[];
 export declare const RETIRED_FAMILY_IDS: readonly string[];
 export declare function ownedProviderIds(prefix: any): string[];
 export declare function withPickerVariants(models: any): any[];
-export declare function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels }: {
+export declare function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels, clineModels }: {
     prefix: any;
     origin: any;
     loggedIn: any;
@@ -65,13 +65,14 @@ export declare function buildProviders({ prefix, origin, loggedIn, cursorModels,
     copilotModels: any;
     devinModels: any;
     glmModels: any;
+    clineModels: any;
 }): {};
 export declare function describeProviders(providers: any): {
     provider: string;
     api: any;
     models: any;
 }[];
-export declare function catalogProviders({ prefix, origin, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels }: {
+export declare function catalogProviders({ prefix, origin, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels, clineModels }: {
     prefix: any;
     origin: any;
     cursorModels: any;
@@ -81,6 +82,7 @@ export declare function catalogProviders({ prefix, origin, cursorModels, ollamaM
     copilotModels: any;
     devinModels: any;
     glmModels: any;
+    clineModels: any;
 }): {};
 export declare function catalogKeys(providers: any): any[];
 export declare function familyOfProvider(provider: any): string;
@@ -179,7 +181,7 @@ export declare function ensureOpencodeGoRoute(settings: any, { selected, apiKeyS
     routes: any[];
     error?: undefined;
 }>;
-export declare function syncHarnessModels({ settings, prefix, origin, loggedIn, selected, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels }: {
+export declare function syncHarnessModels({ settings, prefix, origin, loggedIn, selected, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels, clineModels }: {
     settings: any;
     prefix: any;
     origin: any;
@@ -192,6 +194,7 @@ export declare function syncHarnessModels({ settings, prefix, origin, loggedIn, 
     copilotModels: any;
     devinModels: any;
     glmModels: any;
+    clineModels: any;
 }): Promise<{
     routes: {
         provider: string;

@@ -14,6 +14,9 @@
  *           POST ollama.com/api/me    (Email / Name / Plan; GET is 405)
  *   Copilot GET api.github.com/copilot_internal/user (premium_interactions remaining %)
  *   Devin  POST server.codeium.com SeatManagementService/GetUserStatus
+ *   Cline  GET api.cline.bot/api/v1/users/me
+ *          GET api.cline.bot/api/v1/users/{id}/balance (micro-USD credits)
+ *          GET api.cline.bot/api/v1/users/me/plan (404 when no subscription)
  *          (plan_status daily/weekly quota remaining % + reset unix)
  *
  * Codex windows report used_percent; remaining is 100 − used.
@@ -79,6 +82,7 @@ import {
 import { KIMI_ME_URL, KIMI_USAGE_URL, kimiUpstreamHeaders, parseKimiUserInfo } from './kimi/index.js'
 import { COPILOT_QUOTA_URL, copilotIdentityHeaders, isGithubUserToken, parseCopilotUser } from './copilot/index.js'
 import { DEVIN_TIER_NAMES, pickDevinHumanAccount } from './devin/index.js'
+import { fetchClineQuota } from './cline/quota.js'
 import { devinUserStatus } from './devin/transport.js'
 
 export const QUOTA_TTL_MS = 10_000
@@ -1832,6 +1836,8 @@ export class QuotaStore {
                 ? await fetchCopilotQuota(session, this.fetchFn)
               : provider === 'devin'
                 ? await fetchDevinQuota(session, this.fetchFn)
+              : provider === 'cline'
+                ? await fetchClineQuota(session, this.fetchFn)
               : await fetchGrokQuota(session, this.fetchFn)
       const entry = {
         status: 'ready',

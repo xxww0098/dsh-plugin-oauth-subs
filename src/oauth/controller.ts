@@ -107,6 +107,17 @@ import {
 } from './devin/index.js'
 import { DEVIN_IMPORT_EMPTY, importDevinAuth } from './devin/import.js'
 import { devinCatalogModels, refreshDevinCatalog } from './devin/catalog.js'
+import {
+  clineDeviceSpec,
+  clineSessionFromAuthData,
+  isClineOpaqueAccount,
+  isClinePermanentRefreshError,
+  refreshCline,
+  registerClineTokens,
+  resolveClineIdentity,
+} from './cline/index.js'
+import { clineCatalogModels, refreshClineCatalog } from './cline/catalog.js'
+import { CLINE_IMPORT_EMPTY, importClineAuth } from './cline/import.js'
 import { devinUserStatus, resolveDevinIdentity } from './devin/transport.js'
 import { OpencodeGoStore, opencodeGoFilePath } from '../apikey/opencode-go/store.js'
 import { opencodeGoKeyHint } from '../apikey/opencode-go/index.js'
@@ -142,7 +153,7 @@ import { AUTO_UPDATE_INTERVAL_MS, autoRunOutcome, defaultUpdatePrefs, readUpdate
 export const TOKEN_SWEEP_INTERVAL_MS = 60_000
 
 export class AuthController {
-  constructor({ authPath, prefix, origin, settings, credentials, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, spawnFn, profile, readFileFn, updateEnv, exitFn, prefsPath, statePath, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover, devinAutoImport, devinImport, devinDiscover }) {
+  constructor({ authPath, prefix, origin, settings, credentials, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, spawnFn, profile, readFileFn, updateEnv, exitFn, prefsPath, statePath, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover, devinAutoImport, devinImport, devinDiscover, clineDiscover, clineAutoImport }) {
     this.authPath = authPath
     this.prefix = prefix
     this.origin = origin
@@ -201,6 +212,11 @@ export class AuthController {
     this.devinDiscover = typeof devinDiscover === 'function'
       ? devinDiscover
       : (process.env.NODE_TEST_CONTEXT ? undefined : ((session) => refreshDevinCatalog(session, { fetchFn })))
+    this.clineDiscover = typeof clineDiscover === 'function'
+      ? clineDiscover
+      : (process.env.NODE_TEST_CONTEXT ? undefined : ((session) => refreshClineCatalog(session, { fetchFn })))
+    this.clineAutoImport = clineAutoImport ?? !process.env.NODE_TEST_CONTEXT
+    this.clineAutoImportTried = false
     configureKimiIdentity(typeof authPath === 'string' ? dirname(authPath) : undefined)
     this.lastError = new Map()
     this.finalizing = new Set()
@@ -296,6 +312,15 @@ export class AuthController {
         isPermanent: isDevinPermanentRefreshError,
         onRemoved: () => this.onAuthChanged?.('devin'),
       }),
+      cline: new TokenManager({
+        displayName: 'Cline',
+        preemptMs: 5 * 60_000,
+        provider: 'cline',
+        authPath: this.authPath,
+        refresh: (session) => refreshCline(session, fetchFn),
+        isPermanent: isClinePermanentRefreshError,
+        onRemoved: () => this.onAuthChanged?.('cline'),
+      }),
     }
     this.quota = new QuotaStore({ tokens: this.tokens, fetchFn, ttlMs: quotaTtlMs })
     this.fetchFn = fetchFn
@@ -323,6 +348,7 @@ export class AuthController {
       kimi: (await getSession('kimi', this.authPath)) !== undefined,
       copilot: (await getSession('copilot', this.authPath)) !== undefined,
       devin: (await getSession('devin', this.authPath)) !== undefined,
+      cline: (await getSession('cline', this.authPath)) !== undefined,
     }
   }
 
@@ -355,6 +381,7 @@ export class AuthController {
       kimiModels: kimiCatalogModels(),
       copilotModels: copilotCatalogModels(),
       devinModels: devinCatalogModels(),
+      clineModels: clineCatalogModels(),
       glmModels: await this.#glmModels(),
     })
   }
@@ -413,6 +440,15 @@ export class AuthController {
     }
   }
 
+  async #discoverCline(session) {
+    if (!session || typeof this.clineDiscover !== 'function') return clineCatalogModels()
+    try {
+      return await this.clineDiscover(session, { fetchFn: this.fetchFn })
+    } catch {
+      return clineCatalogModels()
+    }
+  }
+
   /**
    * Startup discovery for every signed-in family with a live catalog. The
    * picker otherwise keeps the static floor until someone logs in or hits
@@ -427,6 +463,7 @@ export class AuthController {
       ['kimi', this.tokens.kimi, kimiCatalogModels, (session) => this.#discoverKimi(session)],
       ['copilot', this.tokens.copilot, copilotCatalogModels, (session) => this.#discoverCopilot(session)],
       ['devin', this.tokens.devin, devinCatalogModels, (session) => this.#discoverDevin(session)],
+      ['cline', this.tokens.cline, clineCatalogModels, (session) => this.#discoverCline(session)],
     ]
     const idsOf = (read) => read().map((model) => model.id).join('\0')
     const before = new Map(warmers.map(([family, , read]) => [family, idsOf(read)]))
@@ -454,6 +491,7 @@ export class AuthController {
     await this.#maybeAutoImportKimi()
     await this.#maybeAutoImportCopilot()
     await this.#maybeAutoImportDevin()
+    await this.#maybeAutoImportCline()
     const loggedIn = await this.loggedIn()
     const origin = this.origin()
     const opencodeGoApiKeySet = await this.#opencodeGoKeySet()
@@ -467,6 +505,7 @@ export class AuthController {
       kimiModels: kimiCatalogModels(),
       copilotModels: copilotCatalogModels(),
       devinModels: devinCatalogModels(),
+      clineModels: clineCatalogModels(),
       glmModels,
     })
     const selected = this.models.selectedForSync(catalog)
@@ -480,6 +519,7 @@ export class AuthController {
       kimiModels: kimiCatalogModels(),
       copilotModels: copilotCatalogModels(),
       devinModels: devinCatalogModels(),
+      clineModels: clineCatalogModels(),
       glmModels,
     }), selected)
     if (loggedIn.codex) await this.#ensureAccountQuota('codex')
@@ -502,9 +542,11 @@ export class AuthController {
     else this.quota.clear('copilot')
     if (loggedIn.devin) await this.#ensureAccountQuota('devin')
     else this.quota.clear('devin')
+    if (loggedIn.cline) await this.#ensureAccountQuota('cline')
+    else this.quota.clear('cline')
     const enabledKeys = this.models.enabledKeys(catalog)
     const opencodeGo = await this.opencodeGoSnapshot()
-    const [codexAccounts, grokAccounts, glmAccounts, kiroAccounts, antigravityAccounts, cursorAccounts, ollamaAccounts, kimiAccounts, copilotAccounts, devinAccounts] = await Promise.all([
+    const [codexAccounts, grokAccounts, glmAccounts, kiroAccounts, antigravityAccounts, cursorAccounts, ollamaAccounts, kimiAccounts, copilotAccounts, devinAccounts, clineAccounts] = await Promise.all([
       this.#accountsWithQuota('codex'),
       this.#accountsWithQuota('grok'),
       this.#accountsWithQuota('glm'),
@@ -515,6 +557,7 @@ export class AuthController {
       this.#accountsWithQuota('kimi'),
       this.#accountsWithQuota('copilot'),
       this.#accountsWithQuota('devin'),
+      this.#accountsWithQuota('cline'),
     ])
     return {
       origin,
@@ -539,6 +582,7 @@ export class AuthController {
         kimi: { ...(await this.status('kimi')), activeId: kimiAccounts.find((row) => row.active)?.id, accounts: kimiAccounts },
         copilot: { ...(await this.status('copilot')), activeId: copilotAccounts.find((row) => row.active)?.id, accounts: copilotAccounts },
         devin: { ...(await this.status('devin')), activeId: devinAccounts.find((row) => row.active)?.id, accounts: devinAccounts },
+        cline: { ...(await this.status('cline')), activeId: clineAccounts.find((row) => row.active)?.id, accounts: clineAccounts },
         'opencode-go': opencodeGo,
       },
       opencodeGo,
@@ -688,7 +732,7 @@ export class AuthController {
 
   async refreshQuota(provider, accountId) {
     if (provider === 'opencode-go') return this.refreshOpencodeGoQuota(accountId)
-    if (provider === 'codex' || provider === 'grok' || provider === 'glm' || provider === 'kiro' || provider === 'antigravity' || provider === 'cursor' || provider === 'ollama' || provider === 'kimi' || provider === 'copilot' || provider === 'devin') {
+    if (provider === 'codex' || provider === 'grok' || provider === 'glm' || provider === 'kiro' || provider === 'antigravity' || provider === 'cursor' || provider === 'ollama' || provider === 'kimi' || provider === 'copilot' || provider === 'devin' || provider === 'cline') {
       const rows = await this.#liveAccounts(provider)
       const targets = accountId
         ? rows.filter((row) => row.id === accountId)
@@ -750,7 +794,15 @@ export class AuthController {
           await this.sync().catch(() => undefined)
         }
       }
-      const latest = provider === 'ollama' || provider === 'kimi' || provider === 'copilot' || provider === 'devin' ? await this.#liveAccounts(provider) : rows
+      if (provider === 'cline') {
+        await Promise.all(targets.map((row) => this.#rememberClineIdentity(row, this.quota.peek(provider, row.id))))
+        const before = clineCatalogModels().map((model) => model.id).join('\0')
+        await Promise.all(targets.map((row) => this.#discoverCline(row.session)))
+        if (this.settings && clineCatalogModels().map((model) => model.id).join('\0') !== before) {
+          await this.sync().catch(() => undefined)
+        }
+      }
+      const latest = provider === 'ollama' || provider === 'kimi' || provider === 'copilot' || provider === 'devin' || provider === 'cline' ? await this.#liveAccounts(provider) : rows
       if (accountId) {
         const hit = latest.find((row) => row.id === accountId) ?? latest.find((row) => row.active)
         return this.quota.peek(provider, hit?.id ?? accountId)
@@ -758,7 +810,7 @@ export class AuthController {
       const active = latest.find((row) => row.active)
       return this.quota.peek(provider, active?.id)
     }
-    const [codex, grok, glm, kiro, antigravity, cursor, ollama, kimi, copilot, devin] = await Promise.all([
+    const [codex, grok, glm, kiro, antigravity, cursor, ollama, kimi, copilot, devin, cline] = await Promise.all([
       this.refreshQuota('codex'),
       this.refreshQuota('grok'),
       this.refreshQuota('glm'),
@@ -769,8 +821,9 @@ export class AuthController {
       this.refreshQuota('kimi'),
       this.refreshQuota('copilot'),
       this.refreshQuota('devin'),
+      this.refreshQuota('cline'),
     ])
-    return { codex, grok, glm, kiro, antigravity, cursor, ollama, kimi, copilot, devin }
+    return { codex, grok, glm, kiro, antigravity, cursor, ollama, kimi, copilot, devin, cline }
   }
 
   async consumeReset(provider, accountId) {
@@ -1050,6 +1103,7 @@ export class AuthController {
       if (provider === 'ollama') await this.#rememberOllamaIdentity(row, quota)
       if (provider === 'kimi') await this.#rememberKimiIdentity(row, quota)
       if (provider === 'devin') await this.#rememberDevinIdentity(row, quota)
+      if (provider === 'cline') await this.#rememberClineIdentity(row, quota)
     }))
     return rows
   }
@@ -1275,6 +1329,38 @@ export class AuthController {
     }
   }
 
+  async #maybeAutoImportCline() {
+    if (!this.clineAutoImport || this.clineAutoImportTried) return
+    this.clineAutoImportTried = true
+    const rows = await listStoredSessions('cline', this.authPath)
+    if (rows.length > 0) return
+    try {
+      const result = await importClineAuth({ env: process.env })
+      if (result?.session) {
+        const session = await this.#finishClineSession(result.session)
+        await saveSession('cline', session, this.authPath)
+        await this.#discoverCline(session)
+        this.onAuthChanged?.('cline')
+        void this.quota.refresh('cline')
+      }
+    } catch (error) {
+      if (error?.code !== CLINE_IMPORT_EMPTY && error?.message !== CLINE_IMPORT_EMPTY) {
+        // empty providers.json is fine
+      }
+    }
+  }
+
+  async #importCline() {
+    const existing = await listStoredSessions('cline', this.authPath)
+    const result = await importClineAuth({ env: process.env })
+    const incomingId = accountIdOf('cline', result.session)
+    const hit = existing.find((row) => row.id === incomingId)
+    if (hit) {
+      return { source: hit.session.source, session: hit.session, skipped: true }
+    }
+    return { ...result, session: await this.#finishClineSession(result.session) }
+  }
+
   async #importKimi() {
     const existing = await listStoredSessions('kimi', this.authPath)
     const result = await importKimiAuth({ env: process.env })
@@ -1327,6 +1413,40 @@ export class AuthController {
       return
     }
     await updateAccountSession('kimi', row, next, this.authPath)
+  }
+
+  async #finishClineSession(session) {
+    const identity = await resolveClineIdentity(session, { fetchFn: this.fetchFn })
+    if (!identity) return session
+    const next = { ...session }
+    if (identity.account) next.account = identity.account
+    if (identity.userId) next.userId = identity.userId
+    if (identity.planType) next.planType = identity.planType
+    if (identity.organizationName) next.organizationName = identity.organizationName
+    return next
+  }
+
+  async #rememberClineIdentity(row, quota) {
+    if (!quota || quota.status !== 'ready') return
+    const account = typeof quota.account === 'string' && quota.account.trim() ? quota.account.trim() : undefined
+    const planType = typeof quota.planType === 'string' && quota.planType.trim() ? quota.planType.trim() : undefined
+    if (!account && !planType) return
+    if (
+      (!account || row.session.account === account)
+      && (!planType || row.session.planType === planType)
+    ) return
+    const next = { ...row.session }
+    if (account) next.account = account
+    if (planType) next.planType = planType
+    const nextId = accountIdOf('cline', next)
+    if (nextId !== row.id && isClineOpaqueAccount(row.id)) {
+      const saved = await replaceAccountId('cline', row, next, this.authPath)
+      if (!saved) return
+      this.quota.clear('cline', row.id)
+      await this.quota.ensure('cline', saved.id, saved.session)
+      return
+    }
+    await updateAccountSession('cline', row, next, this.authPath)
   }
 
   async #finishCopilotSession(session) {
@@ -1525,6 +1645,17 @@ export class AuthController {
       void this.completePkce('devin', attempt, claim)
       return { authorizeUrl: attempt.authorizeUrl, redirectUri: attempt.redirectUri, mode: 'pkce' }
     }
+    if (provider === 'cline') {
+      const attempt = await this.devices.start('cline', clineDeviceSpec({ fetchFn: this.fetchFn }))
+      this.finalizing.add('cline')
+      void this.completeClineDevice(attempt)
+      return {
+        authorizeUrl: attempt.verificationUrl,
+        verificationUri: attempt.verificationUri,
+        userCode: attempt.userCode,
+        mode: 'device',
+      }
+    }
     if (provider !== 'grok') throw new Error(`unknown provider ${provider}`)
     const useDevice = (mode ?? this.grokLogin) !== 'pkce'
     if (useDevice) {
@@ -1641,6 +1772,30 @@ export class AuthController {
       }
     } finally {
       this.finalizing.delete('kimi')
+    }
+  }
+
+  /**
+   * Cline login is two hops: the WorkOS device poll yields a WorkOS token
+   * pair, and `/api/v1/auth/register` exchanges it for the Cline session
+   * (`usr-…` account id + refresh token). Only the second hop produces
+   * something this plugin can use.
+   */
+  async completeClineDevice(attempt) {
+    try {
+      const tokens = await attempt.waitToken()
+      const session = await this.#finishClineSession(await registerClineTokens(tokens, { fetchFn: this.fetchFn }))
+      await saveSession('cline', session, this.authPath)
+      this.lastError.delete('cline')
+      await this.#discoverCline(session)
+      this.onAuthChanged?.('cline')
+      void this.quota.refresh('cline')
+    } catch (error) {
+      if (!(error instanceof Error && error.message === 'login cancelled')) {
+        this.lastError.set('cline', error instanceof Error ? error.message : String(error))
+      }
+    } finally {
+      this.finalizing.delete('cline')
     }
   }
 
@@ -1951,6 +2106,8 @@ export class AuthController {
             ? await this.#importCopilot()
           : provider === 'devin'
             ? await this.#importDevin()
+          : provider === 'cline'
+            ? await this.#importCline()
           : await importGrokAuth()
     this.claim(provider)
     this.flows.pending(provider)?.cancel()
@@ -1971,6 +2128,7 @@ export class AuthController {
     if (provider === 'kimi') await this.#discoverKimi(sessions[0])
     if (provider === 'copilot') await this.#discoverCopilot(sessions[0])
     if (provider === 'devin') await this.#discoverDevin(sessions[0])
+    if (provider === 'cline') await this.#discoverCline(sessions[0])
     this.onAuthChanged?.(provider)
     void this.quota.refresh(provider)
     return {
@@ -2031,6 +2189,7 @@ export class AuthController {
       kimiModels: kimiCatalogModels(),
       copilotModels: copilotCatalogModels(),
       devinModels: devinCatalogModels(),
+      clineModels: clineCatalogModels(),
       glmModels: await this.#glmModels(),
     })
     return { ...synced, opencodeGoRoute }
