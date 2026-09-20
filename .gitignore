@@ -10,3 +10,6 @@ models.json
 
 # graft's local graph cache — regenerable, not committed (run `graft build`).
 /graft/
+
+# Agent tooling: portable configs are tracked, local write metadata is not.
+.amp/*.amp-write-meta
