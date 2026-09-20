@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml/badge.svg)](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml)
 
-Use a **ChatGPT / Codex**, **xAI Grok**, **Zhipu GLM**, **AWS Kiro**, **Google Antigravity**, **Cursor**, **Ollama Cloud**, **Kimi Code Plan**, or **GitHub Copilot** subscription inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). Official OAuth, plus Kiro API keys, Cursor CLI/IDE reuse, Ollama API keys (ollama.com Cloud, not localhost:11434), Kimi device-code / `kimi-code.json`, and GitHub Copilot device-code / `hosts.json`. Loopback proxy + `llm-pi-ai` route sync; each family picks one DSH `api` from `openai-responses` | `openai-completions` | `anthropic-messages`.
+Use a **ChatGPT / Codex**, **xAI Grok**, **Zhipu GLM**, **AWS Kiro**, **Google Antigravity**, **Cursor**, **Ollama Cloud**, **Kimi Code Plan**, **GitHub Copilot**, **Devin Agent**, or **Cline** subscription inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). Official OAuth, plus Kiro API keys, Cursor CLI/IDE reuse, Ollama API keys (ollama.com Cloud, not localhost:11434), Kimi device-code / `kimi-code.json`, GitHub Copilot device-code / `hosts.json`, Devin CLI `credentials.toml`, and Cline WorkOS device-code. Loopback proxy + `llm-pi-ai` route sync; each family picks one DSH `api` from `openai-responses` | `openai-completions` | `anthropic-messages`.
 
 ## Install
 
@@ -29,6 +29,8 @@ Open **Settings → OAuth subs**. One card per account (quota on every card; Oll
 | Ollama Cloud | Paste API key / import `OLLAMA_API_KEY` | `openai-completions` | `https://ollama.com/v1/chat/completions` |
 | Kimi Code Plan | Device-code (no PKCE); import `~/.kimi-code/credentials/kimi-code.json`; optional `KIMI_API_KEY` | `openai-completions` | `https://api.kimi.com/coding/v1/chat/completions` |
 | GitHub Copilot | Device-code (no PKCE); import `~/.config/github-copilot/hosts.json`; optional `GITHUB_TOKEN` | `openai-completions` | `https://api.githubcopilot.com/chat/completions` (`tid=` session) |
+| Devin Agent | PKCE `127.0.0.1:59653`; import `~/.local/share/devin/credentials.toml`; paste `devin-session-token$…` | `openai-completions` | Connect `server.codeium.com` `ApiServerService/GetChatMessage` |
+| Cline | WorkOS device-code (no PKCE); import `~/.cline/data/settings/providers.json` | `openai-completions` | `https://api.cline.bot/api/v1/chat/completions` |
 | Path | Family |
 |---|---|
 | `~/.codex/auth.json` | Codex |
@@ -41,6 +43,8 @@ Open **Settings → OAuth subs**. One card per account (quota on every card; Oll
 | `OLLAMA_API_KEY` env (not `~/.ollama/id_ed25519.pub`) | Ollama Cloud |
 | `~/.kimi-code/credentials/kimi-code.json`; read-only `~/.kimi/credentials/kimi-code.json`; `KIMI_API_KEY` | Kimi |
 | `~/.config/github-copilot/hosts.json`; OpenCode `~/.local/share/opencode/auth.json`; `COPILOT_GITHUB_TOKEN` / `GITHUB_TOKEN` / `GH_TOKEN` | Copilot |
+| `~/.local/share/devin/credentials.toml` (`$XDG_DATA_HOME/devin/`; Windows `%LOCALAPPDATA%\devin\`); `DEVIN_API_KEY` / `WINDSURF_API_KEY` | Devin |
+| `~/.cline/data/settings/providers.json` | Cline |
 
 Tokens: `<profile>/data/dsh-plugin-oauth-subs/auth.json` (`0600`). Models: `models.json` beside it.
 
@@ -50,7 +54,7 @@ Tokens: `<profile>/data/dsh-plugin-oauth-subs/auth.json` (`0600`). Models: `mode
 |---|---|
 | Settings | OAuth login / import / logout, then model sync |
 | llm-pi-ai | DSH call plane; routes to the loopback proxy |
-| Loopback | `http://127.0.0.1:8318/{codex,grok}/v1/responses`, `/glm/v1/messages` (Completions leftover `/glm/v1/chat/completions` until the next sync), `/{kiro,antigravity,cursor,ollama,kimi,copilot}/v1/chat/completions` |
+| Loopback | `http://127.0.0.1:8318/{codex,grok}/v1/responses`, `/glm/v1/messages` (Completions leftover `/glm/v1/chat/completions` until the next sync), `/{kiro,antigravity,cursor,ollama,kimi,copilot,devin,cline}/v1/chat/completions` |
 | Upstream | Refreshed subscription bearer |
 
 Not a second LLM adapter. After Settings closes, DSH still calls the loopback proxy. Bind is loopback-only; local credential is `DSH_OAUTH_SUBS_API_KEY`. GLM 150% Coding Plan boost is identity (ZCode Desktop UA), not a protocol claim. Stack and module tree: [AGENTS.md](AGENTS.md). Reference hops (official CLI + community reverse): [docs/oauth.md](docs/oauth.md).
@@ -96,6 +100,8 @@ Login and chat use official client identity; UA / fingerprint live in each `src/
 | Ollama Cloud | No | Live `GET /api/tags` (static 20-row Cloud snapshot fallback). Context from `POST /api/show` `model_info.<family>.context_length`. No quota bars | off / low / medium / high / max (`off` → wire `none`) |
 | Kimi | No | Live `GET /coding/v1/models` (static `kimi-for-coding` / highspeed / `k3`, 256k/32k). Prefix-hash cache | off / minimal / low / medium / high / xhigh / max → `thinking.effort` |
 | Copilot | No | Live `GET {api}/models` (static GPT / Claude / Gemini / Grok floor). Prefix-hash + `X-Interaction-Id` | live `reasoning_effort` when the catalog advertises it |
+| Devin | Yes. `-fast` is a real backend variant (not Codex Priority), never through `applyFastMode` | Live `GetCliModelConfigs` (46 families; static fallback) | Mapped to backend `chat_model_uid` per family (`defaultUid`); `thinking` / `fast` / `1m` become picker rows |
+| Cline | No | Live `GET /ai/cline/recommended-models` (static feed snapshot fallback) | off / minimal / low / medium / high / xhigh / max → `reasoning_effort` (`max`→`xhigh`; no `off`) |
 
 Codex Priority echo `created=auto` / `completed=default` is not a confirmation (openai/codex#14204). 2026-08-26 Luna: 88.3 vs 57.5 tok/s (1.54×); 2026-08-30 interleaved mean 1.33× (1.90 then 0.93). Throughput-only; TTFT and cache unchanged.
 
@@ -111,6 +117,8 @@ Codex Priority echo `created=auto` / `completed=default` is not a confirmation (
 | Cursor | `api2.cursor.sh` `DashboardService/GetCurrentPeriodUsage` | Plan badge (Free / Pro / Pro+ / Ultra …) plus cycle remaining percent |
 | Kimi Code | `api.kimi.com/coding/v1/usages` + `/me` | Plan badge from `/me.user_level_name` plus remaining bars; no invented reset times |
 | GitHub Copilot | `api.github.com/copilot_internal/user` | Plan badge (Free / Pro / Pro+ / Business / Enterprise) plus Premium remaining percent |
+| Devin | `server.codeium.com` `SeatManagementService/GetUserStatus` | Plan badge (Pro / Max / Teams / Enterprise / Free / Trial) plus daily + weekly remaining bars when the tier exposes them |
+| Cline | `api.cline.bot` `/users/me` + `/users/{id}/balance` (micro-USD) + `/users/me/plan`; ClinePass adds `/plan/usage-limits` | Plan badge plus prepaid **credit balance** (`$x.xx`); ClinePass adds 5-hour / weekly / monthly bars. Credit accounts have no window bars |
 
 Refresh about once a minute, or **Refresh quota**. Bars: `hsl(remaining × 1.2, 78%, 38%)`. Codex `pro` → **Pro 20x** / $200, `prolite` → **Pro 5x** / $100. Plus/Pro may bank weekly resets — one confirm button per credit on the Codex card (Harness risk dialog, then `POST …/consume` with `{ redeem_request_id }` + `idempotencyKey`). That spend refreshes the **weekly** window. Grok has no equivalent. Ollama Cloud has no documented quota JSON (`/api/quota` 404); the card stays idle with no bars.
 
@@ -122,6 +130,8 @@ Refresh about once a minute, or **Refresh quota**. Bars: `hsl(remaining × 1.2, 
 | `provider` | `oauth` | llm-pi-ai route prefix (`oauth-codex` / `oauth-grok` / `oauth-glm` / `oauth-antigravity`) |
 | `dataDir` | profile data dir | `auth.json`, `models.json`, and `proxy-key` |
 | `grokLogin` | `device` | `device` or `pkce` |
+| `proxyUrl` | settings / env | Outbound HTTP(S) proxy for model / quota / login hops |
+| `cursorProxy` | — | Cursor upstream proxy (`http://` or `socks5://`) for region-gated models |
 
 ## Develop
 

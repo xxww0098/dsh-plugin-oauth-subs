@@ -14,7 +14,7 @@ Success: signed in, remaining quota visible per account, wanted models enabled i
 
 ## Product Purpose
 
-dsh-plugin-oauth-subs is a DeepSeek Harness plugin. It signs the operator into ChatGPT Codex, xAI Grok, Zhipu GLM (Z.ai / BigModel), AWS Kiro, Google Antigravity, Cursor, Ollama Cloud, Kimi Code Plan, and GitHub Copilot with official OAuth or documented local import, then syncs routes into llm-pi-ai.
+dsh-plugin-oauth-subs is a DeepSeek Harness plugin. It signs the operator into ChatGPT Codex, xAI Grok, Zhipu GLM (Z.ai / BigModel), AWS Kiro, Google Antigravity, Cursor, Ollama Cloud, Kimi Code Plan, GitHub Copilot, Devin Agent, and Cline with official OAuth or documented local import, then syncs routes into llm-pi-ai.
 
 It is not a second LLM adapter. After Settings closes, DSH still calls the loopback proxy.
 
@@ -33,12 +33,12 @@ Neighboring products cannot truthfully claim this: official (or documented CLI/I
 
 ## Capabilities and Constraints
 
-- Nine OAuth families, each with its own tab, catalog, cache, and hop (see AGENTS.md and `docs/oauth.md`).
+- Eleven OAuth families, each with its own tab, catalog, cache, and hop (see AGENTS.md and `docs/oauth.md`).
 - Many accounts per family; one stored session is one card; quota (remaining bars) lives on every card; click card to switch. Ollama Cloud has no quota bars.
 - Add-account chrome is a centered dialog, not a sheet or drawer.
 - Model checkboxes sync into llm-pi-ai; unsigned families show rows disabled until login.
 - Do not invent vendor APIs, Codex/Grok cache headers on other families, or a fourth DSH `api` value.
-- Settings UI is a classic-script React factory (`src/ui/client.ts)); host is Cordis/Node. Edit `src/`, not `lib/`.
+- Settings UI is a classic-script React factory (`src/ui/client.ts`); host is Cordis/Node. Edit `src/`, not `lib/`.
 - Undecided: no committed WCAG target beyond visible focus, names, and disabled states.
 
 ## Brand Commitments

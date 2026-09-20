@@ -26,7 +26,7 @@ npm run analyze -- path/to/session.jsonl
 
 - Source of truth per family — `src/oauth/<id>/README.md` (login, hop,
   models, quota, cache, do-not, 归因). Codex / Grok / GLM / Kiro /
-  Antigravity / Cursor / Kimi / Copilot / Devin live in `src/oauth/`;
+  Antigravity / Cursor / Kimi / Copilot / Devin / Cline live in `src/oauth/`;
   Ollama Cloud + OpenCode Go live in `src/apikey/`.
 - Fault log — `docs/error.md`. Every recurring fault or user-visible
   finding goes there **in the same PR** (≤12 lines: 现象/根因/修复).
