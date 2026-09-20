@@ -123,7 +123,7 @@ const SYSTEM_NAME = Object.freeze({
   sunos: 'SunOS',
 })
 
-export function computeKimiDeviceModel({ platform, release, arch, macVersion } = {}) {
+export function computeKimiDeviceModel({ platform, release, arch, macVersion }: any = {}) {
   const osName = platform ?? process.platform
   const rel = release ?? os.release()
   const cpu = arch ?? os.machine?.() ?? process.arch
@@ -213,7 +213,7 @@ export function kimiSession({
   account,
   planType,
   source = 'oauth',
-} = {}) {
+}: any = {}) {
   const access = trimmed(accessToken)
   if (!access) throw new Error('kimi token endpoint returned no access token')
   const key = isKimiKeySource(source)
@@ -317,7 +317,7 @@ export function parseKimiUserInfo(payload) {
   }
 }
 
-export async function resolveKimiIdentity(session, { fetchFn = fetch, signal } = {}) {
+export async function resolveKimiIdentity(session, { fetchFn = fetch, signal }: any = {}) {
   const token = trimmed(session?.accessToken)
   if (!token) return undefined
   try {

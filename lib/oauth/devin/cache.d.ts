@@ -10,7 +10,7 @@
  * here to derive `cascade_id` instead.
  */
 /** `devin-` + sanitized dsh pin keeps log lines readable without leaking. */
-export declare function devinCacheSessionId(value: any): string;
+export declare function devinCacheSessionId(value: any): string | undefined;
 /**
  * UUIDv5-shaped digest: stable across turns for the same key, always the
  * 8-4-4-4-12 shape the CLI emits for cascade_id.
@@ -27,7 +27,7 @@ export declare function devinCascadeId(payload: any): string;
  */
 export declare function applyDevinCache(payload: any): {
     payload: any;
-    cacheSessionId: string;
+    cacheSessionId: string | undefined;
 };
 /** `execution_id` is per-request — always a fresh random UUID. */
 export declare function devinExecutionId(): `${string}-${string}-${string}-${string}-${string}`;

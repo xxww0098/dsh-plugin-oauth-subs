@@ -29,7 +29,7 @@ function wireEffort(value, efforts) {
   return typeof hit === 'string' ? hit : undefined
 }
 
-export function applyKimiThinking(payload = {}, model) {
+export function applyKimiThinking(payload: any = {}, model?) {
   const next = { ...payload }
   const effort = next.reasoning_effort
   delete next.reasoning_effort
@@ -69,7 +69,7 @@ export function mapKimiUsage(usage) {
 }
 
 /** Completions SSE omits usage unless the vendor is asked. Do not override an explicit value. */
-export function applyKimiStreamUsage(payload = {}) {
+export function applyKimiStreamUsage(payload: any = {}) {
   if (!payload || payload.stream !== true) return payload
   const current = payload.stream_options
   if (current && typeof current === 'object' && Object.hasOwn(current, 'include_usage')) return payload

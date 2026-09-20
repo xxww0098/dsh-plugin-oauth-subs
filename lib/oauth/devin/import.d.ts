@@ -20,7 +20,7 @@ export declare function parseDevinCredentialsToml(text: any): {
     apiServer: any;
     webappHost: any;
     apiUrl: any;
-};
+} | undefined;
 export declare function isDevinCredentialsToml(text: any): boolean;
 /**
  * Read the first credentials.toml that parses. Returns
@@ -28,14 +28,14 @@ export declare function isDevinCredentialsToml(text: any): boolean;
  * Throws DEVIN_IMPORT_EMPTY when no path yields a credential.
  */
 export declare function importDevinAuth({ paths }?: {
-    paths?: any[];
+    paths?: any[] | undefined;
 }): Promise<{
     source: string;
     session: {
-        source: string;
-        apiServer?: string;
-        planType?: string;
-        account?: string;
+        source: any;
+        apiServer?: string | undefined;
+        planType?: string | undefined;
+        account?: string | undefined;
         accessToken: string;
         refreshToken: string;
         expiresAt: number;

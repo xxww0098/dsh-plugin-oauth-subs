@@ -16,6 +16,7 @@
 import { spawn } from 'node:child_process'
 import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
+import { errorCode } from './http.js'
 import { homedir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -37,7 +38,7 @@ export const PLUGIN_UPDATE_TIMEOUT_MS = 180_000
 export const GH_API_TIMEOUT_MS = 5_000
 
 /** Version of the module this process actually loaded. Always re-reads disk. */
-export function installedVersion({ readFileFn } = {}) {
+export function installedVersion({ readFileFn }: any = {}) {
   return readPackageVersion(modulePackageJsonPath(), { readFileFn })
 }
 
@@ -117,7 +118,7 @@ export function classifyAsset(name) {
 }
 
 export function pickDownloads(assets, host) {
-  const named = { win: undefined, mac: undefined, linux: undefined }
+  const named: Record<string, any> = { win: undefined, mac: undefined, linux: undefined }
   for (const asset of Array.isArray(assets) ? assets : []) {
     const name = asset?.name
     const url = asset?.browser_download_url || asset?.url
@@ -139,7 +140,7 @@ export function pickDownloads(assets, host) {
   })
 }
 
-export function localUpdateInfo(platform = process.platform, opts = {}) {
+export function localUpdateInfo(platform = process.platform, opts: any = {}) {
   const runningPath = modulePackageJsonPath()
   const running = installedVersion({ readFileFn: opts.readFileFn })
   const diskPath = profilePluginPackageJson(opts.profile, opts.env)
@@ -173,7 +174,7 @@ export function localUpdateInfo(platform = process.platform, opts = {}) {
 }
 
 export function githubRequestHeaders(userAgent, env = process.env) {
-  const headers = {
+  const headers: any = {
     accept: 'application/vnd.github+json',
     'user-agent': userAgent,
   }
@@ -204,12 +205,12 @@ function ghBins(env = process.env, existsSyncFn = existsSync) {
 }
 
 function spawnGhJsonOnce(spawnFn, bin, args, env, timeoutMs) {
-  return new Promise((resolve) => {
+  return new Promise<{ json?: any; enoent?: boolean }>((resolve) => {
     let child
     try {
       child = spawnFn(bin, args, { env, stdio: ['ignore', 'pipe', 'pipe'] })
     } catch (error) {
-      resolve({ enoent: error?.code === 'ENOENT' })
+      resolve({ enoent: errorCode(error) === 'ENOENT' })
       return
     }
     let stdout = ''
@@ -249,7 +250,7 @@ async function runGhApiJson({
   env = process.env,
   timeoutMs = GH_API_TIMEOUT_MS,
   existsSyncFn = existsSync,
-} = {}) {
+}: any = {}) {
   if (!Array.isArray(args) || args.length === 0) return undefined
   for (const bin of ghBins(env, existsSyncFn)) {
     const result = await spawnGhJsonOnce(spawnFn, bin, args, env, timeoutMs)
@@ -259,7 +260,7 @@ async function runGhApiJson({
   return undefined
 }
 
-async function fetchGithubLatestHtml(fetchFn, htmlUrl, { userAgent, signal } = {}) {
+async function fetchGithubLatestHtml(fetchFn, htmlUrl, { userAgent, signal }: any = {}) {
   const response = await fetchFn(htmlUrl, {
     headers: {
       accept: 'text/html',
@@ -307,7 +308,7 @@ export async function fetchLatest({
   env,
   readFileFn,
   existsSyncFn,
-} = {}) {
+}: any = {}) {
   const local = localUpdateInfo(platform, { profile, env, readFileFn })
   const installed = parseVersion(current ?? local.version)?.raw ?? local.version
   const wait = new AbortController()
@@ -428,7 +429,7 @@ export function extraPluginManifests(profile = DEFAULT_PROFILE, env = process.en
   ]
 }
 
-export function resolveProfilePluginManifest(profile = DEFAULT_PROFILE, env = process.env, { resolveFn } = {}) {
+export function resolveProfilePluginManifest(profile = DEFAULT_PROFILE, env = process.env, { resolveFn }: any = {}) {
   const manifest = join(dshHome(env), 'profiles', String(profile || DEFAULT_PROFILE), 'package.json')
   try {
     const resolve = resolveFn || createRequire(existsSync(manifest) ? manifest : import.meta.url).resolve
@@ -438,7 +439,7 @@ export function resolveProfilePluginManifest(profile = DEFAULT_PROFILE, env = pr
   }
 }
 
-export function canonicalPath(path, { realpathFn } = {}) {
+export function canonicalPath(path, { realpathFn }: any = {}) {
   if (!path) return ''
   try {
     return String((realpathFn || realpathSync)(path))
@@ -447,7 +448,7 @@ export function canonicalPath(path, { realpathFn } = {}) {
   }
 }
 
-export function readPackageVersion(path, { readFileFn = readFileSync } = {}) {
+export function readPackageVersion(path, { readFileFn = readFileSync }: any = {}) {
   try {
     const raw = readFileFn(path, 'utf8')
     const text = typeof raw === 'string' ? raw : String(raw ?? '')
@@ -542,7 +543,7 @@ export function runDshPlugin({
   timeoutMs = PLUGIN_UPDATE_TIMEOUT_MS,
   env = process.env,
   execPath = process.execPath,
-} = {}) {
+}: any = {}) {
   const argv = Array.isArray(args) && args.length ? args : pluginUpdateArgs(profile)
   const bin = dshPluginBin(env)
   const spec = dshSpawnSpec(bin, execPath)
@@ -550,7 +551,7 @@ export function runDshPlugin({
   const command = [bin, ...argv].join(' ')
   const home = dshHome(env)
   const cwd = existsSync(home) ? home : undefined
-  return new Promise((resolve) => {
+  return new Promise<{ ok: boolean; status: string; command: string; error?: string }>((resolve) => {
     let child
     try {
       child = spawnFn(spec.cmd, spawnArgs, {
@@ -559,7 +560,7 @@ export function runDshPlugin({
         stdio: ['ignore', 'pipe', 'pipe'],
       })
     } catch (error) {
-      resolve({ ok: false, status: error?.code === 'ENOENT' ? 'missing-dsh' : 'failed', command, error: describeSpawnError(error, bin) })
+      resolve({ ok: false, status: errorCode(error) === 'ENOENT' ? 'missing-dsh' : 'failed', command, error: describeSpawnError(error, bin) })
       return
     }
 
@@ -582,7 +583,7 @@ export function runDshPlugin({
     child.once('error', (error) => {
       finish({
         ok: false,
-        status: error?.code === 'ENOENT' ? 'missing-dsh' : 'failed',
+        status: errorCode(error) === 'ENOENT' ? 'missing-dsh' : 'failed',
         command,
         error: describeSpawnError(error, bin),
       })
@@ -625,7 +626,7 @@ export async function applyHostUpdate({
   timeoutMs = PLUGIN_UPDATE_TIMEOUT_MS,
   env,
   readFileFn,
-} = {}) {
+}: any = {}) {
   const homeEnv = env ?? process.env
   const fileFn = readFileFn ?? readFileSync
   const running = installedVersion({ readFileFn: fileFn })
@@ -716,7 +717,7 @@ export function resolveDshInstall(
   env = process.env,
   { realpathFn = realpathSync, readFileFn = readFileSync, existsSyncFn = existsSync } = {},
 ) {
-  const candidates = [env.DSH_BIN_PATH, process.argv?.[1]].filter((value) => typeof value === 'string' && value)
+  const candidates = [env.DSH_BIN_PATH, process.argv?.[1]].filter((value): value is string => typeof value === 'string' && Boolean(value))
   for (const bin of candidates) {
     if (!existsSyncFn(bin)) continue
     try {
@@ -746,7 +747,7 @@ export function resolveDshInstall(
   return undefined
 }
 
-export function localDshInfo(platform = process.platform, opts = {}) {
+export function localDshInfo(platform = process.platform, opts: any = {}) {
   const env = opts.env ?? process.env
   const fileFn = opts.readFileFn ?? readFileSync
   const realFn = opts.realpathFn ?? realpathSync
@@ -775,7 +776,7 @@ export async function fetchDshLatest({
   readFileFn,
   realpathFn,
   existsSyncFn,
-} = {}) {
+}: any = {}) {
   const local = localDshInfo(platform, { env, readFileFn, realpathFn, existsSyncFn })
   const installed = parseVersion(current ?? local.version)?.raw ?? local.version
   const wait = new AbortController()
@@ -843,7 +844,7 @@ export async function fetchDshLatest({
       try {
         const relResp = await fetchFn(`${DSH_RELEASES_API}/tags/${githubTag}`, { headers: ghHeaders, signal: wait.signal })
         if (relResp.ok) {
-          const rel = await relResp.json()
+          const rel: any = await relResp.json()
           githubName = typeof rel?.name === 'string' ? rel.name : undefined
           githubTagPublishedAt = formatPublishedAt(rel?.published_at)
           if (typeof rel?.html_url === 'string') githubTagUrl = rel.html_url
@@ -856,15 +857,15 @@ export async function fetchDshLatest({
     let npmVersion
     let npmStable
     let npmPublishedAt
-    let npmDistTags = {}
-    let npmVersions = []
+    let npmDistTags: any = {}
+    let npmVersions: string[] = []
     try {
       const npmResp = await fetchFn(DSH_NPM_REGISTRY_API, {
         headers: { accept: 'application/json' },
         signal: wait.signal,
       })
       if (npmResp.ok) {
-        const npmData = await npmResp.json()
+        const npmData: any = await npmResp.json()
         npmDistTags = npmData?.['dist-tags'] || {}
         npmVersions = listDshInstallVersions(npmData)
         // Newest published version — matches the npm page's version tab. The
@@ -1002,7 +1003,7 @@ export async function applyHostDshUpdate({
   readFileFn,
   realpathFn,
   existsSyncFn,
-} = {}) {
+}: any = {}) {
   const homeEnv = env ?? process.env
   const beforeInfo = localDshInfo(process.platform, { env: homeEnv, readFileFn, realpathFn, existsSyncFn })
   const before = beforeInfo.version || 'unknown'
@@ -1025,7 +1026,7 @@ export async function applyHostDshUpdate({
     } catch (error) {
       resolve({
         ok: false,
-        status: error?.code === 'ENOENT' ? 'missing-npm' : 'failed',
+        status: errorCode(error) === 'ENOENT' ? 'missing-npm' : 'failed',
         command,
         before,
         after: before,
@@ -1053,7 +1054,7 @@ export async function applyHostDshUpdate({
     child.once('error', (error) => {
       finish({
         ok: false,
-        status: error?.code === 'ENOENT' ? 'missing-npm' : 'failed',
+        status: errorCode(error) === 'ENOENT' ? 'missing-npm' : 'failed',
         command,
         before,
         after: before,

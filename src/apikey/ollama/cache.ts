@@ -21,7 +21,7 @@ export function resetOllamaPins() {
   // No in-process prefix map — Ollama Cloud has no documented pin.
 }
 
-export function applyOllamaCache(payload = {}) {
+export function applyOllamaCache(payload: any = {}) {
   const next = { ...payload }
   delete next.prompt_cache_key
   delete next.prompt_cache_retention

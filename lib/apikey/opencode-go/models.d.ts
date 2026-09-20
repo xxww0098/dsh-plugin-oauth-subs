@@ -40,13 +40,7 @@ export declare function opencodeGoSessionHeaders(): {
  * The one official Go model DSH's installed catalog lacks. Kept on its own
  * route; the built-in `opencode-go` route serves the other 27.
  */
-export declare const OPENCODE_GO_EXTRA_MODELS: readonly {
-    id: any;
-    name: any;
-    contextWindow: any;
-    maxTokens: any;
-    input: any[];
-}[];
+export declare const OPENCODE_GO_EXTRA_MODELS: readonly any[];
 export declare const OPENCODE_GO_EXTRA_ROUTE: Readonly<{
     id: "opencode-go-flash";
     displayName: "OpenCode Go · DeepSeek V4.1 Flash";
@@ -55,11 +49,5 @@ export declare const OPENCODE_GO_EXTRA_ROUTE: Readonly<{
     headers: Readonly<{
         "x-opencode-session": string;
     }>;
-    models: readonly {
-        id: any;
-        name: any;
-        contextWindow: any;
-        maxTokens: any;
-        input: any[];
-    }[];
+    models: readonly any[];
 }>;

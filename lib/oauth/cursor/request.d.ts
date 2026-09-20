@@ -4,9 +4,9 @@
  * Native wire is Connect/protobuf over HTTP/2. Completions is the DSH api
  * because that wire is none of the three closed harness protocols.
  */
-export declare function cursorModelParameters(payload?: {}): any[];
+export declare function cursorModelParameters(payload?: any): any[];
 export declare function cursorWireModelId(model: any): string;
-export declare function openaiToCursor(payload?: {}, { conversationId }?: {}): {
+export declare function openaiToCursor(payload?: any, { conversationId }?: any): {
     conversationId: any;
     modelId: string;
     pickerModel: any;
@@ -20,16 +20,10 @@ export declare function openaiToCursor(payload?: {}, { conversationId }?: {}): {
     blobStore: Map<any, any>;
     stream: boolean;
 };
-export declare function mapCursorUsage({ promptTokens, completionTokens, cachedTokens }?: {}): {
-    prompt_tokens: any;
-    completion_tokens: any;
-    total_tokens: any;
-};
-export declare function cursorToOpenai(collected: any, { model, id, conversationId }?: {
-    id?: string;
-}): {
+export declare function mapCursorUsage({ promptTokens, completionTokens, cachedTokens }?: any): any;
+export declare function cursorToOpenai(collected: any, { model, id, conversationId }?: any): {
     cursor_conversation_id?: any;
-    id: string;
+    id: any;
     object: string;
     created: number;
     model: any;
@@ -43,20 +37,10 @@ export declare function cursorToOpenai(collected: any, { model, id, conversation
         };
         finish_reason: any;
     }[];
-    usage: {
-        prompt_tokens: any;
-        completion_tokens: any;
-        total_tokens: any;
-    };
+    usage: any;
 };
-export declare function cursorToOpenaiChunk(delta: any, { model, id, done, finishReason, usage }?: {
-    done?: boolean;
-}): {
-    usage?: {
-        prompt_tokens: any;
-        completion_tokens: any;
-        total_tokens: any;
-    };
+export declare function cursorToOpenaiChunk(delta: any, { model, id, done, finishReason, usage }?: any): {
+    usage?: any;
     id: any;
     object: string;
     created: number;
@@ -77,20 +61,11 @@ export declare function createCursorOpenaiStream({ model, id, conversationId }: 
     id: any;
     conversationId: any;
 }): {
-    collected: {
-        text: string;
-        thinking: string;
-        toolCalls: any[];
-        usage: {};
-    };
+    collected: any;
     conversationId: any;
     push(event: any): any[];
     finish(): {
-        usage?: {
-            prompt_tokens: any;
-            completion_tokens: any;
-            total_tokens: any;
-        };
+        usage?: any;
         id: any;
         object: string;
         created: number;

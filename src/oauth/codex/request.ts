@@ -31,8 +31,8 @@ function developerItem(text) {
 }
 
 export function liftInstructions(input) {
-  const lifted = []
-  const rest = []
+  const lifted: any[] = []
+  const rest: any[] = []
   for (const item of input) {
     if (rest.length === 0 && item && INSTRUCTION_ROLES.has(item.role)) {
       const text = instructionText(item)

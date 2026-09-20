@@ -8,11 +8,11 @@
  * X-Interaction-Id (official always sends a session id).
  */
 export declare const COPILOT_STABLE_SESSION = "dsh-copilot";
-export declare function copilotCacheSessionId(key: any): string;
+export declare function copilotCacheSessionId(key: any): string | undefined;
 export declare function resetCopilotPins(): void;
 export declare function stabilizeCopilotSystemPrefix(messages: any, sessionId: any): any;
-export declare function applyCopilotCache(payload?: {}): {
-    payload: {};
+export declare function applyCopilotCache(payload?: any): {
+    payload: any;
     cacheSessionId: string;
 };
 /** Sticky id for Copilot Completions. Do not copy Codex / Grok header names. */
@@ -20,4 +20,4 @@ export declare function copilotCacheHeaders(cacheSessionId: any): {
     'x-interaction-id': string;
 };
 export declare function copilotHasVision(messages: any): boolean;
-export declare function copilotInitiatorOf(messages: any): "user" | "agent";
+export declare function copilotInitiatorOf(messages: any): "agent" | "user";

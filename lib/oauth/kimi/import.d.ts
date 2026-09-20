@@ -10,47 +10,47 @@
  */
 export declare const KIMI_IMPORT_EMPTY = "kimi-import-empty";
 export declare function kimiSessionFromCliFile(data: any): {
-    planType?: string;
+    planType?: string | undefined;
     accessToken: string;
     refreshToken: string;
     expiresAt: number;
     tokenEndpoint: string;
     clientId: string;
     account: string;
-    source: string;
-};
-export declare function resolveKimiCliCredentials(options?: {}): Promise<{
-    planType?: string;
+    source: any;
+} | undefined;
+export declare function resolveKimiCliCredentials(options?: any): Promise<{
+    planType?: string | undefined;
     accessToken: string;
     refreshToken: string;
     expiresAt: number;
     tokenEndpoint: string;
     clientId: string;
     account: string;
-    source: string;
-}>;
+    source: any;
+} | undefined>;
 export declare function resolveKimiEnvKey({ env }?: {
-    env?: NodeJS.ProcessEnv;
+    env?: NodeJS.ProcessEnv | undefined;
 }): {
-    planType?: string;
+    planType?: string | undefined;
     accessToken: string;
     refreshToken: string;
     expiresAt: number;
     tokenEndpoint: string;
     clientId: string;
     account: string;
-    source: string;
-};
-export declare function importKimiAuth(options?: {}): Promise<{
+    source: any;
+} | undefined;
+export declare function importKimiAuth(options?: any): Promise<{
     source: string;
     session: {
-        planType?: string;
+        planType?: string | undefined;
         accessToken: string;
         refreshToken: string;
         expiresAt: number;
         tokenEndpoint: string;
         clientId: string;
         account: string;
-        source: string;
+        source: any;
     };
 }>;

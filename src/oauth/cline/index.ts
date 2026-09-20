@@ -208,7 +208,7 @@ function clineUserInfo(payload) {
  * tokenType, expiresAt, userInfo}}`. The WorkOS pair alone is not a Cline
  * session — this exchange is what mints the `usr-…` account id.
  */
-export async function registerClineTokens(tokens, { fetchFn = fetch, signal, source = 'oauth' } = {}) {
+export async function registerClineTokens(tokens, { fetchFn = fetch, signal, source = 'oauth' }: any = {}) {
   const accessToken = trimmed(tokens?.access_token)
   const refreshToken = trimmed(tokens?.refresh_token)
   if (!accessToken || !refreshToken) {
@@ -228,7 +228,7 @@ export async function registerClineTokens(tokens, { fetchFn = fetch, signal, sou
   return clineSessionFromAuthData(payload.data, { source })
 }
 
-export function clineSessionFromAuthData(data, fallback = {}) {
+export function clineSessionFromAuthData(data, fallback: any = {}) {
   const access = normalizeClineAccessToken(data?.accessToken ?? fallback.accessToken)
   if (!access) throw new Error('cline token endpoint returned no access token')
   const refresh = trimmed(data?.refreshToken) ?? trimmed(fallback.refreshToken)
@@ -286,7 +286,7 @@ export function isClineOpaqueAccount(value) {
 }
 
 /** `refreshClineToken`: JSON `{refreshToken, grantType:"refresh_token"}`. */
-export async function refreshCline(session, fetchFn = fetch, { signal } = {}) {
+export async function refreshCline(session, fetchFn = fetch, { signal }: any = {}) {
   const refreshToken = trimmed(session?.refreshToken)
   if (!refreshToken) throw new Error('cline session needs a refresh token')
   const response = await fetchFn(CLINE_REFRESH_URL, {
@@ -296,7 +296,7 @@ export async function refreshCline(session, fetchFn = fetch, { signal } = {}) {
     signal,
   })
   if (!response.ok) throw await oauthError(response, 'cline refresh')
-  const payload = await response.json().catch(() => undefined)
+  const payload: any = await response.json().catch(() => undefined)
   if (!payload?.success || !payload.data?.accessToken) {
     // The endpoint answers 200 with `success:false` for a rejected grant —
     // surface it as permanent so a dead refresh token is not kept forever.
@@ -362,7 +362,7 @@ export function parseClineUserInfo(payload) {
   }
 }
 
-export async function resolveClineIdentity(session, { fetchFn = fetch, signal } = {}) {
+export async function resolveClineIdentity(session, { fetchFn = fetch, signal }: any = {}) {
   const token = trimmed(session?.accessToken)
   if (!token) return undefined
   try {

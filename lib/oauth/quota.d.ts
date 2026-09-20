@@ -26,11 +26,11 @@
  */
 export declare const QUOTA_TTL_MS = 10000;
 export declare const QUOTA_TIMEOUT_MS = 10000;
-export declare function asNumber(value: any): number;
+export declare function asNumber(value: any): number | undefined;
 export declare function creditBagAmounts(value: any): any;
-export declare function stampOf(value: any): number;
+export declare function stampOf(value: any): number | undefined;
 export declare function parseCodexUsage(payload: any): {
-    rows: any[];
+    rows: never[];
     planType?: undefined;
 } | {
     planType: any;
@@ -38,29 +38,29 @@ export declare function parseCodexUsage(payload: any): {
 };
 export declare function isAvailableResetCredit(credit: any): boolean;
 export declare function parseResetCredits(payload: any): {
-    nextExpiresAt?: number;
+    nextExpiresAt?: number | undefined;
     availableCount: number;
-    credits: {
-        id: string;
+    credits: ({
+        id: string | undefined;
         status: any;
-        expiresAt: number;
-    }[];
+        expiresAt: number | undefined;
+    } | undefined)[];
 };
-export declare function parseGrokBilling(billing: any, { cliUser }?: {}): {
-    rows: any[];
+export declare function parseGrokBilling(billing: any, { cliUser }?: any): {
+    rows: never[];
     planType?: undefined;
     subscriptionStatus?: undefined;
     hasGrokCodeAccess?: undefined;
 } | {
     planType: any;
     subscriptionStatus: any;
-    hasGrokCodeAccess: boolean;
+    hasGrokCodeAccess: boolean | undefined;
     rows: any[];
 };
 export declare function applyGrokCreditsSnapshot(parsed: any, snapshot: any): any;
 export declare function glmWindowKind(item: any): "primary" | "weekly" | "cycle" | "mcp";
 export declare function parseGlmQuota(payload: any): {
-    rows: any[];
+    rows: never[];
     planType?: undefined;
 } | {
     planType: any;
@@ -68,30 +68,30 @@ export declare function parseGlmQuota(payload: any): {
 };
 export declare function mergeGlmToolUsage(parsed: any, toolPayload: any): any;
 export declare function parseKiroUsage(payload: any): {
-    rows: any[];
+    rows: never[];
     planType?: undefined;
     account?: undefined;
 } | {
-    planType: string | number;
+    planType: string | number | undefined;
     account: any;
     rows: {
         key: string;
         kind: string;
-        usedPercent: number;
-        remainingPercent: number;
+        usedPercent: number | undefined;
+        remainingPercent: number | undefined;
         used: number;
         total: number;
-        remaining: number;
-        resetAt: number;
+        remaining: number | undefined;
+        resetAt: number | undefined;
     }[];
 };
-export declare function parseCursorPeriodUsage(payload: any, extras?: {}): {
-    rows: any[];
+export declare function parseCursorPeriodUsage(payload: any, extras?: any): {
+    rows: never[];
     planType?: undefined;
     account?: undefined;
 } | {
-    planType: string | number;
-    account: string;
+    planType: string | number | undefined;
+    account: string | undefined;
     rows: {
         resetAt?: any;
         key: string;
@@ -102,12 +102,12 @@ export declare function parseCursorPeriodUsage(payload: any, extras?: {}): {
     }[];
 };
 export declare function fetchCursorQuota(session: any, fetchFn?: typeof fetch): Promise<{
-    rows: any[];
+    rows: never[];
     planType?: undefined;
     account?: undefined;
 } | {
-    planType: string | number;
-    account: string;
+    planType: string | number | undefined;
+    account: string | undefined;
     rows: {
         resetAt?: any;
         key: string;
@@ -124,26 +124,26 @@ export declare const OLLAMA_WEEKLY_WINDOW_S = 604800;
 export declare function ollamaSessionResetAt(now?: number): number;
 export declare function ollamaWeeklyResetAt(now?: number): number;
 export declare function parseOllamaUsage(payload: any, me: any, now?: number): {
-    planType: string;
-    account: string;
+    planType: string | undefined;
+    account: string | undefined;
     rows: any[];
 };
 export declare function fetchOllamaQuota(session: any, fetchFn?: typeof fetch): Promise<{
-    planType: string;
-    account: string;
+    planType: string | undefined;
+    account: string | undefined;
     rows: any[];
 }>;
 export declare function parseKimiUsage(payload: any, me: any): {
-    planType: string;
-    account: string;
+    planType: string | undefined;
+    account: string | undefined;
     rows: any[];
 };
 export declare function fetchKimiQuota(session: any, fetchFn?: typeof fetch): Promise<{
-    planType: string;
-    account: string;
+    planType: string | undefined;
+    account: string | undefined;
     rows: any[];
 }>;
-export declare function parseCopilotUsage(payload: any, user: any): {
+export declare function parseCopilotUsage(payload: any, user?: any): {
     planType: any;
     account: any;
     rows: any[];
@@ -160,7 +160,7 @@ export declare function fetchCopilotQuota(session: any, fetchFn?: typeof fetch):
  */
 export declare function parseDevinUserStatus(payload: any): {
     planType: any;
-    account: string;
+    account: string | undefined;
     rows: any[];
 };
 export declare function fetchDevinQuota(session: any, fetchFn?: typeof fetch): Promise<{
@@ -176,53 +176,53 @@ export declare function parseAntigravityModelQuota(payload: any): {
 /** Official Model Quota panel: Gemini Models / Claude and GPT models × weekly + 5-hour. */
 export declare function parseAntigravityQuotaSummary(payload: any): {
     rows: any[];
-    planType: string;
+    planType: string | undefined;
 };
 export declare function parseAntigravityPaidCredits(payload: any): any[];
-export declare function pickAntigravityPlanName(payload: any): string;
+export declare function pickAntigravityPlanName(payload: any): string | undefined;
 export declare function fetchAntigravityQuota(session: any, fetchFn?: typeof fetch): Promise<{
-    planType: string;
+    planType: string | undefined;
     rows: any[];
 }>;
 export declare function fetchKiroQuota(session: any, fetchFn?: typeof fetch): Promise<{
-    rows: any[];
+    rows: never[];
     planType?: undefined;
     account?: undefined;
 } | {
-    planType: string | number;
+    planType: string | number | undefined;
     account: any;
     rows: {
         key: string;
         kind: string;
-        usedPercent: number;
-        remainingPercent: number;
+        usedPercent: number | undefined;
+        remainingPercent: number | undefined;
         used: number;
         total: number;
-        remaining: number;
-        resetAt: number;
+        remaining: number | undefined;
+        resetAt: number | undefined;
     }[];
 }>;
 export declare function fetchCodexQuota(session: any, fetchFn?: typeof fetch): Promise<{
     resetCredits: {
-        nextExpiresAt?: number;
+        nextExpiresAt?: number | undefined;
         availableCount: number;
-        credits: {
-            id: string;
+        credits: ({
+            id: string | undefined;
             status: any;
-            expiresAt: number;
-        }[];
+            expiresAt: number | undefined;
+        } | undefined)[];
     };
-    rows: any[];
+    rows: never[];
     planType?: undefined;
 } | {
     resetCredits: {
-        nextExpiresAt?: number;
+        nextExpiresAt?: number | undefined;
         availableCount: number;
-        credits: {
-            id: string;
+        credits: ({
+            id: string | undefined;
             status: any;
-            expiresAt: number;
-        }[];
+            expiresAt: number | undefined;
+        } | undefined)[];
     };
     planType: any;
     rows: any[];
@@ -238,11 +238,13 @@ export declare function consumeCodexReset(session: any, fetchFn?: typeof fetch):
 export declare function fetchGrokQuota(session: any, fetchFn?: typeof fetch): Promise<any>;
 export declare class QuotaStore {
     #private;
-    constructor({ tokens, fetchFn, ttlMs }?: {
-        fetchFn?: typeof fetch;
-        ttlMs?: number;
-    });
-    peek(provider: any, accountId: any): {
+    tokens: any;
+    fetchFn: any;
+    ttlMs: number;
+    cache: Map<string, any>;
+    inflight: Map<string, any>;
+    constructor({ tokens, fetchFn, ttlMs }?: any);
+    peek(provider: any, accountId?: any): {
         status: string;
         planType?: undefined;
         planLabel?: undefined;
@@ -269,8 +271,8 @@ export declare class QuotaStore {
             credits: any;
         };
     };
-    clear(provider: any, accountId: any): void;
-    ensure(provider: any, accountId: any, session: any): Promise<any>;
-    refresh(provider: any, accountId: any, session: any): Promise<any>;
-    consume(provider: any, accountId: any, session: any): Promise<any>;
+    clear(provider: any, accountId?: any): void;
+    ensure(provider: any, accountId?: any, session?: any): Promise<any>;
+    refresh(provider: any, accountId?: any, session?: any): Promise<any>;
+    consume(provider: any, accountId?: any, session?: any): Promise<any>;
 }

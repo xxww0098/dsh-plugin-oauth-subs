@@ -7,7 +7,7 @@ const DEFAULT_INTERVAL_SEC = 5
 const DEFAULT_EXPIRES_IN_SEC = 900
 
 function sleep(ms, signal) {
-  return new Promise((resolve, reject) => {
+  return new Promise<void>((resolve, reject) => {
     if (signal.aborted) {
       reject(signal.reason instanceof Error ? signal.reason : new Error('aborted'))
       return
@@ -25,6 +25,8 @@ function sleep(ms, signal) {
 }
 
 export class DeviceFlowManager {
+  declare attempts: Map<string, any>
+
   constructor() {
     this.attempts = new Map()
   }
@@ -44,7 +46,7 @@ export class DeviceFlowManager {
     const fetchFn = spec.fetchFn ?? fetch
     const extraHeaders = spec.headers && typeof spec.headers === 'object' ? spec.headers : {}
     const useJson = spec.jsonBody === true
-    const devicePayload = { client_id: spec.clientId }
+    const devicePayload: any = { client_id: spec.clientId }
     if (typeof spec.scope === 'string' && spec.scope) devicePayload.scope = spec.scope
     const encode = (payload) => (useJson ? JSON.stringify(payload) : new URLSearchParams(payload).toString())
     const contentType = useJson ? 'application/json' : 'application/x-www-form-urlencoded'
@@ -83,7 +85,7 @@ export class DeviceFlowManager {
     })
     tokenPromise.catch(() => undefined)
 
-    const settle = (error, tokens) => {
+    const settle = (error, tokens?) => {
       if (this.attempts.get(provider) !== attempt) return
       this.attempts.delete(provider)
       if (error !== undefined) rejectToken(error)

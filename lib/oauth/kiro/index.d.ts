@@ -68,7 +68,7 @@ export declare const KIRO_MODELS: readonly {
     contextWindow: any;
     maxTokens: number;
     input: readonly string[];
-    reasoningEfforts: boolean;
+    reasoningEfforts: any;
 }[];
 export declare const KIRO_PLAN_NAMES: Readonly<{
     kiro_free: "Free";
@@ -87,34 +87,35 @@ export declare const KIRO_PLAN_NAMES: Readonly<{
     kiropowered: "Powered";
     powered: "Powered";
 }>;
-export declare function canonicalizeKiroMethod(value: any, { tokenEndpoint }?: {}): string;
+export declare function canonicalizeKiroMethod(value: any, { tokenEndpoint }?: any): string;
 /**
  * Guess authMethod for dumps that omit it (kiro-manager-lite compact JSON /
  * 卡密). Social = GitHub/Google refresh only; IdC = Builder ID / Enterprise
  * with clientId+clientSecret.
  */
-export declare function inferKiroAuthMethod(raw?: {}): string;
-export declare function kiroAccountKind(session?: {}): "entra" | "social" | "idc" | "builder" | "key";
+export declare function inferKiroAuthMethod(raw?: any): string;
+export declare function kiroAccountKind(session?: any): "social" | "idc" | "entra" | "builder" | "key";
 export declare function kiroMethodLabel(methodOrSession: any): "Builder" | "IdC" | "Entra" | "API key" | "Social";
-export declare function kiroAccountId(session?: {}): string;
+export declare function kiroAccountId(session?: any): string;
 export declare function oidcEndpoint(region?: string): string;
 export declare function kiroUsageHost(region?: string): string;
 /** Management plane for ListAvailableProfiles / ListAvailableModels. Chat stays on q.<region>.amazonaws.com. */
 export declare function kiroManagementHost(region?: string): string;
 export declare const KIRO_LIST_PROFILES_PATH = "List-Available-Profiles";
 export declare const KIRO_LIST_MODELS_PATH = "List-Available-Models";
-export declare function kiroUsageRegions(session?: {}): string[];
+export declare function kiroUsageRegions(session?: any): string[];
 export declare function kiroUsageUrl(region: any, profileArn: any): string;
 export declare function validateKiroIdpEndpoint(raw: any): any;
 export declare function validateKiroRefreshToken(value: any): string;
 export declare function validateKiroApiKey(value: any): string;
-export declare function kiroMachineId(session?: {}): string;
+export declare function kiroMachineId(session?: any): string;
 /** Stable 64-hex for Social UA. Pass a prior id (or session) so login/token share one machine. */
 export declare function allocateKiroMachineId(prior: any): string;
-export declare function kiroTokenTypeHeader(session: any): "API_KEY" | "EXTERNAL_IDP";
+export declare function kiroTokenTypeHeader(session: any): "API_KEY" | "EXTERNAL_IDP" | undefined;
 export declare function kiroEffectiveProfileArn(session: any): any;
 export declare function kiroStreamingProfileArn(session: any): any;
 export declare function kiroUsageHeaders(session: any): {
+    tokentype?: string | undefined;
     authorization: string;
     accept: string;
     'user-agent': string;
@@ -124,13 +125,13 @@ export declare function kiroUsageHeaders(session: any): {
 };
 /** Portal authorize `redirect_uri` is origin only (`http://localhost:<port>`). */
 export declare function kiroSocialRedirectUri(redirectUri: any): string;
-export declare function kiroSocialLoginOption(value: any): string;
+export declare function kiroSocialLoginOption(value: any): string | undefined;
 /**
  * Token-exchange `redirect_uri` is the URL the browser actually hit:
  * origin + path (`/` / `/oauth/callback` / `/signin/callback`) and
  * `?login_option=google|github` when the callback carried that query.
  */
-export declare function kiroSocialTokenRedirectUri(redirectUri: any, callback?: {}): string;
+export declare function kiroSocialTokenRedirectUri(redirectUri: any, callback?: any): string;
 export declare function kiroSocialFlow(): {
     listen: {
         host: string;
@@ -141,138 +142,24 @@ export declare function kiroSocialFlow(): {
     buildAuthorizeUrl(input: any): string;
 };
 export declare class KiroHttpError extends Error {
-    constructor(message: any, status: any, { retryAfter }?: {});
+    status: any;
+    retryAfter: string | undefined;
+    constructor(message: any, status: any, { retryAfter }?: any);
 }
-export declare function kiroSession(fields?: {}): {
-    accessToken: string;
-    refreshToken: string;
-    expiresAt: number;
-    account: string;
-    authMethod: string;
-    kiroProvider: string;
-    planType: string;
-    profileArn: string;
-    clientId: string;
-    clientSecret: string;
-    startUrl: string;
-    tokenEndpoint: string;
-    issuerUrl: string;
-    scopes: string;
-    region: string;
-    authRegion: string;
-    apiRegion: string;
-    kiroApiKey: string;
-};
-export declare function exchangeKiroSocialCode(code: any, verifier: any, redirectUri: any, { fetchFn, callback, machineId: priorMachineId }?: {
-    fetchFn?: typeof fetch;
-}): Promise<{
-    accessToken: string;
-    refreshToken: string;
-    expiresAt: number;
-    account: string;
-    authMethod: string;
-    kiroProvider: string;
-    planType: string;
-    profileArn: string;
-    clientId: string;
-    clientSecret: string;
-    startUrl: string;
-    tokenEndpoint: string;
-    issuerUrl: string;
-    scopes: string;
-    region: string;
-    authRegion: string;
-    apiRegion: string;
-    kiroApiKey: string;
-}>;
+export declare function kiroSession(fields?: any): any;
+export declare function exchangeKiroSocialCode(code: any, verifier: any, redirectUri: any, { fetchFn, callback, machineId: priorMachineId }?: any): Promise<any>;
 export declare function refreshKiroSocial(session: any, { fetchFn }?: {
-    fetchFn?: typeof fetch;
-}): Promise<{
-    accessToken: string;
-    refreshToken: string;
-    expiresAt: number;
-    account: string;
-    authMethod: string;
-    kiroProvider: string;
-    planType: string;
-    profileArn: string;
-    clientId: string;
-    clientSecret: string;
-    startUrl: string;
-    tokenEndpoint: string;
-    issuerUrl: string;
-    scopes: string;
-    region: string;
-    authRegion: string;
-    apiRegion: string;
-    kiroApiKey: string;
-}>;
+    fetchFn?: typeof fetch | undefined;
+}): Promise<any>;
 export declare function refreshKiroIdc(session: any, { fetchFn }?: {
-    fetchFn?: typeof fetch;
-}): Promise<{
-    accessToken: string;
-    refreshToken: string;
-    expiresAt: number;
-    account: string;
-    authMethod: string;
-    kiroProvider: string;
-    planType: string;
-    profileArn: string;
-    clientId: string;
-    clientSecret: string;
-    startUrl: string;
-    tokenEndpoint: string;
-    issuerUrl: string;
-    scopes: string;
-    region: string;
-    authRegion: string;
-    apiRegion: string;
-    kiroApiKey: string;
-}>;
+    fetchFn?: typeof fetch | undefined;
+}): Promise<any>;
 export declare function refreshKiroExternalIdp(session: any, { fetchFn }?: {
-    fetchFn?: typeof fetch;
-}): Promise<{
-    accessToken: string;
-    refreshToken: string;
-    expiresAt: number;
-    account: string;
-    authMethod: string;
-    kiroProvider: string;
-    planType: string;
-    profileArn: string;
-    clientId: string;
-    clientSecret: string;
-    startUrl: string;
-    tokenEndpoint: string;
-    issuerUrl: string;
-    scopes: string;
-    region: string;
-    authRegion: string;
-    apiRegion: string;
-    kiroApiKey: string;
-}>;
+    fetchFn?: typeof fetch | undefined;
+}): Promise<any>;
 export declare function refreshKiro(session: any, { fetchFn }?: {
-    fetchFn?: typeof fetch;
+    fetchFn?: typeof fetch | undefined;
 }): Promise<any>;
 export declare function isKiroPermanentRefreshError(error: any): boolean;
 export declare function isKiroCredential(raw: any): boolean;
-export declare function kiroSessionFromImport(raw: any): {
-    accessToken: string;
-    refreshToken: string;
-    expiresAt: number;
-    account: string;
-    authMethod: string;
-    kiroProvider: string;
-    planType: string;
-    profileArn: string;
-    clientId: string;
-    clientSecret: string;
-    startUrl: string;
-    tokenEndpoint: string;
-    issuerUrl: string;
-    scopes: string;
-    region: string;
-    authRegion: string;
-    apiRegion: string;
-    kiroApiKey: string;
-};
+export declare function kiroSessionFromImport(raw: any): any;

@@ -42,7 +42,7 @@ function systemText(message) {
 }
 
 function splitLeadingSystem(messages) {
-  const head = []
+  const head: any[] = []
   let index = 0
   while (index < messages.length && messages[index]?.role === 'system') {
     head.push(messages[index])

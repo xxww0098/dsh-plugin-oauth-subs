@@ -35,17 +35,8 @@ export declare function splitConnectFrames(buf: any): {
     frames: any[];
     rest: Buffer<any>;
 };
-export declare function encodeUserMessage({ text, messageId, selectedContextBlob, mode }: {
-    text: any;
-    messageId: any;
-    selectedContextBlob: any;
-    mode?: number;
-}): Buffer<ArrayBuffer>;
-export declare function encodeRequestedModel({ modelId, maxMode, parameters }: {
-    modelId: any;
-    maxMode?: boolean;
-    parameters?: any[];
-}): Buffer<ArrayBuffer>;
+export declare function encodeUserMessage({ text, messageId, selectedContextBlob, mode }: any): Buffer<ArrayBuffer>;
+export declare function encodeRequestedModel({ modelId, maxMode, parameters }: any): Buffer<ArrayBuffer>;
 export declare function encodeMcpToolDefinition(tool: any): Buffer<ArrayBuffer>;
 export declare function encodeMcpTools(tools: any): Buffer<ArrayBuffer>;
 /**
@@ -54,20 +45,9 @@ export declare function encodeMcpTools(tools: any): Buffer<ArrayBuffer>;
  * run handshake aborts with "Failed to get request context" unless the
  * reply is a present RequestContextSuccess.
  */
-export declare function encodeRequestContextResult({ id, execId, tools }?: {
-    tools?: any[];
-}): Buffer<ArrayBuffer>;
-export declare function encodeConversationState({ rootPromptBlobs, turnBlobs, mode, clientName, }: {
-    rootPromptBlobs?: any[];
-    turnBlobs?: any[];
-    mode?: number;
-    clientName?: string;
-}): Buffer<ArrayBuffer>;
-export declare function encodeConversationTurn({ userMessageBlob, stepBlobs, requestId }: {
-    userMessageBlob: any;
-    stepBlobs?: any[];
-    requestId: any;
-}): Buffer<ArrayBuffer>;
+export declare function encodeRequestContextResult({ id, execId, tools }?: any): Buffer<ArrayBuffer>;
+export declare function encodeConversationState({ rootPromptBlobs, turnBlobs, mode, clientName, }: any): Buffer<ArrayBuffer>;
+export declare function encodeConversationTurn({ userMessageBlob, stepBlobs, requestId }: any): Buffer<ArrayBuffer>;
 export declare function encodeAssistantStep(text: any): Buffer<ArrayBuffer>;
 export declare function encodeThinkingStep(text: any): Buffer<ArrayBuffer>;
 export declare function encodeMcpToolStep({ toolName, toolCallId, args, result }: {
@@ -84,12 +64,10 @@ export declare function encodeAgentRunRequest({ conversationState, userMessage, 
     mcpTools: any;
 }): Buffer<ArrayBuffer>;
 export declare function encodeAgentClientMessage(runRequest: any): Buffer<ArrayBuffer>;
-export declare function encodeKvClientMessage({ id, blobData, set }?: {
-    set?: boolean;
-}): Buffer<ArrayBuffer>;
+export declare function encodeKvClientMessage({ id, blobData, set }?: any): Buffer<ArrayBuffer>;
 export declare function encodeExecThrow({ id, error }: {
     id: any;
-    error?: string;
+    error?: string | undefined;
 }): Buffer<ArrayBuffer>;
 /** AgentClientMessage.exec_client_message (field 2) with a oneof result. */
 export declare function encodeExecClientResult({ id, execId, resultField, resultBytes }: {
@@ -105,21 +83,21 @@ export declare const CURSOR_NATIVE_TOOL_REJECTION = "Tool not available in this 
  * Throwing an ExecClientControlMessage aborts the whole run instead.
  * Returns undefined for requestContextArgs / mcpArgs / unknown cases.
  */
-export declare function encodeNativeExecRejection(execMsg?: {}): Buffer<ArrayBuffer>;
+export declare function encodeNativeExecRejection(execMsg?: any): Buffer<ArrayBuffer> | undefined;
 export declare function encodeCancelAction(): Buffer<ArrayBuffer>;
 /**
  * agent.v1.TurnEndedUpdate (@cursor/sdk 1.0.27):
  * 1 input_tokens, 2 output_tokens, 3 cache_read_tokens,
  * 4 cache_write_tokens, 5 reasoning_tokens — all optional int64.
  */
-export declare function encodeTurnEndedUpdate({ inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, reasoningTokens, }?: {}): Buffer<ArrayBuffer>;
+export declare function encodeTurnEndedUpdate({ inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, reasoningTokens, }?: any): Buffer<ArrayBuffer>;
 export declare function decodeTurnEndedUpdate(buf: any): {
     promptTokens: any;
     completionTokens: any;
     cachedTokens: any;
     cacheWriteTokens: any;
     reasoningTokens: any;
-};
+} | undefined;
 export declare function encodeGetUsableModelsRequest(customIds?: any[]): Buffer<ArrayBuffer>;
 /** Connect unary envelope, or the raw proto if the peer skipped framing. */
 export declare function unwrapConnectUnary(buf: any): any;
@@ -130,10 +108,10 @@ export declare function encodeAvailableModelsRequest(): Buffer<ArrayBuffer>;
 export declare function encodeAvailableModelsResponse(models?: any[]): Buffer<ArrayBuffer>;
 export declare function decodeAvailableModelsResponse(buf: any): any;
 export declare function decodeAgentClientMessage(buf: any): {
-    conversationId: any;
-    modelId: any;
-    userText: any;
-    tools: any[];
+    conversationId: undefined;
+    modelId: undefined;
+    userText: undefined;
+    tools: never[];
     maxMode?: undefined;
     hasConversationState?: undefined;
     parameters?: undefined;
@@ -153,7 +131,7 @@ export declare function decodeAgentServerMessage(buf: any): {
         cachedTokens: any;
         cacheWriteTokens: any;
         reasoningTokens: any;
-    };
+    } | undefined;
     kind: string;
     text: any;
     thinking: any;
@@ -172,7 +150,7 @@ export declare function decodeAgentServerMessage(buf: any): {
     kind: string;
     id: any;
     execId: any;
-    execCase: string | number;
+    execCase: string | number | undefined;
     execArgs: {
         path: any;
         command: any;
@@ -186,8 +164,8 @@ export declare function decodeAgentServerMessage(buf: any): {
         toolName: any;
         toolCallId: any;
         providerIdentifier: any;
-        arguments: {};
-    };
+        arguments: any;
+    } | undefined;
     blobId?: undefined;
     blobData?: undefined;
     set?: undefined;

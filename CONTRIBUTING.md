@@ -10,7 +10,18 @@ npm test
 
 Node 22. Tests are `node:test` files under `test/` and import **compiled** `lib/`. Do not write credentials or live `auth.json` fixtures. Use disposable directories and loopback servers for lifecycle and transport regressions.
 
-The host build currently uses `noCheck`: `npm test` proves compilation and runtime tests, **not host type safety**. The UI compiler does check types. Reduce host type debt module by module before removing that switch; do not hide diagnostics with casts or new suppressions.
+The host build type-checks, with `strictNullChecks` and `useUnknownInCatchVariables` on: `tsconfig.json` sets both and no longer sets `noCheck`, so `npm run build` — and therefore `npm test` — fails on a host type error. `strict` and `noImplicitAny` are still off, and option bags are deliberately typed `any`, so the checker catches misspelled properties, wrong arity, malformed literals, null-safety violations, and un-narrowed catch variables; it does **not** give a fully typed surface. Do not hide diagnostics with casts or new suppressions.
+
+`noImplicitAny` is the one remaining big switch and is **not** a cleanup: it reports roughly 2000 errors that are almost all "annotate this parameter", so enabling it means designing the type surface module by module, not sweeping. See [docs/error.md](docs/error.md) before attempting it.
+
+CI also runs a ratchet that tracks two counts and fails when either rises above `scripts/typecheck-baseline.json` (both **0**): `errors` and `strict`. It passes `--noCheck false` and `--strictNullChecks --useUnknownInCatchVariables` explicitly, so removing any of those switches from `tsconfig.json` cannot silently weaken checking again:
+
+```sh
+node --experimental-strip-types scripts/typecheck-ratchet.ts          # check
+node --experimental-strip-types scripts/typecheck-ratchet.ts --update # accept debt
+```
+
+Raising a baseline is a deliberate act a reviewer should see; keep both at 0.
 
 ## Session diagnosis
 

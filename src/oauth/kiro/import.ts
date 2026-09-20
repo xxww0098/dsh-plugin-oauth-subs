@@ -70,7 +70,7 @@ export function flattenKiroImport(raw) {
 }
 
 export function sessionsFromKiroAuth(raw) {
-  const out = []
+  const out: any[] = []
   for (const entry of flattenKiroImport(raw)) {
     if (!isKiroCredential(entry)) continue
     try {
@@ -114,7 +114,7 @@ function parseKamiText(text) {
 }
 
 function parseCsvRow(row) {
-  const out = []
+  const out: any[] = []
   let cur = ''
   let quoted = false
   for (let i = 0; i < row.length; i++) {
@@ -144,7 +144,7 @@ function parseCsvText(text) {
   if (headers.filter(Boolean).length < 2) return parseKamiText(text)
   return lines.slice(1).map((line) => {
     const cells = parseCsvRow(line)
-    const item = {}
+    const item: any = {}
     headers.forEach((key, i) => {
       if (!key) return
       const value = cells[i]

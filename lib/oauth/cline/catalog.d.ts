@@ -10,7 +10,7 @@
  */
 export declare const CLINE_CATALOG_TTL_MS: number;
 export declare function resetClineCatalogCache(): void;
-export declare function clineCatalogModels(): any;
+export declare function clineCatalogModels(): any[];
 /**
  * `normalizeClineRecommendedProviderModels` narrowed to the `cline` product:
  * `recommended` + `free`, de-duplicated by id, declared order preserved.
@@ -30,6 +30,6 @@ export declare function toClinePickerModels(payload: any, { models }?: {
         name: string;
         contextWindow: number;
         maxTokens: number;
-    }[];
+    }[] | undefined;
 }): any[];
-export declare function refreshClineCatalog(session: any, options?: {}): Promise<any>;
+export declare function refreshClineCatalog(session: any, options?: any): Promise<any[]>;

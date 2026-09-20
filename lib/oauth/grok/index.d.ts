@@ -79,7 +79,7 @@ export declare function grokDeviceSpec(fetchFn?: typeof fetch): Promise<{
 }>;
 export declare function grokTierFromValue(value: any): any;
 export declare function grokTierName(accessToken: any): any;
-export declare function grokSession(tokens: any, tokenEndpoint: any, fallback: any): {
+export declare function grokSession(tokens: any, tokenEndpoint: any, fallback?: any): {
     clientId?: any;
     planType?: any;
     account?: any;
@@ -123,7 +123,7 @@ export declare function isGrokPermanentRefreshError(error: any): boolean;
 export declare function grokCredentialHeaders(): {
     'user-agent': string;
 };
-export declare function grokUserId(session: any): string;
+export declare function grokUserId(session: any): string | undefined;
 export declare function grokUpstreamHeaders(session: any): {
     'user-agent': string;
     authorization: string;

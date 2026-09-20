@@ -12,8 +12,9 @@ export declare function oauthCallbackFromUrl(url: any, fallbackPath: any): {
     issuerUrl: any;
 };
 export declare class OAuthFlowManager {
+    attempts: Map<string, any>;
     constructor();
-    isBusy(provider: any): any;
+    isBusy(provider: any): boolean;
     pending(provider: any): any;
     start(provider: any, spec: any): Promise<{
         authorizeUrl: any;

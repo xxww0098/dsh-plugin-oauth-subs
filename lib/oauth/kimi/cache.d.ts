@@ -8,11 +8,11 @@
  * Never stamp Date.now(). `dsh-kimi` is analyzer-only.
  */
 export declare const KIMI_STABLE_SESSION = "dsh-kimi";
-export declare function kimiCacheSessionId(key: any): string;
+export declare function kimiCacheSessionId(key: any): string | undefined;
 export declare function resetKimiPins(): void;
 export declare function stabilizeKimiSystemPrefix(messages: any, sessionId: any): any;
-export declare function applyKimiCache(payload?: {}): {
-    payload: {};
+export declare function applyKimiCache(payload?: any): {
+    payload: any;
     cacheSessionId: string;
 };
 /** Kimi does not sticky-route on Codex / Grok HTTP headers. */

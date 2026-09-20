@@ -46,7 +46,7 @@ function wireEffort(value, efforts) {
   return typeof hit === 'string' ? hit : undefined
 }
 
-export function applyClineThinking(payload = {}, model) {
+export function applyClineThinking(payload: any = {}, model?) {
   const next = { ...payload }
   const effort = next.reasoning_effort
   const row = model ?? modelOf(next.model)
@@ -57,7 +57,7 @@ export function applyClineThinking(payload = {}, model) {
   return next
 }
 
-export function applyClineMaxCompletionTokens(payload = {}) {
+export function applyClineMaxCompletionTokens(payload: any = {}) {
   if (!payload || typeof payload !== 'object') return payload
   const { max_tokens: maxTokens, ...rest } = payload
   if (maxTokens == null || !isClineReasoningEraModel(payload.model)) return payload
@@ -68,7 +68,7 @@ export function applyClineMaxCompletionTokens(payload = {}) {
 }
 
 /** Completions SSE omits usage unless the vendor is asked. Do not override an explicit value. */
-export function applyClineStreamUsage(payload = {}) {
+export function applyClineStreamUsage(payload: any = {}) {
   if (!payload || payload.stream !== true) return payload
   const current = payload.stream_options
   if (current && typeof current === 'object' && Object.hasOwn(current, 'include_usage')) return payload

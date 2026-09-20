@@ -15,7 +15,7 @@ import {
 
 export const KIMI_CATALOG_TTL_MS = 5 * 60_000
 
-const cached = { tokenHash: '', models: /** @type {any[] | undefined} */ (undefined), expiresAt: 0 }
+const cached: { tokenHash: string; models?: any[]; expiresAt: number } = { tokenHash: '', models: undefined, expiresAt: 0 }
 
 export function resetKimiCatalogCache() {
   cached.tokenHash = ''
@@ -51,7 +51,7 @@ export function kimiReasoningEffortsOf(row) {
   if (thinkingType === 'no' || row?.supports_reasoning === false) return undefined
   const parsed = parseThinkEfforts(row?.think_efforts ?? row?.thinkEfforts)
   const allowed = parsed?.supportEfforts
-  const efforts = {}
+  const efforts: any = {}
   for (const [level, wire] of Object.entries(KIMI_REASONING)) {
     if (level === 'off') {
       if (thinkingType !== 'only') efforts.off = 'off'
@@ -65,7 +65,7 @@ export function kimiReasoningEffortsOf(row) {
 export function toKimiPickerModels(payload) {
   const rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : []
   const seen = new Set()
-  const models = []
+  const models: any[] = []
   for (const row of rows) {
     const id = typeof row?.id === 'string' && row.id.trim() ? row.id.trim() : ''
     if (!id || seen.has(id)) continue
@@ -93,7 +93,7 @@ export function toKimiPickerModels(payload) {
   return models
 }
 
-export async function refreshKimiCatalog(session, options = {}) {
+export async function refreshKimiCatalog(session, options: any = {}) {
   const token = typeof session?.accessToken === 'string' ? session.accessToken.trim() : ''
   if (!token) return [...KIMI_MODELS]
   const tokenHash = kimiCatalogTokenHash(token)

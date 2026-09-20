@@ -16,7 +16,7 @@
  */
 /** When DSH sends neither session_id nor prompt_cache_key, still pin a constant. */
 export declare const GROK_STABLE_SESSION = "dsh-grok";
-export declare function grokCacheSessionId(key: any): string;
+export declare function grokCacheSessionId(key: any): string | undefined;
 export declare function resetGrokSystemPins(): void;
 /**
  * Pin the first leading system/developer blob per conversation. Later text
@@ -29,12 +29,12 @@ export declare function pinGrokSystemPrefix(conversationId: any, systemText: any
     pinned: any;
     extra: any;
 };
-export declare function grokConversationId(payload?: {}): string;
+export declare function grokConversationId(payload?: any): string;
 /**
  * grok-build `GrokRequestHeaders`. `reqId` is one UUID per DSH request so
  * retries keep the same id; `retryAttempt` becomes `x-grok-transient-retry`.
  */
-export declare function grokAffinityHeaders(cacheSessionId: any, extra?: {}): {};
+export declare function grokAffinityHeaders(cacheSessionId: any, extra?: any): {};
 export declare function applyGrokCache(payload: any): {
     payload: any;
     cacheSessionId: string;

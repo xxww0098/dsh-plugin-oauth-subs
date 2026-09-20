@@ -24,7 +24,7 @@ export function formatRelativeReset(resetAt: number, units: RelativeUnits, now =
   const days = Math.floor(totalMinutes / 1440)
   const hours = Math.floor((totalMinutes % 1440) / 60)
   const minutes = totalMinutes % 60
-  const bits = []
+  const bits: string[] = []
   if (days) bits.push(fill(units.day, days))
   if (hours) bits.push(fill(units.hour, hours))
   if (minutes || bits.length === 0) bits.push(fill(units.minute, minutes))

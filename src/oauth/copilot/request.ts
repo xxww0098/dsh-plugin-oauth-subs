@@ -33,7 +33,7 @@ function isGptModel(id) {
   return typeof id === 'string' && /\bgpt/i.test(id)
 }
 
-export function applyCopilotThinking(payload = {}, model) {
+export function applyCopilotThinking(payload: any = {}, model?) {
   const next = { ...payload }
   const effort = next.reasoning_effort
   const row = model ?? modelOf(next.model)
@@ -68,7 +68,7 @@ export function mapCopilotUsage(usage) {
 }
 
 /** Completions SSE omits usage unless the vendor is asked. Do not override an explicit value. */
-export function applyCopilotStreamUsage(payload = {}) {
+export function applyCopilotStreamUsage(payload: any = {}) {
   if (!payload || payload.stream !== true) return payload
   const current = payload.stream_options
   if (current && typeof current === 'object' && Object.hasOwn(current, 'include_usage')) return payload

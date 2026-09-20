@@ -24,7 +24,7 @@ export function parseOpencodeGoCookie(raw) {
   const text = String(raw ?? '').trim()
   if (!text) return undefined
   const parts = text.split(';').map((part) => part.trim()).filter(Boolean)
-  const picked = []
+  const picked: string[] = []
   for (const part of parts) {
     const eq = part.indexOf('=')
     if (eq <= 0) continue
@@ -58,7 +58,7 @@ export function normalizeOpencodeGoWorkspaceId(raw) {
 }
 
 /** Stable account id: workspace when known, else a hash of the secret. */
-export function opencodeGoAccountId({ workspaceId, apiKey, cookieHeader } = {}) {
+export function opencodeGoAccountId({ workspaceId, apiKey, cookieHeader }: any = {}) {
   const workspace = normalizeOpencodeGoWorkspaceId(workspaceId)
   if (workspace) return workspace
   const secret = String(apiKey ?? '').trim() || String(cookieHeader ?? '').trim()

@@ -44,7 +44,7 @@ export declare const CODEX_REASONING_EFFORTS: Readonly<{
     medium: "medium";
     high: "high";
     xhigh: "xhigh";
-    off: any;
+    off: null;
 }>;
 /** GPT-5.6 Sol / Terra / Luna and GPT-6 Astra add `max`. `ultra` is a
  *  Codex CLI multi-agent mode, not an API effort — it 400s. */
@@ -54,7 +54,7 @@ export declare const CODEX_REASONING_EFFORTS_56: Readonly<{
     medium: "medium";
     high: "high";
     xhigh: "xhigh";
-    off: any;
+    off: null;
 }>;
 /**
  * Mirrors Codex CLI `models.json` (openai/codex 0.153.4, 2026-09-04) plus
@@ -77,7 +77,7 @@ export declare const CODEX_MODELS: readonly ({
         medium: "medium";
         high: "high";
         xhigh: "xhigh";
-        off: any;
+        off: null;
     }>;
     fastTier: boolean;
     largeContext?: undefined;
@@ -91,7 +91,7 @@ export declare const CODEX_MODELS: readonly ({
         medium: "medium";
         high: "high";
         xhigh: "xhigh";
-        off: any;
+        off: null;
     }>;
     largeContext: number;
     fastTier: boolean;
@@ -105,7 +105,7 @@ export declare const CODEX_MODELS: readonly ({
         medium: "medium";
         high: "high";
         xhigh: "xhigh";
-        off: any;
+        off: null;
     }>;
     fastTier?: undefined;
     largeContext?: undefined;
@@ -123,7 +123,7 @@ export declare function codexModel(modelId: any): {
         medium: "medium";
         high: "high";
         xhigh: "xhigh";
-        off: any;
+        off: null;
     }>;
     fastTier: boolean;
     largeContext?: undefined;
@@ -137,7 +137,7 @@ export declare function codexModel(modelId: any): {
         medium: "medium";
         high: "high";
         xhigh: "xhigh";
-        off: any;
+        off: null;
     }>;
     largeContext: number;
     fastTier: boolean;
@@ -151,11 +151,11 @@ export declare function codexModel(modelId: any): {
         medium: "medium";
         high: "high";
         xhigh: "xhigh";
-        off: any;
+        off: null;
     }>;
     fastTier?: undefined;
     largeContext?: undefined;
-};
+} | undefined;
 export declare const codexFlow: {
     callbackPath: string;
     listen: {
@@ -169,10 +169,10 @@ export declare const codexFlow: {
     }): string;
 };
 export declare function codexProfileClaims(idToken: any): {
-    planType?: string;
-    emailAddress?: string;
+    planType?: string | undefined;
+    emailAddress?: string | undefined;
 };
-export declare function codexSession(tokens: any, fallback: any): {
+export declare function codexSession(tokens: any, fallback?: any): {
     planType?: any;
     emailAddress?: any;
     idToken?: any;
@@ -211,7 +211,7 @@ export declare function codexCredentialHeaders(): {
  * request Fast / Priority. Always sent on Codex-backend auth: `model=<id>`
  * or `model=<id>;tier=priority`.
  */
-export declare function codexRoutingHint(model: any, serviceTier: any): string;
+export declare function codexRoutingHint(model: any, serviceTier: any): string | undefined;
 export declare function codexUpstreamHeaders(session: any): {
     'openai-version': string;
     'openai-beta': string;
@@ -222,6 +222,8 @@ export declare function codexUpstreamHeaders(session: any): {
     'chatgpt-account-id': any;
 };
 export declare class OAuthEndpointError extends Error {
-    constructor(message: any, status: any, oauthCode: any);
+    status: any;
+    oauthCode: any;
+    constructor(message: any, status?: any, oauthCode?: any);
 }
 export declare function oauthError(response: any, label: any): Promise<OAuthEndpointError>;

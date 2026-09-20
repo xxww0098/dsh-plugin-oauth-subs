@@ -36,7 +36,7 @@ export function copilotHomePaths({ env = process.env, home = homedir() } = {}) {
   }
 }
 
-function tokenFromHosts(data) {
+function tokenFromHosts(data: Record<string, any>) {
   if (!data || typeof data !== 'object') return undefined
   const github = data['github.com'] ?? data.github
   if (github && typeof github === 'object') {
@@ -65,7 +65,7 @@ async function readJson(path) {
   }
 }
 
-export async function resolveCopilotCliCredentials(options = {}) {
+export async function resolveCopilotCliCredentials(options: any = {}) {
   const paths = copilotHomePaths(options)
   const hosts = tokenFromHosts(await readJson(paths.hosts))
   if (hosts) {
@@ -88,7 +88,7 @@ export function resolveCopilotEnvKey({ env = process.env } = {}) {
   return { githubToken: parseCopilotApiKey(raw), source: 'env' }
 }
 
-export async function importCopilotAuth(options = {}) {
+export async function importCopilotAuth(options: any = {}) {
   const cli = await resolveCopilotCliCredentials(options)
   if (cli) return { source: 'cli', session: cli }
   if (options.allowEnv !== false) {
@@ -101,13 +101,11 @@ export async function importCopilotAuth(options = {}) {
       return { source: 'env', session }
     }
   }
-  const error = new Error(COPILOT_IMPORT_EMPTY)
-  error.code = COPILOT_IMPORT_EMPTY
-  throw error
+  throw Object.assign(new Error(COPILOT_IMPORT_EMPTY), { code: COPILOT_IMPORT_EMPTY })
 }
 
 /** Build a stored session from a pasted GitHub token (controller useKey). */
-export function copilotSessionFromGithubToken(token, extra = {}) {
+export function copilotSessionFromGithubToken(token, extra: any = {}) {
   const github = parseCopilotApiKey(token)
   return copilotSession({
     accessToken: github,

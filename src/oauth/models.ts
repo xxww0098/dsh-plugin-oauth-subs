@@ -4,6 +4,7 @@
  */
 
 import { CODEX_MODELS, CODEX_REASONING_EFFORTS } from './codex/index.js'
+import { errorCode } from '../utils/http.js'
 import { GROK_MODELS } from './grok/index.js'
 import { GLM_MODELS } from './glm/index.js'
 import { KIRO_MODELS } from './kiro/index.js'
@@ -139,7 +140,7 @@ function harnessReasoningEfforts(model) {
   const raw = model.reasoningEfforts
   if (raw === false) return false
   if (!raw || typeof raw !== 'object') return undefined
-  const efforts = {}
+  const efforts: any = {}
   for (const [level, wire] of Object.entries(raw)) {
     if (!DSH_THINKING_LEVELS.includes(level)) {
       throw new Error(
@@ -152,7 +153,7 @@ function harnessReasoningEfforts(model) {
 }
 
 function toHarnessModel(model) {
-  const row = {
+  const row: any = {
     id: model.id,
     name: model.name,
     contextWindow: model.contextWindow,
@@ -170,7 +171,7 @@ function formatWindow(tokens) {
 }
 
 export function withPickerVariants(models) {
-  const out = []
+  const out: any[] = []
   for (const model of models) {
     out.push(model)
     const large = codexLargeContext(model.id)
@@ -394,7 +395,7 @@ export function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaM
   return providers
 }
 
-export function describeProviders(providers) {
+export function describeProviders(providers: Record<string, any>) {
   return Object.entries(providers).map(([provider, value]) => ({
     provider,
     api: value.api,
@@ -402,7 +403,7 @@ export function describeProviders(providers) {
   }))
 }
 
-export function catalogProviders({ prefix, origin, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels, clineModels }) {
+export function catalogProviders({ prefix, origin, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels = undefined, clineModels }: any) {
   const providers = buildProviders({
     prefix,
     origin,
@@ -429,7 +430,7 @@ export function catalogProviders({ prefix, origin, cursorModels, ollamaModels, k
   return providers
 }
 
-export function catalogKeys(providers) {
+export function catalogKeys(providers: Record<string, any>) {
   return Object.entries(providers).flatMap(([provider, value]) =>
     (value.models ?? []).map((model) => modelKey(provider, model.id)),
   )
@@ -459,7 +460,7 @@ export function familyCatalogKeys(catalog, family) {
   return catalogKeys(catalog).filter((key) => familyOfKey(key) === family)
 }
 
-export function describeCatalog(providers, { enabledKeys, loggedIn } = {}) {
+export function describeCatalog(providers: Record<string, any>, { enabledKeys, loggedIn }: any = {}) {
   const enabled = enabledKeys === undefined ? null : new Set(enabledKeys)
   return Object.entries(providers).map(([provider, value]) => {
     const family = familyOfProvider(provider)
@@ -498,8 +499,12 @@ function assertKeyList(keys, label) {
  */
 export class ModelSwitch {
   #selectionExplicit = false
+  declare path: string | undefined
+  declare disabled: Set<string>
+  declare enabled: Set<string>
+  declare ready: Promise<any>
 
-  constructor({ path } = {}) {
+  constructor({ path }: any = {}) {
     this.path = path
     this.disabled = new Set()
     this.enabled = new Set()
@@ -517,7 +522,7 @@ export class ModelSwitch {
       this.enabled = new Set(enabled.filter((key) => typeof key === 'string' && key.includes('/')))
       this.#selectionExplicit = raw?.selectionExplicit === true
     } catch (error) {
-      if (error && error.code !== 'ENOENT') {
+      if (error && errorCode(error) !== 'ENOENT') {
         // Corrupt file: keep all-on rather than crash the proxy.
       }
     }
@@ -644,7 +649,7 @@ export class ModelSwitch {
 }
 
 
-export function filterProviders(providers, selected) {
+export function filterProviders(providers: Record<string, any>, selected) {
   if (selected === undefined) return providers
   if (!Array.isArray(selected) || selected.some((key) => typeof key !== 'string')) {
     throw new Error('enabled models must be an array of model keys')
@@ -746,14 +751,14 @@ function sameOpencodeGoRoute(route, existing, models) {
  * `x-opencode-session` header. Without `OPENCODE_API_KEY` nothing is served,
  * so DSH's model list stays clean.
  */
-export async function ensureOpencodeGoRoute(settings, { selected, apiKeySet = true } = {}) {
+export async function ensureOpencodeGoRoute(settings, { selected, apiKeySet = true }: any = {}) {
   if (settings == null || typeof settings.mutate !== 'function') return { status: 'unavailable' }
   const providers = await peekPiAiProviders(settings)
   if (providers === undefined) return { status: 'unreadable' }
   const locked = apiKeySet === false
   const selection = selected === undefined ? null : new Set(selected)
-  const mutations = []
-  const routes = []
+  const mutations: any[] = []
+  const routes: any[] = []
 
   // Built-in catalog route: never written or refreshed here. Only the exact
   // profile the plugin used to auto-create is removed; a user's own

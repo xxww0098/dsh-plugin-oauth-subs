@@ -252,7 +252,7 @@ function randomHex(bytes = 16) {
 }
 
 /** ZCode Desktop 3.10.1 fingerprint for api.z.ai / open.bigmodel.cn Coding Plan hops. */
-export function glmDesktopHeaders(sessionId) {
+export function glmDesktopHeaders(sessionId?) {
   return {
     'user-agent': GLM_USER_AGENT,
     'X-ZCode-App-Version': GLM_APP_VERSION,
@@ -267,7 +267,7 @@ export function glmDesktopHeaders(sessionId) {
   }
 }
 
-export function glmUpstreamHeaders(session, sessionId) {
+export function glmUpstreamHeaders(session, sessionId?) {
   return {
     authorization: `Bearer ${session.accessToken}`,
     accept: 'application/json',
@@ -282,7 +282,7 @@ export function glmAnthropicHeaders(session, sessionId) {
   }
 }
 
-function codingPlanJsonHeaders(extra = {}) {
+function codingPlanJsonHeaders(extra: any = {}) {
   return {
     accept: 'application/json',
     'content-type': 'application/json',
@@ -291,7 +291,7 @@ function codingPlanJsonHeaders(extra = {}) {
   }
 }
 
-function cliJsonHeaders(extra = {}) {
+function cliJsonHeaders(extra: any = {}) {
   return {
     accept: 'application/json',
     'content-type': 'application/json',
@@ -393,7 +393,7 @@ export async function glmCliInit({ region = 'zai', fetchFn = fetch, pollToken = 
   return { ...started, pollToken, region: resolved }
 }
 
-export async function glmCliPoll({ flowId, pollToken, fetchFn = fetch } = {}) {
+export async function glmCliPoll({ flowId, pollToken, fetchFn = fetch }: any = {}) {
   const response = await fetchFn(`${GLM_CLI_POLL_URL}/${encodeURIComponent(flowId)}`, {
     method: 'GET',
     headers: cliJsonHeaders({ authorization: `Bearer ${pollToken}` }),
@@ -474,7 +474,7 @@ export async function mintGlmApiKey(oauthAccessToken, { fetchFn = fetch, region 
   return `${apiKey}.${secretKey}`
 }
 
-export function glmSession({ accessToken, account, accountId, region = 'zai', zcodeJwt } = {}) {
+export function glmSession({ accessToken, account, accountId, region = 'zai', zcodeJwt }: any = {}) {
   if (typeof accessToken !== 'string' || !accessToken) {
     throw new Error('glm session needs an access token')
   }
@@ -489,7 +489,7 @@ export function glmSession({ accessToken, account, accountId, region = 'zai', zc
   }
 }
 
-export async function fetchGlmUserinfo(source, { fetchFn = fetch, region } = {}) {
+export async function fetchGlmUserinfo(source, { fetchFn = fetch, region }: any = {}) {
   const resolved = normalizeGlmRegion(region ?? source?.region)
   const bearer = trimmed(source?.zcodeJwt) ?? trimmed(source?.oauthAccess) ?? trimmed(source?.accessToken)
   if (!bearer) return undefined

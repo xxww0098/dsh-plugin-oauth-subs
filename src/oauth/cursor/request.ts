@@ -59,7 +59,7 @@ function storeBlob(data, blobStore) {
 }
 
 function openaiTools(payload) {
-  const tools = []
+  const tools: any[] = []
   for (const tool of payload?.tools ?? []) {
     const fn = tool?.function ?? tool
     const name = typeof fn?.name === 'string' ? fn.name : undefined
@@ -76,8 +76,8 @@ function openaiTools(payload) {
 }
 
 function parseTurns(messages) {
-  const systemParts = []
-  const turns = []
+  const systemParts: any[] = []
+  const turns: any[] = []
   let current
   let lastRole
   for (const msg of messages ?? []) {
@@ -128,7 +128,7 @@ function parseTurns(messages) {
   let userText = ''
   let inFlight
   let continuation = false
-  let toolResults = []
+  let toolResults: any[] = []
   if (current) {
     const last = current.steps.at(-1)
     const unresolved = current.steps.some((step) => step.kind === 'toolCall' && !step.result)
@@ -163,8 +163,8 @@ function vendorEffort(value) {
   return key
 }
 
-export function cursorModelParameters(payload = {}) {
-  const parameters = []
+export function cursorModelParameters(payload: any = {}) {
+  const parameters: any[] = []
   const effort = vendorEffort(payload.reasoning_effort)
   if (effort) parameters.push({ id: 'reasoning', value: effort })
   if (peelCursorFastSuffix(payload.model).requestedFast) {
@@ -178,13 +178,13 @@ export function cursorWireModelId(model) {
   return peelCursorFastSuffix(raw).modelId || 'composer-2'
 }
 
-export function openaiToCursor(payload = {}, { conversationId } = {}) {
+export function openaiToCursor(payload: any = {}, { conversationId }: any = {}) {
   const resolvedId = cursorConversationId(payload, conversationId)
   const parsed = parseTurns(payload.messages)
   const { pinned, extra } = pinCursorSystemPrefix(resolvedId, parsed.systemPrompt)
   const blobStore = new Map()
   const systemPrompt = extra ? `${pinned}\n\n${extra}` : pinned
-  const rootPromptBlobs = []
+  const rootPromptBlobs: any[] = []
   if (pinned) {
     rootPromptBlobs.push(storeBlob(Buffer.from(JSON.stringify({ role: 'system', content: pinned }), 'utf8'), blobStore))
   }
@@ -287,11 +287,11 @@ export function openaiToCursor(payload = {}, { conversationId } = {}) {
   }
 }
 
-export function mapCursorUsage({ promptTokens, completionTokens, cachedTokens } = {}) {
+export function mapCursorUsage({ promptTokens, completionTokens, cachedTokens }: any = {}) {
   const prompt = Number.isFinite(promptTokens) ? promptTokens : 0
   const completion = Number.isFinite(completionTokens) ? completionTokens : 0
   const cached = Number.isFinite(cachedTokens) ? cachedTokens : 0
-  const usage = {
+  const usage: any = {
     prompt_tokens: prompt,
     completion_tokens: completion,
     total_tokens: prompt + completion,
@@ -300,7 +300,7 @@ export function mapCursorUsage({ promptTokens, completionTokens, cachedTokens } 
   return usage
 }
 
-export function cursorToOpenai(collected, { model, id = `chatcmpl-${Date.now()}`, conversationId } = {}) {
+export function cursorToOpenai(collected, { model, id = `chatcmpl-${Date.now()}`, conversationId }: any = {}) {
   const toolCalls = collected.toolCalls ?? []
   const finish = toolCalls.length > 0 ? 'tool_calls' : (collected.finishReason ?? 'stop')
   return {
@@ -323,7 +323,7 @@ export function cursorToOpenai(collected, { model, id = `chatcmpl-${Date.now()}`
   }
 }
 
-export function cursorToOpenaiChunk(delta, { model, id, done = false, finishReason, usage } = {}) {
+export function cursorToOpenaiChunk(delta, { model, id, done = false, finishReason, usage }: any = {}) {
   return {
     id,
     object: 'chat.completion.chunk',
@@ -346,13 +346,13 @@ export function cursorToOpenaiChunk(delta, { model, id, done = false, finishReas
 }
 
 export function createCursorOpenaiStream({ model, id, conversationId }) {
-  const collected = { text: '', thinking: '', toolCalls: [], usage: {} }
+  const collected: any = { text: '', thinking: '', toolCalls: [], usage: {} }
   let started = false
   return {
     collected,
     conversationId,
     push(event) {
-      const chunks = []
+      const chunks: any[] = []
       if (!started) {
         started = true
         chunks.push(cursorToOpenaiChunk({ role: 'assistant', text: '' }, { model, id }))
@@ -366,7 +366,7 @@ export function createCursorOpenaiStream({ model, id, conversationId }) {
         chunks.push(cursorToOpenaiChunk({ thinking: event.thinking }, { model, id }))
       }
       if (event?.toolCall) {
-        const call = {
+        const call: any = {
           id: event.toolCall.id || `call_${collected.toolCalls.length + 1}`,
           type: 'function',
           function: {

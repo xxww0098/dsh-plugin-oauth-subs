@@ -38,7 +38,7 @@ function systemText(message) {
 }
 
 function splitLeadingSystem(messages) {
-  const head = []
+  const head: any[] = []
   let index = 0
   while (index < messages.length && messages[index]?.role === 'system') {
     head.push(messages[index])
@@ -71,7 +71,7 @@ export function stabilizeKimiSystemPrefix(messages, sessionId) {
   return [...existing.head, ...rest, ...parked]
 }
 
-export function applyKimiCache(payload = {}) {
+export function applyKimiCache(payload: any = {}) {
   const cacheSessionId = kimiCacheSessionId(payload.session_id)
     ?? kimiCacheSessionId(payload.prompt_cache_key)
     ?? KIMI_STABLE_SESSION

@@ -19,7 +19,7 @@ const CURSOR_VISION = Object.freeze(['text', 'image'])
 const EFFORT_SUFFIXES = Object.freeze(['extra-high', 'minimal', 'xhigh', 'medium', 'high', 'low', 'none'])
 const CONTEXT_SUFFIXES = Object.freeze(['1m', '272k', '256k', '200k', '300k'])
 
-const cached = { tokenHash: '', models: /** @type {any[] | undefined} */ (undefined), expiresAt: 0 }
+const cached: { tokenHash: string; models?: any[]; expiresAt: number } = { tokenHash: '', models: undefined, expiresAt: 0 }
 
 export function resetCursorCatalogCache() {
   cached.tokenHash = ''
@@ -171,7 +171,7 @@ function asPositive(value) {
 }
 
 function usableRows(models) {
-  const out = []
+  const out: any[] = []
   for (const model of models ?? []) {
     const id = typeof model?.id === 'string' && model.id.trim()
       ? model.id.trim()
@@ -191,7 +191,7 @@ function usableRows(models) {
 }
 
 function parameterizedRows(models) {
-  const out = []
+  const out: any[] = []
   for (const model of models ?? []) {
     const id = typeof model?.name === 'string' && model.name.trim() ? model.name.trim() : ''
     if (!id) continue
@@ -262,7 +262,7 @@ export function mergeCursorStaticFloor(live) {
 }
 
 /** Collapse live ids into one picker row per family, plus `{family}-fast` when a source id is Fast. Empty input → []. */
-export function toCursorPickerModels(usable, parameterized = []) {
+export function toCursorPickerModels(usable, parameterized: any[] = []) {
   const groups = new Map()
   for (const row of [...usableRows(usable), ...parameterizedRows(parameterized)]) {
     if (isCursorInternalModel(row.id, row.name)) continue
@@ -276,7 +276,7 @@ export function toCursorPickerModels(usable, parameterized = []) {
     if (row.hasFast) current.hasFast = true
     groups.set(family, current)
   }
-  const models = []
+  const models: any[] = []
   for (const [id, group] of groups) {
     const cleaned = group.names.map(cleanPickerName).filter(Boolean)
     const name = id === 'default'
@@ -302,7 +302,7 @@ export function toCursorPickerModels(usable, parameterized = []) {
   return models
 }
 
-export async function refreshCursorCatalog(session, options = {}) {
+export async function refreshCursorCatalog(session, options: any = {}) {
   const token = typeof session?.accessToken === 'string' ? session.accessToken.trim() : ''
   if (!token) return mergeCursorStaticFloor([])
   // The live list is region-filtered: the egress (direct vs configured

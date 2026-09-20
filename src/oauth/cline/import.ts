@@ -60,7 +60,7 @@ export function clineSessionFromProvidersFile(data) {
   return undefined
 }
 
-export async function resolveClineCliCredentials(options = {}) {
+export async function resolveClineCliCredentials(options: any = {}) {
   for (const path of clineHomePaths(options)) {
     try {
       const session = clineSessionFromProvidersFile(JSON.parse(await readFile(path, 'utf8')))
@@ -72,10 +72,8 @@ export async function resolveClineCliCredentials(options = {}) {
   return undefined
 }
 
-export async function importClineAuth(options = {}) {
+export async function importClineAuth(options: any = {}) {
   const cli = await resolveClineCliCredentials(options)
   if (cli) return { source: 'cli', session: cli }
-  const error = new Error(CLINE_IMPORT_EMPTY)
-  error.code = CLINE_IMPORT_EMPTY
-  throw error
+  throw Object.assign(new Error(CLINE_IMPORT_EMPTY), { code: CLINE_IMPORT_EMPTY })
 }

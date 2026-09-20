@@ -13,6 +13,8 @@
  * prompt should have hit.
  */
 
+import { describeError } from './http.js'
+
 const STREAM_ENDED = /stream ended before a terminal response event/i
 const FETCH_FAILED = /fetch failed/i
 const TRANSPORT = /\bTRANSPORT\b/
@@ -55,7 +57,7 @@ export function parseSessionEvents(text) {
     if (!Array.isArray(parsed)) throw new Error('JSON root must be an array of events')
     return parsed
   }
-  const events = []
+  const events: any[] = []
   const lines = trimmed.split(/\r?\n/)
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim()
@@ -63,7 +65,7 @@ export function parseSessionEvents(text) {
     try {
       events.push(JSON.parse(line))
     } catch (error) {
-      throw new Error(`invalid JSONL on line ${i + 1}: ${error.message}`)
+      throw new Error(`invalid JSONL on line ${i + 1}: ${describeError(error)}`)
     }
   }
   return events
@@ -144,7 +146,7 @@ function toolArgsOf(data) {
 }
 
 function collectToolErrors(events) {
-  const errors = []
+  const errors: any[] = []
   let lastStep = null
   for (const event of events) {
     if (typeof event.data?.step === 'number') lastStep = event.data.step
@@ -183,7 +185,7 @@ function countToolCauses(errors) {
  * assistant/attempt and assistant/message. Top-level error fields miss these. */
 function streamFailureTexts(data) {
   if (!Array.isArray(data?.stream)) return []
-  const out = []
+  const out: string[] = []
   for (const frame of data.stream) {
     const failure = frame?.chunk?.reason?.failure
     if (failure?.message) out.push(failure.message)
@@ -214,7 +216,7 @@ function transportScanText(value) {
 }
 
 function collectTransportFaults(events) {
-  const faults = []
+  const faults: any[] = []
   for (const event of events) {
     if (event.type === 'assistant/chunk' || event.type === 'tool-call-chunks' || event.type === 'reasoning-chunks') {
       continue
@@ -240,8 +242,8 @@ function collectTransportFaults(events) {
 }
 
 function collectPrefixMarkers(events) {
-  const compaction = []
-  const rebuild = []
+  const compaction: number[] = []
+  const rebuild: number[] = []
   let headers = 0
   for (const event of events) {
     if (typeof event.time !== 'number') continue

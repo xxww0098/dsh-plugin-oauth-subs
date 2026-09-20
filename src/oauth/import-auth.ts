@@ -20,6 +20,7 @@
 import { readdir, readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { errorCode } from '../utils/http.js'
 import { codexProfileClaims, codexSession } from './codex/index.js'
 import { GROK_CLIENT_ID, grokSession } from './grok/index.js'
 import { glmSession } from './glm/index.js'
@@ -62,7 +63,7 @@ async function readJson(path) {
   try {
     return JSON.parse(await readFile(path, 'utf8'))
   } catch (error) {
-    if (error.code === 'ENOENT') return undefined
+    if (errorCode(error) === 'ENOENT') return undefined
     throw error
   }
 }
@@ -213,7 +214,7 @@ function collectGrokCliEntries(raw) {
   const direct = grokCliEntryTokens(raw, '')
   if (direct) return [direct]
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return []
-  const out = []
+  const out: any[] = []
   for (const [key, value] of Object.entries(raw)) {
     const entry = grokCliEntryTokens(value, key)
     if (entry) {
@@ -266,7 +267,7 @@ function grokSessionFromTokens(tokens, lastRefresh) {
 }
 
 export async function importCodexAuth() {
-  const tried = []
+  const tried: any[] = []
   const paths = [homeFile('.codex', 'auth.json'), homeFile('.hermes', 'auth.json')]
   for (const path of paths) {
     tried.push(path)
@@ -289,7 +290,7 @@ export async function importCodexAuth() {
 }
 
 export async function importGrokAuth(paths = grokAuthSearchPaths()) {
-  const tried = []
+  const tried: any[] = []
   for (const path of paths) {
     tried.push(path)
     const raw = await readJson(path)
@@ -332,10 +333,10 @@ function glmZcodeProviderUsable(value) {
 }
 
 export function glmKeyFromZcodeConfig(raw) {
-  const providers = raw?.provider ?? raw?.providers ?? raw
+  const providers: any = raw?.provider ?? raw?.providers ?? raw
   if (!providers || typeof providers !== 'object') return undefined
-  const found = []
-  for (const [key, value] of Object.entries(providers)) {
+  const found: any[] = []
+  for (const [key, value] of Object.entries<any>(providers)) {
     if (!/zai|glm|coding.?plan|start.?plan|bigmodel|zcode/i.test(key)) continue
     const options = value?.options ?? value
     const apiKey = options?.apiKey ?? options?.api_key ?? value?.apiKey
@@ -413,7 +414,7 @@ function tokensFromAntigravityRaw(raw) {
 async function readAntigravityJsonFiles(dir) {
   try {
     const names = await readdir(dir)
-    const out = []
+    const out: any[] = []
     for (const name of names) {
       if (!/^antigravity(-.+)?\.json$/i.test(name)) continue
       const raw = await readJson(join(dir, name))
@@ -421,13 +422,13 @@ async function readAntigravityJsonFiles(dir) {
     }
     return out
   } catch (error) {
-    if (error.code === 'ENOENT') return []
+    if (errorCode(error) === 'ENOENT') return []
     throw error
   }
 }
 
-export async function importAntigravityAuth({ paths, fetchFn = fetch } = {}) {
-  const tried = []
+export async function importAntigravityAuth({ paths, fetchFn = fetch }: any = {}) {
+  const tried: any[] = []
   const candidates = paths ?? [
     ...antigravityAuthSearchPaths(),
     ...(await readAntigravityJsonFiles(cliProxyAuthDir())).map((row) => row.path),
@@ -466,7 +467,7 @@ export async function importAntigravityAuth({ paths, fetchFn = fetch } = {}) {
 }
 
 export async function importGlmAuth(paths = glmAuthSearchPaths()) {
-  const tried = []
+  const tried: any[] = []
   for (const path of paths) {
     tried.push(path)
     const raw = await readJson(path)
@@ -515,7 +516,7 @@ async function importKiroFromCache(dir, tried, seenIds, seenPaths) {
   try {
     names = await readdir(dir)
   } catch (error) {
-    if (error.code === 'ENOENT') return []
+    if (errorCode(error) === 'ENOENT') return []
     throw error
   }
   const files = new Map()
@@ -525,7 +526,7 @@ async function importKiroFromCache(dir, tried, seenIds, seenPaths) {
     const raw = await readJson(path)
     if (raw !== undefined) files.set(name, { path, raw })
   }
-  const registrations = []
+  const registrations: any[] = []
   for (const { raw } of files.values()) {
     if (isClientRegistration(raw)) registrations.push(raw)
   }
@@ -539,7 +540,7 @@ async function importKiroFromCache(dir, tried, seenIds, seenPaths) {
     'kiro-auth-token.json',
     ...[...files.keys()].filter((name) => name !== 'kiro-auth-token.json'),
   ]
-  const found = []
+  const found: any[] = []
   for (const name of ordered) {
     const row = files.get(name)
     if (!row) continue
@@ -561,11 +562,11 @@ async function importKiroFromCache(dir, tried, seenIds, seenPaths) {
   return found
 }
 
-export async function importKiroAuth(paths) {
+export async function importKiroAuth(paths?) {
   const list = paths ?? kiroAuthSearchPaths()
   const scanCache = paths == null
-  const tried = []
-  const found = []
+  const tried: any[] = []
+  const found: any[] = []
   const seenIds = new Set()
   const seenPaths = new Set()
   for (const path of list) {

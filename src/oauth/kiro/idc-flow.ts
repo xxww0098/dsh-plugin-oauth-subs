@@ -15,7 +15,7 @@ const DEFAULT_INTERVAL_SEC = 5
 const DEFAULT_EXPIRES_IN_SEC = 900
 
 function sleep(ms, signal) {
-  return new Promise((resolve, reject) => {
+  return new Promise<void>((resolve, reject) => {
     if (signal.aborted) {
       reject(signal.reason instanceof Error ? signal.reason : new Error('aborted'))
       return
@@ -32,7 +32,7 @@ function sleep(ms, signal) {
   })
 }
 
-async function postJson(url, body, fetchFn, signal) {
+async function postJson(url, body, fetchFn, signal?) {
   const response = await fetchFn(url, {
     method: 'POST',
     headers: {
@@ -52,7 +52,7 @@ async function postJson(url, body, fetchFn, signal) {
   return { ok: response.ok, status: response.status, body: parsed, text }
 }
 
-export async function registerKiroOidcClient({ region = KIRO_DEFAULT_REGION, startUrl, fetchFn = fetch, signal } = {}) {
+export async function registerKiroOidcClient({ region = KIRO_DEFAULT_REGION, startUrl, fetchFn = fetch, signal }: any = {}) {
   const issuer = startUrl || BUILDER_ID_START_URL
   const result = await postJson(`${oidcEndpoint(region)}/client/register`, {
     clientName: 'dsh-plugin-oauth-subs',
@@ -90,6 +90,8 @@ export function kiroIdcSession(tokens, registered, { kind = 'builder' } = {}) {
 }
 
 export class KiroIdcFlowManager {
+  declare attempts: Map<string, any>
+
   constructor() {
     this.attempts = new Map()
   }
@@ -141,7 +143,7 @@ export class KiroIdcFlowManager {
     })
     tokenPromise.catch(() => undefined)
 
-    const settle = (error, session) => {
+    const settle = (error, session?) => {
       if (this.attempts.get(provider) !== attempt) return
       this.attempts.delete(provider)
       if (error) rejectToken(error)

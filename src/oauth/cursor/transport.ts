@@ -6,7 +6,7 @@ import { cursorConversationId } from './cache.js'
 import { cursorToOpenai, createCursorOpenaiStream, openaiToCursor } from './request.js'
 import { runCursorAgent } from './h2-session.js'
 
-export async function forwardCursor(response, { payload, cacheSessionId, stream, session, signal, runFn = runCursorAgent }) {
+export async function forwardCursor(response, { payload, cacheSessionId, stream, session, signal, runFn = runCursorAgent }: any) {
   const conversationId = cacheSessionId ?? cursorConversationId(payload)
   const built = openaiToCursor(payload, { conversationId })
   const model = built.pickerModel || built.modelId

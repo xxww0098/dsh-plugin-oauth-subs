@@ -14,4 +14,4 @@ export declare const GLM_BOOST_HINT: Readonly<{
 export declare function glmCardBoost(family: any, locale?: string): {
     label: "150%配额" | "150% quota";
     hint: "ZCode 登录使用享 150%配额" | "ZCode session: 150% quota";
-};
+} | undefined;

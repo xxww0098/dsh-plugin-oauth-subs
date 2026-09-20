@@ -20,7 +20,11 @@ import {
 
 export const OLLAMA_CATALOG_TTL_MS = 5 * 60_000
 
-const cached = { tokenHash: '', models: /** @type {any[] | undefined} */ (undefined), expiresAt: 0 }
+const cached: { tokenHash: string; models: any[] | undefined; expiresAt: number } = {
+  tokenHash: '',
+  models: undefined,
+  expiresAt: 0,
+}
 
 export function resetOllamaCatalogCache() {
   cached.tokenHash = ''
@@ -39,7 +43,7 @@ export function ollamaCatalogModels() {
 export function toOllamaPickerModels(tags) {
   const rows = Array.isArray(tags?.models) ? tags.models : Array.isArray(tags) ? tags : []
   const seen = new Set()
-  const models = []
+  const models: any[] = []
   for (const row of rows) {
     const id = typeof row?.name === 'string' && row.name.trim()
       ? row.name.trim()
@@ -92,7 +96,7 @@ async function applyOllamaShowWindows(models, options) {
   })
 }
 
-export async function refreshOllamaCatalog(session, options = {}) {
+export async function refreshOllamaCatalog(session, options: any = {}) {
   const token = typeof session?.accessToken === 'string' ? session.accessToken.trim() : ''
   if (!token) return [...OLLAMA_MODELS]
   const tokenHash = ollamaCatalogTokenHash(token)

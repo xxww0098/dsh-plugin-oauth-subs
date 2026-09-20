@@ -13,7 +13,7 @@ import { CLINE_DEFAULT_CONTEXT, CLINE_DEFAULT_MAX_TOKENS, CLINE_INPUT, CLINE_MOD
 
 export const CLINE_CATALOG_TTL_MS = 10 * 60_000
 
-const cached = { models: /** @type {any[] | undefined} */ (undefined), expiresAt: 0 }
+const cached: { models?: any[]; expiresAt: number } = { models: undefined, expiresAt: 0 }
 
 export function resetClineCatalogCache() {
   cached.models = undefined
@@ -71,8 +71,9 @@ function pickerRow(entry, { facts, free }) {
 export function toClinePickerModels(payload, { models = CLINE_MODELS } = {}) {
   const facts = factTable(models)
   const seen = new Set()
-  const rows = []
-  for (const [bucket, free] of [['recommended', false], ['free', true]]) {
+  const rows: any[] = []
+  const buckets: Array<[string, boolean]> = [['recommended', false], ['free', true]]
+  for (const [bucket, free] of buckets) {
     const list = Array.isArray(payload?.[bucket]) ? payload[bucket] : []
     for (const entry of list) {
       const row = pickerRow(entry, { facts, free })
@@ -84,7 +85,7 @@ export function toClinePickerModels(payload, { models = CLINE_MODELS } = {}) {
   return rows
 }
 
-export async function refreshClineCatalog(session, options = {}) {
+export async function refreshClineCatalog(session, options: any = {}) {
   const ttlMs = options.ttlMs ?? CLINE_CATALOG_TTL_MS
   if (cached.models?.length && Date.now() < cached.expiresAt) return cached.models
   try {

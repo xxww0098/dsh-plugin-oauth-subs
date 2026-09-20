@@ -2,6 +2,46 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-19：catch 变量收紧（useUnknownInCatchVariables，25 条）；noImplicitAny 实测**不是**可清扫项
+
+**现象**：`strictNullChecks` 落地后逐个开关实测——`strictFunctionTypes` / `strictBindCallApply` / `strictPropertyInitialization` / `noImplicitThis` / `alwaysStrict` 全是 **0**（`declare` 字段那一轮顺手清掉了），`--strict` 只剩 **25** 条 `useUnknownInCatchVariables`；而 `--noImplicitAny` 是 **2082** 条。
+**根因**：25 条全是 `catch (error)` 后直接读 `error.message` / `error?.code`——把 catch 变量从 `any` 收紧成 `unknown` 正是这个开关要抓的东西。2082 条里 **1726 条**是 TS7006「参数隐式 any」（`value` 139 / `session` 128 / `payload` 73 / `id` 62 …），绝大多数**只能标 `: any`**。
+**修复**：在 [`src/utils/http.ts`](src/utils/http.ts) 里 `describeError(error: unknown)` 旁边加两个同风格的无 cast 助手 `errorCode(error)` / `errorMessage(error)`（用 `'code' in error` 收窄），替换 7 个文件 25 处 `error.message` / `error?.code`。开启 `"useUnknownInCatchVariables": true`，695 tests 全绿。
+**判断（不做的事）**：`noImplicitAny` **不清扫**。给 1726 个参数补 `: any` 只是把「隐式」变「显式」，不产生任何安全性，属于用注解掩盖诊断；它需要的是逐模块设计类型面。这条结论已写进棘轮脚本头部，避免以后有人再当清扫项试一遍。
+**收口**：棘轮第二项改名 `strict`，显式传 `--strictNullChecks --useUnknownInCatchVariables`；两项基线均 **0**。
+## 2026-09-19：strictNullChecks 收敛 431→0 并开关落地，棘轮两项归零
+
+**现象**：`noCheck` 摘掉后宿主半已真检查，但 `strictNullChecks` 仍未开；`npx tsc --noEmit --strictNullChecks` 报 **431** 条（TS2345 217 / TS2339 152 / TS18048 31 / TS2322 18 …），`controller.ts`、`cursor/proto.ts`、`devin/proto.ts` 是重灾区。
+**根因**：**369 条**来自推断规则而非真的 null 安全问题——`const xs = []` 在 strictNullChecks 下被推断成 `never[]`（之后每次 push / 读取都报 never），`let x = undefined` 被推断成 `undefined`。另有 4 个家族 catalog 的模块级缓存写成 `models: /** @type {any[] | undefined} */ (undefined)`：那个 JSDoc 在 `.ts` 里**根本不生效**，于是 `models` 的类型真的就是 `undefined`。
+**修复**：在声明处补显式类型——110 处 `const x: any[] = []`、4 处 catalog 缓存改成真类型注解、7 处参数默认值 `= []`；`listStoredSessions` 改 `flatMap` 丢掉不可能出现的 `undefined` 行（一处消掉 controller 二十余条）。再把 6 个我**上一轮加的** `= undefined` 默认值补外层 `: any`。剩 20 条逐条加守卫或提升局部变量，**不用 cast**。宿主半 **431→0**。
+**并行**：`src/apikey/**` + `src/utils/**` + `src/index.ts`（24→0）由 subagent 同时进行，文件集与 `src/oauth/**` 不相交；`src/oauth/cline/**` 是维护者当时正在改的文件，**当时全程未动**——等它停笔两小时后再清掉最后 17 条（同为 `never[]` 家族）。
+**踩坑**：strictNullChecks 下 `key = undefined` 不是「可选」，而是把该键定型成字面量 `undefined`，反而拒绝真值；要修只能给整个解构参数加外层 `: any`——写成 `key: any = undefined` 是**重命名**（同 2026-09-19 那条的 `runFn` 陷阱）。
+**收口**：`"strictNullChecks": true` 已进 `tsconfig.json`——宿主半现在**真做 null 检查**，`npm run build` 会拦。棘轮两项基线均归 **0**，并分别显式传 `--noCheck false` / `--strictNullChecks`：任一开关将来被移除都会立刻失败。
+
+## 2026-09-19：宿主半 `noCheck` 下的 1917 条类型错误——逐条核对全是声明缺口，不是 bug，并加债务棘轮
+
+**现象**：`npx tsc --noEmit --noCheck false` 报 1917 条（TS2339 1625 / TS2554 117 / TS2353 80 / TS2551 53 …），而 `tsconfig.json` 的 `noCheck: true` 让 `npm run build` 一条都不查，`tests 全绿`与`类型安全`是两件事。
+**根因**：宿主类是 JS 风格——构造函数里 `this.x = …` 但类体不声明字段，tsc 于是把每个 `this.<字段>` 都当「属性不存在」。把 53 条 TS2551 与 117 条 TS2554 逐条追到定义后确认**没有一条是真错**：属性都在构造函数里赋值（`AuthController` 的 `outboundProxy`/`setOutboundProxy` 由 `src/index.ts` 外部挂载），省略的尾参在函数体里都有 `??` / `=== undefined` 兜底。`AuthController` 一个类占 620 条。
+**修复**：四步都**零运行时改动**，不用 cast、不新增抑制。① 调用方合法省略的尾参在**定义处**标 `?`（`saveSession` options、`deleteSession` source、`refreshQuota` accountId、`settle` / `h2-session finish`、cache 家族的 `explicit`、`QuotaStore.peek/clear/refresh/ensure/consume` …），TS2554 归零。
+② 给 JS 风格类补 `declare` 字段（`AuthController` 58 个、`TokenManager` / `CommitGate` / `QuotaStore` / `ModelSwitch` / `Pump` / `OpencodeGoStore` / 四个 FlowManager / 三个错误类），`error.code = …` 改 `Object.assign(new Error(…), { code })`。
+③ `fn({ a, b = 1 } = {})` 的选项对象，tsc 只把**带默认值的键**算进参数类型，于是每个 `fn({ 必填键 })` 都报「多余属性」；同理**一个默认值都没有**的解构参数被推断成 `{}`，`fn(options = {})` 这种整体形参也一样。这些选项袋统一在参数上标 `: any`（`update.ts`、各 session builder、各 `toOpenai*` 翻译函数、`runFn`/`fetchFn` 测试缝、各家族 `options`/`payload`）。
+④ 无默认值键的解构参数、`options = {}` 形参、被条件扩展的局部对象字面量，以及 40 余处上游 JSON / `Object.entries` 的 `unknown`——同一套按需 `: any` 收尾。合计 **1917→0**。
+**踩坑 1**：解构里写 `{ runFn: any = f }` 是**重命名绑定**（把局部变量改名成 `any`），不是注解；没有 `= {}` 默认值时注解必须写在花括号外——`{ runFn = f }: any`。写错会静默丢掉 `runFn`，cursor/devin 4 个传输测试立刻 502，tsc 报 `TS2304 Cannot find name 'runFn'`——见到这个码先查解构。
+**踩坑 2**：批量注解别用「标识符 + `= {}`」的宽松正则，它同时踩两个雷：把语句位置的赋值 `record = {}` 改成 `record: any = {}`（变成 label + 给未定义变量 `any` 赋值，运行期 `ReferenceError: any is not defined`，只有 antigravity 那条路径会炸），以及把已注解的 `: any = {}` 再注一遍并**复制** `= {}`（190 处）。两处都是 `npm test` 抓出来的——批量改类型后必须跑全量测试，并 grep 生成物确认没有注解漏进 `lib/*.js`。
+**收口**：归零后删掉 `tsconfig.json` 的 `noCheck: true`——`npm run build` 从「只擦类型」变成**真做类型检查**，`npm test` 随之会在类型错误上失败。CI 棘轮 `scripts/typecheck-ratchet.ts` + `typecheck-baseline.json` 基线降到 **0**，且脚本显式传 `--noCheck false`，将来有人把开关加回来它仍会拦下。`strict` / `noImplicitAny` 仍未开、选项袋仍是 `any`，所以它抓的是拼错属性、错实参个数、坏字面量，**不是** null 安全。
+
+## 2026-09-19：Cline 活测命中率 74%——大头是上游分片轮换，附带修掉 system 头钉串模型
+
+**现象**：`npm run analyze` 一份 70 调用的会话：命中率 74.0%，12 次 affinity_miss 占未缓存 token 的 74%（1.55M/2.08M）；每次 miss 都是整体 miss（reuse<10%）且**下一次调用立刻 ~100% 命中**——缓存条目在上游还活着，只是这次请求落到了没有它的分片/供应商上。miss 间隔 24s–10min 不等，排除 TTL。
+**根因**：Cline 背后是 OpenRouter 隐式前缀缓存，亲和只有 `X-Task-ID` 一个字段（CLI 同款已正确发送），上游按供应商池路由时缓存不随人走——免费/便宜模型尤其明显；hop 侧无法再钉。附带发现真 bug：DSH 在 Completions 调用上**根本不发** `session_id`/`prompt_cache_key`（整个运行时 grep 为零），`SYSTEM_PINS` 永远落在常量 `dsh-cline` 上 = 进程级单钉；会话中 `kimi-k3`→`deepseek-v4.1-flash` 换模型后新 system 头与旧钉不兼容，旧逻辑把整段新 prompt 停到 messages 尾部、继续发旧模型身份头（剩余 54 次调用 + 下个会话都会串）。
+**修复**：`stabilizeClineSystemPrefix` 只在「新头是旧头的纯扩展」时停车；不兼容的头直接重钉（前缀本来就已断，冷写不可避免，但模型拿到正确的 system prompt）。kimi/copilot 同款 stabilize 有同一模式，本次未动，换模型多的家族应跟进。回归测试：`test/cline.test.ts`「an incompatible system head re-pins」。
+
+## 2026-09-19：README 缺 Devin / Cline 两个已落地家族——代码 11 家，文档只写 9/10
+
+**现象**：`store.ts` `PROVIDER_IDS` 已有 11 个家族（含 Devin、Cline），但 `README.md` / `README.zh.md` 的系列表、导入路径表、回环行、Fast 表、额度表都查不到这两家，`PRODUCT.md` 写「Nine OAuth families」，`AGENTS.md` Index 漏 Cline；`proxyUrl` / `cursorProxy` 两个 Config 选项也不在 Options 表。新用户按 README 找不到 Devin / Cline 的登录入口。
+**根因**：两个家族都按「新家族」流程落地了 `src/oauth/<id>/` + README + `docs/oauth.md` + error.md + 测试，但步骤 7「README 归因补齐」只补了家族 README，根 README / PRODUCT 没跟着收口——`PROVIDER_IDS` 是唯一权威清单，文档抄漏了。
+**修复**：双语 README 的系列 / 路径 / 回环 / Fast / 额度表补齐 Devin、Cline，Options 表补 `proxyUrl`、`cursorProxy`；PRODUCT.md 改 11 家；AGENTS.md Index 补 Cline。不改码，纯文档对齐 `PROVIDER_IDS`。
+
 ## 2026-09-19：Cline 免费档活测——4/5 可用且不扣余额，muse-spark 区域门
 
 **现象**：feed 的 `free` 桶 5 个模型进目录后要确认真能跑：`cline-free/muse-spark-1.3-contributor` 每次 403 `{"error":"access forbidden: … is not available in your region","success":false}`，其余 4 个正常。

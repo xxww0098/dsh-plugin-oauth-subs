@@ -9,21 +9,21 @@
  */
 export declare const OLLAMA_IMPORT_EMPTY = "ollama-import-empty";
 export declare function resolveOllamaLocalCredentials({ env }?: {
-    env?: NodeJS.ProcessEnv;
+    env?: NodeJS.ProcessEnv | undefined;
 }): Promise<{
     accessToken: string;
     refreshToken: string;
     expiresAt: number;
     account: string;
-    source: string;
-}>;
-export declare function importOllamaAuth(options?: {}): Promise<{
-    source: string;
+    source: any;
+} | undefined>;
+export declare function importOllamaAuth(options?: any): Promise<{
+    source: any;
     session: {
         accessToken: string;
         refreshToken: string;
         expiresAt: number;
         account: string;
-        source: string;
+        source: any;
     };
 }>;

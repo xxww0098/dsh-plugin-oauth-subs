@@ -48,7 +48,7 @@ export function windowsUsernameFromEnv(env = process.env) {
 }
 
 export function cursorVscdbPaths({ platform = process.platform, env = process.env, home = homedir() } = {}) {
-  const paths = []
+  const paths: any[] = []
   if (platform === 'darwin') {
     paths.push(join(home, 'Library/Application Support/Cursor/User/globalStorage/state.vscdb'))
   } else if (platform === 'win32') {
@@ -101,9 +101,9 @@ export async function readCursorVscdbTokens({
   paths,
   readDb = defaultReadVscdb,
   now = Date.now(),
-} = {}) {
+}: any = {}) {
   const dbPaths = paths ?? cursorVscdbPaths({ platform, env, home })
-  const fallback = {}
+  const fallback: any = {}
   for (const dbPath of dbPaths) {
     const tokens = await readDb(dbPath)
     const access = typeof tokens.accessToken === 'string' ? tokens.accessToken.trim() : undefined
@@ -139,7 +139,7 @@ export async function readCursorKeychainTokens({
     run('cursor-access-token'),
     run('cursor-refresh-token'),
   ])
-  const tokens = {}
+  const tokens: any = {}
   if (accessResult.status === 'fulfilled') {
     const raw = String(accessResult.value?.stdout ?? '').trim()
     if (raw) tokens.accessToken = raw
@@ -168,7 +168,7 @@ export async function resolveCursorLocalCredentials({
   execFileFn = execFileAsync,
   readVscdbFn,
   now = Date.now(),
-} = {}) {
+}: any = {}) {
   const envToken = typeof env.CURSOR_ACCESS_TOKEN === 'string' ? env.CURSOR_ACCESS_TOKEN.trim() : ''
   if (envToken) {
     return cursorSession({ accessToken: envToken, refreshToken: envToken, source: 'env' })
@@ -210,12 +210,10 @@ export async function resolveCursorLocalCredentials({
   return undefined
 }
 
-export async function importCursorAuth(options = {}) {
+export async function importCursorAuth(options: any = {}) {
   const session = await resolveCursorLocalCredentials(options)
   if (!session) {
-    const error = new Error(CURSOR_IMPORT_EMPTY)
-    error.code = CURSOR_IMPORT_EMPTY
-    throw error
+    throw Object.assign(new Error(CURSOR_IMPORT_EMPTY), { code: CURSOR_IMPORT_EMPTY })
   }
   return { source: session.source, session }
 }

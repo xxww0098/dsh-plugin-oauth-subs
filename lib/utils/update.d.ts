@@ -27,7 +27,7 @@ export declare const GH_BIN = "gh";
 export declare const PLUGIN_UPDATE_TIMEOUT_MS = 180000;
 export declare const GH_API_TIMEOUT_MS = 5000;
 /** Version of the module this process actually loaded. Always re-reads disk. */
-export declare function installedVersion({ readFileFn }?: {}): any;
+export declare function installedVersion({ readFileFn }?: any): any;
 /** Newer of two semver-ish tags. Empty / unparseable values lose. */
 export declare function fresherVersion(left: any, right: any): string;
 export declare function parseVersion(tag: any): {
@@ -36,7 +36,7 @@ export declare function parseVersion(tag: any): {
     patch: number;
     prerelease: string;
     raw: string;
-};
+} | undefined;
 export declare function compareVersions(left: any, right: any): number;
 export declare function hostPlatform(platform?: NodeJS.Platform): "linux" | "win" | "mac";
 export declare function classifyAsset(name: any): "linux" | "win" | "mac" | "any";
@@ -47,7 +47,7 @@ export declare function pickDownloads(assets: any, host: any): {
     url: any;
     size: any;
 }[];
-export declare function localUpdateInfo(platform?: NodeJS.Platform, opts?: {}): {
+export declare function localUpdateInfo(platform?: NodeJS.Platform, opts?: any): {
     version: any;
     running: any;
     disk: any;
@@ -65,27 +65,19 @@ export declare function localUpdateInfo(platform?: NodeJS.Platform, opts?: {}): 
     repo: string;
     repoSlug: string;
 };
-export declare function githubRequestHeaders(userAgent: any, env?: NodeJS.ProcessEnv): {
-    accept: string;
-    'user-agent': any;
-};
+export declare function githubRequestHeaders(userAgent: any, env?: NodeJS.ProcessEnv): any;
 /** `/releases/tag/v0.0.84` or `/tags/dsh-v0.1.5-alpha.2` from a github.com URL. */
-export declare function tagFromGithubReleaseUrl(url: any): string;
+export declare function tagFromGithubReleaseUrl(url: any): string | undefined;
 /** GitHub `published_at` as `YYYY-MM-DD HH:mm:ss` in Asia/Shanghai. */
-export declare function formatPublishedAt(iso: any): string;
-export declare function fetchLatest({ fetchFn, spawnFn, current, platform, timeoutMs, profile, env, readFileFn, existsSyncFn, }?: {
-    fetchFn?: typeof fetch;
-    spawnFn?: typeof spawn;
-    platform?: NodeJS.Platform;
-    timeoutMs?: number;
-}): Promise<{
+export declare function formatPublishedAt(iso: any): string | undefined;
+export declare function fetchLatest({ fetchFn, spawnFn, current, platform, timeoutMs, profile, env, readFileFn, existsSyncFn, }?: any): Promise<{
     version: any;
     status: string;
     latest: {
-        tag: string;
+        tag: string | undefined;
         name: any;
         url: any;
-        publishedAt: string;
+        publishedAt: string | undefined;
     };
     assets: {
         platform: string;
@@ -121,11 +113,9 @@ export declare function releaseInstallSource(tag: any): string;
 export declare function workaroundCommand(profile?: string, source?: string): string;
 export declare function profilePluginPackageJson(profile?: string, env?: NodeJS.ProcessEnv): string;
 export declare function extraPluginManifests(profile?: string, env?: NodeJS.ProcessEnv): string[];
-export declare function resolveProfilePluginManifest(profile?: string, env?: NodeJS.ProcessEnv, { resolveFn }?: {}): any;
-export declare function canonicalPath(path: any, { realpathFn }?: {}): string;
-export declare function readPackageVersion(path: any, { readFileFn }?: {
-    readFileFn?: typeof readFileSync;
-}): any;
+export declare function resolveProfilePluginManifest(profile?: string, env?: NodeJS.ProcessEnv, { resolveFn }?: any): any;
+export declare function canonicalPath(path: any, { realpathFn }?: any): string;
+export declare function readPackageVersion(path: any, { readFileFn }?: any): any;
 /** True when `after` reached `latest`, or moved forward when latest is unknown. */
 export declare function versionAdvanced(before: any, after: any, latest: any): boolean;
 /**
@@ -144,35 +134,42 @@ export declare function pathWithDefaults(current: any, platform?: NodeJS.Platfor
  * Spawn the running DSH with the given plugin args. Exit 0 is only a spawn
  * success — `applyHostUpdate` re-reads the profile package.json.
  */
-export declare function runDshPlugin({ spawnFn, profile, args, timeoutMs, env, execPath, }?: {
-    spawnFn?: typeof spawn;
-    profile?: string;
-    timeoutMs?: number;
-    env?: NodeJS.ProcessEnv;
-    execPath?: string;
-}): Promise<unknown>;
+export declare function runDshPlugin({ spawnFn, profile, args, timeoutMs, env, execPath, }?: any): Promise<{
+    ok: boolean;
+    status: string;
+    command: string;
+    error?: string;
+}>;
 /**
  * Spawn `dsh plugin update` via the running DSH copy. Exit 0 is spawn-only;
  * prefer `applyHostUpdate` when the on-disk version must have moved.
  */
 export declare function runPluginUpdate({ spawnFn, profile, timeoutMs, env, execPath, }?: {
-    spawnFn?: typeof spawn;
-    profile?: string;
-    timeoutMs?: number;
-    env?: NodeJS.ProcessEnv;
-    execPath?: string;
-}): Promise<unknown>;
+    spawnFn?: typeof spawn | undefined;
+    profile?: string | undefined;
+    timeoutMs?: number | undefined;
+    env?: NodeJS.ProcessEnv | undefined;
+    execPath?: string | undefined;
+}): Promise<{
+    ok: boolean;
+    status: string;
+    command: string;
+    error?: string;
+}>;
 /**
  * Apply a host update and confirm the profile's package.json moved.
  * `dsh plugin update` is `pnpm update` and can no-op on a git-pinned
  * install; if the version did not reach `latest`, retry
  * `dsh plugin add <repo>#vX.Y.Z`.
  */
-export declare function applyHostUpdate({ spawnFn, profile, latest, timeoutMs, env, readFileFn, }?: {
-    spawnFn?: typeof spawn;
-    profile?: string;
-    timeoutMs?: number;
-}): Promise<any>;
+export declare function applyHostUpdate({ spawnFn, profile, latest, timeoutMs, env, readFileFn, }?: any): Promise<{
+    before: any;
+    after: any;
+    ok: boolean;
+    status: string;
+    command: string;
+    error?: string;
+}>;
 export declare const DSH_REPO_SLUG = "deepseek-ai/deepseek-harness";
 export declare const DSH_REPO_URL = "https://github.com/deepseek-ai/deepseek-harness";
 export declare const DSH_TAGS_API = "https://api.github.com/repos/deepseek-ai/deepseek-harness/tags";
@@ -192,31 +189,26 @@ export declare function listDshInstallVersions(npmData: any): string[];
  * chased a copy that was not the one serving the page.
  */
 export declare function resolveDshInstall(_platform?: NodeJS.Platform, env?: NodeJS.ProcessEnv, { realpathFn, readFileFn, existsSyncFn }?: {
-    realpathFn?: typeof realpathSync;
-    readFileFn?: typeof readFileSync;
-    existsSyncFn?: typeof existsSync;
+    realpathFn?: typeof realpathSync | undefined;
+    readFileFn?: typeof readFileSync | undefined;
+    existsSyncFn?: typeof existsSync | undefined;
 }): {
     binPath: string;
     realPath: string;
     packagePath: string;
     version: any;
-};
-export declare function localDshInfo(platform?: NodeJS.Platform, opts?: {}): {
+} | undefined;
+export declare function localDshInfo(platform?: NodeJS.Platform, opts?: any): {
     version: any;
-    binPath: string;
-    realPath: string;
-    packagePath: string;
+    binPath: string | undefined;
+    realPath: string | undefined;
+    packagePath: string | undefined;
     platform: string;
     repo: string;
     repoSlug: string;
     npmPackage: string;
 };
-export declare function fetchDshLatest({ fetchFn, spawnFn, current, platform, timeoutMs, env, readFileFn, realpathFn, existsSyncFn, }?: {
-    fetchFn?: typeof fetch;
-    spawnFn?: typeof spawn;
-    platform?: NodeJS.Platform;
-    timeoutMs?: number;
-}): Promise<{
+export declare function fetchDshLatest({ fetchFn, spawnFn, current, platform, timeoutMs, env, readFileFn, realpathFn, existsSyncFn, }?: any): Promise<{
     version: any;
     status: string;
     canUpdate: boolean;
@@ -226,17 +218,17 @@ export declare function fetchDshLatest({ fetchFn, spawnFn, current, platform, ti
         name: any;
         url: any;
         publishedAt: any;
-    };
+    } | undefined;
     npm: {
         version: any;
         stable: any;
         publishedAt: any;
-        distTags: {};
-        versions: any[];
-    };
-    binPath: string;
-    realPath: string;
-    packagePath: string;
+        distTags: any;
+        versions: string[];
+    } | undefined;
+    binPath: string | undefined;
+    realPath: string | undefined;
+    packagePath: string | undefined;
     platform: string;
     repo: string;
     repoSlug: string;
@@ -254,23 +246,20 @@ export declare const DSH_HOST_VERSION_STAMP_RE: RegExp;
 export declare function pluginClientJsPath(): string;
 /** Write local DSH version into the served client.js static file. */
 export declare function stampDshHostVersion(clientPath: any, version: any, { readFileFn, writeFileFn }?: {
-    readFileFn?: typeof readFileSync;
-    writeFileFn?: typeof writeFileSync;
+    readFileFn?: typeof readFileSync | undefined;
+    writeFileFn?: typeof writeFileSync | undefined;
 }): boolean;
 /** Detached re-exec of this dsh web process after the listen port is free. */
 export declare function scheduleDshWebRestart({ spawnFn, env, delaySec, execPath, argv, cwd, platform, }?: {
-    spawnFn?: typeof spawn;
-    env?: NodeJS.ProcessEnv;
-    delaySec?: number;
-    execPath?: string;
-    argv?: string[];
-    cwd?: string;
-    platform?: NodeJS.Platform;
+    spawnFn?: typeof spawn | undefined;
+    env?: NodeJS.ProcessEnv | undefined;
+    delaySec?: number | undefined;
+    execPath?: string | undefined;
+    argv?: string[] | undefined;
+    cwd?: string | undefined;
+    platform?: NodeJS.Platform | undefined;
 }): {
     ok: boolean;
     command: string;
 };
-export declare function applyHostDshUpdate({ spawnFn, targetVersion, timeoutMs, env, readFileFn, realpathFn, existsSyncFn, }?: {
-    spawnFn?: typeof spawn;
-    timeoutMs?: number;
-}): Promise<unknown>;
+export declare function applyHostDshUpdate({ spawnFn, targetVersion, timeoutMs, env, readFileFn, realpathFn, existsSyncFn, }?: any): Promise<unknown>;

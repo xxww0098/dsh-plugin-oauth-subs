@@ -4,6 +4,7 @@
  */
 
 import { dirname, join } from 'node:path'
+import { describeError, errorCode, errorMessage } from '../utils/http.js'
 import { OAuthFlowManager } from './flow.js'
 import { DeviceFlowManager } from './grok/device-flow.js'
 import { GlmCliFlowManager } from './glm/cli-flow.js'
@@ -153,7 +154,68 @@ import { AUTO_UPDATE_INTERVAL_MS, autoRunOutcome, defaultUpdatePrefs, readUpdate
 export const TOKEN_SWEEP_INTERVAL_MS = 60_000
 
 export class AuthController {
-  constructor({ authPath, prefix, origin, settings, credentials, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, spawnFn, profile, readFileFn, updateEnv, exitFn, prefsPath, statePath, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover, devinAutoImport, devinImport, devinDiscover, clineDiscover, clineAutoImport }) {
+  // JS-style fields: each is assigned in the constructor below, or — for the
+  // outbound-proxy pair — wired on by src/index.ts. `declare` keeps these
+  // type-only, so the emitted JavaScript is byte-identical to before.
+  declare authPath: string
+  declare prefix: string
+  declare origin: () => string
+  declare settings: any
+  declare credentials: any
+  declare grokLogin: string
+  declare spawnFn: any
+  declare exitFn: any
+  declare prefsPath: string
+  declare statePath: string
+  declare autoUpdate: any
+  declare autoUpdateState: any
+  declare prefsReady: Promise<any>
+  declare autoUpdateBusy: boolean
+  declare autoUpdateTimer: any
+  declare dshStuckTarget: string | undefined
+  declare profile: string
+  declare readFileFn: any
+  declare updateEnv: any
+  declare onAuthChanged: ((provider?: string) => void) | undefined
+  declare models: ModelSwitch
+  declare flows: OAuthFlowManager
+  declare devices: DeviceFlowManager
+  declare glmFlows: GlmCliFlowManager
+  declare kiroFlows: KiroIdcFlowManager
+  declare cursorFlows: CursorPollFlowManager
+  declare cursorAutoImport: boolean
+  declare cursorImport: any
+  declare cursorAutoImportTried: boolean
+  declare cursorDiscover: any
+  declare ollamaAutoImport: boolean
+  declare ollamaAutoImportTried: boolean
+  declare ollamaDiscover: any
+  declare kiroDiscover: any
+  declare kimiAutoImport: boolean
+  declare kimiAutoImportTried: boolean
+  declare kimiDiscover: any
+  declare copilotAutoImport: boolean
+  declare copilotAutoImportTried: boolean
+  declare copilotDiscover: any
+  declare devinAutoImport: boolean
+  declare devinImport: any
+  declare devinAutoImportTried: boolean
+  declare devinDiscover: any
+  declare clineDiscover: any
+  declare clineAutoImport: boolean
+  declare clineAutoImportTried: boolean
+  declare lastError: Map<string, any>
+  declare finalizing: Set<string>
+  declare claims: Map<string, number>
+  declare tokens: Record<string, TokenManager>
+  declare quota: QuotaStore
+  declare fetchFn: any
+  declare opencodeGo: any
+  declare opencodeGoAdopted: boolean
+  declare tokenSweepTimer: any
+  declare outboundProxy: any
+  declare setOutboundProxy: any
+  constructor({ authPath, prefix, origin, settings, credentials, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, spawnFn, profile, readFileFn, updateEnv, exitFn, prefsPath, statePath, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover, devinAutoImport, devinImport, devinDiscover, clineDiscover, clineAutoImport }: any) {
     this.authPath = authPath
     this.prefix = prefix
     this.origin = origin
@@ -456,7 +518,7 @@ export class AuthController {
    * Re-syncs once if any family's picker rows changed.
    */
   async warmCatalogs() {
-    const warmers = [
+    const warmers: Array<[string, any, () => any[], (session: any) => any]> = [
       ['cursor', this.tokens.cursor, cursorCatalogModels, (session) => this.#discoverCursor(session)],
       ['ollama', this.tokens.ollama, ollamaCatalogModels, (session) => this.#discoverOllama(session)],
       ['kiro', this.tokens.kiro, kiroCatalogModels, (session) => this.#discoverKiro(session)],
@@ -481,7 +543,15 @@ export class AuthController {
     if (changed && this.settings) await this.sync().catch(() => undefined)
   }
 
-  async snapshot() {
+  /**
+   * RPC payload for the Settings page. The Settings half is a classic script
+   * that reads this as plain JSON. Leaving the return type to inference made
+   * the emitted `snapshot` / `switchAccount` / `setModels` declarations ~25k
+   * lines each (they all return this method), roughly doubling the published
+   * `lib/`. The callers are untyped on purpose — do not "restore" the inferred
+   * type without re-checking `lib/` size.
+   */
+  async snapshot(): Promise<Record<string, any>> {
     await this.models.ready
     await this.prefsReady
     await this.#resolveGlmIdentities()
@@ -647,7 +717,7 @@ export class AuthController {
     if (typeof this.credentials?.unset === 'function') await this.credentials.unset(OPENCODE_GO_API_KEY_ENV)
   }
 
-  async opencodeGoSnapshot(options) {
+  async opencodeGoSnapshot(options?) {
     if (!this.opencodeGo) {
       return {
         id: 'opencode-go', loggedIn: false, busy: false, activeId: undefined, accounts: [],
@@ -678,7 +748,7 @@ export class AuthController {
     }
   }
 
-  async saveOpencodeGo(payload = {}) {
+  async saveOpencodeGo(payload: any = {}) {
     if (!this.opencodeGo) throw new Error('OpenCode Go store is unavailable')
     const raw = payload.apiKey === undefined ? undefined : String(payload.apiKey ?? '').trim()
     const result = await this.opencodeGo.save({
@@ -730,7 +800,7 @@ export class AuthController {
     return this.opencodeGoSnapshot()
   }
 
-  async refreshQuota(provider, accountId) {
+  async refreshQuota(provider, accountId?) {
     if (provider === 'opencode-go') return this.refreshOpencodeGoQuota(accountId)
     if (provider === 'codex' || provider === 'grok' || provider === 'glm' || provider === 'kiro' || provider === 'antigravity' || provider === 'cursor' || provider === 'ollama' || provider === 'kimi' || provider === 'copilot' || provider === 'devin' || provider === 'cline') {
       const rows = await this.#liveAccounts(provider)
@@ -832,7 +902,7 @@ export class AuthController {
     return this.quota.consume('codex', accountIdOf('codex', live), live)
   }
 
-  async checkUpdate(payload = {}) {
+  async checkUpdate(payload: any = {}) {
     const apply = payload?.apply === true
     const profileOpts = {
       profile: this.profile,
@@ -892,7 +962,7 @@ export class AuthController {
     }
   }
 
-  async checkDshUpdate(payload = {}) {
+  async checkDshUpdate(payload: any = {}) {
     const apply = payload?.apply === true
     const targetVersion = payload?.targetVersion
     const opts = {
@@ -908,7 +978,7 @@ export class AuthController {
       if (!want || (payload?.auto === true && want === this.dshStuckTarget)) {
         return { ...info, apply: { status: 'none' } }
       }
-      const result = await applyHostDshUpdate({
+      const result: any = await applyHostDshUpdate({
         spawnFn: this.spawnFn,
         targetVersion: want,
         readFileFn: this.readFileFn,
@@ -961,7 +1031,7 @@ export class AuthController {
     return this.autoUpdate
   }
 
-  async setAutoUpdate(payload = {}) {
+  async setAutoUpdate(payload: any = {}) {
     await this.prefsReady
     const next = {
       plugin: typeof payload.plugin === 'boolean' ? payload.plugin : this.autoUpdate.plugin,
@@ -1029,8 +1099,8 @@ export class AuthController {
     this.autoUpdateBusy = true
     try {
       await this.prefsReady
-      let plugin = null
-      let dsh = null
+      let plugin: any = null
+      let dsh: any = null
       if (this.autoUpdate.plugin) {
         plugin = await this.checkUpdate({ apply: true, restart: false })
       }
@@ -1206,7 +1276,7 @@ export class AuthController {
         void this.quota.refresh('cursor')
       }
     } catch (error) {
-      if (error?.code !== CURSOR_IMPORT_EMPTY && error?.message !== CURSOR_IMPORT_EMPTY) {
+      if (errorCode(error) !== CURSOR_IMPORT_EMPTY && errorMessage(error) !== CURSOR_IMPORT_EMPTY) {
         // empty machine is fine; other faults stay off the Settings banner
       }
     }
@@ -1238,7 +1308,7 @@ export class AuthController {
         void this.quota.refresh('ollama')
       }
     } catch (error) {
-      if (error?.code !== OLLAMA_IMPORT_EMPTY && error?.message !== OLLAMA_IMPORT_EMPTY) {
+      if (errorCode(error) !== OLLAMA_IMPORT_EMPTY && errorMessage(error) !== OLLAMA_IMPORT_EMPTY) {
         // empty env is fine; other faults stay off the Settings banner
       }
     }
@@ -1302,7 +1372,7 @@ export class AuthController {
         void this.quota.refresh('kimi')
       }
     } catch (error) {
-      if (error?.code !== KIMI_IMPORT_EMPTY && error?.message !== KIMI_IMPORT_EMPTY) {
+      if (errorCode(error) !== KIMI_IMPORT_EMPTY && errorMessage(error) !== KIMI_IMPORT_EMPTY) {
         // empty CLI file is fine
       }
     }
@@ -1323,7 +1393,7 @@ export class AuthController {
         void this.quota.refresh('copilot')
       }
     } catch (error) {
-      if (error?.code !== COPILOT_IMPORT_EMPTY && error?.message !== COPILOT_IMPORT_EMPTY) {
+      if (errorCode(error) !== COPILOT_IMPORT_EMPTY && errorMessage(error) !== COPILOT_IMPORT_EMPTY) {
         // empty hosts.json is fine
       }
     }
@@ -1344,7 +1414,7 @@ export class AuthController {
         void this.quota.refresh('cline')
       }
     } catch (error) {
-      if (error?.code !== CLINE_IMPORT_EMPTY && error?.message !== CLINE_IMPORT_EMPTY) {
+      if (errorCode(error) !== CLINE_IMPORT_EMPTY && errorMessage(error) !== CLINE_IMPORT_EMPTY) {
         // empty providers.json is fine
       }
     }
@@ -1507,7 +1577,7 @@ export class AuthController {
         void this.quota.refresh('devin')
       }
     } catch (error) {
-      if (error?.code !== DEVIN_IMPORT_EMPTY && error?.message !== DEVIN_IMPORT_EMPTY) {
+      if (errorCode(error) !== DEVIN_IMPORT_EMPTY && errorMessage(error) !== DEVIN_IMPORT_EMPTY) {
         // missing credentials.toml is fine; other faults stay off the Settings banner
       }
     }
@@ -1675,7 +1745,7 @@ export class AuthController {
     return { authorizeUrl: attempt.authorizeUrl, redirectUri: attempt.redirectUri, mode: 'pkce' }
   }
 
-  async #loginKiro(payload = {}) {
+  async #loginKiro(payload: any = {}) {
     const mode = canonicalizeKiroMethod(payload.mode ?? payload.authMethod, {
       tokenEndpoint: payload.tokenEndpoint,
     })
@@ -1707,7 +1777,7 @@ export class AuthController {
       }
     }
     const machineId = allocateKiroMachineId(await this.#existingKiroMachineId())
-    const attempt = await this.flows.start('kiro', kiroSocialFlow())
+    const attempt: any = await this.flows.start('kiro', kiroSocialFlow())
     attempt.machineId = machineId
     const claim = this.claim('kiro')
     void this.completePkce('kiro', attempt, claim)
@@ -1741,7 +1811,7 @@ export class AuthController {
     } catch (error) {
       if (this.claims.get(provider) !== claim) return
       if (!(error instanceof Error && error.message === 'login cancelled')) {
-        this.lastError.set(provider, error.message)
+        this.lastError.set(provider, describeError(error))
       }
     }
   }
@@ -1827,7 +1897,7 @@ export class AuthController {
       void this.quota.refresh(provider)
     } catch (error) {
       if (!(error instanceof Error && error.message === 'login cancelled')) {
-        this.lastError.set(provider, error.message)
+        this.lastError.set(provider, describeError(error))
       }
     } finally {
       this.finalizing.delete(provider)
@@ -1959,7 +2029,7 @@ export class AuthController {
     return { region: resolved }
   }
 
-  async #useKiroKey(key, payload = {}) {
+  async #useKiroKey(key, payload: any = {}) {
     const raw = typeof key === 'string' ? key.trim() : ''
     const parsed = parseKiroImportText(raw)
     if (isKiroBatchImport(parsed.kind) && parsed.sessions.length > 0) {
@@ -2012,8 +2082,8 @@ export class AuthController {
     this.claim('kiro')
     this.flows.pending('kiro')?.cancel()
     this.kiroFlows.pending('kiro')?.cancel()
-    const saved = []
-    const errors = []
+    const saved: any[] = []
+    const errors: any[] = []
     for (const draft of sessions) {
       let session = draft
       const method = canonicalizeKiroMethod(session.authMethod, { tokenEndpoint: session.tokenEndpoint })
@@ -2088,7 +2158,7 @@ export class AuthController {
     // never fall through to Grok — that writes a foreign session under the
     // caller's provider key (observed: Grok tokens stored as `devin`).
     if (!PROVIDER_IDS.includes(provider)) throw new Error(`unknown provider ${provider}`)
-    const result = provider === 'codex'
+    const result: any = provider === 'codex'
       ? await importCodexAuth()
       : provider === 'glm'
         ? await importGlmAuth()
@@ -2138,7 +2208,7 @@ export class AuthController {
     }
   }
 
-  async setModels(payload = {}) {
+  async setModels(payload: any = {}) {
     await this.models.ready
     const catalog = await this.catalog()
     if (Array.isArray(payload.selected)) {
@@ -2160,7 +2230,7 @@ export class AuthController {
     return this.snapshot()
   }
 
-  async sync(selected, options = {}) {
+  async sync(selected?, options: any = {}) {
     if (this.settings === undefined || typeof this.settings.mutate !== 'function') {
       throw new Error('settings service is not mounted; cannot sync llm-pi-ai routes')
     }

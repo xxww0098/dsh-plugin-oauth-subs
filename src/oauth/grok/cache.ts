@@ -83,7 +83,7 @@ function changedRegion(existing, text) {
   return text.slice(start, end).replace(/^\n+/, '').replace(/\n+$/, '').trim()
 }
 
-export function grokConversationId(payload = {}) {
+export function grokConversationId(payload: any = {}) {
   return grokCacheSessionId(payload.prompt_cache_key)
     || grokCacheSessionId(payload.session_id)
     || GROK_STABLE_SESSION
@@ -93,7 +93,7 @@ export function grokConversationId(payload = {}) {
  * grok-build `GrokRequestHeaders`. `reqId` is one UUID per DSH request so
  * retries keep the same id; `retryAttempt` becomes `x-grok-transient-retry`.
  */
-export function grokAffinityHeaders(cacheSessionId, extra = {}) {
+export function grokAffinityHeaders(cacheSessionId, extra: any = {}) {
   if (typeof cacheSessionId !== 'string' || cacheSessionId.length === 0) return {}
   const headers = {
     'x-grok-conv-id': cacheSessionId,

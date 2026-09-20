@@ -31,13 +31,13 @@ export declare function classifyToolError(message: any): {
     timeoutMs: number;
 } | {
     cause: "cascade_abort";
-    timeoutMs: any;
+    timeoutMs: null;
 } | {
     cause: "invalid";
-    timeoutMs: any;
+    timeoutMs: null;
 } | {
     cause: "other";
-    timeoutMs: any;
+    timeoutMs: null;
 };
 export declare function parseSessionEvents(text: any): any[];
 /**

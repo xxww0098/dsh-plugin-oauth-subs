@@ -59,9 +59,9 @@ export function devinLabelVariant(label, familyLabel) {
   const direct = EFFORT_WORDS[suffix]
   if (direct !== undefined) return { effort: direct, thinking: false, mods: [] }
   const words = suffix.split(/\s+/)
-  const mods = []
+  const mods: any[] = []
   let thinking = false
-  const kept = []
+  const kept: any[] = []
   for (const word of words) {
     if (MODIFIER_WORDS[word]) {
       mods.push(MODIFIER_WORDS[word])
@@ -98,7 +98,7 @@ function bucketSuffix(bucket) {
  * `variants` + `defaultUid`; `toHarnessModel` projects only the public fields.
  */
 export function toDevinPickerModels(configs) {
-  const rows = []
+  const rows: any[] = []
   const groups = new Map()
   for (const config of Array.isArray(configs) ? configs : []) {
     if (!config || config.disabled === true) continue
@@ -119,7 +119,7 @@ export function toDevinPickerModels(configs) {
   }
 
   for (const group of groups.values()) {
-    const variants = {}
+    const variants: any = {}
     let defaultUid
     let contextWindow = 0
     let maxTokens = 0
@@ -182,7 +182,7 @@ export function devinHasEffort() {
  * POST ApiServerService/GetCliModelConfigs (unary application/proto, raw body).
  * Returns the decoded ClientModelConfig list; throws on transport errors.
  */
-export async function devinListModelConfigs(session, { fetchFn = fetch, signal } = {}) {
+export async function devinListModelConfigs(session, { fetchFn = fetch, signal }: any = {}) {
   const base = devinApiServer(session)
   const body = encodeGetCliModelConfigsRequest(devinMetadataBytes(session, { modelDisplays: DEVIN_MODEL_DISPLAYS }))
   const response = await fetchFn(`${base}${DEVIN_MODELS_PATH}`, {
@@ -207,7 +207,7 @@ export async function devinListModelConfigs(session, { fetchFn = fetch, signal }
  * Refresh the in-memory catalog. Live rows win when any survive filtering;
  * the static floor stays when the RPC fails or returns nothing usable.
  */
-export async function refreshDevinCatalog(session, { fetchFn = fetch, signal } = {}) {
+export async function refreshDevinCatalog(session, { fetchFn = fetch, signal }: any = {}) {
   const configs = await devinListModelConfigs(session, { fetchFn, signal })
   const rows = toDevinPickerModels(configs)
   if (rows.length > 0) devinCatalogCache = rows

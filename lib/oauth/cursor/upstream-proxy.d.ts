@@ -10,8 +10,8 @@
 import http2 from 'node:http2';
 /** Raw TCP tunnel to `target` through `proxy` (http/https CONNECT or socks5). */
 export declare function dialCursorProxy(proxy: any, target: any, { timeoutMs }?: {
-    timeoutMs?: number;
-}): Promise<unknown>;
+    timeoutMs?: number | undefined;
+}): Promise<any>;
 /**
  * `http2.connect` replacement for the Cursor hop. When an upstream proxy is
  * configured the tunnel is dialed first, then http2 attaches over it — the

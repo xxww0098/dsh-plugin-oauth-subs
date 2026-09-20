@@ -10,6 +10,18 @@ import { deleteSession, getStoredSession, updateAccountSession } from './store.j
 export const REFRESH_FAILURE_BACKOFF_MS = 5 * 60_000
 
 export class TokenManager {
+  declare provider: string
+  declare authPath: string
+  declare displayName: string
+  declare preemptMs: number
+  /** Injected refresh callback; distinct from the private #refresh method. */
+  declare refresh: any
+  declare isPermanent: any
+  declare onRemoved: any
+  declare inflight: Map<any, any>
+  declare failures: Map<any, any>
+  declare sources: WeakMap<object, any>
+
   constructor({ provider, authPath, displayName, preemptMs, refresh, isPermanent, onRemoved }) {
     this.provider = provider
     this.authPath = authPath

@@ -19,6 +19,6 @@
 export declare const GROK_WEB_EMPTY_FRAME: Buffer<ArrayBuffer>;
 export declare function decodeGrokCreditsFrame(buffer: any): {
     usedPercent: number;
-    resetAt: number;
-    periodStart: number;
-};
+    resetAt: number | undefined;
+    periodStart: number | undefined;
+} | undefined;

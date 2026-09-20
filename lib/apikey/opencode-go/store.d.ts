@@ -15,19 +15,21 @@ export declare function parseOpencodeGoVault(text: any): {
 };
 export declare class OpencodeGoStore {
     #private;
-    constructor({ path, fetchFn, ttlMs }?: {
-        fetchFn?: typeof fetch;
-        ttlMs?: number;
-    });
+    path: string | undefined;
+    fetchFn: any;
+    ttlMs: number;
+    vault: any;
+    quotas: Map<string, any>;
+    inflight: Map<string, any>;
+    ready: Promise<any>;
+    constructor({ path, fetchFn, ttlMs }?: any);
     activeId(): any;
     keyOf(id: any): any;
     anyKey(): boolean;
     /** The single keyless account, if the vault holds exactly one (legacy adoption). */
-    keylessId(): string;
+    keylessId(): string | undefined;
     adoptKey(id: any, key: any): Promise<boolean>;
-    snapshot({ refresh, id }?: {
-        refresh?: boolean;
-    }): Promise<{
+    snapshot({ refresh, id }?: any): Promise<{
         id: string;
         activeId: any;
         accounts: {
@@ -42,7 +44,7 @@ export declare class OpencodeGoStore {
             quota: any;
         }[];
     }>;
-    save({ id, apiKey, cookie, workspace }?: {}): Promise<{
+    save({ id, apiKey, cookie, workspace }?: any): Promise<{
         id: string;
         created: boolean;
     }>;

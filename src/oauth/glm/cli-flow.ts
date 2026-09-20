@@ -8,7 +8,7 @@
 import { completeGlmCli, glmCliInit, glmCliPoll } from './index.js'
 
 function sleep(ms, signal) {
-  return new Promise((resolve, reject) => {
+  return new Promise<void>((resolve, reject) => {
     if (signal.aborted) {
       reject(signal.reason instanceof Error ? signal.reason : new Error('aborted'))
       return
@@ -26,6 +26,8 @@ function sleep(ms, signal) {
 }
 
 export class GlmCliFlowManager {
+  declare attempts: Map<string, any>
+
   constructor() {
     this.attempts = new Map()
   }
@@ -52,7 +54,7 @@ export class GlmCliFlowManager {
     })
     tokenPromise.catch(() => undefined)
 
-    const settle = (error, ready) => {
+    const settle = (error, ready?) => {
       if (this.attempts.get(provider) !== attempt) return
       this.attempts.delete(provider)
       if (error) rejectToken(error)

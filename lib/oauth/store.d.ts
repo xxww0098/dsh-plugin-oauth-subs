@@ -18,43 +18,32 @@ export declare function asVault(provider: any, entry: any): {
 export declare function loadStore(path: any): Promise<any>;
 export declare function getSession(provider: any, path: any): Promise<any>;
 export declare function listAccounts(provider: any, path: any): Promise<({
+    id: string;
+    active: boolean;
+} | {
     account: any;
     planType: any;
     planLabel: any;
     expiresAt: any;
     region?: undefined;
-    method?: undefined;
-    methodLabel?: undefined;
     needsValidation?: undefined;
     validationUrl?: undefined;
+    method?: undefined;
+    methodLabel?: undefined;
     organizationName?: undefined;
     scopes?: undefined;
     id: string;
     active: boolean;
 } | {
-    account: string;
+    account: string | undefined;
     planType: any;
     planLabel: any;
     region: string;
     expiresAt: any;
+    needsValidation?: undefined;
+    validationUrl?: undefined;
     method?: undefined;
     methodLabel?: undefined;
-    needsValidation?: undefined;
-    validationUrl?: undefined;
-    organizationName?: undefined;
-    scopes?: undefined;
-    id: string;
-    active: boolean;
-} | {
-    account: any;
-    planType: any;
-    planLabel: any;
-    method: any;
-    methodLabel: string;
-    expiresAt: any;
-    region?: undefined;
-    needsValidation?: undefined;
-    validationUrl?: undefined;
     organizationName?: undefined;
     scopes?: undefined;
     id: string;
@@ -78,7 +67,21 @@ export declare function listAccounts(provider: any, path: any): Promise<({
     planType: any;
     planLabel: any;
     method: any;
-    methodLabel: string;
+    methodLabel: string | undefined;
+    expiresAt: any;
+    region?: undefined;
+    needsValidation?: undefined;
+    validationUrl?: undefined;
+    organizationName?: undefined;
+    scopes?: undefined;
+    id: string;
+    active: boolean;
+} | {
+    account: any;
+    planType: any;
+    planLabel: any;
+    method: any;
+    methodLabel: string | undefined;
     organizationName: any;
     expiresAt: any;
     region?: undefined;
@@ -94,10 +97,10 @@ export declare function listAccounts(provider: any, path: any): Promise<({
     scopes: any;
     expiresAt: any;
     region?: undefined;
-    method?: undefined;
-    methodLabel?: undefined;
     needsValidation?: undefined;
     validationUrl?: undefined;
+    method?: undefined;
+    methodLabel?: undefined;
     organizationName?: undefined;
     id: string;
     active: boolean;
@@ -111,45 +114,33 @@ export declare function listStoredSessions(provider: any, path: any): Promise<{
 }[]>;
 export declare function getStoredSession(provider: any, id: any, path: any): Promise<any>;
 /** Only update the login/credentials that produced the result; never activate it. */
-export declare function updateAccountSession(provider: any, source: any, session: any, path: any, nextId: any): Promise<any>;
+export declare function updateAccountSession(provider: any, source: any, session: any, path: any, nextId?: any): Promise<any>;
 export declare function replaceAccountId(provider: any, source: any, session: any, path: any): Promise<any>;
-export declare function saveSession(provider: any, session: any, path: any, options: any): Promise<any>;
+export declare function saveSession(provider: any, session: any, path: any, options?: any): Promise<any>;
 export declare function switchAccount(provider: any, id: any, path: any): Promise<any>;
-export declare function deleteSession(provider: any, path: any, id: any, source: any): Promise<any>;
+export declare function deleteSession(provider: any, path: any, id: any, source?: any): Promise<any>;
 export declare function publicSession(provider: any, session: any): {
     account: any;
     planType: any;
     planLabel: any;
     expiresAt: any;
     region?: undefined;
-    method?: undefined;
-    methodLabel?: undefined;
     needsValidation?: undefined;
     validationUrl?: undefined;
+    method?: undefined;
+    methodLabel?: undefined;
     organizationName?: undefined;
     scopes?: undefined;
 } | {
-    account: string;
+    account: string | undefined;
     planType: any;
     planLabel: any;
     region: string;
     expiresAt: any;
+    needsValidation?: undefined;
+    validationUrl?: undefined;
     method?: undefined;
     methodLabel?: undefined;
-    needsValidation?: undefined;
-    validationUrl?: undefined;
-    organizationName?: undefined;
-    scopes?: undefined;
-} | {
-    account: any;
-    planType: any;
-    planLabel: any;
-    method: any;
-    methodLabel: string;
-    expiresAt: any;
-    region?: undefined;
-    needsValidation?: undefined;
-    validationUrl?: undefined;
     organizationName?: undefined;
     scopes?: undefined;
 } | {
@@ -169,7 +160,19 @@ export declare function publicSession(provider: any, session: any): {
     planType: any;
     planLabel: any;
     method: any;
-    methodLabel: string;
+    methodLabel: string | undefined;
+    expiresAt: any;
+    region?: undefined;
+    needsValidation?: undefined;
+    validationUrl?: undefined;
+    organizationName?: undefined;
+    scopes?: undefined;
+} | {
+    account: any;
+    planType: any;
+    planLabel: any;
+    method: any;
+    methodLabel: string | undefined;
     organizationName: any;
     expiresAt: any;
     region?: undefined;
@@ -183,9 +186,9 @@ export declare function publicSession(provider: any, session: any): {
     scopes: any;
     expiresAt: any;
     region?: undefined;
-    method?: undefined;
-    methodLabel?: undefined;
     needsValidation?: undefined;
     validationUrl?: undefined;
+    method?: undefined;
+    methodLabel?: undefined;
     organizationName?: undefined;
-};
+} | undefined;

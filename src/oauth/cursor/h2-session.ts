@@ -83,7 +83,7 @@ export async function cursorUnaryRpc({
   return new Promise((resolve, reject) => {
     let settled = false
     let client
-    const finish = (error, value) => {
+    const finish = (error, value?) => {
       if (settled) return
       settled = true
       if (timer) clearTimeout(timer)
@@ -111,7 +111,7 @@ export async function cursorUnaryRpc({
       client = connected
       client.on('error', (error) => fail(new Error(describeH2TransportError(error, url))))
       const stream = client.request(requestHeaders(session, { path, unary: true }))
-      const chunks = []
+      const chunks: any[] = []
       stream.on('data', (chunk) => {
         if (!settled) chunks.push(Buffer.from(chunk))
       })
@@ -124,7 +124,7 @@ export async function cursorUnaryRpc({
   })
 }
 
-export async function fetchCursorUsableModels(session, { connectFn, signal, timeoutMs } = {}) {
+export async function fetchCursorUsableModels(session, { connectFn, signal, timeoutMs }: any = {}) {
   const raw = await cursorUnaryRpc({
     session,
     url: cursorAgentUrl() || CURSOR_AGENT_URL,
@@ -137,7 +137,7 @@ export async function fetchCursorUsableModels(session, { connectFn, signal, time
   return decodeGetUsableModelsResponse(raw)
 }
 
-export async function fetchCursorAvailableModels(session, { connectFn, signal, timeoutMs } = {}) {
+export async function fetchCursorAvailableModels(session, { connectFn, signal, timeoutMs }: any = {}) {
   const raw = await cursorUnaryRpc({
     session,
     url: CURSOR_API2_URL,
@@ -161,16 +161,16 @@ export async function runCursorAgent(session, built, {
   connectFn = cursorH2Connect,
   url = cursorAgentUrl() || CURSOR_AGENT_URL,
   onEvent,
-} = {}) {
+}: any = {}) {
   signal?.throwIfAborted()
   const blobStore = built.blobStore ?? new Map()
-  const events = []
-  const collected = { text: '', thinking: '', toolCalls: [], usage: {}, error: undefined }
+  const events: any[] = []
+  const collected: any = { text: '', thinking: '', toolCalls: [], usage: {}, error: undefined }
 
   return new Promise((resolve, reject) => {
     let settled = false
     let client
-    const finish = (error) => {
+    const finish = (error?) => {
       if (settled) return
       settled = true
       signal?.removeEventListener('abort', onAbort)
@@ -242,7 +242,7 @@ export async function runCursorAgent(session, built, {
               type: 'function',
               function: { name: tool.name, arguments: JSON.stringify(tool.arguments) },
             })
-            const event = { kind: 'interaction', toolCall: tool }
+            const event: any = { kind: 'interaction', toolCall: tool }
             events.push(event)
             await onEvent?.(event)
             finish()
@@ -293,7 +293,7 @@ export async function runCursorAgent(session, built, {
           // HTTP/2 reads, not accumulate unobserved callback promises.
           for await (const chunk of stream) {
             if (settled) return
-            const messages = []
+            const messages: any[] = []
             rest = consumeCursorFrames(chunk, rest, (msg) => messages.push(msg))
             for (const msg of messages) {
               if (settled) return

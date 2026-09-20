@@ -11,7 +11,7 @@ export declare const GPT56_DEFAULT_CONTEXT_WINDOW = 272000;
 export declare const GPT56_MAX_PROMPT_TOKENS = 500000;
 export declare function resetCursorCatalogCache(): void;
 export declare function cursorCatalogTokenHash(token: any): string;
-export declare function cursorCatalogModels(): any;
+export declare function cursorCatalogModels(): any[];
 export declare function isGpt56Model(id: any, name?: string): boolean;
 export declare function clampCursorContextWindow(id: any, name: any, window: any): any;
 /** pi-cursor `inferCursorContextWindow` — GetUsableModels has no window field. */
@@ -42,4 +42,4 @@ export declare function cursorPickerFamilyId(id: any): string;
 export declare function mergeCursorStaticFloor(live: any): any;
 /** Collapse live ids into one picker row per family, plus `{family}-fast` when a source id is Fast. Empty input → []. */
 export declare function toCursorPickerModels(usable: any, parameterized?: any[]): any[];
-export declare function refreshCursorCatalog(session: any, options?: {}): Promise<any>;
+export declare function refreshCursorCatalog(session: any, options?: any): Promise<any>;

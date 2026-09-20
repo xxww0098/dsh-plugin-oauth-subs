@@ -18,6 +18,14 @@ const MAX_CONNECT_HEAD = 16 * 1024
 
 /** Buffers socket data so handshake steps can read exact byte counts. */
 class Pump {
+  declare socket: any
+  declare buf: Buffer
+  declare waiters: any[]
+  declare failed: Error | null
+  declare onData: (chunk: Buffer) => void
+  declare onError: (error: unknown) => void
+  declare onClose: () => void
+
   constructor(socket) {
     this.socket = socket
     this.buf = Buffer.alloc(0)
@@ -61,13 +69,13 @@ class Pump {
       this.buf = this.buf.subarray(n)
       return Promise.resolve(out)
     }
-    return new Promise((resolve, reject) => this.waiters.push({ n, consume: true, resolve, reject }))
+    return new Promise<Buffer>((resolve, reject) => this.waiters.push({ n, consume: true, resolve, reject }))
   }
 
   /** Wait for at least one more buffered byte without consuming anything. */
   #more() {
     if (this.failed) return Promise.reject(this.failed)
-    return new Promise((resolve, reject) => this.waiters.push({ n: this.buf.length + 1, consume: false, resolve, reject }))
+    return new Promise<Buffer | null>((resolve, reject) => this.waiters.push({ n: this.buf.length + 1, consume: false, resolve, reject }))
   }
 
   async until(marker) {
@@ -100,9 +108,9 @@ function bareHost(hostname) {
   return String(hostname ?? '').replace(/^\[|\]$/g, '')
 }
 
-function dialSocket({ host, port, secure, servername, timeoutMs }) {
+function dialSocket({ host, port, secure, servername = undefined, timeoutMs }: any) {
   const address = bareHost(host)
-  return new Promise((resolve, reject) => {
+  return new Promise<any>((resolve, reject) => {
     const socket = secure
       ? tlsConnect({ host: address, port, servername: bareHost(servername) || address })
       : netConnect({ host: address, port })

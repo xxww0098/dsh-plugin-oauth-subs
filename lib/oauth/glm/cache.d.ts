@@ -13,7 +13,7 @@
  * blob can still hit. Thinking models also need `clear_thinking: false`
  * (owned by request.ts).
  */
-export declare function glmCacheSessionId(key: any): string;
+export declare function glmCacheSessionId(key: any): string | undefined;
 export declare function resetGlmSystemPins(): void;
 /**
  * Pin the first leading system run per DSH session. Extra / changed
@@ -30,7 +30,7 @@ export declare function stabilizeGlmAnthropicSystem(system: any, sessionId: any)
 /** Drop Codex/Grok cache fields; pin `user`; freeze the leading system. */
 export declare function applyGlmCache(payload: any): {
     payload: any;
-    cacheSessionId: string;
+    cacheSessionId: string | undefined;
 };
 /**
  * Anthropic Messages: pin top-level `system`, `metadata.user_id`, and
@@ -38,5 +38,5 @@ export declare function applyGlmCache(payload: any): {
  */
 export declare function applyGlmAnthropicCache(payload: any): {
     payload: any;
-    cacheSessionId: string;
+    cacheSessionId: string | undefined;
 };

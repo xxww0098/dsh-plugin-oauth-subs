@@ -12,7 +12,8 @@
     "skipLibCheck": true,
     "strict": false,
     "noImplicitAny": false,
-    "noCheck": true,
+    "strictNullChecks": true,
+    "useUnknownInCatchVariables": true,
     "allowJs": false
   },
   "include": ["src/**/*.ts"],

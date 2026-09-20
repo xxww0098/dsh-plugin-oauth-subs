@@ -54,13 +54,13 @@ export declare const KIMI_MODELS: readonly {
     };
 }[];
 export declare function configureKimiIdentity(dataDir: any): void;
-export declare function kimiSourceLabel(source: any): "key" | "env" | "CLI" | "OAuth";
+export declare function kimiSourceLabel(source: any): "key" | "env" | "CLI" | "OAuth" | undefined;
 export declare function isKimiKeySource(source: any): boolean;
 export declare function kimiAccountFingerprint(token: any): string;
 export declare function kimiDefaultAccount(token: any): string;
 export declare function isKimiOpaqueAccount(value: any): boolean;
 export declare function parseKimiApiKey(value: any): string;
-export declare function computeKimiDeviceModel({ platform, release, arch, macVersion }?: {}): string;
+export declare function computeKimiDeviceModel({ platform, release, arch, macVersion }?: any): string;
 export declare function kimiStableDeviceId(): string;
 /** Kimi Code–compatible X-Msh-* headers. UA is this plugin, not Pi. */
 export declare function kimiCredentialHeaders(): {
@@ -73,7 +73,7 @@ export declare function kimiCredentialHeaders(): {
     'x-msh-device-id': string;
 };
 export declare function kimiDeviceSpec({ fetchFn }?: {
-    fetchFn?: typeof fetch;
+    fetchFn?: typeof fetch | undefined;
 }): {
     clientId: string;
     deviceCodeUrl: string;
@@ -90,37 +90,35 @@ export declare function kimiDeviceSpec({ fetchFn }?: {
     };
     restartOnExpired: boolean;
 };
-export declare function kimiSession({ accessToken, refreshToken, expiresAt, account, planType, source, }?: {
-    source?: string;
-}): {
-    planType?: string;
+export declare function kimiSession({ accessToken, refreshToken, expiresAt, account, planType, source, }?: any): {
+    planType?: string | undefined;
     accessToken: string;
     refreshToken: string;
     expiresAt: number;
     tokenEndpoint: string;
     clientId: string;
     account: string;
-    source: string;
+    source: any;
 };
 export declare function kimiSessionFromTokens(tokens: any, fallback: any): {
-    planType?: string;
+    planType?: string | undefined;
     accessToken: string;
     refreshToken: string;
     expiresAt: number;
     tokenEndpoint: string;
     clientId: string;
     account: string;
-    source: string;
+    source: any;
 };
 export declare function completeKimiDevice(tokens: any): Promise<{
-    planType?: string;
+    planType?: string | undefined;
     accessToken: string;
     refreshToken: string;
     expiresAt: number;
     tokenEndpoint: string;
     clientId: string;
     account: string;
-    source: string;
+    source: any;
 }>;
 export declare function refreshKimi(session: any, fetchFn?: typeof fetch): Promise<any>;
 export declare function isKimiPermanentRefreshError(error: any): boolean;
@@ -136,16 +134,14 @@ export declare function kimiUpstreamHeaders(session: any): {
     accept: string;
 };
 export declare function parseKimiUserInfo(payload: any): {
-    planType?: string;
-    account?: string;
-};
-export declare function resolveKimiIdentity(session: any, { fetchFn, signal }?: {
-    fetchFn?: typeof fetch;
-}): Promise<{
-    planType?: string;
-    account?: string;
-}>;
+    planType?: string | undefined;
+    account?: string | undefined;
+} | undefined;
+export declare function resolveKimiIdentity(session: any, { fetchFn, signal }?: any): Promise<{
+    planType?: string | undefined;
+    account?: string | undefined;
+} | undefined>;
 export declare function kimiHomePaths({ env, home }?: {
-    env?: NodeJS.ProcessEnv;
-    home?: string;
+    env?: NodeJS.ProcessEnv | undefined;
+    home?: string | undefined;
 }): string[];

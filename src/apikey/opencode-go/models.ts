@@ -46,7 +46,7 @@ const TEXT_IMAGE = ['text', 'image']
 const DEEPSEEK_FLASH_REASONING = { low: 'low', high: 'high', max: 'max' }
 
 function model(id, name, contextWindow, maxTokens, input, reasoningEfforts, extra) {
-  const row = { id, name, contextWindow, maxTokens, input: [...input] }
+  const row: any = { id, name, contextWindow, maxTokens, input: [...input] }
   // `false` must stay `false`: `{ ...false }` is `{}`, and DSH rejects an
   // empty reasoningEfforts dict for the whole atomic llm-pi-ai write.
   if (reasoningEfforts === false) row.reasoningEfforts = false

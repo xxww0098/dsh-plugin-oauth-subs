@@ -132,14 +132,14 @@ export declare const ANTIGRAVITY_PLAN_NAMES: Readonly<{
 }>;
 export declare function antigravityPlatform(platform?: NodeJS.Platform, arch?: NodeJS.Architecture): string;
 /** Normalize FileVersion `2.11.0.0` → `2.11.0`; keep a real fourth component. */
-export declare function normalizeAntigravityVersion(value: any): string;
+export declare function normalizeAntigravityVersion(value: any): string | undefined;
 /**
  * SkillStar-style CFBundleShortVersionString extract from Info.plist XML.
  * Does not read Antigravity IDE.app — callers pass Antigravity.app only.
  */
-export declare function parseAntigravityPlistVersion(plistXml: any): string;
+export declare function parseAntigravityPlistVersion(plistXml: any): string | undefined;
 /** First `X.Y` / `X.Y.Z` / `X.Y.Z.W` token in CLI or PowerShell output. */
-export declare function parseAntigravityVersionText(text: any): string;
+export declare function parseAntigravityVersionText(text: any): string | undefined;
 /**
  * Prefer the installed official Antigravity.app (SkillStar
  * `detect_ide_version`): macOS Info.plist, Windows LocalAppData
@@ -147,10 +147,10 @@ export declare function parseAntigravityVersionText(text: any): string;
  * Never reads Antigravity IDE.app. Else 2.11.0.
  */
 export declare function detectAntigravityVersion({ platform, env, readFile, execFile, }?: {
-    platform?: NodeJS.Platform;
-    env?: NodeJS.ProcessEnv;
-    readFile?: (path: any) => string;
-    execFile?: (file: any, args: any, opts: any) => string;
+    platform?: NodeJS.Platform | undefined;
+    env?: NodeJS.ProcessEnv | undefined;
+    readFile?: ((path: any) => string) | undefined;
+    execFile?: ((file: any, args: any, opts: any) => string) | undefined;
 }): string;
 export declare function antigravityVersion(): any;
 /** Short runtime UA — userinfo, loadCodeAssist, chat. CLIProxyAPI AntigravityRequestUserAgent. */
@@ -214,14 +214,14 @@ export declare const antigravityFlow: {
     }): string;
 };
 export declare function extractCloudaicompanionProject(data: any): any;
-export declare function defaultAntigravityTierId(loadResp: any): string;
+export declare function defaultAntigravityTierId(loadResp: any): string | undefined;
 /** Code Assist SKU — not the Google AI / Antigravity subscription. */
 export declare function isCodeAssistOnlyPlan(raw: any): boolean;
 /**
  * Google AI plan. Prefer paidTier name/id (Google AI Pro / Ultra).
  * currentTier is Code Assist: STANDARD is ignored, free-tier is kept.
  */
-export declare function antigravityPlanType(loadResp: any): string;
+export declare function antigravityPlanType(loadResp: any): string | undefined;
 export declare const ANTIGRAVITY_VERIFY_MESSAGE = "Google \u9700\u8981\u9A8C\u8BC1\u6B64\u8D26\u53F7\u624D\u80FD\u5BF9\u8BDD";
 export declare const ANTIGRAVITY_VERIFY_CODE = "VALIDATION_REQUIRED";
 /** Detect Google Cloud Code `VALIDATION_REQUIRED` / "Verify your account". */
@@ -230,17 +230,17 @@ export declare function parseAntigravityValidation(payload: any): {
     validationUrl: any;
     message: string;
     code: string;
-};
-export declare function antigravityValidationClientError(info?: {}): {
+} | undefined;
+export declare function antigravityValidationClientError(info?: any): {
     error: {
         message: any;
         code: any;
         type: string;
     };
 };
-export declare function antigravitySession({ accessToken, refreshToken, expiresAt, expiresIn, account, projectId, planType, needsValidation, validationUrl, }?: {}): {
-    validationUrl?: string;
-    needsValidation?: boolean;
+export declare function antigravitySession({ accessToken, refreshToken, expiresAt, expiresIn, account, projectId, planType, needsValidation, validationUrl, }?: any): {
+    validationUrl?: string | undefined;
+    needsValidation?: boolean | undefined;
     planType?: any;
     accessToken: any;
     refreshToken: any;
@@ -250,24 +250,20 @@ export declare function antigravitySession({ accessToken, refreshToken, expiresA
 };
 export declare function exchangeAntigravityTokens(body: any, fetchFn?: typeof fetch): Promise<unknown>;
 export declare function fetchAntigravityUserInfo(accessToken: any, { fetchFn }?: {
-    fetchFn?: typeof fetch;
+    fetchFn?: typeof fetch | undefined;
 }): Promise<string>;
 export declare function onboardAntigravityUser(accessToken: any, tierId: any, { fetchFn, sleep }?: {
-    fetchFn?: typeof fetch;
-    sleep?: typeof delay;
+    fetchFn?: typeof fetch | undefined;
+    sleep?: typeof delay | undefined;
 }): Promise<any>;
-export declare function fetchAntigravityProject({ accessToken, fetchFn, sleep }?: {
-    fetchFn?: typeof fetch;
-}): Promise<{
+export declare function fetchAntigravityProject({ accessToken, fetchFn, sleep }?: any): Promise<{
     projectId: any;
-    planType: string;
+    planType: string | undefined;
     loadResp: any;
 }>;
-export declare function completeAntigravityLogin(tokens: any, { fetchFn, sleep, account }?: {
-    fetchFn?: typeof fetch;
-}): Promise<{
-    validationUrl?: string;
-    needsValidation?: boolean;
+export declare function completeAntigravityLogin(tokens: any, { fetchFn, sleep, account }?: any): Promise<{
+    validationUrl?: string | undefined;
+    needsValidation?: boolean | undefined;
     planType?: any;
     accessToken: any;
     refreshToken: any;
@@ -276,10 +272,10 @@ export declare function completeAntigravityLogin(tokens: any, { fetchFn, sleep, 
     projectId: any;
 }>;
 export declare function exchangeAntigravityCode(code: any, redirectUri: any, { fetchFn }?: {
-    fetchFn?: typeof fetch;
+    fetchFn?: typeof fetch | undefined;
 }): Promise<{
-    validationUrl?: string;
-    needsValidation?: boolean;
+    validationUrl?: string | undefined;
+    needsValidation?: boolean | undefined;
     planType?: any;
     accessToken: any;
     refreshToken: any;
@@ -288,8 +284,8 @@ export declare function exchangeAntigravityCode(code: any, redirectUri: any, { f
     projectId: any;
 }>;
 export declare function refreshAntigravity(session: any, fetchFn?: typeof fetch): Promise<{
-    validationUrl?: string;
-    needsValidation?: boolean;
+    validationUrl?: string | undefined;
+    needsValidation?: boolean | undefined;
     planType?: any;
     accessToken: any;
     refreshToken: any;
@@ -300,7 +296,7 @@ export declare function refreshAntigravity(session: any, fetchFn?: typeof fetch)
 export declare function applyAntigravityValidation(session: any, info: any): any;
 /** Tiny generateContent so Settings can show the verify banner before DSH chats. */
 export declare function probeAntigravityValidation(session: any, { fetchFn }?: {
-    fetchFn?: typeof fetch;
+    fetchFn?: typeof fetch | undefined;
 }): Promise<{
     required: boolean;
     validationUrl: any;
@@ -308,7 +304,7 @@ export declare function probeAntigravityValidation(session: any, { fetchFn }?: {
     code: string;
 } | {
     required: boolean;
-}>;
+} | undefined>;
 export declare function isAntigravityPermanentRefreshError(error: any): boolean;
 export declare function antigravityRequestId(): string;
 declare function delay(ms: any): Promise<unknown>;

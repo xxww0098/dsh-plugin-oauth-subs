@@ -63,7 +63,7 @@ export declare const CURSOR_MODELS: readonly {
     }>;
 }[];
 export declare const CURSOR_SOURCES: readonly string[];
-export declare function cursorSourceLabel(source: any, locale?: string): "env" | "CLI" | "IDE" | "PKCE";
+export declare function cursorSourceLabel(source: any, locale?: string): "env" | "CLI" | "IDE" | "PKCE" | undefined;
 export declare function cursorClientVersion(): string;
 export declare function cursorAgentUrl(): string;
 /** Plugin config `cursorProxy` wins over env; empty re-enables env fallback. */
@@ -78,18 +78,18 @@ export declare function cursorUpstreamProxy(): any;
 export declare function cursorTokenExpiry(token: any, now?: number): number;
 /** JWT `sub` / WorkOS / Auth0 / the literal `cursor` — vault keys only, never a card title. */
 export declare function isCursorOpaqueAccount(value: any): boolean;
-export declare function pickCursorHumanAccount(...candidates: any[]): string;
-export declare function cursorAccountFromToken(token: any): string;
-export declare function displayCursorAccount(session: any): string;
+export declare function pickCursorHumanAccount(...candidates: any[]): string | undefined;
+export declare function cursorAccountFromToken(token: any): string | undefined;
+export declare function displayCursorAccount(session: any): string | undefined;
 /** GetEmail `{ email }` or GetMe `{ email, firstName, lastName }`. Email wins. */
-export declare function cursorNameFromProfile(value: any): string;
-export declare function cursorMembershipFromStripe(value: any): string;
+export declare function cursorNameFromProfile(value: any): string | undefined;
+export declare function cursorMembershipFromStripe(value: any): string | undefined;
 export declare function cursorAccessStillValid(token: any, now?: number): boolean;
 export declare function createCursorPkce(): {
     verifier: string;
     challenge: string;
 };
-export declare function cursorLoginParams({ verifier, challenge, uuid }?: {}): {
+export declare function cursorLoginParams({ verifier, challenge, uuid }?: any): {
     verifier: any;
     challenge: any;
     uuid: string;
@@ -97,22 +97,18 @@ export declare function cursorLoginParams({ verifier, challenge, uuid }?: {}): {
 };
 export declare function parseCursorTokenResponse(value: any, endpoint?: string): {
     accessToken: string;
-    refreshToken: string;
+    refreshToken: string | undefined;
 };
-export declare function cursorSession({ accessToken, refreshToken, expiresAt, account, planType, cachedEmail, source, }?: {
-    source?: string;
-}): {
-    cachedEmail?: string;
+export declare function cursorSession({ accessToken, refreshToken, expiresAt, account, planType, cachedEmail, source, }?: any): {
+    cachedEmail?: string | undefined;
     planType?: any;
-    source: string;
-    account?: string;
+    source: any;
+    account?: string | undefined;
     accessToken: any;
     refreshToken: any;
     expiresAt: number;
 };
-export declare function cursorChatHeaders(session: any, { unary, requestId, originalRequestId }?: {
-    unary?: boolean;
-}): {
+export declare function cursorChatHeaders(session: any, { unary, requestId, originalRequestId }?: any): {
     authorization: string;
     'connect-protocol-version': string;
     'content-type': string;
@@ -129,16 +125,11 @@ export declare function cursorUsageHeaders(session: any): {
     'x-cursor-client-version': string;
     'x-cursor-client-type': string;
 };
-export declare function pollCursorAuth(uuid: any, verifier: any, { fetchFn, sleep, signal, maxAttempts }?: {
-    fetchFn?: typeof fetch;
-    maxAttempts?: number;
-}): Promise<{
+export declare function pollCursorAuth(uuid: any, verifier: any, { fetchFn, sleep, signal, maxAttempts }?: any): Promise<{
     accessToken: string;
-    refreshToken: string;
+    refreshToken: string | undefined;
 }>;
-export declare function refreshCursorTokens(refreshToken: any, { fetchFn, signal }?: {
-    fetchFn?: typeof fetch;
-}): Promise<{
+export declare function refreshCursorTokens(refreshToken: any, { fetchFn, signal }?: any): Promise<{
     accessToken: string;
     refreshToken: string;
     expiresAt: number;
@@ -146,12 +137,12 @@ export declare function refreshCursorTokens(refreshToken: any, { fetchFn, signal
 export declare function refreshCursor(session: any, fetchFn?: typeof fetch): Promise<any>;
 export declare function isCursorPermanentRefreshError(error: any): boolean;
 export declare function completeCursorLogin(tokens: any, { source }?: {
-    source?: string;
+    source?: string | undefined;
 }): Promise<{
-    cachedEmail?: string;
+    cachedEmail?: string | undefined;
     planType?: any;
-    source: string;
-    account?: string;
+    source: any;
+    account?: string | undefined;
     accessToken: any;
     refreshToken: any;
     expiresAt: number;

@@ -67,7 +67,7 @@ export function pinKiroSystemPrefix(conversationId, systemText) {
   return { pinned: existing, extra }
 }
 
-export function kiroConversationId(payload = {}, explicit) {
+export function kiroConversationId(payload: any = {}, explicit?) {
   const base = kiroCacheSessionId(explicit)
     ?? kiroCacheSessionId(payload.session_id)
     ?? kiroCacheSessionId(payload.prompt_cache_key)

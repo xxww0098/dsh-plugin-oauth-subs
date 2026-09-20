@@ -78,7 +78,15 @@ export function parseOpencodeGoVault(text) {
 }
 
 export class OpencodeGoStore {
-  constructor({ path, fetchFn = fetch, ttlMs = 10_000 } = {}) {
+  declare path: string | undefined
+  declare fetchFn: any
+  declare ttlMs: number
+  declare vault: any
+  declare quotas: Map<string, any>
+  declare inflight: Map<string, any>
+  declare ready: Promise<any>
+
+  constructor({ path, fetchFn = fetch, ttlMs = 10_000 }: any = {}) {
     this.path = path
     this.fetchFn = fetchFn
     this.ttlMs = ttlMs
@@ -153,14 +161,14 @@ export class OpencodeGoStore {
     return publicOpencodeGo(this.vault, this.quotas)
   }
 
-  async snapshot({ refresh = false, id } = {}) {
+  async snapshot({ refresh = false, id }: any = {}) {
     await this.ready
     if (refresh) await this.refreshQuota(id)
     else await this.#hydrate()
     return this.#snapshot()
   }
 
-  async save({ id, apiKey, cookie, workspace } = {}) {
+  async save({ id, apiKey, cookie, workspace }: any = {}) {
     await this.ready
     let target = typeof id === 'string' && this.vault.accounts[id] ? id : undefined
 
@@ -294,7 +302,7 @@ export class OpencodeGoStore {
 
   async #loadQuota(id, entry, previous) {
     try {
-      const parsed = await fetchOpencodeGoQuota(entry, { fetchFn: this.fetchFn })
+      const parsed: any = await fetchOpencodeGoQuota(entry, { fetchFn: this.fetchFn })
       let changed = false
       if (parsed.workspaceId && parsed.workspaceId !== entry.workspaceId) {
         entry.workspaceId = parsed.workspaceId

@@ -110,7 +110,7 @@ export function parseClinePlan(payload) {
   const threshold = clinePass?.inferenceCapThreshold && typeof clinePass.inferenceCapThreshold === 'object'
     ? clinePass.inferenceCapThreshold
     : undefined
-  const caps = {}
+  const caps: any = {}
   if (threshold) {
     for (const [type, field] of Object.entries(CLINE_CAP_FIELDS)) {
       const usd = clineCapUsd(threshold[field])
@@ -136,7 +136,7 @@ export function parseClinePlan(payload) {
 export function parseClinePlanLimits(payload) {
   const data = envelope(payload)
   const list = Array.isArray(data?.limits) ? data.limits : []
-  const limits = []
+  const limits: any[] = []
   for (const item of list) {
     if (!item || typeof item !== 'object') continue
     const type = typeof item.type === 'string' ? item.type.trim() : ''
@@ -156,9 +156,9 @@ export function parseClinePlanLimits(payload) {
   return limits
 }
 
-export function parseClineUsage(user, balance, plan, limits = []) {
+export function parseClineUsage(user, balance, plan, limits: any[] = []) {
   const identity = parseClineUserInfo(user) ?? {}
-  const rows = []
+  const rows: any[] = []
   for (const limit of limits) {
     const window = CLINE_QUOTA_WINDOWS[limit.type]
     if (!window) continue

@@ -18,12 +18,10 @@ export async function resolveOllamaLocalCredentials({ env = process.env } = {}) 
   return ollamaSession({ accessToken: key, source: 'env' })
 }
 
-export async function importOllamaAuth(options = {}) {
+export async function importOllamaAuth(options: any = {}) {
   const session = await resolveOllamaLocalCredentials(options)
   if (!session) {
-    const error = new Error(OLLAMA_IMPORT_EMPTY)
-    error.code = OLLAMA_IMPORT_EMPTY
-    throw error
+    throw Object.assign(new Error(OLLAMA_IMPORT_EMPTY), { code: OLLAMA_IMPORT_EMPTY })
   }
   return { source: session.source, session }
 }

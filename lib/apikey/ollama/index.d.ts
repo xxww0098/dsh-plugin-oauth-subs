@@ -58,10 +58,10 @@ export declare function inferOllamaInput(id: any): string[];
  * `vision` (any case) → text+image. Missing `capabilities` → undefined
  * so the catalog can fall back to `inferOllamaInput`. Never invent audio.
  */
-export declare function ollamaShowInput(show: any): string[];
+export declare function ollamaShowInput(show: any): string[] | undefined;
 export declare function ollamaInput(id: any, show: any): string[];
 /** `model_info.<family>.context_length` from POST /api/show, or a later tags field. */
-export declare function ollamaShowContextLength(value: any): number;
+export declare function ollamaShowContextLength(value: any): number | undefined;
 export declare function ollamaSnapshotContextWindow(id: any): any;
 /**
  * DSH picker window: live show/tags `context_length`, else the pinned Cloud
@@ -89,7 +89,7 @@ export declare const OLLAMA_MODELS: readonly {
         max: "max";
     }>;
 }[];
-export declare function ollamaSourceLabel(source: any): "key" | "env";
+export declare function ollamaSourceLabel(source: any): "key" | "env" | undefined;
 export declare function parseOllamaApiKey(value: any): string;
 /** Stable vault id that is not the raw key. */
 export declare function ollamaAccountFingerprint(key: any): string;
@@ -98,14 +98,12 @@ export declare function ollamaDefaultAccount(key: any): string;
 export declare function isOllamaOpaqueAccount(value: any): boolean;
 export declare function isOllamaRetiredModel(id: any): boolean;
 export declare function ollamaPrettyName(id: any): string;
-export declare function ollamaSession({ accessToken, account, source, }?: {
-    source?: string;
-}): {
+export declare function ollamaSession({ accessToken, account, source, }?: any): {
     accessToken: string;
     refreshToken: string;
     expiresAt: number;
     account: string;
-    source: string;
+    source: any;
 };
 export declare function refreshOllama(session: any): Promise<any>;
 export declare function isOllamaPermanentRefreshError(): boolean;
@@ -114,12 +112,10 @@ export declare function ollamaUpstreamHeaders(session: any): {
 };
 /** Live /api/me is PascalCase (`Email`, `Name`, `Plan`). GET is 405. */
 export declare function parseOllamaMe(value: any): {
-    planType?: string;
-    account?: string;
+    planType?: string | undefined;
+    account?: string | undefined;
 };
-export declare function resolveOllamaIdentity(session: any, { fetchFn, signal }?: {
-    fetchFn?: typeof fetch;
-}): Promise<{
-    planType?: string;
-    account?: string;
-}>;
+export declare function resolveOllamaIdentity(session: any, { fetchFn, signal }?: any): Promise<{
+    planType?: string | undefined;
+    account?: string | undefined;
+} | undefined>;

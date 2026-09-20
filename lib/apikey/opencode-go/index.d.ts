@@ -13,10 +13,10 @@ export declare const OPENCODE_GO_ID = "opencode-go";
 export declare const OPENCODE_GO_ORIGIN = "https://opencode.ai";
 export declare const OPENCODE_GO_RESPONSES_URL = "https://opencode.ai/zen/go/v1";
 export declare const OPENCODE_GO_COOKIE_MASK = "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022";
-export declare function parseOpencodeGoCookie(raw: any): string;
-export declare function normalizeOpencodeGoWorkspaceId(raw: any): string;
+export declare function parseOpencodeGoCookie(raw: any): string | undefined;
+export declare function normalizeOpencodeGoWorkspaceId(raw: any): string | undefined;
 /** Stable account id: workspace when known, else a hash of the secret. */
-export declare function opencodeGoAccountId({ workspaceId, apiKey, cookieHeader }?: {}): string;
+export declare function opencodeGoAccountId({ workspaceId, apiKey, cookieHeader }?: any): string | undefined;
 /** Masked identity for a keyed account that has no workspace id yet. */
 export declare function opencodeGoKeyHint(apiKey: any): string;
 export declare function publicOpencodeGoAccount(id: any, entry: any, quota: any, active: any): {

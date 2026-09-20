@@ -8,10 +8,10 @@
  * Never stamp Date.now().
  */
 export declare const OLLAMA_STABLE_SESSION = "dsh-ollama";
-export declare function ollamaCacheSessionId(key: any): string;
+export declare function ollamaCacheSessionId(key: any): string | undefined;
 export declare function resetOllamaPins(): void;
-export declare function applyOllamaCache(payload?: {}): {
-    payload: {};
+export declare function applyOllamaCache(payload?: any): {
+    payload: any;
     cacheSessionId: string;
 };
 /** Ollama does not sticky-route on Codex / Grok HTTP headers. */

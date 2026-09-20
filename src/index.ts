@@ -18,6 +18,7 @@ import { join } from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import z from '@deepseek-ai/schemastery'
+import { describeError } from './utils/http.js'
 import { AuthController } from './oauth/controller.js'
 import { authFilePath, defaultDataDir, readPrivateText, writePrivateText } from './oauth/store.js'
 import { createProxy } from './oauth/proxy.js'
@@ -180,7 +181,7 @@ export function registerRpc(ctx, controller) {
         methods: ['POST'],
         requestBody: 'buffered',
         fetch: async (request) => {
-          let body = {}
+          let body: any = {}
           try {
             body = await request.json()
           } catch {
@@ -251,7 +252,7 @@ export function registerRpc(ctx, controller) {
   }
 }
 
-export function apply(ctx, config = {}) {
+export function apply(ctx, config: any = {}) {
   const port = Number(config.port ?? 8318)
   const prefix = String(config.provider ?? 'oauth').trim() || 'oauth'
   const grokLogin = config.grokLogin === 'pkce' ? 'pkce' : 'device'
@@ -279,7 +280,6 @@ export function apply(ctx, config = {}) {
     grokLogin,
     models,
     fetchFn: outbound.fetchFn,
-    outbound,
     onAuthChanged: () => {
       controller.sync().catch((error) => {
         ctx.logger?.warn?.(`dsh-plugin-oauth-subs: llm-pi-ai sync failed: ${error.message}`)
@@ -293,7 +293,7 @@ export function apply(ctx, config = {}) {
     if (outbound.ready) await outbound.ready
     return outbound.snapshot()
   }
-  controller.setOutboundProxy = async (payload = {}) => {
+  controller.setOutboundProxy = async (payload: any = {}) => {
     if (outbound.ready) await outbound.ready
     return outbound.setUrl(payload?.url)
   }
@@ -351,7 +351,7 @@ export function apply(ctx, config = {}) {
         // refresh (e.g. offering region-gated Cursor rows that cannot run).
         void controller.warmCatalogs().catch(() => undefined)
       } catch (error) {
-        if (!closed) ctx.logger?.error?.(`dsh-plugin-oauth-subs: failed to start: ${error.message}`)
+        if (!closed) ctx.logger?.error?.(`dsh-plugin-oauth-subs: failed to start: ${describeError(error)}`)
       }
     })()
     return () => {

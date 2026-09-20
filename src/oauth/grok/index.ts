@@ -98,7 +98,7 @@ export async function grokDiscovery(fetchFn = fetch) {
   if (discoveryCache !== undefined) return discoveryCache
   const response = await fetchFn(GROK_DISCOVERY_URL)
   if (!response.ok) throw await oauthError(response, 'grok OIDC discovery')
-  const document = await response.json()
+  const document: any = await response.json()
   if (typeof document.authorization_endpoint !== 'string' || typeof document.token_endpoint !== 'string') {
     throw new Error('grok OIDC discovery document is missing endpoints')
   }
@@ -172,7 +172,7 @@ function grokAccount(idToken) {
   return typeof claim === 'string' && claim.length > 0 ? claim : undefined
 }
 
-export function grokSession(tokens, tokenEndpoint, fallback) {
+export function grokSession(tokens, tokenEndpoint, fallback?) {
   if (typeof tokens.access_token !== 'string' || tokens.access_token.length === 0) {
     throw new Error('grok token endpoint returned no access token')
   }

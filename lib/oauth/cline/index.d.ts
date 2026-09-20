@@ -128,11 +128,11 @@ export declare const CLINE_MODELS: readonly {
     contextWindow: number;
     maxTokens: number;
 }[];
-export declare function clineSourceLabel(source: any): "key" | "env" | "CLI" | "OAuth";
+export declare function clineSourceLabel(source: any): "key" | "env" | "CLI" | "OAuth" | undefined;
 /** `formatAccessToken` — idempotent `workos:` prefix on the bearer value. */
-export declare function formatClineAccessToken(value: any): string;
+export declare function formatClineAccessToken(value: any): string | undefined;
 /** `normalizeStoredAccessToken` — the bare WorkOS JWT. */
-export declare function normalizeClineAccessToken(value: any): string;
+export declare function normalizeClineAccessToken(value: any): string | undefined;
 export declare function clineBearer(session: any): string;
 export declare function clineBalanceUrl(userId: any): string;
 /**
@@ -144,7 +144,7 @@ export declare function clineBalanceUrl(userId: any): string;
  * `expired_token` instead of failing the login.
  */
 export declare function clineDeviceSpec({ fetchFn }?: {
-    fetchFn?: typeof fetch;
+    fetchFn?: typeof fetch | undefined;
 }): {
     clientId: string;
     deviceCodeUrl: string;
@@ -158,25 +158,22 @@ export declare function clineDeviceSpec({ fetchFn }?: {
  * tokenType, expiresAt, userInfo}}`. The WorkOS pair alone is not a Cline
  * session — this exchange is what mints the `usr-…` account id.
  */
-export declare function registerClineTokens(tokens: any, { fetchFn, signal, source }?: {
-    fetchFn?: typeof fetch;
-    source?: string;
-}): Promise<{
-    planType?: string;
+export declare function registerClineTokens(tokens: any, { fetchFn, signal, source }?: any): Promise<{
+    planType?: string | undefined;
     source: any;
-    tokenType?: string;
-    userId?: string;
-    accessToken: string;
+    tokenType?: string | undefined;
+    userId?: string | undefined;
+    accessToken: string | undefined;
     refreshToken: string;
     expiresAt: number;
     account: string;
 }>;
-export declare function clineSessionFromAuthData(data: any, fallback?: {}): {
-    planType?: string;
+export declare function clineSessionFromAuthData(data: any, fallback?: any): {
+    planType?: string | undefined;
     source: any;
-    tokenType?: string;
-    userId?: string;
-    accessToken: string;
+    tokenType?: string | undefined;
+    userId?: string | undefined;
+    accessToken: string | undefined;
     refreshToken: string;
     expiresAt: number;
     account: string;
@@ -189,12 +186,12 @@ export declare function clineSessionFromAuthData(data: any, fallback?: {}): {
 export declare function clineDefaultAccount(token: any): string;
 export declare function isClineOpaqueAccount(value: any): boolean;
 /** `refreshClineToken`: JSON `{refreshToken, grantType:"refresh_token"}`. */
-export declare function refreshCline(session: any, fetchFn?: typeof fetch, { signal }?: {}): Promise<{
-    planType?: string;
+export declare function refreshCline(session: any, fetchFn?: typeof fetch, { signal }?: any): Promise<{
+    planType?: string | undefined;
     source: any;
-    tokenType?: string;
-    userId?: string;
-    accessToken: string;
+    tokenType?: string | undefined;
+    userId?: string | undefined;
+    accessToken: string | undefined;
     refreshToken: string;
     expiresAt: number;
     account: string;
@@ -233,24 +230,22 @@ export declare function clineUpstreamHeaders(session: any, cacheSessionId: any):
 };
 /** `GET /api/v1/users/me` — envelope-wrapped (`{success, data}`). */
 export declare function parseClineUserInfo(payload: any): {
-    organizationId?: string;
-    organizationName?: string;
-    userId?: string;
-    planType?: string;
-    account?: string;
-};
-export declare function resolveClineIdentity(session: any, { fetchFn, signal }?: {
-    fetchFn?: typeof fetch;
-}): Promise<{
-    organizationId?: string;
-    organizationName?: string;
-    userId?: string;
-    planType?: string;
-    account?: string;
-}>;
+    organizationId?: string | undefined;
+    organizationName?: string | undefined;
+    userId?: string | undefined;
+    planType?: string | undefined;
+    account?: string | undefined;
+} | undefined;
+export declare function resolveClineIdentity(session: any, { fetchFn, signal }?: any): Promise<{
+    organizationId?: string | undefined;
+    organizationName?: string | undefined;
+    userId?: string | undefined;
+    planType?: string | undefined;
+    account?: string | undefined;
+} | undefined>;
 export declare function clineHomePaths({ env, home }?: {
-    env?: NodeJS.ProcessEnv;
-    home?: string;
+    env?: NodeJS.ProcessEnv | undefined;
+    home?: string | undefined;
 }): string[];
 /** `/api/v1/users/me/plan` slugs — names taken from the CLI's own provider
  *  entries (`builtins.ts`: "Cline Usage-Billing" / "ClinePass"). */

@@ -114,8 +114,8 @@ function asUsedPercent(value) {
 
 function grpcFrames(buffer) {
   const bytes = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer)
-  const data = []
-  const trailers = {}
+  const data: any[] = []
+  const trailers: any = {}
   let offset = 0
   while (offset + 5 <= bytes.length) {
     const flags = bytes[offset]

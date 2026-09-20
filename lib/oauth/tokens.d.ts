@@ -7,6 +7,17 @@
 export declare const REFRESH_FAILURE_BACKOFF_MS: number;
 export declare class TokenManager {
     #private;
+    provider: string;
+    authPath: string;
+    displayName: string;
+    preemptMs: number;
+    /** Injected refresh callback; distinct from the private #refresh method. */
+    refresh: any;
+    isPermanent: any;
+    onRemoved: any;
+    inflight: Map<any, any>;
+    failures: Map<any, any>;
+    sources: WeakMap<object, any>;
     constructor({ provider, authPath, displayName, preemptMs, refresh, isPermanent, onRemoved }: {
         provider: any;
         authPath: any;

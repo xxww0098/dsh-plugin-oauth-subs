@@ -100,7 +100,7 @@ export function pinCursorSystemPrefix(conversationId, systemText) {
   return { pinned: existing, extra }
 }
 
-export function cursorConversationId(payload = {}, explicit) {
+export function cursorConversationId(payload: any = {}, explicit?) {
   const base = cursorCacheSessionId(explicit)
     ?? cursorCacheSessionId(payload.session_id)
     ?? cursorCacheSessionId(payload.prompt_cache_key)
@@ -108,7 +108,7 @@ export function cursorConversationId(payload = {}, explicit) {
   return appendCursorModel(base, peelCursorFastSuffix(payload.model).modelId)
 }
 
-export function applyCursorCache(payload = {}) {
+export function applyCursorCache(payload: any = {}) {
   const next = { ...payload }
   delete next.prompt_cache_retention
   delete next.prompt_cache_options

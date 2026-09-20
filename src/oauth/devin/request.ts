@@ -47,7 +47,7 @@ function partsOf(content) {
   if (typeof content === 'string') return { text: content, images: [] }
   if (!Array.isArray(content)) return { text: '', images: [] }
   let text = ''
-  const images = []
+  const images: any[] = []
   for (const part of content) {
     if (!part || typeof part !== 'object') continue
     if (part.type === 'text' || part.type === 'input_text') {
@@ -119,7 +119,7 @@ function devinTools(tools) {
 }
 
 function stopPatterns(payload) {
-  const extra = []
+  const extra: any[] = []
   const stop = payload?.stop ?? payload?.stop_sequences
   for (const value of Array.isArray(stop) ? stop : stop == null ? [] : [stop]) {
     const text = textOf(value).trim()
@@ -142,15 +142,15 @@ function maxTokensOf(payload, modelRow) {
  * the conversation ids the transport needs. `metadata` is applied at send
  * time by the transport (it carries the per-request user_jwt).
  */
-export function openaiToDevin(payload, { cascadeId, executionId } = {}) {
+export function openaiToDevin(payload, { cascadeId, executionId }: any = {}) {
   const source = payload && typeof payload === 'object' ? payload : {}
   const messages = Array.isArray(source.messages) ? source.messages : []
   const cascade = cascadeId ?? devinCascadeId(source)
   const row = devinModelById(textOf(source.model))
   const chatModelUid = devinWireModelId(source.model, source.reasoning_effort)
 
-  const system = []
-  const prompts = []
+  const system: any[] = []
+  const prompts: any[] = []
   for (const [index, message] of messages.entries()) {
     if (!message || typeof message !== 'object') continue
     const role = textOf(message.role)
@@ -223,7 +223,7 @@ export function devinBasicAuth(session) {
 }
 
 /** Wire Metadata message for every Devin RPC (chat, catalog, status, jwt). */
-export function devinMetadataBytes(session, { userJwt, modelDisplays } = {}) {
+export function devinMetadataBytes(session, { userJwt, modelDisplays }: any = {}) {
   return encodeDevinMetadata({
     apiKey: session?.accessToken,
     userJwt,
@@ -244,7 +244,7 @@ export function mapDevinUsage(usage) {
   const prompt = Number(usage.inputTokens ?? 0)
   const completion = Number(usage.outputTokens ?? 0)
   const cached = Number(usage.cacheReadTokens ?? 0)
-  const out = {
+  const out: any = {
     prompt_tokens: prompt,
     completion_tokens: completion,
     total_tokens: prompt + completion,
@@ -267,9 +267,9 @@ export function devinStopReasonToFinish(reason, hasToolCalls) {
  * `collected` is what runDevinChat accumulated:
  *   { text, thinking, toolCalls:[{id,name,argumentsJson}], usage, stopReason, messageId }
  */
-export function devinToOpenai(collected, { model, id } = {}) {
+export function devinToOpenai(collected, { model, id }: any = {}) {
   const toolCalls = Array.isArray(collected?.toolCalls) ? collected.toolCalls : []
-  const message = {
+  const message: any = {
     role: 'assistant',
     content: collected?.text ?? '',
     tool_calls: toolCalls.map((call, index) => ({
@@ -280,7 +280,7 @@ export function devinToOpenai(collected, { model, id } = {}) {
   }
   if (toolCalls.length === 0) delete message.tool_calls
   if (collected?.thinking) message.reasoning_content = collected.thinking
-  const body = {
+  const body: any = {
     id: id ?? `chatcmpl-devin-${Date.now().toString(36)}`,
     object: 'chat.completion',
     created: Math.floor(Date.now() / 1000),
@@ -302,7 +302,7 @@ export function devinToOpenai(collected, { model, id } = {}) {
  * Translate Devin stream events into OpenAI chat.completion.chunk SSE. Events
  * come from runDevinChat: {type:'text'|'thinking'|'tool'|'usage'|'done', …}.
  */
-export function createDevinOpenaiStream({ model, id } = {}) {
+export function createDevinOpenaiStream({ model, id }: any = {}) {
   const completionId = id ?? `chatcmpl-devin-${Date.now().toString(36)}`
   const created = Math.floor(Date.now() / 1000)
   const toolIndexes = new Map()
@@ -314,10 +314,10 @@ export function createDevinOpenaiStream({ model, id } = {}) {
   let text = ''
   let thinking = ''
 
-  function chunk(delta, finishReason, usage) {
-    const choice = { index: 0, delta }
+  function chunk(delta, finishReason?, usage?) {
+    const choice: any = { index: 0, delta }
     if (finishReason !== undefined) choice.finish_reason = finishReason
-    const body = {
+    const body: any = {
       id: completionId,
       object: 'chat.completion.chunk',
       created,
@@ -339,7 +339,7 @@ export function createDevinOpenaiStream({ model, id } = {}) {
     thinking: () => thinking,
     push(event) {
       if (!event || typeof event !== 'object') return []
-      const chunks = []
+      const chunks: any[] = []
       if (!sentRole) {
         sentRole = true
         chunks.push(chunk({ role: 'assistant' }))
@@ -353,7 +353,7 @@ export function createDevinOpenaiStream({ model, id } = {}) {
       } else if (event.type === 'tool' && event.call) {
         const call = event.call
         const index = toolIndex(call.id || `call_${nextToolIndex}`)
-        const toolCall = { index, type: 'function' }
+        const toolCall: any = { index, type: 'function' }
         if (call.id) toolCall.id = call.id
         if (call.name) toolCall.function = { name: call.name }
         if (call.argumentsJson) {
@@ -374,7 +374,7 @@ export function createDevinOpenaiStream({ model, id } = {}) {
       return chunks
     },
     finish() {
-      const chunks = []
+      const chunks: any[] = []
       if (!sentRole) chunks.push(chunk({ role: 'assistant' }))
       const finishReason = devinStopReasonToFinish(stopReason, toolIndexes.size > 0)
       chunks.push(chunk({}, finishReason, latestUsage ? mapDevinUsage(latestUsage) : undefined))

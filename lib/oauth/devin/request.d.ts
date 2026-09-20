@@ -27,7 +27,7 @@ export declare function devinWireModelId(model: any, reasoningEffort: any): any;
  * the conversation ids the transport needs. `metadata` is applied at send
  * time by the transport (it carries the per-request user_jwt).
  */
-export declare function openaiToDevin(payload: any, { cascadeId, executionId }?: {}): {
+export declare function openaiToDevin(payload: any, { cascadeId, executionId }?: any): {
     fields: {
         prompt: string;
         chatMessagePrompts: any[];
@@ -57,39 +57,21 @@ export declare function openaiToDevin(payload: any, { cascadeId, executionId }?:
  * session id is the session token itself (MITM capture). metadata.api_key
  * alone is accepted, but the header keeps the hop's fingerprint faithful.
  */
-export declare function devinBasicAuth(session: any): string;
+export declare function devinBasicAuth(session: any): string | undefined;
 /** Wire Metadata message for every Devin RPC (chat, catalog, status, jwt). */
-export declare function devinMetadataBytes(session: any, { userJwt, modelDisplays }?: {}): Buffer<ArrayBuffer>;
-export declare function mapDevinUsage(usage: any): {
-    prompt_tokens: number;
-    completion_tokens: number;
-    total_tokens: number;
-};
+export declare function devinMetadataBytes(session: any, { userJwt, modelDisplays }?: any): Buffer<ArrayBuffer>;
+export declare function mapDevinUsage(usage: any): any;
 export declare function devinStopReasonToFinish(reason: any, hasToolCalls: any): "tool_calls" | "stop" | "length";
 /**
  * `collected` is what runDevinChat accumulated:
  *   { text, thinking, toolCalls:[{id,name,argumentsJson}], usage, stopReason, messageId }
  */
-export declare function devinToOpenai(collected: any, { model, id }?: {}): {
-    id: any;
-    object: string;
-    created: number;
-    model: any;
-    choices: {
-        index: number;
-        message: {
-            role: string;
-            content: any;
-            tool_calls: any;
-        };
-        finish_reason: string;
-    }[];
-};
+export declare function devinToOpenai(collected: any, { model, id }?: any): any;
 /**
  * Translate Devin stream events into OpenAI chat.completion.chunk SSE. Events
  * come from runDevinChat: {type:'text'|'thinking'|'tool'|'usage'|'done', …}.
  */
-export declare function createDevinOpenaiStream({ model, id }?: {}): {
+export declare function createDevinOpenaiStream({ model, id }?: any): {
     id: any;
     text: () => string;
     thinking: () => string;

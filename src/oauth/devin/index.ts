@@ -159,12 +159,13 @@ export function devinSession({
   planType,
   apiServer,
   source = 'pkce',
-} = {}) {
+}: any = {}) {
   const access = normalizeDevinToken(accessToken)
   if (!access) throw new Error('devin session needs a session token')
   const expiry = typeof expiresAt === 'number' && Number.isFinite(expiresAt)
     ? expiresAt
     : devinTokenExpiry(access)
+  const server = trimmed(apiServer)
   return {
     accessToken: access,
     // No refresh endpoint exists for CLI session tokens; keep the same value
@@ -173,7 +174,7 @@ export function devinSession({
     expiresAt: expiry,
     ...(trimmed(account) ? { account: trimmed(account) } : {}),
     ...(trimmed(planType) ? { planType: trimmed(planType) } : {}),
-    ...(trimmed(apiServer) ? { apiServer: trimmed(apiServer).replace(/\/+$/, '') } : {}),
+    ...(server ? { apiServer: server.replace(/\/+$/, '') } : {}),
     source: DEVIN_SOURCES.includes(source) ? source : 'pkce',
   }
 }
@@ -200,7 +201,7 @@ export function devinApiServer(session) {
  * GetUserStatus: a live session token stays valid, a dead one is a permanent
  * 401 → re-login. Never mutates the stored credential.
  */
-export async function refreshDevin(session, { fetchFn = fetch, statusFn } = {}) {
+export async function refreshDevin(session, { fetchFn = fetch, statusFn }: any = {}) {
   const access = normalizeDevinToken(session?.accessToken)
   if (!access) throw new Error('devin session needs a session token')
   if (session?.expiresAt && Date.now() < session.expiresAt) return session
@@ -211,8 +212,9 @@ export async function refreshDevin(session, { fetchFn = fetch, statusFn } = {}) 
     return { ...session, accessToken: access, expiresAt: Date.now() + DEVIN_FALLBACK_EXPIRES_MS }
   } catch (error) {
     const next = error instanceof Error ? error : new Error(String(error))
-    if (/401|403|unauthenticated|permission/i.test(next.message)) next.permanent = true
-    throw next
+    throw /401|403|unauthenticated|permission/i.test(next.message)
+      ? Object.assign(next, { permanent: true })
+      : next
   }
 }
 
@@ -274,7 +276,7 @@ export const DEVIN_REASONING = Object.freeze({
   max: 'max',
 })
 
-function devinModel(id, name, contextWindow, maxTokens, variants, { input = ['text', 'image'], defaultUid } = {}) {
+function devinModel(id, name, contextWindow, maxTokens, variants, { input = ['text', 'image'], defaultUid }: any = {}) {
   return {
     id,
     name,

@@ -31,5 +31,5 @@ export declare const CODEX_PLAN_NAMES: Readonly<{
     education: "Edu";
     student: "Student";
 }>;
-export declare function formatPlanLabel(raw: any, family: any): any;
-export declare function pickPlanRaw(...values: any[]): string | number;
+export declare function formatPlanLabel(raw: any, family?: any): any;
+export declare function pickPlanRaw(...values: any[]): string | number | undefined;

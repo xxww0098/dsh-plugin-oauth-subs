@@ -12,7 +12,7 @@ export declare const CONTEXT_VARIANT_SUFFIX = "-900k";
 export declare function isLargeContextId(modelId: any): boolean;
 export declare function isLargeContextKey(key: any): boolean;
 /** The model's `max_context_window`, or undefined when it has no large variant. */
-export declare function codexLargeContext(modelId: any): number;
+export declare function codexLargeContext(modelId: any): number | undefined;
 export declare function isCodex900kBase(modelId: any): boolean;
 export declare function peelContextSuffix(modelId: any): {
     model: string;

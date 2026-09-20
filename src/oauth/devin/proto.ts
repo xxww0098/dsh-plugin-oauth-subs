@@ -26,7 +26,7 @@ export const MAX_CONNECT_FRAME_PAYLOAD = 16 * 1024 * 1024
 
 export function encodeVarint(value) {
   let n = typeof value === 'bigint' ? value : BigInt(Math.max(0, Math.floor(Number(value) || 0)))
-  const out = []
+  const out: any[] = []
   while (n > 0x7fn) {
     out.push(Number(n & 0x7fn) | 0x80)
     n >>= 7n
@@ -84,7 +84,7 @@ export function readVarint(buf, offset = 0) {
 
 export function decodeFields(buf) {
   const bytes = Buffer.isBuffer(buf) ? buf : Buffer.from(buf ?? [])
-  const fields = []
+  const fields: any[] = []
   let offset = 0
   while (offset < bytes.length) {
     const tag = readVarint(bytes, offset)
@@ -142,8 +142,8 @@ export function fieldBool(fields, number) {
 
 /* ---- Metadata (codeium_common.proto) ------------------------------------ */
 
-export function encodeDevinMetadata({ apiKey, userJwt, ideName, ideVersion, extensionName, extensionVersion, locale, os, modelDisplays } = {}) {
-  const parts = []
+export function encodeDevinMetadata({ apiKey, userJwt, ideName, ideVersion, extensionName, extensionVersion, locale, os, modelDisplays }: any = {}) {
+  const parts: any[] = []
   if (ideName) parts.push(encodeString(1, ideName))
   if (extensionVersion) parts.push(encodeString(2, extensionVersion))
   if (apiKey) parts.push(encodeString(3, apiKey))
@@ -179,8 +179,8 @@ export const DEVIN_SOURCE_USER = 1
 export const DEVIN_SOURCE_SYSTEM = 2
 export const DEVIN_SOURCE_TOOL = 4
 
-export function encodeChatToolCall({ id, name, argumentsJson } = {}) {
-  const parts = []
+export function encodeChatToolCall({ id, name, argumentsJson }: any = {}) {
+  const parts: any[] = []
   if (id) parts.push(encodeString(1, id))
   if (name) parts.push(encodeString(2, name))
   if (argumentsJson !== undefined) parts.push(encodeString(3, argumentsJson ?? ''))
@@ -196,7 +196,7 @@ export function decodeChatToolCall(buf) {
   }
 }
 
-export function encodeImageData({ base64Data, mimeType } = {}) {
+export function encodeImageData({ base64Data, mimeType }: any = {}) {
   return Buffer.concat([
     encodeString(1, base64Data ?? ''),
     encodeString(2, mimeType ?? ''),
@@ -213,8 +213,8 @@ export function encodeChatMessagePrompt({
   images = [],
   thinking,
   signature,
-} = {}) {
-  const parts = []
+}: any = {}) {
+  const parts: any[] = []
   if (messageId) parts.push(encodeString(1, messageId))
   if (source !== undefined) parts.push(encodeUint(2, source))
   if (prompt !== undefined) parts.push(encodeString(3, prompt ?? ''))
@@ -227,7 +227,7 @@ export function encodeChatMessagePrompt({
   return Buffer.concat(parts)
 }
 
-export function encodeChatToolDefinition({ name, description, jsonSchemaString, strict } = {}) {
+export function encodeChatToolDefinition({ name, description, jsonSchemaString, strict }: any = {}) {
   const parts = [
     encodeString(1, name ?? ''),
     encodeString(2, description ?? ''),
@@ -237,7 +237,7 @@ export function encodeChatToolDefinition({ name, description, jsonSchemaString, 
   return Buffer.concat(parts)
 }
 
-export function encodeChatToolChoice({ optionName, toolName } = {}) {
+export function encodeChatToolChoice({ optionName, toolName }: any = {}) {
   if (toolName) return encodeString(2, toolName)
   return encodeString(1, optionName ?? 'auto')
 }
@@ -257,7 +257,7 @@ export function encodeCompletionConfiguration({
   temperature = 0.4,
   topP = 1,
   stopPatterns = [],
-} = {}) {
+}: any = {}) {
   const parts = [
     encodeUint(1, 1), // num_completions
     encodeUint(2, maxTokens),
@@ -284,7 +284,7 @@ export function encodeGetChatMessageRequest({
   executionId,
   plannerMode = DEVIN_PLANNER_MODE_DEFAULT,
   requestType = DEVIN_REQUEST_TYPE_CASCADE,
-} = {}) {
+}: any = {}) {
   const parts = [
     encodeMessage(1, metadata),
     encodeString(2, prompt ?? ''),
@@ -477,7 +477,7 @@ export function frameConnect(payload, { compress = true, end = false } = {}) {
  */
 export function splitConnectFrames(buf) {
   const bytes = Buffer.isBuffer(buf) ? buf : Buffer.from(buf ?? [])
-  const frames = []
+  const frames: any[] = []
   let offset = 0
   while (offset + 5 <= bytes.length) {
     const flags = bytes[offset]

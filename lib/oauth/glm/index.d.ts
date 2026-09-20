@@ -119,11 +119,11 @@ export declare function isGlmAppAccount(value: any): boolean;
  * handles. Never a Settings card title. Emails and formatted phones pass.
  */
 export declare function isGlmOpaqueAccount(value: any): boolean;
-export declare function pickGlmHumanAccount(...candidates: any[]): string;
-export declare function accountFromJwt(token: any): string;
-export declare function glmBizBase(region?: string): "https://open.bigmodel.cn" | "https://api.z.ai";
+export declare function pickGlmHumanAccount(...candidates: any[]): string | undefined;
+export declare function accountFromJwt(token: any): string | undefined;
+export declare function glmBizBase(region?: string): "https://api.z.ai" | "https://open.bigmodel.cn";
 /** ZCode Desktop 3.10.1 fingerprint for api.z.ai / open.bigmodel.cn Coding Plan hops. */
-export declare function glmDesktopHeaders(sessionId: any): {
+export declare function glmDesktopHeaders(sessionId?: any): {
     'user-agent': string;
     'X-ZCode-App-Version': string;
     'X-ZCode-Agent': string;
@@ -135,7 +135,7 @@ export declare function glmDesktopHeaders(sessionId: any): {
     referer: string;
     'X-Title': string;
 };
-export declare function glmUpstreamHeaders(session: any, sessionId: any): {
+export declare function glmUpstreamHeaders(session: any, sessionId?: any): {
     'user-agent': string;
     'X-ZCode-App-Version': string;
     'X-ZCode-Agent': string;
@@ -184,14 +184,14 @@ export declare function parseCliPoll(body: any): {
     status: string;
     ready: boolean;
     oauthAccess: string;
-    zcodeJwt: string;
-    email: string;
-    accountId: string;
+    zcodeJwt: string | undefined;
+    email: string | undefined;
+    accountId: string | undefined;
 };
 export declare function glmCliInit({ region, fetchFn, pollToken }?: {
-    region?: string;
-    fetchFn?: typeof fetch;
-    pollToken?: string;
+    region?: string | undefined;
+    fetchFn?: typeof fetch | undefined;
+    pollToken?: string | undefined;
 }): Promise<{
     pollToken: string;
     region: string;
@@ -200,9 +200,7 @@ export declare function glmCliInit({ region, fetchFn, pollToken }?: {
     intervalMs: number;
     expiresAt: number;
 }>;
-export declare function glmCliPoll({ flowId, pollToken, fetchFn }?: {
-    fetchFn?: typeof fetch;
-}): Promise<{
+export declare function glmCliPoll({ flowId, pollToken, fetchFn }?: any): Promise<{
     status: string;
     ready: boolean;
     oauthAccess?: undefined;
@@ -213,42 +211,38 @@ export declare function glmCliPoll({ flowId, pollToken, fetchFn }?: {
     status: string;
     ready: boolean;
     oauthAccess: string;
-    zcodeJwt: string;
-    email: string;
-    accountId: string;
+    zcodeJwt: string | undefined;
+    email: string | undefined;
+    accountId: string | undefined;
 }>;
 export declare function businessLogin(oauthAccessToken: any, { fetchFn, region }?: {
-    fetchFn?: typeof fetch;
-    region?: string;
+    fetchFn?: typeof fetch | undefined;
+    region?: string | undefined;
 }): Promise<string>;
 export declare function mintGlmApiKey(oauthAccessToken: any, { fetchFn, region }?: {
-    fetchFn?: typeof fetch;
-    region?: string;
+    fetchFn?: typeof fetch | undefined;
+    region?: string | undefined;
 }): Promise<string>;
-export declare function glmSession({ accessToken, account, accountId, region, zcodeJwt }?: {
-    region?: string;
-}): {
+export declare function glmSession({ accessToken, account, accountId, region, zcodeJwt }?: any): {
     zcodeJwt?: any;
     region: string;
-    account?: string;
+    account?: string | undefined;
     accessToken: string;
     refreshToken: string;
     expiresAt: number;
 };
-export declare function fetchGlmUserinfo(source: any, { fetchFn, region }?: {
-    fetchFn?: typeof fetch;
-}): Promise<string>;
+export declare function fetchGlmUserinfo(source: any, { fetchFn, region }?: any): Promise<string | undefined>;
 export declare function resolveGlmIdentity(source: any, { fetchFn }?: {
-    fetchFn?: typeof fetch;
-}): Promise<string>;
-export declare function displayGlmAccount(session: any): string;
+    fetchFn?: typeof fetch | undefined;
+}): Promise<string | undefined>;
+export declare function displayGlmAccount(session: any): string | undefined;
 export declare function completeGlmCli(ready: any, { fetchFn, region }?: {
-    fetchFn?: typeof fetch;
-    region?: string;
+    fetchFn?: typeof fetch | undefined;
+    region?: string | undefined;
 }): Promise<{
     zcodeJwt?: any;
     region: string;
-    account?: string;
+    account?: string | undefined;
     accessToken: string;
     refreshToken: string;
     expiresAt: number;

@@ -30,7 +30,7 @@ import {
 export const KIRO_CATALOG_TTL_MS = 5 * 60_000
 export const KIRO_STATIC_FALLBACK_COUNT = 18
 
-const cached = { tokenHash: '', models: /** @type {any[] | undefined} */ (undefined), expiresAt: 0 }
+const cached: { tokenHash: string; models?: any[]; expiresAt: number } = { tokenHash: '', models: undefined, expiresAt: 0 }
 
 export function resetKiroCatalogCache() {
   cached.tokenHash = ''
@@ -94,7 +94,7 @@ function inferKiroWindow(id) {
 }
 
 function liveRows(models) {
-  const out = []
+  const out: any[] = []
   for (const model of models ?? []) {
     const id = kiroModelIdOf(model)
     if (!id) continue
@@ -135,7 +135,7 @@ export function toKiroPickerModels(live, fallback = KIRO_MODELS) {
       existing?.reasoningEfforts ?? inferKiroReasoning(row.id),
     ))
   }
-  const out = []
+  const out: any[] = []
   const seen = new Set()
   for (const row of fallback ?? []) {
     const next = byId.get(row.id)
@@ -167,7 +167,7 @@ async function readManagementJson(response) {
 async function requestManagement(session, { region, path, method, query, fetchFn }) {
   const url = new URL(path, `https://${kiroManagementHost(region)}/`)
   const headers = { ...kiroUsageHeaders(session), accept: 'application/json' }
-  const init = { method, headers }
+  const init: any = { method, headers }
   if (method === 'GET') {
     for (const [name, value] of Object.entries(query ?? {})) {
       if (value != null && String(value).trim()) url.searchParams.set(name, String(value))
@@ -220,7 +220,7 @@ function modelsFrom(body) {
  * Probe both canonical regions. A regional 403 is "no profile here", not
  * a hard stop — keep going. Empty / failed discovery returns [].
  */
-export async function fetchKiroLiveModels(session, options = {}) {
+export async function fetchKiroLiveModels(session, options: any = {}) {
   const fetchFn = options.fetchFn ?? fetch
   const regions = [...new Set([
     ...(options.regions ?? kiroUsageRegions(session)),
@@ -254,7 +254,7 @@ export async function fetchKiroLiveModels(session, options = {}) {
   return []
 }
 
-export async function refreshKiroCatalog(session, options = {}) {
+export async function refreshKiroCatalog(session, options: any = {}) {
   const token = typeof session?.accessToken === 'string' ? session.accessToken.trim() : ''
   if (!token) return [...KIRO_MODELS]
   const tokenHash = kiroCatalogTokenHash(token)

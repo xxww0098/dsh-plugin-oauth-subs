@@ -20,14 +20,14 @@ export declare const GROK_HERMES_KEYS: readonly string[];
 export declare function grokAuthSearchPaths(): string[];
 export declare function tokensFromHermes(raw: any, keys: any): {
     access_token: string;
-    refresh_token: string;
-    id_token: string;
+    refresh_token: string | undefined;
+    id_token: string | undefined;
     expires_in: any;
     expires_at: any;
-    last_refresh: string;
-    token_endpoint: string;
-    account: string;
-};
+    last_refresh: string | undefined;
+    token_endpoint: string | undefined;
+    account: string | undefined;
+} | undefined;
 export declare function tokensFromGrokCli(raw: any): any;
 export declare function importCodexAuth(): Promise<{
     session: {
@@ -57,15 +57,13 @@ export declare function importGrokAuth(paths?: string[]): Promise<{
 export declare function glmKeyFromZcodeConfig(raw: any): {
     apiKey: any;
     region: any;
-};
+} | undefined;
 export declare function glmAuthSearchPaths(): string[];
 export declare function antigravityAuthSearchPaths(): string[];
-export declare function importAntigravityAuth({ paths, fetchFn }?: {
-    fetchFn?: typeof fetch;
-}): Promise<{
+export declare function importAntigravityAuth({ paths, fetchFn }?: any): Promise<{
     session: {
-        validationUrl?: string;
-        needsValidation?: boolean;
+        validationUrl?: string | undefined;
+        needsValidation?: boolean | undefined;
         planType?: any;
         accessToken: any;
         refreshToken: any;
@@ -79,7 +77,7 @@ export declare function importGlmAuth(paths?: string[]): Promise<{
     session: {
         zcodeJwt?: any;
         region: string;
-        account?: string;
+        account?: string | undefined;
         accessToken: string;
         refreshToken: string;
         expiresAt: number;
@@ -88,7 +86,7 @@ export declare function importGlmAuth(paths?: string[]): Promise<{
 }>;
 export declare function kiroAuthSearchPaths(): string[];
 export declare function sessionFromKiroAuth(raw: any): any;
-export declare function importKiroAuth(paths: any): Promise<{
+export declare function importKiroAuth(paths?: any): Promise<{
     session: any;
     sessions: any[];
     source: any;

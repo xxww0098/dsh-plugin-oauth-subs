@@ -15,7 +15,7 @@
  */
 /** When DSH sends neither session_id nor prompt_cache_key, still pin a constant. */
 export declare const KIRO_STABLE_SESSION = "dsh-kiro";
-export declare function kiroCacheSessionId(key: any): string;
+export declare function kiroCacheSessionId(key: any): string | undefined;
 export declare function resetKiroSystemPins(): void;
 /**
  * Pin the first system blob per conversationId. Extra / changed DSH
@@ -26,4 +26,4 @@ export declare function pinKiroSystemPrefix(conversationId: any, systemText: any
     pinned: any;
     extra: string;
 };
-export declare function kiroConversationId(payload: {}, explicit: any): any;
+export declare function kiroConversationId(payload?: any, explicit?: any): any;

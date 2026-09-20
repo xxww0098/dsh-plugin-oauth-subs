@@ -14,38 +14,38 @@ export declare const CLINE_IMPORT_EMPTY = "cline-import-empty";
 export declare function clineSessionFromCliSettings(settings: any): {
     tokenType: string;
     source: string;
-    userId?: string;
-    account?: string;
+    userId?: string | undefined;
+    account?: string | undefined;
     accessToken: string;
     refreshToken: string;
     expiresAt: any;
-};
+} | undefined;
 /** First `cline` / `cline-pass` entry carrying a usable OAuth session. */
 export declare function clineSessionFromProvidersFile(data: any): {
     tokenType: string;
     source: string;
-    userId?: string;
-    account?: string;
+    userId?: string | undefined;
+    account?: string | undefined;
     accessToken: string;
     refreshToken: string;
     expiresAt: any;
-};
-export declare function resolveClineCliCredentials(options?: {}): Promise<{
+} | undefined;
+export declare function resolveClineCliCredentials(options?: any): Promise<{
     tokenType: string;
     source: string;
-    userId?: string;
-    account?: string;
+    userId?: string | undefined;
+    account?: string | undefined;
     accessToken: string;
     refreshToken: string;
     expiresAt: any;
-}>;
-export declare function importClineAuth(options?: {}): Promise<{
+} | undefined>;
+export declare function importClineAuth(options?: any): Promise<{
     source: string;
     session: {
         tokenType: string;
         source: string;
-        userId?: string;
-        account?: string;
+        userId?: string | undefined;
+        account?: string | undefined;
         accessToken: string;
         refreshToken: string;
         expiresAt: any;

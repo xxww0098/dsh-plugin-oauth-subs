@@ -34,3 +34,15 @@ export function describeError(error: unknown) {
     : undefined
   return detail === undefined ? String(message) : String(message) + ': ' + String(detail)
 }
+
+/** Node `code` (fs/system errors) from a thrown value, or undefined. */
+export function errorCode(error: unknown): string | undefined {
+  if (!error || typeof error !== 'object' || !('code' in error)) return undefined
+  return typeof error.code === 'string' ? error.code : undefined
+}
+
+/** Raw `message` from a thrown object, or undefined — never stringifies. */
+export function errorMessage(error: unknown): string | undefined {
+  if (!error || typeof error !== 'object' || !('message' in error)) return undefined
+  return typeof error.message === 'string' ? error.message : undefined
+}

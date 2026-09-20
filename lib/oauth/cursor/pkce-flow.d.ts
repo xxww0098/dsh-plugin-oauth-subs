@@ -3,11 +3,12 @@
  * api2.cursor.sh/auth/poll until tokens arrive. No loopback callback.
  */
 export declare class CursorPollFlowManager {
+    attempts: Map<string, any>;
     constructor();
-    isBusy(provider: any): any;
+    isBusy(provider: any): boolean;
     pending(provider: any): any;
     start(provider: any, { fetchFn }?: {
-        fetchFn?: typeof fetch;
+        fetchFn?: typeof fetch | undefined;
     }): Promise<{
         authorizeUrl: string;
         uuid: string;

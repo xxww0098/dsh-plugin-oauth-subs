@@ -28,13 +28,14 @@ export declare const KIRO_REASON_CODES: Readonly<{
 /** Live AWS often wraps the payload as `{ [eventType]: { … } }`. */
 export declare function unwrapKiroEventPayload(payload: any, type: any): any;
 export declare function kiroContextWindowOf(model: any): any;
-export declare function kiroChatUrl(session?: {}): string;
+export declare function kiroChatUrl(session?: any): string;
 /** Quota keeps accept: application/json. Chat must ask for the event stream. */
 export declare function kiroChatHeaders(session: any): {
     accept: string;
     'content-type': string;
     'x-amz-target': string;
     'x-amzn-kiro-agent-mode': string;
+    tokentype?: string | undefined;
     authorization: string;
     'user-agent': string;
     'x-amz-user-agent': string;
@@ -47,7 +48,7 @@ export declare function kiroChatHeaders(session: any): {
  * over 64 chars) get a stable sha256 remap so the matching tool_result
  * uses the same wire id. Same map both ways — never Date.now().
  */
-export declare function normalizeToolUseId(id: any): string;
+export declare function normalizeToolUseId(id: any): string | undefined;
 /**
  * Concurrent tools can interleave: assistant(A) / user text / assistant(B)
  * / toolResult(A). AWS 400s a tool_use without an immediately following
@@ -62,29 +63,9 @@ export declare function relocateDisplacedToolResults(messages: any): any;
  * current turn stays just the new user text. conversationId is the DSH
  * pin plus model — never Date.now().
  */
-export declare function openaiToKiro(payload: any, { conversationId, profileArn, origin }?: {
-    origin?: string;
-}): {
-    conversationState: {
-        conversationId: any;
-        history: any[];
-        currentMessage: {
-            userInputMessage: {
-                content: any;
-                userInputMessageContext: {
-                    envState: {
-                        operatingSystem: string;
-                    };
-                };
-                origin: string;
-                modelId: string;
-            };
-        };
-        chatTriggerType: string;
-        agentTaskType: string;
-    };
-};
+export declare function openaiToKiro(payload: any, { conversationId, profileArn, origin }?: any): any;
 export declare class KiroEventStreamParser {
+    buf: Buffer;
     constructor();
     feed(chunk: any): any[];
     finish(): void;
@@ -110,59 +91,38 @@ export declare function collectKiroEvents(events: any): {
     contextPercentage: any;
     error: any;
 };
-export declare function kiroToOpenai(eventsOrBody: any, { model, id }?: {
-    id?: string;
-}): {
+export declare function kiroToOpenai(eventsOrBody: any, { model, id }?: any): {
     error?: {
         message: any;
-    };
-    id: string;
-    object: string;
-    model: any;
-    choices: {
-        index: number;
-        message: {
-            role: string;
-            content: string;
-        };
-        finish_reason: string;
-    }[];
-    usage: any;
-};
-export declare function mapKiroUsage(tokens: any): {
-    prompt_tokens: number;
-    completion_tokens: number;
-    total_tokens: number;
-};
-/** Live CodeWhisperer rarely sends metadataEvent. Fall back to contextUsageEvent % × window. */
-export declare function kiroUsageFromContext(percent: any, model: any, text?: string): {
-    prompt_tokens: number;
-    completion_tokens: number;
-    total_tokens: number;
-};
-export declare function resolveKiroUsage(collected: any, model: any): any;
-export declare function kiroToOpenaiChunk(delta: any, { model, id, done, finishReason, usage }?: {
-    done?: boolean;
-    finishReason?: any;
-}): {
+    } | undefined;
     id: any;
     object: string;
     model: any;
     choices: {
         index: number;
-        delta: any;
-        finish_reason: any;
+        message: any;
+        finish_reason: string;
     }[];
+    usage: any;
 };
+export declare function mapKiroUsage(tokens: any): any;
+/** Live CodeWhisperer rarely sends metadataEvent. Fall back to contextUsageEvent % × window. */
+export declare function kiroUsageFromContext(percent: any, model: any, text?: string): {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+} | undefined;
+export declare function resolveKiroUsage(collected: any, model: any): any;
+export declare function kiroToOpenaiChunk(delta: any, { model, id, done, finishReason, usage }?: any): any;
 /**
  * Classify hop errors so DSH does not hammer a hard monthly quota as a
  * generic 429, or treat size / capacity as AUTH. 401/403 still become
  * 400 (subscription key stays valid) unless TokenManager already refreshed.
  */
-export declare function classifyKiroHopError(status: any, parsed: any, text: any, { retryAfter }?: {}): {
+export declare function classifyKiroHopError(status: any, parsed: any, text: any, { retryAfter }?: any): {
     status: any;
     code: string;
-    retryAfter: string;
+    retryAfter: string | undefined;
 };
 export declare function kiroClientErrorStatus(status: any, parsed: any, text: any): any;
 export declare function kiroClientErrorBody(status: any, parsed: any, text: any): {

@@ -21,7 +21,7 @@ import { readPrivateText } from '../store.js'
 export const DEVIN_IMPORT_EMPTY = 'devin-import-empty'
 
 export function devinCredentialsPaths() {
-  const paths = []
+  const paths: any[] = []
   const home = homedir()
   if (process.platform === 'win32') {
     const localAppData = process.env.LOCALAPPDATA
@@ -37,7 +37,7 @@ export function devinCredentialsPaths() {
 /** Flat `key = "value"` scan — the CLI only writes quoted top-level keys. */
 export function parseDevinCredentialsToml(text) {
   if (typeof text !== 'string' || !text.trim()) return undefined
-  const out = {}
+  const out: any = {}
   for (const line of text.split(/\r?\n/)) {
     const match = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*"((?:[^"\\]|\\.)*)"\s*$/.exec(line)
     if (!match) continue
@@ -88,7 +88,5 @@ export async function importDevinAuth({ paths = devinCredentialsPaths() } = {}) 
       path,
     }
   }
-  const error = new Error(DEVIN_IMPORT_EMPTY)
-  error.code = DEVIN_IMPORT_EMPTY
-  throw error
+  throw Object.assign(new Error(DEVIN_IMPORT_EMPTY), { code: DEVIN_IMPORT_EMPTY })
 }

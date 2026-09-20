@@ -6,14 +6,15 @@
 import { constants } from 'node:fs'
 import { chmod, mkdir, open, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
+import { errorCode } from './http.js'
 
 export async function readPrivateText(path, label, { allowBroadMode = false } = {}) {
   let handle
   try {
     handle = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0))
   } catch (error) {
-    if (error.code === 'ENOENT') return undefined
-    if (error.code === 'ELOOP') throw new Error(label + ' at ' + path + ' must not be a symbolic link')
+    if (errorCode(error) === 'ENOENT') return undefined
+    if (errorCode(error) === 'ELOOP') throw new Error(label + ' at ' + path + ' must not be a symbolic link')
     throw error
   }
   try {

@@ -6,7 +6,7 @@
 import { completeCursorLogin, cursorLoginParams, pollCursorAuth } from './index.js'
 
 function sleep(ms, signal) {
-  return new Promise((resolve, reject) => {
+  return new Promise<void>((resolve, reject) => {
     if (signal?.aborted) {
       reject(signal.reason instanceof Error ? signal.reason : new Error('login cancelled'))
       return
@@ -24,6 +24,8 @@ function sleep(ms, signal) {
 }
 
 export class CursorPollFlowManager {
+  declare attempts: Map<string, any>
+
   constructor() {
     this.attempts = new Map()
   }
@@ -50,7 +52,7 @@ export class CursorPollFlowManager {
     })
     tokenPromise.catch(() => undefined)
 
-    const settle = (error, ready) => {
+    const settle = (error, ready?) => {
       if (this.attempts.get(provider) !== attempt) return
       this.attempts.delete(provider)
       if (error) rejectToken(error)

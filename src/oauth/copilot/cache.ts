@@ -38,7 +38,7 @@ function systemText(message) {
 }
 
 function splitLeadingSystem(messages) {
-  const head = []
+  const head: any[] = []
   let index = 0
   while (index < messages.length && messages[index]?.role === 'system') {
     head.push(messages[index])
@@ -71,7 +71,7 @@ export function stabilizeCopilotSystemPrefix(messages, sessionId) {
   return [...existing.head, ...rest, ...parked]
 }
 
-export function applyCopilotCache(payload = {}) {
+export function applyCopilotCache(payload: any = {}) {
   const cacheSessionId = copilotCacheSessionId(payload.session_id)
     ?? copilotCacheSessionId(payload.prompt_cache_key)
     ?? COPILOT_STABLE_SESSION

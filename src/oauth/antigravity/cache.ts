@@ -67,7 +67,7 @@ function stableJson(value) {
 
 function toolsFingerprint(tools) {
   if (!Array.isArray(tools) || tools.length === 0) return ''
-  const decls = []
+  const decls: any[] = []
   for (const group of tools) {
     for (const decl of group?.functionDeclarations ?? []) {
       const name = typeof decl?.name === 'string' ? decl.name : ''
@@ -145,7 +145,7 @@ function appendAntigravityModel(base, modelId) {
   return `${base.slice(0, room)}:${model}`
 }
 
-export function antigravitySessionIdOf(payload = {}, explicit) {
+export function antigravitySessionIdOf(payload: any = {}, explicit?) {
   const base = antigravityCacheSessionId(explicit)
     ?? antigravityCacheSessionId(payload.session_id)
     ?? antigravityCacheSessionId(payload.prompt_cache_key)

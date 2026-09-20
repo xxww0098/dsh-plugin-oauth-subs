@@ -14,10 +14,10 @@
  *
  * Do not reuse this helper for Grok / GLM / Kiro / Antigravity.
  */
-export declare function codexCacheSessionId(key: any): string;
+export declare function codexCacheSessionId(key: any): string | undefined;
 export declare function applyCodexCache(payload: any): {
     payload: any;
-    cacheSessionId: string;
+    cacheSessionId: string | undefined;
 };
 export declare function codexCacheHeaders(cacheSessionId: any): {
     'session-id'?: undefined;

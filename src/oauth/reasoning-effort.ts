@@ -57,7 +57,7 @@ export function decideEffortAction({ selection, previous, remembered, prefix, ef
     return {}
   }
   const effort = selection?.reasoningEffort
-  const out = {}
+  const out: any = {}
   if (isRememberableEffort(effort)) out.remember = effort
   const switched = previous == null
     || previous.provider !== provider
@@ -70,7 +70,11 @@ export function decideEffortAction({ selection, previous, remembered, prefix, ef
 }
 
 export class EffortMemory {
-  constructor({ path } = {}) {
+  declare path: string | undefined
+  declare effort: any
+  declare ready: Promise<any>
+
+  constructor({ path }: any = {}) {
     this.path = path
     this.effort = undefined
     this.ready = path ? this.load() : Promise.resolve()
@@ -227,7 +231,7 @@ export function startEffortRestore({ ctx, settings, memory, prefix, effortsFor }
     })
     lastSeen = snap
     if (action.remember) await memory.remember(action.remember)
-    if (!action.restore || action.restore === snap?.reasoningEffort) return
+    if (!snap || !action.restore || action.restore === snap.reasoningEffort) return
     pending = { provider: snap.provider, model: snap.model, effort: action.restore }
     const restored = { provider: snap.provider, model: snap.model, reasoningEffort: action.restore }
     await applyRestoredSelection({ ...host, settings: settingsRef }, restored)
@@ -244,7 +248,7 @@ export function startEffortRestore({ ctx, settings, memory, prefix, effortsFor }
     void handle(current, lastSeen).catch(() => undefined)
   }
 
-  const offs = []
+  const offs: any[] = []
   if (typeof host.on === 'function') {
     host.on(SETTINGS_UPDATED, onUpdated)
     host.on(SETTINGS_DOCUMENT_UPDATED, onDocument)

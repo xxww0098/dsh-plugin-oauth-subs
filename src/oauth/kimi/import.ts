@@ -45,7 +45,7 @@ async function readCliFile(path) {
   }
 }
 
-export async function resolveKimiCliCredentials(options = {}) {
+export async function resolveKimiCliCredentials(options: any = {}) {
   for (const path of kimiHomePaths(options)) {
     const session = await readCliFile(path)
     if (session) return session
@@ -59,14 +59,12 @@ export function resolveKimiEnvKey({ env = process.env } = {}) {
   return kimiSession({ accessToken: parseKimiApiKey(raw), source: 'env' })
 }
 
-export async function importKimiAuth(options = {}) {
+export async function importKimiAuth(options: any = {}) {
   const cli = await resolveKimiCliCredentials(options)
   if (cli) return { source: 'cli', session: cli }
   if (options.allowEnv !== false) {
     const envSession = resolveKimiEnvKey(options)
     if (envSession) return { source: 'env', session: envSession }
   }
-  const error = new Error(KIMI_IMPORT_EMPTY)
-  error.code = KIMI_IMPORT_EMPTY
-  throw error
+  throw Object.assign(new Error(KIMI_IMPORT_EMPTY), { code: KIMI_IMPORT_EMPTY })
 }

@@ -74,7 +74,7 @@ export declare const DEVIN_TIER_NAMES: Readonly<{
     20: "Trial";
 }>;
 /** CLI stores `devin-session-token$…`; a pasted raw key gets the prefix once. */
-export declare function normalizeDevinToken(value: any): string;
+export declare function normalizeDevinToken(value: any): string | undefined;
 /**
  * Every stored devin session carries the `devin-session-token$` prefix
  * (devinSession normalizes on the way in). A foreign-shaped row in the devin
@@ -85,33 +85,29 @@ export declare function isDevinSessionToken(value: any): boolean;
 export declare function devinTokenExpiry(token: any, now?: number): number;
 /** `user-…` ids and token-suffix vault keys are not display names. */
 export declare function isDevinOpaqueAccount(value: any): boolean;
-export declare function pickDevinHumanAccount(...candidates: any[]): string;
+export declare function pickDevinHumanAccount(...candidates: any[]): string | undefined;
 /** api.devin.ai/auth/cli/token answers `{ token }` (JSON). */
 export declare function parseDevinTokenResponse(value: any, endpoint?: string): {
-    token: string;
+    token: string | undefined;
 };
-export declare function devinSession({ accessToken, expiresAt, account, planType, apiServer, source, }?: {
-    source?: string;
-}): {
-    source: string;
-    apiServer?: string;
-    planType?: string;
-    account?: string;
+export declare function devinSession({ accessToken, expiresAt, account, planType, apiServer, source, }?: any): {
+    source: any;
+    apiServer?: string | undefined;
+    planType?: string | undefined;
+    account?: string | undefined;
     accessToken: string;
     refreshToken: string;
     expiresAt: number;
 };
 export declare const DEVIN_SOURCES: readonly string[];
-export declare function devinSourceLabel(source: any): "key" | "env" | "CLI" | "PKCE";
+export declare function devinSourceLabel(source: any): "key" | "env" | "CLI" | "PKCE" | undefined;
 export declare function devinApiServer(session: any): string;
 /**
  * The token has no refresh grant. When the stored expiry is near, probe
  * GetUserStatus: a live session token stays valid, a dead one is a permanent
  * 401 → re-login. Never mutates the stored credential.
  */
-export declare function refreshDevin(session: any, { fetchFn, statusFn }?: {
-    fetchFn?: typeof fetch;
-}): Promise<any>;
+export declare function refreshDevin(session: any, { fetchFn, statusFn }?: any): Promise<any>;
 export declare function isDevinPermanentRefreshError(error: any): boolean;
 /**
  * Loopback PKCE spec for the shared OAuthFlowManager. The authorize URL is
@@ -130,12 +126,12 @@ export declare const devinFlow: Readonly<{
     }): string;
 }>;
 export declare function exchangeDevinCode(code: any, verifier: any, { fetchFn }?: {
-    fetchFn?: typeof fetch;
+    fetchFn?: typeof fetch | undefined;
 }): Promise<{
-    source: string;
-    apiServer?: string;
-    planType?: string;
-    account?: string;
+    source: any;
+    apiServer?: string | undefined;
+    planType?: string | undefined;
+    account?: string | undefined;
     accessToken: string;
     refreshToken: string;
     expiresAt: number;
@@ -161,7 +157,7 @@ export declare const DEVIN_MODELS: readonly {
     name: any;
     contextWindow: any;
     maxTokens: any;
-    input: string[];
+    input: any;
     variants: any;
     defaultUid: any;
     reasoningEfforts: any;

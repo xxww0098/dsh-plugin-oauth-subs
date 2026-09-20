@@ -32,7 +32,8 @@ export function parseOpencodeGoEmail(text, workspaceId) {
     const marker = new RegExp(`userEmail[\\s\\S]{0,40}${workspace}`)
     const hit = source.match(marker)
     if (hit) {
-      const window = source.slice(hit.index, hit.index + 4000)
+      const start = hit.index ?? 0
+      const window = source.slice(start, start + 4000)
       const state = window.match(/\$R\[(\d+)\]\s*=\s*\{p:0,s:0,f:0\}/)
       if (state) {
         const setter = new RegExp(`\\$R\\[\\d+\\]\\(\\$R\\[${state[1]}\\]\\s*,\\s*"([^"]+@[^"]+)"\\)`)
@@ -110,7 +111,7 @@ export function parseOpencodeGoBilling(text) {
 }
 
 function pickWorkspaceIds(text) {
-  const ids = []
+  const ids: string[] = []
   const seen = new Set()
   const add = (value) => {
     const id = normalizeOpencodeGoWorkspaceId(value)
@@ -177,7 +178,7 @@ function windowRow(kind, bag, now) {
   const resetAt = bag.resetAt
     ?? (typeof bag.resetInSec === 'number' && bag.resetInSec >= 0 ? now + bag.resetInSec * 1000 : undefined)
   const windowMinutes = kind === 'primary' ? 300 : kind === 'weekly' ? 7 * 24 * 60 : undefined
-  const row = {
+  const row: any = {
     key: kind,
     kind,
     usedPercent: bag.usedPercent,
@@ -235,7 +236,7 @@ async function readBody(response) {
   return text
 }
 
-async function fetchServerText({ cookieHeader, method, args, fetchFn, signal }) {
+async function fetchServerText({ cookieHeader, method, args = undefined, fetchFn, signal }: any) {
   const query = method === 'GET'
     ? '?id=' + encodeURIComponent(OPENCODE_GO_WORKSPACES_SERVER_ID)
       + (args ? '&args=' + encodeURIComponent(args) : '')
@@ -249,7 +250,7 @@ async function fetchServerText({ cookieHeader, method, args, fetchFn, signal }) 
     Referer: OPENCODE_GO_ORIGIN + '/',
     Accept: 'text/javascript, application/json;q=0.9, */*;q=0.8',
   }
-  const init = { method, headers, signal, redirect: 'manual' }
+  const init: any = { method, headers, signal, redirect: 'manual' }
   if (method !== 'GET') {
     init.body = args ?? '[]'
     headers['Content-Type'] = 'application/json'
@@ -258,7 +259,7 @@ async function fetchServerText({ cookieHeader, method, args, fetchFn, signal }) 
   return readBody(response)
 }
 
-export async function fetchOpencodeGoWorkspaceId(cookieHeader, { fetchFn = fetch, signal } = {}) {
+export async function fetchOpencodeGoWorkspaceId(cookieHeader, { fetchFn = fetch, signal }: any = {}) {
   const first = await fetchServerText({ cookieHeader, method: 'GET', fetchFn, signal })
   let ids = pickWorkspaceIds(first)
   if (ids.length === 0) {
@@ -269,7 +270,7 @@ export async function fetchOpencodeGoWorkspaceId(cookieHeader, { fetchFn = fetch
   return ids[0]
 }
 
-export async function fetchOpencodeGoQuota(entry, options = {}) {
+export async function fetchOpencodeGoQuota(entry, options: any = {}) {
   const fetchFn = options.fetchFn ?? fetch
   const now = options.now ?? Date.now()
   const timeoutMs = options.timeoutMs ?? OPENCODE_GO_QUOTA_TIMEOUT_MS

@@ -82,7 +82,9 @@ const COMMIT_DEADLINE_MS = 120_000
 export const UPSTREAM_IDLE_TIMEOUT_MS = 120_000
 
 class RetryableUpstream extends Error {
-  constructor(message, extra = {}) {
+  declare turnState: string | undefined
+
+  constructor(message, extra: any = {}) {
     super(message)
     if (typeof extra.turnState === 'string' && extra.turnState.trim()) {
       this.turnState = extra.turnState.trim()
@@ -90,13 +92,13 @@ class RetryableUpstream extends Error {
   }
 }
 
-function retryableUpstream(message, family, upstream) {
-  const extra = {}
+function retryableUpstream(message, family, upstream?) {
+  let turnState
   if (family === 'codex') {
-    const turnState = upstream?.headers?.get?.('x-codex-turn-state')
-    if (typeof turnState === 'string' && turnState.trim()) extra.turnState = turnState.trim()
+    const header = upstream?.headers?.get?.('x-codex-turn-state')
+    if (typeof header === 'string' && header.trim()) turnState = header.trim()
   }
-  return new RetryableUpstream(message, extra)
+  return new RetryableUpstream(message, { turnState })
 }
 
 /**
@@ -105,6 +107,8 @@ function retryableUpstream(message, family, upstream) {
  * error payload rides along for the client when no refresh is possible.
  */
 class UnauthorizedUpstream extends Error {
+  declare payload: any
+
   constructor(payload) {
     super('upstream returned 401')
     this.name = 'UnauthorizedUpstream'
@@ -114,6 +118,8 @@ class UnauthorizedUpstream extends Error {
 
 /** Upstream accepted the request but stopped sending bytes. */
 class UpstreamIdleError extends Error {
+  declare timeoutMs: any
+
   constructor(timeoutMs) {
     super(`upstream sent no data for ${timeoutMs}ms`)
     this.name = 'UpstreamIdleError'
@@ -148,7 +154,7 @@ function readBody(request, limit = MAX_REQUEST_BODY_BYTES) {
     return Promise.reject(new RequestError(413, 'request body is too large'))
   }
   return new Promise((resolve, reject) => {
-    const chunks = []
+    const chunks: any[] = []
     let size = 0
     const onData = (chunk) => {
       size += chunk.length
@@ -191,7 +197,7 @@ function originOf(port) {
 
 export { describeError } from '../utils/http.js'
 
-function rewriteUpstreamBody(buffer, family, wire) {
+function rewriteUpstreamBody(buffer, family, wire?) {
   if (!buffer.length) throw new RequestError(400, 'request body must contain JSON')
   let payload
   try {
@@ -335,7 +341,7 @@ function abortOnDisconnect(request, response) {
   }
 }
 
-export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestBodyBytes = MAX_REQUEST_BODY_BYTES, upstreamIdleTimeoutMs = UPSTREAM_IDLE_TIMEOUT_MS, onAntigravityValidation, cursorRpc, devinChat }) {
+export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestBodyBytes = MAX_REQUEST_BODY_BYTES, upstreamIdleTimeoutMs = UPSTREAM_IDLE_TIMEOUT_MS, onAntigravityValidation = undefined, cursorRpc = undefined, devinChat = undefined }: any) {
   let server
 
   const authorized = (request) => {
@@ -359,7 +365,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
     }
 
     if (path === '/v1/models' && request.method === 'GET') {
-      const data = []
+      const data: any[] = []
       try {
         await tokens.codex.session()
         data.push(...withPickerVariants(CODEX_MODELS).map((model) => ({ id: model.id, object: 'model', owned_by: 'codex' })))
@@ -851,13 +857,13 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
     },
     async close() {
       if (server === undefined) return
-      await new Promise((resolve) => server.close(() => resolve()))
+      await new Promise<void>((resolve) => server.close(() => resolve()))
       server = undefined
     },
   }
 }
 
-async function forward(request, response, { url, session, tokens, headersOf, fetchFn, family, wire, maxRequestBodyBytes, upstreamIdleTimeoutMs, signal }) {
+async function forward(request, response, { url, session, tokens, headersOf, fetchFn, family, wire = undefined, maxRequestBodyBytes, upstreamIdleTimeoutMs, signal }: any) {
   const raw = await readBody(request, maxRequestBodyBytes)
   const { payload, cacheSessionId, stream, routingHint, grokModel, copilotVision, copilotInitiator } = rewriteUpstreamBody(raw, family, wire)
   const body = Buffer.from(JSON.stringify(payload))
@@ -1051,6 +1057,17 @@ async function attemptUpstream(response, { url, headers, body, stream, fetchFn, 
  * only the silent pre-output window is ever buffered.
  */
 class CommitGate {
+  declare response: any
+  declare upstream: any
+  declare emit: any
+  declare buffered: Buffer[]
+  declare bytes: number
+  declare committed: boolean
+  declare sawPreamble: boolean
+  declare gated: boolean
+  declare deadline: number
+  declare text: string
+
   constructor(response, upstream, stream, emit) {
     this.response = response
     this.upstream = upstream
@@ -1106,6 +1123,10 @@ class CommitGate {
 
 /** Rewrite Completions SSE `usage` objects; leave other events byte-stable. */
 class SseUsageRewriter {
+  declare mapUsage: any
+  declare decoder: any
+  declare tail: string
+
   constructor(mapUsage) {
     this.mapUsage = mapUsage
     this.decoder = new TextDecoder('utf-8')
@@ -1125,7 +1146,7 @@ class SseUsageRewriter {
   #take(end) {
     const parts = this.tail.split(/\r?\n\r?\n/)
     this.tail = end ? '' : (parts.pop() ?? '')
-    const out = []
+    const out: any[] = []
     for (const frame of parts) {
       if (!frame) continue
       out.push(Buffer.from(`${this.#rewriteFrame(frame)}\n\n`))

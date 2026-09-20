@@ -14,42 +14,26 @@ export declare const OPENCODE_GO_PAGE_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS
  * (`$R[m]($R[n],"email")`). The API key alone never exposes identity —
  * `/zen/go/v1/usage` returns numbers only — so this is cookie-only.
  */
-export declare function parseOpencodeGoEmail(text: any, workspaceId: any): string;
+export declare function parseOpencodeGoEmail(text: any, workspaceId: any): string | undefined;
 /** Signed-in workspace name from the dashboard RSC payload. */
-export declare function parseOpencodeGoWorkspaceName(text: any, workspaceId: any): string;
+export declare function parseOpencodeGoWorkspaceName(text: any, workspaceId: any): string | undefined;
 /**
  * Billing flags from the dashboard RSC payload. `useBalance` is the Zen
  * "use balance after limits" toggle; `balance` is its prepaid amount.
  */
 export declare function parseOpencodeGoBilling(text: any): {
-    useBalance: boolean;
-    balance: number;
+    useBalance: boolean | undefined;
+    balance: number | undefined;
 };
 export declare function parseOpencodeGoUsage(text: any, now?: number): {
-    rows: {
-        key: any;
-        kind: any;
-        usedPercent: any;
-        remainingPercent: number;
-        windowMinutes: number;
-        resetAt: any;
-    }[];
+    rows: any[];
 };
-export declare function fetchOpencodeGoWorkspaceId(cookieHeader: any, { fetchFn, signal }?: {
-    fetchFn?: typeof fetch;
-}): Promise<any>;
-export declare function fetchOpencodeGoQuota(entry: any, options?: {}): Promise<{
-    workspaceId: any;
-    workspaceName: string;
-    email: string;
-    useBalance: boolean;
-    balance: number;
-    rows: {
-        key: any;
-        kind: any;
-        usedPercent: any;
-        remainingPercent: number;
-        windowMinutes: number;
-        resetAt: any;
-    }[];
+export declare function fetchOpencodeGoWorkspaceId(cookieHeader: any, { fetchFn, signal }?: any): Promise<string>;
+export declare function fetchOpencodeGoQuota(entry: any, options?: any): Promise<{
+    workspaceId: string;
+    workspaceName: string | undefined;
+    email: string | undefined;
+    useBalance: boolean | undefined;
+    balance: number | undefined;
+    rows: any[];
 }>;

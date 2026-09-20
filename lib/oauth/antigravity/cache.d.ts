@@ -18,11 +18,11 @@
  */
 /** When DSH sends neither session_id nor prompt_cache_key, still pin a constant. */
 export declare const ANTIGRAVITY_STABLE_SESSION = "dsh-antigravity";
-export declare function antigravityCacheSessionId(key: any): string;
+export declare function antigravityCacheSessionId(key: any): string | undefined;
 export declare function resetAntigravitySystemPins(): void;
 export declare function pinAntigravitySystemInstruction(sessionId: any, parts: any): {
     parts: any;
-    extra: any;
+    extra: undefined;
 } | {
     parts: {
         text: any;
@@ -41,4 +41,4 @@ export declare function pinAntigravityTools(sessionId: any, tools: any): any;
  * reasoning_effort. Do not invent implicitCacheConfig.
  */
 export declare function pinAntigravityThinking(sessionId: any, thinking: any): any;
-export declare function antigravitySessionIdOf(payload: {}, explicit: any): any;
+export declare function antigravitySessionIdOf(payload?: any, explicit?: any): any;

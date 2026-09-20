@@ -18,7 +18,7 @@ import {
 
 export const COPILOT_CATALOG_TTL_MS = 5 * 60_000
 
-const cached = { tokenHash: '', models: /** @type {any[] | undefined} */ (undefined), expiresAt: 0 }
+const cached: { tokenHash: string; models?: any[]; expiresAt: number } = { tokenHash: '', models: undefined, expiresAt: 0 }
 
 export function resetCopilotCatalogCache() {
   cached.tokenHash = ''
@@ -52,7 +52,7 @@ export function copilotReasoningEffortsOf(row) {
   if (!Array.isArray(efforts) || efforts.length === 0) return undefined
   const allowed = new Set(efforts.filter((item) => typeof item === 'string' && item))
   if (allowed.size === 0) return undefined
-  const mapped = {}
+  const mapped: any = {}
   for (const [level, wire] of Object.entries(COPILOT_REASONING)) {
     if (allowed.has(wire)) mapped[level] = wire
   }
@@ -68,7 +68,7 @@ export function copilotReasoningEffortsOf(row) {
 export function toCopilotPickerModels(payload) {
   const rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : []
   const seen = new Set()
-  const models = []
+  const models: any[] = []
   for (const row of rows) {
     const id = typeof row?.id === 'string' && row.id.trim() ? row.id.trim() : ''
     if (!id || seen.has(id)) continue
@@ -106,7 +106,7 @@ export function toCopilotPickerModels(payload) {
   return models
 }
 
-export async function refreshCopilotCatalog(session, options = {}) {
+export async function refreshCopilotCatalog(session, options: any = {}) {
   const token = typeof session?.accessToken === 'string' ? session.accessToken.trim() : ''
   if (!token) return [...COPILOT_MODELS]
   const tokenHash = copilotCatalogTokenHash(token)

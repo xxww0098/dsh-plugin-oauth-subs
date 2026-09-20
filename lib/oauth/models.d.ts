@@ -67,28 +67,17 @@ export declare function buildProviders({ prefix, origin, loggedIn, cursorModels,
     glmModels: any;
     clineModels: any;
 }): {};
-export declare function describeProviders(providers: any): {
+export declare function describeProviders(providers: Record<string, any>): {
     provider: string;
     api: any;
     models: any;
 }[];
-export declare function catalogProviders({ prefix, origin, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels, clineModels }: {
-    prefix: any;
-    origin: any;
-    cursorModels: any;
-    ollamaModels: any;
-    kiroModels: any;
-    kimiModels: any;
-    copilotModels: any;
-    devinModels: any;
-    glmModels: any;
-    clineModels: any;
-}): {};
-export declare function catalogKeys(providers: any): any[];
+export declare function catalogProviders({ prefix, origin, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels, clineModels }: any): {};
+export declare function catalogKeys(providers: Record<string, any>): any[];
 export declare function familyOfProvider(provider: any): string;
 export declare function familyOfKey(key: any): string;
 export declare function familyCatalogKeys(catalog: any, family: any): any[];
-export declare function describeCatalog(providers: any, { enabledKeys, loggedIn }?: {}): {
+export declare function describeCatalog(providers: Record<string, any>, { enabledKeys, loggedIn }?: any): {
     provider: string;
     displayName: any;
     family: string;
@@ -103,12 +92,16 @@ export declare function describeCatalog(providers: any, { enabledKeys, loggedIn 
  */
 export declare class ModelSwitch {
     #private;
-    constructor({ path }?: {});
+    path: string | undefined;
+    disabled: Set<string>;
+    enabled: Set<string>;
+    ready: Promise<any>;
+    constructor({ path }?: any);
     load(): Promise<void>;
     save(): Promise<void>;
-    isEnabled(key: any): any;
+    isEnabled(key: any): boolean;
     enabledKeys(catalog: any): any[];
-    selectedForSync(catalog: any): any[];
+    selectedForSync(catalog: any): any[] | undefined;
     status(catalog: any): {
         selected: any[];
         disabled: any[];
@@ -143,7 +136,7 @@ export declare class ModelSwitch {
         allOn: boolean;
     }>;
 }
-export declare function filterProviders(providers: any, selected: any): any;
+export declare function filterProviders(providers: Record<string, any>, selected: any): Record<string, any>;
 /** `undefined` when the host has no readable settings.get; `{}` when the section is empty. */
 export declare function peekPiAiProviders(settings: any): Promise<any>;
 export declare const OPENCODE_GO_API_KEY_ENV = "OPENCODE_API_KEY";
@@ -166,9 +159,7 @@ export declare const OPENCODE_GO_API_KEY_ENV = "OPENCODE_API_KEY";
  * `x-opencode-session` header. Without `OPENCODE_API_KEY` nothing is served,
  * so DSH's model list stays clean.
  */
-export declare function ensureOpencodeGoRoute(settings: any, { selected, apiKeySet }?: {
-    apiKeySet?: boolean;
-}): Promise<{
+export declare function ensureOpencodeGoRoute(settings: any, { selected, apiKeySet }?: any): Promise<{
     status: string;
     error?: undefined;
     routes?: undefined;

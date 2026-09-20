@@ -183,7 +183,7 @@ export function parseCodexUsage(payload) {
   const rate = payload.rate_limit ?? payload.rateLimit
   const primary = parseCodexWindow(rate?.primary_window ?? rate?.primaryWindow)
   const secondary = parseCodexWindow(rate?.secondary_window ?? rate?.secondaryWindow)
-  const rows = []
+  const rows: any[] = []
   if (primary) {
     rows.push({
       key: 'primary',
@@ -262,7 +262,7 @@ export function parseResetCredits(payload) {
   )
   const fromCredits = credits
     .filter(isAvailableResetCredit)
-    .map((credit) => credit.expiresAt)
+    .map((credit) => credit?.expiresAt)
     .filter((stamp) => typeof stamp === 'number')
     .sort((a, b) => a - b)[0]
   const nextExpiresAt = fromCredits ?? listedExpiry
@@ -382,7 +382,7 @@ function periodResetAt(end) {
   return Number.isFinite(stamp) ? stamp : undefined
 }
 
-export function parseGrokBilling(billing, { cliUser } = {}) {
+export function parseGrokBilling(billing, { cliUser }: any = {}) {
   if (!billing || typeof billing !== 'object') return { rows: [] }
   const config = billing.config && typeof billing.config === 'object' ? billing.config : billing
   const period = config.currentPeriod && typeof config.currentPeriod === 'object'
@@ -421,7 +421,7 @@ export function parseGrokBilling(billing, { cliUser } = {}) {
       : undefined
   const resetAt = periodResetAt(period.end ?? config.billingPeriodEnd ?? config.billing_period_end)
 
-  const rows = []
+  const rows: any[] = []
   if (usedPercent !== undefined || amounts?.used !== undefined || amounts?.total !== undefined) {
     rows.push({
       key: grokWindowKind(periodType) === 'weekly' ? 'weekly' : 'cycle',
@@ -589,7 +589,7 @@ function finalizeGlmRows(rows) {
     const next = kind === row.kind ? row : { ...row, kind, key: 'mcp', product: row.product ?? 'ZCode MCP' }
     byKind.set(kind, preferGlmRow(byKind.get(kind), next))
   }
-  const ordered = []
+  const ordered: any[] = []
   for (const kind of ['primary', 'weekly', 'mcp']) {
     const row = byKind.get(kind)
     if (row) ordered.push({ ...row, key: kind, kind })
@@ -611,8 +611,10 @@ function glmRowFromItem(item) {
       resetAt: stampOf(item.resetAt ?? item.reset_at ?? item.nextResetAt ?? item.nextResetTime ?? item.expireAt),
     }
   }
+  const bagTotal = bag.total
+  const bagUsed = bag.used
   const usedPercent = clampPct(item.percentage ?? item.usedPercent ?? item.used_percent)
-    ?? (bag.total > 0 && bag.used !== undefined ? clampPct((bag.used / bag.total) * 100) : undefined)
+    ?? (typeof bagTotal === 'number' && bagTotal > 0 && bagUsed !== undefined ? clampPct((bagUsed / bagTotal) * 100) : undefined)
   const remainingPercent = usedPercent === undefined ? undefined : 100 - usedPercent
   const kind = glmWindowKind(item)
   return {
@@ -642,7 +644,7 @@ export function parseGlmQuota(payload) {
   const root = payload?.data && typeof payload.data === 'object' ? payload.data : payload
   if (!root || typeof root !== 'object') return { rows: [] }
   const planType = formatPlanLabel(pickPlanRaw(root.level, root.planType, root.plan, root.subscriptionLevel), 'glm')
-  const rows = []
+  const rows: any[] = []
   for (const item of collectGlmItems(root)) {
     if (!item || typeof item !== 'object') continue
     const row = glmRowFromItem(item)
@@ -754,7 +756,7 @@ function cursorProductRow(key, usedPercent, resetAt) {
   }
 }
 
-export function parseCursorPeriodUsage(payload, extras = {}) {
+export function parseCursorPeriodUsage(payload, extras: any = {}) {
   if (!payload || typeof payload !== 'object') return { rows: [] }
   const planUsage = payload.planUsage && typeof payload.planUsage === 'object' ? payload.planUsage : {}
   const spend = payload.spendLimitUsage && typeof payload.spendLimitUsage === 'object' ? payload.spendLimitUsage : {}
@@ -839,7 +841,7 @@ function ollamaUsedPercent(value) {
 
 function ollamaModelItems(models) {
   if (!Array.isArray(models) || models.length === 0) return undefined
-  const items = []
+  const items: any[] = []
   for (const item of models) {
     if (!item || typeof item !== 'object') continue
     const name = typeof item.name === 'string' && item.name.trim() ? item.name.trim() : undefined
@@ -904,7 +906,7 @@ export function parseOllamaUsage(payload, me, now = Date.now()) {
   const root = payload && typeof payload === 'object' ? payload : {}
   const limits = root.limits && typeof root.limits === 'object' ? root.limits : root
   const identity = parseOllamaMe(me && typeof me === 'object' ? me : root)
-  const rows = []
+  const rows: any[] = []
   const session = parseOllamaLimitWindow(limits.session, 'primary', now)
   const weekly = parseOllamaLimitWindow(limits.weekly, 'weekly', now)
   if (session) rows.push(session)
@@ -987,7 +989,7 @@ function kimiWindowKind(window, index) {
 export function parseKimiUsage(payload, me) {
   const root = payload && typeof payload === 'object' ? payload : {}
   const identity = parseKimiUserInfo(me && typeof me === 'object' ? me : root) ?? {}
-  const rows = []
+  const rows: any[] = []
   const summary = parseKimiUsageRow(root.usage, 'cycle', 'Current week')
   if (summary) rows.push(summary)
   if (Array.isArray(root.limits)) {
@@ -1064,15 +1066,15 @@ function parseCopilotQuotaSnapshot(snap, kind, label, resetAt) {
   }
 }
 
-export function parseCopilotUsage(payload, user) {
+export function parseCopilotUsage(payload, user?) {
   const root = payload && typeof payload === 'object' ? payload : {}
   const snapshots = root.quota_snapshots && typeof root.quota_snapshots === 'object' ? root.quota_snapshots : {}
   const resetAt = copilotResetAt(root.quota_reset_date)
-  const identity = parseCopilotUser(user) ?? parseCopilotUser(root) ?? {}
+  const identity: any = parseCopilotUser(user) ?? parseCopilotUser(root) ?? {}
   const planType = typeof root.copilot_plan === 'string' && root.copilot_plan.trim()
     ? root.copilot_plan.trim()
     : undefined
-  const rows = []
+  const rows: any[] = []
   const premium = parseCopilotQuotaSnapshot(snapshots.premium_interactions, 'primary', 'Premium', resetAt)
   if (premium) rows.push(premium)
   const chat = parseCopilotQuotaSnapshot(snapshots.chat, 'chat', 'Chat', resetAt)
@@ -1123,7 +1125,7 @@ export async function fetchCopilotQuota(session, fetchFn = fetch) {
   }
 }
 
-function devinQuotaRow({ key, kind, label, windowMinutes, remainingPercent, resetAt }) {
+function devinQuotaRow({ key, kind, label, windowMinutes = undefined, remainingPercent, resetAt }: any) {
   const remaining = clampPct(remainingPercent)
   if (remaining === undefined) return undefined
   return {
@@ -1153,7 +1155,7 @@ export function parseDevinUserStatus(payload) {
   const planType = (typeof plan.planName === 'string' && plan.planName.trim())
     ? plan.planName.trim()
     : (typeof tier === 'number' ? DEVIN_TIER_NAMES[tier] : undefined)
-  const rows = []
+  const rows: any[] = []
   if (plan.hideDailyQuota !== true) {
     const daily = devinQuotaRow({
       key: 'daily',
@@ -1226,7 +1228,7 @@ export async function fetchGlmQuota(session, fetchFn = fetch) {
 
 function kiroUsageAttempts(session) {
   const arn = kiroEffectiveProfileArn(session)
-  const attempts = []
+  const attempts: any[] = []
   for (const region of kiroUsageRegions(session)) {
     if (arn) attempts.push({ region, profileArn: arn })
     attempts.push({ region, profileArn: undefined })
@@ -1242,7 +1244,7 @@ function antigravityModelsMap(payload) {
   return undefined
 }
 
-function findAntigravityModel(models, identifier) {
+function findAntigravityModel(models: Record<string, any>, identifier) {
   if (Object.prototype.hasOwnProperty.call(models, identifier)) {
     return { id: identifier, entry: models[identifier] }
   }
@@ -1275,7 +1277,7 @@ function antigravityQuotaInfo(entry) {
 }
 
 function buildAntigravityQuotaRow(models, group) {
-  const samples = []
+  const samples: any[] = []
   let displayName
   for (const identifier of group.identifiers) {
     const found = findAntigravityModel(models, identifier)
@@ -1320,7 +1322,7 @@ function soonestReset(samples) {
 export function parseAntigravityModelQuota(payload) {
   const models = antigravityModelsMap(payload)
   if (!models) return { rows: [] }
-  const rows = []
+  const rows: any[] = []
   for (const group of ANTIGRAVITY_QUOTA_GROUPS) {
     const row = buildAntigravityQuotaRow(models, group)
     if (row) rows.push(row)
@@ -1366,15 +1368,15 @@ function antigravityGroupSlug(title) {
 export function parseAntigravityQuotaSummary(payload) {
   const root = payload?.response && typeof payload.response === 'object' ? payload.response : payload
   const groups = Array.isArray(root?.groups) ? root.groups : []
-  const rows = []
+  const rows: any[] = []
   for (const group of groups) {
     const title = typeof group?.displayName === 'string' && group.displayName.trim()
       ? group.displayName.trim()
       : (typeof group?.display_name === 'string' && group.display_name.trim() ? group.display_name.trim() : undefined)
     if (!title) continue
     const buckets = Array.isArray(group.buckets) ? group.buckets : []
-    const windows = []
-    const pending = []
+    const windows: any[] = []
+    const pending: any[] = []
     for (const bucket of buckets) {
       const remaining = remainingOfBucket(bucket)
       if (remaining === undefined) continue
@@ -1420,7 +1422,7 @@ export function parseAntigravityQuotaSummary(payload) {
 export function parseAntigravityPaidCredits(payload) {
   const credits = payload?.paidTier?.availableCredits ?? payload?.paid_tier?.availableCredits
   if (!Array.isArray(credits)) return []
-  const rows = []
+  const rows: any[] = []
   for (const entry of credits) {
     if (!entry || typeof entry !== 'object') continue
     const creditType = entry.creditType ?? entry.credit_type
@@ -1704,7 +1706,7 @@ function quotaCacheKey(provider, accountId) {
   return accountId ? `${provider}\0${accountId}` : provider
 }
 
-function publicQuota(entry, provider) {
+function publicQuota(entry?, provider?) {
   if (!entry) return { status: 'idle' }
   return {
     status: entry.status,
@@ -1721,7 +1723,13 @@ function publicQuota(entry, provider) {
 }
 
 export class QuotaStore {
-  constructor({ tokens, fetchFn = fetch, ttlMs = QUOTA_TTL_MS } = {}) {
+  declare tokens: any
+  declare fetchFn: any
+  declare ttlMs: number
+  declare cache: Map<string, any>
+  declare inflight: Map<string, any>
+
+  constructor({ tokens, fetchFn = fetch, ttlMs = QUOTA_TTL_MS }: any = {}) {
     this.tokens = tokens
     this.fetchFn = fetchFn
     this.ttlMs = ttlMs
@@ -1729,7 +1737,7 @@ export class QuotaStore {
     this.inflight = new Map()
   }
 
-  peek(provider, accountId) {
+  peek(provider, accountId?) {
     if (accountId) return publicQuota(this.cache.get(quotaCacheKey(provider, accountId)), provider)
     const exact = this.cache.get(provider)
     if (exact) return publicQuota(exact, provider)
@@ -1739,7 +1747,7 @@ export class QuotaStore {
     return publicQuota()
   }
 
-  clear(provider, accountId) {
+  clear(provider, accountId?) {
     if (!provider) {
       this.cache.clear()
       return
@@ -1755,7 +1763,7 @@ export class QuotaStore {
     }
   }
 
-  async ensure(provider, accountId, session) {
+  async ensure(provider, accountId?, session?) {
     const live = session ?? await this.#activeSession(provider)
     const id = accountId ?? (live ? accountIdOf(provider, live) : undefined)
     const key = quotaCacheKey(provider, id)
@@ -1770,7 +1778,7 @@ export class QuotaStore {
     return this.refresh(provider, id, live)
   }
 
-  async refresh(provider, accountId, session) {
+  async refresh(provider, accountId?, session?) {
     const live = session ?? await this.#activeSession(provider)
     const id = accountId ?? (live ? accountIdOf(provider, live) : undefined)
     const key = quotaCacheKey(provider, id)
@@ -1781,7 +1789,7 @@ export class QuotaStore {
     return run
   }
 
-  async consume(provider, accountId, session) {
+  async consume(provider, accountId?, session?) {
     if (provider !== 'codex') throw new Error('only ChatGPT Codex can reset quota')
     const live = session ?? await this.#activeSession(provider)
     if (!live) throw new Error('ChatGPT Codex is not signed in')

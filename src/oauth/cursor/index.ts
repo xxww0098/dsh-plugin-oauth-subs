@@ -198,7 +198,7 @@ export function createCursorPkce() {
   return { verifier, challenge }
 }
 
-export function cursorLoginParams({ verifier, challenge, uuid } = {}) {
+export function cursorLoginParams({ verifier, challenge, uuid }: any = {}) {
   const pkce = verifier && challenge ? { verifier, challenge } : createCursorPkce()
   const id = trimmed(uuid) || randomUUID()
   const params = new URLSearchParams({
@@ -231,7 +231,7 @@ export function cursorSession({
   planType,
   cachedEmail,
   source = 'pkce',
-} = {}) {
+}: any = {}) {
   if (!trimmed(accessToken)) throw new Error('cursor session needs an access token')
   const refresh = trimmed(refreshToken) ?? accessToken
   const resolvedExpiry = typeof expiresAt === 'number' && Number.isFinite(expiresAt)
@@ -239,8 +239,9 @@ export function cursorSession({
     : cursorTokenExpiry(accessToken)
   const cached = pickCursorHumanAccount(cachedEmail)
   const human = pickCursorHumanAccount(account, cursorAccountFromToken(accessToken))
+  const accountName = trimmed(account)
   const vault = human
-    ?? (trimmed(account) && trimmed(account).toLowerCase() !== 'cursor' ? trimmed(account) : undefined)
+    ?? (accountName && accountName.toLowerCase() !== 'cursor' ? accountName : undefined)
     ?? cursorVaultAccountFromToken(accessToken)
   return {
     accessToken,
@@ -253,7 +254,7 @@ export function cursorSession({
   }
 }
 
-export function cursorChatHeaders(session, { unary = false, requestId, originalRequestId } = {}) {
+export function cursorChatHeaders(session, { unary = false, requestId, originalRequestId }: any = {}) {
   const id = typeof requestId === 'string' && requestId.trim() ? requestId.trim() : randomUUID()
   const original = typeof originalRequestId === 'string' && originalRequestId.trim()
     ? originalRequestId.trim()
@@ -280,7 +281,7 @@ export function cursorUsageHeaders(session) {
   }
 }
 
-export async function pollCursorAuth(uuid, verifier, { fetchFn = fetch, sleep, signal, maxAttempts = CURSOR_POLL_MAX_ATTEMPTS } = {}) {
+export async function pollCursorAuth(uuid, verifier, { fetchFn = fetch, sleep, signal, maxAttempts = CURSOR_POLL_MAX_ATTEMPTS }: any = {}) {
   const wait = sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)))
   let delay = CURSOR_POLL_BASE_DELAY_MS
   let consecutiveErrors = 0
@@ -316,7 +317,7 @@ export async function pollCursorAuth(uuid, verifier, { fetchFn = fetch, sleep, s
   throw new Error('Cursor authentication polling timeout')
 }
 
-export async function refreshCursorTokens(refreshToken, { fetchFn = fetch, signal } = {}) {
+export async function refreshCursorTokens(refreshToken, { fetchFn = fetch, signal }: any = {}) {
   const token = trimmed(refreshToken)
   if (!token) throw new Error('cursor refresh needs a refresh token')
   if (isCursorRefreshKnownBad(token)) throw new Error('Cursor token refresh failed: known-bad refresh token')
@@ -345,9 +346,7 @@ export async function refreshCursorTokens(refreshToken, { fetchFn = fetch, signa
 export async function refreshCursor(session, fetchFn = fetch) {
   if (session?.source === 'env' || session?.refreshToken === session?.accessToken) {
     if (cursorAccessStillValid(session.accessToken)) return session
-    const error = new Error('Cursor env token expired; sign in again')
-    error.permanent = true
-    throw error
+    throw Object.assign(new Error('Cursor env token expired; sign in again'), { permanent: true })
   }
   const tokens = await refreshCursorTokens(session.refreshToken, { fetchFn })
   return cursorSession({

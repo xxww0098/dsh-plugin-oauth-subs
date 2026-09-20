@@ -66,13 +66,13 @@ async function listen(handler, spec) {
   const candidates = spec.ports.flatMap((port) => (port === 0 ? [0, 0, 0] : [port]))
   let lastError
   for (const candidate of candidates) {
-    const servers = []
+    const servers: any[] = []
     let port = candidate
     let unusable = false
     for (const host of hosts) {
       const server = createServer(handler)
       try {
-        await new Promise((resolve, reject) => {
+        await new Promise<void>((resolve, reject) => {
           const onError = (error) => reject(error)
           server.once('error', onError)
           server.listen(port, host, () => {
@@ -82,7 +82,7 @@ async function listen(handler, spec) {
         })
         const address = server.address()
         if (address === null) throw new Error(`callback server on ${host}:${port} has no address`)
-        if (port === 0) port = address.port
+        if (port === 0 && typeof address === 'object') port = address.port
         servers.push(server)
       } catch (error) {
         server.close()
@@ -104,6 +104,8 @@ async function listen(handler, spec) {
 }
 
 export class OAuthFlowManager {
+  declare attempts: Map<string, any>
+
   constructor() {
     this.attempts = new Map()
   }
@@ -138,10 +140,10 @@ export class OAuthFlowManager {
 
     let settled = false
     let timer
-    let servers = []
+    let servers: any[] = []
     let callback
 
-    const settle = (error, code) => {
+    const settle = (error, code?) => {
       if (settled) return
       settled = true
       if (timer !== undefined) clearTimeout(timer)

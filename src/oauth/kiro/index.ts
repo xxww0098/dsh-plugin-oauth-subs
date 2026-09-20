@@ -77,7 +77,7 @@ const ALLOWED_IDP_SUFFIXES = Object.freeze([
   '.microsoftonline.cn',
 ])
 
-function kiroModel(id, name, contextWindow, input = KIRO_VISION_INPUT, reasoningEfforts = false) {
+function kiroModel(id, name, contextWindow, input = KIRO_VISION_INPUT, reasoningEfforts: any = false) {
   return { id, name, contextWindow, maxTokens: KIRO_MAX_TOKENS, input, reasoningEfforts }
 }
 
@@ -127,7 +127,7 @@ export const KIRO_PLAN_NAMES = Object.freeze({
   powered: 'Powered',
 })
 
-export function canonicalizeKiroMethod(value, { tokenEndpoint } = {}) {
+export function canonicalizeKiroMethod(value, { tokenEndpoint }: any = {}) {
   const raw = typeof value === 'string' ? value.trim() : ''
   if (!raw && tokenEndpoint) return 'external_idp'
   const lower = raw.toLowerCase()
@@ -151,7 +151,7 @@ const IDC_PROVIDERS = Object.freeze([
  * 卡密). Social = GitHub/Google refresh only; IdC = Builder ID / Enterprise
  * with clientId+clientSecret.
  */
-export function inferKiroAuthMethod(raw = {}) {
+export function inferKiroAuthMethod(raw: any = {}) {
   const nested = raw?.credentials && typeof raw.credentials === 'object' && !Array.isArray(raw.credentials)
     ? raw.credentials
     : raw
@@ -175,7 +175,7 @@ export function inferKiroAuthMethod(raw = {}) {
   return 'social'
 }
 
-export function kiroAccountKind(session = {}) {
+export function kiroAccountKind(session: any = {}) {
   const method = canonicalizeKiroMethod(session.authMethod, { tokenEndpoint: session.tokenEndpoint })
   if (method === 'external_idp') return 'entra'
   if (method === 'api_key') return 'key'
@@ -205,7 +205,7 @@ export function kiroMethodLabel(methodOrSession) {
   }
 }
 
-export function kiroAccountId(session = {}) {
+export function kiroAccountId(session: any = {}) {
   const kind = kiroAccountKind(session)
   const account = trimmed(session.account) || trimmed(session.email)
   if (account && account.includes('@')) return `${account}@${kind}`
@@ -230,7 +230,7 @@ export function kiroManagementHost(region = KIRO_DEFAULT_REGION) {
 export const KIRO_LIST_PROFILES_PATH = 'List-Available-Profiles'
 export const KIRO_LIST_MODELS_PATH = 'List-Available-Models'
 
-export function kiroUsageRegions(session = {}) {
+export function kiroUsageRegions(session: any = {}) {
   const region = String(session.authRegion || session.apiRegion || session.region || KIRO_DEFAULT_REGION)
   if (region === 'eu-central-1' || region.startsWith('eu-')) return ['eu-central-1', 'us-east-1']
   return ['us-east-1', 'eu-central-1']
@@ -277,7 +277,7 @@ export function validateKiroApiKey(value) {
   return key
 }
 
-export function kiroMachineId(session = {}) {
+export function kiroMachineId(session: any = {}) {
   const stored = trimmed(session.machineId)
   if (stored && /^[0-9a-f]{64}$/i.test(stored)) return stored.toLowerCase()
   const method = canonicalizeKiroMethod(session.authMethod, { tokenEndpoint: session.tokenEndpoint })
@@ -323,17 +323,16 @@ export function kiroStreamingProfileArn(session) {
 
 export function kiroUsageHeaders(session) {
   const machine = kiroMachineId(session)
-  const headers = {
+  const tokenType = kiroTokenTypeHeader(session)
+  return {
     authorization: `Bearer ${session.accessToken}`,
     accept: 'application/json',
     'user-agent': usageUserAgent(session),
     'x-amz-user-agent': `aws-sdk-js/1.0.0 KiroIDE-${KIRO_USAGE_VERSION}-${machine}`,
     'amz-sdk-invocation-id': randomUUID(),
     'amz-sdk-request': 'attempt=1; max=1',
+    ...(tokenType ? { tokentype: tokenType } : {}),
   }
-  const tokenType = kiroTokenTypeHeader(session)
-  if (tokenType) headers.tokentype = tokenType
-  return headers
 }
 
 /** Portal authorize `redirect_uri` is origin only (`http://localhost:<port>`). */
@@ -353,7 +352,7 @@ export function kiroSocialLoginOption(value) {
  * origin + path (`/` / `/oauth/callback` / `/signin/callback`) and
  * `?login_option=google|github` when the callback carried that query.
  */
-export function kiroSocialTokenRedirectUri(redirectUri, callback = {}) {
+export function kiroSocialTokenRedirectUri(redirectUri, callback: any = {}) {
   const origin = kiroSocialRedirectUri(redirectUri)
   const rawPath = typeof callback.pathname === 'string' && callback.pathname
     ? callback.pathname
@@ -369,7 +368,7 @@ export function kiroSocialTokenRedirectUri(redirectUri, callback = {}) {
   return loginOption ? `${origin}${path}?login_option=${loginOption}` : `${origin}${path}`
 }
 
-function kiroSocialClientAgent(session = {}) {
+function kiroSocialClientAgent(session: any = {}) {
   return `KiroIDE-${KIRO_USAGE_VERSION}-${kiroMachineId(session)}`
 }
 
@@ -425,7 +424,7 @@ function expiresAtOf(value, fallbackSec = 3600) {
 }
 
 /** Fresh TTL from the refresh JSON only. Never reuse a stored session expiresAt. */
-function refreshExpiresAt(body = {}) {
+function refreshExpiresAt(body: any = {}) {
   const ttl = durationMsOf(body.expiresIn ?? body.expires_in)
   if (ttl !== undefined) return Date.now() + ttl
   const stamp = body.expiresAt ?? body.expires_at
@@ -434,7 +433,10 @@ function refreshExpiresAt(body = {}) {
 }
 
 export class KiroHttpError extends Error {
-  constructor(message, status, { retryAfter } = {}) {
+  declare status: any
+  declare retryAfter: string | undefined
+
+  constructor(message, status, { retryAfter }: any = {}) {
     super(message)
     this.name = 'KiroHttpError'
     this.status = status
@@ -449,7 +451,7 @@ function headerOf(response, name) {
   return headers[name] ?? headers[name.toLowerCase()]
 }
 
-export function kiroSession(fields = {}) {
+export function kiroSession(fields: any = {}) {
   const method = canonicalizeKiroMethod(fields.authMethod, { tokenEndpoint: fields.tokenEndpoint })
   const kiroApiKey = method === 'api_key' ? (trimmed(fields.kiroApiKey) || trimmed(fields.accessToken)) : undefined
   const accessToken = trimmed(fields.accessToken) || kiroApiKey
@@ -461,7 +463,7 @@ export function kiroSession(fields = {}) {
   }
   const region = trimmed(fields.region) || trimmed(fields.authRegion) || KIRO_DEFAULT_REGION
   const account = trimmed(fields.account) || trimmed(fields.email)
-  const draft = {
+  const draft: any = {
     accessToken: accessToken || refreshToken,
     refreshToken,
     expiresAt: method === 'api_key' ? KIRO_NEVER_EXPIRES : expiresAtOf(fields.expiresAt, fields.expiresIn),
@@ -498,7 +500,7 @@ async function readJson(response, label) {
   return text ? JSON.parse(text) : {}
 }
 
-export async function exchangeKiroSocialCode(code, verifier, redirectUri, { fetchFn = fetch, callback, machineId: priorMachineId } = {}) {
+export async function exchangeKiroSocialCode(code, verifier, redirectUri, { fetchFn = fetch, callback, machineId: priorMachineId }: any = {}) {
   const machineId = allocateKiroMachineId(priorMachineId)
   const response = await fetchFn(`${KIRO_AUTH_URL}/oauth/token`, {
     method: 'POST',

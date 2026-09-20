@@ -14,58 +14,35 @@
 import { execFile } from 'node:child_process';
 export declare const CURSOR_IMPORT_EMPTY = "cursor-import-empty";
 /** Windows account that owns this WSL session — never Public / Default / others. */
-export declare function windowsUsernameFromEnv(env?: NodeJS.ProcessEnv): string;
+export declare function windowsUsernameFromEnv(env?: NodeJS.ProcessEnv): string | undefined;
 export declare function cursorVscdbPaths({ platform, env, home }?: {
-    platform?: NodeJS.Platform;
-    env?: NodeJS.ProcessEnv;
-    home?: string;
+    platform?: NodeJS.Platform | undefined;
+    env?: NodeJS.ProcessEnv | undefined;
+    home?: string | undefined;
 }): any[];
-declare function defaultReadVscdb(dbPath: any): Promise<{
-    accessToken?: undefined;
-    refreshToken?: undefined;
-    cachedEmail?: undefined;
-} | {
-    accessToken: any;
-    refreshToken: any;
-    cachedEmail: any;
-}>;
-export declare function readCursorVscdbTokens({ platform, env, home, paths, readDb, now, }?: {
-    platform?: NodeJS.Platform;
-    env?: NodeJS.ProcessEnv;
-    home?: string;
-    readDb?: typeof defaultReadVscdb;
-    now?: number;
-}): Promise<{}>;
+export declare function readCursorVscdbTokens({ platform, env, home, paths, readDb, now, }?: any): Promise<any>;
 export declare function readCursorKeychainTokens({ platform, execFileFn, }?: {
-    platform?: NodeJS.Platform;
-    execFileFn?: typeof execFile.__promisify__;
-}): Promise<{}>;
-export declare function resolveCursorLocalCredentials({ fetchFn, env, platform, home, execFileFn, readVscdbFn, now, }?: {
-    fetchFn?: typeof fetch;
-    env?: NodeJS.ProcessEnv;
-    platform?: NodeJS.Platform;
-    home?: string;
-    execFileFn?: typeof execFile.__promisify__;
-    now?: number;
-}): Promise<{
-    cachedEmail?: string;
+    platform?: NodeJS.Platform | undefined;
+    execFileFn?: typeof execFile.__promisify__ | undefined;
+}): Promise<any>;
+export declare function resolveCursorLocalCredentials({ fetchFn, env, platform, home, execFileFn, readVscdbFn, now, }?: any): Promise<{
+    cachedEmail?: string | undefined;
     planType?: any;
-    source: string;
-    account?: string;
+    source: any;
+    account?: string | undefined;
     accessToken: any;
     refreshToken: any;
     expiresAt: number;
-}>;
-export declare function importCursorAuth(options?: {}): Promise<{
-    source: string;
+} | undefined>;
+export declare function importCursorAuth(options?: any): Promise<{
+    source: any;
     session: {
-        cachedEmail?: string;
+        cachedEmail?: string | undefined;
         planType?: any;
-        source: string;
-        account?: string;
+        source: any;
+        account?: string | undefined;
         accessToken: any;
         refreshToken: any;
         expiresAt: number;
     };
 }>;
-export {};

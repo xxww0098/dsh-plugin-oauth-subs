@@ -149,7 +149,7 @@ export function codexProfileClaims(idToken) {
   }
 }
 
-export function codexSession(tokens, fallback) {
+export function codexSession(tokens, fallback?) {
   if (typeof tokens.access_token !== 'string' || tokens.access_token.length === 0) {
     throw new Error('codex token endpoint returned no access token')
   }
@@ -255,7 +255,10 @@ export function codexUpstreamHeaders(session) {
 }
 
 export class OAuthEndpointError extends Error {
-  constructor(message, status, oauthCode) {
+  declare status: any
+  declare oauthCode: any
+
+  constructor(message, status?, oauthCode?) {
     super(message)
     this.name = 'OAuthEndpointError'
     this.status = status

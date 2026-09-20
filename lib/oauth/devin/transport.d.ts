@@ -12,28 +12,26 @@
  * non-fatal — chat works with the session token alone (verified live).
  */
 export declare class DevinTransportError extends Error {
-    constructor(message: any, { status }?: {});
+    status: any;
+    permanent: boolean | undefined;
+    constructor(message: any, { status }?: any);
 }
 /**
  * Best-effort GetUserJwt: mints metadata.user_jwt and may redirect to a
  * deployment-specific api server (custom_api_server_url). Returns undefined
  * on any failure — the session token alone is accepted (verified live).
  */
-export declare function devinUserJwt(session: any, { fetchFn, signal }?: {
-    fetchFn?: typeof fetch;
-}): Promise<{
+export declare function devinUserJwt(session: any, { fetchFn, signal }?: any): Promise<{
     userJwt: any;
     baseUrl: any;
-}>;
+} | undefined>;
 /**
  * SeatManagementService/GetUserStatus (unary application/proto, raw body) —
  * the quota + identity RPC. Throws on HTTP errors; 401/403 are permanent.
  */
-export declare function devinUserStatus(session: any, { fetchFn, signal }?: {
-    fetchFn?: typeof fetch;
-}): Promise<{
+export declare function devinUserStatus(session: any, { fetchFn, signal }?: any): Promise<{
     userStatus: {
-        pro: boolean;
+        pro: boolean | undefined;
         name: any;
         teamId: any;
         email: any;
@@ -43,39 +41,39 @@ export declare function devinUserStatus(session: any, { fetchFn, signal }?: {
                 teamsTier: any;
                 planName: any;
                 devinInfo: {
-                    canUseCli: boolean;
+                    canUseCli: boolean | undefined;
                     webappHost: any;
                     apiUrl: any;
                     accountDisplayName: any;
-                };
-                isDevin: boolean;
+                } | undefined;
+                isDevin: boolean | undefined;
                 hideDailyQuota: boolean;
                 hideWeeklyQuota: boolean;
-            };
+            } | undefined;
             planStart: any;
             planEnd: any;
             availablePromptCredits: any;
             usedPromptCredits: any;
             dailyQuotaRemainingPercent: any;
             weeklyQuotaRemainingPercent: any;
-            dailyQuotaResetAt: number;
-            weeklyQuotaResetAt: number;
-        };
+            dailyQuotaResetAt: number | undefined;
+            weeklyQuotaResetAt: number | undefined;
+        } | undefined;
         userId: any;
-    };
+    } | undefined;
     planInfo: {
         teamsTier: any;
         planName: any;
         devinInfo: {
-            canUseCli: boolean;
+            canUseCli: boolean | undefined;
             webappHost: any;
             apiUrl: any;
             accountDisplayName: any;
-        };
-        isDevin: boolean;
+        } | undefined;
+        isDevin: boolean | undefined;
         hideDailyQuota: boolean;
         hideWeeklyQuota: boolean;
-    };
+    } | undefined;
 }>;
 /**
  * Minted user_jwts carry a ~15min exp — minting one before every chat call
@@ -83,18 +81,16 @@ export declare function devinUserStatus(session: any, { fetchFn, signal }?: {
  * A stale jwt surfaces as chat 401; runDevinChat then drops it and retries
  * once token-only (a proven-good path).
  */
-export declare function devinChatAuth(session: any, { fetchFn, signal }?: {
-    fetchFn?: typeof fetch;
-}): Promise<any>;
+export declare function devinChatAuth(session: any, { fetchFn, signal }?: any): Promise<any>;
 /**
  * Identity for a stored session: email (or display name) + plan label from
  * GetUserStatus. Opaque ids never become the account name.
  */
 export declare function resolveDevinIdentity(session: any, { fetchFn, statusFn }?: {
-    fetchFn?: typeof fetch;
-    statusFn?: typeof devinUserStatus;
+    fetchFn?: typeof fetch | undefined;
+    statusFn?: typeof devinUserStatus | undefined;
 }): Promise<{
-    account: string;
+    account: string | undefined;
     planType: any;
     userId: any;
     teamId: any;
@@ -104,22 +100,9 @@ export declare function resolveDevinIdentity(session: any, { fetchFn, statusFn }
  * `onEvent` receives {type:'text'|'thinking'|'tool'|'usage'|'stop', …} deltas;
  * the resolved value is the fully collected turn.
  */
-export declare function runDevinChat(session: any, built: any, { signal, onEvent, fetchFn }?: {
-    fetchFn?: typeof fetch;
-}): Promise<{
-    text: string;
-    thinking: string;
-    toolCalls: any[];
-    usage: any;
-    stopReason: any;
-    messageId: any;
-    actualModelUid: any;
-}>;
+export declare function runDevinChat(session: any, built: any, { signal, onEvent, fetchFn }?: any): Promise<any>;
 /**
  * Proxy-facing forward, same contract as forwardCursor: writes the OpenAI
  * response itself — Completions JSON or SSE. `runFn`/`fetchFn` are test seams.
  */
-export declare function forwardDevin(response: any, { payload, cacheSessionId, stream, session, signal, fetchFn, runFn, }?: {
-    fetchFn?: typeof fetch;
-    runFn?: typeof runDevinChat;
-}): Promise<void>;
+export declare function forwardDevin(response: any, { payload, cacheSessionId, stream, session, signal, fetchFn, runFn, }?: any): Promise<void>;

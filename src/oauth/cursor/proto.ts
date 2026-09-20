@@ -15,7 +15,7 @@ export function encodeVarint(value) {
   let n = Number(value)
   if (!Number.isFinite(n) || n < 0) n = 0
   n = Math.floor(n)
-  const out = []
+  const out: any[] = []
   while (n > 0x7f) {
     out.push((n & 0x7f) | 0x80)
     n = Math.floor(n / 128)
@@ -65,7 +65,7 @@ export function readVarint(buf, offset = 0) {
 
 export function decodeFields(buf) {
   const bytes = Buffer.isBuffer(buf) ? buf : Buffer.from(buf ?? [])
-  const fields = []
+  const fields: any[] = []
   let offset = 0
   while (offset < bytes.length) {
     const tag = readVarint(bytes, offset)
@@ -209,7 +209,7 @@ export function frameConnect(payload, end = false) {
 
 export function splitConnectFrames(buf) {
   const bytes = Buffer.isBuffer(buf) ? buf : Buffer.from(buf ?? [])
-  const frames = []
+  const frames: any[] = []
   let offset = 0
   while (offset + 5 <= bytes.length) {
     const flags = bytes[offset]
@@ -225,7 +225,7 @@ export function splitConnectFrames(buf) {
   return { frames, rest: bytes.subarray(offset) }
 }
 
-export function encodeUserMessage({ text, messageId, selectedContextBlob, mode = 1 }) {
+export function encodeUserMessage({ text, messageId, selectedContextBlob = undefined, mode = 1 }: any) {
   const parts = [encodeString(1, text ?? ''), encodeString(2, messageId ?? '')]
   if (mode != null) parts.push(encodeUint32(4, mode))
   if (selectedContextBlob) parts.push(encodeBytes(10, selectedContextBlob))
@@ -233,7 +233,7 @@ export function encodeUserMessage({ text, messageId, selectedContextBlob, mode =
   return Buffer.concat(parts)
 }
 
-export function encodeRequestedModel({ modelId, maxMode = false, parameters = [] }) {
+export function encodeRequestedModel({ modelId, maxMode = false, parameters = [] }: any) {
   const parts = [encodeString(1, modelId ?? '')]
   if (maxMode) parts.push(encodeBool(2, true))
   for (const parameter of parameters) {
@@ -265,7 +265,7 @@ export function encodeMcpTools(tools) {
  * run handshake aborts with "Failed to get request context" unless the
  * reply is a present RequestContextSuccess.
  */
-export function encodeRequestContextResult({ id, execId, tools = [] } = {}) {
+export function encodeRequestContextResult({ id, execId, tools = [] }: any = {}) {
   const requestContext = Buffer.concat((tools ?? []).map((tool) => encodeMessage(7, encodeMcpToolDefinition(tool))))
   const result = encodeMessage(1, encodeMessage(1, requestContext))
   return encodeExecClientResult({ id, execId, resultField: 10, resultBytes: result })
@@ -276,8 +276,8 @@ export function encodeConversationState({
   turnBlobs = [],
   mode = 1,
   clientName = 'dsh',
-}) {
-  const parts = []
+}: any) {
+  const parts: any[] = []
   for (const blob of rootPromptBlobs) parts.push(encodeBytes(1, blob))
   for (const blob of turnBlobs) parts.push(encodeBytes(8, blob))
   if (mode != null) parts.push(encodeUint32(10, mode))
@@ -285,7 +285,7 @@ export function encodeConversationState({
   return Buffer.concat(parts)
 }
 
-export function encodeConversationTurn({ userMessageBlob, stepBlobs = [], requestId }) {
+export function encodeConversationTurn({ userMessageBlob, stepBlobs = [], requestId }: any) {
   const agent = [
     encodeBytes(1, userMessageBlob),
     ...stepBlobs.map((blob) => encodeBytes(2, blob)),
@@ -351,7 +351,7 @@ export function encodeAgentClientMessage(runRequest) {
   return encodeMessage(1, runRequest)
 }
 
-export function encodeKvClientMessage({ id, blobData, set = false } = {}) {
+export function encodeKvClientMessage({ id, blobData, set = false }: any = {}) {
   const body = set
     ? Buffer.concat([encodeUint32(1, id ?? 0), encodeMessage(3, Buffer.alloc(0))])
     : Buffer.concat([encodeUint32(1, id ?? 0), encodeMessage(2, blobData ? encodeBytes(1, blobData) : Buffer.alloc(0))])
@@ -398,7 +398,7 @@ function rejectedPath(execArgs) {
  * Throwing an ExecClientControlMessage aborts the whole run instead.
  * Returns undefined for requestContextArgs / mcpArgs / unknown cases.
  */
-export function encodeNativeExecRejection(execMsg = {}) {
+export function encodeNativeExecRejection(execMsg: any = {}) {
   const { id, execId, execCase, execArgs } = execMsg
   const common = { id, execId }
   switch (execCase) {
@@ -474,8 +474,8 @@ export function encodeTurnEndedUpdate({
   cacheReadTokens,
   cacheWriteTokens,
   reasoningTokens,
-} = {}) {
-  const parts = []
+}: any = {}) {
+  const parts: any[] = []
   if (inputTokens != null) parts.push(encodeUint32(1, inputTokens))
   if (outputTokens != null) parts.push(encodeUint32(2, outputTokens))
   if (cacheReadTokens != null) parts.push(encodeUint32(3, cacheReadTokens))
@@ -497,7 +497,7 @@ export function decodeTurnEndedUpdate(buf) {
   return empty ? undefined : usage
 }
 
-export function encodeGetUsableModelsRequest(customIds = []) {
+export function encodeGetUsableModelsRequest(customIds: any[] = []) {
   return Buffer.concat(customIds.map((id) => encodeString(1, id)))
 }
 
@@ -511,7 +511,7 @@ export function unwrapConnectUnary(buf) {
   return payload && payload.length ? payload : bytes
 }
 
-export function encodeGetUsableModelsResponse(models = []) {
+export function encodeGetUsableModelsResponse(models: any[] = []) {
   return Buffer.concat((models ?? []).map((model) => encodeMessage(1, Buffer.concat([
     encodeString(1, model.id ?? model.modelId ?? ''),
     model.displayId ? encodeString(3, model.displayId) : Buffer.alloc(0),
@@ -522,7 +522,7 @@ export function encodeGetUsableModelsResponse(models = []) {
 
 export function decodeGetUsableModelsResponse(buf) {
   const body = unwrapConnectUnary(buf)
-  const models = []
+  const models: any[] = []
   for (const raw of fieldBytes(decodeFields(body), 1)) {
     const fields = decodeFields(raw)
     const id = fieldString(fields, 1)
@@ -543,7 +543,7 @@ export function encodeAvailableModelsRequest() {
   return Buffer.concat([encodeBool(5, true), encodeBool(7, true)])
 }
 
-export function encodeAvailableModelsResponse(models = []) {
+export function encodeAvailableModelsResponse(models: any[] = []) {
   return Buffer.concat((models ?? []).map((model) => encodeMessage(2, Buffer.concat([
     encodeString(1, model.name ?? ''),
     model.supportsImages ? encodeBool(10, true) : Buffer.alloc(0),
@@ -640,7 +640,7 @@ const EXEC_SERVER_CASES = Object.freeze([
 
 function decodeMcpArgs(mcp) {
   const fields = decodeFields(mcp)
-  const args = {}
+  const args: any = {}
   for (const entry of fieldBytes(fields, 2)) {
     const pair = decodeFields(entry)
     const key = fieldString(pair, 1)

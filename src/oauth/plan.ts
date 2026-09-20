@@ -81,7 +81,7 @@ function compactOf(value) {
   return slugOf(value).replace(/_/g, '')
 }
 
-export function formatPlanLabel(raw, family) {
+export function formatPlanLabel(raw, family?) {
   if (raw === undefined || raw === null) return undefined
   if (family === 'devin' && typeof raw === 'number' && Number.isInteger(raw)) {
     return DEVIN_TIER_NAMES[raw] ?? String(raw)

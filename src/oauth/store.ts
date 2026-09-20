@@ -193,7 +193,10 @@ function matchingAccount(vault, source) {
 
 export async function listStoredSessions(provider, path) {
   const vault = asVault(provider, (await loadStore(path))[provider])
-  return Object.keys(vault.accounts).map((id) => storedAccount(vault, id))
+  return Object.keys(vault.accounts).flatMap((id) => {
+    const account = storedAccount(vault, id)
+    return account ? [account] : []
+  })
 }
 
 export async function getStoredSession(provider, id, path) {
@@ -207,7 +210,7 @@ export async function getStoredSession(provider, id, path) {
 }
 
 /** Only update the login/credentials that produced the result; never activate it. */
-export async function updateAccountSession(provider, source, session, path, nextId) {
+export async function updateAccountSession(provider, source, session, path, nextId?) {
   const file = path ?? authFilePath()
   return serialize(file, async () => {
     const store = await loadStore(file)
@@ -260,7 +263,7 @@ function mergeSavedSession(existing, session) {
   return merged
 }
 
-export async function saveSession(provider, session, path, options) {
+export async function saveSession(provider, session, path, options?) {
   const file = path ?? authFilePath()
   const activate = options?.activate !== false
   return serialize(file, async () => {
@@ -292,7 +295,7 @@ export async function switchAccount(provider, id, path) {
   })
 }
 
-export async function deleteSession(provider, path, id, source) {
+export async function deleteSession(provider, path, id, source?) {
   const file = path ?? authFilePath()
   return serialize(file, async () => {
     const store = await loadStore(file)

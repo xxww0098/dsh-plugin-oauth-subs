@@ -25,9 +25,12 @@ export declare function decideEffortAction({ selection, previous, remembered, pr
     remembered: any;
     prefix: any;
     efforts: any;
-}): {};
+}): any;
 export declare class EffortMemory {
-    constructor({ path }?: {});
+    path: string | undefined;
+    effort: any;
+    ready: Promise<any>;
+    constructor({ path }?: any);
     last(): any;
     load(): Promise<void>;
     remember(effort: any): Promise<void>;
@@ -37,7 +40,7 @@ export declare function snapshotSelection(value: any): {
     provider: any;
     model: any;
     reasoningEffort: any;
-};
+} | undefined;
 export declare function lastModelSelection(session: any): any;
 /**
  * Re-run host selectModel (selectForNextRequest + saveSelection) with the

@@ -34,7 +34,7 @@ export declare function writeUpdatePrefs(path: any, prefs: any): Promise<{
  * skipped); 'failed' covers apply failure/timeout/unchanged and check errors.
  */
 export declare function autoRunOutcome(result: any): {
-    version?: string;
+    version?: string | undefined;
     status: string;
 };
 export declare function normalizeUpdateState(raw: any): {
@@ -44,14 +44,14 @@ export declare function normalizeUpdateState(raw: any): {
     } | {
         status: any;
         version?: undefined;
-    };
+    } | undefined;
     plugin?: {
         status: any;
         version: any;
     } | {
         status: any;
         version?: undefined;
-    };
+    } | undefined;
     at?: any;
 };
 export declare function readUpdateState(path: any): Promise<{
@@ -61,14 +61,14 @@ export declare function readUpdateState(path: any): Promise<{
     } | {
         status: any;
         version?: undefined;
-    };
+    } | undefined;
     plugin?: {
         status: any;
         version: any;
     } | {
         status: any;
         version?: undefined;
-    };
+    } | undefined;
     at?: any;
 }>;
 export declare function writeUpdateState(path: any, state: any): Promise<{
@@ -78,13 +78,13 @@ export declare function writeUpdateState(path: any, state: any): Promise<{
     } | {
         status: any;
         version?: undefined;
-    };
+    } | undefined;
     plugin?: {
         status: any;
         version: any;
     } | {
         status: any;
         version?: undefined;
-    };
+    } | undefined;
     at?: any;
 }>;

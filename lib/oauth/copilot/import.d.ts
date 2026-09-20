@@ -11,59 +11,59 @@
  */
 export declare const COPILOT_IMPORT_EMPTY = "copilot-import-empty";
 export declare function copilotHomePaths({ env, home }?: {
-    env?: NodeJS.ProcessEnv;
-    home?: string;
+    env?: NodeJS.ProcessEnv | undefined;
+    home?: string | undefined;
 }): {
     hosts: string;
     apps: string;
     opencode: string;
 };
-export declare function resolveCopilotCliCredentials(options?: {}): Promise<{
-    apiEndpoint?: string;
-    githubRefreshToken?: string;
-    githubToken?: string;
-    planType?: string;
+export declare function resolveCopilotCliCredentials(options?: any): Promise<{
+    apiEndpoint?: string | undefined;
+    githubRefreshToken?: string | undefined;
+    githubToken?: string | undefined;
+    planType?: string | undefined;
     accessToken: string;
     refreshToken: string;
     expiresAt: number;
     tokenEndpoint: string;
     clientId: string;
     account: string;
-    source: string;
-}>;
+    source: any;
+} | undefined>;
 export declare function resolveCopilotEnvKey({ env }?: {
-    env?: NodeJS.ProcessEnv;
+    env?: NodeJS.ProcessEnv | undefined;
 }): {
     githubToken: string;
     source: string;
-};
-export declare function importCopilotAuth(options?: {}): Promise<{
+} | undefined;
+export declare function importCopilotAuth(options?: any): Promise<{
     source: string;
     session: {
-        apiEndpoint?: string;
-        githubRefreshToken?: string;
-        githubToken?: string;
-        planType?: string;
+        apiEndpoint?: string | undefined;
+        githubRefreshToken?: string | undefined;
+        githubToken?: string | undefined;
+        planType?: string | undefined;
         accessToken: string;
         refreshToken: string;
         expiresAt: number;
         tokenEndpoint: string;
         clientId: string;
         account: string;
-        source: string;
+        source: any;
     };
 }>;
 /** Build a stored session from a pasted GitHub token (controller useKey). */
-export declare function copilotSessionFromGithubToken(token: any, extra?: {}): {
-    apiEndpoint?: string;
-    githubRefreshToken?: string;
-    githubToken?: string;
-    planType?: string;
+export declare function copilotSessionFromGithubToken(token: any, extra?: any): {
+    apiEndpoint?: string | undefined;
+    githubRefreshToken?: string | undefined;
+    githubToken?: string | undefined;
+    planType?: string | undefined;
     accessToken: string;
     refreshToken: string;
     expiresAt: number;
     tokenEndpoint: string;
     clientId: string;
     account: string;
-    source: string;
+    source: any;
 };

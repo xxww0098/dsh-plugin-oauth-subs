@@ -44,7 +44,7 @@ function trimmed(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined
 }
 
-function isPlainObject(value) {
+function isPlainObject(value): value is Record<string, any> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
@@ -90,7 +90,7 @@ function signatureCallKey(name, args) {
   return `${n}\0${stableJson(args ?? {})}`
 }
 
-function rememberThoughtSignature(sessionId, { id, name, args, signature } = {}) {
+function rememberThoughtSignature(sessionId, { id, name, args, signature }: any = {}) {
   if (!sessionId || !signature) return
   let bucket = THOUGHT_SIGNATURES.get(sessionId)
   if (!bucket) {
@@ -109,7 +109,7 @@ function rememberThoughtSignature(sessionId, { id, name, args, signature } = {})
   }
 }
 
-function lookupThoughtSignature(sessionId, { id, name, args } = {}) {
+function lookupThoughtSignature(sessionId, { id, name, args }: any = {}) {
   const bucket = THOUGHT_SIGNATURES.get(sessionId)
   if (!bucket) return undefined
   const ck = signatureCallKey(name, args)
@@ -219,11 +219,11 @@ function functionCallPart(call, sessionId, message, model) {
   const signature = thoughtSignatureOf(call)
     ?? shared
     ?? lookupThoughtSignature(sessionId, { id: call?.id, name, args })
-  const functionCall = { name, args }
+  const functionCall: any = { name, args }
   if (toolCallIdNeeded(model)) {
     functionCall.id = sanitizeAntigravityToolCallId(call?.id, name)
   }
-  const part = { functionCall }
+  const part: any = { functionCall }
   if (signature) {
     part.thoughtSignature = signature
     rememberThoughtSignature(sessionId, { id: call?.id, name, args, signature })
@@ -254,7 +254,7 @@ export function functionResponsePayload(value) {
 
 function functionResponsePart(message, model) {
   const name = trimmed(message?.name) ?? 'tool'
-  const functionResponse = {
+  const functionResponse: any = {
     name,
     response: functionResponsePayload(message?.content),
   }
@@ -315,7 +315,7 @@ function imagePart(url) {
 export function partsFromContent(content) {
   if (typeof content === 'string' && content) return [{ text: content }]
   if (!Array.isArray(content)) return content == null || content === '' ? [] : [{ text: String(content) }]
-  const parts = []
+  const parts: any[] = []
   for (const item of content) {
     if (typeof item === 'string' && item) parts.push({ text: item })
     else if (item?.type === 'text' && item.text) parts.push({ text: item.text })
@@ -327,7 +327,7 @@ export function partsFromContent(content) {
   return parts
 }
 
-function dereferenceSchema(schema, rootDefs = {}, visited = new Set()) {
+function dereferenceSchema(schema, rootDefs: any = {}, visited = new Set()) {
   if (!schema || typeof schema !== 'object') return schema
   if (Array.isArray(schema)) return schema.map((item) => dereferenceSchema(item, rootDefs, visited))
   if (visited.has(schema)) return schema
@@ -347,7 +347,7 @@ function dereferenceSchema(schema, rootDefs = {}, visited = new Set()) {
       return resolved
     }
   }
-  const out = {}
+  const out: any = {}
   for (const [key, value] of Object.entries(schema)) {
     out[key] = dereferenceSchema(value, defs, visited)
   }
@@ -363,7 +363,7 @@ function ensureRootObjectSchema(schema) {
 function stripMetaSchema(schema) {
   if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return schema
   const omit = new Set(['$schema', '$id', '$anchor', '$dynamicAnchor', '$vocabulary', '$comment', '$defs', 'definitions'])
-  const out = {}
+  const out: any = {}
   for (const [key, value] of Object.entries(schema)) {
     if (!omit.has(key)) out[key] = stripMetaSchema(value)
   }
@@ -385,7 +385,7 @@ function normalizeCustomToolType(value) {
 function normalizeCustomToolSchema(schema) {
   if (!schema || typeof schema !== 'object') return schema
   if (Array.isArray(schema)) return schema.map(normalizeCustomToolSchema)
-  const out = {}
+  const out: any = {}
   for (const [key, value] of Object.entries(schema)) {
     if (!CUSTOM_TOOL_SCHEMA_ALLOW.has(key)) continue
     if (key === 'type') {
@@ -395,7 +395,7 @@ function normalizeCustomToolSchema(schema) {
     }
     if (key === 'properties' && isPlainObject(value)) {
       const props = {}
-      for (const [propName, propSchema] of Object.entries(value)) {
+      for (const [propName, propSchema] of Object.entries<any>(value)) {
         props[propName] = normalizeCustomToolSchema(propSchema)
       }
       out.properties = props
@@ -422,7 +422,7 @@ function toolDeclarations(tools, model) {
     const name = trimmed(fn?.name)
     if (!name) return []
     const schema = jsonSchemaOf(fn.parameters)
-    const decl = {
+    const decl: any = {
       name,
       ...(trimmed(fn.description) ? { description: fn.description } : {}),
     }
@@ -476,7 +476,7 @@ function appendTurn(contents, role, parts) {
 }
 
 function mergeAdjacentContents(contents) {
-  const merged = []
+  const merged: any[] = []
   for (const turn of contents) {
     const parts = Array.isArray(turn?.parts) ? turn.parts : []
     if (!turn?.role || parts.length === 0) continue
@@ -485,14 +485,14 @@ function mergeAdjacentContents(contents) {
   return merged
 }
 
-export function openaiToAntigravity(payload, { projectId, sessionId } = {}) {
+export function openaiToAntigravity(payload, { projectId, sessionId }: any = {}) {
   const project = trimmed(projectId)
   if (!project) throw new Error('antigravity generateContent requires project_id')
   const model = trimmed(payload?.model)
   if (!model) throw new Error('antigravity generateContent requires a model')
   const messages = Array.isArray(payload?.messages) ? payload.messages : []
-  const systemParts = []
-  const contents = []
+  const systemParts: any[] = []
+  const contents: any[] = []
   const pinnedSession = antigravitySessionIdOf(payload, sessionId)
   const requiresSig = geminiRequiresThoughtSignature(model)
   const droppedToolCallIds = new Map()
@@ -514,8 +514,8 @@ export function openaiToAntigravity(payload, { projectId, sessionId } = {}) {
       appendTurn(contents, 'user', [functionResponsePart(message, model)])
       continue
     }
-    const parts = []
-    const built = []
+    const parts: any[] = []
+    const built: any[] = []
     if (Array.isArray(message?.tool_calls)) {
       for (const call of message.tool_calls) {
         const part = functionCallPart(call, pinnedSession, message, model)
@@ -545,7 +545,7 @@ export function openaiToAntigravity(payload, { projectId, sessionId } = {}) {
   // land between a model functionCall group and its matching tool results.
   if (pinned.extra) appendTurn(contents, 'user', [{ text: pinned.extra }])
 
-  const request = {
+  const request: any = {
     contents: mergeAdjacentContents(contents),
     sessionId: pinnedSession,
   }
@@ -553,7 +553,7 @@ export function openaiToAntigravity(payload, { projectId, sessionId } = {}) {
   const tools = pinAntigravityTools(pinnedSession, toolDeclarations(payload?.tools, model))
   if (tools) request.tools = tools
   const thinking = pinAntigravityThinking(pinnedSession, antigravityThinkingConfig(model, trimmed(payload?.reasoning_effort)))
-  const generationConfig = {
+  const generationConfig: any = {
     maxOutputTokens: clampMaxOutputTokens(model, payload?.max_tokens),
   }
   if (thinking) generationConfig.thinkingConfig = thinking
@@ -582,12 +582,12 @@ function finishReason(raw) {
   return 'stop'
 }
 
-export function collectAntigravityParts(body, { sessionId } = {}) {
+export function collectAntigravityParts(body, { sessionId }: any = {}) {
   const response = body?.response ?? body
   const candidate = response?.candidates?.[0]
   const parts = Array.isArray(candidate?.content?.parts) ? candidate.content.parts : []
   let text = ''
-  const toolCalls = []
+  const toolCalls: any[] = []
   let pendingThoughtSig
   for (const part of parts) {
     if (!part) continue
@@ -664,19 +664,16 @@ export function mapAntigravityUsage(usage) {
   const candidates = usage.candidatesTokenCount ?? usage.candidates_token_count ?? 0
   const thoughts = usage.thoughtsTokenCount ?? usage.thoughts_token_count ?? 0
   const completion = candidates + thoughts
-  const mapped = {
+  const cached = cachedTokensOf(usage)
+  // Key order matches the previous mutate-in-place shape: the two optional
+  // detail objects land after the counters, reasoning before cached.
+  return {
     prompt_tokens: prompt,
     completion_tokens: completion,
     total_tokens: usage.totalTokenCount ?? usage.total_token_count ?? prompt + completion,
+    ...(thoughts ? { completion_tokens_details: { reasoning_tokens: thoughts } } : {}),
+    ...(cached !== undefined ? { prompt_tokens_details: { cached_tokens: cached } } : {}),
   }
-  if (thoughts) {
-    mapped.completion_tokens_details = { reasoning_tokens: thoughts }
-  }
-  const cached = cachedTokensOf(usage)
-  if (cached !== undefined) {
-    mapped.prompt_tokens_details = { cached_tokens: cached }
-  }
-  return mapped
 }
 
 /** Google SSE is cumulative; OpenAI deltas are suffixes. A shorter later frame is a reset. */
@@ -688,8 +685,8 @@ export function incrementalSuffix(next, previous) {
   return current
 }
 
-function openaiChunk({ id, model, delta, finish_reason, usage }) {
-  const chunk = {
+function openaiChunk({ id, model, delta, finish_reason, usage = undefined }: any) {
+  const chunk: any = {
     id,
     object: 'chat.completion.chunk',
     model,
@@ -703,9 +700,9 @@ function openaiChunk({ id, model, delta, finish_reason, usage }) {
  * Per-stream mapper: cumulative Google frames → incremental OpenAI chunks.
  * Thought parts stay out of `delta.content`; their tokens still land in usage.
  */
-export function createAntigravityOpenaiStream({ model, id = `chatcmpl-${Date.now()}`, sessionId } = {}) {
+export function createAntigravityOpenaiStream({ model, id = `chatcmpl-${Date.now()}`, sessionId }: any = {}) {
   let emittedText = ''
-  const emittedToolArgs = []
+  const emittedToolArgs: any[] = []
   let lastUsage
   let lastFinish = 'stop'
   let sawTools = false
@@ -719,7 +716,7 @@ export function createAntigravityOpenaiStream({ model, id = `chatcmpl-${Date.now
       lastFinish = 'tool_calls'
     }
 
-    const delta = {}
+    const delta: any = {}
     const textDelta = incrementalSuffix(collected.text, emittedText)
     if (textDelta) {
       delta.content = textDelta
@@ -727,7 +724,7 @@ export function createAntigravityOpenaiStream({ model, id = `chatcmpl-${Date.now
     }
 
     if (collected.toolCalls.length) {
-      const calls = []
+      const calls: any[] = []
       for (let index = 0; index < collected.toolCalls.length; index++) {
         const call = collected.toolCalls[index]
         const prevArgs = emittedToolArgs[index]
@@ -773,7 +770,7 @@ export function createAntigravityOpenaiStream({ model, id = `chatcmpl-${Date.now
 
 export function antigravityEventsToOpenaiChunks(events, opts) {
   const stream = createAntigravityOpenaiStream(opts)
-  const chunks = []
+  const chunks: any[] = []
   for (const event of events ?? []) {
     const chunk = stream.push(event)
     if (chunk) chunks.push(chunk)
@@ -782,9 +779,9 @@ export function antigravityEventsToOpenaiChunks(events, opts) {
   return chunks
 }
 
-export function antigravityToOpenai(body, { model, id = `chatcmpl-${Date.now()}`, sessionId } = {}) {
+export function antigravityToOpenai(body, { model, id = `chatcmpl-${Date.now()}`, sessionId }: any = {}) {
   const collected = collectAntigravityParts(body, { sessionId })
-  const message = { role: 'assistant', content: collected.text || null }
+  const message: any = { role: 'assistant', content: collected.text || null }
   if (collected.toolCalls.length) message.tool_calls = collected.toolCalls
   return {
     id,
@@ -799,9 +796,9 @@ export function antigravityToOpenai(body, { model, id = `chatcmpl-${Date.now()}`
   }
 }
 
-export function antigravityToOpenaiChunk(body, { model, id, done = false, sessionId } = {}) {
+export function antigravityToOpenaiChunk(body, { model, id, done = false, sessionId }: any = {}) {
   const collected = collectAntigravityParts(body, { sessionId })
-  const delta = {}
+  const delta: any = {}
   if (collected.text) delta.content = collected.text
   if (collected.toolCalls.length) {
     delta.tool_calls = collected.toolCalls.map((call, index) => {
@@ -830,7 +827,7 @@ export function antigravityToOpenaiChunk(body, { model, id, done = false, sessio
 }
 
 export function parseAntigravitySseBlocks(buffer) {
-  const events = []
+  const events: any[] = []
   const chunks = String(buffer).split(/\r?\n\r?\n/)
   let rest = chunks.pop() ?? ''
   for (const block of chunks) {

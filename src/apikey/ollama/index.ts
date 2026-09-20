@@ -243,7 +243,7 @@ export function ollamaSession({
   accessToken,
   account,
   source = 'paste',
-} = {}) {
+}: any = {}) {
   const key = parseOllamaApiKey(accessToken)
   return {
     accessToken: key,
@@ -302,7 +302,7 @@ export function parseOllamaMe(value) {
   }
 }
 
-export async function resolveOllamaIdentity(session, { fetchFn = fetch, signal } = {}) {
+export async function resolveOllamaIdentity(session, { fetchFn = fetch, signal }: any = {}) {
   const key = trimmed(session?.accessToken)
   if (!key) return undefined
   try {

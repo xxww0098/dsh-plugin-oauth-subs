@@ -32,7 +32,7 @@ export declare function peelCursorFastSuffix(modelId: any): {
     modelId: string;
     requestedFast: boolean;
 };
-export declare function cursorCacheSessionId(key: any): string;
+export declare function cursorCacheSessionId(key: any): string | undefined;
 export declare function resetCursorSystemPins(): void;
 /**
  * Deterministic UUID for conversation blobs. Same seed → same id so a
@@ -43,9 +43,9 @@ export declare function pinCursorSystemPrefix(conversationId: any, systemText: a
     pinned: any;
     extra: string;
 };
-export declare function cursorConversationId(payload: {}, explicit: any): any;
-export declare function applyCursorCache(payload?: {}): {
-    payload: {};
+export declare function cursorConversationId(payload?: any, explicit?: any): any;
+export declare function applyCursorCache(payload?: any): {
+    payload: any;
     cacheSessionId: any;
 };
 /** Cursor does not sticky-route on Codex / Grok HTTP headers. */

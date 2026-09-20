@@ -5,12 +5,13 @@
  * posted to /oauth/cli/init is `zai` or `bigmodel`.
  */
 export declare class GlmCliFlowManager {
+    attempts: Map<string, any>;
     constructor();
-    isBusy(provider: any): any;
+    isBusy(provider: any): boolean;
     pending(provider: any): any;
     start(provider: any, { region, fetchFn }?: {
-        region?: string;
-        fetchFn?: typeof fetch;
+        region?: string | undefined;
+        fetchFn?: typeof fetch | undefined;
     }): Promise<{
         authorizeUrl: string;
         flowId: string;

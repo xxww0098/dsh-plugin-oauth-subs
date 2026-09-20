@@ -499,7 +499,7 @@ export function parseAntigravityValidation(payload) {
   }
 }
 
-export function antigravityValidationClientError(info = {}) {
+export function antigravityValidationClientError(info: any = {}) {
   return {
     error: {
       message: info.message ?? ANTIGRAVITY_VERIFY_MESSAGE,
@@ -512,7 +512,7 @@ export function antigravityValidationClientError(info = {}) {
 export function antigravitySession({
   accessToken, refreshToken, expiresAt, expiresIn, account, projectId, planType,
   needsValidation, validationUrl,
-} = {}) {
+}: any = {}) {
   if (!trimmed(accessToken)) throw new Error('antigravity session needs an access token')
   if (!trimmed(refreshToken)) throw new Error('antigravity session needs a refresh token')
   if (!trimmed(projectId)) throw new Error('antigravity session needs a project_id')
@@ -548,8 +548,7 @@ async function oauthError(response, label) {
     code = undefined
   }
   const error = new Error(`${label} failed (HTTP ${response.status})${text ? `: ${text.slice(0, 240)}` : ''}`)
-  if (typeof code === 'string') error.code = code
-  return error
+  return typeof code === 'string' ? Object.assign(error, { code }) : error
 }
 
 export async function exchangeAntigravityTokens(body, fetchFn = fetch) {
@@ -595,7 +594,7 @@ export async function onboardAntigravityUser(accessToken, tierId, { fetchFn = fe
   throw new Error(`antigravity onboardUser did not complete after ${ANTIGRAVITY_ONBOARD_ATTEMPTS} attempts`)
 }
 
-export async function fetchAntigravityProject({ accessToken, fetchFn = fetch, sleep } = {}) {
+export async function fetchAntigravityProject({ accessToken, fetchFn = fetch, sleep }: any = {}) {
   const response = await fetchAntigravityCloudCode(ANTIGRAVITY_LOAD_CODE_ASSIST_URL, {
     method: 'POST',
     headers: antigravityLoadCodeAssistHeaders(accessToken),
@@ -610,7 +609,7 @@ export async function fetchAntigravityProject({ accessToken, fetchFn = fetch, sl
   return { projectId, planType: antigravityPlanType(loadResp), loadResp }
 }
 
-export async function completeAntigravityLogin(tokens, { fetchFn = fetch, sleep, account } = {}) {
+export async function completeAntigravityLogin(tokens, { fetchFn = fetch, sleep, account }: any = {}) {
   const accessToken = trimmed(tokens?.access_token ?? tokens?.accessToken)
   const refreshToken = trimmed(tokens?.refresh_token ?? tokens?.refreshToken)
   if (!accessToken) throw new Error('antigravity token exchange returned no access token')
@@ -640,7 +639,7 @@ export async function exchangeAntigravityCode(code, redirectUri, { fetchFn = fet
 }
 
 export async function refreshAntigravity(session, fetchFn = fetch) {
-  const tokens = await exchangeAntigravityTokens(new URLSearchParams({
+  const tokens: any = await exchangeAntigravityTokens(new URLSearchParams({
     client_id: ANTIGRAVITY_CLIENT_ID,
     client_secret: ANTIGRAVITY_CLIENT_SECRET,
     grant_type: 'refresh_token',

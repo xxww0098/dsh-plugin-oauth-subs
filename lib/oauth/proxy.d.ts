@@ -13,17 +13,7 @@ export declare const STREAM_ATTEMPTS = 3;
  */
 export declare const UPSTREAM_IDLE_TIMEOUT_MS = 120000;
 export { describeError } from '../utils/http.js';
-export declare function createProxy({ port, apiKey, tokens, fetchFn, maxRequestBodyBytes, upstreamIdleTimeoutMs, onAntigravityValidation, cursorRpc, devinChat }: {
-    port: any;
-    apiKey: any;
-    tokens: any;
-    fetchFn?: typeof fetch;
-    maxRequestBodyBytes?: number;
-    upstreamIdleTimeoutMs?: number;
-    onAntigravityValidation: any;
-    cursorRpc: any;
-    devinChat: any;
-}): {
+export declare function createProxy({ port, apiKey, tokens, fetchFn, maxRequestBodyBytes, upstreamIdleTimeoutMs, onAntigravityValidation, cursorRpc, devinChat }: any): {
     origin: () => string;
     listen(): Promise<any>;
     close(): Promise<void>;

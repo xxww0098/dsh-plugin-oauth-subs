@@ -36,8 +36,8 @@ function developerItem(text) {
 }
 
 function splitLeadingInstructions(input) {
-  const lifted = []
-  const rest = []
+  const lifted: any[] = []
+  const rest: any[] = []
   for (const item of input) {
     if (rest.length === 0 && item && INSTRUCTION_ROLES.has(item.role)) {
       const text = instructionText(item)
@@ -53,7 +53,7 @@ function stabilizeGrokInput(next, conversationId) {
   if (!Array.isArray(next.input)) return next
   const { lifted, rest } = splitLeadingInstructions(next.input)
   const { pinned, extra } = pinGrokSystemPrefix(conversationId, lifted)
-  const prefix = []
+  const prefix: any[] = []
   if (pinned) prefix.push(systemItem(pinned))
   const suffix = extra ? [developerItem(extra)] : []
   next.input = [...prefix, ...rest, ...suffix]

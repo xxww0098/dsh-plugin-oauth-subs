@@ -54,7 +54,7 @@ export declare const COPILOT_MODELS: readonly {
     maxTokens: any;
     input: any[];
 }[];
-export declare function copilotSourceLabel(source: any): "key" | "env" | "CLI" | "OAuth";
+export declare function copilotSourceLabel(source: any): "key" | "env" | "CLI" | "OAuth" | undefined;
 export declare function isCopilotKeySource(source: any): boolean;
 export declare function copilotAccountFingerprint(token: any): string;
 export declare function copilotDefaultAccount(token: any): string;
@@ -69,7 +69,7 @@ export declare function copilotIdentityHeaders(): {
     'copilot-integration-id': string;
 };
 export declare function copilotDeviceSpec({ fetchFn }?: {
-    fetchFn?: typeof fetch;
+    fetchFn?: typeof fetch | undefined;
 }): {
     clientId: string;
     scope: string;
@@ -84,63 +84,59 @@ export declare function copilotDeviceSpec({ fetchFn }?: {
 };
 export declare function copilotChatUrl(session: any): string;
 export declare function copilotModelsUrl(session: any): string;
-export declare function copilotSession({ accessToken, refreshToken, expiresAt, account, planType, source, githubToken, githubRefreshToken, apiEndpoint, }?: {
-    source?: string;
-}): {
-    apiEndpoint?: string;
-    githubRefreshToken?: string;
-    githubToken?: string;
-    planType?: string;
+export declare function copilotSession({ accessToken, refreshToken, expiresAt, account, planType, source, githubToken, githubRefreshToken, apiEndpoint, }?: any): {
+    apiEndpoint?: string | undefined;
+    githubRefreshToken?: string | undefined;
+    githubToken?: string | undefined;
+    planType?: string | undefined;
     accessToken: string;
     refreshToken: string;
     expiresAt: number;
     tokenEndpoint: string;
     clientId: string;
     account: string;
-    source: string;
+    source: any;
 };
 export declare function parseCopilotTokenPayload(payload: any): {
     token: string;
     expiresAt: number;
     apiEndpoint: string;
-};
-export declare function exchangeCopilotToken(githubToken: any, { fetchFn, signal }?: {
-    fetchFn?: typeof fetch;
-}): Promise<{
+} | undefined;
+export declare function exchangeCopilotToken(githubToken: any, { fetchFn, signal }?: any): Promise<{
     token: string;
     expiresAt: number;
     apiEndpoint: string;
 }>;
 export declare function completeCopilotDevice(tokens: any, { fetchFn }?: {
-    fetchFn?: typeof fetch;
+    fetchFn?: typeof fetch | undefined;
 }): Promise<{
-    apiEndpoint?: string;
-    githubRefreshToken?: string;
-    githubToken?: string;
-    planType?: string;
+    apiEndpoint?: string | undefined;
+    githubRefreshToken?: string | undefined;
+    githubToken?: string | undefined;
+    planType?: string | undefined;
     accessToken: string;
     refreshToken: string;
     expiresAt: number;
     tokenEndpoint: string;
     clientId: string;
     account: string;
-    source: string;
+    source: any;
 }>;
 export declare function refreshCopilot(session: any, fetchFn?: typeof fetch): Promise<{
-    apiEndpoint?: string;
-    githubRefreshToken?: string;
-    githubToken?: string;
-    planType?: string;
+    apiEndpoint?: string | undefined;
+    githubRefreshToken?: string | undefined;
+    githubToken?: string | undefined;
+    planType?: string | undefined;
     accessToken: string;
     refreshToken: string;
     expiresAt: number;
     tokenEndpoint: string;
     clientId: string;
     account: string;
-    source: string;
+    source: any;
 }>;
 export declare function isCopilotPermanentRefreshError(error: any): boolean;
-export declare function copilotUpstreamHeaders(session: any, cacheSessionId: any, extra?: {}): {
+export declare function copilotUpstreamHeaders(session: any, cacheSessionId: any, extra?: any): {
     'openai-intent': string;
     'x-github-api-version': string;
     'x-interaction-id': string;
@@ -154,25 +150,20 @@ export declare function copilotUpstreamHeaders(session: any, cacheSessionId: any
 };
 export declare function parseCopilotUser(payload: any): {
     account: string;
-};
-export declare function resolveCopilotIdentity(session: any, { fetchFn, signal }?: {
-    fetchFn?: typeof fetch;
-}): Promise<{
+} | undefined;
+export declare function resolveCopilotIdentity(session: any, { fetchFn, signal }?: any): Promise<{
     account: string;
-}>;
-export declare function mintCopilotSessionFromGithub(githubToken: any, { fetchFn, source, account }?: {
-    fetchFn?: typeof fetch;
-    source?: string;
-}): Promise<{
-    apiEndpoint?: string;
-    githubRefreshToken?: string;
-    githubToken?: string;
-    planType?: string;
+} | undefined>;
+export declare function mintCopilotSessionFromGithub(githubToken: any, { fetchFn, source, account }?: any): Promise<{
+    apiEndpoint?: string | undefined;
+    githubRefreshToken?: string | undefined;
+    githubToken?: string | undefined;
+    planType?: string | undefined;
     accessToken: string;
     refreshToken: string;
     expiresAt: number;
     tokenEndpoint: string;
     clientId: string;
     account: string;
-    source: string;
+    source: any;
 }>;

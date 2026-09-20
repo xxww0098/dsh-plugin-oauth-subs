@@ -11,10 +11,10 @@
  *     the model, with `max` → `xhigh` (`portable-reasoning.ts`).
  */
 export declare function isClineReasoningEraModel(modelId: any): boolean;
-export declare function applyClineThinking(payload: {}, model: any): {};
-export declare function applyClineMaxCompletionTokens(payload?: {}): {};
+export declare function applyClineThinking(payload?: any, model?: any): any;
+export declare function applyClineMaxCompletionTokens(payload?: any): any;
 /** Completions SSE omits usage unless the vendor is asked. Do not override an explicit value. */
-export declare function applyClineStreamUsage(payload?: {}): {};
+export declare function applyClineStreamUsage(payload?: any): any;
 /**
  * Cline answers a **non-streaming** chat with the same `{success, data}` envelope
  * as its account endpoints — live-verified 2026-09-19:

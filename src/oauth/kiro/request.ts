@@ -81,7 +81,7 @@ function kiroOsName() {
   return process.platform
 }
 
-export function kiroChatUrl(session = {}) {
+export function kiroChatUrl(session: any = {}) {
   return `https://${kiroUsageHost(session.apiRegion || session.region || KIRO_DEFAULT_REGION)}/`
 }
 
@@ -159,7 +159,7 @@ export function normalizeToolUseId(id) {
 export function relocateDisplacedToolResults(messages) {
   if (!Array.isArray(messages) || messages.length === 0) return messages ?? []
   const pending = [...messages]
-  const out = []
+  const out: any[] = []
   while (pending.length) {
     const message = pending.shift()
     out.push(message)
@@ -176,7 +176,7 @@ export function relocateDisplacedToolResults(messages) {
 
 function assistantHistoryMessage(message) {
   const content = flattenContent(message?.content)
-  const row = { content }
+  const row: any = { content }
   if (Array.isArray(message?.tool_calls) && message.tool_calls.length) {
     row.toolUses = message.tool_calls.flatMap((call) => {
       const name = trimmed(call?.function?.name ?? call?.name)
@@ -194,8 +194,8 @@ function assistantHistoryMessage(message) {
   return { assistantResponseMessage: row }
 }
 
-function userHistoryMessage(content, { modelId, origin, toolResults } = {}) {
-  const context = {}
+function userHistoryMessage(content, { modelId, origin, toolResults }: any = {}) {
+  const context: any = {}
   if (toolResults?.length) context.toolResults = toolResults
   return {
     userInputMessage: {
@@ -207,7 +207,7 @@ function userHistoryMessage(content, { modelId, origin, toolResults } = {}) {
   }
 }
 
-function pushKiroSystemPair(history, text, { modelId, origin } = {}) {
+function pushKiroSystemPair(history, text, { modelId, origin }: any = {}) {
   if (!text) return
   history.push(userHistoryMessage(text, { modelId, origin }))
   history.push({ assistantResponseMessage: { content: KIRO_SYSTEM_ACK } })
@@ -224,10 +224,10 @@ function lastHistoryHasToolUses(history) {
  * `toolResults` sit on current — never insert the ack between them
  * (AWS 400: tool_result without a matching previous tool_use).
  */
-function parkKiroSystemExtra(history, extra, { modelId, origin, currentHasToolResults } = {}) {
+function parkKiroSystemExtra(history, extra, { modelId, origin, currentHasToolResults }: any = {}) {
   if (!extra) return
   if (currentHasToolResults && lastHistoryHasToolUses(history)) {
-    const pair = []
+    const pair: any[] = []
     pushKiroSystemPair(pair, extra, { modelId, origin })
     history.splice(history.length - 1, 0, ...pair)
     return
@@ -242,15 +242,15 @@ function parkKiroSystemExtra(history, extra, { modelId, origin, currentHasToolRe
  * current turn stays just the new user text. conversationId is the DSH
  * pin plus model — never Date.now().
  */
-export function openaiToKiro(payload, { conversationId, profileArn, origin = KIRO_CHAT_ORIGIN } = {}) {
+export function openaiToKiro(payload, { conversationId, profileArn, origin = KIRO_CHAT_ORIGIN }: any = {}) {
   const modelId = trimmed(payload?.model)
   if (!modelId) throw new Error('kiro generateAssistantResponse requires a model')
   const messages = relocateDisplacedToolResults(Array.isArray(payload?.messages) ? payload.messages : [])
-  const history = []
-  const systemParts = []
+  const history: any[] = []
+  const systemParts: any[] = []
   let pendingUser
   let pendingAssistant
-  let pendingToolResults = []
+  let pendingToolResults: any[] = []
 
   const flushUser = () => {
     if (!pendingUser && !pendingToolResults.length) return
@@ -307,7 +307,7 @@ export function openaiToKiro(payload, { conversationId, profileArn, origin = KIR
 
   const resolvedId = kiroConversationId(payload, conversationId)
   const { pinned, extra } = pinKiroSystemPrefix(resolvedId, systemParts.join('\n'))
-  const parked = []
+  const parked: any[] = []
   pushKiroSystemPair(parked, pinned, { modelId, origin })
   const fullHistory = parked.concat(history)
   parkKiroSystemExtra(fullHistory, extra, {
@@ -316,7 +316,7 @@ export function openaiToKiro(payload, { conversationId, profileArn, origin = KIR
     currentHasToolResults: pendingToolResults.length > 0,
   })
 
-  const userContext = { envState: { operatingSystem: kiroOsName() } }
+  const userContext: any = { envState: { operatingSystem: kiroOsName() } }
   const tools = openaiToolsToKiro(payload?.tools)
   if (tools) userContext.tools = tools
   if (pendingToolResults.length) userContext.toolResults = pendingToolResults
@@ -326,7 +326,7 @@ export function openaiToKiro(payload, { conversationId, profileArn, origin = KIR
     content = trimmed(payload?.input) || '.'
   }
 
-  const body = {
+  const body: any = {
     conversationState: {
       conversationId: resolvedId,
       history: fullHistory,
@@ -423,13 +423,15 @@ function decodePayload(text) {
 const KIRO_EVENTSTREAM_MAX_FRAME_BYTES = 16 * 1024 * 1024
 
 export class KiroEventStreamParser {
+  declare buf: Buffer
+
   constructor() {
     this.buf = Buffer.alloc(0)
   }
 
   feed(chunk) {
     this.buf = Buffer.concat([this.buf, Buffer.from(chunk ?? '')])
-    const events = []
+    const events: any[] = []
     while (this.buf.length >= 12) {
       const totalLen = this.buf.readUInt32BE(0)
       if (totalLen < 16 || totalLen > KIRO_EVENTSTREAM_MAX_FRAME_BYTES) {
@@ -547,10 +549,10 @@ export function collectKiroEvents(events) {
   }
 }
 
-export function kiroToOpenai(eventsOrBody, { model, id = `chatcmpl-${Date.now()}` } = {}) {
+export function kiroToOpenai(eventsOrBody, { model, id = `chatcmpl-${Date.now()}` }: any = {}) {
   const events = Array.isArray(eventsOrBody) ? eventsOrBody : parseKiroEventStream(eventsOrBody)
   const collected = collectKiroEvents(events)
-  const message = { role: 'assistant', content: collected.text || null }
+  const message: any = { role: 'assistant', content: collected.text || null }
   if (collected.thinking) message.reasoning_content = collected.thinking
   if (collected.toolCalls.length) message.tool_calls = collected.toolCalls
   return {
@@ -587,7 +589,7 @@ export function mapKiroUsage(tokens) {
   const output = numberField(tokens, 'outputTokens', 'output_tokens') ?? 0
   const cached = cacheRead ?? 0
   const prompt = uncached + cached + cacheWrite
-  const usage = {
+  const usage: any = {
     prompt_tokens: prompt,
     completion_tokens: output,
     total_tokens: numberField(tokens, 'totalTokens', 'total_tokens') ?? (prompt + output),
@@ -646,8 +648,8 @@ export function resolveKiroUsage(collected, model) {
     ?? { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
 }
 
-export function kiroToOpenaiChunk(delta, { model, id, done = false, finishReason = null, usage } = {}) {
-  const chunk = {
+export function kiroToOpenaiChunk(delta, { model, id, done = false, finishReason = null, usage }: any = {}) {
+  const chunk: any = {
     id,
     object: 'chat.completion.chunk',
     model,
@@ -673,7 +675,7 @@ function hopErrorBlob(parsed, text) {
  * generic 429, or treat size / capacity as AUTH. 401/403 still become
  * 400 (subscription key stays valid) unless TokenManager already refreshed.
  */
-export function classifyKiroHopError(status, parsed, text, { retryAfter } = {}) {
+export function classifyKiroHopError(status, parsed, text, { retryAfter }: any = {}) {
   const blob = hopErrorBlob(parsed, text)
   const headerRetry = retryAfter != null && String(retryAfter).trim() ? String(retryAfter).trim() : undefined
   if (blob.includes(KIRO_REASON_CODES.MONTHLY_REQUEST_COUNT)) {
@@ -731,8 +733,8 @@ function encodeOneHeader(name, type, valueBuf) {
   return row
 }
 
-function encodeEventHeaders(headers) {
-  const parts = []
+function encodeEventHeaders(headers: Record<string, any>) {
+  const parts: any[] = []
   for (const [name, spec] of Object.entries(headers)) {
     if (spec === true) {
       parts.push(encodeOneHeader(name, 0, Buffer.alloc(0)))

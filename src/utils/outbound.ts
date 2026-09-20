@@ -149,12 +149,12 @@ export function createOutboundFetch({
   env = process.env,
   fetchFn = fetch,
   agentFor,
-} = {}) {
+}: any = {}) {
   const resolved = normalizeProxyUrl(proxyUrl)
   const agent = makeAgent(resolved, agentFor)
   if (!agent) return fetchFn
   const noProxy = envNoProxy(env)
-  return (input, init = {}) => {
+  return (input, init: any = {}) => {
     const target = requestUrl(input)
     if (!target || shouldBypassProxy(target, noProxy)) return fetchFn(input, init)
     return fetchFn(input, { ...init, dispatcher: agent })
@@ -167,7 +167,7 @@ export function createOutboundSession({
   env = process.env,
   fetchFn = fetch,
   agentFor,
-} = {}) {
+}: any = {}) {
   let settingsUrl = ''
   let agent = undefined
   let readyResolve
@@ -201,7 +201,7 @@ export function createOutboundSession({
     rebuild()
   }
 
-  const wrapped = (input, init = {}) => {
+  const wrapped = (input, init: any = {}) => {
     const target = requestUrl(input)
     if (!agent || !target || shouldBypassProxy(target, envNoProxy(env))) {
       return fetchFn(input, init)
