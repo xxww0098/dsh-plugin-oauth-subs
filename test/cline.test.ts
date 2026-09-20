@@ -256,6 +256,24 @@ test('system snapshots park at the suffix so the first system blob keeps hitting
   ])
 })
 
+test('an incompatible system head re-pins instead of serving the stale prompt', () => {
+  resetClinePins()
+  // DSH sends no session_id, so the pin key is the family constant — a model
+  // switch or a new session must not inherit the previous system head.
+  const first = applyClineCache({ messages: [{ role: 'system', content: 'model A prompt' }, { role: 'user', content: 'a' }] })
+  const second = applyClineCache({ messages: [{ role: 'system', content: 'model B prompt' }, { role: 'user', content: 'a' }] })
+  assert.deepEqual(second.payload.messages, [
+    { role: 'system', content: 'model B prompt' },
+    { role: 'user', content: 'a' },
+  ])
+  const third = applyClineCache({ messages: [{ role: 'system', content: 'model B prompt\nmore' }, { role: 'user', content: 'a' }] })
+  assert.deepEqual(third.payload.messages, [
+    { role: 'system', content: 'model B prompt' },
+    { role: 'user', content: 'a' },
+    { role: 'system', content: 'more' },
+  ])
+})
+
 test('completions hop renames max_tokens for reasoning-era ids, asks for usage, maps cache reads', () => {
   assert.deepEqual(
     applyClineMaxCompletionTokens({ model: 'openai/gpt-5.4', max_tokens: 100 }),

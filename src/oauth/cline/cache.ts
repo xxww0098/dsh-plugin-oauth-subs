@@ -9,7 +9,10 @@
  * `dsh-cline` is the family constant (analyzer-visible, not a real id).
  *
  * Extra DSH snapshots of the leading system prompt park at the messages
- * suffix so the first blob keeps hitting the cached prefix.
+ * suffix so the first blob keeps hitting the cached prefix — but only when
+ * the new head extends the pinned one. A genuinely different head (model
+ * switch, a new DSH session: DSH sends no session_id so the pin key is the
+ * family constant) re-pins instead of serving a stale system prompt.
  */
 
 const SYSTEM_PIN_CAP = 64
@@ -42,7 +45,7 @@ function systemText(message) {
 }
 
 function splitLeadingSystem(messages) {
-  const head = []
+  const head: any[] = []
   let index = 0
   while (index < messages.length && messages[index]?.role === 'system') {
     head.push(messages[index])
@@ -57,25 +60,25 @@ export function stabilizeClineSystemPrefix(messages, sessionId) {
   if (head.length === 0) return messages
   const text = head.map(systemText).join('\n\n')
   const existing = SYSTEM_PINS.get(sessionId)
-  if (existing === undefined) {
-    if (SYSTEM_PINS.size >= SYSTEM_PIN_CAP) {
+  // Re-pin when there is no pin yet or the head changed incompatibly (not a
+  // pure extension): the cached prefix is already broken, so keeping the old
+  // head would only serve a stale system prompt.
+  if (existing === undefined || (text !== existing.text && !text.startsWith(existing.text))) {
+    if (existing === undefined && SYSTEM_PINS.size >= SYSTEM_PIN_CAP) {
       const first = SYSTEM_PINS.keys().next().value
       SYSTEM_PINS.delete(first)
     }
     SYSTEM_PINS.set(sessionId, { head, text })
     return messages
   }
-  let extra = ''
-  if (text !== existing.text) {
-    extra = text.startsWith(existing.text)
-      ? text.slice(existing.text.length).replace(/^\n+/, '').trim()
-      : text
-  }
+  const extra = text === existing.text
+    ? ''
+    : text.slice(existing.text.length).replace(/^\n+/, '').trim()
   const parked = extra ? [{ role: 'system', content: extra }] : []
   return [...existing.head, ...rest, ...parked]
 }
 
-export function applyClineCache(payload = {}) {
+export function applyClineCache(payload: any = {}) {
   const cacheSessionId = clineCacheSessionId(payload.session_id)
     ?? clineCacheSessionId(payload.prompt_cache_key)
     ?? CLINE_STABLE_SESSION

@@ -9,14 +9,17 @@
  * `dsh-cline` is the family constant (analyzer-visible, not a real id).
  *
  * Extra DSH snapshots of the leading system prompt park at the messages
- * suffix so the first blob keeps hitting the cached prefix.
+ * suffix so the first blob keeps hitting the cached prefix — but only when
+ * the new head extends the pinned one. A genuinely different head (model
+ * switch, a new DSH session: DSH sends no session_id so the pin key is the
+ * family constant) re-pins instead of serving a stale system prompt.
  */
 export declare const CLINE_STABLE_SESSION = "dsh-cline";
-export declare function clineCacheSessionId(key: any): string;
+export declare function clineCacheSessionId(key: any): string | undefined;
 export declare function resetClinePins(): void;
 export declare function stabilizeClineSystemPrefix(messages: any, sessionId: any): any;
-export declare function applyClineCache(payload?: {}): {
-    payload: {};
+export declare function applyClineCache(payload?: any): {
+    payload: any;
     cacheSessionId: string;
 };
 /**

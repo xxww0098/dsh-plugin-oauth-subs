@@ -130,7 +130,7 @@ Cline 背后是 OpenRouter，缓存是**隐式前缀哈希**；客户端不发 `
 | 步骤 | 函数 | 做什么 |
 |---|---|---|
 | 1 | `clineCacheSessionId` | 清洗 DSH id（1–64，`[A-Za-z0-9._:-]`） |
-| 2 | `applyClineCache` | 剥 Codex/Grok 字段；首段 system 钉住，后续快照停到 **messages suffix** |
+| 2 | `applyClineCache` | 剥 Codex/Grok 字段；首段 system 钉住，后续**纯扩展**快照停到 **messages suffix**；不兼容的头（换模型/新会话——DSH 不发 session_id，钉键是常量）直接重钉 |
 | 3 | `clineCacheHeaders` | `{ 'X-Task-ID': <钉> }`，缺省 `dsh-cline` |
 
 活测（2026-09-19，本机账号）：`openai/gpt-6-astra` 同一 1.4k 前缀第二次 **1461/1464 cached**；
