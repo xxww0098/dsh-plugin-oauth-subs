@@ -1176,6 +1176,44 @@ test('GLM hop parks extra leading system snapshots after the conversation', asyn
   }
 })
 
+test('Grok 4.7 Fast keeps its real backend id and does not ride Codex Priority', async () => {
+  const seen = []
+  const fetchFn = async (url, init) => {
+    seen.push({ headers: init.headers, body: JSON.parse(init.body.toString()) })
+    return new Response('{"id":"resp"}', { status: 200, headers: { 'content-type': 'application/json' } })
+  }
+  const proxy = createProxy({
+    port: 0,
+    apiKey: 'secret-key',
+    fetchFn,
+    tokens: { grok: { session: async () => ({ accessToken: 'grok-tok' }) } },
+  })
+  const server = await proxy.listen()
+  const { port } = server.address()
+  const headers = { authorization: 'Bearer secret-key', 'content-type': 'application/json' }
+  try {
+    await fetch(`http://127.0.0.1:${port}/grok/v1/responses`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ model: 'grok-4.7-build-fast', service_tier: 'priority', prompt_cache_key: 'k-47' }),
+    })
+    assert.equal(seen[0].body.model, 'grok-4.7-build-fast')
+    assert.equal(seen[0].body.service_tier, undefined)
+    assert.equal(seen[0].headers['x-grok-model-override'], 'grok-4.7-build-fast')
+    assert.equal(seen[0].headers['x-codex-routing-hint'], undefined)
+
+    await fetch(`http://127.0.0.1:${port}/grok/v1/responses`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ model: 'grok-4.6-fast' }),
+    })
+    assert.equal(seen[1].body.model, 'grok-4.6')
+    assert.equal(seen[1].headers['x-grok-model-override'], 'grok-4.6')
+  } finally {
+    await proxy.close()
+  }
+})
+
 test('Grok pins cache with grok-build headers and does not inherit Codex headers', async () => {
   await captureCodex(async ({ port, headers, seen }) => {
     await fetch(`http://127.0.0.1:${port}/grok/v1/responses`, {

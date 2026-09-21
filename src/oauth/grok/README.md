@@ -12,7 +12,7 @@
 | [`index.ts`](index.ts) | OIDC 发现、device/PKCE、换票、刷新、Responses 头、套餐档位 |
 | [`device-flow.ts`](device-flow.ts) | RFC 8628 设备码（默认登录，无 loopback） |
 | [`credits-frame.ts`](credits-frame.ts) | grok.com `GetGrokCreditsConfig` 的 gRPC-web 帧解码 |
-| [`request.ts`](request.ts) | DSH Responses body：钉 leading system，多余 snapshot 挂 **input 后缀**。不抬顶层 `instructions` |
+| [`request.ts`](request.ts) | DSH Responses body：钉 leading system，多余 snapshot 挂 **input 后缀**；真 Fast id（`grok-4.7-build-fast`）原样透传、残留 `-fast` 别名剥掉、`service_tier` 永不发。不抬顶层 `instructions` |
 | [`cache.ts`](cache.ts) | `prompt_cache_key` + grok-build 头（`x-grok-conv-id` / `session-id` / `req-id` / `model-override`）。禁止带 Codex `session-id` |
 
 调度：[`../proxy.ts`](../proxy.ts) `family === 'grok'` → `normalizeGrokResponsesBody` + `applyGrokCache` + `grokAffinityHeaders`。
@@ -43,7 +43,9 @@ DSH  →  本机 Responses 代理  →  POST https://api.x.ai/v1/responses
 
 头：`grokUpstreamHeaders` + grok-build `GrokRequestHeaders`（`x-grok-conv-id`、`x-grok-session-id`、`x-grok-req-id`、`x-grok-model-override`；重试再加 `x-grok-transient-retry`）。**不要**抄 Codex 的 `session-id` / `x-client-request-id`：xAI 忽略它们，缓存会打到错误分片。
 
-模型：`GROK_MODELS` 只有 **Grok 4.6**（`low`–`xhigh`）和 **Grok 4.5**（`low`–`high`）。Grok 4 已下架。思考关不掉。
+模型：`GROK_MODELS` 有 **Grok 4.7**（`grok-4.7`）、**Grok 4.7 Fast**（`grok-4.7-build-fast`，真后端变体，2× 价）、**Grok 4.6**、**Grok 4.5**；4.5 只到 `high`，4.6/4.7 是 `low`–`xhigh`。Grok 4 已下架。思考关不掉。
+
+4.7 参数出处：grok CLI `1.0.40` 的 `~/.grok/models_cache.json` / `GET cli-chat-proxy.grok.com/v1/models`（`context_window: 500000`、`max_completion_tokens: 1000000`、efforts `low|medium|high|xhigh`）与 `GET api.x.ai/v1/models`（`context_length: 500000`、`capabilities.reasoning_effort` 同四档）。`max_completion_tokens` 1M 高于 500k 窗口，行沿用窗口值（同 4.5/4.6 的 `GROK_LARGE_CONTEXT` 约定）。活测 2026-09-22（X Premium+，直打 `api.x.ai/v1/responses`）：`grok-4.7` 200、`grok-4.7-build-fast` 200、`grok-4.7-fast` 404。
 
 ## 额度
 
@@ -77,6 +79,7 @@ DSH  →  本机 Responses 代理  →  POST https://api.x.ai/v1/responses
 - 不要给 Grok 写 Codex `session-id` / `x-client-request-id`。
 - 不要把 DSH 每步 snapshot 留在 `input` 最前（grok-build：下一次必须 byte-for-byte 重放前缀）。
 - 不要把 Grok 4 加回目录。
+- 不要把 `grok-4.7-build-fast` 当 Codex `-fast` 后缀剥掉（会变成不存在的 `grok-4.7-build`）；不要发明 `grok-4.7-fast`（上游 404）。
 - 不要只用 billing JSON 填额度条（Heavy / Premium+ 会空）。
 - 不要把 `api` 改成 Completions / Anthropic。
 
@@ -91,5 +94,6 @@ DSH  →  本机 Responses 代理  →  POST https://api.x.ai/v1/responses
 | Grok 缓存命中率低 / 错分片 | [`docs/error.md`](../../../docs/error.md) 2026-08-30 Grok 缓存；2026-08-31 缓存混用 |
 | xAI 额度拿不到 | 同文件 xAI 额度 |
 | Fast 无加速 | 同文件 2026-08-30 Grok/Codex Fast |
+| Grok 4.7 Fast id 被 Codex Fast 规则剥掉 | 同文件 2026-09-22 Grok 4.7 Fast |
 
 测试：`test/proxy.test.ts`（Grok hop 必须带 grok-build 头、禁止 Codex session 头）、`test/cache-families.test.ts`、`test/grok-request.test.ts`。

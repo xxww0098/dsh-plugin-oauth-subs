@@ -133,7 +133,7 @@ AgentService/Run 与 unary 发 Cursor **CLI** 头。CLI 版本对齐 [Rahularya0
 
 ## 模型
 
-静态 fallback（离线 / RPC 空）对齐 [cursor.com/docs/models-and-pricing](https://cursor.com/docs/models-and-pricing)：`composer-2.5`、`grok-4.6`、`grok-4.5`、`claude-fable-5-1`、`claude-opus-5`、`claude-sonnet-5`、`gemini-3.1-pro`、`gemini-3.8-flash`、`gpt-5.6-sol` / `terra` / `luna`、`gpt-5.5`。id 抄官方 Model ID（Fable 是 `claude-fable-5-1`，不是点号）。登录、本机导入、额度刷新、以及**启动 warmup**（`controller.warmCatalogs`，只跑已登录家族）走活发现：
+静态 fallback（离线 / RPC 空）对齐 [cursor.com/docs/models-and-pricing](https://cursor.com/docs/models-and-pricing)：`composer-2.5`、`grok-4.7`、`grok-4.6`、`grok-4.5`、`claude-fable-5-1`、`claude-opus-5`、`claude-sonnet-5`、`gemini-3.1-pro`、`gemini-3.8-flash`、`gpt-5.6-sol` / `terra` / `luna`、`gpt-5.5`。`grok-4.7` 的 500k 窗口与 text-only 取自活 `AvailableModels`（`contextTokenLimit: 500000`、`supportsImages: false`；256k 只挂非 max 变体，收进同一行），官方 docs 页当时仍只有 4.6/4.5（`/docs/models/grok-4-7` 404）。id 抄官方 Model ID（Fable 是 `claude-fable-5-1`，不是点号）。登录、本机导入、额度刷新、以及**启动 warmup**（`controller.warmCatalogs`，只跑已登录家族）走活发现：
 
 ```text
 unary GetUsableModels  agentn  /agent.v1.AgentService/GetUsableModels
@@ -144,7 +144,7 @@ unary AvailableModels  api2    /aiserver.v1.AiService/AvailableModels
   → buildProviders / catalog / llm-pi-ai yaml
 ```
 
-`AvailableModels` 用现有 proto 编解码，不加 Bun。任一 RPC 失败或空列表 **不挡对话**，回落静态楼。活列表非空时**不再回填静态行**——Cursor 服务端只按账号+出口给可跑模型，静态楼里的区域锁家族（Claude/Gemini/GPT）回填了也只会 400（2026-09-17 实测本机出口下仅 default / composer-2.5±fast / grok-4.5·4.6±fast / glm-5.2 / kimi-k2.7-code / kimi-k3 可跑）。picker 名去掉上游 `Cursor ` 品牌前缀（`Cursor Grok 4.6` → `Grok 4.6`）。
+`AvailableModels` 用现有 proto 编解码，不加 Bun。任一 RPC 失败或空列表 **不挡对话**，回落静态楼。活列表非空时**不再回填静态行**——Cursor 服务端只按账号+出口给可跑模型，静态楼里的区域锁家族（Claude/Gemini/GPT）回填了也只会 400（2026-09-17 实测本机出口下仅 default / composer-2.5±fast / grok-4.5·4.6±fast / glm-5.2 / kimi-k2.7-code / kimi-k3 可跑；2026-09-22 复测同出口新增 `grok-4.7` ± fast，4.6 仍是 256k）。picker 名去掉上游 `Cursor ` 品牌前缀（`Cursor Grok 4.6` → `Grok 4.6`）。
 
 不要把 pi-cursor `catalog.json` 的 ~100 个 effort/fast/thinking/max-mode id 铺进 Settings 勾选格。`cursorPickerFamilyId` 剥那些后缀，DSH `reasoningEfforts` 键只有 `off|low|medium|high|xhigh`（值 `off: "none"`，`xhigh: "extra-high"`）。Tab / chat 内部变体隐藏（Pi `/cursor.models all` 才是 opt-in）。账号有 `default` / `auto` 就留一行 id `default`，显示名 **Cursor Auto**（zh/en 同名，不翻译 Auto；wire 仍是 `default`）。窗口优先活 metadata，否则 `inferCursorContextWindow` / `inferCursorMaxOutputTokens`。
 
