@@ -31,6 +31,20 @@ export declare const GROK_REASONING_46: Readonly<{
     high: "high";
     xhigh: "xhigh";
 }>;
+/** grok-4.7 uses the same wire set as 4.6: low / medium / high / xhigh. */
+export declare const GROK_REASONING_47: Readonly<{
+    low: "low";
+    medium: "medium";
+    high: "high";
+    xhigh: "xhigh";
+}>;
+/**
+ * The only Grok ids whose `-fast` suffix is a real backend model
+ * (`Grok 4.7 Fast`, 2× price), not a Codex Priority alias. Every other
+ * `-fast` Grok id is a stale host alias; `normalizeGrokResponsesBody`
+ * passes these through unpeeled and peels the rest.
+ */
+export declare const GROK_FAST_MODEL_IDS: readonly string[];
 export declare const GROK_MODELS: readonly {
     id: string;
     name: string;

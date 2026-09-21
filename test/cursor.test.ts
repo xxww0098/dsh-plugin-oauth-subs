@@ -878,10 +878,11 @@ test('parseCursorTokenResponse and completeCursorLogin tag pkce', async () => {
   assert.equal(session.refreshToken, 'r')
 })
 
-test('cursor static catalog matches current Cursor docs and has no Fast rows', () => {
+test('cursor static catalog matches the live Cursor model set and has no Fast rows', () => {
   const ids = CURSOR_MODELS.map((model) => model.id)
   assert.deepEqual(ids, [
     'composer-2.5',
+    'grok-4.7',
     'grok-4.6',
     'grok-4.5',
     'claude-fable-5-1',
@@ -897,6 +898,8 @@ test('cursor static catalog matches current Cursor docs and has no Fast rows', (
   assert.equal(ids.some((id) => id.endsWith('-fast')), false)
   assert.equal(ids.includes('default'), false)
   assert.equal(CURSOR_MODELS.find((model) => model.id === 'grok-4.5').contextWindow, 256_000)
+  assert.equal(CURSOR_MODELS.find((model) => model.id === 'grok-4.7').contextWindow, 500_000)
+  assert.deepEqual(CURSOR_MODELS.find((model) => model.id === 'grok-4.7').input, ['text'])
   assert.equal(CURSOR_MODELS.find((model) => model.id === 'claude-opus-5').contextWindow, 300_000)
   assert.equal(CURSOR_MODELS.find((model) => model.id === 'gpt-5.6-sol').contextWindow, 272_000)
   assert.equal(CURSOR_MODELS.find((model) => model.id === 'claude-fable-5-1').maxTokens, 128_000)
@@ -949,6 +952,7 @@ test('cursor picker collapses effort/fast/thinking/max-mode and hides tab intern
   assert.equal(cursorSourceIsFast('default'), false)
   assert.equal(inferCursorContextWindow('grok-4.5', 'Grok 4.5'), 256_000)
   assert.equal(inferCursorContextWindow('grok-4.6', 'Grok 4.6'), 256_000)
+  assert.equal(inferCursorContextWindow('grok-4.7', 'Grok 4.7'), 500_000)
   assert.equal(inferCursorContextWindow('claude-opus-5', 'Claude Opus 5'), 300_000)
   assert.equal(inferCursorContextWindow('claude-fable-5-1', 'Claude Fable 5.1'), 300_000)
   assert.equal(inferCursorMaxOutputTokens('gpt-5.5', 'GPT-5.5'), 128_000)

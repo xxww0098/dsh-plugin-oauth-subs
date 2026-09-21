@@ -2,6 +2,12 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-22：Grok 4.7 Fast 的真模型 id 被 Codex `-fast` 规则剥成不存在的模型
+
+**现象**：Grok 目录新增 `grok-4.7-build-fast`（真后端变体）与 Cursor 活目录新增 `grok-4.7` ± fast 后，任何走 Grok 该行的请求都会被共享 `applyFastMode` 把 `model` 剥成不存在的 `grok-4.7-build`；实测 `grok-4.7-fast` 上游 404，`grok-4.7-build` 也不在目录里。
+**根因**：`peelFastSuffix` 按 Codex Priority 旧约定对所有 `*-fast` 一律剥后缀，但 Grok 4.7 的 `-fast` 是**真模型 id**（`GET cli-chat-proxy.grok.com/v1/models`：name `Grok 4.7 Fast`，description `Fast variant. 2x the price.`），不是 `service_tier`。
+**修复**：Grok 分支不再经过 `applyFastMode`；`normalizeGrokResponsesBody` 接管模型名——`GROK_FAST_MODEL_IDS` 里的 id 原样透传（含 `x-grok-model-override`），其余残留 `-fast` 别名照旧剥，`service_tier` 永不发。活测 2026-09-22（本机已存账号直连本 hop）：Grok `grok-4.7` / `grok-4.7-build-fast` 200、`grok-4.7-fast` 404；Cursor 活目录同轮返回 `grok-4.7` ± fast（500k / text-only），`grok-4.7` 与 `grok-4.7-fast` 各跑一轮均 200。
+
 ## 2026-09-21：GLM anthropic-messages 路由 401「API 密钥无效」= 代理只认 Bearer，不认 Anthropic SDK 的 x-api-key
 
 **现象**：oauth-glm 任一模型一调用即「本轮运行失败 · API 密钥无效」（AUTH），换模型也一样；上游 key 直连网关 / 直连 / monitor 全部 200。

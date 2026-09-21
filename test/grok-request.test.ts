@@ -166,3 +166,21 @@ test('leaves non-array input alone', () => {
   const payload = { model: 'grok-4.6', session_id: 'sess-grok', input: 'just text' }
   assert.deepEqual(normalizeGrokResponsesBody(payload), payload)
 })
+
+test('keeps the real grok-4.7-build-fast id and peels stale aliases', () => {
+  const fast = normalizeGrokResponsesBody({
+    model: 'grok-4.7-build-fast',
+    service_tier: 'priority',
+    input: 'just text',
+  })
+  assert.equal(fast.model, 'grok-4.7-build-fast')
+  assert.equal(fast.service_tier, undefined)
+
+  const stale = normalizeGrokResponsesBody({
+    model: 'grok-4.6-fast',
+    service_tier: 'priority',
+    input: 'just text',
+  })
+  assert.equal(stale.model, 'grok-4.6')
+  assert.equal(stale.service_tier, undefined)
+})

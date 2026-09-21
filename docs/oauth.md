@@ -69,8 +69,9 @@ CLIProxyAPI 同时包了 Codex / Grok / Antigravity 等多家。**只**在 Antig
 | 重试 `x-grok-transient-retry` | 同函数 |
 | `instructions: null`，前缀 byte-for-byte 重放 | `normalizeGrokResponsesBody` 不抬顶层 `instructions` |
 | 设备码默认 | `device-flow.ts` |
+| 目录 `GET cli-chat-proxy.grok.com/v1/models`（`grok-4.7` / `grok-4.7-build-fast` / 4.6 / 4.5、efforts、窗口） | `GROK_MODELS`；真 Fast id 由 `normalizeGrokResponsesBody` 原样透传 |
 
-**不要发明：** Codex `session-id` / `x-client-request-id`（xAI 忽略，会打错分片）。不要自造 grok-shell UA；保持 `grok-cli/0.2.93`。
+**不要发明：** Codex `session-id` / `x-client-request-id`（xAI 忽略，会打错分片）。不要自造 grok-shell UA；保持 `grok-cli/0.2.93`。不要把真 Fast id（`grok-4.7-build-fast`）当 Codex `-fast` 剥（`grok-4.7-build` 不存在），也不要发明 `grok-4.7-fast`（404）。
 
 ## GLM
 

@@ -71,6 +71,16 @@ test('buildProviders only emits logged-in families with DSH api ids', () => {
   assert.equal(both['oauth-grok'].displayName.includes('Grok'), true)
   assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4.6').contextWindow, 500_000)
   assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4.6-fast'), undefined)
+  assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4.7').contextWindow, 500_000)
+  assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4.7').maxTokens, 500_000)
+  assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4.7-fast'), undefined)
+  assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4.7-build-fast').name, 'Grok 4.7 Fast')
+  assert.deepEqual(both['oauth-grok'].models.find((model) => model.id === 'grok-4.7').reasoningEfforts, {
+    low: 'low',
+    medium: 'medium',
+    high: 'high',
+    xhigh: 'xhigh',
+  })
   assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4.5').contextWindow, 500_000)
   assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4'), undefined)
   assert.deepEqual(both['oauth-grok'].models.find((model) => model.id === 'grok-4.6').reasoningEfforts, {
@@ -365,6 +375,9 @@ test('catalogProviders always lists both families with Fast and 900K siblings', 
   assert.equal(keys.includes('oauth-grok/grok-4.6'), true)
   assert.equal(keys.includes('oauth-grok/grok-4'), false)
   assert.equal(keys.includes('oauth-grok/grok-4.6-fast'), false)
+  assert.equal(keys.includes('oauth-grok/grok-4.7'), true)
+  assert.equal(keys.includes('oauth-grok/grok-4.7-build-fast'), true)
+  assert.equal(keys.includes('oauth-grok/grok-4.7-fast'), false)
   const described = describeCatalog(catalog, {
     enabledKeys: ['oauth-codex/gpt-5.5'],
     loggedIn: { codex: true, grok: false },
@@ -377,6 +390,8 @@ test('catalogProviders always lists both families with Fast and 900K siblings', 
   assert.equal(large.enabled, false)
   assert.equal(grok.loggedIn, false)
   assert.equal(grok.models.find((m) => m.id === 'grok-4.5').enabled, false)
+  assert.equal(grok.models.find((m) => m.id === 'grok-4.7-build-fast').fast, true)
+  assert.equal(grok.models.find((m) => m.id === 'grok-4.7').fast, false)
   assert.equal(grok.models.find((m) => m.id === 'grok-4'), undefined)
 })
 

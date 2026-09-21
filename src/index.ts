@@ -393,6 +393,8 @@ export {
   GROK_LARGE_CONTEXT,
   GROK_REASONING_45,
   GROK_REASONING_46,
+  GROK_REASONING_47,
+  GROK_FAST_MODEL_IDS,
   grokCredentialHeaders,
 } from './oauth/grok/index.js'
 export {

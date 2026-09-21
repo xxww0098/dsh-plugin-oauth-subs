@@ -57,6 +57,7 @@ export function inferCursorContextWindow(id, name = '') {
   if (/\b272\s*k\b|(?:^|-)272k(?:-|$)/.test(text)) return 272_000
   if (/\b256\s*k\b|(?:^|-)256k(?:-|$)/.test(text)) return 256_000
   if (/claude-(?:opus-5|fable-5)/.test(text)) return 300_000
+  if (/grok[- ]4\.7(?:\b|-)/.test(text)) return 500_000
   if (/grok[- ]4\.[56](?:\b|-)/.test(text)) return 256_000
   return DEFAULT_CURSOR_CONTEXT_WINDOW
 }
