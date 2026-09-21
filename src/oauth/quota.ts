@@ -43,7 +43,7 @@ import {
 } from './grok/index.js'
 import { GROK_WEB_EMPTY_FRAME, decodeGrokCreditsFrame } from './grok/credits-frame.js'
 import { formatPlanLabel, pickPlanRaw } from './plan.js'
-import { glmQuotaUrl, glmToolUsageUrl, glmUpstreamHeaders } from './glm/index.js'
+import { glmMcpUsageHeaders, glmMcpUsageUrl, glmQuotaUrl, glmToolUsageUrl, glmUpstreamHeaders } from './glm/index.js'
 import {
   kiroEffectiveProfileArn,
   kiroUsageHeaders,
@@ -668,6 +668,35 @@ export function parseGlmQuota(payload) {
   return { planType, rows: finalizeGlmRows(rows) }
 }
 
+/**
+ * Official MCP quota payload — `GET zcode.z.ai/api/v1/mcp/usage` answers
+ * `{data:{level, total_usage:{used,limit,remaining}, next_refresh_at}}`
+ * (usage-stats.ts fetchMcpQuotaSnapshot). Maps to the single `mcp` row.
+ */
+export function parseGlmMcpUsage(payload) {
+  const root = payload?.data && typeof payload.data === 'object' ? payload.data : payload
+  const bag = root?.total_usage ?? root?.totalUsage ?? root
+  const total = asNumber(bag?.limit ?? bag?.total ?? bag?.usage)
+  const used = asNumber(bag?.used ?? bag?.currentValue)
+  const remaining = asNumber(bag?.remaining)
+    ?? (total !== undefined && used !== undefined ? Math.max(0, total - used) : undefined)
+  if (total === undefined && used === undefined && remaining === undefined) return undefined
+  const usedPercent = total !== undefined && total > 0 && used !== undefined
+    ? clampPct((used / total) * 100)
+    : undefined
+  return {
+    key: 'mcp',
+    kind: 'mcp',
+    product: 'ZCode MCP',
+    usedPercent,
+    remainingPercent: usedPercent === undefined ? undefined : 100 - usedPercent,
+    used,
+    total,
+    remaining,
+    resetAt: stampOf(root?.next_refresh_at ?? root?.nextRefreshAt ?? root?.nextResetTime),
+  }
+}
+
 export function mergeGlmToolUsage(parsed, toolPayload) {
   const base = parsed && typeof parsed === 'object' ? parsed : { rows: [] }
   const rows = Array.isArray(base.rows) ? [...base.rows] : []
@@ -1206,8 +1235,41 @@ export async function fetchGlmQuota(session, fetchFn = fetch) {
       headers: glmUpstreamHeaders(session),
       signal: wait.signal,
     })
-    const parsed = parseGlmQuota(await readJson(response, 'glm quota'))
+    const body = await readJson(response, 'glm quota')
+    // The monitor endpoints answer HTTP 200 with a business envelope. A
+    // plan-less account returns { code: 500, msg: "当前用户不存在coding plan" };
+    // without this the card reads "quota ready, no rows" and the UI shows the
+    // vague 「周额度未返回」 instead of the vendor's reason.
+    if (body && typeof body === 'object' && !Array.isArray(body)) {
+      const code = asNumber(body.code)
+      if (body.success === false || (code !== undefined && code !== 0 && code !== 200)) {
+        throw new Error(`glm quota failed: ${trimmedQuotaMsg(body.msg) ?? `code ${String(body.code)}`}`)
+      }
+    }
+    const parsed = parseGlmQuota(body)
     if (parsed.rows.some((row) => row.kind === 'mcp')) return parsed
+    // Official MCP quota is a separate endpoint (usage-stats.ts
+    // fetchMcpQuotaSnapshot): GET zcode.z.ai/api/v1/mcp/usage with the zcode
+    // JWT on authorization + the provisioned api-key on X-Bigmodel-Authorization.
+    // The legacy monitor tool-usage endpoint answers an empty body for this
+    // account, so it stays only as a fallback.
+    const mcpHeaders = glmMcpUsageHeaders(session)
+    if (mcpHeaders) {
+      const mcpWait = timeoutSignal(QUOTA_TIMEOUT_MS)
+      try {
+        const mcpRes = await fetchFn(glmMcpUsageUrl(), {
+          method: 'GET',
+          headers: mcpHeaders,
+          signal: mcpWait.signal,
+        })
+        const mcpRow = parseGlmMcpUsage(await readJson(mcpRes, 'glm mcp usage'))
+        if (mcpRow) return { ...parsed, rows: finalizeGlmRows([...parsed.rows, mcpRow]) }
+      } catch {
+        // fall through to the legacy tool-usage probe
+      } finally {
+        mcpWait.cancel()
+      }
+    }
     const toolsWait = timeoutSignal(QUOTA_TIMEOUT_MS)
     try {
       const tools = await fetchFn(glmToolUsageUrl(session.region), {
@@ -1595,6 +1657,10 @@ function timeoutSignal(ms) {
   const timer = setTimeout(() => controller.abort(), ms)
   if (typeof timer.unref === 'function') timer.unref()
   return { signal: controller.signal, cancel: () => clearTimeout(timer) }
+}
+
+function trimmedQuotaMsg(value) {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined
 }
 
 async function readJson(response, label) {

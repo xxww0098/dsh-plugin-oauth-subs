@@ -8,7 +8,9 @@ import { GROK_CLIENT_ID } from '../lib/oauth/grok/index.js'
 import {
   GROK_HERMES_KEYS,
   glmAuthSearchPaths,
+  glmKeyCandidateFromZcodeConfig,
   glmKeyFromZcodeConfig,
+  glmKeyFromZcodeCredentials,
   importGlmAuth,
   importGrokAuth,
   tokensFromGrokCli,
@@ -216,9 +218,37 @@ test('importGrokAuth skips Grok CLI API-key-only files and still reads Hermes', 
   assert.equal(result.session.refreshToken, 'rt-after-skip')
 })
 
-test('glmAuthSearchPaths includes ZCode Desktop v2 config', () => {
+test('glmAuthSearchPaths prefers the ZCode credential store over plaintext config', () => {
   const paths = glmAuthSearchPaths()
-  assert.equal(paths[0].endsWith(join('.zcode', 'v2', 'config.json')), true)
+  // credentials.json holds the provisioned api-key + OAuth token; config.json
+  // only has the provider's options.apiKey, which can be a stale dead key.
+  assert.equal(paths[0].endsWith(join('.zcode', 'v2', 'credentials.json')), true)
+  assert.equal(paths[1].endsWith(join('.zcode', 'v2', 'config.json')), true)
+})
+
+test('glmKeyFromZcodeCredentials prefers the provisioned api-key over the OAuth token', () => {
+  // The chat + monitor bearer is the provisioned account-provider api-key; the
+  // oauth access_token is the business JWT that answers quota but 500s on chat.
+  const found = glmKeyFromZcodeCredentials({
+    'oauth:active_provider': 'bigmodel',
+    'oauth:bigmodel:access_token': 'biz-jwt-token',
+    'account-provider:coding-plan:account:bigmodel-individual-coding-plan:account:1:api-key': 'provisioned-chat-key',
+    zcodejwttoken: 'zcode-jwt',
+  })
+  assert.equal(found.apiKey, 'provisioned-chat-key')
+  assert.equal(found.region, 'bigmodel')
+  assert.equal(found.oauthAccess, 'biz-jwt-token')
+  assert.equal(found.zcodeJwt, 'zcode-jwt')
+})
+
+test('glmKeyFromZcodeCredentials falls back to the OAuth token without a provisioned key', () => {
+  const found = glmKeyFromZcodeCredentials({
+    'oauth:active_provider': 'zai',
+    'oauth:zai:access_token': 'zai-biz-token',
+    'oauth:bigmodel:access_token': 'bigmodel-biz-token',
+  })
+  assert.equal(found.apiKey, 'zai-biz-token')
+  assert.equal(found.region, 'zai')
 })
 
 test('glmKeyFromZcodeConfig skips the unsupported start-plan JWT', () => {
@@ -236,7 +266,7 @@ test('glmKeyFromZcodeConfig skips the unsupported start-plan JWT', () => {
   assert.equal(found.region, 'bigmodel')
 })
 
-test('glmKeyFromZcodeConfig returns undefined on a trial-only config', () => {
+test('glmKeyFromZcodeConfig skips start-plan JWT and keeps a disabled coding-plan key', () => {
   const jwtKey = jwt({ sub: 'start-plan', email: 'dev@bigmodel.cn' })
   const found = glmKeyFromZcodeConfig({
     provider: {
@@ -254,7 +284,40 @@ test('glmKeyFromZcodeConfig returns undefined on a trial-only config', () => {
       },
     },
   })
-  assert.equal(found, undefined)
+  // Start-plan JWT is dropped, the disabled coding-plan key survives with its
+  // reason — import takes it, chat/quota surface whether the plan is really on.
+  assert.equal(found.apiKey, 'dead-coding-plan-key')
+  assert.equal(found.region, 'bigmodel')
+  assert.equal(found.usable, false)
+  assert.equal(found.reason, 'coding_plan_not_entitled')
+  // The key is still discoverable, with ZCode's own disable reason, so the
+  // import error can say why it was refused instead of "no session found".
+  const candidate = glmKeyCandidateFromZcodeConfig({
+    provider: {
+      'builtin:bigmodel-coding-plan': {
+        enabled: false,
+        error: 'coding_plan_not_entitled',
+        options: { apiKey: 'disabled-coding-plan-key' },
+      },
+    },
+  })
+  assert.equal(candidate.apiKey, 'disabled-coding-plan-key')
+  assert.equal(candidate.usable, false)
+  assert.equal(candidate.reason, 'coding_plan_not_entitled')
+  // A system-disabled coding-plan key still imports (the flag comes from a
+  // cached, sometimes-wrong entitlement check). Only start-plan JWT is out.
+  const imported = glmKeyFromZcodeConfig({
+    provider: {
+      'builtin:bigmodel-coding-plan': {
+        enabled: false,
+        systemDisabledReason: 'coding_plan_not_entitled',
+        options: { apiKey: 'disabled-coding-plan-key' },
+      },
+    },
+  })
+  assert.equal(imported.apiKey, 'disabled-coding-plan-key')
+  assert.equal(imported.usable, false)
+  assert.equal(imported.reason, 'coding_plan_not_entitled')
 })
 
 test('importGlmAuth reads ~/.zcode/v2/config.json and sets region from the provider key', async () => {
@@ -280,7 +343,7 @@ test('importGlmAuth reads ~/.zcode/v2/config.json and sets region from the provi
   assert.notEqual(result.session.account, 'zcode')
 })
 
-test('importGlmAuth trial-only ZCode config fails instead of importing a dead key', async () => {
+test('importGlmAuth takes a disabled coding-plan key but still refuses start-plan-only', async () => {
   const root = await mkdtemp(join(tmpdir(), 'zcode-start-import-'))
   const v2Dir = join(root, '.zcode', 'v2')
   await mkdir(v2Dir, { recursive: true })
@@ -302,7 +365,21 @@ test('importGlmAuth trial-only ZCode config fails instead of importing a dead ke
       },
     },
   }))
-  await assert.rejects(importGlmAuth([v2Path]), /no GLM \/ ZCode session found/)
+  const imported = await importGlmAuth([v2Path])
+  assert.equal(imported.session.accessToken, 'dead-coding-plan-key')
+  assert.equal(imported.session.region, 'bigmodel')
+  assert.match(imported.note, /coding_plan_not_entitled/)
+  // Start Plan JWT alone is still refused: its zcode-plan hop is captcha-gated.
+  const startOnly = join(root, 'start-plan-only.json')
+  await writeFile(startOnly, JSON.stringify({
+    provider: {
+      'builtin:bigmodel-start-plan': {
+        enabled: true,
+        options: { apiKey: jwtKey, baseURL: 'https://zcode.z.ai/api/v1/zcode-plan/anthropic' },
+      },
+    },
+  }))
+  await assert.rejects(importGlmAuth([startOnly]), /no GLM \/ ZCode session found/)
 })
 
 test('importGrokAuth lists both paths when nothing is found', async () => {

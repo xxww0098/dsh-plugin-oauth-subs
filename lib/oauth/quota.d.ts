@@ -66,6 +66,22 @@ export declare function parseGlmQuota(payload: any): {
     planType: any;
     rows: any[];
 };
+/**
+ * Official MCP quota payload — `GET zcode.z.ai/api/v1/mcp/usage` answers
+ * `{data:{level, total_usage:{used,limit,remaining}, next_refresh_at}}`
+ * (usage-stats.ts fetchMcpQuotaSnapshot). Maps to the single `mcp` row.
+ */
+export declare function parseGlmMcpUsage(payload: any): {
+    key: string;
+    kind: string;
+    product: string;
+    usedPercent: number | undefined;
+    remainingPercent: number | undefined;
+    used: number | undefined;
+    total: number | undefined;
+    remaining: number | undefined;
+    resetAt: number | undefined;
+} | undefined;
 export declare function mergeGlmToolUsage(parsed: any, toolPayload: any): any;
 export declare function parseKiroUsage(payload: any): {
     rows: never[];

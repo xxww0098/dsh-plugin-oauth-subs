@@ -134,7 +134,9 @@ test('proxy GLM chat hop forwards ZCode Desktop 3.10.1 headers', async () => {
       assert.equal(headers['X-ZCode-Agent'], 'glm')
       assert.equal(headers['HTTP-Referer'], 'https://zcode.z.ai')
       assert.equal(headers.referer, 'https://zcode.z.ai')
-      assert.equal(headers['X-Title'], 'Z Code')
+      assert.equal(headers['X-Title'], 'Z Code@electron')
+      assert.equal(headers['X-Release-Channel'], 'production')
+      assert.equal(headers['x-zcode-session-type'], 'main')
       assert.match(headers['x-session-id'], /^sess_[0-9a-f]{24}$/)
       assert.equal(JSON.stringify(headers).includes('dsh-plugin-oauth-subs'), false)
     }
@@ -193,9 +195,12 @@ test('proxy GLM Anthropic hop is ZCode default: /api/anthropic + cache_control',
     })
     assert.equal(first.status, 200)
     assert.equal(leftover.status, 200)
-    assert.equal(seen[0].url, GLM_ANTHROPIC_URL)
-    assert.equal(seen[0].url.endsWith('/api/anthropic/v1/messages'), true)
-    assert.equal(seen[1].url, GLM_ANTHROPIC_URL)
+    // Official ZCode hop: the Coding Plan endpoint rewritten to the gateway.
+    // GLM_ANTHROPIC_URL stays the direct endpoint used as the fallback.
+    assert.equal(seen[0].url, 'https://zcode.z.ai/api/v1/ultra-zai/anthropic/v1/messages')
+    assert.equal(seen[0].url.endsWith('/api/v1/ultra-zai/anthropic/v1/messages'), true)
+    assert.notEqual(seen[0].url, GLM_ANTHROPIC_URL)
+    assert.equal(seen[1].url, seen[0].url)
     for (const row of seen) {
       assert.equal(row.headers.authorization, 'Bearer id.secret')
       assert.equal(row.headers['user-agent'], GLM_USER_AGENT)
@@ -203,6 +208,8 @@ test('proxy GLM Anthropic hop is ZCode default: /api/anthropic + cache_control',
       assert.equal(row.headers['anthropic-version'], '2023-06-01')
       assert.equal(row.headers['X-ZCode-App-Version'], '3.10.1')
       assert.equal(row.headers['X-ZCode-Agent'], 'glm')
+      assert.equal(row.headers['X-Title'], 'Z Code@electron')
+      assert.equal(row.headers['x-zcode-session-type'], 'main')
       assert.equal(row.headers['x-session-id'], 'session-dsh-glm-anth')
       assert.equal(row.headers['session-id'], undefined)
       assert.equal(row.headers['x-client-request-id'], undefined)
@@ -222,6 +229,46 @@ test('proxy GLM Anthropic hop is ZCode default: /api/anthropic + cache_control',
     assert.equal(seen[1].body.system[1].text.includes('Current runtime context'), true)
     assert.equal(seen[1].body.system[1].cache_control, undefined)
     assert.equal(seen[1].body.metadata.user_id, 'session-dsh-glm-anth')
+  } finally {
+    await proxy.close()
+    resetGlmSystemPins()
+  }
+})
+
+test('proxy GLM Anthropic hop falls back to the direct endpoint when the gateway refuses', async () => {
+  resetGlmSystemPins()
+  const seen = []
+  const fetchFn = async (url) => {
+    seen.push(String(url))
+    if (String(url).startsWith('https://zcode.z.ai/')) {
+      return new Response('{"error":{"message":"forbidden"}}', {
+        status: 403,
+        headers: { 'content-type': 'application/json' },
+      })
+    }
+    return new Response('{"id":"msg"}', { status: 200, headers: { 'content-type': 'application/json' } })
+  }
+  const proxy = createProxy({
+    port: 0,
+    apiKey: 'secret-key',
+    fetchFn,
+    tokens: {
+      glm: { session: async () => ({ accessToken: 'id.secret', region: 'zai' }) },
+    },
+  })
+  const server = await proxy.listen()
+  const { port } = server.address()
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/glm/v1/messages`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer secret-key', 'content-type': 'application/json' },
+      body: '{"model":"glm-5.3","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}',
+    })
+    assert.equal(response.status, 200)
+    assert.deepEqual(seen, [
+      'https://zcode.z.ai/api/v1/ultra-zai/anthropic/v1/messages',
+      GLM_ANTHROPIC_URL,
+    ])
   } finally {
     await proxy.close()
     resetGlmSystemPins()

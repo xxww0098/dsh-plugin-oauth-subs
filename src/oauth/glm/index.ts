@@ -15,6 +15,7 @@
  */
 
 import { randomBytes } from 'node:crypto'
+import { arch as osArch, release as osRelease } from 'node:os'
 import { decodeJwtPayload } from '../../utils/jwt.js'
 import { glmCacheSessionId } from './cache.js'
 
@@ -28,7 +29,25 @@ export const GLM_BIGMODEL_AUTHORIZE_URL = 'https://bigmodel.cn/login'
 export const GLM_BUSINESS_LOGIN_URL = 'https://api.z.ai/api/auth/z/login'
 export const GLM_BIZ_BASE = 'https://api.z.ai'
 export const GLM_CODING_URL = 'https://api.z.ai/api/coding/paas/v4/chat/completions'
-export const GLM_ANTHROPIC_URL = 'https://api.z.ai/api/anthropic/v1/messages'
+/**
+ * Official Coding Plan model gateway. ZCode never posts the Coding Plan
+ * Anthropic endpoint directly: `createOfficialCodingPlanGatewayFetch`
+ * (apps/zcode-cli/packages/adapters/src/model/official-coding-plan-gateway.ts)
+ * rewrites the endpoint to this origin and keeps method, body, query and every
+ * header except `host`. NOTICE.md「官方 Coding Plan 模型网关转发」says the
+ * gateway runs plan-entitlement checks before forwarding to the model service.
+ */
+export const GLM_GATEWAY_ORIGIN = 'https://zcode.z.ai'
+export const GLM_GATEWAY_ANTHROPIC_PATHS = Object.freeze({
+  zai: '/api/v1/ultra-zai/anthropic/v1/messages',
+  bigmodel: '/api/v1/ultra/anthropic/v1/messages',
+})
+/** Direct upstreams. Kept as the fallback when the gateway refuses the key. */
+export const GLM_ANTHROPIC_DIRECT_URLS = Object.freeze({
+  zai: 'https://api.z.ai/api/anthropic/v1/messages',
+  bigmodel: 'https://open.bigmodel.cn/api/anthropic/v1/messages',
+})
+export const GLM_ANTHROPIC_URL = GLM_ANTHROPIC_DIRECT_URLS.zai
 export const GLM_ANTHROPIC_VERSION = '2023-06-01'
 export const GLM_QUOTA_URL = 'https://api.z.ai/api/monitor/usage/quota/limit'
 export const GLM_TOOL_USAGE_URL = 'https://api.z.ai/api/monitor/usage/tool-usage'
@@ -43,9 +62,12 @@ export const GLM_APP_VERSION = '3.10.1'
 export const GLM_USER_AGENT = `ZCode/${GLM_APP_VERSION} ai-sdk/anthropic/3.0.81`
 /** CLI poll against zcode.z.ai — official CLI shape, not Desktop, not this plugin. */
 export const GLM_CLI_USER_AGENT = `ZCode/${GLM_APP_VERSION}`
-export const GLM_REFERER = 'https://zcode.z.ai'
-export const GLM_TITLE = 'Z Code'
+export const GLM_REFERER = GLM_GATEWAY_ORIGIN
+/** ZCode CLI source title (`Z Code@cli`) / Desktop (`Z Code@electron`). */
+export const GLM_TITLE = 'Z Code@electron'
 export const GLM_AGENT = 'glm'
+/** resolveRuntimeZCodeEnv default (`ZCODE_ENV` unset) is production. */
+export const GLM_RELEASE_CHANNEL = 'production'
 export const GLM_NEVER_EXPIRES = 8.64e15
 export const GLM_CONTEXT_WINDOW = 128_000
 export const GLM_LARGE_CONTEXT = 1_000_000
@@ -59,6 +81,10 @@ export const GLM_VISION_INPUT = Object.freeze(['text', 'image'])
  * `reasoning_effort` is `low` / `high` / `max`, default `max`. Thinking
  * cannot be turned off — `thinking.type: disabled` 400s. No `medium`.
  * Turbo is hybrid on/off with no effort ladder.
+ *
+ * Values are the wire spellings ZCode's catalog map reads
+ * (config/provider/zcode-builtin.json modelApiRules, apiTypeMatch
+ * `anthropic-messages`): `output_config.effort` is the level verbatim.
  */
 export const GLM_REASONING = Object.freeze({
   low: 'low',
@@ -78,6 +104,16 @@ export const GLM_CLI_PROVIDERS = Object.freeze({
  * multimodal model (image + text). Official Flash also takes video/file;
  * llm-pi-ai / pi-ai only wire `text` and `image`.
  *
+ * The plan's live model policy is two models — `docs.z.ai/devpack/overview`:
+ * 「所有套餐均支持 GLM-5.3、GLM-5.3-Flash」, and legacy ids auto-route
+ * (GLM-5.2 / 5.1 → 5.3, GLM-4.7 → 5.3-Flash). `glm-5.3-flashx` (200 tok/s,
+ * 1M ctx) is explicitly **not yet on the plan** (`guides/vlm/glm-5.3-flash`),
+ * so it stays out of the picker. GLM-5.2 stays retired: a `thinking.type:
+ * disabled` sent to a backend that routes it to 5.3 would 400 (5.3 is
+ * forced-on). Turbo keeps its own row because ZCode's
+ * `builtinProviderModelRules` still enables it; its 64k output cap comes from
+ * `modelRules` (Turbo 200k / 64k vs 5.3 / Flash 1M / 128k).
+ *
  * Thinking depth is declared here so the Harness session picker can
  * offer it. `false` means no depth control (Turbo); omitting `off`
  * means thinking cannot be disabled (5.3 / Flash).
@@ -85,7 +121,7 @@ export const GLM_CLI_PROVIDERS = Object.freeze({
 export const GLM_MODELS = Object.freeze([
   { id: 'glm-5.3', name: 'GLM-5.3', contextWindow: GLM_LARGE_CONTEXT, maxTokens: 128_000, reasoningEfforts: GLM_REASONING, input: GLM_TEXT_INPUT },
   { id: 'glm-5.3-flash', name: 'GLM-5.3-Flash', contextWindow: GLM_LARGE_CONTEXT, maxTokens: 128_000, reasoningEfforts: GLM_REASONING, input: GLM_VISION_INPUT },
-  { id: 'glm-5-turbo', name: 'GLM-5-Turbo', contextWindow: GLM_TURBO_CONTEXT, maxTokens: 128_000, reasoningEfforts: false, input: GLM_TEXT_INPUT },
+  { id: 'glm-5-turbo', name: 'GLM-5-Turbo', contextWindow: GLM_TURBO_CONTEXT, maxTokens: 64_000, reasoningEfforts: false, input: GLM_TEXT_INPUT },
 ])
 
 export { GLM_BOOST_HINT, GLM_BOOST_LABEL, glmCardBoost } from './boost.js'
@@ -123,11 +159,19 @@ export function glmCodingUrl(region = 'zai') {
     : GLM_CODING_URL
 }
 
+/** Direct Coding Plan Anthropic endpoint (what the gateway forwards to). */
+export function glmAnthropicDirectUrl(region = 'zai') {
+  return GLM_ANTHROPIC_DIRECT_URLS[normalizeGlmRegion(region)]
+}
+
+/** Official ZCode hop: the Coding Plan endpoint rewritten to the platform gateway. */
+export function glmAnthropicGatewayUrl(region = 'zai') {
+  return `${GLM_GATEWAY_ORIGIN}${GLM_GATEWAY_ANTHROPIC_PATHS[normalizeGlmRegion(region)]}`
+}
+
 /** ZCode default protocol. https://docs.z.ai/devpack/quick-start */
 export function glmAnthropicUrl(region = 'zai') {
-  return normalizeGlmRegion(region) === 'bigmodel'
-    ? 'https://open.bigmodel.cn/api/anthropic/v1/messages'
-    : GLM_ANTHROPIC_URL
+  return glmAnthropicGatewayUrl(region)
 }
 
 export function glmQuotaUrl(region = 'zai') {
@@ -140,6 +184,17 @@ export function glmToolUsageUrl(region = 'zai') {
   return normalizeGlmRegion(region) === 'bigmodel'
     ? 'https://open.bigmodel.cn/api/monitor/usage/tool-usage'
     : GLM_TOOL_USAGE_URL
+}
+
+/**
+ * Official ZCode MCP quota endpoint (usage-stats.ts fetchMcpQuotaSnapshot).
+ * Always the zcode.z.ai platform gateway — api.z.ai / open.bigmodel.cn answer
+ * 404. It needs BOTH the zcode JWT (authorization) and the provisioned
+ * Coding Plan api-key (X-Bigmodel-Authorization), plus Bigmodel-Target-Type.
+ */
+export const GLM_MCP_USAGE_URL = 'https://zcode.z.ai/api/v1/mcp/usage'
+export function glmMcpUsageUrl() {
+  return GLM_MCP_USAGE_URL
 }
 
 export function glmUserinfoUrl(region = 'zai') {
@@ -221,6 +276,26 @@ export function accountFromJwt(token) {
   )
 }
 
+/**
+ * Display-name fields are the user's chosen name, not an id — they must not
+ * pass the opaque filter. `customerName` / `username` like `xxww0098` or
+ * `fwfeibn6` are letters+digits and would be dropped as "internal id" even
+ * though they are exactly what the vendor shows. Site ids still excluded.
+ */
+export function pickGlmName(...candidates) {
+  for (const value of candidates) {
+    if (typeof value !== 'string' || !value.trim()) continue
+    const trimmedValue = value.trim()
+    if (isGlmAppAccount(trimmedValue)) continue
+    // Unambiguous ids are still not a display name: pure digits, UUID, long hex.
+    if (/^\d+$/.test(trimmedValue)) continue
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmedValue)) continue
+    if (/^[0-9a-f]{16,}$/i.test(trimmedValue)) continue
+    return trimmedValue
+  }
+  return undefined
+}
+
 function humanFromObject(value) {
   if (!value || typeof value !== 'object') return undefined
   return pickGlmHumanAccount(
@@ -229,8 +304,8 @@ function humanFromObject(value) {
     value.preferred_username,
     value.preferredUsername,
   )
-    ?? pickGlmPhoneAccount(value.phone, value.mobile)
-    ?? pickGlmHumanAccount(
+    ?? pickGlmPhoneAccount(value.phone, value.mobile, value.phoneNumber)
+    ?? pickGlmName(
       value.customerName,
       value.nickName,
       value.nickname,
@@ -251,12 +326,71 @@ function randomHex(bytes = 16) {
   return randomBytes(bytes).toString('hex')
 }
 
-/** ZCode Desktop 3.10.1 fingerprint for api.z.ai / open.bigmodel.cn Coding Plan hops. */
+function printableHeader(value) {
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  return trimmed && /^[\x20-\x7e]+$/.test(trimmed) ? trimmed : undefined
+}
+
+let GLM_PLATFORM_HEADERS
+
+/**
+ * `createRuntimePlatformHeaders` (bootstrap/src/runtime-platform-headers.ts):
+ * X-Platform / X-Os-Category / X-Os-Version from the running host.
+ */
+function glmPlatformHeaders() {
+  if (GLM_PLATFORM_HEADERS === undefined) {
+    const platform = printableHeader(process.platform)
+    const architecture = printableHeader(osArch())
+    const category = process.platform === 'darwin'
+      ? 'macos'
+      : process.platform === 'win32' ? 'windows' : 'linux'
+    const release = printableHeader(osRelease())
+    GLM_PLATFORM_HEADERS = Object.freeze({
+      ...(platform && architecture ? { 'X-Platform': `${platform}-${architecture}` } : {}),
+      'X-Os-Category': category,
+      ...(release ? { 'X-Os-Version': release } : {}),
+    })
+  }
+  return GLM_PLATFORM_HEADERS
+}
+
+/** X-Client-Language / X-Client-Timezone from buildCliZCodeSourceHeaders. */
+function glmClientHeaders() {
+  let locale
+  let timezone
+  try {
+    const resolved = Intl.DateTimeFormat().resolvedOptions()
+    locale = printableHeader(resolved.locale)
+    timezone = printableHeader(resolved.timeZone)
+  } catch {
+    locale = undefined
+    timezone = undefined
+  }
+  return {
+    'X-Client-Language': locale ?? 'unknown',
+    'X-Client-Timezone': timezone ?? 'unknown',
+  }
+}
+
+/**
+ * ZCode Desktop client fingerprint for the Coding Plan gateway.
+ *
+ * Header set from bootstrap/src/model-config.ts (buildCliZCodeSourceHeaders) +
+ * runtime-platform-headers.ts, plus the per-request attribution headers in
+ * adapters/src/model/runner-attribution.ts. `x-zcode-session-type` is what the
+ * Coding Plan server reads to tell main / subagent / other apart; this hop
+ * serves DSH's main loop, so it sends `main`.
+ */
 export function glmDesktopHeaders(sessionId?) {
   return {
     'user-agent': GLM_USER_AGENT,
     'X-ZCode-App-Version': GLM_APP_VERSION,
     'X-ZCode-Agent': GLM_AGENT,
+    'X-Release-Channel': GLM_RELEASE_CHANNEL,
+    ...glmClientHeaders(),
+    ...glmPlatformHeaders(),
+    'x-zcode-session-type': 'main',
     'x-zcode-trace-id': randomHex(),
     'x-request-id': randomHex(),
     'x-session-id': glmCacheSessionId(sessionId) || GLM_PROCESS_SESSION_ID,
@@ -279,6 +413,30 @@ export function glmAnthropicHeaders(session, sessionId) {
   return {
     ...glmUpstreamHeaders(session, sessionId),
     'anthropic-version': GLM_ANTHROPIC_VERSION,
+  }
+}
+
+/**
+ * MCP quota headers (buildOfficialMcpAuthHeaders): the zcode JWT rides
+ * `authorization`, the provisioned Coding Plan api-key rides
+ * `X-Bigmodel-Authorization`, and PERSONAL scope sends
+ * `Bigmodel-Target-Type: PERSONAL`. Returns undefined without a zcodeJwt —
+ * the endpoint 400s without it.
+ */
+export function glmMcpUsageHeaders(session) {
+  const jwt = typeof session?.zcodeJwt === 'string' && session.zcodeJwt.trim()
+    ? session.zcodeJwt.trim()
+    : undefined
+  const apiKey = typeof session?.accessToken === 'string' && session.accessToken.trim()
+    ? session.accessToken.trim()
+    : undefined
+  if (!jwt || !apiKey) return undefined
+  return {
+    authorization: `Bearer ${jwt}`,
+    'X-Bigmodel-Authorization': `Bearer ${apiKey}`,
+    'Bigmodel-Target-Type': 'PERSONAL',
+    accept: 'application/json',
+    ...glmDesktopHeaders(),
   }
 }
 
@@ -307,10 +465,21 @@ export function isSuccessCode(code) {
   return false
 }
 
+/** Business envelope failure (HTTP 200 with a non-zero `code`). Terminal. */
+export class GlmBusinessError extends Error {
+  declare code: any
+
+  constructor(operation, code, message) {
+    super(`glm ${operation} failed: ${message ?? `code ${String(code)}`}`)
+    this.name = 'GlmBusinessError'
+    this.code = code
+  }
+}
+
 export function unwrapEnvelope(body, operation) {
   if (body && typeof body === 'object' && ('code' in body || 'success' in body)) {
     if (body.success === false || !isSuccessCode(body.code)) {
-      throw new Error(`glm ${operation} failed: ${body.msg ?? `code ${String(body.code)}`}`)
+      throw new GlmBusinessError(operation, body.code, body.msg)
     }
     return 'data' in body ? body.data : body
   }
@@ -330,29 +499,73 @@ export function createPollToken() {
   return randomBytes(32).toString('hex')
 }
 
+/**
+ * Server `expires_at` is epoch **seconds** (auth-login-polling.ts:
+ * `expires_at * 1_000`). Older/other spellings can be epoch ms; a small
+ * relative number falls back to a 5-minute budget instead of becoming 1970.
+ */
+export function parseGlmExpiresAt(value, now = Date.now()) {
+  const raw = Number(value)
+  if (!Number.isFinite(raw) || raw <= 0) return now + 300_000
+  if (raw > 1e12) return raw
+  if (raw > 1e9) return raw * 1000
+  return now + Math.max(60_000, raw * 1000)
+}
+
 export function parseCliInit(body) {
   const data = unwrapEnvelope(body, 'cli init') ?? {}
   const flowId = trimmed(data.flow_id ?? data.flowId)
   const authorizeUrl = trimmed(data.authorize_url ?? data.authorizeUrl)
   if (!flowId || !authorizeUrl) throw new Error('glm cli init is missing flow_id/authorize_url')
+  try {
+    if (new URL(authorizeUrl).protocol !== 'https:') throw new Error()
+  } catch {
+    throw new Error('glm cli init returned a non-https authorize_url')
+  }
   const intervalSec = Number(data.poll_interval_sec ?? data.interval ?? 2)
-  const expiresAt = Number(data.expires_at ?? 0)
   return {
     flowId,
     authorizeUrl,
-    intervalMs: (Number.isFinite(intervalSec) && intervalSec > 0 ? intervalSec : 2) * 1000,
-    expiresAt: Number.isFinite(expiresAt) && expiresAt > 1e12 ? expiresAt : Date.now() + 300_000,
+    // Official floor is 1s; a 0/NaN interval must not become a hot loop.
+    intervalMs: Math.max(1000, (Number.isFinite(intervalSec) && intervalSec > 0 ? intervalSec : 2) * 1000),
+    expiresAt: parseGlmExpiresAt(data.expires_at ?? data.expiresAt),
   }
 }
 
-export function parseCliPoll(body) {
+/**
+ * Provider access token from a ready poll. The official readers only look at
+ * the provider-named object — `data[providerId].access_token`
+ * (cli-oauth.ts parseReadyData; webAuthService for BigModel) — so the region
+ * decides the field, and `data.token` is never a substitute: that is the
+ * zcode JWT, which bigmodel.cn rejects with 「令牌已过期或验证不正确」.
+ * bigmodelProviderAdapter.ts spells it out: paid Coding Plan calls bigmodel.cn
+ * business APIs with the business access token; the zcode JWT is only for
+ * Start Plan.
+ */
+export function glmProviderAccessToken(data, region = 'zai') {
+  const provider = normalizeGlmRegion(region)
+  const named = provider === 'bigmodel' ? tokenFrom(data?.bigmodel) : tokenFrom(data?.zai)
+  return named ?? trimmed(data?.access_token) ?? trimmed(data?.accessToken)
+}
+
+/**
+ * Official poll states are `pending` / `ready` / `failed`
+ * (auth-login-polling.ts). Anything else is terminal too: a stale or
+ * unknown state must fail the login instead of spinning until expiry.
+ */
+export function parseCliPoll(body, region = 'zai') {
   const data = unwrapEnvelope(body, 'cli poll') ?? {}
   const status = trimmed(data.status) ?? 'pending'
-  if (status !== 'ready') return { status, ready: false }
-  const oauthAccess = tokenFrom(data.zai)
-    ?? tokenFrom(data.zcode)
-    ?? tokenFrom(data.bigmodel)
-    ?? trimmed(data.access_token)
+  if (status !== 'ready') {
+    return {
+      status,
+      ready: false,
+      failed: status === 'failed',
+      unknown: status !== 'pending' && status !== 'failed',
+      ...(trimmed(data.msg ?? data.message) === undefined ? {} : { message: trimmed(data.msg ?? data.message) }),
+    }
+  }
+  const oauthAccess = glmProviderAccessToken(data, region)
   if (!oauthAccess) throw new Error('glm cli poll ready without access token')
   const zcodeJwt = trimmed(data.token)
   const rawAccountId = data.user?.id != null ? String(data.user.id) : undefined
@@ -376,9 +589,24 @@ export function parseCliPoll(body) {
   }
 }
 
+/**
+ * HTTP failure with the status attached. The CLI login poll retries
+ * transient failures and treats 4xx (except 408/429) as terminal, the same
+ * split auth-login-polling.ts uses.
+ */
+export class GlmHttpError extends Error {
+  declare status: number
+
+  constructor(label, status, text) {
+    super(`${label} failed (HTTP ${status})${text ? `: ${text.slice(0, 240)}` : ''}`)
+    this.name = 'GlmHttpError'
+    this.status = status
+  }
+}
+
 async function readJson(response, label) {
   const text = await response.text()
-  if (!response.ok) throw new Error(`${label} failed (HTTP ${response.status})${text ? `: ${text.slice(0, 240)}` : ''}`)
+  if (!response.ok) throw new GlmHttpError(label, response.status, text)
   return text ? JSON.parse(text) : undefined
 }
 
@@ -393,12 +621,12 @@ export async function glmCliInit({ region = 'zai', fetchFn = fetch, pollToken = 
   return { ...started, pollToken, region: resolved }
 }
 
-export async function glmCliPoll({ flowId, pollToken, fetchFn = fetch }: any = {}) {
+export async function glmCliPoll({ flowId, pollToken, region = 'zai', fetchFn = fetch }: any = {}) {
   const response = await fetchFn(`${GLM_CLI_POLL_URL}/${encodeURIComponent(flowId)}`, {
     method: 'GET',
     headers: cliJsonHeaders({ authorization: `Bearer ${pollToken}` }),
   })
-  return parseCliPoll(await readJson(response, 'glm cli poll'))
+  return parseCliPoll(await readJson(response, 'glm cli poll'), region)
 }
 
 async function getJson(url, headers, fetchFn) {
@@ -474,24 +702,35 @@ export async function mintGlmApiKey(oauthAccessToken, { fetchFn = fetch, region 
   return `${apiKey}.${secretKey}`
 }
 
-export function glmSession({ accessToken, account, accountId, region = 'zai', zcodeJwt }: any = {}) {
+export function glmSession({ accessToken, account, accountId, region = 'zai', zcodeJwt, oauthAccess }: any = {}) {
   if (typeof accessToken !== 'string' || !accessToken) {
     throw new Error('glm session needs an access token')
   }
-  const human = pickGlmHumanAccount(account, accountFromJwt(zcodeJwt), accountFromJwt(accessToken))
+  const human = pickGlmHumanAccount(account, accountFromJwt(zcodeJwt), accountFromJwt(accessToken), accountFromJwt(oauthAccess))
   return {
     accessToken,
     refreshToken: accessToken,
     expiresAt: GLM_NEVER_EXPIRES,
-    ...(human === undefined ? {} : { account: human }),
+    ...(human === undefined ? {} : { account: human, displayName: human }),
     region: normalizeGlmRegion(region),
     ...(zcodeJwt === undefined ? {} : { zcodeJwt }),
+    // The OAuth business token is kept only for userinfo/identity — the
+    // provisioned api-key in accessToken is what chats and reads quota.
+    ...(typeof oauthAccess === 'string' && oauthAccess.trim() ? { oauthAccess: oauthAccess.trim() } : {}),
   }
 }
 
 export async function fetchGlmUserinfo(source, { fetchFn = fetch, region }: any = {}) {
   const resolved = normalizeGlmRegion(region ?? source?.region)
-  const bearer = trimmed(source?.zcodeJwt) ?? trimmed(source?.oauthAccess) ?? trimmed(source?.accessToken)
+  // bigmodel.cn business APIs only take the BigModel business access token;
+  // the zcode JWT answers 401 「令牌已过期或验证不正确」. Z.ai userinfo takes
+  // the OAuth/JWT bearer, so keep its order.
+  // bigmodel.cn userinfo only takes the OAuth business token — the
+  // provisioned api-key answers 403 「APIKey not allow access」 and the zcode
+  // JWT 401s. Z.ai userinfo takes the OAuth/JWT bearer, so keep its order.
+  const bearer = resolved === 'bigmodel'
+    ? trimmed(source?.oauthAccess) ?? trimmed(source?.accessToken) ?? trimmed(source?.zcodeJwt)
+    : trimmed(source?.zcodeJwt) ?? trimmed(source?.oauthAccess) ?? trimmed(source?.accessToken)
   if (!bearer) return undefined
   const urls = resolved === 'bigmodel'
     ? [GLM_BIGMODEL_USERINFO_URL]
@@ -535,20 +774,32 @@ export async function resolveGlmIdentity(source, { fetchFn = fetch } = {}) {
 }
 
 export function displayGlmAccount(session) {
-  return pickGlmHumanAccount(
-    session?.account,
-    accountFromJwt(session?.zcodeJwt),
-    accountFromJwt(session?.accessToken),
-  )
+  // displayName is the trusted resolved name (set by glmSession /
+  // #resolveGlmIdentities from customerName / username / email). A letters+
+  // digits username like xxww0098 is a real name, not an id — but a legacy
+  // session.account can still hold poll user.id (dnarplz6), which is the same
+  // pattern. Provenance, not pattern, separates them: displayName wins, and
+  // session.account falls back through the strict opaque filter.
+  return pickGlmName(session?.displayName)
+    ?? pickGlmHumanAccount(
+      session?.account,
+      accountFromJwt(session?.zcodeJwt),
+      accountFromJwt(session?.accessToken),
+      accountFromJwt(session?.oauthAccess),
+    )
 }
 
 export async function completeGlmCli(ready, { fetchFn = fetch, region = 'zai' } = {}) {
   const resolved = normalizeGlmRegion(region)
+  // BigModel: the Coding Plan bearer is the provider business access token
+  // (`data.bigmodel.access_token`). The zcode JWT is Start-Plan only — writing
+  // it into the bearer slot makes every bigmodel.cn call answer
+  // 「令牌已过期或验证不正确」 (bigmodelProviderAdapter.ts:184-194).
   const minted = resolved === 'bigmodel'
-    ? (ready.zcodeJwt || ready.oauthAccess)
+    ? ready.oauthAccess
     : await mintGlmApiKey(ready.oauthAccess, { fetchFn, region: resolved })
   if (!minted) throw new Error(resolved === 'bigmodel'
-    ? 'glm BigModel poll ready without a token'
+    ? 'glm BigModel poll ready without a bigmodel access token (the zcode JWT cannot chat)'
     : 'glm key provisioning returned no apiKey')
   const account = await resolveGlmIdentity({
     email: ready.email,

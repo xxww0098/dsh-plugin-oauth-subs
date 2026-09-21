@@ -17,7 +17,7 @@
 |---|---|---|---|---|
 | Codex | [openai/codex](https://github.com/openai/codex) `rust-v0.153.4` | Codex CLI `models.json`；[#37345](https://github.com/openai/codex/issues/37345) routing-hint | UA `codex_cli_rs/0.153.4` | [`codex/README.md`](../src/oauth/codex/README.md) |
 | Grok | [xai-org/grok-build](https://github.com/xai-org/grok-build) | [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent)（`~/.hermes/auth.json` 导入） | UA `grok-cli/0.2.93` | [`grok/README.md`](../src/oauth/grok/README.md) |
-| GLM | ZCode Desktop 3.10.1 + [docs.z.ai](https://docs.z.ai/devpack/quick-start) | 无公开 ZCode 源码仓 | UA `ZCode/3.10.1 ai-sdk/anthropic/3.0.81` | [`glm/README.md`](../src/oauth/glm/README.md) |
+| GLM | **[zai-org/ZCode](https://github.com/zai-org/ZCode)** `872ad96`（tree 3.14.0）+ [docs.z.ai](https://docs.z.ai/devpack/quick-start) | ZCode 已开源：`official-coding-plan-gateway.ts`、`config/provider/zcode-builtin.json`、`runner-attribution.ts` | UA `ZCode/3.10.1 ai-sdk/anthropic/3.0.81`；Coding Plan Anthropic 走 `zcode.z.ai/api/v1/ultra[-zai]/anthropic` | [`glm/README.md`](../src/oauth/glm/README.md) |
 | Kiro | Kiro IDE / [kiro.dev/docs/models](https://kiro.dev/docs/models) | [ZyphrZero/kiro.rs](https://github.com/ZyphrZero/kiro.rs)；[mikeyobrien/pi-provider-kiro](https://github.com/mikeyobrien/pi-provider-kiro) `0.10.2` | eventstream `GenerateAssistantResponse` | [`kiro/README.md`](../src/oauth/kiro/README.md) |
 | Antigravity | Antigravity.app hub 2.11.0 | [router-for-me/CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)；[Rahularya01/pi-antigravity](https://github.com/Rahularya01/pi-antigravity) | UA `antigravity/hub/2.11.0`；daily-cloudcode-pa | [`antigravity/README.md`](../src/oauth/antigravity/README.md) |
 | Cursor | Cursor CLI `loginDeepControl` | [Rahularya01/pi-cursor](https://github.com/Rahularya01/pi-cursor)；[fitchmultz/pi-cursor-sdk](https://github.com/fitchmultz/pi-cursor-sdk)（`@cursor/sdk@1.0.27`） | 指纹 `cli-2026.07.23-e383d2b`；`x-cursor-client-type: cli` | [`cursor/README.md`](../src/oauth/cursor/README.md) |
@@ -74,17 +74,25 @@ CLIProxyAPI 同时包了 Codex / Grok / Antigravity 等多家。**只**在 Antig
 
 ## GLM
 
-一线是闭源 **ZCode Desktop 3.10.1**（[changelog](https://zcode.z.ai/en/changelog)）+ 官方文档，没有 GitHub 源码仓。
+一线是 **[zai-org/ZCode](https://github.com/zai-org/ZCode)**（`872ad96 feat: open source`，tree `3.14.0`；[changelog](https://zcode.z.ai/en/changelog) 当前稳定版 `3.14.1`）+ 官方文档。指纹仍钉 Desktop 3.10.1（`zcode.cjs` `eao` / `rao`），版本没跟开源 tree 走。
 
-| 文档 | 用途 |
+| 源码 | 本 hop 抄什么 |
 |---|---|
-| [Coding Plan 快开始](https://docs.z.ai/devpack/quick-start) | Anthropic 默认协议 |
-| [缓存](https://docs.z.ai/guides/capabilities/cache) | 隐式前缀 + `cache_control` |
-| [思考](https://docs.z.ai/guides/capabilities/thinking-mode) | Completions 形；Anthropic thinking **未实测** |
+| `apps/zcode-cli/packages/adapters/src/model/official-coding-plan-gateway.ts` | Coding Plan Anthropic 端点改发 `zcode.z.ai/api/v1/ultra-zai/anthropic`（BigModel `/ultra/anthropic`），除 `host` 外原样透传；NOTICE.md「官方 Coding Plan 模型网关转发」同述 |
+| `apps/zcode-cli/packages/bootstrap/src/model-config.ts` + `runtime-platform-headers.ts` | 身份/环境头：`X-ZCode-Agent: glm`、`X-Release-Channel`、`X-Client-Language/Timezone`、`X-Platform`、`X-Os-Category`、`X-Os-Version`、`X-Title: Z Code@cli\|electron` |
+| `adapters/src/model/runner-attribution.ts` | `x-session-id` / `x-request-id` / `x-zcode-trace-id` / `x-query-id` / `x-zcode-session-type` |
+| `core/src/runtime/helpers/provider-request-messages.ts` | `finalizeLatestNonSystemMessageCacheControl`：非 system 消息只留一个滚动 `cache_control` |
+| `config/provider/zcode-builtin.json` `modelApiRules` / `modelRules` | Anthropic 思考 map（`thinking` + `output_config.effort`）；ctx / 输出上限（Turbo 64k） |
+| `adapters/src/model/anthropic-reasoning-metadata.ts` | 无 signature 的 thinking 块按 `signature: ""` 回放，不降级成 text |
+| `~/.zcode/v2/credentials.json` + `isProviderProvisioningAccountCredentialKey` | 对话+额度的 bearer 是 provisioned `account-provider:…:api-key`；`oauth:<region>:access_token` 业务 JWT 只打 monitor/userinfo（对话 500），降为 `oauthAccess`；`zcodejwttoken` 仅身份 |
 
-指纹来自 Desktop `zcode.cjs`（`eao` / `rao`），不是第三方包装。CLI poll 走 `zcode.z.ai`，provider 只能是 `zai` / `bigmodel`。
+官方文档：[Coding Plan 快开始](https://docs.z.ai/devpack/quick-start)（Anthropic 默认协议）、[缓存](https://docs.z.ai/guides/capabilities/cache)（隐式前缀 + `cache_control`）、[思考](https://docs.z.ai/guides/capabilities/thinking-mode)（Completions 形；Coding Plan 端点默认 Preserved Thinking，`clear_thinking: false` 是标准 API 的 opt-in）。
 
-**不要发明：** Codex `prompt_cache_key`、Grok 分片头、第四种 DSH `api`。不要宣称切 Anthropic 就能吃 150%（那是 Desktop 身份，不是协议）。不要伪造 `x-aliyun-captcha-verify-param`（Desktop 3.11.2 `zcode.cjs` `isZcodePlanOpenAiCompatibleBaseUrl` 才注入；本 hop 不解 captcha）。
+套餐模型以 [devpack overview](https://docs.z.ai/devpack/overview) 为准：**只支持 GLM-5.3 / GLM-5.3-Flash**，GLM-5.2 / 5.1 自动改道 5.3、GLM-4.7 改道 5.3-Flash；`glm-5.3-flashx`（200 tok/s）官方写明**还没上套餐**，不进 picker。catalog 的 `builtinProviderModelRules` 仍启用 5.2 / Turbo 是给老 session 的向后兼容，不等于现售菜单。
+
+CLI poll 走 `zcode.z.ai`，provider 只能是 `zai` / `bigmodel`。
+
+**不要发明：** Codex `prompt_cache_key`、Grok 分片头、第四种 DSH `api`。不要把 Coding Plan 对话默认打回直连（网关才是官方路径，直连只作 401/403/404 回退）。不要在 Anthropic hop 发 `budget_tokens` / `display` / `reasoning_effort`。不要伪造 `x-aliyun-captcha-verify-param`（Desktop 3.11.2 `zcode.cjs` `isZcodePlanOpenAiCompatibleBaseUrl` 才注入；本 hop 不解 captcha）。不要宣称已经吃上 150%——网关路径已在，倍数仍由上游服务端决定，未做用量斜率活测。
 
 ## Kiro
 

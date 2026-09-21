@@ -359,7 +359,7 @@ test('QuotaStore GLM quota hop uses ZCode Desktop 3.10.1 fingerprint', async () 
     assert.equal(headers['X-ZCode-Agent'], 'glm')
     assert.equal(headers['HTTP-Referer'], 'https://zcode.z.ai')
     assert.equal(headers.referer, 'https://zcode.z.ai')
-    assert.equal(headers['X-Title'], 'Z Code')
+    assert.equal(headers['X-Title'], 'Z Code@electron')
     assert.match(headers['x-session-id'], /^sess_[0-9a-f]{24}$/)
     assert.equal(JSON.stringify(headers).includes('dsh-plugin-oauth-subs'), false)
   }

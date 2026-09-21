@@ -2,6 +2,55 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-21：GLM 已登录却「当前用户不存在coding plan」= 存了 config.json 的旧 key，不是 credentials.json 的 provisioned key
+
+**现象**：GLM 卡已登录（中国 / 150%），额度显示「额度读取失败 · glm quota failed: 当前用户不存在coding plan」，对话也 429「套餐已到期」——但用户是 Max。
+**根因**：插件存的 `accessToken` 是 `~/.zcode/v2/config.json` 里 `builtin:bigmodel-coding-plan.options.apiKey` 那把已被 ZCode 标 `coding_plan_not_entitled` 的旧 key（`6fc665a4…`）。真凭据在 `credentials.json`：provisioned `account-provider:…:api-key`（`cd17e6b4…`，monitor + 对话都 200，level=max）。`glmKeyFromZcodeCredentials` 原先返回 `oauth:bigmodel:access_token` 业务 JWT——它只能查 monitor，打 Coding Plan 对话稳定 500，不是 chat key。
+**修复**：`glmKeyFromZcodeCredentials` 优先 provisioned `api-key`（按 `oauth:active_provider` 选 region），OAuth token 降为 `oauthAccess` 仅供 userinfo/身份；`glmSession` 持久化 `oauthAccess`；bigmodel `fetchGlmUserinfo` 改用 `oauthAccess` 优先（api-key 打 userinfo 是 403）。已存旧 session 用「导入本机会话」或直接改写 auth.json 换成 provisioned key。顺带接上 MCP 额度：真端点是 `GET zcode.z.ai/api/v1/mcp/usage`（双头 zcodeJwt + X-Bigmodel-Authorization api-key），不是 monitor `tool-usage`（对该账号回空 body）。
+
+## 2026-09-21：GLM 卡「周额度未返回」= monitor 的 HTTP 200 业务错误被当成空额度
+
+**现象**：`/api/monitor/usage/quota/limit` 回 HTTP 200 + `{"code":500,"msg":"当前用户不存在coding plan","success":false}`，插件解析出 0 行但 store 记 `ready`，卡片只显示「周额度未返回，点刷新重试」，看起来像 hop 坏了。
+**根因**：`fetchGlmQuota` 只看 HTTP 状态，没解业务信封；`readJson` 只在 `!response.ok` 时抛。该账号确实没有生效的 Coding Plan——同一账号的 OAuth 兑换也会 `invalid_flow`、本地 key 也回同一句，三条证据同源。
+**修复**：`fetchGlmQuota` 在 `success === false` 或 `code ∉ {0,200}` 时抛 `glm quota failed: <msg>`，store 转 `error`，卡片显示「额度获取失败 · glm quota failed: 当前用户不存在coding plan」。判定「没额度」先看这条上游原文，再谈套餐是否要续费。
+## 2026-09-21：BigModel 登录成功但额度/身份全 401「令牌已过期」= 把 zcode JWT 当 bearer
+
+**现象**：GLM 卡显示已登录（中国 / 150% 配额），额度只有「周额度未返回，点刷新重试」、抬头没名字；`open.bigmodel.cn/api/monitor/usage/quota/limit` 与 `/api/biz/customer/getCustomerInfo` 都回 `{"code":401,"msg":"令牌已过期或验证不正确"}`（`chat.z.ai/api/oauth/userinfo` 也 401）。本机存的 GLM token 解出来是 `{user_id, sub, iat}`、没有 `exp`，且 `accessToken === zcodeJwt`。
+**根因**：BigModel 路径把 **zcode JWT** 当成了 Coding Plan bearer。`completeGlmCli` 取 `ready.zcodeJwt || ready.oauthAccess`，`parseCliPoll` 的 token 链 `zai → zcode → bigmodel` 也可能先拿到 JWT。官方 `bigmodelProviderAdapter.ts:184-194` 写死：付费套餐打 bigmodel.cn 业务接口只能用 `data.bigmodel.access_token`，zcode JWT 只写 `zcodejwttoken` 给 Start Plan——「继续把 zcode JWT 写进 `oauth:bigmodel:access_token`，套餐预览会稳定报令牌已过期」；`bigmodelUsageQuotaProvider` 也固定读该 token。
+**修复**：`glmProviderAccessToken(data, region)` 只按 region 取 `data[provider].access_token`（`data.access_token` 兜底），`data.token` 永不顶替；`parseCliPoll` / `glmCliPoll` 加 `region`；BigModel `completeGlmCli` 只用 `ready.oauthAccess`，缺了直接报「without a bigmodel access token (the zcode JWT cannot chat)」；`fetchGlmUserinfo` 对 BigModel 先发业务 token（JWT 会 401，身份才回填得上）。旧 session 必须重新登录。
+## 2026-09-21：「本机会话导入」报 no GLM / ZCode session found —— 其实找到了 key，是套餐未生效
+
+**现象**：`~/.zcode/v2/config.json` 明明存在、`builtin:bigmodel-coding-plan.options.apiKey` 有 49 字符明文 key，导入却报 `no GLM / ZCode session found in …`（用户会以为文件没找到）。
+**根因**：新版 ZCode 把 coding-plan key 放在 provider `options.apiKey`，同时用 `enabled: false` + `systemDisabledReason` 标死；`glmKeyFromZcodeConfig` 只返回可用 key，找不到就统一报「没会话」。实测该 key 打 `open.bigmodel.cn/api/monitor/usage/quota/limit` 返回 `{"code":500,"msg":"当前用户不存在coding plan"}`；本机 ZCode `coding-plan-cache.json` 四个 provider 全是 `coding_plan_not_entitled`，`billing/balance` 回 `plans: []`，订阅接口还报 `coding_plan_system_busy`——账号侧确实没有可用 Coding Plan（或平台套餐服务在抖），OAuth 的 `invalid_flow` 同源。
+**修复**：新增 `glmKeyCandidateFromZcodeConfig`（最佳候选 + `usable` + `systemDisabledReason`）；`glmKeyFromZcodeConfig` 现在**连系统禁用的 coding-plan key 一起返回并导入**（结果带 `note` 写原因）——那个 flag 来自 ZCode 缓存权益检查，会过期也会错（平台 `coding_plan_system_busy` 时同样标 `not_entitled`），拒绝它等于本机没有任何可导入凭据；真假交给额度和对话回答。**硬跳过的仍只有 start-plan JWT**。不做解密 `credentials.json`。
+## 2026-09-21：GLM 浏览器授权「Authorization Failed」= 上游 OAuth 兑换失败（BigModel 已知缺陷）
+
+**现象**：点 GLM 登录 → 浏览器授权页完成后，落地页报「Authorization Failed / 授权失败 / 请返回 ZCode 重试」；服务端随即把 flow 判死，poll 终态 `3004 invalid_flow`。协议级复现（桌面端完全离场）：`bigmodel.cn` 同意页显示「授权成功」，落地页 `GET /api/v1/oauth/cli/callback/bigmodel?authCode&state` 被拒（通用失败页），flow 作废。另有 `POST /api/v1/oauth/token` 500 `{"code":2007,"msg":"http error"}` 的 zai 变体。
+**根因**：`zcode.z.ai` 服务端兑换授权码的缺陷，不是客户端 flow 形状问题——本 hop 的 init/poll 参数与官方 CLI `auth-login-polling.ts` 逐字一致；Desktop 的 `redirect_uri→/app/oauth/login` 改写只服务 `zcode://` 深链，落地页网桥 GET 同一个失败接口。上游 tracker：zai-org/feedback #718（BigModel 必现）、#705（3.12.3 网桥/深链双重核销）、#523（Linux token 端点 500）、#116（zai business token）。
+**修复（客户端侧）**：`glmLoginFailureMessage` 把 `invalid_flow` / `2007` 译成带 tracker 与替代路径的卡片报错；轮询语义照官方（`expires_at` 秒×1000、failed/未知立即失败、5xx/408/429/传输错误重试）。**绕行**：换另一区域按钮，或在厂商控制台建 Coding Plan API key 后用 GLM 页「API key」框粘贴（`useKey`，存成 `account: api-key`）。
+## 2026-09-21：GLM 授权页「Authorization Failed」时插件还在轮询、要等超时
+
+**现象**：浏览器授权页报「Something went wrong during authorization / 授权失败」，插件侧没有立刻失败——`status: failed` 被当成 pending，一直轮到 5 分钟兜底；服务端 `expires_at`（epoch 秒）被丢弃，真实有效期短于 5 分钟时也不收口；一次 5xx / 断网直接判死。
+**根因**：`parseCliPoll` 只认 `ready`，其余一律按 pending；`parseCliInit` 的 `expiresAt > 1e12` 判断把官方秒级时间戳全部替换成 `Date.now() + 300_000`；轮询异常没有可分类的 HTTP status。
+**修复**：照 `auth-login-polling.ts`：`expires_at` 秒 ×1000（ms / 相对值兼容）、`poll_interval_sec` 地板 1s、`failed` / 未知状态立即 `glm authorization failed`（带服务端 `msg`）、5xx / 408 / 429 / 传输错误按间隔重试、其它 4xx 与 `GlmBusinessError` 终止；`readJson` 改抛带 `status` 的 `GlmHttpError`。授权页本身失败来自服务端（重开一次新 flow），插件负责把同一结论及时呈现。
+## 2026-09-21：GLM Coding Plan 对话直连 model 端点，不是官方网关路径（150% 归因）
+
+**现象**：插件默认 `POST api.z.ai/api/anthropic/v1/messages`（BigModel 走 `open.bigmodel.cn`）。ZCode 开源后对照源码，官方**从不**这样发。
+**根因**：`official-coding-plan-gateway.ts` 把两个官方 Anthropic 端点按协议 / 主机 / 有效端口 / 路径改写成 `zcode.z.ai/api/v1/ultra-zai/anthropic`（BigModel `/ultra/anthropic`），正文 / query / 除 `host` 外全部头（含 `authorization`）透传；NOTICE.md「官方 Coding Plan 模型网关转发」说网关做套餐权益校验。「150% 是身份」只对一半：身份头之外，路径也得是网关这条。
+**修复**：`glmAnthropicUrl` 默认返回网关 URL；`glmAnthropicDirectUrl` 作 401/403/404 一次性回退（`forward` 的 `fallbackUrl`），网关拒绝不断对话。身份头补 `X-Release-Channel` / `X-Client-Language` / `X-Client-Timezone` / `X-Platform` / `X-Os-Category` / `X-Os-Version` / `x-zcode-session-type: main`，`X-Title` 改官方 `Z Code@electron`。倍数发放仍在上游服务端，未做用量斜率活测，文档不宣称已吃上。
+
+## 2026-09-21：GLM Anthropic 思考形与官方 catalog 不一致；缓存缺滚动 breakpoint
+
+**现象**：Anthropic hop 发 pi-ai/Claude 形状的 `thinking: { type, budget_tokens, display, clear_thinking }`，且非 system 消息上没有自己的 `cache_control`；官方 catalog 的 GLM map 是 `thinking: { type }` + `output_config.effort`，缓存还在最新非 system 消息上放滚动 breakpoint。
+**根因**：`budget_tokens` / `display` 是 Claude 形状，ZCode 给 GLM 的 map（`zcode-builtin.json` `modelApiRules`，`apiTypeMatch: anthropic-messages`）不发；`clear_thinking: false` 是标准 API 的 Preserved Thinking opt-in（Coding Plan 端点默认开，docs.z.ai 思考页），ZCode 客户端也不发。缓存侧 `finalizeLatestNonSystemMessageCacheControl` 只留一个滚动 breakpoint；pi-ai 只盖最后一条 user，assistant-last / 回放旧 breakpoint 没兜底。
+**修复**：`applyGlmAnthropicThinking` 按 catalog 重写（5.3 / Flash 强制 `enabled`；5.2 保留 `disabled`；Turbo 不强制），删 `budget_tokens` / `display` / `reasoning_effort`，只留 `output_config.effort`；`clear_thinking: false` 留作活测保险。`stabilizeGlmAnthropicMessageCache` 清旧 breakpoint 并盖到最新非 system 消息；路由加 `compat.forceAdaptiveThinking`（picker 档位 → `output_config.effort`）与 `allowEmptySignature`（unsigned thinking 不被 text 化）。
+
+## 2026-09-21：GLM 目录取舍——5.2 是自动改道别名、FlashX 未上套餐、Turbo 输出上限 128k→64k
+
+**现象**：ZCode `builtinProviderModelRules` 对 `account:zai-|bigmodel-individual-coding-plan` 仍启用四条（5.3 / 5.3-Flash / 5.2 / 5-Turbo），一度据把 5.2 加回 picker；官方 devpack overview 说的是「所有套餐均支持 GLM-5.3、GLM-5.3-Flash」，历史 id 自动改道（5.2 / 5.1 → 5.3，4.7 → 5.3-Flash）；`glm-5.3-flashx` 官方 Flash 文档写明「not yet available on the plan」。Turbo 的 `maxOutputTokens` 是 64k，插件写了 128k。
+**根因**：catalog 的 enabled 列表是客户端向后兼容（老 session 的 id 还能发），不等于套餐现售模型；5.2 的 `off` 档在后端按 5.3 处理时会 400（5.3 强制思考）。
+**修复**：`GLM_MODELS` 不复活 5.2、不加 FlashX，保持 5.3 / 5.3-Flash / Turbo；Turbo `maxTokens` 改 64k，`glmMaxTokens` 缺省按模型取 128k / 64k；proxy 保留 5.2 的线上形状给旧路由兜底。
+
 ## 2026-09-19：catch 变量收紧（useUnknownInCatchVariables，25 条）；noImplicitAny 实测**不是**可清扫项
 
 **现象**：`strictNullChecks` 落地后逐个开关实测——`strictFunctionTypes` / `strictBindCallApply` / `strictPropertyInitialization` / `noImplicitThis` / `alwaysStrict` 全是 **0**（`declare` 字段那一轮顺手清掉了），`--strict` 只剩 **25** 条 `useUnknownInCatchVariables`；而 `--noImplicitAny` 是 **2082** 条。

@@ -6,7 +6,8 @@
  * no Codex `prompt_cache_key` and no Grok `x-grok-conv-id`. Sticky routing
  * is the OpenAI `user` field / Anthropic `metadata.user_id` plus the
  * `x-session-id` header. Anthropic also stamps `cache_control` on the first
- * system text block (ZCode default protocol).
+ * system text block plus a rolling breakpoint on the latest non-system message
+ * (ZCode default protocol, `finalizeLatestNonSystemMessageCacheControl`).
  *
  * DSH prepends a runtime-context snapshot as another leading system every
  * step. That rewrite is parked at the messages suffix so the first system
@@ -138,6 +139,63 @@ function withCacheControl(blocks) {
   ))
 }
 
+const CACHEABLE_BLOCK_TYPES = new Set(['text', 'image', 'tool_result'])
+
+function withoutCacheControl(block) {
+  if (!isPlainObject(block) || block.cache_control === undefined) return block
+  const { cache_control: _dropped, ...rest } = block
+  return rest
+}
+
+function withMessageCacheControl(message) {
+  const content = message.content
+  if (typeof content === 'string') {
+    if (!content) return undefined
+    return [{ type: 'text', text: content, cache_control: { type: 'ephemeral' } }]
+  }
+  if (!Array.isArray(content) || content.length === 0) return undefined
+  const blocks = [...content]
+  for (let index = blocks.length - 1; index >= 0; index--) {
+    const block = blocks[index]
+    if (!isPlainObject(block) || !CACHEABLE_BLOCK_TYPES.has(block.type)) continue
+    blocks[index] = { ...block, cache_control: { type: 'ephemeral' } }
+    return blocks
+  }
+  return undefined
+}
+
+/**
+ * ZCode `finalizeLatestNonSystemMessageCacheControl`
+ * (apps/zcode-cli/packages/core/src/runtime/helpers/provider-request-messages.ts):
+ * exactly one rolling `cache_control` breakpoint, on the latest non-system
+ * message. pi-ai already stamps the last user turn, so the common case is
+ * idempotent; this owns the guarantee for assistant-last bodies and clears
+ * stale non-system breakpoints a replay client may carry. Message breakpoints
+ * only — tool-level breakpoints stay where the client put them, same as ZCode.
+ */
+export function stabilizeGlmAnthropicMessageCache(messages) {
+  if (!Array.isArray(messages) || messages.length === 0) return messages
+  const next = messages.map((message) => {
+    if (!isPlainObject(message) || message.role === 'system') return message
+    if (!Array.isArray(message.content)) return message
+    const content = message.content.map(withoutCacheControl)
+    const changed = content.some((block, index) => block !== message.content[index])
+    return changed ? { ...message, content } : message
+  })
+  let index = -1
+  for (let cursor = next.length - 1; cursor >= 0; cursor--) {
+    if (next[cursor]?.role !== 'system') {
+      index = cursor
+      break
+    }
+  }
+  if (index < 0) return next
+  const content = withMessageCacheControl(next[index])
+  if (content === undefined) return next
+  next[index] = { ...next[index], content }
+  return next
+}
+
 /** Drop Codex/Grok cache fields; pin `user`; freeze the leading system. */
 export function applyGlmCache(payload) {
   const next = { ...payload }
@@ -169,6 +227,9 @@ export function applyGlmAnthropicCache(payload) {
   delete next.prompt_cache_options
   if (sessionId && next.system != null) {
     next.system = stabilizeGlmAnthropicSystem(next.system, sessionId)
+  }
+  if (Array.isArray(next.messages)) {
+    next.messages = stabilizeGlmAnthropicMessageCache(next.messages)
   }
   if (sessionId) {
     const metadata = isPlainObject(next.metadata) ? { ...next.metadata } : {}

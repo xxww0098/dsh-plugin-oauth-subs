@@ -121,7 +121,7 @@ test('buildProviders only emits logged-in families with DSH api ids', () => {
   })
   assert.equal(chat['oauth-glm'].api, HARNESS_ANTHROPIC_API)
   assert.equal(chat['oauth-glm'].baseURL, 'http://127.0.0.1:8318/glm')
-  assert.equal(chat['oauth-glm'].compat, undefined)
+  assert.deepEqual(chat['oauth-glm'].compat, { forceAdaptiveThinking: true, allowEmptySignature: true })
   assert.equal(chat['oauth-kiro'].api, HARNESS_COMPLETIONS_API)
   assert.equal(chat['oauth-kiro'].compat.supportsReasoningEffort, true)
   assert.equal(chat['oauth-kiro'].models.length, KIRO_MODELS.length)
@@ -475,7 +475,7 @@ test('recoverEmptyLoggedInFamilies enables current GLM keys after leftover å…¨å…
   assert.equal(loggedOut, false)
 })
 
-test('GLM catalog is three models with official input types; Codex stays image-capable', () => {
+test('GLM catalog is the plan trio; Codex stays image-capable', () => {
   const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
   const glm = catalog['oauth-glm'].models
   assert.deepEqual(glm.map((model) => model.id), ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
@@ -487,8 +487,14 @@ test('GLM catalog is three models with official input types; Codex stays image-c
     high: 'high',
     max: 'max',
   })
+  // Legacy / not-on-plan ids stay out of the picker: 5.2 + 5.1 auto-route to
+  // 5.3, FlashX is not yet on the plan.
+  assert.equal(glm.find((model) => model.id === 'glm-5.2'), undefined)
+  assert.equal(glm.find((model) => model.id === 'glm-5.3-flashx'), undefined)
+  assert.equal(glm.find((model) => model.id === 'glm-5-turbo').maxTokens, 64_000)
   assert.equal(glm.find((model) => model.id === 'glm-5-turbo').reasoningEfforts, false)
-  assert.equal(catalog['oauth-glm'].compat, undefined)
+  assert.equal(catalog['oauth-glm'].compat?.forceAdaptiveThinking, true)
+  assert.equal(catalog['oauth-glm'].compat?.allowEmptySignature, true)
   assert.equal(catalog['oauth-glm'].compat?.supportsReasoningEffort, undefined)
   assert.equal(catalog['oauth-glm'].compat?.thinkingFormat, undefined)
   assert.equal(glm.find((model) => model.id === 'glm-5.3-flash').name, 'GLM-5.3-Flash')
@@ -548,9 +554,10 @@ test('logged-in GLM 3/3 persist writes oauth-glm and a subsequent get shows it',
   const glm = set.find((row) => row.path[1] === 'oauth-glm')
   assert.equal(glm.value.api, HARNESS_ANTHROPIC_API)
   assert.equal(glm.value.baseURL, 'http://127.0.0.1:8318/glm')
-  assert.equal(glm.value.compat, undefined)
-  assert.equal(glm.value.compat?.thinkingFormat, undefined)
-  assert.equal(glm.value.compat?.supportsReasoningEffort, undefined)
+  assert.equal(glm.value.compat.forceAdaptiveThinking, true)
+  assert.equal(glm.value.compat.allowEmptySignature, true)
+  assert.equal(glm.value.compat.thinkingFormat, undefined)
+  assert.equal(glm.value.compat.supportsReasoningEffort, undefined)
   assert.deepEqual(glm.value.models.map((model) => model.id), ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
   assert.deepEqual(result.routes.find((row) => row.provider === 'oauth-glm').models, ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
   const stored = await peekPiAiProviders(settings)
@@ -622,8 +629,7 @@ test('logged-in GLM + Kiro persist together: anthropic GLM without completions c
   const kiro = stored['oauth-kiro']
   assert.equal(glm.api, HARNESS_ANTHROPIC_API)
   assert.equal(glm.baseURL, 'http://127.0.0.1:8318/glm')
-  assert.equal(glm.compat, undefined)
-  assert.equal(Object.hasOwn(glm, 'compat'), false)
+  assert.deepEqual(glm.compat, { forceAdaptiveThinking: true, allowEmptySignature: true })
   assert.equal(kiro.api, HARNESS_COMPLETIONS_API)
   assert.equal(kiro.compat.supportsReasoningEffort, true)
   assert.equal(kiro.compat.thinkingFormat, 'openai')

@@ -480,7 +480,7 @@ test('toggle glm-5.3 on writes oauth-glm when all current GLM keys were disabled
   const glm = set.find((row) => row.path[1] === 'oauth-glm')
   assert.equal(glm.value.api, HARNESS_ANTHROPIC_API)
   assert.equal(glm.value.baseURL, 'http://127.0.0.1:8318/glm')
-  assert.equal(glm.value.compat, undefined)
+  assert.deepEqual(glm.value.compat, { forceAdaptiveThinking: true, allowEmptySignature: true })
   assert.deepEqual(glm.value.models.map((model) => model.id), ['glm-5.3'])
 })
 
@@ -499,7 +499,7 @@ test('login/sync recovers leftover GLM 全关 and writes the current catalog rou
   const set = ops.at(-1).mutations.filter((row) => row.op === 'set')
   const route = set.find((row) => row.path[1] === 'oauth-glm')
   assert.equal(route.value.api, HARNESS_ANTHROPIC_API)
-  assert.equal(route.value.compat, undefined)
+  assert.equal(route.value.compat.forceAdaptiveThinking, true)
   assert.deepEqual(route.value.models.map((model) => model.id), ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
 })
 

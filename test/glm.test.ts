@@ -1,14 +1,17 @@
 import assert from 'node:assert/strict'
 import { mkdtemp } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { arch as osArch, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import {
   GLM_APP_VERSION,
+  GLM_ANTHROPIC_DIRECT_URLS,
   GLM_ANTHROPIC_VERSION,
   GLM_CLIENT_ID,
   GLM_CLI_INIT_URL,
   GLM_CLI_USER_AGENT,
+  GLM_GATEWAY_ORIGIN,
+  GLM_MODELS,
   GLM_TITLE,
   GLM_USER_AGENT,
   accountFromJwt,
@@ -18,6 +21,8 @@ import {
   pickGlmHumanAccount,
   glmCliInit,
   glmCliProvider,
+  glmAnthropicDirectUrl,
+  glmAnthropicGatewayUrl,
   glmAnthropicUrl,
   glmCodingUrl,
   glmDesktopHeaders,
@@ -29,9 +34,19 @@ import {
   normalizeGlmRegion,
   parseCliInit,
   parseCliPoll,
+  parseGlmExpiresAt,
   unwrapEnvelope,
 } from '../lib/oauth/glm/index.js'
-import { mapGlmChatUsage, normalizeGlmAnthropicBody, normalizeGlmChatBody, resetGlmSystemPins } from '../lib/oauth/glm/request.js'
+import {
+  applyGlmAnthropicThinking,
+  glmMaxTokens,
+  mapGlmChatUsage,
+  normalizeGlmAnthropicBody,
+  normalizeGlmChatBody,
+  resetGlmSystemPins,
+} from '../lib/oauth/glm/request.js'
+import { stabilizeGlmAnthropicMessageCache } from '../lib/oauth/glm/cache.js'
+import { GlmCliFlowManager, glmLoginFailureMessage } from '../lib/oauth/glm/cli-flow.js'
 import { fetchGlmQuota, mergeGlmToolUsage, parseGlmQuota } from '../lib/oauth/quota.js'
 import { buildProviders } from '../lib/oauth/models.js'
 import { AuthController } from '../lib/oauth/controller.js'
@@ -228,6 +243,109 @@ test('normalizeGlmAnthropicBody does not force Turbo thinking', () => {
   assert.equal(idle.max_tokens, 1024)
 })
 
+test('normalizeGlmAnthropicBody sends the ZCode catalog thinking shape', () => {
+  resetGlmSystemPins()
+  const low = normalizeGlmAnthropicBody({
+    model: 'glm-5.3',
+    max_tokens: 16,
+    thinking: { type: 'adaptive', display: 'summarized' },
+    output_config: { effort: 'low' },
+    messages: [{ role: 'user', content: 'hi' }],
+  })
+  assert.deepEqual(low.thinking, { type: 'enabled', clear_thinking: false })
+  assert.deepEqual(low.output_config, { effort: 'low' })
+  // Anthropic-only knobs ZCode never sends for GLM.
+  assert.equal(low.thinking.budget_tokens, undefined)
+  assert.equal(low.thinking.display, undefined)
+  assert.equal(low.thinking.effort, undefined)
+
+  const max = normalizeGlmAnthropicBody({
+    model: 'glm-5.3-flash',
+    max_tokens: 16,
+    thinking: { type: 'enabled', budget_tokens: 16384, display: 'summarized' },
+    output_config: { effort: 'max' },
+    messages: [{ role: 'user', content: 'hi' }],
+  })
+  assert.deepEqual(max.thinking, { type: 'enabled', clear_thinking: false })
+  assert.deepEqual(max.output_config, { effort: 'max' })
+
+  const bare = normalizeGlmAnthropicBody({
+    model: 'glm-5.3',
+    max_tokens: 16,
+    messages: [{ role: 'user', content: 'hi' }],
+  })
+  assert.deepEqual(bare.thinking, { type: 'enabled', clear_thinking: false })
+  assert.equal(bare.output_config, undefined)
+  assert.deepEqual(bare.messages[0].content, [
+    { type: 'text', text: 'hi', cache_control: { type: 'ephemeral' } },
+  ])
+})
+
+test('GLM-5.2 keeps the official disabled switch; Turbo and other ids stay conservative', () => {
+  const off = applyGlmAnthropicThinking({
+    model: 'glm-5.2',
+    thinking: { type: 'disabled' },
+    output_config: { effort: 'high' },
+  })
+  assert.deepEqual(off.thinking, { type: 'disabled' })
+  assert.equal(off.output_config, undefined)
+
+  const on = applyGlmAnthropicThinking({
+    model: 'glm-5.2',
+    thinking: { type: 'adaptive' },
+    output_config: { effort: 'max' },
+  })
+  assert.deepEqual(on.thinking, { type: 'enabled', clear_thinking: false })
+  assert.deepEqual(on.output_config, { effort: 'max' })
+
+  const turbo = applyGlmAnthropicThinking({ model: 'glm-5-turbo', thinking: { type: 'enabled' } })
+  assert.deepEqual(turbo.thinking, { type: 'enabled', clear_thinking: false })
+  assert.equal(turbo.output_config, undefined)
+
+  const turboOff = applyGlmAnthropicThinking({ model: 'glm-5-turbo', thinking: { type: 'disabled' } })
+  assert.deepEqual(turboOff.thinking, { type: 'disabled' })
+
+  const unknown = applyGlmAnthropicThinking({
+    model: 'glm-4.7',
+    thinking: { type: 'enabled', budget_tokens: 4096 },
+  })
+  assert.deepEqual(unknown.thinking, { type: 'enabled', budget_tokens: 4096, clear_thinking: false })
+})
+
+test('glmMaxTokens uses the ZCode catalog output caps per model', () => {
+  assert.deepEqual(GLM_MODELS.map((model) => model.id), ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
+  assert.equal(glmMaxTokens('glm-5.3'), 128_000)
+  assert.equal(glmMaxTokens('glm-5.3-flash'), 128_000)
+  assert.equal(glmMaxTokens('glm-5.2'), 128_000)
+  assert.equal(glmMaxTokens('glm-5-turbo'), 64_000)
+  const turbo = normalizeGlmAnthropicBody({ model: 'glm-5-turbo', messages: [{ role: 'user', content: 'hi' }] })
+  assert.equal(turbo.max_tokens, 64_000)
+})
+
+test('stabilizeGlmAnthropicMessageCache rolls one breakpoint to the latest non-system message', () => {
+  const rolled = stabilizeGlmAnthropicMessageCache([
+    { role: 'user', content: [{ type: 'text', text: 'one', cache_control: { type: 'ephemeral' } }] },
+    { role: 'assistant', content: 'ok' },
+    { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'rows' }] },
+  ])
+  assert.equal(rolled[0].content[0].cache_control, undefined)
+  assert.deepEqual(rolled[2].content[0].cache_control, { type: 'ephemeral' })
+
+  const stringContent = stabilizeGlmAnthropicMessageCache([{ role: 'user', content: 'plain string' }])
+  assert.deepEqual(stringContent[0].content, [
+    { type: 'text', text: 'plain string', cache_control: { type: 'ephemeral' } },
+  ])
+
+  const assistantLast = stabilizeGlmAnthropicMessageCache([
+    { role: 'user', content: [{ type: 'text', text: 'one' }] },
+    { role: 'assistant', content: [{ type: 'text', text: 'tail' }] },
+  ])
+  assert.deepEqual(assistantLast[1].content[0].cache_control, { type: 'ephemeral' })
+
+  const noNonSystem = stabilizeGlmAnthropicMessageCache([{ role: 'system', content: 'sys' }])
+  assert.deepEqual(noNonSystem, [{ role: 'system', content: 'sys' }])
+})
+
 test('GLM Completions leftover maps cache_read aliases and asks for stream usage', () => {
   const streamed = normalizeGlmChatBody({
     model: 'glm-5.3',
@@ -278,8 +396,15 @@ test('normalizeGlmRegion maps ZCode ids to zai / bigmodel', () => {
   assert.equal(normalizeGlmRegion('cn'), 'bigmodel')
   assert.equal(glmCliProvider('zai'), 'zai')
   assert.equal(glmCliProvider('bigmodel'), 'bigmodel')
-  assert.equal(glmAnthropicUrl('zai'), 'https://api.z.ai/api/anthropic/v1/messages')
-  assert.equal(glmAnthropicUrl('bigmodel'), 'https://open.bigmodel.cn/api/anthropic/v1/messages')
+  // Official hop is the ZCode Coding Plan gateway, not the model endpoint.
+  assert.equal(glmAnthropicUrl('zai'), 'https://zcode.z.ai/api/v1/ultra-zai/anthropic/v1/messages')
+  assert.equal(glmAnthropicUrl('bigmodel'), 'https://zcode.z.ai/api/v1/ultra/anthropic/v1/messages')
+  assert.equal(glmAnthropicGatewayUrl('zai'), glmAnthropicUrl('zai'))
+  assert.equal(glmAnthropicGatewayUrl('bigmodel'), glmAnthropicUrl('bigmodel'))
+  assert.equal(GLM_GATEWAY_ORIGIN, 'https://zcode.z.ai')
+  assert.equal(glmAnthropicDirectUrl('zai'), 'https://api.z.ai/api/anthropic/v1/messages')
+  assert.equal(glmAnthropicDirectUrl('bigmodel'), 'https://open.bigmodel.cn/api/anthropic/v1/messages')
+  assert.equal(GLM_ANTHROPIC_DIRECT_URLS.zai, glmAnthropicDirectUrl('zai'))
 })
 
 test('parseCliInit reads flow_id and authorize_url', () => {
@@ -313,18 +438,148 @@ test('parseCliPoll stays pending until ready with zai access_token', () => {
   assert.equal(ready.email, 'dev@z.ai')
 })
 
-test('parseCliPoll reads BigModel zcode access_token', () => {
+test('parseCliPoll reads the provider token for the region, never the zcode JWT', () => {
+  // Official readers only take data[providerId].access_token
+  // (cli-oauth.ts parseReadyData / webAuthService) — the zcode JWT is
+  // Start-Plan only, and bigmodel.cn answers 401 for it.
   const ready = parseCliPoll({
     code: 0,
     data: {
       status: 'ready',
       token: 'bm-jwt',
-      zcode: { access_token: 'bm-oauth' },
+      bigmodel: { access_token: 'bm-oauth' },
       user: { email: 'dev@bigmodel.cn' },
     },
-  })
+  }, 'bigmodel')
   assert.equal(ready.oauthAccess, 'bm-oauth')
   assert.equal(ready.zcodeJwt, 'bm-jwt')
+
+  const zai = parseCliPoll({
+    code: 0,
+    data: {
+      status: 'ready',
+      token: 'z-jwt',
+      zai: { access_token: 'zai-oauth' },
+      user: { email: 'dev@z.ai' },
+    },
+  }, 'zai')
+  assert.equal(zai.oauthAccess, 'zai-oauth')
+
+  // The legacy `zcode` spelling must not shadow the provider token.
+  // A ready poll without data.bigmodel.access_token is unusable; the legacy
+  // zcode spelling must not stand in for the provider token.
+  assert.throws(
+    () => parseCliPoll({
+      code: 0,
+      data: {
+        status: 'ready',
+        token: 'bm-jwt',
+        zcode: { access_token: 'bm-jwt-copy' },
+        user: { email: 'dev@bigmodel.cn' },
+      },
+    }, 'bigmodel'),
+    /without access token/,
+  )
+})
+
+test('parseCliInit treats expires_at as epoch seconds and floors the poll interval', () => {
+  const seconds = Math.floor(Date.now() / 1000) + 900
+  const started = parseCliInit({
+    code: 0,
+    data: {
+      flow_id: 'flow-sec',
+      authorize_url: 'https://chat.z.ai/api/oauth/authorize?state=s1',
+      poll_interval_sec: 0.2,
+      expires_at: seconds,
+    },
+  })
+  assert.equal(started.expiresAt, seconds * 1000)
+  assert.equal(started.intervalMs, 1000)
+  assert.equal(parseGlmExpiresAt(seconds), seconds * 1000)
+  assert.throws(
+    () => parseCliInit({
+      code: 0,
+      data: { flow_id: 'f', authorize_url: 'http://chat.z.ai/authorize', poll_interval_sec: 2, expires_at: seconds },
+    }),
+    /non-https/,
+  )
+})
+
+test('parseCliPoll surfaces failed / unknown as terminal states', () => {
+  const failed = parseCliPoll({ code: 0, data: { status: 'failed', msg: 'user denied' } })
+  assert.equal(failed.ready, false)
+  assert.equal(failed.failed, true)
+  assert.equal(failed.message, 'user denied')
+  assert.equal(parseCliPoll({ code: 0, data: { status: 'expired' } }).unknown, true)
+  assert.equal(parseCliPoll({ code: 0, data: { status: 'pending' } }).unknown, false)
+})
+
+test('GlmCliFlowManager fails immediately on a failed poll and survives a transient 5xx', async () => {
+  const initFor = (flowId, state) => json({
+    code: 0,
+    data: {
+      flow_id: flowId,
+      authorize_url: `https://chat.z.ai/api/oauth/authorize?state=${state}`,
+      poll_interval_sec: 1,
+      expires_at: Math.floor(Date.now() / 1000) + 300,
+    },
+  })
+  // BigModel skips the biz key mint, so the poll is the only network hop this
+  // mock has to serve besides init.
+  const attempts = []
+  const fetchFn = async (url) => {
+    const href = String(url)
+    if (href.includes('/oauth/cli/init')) return initFor('flow-live', 's1')
+    attempts.push(href)
+    if (attempts.length === 1) return json({ code: 0, msg: 'gateway hiccup' }, { status: 503 })
+    return json({
+      code: 0,
+      data: {
+        status: 'ready',
+        token: 'bm-jwt',
+        bigmodel: { access_token: 'bm-oauth' },
+        user: { email: 'dev@bigmodel.cn' },
+      },
+    })
+  }
+  const flows = new GlmCliFlowManager()
+  const started = await flows.start('glm', { region: 'bigmodel', fetchFn })
+  assert.equal(started.authorizeUrl.includes('chat.z.ai'), true)
+  const session = await started.waitToken()
+  assert.equal(session.accessToken, 'bm-oauth')
+  assert.equal(session.region, 'bigmodel')
+  assert.equal(attempts.length, 2)
+
+  const failingFetch = async (url) => (String(url).includes('/oauth/cli/init')
+    ? initFor('flow-fail', 's2')
+    : json({ code: 0, data: { status: 'failed', msg: 'user denied' } }))
+  const failing = new GlmCliFlowManager()
+  const startedFail = await failing.start('glm', { region: 'bigmodel', fetchFn: failingFetch })
+  await assert.rejects(startedFail.waitToken(), /glm authorization failed: user denied/)
+
+  // Upstream incident: the server kills the flow while exchanging the browser
+  // code (zai-org/feedback#718) — surface the incident and the key fallback.
+  const invalidFlowFetch = async (url) => (String(url).includes('/oauth/cli/init')
+    ? initFor('flow-3004', 's3')
+    : json({ code: 3004, msg: 'invalid_flow' }))
+  const invalidFlow = new GlmCliFlowManager()
+  const startedInvalid = await invalidFlow.start('glm', { region: 'bigmodel', fetchFn: invalidFlowFetch })
+  await assert.rejects(startedInvalid.waitToken(), /invalid_flow.*feedback#718.*Coding Plan API key/s)
+})
+
+test('glmLoginFailureMessage maps upstream OAuth incidents to the key fallback', () => {
+  assert.match(
+    glmLoginFailureMessage(new Error('glm cli poll failed: invalid_flow')),
+    /feedback#718/,
+  )
+  assert.match(
+    glmLoginFailureMessage(new Error('glm cli poll failed (HTTP 200): {"code":2007,"msg":"http error"}')),
+    /feedback#523/,
+  )
+  assert.equal(
+    glmLoginFailureMessage(new Error('glm authorization failed: user denied')),
+    'glm authorization failed: user denied',
+  )
 })
 
 test('glmSession stores a durable never-expiring key', () => {
@@ -345,8 +600,17 @@ function assertZcodeDesktopFingerprint(headers) {
   assert.equal(headers['X-ZCode-Agent'], 'glm')
   assert.equal(headers['HTTP-Referer'], 'https://zcode.z.ai')
   assert.equal(headers.referer, 'https://zcode.z.ai')
-  assert.equal(headers['X-Title'], 'Z Code')
+  assert.equal(headers['X-Title'], 'Z Code@electron')
   assert.equal(headers['X-Title'], GLM_TITLE)
+  // buildCliZCodeSourceHeaders + createRuntimePlatformHeaders.
+  assert.equal(headers['X-Release-Channel'], 'production')
+  assert.equal(typeof headers['X-Client-Language'], 'string')
+  assert.equal(typeof headers['X-Client-Timezone'], 'string')
+  assert.equal(headers['X-Platform'], `${process.platform}-${osArch()}`)
+  assert.match(headers['X-Os-Category'], /^(macos|windows|linux)$/)
+  assert.equal(typeof headers['X-Os-Version'], 'string')
+  // runner-attribution.ts: main / subagent / other.
+  assert.equal(headers['x-zcode-session-type'], 'main')
   assert.match(headers['x-zcode-trace-id'], /^[0-9a-f]+$/)
   assert.match(headers['x-request-id'], /^[0-9a-f]+$/)
   assert.match(headers['x-query-id'], /^[0-9a-f]+$/)
@@ -441,7 +705,7 @@ test('completeGlmCli mints id.secret through business login + copy', async () =>
   }
 })
 
-test('completeGlmCli for BigModel uses poll JWT and skips biz mint', async () => {
+test('completeGlmCli for BigModel uses the business token and skips biz mint', async () => {
   const fetchFn = async (url) => {
     throw new Error(`unexpected ${url}`)
   }
@@ -449,9 +713,19 @@ test('completeGlmCli for BigModel uses poll JWT and skips biz mint', async () =>
     { ready: true, oauthAccess: 'oauth', zcodeJwt: 'jwt', email: 'cn@bigmodel.cn' },
     { fetchFn, region: 'bigmodel' },
   )
-  assert.equal(session.accessToken, 'jwt')
+  assert.equal(session.accessToken, 'oauth')
   assert.equal(session.region, 'bigmodel')
   assert.equal(session.account, 'cn@bigmodel.cn')
+  assert.equal(session.zcodeJwt, 'jwt')
+
+  // A ready poll without the provider token must fail: the zcode JWT cannot chat.
+  await assert.rejects(
+    completeGlmCli(
+      { ready: true, oauthAccess: undefined, zcodeJwt: 'jwt', email: 'cn@bigmodel.cn' },
+      { fetchFn, region: 'bigmodel' },
+    ),
+    /without a bigmodel access token/,
+  )
 })
 
 test('glmCliInit posts provider id bigmodel for BigModel', async () => {
@@ -568,7 +842,9 @@ test('completeGlmCli for BigModel without poll email reads JWT email', async () 
     { ready: true, oauthAccess: 'oauth', zcodeJwt: token, accountId: 'zcode' },
     { fetchFn: async (url) => { throw new Error(`unexpected ${url}`) }, region: 'bigmodel' },
   )
-  assert.equal(session.accessToken, token)
+  // Bearer is the BigModel business token; the JWT still supplies identity.
+  assert.equal(session.accessToken, 'oauth')
+  assert.equal(session.zcodeJwt, token)
   assert.equal(session.account, 'cn@bigmodel.cn')
   assert.equal(isGlmAppAccount(session.account), false)
 })
@@ -766,6 +1042,16 @@ test('replaceAccountId moves the vault key without dropping the session', async 
   assert.equal(roster[0].account, 'moved@bigmodel.cn')
 })
 
+test('fetchGlmQuota throws the vendor business error instead of an empty ready quota', async () => {
+  await assert.rejects(
+    fetchGlmQuota(
+      { accessToken: 'key', region: 'bigmodel' },
+      async () => json({ code: 500, msg: '当前用户不存在coding plan', success: false }),
+    ),
+    /glm quota failed: 当前用户不存在coding plan/,
+  )
+})
+
 test('fetchGlmQuota asks tool-usage when MCP is missing from quota/limit', async () => {
   const calls = []
   const parsed = await fetchGlmQuota(
@@ -814,6 +1100,11 @@ test('catalog includes GLM as Anthropic Messages (ZCode default)', () => {
   assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.3-flash').name, 'GLM-5.3-Flash')
   assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5-turbo').name, 'GLM-5-Turbo')
   assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5-turbo').contextWindow, 200_000)
+  assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5-turbo').maxTokens, 64_000)
+  // 5.2 / FlashX are not plan rows: 5.2 auto-routes to 5.3, FlashX is not yet
+  // on the plan.
+  assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.2'), undefined)
+  assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.3-flashx'), undefined)
   assert.deepEqual(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.3').reasoningEfforts, {
     low: 'low',
     high: 'high',
@@ -827,10 +1118,14 @@ test('catalog includes GLM as Anthropic Messages (ZCode default)', () => {
   assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.3').reasoningEfforts.off, undefined)
   assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.3').reasoningEfforts.medium, undefined)
   assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5-turbo').reasoningEfforts, false)
-  assert.equal(providers['oauth-glm'].compat, undefined)
+  // Anthropic-only compat: adaptive effort dispatch + unsigned thinking replay.
+  // Completions-only switches must never appear on this route.
+  assert.deepEqual(providers['oauth-glm'].compat, {
+    forceAdaptiveThinking: true,
+    allowEmptySignature: true,
+  })
   assert.equal(providers['oauth-glm'].compat?.supportsReasoningEffort, undefined)
   assert.equal(providers['oauth-glm'].compat?.thinkingFormat, undefined)
-  assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.2'), undefined)
 })
 
 test('Z.ai and BigModel accounts can coexist in the glm vault', async () => {
@@ -904,6 +1199,10 @@ function jwt(payload) {
   return `${header}.${body}.sig`
 }
 
-function json(body) {
-  return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
+function json(body, init = {}) {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+    ...init,
+  })
 }

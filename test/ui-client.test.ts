@@ -50,7 +50,11 @@ test('Settings GLM card hides opaque ZCode user.id in identityOf', async () => {
   const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
   assert.match(src, /function isGlmOpaqueIdentity/)
   assert.match(src, /family === 'glm'\) return account && !isGlmOpaqueIdentity\(account\) \? account : ''/)
-  assert.match(src, /\[A-Za-z0-9\]\{2,24\}/)
+  // Unambiguous ids are hidden (digits / UUID / long hex); a letters+digits
+  // username like xxww0098 is a real display name and must NOT be filtered.
+  assert.match(src, /\^\\d\+\$/)
+  assert.match(src, /\[0-9a-f\]\{16,\}/)
+  assert.equal(/\[A-Za-z0-9\]\{2,24\}/.test(src), false)
 })
 
 test('Settings client paints the GLM boost pill and hint only on the GLM card', async () => {

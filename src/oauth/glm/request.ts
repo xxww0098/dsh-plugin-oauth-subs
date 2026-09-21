@@ -29,6 +29,58 @@ export function glmForcedThinkingModel(model) {
   return id === 'glm-5.3' || id.startsWith('glm-5.3-')
 }
 
+/**
+ * Official ZCode catalog map for GLM ids on `apiTypeMatch: anthropic-messages`
+ * (config/provider/zcode-builtin.json modelApiRules):
+ *
+ *   5.3 / Flash  { thinking: { type: enabled }, output_config: { effort } }
+ *   5.2          disabled -> { thinking: { type: disabled } }
+ *                otherwise  thinking enabled + output_config.effort
+ *   Turbo        { thinking: { type: enabled | disabled } }, no effort
+ *
+ * ZCode's client sends neither Anthropic `budget_tokens` nor `display` for
+ * GLM, and it does not send `clear_thinking` at all: docs.z.ai/guides/
+ * capabilities/thinking-mode says Preserved Thinking is already the default on
+ * the Coding Plan endpoint and `clear_thinking: false` is the standard-API
+ * opt-in. We keep the opt-in as the live finding in docs/error.md
+ * 2026-08-30 GLM 思考链.
+ */
+const GLM_ANTHROPIC_EFFORTS = new Set(['low', 'high', 'max'])
+
+/**
+ * GLM id family driving the official thinking map. `glm-5.2` is no longer a
+ * picker row (the plan auto-routes legacy ids to 5.3 / 5.3-Flash), but a
+ * leftover pinned route can still send it and ZCode's catalog still carries
+ * its map — so the request shape stays source-correct here; the backend
+ * decides the routing.
+ */
+export function glmAnthropicFamily(model) {
+  const id = typeof model === 'string' ? model.trim().toLowerCase() : ''
+  if (!id) return undefined
+  if (id === 'glm-5.3' || id.startsWith('glm-5.3-')) return 'glm-5.3'
+  if (id === 'glm-5.2' || id.startsWith('glm-5.2-')) return 'glm-5.2'
+  if (id === 'glm-5-turbo' || id.startsWith('glm-5-turbo-')) return 'glm-5-turbo'
+  return undefined
+}
+
+/**
+ * Picker level carried to the hop. pi-ai's adaptive path writes
+ * `output_config.effort`; other clients may use `thinking.effort` or a bare
+ * `reasoning_effort`. `enabled` is Turbo's on-switch, not an effort.
+ */
+export function glmAnthropicEffort(payload) {
+  const raw = payload?.output_config?.effort
+    ?? payload?.thinking?.effort
+    ?? payload?.reasoning_effort
+  const value = typeof raw === 'string' ? raw.trim().toLowerCase() : ''
+  return GLM_ANTHROPIC_EFFORTS.has(value) ? value : undefined
+}
+
+/** Coding Plan output cap per model (ZCode modelRules maxOutputTokens). */
+export function glmMaxTokens(model) {
+  return glmAnthropicFamily(model) === 'glm-5-turbo' ? 64_000 : GLM_DEFAULT_MAX_TOKENS
+}
+
 function withReasoningContent(message) {
   if (message.role !== 'assistant') return message
   if (message.reasoning_content != null) return message
@@ -46,6 +98,34 @@ function applyGlmThinking(payload) {
     return { ...payload, thinking: { ...current, clear_thinking: false } }
   }
   return payload
+}
+
+/**
+ * Anthropic hop thinking: official GLM shape, not the Completions shape.
+ * 5.3 / Flash are forced on; 5.2 keeps `disabled`; Turbo and unknown ids keep
+ * the legacy conservative rewrite (never force thinking on).
+ */
+export function applyGlmAnthropicThinking(payload) {
+  const family = glmAnthropicFamily(payload.model)
+  const current = isPlainObject(payload.thinking) ? payload.thinking : undefined
+  if (family !== 'glm-5.3' && family !== 'glm-5.2') {
+    if (current && current.type !== 'disabled') {
+      return { ...payload, thinking: { ...current, clear_thinking: false } }
+    }
+    return payload
+  }
+  const effort = glmAnthropicEffort(payload)
+  const next = { ...payload }
+  delete next.thinking
+  delete next.reasoning_effort
+  delete next.output_config
+  if (family === 'glm-5.2' && current?.type === 'disabled') {
+    next.thinking = { type: 'disabled' }
+    return next
+  }
+  next.thinking = { type: 'enabled', clear_thinking: false }
+  if (effort !== undefined) next.output_config = { effort }
+  return next
 }
 
 export function normalizeGlmChatBody(payload) {
@@ -99,7 +179,7 @@ export function normalizeGlmAnthropicBody(payload) {
   if (!isPlainObject(payload)) return payload
   const next = { ...payload }
   if (typeof next.max_tokens !== 'number' || !Number.isFinite(next.max_tokens) || next.max_tokens <= 0) {
-    next.max_tokens = GLM_DEFAULT_MAX_TOKENS
+    next.max_tokens = glmMaxTokens(next.model)
   }
-  return applyGlmThinking(applyGlmAnthropicCache(next).payload)
+  return applyGlmAnthropicThinking(applyGlmAnthropicCache(next).payload)
 }

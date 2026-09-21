@@ -13,7 +13,7 @@ import { applyCodexCache, codexCacheHeaders } from './codex/cache.js'
 import { GROK_API_URL, GROK_MODELS, grokAffinityHeaders, grokUpstreamHeaders } from './grok/index.js'
 import { applyGrokCache } from './grok/cache.js'
 import { normalizeGrokResponsesBody } from './grok/request.js'
-import { GLM_MODELS, glmAnthropicHeaders, glmAnthropicUrl, glmCodingUrl, glmUpstreamHeaders } from './glm/index.js'
+import { GLM_MODELS, glmAnthropicDirectUrl, glmAnthropicHeaders, glmAnthropicUrl, glmCodingUrl, glmUpstreamHeaders } from './glm/index.js'
 import { glmCacheSessionId } from './glm/cache.js'
 import { mapGlmChatUsage, normalizeGlmAnthropicBody, normalizeGlmChatBody } from './glm/request.js'
 import { kiroCatalogModels } from './kiro/catalog.js'
@@ -115,6 +115,27 @@ class UnauthorizedUpstream extends Error {
     this.payload = payload
   }
 }
+
+/**
+ * The Coding Plan gateway (zcode.z.ai) answered before any output. A
+ * coding-plan bearer the model endpoint still accepts can be refused there,
+ * so `fallbackUrl` reroutes the request to the direct upstream instead of
+ * surfacing the gateway error.
+ */
+class GatewayUpstream extends Error {
+  declare status: number
+  declare payload: any
+
+  constructor(status, payload) {
+    super(`upstream gateway returned ${status}`)
+    this.name = 'GatewayUpstream'
+    this.status = status
+    this.payload = payload
+  }
+}
+
+/** Gateway answers that mean "not this hop", not "bad request body". */
+const GATEWAY_FALLBACK_STATUSES = new Set([401, 403, 404])
 
 /** Upstream accepted the request but stopped sending bytes. */
 class UpstreamIdleError extends Error {
@@ -518,7 +539,11 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
       try {
         const session = await tokens.glm.session()
         await forward(request, response, {
+          // Official Coding Plan hop: the endpoint rewritten to the ZCode
+          // gateway (official-coding-plan-gateway.ts). Direct endpoint stays as
+          // the one-shot fallback when the gateway refuses the bearer.
           url: glmAnthropicUrl(session.region),
+          fallbackUrl: glmAnthropicDirectUrl(session.region),
           session,
           tokens: tokens.glm,
           headersOf: glmAnthropicHeaders,
@@ -863,7 +888,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestB
   }
 }
 
-async function forward(request, response, { url, session, tokens, headersOf, fetchFn, family, wire = undefined, maxRequestBodyBytes, upstreamIdleTimeoutMs, signal }: any) {
+async function forward(request, response, { url, fallbackUrl = undefined, session, tokens, headersOf, fetchFn, family, wire = undefined, maxRequestBodyBytes, upstreamIdleTimeoutMs, signal }: any) {
   const raw = await readBody(request, maxRequestBodyBytes)
   const { payload, cacheSessionId, stream, routingHint, grokModel, copilotVision, copilotInitiator } = rewriteUpstreamBody(raw, family, wire)
   const body = Buffer.from(JSON.stringify(payload))
@@ -885,6 +910,8 @@ async function forward(request, response, { url, session, tokens, headersOf, fet
   let lastFailure
   let codexTurnState
   let refreshed = false
+  // One-shot reroute to the direct endpoint when the gateway refuses this hop.
+  let fallbackPending = typeof fallbackUrl === 'string' && fallbackUrl.length > 0 && fallbackUrl !== url
   for (let attempt = 0; attempt < STREAM_ATTEMPTS; attempt++) {
     if (attempt > 0) {
       await delay(RETRY_BACKOFF_MS[attempt - 1], undefined, { signal })
@@ -900,10 +927,34 @@ async function forward(request, response, { url, session, tokens, headersOf, fet
       ...(family === 'codex' && codexTurnState ? { 'x-codex-turn-state': codexTurnState } : {}),
     }
     try {
-      return await attemptUpstream(response, { url, headers, body, stream, fetchFn, family, wire, upstreamIdleTimeoutMs, signal })
+      return await attemptUpstream(response, {
+        url,
+        headers,
+        body,
+        stream,
+        fetchFn,
+        family,
+        wire,
+        upstreamIdleTimeoutMs,
+        signal,
+        fallbackStatuses: fallbackPending ? GATEWAY_FALLBACK_STATUSES : undefined,
+      })
     } catch (error) {
       if (signal.aborted || response.headersSent) throw error
+      if (fallbackPending && error instanceof GatewayUpstream) {
+        fallbackPending = false
+        url = fallbackUrl
+        attempt -= 1
+        console.error(`[oauth-subs] ${family} gateway ${error.status}; falling back to the direct endpoint`)
+        continue
+      }
       if (error instanceof UnauthorizedUpstream) {
+        if (fallbackPending) {
+          fallbackPending = false
+          url = fallbackUrl
+          attempt -= 1
+          continue
+        }
         // One forced refresh per request — the same shape CLIProxyAPI runs
         // before falling back. No usable account or a failed refresh forwards
         // the upstream's own 401 body unchanged.
@@ -959,7 +1010,7 @@ function completionsUsageMapper(family, wire) {
  * `response.created` and nothing else — can be retried without the client ever
  * seeing a truncated stream.
  */
-async function attemptUpstream(response, { url, headers, body, stream, fetchFn, family, wire, upstreamIdleTimeoutMs, signal }) {
+async function attemptUpstream(response, { url, headers, body, stream, fetchFn, family, wire, upstreamIdleTimeoutMs, signal, fallbackStatuses }: any) {
   let upstream
   try {
     upstream = await fetchFn(url, { method: 'POST', headers, body, signal })
@@ -971,6 +1022,7 @@ async function attemptUpstream(response, { url, headers, body, stream, fetchFn, 
   if (upstream.status >= 400) {
     const parsed = upstreamErrorPayload(await upstream.text(), family, upstream.status)
     if (upstream.status === 401) throw new UnauthorizedUpstream(parsed)
+    if (fallbackStatuses?.has(upstream.status)) throw new GatewayUpstream(upstream.status, parsed)
     sendJson(response, upstream.status, parsed)
     return
   }

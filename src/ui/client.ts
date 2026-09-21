@@ -828,8 +828,12 @@ window.__ModuleLoader__.load({
       if (isGlmAppIdentity(raw)) return true
       if (raw.includes('@')) return false
       if (/^[+]?[\d\s().-]+$/.test(raw) && /[+\s().-]/.test(raw)) return false
+      // Only unambiguous ids are hidden: pure digits, UUID, long hex. A
+      // letters+digits handle (xxww0098 / fwfeibn6) is a real username — the
+      // backend already vetted session.account, so don't drop it here.
       if (/^\d+$/.test(raw)) return true
-      return /^[A-Za-z0-9]{2,24}$/.test(raw) && /[A-Za-z]/.test(raw) && /\d/.test(raw)
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw)) return true
+      return /^[0-9a-f]{16,}$/i.test(raw)
     }
 
     function isCursorOpaqueIdentity(value) {
