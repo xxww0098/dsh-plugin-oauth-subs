@@ -2,6 +2,12 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-21：GLM anthropic-messages 路由 401「API 密钥无效」= 代理只认 Bearer，不认 Anthropic SDK 的 x-api-key
+
+**现象**：oauth-glm 任一模型一调用即「本轮运行失败 · API 密钥无效」（AUTH），换模型也一样；上游 key 直连网关 / 直连 / monitor 全部 200。
+**根因**：`createProxy.authorized` 只读 `Authorization: Bearer`；llm-pi-ai 的 `anthropic-messages` 走 Anthropic SDK，api-key 凭据发的是 `x-api-key`（`authToken` 只给 `sk-ant-oat*`），代理 401 `{"error":"unauthorized"}`，hop 根本没跑。
+**修复**：`authorized` 同时接受 `x-api-key` 与 Bearer 两种拼写（同一 proxy key）；`test/proxy.test.ts` 补 x-api-key 放行 + 错 key 仍 401 回归。
+
 ## 2026-09-21：GLM 已登录却「当前用户不存在coding plan」= 存了 config.json 的旧 key，不是 credentials.json 的 provisioned key
 
 **现象**：GLM 卡已登录（中国 / 150%），额度显示「额度读取失败 · glm quota failed: 当前用户不存在coding plan」，对话也 429「套餐已到期」——但用户是 Max。

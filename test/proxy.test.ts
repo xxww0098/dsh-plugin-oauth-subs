@@ -72,6 +72,46 @@ test('proxy requires the local bearer and forwards Codex Responses', async () =>
   }
 })
 
+test('proxy accepts the Anthropic SDK x-api-key spelling of the proxy key', async () => {
+  resetGlmSystemPins()
+  const seen = []
+  const fetchFn = async (url, init) => {
+    seen.push({ url: String(url), headers: init.headers })
+    return new Response('{"id":"msg"}', { status: 200, headers: { 'content-type': 'application/json' } })
+  }
+  const proxy = createProxy({
+    port: 0,
+    apiKey: 'secret-key',
+    fetchFn,
+    tokens: {
+      glm: { session: async () => ({ accessToken: 'id.secret', region: 'zai' }) },
+    },
+  })
+  const server = await proxy.listen()
+  const { port } = server.address()
+  try {
+    // The Anthropic SDK authenticates with x-api-key, not Authorization —
+    // llm-pi-ai anthropic-messages routes arrive exactly like this.
+    const ok = await fetch(`http://127.0.0.1:${port}/glm/v1/messages`, {
+      method: 'POST',
+      headers: { 'x-api-key': 'secret-key', 'content-type': 'application/json', 'anthropic-version': '2023-06-01' },
+      body: '{"model":"glm-5.3","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}',
+    })
+    assert.equal(ok.status, 200)
+    assert.equal(seen[0].headers.authorization, 'Bearer id.secret')
+
+    const denied = await fetch(`http://127.0.0.1:${port}/glm/v1/messages`, {
+      method: 'POST',
+      headers: { 'x-api-key': 'wrong-key', 'content-type': 'application/json' },
+      body: '{"model":"glm-5.3","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}',
+    })
+    assert.equal(denied.status, 401)
+  } finally {
+    await proxy.close()
+    resetGlmSystemPins()
+  }
+})
+
 test('proxy ends an upstream response with no body instead of hanging', async () => {
   const proxy = createProxy({
     port: 0,
