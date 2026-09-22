@@ -139,8 +139,9 @@ test('buildProviders only emits logged-in families with DSH api ids', () => {
   assert.equal(chat['oauth-cursor'].api, HARNESS_COMPLETIONS_API)
   assert.equal(chat['oauth-cursor'].baseURL, 'http://127.0.0.1:8318/cursor')
   assert.equal(chat['oauth-cursor'].baseURL.endsWith('/cursor/v1'), false)
-  assert.equal(Object.hasOwn(chat['oauth-cursor'].models.find((model) => model.id === 'composer-2.5').reasoningEfforts, 'none'), false)
-  assert.equal(chat['oauth-cursor'].models.find((model) => model.id === 'composer-2.5').reasoningEfforts.off, 'none')
+  // composer-2.5 takes no effort parameter upstream — no picker efforts.
+  assert.equal(chat['oauth-cursor'].models.find((model) => model.id === 'composer-2.5').reasoningEfforts, false)
+  assert.equal(chat['oauth-cursor'].models.find((model) => model.id === 'grok-4.7').reasoningEfforts.xhigh, 'xhigh')
   assert.equal(chat['oauth-ollama'].api, HARNESS_COMPLETIONS_API)
   assert.equal(chat['oauth-ollama'].baseURL, 'http://127.0.0.1:8318/ollama')
   assert.equal(chat['oauth-ollama'].baseURL.endsWith('/ollama/v1'), false)

@@ -152,6 +152,8 @@ unary AvailableModels  api2    /aiserver.v1.AiService/AvailableModels
 
 Hop：Completions `model` 以 `-fast` 结尾时，`requestedModel.modelId` 是家族 id（`gpt-5.5`，不是 `gpt-5.5-high-fast`），`modelParameters` 在已有 `{ id: 'reasoning', value }` 之外再加 `{ id: 'fast', value: 'true' }`（pi-cursor `RequestedModel.parameters` 的 Fast 字段，与 reasoning 同一条路）。`maxMode` 仍是 false。对话 pin 跟家族 id，Fast 不是另一段 conversation。
 
+**Registry 参数逐字校验**：上游按 AvailableModels 变体的参数集校验 Run——id 或 value 错一个就整轮 `AI Model Not Found: Invalid parameters for registry model`。参数 id 按家族分：`grok-4.7` 是 `reasoning_effort`（值 `xhigh`），`grok-4.5/4.6` 是 `effort`，`gpt-5.5`/`kimi-k3`/`glm-5.2` 是 `reasoning`（值分别 `extra-high`/`max`/`max`），`composer-2.5` 只有 `fast`，`default` 无参数。`cursorModelParameters` 按 `cursorParamStyle`（live 优先、`CURSOR_PARAM_STYLES` 兜底）发 `context`（精确匹配行窗口）→ effort → `fast`；家族无样式或 effort 值不在广告集里就**省略该参数**（注册表默认兜底），绝不猜 id。
+
 Settings 勾选仍须登录后才能改。新发现的行默认开，`setModels` / `sync()` 写入 `settings.yaml` `oauth-cursor.models`。
 
 ## 额度

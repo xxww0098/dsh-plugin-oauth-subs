@@ -13,6 +13,7 @@ import {
   pinCursorSystemPrefix,
 } from './cache.js'
 import { CURSOR_REASONING } from './index.js'
+import { cursorCatalogModels, cursorParamStyle } from './registry.js'
 import {
   decodeAgentServerMessage,
   encodeAgentClientMessage,
@@ -155,20 +156,66 @@ function parseTurns(messages) {
   return { systemPrompt: systemParts.join('\n'), turns, userText, inFlight, continuation, toolResults }
 }
 
-function vendorEffort(value) {
-  if (typeof value !== 'string' || !value.trim()) return undefined
+/**
+ * The wire effort value for one family. reasoning_effort already arrives as
+ * the vendor spelling (the row's reasoningEfforts values), so it passes
+ * through when the family advertises it; a bare DSH key maps through the
+ * family style. Anything else is omitted — the registry rejects unadvertised
+ * values with 'Invalid parameters for registry model'.
+ */
+function vendorEffort(style, value) {
+  if (typeof value !== 'string' || !value.trim() || !style?.effortParam) return undefined
   const key = value.trim()
-  if (CURSOR_REASONING[key]) return CURSOR_REASONING[key]
-  if (key === 'none' || key === 'extra-high') return key
-  return key
+  const efforts = style.efforts ?? {}
+  if (Object.values(efforts).includes(key)) return key
+  if (efforts[key]) return efforts[key]
+  const legacy = CURSOR_REASONING[key]
+  if (legacy && Object.values(efforts).includes(legacy)) return legacy
+  return undefined
 }
 
+function contextValueTokens(value) {
+  const text = String(value ?? '').trim().toLowerCase()
+  const k = text.match(/^(\d+)k$/)?.[1]
+  if (k) return Number(k) * 1_000
+  const m = text.match(/^(\d+)m$/)?.[1]
+  if (m) return Number(m) * 1_000_000
+  return undefined
+}
+
+/**
+ * The context parameter matching the picker row's advertised window. A wrong
+ * or unadvertised value fails the same registry check, so only an exact match
+ * is sent — otherwise the parameter is omitted and the registry default
+ * applies.
+ */
+function cursorContextParameter(family, style) {
+  const contexts = style?.contexts
+  if (!contexts || contexts.length === 0) return undefined
+  const row = cursorCatalogModels().find((model) => model.id === family)
+  const window = row?.contextWindow
+  if (!Number.isFinite(window)) return undefined
+  const hit = [...contexts].find((value) => contextValueTokens(value) === window)
+  return hit ? { id: 'context', value: hit } : undefined
+}
+
+/**
+ * RequestedModel.parameters for one picker model, verbatim from the family's
+ * registry style (live AvailableModels first, static table otherwise). The
+ * upstream registry validates the set: a wrong id or value fails the Run with
+ * 'Invalid parameters for registry model', so unknown families send none.
+ */
 export function cursorModelParameters(payload: any = {}) {
+  const family = peelCursorFastSuffix(payload.model).modelId
+  const style = cursorParamStyle(family)
+  if (!style) return []
   const parameters: any[] = []
-  const effort = vendorEffort(payload.reasoning_effort)
-  if (effort) parameters.push({ id: 'reasoning', value: effort })
-  if (peelCursorFastSuffix(payload.model).requestedFast) {
-    parameters.push({ id: 'fast', value: 'true' })
+  const context = cursorContextParameter(family, style)
+  if (context) parameters.push(context)
+  const effort = vendorEffort(style, payload.reasoning_effort)
+  if (effort) parameters.push({ id: style.effortParam, value: effort })
+  if (style.fast === true) {
+    parameters.push({ id: 'fast', value: peelCursorFastSuffix(payload.model).requestedFast ? 'true' : 'false' })
   }
   return parameters
 }

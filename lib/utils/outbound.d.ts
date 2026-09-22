@@ -12,7 +12,7 @@ export declare function normalizeProxyUrl(raw: any): string | undefined;
 export declare function envProxyUrl(env?: NodeJS.ProcessEnv): string | undefined;
 export declare function envNoProxy(env?: NodeJS.ProcessEnv): string[];
 export declare function resolveProxyUrl(configUrl: any, settingsUrl: any, env?: NodeJS.ProcessEnv): string | undefined;
-export declare function proxySource(configUrl: any, settingsUrl: any, env?: NodeJS.ProcessEnv): "env" | "settings" | "off" | "config";
+export declare function proxySource(configUrl: any, settingsUrl: any, env?: NodeJS.ProcessEnv): "off" | "env" | "settings" | "config";
 export declare function shouldBypassProxy(target: any, noProxy?: string[]): boolean;
 export declare function redactProxyUrl(url: any): string;
 export declare function normalizeOutboundPrefs(raw: any): {

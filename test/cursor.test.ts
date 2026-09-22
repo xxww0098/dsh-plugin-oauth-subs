@@ -237,7 +237,13 @@ test('cursor catalog is Completions at /cursor, not /cursor/v1', () => {
       assert.match(key, /^(off|minimal|low|medium|high|xhigh|max)$/)
     }
   }
-  assert.deepEqual(route.models.find((model) => model.id === 'composer-2.5').reasoningEfforts, CURSOR_REASONING)
+  // Per-family wire values: composer-2.5 takes no effort param, grok-4.7
+  // spells xhigh (not extra-high), gpt-5.5 keeps the legacy reasoning map.
+  assert.equal(route.models.find((model) => model.id === 'composer-2.5').reasoningEfforts, false)
+  assert.deepEqual(route.models.find((model) => model.id === 'grok-4.7').reasoningEfforts, {
+    low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh',
+  })
+  assert.deepEqual(route.models.find((model) => model.id === 'gpt-5.5').reasoningEfforts, CURSOR_REASONING)
   resetCursorCatalogCache()
   const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
   assert.equal(catalog['oauth-cursor'].models.length, CURSOR_MODELS.length)
@@ -439,6 +445,7 @@ test('cursor hop peels -fast to family modelId and sets RequestedModel fast para
   assert.equal(decoded.modelId.endsWith('-fast'), false)
   assert.equal(decoded.maxMode, false)
   assert.deepEqual(decoded.parameters, [
+    { id: 'context', value: '272k' },
     { id: 'reasoning', value: 'high' },
     { id: 'fast', value: 'true' },
   ])
@@ -460,7 +467,79 @@ test('cursor hop peels -fast to family modelId and sets RequestedModel fast para
   })
   const plainDecoded = decodeAgentClientMessage(plain.requestBytes)
   assert.equal(plainDecoded.modelId, 'gpt-5.5')
-  assert.deepEqual(plainDecoded.parameters, [{ id: 'reasoning', value: 'high' }])
+  assert.deepEqual(plainDecoded.parameters, [
+    { id: 'context', value: '272k' },
+    { id: 'reasoning', value: 'high' },
+    { id: 'fast', value: 'false' },
+  ])
+  resetCursorSystemPins()
+})
+
+test('cursor registry parameters use the family wire spelling (grok-4.7 reasoning_effort)', () => {
+  resetCursorSystemPins()
+  // Live AvailableModels: grok-4.7 takes reasoning_effort=xhigh, not
+  // reasoning=extra-high — the wrong id/value 400s the whole Run.
+  const built = openaiToCursor({
+    model: 'grok-4.7',
+    session_id: 'sess-g47',
+    reasoning_effort: 'xhigh',
+    messages: [{ role: 'user', content: 'hi' }],
+  })
+  const decoded = decodeAgentClientMessage(built.requestBytes)
+  assert.equal(decoded.modelId, 'grok-4.7')
+  assert.deepEqual(decoded.parameters, [
+    { id: 'context', value: '500k' },
+    { id: 'reasoning_effort', value: 'xhigh' },
+    { id: 'fast', value: 'false' },
+  ])
+
+  const fast = openaiToCursor({
+    model: 'grok-4.7-fast',
+    session_id: 'sess-g47f',
+    reasoning_effort: 'xhigh',
+    messages: [{ role: 'user', content: 'hi' }],
+  })
+  const fastDecoded = decodeAgentClientMessage(fast.requestBytes)
+  assert.equal(fastDecoded.modelId, 'grok-4.7')
+  assert.deepEqual(fastDecoded.parameters, [
+    { id: 'context', value: '500k' },
+    { id: 'reasoning_effort', value: 'xhigh' },
+    { id: 'fast', value: 'true' },
+  ])
+
+  // grok-4.7 advertises no 'none' effort — an unadvertised value is omitted,
+  // not sent to the registry to 400.
+  const off = openaiToCursor({
+    model: 'grok-4.7',
+    reasoning_effort: 'off',
+    messages: [{ role: 'user', content: 'hi' }],
+  })
+  assert.deepEqual(decodeAgentClientMessage(off.requestBytes).parameters, [
+    { id: 'context', value: '500k' },
+    { id: 'fast', value: 'false' },
+  ])
+  resetCursorSystemPins()
+})
+
+test('cursor registry parameters omit effort for families without a style', () => {
+  resetCursorSystemPins()
+  // composer-2 is not in the static style table and has no live style: no
+  // effort parameter is sent (guessing an id fails the Run).
+  const built = openaiToCursor({
+    model: 'composer-2',
+    reasoning_effort: 'high',
+    messages: [{ role: 'user', content: 'hi' }],
+  })
+  assert.deepEqual(decodeAgentClientMessage(built.requestBytes).parameters, [])
+  // composer-2.5 advertises only fast — effort is omitted, fast is explicit.
+  const composer = openaiToCursor({
+    model: 'composer-2.5-fast',
+    reasoning_effort: 'high',
+    messages: [{ role: 'user', content: 'hi' }],
+  })
+  assert.deepEqual(decodeAgentClientMessage(composer.requestBytes).parameters, [
+    { id: 'fast', value: 'true' },
+  ])
   resetCursorSystemPins()
 })
 
