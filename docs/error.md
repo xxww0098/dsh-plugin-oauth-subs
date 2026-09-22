@@ -2,6 +2,12 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-11-02：Cursor `grok-4.7` 一跑就「AI Model Not Found: Invalid parameters for registry model」= effort 参数 id/value 全错
+
+**现象**：oauth-cursor 选 Grok 4.7（±fast）任何 effort 都整轮失败，上游回 `Invalid parameters for registry model: "grok-4.7"`；不带 effort 的请求正常。
+**根因**：`cursorModelParameters` 对所有家族一律发 `{id:'reasoning', value:'extra-high'}`，但 grok-4.7 注册表要的是 `reasoning_effort`=`xhigh`——参数 id 和值都按家族分（4.5/4.6 是 `effort`，gpt-5.5 是 `reasoning`=`extra-high`，kimi/glm 是 `reasoning`=`max`），错一个就 400。
+**修复**：`CURSOR_PARAM_STYLES` + live AvailableModels 变体逐字导出每族参数样式（effortParam / efforts / contexts / fast），`cursorModelParameters` 按样式发 context→effort→fast，未知家族省略 effort；picker `reasoningEfforts` 改按家族广告值（composer-2.5/default 不再假提供 effort）。活测 2026-11-02（Pro 账号）：grok-4.7±fast xhigh、grok-4.6±fast、kimi-k3 max、glm-5.2 max、composer-2.5±fast、default 全 200。
+
 ## 2026-09-22：Grok 4.7 Fast 的真模型 id 被 Codex `-fast` 规则剥成不存在的模型
 
 **现象**：Grok 目录新增 `grok-4.7-build-fast`（真后端变体）与 Cursor 活目录新增 `grok-4.7` ± fast 后，任何走 Grok 该行的请求都会被共享 `applyFastMode` 把 `model` 剥成不存在的 `grok-4.7-build`；实测 `grok-4.7-fast` 上游 404，`grok-4.7-build` 也不在目录里。

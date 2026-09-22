@@ -47,20 +47,111 @@ export declare const CURSOR_REASONING: Readonly<{
     high: "high";
     xhigh: "extra-high";
 }>;
-/** Static fallback aligned to cursor.com/docs/models-and-pricing. Live GetUsableModels may add Auto / Fast / extra families. */
+/**
+ * Vendor effort value → DSH reasoningEfforts key. Cursor's registry spells
+ * the same level differently per family ('none'/'extra-high' on GPT-5.5,
+ * 'xhigh' on Grok 4.7, 'max' on Kimi/GLM), so picker rows are built from the
+ * family's own advertised values, not one shared map.
+ */
+export declare function cursorEffortKey(value: any): string | undefined;
+/**
+ * RequestedModel parameter style per picker family, from live
+ * AvailableModels variants (2026-11 probe, Pro account): the registry
+ * validates Run parameters verbatim — a wrong id OR value fails the whole
+ * Run with 'Invalid parameters for registry model'. effortParam is the
+ * parameter id that family takes ('reasoning' / 'effort' / 'reasoning_effort'),
+ * efforts maps DSH key → vendor wire value, contexts lists the family's
+ * advertised context values, fast whether a fast variant exists. Families
+ * absent here keep the picker effort list but send no effort parameter —
+ * guessing an id 400s, omitting falls back to the registry default.
+ */
+export declare const CURSOR_PARAM_STYLES: Readonly<{
+    'grok-4.7': {
+        effortParam: string;
+        efforts: {
+            low: string;
+            medium: string;
+            high: string;
+            xhigh: string;
+        };
+        contexts: string[];
+        fast: boolean;
+    };
+    'grok-4.6': {
+        effortParam: string;
+        efforts: {
+            low: string;
+            medium: string;
+            high: string;
+            xhigh: string;
+        };
+        contexts: never[];
+        fast: boolean;
+    };
+    'grok-4.5': {
+        effortParam: string;
+        efforts: {
+            low: string;
+            medium: string;
+            high: string;
+        };
+        contexts: never[];
+        fast: boolean;
+    };
+    'gpt-5.5': {
+        effortParam: string;
+        efforts: {
+            off: string;
+            low: string;
+            medium: string;
+            high: string;
+            xhigh: string;
+        };
+        contexts: string[];
+        fast: boolean;
+    };
+    'kimi-k3': {
+        effortParam: string;
+        efforts: {
+            low: string;
+            high: string;
+            max: string;
+        };
+        contexts: never[];
+        fast: boolean;
+    };
+    'glm-5.2': {
+        effortParam: string;
+        efforts: {
+            high: string;
+            max: string;
+        };
+        contexts: never[];
+        fast: boolean;
+    };
+    'composer-2.5': {
+        effortParam: undefined;
+        efforts: {};
+        contexts: never[];
+        fast: boolean;
+    };
+    default: {
+        effortParam: undefined;
+        efforts: {};
+        contexts: never[];
+        fast: boolean;
+    };
+}>;
+/** Picker reasoningEfforts for one family style: vendor values keyed back to DSH levels. */
+export declare function cursorStyleReasoningEfforts(style: any): {};
+/** Static fallback aligned to cursor.com/docs/models-and-pricing. Live GetUsableModels may add Auto / Fast / extra families. reasoningEfforts come from the family's CURSOR_PARAM_STYLES entry — the wire values the registry actually takes. */
 export declare const CURSOR_MODELS: readonly {
     id: any;
     name: any;
     contextWindow: any;
     maxTokens: any;
     input: readonly string[];
-    reasoningEfforts: Readonly<{
-        off: "none";
-        low: "low";
-        medium: "medium";
-        high: "high";
-        xhigh: "extra-high";
-    }>;
+    reasoningEfforts: any;
 }[];
 export declare const CURSOR_SOURCES: readonly string[];
 export declare function cursorSourceLabel(source: any, locale?: string): "env" | "CLI" | "IDE" | "PKCE" | undefined;

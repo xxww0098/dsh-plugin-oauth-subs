@@ -549,6 +549,14 @@ export function encodeAvailableModelsResponse(models: any[] = []) {
     model.supportsImages ? encodeBool(10, true) : Buffer.alloc(0),
     model.contextTokenLimit ? encodeUint32(15, model.contextTokenLimit) : Buffer.alloc(0),
     model.clientDisplayName ? encodeString(17, model.clientDisplayName) : Buffer.alloc(0),
+    ...(model.variants ?? []).map((variant) => encodeMessage(30, Buffer.concat([
+      ...(variant.parameters ?? []).map((parameter) => encodeMessage(1, Buffer.concat([
+        encodeString(1, parameter.id ?? ''),
+        encodeString(2, parameter.value ?? ''),
+      ]))),
+      variant.displayName ? encodeString(2, variant.displayName) : Buffer.alloc(0),
+      variant.isMaxMode ? encodeBool(3, true) : Buffer.alloc(0),
+    ]))),
   ]))))
 }
 

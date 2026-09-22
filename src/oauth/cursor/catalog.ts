@@ -6,8 +6,11 @@
  */
 
 import { createHash } from 'node:crypto'
-import { CURSOR_MODELS, CURSOR_REASONING, cursorUpstreamProxy } from './index.js'
+import { CURSOR_MODELS, CURSOR_PARAM_STYLES, CURSOR_REASONING, cursorEffortKey, cursorStyleReasoningEfforts, cursorUpstreamProxy } from './index.js'
 import { fetchCursorAvailableModels, fetchCursorUsableModels } from './h2-session.js'
+import { cursorCatalogCache, cursorCatalogModels, resetCursorCatalogCache, setCursorParamStyles } from './registry.js'
+
+export { cursorCatalogModels, resetCursorCatalogCache } from './registry.js'
 
 export const CURSOR_CATALOG_TTL_MS = 5 * 60_000
 export const DEFAULT_CURSOR_CONTEXT_WINDOW = 200_000
@@ -19,20 +22,8 @@ const CURSOR_VISION = Object.freeze(['text', 'image'])
 const EFFORT_SUFFIXES = Object.freeze(['extra-high', 'minimal', 'xhigh', 'medium', 'high', 'low', 'none'])
 const CONTEXT_SUFFIXES = Object.freeze(['1m', '272k', '256k', '200k', '300k'])
 
-const cached: { tokenHash: string; models?: any[]; expiresAt: number } = { tokenHash: '', models: undefined, expiresAt: 0 }
-
-export function resetCursorCatalogCache() {
-  cached.tokenHash = ''
-  cached.models = undefined
-  cached.expiresAt = 0
-}
-
 export function cursorCatalogTokenHash(token) {
   return createHash('sha256').update(String(token ?? '')).digest('hex').slice(0, 16)
-}
-
-export function cursorCatalogModels() {
-  return cached.models?.length ? cached.models : [...CURSOR_MODELS]
 }
 
 export function isGpt56Model(id, name = '') {
@@ -208,14 +199,58 @@ function parameterizedRows(models) {
   return out
 }
 
-function cursorModelRow(id, name, contextWindow, maxTokens, input = CURSOR_VISION) {
+const EFFORT_PARAM_IDS = new Set(['reasoning', 'effort', 'reasoning_effort'])
+
+/**
+ * Collapse one family's AvailableModels variants into the parameter style the
+ * Run registry validates verbatim: which effort parameter id it takes, the
+ * vendor values it advertises (keyed back to DSH levels), its context values,
+ * and whether a fast variant exists. Max-mode-only variants are excluded —
+ * this hop never sets maxMode, so their parameter sets would be rejected.
+ */
+export function cursorStylesFromParameterized(models) {
+  const styles = new Map()
+  for (const model of models ?? []) {
+    const name = typeof model?.name === 'string' && model.name.trim() ? model.name.trim() : ''
+    const family = cursorPickerFamilyId(name)
+    if (!family) continue
+    const style = styles.get(family) ?? { effortParam: undefined, efforts: {}, contexts: new Set(), fast: false }
+    for (const variant of model.variants ?? []) {
+      if (variant?.isMaxMode === true) continue
+      for (const parameter of variant.parameters ?? []) {
+        if (EFFORT_PARAM_IDS.has(parameter.id)) {
+          style.effortParam = parameter.id
+          const key = cursorEffortKey(parameter.value)
+          if (key) style.efforts[key] = parameter.value
+        } else if (parameter.id === 'context' && typeof parameter.value === 'string' && parameter.value) {
+          style.contexts.add(parameter.value)
+        } else if (parameter.id === 'fast') {
+          // Presence of the parameter means the family takes fast at all;
+          // variants advertise both true and false rows.
+          style.fast = true
+        }
+      }
+    }
+    styles.set(family, style)
+  }
+  // Normalize contexts to a plain array so live styles match the static
+  // CURSOR_PARAM_STYLES shape (request.ts iterates both).
+  for (const [family, style] of styles) {
+    styles.set(family, { ...style, contexts: [...style.contexts] })
+  }
+  return styles
+}
+
+
+
+function cursorModelRow(id, name, contextWindow, maxTokens, input = CURSOR_VISION, efforts: any = CURSOR_REASONING) {
   return {
     id,
     name,
     contextWindow,
     maxTokens,
     input: input.includes('image') ? [...CURSOR_VISION] : ['text'],
-    reasoningEfforts: { ...CURSOR_REASONING },
+    reasoningEfforts: efforts === false ? false : { ...efforts },
   }
 }
 
@@ -223,9 +258,11 @@ function cloneCursorRow(row) {
   return {
     ...row,
     input: Array.isArray(row.input) ? [...row.input] : [...CURSOR_VISION],
-    reasoningEfforts: row.reasoningEfforts && typeof row.reasoningEfforts === 'object'
-      ? { ...row.reasoningEfforts }
-      : { ...CURSOR_REASONING },
+    reasoningEfforts: row.reasoningEfforts === false
+      ? false
+      : row.reasoningEfforts && typeof row.reasoningEfforts === 'object'
+        ? { ...row.reasoningEfforts }
+        : { ...CURSOR_REASONING },
   }
 }
 
@@ -264,6 +301,7 @@ export function mergeCursorStaticFloor(live) {
 
 /** Collapse live ids into one picker row per family, plus `{family}-fast` when a source id is Fast. Empty input → []. */
 export function toCursorPickerModels(usable, parameterized: any[] = []) {
+  const styles = cursorStylesFromParameterized(parameterized)
   const groups = new Map()
   for (const row of [...usableRows(usable), ...parameterizedRows(parameterized)]) {
     if (isCursorInternalModel(row.id, row.name)) continue
@@ -293,10 +331,16 @@ export function toCursorPickerModels(usable, parameterized: any[] = []) {
     const input = group.images.some((flag) => flag === false) && !group.images.some((flag) => flag === true)
       ? ['text']
       : CURSOR_VISION
-    models.push(cursorModelRow(id, name, window, maxTokens, input))
+    // Live variants decide the family's effort list + fast flag; a family the
+    // parameterized catalog knows but lists no effort parameter for offers
+    // none (sending one would 400 the Run).
+    const style = styles.get(id) ?? CURSOR_PARAM_STYLES[id]
+    const efforts = style ? cursorStyleReasoningEfforts(style) : CURSOR_REASONING
+    const hasFast = group.hasFast || styles.get(id)?.fast === true
+    models.push(cursorModelRow(id, name, window, maxTokens, input, efforts))
     // Auto / default never grows Fast. Static floor also stays family-only (no Fast).
-    if (id !== 'default' && group.hasFast) {
-      models.push(cursorModelRow(`${id}-fast`, `${name} Fast`, window, maxTokens, input))
+    if (id !== 'default' && hasFast) {
+      models.push(cursorModelRow(`${id}-fast`, `${name} Fast`, window, maxTokens, input, efforts))
     }
   }
   models.sort(compareCursorPicker)
@@ -310,8 +354,8 @@ export async function refreshCursorCatalog(session, options: any = {}) {
   // upstream proxy) changes which families Cursor offers, so it joins the
   // cache key alongside the token.
   const tokenHash = cursorCatalogTokenHash(`${token}\n${cursorUpstreamProxy() ?? ''}`)
-  if (cached.tokenHash === tokenHash && cached.models?.length && Date.now() < cached.expiresAt) {
-    return cached.models
+  if (cursorCatalogCache.tokenHash === tokenHash && cursorCatalogCache.models?.length && Date.now() < cursorCatalogCache.expiresAt) {
+    return cursorCatalogCache.models
   }
   try {
     const fetchUsable = options.fetchUsable ?? fetchCursorUsableModels
@@ -320,16 +364,18 @@ export async function refreshCursorCatalog(session, options: any = {}) {
       Promise.resolve(fetchUsable(session, options)).catch(() => []),
       Promise.resolve(fetchAvailable(session, options)).catch(() => []),
     ])
+    const styles = cursorStylesFromParameterized(available)
     const models = mergeCursorStaticFloor(toCursorPickerModels(usable, available))
     if (models.length > 0) {
-      cached.tokenHash = tokenHash
-      cached.models = models
-      cached.expiresAt = Date.now() + (options.ttlMs ?? CURSOR_CATALOG_TTL_MS)
+      setCursorParamStyles(styles)
+      cursorCatalogCache.tokenHash = tokenHash
+      cursorCatalogCache.models = models
+      cursorCatalogCache.expiresAt = Date.now() + (options.ttlMs ?? CURSOR_CATALOG_TTL_MS)
       return models
     }
   } catch {
     // Discovery must not block chat or login.
   }
-  if (cached.tokenHash === tokenHash && cached.models?.length) return cached.models
+  if (cursorCatalogCache.tokenHash === tokenHash && cursorCatalogCache.models?.length) return cursorCatalogCache.models
   return mergeCursorStaticFloor([])
 }

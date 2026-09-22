@@ -4,14 +4,13 @@
  * region-gated or retired families are simply not offered — while
  * CURSOR_MODELS stays the offline fallback only.
  */
+export { cursorCatalogModels, resetCursorCatalogCache } from './registry.js';
 export declare const CURSOR_CATALOG_TTL_MS: number;
 export declare const DEFAULT_CURSOR_CONTEXT_WINDOW = 200000;
 export declare const DEFAULT_CURSOR_MAX_OUTPUT = 64000;
 export declare const GPT56_DEFAULT_CONTEXT_WINDOW = 272000;
 export declare const GPT56_MAX_PROMPT_TOKENS = 500000;
-export declare function resetCursorCatalogCache(): void;
 export declare function cursorCatalogTokenHash(token: any): string;
-export declare function cursorCatalogModels(): any[];
 export declare function isGpt56Model(id: any, name?: string): boolean;
 export declare function clampCursorContextWindow(id: any, name: any, window: any): any;
 /** pi-cursor `inferCursorContextWindow` — GetUsableModels has no window field. */
@@ -33,6 +32,14 @@ export declare function cursorSourceIsFast(id: any): boolean;
  * sibling `{family}-fast` when any source id for that family is Fast.
  */
 export declare function cursorPickerFamilyId(id: any): string;
+/**
+ * Collapse one family's AvailableModels variants into the parameter style the
+ * Run registry validates verbatim: which effort parameter id it takes, the
+ * vendor values it advertises (keyed back to DSH levels), its context values,
+ * and whether a fast variant exists. Max-mode-only variants are excluded —
+ * this hop never sets maxMode, so their parameter sets would be rejected.
+ */
+export declare function cursorStylesFromParameterized(models: any): Map<any, any>;
 /**
  * Live families overlay the official static floor. Empty live → a copy of
  * CURSOR_MODELS. Non-empty live is the upstream's truth: forcing static rows

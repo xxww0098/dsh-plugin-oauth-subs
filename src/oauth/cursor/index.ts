@@ -55,20 +55,93 @@ export const CURSOR_REASONING = Object.freeze({
   xhigh: 'extra-high',
 })
 
+/**
+ * Vendor effort value → DSH reasoningEfforts key. Cursor's registry spells
+ * the same level differently per family ('none'/'extra-high' on GPT-5.5,
+ * 'xhigh' on Grok 4.7, 'max' on Kimi/GLM), so picker rows are built from the
+ * family's own advertised values, not one shared map.
+ */
+export function cursorEffortKey(value) {
+  const key = String(value ?? '').trim()
+  if (key === 'none') return 'off'
+  if (key === 'extra-high') return 'xhigh'
+  return ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(key) ? key : undefined
+}
+
+/**
+ * RequestedModel parameter style per picker family, from live
+ * AvailableModels variants (2026-11 probe, Pro account): the registry
+ * validates Run parameters verbatim — a wrong id OR value fails the whole
+ * Run with 'Invalid parameters for registry model'. effortParam is the
+ * parameter id that family takes ('reasoning' / 'effort' / 'reasoning_effort'),
+ * efforts maps DSH key → vendor wire value, contexts lists the family's
+ * advertised context values, fast whether a fast variant exists. Families
+ * absent here keep the picker effort list but send no effort parameter —
+ * guessing an id 400s, omitting falls back to the registry default.
+ */
+export const CURSOR_PARAM_STYLES = Object.freeze({
+  'grok-4.7': {
+    effortParam: 'reasoning_effort',
+    efforts: { low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh' },
+    contexts: ['256k', '500k'],
+    fast: true,
+  },
+  'grok-4.6': {
+    effortParam: 'effort',
+    efforts: { low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh' },
+    contexts: [],
+    fast: true,
+  },
+  'grok-4.5': {
+    effortParam: 'effort',
+    efforts: { low: 'low', medium: 'medium', high: 'high' },
+    contexts: [],
+    fast: true,
+  },
+  'gpt-5.5': {
+    effortParam: 'reasoning',
+    efforts: { off: 'none', low: 'low', medium: 'medium', high: 'high', xhigh: 'extra-high' },
+    contexts: ['272k', '1m'],
+    fast: true,
+  },
+  'kimi-k3': {
+    effortParam: 'reasoning',
+    efforts: { low: 'low', high: 'high', max: 'max' },
+    contexts: [],
+    fast: false,
+  },
+  'glm-5.2': {
+    effortParam: 'reasoning',
+    efforts: { high: 'high', max: 'max' },
+    contexts: [],
+    fast: false,
+  },
+  'composer-2.5': { effortParam: undefined, efforts: {}, contexts: [], fast: true },
+  default: { effortParam: undefined, efforts: {}, contexts: [], fast: false },
+})
+
+/** Picker reasoningEfforts for one family style: vendor values keyed back to DSH levels. */
+export function cursorStyleReasoningEfforts(style) {
+  if (!style || !style.effortParam) return false
+  const efforts = {}
+  for (const [key, wire] of Object.entries(style.efforts ?? {})) efforts[key] = wire
+  return Object.keys(efforts).length ? efforts : false
+}
+
 const CURSOR_VISION = Object.freeze(['text', 'image'])
 
-function cursorModel(id, name, contextWindow, maxTokens, reasoningEfforts = CURSOR_REASONING, input = CURSOR_VISION) {
+function cursorModel(id, name, contextWindow, maxTokens, reasoningEfforts: any = CURSOR_REASONING, input = CURSOR_VISION) {
   return { id, name, contextWindow, maxTokens, input, reasoningEfforts }
 }
 
-/** Static fallback aligned to cursor.com/docs/models-and-pricing. Live GetUsableModels may add Auto / Fast / extra families. */
+/** Static fallback aligned to cursor.com/docs/models-and-pricing. Live GetUsableModels may add Auto / Fast / extra families. reasoningEfforts come from the family's CURSOR_PARAM_STYLES entry — the wire values the registry actually takes. */
 export const CURSOR_MODELS = Object.freeze([
-  cursorModel('composer-2.5', 'Composer 2.5', 200_000, 64_000),
+  cursorModel('composer-2.5', 'Composer 2.5', 200_000, 64_000, false),
   // Live AvailableModels: contextTokenLimit 500000, supportsImages false
   // (256k only applies to its non-max variants, which collapse into this row).
-  cursorModel('grok-4.7', 'Grok 4.7', 500_000, 64_000, CURSOR_REASONING, ['text']),
-  cursorModel('grok-4.6', 'Grok 4.6', 256_000, 64_000),
-  cursorModel('grok-4.5', 'Grok 4.5', 256_000, 64_000),
+  cursorModel('grok-4.7', 'Grok 4.7', 500_000, 64_000, CURSOR_PARAM_STYLES['grok-4.7'].efforts, ['text']),
+  cursorModel('grok-4.6', 'Grok 4.6', 256_000, 64_000, CURSOR_PARAM_STYLES['grok-4.6'].efforts),
+  cursorModel('grok-4.5', 'Grok 4.5', 256_000, 64_000, CURSOR_PARAM_STYLES['grok-4.5'].efforts),
   cursorModel('claude-fable-5-1', 'Claude Fable 5.1', 300_000, 128_000),
   cursorModel('claude-opus-5', 'Claude Opus 5', 300_000, 128_000),
   cursorModel('claude-sonnet-5', 'Claude Sonnet 5', 200_000, 128_000),
@@ -77,7 +150,8 @@ export const CURSOR_MODELS = Object.freeze([
   cursorModel('gpt-5.6-sol', 'GPT-5.6 Sol', 272_000, 128_000),
   cursorModel('gpt-5.6-terra', 'GPT-5.6 Terra', 272_000, 128_000),
   cursorModel('gpt-5.6-luna', 'GPT-5.6 Luna', 272_000, 128_000),
-  cursorModel('gpt-5.5', 'GPT-5.5', 200_000, 128_000),
+  // Upstream variants only offer context 272k / 1m — the registry default is 272k.
+  cursorModel('gpt-5.5', 'GPT-5.5', 272_000, 128_000, CURSOR_PARAM_STYLES['gpt-5.5'].efforts),
 ])
 
 export const CURSOR_SOURCES = Object.freeze(['pkce', 'cli_keychain', 'ide_vscdb', 'env'])

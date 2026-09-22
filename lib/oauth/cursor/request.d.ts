@@ -4,6 +4,12 @@
  * Native wire is Connect/protobuf over HTTP/2. Completions is the DSH api
  * because that wire is none of the three closed harness protocols.
  */
+/**
+ * RequestedModel.parameters for one picker model, verbatim from the family's
+ * registry style (live AvailableModels first, static table otherwise). The
+ * upstream registry validates the set: a wrong id or value fails the Run with
+ * 'Invalid parameters for registry model', so unknown families send none.
+ */
 export declare function cursorModelParameters(payload?: any): any[];
 export declare function cursorWireModelId(model: any): string;
 export declare function openaiToCursor(payload?: any, { conversationId }?: any): {
