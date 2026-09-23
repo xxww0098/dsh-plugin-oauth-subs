@@ -74,8 +74,13 @@ export declare const ANTIGRAVITY_REASONING_CLAUDE: Readonly<{
 }>;
 /**
  * Live CLIProxyAPI `models.json` → `antigravity` (not Vertex-direct ids).
- * Probed against router-for-me/CLIProxyAPI main. llm-pi-ai only wires
- * text / image, so audio/video Gemini rows stay vision.
+ * Registry snapshot: router-for-me/CLIProxyAPI main
+ * `internal/registry/models/models.json`, 12 `antigravity` rows, 2026-09-23.
+ * llm-pi-ai only wires text / image, so audio/video Gemini rows stay vision.
+ * Dropped 2026-09-01 (upstream 35e3d97dac): gemini-3-flash-agent /
+ * gemini-3.5-flash-low / gemini-3.5-flash-extra-low — Cloud Code returns
+ * 500 UNKNOWN for those ids. Current 3.5 row: gemini-3.5-flash-lite
+ * (upstream d48590a47d, 2026-09-14).
  */
 export declare const ANTIGRAVITY_MODELS: readonly ({
     id: string;

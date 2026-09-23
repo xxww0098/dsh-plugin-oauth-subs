@@ -71,7 +71,9 @@ GET https://api.kimi.com/coding/v1/models
 Authorization: Bearer <access>
 ```
 
-失败或空列表回落静态三行：`kimi-for-coding`、`kimi-for-coding-highspeed`、`k3`（text+image，256k / 32k）。
+失败或空列表回落静态四行：`kimi-for-coding`、`kimi-for-coding-highspeed`、`k3`、`k3-256k`（text+image，256k / 32k）。
+
+来源（2026-09-23）：[官方模型表](https://www.kimi.com/code/docs/en/kimi-code/models.html) —— 官方四个模型 ID（K3 / K3-256K / K2.8 Preview / K2.7 Code HighSpeed），静态此前缺 `k3-256k`（K3 的 256K 版本，官方 ctx 262144）。官方把 `k3` 与原地升级成 K2.8 Preview 的 `kimi-for-coding` 标 1M 上下文（较高档位才给），本 hop 静态仍保守取 256K，登录后由活目录覆盖；本机无 Kimi 凭据，`GET /coding/v1/models` 未实测（无 token 401）。思考档官方为 low/high/max，走 `KIMI_REASONING` 映射。
 
 ## 额度
 
@@ -101,7 +103,7 @@ Kimi 是 **前缀哈希**，没有分片键。
 
 ## 归因
 
-设备码对照 MIT [Leechael/pi-provider-kimi-code](https://github.com/Leechael/pi-provider-kimi-code)；`client_id` 与官方 Kimi Code CLI 相同。不要扮成 Pi。总表见 [`docs/oauth.md`](../../../docs/oauth.md)。
+设备码对照 MIT [Leechael/pi-provider-kimi-code](https://github.com/Leechael/pi-provider-kimi-code)；`client_id` 与官方 Kimi Code CLI 相同。目录对照[官方模型表](https://www.kimi.com/code/docs/en/kimi-code/models.html) 2026-09-23。不要扮成 Pi。总表见 [`docs/oauth.md`](../../../docs/oauth.md)。
 
 ## 追溯
 

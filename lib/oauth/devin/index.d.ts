@@ -147,10 +147,14 @@ export declare const DEVIN_REASONING: Readonly<{
     max: "max";
 }>;
 /**
- * Static floor from the live GetCliModelConfigs probe (209 configs, 46
- * families, Pro tier, 3000.10.31 credentials). `variants` maps a DSH effort
- * key to the backend's `chat_model_uid`; `defaultUid` is the config upstream
- * flags `is_default_model_in_family`. Live discovery overlays this.
+ * Static floor mirroring the live GetCliModelConfigs probe (2026-09-23, Pro
+ * tier, 3000.10.31 credentials): 598 configs → 580 family-bearing → 81 picker
+ * rows across 49 families. `variants` maps a DSH effort key to the backend's
+ * `chat_model_uid`; `defaultUid` is the config upstream flags
+ * `is_default_model_in_family` (no-effort rows carry it explicitly). Login /
+ * import / quota refresh replaces the floor with live rows when the RPC returns
+ * usable rows (catalog.ts); a failed or empty RPC falls back to this mirror.
+ * Per-field source is in README.md 模型 / 归因.
  */
 export declare const DEVIN_MODELS: readonly {
     id: any;

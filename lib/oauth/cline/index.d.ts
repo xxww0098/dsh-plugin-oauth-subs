@@ -106,11 +106,11 @@ export declare const CLINE_DEFAULT_MAX_TOKENS = 8192;
 export declare const CLINE_INPUT: readonly string[];
 /**
  * Offline picker seed: the `recommended` + `free` buckets of
- * `GET {apiBase}/ai/cline/recommended-models` captured 2026-09-19, crossed with
+ * `GET {apiBase}/ai/cline/recommended-models` captured 2026-09-23, crossed with
  * `https://models.dev/api.json` → `openrouter` — the CLI's own metadata source
  * (`buildClineModels` in `sdk/packages/llms/src/providers/builtins.ts`), which
  * also resolves an id by its last path segment (that is how the `cline-free/*`
- * rows map onto `deepseek/…`, `meta/…`, `upstage/…`). `refreshClineCatalog`
+ * rows map onto `deepseek/…`, `xiaomi/…`, `upstage/…`). `refreshClineCatalog`
  * replaces this list after login; it never drops it.
  */
 export declare const CLINE_MODELS: readonly {

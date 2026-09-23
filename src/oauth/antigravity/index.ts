@@ -130,8 +130,13 @@ export const ANTIGRAVITY_REASONING_CLAUDE = Object.freeze({
 
 /**
  * Live CLIProxyAPI `models.json` → `antigravity` (not Vertex-direct ids).
- * Probed against router-for-me/CLIProxyAPI main. llm-pi-ai only wires
- * text / image, so audio/video Gemini rows stay vision.
+ * Registry snapshot: router-for-me/CLIProxyAPI main
+ * `internal/registry/models/models.json`, 12 `antigravity` rows, 2026-09-23.
+ * llm-pi-ai only wires text / image, so audio/video Gemini rows stay vision.
+ * Dropped 2026-09-01 (upstream 35e3d97dac): gemini-3-flash-agent /
+ * gemini-3.5-flash-low / gemini-3.5-flash-extra-low — Cloud Code returns
+ * 500 UNKNOWN for those ids. Current 3.5 row: gemini-3.5-flash-lite
+ * (upstream d48590a47d, 2026-09-14).
  */
 export const ANTIGRAVITY_MODELS = Object.freeze([
   { id: 'claude-opus-4-6-thinking', name: 'Claude Opus 4.6', contextWindow: 200_000, maxTokens: 64_000, reasoningEfforts: ANTIGRAVITY_REASONING_CLAUDE, input: ANTIGRAVITY_VISION_INPUT },
@@ -139,13 +144,11 @@ export const ANTIGRAVITY_MODELS = Object.freeze([
   { id: 'gemini-pro-agent', name: 'Gemini 3.1 Pro', contextWindow: 1_048_576, maxTokens: 65_535, reasoningEfforts: ANTIGRAVITY_REASONING_GEMINI, input: ANTIGRAVITY_VISION_INPUT },
   { id: 'gemini-3.1-pro-low', name: 'Gemini 3.1 Pro Low', contextWindow: 1_048_576, maxTokens: 65_535, reasoningEfforts: ANTIGRAVITY_REASONING_GEMINI, input: ANTIGRAVITY_VISION_INPUT },
   { id: 'gemini-3-flash', name: 'Gemini 3 Flash', contextWindow: 1_048_576, maxTokens: 65_536, reasoningEfforts: ANTIGRAVITY_REASONING_GEMINI, input: ANTIGRAVITY_VISION_INPUT },
-  { id: 'gemini-3-flash-agent', name: 'Gemini 3.5 Flash', contextWindow: 1_048_576, maxTokens: 65_536, reasoningEfforts: ANTIGRAVITY_REASONING_GEMINI, input: ANTIGRAVITY_VISION_INPUT },
   { id: 'gemini-3.6-flash-high', name: 'Gemini 3.6 Flash', contextWindow: 1_048_576, maxTokens: 65_536, reasoningEfforts: ANTIGRAVITY_REASONING_GEMINI, input: ANTIGRAVITY_VISION_INPUT },
   { id: 'gemini-3.7-flash-high', name: 'Gemini 3.7 Flash', contextWindow: 1_048_576, maxTokens: 65_536, reasoningEfforts: ANTIGRAVITY_REASONING_GEMINI, input: ANTIGRAVITY_VISION_INPUT },
   { id: 'gemini-3.8-flash-high', name: 'Gemini 3.8 Flash', contextWindow: 1_048_576, maxTokens: 65_536, reasoningEfforts: ANTIGRAVITY_REASONING_GEMINI, input: ANTIGRAVITY_VISION_INPUT },
   { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash Lite', contextWindow: 1_048_576, maxTokens: 65_535, reasoningEfforts: ANTIGRAVITY_REASONING_GEMINI, input: ANTIGRAVITY_VISION_INPUT },
-  { id: 'gemini-3.5-flash-low', name: 'Gemini 3.5 Flash Medium', contextWindow: 1_048_576, maxTokens: 65_535, reasoningEfforts: ANTIGRAVITY_REASONING_GEMINI, input: ANTIGRAVITY_VISION_INPUT },
-  { id: 'gemini-3.5-flash-extra-low', name: 'Gemini 3.5 Flash Low', contextWindow: 1_048_576, maxTokens: 65_535, reasoningEfforts: ANTIGRAVITY_REASONING_GEMINI, input: ANTIGRAVITY_VISION_INPUT },
+  { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash Lite', contextWindow: 1_048_576, maxTokens: 65_535, reasoningEfforts: ANTIGRAVITY_REASONING_GEMINI, input: ANTIGRAVITY_VISION_INPUT },
   { id: 'gemini-3.1-flash-image', name: 'Gemini 3.1 Flash Image', contextWindow: 1_048_576, maxTokens: 32_768, reasoningEfforts: ANTIGRAVITY_REASONING_GEMINI, input: ANTIGRAVITY_VISION_INPUT },
   { id: 'gpt-oss-120b-medium', name: 'GPT-OSS 120B', contextWindow: 114_000, maxTokens: 32_768, reasoningEfforts: false, input: ANTIGRAVITY_TEXT_INPUT },
 ])

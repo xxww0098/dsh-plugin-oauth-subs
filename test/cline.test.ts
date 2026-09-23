@@ -279,7 +279,7 @@ test('completions hop renames max_tokens for reasoning-era ids, asks for usage, 
     applyClineMaxCompletionTokens({ model: 'openai/gpt-5.4', max_tokens: 100 }),
     { model: 'openai/gpt-5.4', max_completion_tokens: 100 },
   )
-  assert.deepEqual(applyClineMaxCompletionTokens({ model: 'x-ai/grok-4.5', max_tokens: 100 }), { model: 'x-ai/grok-4.5', max_tokens: 100 })
+  assert.deepEqual(applyClineMaxCompletionTokens({ model: 'spacexai/grok-4.7', max_tokens: 100 }), { model: 'spacexai/grok-4.7', max_tokens: 100 })
   assert.deepEqual(applyClineStreamUsage({ stream: true }), { stream: true, stream_options: { include_usage: true } })
   assert.deepEqual(applyClineStreamUsage({ stream: false }), { stream: false })
   assert.deepEqual(

@@ -45,7 +45,6 @@ export declare const COPILOT_REASONING: Readonly<{
     medium: "medium";
     high: "high";
 }>;
-/** Offline floor. Live GET /models replaces this after login. */
 export declare const COPILOT_MODELS: readonly {
     reasoningEfforts?: any;
     id: any;

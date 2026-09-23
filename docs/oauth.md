@@ -15,19 +15,19 @@
 
 | 家族 | 一线对照 | 社区 / 文档 | 本 hop 钉住 | 设计源 |
 |---|---|---|---|---|
-| Codex | [openai/codex](https://github.com/openai/codex) `rust-v0.153.4` | Codex CLI `models.json`；[#37345](https://github.com/openai/codex/issues/37345) routing-hint | UA `codex_cli_rs/0.153.4` | [`codex/README.md`](../src/oauth/codex/README.md) |
+| Codex | [openai/codex](https://github.com/openai/codex) `rust-v0.155.1` | Codex CLI `models.json` + 活目录 `GET .../codex/models`（GPT-6 Sol/Luna 需 `client_version` ≥ 0.155.0）；[#37345](https://github.com/openai/codex/issues/37345) routing-hint | UA `codex_cli_rs/0.155.1` | [`codex/README.md`](../src/oauth/codex/README.md) |
 | Grok | [xai-org/grok-build](https://github.com/xai-org/grok-build) | [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent)（`~/.hermes/auth.json` 导入） | UA `grok-cli/0.2.93` | [`grok/README.md`](../src/oauth/grok/README.md) |
 | GLM | **[zai-org/ZCode](https://github.com/zai-org/ZCode)** `872ad96`（tree 3.14.0）+ [docs.z.ai](https://docs.z.ai/devpack/quick-start) | ZCode 已开源：`official-coding-plan-gateway.ts`、`config/provider/zcode-builtin.json`、`runner-attribution.ts` | UA `ZCode/3.10.1 ai-sdk/anthropic/3.0.81`；Coding Plan Anthropic 走 `zcode.z.ai/api/v1/ultra[-zai]/anthropic` | [`glm/README.md`](../src/oauth/glm/README.md) |
 | Kiro | Kiro IDE / [kiro.dev/docs/models](https://kiro.dev/docs/models) | [ZyphrZero/kiro.rs](https://github.com/ZyphrZero/kiro.rs)；[mikeyobrien/pi-provider-kiro](https://github.com/mikeyobrien/pi-provider-kiro) `0.10.2` | eventstream `GenerateAssistantResponse` | [`kiro/README.md`](../src/oauth/kiro/README.md) |
-| Antigravity | Antigravity.app hub 2.11.0 | [router-for-me/CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)；[Rahularya01/pi-antigravity](https://github.com/Rahularya01/pi-antigravity) | UA `antigravity/hub/2.11.0`；daily-cloudcode-pa | [`antigravity/README.md`](../src/oauth/antigravity/README.md) |
-| Cursor | Cursor CLI `loginDeepControl` | [Rahularya01/pi-cursor](https://github.com/Rahularya01/pi-cursor)；[fitchmultz/pi-cursor-sdk](https://github.com/fitchmultz/pi-cursor-sdk)（`@cursor/sdk@1.0.27`） | 指纹 `cli-2026.07.23-e383d2b`；`x-cursor-client-type: cli` | [`cursor/README.md`](../src/oauth/cursor/README.md) |
+| Antigravity | Antigravity.app hub 2.11.0 | [router-for-me/CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)（registry `models.json` 12 行 / 2026-09-23，sha256 `f95bd4b0…`）；[Rahularya01/pi-antigravity](https://github.com/Rahularya01/pi-antigravity) | UA `antigravity/hub/2.11.0`；daily-cloudcode-pa | [`antigravity/README.md`](../src/oauth/antigravity/README.md) |
+| Cursor | Cursor CLI `loginDeepControl` | [Rahularya01/pi-cursor](https://github.com/Rahularya01/pi-cursor)；[fitchmultz/pi-cursor-sdk](https://github.com/fitchmultz/pi-cursor-sdk)（`@cursor/sdk@1.0.27`）；[docs models-and-pricing](https://cursor.com/docs/models-and-pricing)（2026-09-23 静态楼：+`claude-opus-5-5` / `muse-spark-1.3`） | 指纹 `cli-2026.07.23-e383d2b`；`x-cursor-client-type: cli` | [`cursor/README.md`](../src/oauth/cursor/README.md) |
 | Ollama Cloud | [docs.ollama.com/cloud](https://docs.ollama.com/cloud) | [ollama/ollama#12532](https://github.com/ollama/ollama/issues/12532)、[#16598](https://github.com/ollama/ollama/issues/16598) | Bearer `OLLAMA_API_KEY` → `ollama.com/v1` | [`ollama/README.md`](../src/apikey/ollama/README.md) |
-| Kimi | 官方 Kimi Code CLI | [Leechael/pi-provider-kimi-code](https://github.com/Leechael/pi-provider-kimi-code) | 设备码、无 PKCE | [`kimi/README.md`](../src/oauth/kimi/README.md) |
-| GitHub Copilot | [anomalyco/opencode](https://github.com/anomalyco/opencode) `plugin/github-copilot` | [goose githubcopilot.rs](https://github.com/aaif-goose/goose)；[Cherry Studio CopilotService.ts](https://github.com/CherryHQ/cherry-studio)；[hermes-agent copilot_auth.py](https://github.com/NousResearch/hermes-agent/blob/main/hermes_cli/copilot_auth.py) | UA `GitHubCopilotChat/0.35.0`；client `Iv1.b507a08c87ecfe98` | [`copilot/README.md`](../src/oauth/copilot/README.md) |
+| Kimi | 官方 Kimi Code CLI | [Leechael/pi-provider-kimi-code](https://github.com/Leechael/pi-provider-kimi-code)；[官方模型表](https://www.kimi.com/code/docs/en/kimi-code/models.html)（4 个 ID，2026-09-23） | 设备码、无 PKCE | [`kimi/README.md`](../src/oauth/kimi/README.md) |
+| GitHub Copilot | [anomalyco/opencode](https://github.com/anomalyco/opencode) `plugin/github-copilot` | [github/docs copilot 数据表](https://github.com/github/docs/tree/main/data/tables/copilot)（GA / 可用性，2026-09-23）+ [models.dev](https://models.dev/api.json) `github-copilot`（id / 窗口）；[goose githubcopilot.rs](https://github.com/aaif-goose/goose)；[Cherry Studio CopilotService.ts](https://github.com/CherryHQ/cherry-studio)；[hermes-agent copilot_auth.py](https://github.com/NousResearch/hermes-agent/blob/main/hermes_cli/copilot_auth.py) | UA `GitHubCopilotChat/0.35.0`；client `Iv1.b507a08c87ecfe98` | [`copilot/README.md`](../src/oauth/copilot/README.md) |
 | Devin | Devin CLI `3000.10.31`（app.devin.ai PKCE + server.codeium.com Connect/proto） | [can1357/oh-my-pi](https://github.com/can1357/oh-my-pi) `pi-catalog` devin + vendored `exa.*` protos | MITM 实测指纹 `ide_name: chisel` / `3000.10.31` / `Basic <tok>-<tok>`；`devin-session-token$` 前缀只加一次 | [`devin/README.md`](../src/oauth/devin/README.md) |
-| Cline | Cline CLI `3.0.62`（npm `cline` + `@cline/core 0.0.83`） | [cline/cline](https://github.com/cline/cline) tag `cli-v3.0.62`（Apache-2.0）；[models.dev](https://models.dev/api.json) `openrouter` 桶做模型元数据 | WorkOS 设备码 + `POST /api/v1/auth/register` 兑换；Bearer `workos:<jwt>`；`X-Task-ID` 会话钉 | [`cline/README.md`](../src/oauth/cline/README.md) |
+| Cline | Cline CLI `3.0.62`（npm `cline` + `@cline/core 0.0.83`） | [cline/cline](https://github.com/cline/cline) tag `cli-v3.0.62`（Apache-2.0）；[models.dev](https://models.dev/api.json) `openrouter` 桶做模型元数据（静态快照 2026-09-23） | WorkOS 设备码 + `POST /api/v1/auth/register` 兑换；Bearer `workos:<jwt>`；`X-Task-ID` 会话钉 | [`cline/README.md`](../src/oauth/cline/README.md) |
 | 宿主 | [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) | DSH `llm-pi-ai` `api` 闭集 | 本机回环代理 | [`README.md`](../README.md) |
-| OpenCode Go（API key） | [opencode.ai/docs/go](https://opencode.ai/docs/go/) | [stablyai/orca](https://github.com/stablyai/orca)；[steipete/CodexBar](https://github.com/steipete/CodexBar) | 对话走宿主内置 pi-ai `opencode-go`（27 模型，由 DSH 模型设置页自行开启；插件不写该 profile）+ 插件补充 `deepseek-flash`；`OPENCODE_API_KEY`；插件那条路由带强制的 `x-opencode-session`（pi-ai 0.85.1 不发会话头）；本插件只读额度 | [`opencode-go/README.md`](../src/apikey/opencode-go/README.md) |
+| OpenCode Go（API key） | [opencode.ai/docs/go](https://opencode.ai/docs/go/) | [stablyai/orca](https://github.com/stablyai/orca)；[steipete/CodexBar](https://github.com/steipete/CodexBar) | 对话走宿主内置 pi-ai `opencode-go`（27 模型，由 DSH 模型设置页自行开启；插件不写该 profile）；插件另写**完整官方 Go 目录**：`OpenCode Go`（openai-completions 28 行）+ `OpenCode Go · Responses`（5 行）；7 个公开 id 网关不服务不进目录；`OPENCODE_API_KEY`；插件那条路由带强制的 `x-opencode-session`（pi-ai 0.85.1 不发会话头）；本插件只读额度 | [`opencode-go/README.md`](../src/apikey/opencode-go/README.md) |
 
 CLIProxyAPI 同时包了 Codex / Grok / Antigravity 等多家。**只**在 Antigravity 上抄它的公开 client / UA / `models.json` 形状。不要把它的多家族共用层抄进本仓库的 `cache.ts`。
 
@@ -45,7 +45,7 @@ CLIProxyAPI 同时包了 Codex / Grok / Antigravity 等多家。**只**在 Antig
 
 ## Codex
 
-一线：[openai/codex](https://github.com/openai/codex) tag **`rust-v0.153.4`**（2026-09-04 `models.json`）。
+一线：[openai/codex](https://github.com/openai/codex) tag **`rust-v0.155.1`**（本机 updater `version.json` 2026-09-19；缓存头源码蒸馏自 0.153.4）。
 
 | 抄 | 路径 / issue | 本 hop |
 |---|---|---|
@@ -55,7 +55,7 @@ CLIProxyAPI 同时包了 Codex / Grok / Antigravity 等多家。**只**在 Antig
 | Fast → Priority | [#37345](https://github.com/openai/codex/issues/37345) | body `service_tier: priority` + `x-codex-routing-hint` |
 | 剥 `max_output_tokens` | [#39397](https://github.com/openai/codex/issues/39397) | `request.ts` |
 | `pro` / `prolite` 徽章 | [#29243](https://github.com/openai/codex/issues/29243) | `plan.ts` Pro 20x / Pro 5x |
-| 目录 | CLI `models.json` | `CODEX_MODELS`；Astra 默认 258K |
+| 目录 | CLI `models.json` + `GET .../codex/models` | `CODEX_MODELS`；GPT-6 / 5.6 默认 258K；Sol/Luna 需 `client_version` ≥ 0.155.0；5.4 系列 / Spark 已 400 不收录 |
 
 **不要发明：** `x-codex-installation-id`、`x-codex-turn-metadata`、`parent-thread-id`（官方 CLI 有，本 hop 不发）。不要把 DSH `session_id` 送上 chatgpt.com。
 
@@ -170,7 +170,7 @@ pi-cursor-sdk 自己走 **API key + `Agent.create`**，不是 OAuth。本 hop �
 | `Metadata.api_key` = session token（已带 `devin-session-token$`） | `devinMetadataBytes`；`normalizeDevinToken` 前缀只加一次 |
 | MITM 指纹：`ide_name: chisel` + `ide_version/extension_version: <cli 版本>` + `os` + `Authorization: Basic <token>-<token>`（`ide_name: devin` 只回 1 条 stub config） | `DEVIN_IDE_NAME` / `devinBasicAuth` / `encodeDevinMetadata` |
 | `cascade_id` + 每请求 `execution_id`；历史 `message_id` 内容哈希 | `devin/cache.ts` / `openaiToDevin` |
-| `GetCliModelConfigs` → 家族 + effort/modifier 收成一行 | `toDevinPickerModels`（variants 值是后端 uid） |
+| `GetCliModelConfigs` → 家族 + effort/modifier 收成一行（2026-09-23：598 configs → 81 行 / 49 家族；静态 floor 同镜像） | `toDevinPickerModels`（variants 值是后端 uid） |
 | `GetUserStatus`：`teams_tier`、daily/weekly quota、unix 秒 reset | `fetchDevinQuota` / `parseDevinUserStatus`（proto.ts 已转毫秒） |
 
 **不要发明：** 双前缀 token（活测 401）；`ide_name: devin`/`Devin`/`devin-cli`（stub-gated）；Metadata `f`/`session_id`/`user_agent` 字段（CLI 不发）；用 `api.devin.ai` 当 chat host；把 `-fast` 走 `applyFastMode`（真后端变体）；Response API；`Date.now()` cascade id。

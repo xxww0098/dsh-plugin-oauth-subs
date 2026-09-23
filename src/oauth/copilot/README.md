@@ -90,6 +90,8 @@ Copilot-Integration-Id: vscode-chat
 
 `capabilities.supports.reasoning_effort` → DSH `reasoningEfforts`（键是 picker 档，值是 vendor 拼写）。没有 effort 图就省略字段。
 
+静态楼（`COPILOT_MODELS`，离线回落）2026-09-23 对齐官方：模型名 / 可用性取自 GitHub docs 数据表 [`model-release-status.yml`](https://github.com/github/docs/blob/main/data/tables/copilot/model-release-status.yml)（GA）与 [`auto-model-selection.yml`](https://github.com/github/docs/blob/main/data/tables/copilot/auto-model-selection.yml)；id / 窗口 / 输出 / 图文 / effort 阶梯取自 models.dev `github-copilot`（Copilot API 登记）。`gpt-4.1` 作为插件 utility 默认保留（官方 GA 表已不含）；`gpt-6-luna` / `gpt-6-sol` 用 Codex / Cursor / Devin 同款 vendor id，`claude-opus-5.5` 按 Copilot 点号约定（`claude-opus-4.7`），这两个 id 待活目录确认。`Claude Opus 4.8 (fast mode) (preview)` 是模式不是 picker 行，不进静态楼。本机无 Copilot 凭据（gh `gho_` 换 token 403），活 `GET {api}/models` 未实测。
+
 默认辅助模型：`gpt-4.1`（官方 utility / 静态楼都有）。
 
 ## 额度

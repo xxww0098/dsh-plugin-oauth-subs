@@ -92,15 +92,15 @@ Login and chat use official client identity; UA / fingerprint live in each `src/
 
 | Family | Fast | Window | Thinking |
 |---|---|---|---|
-| Codex GPT-6 Astra / GPT-5.6 Sol / Terra / Luna | Yes. `-fast` → Priority (`service_tier: "priority"` + `x-codex-routing-hint`; `store: false`) | **258K** default; `-900k` (872K) | low / medium / high / xhigh / **max** |
-| Other Codex | 5.4 / 5.5 Yes; Mini / Spark No (empty `service_tiers`; leftover `*-fast` peeled locally) | GPT-5.4 `-900k` (1M) | low–xhigh (no `minimal`) |
+| Codex GPT-6 Astra / Sol / Luna and GPT-5.6 Sol / Terra / Luna | Yes. `-fast` → Priority (`service_tier: "priority"` + `x-codex-routing-hint`; `store: false`) | **258K** default; `-900k` (872K) | low / medium / high / xhigh / **max** |
+| Other Codex | GPT-5.5 only: Yes, `-fast` → Priority. GPT-5.4 / 5.4-mini / Spark retired (`not supported when using Codex with a ChatGPT account`) | 258K (no `-900k`) | low–xhigh (no `minimal`) |
 | Grok | No. 2026-08-30: 83.34 vs 82.80 tok/s (0.994). Older ids reject the field | — | 4.6: low / medium / high / xhigh (unset = **high**); 4.5: no xhigh |
 | GLM | — | — | 5.3 / Flash: low / high / **max** (default max; no `medium`; `disabled` 400s). Turbo: on, no depth. Flash is the only GLM image row |
 | Kiro | — | — | GPT-5.6: off / low / medium / high / xhigh / max (`off` → wire `none`). Opus 5 / 4.8 / 4.7 and Sonnet 5 add **xhigh**; 4.6 family to max; Haiku / OSS: none. Catalog: [kiro.dev/docs/models](https://kiro.dev/docs/models/) (no Auto) |
 | Ollama Cloud | No | Live `GET /api/tags` (static 20-row Cloud snapshot fallback). Context from `POST /api/show` `model_info.<family>.context_length`. No quota bars | off / low / medium / high / max (`off` → wire `none`) |
-| Kimi | No | Live `GET /coding/v1/models` (static `kimi-for-coding` / highspeed / `k3`, 256k/32k). Prefix-hash cache | off / minimal / low / medium / high / xhigh / max → `thinking.effort` |
-| Copilot | No | Live `GET {api}/models` (static GPT / Claude / Gemini / Grok floor). Prefix-hash + `X-Interaction-Id` | live `reasoning_effort` when the catalog advertises it |
-| Devin | Yes. `-fast` is a real backend variant (not Codex Priority), never through `applyFastMode` | Live `GetCliModelConfigs` (46 families; static fallback) | Mapped to backend `chat_model_uid` per family (`defaultUid`); `thinking` / `fast` / `1m` become picker rows |
+| Kimi | No | Live `GET /coding/v1/models` (static `kimi-for-coding` / highspeed / `k3` / `k3-256k`, 256k/32k). Prefix-hash cache | off / minimal / low / medium / high / xhigh / max → `thinking.effort` |
+| Copilot | No | Live `GET {api}/models` (static floor refreshed from GitHub's official docs tables + models.dev `github-copilot`, 2026-09-23). Prefix-hash + `X-Interaction-Id` | live `reasoning_effort` when the catalog advertises it |
+| Devin | Yes. `-fast` is a real backend variant (not Codex Priority), never through `applyFastMode` | Live `GetCliModelConfigs` (2026-09-23: 49 families / 81 picker rows; the static fallback mirrors them) | Mapped to backend `chat_model_uid` per family (`defaultUid`); `thinking` / `fast` / `1m` become picker rows |
 | Cline | No | Live `GET /ai/cline/recommended-models` (static feed snapshot fallback) | off / minimal / low / medium / high / xhigh / max → `reasoning_effort` (`max`→`xhigh`; no `off`) |
 
 Codex Priority echo `created=auto` / `completed=default` is not a confirmation (openai/codex#14204). 2026-08-26 Luna: 88.3 vs 57.5 tok/s (1.54×); 2026-08-30 interleaved mean 1.33× (1.90 then 0.93). Throughput-only; TTFT and cache unchanged.

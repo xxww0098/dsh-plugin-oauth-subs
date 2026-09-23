@@ -290,66 +290,238 @@ function devinModel(id, name, contextWindow, maxTokens, variants, { input = ['te
 }
 
 /**
- * Static floor from the live GetCliModelConfigs probe (209 configs, 46
- * families, Pro tier, 3000.10.31 credentials). `variants` maps a DSH effort
- * key to the backend's `chat_model_uid`; `defaultUid` is the config upstream
- * flags `is_default_model_in_family`. Live discovery overlays this.
+ * Static floor mirroring the live GetCliModelConfigs probe (2026-09-23, Pro
+ * tier, 3000.10.31 credentials): 598 configs → 580 family-bearing → 81 picker
+ * rows across 49 families. `variants` maps a DSH effort key to the backend's
+ * `chat_model_uid`; `defaultUid` is the config upstream flags
+ * `is_default_model_in_family` (no-effort rows carry it explicitly). Login /
+ * import / quota refresh replaces the floor with live rows when the RPC returns
+ * usable rows (catalog.ts); a failed or empty RPC falls back to this mirror.
+ * Per-field source is in README.md 模型 / 归因.
  */
 export const DEVIN_MODELS = Object.freeze([
-  devinModel('swe-2', 'SWE-2', 262_000, 128_000, {
-    medium: 'swe-2-medium', high: 'swe-2-high', max: 'swe-2-max',
-  }, { defaultUid: 'swe-2-high' }),
-  devinModel('swe-1-7', 'SWE-1.7', 262_000, 128_000, {
-    medium: 'swe-1-7-medium', max: 'swe-1-7',
-  }),
-  devinModel('swe-1-7-lightning', 'SWE-1.7 Lightning', 202_752, 96_000, {
-    medium: 'swe-1-7-lightning-medium', max: 'swe-1-7-lightning',
-  }),
-  devinModel('swe-1-6', 'SWE-1.6', 200_000, 128_000, {}, { defaultUid: 'swe-1-6' }),
-  devinModel('claude-opus-5', 'Claude Opus 5', 1_000_000, 128_000, {
-    low: 'claude-opus-5-low', medium: 'claude-opus-5-medium', high: 'claude-opus-5-high',
-    xhigh: 'claude-opus-5-xhigh', max: 'claude-opus-5-max',
-  }),
   devinModel('claude-fable-5-1', 'Claude Fable 5.1', 1_000_000, 128_000, {
-    low: 'claude-fable-5-1-low', medium: 'claude-fable-5-1-medium', high: 'claude-fable-5-1-high',
+    medium: 'claude-fable-5-1-medium', low: 'claude-fable-5-1-low', high: 'claude-fable-5-1-high',
     xhigh: 'claude-fable-5-1-xhigh', max: 'claude-fable-5-1-max',
   }),
+  devinModel('claude-opus-5-5', 'Claude Opus 5.5', 1_000_000, 128_000, {
+    medium: 'claude-opus-5-5-medium', low: 'claude-opus-5-5-low', high: 'claude-opus-5-5-high',
+    xhigh: 'claude-opus-5-5-xhigh', max: 'claude-opus-5-5-max',
+  }),
   devinModel('claude-sonnet-5', 'Claude Sonnet 5', 1_000_000, 128_000, {
-    low: 'claude-sonnet-5-low', medium: 'claude-sonnet-5-medium', high: 'claude-sonnet-5-high',
+    medium: 'claude-sonnet-5-medium', low: 'claude-sonnet-5-low', high: 'claude-sonnet-5-high',
     xhigh: 'claude-sonnet-5-xhigh', max: 'claude-sonnet-5-max',
   }),
+  devinModel('gemini-3-8-flash', 'Gemini 3.8 Flash', 1_048_576, 65_535, {
+    medium: 'gemini-3-8-flash-medium', low: 'gemini-3-8-flash-low', high: 'gemini-3-8-flash-high',
+  }),
+  devinModel('glm-5.2', 'GLM-5.2', 200_000, 128_000, {
+    high: 'glm-5-2', max: 'glm-5-2-max', off: 'glm-5-2-none',
+  }, { input: ['text'] }),
+  devinModel('glm-5-3', 'GLM-5.3', 1_048_576, 128_000, {
+    low: 'glm-5-3-low', high: 'glm-5-3-high', max: 'glm-5-3-max',
+  }, { defaultUid: 'glm-5-3-max', input: ['text'] }),
   devinModel('gpt-6-astra', 'GPT-6 Astra', 1_000_000, 128_000, {
-    low: 'gpt-6-astra-low', medium: 'gpt-6-astra-medium', high: 'gpt-6-astra-high',
+    medium: 'gpt-6-astra-medium', low: 'gpt-6-astra-low', high: 'gpt-6-astra-high',
     xhigh: 'gpt-6-astra-xhigh', max: 'gpt-6-astra-max',
   }),
-  devinModel('gpt-5.6-sol', 'GPT-5.6 Sol', 1_000_000, 128_000, {
-    off: 'gpt-5-6-sol-none', low: 'gpt-5-6-sol-low', medium: 'gpt-5-6-sol-medium',
-    high: 'gpt-5-6-sol-high', xhigh: 'gpt-5-6-sol-xhigh', max: 'gpt-5-6-sol-max',
+  devinModel('gpt-6-luna', 'GPT-6 Luna', 1_000_000, 128_000, {
+    medium: 'gpt-6-luna-medium', off: 'gpt-6-luna-none', low: 'gpt-6-luna-low',
+    high: 'gpt-6-luna-high', xhigh: 'gpt-6-luna-xhigh', max: 'gpt-6-luna-max',
   }),
+  devinModel('gpt-6-sol', 'GPT-6 Sol', 1_000_000, 128_000, {
+    medium: 'gpt-6-sol-medium', off: 'gpt-6-sol-none', low: 'gpt-6-sol-low',
+    high: 'gpt-6-sol-high', xhigh: 'gpt-6-sol-xhigh', max: 'gpt-6-sol-max',
+  }),
+  devinModel('kimi-k3', 'Kimi K3', 1_048_576, 131_072, {
+    high: 'kimi-k3-high', low: 'kimi-k3-low', max: 'kimi-k3-max',
+  }),
+  devinModel('swe-1.7-lightning', 'SWE-1.7 Lightning', 202_752, 96_000, {
+    max: 'swe-1-7-lightning', medium: 'swe-1-7-lightning-medium',
+  }),
+  devinModel('swe-2', 'SWE-2', 262_000, 128_000, {
+    high: 'swe-2-high', medium: 'swe-2-medium', max: 'swe-2-max',
+  }, { defaultUid: 'swe-2-high' }),
+  devinModel('claude-5-fable', 'Claude Fable 5', 1_000_000, 128_000, {
+    low: 'claude-5-fable-low', medium: 'claude-5-fable-medium', high: 'claude-5-fable-high',
+    xhigh: 'claude-5-fable-xhigh', max: 'claude-5-fable-max',
+  }),
+  devinModel('claude-opus-4.5', 'Claude Opus 4.5', 200_000, 64_000, {}, { defaultUid: 'MODEL_CLAUDE_4_5_OPUS' }),
+  devinModel('claude-opus-4.5-thinking', 'Claude Opus 4.5 Thinking', 200_000, 64_000, {}, { defaultUid: 'MODEL_CLAUDE_4_5_OPUS_THINKING' }),
+  devinModel('claude-opus-4.6', 'Claude Opus 4.6', 200_000, 128_000, {}, { defaultUid: 'claude-opus-4-6' }),
+  devinModel('claude-opus-4.6-1m', 'Claude Opus 4.6 1M', 1_000_000, 128_000, {}, { defaultUid: 'claude-opus-4-6-1m' }),
+  devinModel('claude-opus-4.6-thinking', 'Claude Opus 4.6 Thinking', 200_000, 128_000, {}, { defaultUid: 'claude-opus-4-6-thinking' }),
+  devinModel('claude-opus-4.6-thinking-1m', 'Claude Opus 4.6 Thinking 1M', 1_000_000, 128_000, {}, { defaultUid: 'claude-opus-4-6-thinking-1m' }),
+  devinModel('claude-opus-4.7', 'Claude Opus 4.7', 1_000_000, 128_000, {
+    medium: 'claude-opus-4-7-medium', low: 'claude-opus-4-7-low', high: 'claude-opus-4-7-high',
+    xhigh: 'claude-opus-4-7-xhigh', max: 'claude-opus-4-7-max',
+  }),
+  devinModel('claude-opus-4.8', 'Claude Opus 4.8', 1_000_000, 128_000, {
+    medium: 'claude-opus-4-8-medium', low: 'claude-opus-4-8-low', high: 'claude-opus-4-8-high',
+    xhigh: 'claude-opus-4-8-xhigh', max: 'claude-opus-4-8-max',
+  }),
+  devinModel('claude-opus-4.8-fast', 'Claude Opus 4.8 Fast', 1_000_000, 128_000, {
+    low: 'claude-opus-4-8-low-fast', medium: 'claude-opus-4-8-medium-fast', high: 'claude-opus-4-8-high-fast',
+    xhigh: 'claude-opus-4-8-xhigh-fast', max: 'claude-opus-4-8-max-fast',
+  }),
+  devinModel('claude-opus-5', 'Claude Opus 5', 1_000_000, 128_000, {
+    medium: 'claude-opus-5-medium', low: 'claude-opus-5-low', high: 'claude-opus-5-high',
+    xhigh: 'claude-opus-5-xhigh', max: 'claude-opus-5-max',
+  }),
+  devinModel('claude-opus-5-fast', 'Claude Opus 5 Fast', 1_000_000, 128_000, {
+    low: 'claude-opus-5-low-fast', medium: 'claude-opus-5-medium-fast', high: 'claude-opus-5-high-fast',
+    xhigh: 'claude-opus-5-xhigh-fast', max: 'claude-opus-5-max-fast',
+  }),
+  devinModel('claude-opus-5-5-fast', 'Claude Opus 5.5 Fast', 1_000_000, 128_000, {
+    low: 'claude-opus-5-5-low-fast', medium: 'claude-opus-5-5-medium-fast', high: 'claude-opus-5-5-high-fast',
+    xhigh: 'claude-opus-5-5-xhigh-fast', max: 'claude-opus-5-5-max-fast',
+  }),
+  devinModel('claude-sonnet-4.5', 'Claude Sonnet 4.5', 200_000, 64_000, {}, { defaultUid: 'MODEL_PRIVATE_2' }),
+  devinModel('claude-sonnet-4.5-thinking', 'Claude Sonnet 4.5 Thinking', 200_000, 64_000, {}, { defaultUid: 'MODEL_PRIVATE_3' }),
+  devinModel('claude-sonnet-4.6', 'Claude Sonnet 4.6', 200_000, 128_000, {}, { defaultUid: 'claude-sonnet-4-6' }),
+  devinModel('claude-sonnet-4.6-1m', 'Claude Sonnet 4.6 1M', 1_000_000, 128_000, {}, { defaultUid: 'claude-sonnet-4-6-1m' }),
+  devinModel('claude-sonnet-4.6-thinking', 'Claude Sonnet 4.6 Thinking', 200_000, 128_000, {}, { defaultUid: 'claude-sonnet-4-6-thinking' }),
+  devinModel('claude-sonnet-4.6-thinking-1m', 'Claude Sonnet 4.6 Thinking 1M', 1_000_000, 128_000, {}, { defaultUid: 'claude-sonnet-4-6-thinking-1m' }),
+  devinModel('deepseek-v4-flash', 'DeepSeek V4 Flash', 1_048_576, 384_000, {
+    high: 'deepseek-v4-flash-high', max: 'deepseek-v4-flash-max',
+  }, { input: ['text'] }),
+  devinModel('deepseek-v4-pro', 'DeepSeek V4 Pro', 1_048_576, 384_000, {
+    high: 'deepseek-v4-pro-high', max: 'deepseek-v4-pro-max',
+  }, { input: ['text'] }),
+  devinModel('deepseek-v4-1-flash', 'DeepSeek V4.1 Flash', 1_048_576, 384_000, {
+    high: 'deepseek-v4-1-flash-high', max: 'deepseek-v4-1-flash-max',
+  }),
+  devinModel('fusion', 'Fusion', 1_000_000, undefined, {}, { defaultUid: 'fusion-claude-fable-5-1-medium-sidekick-swe-2-medium' }),
+  devinModel('fusion-fast', 'Fusion Fast', 1_000_000, undefined, {}, { defaultUid: 'fusion-claude-opus-5-high-fast-sidekick-swe-2-medium' }),
+  devinModel('fusion-thinking', 'Fusion Thinking', 1_000_000, undefined, {}, { defaultUid: 'fusion-gpt-5-6-sol-high-sidekick-swe-2-medium' }),
+  devinModel('fusion-thinking-fast', 'Fusion Thinking Fast', 1_000_000, undefined, {}, { defaultUid: 'fusion-gpt-5-6-sol-high-fast-sidekick-swe-2-medium' }),
+  devinModel('gemini-3.0-flash', 'Gemini 3 Flash', 1_048_576, 65_535, {
+    minimal: 'MODEL_GOOGLE_GEMINI_3_0_FLASH_MINIMAL', low: 'MODEL_GOOGLE_GEMINI_3_0_FLASH_LOW', medium: 'MODEL_GOOGLE_GEMINI_3_0_FLASH_MEDIUM',
+    high: 'MODEL_GOOGLE_GEMINI_3_0_FLASH_HIGH',
+  }),
+  devinModel('gemini-3.1-pro', 'Gemini 3.1 Pro', 1_048_576, 65_535, {
+    low: 'gemini-3-1-pro-low', high: 'gemini-3-1-pro-high',
+  }, { defaultUid: 'gemini-3-1-pro-high' }),
+  devinModel('gemini-3.5-flash', 'Gemini 3.5 Flash', 1_048_576, 65_535, {
+    minimal: 'gemini-3-5-flash-minimal', low: 'gemini-3-5-flash-low', medium: 'gemini-3-5-flash-medium',
+    high: 'gemini-3-5-flash-high',
+  }),
+  devinModel('gemini-3.6-flash', 'Gemini 3.6 Flash', 1_048_576, 65_535, {
+    minimal: 'gemini-3-6-flash-minimal', low: 'gemini-3-6-flash-low', medium: 'gemini-3-6-flash-medium',
+    high: 'gemini-3-6-flash-high',
+  }),
+  devinModel('gemini-3-7-flash', 'Gemini 3.7 Flash', 1_048_576, 65_535, {
+    low: 'gemini-3-7-flash-low', medium: 'gemini-3-7-flash-medium', high: 'gemini-3-7-flash-high',
+  }),
+  devinModel('glm-5.2-1m', 'GLM-5.2 1M', 1_000_000, 128_000, {
+    high: 'glm-5-2-1m', max: 'glm-5-2-max-1m',
+  }, { input: ['text'] }),
+  devinModel('glm-5.2-thinking-1m', 'GLM-5.2 Thinking 1M', 1_000_000, 128_000, {}, { defaultUid: 'glm-5-2-none-1m', input: ['text'] }),
+  devinModel('glm-5-3-flash', 'GLM-5.3 Flash', 1_000_000, 128_000, {
+    low: 'glm-5-3-flash-low', high: 'glm-5-3-flash-high', max: 'glm-5-3-flash-max',
+  }, { defaultUid: 'glm-5-3-flash-max' }),
+  devinModel('gpt-5.1', 'GPT-5.1', 272_000, 128_000, {
+    off: 'MODEL_PRIVATE_12', low: 'MODEL_PRIVATE_13', medium: 'MODEL_PRIVATE_14',
+    high: 'MODEL_PRIVATE_15',
+  }),
+  devinModel('gpt-5.2', 'GPT-5.2', 384_000, 128_000, {
+    low: 'MODEL_GPT_5_2_LOW', medium: 'MODEL_GPT_5_2_MEDIUM', off: 'MODEL_GPT_5_2_NONE',
+    high: 'MODEL_GPT_5_2_HIGH', xhigh: 'MODEL_GPT_5_2_XHIGH',
+  }),
+  devinModel('gpt-5.3-codex', 'GPT-5.3-Codex', 400_000, 128_000, {
+    low: 'gpt-5-3-codex-low', medium: 'gpt-5-3-codex-medium', high: 'gpt-5-3-codex-high',
+    xhigh: 'gpt-5-3-codex-xhigh',
+  }),
+  devinModel('gpt-5.3-codex-fast', 'GPT-5.3-Codex Fast', 400_000, 128_000, {
+    low: 'gpt-5-3-codex-low-priority', medium: 'gpt-5-3-codex-medium-priority', high: 'gpt-5-3-codex-high-priority',
+    xhigh: 'gpt-5-3-codex-xhigh-priority',
+  }),
+  devinModel('gpt-5.4', 'GPT-5.4', 272_000, 128_000, {
+    off: 'gpt-5-4-none', low: 'gpt-5-4-low', medium: 'gpt-5-4-medium',
+    high: 'gpt-5-4-high', xhigh: 'gpt-5-4-xhigh',
+  }),
+  devinModel('gpt-5.4-fast', 'GPT-5.4 Fast', 272_000, 128_000, {
+    low: 'gpt-5-4-low-priority', medium: 'gpt-5-4-medium-priority', high: 'gpt-5-4-high-priority',
+    xhigh: 'gpt-5-4-xhigh-priority',
+  }),
+  devinModel('gpt-5.4-mini', 'GPT-5.4 Mini', 400_000, 128_000, {
+    low: 'gpt-5-4-mini-low', medium: 'gpt-5-4-mini-medium', high: 'gpt-5-4-mini-high',
+    xhigh: 'gpt-5-4-mini-xhigh',
+  }),
+  devinModel('gpt-5.4-thinking-fast', 'GPT-5.4 Thinking Fast', 272_000, 128_000, {}, { defaultUid: 'gpt-5-4-none-priority' }),
+  devinModel('gpt-5.5', 'GPT-5.5', 272_000, 128_000, {
+    off: 'gpt-5-5-none', low: 'gpt-5-5-low', medium: 'gpt-5-5-medium',
+    high: 'gpt-5-5-high', xhigh: 'gpt-5-5-xhigh',
+  }, { defaultUid: 'gpt-5-5-low' }),
+  devinModel('gpt-5.5-fast', 'GPT-5.5 Fast', 272_000, 128_000, {
+    low: 'gpt-5-5-low-priority', medium: 'gpt-5-5-medium-priority', high: 'gpt-5-5-high-priority',
+    xhigh: 'gpt-5-5-xhigh-priority',
+  }),
+  devinModel('gpt-5.5-thinking-fast', 'GPT-5.5 Thinking Fast', 272_000, 128_000, {}, { defaultUid: 'gpt-5-5-none-priority' }),
   devinModel('gpt-5.6-luna', 'GPT-5.6 Luna', 1_000_000, 128_000, {
     off: 'gpt-5-6-luna-none', low: 'gpt-5-6-luna-low', medium: 'gpt-5-6-luna-medium',
     high: 'gpt-5-6-luna-high', xhigh: 'gpt-5-6-luna-xhigh', max: 'gpt-5-6-luna-max',
   }),
-  devinModel('gemini-3-8-flash', 'Gemini 3.8 Flash', 1_048_576, 65_535, {
-    low: 'gemini-3-8-flash-low', medium: 'gemini-3-8-flash-medium', high: 'gemini-3-8-flash-high',
+  devinModel('gpt-5.6-luna-fast', 'GPT-5.6 Luna Fast', 1_000_000, 128_000, {
+    low: 'gpt-5-6-luna-low-priority', medium: 'gpt-5-6-luna-medium-priority', high: 'gpt-5-6-luna-high-priority',
+    xhigh: 'gpt-5-6-luna-xhigh-priority', max: 'gpt-5-6-luna-max-priority',
+  }),
+  devinModel('gpt-5.6-luna-thinking-fast', 'GPT-5.6 Luna Thinking Fast', 1_000_000, 128_000, {}, { defaultUid: 'gpt-5-6-luna-none-priority' }),
+  devinModel('gpt-5.6-sol', 'GPT-5.6 Sol', 1_000_000, 128_000, {
+    off: 'gpt-5-6-sol-none', low: 'gpt-5-6-sol-low', medium: 'gpt-5-6-sol-medium',
+    high: 'gpt-5-6-sol-high', xhigh: 'gpt-5-6-sol-xhigh', max: 'gpt-5-6-sol-max',
+  }),
+  devinModel('gpt-5.6-sol-fast', 'GPT-5.6 Sol Fast', 1_000_000, 128_000, {
+    low: 'gpt-5-6-sol-low-priority', medium: 'gpt-5-6-sol-medium-priority', high: 'gpt-5-6-sol-high-priority',
+    xhigh: 'gpt-5-6-sol-xhigh-priority', max: 'gpt-5-6-sol-max-priority',
+  }),
+  devinModel('gpt-5.6-sol-thinking-fast', 'GPT-5.6 Sol Thinking Fast', 1_000_000, 128_000, {}, { defaultUid: 'gpt-5-6-sol-none-priority' }),
+  devinModel('gpt-5.6-terra', 'GPT-5.6 Terra', 1_000_000, 128_000, {
+    off: 'gpt-5-6-terra-none', low: 'gpt-5-6-terra-low', medium: 'gpt-5-6-terra-medium',
+    high: 'gpt-5-6-terra-high', xhigh: 'gpt-5-6-terra-xhigh', max: 'gpt-5-6-terra-max',
+  }),
+  devinModel('gpt-5.6-terra-fast', 'GPT-5.6 Terra Fast', 1_000_000, 128_000, {
+    low: 'gpt-5-6-terra-low-priority', medium: 'gpt-5-6-terra-medium-priority', high: 'gpt-5-6-terra-high-priority',
+    xhigh: 'gpt-5-6-terra-xhigh-priority', max: 'gpt-5-6-terra-max-priority',
+  }),
+  devinModel('gpt-5.6-terra-thinking-fast', 'GPT-5.6 Terra Thinking Fast', 1_000_000, 128_000, {}, { defaultUid: 'gpt-5-6-terra-none-priority' }),
+  devinModel('gpt-6-astra-fast', 'GPT-6 Astra Fast', 1_000_000, 128_000, {
+    low: 'gpt-6-astra-low-priority', medium: 'gpt-6-astra-medium-priority', high: 'gpt-6-astra-high-priority',
+    xhigh: 'gpt-6-astra-xhigh-priority', max: 'gpt-6-astra-max-priority',
+  }),
+  devinModel('gpt-6-luna-fast', 'GPT-6 Luna Fast', 1_000_000, 128_000, {
+    low: 'gpt-6-luna-low-priority', medium: 'gpt-6-luna-medium-priority', high: 'gpt-6-luna-high-priority',
+    xhigh: 'gpt-6-luna-xhigh-priority', max: 'gpt-6-luna-max-priority',
+  }),
+  devinModel('gpt-6-luna-thinking-fast', 'GPT-6 Luna Thinking Fast', 1_000_000, 128_000, {}, { defaultUid: 'gpt-6-luna-none-priority' }),
+  devinModel('gpt-6-sol-fast', 'GPT-6 Sol Fast', 1_000_000, 128_000, {
+    low: 'gpt-6-sol-low-priority', medium: 'gpt-6-sol-medium-priority', high: 'gpt-6-sol-high-priority',
+    xhigh: 'gpt-6-sol-xhigh-priority', max: 'gpt-6-sol-max-priority',
+  }),
+  devinModel('gpt-6-sol-thinking-fast', 'GPT-6 Sol Thinking Fast', 1_000_000, 128_000, {}, { defaultUid: 'gpt-6-sol-none-priority' }),
+  devinModel('grok-4.5', 'Grok 4.5', 500_000, 100_000, {
+    low: 'grok-4-5-low', medium: 'grok-4-5-medium', high: 'grok-4-5-high',
   }),
   devinModel('grok-4-6', 'Grok 4.6', 500_000, 100_000, {
-    low: 'grok-4-6-low', medium: 'grok-4-6-medium', high: 'grok-4-6-high', xhigh: 'grok-4-6-xhigh',
+    low: 'grok-4-6-low', medium: 'grok-4-6-medium', high: 'grok-4-6-high',
+    xhigh: 'grok-4-6-xhigh',
   }),
-  devinModel('glm-5.3', 'GLM-5.3', 200_000, 128_000, {
-    low: 'glm-5-3-low', high: 'glm-5-3-high', max: 'glm-5-3-max',
-  }, { defaultUid: 'glm-5-3-high', input: ['text'] }),
-  devinModel('glm-5.2', 'GLM-5.2', 200_000, 128_000, {
-    off: 'glm-5-2-none', high: 'glm-5-2', max: 'glm-5-2-max',
-  }, { defaultUid: 'glm-5-2', input: ['text'] }),
-  devinModel('kimi-k3', 'Kimi K3', 1_048_576, 131_072, {
-    low: 'kimi-k3-low', high: 'kimi-k3-high', max: 'kimi-k3-max',
-  }, { defaultUid: 'kimi-k3-high' }),
-  devinModel('deepseek-v4-flash', 'DeepSeek V4 Flash', 1_048_576, 384_000, {
-    high: 'deepseek-v4-flash-high', max: 'deepseek-v4-flash-max',
-  }, { defaultUid: 'deepseek-v4-flash-high', input: ['text'] }),
+  devinModel('grok-4-7', 'Grok 4.7', 500_000, 100_000, {
+    low: 'grok-4-7-low', medium: 'grok-4-7-medium', high: 'grok-4-7-high',
+    xhigh: 'grok-4-7-xhigh',
+  }),
   devinModel('inkling', 'Inkling', 1_048_576, 131_072, {
     off: 'inkling-none', low: 'inkling-low', medium: 'inkling-medium',
     high: 'inkling-high', xhigh: 'inkling-xhigh', max: 'inkling-max',
   }, { input: ['text'] }),
+  devinModel('kimi-k2.6', 'Kimi K2.6', 262_144, 8_192, {}, { defaultUid: 'kimi-k2-6' }),
+  devinModel('kimi-k2.7', 'Kimi K2.7', 262_144, 16_000, {}, { defaultUid: 'kimi-k2-7' }),
+  devinModel('nemotron-3-ultra', 'Nemotron 3 Ultra', 1_000_000, 32_768, {
+    off: 'nemotron-3-ultra-none', medium: 'nemotron-3-ultra-medium', high: 'nemotron-3-ultra-high',
+  }, { defaultUid: 'nemotron-3-ultra-high', input: ['text'] }),
+  devinModel('swe-1.6', 'SWE-1.6', 200_000, 128_000, {}, { defaultUid: 'swe-1-6' }),
+  devinModel('swe-1.6-fast', 'SWE-1.6 Fast', 200_000, 128_000, {}, { defaultUid: 'swe-1-6-fast' }),
+  devinModel('swe-1.7', 'SWE-1.7', 262_000, 128_000, {
+    max: 'swe-1-7', medium: 'swe-1-7-medium',
+  }),
 ])

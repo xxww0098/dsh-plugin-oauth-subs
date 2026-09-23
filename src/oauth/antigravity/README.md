@@ -59,7 +59,7 @@ DSH chat/completions  →  POST daily-cloudcode-pa.googleapis.com/v1internal:gen
 - `generationConfig.maxOutputTokens` 用线 id 钳位表发出。不要把未钳的 DSH `max_tokens` 原样转发。
 - `request.sessionId` = `antigravitySessionIdOf`（有 DSH session 原样；否则 `dsh-antigravity:<model>`）。
 - `request.tools` / `generationConfig.thinkingConfig` 按 session 钉住，避免 DSH 抖前缀。不发 `implicitCacheConfig`。
-- **thinkingConfig：** `claude-*` / `gpt-oss-*` **整段省略**。不要用 `reasoning_effort` 改写 flash `-high` 线 id。`gemini-3.5-flash*` / `gemini-3-flash-agent` / `gemini-3.1-pro-*` / `gemini-pro-agent` 用 Pi 的 `thinkingBudget`（id 已带 effort 时也可省略）。其它 Gemini flash 仍可用 sticky `thinkingLevel`。
+- **thinkingConfig：** `claude-*` / `gpt-oss-*` **整段省略**。不要用 `reasoning_effort` 改写 flash `-high` 线 id。`gemini-3.5-flash*`（含 `gemini-3.5-flash-lite`）/ `gemini-3-flash-agent`（legacy，上游 500，不在 catalog）/ `gemini-3.1-pro-*` / `gemini-pro-agent` 用 Pi 的 `thinkingBudget`（id 已带 effort 时也可省略）。其它 Gemini flash 仍可用 sticky `thinkingLevel`。
 - 转换后 **合并相邻同 role** 的 `contents`（Cloud Code 否则 400）。多余 system 快照只停在末尾，**不要**插进 model `functionCall` 组和它的 `functionResponse` 之间。
 - Gemini 3 / Cloud Code 的 `functionCall` part 必须带回原 `thoughtSignature`（[Google thought signatures](https://ai.google.dev/gemini-api/docs/thought-signatures)）。官方 wire 是 **part 级** camelCase，也接受 `thought_signature` / 嵌在 `functionCall` 里的入站。`collectAntigravityParts` 把它抄到 OpenAI `tool_calls` 的 `thoughtSignature` / `thought_signature` / `extra_content.google.thought_signature`；`openaiToAntigravity` 写回 part。DSH 若剥掉未知键，进程内按 `sessionId` + tool id / `name+args` 再贴（#72）。一组 Gemini 3 functionCall **第一条查找后仍无签名** → 丢掉这组 unsigned `functionCall`，配对的 tool 结果改成 user `[Observation from \`name\`:\n…]` 文本。Claude / GPT-OSS **仍发** unsigned `functionCall`。**不要**编空串或 `skip_thought_signature_validator`。`part.thought` 仍不进可见文本；若签名只在 thought part 上，转给随后第一条无签名的 functionCall。
 - chat 头 **只有** User-Agent。不要加 `anthropic-beta` / `Client-Metadata` / `x-goog-api-client`。
@@ -67,7 +67,29 @@ DSH chat/completions  →  POST daily-cloudcode-pa.googleapis.com/v1internal:gen
 
 ## 模型
 
-`ANTIGRAVITY_MODELS` 对齐 CLIProxyAPI `models.json` 的 `antigravity` 行（Cloud Code 线 id，不是 Gemini API 裸 id）。llm-pi-ai 只接 text/image，音频/视频行也标 vision。
+`ANTIGRAVITY_MODELS` 对齐 CLIProxyAPI `models.json` 的 `antigravity` 行（Cloud Code 线 id，不是 Gemini API 裸 id）。
+
+**出处 / 日期（2026-09-23）：** [router-for-me/CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) `main` 的 `internal/registry/models/models.json`，`antigravity` 数组 **12 行**。当天重下载的 `main` 与本地快照逐字节一致（sha256 `f95bd4b06ebd6c1e3b66e04d85194d93ee327ba06642373c3a8f9bc1be3d46d8`）。逐行映射：`display_name` → `name`（去掉档位括号，如 `Gemini 3.1 Pro (High)` → Gemini 3.1 Pro、`GPT-OSS 120B (Medium)` → GPT-OSS 120B）；`context_length` → `contextWindow`；`max_completion_tokens` → `maxTokens`；`thinking.levels` → `reasoningEfforts`（Gemini `low/medium/high`，Claude `low/high`，无 `thinking` 的 GPT-OSS `false`）；`supportedInputModalities` 只取 `text`/`image`（llm-pi-ai 只接这两种，audio/video 行仍标 vision）。
+
+| registry id | `name` | contextWindow | maxTokens | input | reasoningEfforts |
+|---|---|---|---|---|---|
+| `claude-opus-4-6-thinking` | Claude Opus 4.6 | 200_000 | 64_000 | text/image | low/high |
+| `claude-sonnet-4-6` | Claude Sonnet 4.6 | 200_000 | 64_000 | text/image | low/high |
+| `gemini-pro-agent` | Gemini 3.1 Pro | 1_048_576 | 65_535 | text/image | low/medium/high |
+| `gemini-3.1-pro-low` | Gemini 3.1 Pro Low | 1_048_576 | 65_535 | text/image | low/medium/high |
+| `gemini-3-flash` | Gemini 3 Flash | 1_048_576 | 65_536 | text/image | low/medium/high |
+| `gemini-3.6-flash-high` | Gemini 3.6 Flash | 1_048_576 | 65_536 | text/image | low/medium/high |
+| `gemini-3.7-flash-high` | Gemini 3.7 Flash | 1_048_576 | 65_536 | text/image | low/medium/high |
+| `gemini-3.8-flash-high` | Gemini 3.8 Flash | 1_048_576 | 65_536 | text/image | low/medium/high |
+| `gemini-3.1-flash-lite` | Gemini 3.1 Flash Lite | 1_048_576 | 65_535 | text/image | low/medium/high |
+| `gemini-3.5-flash-lite` | Gemini 3.5 Flash Lite | 1_048_576 | 65_535 | text/image | low/medium/high |
+| `gemini-3.1-flash-image` | Gemini 3.1 Flash Image | 1_048_576 | 32_768 | text/image | low/medium/high |
+| `gpt-oss-120b-medium` | GPT-OSS 120B | 114_000 | 32_768 | text | false |
+
+新行 `gemini-3.5-flash-lite`（上游 2026-09-14 `d48590a47d` 登记）：`display_name` Gemini 3.5 Flash Lite、`context_length` 1048576、`max_completion_tokens` 65535、`thinking.levels` [minimal, low, medium, high]、`supportedInputModalities` [text, image, audio, video]。映射与 `gemini-3.1-flash-lite` 完全一致（同 max 65535、同 Gemini 三档）；线 id 命中 `usesThinkingBudgetWire` 的 `gemini-3.5-flash*` 分支（Pi `thinkingBudget`）。注意 `minimal` 折进三档 picker（与既有 lite / 3.6 行同法），没有拆成独立行。
+
+**移除（有据）：** 上游 2026-09-01 `35e3d97dac` "fix(registry): remove defunct gemini-3-flash-agent model from antigravity provider" 在同一个 commit 删掉 `gemini-3-flash-agent`、`gemini-3.5-flash-low`、`gemini-3.5-flash-extra-low` 三行，正文写明 "as upstream Google Cloud Code / Antigravity endpoints return 500 UNKNOWN for these model IDs"。本机 `~/.gemini/antigravity-cli`（hub 2.11.0，log/cache/conversations 至 2026-09-23 07:45）也从未出现这三个 id。故 catalog 不再保留；`request.ts` 钳位表 / `usesThinkingBudgetWire` 里的历史 id 只是旧请求兜底，不进 picker。
+
 思考：Gemini `low/medium/high`；Claude `low/high`；GPT-OSS `false`。
 
 Gemini 3.6 / 3.7 / 3.8 Flash 各一行 picker：`gemini-3.X-flash-high` + `reasoningEfforts` low/medium/high。不要发 Gemini API 的 `gemini-3.8-flash`（无 `-high`）。不要拆 `-low` / `-medium` 成独立行（3.7 也没拆）。3.8 Flash Cyber 不在 Antigravity 选择器，不要加。`ANTIGRAVITY_QUOTA_GROUPS` 仍是冻结 SkillStar 条；3.7 也不在里面，3.8 同样不加。

@@ -305,6 +305,46 @@ test('picker collapse keeps variants, defaults, and modifier buckets', () => {
   }
 })
 
+test('static Devin floor mirrors the live GetCliModelConfigs picker rows', () => {
+  resetDevinCatalog()
+  try {
+    // 2026-09-23 live probe: 598 configs -> 580 family-bearing -> 81 picker rows.
+    assert.equal(DEVIN_MODELS.length, 81)
+    const ids = new Set(DEVIN_MODELS.map((row) => row.id))
+    assert.equal(ids.size, 81)
+    // Families the previous 17-row floor did not cover.
+    for (const id of [
+      'claude-opus-4.5', 'claude-opus-4.6-1m', 'claude-opus-4.8-fast', 'claude-opus-5-5',
+      'claude-sonnet-4.6-thinking', 'deepseek-v4-pro', 'fusion', 'gemini-3.1-pro',
+      'glm-5.2-1m', 'gpt-5.3-codex', 'gpt-5.4', 'gpt-5.5-thinking-fast', 'gpt-5.6-terra',
+      'grok-4-7', 'kimi-k2.6', 'nemotron-3-ultra', 'swe-1.6-fast',
+    ]) {
+      assert.ok(ids.has(id), `missing live picker id ${id}`)
+    }
+    // Picker id comes from the backend family uid (dots included), not a slug.
+    assert.ok(ids.has('swe-1.7'))
+    assert.equal(ids.has('swe-1-7'), false)
+    // No-effort families carry the backend uid as an explicit default.
+    assert.equal(devinModelById('claude-opus-4.6').defaultUid, 'claude-opus-4-6')
+    assert.equal(devinModelById('kimi-k2.6').defaultUid, 'kimi-k2-6')
+    assert.equal(devinModelById('swe-1.6-fast').defaultUid, 'swe-1-6-fast')
+    assert.equal(devinModelById('gpt-5.4-thinking-fast').defaultUid, 'gpt-5-4-none-priority')
+    // Fusion configs carry no maxOutputTokens upstream; the floor must not invent one.
+    assert.equal(devinModelById('fusion').maxTokens, undefined)
+    // Every key/value stays in the DSH closed sets; values are backend uids.
+    for (const row of DEVIN_MODELS) {
+      assert.ok(row.contextWindow > 0)
+      assert.ok(row.input.every((part) => part === 'text' || part === 'image'))
+      for (const key of Object.keys(row.reasoningEfforts || {})) {
+        assert.match(key, /^(off|minimal|low|medium|high|xhigh|max)$/)
+      }
+    }
+    assert.equal(devinModelById('gpt-5-3-codex-medium-priority').id, 'gpt-5.3-codex-fast')
+  } finally {
+    resetDevinCatalog()
+  }
+})
+
 test('live GetCliModelConfigs decode + refresh replaces the catalog', async () => {
   resetDevinCatalog()
   try {

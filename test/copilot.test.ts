@@ -217,8 +217,33 @@ test('catalog is Completions at /copilot, not a custom api string', () => {
       assert.match(key, /^(off|minimal|low|medium|high|xhigh|max)$/)
     }
   }
-  assert.deepEqual(route.models.find((model) => model.id === 'gpt-5.5').reasoningEfforts, COPILOT_REASONING)
+  assert.deepEqual(route.models.find((model) => model.id === 'gpt-5.5').reasoningEfforts, { off: 'none', low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh' })
   assert.equal(catalogProviders({ prefix: 'oauth', origin: 'http://x' })['oauth-copilot'].models.length, COPILOT_MODELS.length)
+})
+
+test('static Copilot floor mirrors the GitHub official model tables', () => {
+  const ids = new Set(COPILOT_MODELS.map((model) => model.id))
+  // 2026-09-23: model-release-status.yml (GA) + auto-model-selection.yml for
+  // names/availability, models.dev `github-copilot` for ids/limits/efforts.
+  for (const id of [
+    'gpt-5.3-codex', 'gpt-5.4-mini', 'gpt-5.4-nano', 'gpt-5.6-sol', 'gpt-5.6-terra',
+    'gpt-5.6-luna', 'gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna', 'claude-fable-5',
+    'claude-fable-5.1', 'claude-opus-4.7', 'claude-opus-4.8', 'claude-opus-5',
+    'claude-opus-5.5', 'claude-sonnet-5', 'gemini-3.5-flash', 'gemini-3.8-flash',
+    'mai-code-1.1-flash', 'kimi-k2.7-code', 'kimi-k3', 'grok-4.5', 'grok-4.6', 'grok-4.7',
+  ]) {
+    assert.ok(ids.has(id), 'missing official Copilot id ' + id)
+  }
+  // Retired rows are gone; gpt-4.1 stays as the plugin utility default.
+  for (const id of ['gpt-4o', 'gemini-3-flash-preview', 'gemini-3.1-pro-preview', 'grok-code-fast-1']) {
+    assert.equal(ids.has(id), false)
+  }
+  assert.equal(ids.has('gpt-4.1'), true)
+  for (const model of COPILOT_MODELS) {
+    for (const key of Object.keys(model.reasoningEfforts ?? {})) {
+      assert.match(key, /^(off|minimal|low|medium|high|xhigh|max)$/)
+    }
+  }
 })
 
 test('logged-out catalog still lists Copilot; sync writes oauth-copilot after login', async () => {
@@ -314,7 +339,8 @@ test('thinking keeps advertised reasoning_effort and strips GPT max_tokens', () 
   assert.equal(Object.hasOwn(on, 'max_tokens'), false)
   const off = applyCopilotThinking({ model: 'gpt-5.5', reasoning_effort: 'off' })
   assert.equal(Object.hasOwn(off, 'reasoning_effort'), false)
-  const claude = applyCopilotThinking({ model: 'claude-sonnet-4.6', reasoning_effort: 'high', max_tokens: 64 })
+  // Claude rows in the refreshed floor advertise efforts, so use the one that does not.
+  const claude = applyCopilotThinking({ model: 'claude-haiku-4.5', reasoning_effort: 'high', max_tokens: 64 })
   assert.equal(Object.hasOwn(claude, 'reasoning_effort'), false)
   assert.equal(claude.max_tokens, 64)
   assert.equal(mapCopilotUsage({ prompt_tokens: 10, cache_read_input_tokens: 4 }).prompt_tokens_details.cached_tokens, 4)

@@ -13,19 +13,16 @@ export declare const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usa
 export declare const CODEX_RESET_CREDITS_URL = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits";
 export declare const CODEX_RESET_CONSUME_URL = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume";
 export declare const CODEX_MODELS_URL = "https://chatgpt.com/backend-api/codex/models";
-export declare const CODEX_CLIENT_VERSION = "0.153.4";
+export declare const CODEX_CLIENT_VERSION = "0.155.1";
 export declare const CODEX_ORIGINATOR = "codex_cli_rs";
-export declare const CODEX_USER_AGENT = "codex_cli_rs/0.153.4";
+export declare const CODEX_USER_AGENT = "codex_cli_rs/0.155.1";
 export declare const CODEX_SCOPE = "openid profile email offline_access api.connectors.read api.connectors.invoke";
 export declare const CODEX_CALLBACK_PATH = "/auth/callback";
 export declare const CODEX_PREEMPT_MS: number;
 /** Codex CLI targets ~258K usable input; the raw model window is 272K.
- *  GPT-6 Astra and GPT-5.6 share this default. The 1.05M API window is
- *  not the ChatGPT Codex subscription default. */
+ *  Every catalog row shares this default. */
 export declare const CODEX_CONTEXT_WINDOW = 258000;
 export declare const CODEX_DEFAULT_MAX_TOKENS = 128000;
-/** Spark is the one Codex model with a smaller window. */
-export declare const CODEX_SPARK_CONTEXT_WINDOW = 128000;
 /**
  * `reasoning.effort` values the Codex Responses API accepts, probed against
  * chatgpt.com on 2026-08-26. `minimal` is rejected by every Codex model, and
@@ -38,7 +35,7 @@ export declare const CODEX_REASONING: Readonly<{
     high: "high";
     xhigh: "xhigh";
 }>;
-/** gpt-5.4, gpt-5.4-mini, gpt-5.5 and Spark stop at `xhigh`. */
+/** GPT-5.5 stops at `xhigh`. */
 export declare const CODEX_REASONING_EFFORTS: Readonly<{
     low: "low";
     medium: "medium";
@@ -46,8 +43,8 @@ export declare const CODEX_REASONING_EFFORTS: Readonly<{
     xhigh: "xhigh";
     off: null;
 }>;
-/** GPT-5.6 Sol / Terra / Luna and GPT-6 Astra add `max`. `ultra` is a
- *  Codex CLI multi-agent mode, not an API effort — it 400s. */
+/** GPT-6 Astra / Sol / Luna and GPT-5.6 Sol / Terra / Luna add `max`.
+ *  `ultra` is a Codex CLI multi-agent mode, not an API effort — it 400s. */
 export declare const CODEX_REASONING_EFFORTS_56: Readonly<{
     max: "max";
     low: "low";
@@ -57,15 +54,18 @@ export declare const CODEX_REASONING_EFFORTS_56: Readonly<{
     off: null;
 }>;
 /**
- * Mirrors Codex CLI `models.json` (openai/codex 0.153.4, 2026-09-04) plus
- * GET chatgpt.com/backend-api/codex/models — the one place model facts live,
- * so the picker, the context aliases and the Fast tier cannot drift apart.
+ * Mirrors Codex CLI `models.json` plus GET
+ * chatgpt.com/backend-api/codex/models (probed 2026-09-23 at `client_version`
+ * 0.155.1) — the one place model facts live, so the picker, the context
+ * aliases and the Fast tier cannot drift apart. `gpt-6-sol` / `gpt-6-luna`
+ * only appear at `client_version` >= 0.155.0, hence CODEX_CLIENT_VERSION.
  *
  * `largeContext` is the row's `max_context_window` and `fastTier` whether its
  * `service_tiers` offers Fast. Models the subscription backend does not serve
- * stay out entirely:
- * `gpt-5.3-codex` answers 400 "not supported when using Codex with a ChatGPT
- * account". Daybreak / auto-review slugs stay out (CLI-internal).
+ * stay out entirely — `gpt-5.3-codex`, `gpt-5.4`, `gpt-5.4-mini` and
+ * `gpt-5.3-codex-spark` all answer 400 "not supported when using Codex with a
+ * ChatGPT account", and `gpt-reserve` / Daybreak / auto-review are
+ * `visibility: hide` (CLI-internal).
  */
 export declare const CODEX_MODELS: readonly ({
     id: string;
@@ -73,20 +73,7 @@ export declare const CODEX_MODELS: readonly ({
     contextWindow: number;
     maxTokens: number;
     reasoningEfforts: Readonly<{
-        low: "low";
-        medium: "medium";
-        high: "high";
-        xhigh: "xhigh";
-        off: null;
-    }>;
-    fastTier: boolean;
-    largeContext?: undefined;
-} | {
-    id: string;
-    name: string;
-    contextWindow: number;
-    maxTokens: number;
-    reasoningEfforts: Readonly<{
+        max: "max";
         low: "low";
         medium: "medium";
         high: "high";
@@ -107,7 +94,7 @@ export declare const CODEX_MODELS: readonly ({
         xhigh: "xhigh";
         off: null;
     }>;
-    fastTier?: undefined;
+    fastTier: boolean;
     largeContext?: undefined;
 })[];
 /** Bare slug for a model id: no vendor prefix, no `:tag`, lower-cased. */
@@ -119,20 +106,7 @@ export declare function codexModel(modelId: any): {
     contextWindow: number;
     maxTokens: number;
     reasoningEfforts: Readonly<{
-        low: "low";
-        medium: "medium";
-        high: "high";
-        xhigh: "xhigh";
-        off: null;
-    }>;
-    fastTier: boolean;
-    largeContext?: undefined;
-} | {
-    id: string;
-    name: string;
-    contextWindow: number;
-    maxTokens: number;
-    reasoningEfforts: Readonly<{
+        max: "max";
         low: "low";
         medium: "medium";
         high: "high";
@@ -153,7 +127,7 @@ export declare function codexModel(modelId: any): {
         xhigh: "xhigh";
         off: null;
     }>;
-    fastTier?: undefined;
+    fastTier: boolean;
     largeContext?: undefined;
 } | undefined;
 export declare const codexFlow: {

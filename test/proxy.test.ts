@@ -61,8 +61,8 @@ test('proxy requires the local bearer and forwards Codex Responses', async () =>
     assert.equal(seen[0].headers.authorization, 'Bearer codex-tok')
     assert.equal(seen[0].headers['chatgpt-account-id'], 'acct')
     assert.equal(seen[0].headers.originator, 'codex_cli_rs')
-    assert.equal(seen[0].headers['user-agent'], 'codex_cli_rs/0.153.4')
-    assert.equal(seen[0].headers['openai-version'], '0.153.4')
+    assert.equal(seen[0].headers['user-agent'], 'codex_cli_rs/0.155.1')
+    assert.equal(seen[0].headers['openai-version'], '0.155.1')
     assert.equal(seen[0].headers['session-id'], 'session-cache-1')
     assert.equal(seen[0].headers['thread-id'], 'session-cache-1')
     assert.equal(seen[0].headers['x-client-request-id'], 'session-cache-1')
@@ -428,11 +428,11 @@ test('proxy peels -fast and injects Codex Priority; never sets Grok service_tier
     await fetch(`http://127.0.0.1:${port}/codex/v1/responses`, {
       method: 'POST',
       headers,
-      body: '{"model":"gpt-5.4-mini-fast"}',
+      body: '{"model":"gpt-5.4-fast"}',
     })
-    assert.equal(seen[5].body.model, 'gpt-5.4-mini')
+    assert.equal(seen[5].body.model, 'gpt-5.4')
     assert.equal(seen[5].body.service_tier, undefined)
-    assert.equal(seen[5].headers['x-codex-routing-hint'], 'model=gpt-5.4-mini')
+    assert.equal(seen[5].headers['x-codex-routing-hint'], 'model=gpt-5.4')
   } finally {
     await proxy.close()
   }

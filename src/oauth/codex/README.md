@@ -26,7 +26,7 @@
 | `client_id` | `app_EMoamEEZ73f0CkXaXp7hrann` |
 | authorize | `https://auth.openai.com/oauth/authorize` |
 | token | `https://auth.openai.com/oauth/token` |
-| originator / UA | `codex_cli_rs` / `codex_cli_rs/0.153.4` |
+| originator / UA | `codex_cli_rs` / `codex_cli_rs/0.155.1` |
 | loopback | `localhost:1455`，失败再 `1457`；path `/auth/callback` |
 | 换票 | `application/x-www-form-urlencoded` + PKCE |
 | 刷新 | JSON `{ client_id, grant_type, refresh_token }` |
@@ -51,9 +51,10 @@ Fast：body `service_tier` 从 `fast` 改成 `priority`，并带 `x-codex-routin
 
 ## 模型
 
-`CODEX_MODELS` 是唯一目录源（对照 Codex CLI `models.json` 0.153.4 / 2026-09-04）。
-`gpt-6-astra` 排第一（默认 258K input，Fast + 872K `-900k` + `max`）。`gpt-5.3-codex` 不收录：订阅账号 400 “not supported when using Codex with a ChatGPT account”。
-思考深度：5.4 / 5.5 / Spark → `low`–`xhigh`（无 `minimal` / `ultra`）；Astra 和 5.6 Sol/Terra/Luna 加 `max`。
+`CODEX_MODELS` 是唯一目录源（对照 Codex CLI `models.json` + 活目录 `GET .../codex/models` @ `client_version` 0.155.1，2026-09-23 实测）。
+GPT-6 三行排最前（默认 258K input，Fast + 872K `-900k` + `max`）：`gpt-6-astra` / `gpt-6-sol` / `gpt-6-luna`。Sol / Luna 只有 `client_version` ≥ 0.155.0 才在活目录下发（0.153.4 实测只回 7 行，无这两行），故 identity 升到 0.155.1。
+不收录：`gpt-5.3-codex` / `gpt-5.4` / `gpt-5.4-mini` / `gpt-5.3-codex-spark`（Responses 400 “not supported when using Codex with a ChatGPT account”）；`gpt-reserve` / Daybreak / auto-review（`visibility: hide`，CLI 内部）。
+思考深度：GPT-5.5 → `low`–`xhigh`（无 `minimal` / `ultra`）；GPT-6 和 5.6 Sol/Terra/Luna 加 `max`。
 
 ## 额度
 
@@ -90,8 +91,8 @@ Fast：body `service_tier` 从 `fast` 改成 `priority`，并带 `x-codex-routin
 
 ## 归因
 
-一线：[openai/codex](https://github.com/openai/codex) tag `rust-v0.153.4`。
-`build_session_headers`（`session-id` / `thread-id` / `x-client-request-id`）、`x-codex-turn-state` 回放、`models.json`、[#37345](https://github.com/openai/codex/issues/37345) routing-hint。总表见 [`docs/oauth.md`](../../../docs/oauth.md)。
+一线：[openai/codex](https://github.com/openai/codex) tag `rust-v0.155.1`（本机 updater `version.json` 2026-09-19 报到的最新版；缓存头源码蒸馏自 0.153.4）。
+`build_session_headers`（`session-id` / `thread-id` / `x-client-request-id`）、`x-codex-turn-state` 回放、`models.json` + 活目录 `GET .../codex/models`、[#37345](https://github.com/openai/codex/issues/37345) routing-hint。总表见 [`docs/oauth.md`](../../../docs/oauth.md)。
 
 ## 追溯
 
@@ -101,5 +102,6 @@ Fast：body `service_tier` 从 `fast` 改成 `priority`，并带 `x-codex-routin
 | Codex Pro 徽章没分 5x / 20x | [`docs/error.md`](../../../docs/error.md) 2026-08-30 Pro 徽章 |
 | Fast 只靠 body，回显 default | 同文件 2026-08-30 Grok/Codex Fast |
 | 各家缓存被混成 Codex 一套 | 同文件 2026-08-31 缓存混用 |
+| GPT-6 Sol / Luna 不见、5.4 系列仍可选中 | 同文件 2026-09-23 Codex 目录轮换 |
 
 测试：`test/proxy.test.ts`、`test/cache-families.test.ts`。

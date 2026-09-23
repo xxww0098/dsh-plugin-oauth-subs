@@ -47,7 +47,7 @@ export declare const FAMILY_IDS: readonly string[];
  * writes itself; DSH's built-in `opencode-go` catalog route carries the rest.
  * Without `OPENCODE_API_KEY` the family is only locked (checkbox disabled).
  */
-export declare const APIKEY_FAMILY_IDS: readonly "opencode-go-flash"[];
+export declare const APIKEY_FAMILY_IDS: readonly ("opencode-go-flash" | "opencode-go-responses")[];
 /** Every family the Settings picker can toggle. */
 export declare const MODEL_FAMILY_IDS: readonly string[];
 /** Dropped families. Still unset leftover harness routes; never written back. */
@@ -153,11 +153,12 @@ export declare const OPENCODE_GO_API_KEY_ENV = "OPENCODE_API_KEY";
  * (apiKeyEnv + session header, no api/models) is taken back so an upgrade
  * stops showing it; every other shape is a user profile and is untouched.
  *
- * The plugin writes only the supplemental `opencode-go-flash` route: the one
- * official model the installed catalog lacks, which follows the picker
- * (`selected` undefined = all) and carries the required
- * `x-opencode-session` header. Without `OPENCODE_API_KEY` nothing is served,
- * so DSH's model list stays clean.
+ * The plugin writes its own complete catalog on one route per wire protocol
+ * (`opencode-go-flash` completions + `opencode-go-responses`), so the picker
+ * shows every official Go model even when DSH's built-in route is not enabled.
+ * Each route follows the picker (`selected` undefined = all) and carries the
+ * required `x-opencode-session` header. Without `OPENCODE_API_KEY` nothing is
+ * served, so DSH's model list stays clean.
  */
 export declare function ensureOpencodeGoRoute(settings: any, { selected, apiKeySet }?: any): Promise<{
     status: string;

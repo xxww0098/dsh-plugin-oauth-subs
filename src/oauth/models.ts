@@ -17,7 +17,7 @@ import { DEVIN_MODELS } from './devin/index.js'
 import { CLINE_MODELS } from './cline/index.js'
 import {
   OPENCODE_GO_BUILTIN_ROUTE_ID,
-  OPENCODE_GO_EXTRA_ROUTE,
+  OPENCODE_GO_ROUTES,
   OPENCODE_GO_SESSION_HEADER,
   OPENCODE_GO_SESSION_ID,
 } from '../apikey/opencode-go/models.js'
@@ -119,7 +119,7 @@ export const FAMILY_IDS = Object.freeze(['codex', 'grok', 'glm', 'kiro', 'antigr
  * writes itself; DSH's built-in `opencode-go` catalog route carries the rest.
  * Without `OPENCODE_API_KEY` the family is only locked (checkbox disabled).
  */
-export const APIKEY_FAMILY_IDS = Object.freeze([OPENCODE_GO_EXTRA_ROUTE.id])
+export const APIKEY_FAMILY_IDS = Object.freeze(OPENCODE_GO_ROUTES.map((route) => route.id))
 
 /** Every family the Settings picker can toggle. */
 export const MODEL_FAMILY_IDS = Object.freeze([...FAMILY_IDS, ...APIKEY_FAMILY_IDS])
@@ -431,12 +431,14 @@ export function catalogProviders({ prefix, origin, cursorModels, ollamaModels, k
   // OpenCode Go is API key, not OAuth: the picker lists only the supplemental
   // route this plugin writes; the controller decides locked vs usable from
   // OPENCODE_API_KEY. DSH serves the built-in `opencode-go` catalog itself.
-  providers[OPENCODE_GO_EXTRA_ROUTE.id] = {
-    displayName: OPENCODE_GO_EXTRA_ROUTE.displayName,
-    api: OPENCODE_GO_EXTRA_ROUTE.api,
-    apiKeyEnv: OPENCODE_GO_API_KEY_ENV,
-    baseURL: OPENCODE_GO_EXTRA_ROUTE.baseURL,
-    models: OPENCODE_GO_EXTRA_ROUTE.models.map(toHarnessModel),
+  for (const route of OPENCODE_GO_ROUTES) {
+    providers[route.id] = {
+      displayName: route.displayName,
+      api: route.api,
+      apiKeyEnv: OPENCODE_GO_API_KEY_ENV,
+      baseURL: route.baseURL,
+      models: route.models.map(toHarnessModel),
+    }
   }
   return providers
 }
@@ -756,11 +758,12 @@ function sameOpencodeGoRoute(route, existing, models) {
  * (apiKeyEnv + session header, no api/models) is taken back so an upgrade
  * stops showing it; every other shape is a user profile and is untouched.
  *
- * The plugin writes only the supplemental `opencode-go-flash` route: the one
- * official model the installed catalog lacks, which follows the picker
- * (`selected` undefined = all) and carries the required
- * `x-opencode-session` header. Without `OPENCODE_API_KEY` nothing is served,
- * so DSH's model list stays clean.
+ * The plugin writes its own complete catalog on one route per wire protocol
+ * (`opencode-go-flash` completions + `opencode-go-responses`), so the picker
+ * shows every official Go model even when DSH's built-in route is not enabled.
+ * Each route follows the picker (`selected` undefined = all) and carries the
+ * required `x-opencode-session` header. Without `OPENCODE_API_KEY` nothing is
+ * served, so DSH's model list stays clean.
  */
 export async function ensureOpencodeGoRoute(settings, { selected, apiKeySet = true }: any = {}) {
   if (settings == null || typeof settings.mutate !== 'function') return { status: 'unavailable' }
@@ -780,26 +783,28 @@ export async function ensureOpencodeGoRoute(settings, { selected, apiKeySet = tr
     routes.push(OPENCODE_GO_BUILTIN_ROUTE_ID)
   }
 
-  // Supplemental route: the model(s) the installed catalog lacks.
-  const route = OPENCODE_GO_EXTRA_ROUTE
-  const models = locked
-    ? []
-    : selection === null
-      ? route.models
-      : route.models.filter((model) => selection.has(`${route.id}/${model.id}`))
-  const existing = providers[route.id]
-  if (existing === undefined) {
-    if (models.length > 0) {
-      mutations.push({ op: 'set', path: ['providers', route.id], value: opencodeGoRouteValue(route, models) })
-      routes.push(route.id)
-    }
-  } else if (isOwnedOpencodeGoRoute(route, existing)) {
-    if (models.length === 0) {
-      mutations.push({ op: 'unset', path: ['providers', route.id] })
-      routes.push(route.id)
-    } else if (!sameOpencodeGoRoute(route, existing, models)) {
-      mutations.push({ op: 'set', path: ['providers', route.id], value: opencodeGoRouteValue(route, models) })
-      routes.push(route.id)
+  // One plugin-owned route per OpenCode Go wire protocol; each follows the
+  // picker selection and carries the required x-opencode-session header.
+  for (const route of OPENCODE_GO_ROUTES) {
+    const models = locked
+      ? []
+      : selection === null
+        ? route.models
+        : route.models.filter((model) => selection.has(`${route.id}/${model.id}`))
+    const existing = providers[route.id]
+    if (existing === undefined) {
+      if (models.length > 0) {
+        mutations.push({ op: 'set', path: ['providers', route.id], value: opencodeGoRouteValue(route, models) })
+        routes.push(route.id)
+      }
+    } else if (isOwnedOpencodeGoRoute(route, existing)) {
+      if (models.length === 0) {
+        mutations.push({ op: 'unset', path: ['providers', route.id] })
+        routes.push(route.id)
+      } else if (!sameOpencodeGoRoute(route, existing, models)) {
+        mutations.push({ op: 'set', path: ['providers', route.id], value: opencodeGoRouteValue(route, models) })
+        routes.push(route.id)
+      }
     }
   }
 

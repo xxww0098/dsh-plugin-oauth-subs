@@ -144,7 +144,7 @@ export declare const CURSOR_PARAM_STYLES: Readonly<{
 }>;
 /** Picker reasoningEfforts for one family style: vendor values keyed back to DSH levels. */
 export declare function cursorStyleReasoningEfforts(style: any): {};
-/** Static fallback aligned to cursor.com/docs/models-and-pricing. Live GetUsableModels may add Auto / Fast / extra families. reasoningEfforts come from the family's CURSOR_PARAM_STYLES entry — the wire values the registry actually takes. */
+/** Static fallback aligned to cursor.com/docs/models-and-pricing (checked 2026-09-23). Live GetUsableModels may add Auto / Fast / extra families. reasoningEfforts come from the family's CURSOR_PARAM_STYLES entry — the wire values the registry actually takes. */
 export declare const CURSOR_MODELS: readonly {
     id: any;
     name: any;

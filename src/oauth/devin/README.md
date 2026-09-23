@@ -3,7 +3,7 @@
 本文件是 `src/oauth/devin/` 的设计源。改登录、额度、对话或缓存先改这里再改代码。
 跨家族硬约定在仓库根 [`AGENTS.md`](../../../AGENTS.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)；对照仓库在 [`docs/oauth.md`](../../../docs/oauth.md)。
 
-Devin 订阅（SWE / Claude / GPT / Gemini / Grok / GLM / Kimi 经 Devin infra）。原生 wire 是 **Connect RPC v1 protobuf over HTTP/1.1** 到 `server.codeium.com`（Codeium/Cascade 服务端），不是 OpenAI REST，也不是 api.devin.ai。协议对照 MIT [`can1357/oh-my-pi`](https://github.com/can1357/oh-my-pi) 的 `pi-catalog` devin provider + vendored `exa.*` protos，全部字段号已用**本机 Devin CLI 3000.10.31 凭据对生产活测**：`GetCliModelConfigs` 回 209 条、`GetUserStatus` 回 `teams_tier=16`（Devin Pro）、`GetChatMessage`（`swe-2-medium`）真实流式回 "PONG"。本目录只抽用到的字段，不 vendor 整棵树，不引入 `@connectrpc/*`。
+Devin 订阅（SWE / Claude / GPT / Gemini / Grok / GLM / Kimi 经 Devin infra）。原生 wire 是 **Connect RPC v1 protobuf over HTTP/1.1** 到 `server.codeium.com`（Codeium/Cascade 服务端），不是 OpenAI REST，也不是 api.devin.ai。协议对照 MIT [`can1357/oh-my-pi`](https://github.com/can1357/oh-my-pi) 的 `pi-catalog` devin provider + vendored `exa.*` protos，全部字段号已用**本机 Devin CLI 3000.10.31 凭据对生产活测**：`GetCliModelConfigs` 回 598 条（2026-09-23）、`GetUserStatus` 回 `teams_tier=16`（Devin Pro）、`GetChatMessage`（`swe-2-medium`）真实流式回 "PONG"。本目录只抽用到的字段，不 vendor 整棵树，不引入 `@connectrpc/*`。
 
 > 非正式集成。Devin 随时可能改线。只用用户自己有权使用的账号。
 
@@ -71,7 +71,7 @@ session token 无 refresh 端点。`refreshDevin` 到过期边缘时打一次 `G
 
 ## 指纹
 
-指纹来自对真 `devin` 二进制的本机 MITM（`WINDSURF_API_SERVER_URL` 覆盖）+ 生产活测。所有 RPC 的 `Metadata`（field 1）按 **CLI 实际发送** 发。注意 `ide_name` 是 `chisel`、不是 `windsurf` 也不是 `devin`：`devin`/`Devin`/`devin-cli`/`devin_cli` 活测只回 1 条 stub config；`chisel` 和 `windsurf` 都回 209 条全量，`chisel` 是 CLI 真值。
+指纹来自对真 `devin` 二进制的本机 MITM（`WINDSURF_API_SERVER_URL` 覆盖）+ 生产活测。所有 RPC 的 `Metadata`（field 1）按 **CLI 实际发送** 发。注意 `ide_name` 是 `chisel`、不是 `windsurf` 也不是 `devin`：`devin`/`Devin`/`devin-cli`/`devin_cli` 活测只回 1 条 stub config；`chisel` 和 `windsurf` 都回全量（`chisel` 本次 598 条），`chisel` 是 CLI 真值。
 
 | Metadata 字段 | 值 |
 |---|---|
@@ -90,7 +90,7 @@ HTTP 头：`content-type: application/connect+proto`（chat）/ `application/pro
 
 ## 模型
 
-静态 fallback（`DEVIN_MODELS`，离线 / RPC 空）对齐活测解码的 46 个家族；`variants` 把 DSH effort 键映射到后端 `chat_model_uid`，`defaultUid` 取 `is_default_model_in_family`。登录 / 导入 / 刷新额度后走活发现：
+静态 fallback（`DEVIN_MODELS`，离线 / RPC 空）是 2026-09-23 生产活测 `GetCliModelConfigs` 的完整镜像：598 条 config → 580 条带家族 → 81 个 picker 行 / 49 个家族；`variants` 把 DSH effort 键映射到后端 `chat_model_uid`，`defaultUid` 取 `is_default_model_in_family`（无 effort 的行显式写死）。登录 / 导入 / 刷新额度后走活发现：
 
 ```text
 unary GetCliModelConfigs  server.codeium.com  /exa.api_server_pb.ApiServerService/GetCliModelConfigs
@@ -101,7 +101,7 @@ unary GetCliModelConfigs  server.codeium.com  /exa.api_server_pb.ApiServerServic
 
 DSH `reasoningEfforts` 的**值**是后端 uid（不是拼写）。hop 里 `devinWireModelId`：picker id + `reasoning_effort` → `variants[effort]` → `defaultUid`；裸 `swe-2-medium` 之类的 uid 原样透传。
 
-modifier 桶：label 里带 `thinking` → 独立 picker 行 `{family}-thinking`；带 `fast` / `priority` / `1m` → 同规则。`-fast` **不**走全局 `applyFastMode`（那会把 model 拼成 `<id>-fast` 再剥，Devin 的 `-fast` 是真后端行）。任何 RPC 失败或空列表不挡对话，回落静态楼；活目录里新的家族叠在静态楼上，不整表替换。
+modifier 桶：label 里带 `thinking` → 独立 picker 行 `{family}-thinking`；带 `fast` / `priority` / `1m` → 同规则。`-fast` **不**走全局 `applyFastMode`（那会把 model 拼成 `<id>-fast` 再剥，Devin 的 `-fast` 是真后端行）。任何 RPC 失败或空列表不挡对话，回落静态楼；活行非空时整表替换静态楼（catalog.ts）。
 
 ## 额度
 
@@ -128,7 +128,7 @@ unary GetUserStatus  server.codeium.com  /exa.seat_management_pb.SeatManagementS
 - 把 `devin-session-token$` 再加一次前缀（双前缀活测 401）
 - 把 `ide_name` 改成 `devin`/`Devin`/`devin-cli`/`devin_cli` 当默认（活测 1 条 stub config；真 CLI 发 `chisel`，`windsurf` 也通但那是别家指纹）
 - 把 Devin `-fast` 当 Codex `service_tier: priority` 或走 `applyFastMode`
-- 把 209 条 effort/modifier 变体铺进 Settings 勾选格（收成一行 / 家族+桶）
+- 把 598 条 effort/modifier 变体铺进 Settings 勾选格（收成一行 / 家族+桶）
 - 用 Responses 或 Anthropic 当 DSH `api`（`/devin/v1/responses` 固定 501）
 - 插件加载时静默扫 credentials.toml 覆盖已有 PKCE
 - 把不带 `devin-session-token$` 前缀的存量行当 devin 登录（版本错配可把别家会话写进 devin 槽；`isDevinSessionToken` 才算数，auto-import 不被它挡）
@@ -144,5 +144,7 @@ Wire / PKCE / catalog / quota 字段号对照 MIT：
 - [can1357/oh-my-pi](https://github.com/can1357/oh-my-pi)（`pi-catalog` devin provider + vendored `exa.*` protos）
 
 `Metadata` 字段号、`GetChatMessageRequest` 字段号、`ClientModelConfig`/`GetUserStatus` 解码对照 Devin CLI 3000.10.31 二进制 + 生产活测。
+
+`DEVIN_MODELS` 楼层逐字段来自 2026-09-23 生产活测的 `GetCliModelConfigs` 解码：598 条 config（18 条无 `modelFamilyUid`/`familyLabel` 的 router/internal 行被 `toDevinPickerModels` 丢弃）→ 580 条带家族 → 81 个 picker 行 / 49 个家族；`id`/`name`/`contextWindow`/`maxTokens`/`input`/`variants`/`defaultUid` 无手改。
 
 总表见 [`docs/oauth.md`](../../../docs/oauth.md)。

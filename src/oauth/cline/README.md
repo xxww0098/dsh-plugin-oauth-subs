@@ -83,9 +83,9 @@ GET https://api.cline.bot/api/v1/ai/cline/recommended-models     （公开）
 取 `recommended` + `free` 两个桶（`free` 名后补 ` (free)`），`clinePass` / `clineCloud` **不进**本目录：
 那是 ClinePass 产品的模型，credit 账号用不了，列进 picker 只会 402。
 
-静态 `CLINE_MODELS` 是 2026-09-19 两个桶的快照，元数据（`contextWindow` / `maxTokens` / `input`）来自
-`https://models.dev/api.json` 的 `openrouter` 桶 —— 与 CLI `buildClineModels` 同源；`cline-free/*`、`z-ai/*`
-按 id 末段回退解析（`deepseek/…`、`meta/…`、`upstage/…`）。**免费档实测（2026-09-19，本机 credit 账号）**：`free` 桶里 `cline-free/deepseek-v4.1-flash`、`z-ai/glm-5.3-flash`、`cline-free/solar-pro4`、`poolside/laguna-s-2.1:free` 四条全部 200（流式出字、`reasoning_effort` 可用、`tool_calls` 正常），台账 `creditsUsed = 0` 不扣余额；`cline-free/muse-spark-1.3-contributor` 对本机出口 **403 区域门**（上游按 IP 判，非本 hop 问题，换出口才可能通）。推理模型别把 `max_tokens` 设太小，reasoning token 吃满预算会得到空 `content`。
+静态 `CLINE_MODELS` 是 2026-09-23 两个桶的快照，元数据（`contextWindow` / `maxTokens` / `input`）来自
+`https://models.dev/api.json` 的 `openrouter` 桶 —— 与 CLI `buildClineModels` 同源；`cline-free/*`、`xiaomi/*`
+按 id 末段回退解析（`deepseek/…`、`mimo-v2.6-flash`、`upstage/…`）。2026-09-23 实测 feed 轮换：recommended 新增 `spacexai/grok-4.7`（openrouter 桶 `x-ai/grok-4.7`，500k / 450k / text+image），free 新增 `cline-free/mimo-v2.6-flash`（openrouter 桶 `xiaomi/mimo-v2.6-flash`，1M / 131k / text+image）；`x-ai/grok-4.5`、`z-ai/glm-5.3-flash` 两个桶都不再下发，已从快照删除。**免费档实测（2026-09-19，本机 credit 账号）**：`free` 桶里 `cline-free/deepseek-v4.1-flash`、`z-ai/glm-5.3-flash`、`cline-free/solar-pro4`、`poolside/laguna-s-2.1:free` 四条全部 200（流式出字、`reasoning_effort` 可用、`tool_calls` 正常），台账 `creditsUsed = 0` 不扣余额；`cline-free/muse-spark-1.3-contributor` 对本机出口 **403 区域门**（上游按 IP 判，非本 hop 问题，换出口才可能通）。推理模型别把 `max_tokens` 设太小，reasoning token 吃满预算会得到空 `content`。
 
 feed 出现新 id 而本地没有元数据时，用 CLI 自己的
 `CLINE_PASS_MODEL_DEFAULTS`（128k / 8k / text+image），不编数字。

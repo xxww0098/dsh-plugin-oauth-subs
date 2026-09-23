@@ -8,6 +8,19 @@
 **根因**：`cursorModelParameters` 对所有家族一律发 `{id:'reasoning', value:'extra-high'}`，但 grok-4.7 注册表要的是 `reasoning_effort`=`xhigh`——参数 id 和值都按家族分（4.5/4.6 是 `effort`，gpt-5.5 是 `reasoning`=`extra-high`，kimi/glm 是 `reasoning`=`max`），错一个就 400。
 **修复**：`CURSOR_PARAM_STYLES` + live AvailableModels 变体逐字导出每族参数样式（effortParam / efforts / contexts / fast），`cursorModelParameters` 按样式发 context→effort→fast，未知家族省略 effort；picker `reasoningEfforts` 改按家族广告值（composer-2.5/default 不再假提供 effort）。活测 2026-11-02（Pro 账号）：grok-4.7±fast xhigh、grok-4.6±fast、kimi-k3 max、glm-5.2 max、composer-2.5±fast、default 全 200。
 
+## 2026-09-23：全家族模型目录年检——Devin / Antigravity / Cursor / Cline / Kimi 有缺行，Grok / GLM / Kiro / Ollama 无漂移
+
+**现象**：按家族逐个对活目录/一线客户端盘点：Devin 静态 floor 只有 17 行，账号 live `GetCliModelConfigs` 是 598 configs → 81 picker 行 / 49 家族；Antigravity 上游 registry 12 行换成 `gemini-3.5-flash-lite`，且 2026-09-01 已删 `gemini-3-flash-agent` / `gemini-3.5-flash-low` / `-extra-low`（Cloud Code 500 UNKNOWN）；Cursor 官方 docs 新增 `claude-opus-5-5` / `muse-spark-1.3`；Cline feed 轮换 `spacexai/grok-4.7` / `cline-free/mimo-v2.6-flash` 上线、`x-ai/grok-4.5` / `z-ai/glm-5.3-flash` 下线；Kimi 官方模型表四个 ID 缺 `k3-256k`。
+**根因**：各家目录源不同（live RPC / 公开 feed / 官方 docs / 上游 registry），静态 floor 与活目录没有统一的轮换检查；离线回落会一直停在旧快照。
+**修复**：Devin `DEVIN_MODELS` 整表对齐 live 81 行；Antigravity 换 `gemini-3.5-flash-lite` 并删三个已 500 的 legacy id；Cursor 静态楼补 Opus 5.5 / Muse Spark 1.3（Opus 5 / GPT-5.5 转 Hidden by default 但保留）；Cline 快照重写为 2026-09-23 feed；Kimi 补 `k3-256k`；OpenCode Go 按官方 `/models` + 端点表补齐为两条自有路由（`OpenCode Go` completions 28 行 + `OpenCode Go · Responses` 5 行，共 33 行），7 个两种协议都回 `Model is unavailable` 的公开 id 不收。Grok（`~/.grok/models_cache.json` 1.0.41 四行一致）、GLM（套餐仍 5.3 / 5.3-Flash）、Kiro（live List-Available-Models 20 行一致）、Ollama（`/api/tags` 20 行一致）核实无漂移，未改。
+**未覆盖**：Kimi / Copilot 仍无本机凭据（Kimi 端点 401、Copilot 的 gh `gho_` 换票 403）。Kimi 按官方模型表补 `k3-256k`；Copilot 静态楼按 GitHub 官方 docs 数据表（release-status / auto-model-selection）+ models.dev `github-copilot` 重刷，`gpt-6-luna` / `gpt-6-sol` / `claude-opus-5.5` 三个 id 待活目录确认；OpenCode Go 已按官方端点补齐（completions 28 + responses 5；另 7 个公开 id 网关不服务，README 记明），不再有宿主侧缺口。
+
+## 2026-09-23：Codex 目录轮换——GPT-6 Sol / Luna 只对 `client_version` ≥ 0.155.0 下发，5.4 系列与 Spark 已 400
+
+**现象**：本机 Codex `models_cache.json`（client 0.155.0，2026-09-22 抓取）已列出 `gpt-6-sol` / `gpt-6-luna`，插件目录没有；用插件 identity（0.153.4）打 `GET .../codex/models` 只回 7 行（无 Sol/Luna），0.155.1 回 9 行。另 `gpt-5.4` / `gpt-5.4-mini` / `gpt-5.3-codex-spark` 还在 picker 里。
+**根因**：chatgpt.com 的模型活目录按 `?client_version` 分档（Astra 当年也需 ≥ 0.153.0），identity 钉在 0.153.4 就看不见新行——但 `/codex/responses` 本身不分档，Sol 用 0.153.4 头也 200，所以是纯目录漏。5.4 三行则已从活目录消失，实测 Responses 400 `not supported when using Codex with a ChatGPT account`（与 `gpt-5.3-codex` 同码），目录里属陈旧行。
+**修复**：`CODEX_CLIENT_VERSION` / UA 升 0.155.1；`CODEX_MODELS` 补 Sol / Luna（258K 默认 + `-900k` 872K + Fast + `max`），删 5.4 / 5.4-mini / Spark（连带删 `CODEX_SPARK_CONTEXT_WINDOW`）。`gpt-reserve` 是 `visibility: hide`，不进目录。活测 2026-09-23（本机 ChatGPT 账号）：0.155.1 列表 9 行；`gpt-6-sol` @0.153.4 与 @0.155.1、`gpt-6-luna` @0.155.1 各一轮 Responses 200 completed；5.4 三行均 400。
+
 ## 2026-09-22：Grok 4.7 Fast 的真模型 id 被 Codex `-fast` 规则剥成不存在的模型
 
 **现象**：Grok 目录新增 `grok-4.7-build-fast`（真后端变体）与 Cursor 活目录新增 `grok-4.7` ± fast 后，任何走 Grok 该行的请求都会被共享 `applyFastMode` 把 `model` 剥成不存在的 `grok-4.7-build`；实测 `grok-4.7-fast` 上游 404，`grok-4.7-build` 也不在目录里。

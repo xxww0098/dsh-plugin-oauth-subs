@@ -24,7 +24,7 @@ import {
   OPENCODE_GO_API_KEY_ENV,
   syncHarnessModels,
 } from '../lib/oauth/models.js'
-import { OPENCODE_GO_BUILTIN_ROUTE_ID, OPENCODE_GO_EXTRA_ROUTE } from '../lib/apikey/opencode-go/models.js'
+import { OPENCODE_GO_BUILTIN_ROUTE_ID, OPENCODE_GO_EXTRA_MODELS, OPENCODE_GO_EXTRA_ROUTE, OPENCODE_GO_ROUTES } from '../lib/apikey/opencode-go/models.js'
 import { KIRO_MODELS, KIRO_REASONING_GPT } from '../lib/oauth/kiro/index.js'
 
 const GO_SESSION = { 'x-opencode-session': 'dsh-opencode-go' }
@@ -111,6 +111,19 @@ test('buildProviders only emits logged-in families with DSH api ids', () => {
   assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-6-astra').contextWindow, 258_000)
   assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-6-astra-fast').contextWindow, 258_000)
   assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-6-astra-900k').contextWindow, 872_000)
+  assert.deepEqual(both['oauth-codex'].models.find((model) => model.id === 'gpt-6-sol').reasoningEfforts, {
+    off: null,
+    low: 'low',
+    medium: 'medium',
+    high: 'high',
+    xhigh: 'xhigh',
+    max: 'max',
+  })
+  assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-6-sol-fast').reasoningEfforts.max, 'max')
+  assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-6-sol-900k').contextWindow, 872_000)
+  assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-6-sol-ultra'), undefined)
+  assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-6-luna').contextWindow, 258_000)
+  assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-6-luna-fast').reasoningEfforts.max, 'max')
   assert.deepEqual(both['oauth-codex'].models.find((model) => model.id === 'gpt-5.6-sol').reasoningEfforts, {
     off: null,
     low: 'low',
@@ -172,9 +185,11 @@ test('buildProviders only emits logged-in families with DSH api ids', () => {
   assert.equal(chat['oauth-copilot'].displayName, 'OAuth · GitHub Copilot')
   assert.equal(chat['oauth-copilot'].models.some((model) => model.id === 'gpt-4.1'), true)
   assert.deepEqual(chat['oauth-copilot'].models.find((model) => model.id === 'gpt-5.5').reasoningEfforts, {
+    off: 'none',
     low: 'low',
     medium: 'medium',
     high: 'high',
+    xhigh: 'xhigh',
   })
   assert.equal(chat['oauth-codex'], undefined)
 })
@@ -206,8 +221,14 @@ test('syncHarnessModels unsets owned routes then sets the live catalog', async (
   assert.equal(result.routes[0].models.includes('gpt-6-astra-fast'), true)
   assert.equal(result.routes[0].models.includes('gpt-6-astra-900k'), true)
   assert.equal(result.routes[0].models.includes('gpt-6-astra-ultra'), false)
+  assert.equal(result.routes[0].models.includes('gpt-6-sol'), true)
+  assert.equal(result.routes[0].models.includes('gpt-6-sol-fast'), true)
+  assert.equal(result.routes[0].models.includes('gpt-6-sol-900k'), true)
+  assert.equal(result.routes[0].models.includes('gpt-6-sol-ultra'), false)
+  assert.equal(result.routes[0].models.includes('gpt-6-luna-900k'), true)
   assert.equal(result.routes[0].models.includes('gpt-5.3-codex'), false)
-  assert.equal(result.routes[0].models.includes('gpt-5.3-codex-spark'), true)
+  assert.equal(result.routes[0].models.includes('gpt-5.3-codex-spark'), false)
+  assert.equal(result.routes[0].models.includes('gpt-5.4'), false)
   assert.equal(result.routes[0].models.includes('gpt-5.4-mini-fast'), false)
   assert.deepEqual(result.routes[0].models.includes('gpt-5.5'), true)
   assert.deepEqual(result.routes[0].models.includes('gpt-5.5-fast'), true)
@@ -228,7 +249,7 @@ test('ensureOpencodeGoRoute writes only the supplemental route and takes the old
   const empty = createPiAiSettings()
   const first = await ensureOpencodeGoRoute(empty)
   assert.equal(first.status, 'written')
-  assert.deepEqual(first.routes, [OPENCODE_GO_EXTRA_ROUTE.id])
+  assert.deepEqual(first.routes, OPENCODE_GO_ROUTES.map((route) => route.id))
   // DSH's installed opencode-go catalog (the other 27 official models) is only
   // registered by llm-pi-ai when a profile names it; the plugin never adds one.
   assert.equal(empty.section.providers[OPENCODE_GO_BUILTIN_ROUTE_ID], undefined)
@@ -236,7 +257,7 @@ test('ensureOpencodeGoRoute writes only the supplemental route and takes the old
   assert.equal(extra.api, 'openai-completions')
   assert.equal(extra.baseURL, 'https://opencode.ai/zen/go/v1')
   assert.deepEqual(extra.headers, GO_SESSION)
-  assert.deepEqual(extra.models.map((model) => model.id), ['deepseek-flash'])
+  assert.deepEqual(extra.models.map((model) => model.id), OPENCODE_GO_EXTRA_MODELS.map((model) => model.id))
   assert.equal(extra.models[0].name, 'DeepSeek V4.1 Flash')
   assert.deepEqual(extra.models[0].input, ['text', 'image'])
   assert.deepEqual(extra.models[0].reasoningEfforts, { low: 'low', high: 'high', max: 'max' })
@@ -256,7 +277,7 @@ test('ensureOpencodeGoRoute writes only the supplemental route and takes the old
   const legacy = createPiAiSettings({ 'opencode-go': GO_BUILTIN })
   const cleaned = await ensureOpencodeGoRoute(legacy)
   assert.equal(cleaned.status, 'written')
-  assert.deepEqual(cleaned.routes, [OPENCODE_GO_BUILTIN_ROUTE_ID, OPENCODE_GO_EXTRA_ROUTE.id])
+  assert.deepEqual(cleaned.routes, [OPENCODE_GO_BUILTIN_ROUTE_ID, ...OPENCODE_GO_ROUTES.map((route) => route.id)])
   assert.equal(legacy.section.providers[OPENCODE_GO_BUILTIN_ROUTE_ID], undefined)
 
   // A bare apiKeyEnv profile is what DSH's own Models page writes — not ours.
@@ -268,7 +289,7 @@ test('ensureOpencodeGoRoute writes only the supplemental route and takes the old
   const custom = createPiAiSettings({ 'opencode-go': { displayName: 'Mine' } })
   const second = await ensureOpencodeGoRoute(custom)
   assert.equal(second.status, 'written')
-  assert.deepEqual(second.routes, [OPENCODE_GO_EXTRA_ROUTE.id])
+  assert.deepEqual(second.routes, OPENCODE_GO_ROUTES.map((route) => route.id))
   assert.deepEqual(custom.section.providers['opencode-go'], { displayName: 'Mine' })
 
   assert.deepEqual(await ensureOpencodeGoRoute({ mutate: async () => {} }), { status: 'unreadable' })
@@ -280,7 +301,7 @@ test('ensureOpencodeGoRoute follows the picker for the supplemental route only',
   await ensureOpencodeGoRoute(settings)
   const off = await ensureOpencodeGoRoute(settings, { selected: [] })
   assert.equal(off.status, 'written')
-  assert.deepEqual(off.routes, [OPENCODE_GO_EXTRA_ROUTE.id])
+  assert.deepEqual(off.routes, OPENCODE_GO_ROUTES.map((route) => route.id))
   const cleared = await peekPiAiProviders(settings)
   assert.equal(cleared[OPENCODE_GO_EXTRA_ROUTE.id], undefined)
   assert.equal(cleared[OPENCODE_GO_BUILTIN_ROUTE_ID], undefined)
@@ -311,7 +332,7 @@ test('ensureOpencodeGoRoute serves nothing without a key and takes its own route
 
   const cleared = await ensureOpencodeGoRoute(settings, { apiKeySet: false })
   assert.equal(cleared.status, 'written')
-  assert.deepEqual(cleared.routes, [OPENCODE_GO_EXTRA_ROUTE.id])
+  assert.deepEqual(cleared.routes, OPENCODE_GO_ROUTES.map((route) => route.id))
   assert.deepEqual(settings.section.providers, {})
 
   // The old auto-written built-in profile is taken back with no key too.
@@ -337,12 +358,12 @@ test('ensureOpencodeGoRoute serves nothing without a key and takes its own route
 test('catalogProviders lists only the supplemental Go route; the picker locks it without a key', () => {
   const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
   const keys = catalogKeys(catalog)
-  assert.deepEqual(keys.filter((key) => key.startsWith('opencode-go')), ['opencode-go-flash/deepseek-flash'])
+  assert.deepEqual(keys.filter((key) => key.startsWith('opencode-go')), OPENCODE_GO_ROUTES.flatMap((route) => route.models.map((model) => route.id + '/' + model.id)))
   const locked = describeCatalog(catalog, { loggedIn: { codex: true } })
   const go = locked.find((row) => row.family === 'opencode-go-flash')
   assert.equal(go.loggedIn, false)
-  assert.equal(go.displayName, 'OpenCode Go · DeepSeek V4.1 Flash')
-  assert.equal(go.models.length, 1)
+  assert.equal(go.displayName, 'OpenCode Go')
+  assert.equal(go.models.length, OPENCODE_GO_EXTRA_MODELS.length)
   assert.equal(go.models[0].enabled, true)
   const unlocked = describeCatalog(catalog, { loggedIn: { 'opencode-go-flash': true } })
   assert.equal(unlocked.find((row) => row.family === 'opencode-go-flash').loggedIn, true)
@@ -366,11 +387,16 @@ test('catalogProviders always lists both families with Fast and 900K siblings', 
   assert.equal(keys.includes('oauth-codex/gpt-6-astra-fast'), true)
   assert.equal(keys.includes('oauth-codex/gpt-6-astra-900k'), true)
   assert.equal(keys.includes('oauth-codex/gpt-6-astra-ultra'), false)
+  assert.equal(keys.includes('oauth-codex/gpt-6-sol'), true)
+  assert.equal(keys.includes('oauth-codex/gpt-6-sol-fast'), true)
+  assert.equal(keys.includes('oauth-codex/gpt-6-sol-900k'), true)
+  assert.equal(keys.includes('oauth-codex/gpt-6-sol-ultra'), false)
+  assert.equal(keys.includes('oauth-codex/gpt-6-luna-900k'), true)
   assert.equal(keys.includes('oauth-codex/gpt-5.5'), true)
   assert.equal(keys.includes('oauth-codex/gpt-5.5-fast'), true)
   assert.equal(keys.includes('oauth-codex/gpt-5.6-sol-900k'), true)
   assert.equal(keys.includes('oauth-codex/gpt-5.6-sol-ultra'), false)
-  assert.equal(keys.includes('oauth-codex/gpt-5.4-900k'), true)
+  assert.equal(keys.includes('oauth-codex/gpt-5.4-900k'), false)
   assert.equal(keys.includes('oauth-codex/gpt-5.5-900k'), false)
   assert.equal(keys.includes('oauth-codex/gpt-5.4-mini-900k'), false)
   assert.equal(keys.includes('oauth-grok/grok-4.6'), true)
@@ -422,7 +448,7 @@ test('ModelSwitch persists disabled keys and defaults 900K off', async () => {
   assert.equal(second.status(catalog).disabled.some((key) => key.startsWith('oauth-grok/')), true)
   await second.setAll(true, catalog)
   assert.equal(second.selectedForSync(catalog), undefined)
-  assert.equal(second.status(catalog).selected.includes('oauth-codex/gpt-5.4-900k'), true)
+  assert.equal(second.status(catalog).selected.includes('oauth-codex/gpt-6-sol-900k'), true)
 })
 
 test('ModelSwitch rejects a symbolic-link settings path', { skip: process.platform === 'win32' }, async () => {
@@ -594,7 +620,7 @@ test('logged-in Antigravity with leftover disabled keys still sets the enabled m
     loggedIn: { antigravity: true },
     selected: [keep],
   })
-  assert.equal(agKeys.length, 14)
+  assert.equal(agKeys.length, 12)
   const stored = await peekPiAiProviders(settings)
   assert.equal(stored['oauth-antigravity'].api, HARNESS_COMPLETIONS_API)
   assert.deepEqual(stored['oauth-antigravity'].models.map((model) => model.id), ['gemini-3.7-flash-high'])

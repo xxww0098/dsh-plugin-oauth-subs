@@ -10,7 +10,7 @@ import { saveSession } from '../lib/oauth/store.js'
 import { installedVersion } from '../lib/utils/update.js'
 import { HARNESS_ANTHROPIC_API, HARNESS_COMPLETIONS_API, assertDshServiceableProvider, ModelSwitch, catalogKeys, catalogProviders } from '../lib/oauth/models.js'
 import { glmSession } from '../lib/oauth/glm/index.js'
-import { OPENCODE_GO_BUILTIN_ROUTE_ID, OPENCODE_GO_EXTRA_ROUTE } from '../lib/apikey/opencode-go/models.js'
+import { OPENCODE_GO_BUILTIN_ROUTE_ID, OPENCODE_GO_EXTRA_MODELS, OPENCODE_GO_EXTRA_ROUTE, OPENCODE_GO_ROUTES } from '../lib/apikey/opencode-go/models.js'
 import { kiroSession, KIRO_MODELS } from '../lib/oauth/kiro/index.js'
 import { antigravitySession } from '../lib/oauth/antigravity/index.js'
 
@@ -95,16 +95,16 @@ test('snapshot reports logged-out accounts and empty providers', async () => {
   assert.equal(snap.opencodeGo.apiKeySet, false)
   assert.equal(snap.opencodeGo.quota.status, 'idle')
   assert.deepEqual(snap.providers, [])
-  assert.equal(snap.catalog.length, 12)
+  assert.equal(snap.catalog.length, 13)
   assert.equal(snap.catalog.some((row) => row.family === 'kimi'), true)
   assert.equal(snap.catalog.some((row) => row.family === 'devin'), true)
   assert.equal(snap.accounts.devin.loggedIn, false)
   assert.equal(snap.catalog.some((row) => row.family === 'opencode'), false)
   const go = snap.catalog.find((row) => row.family === OPENCODE_GO_EXTRA_ROUTE.id)
   assert.equal(go.loggedIn, false)
-  assert.deepEqual(go.models.map((model) => model.id), ['deepseek-flash'])
+  assert.deepEqual(go.models.map((model) => model.id), OPENCODE_GO_EXTRA_MODELS.map((model) => model.id))
   assert.equal(go.models.every((model) => model.enabled), true)
-  assert.equal(snap.catalog.filter((row) => row.family.startsWith('opencode-go')).length, 1)
+  assert.equal(snap.catalog.filter((row) => row.family.startsWith('opencode-go')).length, OPENCODE_GO_ROUTES.length)
   const copilot = snap.catalog.find((row) => row.family === 'copilot')
   assert.equal(copilot.loggedIn, false)
   assert.equal(copilot.displayName, 'OAuth · GitHub Copilot')
@@ -277,14 +277,14 @@ test('OpenCode Go unlock needs a key; picker selection filters the supplemental 
   // The plugin only writes its supplemental route; DSH's built-in opencode-go
   // catalog route is never registered by the plugin.
   assert.equal(store.section.providers[OPENCODE_GO_BUILTIN_ROUTE_ID], undefined)
-  assert.deepEqual(store.section.providers[OPENCODE_GO_EXTRA_ROUTE.id].models.map((model) => model.id), ['deepseek-flash'])
+  assert.deepEqual(store.section.providers[OPENCODE_GO_EXTRA_ROUTE.id].models.map((model) => model.id), OPENCODE_GO_EXTRA_MODELS.map((model) => model.id))
 
-  await controller.setModels({ key: OPENCODE_GO_EXTRA_ROUTE.id + '/deepseek-flash', on: false })
+  await controller.setModels({ family: OPENCODE_GO_EXTRA_ROUTE.id, on: false })
   assert.equal(store.section.providers[OPENCODE_GO_EXTRA_ROUTE.id], undefined)
   assert.equal(store.section.providers[OPENCODE_GO_BUILTIN_ROUTE_ID], undefined)
 
   await controller.setModels({ family: OPENCODE_GO_EXTRA_ROUTE.id, on: true })
-  assert.deepEqual(store.section.providers[OPENCODE_GO_EXTRA_ROUTE.id].models.map((model) => model.id), ['deepseek-flash'])
+  assert.deepEqual(store.section.providers[OPENCODE_GO_EXTRA_ROUTE.id].models.map((model) => model.id), OPENCODE_GO_EXTRA_MODELS.map((model) => model.id))
 })
 
 test('OpenCode Go routes appear only while a key is stored', async () => {
@@ -324,7 +324,7 @@ test('OpenCode Go routes appear only while a key is stored', async () => {
   assert.equal(keys.get('OPENCODE_API_KEY'), 'sk-test')
   await controller.sync()
   assert.equal(store.section.providers[OPENCODE_GO_BUILTIN_ROUTE_ID], undefined)
-  assert.deepEqual(store.section.providers[OPENCODE_GO_EXTRA_ROUTE.id].models.map((model) => model.id), ['deepseek-flash'])
+  assert.deepEqual(store.section.providers[OPENCODE_GO_EXTRA_ROUTE.id].models.map((model) => model.id), OPENCODE_GO_EXTRA_MODELS.map((model) => model.id))
 
   await controller.clearOpencodeGo('key', saved.activeId)
   assert.equal(keys.has('OPENCODE_API_KEY'), false)

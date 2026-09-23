@@ -965,10 +965,12 @@ test('cursor static catalog matches the live Cursor model set and has no Fast ro
     'grok-4.6',
     'grok-4.5',
     'claude-fable-5-1',
+    'claude-opus-5-5',
     'claude-opus-5',
     'claude-sonnet-5',
     'gemini-3.1-pro',
     'gemini-3.8-flash',
+    'muse-spark-1.3',
     'gpt-5.6-sol',
     'gpt-5.6-terra',
     'gpt-5.6-luna',
@@ -980,6 +982,9 @@ test('cursor static catalog matches the live Cursor model set and has no Fast ro
   assert.equal(CURSOR_MODELS.find((model) => model.id === 'grok-4.7').contextWindow, 500_000)
   assert.deepEqual(CURSOR_MODELS.find((model) => model.id === 'grok-4.7').input, ['text'])
   assert.equal(CURSOR_MODELS.find((model) => model.id === 'claude-opus-5').contextWindow, 300_000)
+  assert.equal(CURSOR_MODELS.find((model) => model.id === 'claude-opus-5-5').contextWindow, 300_000)
+  assert.equal(CURSOR_MODELS.find((model) => model.id === 'muse-spark-1.3').contextWindow, 300_000)
+  assert.equal(CURSOR_MODELS.find((model) => model.id === 'muse-spark-1.3').maxTokens, 64_000)
   assert.equal(CURSOR_MODELS.find((model) => model.id === 'gpt-5.6-sol').contextWindow, 272_000)
   assert.equal(CURSOR_MODELS.find((model) => model.id === 'claude-fable-5-1').maxTokens, 128_000)
   const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })

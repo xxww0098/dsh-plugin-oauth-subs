@@ -501,9 +501,31 @@ test('catalog is the live cloudcode-pa list, not Vertex-direct names', () => {
   assert.equal(ids.includes('gemini-3.6-flash-high'), true)
   assert.equal(ids.includes('gemini-3.7-flash-high'), true)
   assert.equal(ids.includes('gemini-3.8-flash-high'), true)
+  assert.equal(ids.includes('gemini-3.5-flash-lite'), true)
+  assert.equal(ids.includes('gemini-3.1-flash-lite'), true)
   assert.equal(ids.includes('gemini-3.8-flash'), false)
   assert.equal(ids.includes('gpt-oss-120b-medium'), true)
+  // Cloud Code returns 500 UNKNOWN for these ids; upstream dropped them 2026-09-01
+  // (router-for-me/CLIProxyAPI 35e3d97dac).
+  assert.equal(ids.includes('gemini-3-flash-agent'), false)
+  assert.equal(ids.includes('gemini-3.5-flash-low'), false)
+  assert.equal(ids.includes('gemini-3.5-flash-extra-low'), false)
   assert.equal(ids.some((id) => id.startsWith('publishers/') || id.includes('vertex')), false)
+  // Exactly the 12 rows of the 2026-09-23 CLIProxyAPI antigravity registry.
+  assert.deepEqual(ids.slice().sort(), [
+    'claude-opus-4-6-thinking',
+    'claude-sonnet-4-6',
+    'gemini-3-flash',
+    'gemini-3.1-flash-image',
+    'gemini-3.1-flash-lite',
+    'gemini-3.1-pro-low',
+    'gemini-3.5-flash-lite',
+    'gemini-3.6-flash-high',
+    'gemini-3.7-flash-high',
+    'gemini-3.8-flash-high',
+    'gemini-pro-agent',
+    'gpt-oss-120b-medium',
+  ])
   const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
   assert.equal(catalog['oauth-antigravity'].api, 'openai-completions')
   assert.equal(catalog['oauth-antigravity'].baseURL, 'http://x/antigravity/v1')
@@ -518,6 +540,12 @@ test('catalog is the live cloudcode-pa list, not Vertex-direct names', () => {
     catalog['oauth-antigravity'].models.find((model) => model.id === 'gemini-3.7-flash-high').reasoningEfforts,
     flash38.reasoningEfforts,
   )
+  const flash35Lite = catalog['oauth-antigravity'].models.find((model) => model.id === 'gemini-3.5-flash-lite')
+  assert.equal(flash35Lite.name, 'Gemini 3.5 Flash Lite')
+  assert.equal(flash35Lite.contextWindow, 1_048_576)
+  assert.equal(flash35Lite.maxTokens, 65_535)
+  assert.deepEqual(flash35Lite.input, ['text', 'image'])
+  assert.deepEqual(flash35Lite.reasoningEfforts, { low: 'low', medium: 'medium', high: 'high' })
 })
 
 test('snapshot shows quota on every Antigravity account via daily hub', async () => {
@@ -565,7 +593,7 @@ test('snapshot shows quota on every Antigravity account via daily hub', async ()
     },
   })
   const snap = await controller.snapshot()
-  assert.equal(snap.catalog.length, 12)
+  assert.equal(snap.catalog.length, 13)
   assert.equal(snap.accounts.antigravity.loggedIn, true)
   const roster = snap.accounts.antigravity.accounts
   assert.equal(roster.length, 2)

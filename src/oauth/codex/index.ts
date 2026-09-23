@@ -16,19 +16,16 @@ export const CODEX_USAGE_URL = 'https://chatgpt.com/backend-api/wham/usage'
 export const CODEX_RESET_CREDITS_URL = 'https://chatgpt.com/backend-api/wham/rate-limit-reset-credits'
 export const CODEX_RESET_CONSUME_URL = 'https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume'
 export const CODEX_MODELS_URL = 'https://chatgpt.com/backend-api/codex/models'
-export const CODEX_CLIENT_VERSION = '0.153.4'
+export const CODEX_CLIENT_VERSION = '0.155.1'
 export const CODEX_ORIGINATOR = 'codex_cli_rs'
 export const CODEX_USER_AGENT = `${CODEX_ORIGINATOR}/${CODEX_CLIENT_VERSION}`
 export const CODEX_SCOPE = 'openid profile email offline_access api.connectors.read api.connectors.invoke'
 export const CODEX_CALLBACK_PATH = '/auth/callback'
 export const CODEX_PREEMPT_MS = 5 * 60_000
 /** Codex CLI targets ~258K usable input; the raw model window is 272K.
- *  GPT-6 Astra and GPT-5.6 share this default. The 1.05M API window is
- *  not the ChatGPT Codex subscription default. */
+ *  Every catalog row shares this default. */
 export const CODEX_CONTEXT_WINDOW = 258_000
 export const CODEX_DEFAULT_MAX_TOKENS = 128_000
-/** Spark is the one Codex model with a smaller window. */
-export const CODEX_SPARK_CONTEXT_WINDOW = 128_000
 
 const PERMANENT_REFRESH_CODES = new Set([
   'refresh_token_expired',
@@ -50,39 +47,41 @@ export const CODEX_REASONING = Object.freeze({
   xhigh: 'xhigh',
 })
 
-/** gpt-5.4, gpt-5.4-mini, gpt-5.5 and Spark stop at `xhigh`. */
+/** GPT-5.5 stops at `xhigh`. */
 export const CODEX_REASONING_EFFORTS = Object.freeze({
   off: null,
   ...CODEX_REASONING,
 })
 
-/** GPT-5.6 Sol / Terra / Luna and GPT-6 Astra add `max`. `ultra` is a
- *  Codex CLI multi-agent mode, not an API effort — it 400s. */
+/** GPT-6 Astra / Sol / Luna and GPT-5.6 Sol / Terra / Luna add `max`.
+ *  `ultra` is a Codex CLI multi-agent mode, not an API effort — it 400s. */
 export const CODEX_REASONING_EFFORTS_56 = Object.freeze({
   ...CODEX_REASONING_EFFORTS,
   max: 'max',
 })
 
 /**
- * Mirrors Codex CLI `models.json` (openai/codex 0.153.4, 2026-09-04) plus
- * GET chatgpt.com/backend-api/codex/models — the one place model facts live,
- * so the picker, the context aliases and the Fast tier cannot drift apart.
+ * Mirrors Codex CLI `models.json` plus GET
+ * chatgpt.com/backend-api/codex/models (probed 2026-09-23 at `client_version`
+ * 0.155.1) — the one place model facts live, so the picker, the context
+ * aliases and the Fast tier cannot drift apart. `gpt-6-sol` / `gpt-6-luna`
+ * only appear at `client_version` >= 0.155.0, hence CODEX_CLIENT_VERSION.
  *
  * `largeContext` is the row's `max_context_window` and `fastTier` whether its
  * `service_tiers` offers Fast. Models the subscription backend does not serve
- * stay out entirely:
- * `gpt-5.3-codex` answers 400 "not supported when using Codex with a ChatGPT
- * account". Daybreak / auto-review slugs stay out (CLI-internal).
+ * stay out entirely — `gpt-5.3-codex`, `gpt-5.4`, `gpt-5.4-mini` and
+ * `gpt-5.3-codex-spark` all answer 400 "not supported when using Codex with a
+ * ChatGPT account", and `gpt-reserve` / Daybreak / auto-review are
+ * `visibility: hide` (CLI-internal).
  */
 export const CODEX_MODELS = Object.freeze([
   { id: 'gpt-6-astra', name: 'GPT-6 Astra', contextWindow: CODEX_CONTEXT_WINDOW, maxTokens: CODEX_DEFAULT_MAX_TOKENS, reasoningEfforts: CODEX_REASONING_EFFORTS_56, largeContext: 872_000, fastTier: true },
+  { id: 'gpt-6-sol', name: 'GPT-6 Sol', contextWindow: CODEX_CONTEXT_WINDOW, maxTokens: CODEX_DEFAULT_MAX_TOKENS, reasoningEfforts: CODEX_REASONING_EFFORTS_56, largeContext: 872_000, fastTier: true },
+  { id: 'gpt-6-luna', name: 'GPT-6 Luna', contextWindow: CODEX_CONTEXT_WINDOW, maxTokens: CODEX_DEFAULT_MAX_TOKENS, reasoningEfforts: CODEX_REASONING_EFFORTS_56, largeContext: 872_000, fastTier: true },
   { id: 'gpt-5.6-sol', name: 'GPT-5.6 Sol', contextWindow: CODEX_CONTEXT_WINDOW, maxTokens: CODEX_DEFAULT_MAX_TOKENS, reasoningEfforts: CODEX_REASONING_EFFORTS_56, largeContext: 872_000, fastTier: true },
   { id: 'gpt-5.6-terra', name: 'GPT-5.6 Terra', contextWindow: CODEX_CONTEXT_WINDOW, maxTokens: CODEX_DEFAULT_MAX_TOKENS, reasoningEfforts: CODEX_REASONING_EFFORTS_56, largeContext: 872_000, fastTier: true },
   { id: 'gpt-5.6-luna', name: 'GPT-5.6 Luna', contextWindow: CODEX_CONTEXT_WINDOW, maxTokens: CODEX_DEFAULT_MAX_TOKENS, reasoningEfforts: CODEX_REASONING_EFFORTS_56, largeContext: 872_000, fastTier: true },
   { id: 'gpt-5.5', name: 'GPT-5.5', contextWindow: CODEX_CONTEXT_WINDOW, maxTokens: CODEX_DEFAULT_MAX_TOKENS, reasoningEfforts: CODEX_REASONING_EFFORTS, fastTier: true },
-  { id: 'gpt-5.4', name: 'GPT-5.4', contextWindow: CODEX_CONTEXT_WINDOW, maxTokens: CODEX_DEFAULT_MAX_TOKENS, reasoningEfforts: CODEX_REASONING_EFFORTS, largeContext: 1_000_000, fastTier: true },
-  { id: 'gpt-5.4-mini', name: 'GPT-5.4 Mini', contextWindow: CODEX_CONTEXT_WINDOW, maxTokens: CODEX_DEFAULT_MAX_TOKENS, reasoningEfforts: CODEX_REASONING_EFFORTS },
-  { id: 'gpt-5.3-codex-spark', name: 'GPT-5.3 Codex Spark', contextWindow: CODEX_SPARK_CONTEXT_WINDOW, maxTokens: CODEX_DEFAULT_MAX_TOKENS, reasoningEfforts: CODEX_REASONING_EFFORTS },
 ])
 
 const CODEX_BY_ID = new Map(CODEX_MODELS.map((model) => [model.id, model]))
