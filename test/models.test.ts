@@ -306,11 +306,11 @@ test('ensureOpencodeGoRoute follows the picker for the supplemental route only',
   assert.equal(cleared[OPENCODE_GO_EXTRA_ROUTE.id], undefined)
   assert.equal(cleared[OPENCODE_GO_BUILTIN_ROUTE_ID], undefined)
 
-  const on = await ensureOpencodeGoRoute(settings, { selected: [OPENCODE_GO_EXTRA_ROUTE.id + '/deepseek-flash'] })
+  const on = await ensureOpencodeGoRoute(settings, { selected: [OPENCODE_GO_EXTRA_ROUTE.id + '/deepseek-v4.1-flash'] })
   assert.equal(on.status, 'written')
   assert.deepEqual(on.routes, [OPENCODE_GO_EXTRA_ROUTE.id])
   const restored = await peekPiAiProviders(settings)
-  assert.deepEqual(restored[OPENCODE_GO_EXTRA_ROUTE.id].models.map((model) => model.id), ['deepseek-flash'])
+  assert.deepEqual(restored[OPENCODE_GO_EXTRA_ROUTE.id].models.map((model) => model.id), ['deepseek-v4.1-flash'])
   assert.equal(restored[OPENCODE_GO_BUILTIN_ROUTE_ID], undefined)
 })
 
@@ -373,7 +373,7 @@ test('setFamily toggles the supplemental OpenCode Go route like any picker famil
   const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
   const models = new ModelSwitch()
   await models.ready
-  const key = 'opencode-go-flash/deepseek-flash'
+  const key = 'opencode-go-flash/deepseek-v4.1-flash'
   models.disabled = new Set([key])
   await models.setFamily('opencode-go-flash', true, catalog)
   assert.equal(models.isEnabled(key), true)

@@ -7,7 +7,7 @@
  * wire protocol. OpenCode Go speaks three protocols, so this plugin owns the
  * complete list on two routes of its own:
  *
- *   `opencode-go-flash`     openai-completions  — 28 models (display "OpenCode Go")
+ *   `opencode-go-flash`     openai-completions  — 27 models (display "OpenCode Go")
  *   `opencode-go-responses` openai-responses    —  5 models
  *
  * Sources (all 2026-09-23):
@@ -20,7 +20,10 @@
  *     omits answered "Model is unavailable" or are not in the docs list
  *     (kimi-k2.5 / glm-5 / qwen3.5-plus / mimo-v2-pro / mimo-v2-omni /
  *     hy3-preview / grok-4.5) — the live `/models` may still name them, but
- *     the gateway does not serve them on either protocol here.
+ *     the gateway does not serve them on either protocol here. The legacy
+ *     alias `deepseek-flash` is served too but not listed: it is the same
+ *     model as the docs id `deepseek-v4.1-flash`, and two rows rendered as
+ *     duplicates in the picker. 28 -> 27 completions rows after that.
  */
 
 export const OPENCODE_GO_BUILTIN_ROUTE_ID = 'opencode-go'
@@ -85,8 +88,7 @@ function model(id, name, contextWindow, maxTokens, input, reasoningEfforts, extr
 
 /** Every official Go model that answers on /chat/completions. */
 export const OPENCODE_GO_EXTRA_MODELS = Object.freeze([
-  model('deepseek-flash', 'DeepSeek V4.1 Flash', 1_000_000, 384_000, TEXT_IMAGE, EFFORT_LOW_HIGH_MAX, { compat: DEEPSEEK_COMPAT }),
-  model('deepseek-v4.1-flash', 'DeepSeek V4.1 Flash (current id)', 1_000_000, 384_000, TEXT_IMAGE, EFFORT_LOW_HIGH_MAX, { compat: DEEPSEEK_COMPAT }),
+  model('deepseek-v4.1-flash', 'DeepSeek V4.1 Flash', 1_000_000, 384_000, TEXT_IMAGE, EFFORT_LOW_HIGH_MAX, { compat: DEEPSEEK_COMPAT }),
   model('deepseek-v4-flash', 'DeepSeek V4 Flash', 1_000_000, 384_000, TEXT, EFFORT_LOW_HIGH_MAX, { compat: DEEPSEEK_COMPAT }),
   model('deepseek-v4-flash-vision-exp', 'DeepSeek V4 Flash Vision Exp', 1_000_000, 384_000, TEXT_IMAGE, EFFORT_LOW_HIGH_MAX, { compat: DEEPSEEK_COMPAT }),
   model('deepseek-v4-pro', 'DeepSeek V4 Pro', 1_000_000, 384_000, TEXT, EFFORT_HIGH_MAX, { compat: DEEPSEEK_COMPAT }),

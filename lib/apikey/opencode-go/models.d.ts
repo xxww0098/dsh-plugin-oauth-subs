@@ -7,7 +7,7 @@
  * wire protocol. OpenCode Go speaks three protocols, so this plugin owns the
  * complete list on two routes of its own:
  *
- *   `opencode-go-flash`     openai-completions  — 28 models (display "OpenCode Go")
+ *   `opencode-go-flash`     openai-completions  — 27 models (display "OpenCode Go")
  *   `opencode-go-responses` openai-responses    —  5 models
  *
  * Sources (all 2026-09-23):
@@ -20,7 +20,10 @@
  *     omits answered "Model is unavailable" or are not in the docs list
  *     (kimi-k2.5 / glm-5 / qwen3.5-plus / mimo-v2-pro / mimo-v2-omni /
  *     hy3-preview / grok-4.5) — the live `/models` may still name them, but
- *     the gateway does not serve them on either protocol here.
+ *     the gateway does not serve them on either protocol here. The legacy
+ *     alias `deepseek-flash` is served too but not listed: it is the same
+ *     model as the docs id `deepseek-v4.1-flash`, and two rows rendered as
+ *     duplicates in the picker. 28 -> 27 completions rows after that.
  */
 export declare const OPENCODE_GO_BUILTIN_ROUTE_ID = "opencode-go";
 export declare const OPENCODE_GO_EXTRA_ROUTE_ID = "opencode-go-flash";
