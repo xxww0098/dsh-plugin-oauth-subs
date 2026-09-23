@@ -295,6 +295,11 @@ window.__ModuleLoader__.load({
         dshUpdateUnchanged: 'npm 执行成功但版本未变：{n}',
         dshUpdateMissingNpm: 'PATH 上找不到 npm。确认已安装 Node.js 与 npm。',
         dshUpdateTimeout: '更新命令执行超时。',
+        dshRestart: '重启宿主',
+        dshRestartNow: '立即重启',
+        dshRestarting: '正在重启…',
+        dshRestartHint: '正在重启 dsh web，页面几秒后自动恢复；若未恢复请刷新。',
+        dshRestartStale: '当前宿主太旧，没有重启接口；请在终端重启 dsh web。',
         autoUpdate: '检测到新版本时自动更新',
         willInstall: '将安装 {n}',
         willUpdate: '将更新到 {n}',
@@ -541,6 +546,11 @@ window.__ModuleLoader__.load({
         dshUpdateUnchanged: 'Command succeeded but version unchanged: {n}',
         dshUpdateMissingNpm: 'npm was not found on PATH. Confirm Node.js and npm are installed.',
         dshUpdateTimeout: 'Update timed out.',
+        dshRestart: 'Restart DSH',
+        dshRestartNow: 'Restart now',
+        dshRestarting: 'Restarting…',
+        dshRestartHint: 'Restarting dsh web. This page should recover in a few seconds — refresh if it does not.',
+        dshRestartStale: 'This host is too old to expose a restart; restart dsh web from a terminal.',
         autoUpdate: 'Auto-update when a new version is found',
         willInstall: 'Will install {n}',
         willUpdate: 'Will update to {n}',
@@ -1238,6 +1248,8 @@ window.__ModuleLoader__.load({
 .osubs-input:focus-visible { outline: 2px solid var(--osubs-ring); outline-offset: 1px; }
 
 .osubs-link { font-size: 12.5px; color: inherit; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: color-mix(in oklab, currentColor 55%, transparent); width: fit-content; transition: text-decoration-color 140ms cubic-bezier(0.16, 1, 0.3, 1); }
+.osubs-link--action { border: 0; background: none; padding: 0; font: inherit; font-size: 12.5px; cursor: pointer; }
+.osubs-link--action:disabled { cursor: default; opacity: .6; }
 .osubs-link:hover { text-decoration-color: currentColor; }
 .osubs-link:focus-visible { outline: 2px solid var(--osubs-ring); outline-offset: 2px; border-radius: 2px; }
 
@@ -2035,7 +2047,7 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function ProviderCard({ t, id, title, account, pending, onLogin, onImport, onLogout, onCancel, onManual, onSwitch, onRefreshQuota, onResetQuota, onUseKey, onGoSave }) {
+    function ProviderCard({ t, id, title, account, pending, onLogin, onImport, onLogout, onCancel, onManual, onSwitch, onRefreshQuota, onResetQuota, onUseKey, onGoSave, onDshRestart, dshRestarting }) {
       const [addOpen, setAddOpen] = useState(false)
       const [paste, setPaste] = useState('')
       const [apiKey, setApiKey] = useState('')
@@ -2333,7 +2345,9 @@ window.__ModuleLoader__.load({
             h(Button, { type: 'submit', variant: 'primary', disabled: goBusy, label: t.opencodeGoSave }),
           ),
         ),
-        id === 'opencode-go' && goMessage && h('p', { className: 'osubs-hint osubs-bad' }, goMessage),
+        id === 'opencode-go' && goMessage && (goMessage === t.opencodeGoHostStale
+          ? h(RestartHint, { t, text: goMessage, tone: 'osubs-bad', busy: dshRestarting, onRestart: onDshRestart })
+          : h('p', { className: 'osubs-hint osubs-bad' }, goMessage)),
         id === 'glm' && !busy && h('div', { className: 'osubs-glm-logins' },
           h('button', {
             type: 'button',
@@ -2649,6 +2663,35 @@ window.__ModuleLoader__.load({
       }, label)
     }
 
+    /**
+     * Ask the host to re-exec dsh web. The host schedules a detached
+     * `sleep 2; exec …` and exits ~200ms later, so a dropped reply (or a
+     * closed socket) is the expected shape, not a failure.
+     * Returns false only when the running host has no such RPC yet.
+     */
+    async function requestDshRestart(rpc): Promise<boolean> {
+      try {
+        await callRpc(rpc, 'dshRestart', {})
+        return true
+      } catch (caught) {
+        const message = caught instanceof Error ? caught.message : String(caught)
+        return !isUnknownOauthMethod(message)
+      }
+    }
+
+    /** One stale/“please restart” hint with the restart action inline. */
+    function RestartHint({ t, text, tone, busy, onRestart }) {
+      return h('p', { className: 'osubs-hint' + (tone ? ' ' + tone : '') },
+        text + ' ',
+        h('button', {
+          type: 'button',
+          className: 'osubs-link osubs-link--action',
+          disabled: Boolean(busy),
+          onClick: onRestart,
+        }, busy ? t.dshRestarting : t.dshRestartNow),
+      )
+    }
+
     function IconCheck() {
       return h('svg', {
         width: 10, height: 10, viewBox: '0 0 24 24', fill: 'none',
@@ -2924,6 +2967,8 @@ window.__ModuleLoader__.load({
       autoUpdate,
       autoState,
       onAutoUpdate,
+      onDshRestart,
+      dshRestarting,
     }) {
       const repo = local?.repo || update?.repo || 'https://github.com/xxww0098/dsh-plugin-oauth-subs'
       const slug = local?.repoSlug || update?.repoSlug || 'xxww0098/dsh-plugin-oauth-subs'
@@ -3031,7 +3076,9 @@ window.__ModuleLoader__.load({
           h('div', { className: 'osubs-hints' },
             update?.status === 'error' && h('p', { className: 'osubs-hint osubs-bad' }, statusLabel(t, update)),
             stale && disk && h('p', { className: 'osubs-hint osubs-warn' }, fill(t.updateStaleProcess, disk)),
-            apply && h('p', { className: 'osubs-hint' + (applyTone ? ' ' + applyTone : '') }, apply),
+            apply && apply === t.updateNeedsRestart
+              ? h(RestartHint, { t, text: apply, tone: applyTone, busy: dshRestarting, onRestart: onDshRestart })
+              : apply && h('p', { className: 'osubs-hint' + (applyTone ? ' ' + applyTone : '') }, apply),
           ),
         ),
       )
@@ -3092,7 +3139,13 @@ window.__ModuleLoader__.load({
           h('div', { className: 'osubs-about-actions' },
             h(Button, {
               size: 'sm',
-              disabled: dshBusy,
+              disabled: dshBusy || dshRestarting,
+              label: dshRestarting ? t.dshRestarting : t.dshRestart,
+              onClick: onDshRestart,
+            }),
+            h(Button, {
+              size: 'sm',
+              disabled: dshBusy || dshRestarting,
               label: dshBusy ? (dshApplying ? t.dshUpdating : t.checking) : t.dshCheckUpdate,
               onClick: () => onDshCheck(false),
             }),
@@ -3167,6 +3220,7 @@ window.__ModuleLoader__.load({
           h('div', { className: 'osubs-hints' },
             dshUpdate?.status === 'error' && h('p', { className: 'osubs-hint osubs-bad' }, dshStatusLabel(t, dshUpdate)),
             dshApply && h('p', { className: 'osubs-hint' + (dshApplyTone ? ' ' + dshApplyTone : '') }, dshApply),
+            dshRestarting && h('p', { className: 'osubs-hint' }, t.dshRestartHint),
           ),
         ),
       )
@@ -3180,6 +3234,7 @@ window.__ModuleLoader__.load({
       const [snap, setSnap] = useState(readStoredSnap)
       const [pending, setPending] = useState({})
       const [error, setError] = useState('')
+      const [dshRestarting, setDshRestarting] = useState(false)
       const [tab, setTab] = useState('codex')
       // Seed from the last stored snapshot so reopening the tab shows the
       // previously fetched versions instantly instead of a loading flash.
@@ -3390,6 +3445,16 @@ window.__ModuleLoader__.load({
         role: 'tabpanel',
       }, child)
 
+      const onDshRestart = useCallback(async () => {
+        if (dshRestarting) return
+        setDshRestarting(true)
+        const accepted = await requestDshRestart(rpc)
+        if (!accepted) {
+          setDshRestarting(false)
+          setError(t.dshRestartStale)
+        }
+      }, [dshRestarting, rpc, t])
+
       const card = (id, title) => h(ProviderCard, {
         t,
         id,
@@ -3409,6 +3474,8 @@ window.__ModuleLoader__.load({
           await callRpc(rpc, 'goSave', payload)
           await refresh()
         },
+        onDshRestart,
+        dshRestarting,
       })
 
       return h('div', { className: 'osubs' },
@@ -3433,7 +3500,9 @@ window.__ModuleLoader__.load({
           ),
         ),
         h('div', { className: 'osubs-pane' },
-          error && h('p', { className: 'osubs-hint osubs-bad' }, error),
+          error && (error === t.hostStale
+            ? h(RestartHint, { t, text: error, tone: 'osubs-bad', busy: dshRestarting, onRestart: onDshRestart })
+            : h('p', { className: 'osubs-hint osubs-bad' }, error)),
           panel('codex', card('codex', t.codexTitle)),
           panel('grok', card('grok', t.grokTitle)),
           panel('glm', card('glm', t.glmTitle)),
@@ -3469,6 +3538,8 @@ window.__ModuleLoader__.load({
             autoUpdate,
             autoState: snap?.autoUpdateState,
             onAutoUpdate: applyAutoUpdate,
+            onDshRestart,
+            dshRestarting,
           })),
         ),
       )

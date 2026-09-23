@@ -708,6 +708,16 @@ export declare class AuthController {
         plugin: any;
         dsh: any;
     }>;
+    /**
+     * Manual "restart dsh web" from Settings → About. Same path an update
+     * takes: schedule the detached re-exec (it waits for the listen port),
+     * then exit this process shortly after so the new one can bind.
+     */
+    restartDsh(): Promise<{
+        ok: boolean;
+        restart: boolean;
+        command: string;
+    }>;
     login(provider: any, options: any): Promise<{
         authorizeUrl: any;
         verificationUri: any;

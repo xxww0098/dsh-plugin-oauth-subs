@@ -34,8 +34,11 @@ The About tab is two update cards (OAuth Subs Plugin / DeepSeek Harness)
 with one shared anatomy — no account cards, no dialog:
 
 - Card head: title + status pill on the left (`osubs-pill` — ok `已是最新`,
-  warn `有新版本`, bad `检查失败`/`更新失败`, neutral otherwise); a
-  check-only 检查更新 button on the right. It never installs.
+  warn `有新版本`, bad `检查失败`/`更新失败`, neutral otherwise). Right side:
+  the DeepSeek Harness card keeps a `重启宿主` / `Restart DSH` button left of
+  the check-only 检查更新 (never installs, calls the host `dshRestart` RPC —
+  detached re-exec + exit); the plugin card only has 检查更新. Buttons are
+  `osubs-btn--sm` and disable while a restart is in flight.
 - Version band (`.osubs-ver`): `当前 → 最新` mono numerals with an SVG
   arrow; the arrow pulses while applying. The apply CTA
   (`更新到 vX` / `重试更新到 vX`, `osubs-btn--update`) docks right and
@@ -51,8 +54,14 @@ with one shared anatomy — no account cards, no dialog:
 - Repo rows link out with the LobeHub GitHub mark (`osubs-link--icon`).
 - Error detail, stale-process, and apply-result hints live under the list
   in `.osubs-hints`; the pill carries the headline state. A successful
-  manual apply auto-restarts dsh web (same as auto-update); only an old
-  host that ignores `restart` falls back to the manual-restart hint.
+  manual apply auto-restarts dsh web (same as auto-update).
+- Every “please restart dsh web” hint is actionable through the same
+  `立即重启` / `Restart now` text action (`.osubs-link--action`): the
+  plugin card's apply-needs-restart hint, the global host-stale banner, and
+  the OpenCode Go save-failure hint. Clicking keeps the button busy and
+  shows `正在重启 dsh web…` under the card; a host too old to expose
+  `dshRestart` falls back to the `dshRestartStale` copy. About still opens
+  no dialog — the action is one click and the page recovers by itself.
 
 ## Quota
 

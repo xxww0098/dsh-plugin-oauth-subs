@@ -122,6 +122,7 @@ export function registerRpc(ctx, controller) {
     reset: (payload) => controller.consumeReset(payload?.provider, payload?.id),
     update: (payload) => controller.checkUpdate(payload),
     dshUpdate: (payload) => controller.checkDshUpdate(payload),
+    dshRestart: () => controller.restartDsh(),
     autoUpdate: (payload) => controller.setAutoUpdate(payload),
     proxyGet: () => controller.outboundProxy(),
     proxySet: (payload) => controller.setOutboundProxy(payload),

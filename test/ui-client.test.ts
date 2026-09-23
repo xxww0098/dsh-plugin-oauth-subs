@@ -13,6 +13,14 @@ function accountCardPills(family, locale, { plan, active, region } = {}) {
   return tags
 }
 
+test('settings bundle ships the DSH restart action and its stale hints', async () => {
+  const text = await readFile(new URL('../lib/ui/client.js', import.meta.url), 'utf8')
+  assert.match(text, /dshRestart/)
+  assert.match(text, /重启宿主/)
+  assert.match(text, /Restart DSH/)
+  assert.match(text, /dshRestartStale/)
+})
+
 test('GLM card boost wording is exactly 150%配额 / 150% quota', () => {
   assert.equal(GLM_BOOST_LABEL.zh, '150%配额')
   assert.equal(GLM_BOOST_LABEL.en, '150% quota')

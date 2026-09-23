@@ -1041,6 +1041,27 @@ test('checkDshUpdate never restarts when npm exits 0 but the running copy is unc
   assert.equal(exited, false)
 })
 
+test('restartDsh schedules a detached dsh web re-exec and exits the old process', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const seen: any[] = []
+  let exited = false
+  const controller = new AuthController({
+    authPath: join(dir, 'auth.json'),
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+    exitFn: () => { exited = true },
+    spawnFn: (cmd, args) => { seen.push({ cmd, args }); return spawnChild(0) },
+  })
+  const result = await controller.restartDsh()
+  assert.equal(result.ok, true)
+  assert.equal(result.restart, true)
+  assert.equal(typeof result.command, 'string')
+  assert.equal(seen.length, 1)
+  await new Promise((resolve) => setTimeout(resolve, 300))
+  assert.equal(exited, true)
+})
+
 test('checkDshUpdate apply rolls back to an older npm version', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
   const dsh = await fakeDshInstall('0.1.2-rc.1')
