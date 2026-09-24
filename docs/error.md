@@ -6,7 +6,7 @@
 
 **现象**：长会话状态在跑但长时间无思考。分析两个导出 session（oauth-codex gpt-6-luna / oauth-devin swe-2）：每步跑**两次**压缩摘要调用（30–55s/次，无思考输出），analyzer 记 `compaction 44 / 38` 次重写；中途切 swe-2 时携带 141k/240k tokens 直接超其有效预算被判「超上下文」。
 **根因**：路由行把厂商输出上限当 `maxTokens` 写进 llm-pi-ai，宿主 `dsh-compaction-basic` 阈值 = `min(窗口×0.8, 窗口 − 该值 − headroom 65536)`：codex 258k→64464（25%）、swe-2 262k→68464（26%）、grok 500k=maxTokens 时阈值转负、自动压缩整体禁用；114k 窗口模型连 65536 headroom 都放不下。
-**修复**：`toHarnessModel` 路由 `maxTokens` 封顶 `HARNESS_REQUEST_MAX_TOKENS`=32768（llm-pi-ai 自身默认；真实上限仍留家族目录行，Devin/Antigravity/GLM hop 用自己的 cap，Codex/Copilot 本就 strip）；`syncHarnessModels` 同步向 `compaction-basic` 下发 `modelPolicies`——窗口 <655360 的模型 `headroomTokens` 按窗口 10% 收缩，只动 `oauth-*` 属主条目、保留外来行、幂等。另：Devin `forwardDevin` 不走 `forward()` 重试环，摘要调用 `UND_ERR_SOCKET` 后 5 次重试全 `ECONNRESET` 把整轮打死——补 head 未提交前有界重试（3 次，1s/4s 退避），对齐 passthrough 家族语义。线上 `cordis.patch.yml` 旧值在下一次 sync（登录 / 导入 / 额度刷新 / warmCatalogs）自动改写。
+**修复**：`toHarnessModel` 路由 `maxTokens` 封顶 `HARNESS_REQUEST_MAX_TOKENS`=32768（llm-pi-ai 自身默认；真实上限仍留家族目录行，Devin/Antigravity/GLM hop 用自己的 cap，Codex/Copilot 本就 strip）；`syncHarnessModels` 向 profile `cordis.patch.yml` 末尾维护一段 marker 包裹的 `id: compaction-basic` override——`modelPolicies` 里窗口 <655360 的模型 `headroomTokens` 按窗口 10% 收缩（compaction-basic Config 无 volatile 字段且 live entry 嵌在 cordis:group 里，`settings.mutate`/`configEditor` 都够不到，patch 层 id 扁平匹配可达；手写同名条目存在则整体跳过）。另：Devin `forwardDevin` 不走 `forward()` 重试环，摘要调用 `UND_ERR_SOCKET` 后 5 次重试全 `ECONNRESET` 把整轮打死——补 head 未提交前有界重试（3 次，1s/4s 退避），对齐 passthrough 家族语义。线上 `cordis.patch.yml` 旧值在下一次 sync（登录 / 导入 / 额度刷新 / warmCatalogs）自动改写。
 
 ## 2026-11-02：Cursor `grok-4.7` 一跑就「AI Model Not Found: Invalid parameters for registry model」= effort 参数 id/value 全错
 

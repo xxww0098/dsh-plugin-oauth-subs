@@ -31,6 +31,7 @@ export declare class AuthController {
     autoUpdateTimer: any;
     dshStuckTarget: string | undefined;
     profile: string;
+    patchPath: string | undefined;
     readFileFn: any;
     updateEnv: any;
     onAuthChanged: ((provider?: string) => void) | undefined;
@@ -72,7 +73,7 @@ export declare class AuthController {
     tokenSweepTimer: any;
     outboundProxy: any;
     setOutboundProxy: any;
-    constructor({ authPath, prefix, origin, settings, credentials, grokLogin, onAuthChanged, models, fetchFn, quotaTtlMs, spawnFn, profile, readFileFn, updateEnv, exitFn, prefsPath, statePath, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover, devinAutoImport, devinImport, devinDiscover, clineDiscover, clineAutoImport }: any);
+    constructor({ authPath, prefix, origin, settings, patchPath, credentials, grokLogin, onAuthChanged, models, fetchFn, quotaTtlMs, spawnFn, profile, readFileFn, updateEnv, exitFn, prefsPath, statePath, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover, devinAutoImport, devinImport, devinDiscover, clineDiscover, clineAutoImport }: any);
     claim(provider: any): number;
     loggedIn(): Promise<{
         codex: boolean;

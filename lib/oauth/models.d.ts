@@ -173,8 +173,9 @@ export declare function ensureOpencodeGoRoute(settings: any, { selected, apiKeyS
     routes: any[];
     error?: undefined;
 }>;
-export declare function syncHarnessModels({ settings, prefix, origin, loggedIn, selected, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels, clineModels }: {
+export declare function syncHarnessModels({ settings, patchPath, prefix, origin, loggedIn, selected, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels, clineModels }: {
     settings: any;
+    patchPath: any;
     prefix: any;
     origin: any;
     loggedIn: any;

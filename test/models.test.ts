@@ -33,7 +33,6 @@ const GO_BUILTIN = { apiKeyEnv: OPENCODE_GO_API_KEY_ENV, headers: GO_SESSION }
 function createPiAiSettings(initialProviders = {}) {
   const sections = {
     'llm-pi-ai': { providers: structuredClone(initialProviders) },
-    'compaction-basic': {},
   }
   const ops = []
   return {
@@ -43,24 +42,9 @@ function createPiAiSettings(initialProviders = {}) {
     },
     get(name) {
       if (name === 'llm-pi-ai') return structuredClone(sections['llm-pi-ai'])
-      if (name === 'compaction-basic') return structuredClone(sections['compaction-basic'])
       return undefined
     },
-    compaction() {
-      return structuredClone(sections['compaction-basic'])
-    },
     async mutate(target, mutations) {
-      if (target === 'compaction-basic') {
-        const next = { ...sections['compaction-basic'] }
-        for (const row of mutations) {
-          if (row.path?.[0] !== 'modelPolicies' || row.path.length !== 1) throw new Error('bad path')
-          if (row.op === 'unset') delete next.modelPolicies
-          else if (row.op === 'set') next.modelPolicies = structuredClone(row.value)
-        }
-        sections['compaction-basic'] = next
-        ops.push({ target, mutations })
-        return
-      }
       if (target !== 'llm-pi-ai') throw new Error(`unknown settings namespace ${target}`)
       const section = sections['llm-pi-ai']
       const next = { providers: { ...section.providers } }
@@ -817,16 +801,30 @@ test('route maxTokens is a capped request budget, not the vendor ceiling', async
   assert.equal(stored['oauth-devin'].models.find((m) => m.id === 'fusion').maxTokens, undefined)
 })
 
+async function patchFile(content = '[]\n') {
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-patch-'))
+  const path = join(dir, 'cordis.patch.yml')
+  await writeFile(path, content)
+  return path
+}
+
+function parsePolicyRows(text) {
+  return [...text.matchAll(/- \{ provider: "([^"]+)", model: "([^"]+)", headroomTokens: (\d+) \}/g)]
+    .map(([, provider, model, headroomTokens]) => ({ provider, model, headroomTokens: Number(headroomTokens) }))
+}
+
 test('every synced route leaves a usable compaction threshold', async () => {
   const loggedIn = Object.fromEntries(FAMILY_IDS.map((id) => [id, true]))
   const settings = createPiAiSettings()
+  const patchPath = await patchFile()
   await syncHarnessModels({
     settings,
+    patchPath,
     prefix: 'oauth',
     origin: 'http://127.0.0.1:8318',
     loggedIn,
   })
-  const policies = settings.compaction().modelPolicies ?? []
+  const policies = parsePolicyRows(await readFile(patchPath, 'utf8'))
   const headroomOf = (provider, model) =>
     policies.find((row) => row.provider === provider && row.model === model)?.headroomTokens ?? 65_536
   const stored = await peekPiAiProviders(settings)
@@ -845,35 +843,59 @@ test('every synced route leaves a usable compaction threshold', async () => {
   }
 })
 
-test('syncHarnessModels writes per-model compaction headroom for small windows only', async () => {
-  const foreign = { provider: 'deepseek', model: 'deepseek-v4.1', headroomTokens: 1024 }
+test('syncHarnessModels manages a marked compaction policy block in the profile patch', async () => {
   const settings = createPiAiSettings()
-  await settings.mutate('compaction-basic', [
-    { op: 'set', path: ['modelPolicies'], value: [foreign, { provider: 'oauth-codex', model: 'stale-model', headroomTokens: 1 }] },
-  ])
+  const foreign = '- id: ui-settings\n  name: \'@deepseek-ai/dsh-client-ui-settings\'\n  config:\n    enabled: true\n'
+  const patchPath = await patchFile(foreign)
   const result = await syncHarnessModels({
     settings,
+    patchPath,
     prefix: 'oauth',
     origin: 'http://127.0.0.1:8318',
     loggedIn: { codex: true, glm: true },
   })
-  const policies = settings.compaction().modelPolicies
-  assert.deepEqual(policies[0], foreign)
-  assert.equal(policies.some((row) => row.model === 'stale-model'), false)
-  const codex = policies.find((row) => row.provider === 'oauth-codex' && row.model === 'gpt-6-luna')
-  assert.equal(codex.headroomTokens, 25_800)
-  // 200K-window glm-5-turbo gets a scaled headroom; 1M rows keep the 65536 default.
-  assert.equal(policies.find((row) => row.provider === 'oauth-glm' && row.model === 'glm-5-turbo').headroomTokens, 20_000)
-  assert.equal(policies.some((row) => row.model === 'glm-5.3'), false)
   assert.equal(result.compaction.status, 'written')
+  const text = await readFile(patchPath, 'utf8')
+  assert.ok(text.startsWith(foreign), 'existing entries are preserved byte-for-byte')
+  const policies = parsePolicyRows(text)
+  assert.equal(policies.some((row) => row.provider === 'oauth-codex' && row.model === 'gpt-6-luna' && row.headroomTokens === 25_800), true)
+  // 200K-window glm-5-turbo gets a scaled headroom; 1M rows keep the 65536 default.
+  assert.equal(policies.some((row) => row.provider === 'oauth-glm' && row.model === 'glm-5-turbo' && row.headroomTokens === 20_000), true)
+  assert.equal(policies.some((row) => row.model === 'glm-5.3'), false)
   // Second sync is a no-op.
-  const opsBefore = settings.ops.length
   const again = await syncHarnessModels({
     settings,
+    patchPath,
     prefix: 'oauth',
     origin: 'http://127.0.0.1:8318',
     loggedIn: { codex: true, glm: true },
   })
   assert.equal(again.compaction.status, 'unchanged')
-  assert.equal(settings.ops.length, opsBefore + 1)
+  assert.equal(await readFile(patchPath, 'utf8'), text)
+  // Disabling the families removes the managed block and nothing else.
+  await syncHarnessModels({
+    settings,
+    patchPath,
+    prefix: 'oauth',
+    origin: 'http://127.0.0.1:8318',
+    loggedIn: {},
+  })
+  const cleared = await readFile(patchPath, 'utf8')
+  assert.equal(cleared.includes('compaction-basic'), false)
+  assert.ok(cleared.includes('ui-settings'))
+})
+
+test('syncHarnessModels does not touch a hand-maintained compaction override', async () => {
+  const settings = createPiAiSettings()
+  const manual = '- id: compaction-basic\n  name: \'@deepseek-ai/dsh-compaction-basic\'\n  config:\n    headroomTokens: 4096\n'
+  const patchPath = await patchFile(manual)
+  const result = await syncHarnessModels({
+    settings,
+    patchPath,
+    prefix: 'oauth',
+    origin: 'http://127.0.0.1:8318',
+    loggedIn: { codex: true },
+  })
+  assert.equal(result.compaction.status, 'manual-override')
+  assert.equal(await readFile(patchPath, 'utf8'), manual)
 })

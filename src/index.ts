@@ -272,11 +272,19 @@ export function apply(ctx, config: any = {}) {
     configUrl: config.proxyUrl,
   })
 
+  let patchPath: string | undefined
+  try {
+    if (typeof ctx.baseUrl === 'string' && ctx.baseUrl.startsWith('file:')) {
+      patchPath = join(fileURLToPath(ctx.baseUrl), 'cordis.patch.yml')
+    }
+  } catch { /* no profile patch addressable */ }
+
   const controller = new AuthController({
     authPath,
     prefix,
     origin: () => proxy.origin(),
     settings: ctx.settings,
+    patchPath,
     credentials: ctx.credentials,
     grokLogin,
     models,

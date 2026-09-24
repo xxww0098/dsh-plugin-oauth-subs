@@ -175,6 +175,7 @@ export class AuthController {
   declare autoUpdateTimer: any
   declare dshStuckTarget: string | undefined
   declare profile: string
+  declare patchPath: string | undefined
   declare readFileFn: any
   declare updateEnv: any
   declare onAuthChanged: ((provider?: string) => void) | undefined
@@ -216,11 +217,12 @@ export class AuthController {
   declare tokenSweepTimer: any
   declare outboundProxy: any
   declare setOutboundProxy: any
-  constructor({ authPath, prefix, origin, settings, credentials, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, spawnFn, profile, readFileFn, updateEnv, exitFn, prefsPath, statePath, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover, devinAutoImport, devinImport, devinDiscover, clineDiscover, clineAutoImport }: any) {
+  constructor({ authPath, prefix, origin, settings, patchPath, credentials, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, spawnFn, profile, readFileFn, updateEnv, exitFn, prefsPath, statePath, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover, devinAutoImport, devinImport, devinDiscover, clineDiscover, clineAutoImport }: any) {
     this.authPath = authPath
     this.prefix = prefix
     this.origin = origin
     this.settings = settings
+    this.patchPath = patchPath
     this.credentials = credentials
     this.grokLogin = grokLogin
     this.spawnFn = spawnFn
@@ -2265,6 +2267,7 @@ export class AuthController {
     })
     const synced = await syncHarnessModels({
       settings: this.settings,
+      patchPath: this.patchPath,
       prefix: this.prefix,
       origin: this.origin(),
       loggedIn,
