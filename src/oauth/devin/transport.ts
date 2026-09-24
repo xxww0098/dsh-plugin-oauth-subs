@@ -13,6 +13,7 @@
  */
 
 import { once } from 'node:events'
+import { setTimeout as delay } from 'node:timers/promises'
 import { RequestError, describeError, sendJson } from '../../utils/http.js'
 import {
   DEVIN_TIER_NAMES,
@@ -58,6 +59,22 @@ const UNARY_HEADERS = Object.freeze({
   'connect-protocol-version': '1',
   accept: '*/*',
 })
+
+/**
+ * Bounded replay for socket-level failures before any client byte commits —
+ * the same contract the shared forward() loop gives the other families
+ * (STREAM_ATTEMPTS / RETRY_BACKOFF_MS), which this Connect-RPC hop bypasses.
+ */
+const DEVIN_STREAM_ATTEMPTS = 3
+const DEVIN_RETRY_BACKOFF_MS = [1000, 4000]
+
+/** Auth/permission and upstream 4xx answers are final; transport-level throws and 5xx are worth a replay. */
+function devinRetryable(error) {
+  if (error instanceof DevinTransportError) {
+    return error.status === undefined || error.status >= 500
+  }
+  return true
+}
 
 export class DevinTransportError extends Error {
   declare status: any
@@ -320,8 +337,24 @@ export async function forwardDevin(response, {
   const model = source.model ?? built.chatModelUid
   const id = `chatcmpl-${Date.now()}`
 
+  const runRetrying = async (onEvent, hasOutput) => {
+    for (let attempt = 0; ; attempt += 1) {
+      if (attempt > 0) {
+        await delay(DEVIN_RETRY_BACKOFF_MS[attempt - 1], undefined, { signal })
+        console.error(`[oauth-subs] devin retrying upstream (attempt ${attempt + 1}/${DEVIN_STREAM_ATTEMPTS})`)
+      }
+      try {
+        return await runFn(session, built, onEvent ? { signal, fetchFn, onEvent } : { signal, fetchFn })
+      } catch (error) {
+        // A replay is only safe while no client byte is committed — the same
+        // gate forward()'s stream loop applies to the passthrough families.
+        if (signal?.aborted || hasOutput?.() || !devinRetryable(error) || attempt === DEVIN_STREAM_ATTEMPTS - 1) throw error
+      }
+    }
+  }
+
   if (!stream) {
-    const collected = await runFn(session, built, { signal, fetchFn })
+    const collected = await runRetrying(undefined, undefined)
     sendJson(response, 200, devinToOpenai(collected, { model, id }))
     return
   }
@@ -352,15 +385,11 @@ export async function forwardDevin(response, {
     if (!response.writableEnded && !response.destroyed) response.end()
   }
   try {
-    await runFn(session, built, {
-      signal,
-      fetchFn,
-      onEvent: async (event) => {
-        const chunks = mapper.push(event)
-        if (chunks.length) head()
-        for (const chunk of chunks) await write(chunk)
-      },
-    })
+    await runRetrying(async (event) => {
+      const chunks = mapper.push(event)
+      if (chunks.length) head()
+      for (const chunk of chunks) await write(chunk)
+    }, () => headSent)
   } catch (error) {
     if (signal?.aborted) throw error
     await fail(describeError(error))

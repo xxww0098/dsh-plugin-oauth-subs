@@ -533,7 +533,7 @@ test('catalog is the live cloudcode-pa list, not Vertex-direct names', () => {
   const flash38 = catalog['oauth-antigravity'].models.find((model) => model.id === 'gemini-3.8-flash-high')
   assert.equal(flash38.name, 'Gemini 3.8 Flash')
   assert.equal(flash38.contextWindow, 1_048_576)
-  assert.equal(flash38.maxTokens, 65_536)
+  assert.equal(flash38.maxTokens, 32_768)
   assert.deepEqual(flash38.input, ['text', 'image'])
   assert.deepEqual(flash38.reasoningEfforts, { low: 'low', medium: 'medium', high: 'high' })
   assert.deepEqual(
@@ -543,7 +543,7 @@ test('catalog is the live cloudcode-pa list, not Vertex-direct names', () => {
   const flash35Lite = catalog['oauth-antigravity'].models.find((model) => model.id === 'gemini-3.5-flash-lite')
   assert.equal(flash35Lite.name, 'Gemini 3.5 Flash Lite')
   assert.equal(flash35Lite.contextWindow, 1_048_576)
-  assert.equal(flash35Lite.maxTokens, 65_535)
+  assert.equal(flash35Lite.maxTokens, 32_768)
   assert.deepEqual(flash35Lite.input, ['text', 'image'])
   assert.deepEqual(flash35Lite.reasoningEfforts, { low: 'low', medium: 'medium', high: 'high' })
 })

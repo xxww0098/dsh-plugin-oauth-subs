@@ -31,17 +31,38 @@ const GO_SESSION = { 'x-opencode-session': 'dsh-opencode-go' }
 const GO_BUILTIN = { apiKeyEnv: OPENCODE_GO_API_KEY_ENV, headers: GO_SESSION }
 
 function createPiAiSettings(initialProviders = {}) {
-  const section = { providers: structuredClone(initialProviders) }
+  const sections = {
+    'llm-pi-ai': { providers: structuredClone(initialProviders) },
+    'compaction-basic': {},
+  }
   const ops = []
   return {
     ops,
-    section,
+    get section() {
+      return sections['llm-pi-ai']
+    },
     get(name) {
-      if (name !== 'llm-pi-ai') return undefined
-      return structuredClone(section)
+      if (name === 'llm-pi-ai') return structuredClone(sections['llm-pi-ai'])
+      if (name === 'compaction-basic') return structuredClone(sections['compaction-basic'])
+      return undefined
+    },
+    compaction() {
+      return structuredClone(sections['compaction-basic'])
     },
     async mutate(target, mutations) {
+      if (target === 'compaction-basic') {
+        const next = { ...sections['compaction-basic'] }
+        for (const row of mutations) {
+          if (row.path?.[0] !== 'modelPolicies' || row.path.length !== 1) throw new Error('bad path')
+          if (row.op === 'unset') delete next.modelPolicies
+          else if (row.op === 'set') next.modelPolicies = structuredClone(row.value)
+        }
+        sections['compaction-basic'] = next
+        ops.push({ target, mutations })
+        return
+      }
       if (target !== 'llm-pi-ai') throw new Error(`unknown settings namespace ${target}`)
+      const section = sections['llm-pi-ai']
       const next = { providers: { ...section.providers } }
       for (const row of mutations) {
         const key = row.path?.[1]
@@ -72,7 +93,7 @@ test('buildProviders only emits logged-in families with DSH api ids', () => {
   assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4.6').contextWindow, 500_000)
   assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4.6-fast'), undefined)
   assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4.7').contextWindow, 500_000)
-  assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4.7').maxTokens, 500_000)
+  assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4.7').maxTokens, 32_768)
   assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4.7-fast'), undefined)
   assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4.7-build-fast').name, 'Grok 4.7 Fast')
   assert.deepEqual(both['oauth-grok'].models.find((model) => model.id === 'grok-4.7').reasoningEfforts, {
@@ -94,7 +115,7 @@ test('buildProviders only emits logged-in families with DSH api ids', () => {
     medium: 'medium',
     high: 'high',
   })
-  assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4.6').maxTokens, 500_000)
+  assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4.6').maxTokens, 32_768)
   assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-5.5').reasoningEfforts.off, null)
   assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-5.5').reasoningEfforts.max, undefined)
   assert.deepEqual(both['oauth-codex'].models.find((model) => model.id === 'gpt-6-astra').reasoningEfforts, {
@@ -533,7 +554,7 @@ test('GLM catalog is the plan trio; Codex stays image-capable', () => {
   // 5.3, FlashX is not yet on the plan.
   assert.equal(glm.find((model) => model.id === 'glm-5.2'), undefined)
   assert.equal(glm.find((model) => model.id === 'glm-5.3-flashx'), undefined)
-  assert.equal(glm.find((model) => model.id === 'glm-5-turbo').maxTokens, 64_000)
+  assert.equal(glm.find((model) => model.id === 'glm-5-turbo').maxTokens, 32_768)
   assert.equal(glm.find((model) => model.id === 'glm-5-turbo').reasoningEfforts, false)
   assert.equal(catalog['oauth-glm'].compat?.forceAdaptiveThinking, true)
   assert.equal(catalog['oauth-glm'].compat?.allowEmptySignature, true)
@@ -775,4 +796,84 @@ test('bare api openai is refused by the DSH union and leaves the store unchanged
   ]), /openai-completions/)
   assert.equal(settings.section.providers['oauth-codex'].api, 'openai-responses')
   assert.equal(settings.section.providers['oauth-glm'], undefined)
+})
+
+test('route maxTokens is a capped request budget, not the vendor ceiling', async () => {
+  const settings = createPiAiSettings()
+  await syncHarnessModels({
+    settings,
+    prefix: 'oauth',
+    origin: 'http://127.0.0.1:8318',
+    loggedIn: { codex: true, grok: true, devin: true },
+  })
+  const stored = await peekPiAiProviders(settings)
+  // Codex/gpt-6 rows advertise 128k output upstream; the route reserves 32768.
+  assert.equal(stored['oauth-codex'].models.find((m) => m.id === 'gpt-6-luna').maxTokens, 32_768)
+  // Grok clamps its advertised 1M cap to the 500k window; the route still reserves 32768.
+  assert.equal(stored['oauth-grok'].models.find((m) => m.id === 'grok-4.7').maxTokens, 32_768)
+  // Rows smaller than the budget keep their real value.
+  assert.equal(stored['oauth-devin'].models.find((m) => m.id === 'swe-2').maxTokens, 32_768)
+  // Devin rows with no upstream cap (fusion) carry no route maxTokens.
+  assert.equal(stored['oauth-devin'].models.find((m) => m.id === 'fusion').maxTokens, undefined)
+})
+
+test('every synced route leaves a usable compaction threshold', async () => {
+  const loggedIn = Object.fromEntries(FAMILY_IDS.map((id) => [id, true]))
+  const settings = createPiAiSettings()
+  await syncHarnessModels({
+    settings,
+    prefix: 'oauth',
+    origin: 'http://127.0.0.1:8318',
+    loggedIn,
+  })
+  const policies = settings.compaction().modelPolicies ?? []
+  const headroomOf = (provider, model) =>
+    policies.find((row) => row.provider === provider && row.model === model)?.headroomTokens ?? 65_536
+  const stored = await peekPiAiProviders(settings)
+  for (const [provider, value] of Object.entries(stored)) {
+    for (const model of value.models) {
+      const reserved = model.maxTokens ?? 0
+      const threshold = Math.floor(Math.min(
+        model.contextWindow * 0.8,
+        model.contextWindow - reserved - headroomOf(provider, model.id),
+      ))
+      assert.ok(
+        threshold >= model.contextWindow * 0.5,
+        `${provider}/${model.id} compaction threshold ${threshold} < 50% of ${model.contextWindow}`,
+      )
+    }
+  }
+})
+
+test('syncHarnessModels writes per-model compaction headroom for small windows only', async () => {
+  const foreign = { provider: 'deepseek', model: 'deepseek-v4.1', headroomTokens: 1024 }
+  const settings = createPiAiSettings()
+  await settings.mutate('compaction-basic', [
+    { op: 'set', path: ['modelPolicies'], value: [foreign, { provider: 'oauth-codex', model: 'stale-model', headroomTokens: 1 }] },
+  ])
+  const result = await syncHarnessModels({
+    settings,
+    prefix: 'oauth',
+    origin: 'http://127.0.0.1:8318',
+    loggedIn: { codex: true, glm: true },
+  })
+  const policies = settings.compaction().modelPolicies
+  assert.deepEqual(policies[0], foreign)
+  assert.equal(policies.some((row) => row.model === 'stale-model'), false)
+  const codex = policies.find((row) => row.provider === 'oauth-codex' && row.model === 'gpt-6-luna')
+  assert.equal(codex.headroomTokens, 25_800)
+  // 200K-window glm-5-turbo gets a scaled headroom; 1M rows keep the 65536 default.
+  assert.equal(policies.find((row) => row.provider === 'oauth-glm' && row.model === 'glm-5-turbo').headroomTokens, 20_000)
+  assert.equal(policies.some((row) => row.model === 'glm-5.3'), false)
+  assert.equal(result.compaction.status, 'written')
+  // Second sync is a no-op.
+  const opsBefore = settings.ops.length
+  const again = await syncHarnessModels({
+    settings,
+    prefix: 'oauth',
+    origin: 'http://127.0.0.1:8318',
+    loggedIn: { codex: true, glm: true },
+  })
+  assert.equal(again.compaction.status, 'unchanged')
+  assert.equal(settings.ops.length, opsBefore + 1)
 })

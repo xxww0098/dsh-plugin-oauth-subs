@@ -53,7 +53,10 @@ npm run analyze -- path/to/session.jsonl
   medium|high|xhigh|max`; vendor spellings are values, never keys.
 - Model rows carry real `name`/`contextWindow`/`maxTokens`/`input`
   (`text`/`image` only) — trace each to a source recorded in the family
-  README.
+  README. Route `maxTokens` is a per-request budget, not the vendor cap:
+  `toHarnessModel` clamps it to `HARNESS_REQUEST_MAX_TOKENS` (32768) because
+  the host reserves it against the window for compaction pressure; the real
+  cap stays on the family catalog row.
 - Public sessions never expose tokens, refresh secrets, or opaque account
   ids (`user-…`, `devin-team$…`).
 - Adding a family: new `src/oauth/<id>/` + README + `docs/oauth.md` row +

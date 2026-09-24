@@ -193,4 +193,17 @@ export declare function syncHarnessModels({ settings, prefix, origin, loggedIn, 
         api: any;
         models: any;
     }[];
+    compaction: {
+        status: string;
+        error?: undefined;
+        policies?: undefined;
+    } | {
+        status: string;
+        error: string;
+        policies?: undefined;
+    } | {
+        status: string;
+        policies: number;
+        error?: undefined;
+    };
 }>;

@@ -1100,7 +1100,7 @@ test('catalog includes GLM as Anthropic Messages (ZCode default)', () => {
   assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.3-flash').name, 'GLM-5.3-Flash')
   assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5-turbo').name, 'GLM-5-Turbo')
   assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5-turbo').contextWindow, 200_000)
-  assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5-turbo').maxTokens, 64_000)
+  assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5-turbo').maxTokens, 32_768)
   // 5.2 / FlashX are not plan rows: 5.2 auto-routes to 5.3, FlashX is not yet
   // on the plan.
   assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.2'), undefined)

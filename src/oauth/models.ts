@@ -152,14 +152,32 @@ function harnessReasoningEfforts(model) {
   return efforts
 }
 
+/**
+ * Per-request completion budget written into the harness route — NOT the
+ * vendor output ceiling. llm-pi-ai turns an explicit model `maxTokens` into
+ * `defaultMaxTokens`, which DSH reserves against the context window on every
+ * request and dsh-compaction-basic prices into its auto-compaction threshold
+ * (`min(window*0.8, window - reserved - headroom 65536)`). Passing the real
+ * 128k/500k cap would starve the threshold to ~25% of the window and compact
+ * every step. 32768 is llm-pi-ai's own defaultMaxTokens.
+ */
+const HARNESS_REQUEST_MAX_TOKENS = 32_768
+
+function harnessMaxTokens(maxTokens) {
+  const value = Number(maxTokens)
+  if (!Number.isFinite(value) || value <= 0) return undefined
+  return Math.min(value, HARNESS_REQUEST_MAX_TOKENS)
+}
+
 function toHarnessModel(model) {
   const row: any = {
     id: model.id,
     name: model.name,
     contextWindow: model.contextWindow,
-    maxTokens: model.maxTokens,
     input: harnessInput(model),
   }
+  const maxTokens = harnessMaxTokens(model.maxTokens)
+  if (maxTokens !== undefined) row.maxTokens = maxTokens
   const efforts = harnessReasoningEfforts(model)
   if (efforts !== undefined) row.reasoningEfforts = efforts
   return row
@@ -850,11 +868,64 @@ export async function syncHarnessModels({ settings, prefix, origin, loggedIn, se
     throw new Error(`llm-pi-ai mutate failed: ${detail}`)
   }
   await assertPersistedProviders(settings, Object.keys(providers))
+  const compaction = await syncCompactionPolicies(settings, providers, new Set(owned))
   return {
     routes: Object.entries(providers).map(([provider, value]) => ({
       provider,
       api: value.api,
       models: value.models.map((model) => model.id),
     })),
+    compaction,
   }
+}
+
+/**
+ * dsh-compaction-basic also reserves a fixed 65536-token headroom before the
+ * pressure threshold (`window - reserved maxTokens - headroom`), so on small
+ * windows the default alone can starve auto-compaction even with the route
+ * maxTokens capped. Each synced model under ~640K gets an exact-target policy
+ * scaling headroom to 10% of its window. Only plugin-owned providers are
+ * managed: foreign modelPolicies rows are preserved and stale rows for
+ * disabled families are dropped on every sync.
+ */
+const COMPACTION_NS = 'compaction-basic'
+const COMPACTION_DEFAULT_HEADROOM = 65_536
+const COMPACTION_HEADROOM_RATIO = 0.1
+
+function compactionHeadroomOf(contextWindow) {
+  const window = Number(contextWindow)
+  if (!Number.isInteger(window) || window <= 0) return undefined
+  const headroom = Math.floor(window * COMPACTION_HEADROOM_RATIO)
+  return headroom < COMPACTION_DEFAULT_HEADROOM ? headroom : undefined
+}
+
+async function syncCompactionPolicies(settings, providers, owned) {
+  if (settings == null || typeof settings.get !== 'function' || typeof settings.mutate !== 'function') {
+    return { status: 'unavailable' }
+  }
+  let existing: any[] = []
+  try {
+    const raw = await settings.get(COMPACTION_NS)
+    if (raw != null && Array.isArray(raw.modelPolicies)) existing = raw.modelPolicies
+  } catch {
+    return { status: 'unreadable' }
+  }
+  const next = [
+    ...existing.filter((policy) => policy == null || typeof policy !== 'object' || !owned.has(policy.provider)),
+  ]
+  for (const [provider, value] of Object.entries(providers)) {
+    for (const model of (value as any)?.models ?? []) {
+      const headroomTokens = compactionHeadroomOf(model.contextWindow)
+      if (headroomTokens !== undefined) next.push({ provider, model: model.id, headroomTokens })
+    }
+  }
+  const unchanged = existing.length === next.length
+    && existing.every((policy, index) => JSON.stringify(policy) === JSON.stringify(next[index]))
+  if (unchanged) return { status: 'unchanged' }
+  try {
+    await settings.mutate(COMPACTION_NS, [{ op: 'set', path: ['modelPolicies'], value: next }])
+  } catch (error) {
+    return { status: 'error', error: error instanceof Error ? error.message : String(error) }
+  }
+  return { status: 'written', policies: next.length }
 }

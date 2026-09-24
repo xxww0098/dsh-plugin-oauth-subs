@@ -853,3 +853,50 @@ test('auto-import proceeds when the devin slot holds a foreign-shaped session', 
   // account); it self-purges on the first real refresh-401.
   assert.equal(rows.some((row) => row.session.accessToken === 'eyJ0eXAiOiJhdCtqd3Qi.foreign'), true)
 })
+
+test('forwardDevin replays socket-level failures until the stream commits', async () => {
+  const headers = { authorization: 'Bearer proxy-key-devin-retry', 'content-type': 'application/json' }
+  const make = (devinChat) => createProxy({
+    port: 0,
+    apiKey: 'proxy-key-devin-retry',
+    devinChat,
+    tokens: { devin: { session: async () => devinSession({ accessToken: 'x' }) } },
+  })
+  const post = (port, body) => fetch(`http://127.0.0.1:${port}/devin/v1/chat/completions`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+  })
+
+  // Two ECONNRESETs then a healthy stream: the run survives.
+  let calls = 0
+  const flaky = async () => {
+    calls += 1
+    if (calls < 3) throw Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNRESET' } })
+    return { text: 'PONG', thinking: '', toolCalls: [], stopReason: 1 }
+  }
+  const proxy = await (await make(flaky)).listen()
+  try {
+    const res = await post(proxy.address().port, { model: 'swe-2', messages: [{ role: 'user', content: 'ping' }] })
+    assert.equal(res.status, 200)
+    assert.equal((await res.json()).choices[0].message.content, 'PONG')
+    assert.equal(calls, 3)
+  } finally {
+    proxy.close()
+  }
+
+  // A permanent 403 answer is not replayed.
+  calls = 0
+  const forbidden = async () => {
+    calls += 1
+    throw new DevinTransportError('Devin chat failed (HTTP 403): forbidden', { status: 403 })
+  }
+  const denied = await (await make(forbidden)).listen()
+  try {
+    const res = await post(denied.address().port, { model: 'swe-2', messages: [{ role: 'user', content: 'ping' }] })
+    assert.equal(res.status, 403)
+    assert.equal(calls, 1)
+  } finally {
+    denied.close()
+  }
+})
