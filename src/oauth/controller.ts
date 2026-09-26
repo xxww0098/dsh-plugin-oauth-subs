@@ -728,7 +728,7 @@ export class AuthController {
     const credentialSet = await this.#opencodeGoCredentialSet()
     const accounts = raw.accounts.map((row) => ({
       ...row,
-      account: row.email || row.workspaceId || opencodeGoKeyHint(this.opencodeGo.keyOf(row.id)),
+      account: row.account || opencodeGoKeyHint(this.opencodeGo.keyOf(row.id)),
       apiKeySet: row.apiKeySet || (raw.accounts.length === 1 && credentialSet),
     }))
     const active = accounts.find((row) => row.active)
@@ -755,8 +755,9 @@ export class AuthController {
       apiKey: raw ? raw : undefined,
       cookie: payload.cookie,
       workspace: payload.workspace,
+      displayName: payload.displayName,
     })
-    await this.#mirrorOpencodeGoKey(result.id)
+    await this.#mirrorOpencodeGoKey(this.opencodeGo.activeId())
     this.lastError.delete('opencode-go')
     if (raw) this.onAuthChanged?.('opencode-go')
     return this.opencodeGoSnapshot()

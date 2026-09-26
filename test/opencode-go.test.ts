@@ -151,6 +151,26 @@ test('OpencodeGoStore keeps many accounts, activates on save, and never exposes 
   assert.equal(row.quota.status, 'idle')
 })
 
+test('OpencodeGoStore keeps an editable display name for a key-only account', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'opencode-go-'))
+  const path = opencodeGoFilePath(join(dir, 'auth.json'))
+  const fetchFn = async () => new Response(JSON.stringify({ usage: { rolling: { percent: 0, resetsAt: '2026-10-01T00:00:00Z' } } }), { status: 200 })
+  const store = new OpencodeGoStore({ path, fetchFn })
+  const { id } = await store.save({ apiKey: 'sk-one' })
+  const second = await store.save({ apiKey: 'sk-two' })
+  await store.save({ id, displayName: 'user@example.com' })
+  const reloaded = new OpencodeGoStore({ path, fetchFn })
+  const snap = await reloaded.snapshot()
+  const row = snap.accounts.find((entry) => entry.id === id)
+  assert.equal(snap.activeId, second.id)
+  assert.equal(row.account, 'user@example.com')
+  assert.equal(row.displayName, 'user@example.com')
+  assert.equal(row.apiKeySet, true)
+  assert.equal('apiKey' in row, false)
+  assert.equal(reloaded.keyOf(id), 'sk-one')
+  await assert.rejects(store.save({ displayName: 'stray' }), /API key or cookie is required/)
+})
+
 test('OpencodeGoStore caches email, workspace name, tokens, and billing', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'opencode-go-'))
   const path = opencodeGoFilePath(join(dir, 'auth.json'))

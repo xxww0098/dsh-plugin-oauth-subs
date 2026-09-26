@@ -25,7 +25,7 @@ export function opencodeGoFilePath(authPath) {
 }
 
 function emptyAccount() {
-  return { apiKey: '', cookieHeader: '', workspaceId: '', email: '', workspaceName: '' }
+  return { apiKey: '', cookieHeader: '', workspaceId: '', email: '', workspaceName: '', displayName: '' }
 }
 
 function emptyVault() {
@@ -42,6 +42,7 @@ function normalizeAccount(raw) {
     workspaceId: normalizeOpencodeGoWorkspaceId(raw.workspaceId) ?? '',
     email: typeof raw.email === 'string' ? raw.email.trim() : '',
     workspaceName: typeof raw.workspaceName === 'string' ? raw.workspaceName.trim() : '',
+    displayName: typeof raw.displayName === 'string' ? raw.displayName.trim() : '',
   }
 }
 
@@ -168,9 +169,10 @@ export class OpencodeGoStore {
     return this.#snapshot()
   }
 
-  async save({ id, apiKey, cookie, workspace }: any = {}) {
+  async save({ id, apiKey, cookie, workspace, displayName }: any = {}) {
     await this.ready
     let target = typeof id === 'string' && this.vault.accounts[id] ? id : undefined
+    const nameOnly = displayName !== undefined && apiKey === undefined && cookie === undefined && workspace === undefined
 
     const rawKey = apiKey === undefined ? undefined : String(apiKey ?? '').trim()
     const nextKey = rawKey ? rawKey : undefined
@@ -207,6 +209,9 @@ export class OpencodeGoStore {
     if (!target && nextCookie && !nextWorkspace && !nextKey) {
       target = this.#ids().find((key) => this.vault.accounts[key].cookieHeader === nextCookie)
     }
+    if (!target && !nextKey && !nextCookie && !nextWorkspace) {
+      throw new Error('OpenCode Go API key or cookie is required')
+    }
     if (!target) {
       target = opencodeGoAccountId({
         workspaceId: nextWorkspace,
@@ -220,11 +225,18 @@ export class OpencodeGoStore {
     if (nextKey !== undefined) entry.apiKey = nextKey
     if (nextCookie !== undefined) entry.cookieHeader = nextCookie
     if (nextWorkspace !== undefined) entry.workspaceId = nextWorkspace
+    if (displayName !== undefined) {
+      const name = String(displayName ?? '').trim()
+      if (name.length > 120) throw new Error('OpenCode Go display name is too long')
+      entry.displayName = name
+    }
     this.vault.accounts[target] = entry
-    this.vault.activeId = target
+    if (!nameOnly) this.vault.activeId = target
     await this.#persist()
-    if (entry.cookieHeader || entry.apiKey) await this.#refreshOne(target, this.quotas.get(target)).catch(() => undefined)
-    else this.quotas.set(target, { status: 'idle' })
+    if (!nameOnly) {
+      if (entry.cookieHeader || entry.apiKey) await this.#refreshOne(target, this.quotas.get(target)).catch(() => undefined)
+      else this.quotas.set(target, { status: 'idle' })
+    }
     return { id: target, created }
   }
 

@@ -174,6 +174,10 @@ test('OpenCode Go switch mirrors the active account key and logout drops the las
   assert.equal(second.accounts.length, 2)
   assert.equal(second.activeId, 'wrk_two')
   assert.equal(keys.get('OPENCODE_API_KEY'), 'sk-two')
+  const renamed = await controller.saveOpencodeGo({ id: 'wrk_one', displayName: 'user@example.com' })
+  assert.equal(renamed.activeId, 'wrk_two')
+  assert.equal(renamed.accounts.find((row) => row.id === 'wrk_one').account, 'user@example.com')
+  assert.equal(keys.get('OPENCODE_API_KEY'), 'sk-two')
 
   const switched = await controller.switchAccount('opencode-go', 'wrk_one')
   assert.equal(switched.accounts['opencode-go'].activeId, 'wrk_one')
@@ -898,5 +902,4 @@ test('runAutoUpdate installs a newer tag and records the outcome', async () => {
   const snap = await controller.snapshot()
   assert.equal(snap.autoUpdateState.status, 'installed')
 })
-
 

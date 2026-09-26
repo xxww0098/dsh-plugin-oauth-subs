@@ -99,6 +99,8 @@ window.__ModuleLoader__.load({
         opencodeGoCookieSet: '已保存，留空保持不变',
         opencodeGoWorkspace: '工作区 ID（可选）',
         opencodeGoWorkspacePlaceholder: 'wrk_…/org_… 或 https://opencode.ai/console/wrk_…/go',
+        opencodeGoName: '显示名称',
+        opencodeGoEditName: '修改名称',
         opencodeGoSave: '保存',
         opencodeGoFailed: '保存失败',
         opencodeGoHostStale: '宿主进程还是旧版本，请重启宿主后再保存',
@@ -310,6 +312,8 @@ window.__ModuleLoader__.load({
         opencodeGoCookieSet: 'Stored — leave blank to keep',
         opencodeGoWorkspace: 'Workspace id (optional)',
         opencodeGoWorkspacePlaceholder: 'wrk_…/org_… or https://opencode.ai/console/wrk_…/go',
+        opencodeGoName: 'Display name',
+        opencodeGoEditName: 'Edit name',
         opencodeGoSave: 'Save',
         opencodeGoFailed: 'Save failed',
         opencodeGoHostStale: 'The host process is outdated — restart the host, then save again',
@@ -1877,7 +1881,7 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function AccountCard({ t, id, row, quota, onSwitch, onLogout, onRefreshQuota, onResetQuota }) {
+    function AccountCard({ t, id, row, quota, onSwitch, onLogout, onRefreshQuota, onResetQuota, onEditGoName }) {
       const regionLabel = (region) => region === 'bigmodel' ? t.glmRegionCn : t.glmRegionGlobal
       const planLabel = planOf({ ...row, quota }, id)
       const clickable = !row.active
@@ -1908,6 +1912,7 @@ window.__ModuleLoader__.load({
             ),
           ),
           h('div', { className: 'osubs-actions', onClick: (event) => event.stopPropagation() },
+            id === 'opencode-go' && h(Button, { size: 'sm', onClick: () => onEditGoName(row), label: t.opencodeGoEditName }),
             !row.active && h(Button, { size: 'sm', onClick: () => onSwitch(id, row.id), label: t.switchTo }),
             h(Button, { size: 'sm', onClick: () => onLogout(id, row.id), label: t.logout }),
           ),
@@ -1952,6 +1957,8 @@ window.__ModuleLoader__.load({
       const [goWorkspace, setGoWorkspace] = useState('')
       const [goBusy, setGoBusy] = useState(false)
       const [goMessage, setGoMessage] = useState('')
+      const [goEdit, setGoEdit] = useState(null)
+      const [goName, setGoName] = useState('')
       const roster = Array.isArray(account?.accounts) ? account.accounts : []
       const loggedIn = Boolean(account?.loggedIn) || roster.length > 0
       const busy = Boolean(account?.busy)
@@ -1980,8 +1987,53 @@ window.__ModuleLoader__.load({
             onLogout,
             onRefreshQuota,
             onResetQuota,
+            onEditGoName: (row) => {
+              setGoName(row.displayName || row.email || '')
+              setGoMessage('')
+              setGoEdit(row)
+            },
             key: row.id,
           })),
+        ),
+        goEdit && h(CenterDialog, {
+          titleId: 'osubs-go-name',
+          title: t.opencodeGoEditName,
+          closeLabel: t.dialogClose,
+          onClose: () => setGoEdit(null),
+          cardClass: 'osubs-dsw-card osubs-dsw-card--add',
+          bodyClass: 'osubs-dsw-body osubs-dsw-body--stack',
+        },
+          h('form', {
+            className: 'osubs-fields',
+            onSubmit: async (event) => {
+              event.preventDefault()
+              if (goBusy) return
+              setGoBusy(true)
+              setGoMessage('')
+              try {
+                await onGoSave({ id: goEdit.id, displayName: goName })
+                setGoEdit(null)
+              } catch (error) {
+                setGoMessage(t.opencodeGoFailed + ': ' + (error instanceof Error ? error.message : String(error)))
+              } finally {
+                setGoBusy(false)
+              }
+            },
+          },
+            h('input', {
+              className: 'osubs-input',
+              value: goName,
+              onChange: (event) => setGoName(event.target.value),
+              'aria-label': t.opencodeGoName,
+              placeholder: t.opencodeGoName,
+              maxLength: 120,
+              autoFocus: true,
+            }),
+            h('div', { className: 'osubs-actions' },
+              h(Button, { type: 'submit', variant: 'primary', disabled: goBusy, label: t.opencodeGoSave }),
+            ),
+          ),
+          goMessage && h('p', { className: 'osubs-hint osubs-bad' }, goMessage),
         ),
         account?.detail && h('p', { className: 'osubs-hint osubs-bad' }, `${t.error}: ${account.detail}`),
         pending?.userCode && busy && h('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
