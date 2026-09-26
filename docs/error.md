@@ -1363,4 +1363,4 @@ DeepSeek Harness 语言已选中文，OAuth 订阅页仍显示英文。
 插件只读 `navigator.language`；桌面端语言设置同步到 `<html lang>`，可与系统语言不同。
 
 ### 修复
-优先读取宿主页面的 `document.documentElement.lang`，空值时才回退浏览器语言。
+优先读取宿主页面的 `document.documentElement.lang`，空值时才回退浏览器语言；日期也用该语言格式化。

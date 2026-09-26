@@ -11,6 +11,11 @@ test('settings language follows the host page before the OS browser language', a
   assert.equal(localeOf({ documentElement: { lang: 'zh-CN' } }, { language: 'en-US' }), 'zh')
   assert.equal(localeOf({ documentElement: { lang: 'en' } }, { language: 'zh-CN' }), 'en')
   assert.equal(localeOf({ documentElement: { lang: '' } }, { language: 'zh-CN' }), 'zh')
+
+  const stampBody = src.match(/function formatStamp\(resetAt\) \{[\s\S]*?\n        \}/)?.[0]
+  assert.ok(stampBody)
+  const formatStamp = new Function('localeOf', `${stampBody}; return formatStamp`)(() => 'zh') as (timestamp: number) => string
+  assert.match(formatStamp(Date.UTC(2026, 9, 5, 12, 20)), /10月5日/)
 })
 
 function accountCardPills(family, locale, { plan, active, region } = {}) {

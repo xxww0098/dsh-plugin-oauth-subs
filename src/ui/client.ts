@@ -540,7 +540,7 @@ window.__ModuleLoader__.load({
     function formatStamp(resetAt) {
       if (typeof resetAt !== 'number' || resetAt <= 0) return ''
       try {
-        return new Date(resetAt).toLocaleString(undefined, {
+        return new Date(resetAt).toLocaleString(localeOf(), {
           month: 'short',
           day: 'numeric',
           hour: '2-digit',
