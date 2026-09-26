@@ -1353,3 +1353,14 @@ DSH 把 fs 工具交给 `@deepseek-ai/dsh-tool-fs-search`，默认 `timeoutMs` *
 
 ### 修复
 事实收进一张 `codexModel()` 表。去掉 `minimal`、下线 id、`ultra` 别名（只能退化成 `max`）。`-fast` 与窗口按模型。补 `client_version`。
+
+## 2026-09-26：桌面端中文设置下插件仍显示英文
+
+### 现象
+DeepSeek Harness 语言已选中文，OAuth 订阅页仍显示英文。
+
+### 根因
+插件只读 `navigator.language`；桌面端语言设置同步到 `<html lang>`，可与系统语言不同。
+
+### 修复
+优先读取宿主页面的 `document.documentElement.lang`，空值时才回退浏览器语言。

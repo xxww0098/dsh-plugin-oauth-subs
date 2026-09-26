@@ -467,7 +467,9 @@ window.__ModuleLoader__.load({
     }
 
     function localeOf() {
-      const lang = typeof navigator !== 'undefined' ? navigator.language : 'zh'
+      const lang = (typeof document !== 'undefined' && document.documentElement.lang)
+        || (typeof navigator !== 'undefined' && navigator.language)
+        || 'zh'
       return lang.toLowerCase().startsWith('zh') ? 'zh' : 'en'
     }
 

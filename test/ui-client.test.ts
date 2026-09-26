@@ -3,6 +3,16 @@ import { readFile } from 'node:fs/promises'
 import { test } from 'node:test'
 import { GLM_BOOST_HINT, GLM_BOOST_LABEL, glmCardBoost } from '../lib/oauth/glm/boost.js'
 
+test('settings language follows the host page before the OS browser language', async () => {
+  const src = await readFile(new URL('../lib/ui/client.js', import.meta.url), 'utf8')
+  const body = src.match(/function localeOf\(\) \{[\s\S]*?\n        \}/)?.[0]
+  assert.ok(body)
+  const localeOf = new Function('document', 'navigator', `${body}; return localeOf()`) as (document: any, navigator: any) => string
+  assert.equal(localeOf({ documentElement: { lang: 'zh-CN' } }, { language: 'en-US' }), 'zh')
+  assert.equal(localeOf({ documentElement: { lang: 'en' } }, { language: 'zh-CN' }), 'en')
+  assert.equal(localeOf({ documentElement: { lang: '' } }, { language: 'zh-CN' }), 'zh')
+})
+
 function accountCardPills(family, locale, { plan, active, region } = {}) {
   const tags = []
   if (plan) tags.push(plan)
