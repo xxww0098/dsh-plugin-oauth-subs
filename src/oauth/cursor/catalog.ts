@@ -6,7 +6,7 @@
  */
 
 import { createHash } from 'node:crypto'
-import { CURSOR_MODELS, CURSOR_PARAM_STYLES, CURSOR_REASONING, cursorEffortKey, cursorStyleReasoningEfforts, cursorUpstreamProxy } from './index.js'
+import { CURSOR_MODELS, CURSOR_PARAM_STYLES, CURSOR_REASONING, cursorContextValueTokens, cursorEffortKey, cursorStyleReasoningEfforts, cursorUpstreamProxy } from './index.js'
 import { fetchCursorAvailableModels, fetchCursorUsableModels } from './h2-session.js'
 import { cursorCatalogCache, cursorCatalogModels, resetCursorCatalogCache, setCursorParamStyles } from './registry.js'
 
@@ -48,7 +48,7 @@ export function inferCursorContextWindow(id, name = '') {
   if (/\b272\s*k\b|(?:^|-)272k(?:-|$)/.test(text)) return 272_000
   if (/\b256\s*k\b|(?:^|-)256k(?:-|$)/.test(text)) return 256_000
   if (/claude-(?:opus-5|fable-5)/.test(text)) return 300_000
-  if (/grok[- ]4\.7(?:\b|-)/.test(text)) return 500_000
+  if (/grok[- ]4\.7(?:\b|-)/.test(text)) return 256_000
   if (/grok[- ]4\.[56](?:\b|-)/.test(text)) return 256_000
   return DEFAULT_CURSOR_CONTEXT_WINDOW
 }
@@ -322,10 +322,13 @@ export function toCursorPickerModels(usable, parameterized: any[] = []) {
       ? prettyFamilyName(id)
       : (cleaned.sort((a, b) => a.length - b.length)[0] || prettyFamilyName(id))
     const inferredWindow = inferCursorContextWindow(id, name)
+    // AvailableModels carries Max Mode limits on the family; Run never sets
+    // maxMode, so prefer the non-Max contexts advertised by its variants.
+    const contexts = (styles.get(id)?.contexts ?? []).map(cursorContextValueTokens).filter(Number.isFinite)
     const window = clampCursorContextWindow(
       id,
       name,
-      group.windows.length ? Math.max(...group.windows) : inferredWindow,
+      contexts.length ? Math.max(...contexts) : group.windows.length ? Math.max(...group.windows) : inferredWindow,
     )
     const maxTokens = group.outputs.length ? Math.max(...group.outputs) : inferCursorMaxOutputTokens(id, name)
     const input = group.images.some((flag) => flag === false) && !group.images.some((flag) => flag === true)

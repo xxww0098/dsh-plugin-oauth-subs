@@ -7,11 +7,11 @@
  * wire protocol. OpenCode Go speaks three protocols, so this plugin owns the
  * complete list on two routes of its own:
  *
- *   `opencode-go-flash`     openai-completions  — 27 models (display "OpenCode Go")
- *   `opencode-go-responses` openai-responses    —  5 models
+ *   `opencode-go-flash`     openai-completions  — 28 models (display "OpenCode Go")
+ *   `opencode-go-responses` openai-responses    —  6 models
  *
- * Sources (all 2026-09-23):
- *   - `GET https://opencode.ai/zen/go/v1/models` (public 40, this key 33)
+ * Sources (2026-09-23, refreshed 2026-09-26):
+ *   - `GET https://opencode.ai/zen/go/v1/models` (this key 35)
  *   - Go docs model list + "API 端点" table (protocol per model)
  *   - models.dev provider `opencode-go` (contextWindow / maxTokens / input /
  *     effort ladders) and the installed pi-ai catalog (`compat` dialects)
@@ -23,7 +23,9 @@
  *     the gateway does not serve them on either protocol here. The legacy
  *     alias `deepseek-flash` is served too but not listed: it is the same
  *     model as the docs id `deepseek-v4.1-flash`, and two rows rendered as
- *     duplicates in the picker. 28 -> 27 completions rows after that.
+ *     duplicates in the picker. 2026-09-26: `space-bunny-free` and
+ *     `gpt-6-luna` each answered 200 on their respective endpoints, including
+ *     high / none / max effort probes; model limits come from models.dev.
  */
 export declare const OPENCODE_GO_BUILTIN_ROUTE_ID = "opencode-go";
 export declare const OPENCODE_GO_EXTRA_ROUTE_ID = "opencode-go-flash";

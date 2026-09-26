@@ -1353,3 +1353,14 @@ DSH 把 fs 工具交给 `@deepseek-ai/dsh-tool-fs-search`，默认 `timeoutMs` *
 
 ### 修复
 事实收进一张 `codexModel()` 表。去掉 `minimal`、下线 id、`ultra` 别名（只能退化成 `max`）。`-fast` 与窗口按模型。补 `client_version`。
+
+## 2026-09-26：部分家族的离线模型目录滞后
+
+### 现象
+OpenCode Go 少 GPT-6 Luna / Space Bunny Free；Cline 少 3 条当前免费模型；Ollama 离线目录仍列 3 条云端已消失的 ID；Cursor 回退参数与活目录不一致，活目录还把 Max Mode 窗口计入普通行。
+
+### 根因
+静态快照停在 9 月 23 日或更早；登录活发现覆盖不了离线、失败和未登录时的 picker；Cursor 归并活目录时取了所有变体的最大窗口。
+
+### 修复
+按各家公开/账号目录更新静态目录，Cursor 活目录优先取非 Max 变体窗口，Go 新增两行用当前 key 验证协议与思考档；其余家族审查结果见 `docs/model-audit-2026-09-26.md`。

@@ -54,17 +54,7 @@ export declare const CURSOR_REASONING: Readonly<{
  * family's own advertised values, not one shared map.
  */
 export declare function cursorEffortKey(value: any): string | undefined;
-/**
- * RequestedModel parameter style per picker family, from live
- * AvailableModels variants (2026-11 probe, Pro account): the registry
- * validates Run parameters verbatim — a wrong id OR value fails the whole
- * Run with 'Invalid parameters for registry model'. effortParam is the
- * parameter id that family takes ('reasoning' / 'effort' / 'reasoning_effort'),
- * efforts maps DSH key → vendor wire value, contexts lists the family's
- * advertised context values, fast whether a fast variant exists. Families
- * absent here keep the picker effort list but send no effort parameter —
- * guessing an id 400s, omitting falls back to the registry default.
- */
+export declare function cursorContextValueTokens(value: any): number | undefined;
 export declare const CURSOR_PARAM_STYLES: Readonly<{
     'grok-4.7': {
         effortParam: string;
@@ -110,6 +100,116 @@ export declare const CURSOR_PARAM_STYLES: Readonly<{
         contexts: string[];
         fast: boolean;
     };
+    'claude-fable-5-1': {
+        effortParam: string;
+        efforts: {
+            low: string;
+            medium: string;
+            high: string;
+            xhigh: string;
+            max: string;
+        };
+        contexts: string[];
+        fast: boolean;
+    };
+    'claude-opus-5-5': {
+        effortParam: string;
+        efforts: {
+            low: string;
+            medium: string;
+            high: string;
+            xhigh: string;
+            max: string;
+        };
+        contexts: string[];
+        fast: boolean;
+    };
+    'claude-opus-5': {
+        effortParam: string;
+        efforts: {
+            low: string;
+            medium: string;
+            high: string;
+            xhigh: string;
+            max: string;
+        };
+        contexts: string[];
+        fast: boolean;
+    };
+    'claude-sonnet-5': {
+        effortParam: string;
+        efforts: {
+            low: string;
+            medium: string;
+            high: string;
+            xhigh: string;
+            max: string;
+        };
+        contexts: string[];
+        fast: boolean;
+    };
+    'gemini-3.8-flash': {
+        effortParam: string;
+        efforts: {
+            low: string;
+            medium: string;
+            high: string;
+        };
+        contexts: never[];
+        fast: boolean;
+    };
+    'muse-spark-1.3': {
+        effortParam: string;
+        efforts: {
+            low: string;
+            medium: string;
+            high: string;
+            xhigh: string;
+            max: string;
+            minimal: string;
+        };
+        contexts: string[];
+        fast: boolean;
+    };
+    'gpt-5.6-sol': {
+        effortParam: string;
+        efforts: {
+            low: string;
+            medium: string;
+            high: string;
+            xhigh: string;
+            max: string;
+            off: string;
+        };
+        contexts: string[];
+        fast: boolean;
+    };
+    'gpt-5.6-terra': {
+        effortParam: string;
+        efforts: {
+            low: string;
+            medium: string;
+            high: string;
+            xhigh: string;
+            max: string;
+            off: string;
+        };
+        contexts: string[];
+        fast: boolean;
+    };
+    'gpt-5.6-luna': {
+        effortParam: string;
+        efforts: {
+            low: string;
+            medium: string;
+            high: string;
+            xhigh: string;
+            max: string;
+            off: string;
+        };
+        contexts: string[];
+        fast: boolean;
+    };
     'kimi-k3': {
         effortParam: string;
         efforts: {
@@ -144,7 +244,7 @@ export declare const CURSOR_PARAM_STYLES: Readonly<{
 }>;
 /** Picker reasoningEfforts for one family style: vendor values keyed back to DSH levels. */
 export declare function cursorStyleReasoningEfforts(style: any): {};
-/** Static fallback aligned to cursor.com/docs/models-and-pricing (checked 2026-09-23). Live GetUsableModels may add Auto / Fast / extra families. reasoningEfforts come from the family's CURSOR_PARAM_STYLES entry — the wire values the registry actually takes. */
+/** Static fallback aligned to cursor.com/docs/models-and-pricing and 2026-09-26 AvailableModels. Live GetUsableModels may add Auto / Fast / extra families. reasoningEfforts come from the family's CURSOR_PARAM_STYLES entry — the wire values the registry actually takes. */
 export declare const CURSOR_MODELS: readonly {
     id: any;
     name: any;

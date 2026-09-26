@@ -109,17 +109,15 @@ test('catalog is Completions at /ollama, not /ollama/v1', () => {
   assert.equal(route.models.find((model) => model.id === 'gpt-oss:120b').reasoningEfforts.off, 'none')
   resetOllamaCatalogCache()
   const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
-  assert.equal(catalog['oauth-ollama'].models.length, 20)
+  assert.equal(catalog['oauth-ollama'].models.length, 17)
   assert.equal(catalog['oauth-ollama'].models.length, OLLAMA_MODELS.length)
 })
 
 test('static OLLAMA_MODELS windows and input match the Cloud /api/show snapshot', () => {
   const snapshot = {
-    'deepseek-v4-flash:0731': { window: 1_048_576, vision: false },
     'deepseek-v4-pro:0813': { window: 1_048_576, vision: false },
     'deepseek-v4.1-flash': { window: 1_048_576, vision: true },
     'gemma4:31b': { window: 262_144, vision: true },
-    'glm-5.1': { window: 202_752, vision: false },
     'glm-5.2': { window: 1_048_576, vision: false },
     'glm-5.3': { window: 1_048_576, vision: false },
     'glm-5.3-flash': { window: 1_048_576, vision: true },
@@ -134,9 +132,8 @@ test('static OLLAMA_MODELS windows and input match the Cloud /api/show snapshot'
     'nemotron-3-nano:30b': { window: 262_144, vision: false },
     'nemotron-3-super': { window: 262_144, vision: false },
     'nemotron-3-ultra': { window: 262_144, vision: false },
-    'qwen3.5:397b': { window: 262_144, vision: true },
   }
-  assert.equal(OLLAMA_MODELS.length, 20)
+  assert.equal(OLLAMA_MODELS.length, 17)
   assert.deepEqual(OLLAMA_MODELS.map((model) => model.id), Object.keys(snapshot))
   for (const model of OLLAMA_MODELS) {
     const row = snapshot[model.id]
@@ -149,7 +146,6 @@ test('static OLLAMA_MODELS windows and input match the Cloud /api/show snapshot'
   }
   assert.deepEqual(OLLAMA_MODELS.find((model) => model.id === 'glm-5.3-flash').input, ['text', 'image'])
   assert.deepEqual(OLLAMA_MODELS.find((model) => model.id === 'glm-5.3').input, ['text'])
-  assert.deepEqual(OLLAMA_MODELS.find((model) => model.id === 'qwen3.5:397b').input, ['text', 'image'])
   assert.deepEqual(OLLAMA_MODELS.find((model) => model.id === 'kimi-k3').input, ['text', 'image'])
   assert.deepEqual(OLLAMA_MODELS.find((model) => model.id === 'mistral-large-3:675b').input, ['text', 'image'])
   assert.deepEqual(OLLAMA_MODELS.find((model) => model.id === 'deepseek-v4.1-flash').input, ['text', 'image'])

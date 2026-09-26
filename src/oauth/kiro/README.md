@@ -85,6 +85,7 @@ DSH chat/completions  →  POST https://q.<region>.amazonaws.com/
 ## 模型
 
 `KIRO_MODELS` 是离线 fallback，对齐 [kiro.dev/docs/models](https://kiro.dev/docs/models)（含 **Auto**）+ [effort](https://kiro.dev/docs/models/effort)。id 用点号（`claude-sonnet-5`）。`claude-fable-5` 来自 pi-provider-kiro 0.10.2 bootstrap（官方表未列）。GPT-5.6 Sol/Terra/Luna 行不删。
+2026-09-25 官方表新增 Claude Fable 5.1 Enterprise Preview（仅管理员开通，US East）；本机个人账号 `ListAvailableModels` 只回 9 行、无 Fable。它由已接线的活目录按账号权限加入，不在所有用户共用的离线 fallback 发明可调用的 id。
 
 登录 / 导入 / 额度刷新后 `refreshKiroCatalog` 打 management `https://management.<region>.kiro.dev/` `List-Available-Models`（空或区域 403 再探 `us-east-1` / `eu-central-1`，不在第一个 403 停），按 token hash 缓存，merge 进 picker 和 `oauth-kiro.models` yaml。失败或空列表不挡对话，回静态 fallback。对话 hop **仍是** `q.<region>.amazonaws.com` GenerateAssistantResponse。
 

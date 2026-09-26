@@ -87,6 +87,8 @@ GET https://api.cline.bot/api/v1/ai/cline/recommended-models     （公开）
 `https://models.dev/api.json` 的 `openrouter` 桶 —— 与 CLI `buildClineModels` 同源；`cline-free/*`、`xiaomi/*`
 按 id 末段回退解析（`deepseek/…`、`mimo-v2.6-flash`、`upstage/…`）。2026-09-23 实测 feed 轮换：recommended 新增 `spacexai/grok-4.7`（openrouter 桶 `x-ai/grok-4.7`，500k / 450k / text+image），free 新增 `cline-free/mimo-v2.6-flash`（openrouter 桶 `xiaomi/mimo-v2.6-flash`，1M / 131k / text+image）；`x-ai/grok-4.5`、`z-ai/glm-5.3-flash` 两个桶都不再下发，已从快照删除。**免费档实测（2026-09-19，本机 credit 账号）**：`free` 桶里 `cline-free/deepseek-v4.1-flash`、`z-ai/glm-5.3-flash`、`cline-free/solar-pro4`、`poolside/laguna-s-2.1:free` 四条全部 200（流式出字、`reasoning_effort` 可用、`tool_calls` 正常），台账 `creditsUsed = 0` 不扣余额；`cline-free/muse-spark-1.3-contributor` 对本机出口 **403 区域门**（上游按 IP 判，非本 hop 问题，换出口才可能通）。推理模型别把 `max_tokens` 设太小，reasoning token 吃满预算会得到空 `content`。
 
+2026-09-26 复抓公开 feed：`recommended` 4 行未变，`free` 改为 `stealth/pixel-canary`、`stealth/space-bunny-alpha`、MiMo-V2.6-Flash、DeepSeek V4.1 Flash、`cline-free/gemini-3.8-flash`、Muse Spark 1.3；Solar Pro 4 与 Laguna S 2.1 已不在 feed。Space Bunny Alpha 的 1M / 524,288 / text+image 和 Gemini 3.8 Flash 的 1,048,576 / 65,536 / text+image 取同日 models.dev `openrouter` 桶（video/audio 按 DSH 闭集剥掉）；Pixel Canary 在该桶无参数，使用 CLI 默认 128k / 8k / text+image。静态 fallback 更新为这 10 行；登录后的活目录仍覆盖。
+
 feed 出现新 id 而本地没有元数据时，用 CLI 自己的
 `CLINE_PASS_MODEL_DEFAULTS`（128k / 8k / text+image），不编数字。
 

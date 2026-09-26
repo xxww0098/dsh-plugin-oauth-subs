@@ -76,7 +76,7 @@ POST https://ollama.com/api/show  { "model": "<id>" }
 Authorization: Bearer <key>
 ```
 
-`{ models: [{ name, model, … }] }` → picker 一行 / name。`OLLAMA_RETIRED_MODELS` 来自 Cloud retirements 表（含已过期的 2026-07-31 upcoming）。静态 `OLLAMA_MODELS` 是 Cloud 快照 20 行（2026-09-03 烘焙 19 行；2026-09-11 补 `deepseek-v4.1-flash`），登录后仍被 live `/api/tags` 替换；失败或空列表回落这 20 行，不挡对话。不列本机-only 模型。
+`{ models: [{ name, model, … }] }` → picker 一行 / name。`OLLAMA_RETIRED_MODELS` 来自 Cloud retirements 表（含已过期的 2026-07-31 upcoming）。静态 `OLLAMA_MODELS` 是 2026-09-26 公开 `/api/tags` 的 17 行快照：`deepseek-v4-flash:0731`、`glm-5.1`、`qwen3.5:397b` 已从接口消失，故从离线楼删除；登录后仍被 live `/api/tags` 替换，失败或空列表回落 17 行，不挡对话。不列本机-only 模型。
 
 DSH `contextWindow` 是 Cloud `POST /api/show` 的 `model_info.<family>.context_length`（钉在静态快照上；登录后 live show 覆盖），不是猜的家族默认，也不是 `cmd/launch/models.go` extraCloudModelLimits。`/api/tags` 的 `details` 是空的；Cloud 忽略 `options.num_ctx`（[ollama#16598](https://github.com/ollama/ollama/issues/16598)；[docs/context-length](https://docs.ollama.com/context-length)）。
 
