@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml/badge.svg)](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml)
 
-把 **ChatGPT / Codex**、**xAI Grok**、**智谱 GLM**、**AWS Kiro**、**Google Antigravity**、**Cursor**、**Ollama Cloud**、**Kimi Code Plan**、**GitHub Copilot**、**Devin Agent** 和 **Cline** 接到 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。登录走官方 OAuth；Kiro 还可贴 `ksk_` API key；Cursor 可复用本机 CLI / IDE 登录；Ollama 贴 ollama.com API key（Cloud，不是本机 11434）；Kimi 走设备码 / `kimi-code.json`；Copilot 走设备码 / `hosts.json`；Devin 导本机 CLI `credentials.toml`；Cline 走 WorkOS 设备码。本机代理 + `llm-pi-ai` 路由同步；每家从闭集 `openai-responses` | `openai-completions` | `anthropic-messages` 里选一种 DSH `api`。
+把 **ChatGPT / Codex**、**xAI Grok**、**智谱 GLM**、**AWS Kiro**、**Google Antigravity**、**Cursor**、**Ollama Cloud**、**Kimi Code Plan**、**GitHub Copilot**、**Devin Agent**、**Cline** 的订阅，以及 **OpenCode Go** API key 接到 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。订阅家族通过本机回环代理；OpenCode Go 直连其 API。模型路由使用 DSH 的 `openai-responses`、`openai-completions`、`anthropic-messages` 三种 `api`。
 
 ## 安装
 
@@ -47,6 +47,10 @@ dsh web
 | GitHub Copilot | 设备码（无 PKCE）；导入 `~/.config/github-copilot/hosts.json`；可选 `GITHUB_TOKEN` | `openai-completions` | `https://api.githubcopilot.com/chat/completions`（`tid=` session） |
 | Devin Agent | PKCE `127.0.0.1:59653`；导入 `~/.local/share/devin/credentials.toml`；粘贴 `devin-session-token$…` | `openai-completions` | Connect `server.codeium.com` `ApiServerService/GetChatMessage` |
 | Cline | WorkOS 设备码（无 PKCE）；导入 `~/.cline/data/settings/providers.json` | `openai-completions` | `https://api.cline.bot/api/v1/chat/completions` |
+| OpenCode Go | 粘贴 API key；可选 Console cookie 与工作区以读取额度 | `openai-completions` / `openai-responses` | 直连 `https://opencode.ai/zen/go/v1` |
+
+### 导入已有凭据
+
 | 路径 | 系列 |
 |---|---|
 | `~/.codex/auth.json` | Codex |
@@ -61,19 +65,20 @@ dsh web
 | `~/.config/github-copilot/hosts.json`；OpenCode `~/.local/share/opencode/auth.json`；`COPILOT_GITHUB_TOKEN` / `GITHUB_TOKEN` / `GH_TOKEN` | Copilot |
 | `~/.local/share/devin/credentials.toml`（`$XDG_DATA_HOME/devin/`；Windows `%LOCALAPPDATA%\devin\`）；`DEVIN_API_KEY` / `WINDSURF_API_KEY` | Devin |
 | `~/.cline/data/settings/providers.json` | Cline |
+| 设置页粘贴：OpenCode Go API key；可选 Console cookie / 工作区 | OpenCode Go |
 
-令牌：`<profile>/data/dsh-plugin-oauth-subs/auth.json`（`0600`）。模型选择：同目录 `models.json`。
+订阅令牌：`<profile>/data/dsh-plugin-oauth-subs/auth.json`（`0600`）。OpenCode Go 账号：同目录 `opencode-go.json`。模型选择：`models.json`。
 
 ## 工作原理
 
 | 平面 | 作用 |
 |---|---|
-| 设置页 | OAuth 登录 / 导入 / 退出，同步模型 |
-| llm-pi-ai | DSH 调用面；把请求打到本机代理 |
+| 设置页 | 登录 / 导入 / 退出，同步模型 |
+| llm-pi-ai | DSH 调用面；订阅家族走本机代理，OpenCode Go 直连其 API |
 | 回环 | `http://127.0.0.1:8318/{codex,grok}/v1/responses`、`/glm/v1/messages`（Completions 残留 `/glm/v1/chat/completions` 留到下次 sync）、`/{kiro,antigravity,cursor,ollama,kimi,copilot,devin,cline}/v1/chat/completions` |
-| 上游 | 使用刷新后的订阅令牌 |
+| 上游 | 使用刷新后的订阅令牌或活动 OpenCode Go API key |
 
-不是第二套 LLM 适配器。设置页关闭后，DSH 仍通过本机代理调用。代理只监听回环地址，并用本地凭证 `DSH_OAUTH_SUBS_API_KEY` 鉴权。GLM 150% Coding Plan 加成是身份（ZCode Desktop UA），不是协议证明。技术栈与模块树：[AGENTS.md](AGENTS.md)。各家 hop 对照的官方 / 社区仓库：[docs/oauth.md](docs/oauth.md)。
+设置页关闭后，DSH 继续使用已配置的路由。代理只监听回环地址，并用本地凭证 `DSH_OAUTH_SUBS_API_KEY` 鉴权；OpenCode Go 不经过它。技术栈与模块树：[AGENTS.md](AGENTS.md)。上游对照：[docs/oauth.md](docs/oauth.md)。
 
 ## 缓存
 
@@ -113,11 +118,14 @@ node --experimental-strip-types scripts/analyze-session.ts --fail-below 80 path/
 | Grok | 不行。2026-08-30：83.34 对 82.80 tok/s（0.994）。更早的 id 拒绝该字段 | — | 4.6：low / medium / high / xhigh（不选 = **high**）；4.5：无 xhigh |
 | GLM | — | — | 5.3 / Flash：low / high / **max**（默认 max；无 `medium`；`disabled` 会 400）。Turbo：开着，无深度。只有 Flash 是 GLM 图文行 |
 | Kiro | — | — | GPT-5.6：off / low / medium / high / xhigh / max（`off` → 线上 `none`）。Opus 5 / 4.8 / 4.7 和 Sonnet 5 另有 **xhigh**；4.6 家族到 max；Haiku / 开源权重：无。目录：[kiro.dev/docs/models](https://kiro.dev/docs/models/)（不含 Auto） |
-| Ollama Cloud | 不行 | 登录后 live `GET /api/tags`（静态 20 行 Cloud 快照作回落）。窗口来自 `POST /api/show` 的 `model_info.<family>.context_length`。无额度条 | off / low / medium / high / max（`off` → 线上 `none`） |
+| Antigravity | 不行 | Cloud Code 目录；见[家族模型说明](src/oauth/antigravity/README.md) | 取决于上游模型 |
+| Cursor | 按模型提供 `-fast` 变体 | 登录后 `GetUsableModels` + `AvailableModels`；离线回落 15 行 | 按家族发送注册表参数；见[家族模型说明](src/oauth/cursor/README.md) |
+| Ollama Cloud | 不行 | 登录后 live `GET /api/tags`（静态 17 行 Cloud 快照作回落）。窗口来自 `POST /api/show` 的 `model_info.<family>.context_length`。无额度条 | off / low / medium / high / max（`off` → 线上 `none`） |
 | Kimi | 不行 | 登录后 live `GET /coding/v1/models`（静态 `kimi-for-coding` / highspeed / `k3` / `k3-256k`，256k/32k）。前缀哈希缓存 | off / minimal / low / medium / high / xhigh / max → `thinking.effort` |
 | Copilot | 不行 | 登录后 live `GET {api}/models`（静态楼 2026-09-23 按 GitHub 官方 docs 数据表 + models.dev `github-copilot` 重刷）。前缀哈希 + `X-Interaction-Id` | 目录声明才保留 `reasoning_effort` |
 | Devin | 可以。`-fast` 是真后端变体（不是 Codex Priority），不过 `applyFastMode` | 登录后 live `GetCliModelConfigs`（2026-09-23：49 家族 / 81 个 picker 行；静态回落同镜像） | 按家族映射到后端 `chat_model_uid`（`defaultUid`）；`thinking` / `fast` / `1m` 收成独立 picker 行 |
-| Cline | 不行 | 登录后 live `GET /ai/cline/recommended-models`（静态 feed 快照回落） | off / minimal / low / medium / high / xhigh / max → `reasoning_effort`（`max`→`xhigh`；无 `off`） |
+| Cline | 不行 | 登录后 live `GET /ai/cline/recommended-models`（静态 feed 快照回落） | minimal / low / medium / high / xhigh / max → `reasoning_effort`（`max`→`xhigh`） |
+| OpenCode Go | 不行 | Completions 28 行 + Responses 6 行；见[模型审查](docs/model-audit-2026-09-26.md) | 依具体模型；推理等级键遵循 DSH 闭集 |
 
 Codex Priority 回显 `created=auto` / `completed=default` 不能当确认（openai/codex#14204）。2026-08-26 Luna：88.3 对 57.5 tok/s（1.54 倍）；2026-08-30 交错均值 1.33 倍（1.90 再 0.93）。只影响生成吞吐；首 token 时间和缓存不变。
 
@@ -129,12 +137,15 @@ Codex Priority 回显 `created=auto` / `completed=default` 不能当确认（ope
 | ChatGPT Codex 重置 | `…/wham/rate-limit-reset-credits` 与 `/consume` | 银行的周窗口重置券和过期时间；Codex 卡片上按券各一颗确认按钮 |
 | xAI Grok | `cli-chat-proxy.grok.com/v1/billing?format=credits`，并读 `/v1/user?include=subscription` | 套餐等级（SuperGrok / X Premium+ …）+ 本周期用量、预付余额、产品分项 |
 | 智谱 GLM | `api.z.ai` 或 `open.bigmodel.cn` 的 `monitor/usage/quota/limit` | 套餐徽章（Lite / Pro / Max）+ Coding Plan 积分窗口；站点随当前账号 |
+| AWS Kiro | `q.<region>.amazonaws.com/getUsageLimits` | 本周期用量、上限，以及适用的试用或赠送额度 |
 | Google Antigravity | daily-cloudcode-pa 的 `loadCodeAssist` + `fetchAvailableModels`（prod 仅 5xx / 传输失败回落） | 套餐徽章（Pro / Ultra / Free / Standard）+ SkillStar 模型分组剩余条和重置时间 |
 | Cursor | `api2.cursor.sh` `DashboardService/GetCurrentPeriodUsage` | 套餐徽章（Free / Pro / Pro+ / Ultra …）+ 周期剩余百分比 |
+| Ollama Cloud | 没有文档化的额度 JSON | 不显示额度条 |
 | Kimi Code | `api.kimi.com/coding/v1/usages` + `/me` | `/me.user_level_name` 套餐徽章 + 剩余条；API 没给重置时刻就不编 |
 | GitHub Copilot | `api.github.com/copilot_internal/user` | 套餐徽章（Free / Pro / Pro+ / Business / Enterprise）+ Premium 剩余百分比 |
 | Devin | `server.codeium.com` `SeatManagementService/GetUserStatus` | 套餐徽章（Pro / Max / Teams / Enterprise / Free / Trial）+ 层可见时的每日 / 每周剩余条 |
 | Cline | `api.cline.bot` `/users/me` + `/users/{id}/balance`（微美元）+ `/users/me/plan`；ClinePass 另有 `/plan/usage-limits` | 套餐徽章 + 预付**额度余额**（`$x.xx`）；ClinePass 才有 5 小时 / 每周 / 每月条。credit 账号没有窗口条 |
+| OpenCode Go | Console `/console/api/{orgs,go/status,billing/status,user}`；旧工作区回落 | 按账号显示 Go 用量、余额；提供 Console cookie 时可显示邮箱 |
 
 约每分钟刷新一次，也可点 **刷新额度**。进度条：`hsl(剩余 × 1.2, 78%, 38%)`。Codex `pro` → **Pro 20x** / $200，`prolite` → **Pro 5x** / $100。Plus/Pro 可能有银行的周窗口重置券——每张未用券在 Codex 卡片上各一颗确认按钮（Harness 风险确认后 `POST …/consume`，请求体 `{ redeem_request_id }`，并带 `idempotencyKey`）。消耗的是 **周额度窗口**。Grok 没有对应能力。Ollama Cloud 没有文档化的额度 JSON（`/api/quota` 404）；卡片 idle，不画额度条。
 
