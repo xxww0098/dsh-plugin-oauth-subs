@@ -1386,3 +1386,14 @@ cookie 缺失或读取失败时用 API key 的 `/zen/go/v1/usage` 读用量百�
 
 ### 修复
 账号卡片增加「修改名称」；本地保存显示名称并优先用作标题，不改 API key 或额度。
+
+## 2026-09-26：OpenCode Go 已勾选模型没有进入 DSH
+
+### 现象
+插件模型页已勾选 OpenCode Go，DSH 提供商列表仍没有对应路由。
+
+### 根因
+路由同步用不存在的 `settings.get()` 读取宿主配置，收到 `unreadable` 后静默跳过。
+
+### 修复
+改用 DSH 的 `settings.describe()` 读取现有配置；有 Go key 时读不到配置，或写入失败时向界面报错。

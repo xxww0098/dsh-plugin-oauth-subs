@@ -137,7 +137,7 @@ export declare class ModelSwitch {
     }>;
 }
 export declare function filterProviders(providers: Record<string, any>, selected: any): Record<string, any>;
-/** `undefined` when the host has no readable settings.get; `{}` when the section is empty. */
+/** `undefined` when the host cannot describe llm-pi-ai; `{}` when its providers are empty. */
 export declare function peekPiAiProviders(settings: any): Promise<any>;
 export declare const OPENCODE_GO_API_KEY_ENV = "OPENCODE_API_KEY";
 /**

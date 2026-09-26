@@ -20,9 +20,8 @@ function createPiAiSettings(initialProviders = {}) {
   return {
     ops,
     section,
-    get(name) {
-      if (name !== 'llm-pi-ai') return undefined
-      return structuredClone(section)
+    describe() {
+      return [{ ns: 'llm-pi-ai', value: structuredClone(section) }]
     },
     async mutate(target, mutations) {
       if (target !== 'llm-pi-ai') throw new Error(`unknown settings namespace ${target}`)
@@ -902,4 +901,3 @@ test('runAutoUpdate installs a newer tag and records the outcome', async () => {
   const snap = await controller.snapshot()
   assert.equal(snap.autoUpdateState.status, 'installed')
 })
-

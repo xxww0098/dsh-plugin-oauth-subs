@@ -35,6 +35,8 @@ OpenCode Go 是 **API key 范围**，不是 OAuth 家族。
 
 路由：插件启动 / `sync()` 写两条自有路由（`ensureOpencodeGoRoute`）：
 
+同步从 DSH `settings.describe()` 读取 `llm-pi-ai` 当前路由，再用 `settings.mutate()` 改写；有 Go key 时读不到配置，或写入失败会报错，避免模型页勾选与 DSH 提供商列表脱节。
+
 ```text
 opencode-go-flash     openai-completions  https://opencode.ai/zen/go/v1
 opencode-go-responses openai-responses    https://opencode.ai/zen/go/v1

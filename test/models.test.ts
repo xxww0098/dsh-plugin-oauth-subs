@@ -40,9 +40,8 @@ function createPiAiSettings(initialProviders = {}) {
     get section() {
       return sections['llm-pi-ai']
     },
-    get(name) {
-      if (name === 'llm-pi-ai') return structuredClone(sections['llm-pi-ai'])
-      return undefined
+    describe() {
+      return [{ ns: 'llm-pi-ai', value: structuredClone(sections['llm-pi-ai']) }]
     },
     async mutate(target, mutations) {
       if (target !== 'llm-pi-ai') throw new Error(`unknown settings namespace ${target}`)
@@ -757,8 +756,8 @@ test('syncHarnessModels does not set provider-level reasoning', async () => {
 test('syncHarnessModels rejects a silent drop after mutate', async () => {
   const settings = {
     async mutate() {},
-    get() {
-      return { providers: {} }
+    describe() {
+      return [{ ns: 'llm-pi-ai', value: { providers: {} } }]
     },
   }
   await assert.rejects(
