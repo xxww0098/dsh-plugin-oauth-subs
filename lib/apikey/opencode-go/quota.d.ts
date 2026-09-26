@@ -1,8 +1,9 @@
 /**
- * OpenCode Go remaining quota from the web dashboard (cookie + workspace).
- *
- * Not GET /zen/go/v1/usage with Bearer - that is CodexBar's API-key path.
- * Orca's two fields scrape https://opencode.ai/workspace/{wrk_}/go.
+ * OpenCode Go remaining quota. Migrated workspaces live in the Console SPA:
+ * cookie + `x-org-id` against `/console/api/{orgs,go/status,billing/status}`.
+ * Unmigrated workspaces still serve the legacy `/_server` + `/workspace/{id}/go`
+ * scrape, kept as the fallback. Not GET /zen/go/v1/usage with Bearer — that is
+ * CodexBar's API-key path.
  */
 export declare const OPENCODE_GO_ORIGIN = "https://opencode.ai";
 export declare const OPENCODE_GO_WORKSPACES_SERVER_ID = "def39973159c7f0483d8793a822b8dbb10d067e12c65455fcb4608459ba0234f";
@@ -29,11 +30,16 @@ export declare function parseOpencodeGoUsage(text: any, now?: number): {
     rows: any[];
 };
 export declare function fetchOpencodeGoWorkspaceId(cookieHeader: any, { fetchFn, signal }?: any): Promise<string>;
-export declare function fetchOpencodeGoQuota(entry: any, options?: any): Promise<{
-    workspaceId: string;
-    workspaceName: string | undefined;
-    email: string | undefined;
-    useBalance: boolean | undefined;
-    balance: number | undefined;
+/**
+ * `GET /console/api/go/status` payload → quota rows. The meters are spend
+ * counters in micro-cents (`usedMicroCents`/`limitMicroCents`), not tokens;
+ * `month` carries no `resetsAt`, so the billing period end stands in. A null
+ * body or `access: null` means the workspace has no Go subscription.
+ */
+export declare function parseOpencodeGoConsoleStatus(payload: any, now?: number): {
     rows: any[];
-}>;
+    renewsAt: number | undefined;
+};
+/** `GET /console/api/billing/status` payload → `{ useBalance, balance }`. */
+export declare function parseOpencodeGoConsoleBilling(payload: any): any;
+export declare function fetchOpencodeGoQuota(entry: any, options?: any): Promise<any>;

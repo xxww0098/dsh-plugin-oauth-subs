@@ -20,16 +20,6 @@ export declare class AuthController {
     settings: any;
     credentials: any;
     grokLogin: string;
-    spawnFn: any;
-    exitFn: any;
-    prefsPath: string;
-    statePath: string;
-    autoUpdate: any;
-    autoUpdateState: any;
-    prefsReady: Promise<any>;
-    autoUpdateBusy: boolean;
-    autoUpdateTimer: any;
-    dshStuckTarget: string | undefined;
     profile: string;
     patchPath: string | undefined;
     readFileFn: any;
@@ -73,7 +63,14 @@ export declare class AuthController {
     tokenSweepTimer: any;
     outboundProxy: any;
     setOutboundProxy: any;
-    constructor({ authPath, prefix, origin, settings, patchPath, credentials, grokLogin, onAuthChanged, models, fetchFn, quotaTtlMs, spawnFn, profile, readFileFn, updateEnv, exitFn, prefsPath, statePath, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover, devinAutoImport, devinImport, devinDiscover, clineDiscover, clineAutoImport }: any);
+    installReleaseFn: any;
+    autoUpdate: boolean;
+    updateState: any;
+    prefsReady: Promise<void>;
+    autoUpdateTimer: any;
+    prefsFile: string;
+    stateFile: string;
+    constructor({ authPath, prefix, origin, settings, patchPath, credentials, grokLogin, onAuthChanged, models, fetchFn, quotaTtlMs, profile, readFileFn, updateEnv, installReleaseFn, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover, devinAutoImport, devinImport, devinDiscover, clineDiscover, clineAutoImport }: any);
     claim(provider: any): number;
     loggedIn(): Promise<{
         codex: boolean;
@@ -463,13 +460,15 @@ export declare class AuthController {
     }>;
     refreshQuota(provider: any, accountId?: any): any;
     consumeReset(provider: any, accountId: any): Promise<any>;
+    /**
+     * Version check + self-install. `apply` downloads the latest tag tarball and
+     * swaps the installed package dirs in place — the profile layout is the same
+     * on desktop and web, so this never needs `dsh`/`npm`. The new copy loads on
+     * the next host start (`apply.restart` says which restart to ask for). If no
+     * installed dir exists the apply degrades to a `manual` command hint.
+     */
     checkUpdate(payload?: any): Promise<{
-        apply: {
-            status: string;
-            restart?: undefined;
-            command?: undefined;
-            error?: undefined;
-        };
+        apply: any;
         version: any;
         status: string;
         latest: {
@@ -500,80 +499,6 @@ export declare class AuthController {
         platform: string;
         repo: string;
         repoSlug: string;
-    } | {
-        version: any;
-        disk: any;
-        status: string;
-        apply: {
-            status: string;
-            restart: boolean;
-            command: string;
-            error?: undefined;
-        };
-        running: any;
-        resolved: any;
-        runningPath: string;
-        diskPath: string;
-        resolvedPath: any;
-        copies: {
-            path: string;
-            version: any;
-        }[];
-        staleProcess: boolean;
-        staleLoad: boolean;
-        platform: string;
-        repo: string;
-        repoSlug: string;
-        latest: {
-            tag: string | undefined;
-            name: any;
-            url: any;
-            publishedAt: string | undefined;
-        };
-        assets: {
-            platform: string;
-            current: boolean;
-            name: any;
-            url: any;
-            size: any;
-        }[];
-    } | {
-        version: any;
-        apply: {
-            status: string;
-            error: string | undefined;
-            command: string;
-            restart?: undefined;
-        };
-        running: any;
-        disk: any;
-        resolved: any;
-        runningPath: string;
-        diskPath: string;
-        resolvedPath: any;
-        copies: {
-            path: string;
-            version: any;
-        }[];
-        staleProcess: boolean;
-        staleLoad: boolean;
-        platform: string;
-        repo: string;
-        repoSlug: string;
-        status: string;
-        latest: {
-            tag: string | undefined;
-            name: any;
-            url: any;
-            publishedAt: string | undefined;
-        };
-        assets: {
-            platform: string;
-            current: boolean;
-            name: any;
-            url: any;
-            size: any;
-        }[];
     } | {
         status: string;
         error: string;
@@ -581,9 +506,6 @@ export declare class AuthController {
         assets: never[];
         apply: {
             status: string;
-            restart?: undefined;
-            command?: undefined;
-            error?: undefined;
         };
         version: any;
         running: any;
@@ -602,93 +524,16 @@ export declare class AuthController {
         repo: string;
         repoSlug: string;
     }>;
-    checkDshUpdate(payload?: any): Promise<{
-        apply: {
-            status: string;
-            error?: undefined;
-            command?: undefined;
-            restart?: undefined;
-            after?: undefined;
-        };
-        version: any;
-        status: string;
-        canUpdate: boolean;
-        latestTag: {
-            tag: any;
-            version: any;
-            name: any;
-            url: any;
-            publishedAt: any;
-        } | undefined;
-        npm: {
-            version: any;
-            stable: any;
-            publishedAt: any;
-            distTags: any;
-            versions: string[];
-        } | undefined;
-        binPath: string | undefined;
-        realPath: string | undefined;
-        packagePath: string | undefined;
-        platform: string;
-        repo: string;
-        repoSlug: string;
-        npmPackage: string;
-    } | {
-        version: any;
-        status: string;
-        apply: {
-            status: any;
-            error: any;
-            command: any;
-            restart: any;
-            after: any;
-        };
-        binPath: string | undefined;
-        realPath: string | undefined;
-        packagePath: string | undefined;
-        platform: string;
-        repo: string;
-        repoSlug: string;
-        npmPackage: string;
-        canUpdate: boolean;
-        latestTag: {
-            tag: any;
-            version: any;
-            name: any;
-            url: any;
-            publishedAt: any;
-        } | undefined;
-        npm: {
-            version: any;
-            stable: any;
-            publishedAt: any;
-            distTags: any;
-            versions: string[];
-        } | undefined;
-    } | {
-        status: string;
-        error: string;
-        latestTag: undefined;
-        npm: undefined;
-        canUpdate: boolean;
-        apply: {
-            status: string;
-            error?: undefined;
-            command?: undefined;
-            restart?: undefined;
-            after?: undefined;
-        };
-        version: any;
-        binPath: string | undefined;
-        realPath: string | undefined;
-        packagePath: string | undefined;
-        platform: string;
-        repo: string;
-        repoSlug: string;
-        npmPackage: string;
+    /** Persist the auto-update switch; turning it on runs one pass now. */
+    setAutoUpdate(payload?: any): Promise<{
+        autoUpdate: boolean;
     }>;
-    setAutoUpdate(payload?: any): Promise<any>;
+    /**
+     * One auto-update pass: check the latest tag and self-install it when newer.
+     * The outcome lands in update-state.json so About can show what the
+     * background loop last did.
+     */
+    runAutoUpdate(): Promise<any>;
     startAutoUpdateWatch({ intervalMs }?: {
         intervalMs?: number | undefined;
     }): void;
@@ -705,20 +550,6 @@ export declare class AuthController {
     }): void;
     stopTokenSweep(): void;
     sweepTokensOnce(): Promise<void>;
-    runAutoUpdate(): Promise<{
-        plugin: any;
-        dsh: any;
-    }>;
-    /**
-     * Manual "restart dsh web" from Settings → About. Same path an update
-     * takes: schedule the detached re-exec (it waits for the listen port),
-     * then exit this process shortly after so the new one can bind.
-     */
-    restartDsh(): Promise<{
-        ok: boolean;
-        restart: boolean;
-        command: string;
-    }>;
     login(provider: any, options: any): Promise<{
         authorizeUrl: any;
         verificationUri: any;

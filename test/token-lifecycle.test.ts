@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { AuthController } from '../lib/oauth/controller.js'
-import { accountIdOf, getSession, listStoredSessions, replaceAccountId, saveSession } from '../lib/oauth/store.js'
+import { accountIdOf, getSession, listStoredSessions, replaceAccountId, saveSession, updateAccountSession } from '../lib/oauth/store.js'
 import { kiroSession } from '../lib/oauth/kiro/index.js'
 import { createProxy } from '../lib/oauth/proxy.js'
 import { CODEX_API_URL, CODEX_TOKEN_URL } from '../lib/oauth/codex/index.js'
@@ -402,9 +402,112 @@ test('a transient refresh failure serves the still-valid token and backs off the
   await saveSession('kiro', a, authPath)
   const first = await controller.tokens.kiro.session()
   assert.equal(first.accessToken, a.accessToken)
+  await drained(controller.tokens.kiro)
   const second = await controller.tokens.kiro.session()
   assert.equal(second.accessToken, a.accessToken)
+  await drained(controller.tokens.kiro)
   assert.equal(refreshes, 1)
+})
+
+async function drained(manager) {
+  await Promise.allSettled([...manager.inflight.values()])
+}
+
+test('an expired token retries the refresh instead of replaying a backed-off failure', { timeout: 5000 }, async (t) => {
+  let refreshes = 0
+  const { controller, authPath } = await fixture(t, async (url) => {
+    if (String(url).endsWith('/refreshToken')) {
+      refreshes++
+      return refreshes === 1
+        ? Response.json({ error: 'boom' }, { status: 500 })
+        : Response.json({ accessToken: 'recovered', refreshToken: 'rt_' + 'r'.repeat(200), expiresIn: 3600 })
+    }
+    return Response.json({})
+  })
+  await saveSession('kiro', account('a', true), authPath)
+  await assert.rejects(controller.tokens.kiro.session())
+  const next = await controller.tokens.kiro.session()
+  assert.equal(next.accessToken, 'recovered')
+  assert.equal(refreshes, 2)
+})
+
+test('a due-but-valid token is served without waiting on its refresh', { timeout: 5000 }, async (t) => {
+  const release = deferred()
+  const { controller, authPath } = await fixture(t, async (url) => {
+    if (String(url).endsWith('/refreshToken')) {
+      await release.promise
+      return Response.json({ accessToken: 'background', refreshToken: 'rt_' + 'b'.repeat(200), expiresIn: 3600 })
+    }
+    return Response.json({})
+  })
+  const a = account('a')
+  a.expiresAt = Date.now() + 60_000
+  await saveSession('kiro', a, authPath)
+  const served = await controller.tokens.kiro.session()
+  assert.equal(served.accessToken, a.accessToken)
+  release.resolve()
+  await drained(controller.tokens.kiro)
+  assert.equal((await getSession('kiro', authPath)).accessToken, 'background')
+})
+
+test('a hung refresh times out the waiting request but keeps one refresh owner', { timeout: 5000 }, async (t) => {
+  const release = deferred()
+  let refreshes = 0
+  const { controller, authPath } = await fixture(t, async (url) => {
+    if (String(url).endsWith('/refreshToken')) {
+      refreshes++
+      await release.promise
+      return Response.json({ accessToken: 'late', refreshToken: 'rt_' + 'l'.repeat(200), expiresIn: 3600 })
+    }
+    return Response.json({})
+  })
+  controller.tokens.kiro.refreshWaitMs = 50
+  await saveSession('kiro', account('a', true), authPath)
+  await assert.rejects(controller.tokens.kiro.session(), /timed out/)
+  await assert.rejects(controller.tokens.kiro.session(), /timed out/)
+  assert.equal(refreshes, 1)
+  release.resolve()
+  await drained(controller.tokens.kiro)
+  assert.equal((await controller.tokens.kiro.session()).accessToken, 'late')
+})
+
+test('invalid_grant after another writer rotated the login adopts the rotated session', { timeout: 5000 }, async (t) => {
+  const a = account('a', true)
+  let authPath
+  const { controller, authPath: path } = await fixture(t, async (url) => {
+    if (String(url).endsWith('/refreshToken')) {
+      const [source] = await listStoredSessions('kiro', authPath)
+      await updateAccountSession('kiro', source, { ...source.session, accessToken: 'other-writer', expiresAt: Date.now() + 3_600_000 }, authPath)
+      return Response.json({ error: 'invalid_grant' }, { status: 400 })
+    }
+    return Response.json({})
+  })
+  authPath = path
+  await saveSession('kiro', a, authPath)
+  const live = await controller.tokens.kiro.session()
+  assert.equal(live.accessToken, 'other-writer')
+  assert.equal((await listStoredSessions('kiro', authPath)).length, 1)
+})
+
+test('upstream Retry-After reaches the client on a forwarded 429', { timeout: 5000 }, async (t) => {
+  const { controller, authPath } = await fixture(t, async () => Response.json({}))
+  await saveSession('codex', {
+    accessToken: 'live', refreshToken: 'rt', expiresAt: Date.now() + 3_600_000,
+    emailAddress: 'codex@example.test', accountId: 'acct-1',
+  }, authPath)
+  const proxy = createProxy({
+    port: 0, apiKey: 'local-test', tokens: controller.tokens,
+    fetchFn: async () => Response.json({ error: { message: 'slow down' } }, { status: 429, headers: { 'retry-after': '7' } }),
+  })
+  const server = await proxy.listen()
+  t.after(() => proxy.close())
+  const response = await fetch(`http://127.0.0.1:${server.address().port}/codex/v1/responses`, {
+    method: 'POST', headers: { authorization: 'Bearer local-test', 'content-type': 'application/json' },
+    body: JSON.stringify({ model: 'gpt-test', input: 'hi' }),
+  })
+  assert.equal(response.status, 429)
+  assert.equal(response.headers.get('retry-after'), '7')
+  await response.text()
 })
 
 

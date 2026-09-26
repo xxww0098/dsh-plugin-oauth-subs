@@ -4,7 +4,7 @@ import { mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parseOpencodeGoCookie, normalizeOpencodeGoWorkspaceId, opencodeGoAccountId, opencodeGoKeyHint } from '../lib/apikey/opencode-go/index.js'
-import { parseOpencodeGoEmail, parseOpencodeGoUsage, parseOpencodeGoWorkspaceName, parseOpencodeGoBilling } from '../lib/apikey/opencode-go/quota.js'
+import { parseOpencodeGoEmail, parseOpencodeGoUsage, parseOpencodeGoWorkspaceName, parseOpencodeGoBilling, parseOpencodeGoConsoleStatus, parseOpencodeGoConsoleBilling, fetchOpencodeGoQuota } from '../lib/apikey/opencode-go/quota.js'
 import { OpencodeGoStore, opencodeGoFilePath } from '../lib/apikey/opencode-go/store.js'
 import { writePrivateText } from '../lib/utils/private-text.js'
 
@@ -12,6 +12,8 @@ test('parseOpencodeGoCookie keeps only auth cookies or wraps a raw token', () =>
   assert.equal(parseOpencodeGoCookie('Fe26.2abc'), 'auth=Fe26.2abc')
   assert.equal(parseOpencodeGoCookie('auth=Fe26.2abc; theme=dark'), 'auth=Fe26.2abc')
   assert.equal(parseOpencodeGoCookie('__Host-auth=xyz'), '__Host-auth=xyz')
+  assert.equal(parseOpencodeGoCookie('__Host-console_session=cs.abc'), '__Host-console_session=cs.abc')
+  assert.equal(parseOpencodeGoCookie('console_session=cs.abc; auth=Fe26.2x'), 'console_session=cs.abc; auth=Fe26.2x')
   assert.equal(parseOpencodeGoCookie('theme=dark'), undefined)
   assert.equal(parseOpencodeGoCookie(''), undefined)
 })
@@ -20,6 +22,10 @@ test('normalizeOpencodeGoWorkspaceId accepts raw ids and dashboard urls', () => 
   assert.equal(normalizeOpencodeGoWorkspaceId('wrk_abc123'), 'wrk_abc123')
   assert.equal(normalizeOpencodeGoWorkspaceId('https://opencode.ai/workspace/wrk_abc123/go'), 'wrk_abc123')
   assert.equal(normalizeOpencodeGoWorkspaceId('see wrk_abc123 here'), 'wrk_abc123')
+  assert.equal(normalizeOpencodeGoWorkspaceId('org_abc123'), 'org_abc123')
+  assert.equal(normalizeOpencodeGoWorkspaceId('https://opencode.ai/console/wrk_abc123/go'), 'wrk_abc123')
+  assert.equal(normalizeOpencodeGoWorkspaceId('https://opencode.ai/console/org_abc123/go'), 'org_abc123')
+  assert.equal(normalizeOpencodeGoWorkspaceId('https://opencode.ai/console/api/orgs'), undefined)
   assert.equal(normalizeOpencodeGoWorkspaceId('nope'), undefined)
 })
 
@@ -224,4 +230,124 @@ test('OpencodeGoStore rejects a cookie header without an auth cookie', async () 
     fetchFn: async () => new Response('{}', { status: 200 }),
   })
   await assert.rejects(() => store.save({ cookie: 'theme=dark; lang=en' }), /auth token or Cookie header/)
+})
+
+const CONSOLE_STATUS = {
+  access: {
+    startsAt: '2026-09-01T00:00:00.000Z',
+    endsAt: '2026-10-01T00:00:00.000Z',
+    cancelAtPeriodEnd: false,
+    meters: {
+      fiveHour: { startsAt: '2026-09-25T15:00:00.000Z', resetsAt: '2026-09-25T20:00:00.000Z', limitMicroCents: '1200000000', usedMicroCents: '600000000' },
+      week: { startsAt: '2026-09-21T00:00:00.000Z', resetsAt: '2026-09-28T00:00:00.000Z', limitMicroCents: '3000000000', usedMicroCents: '300000000' },
+      month: { limitMicroCents: '6000000000', usedMicroCents: '60000000' },
+    },
+  },
+}
+
+test('parseOpencodeGoConsoleStatus reads micro-cent meters', () => {
+  const parsed = parseOpencodeGoConsoleStatus(CONSOLE_STATUS, 1_700_000_000_000)
+  assert.equal(parsed.rows.length, 3)
+  const [rolling, weekly, monthly] = parsed.rows
+  assert.equal(rolling.kind, 'primary')
+  assert.equal(rolling.usedPercent, 50)
+  assert.equal(rolling.remainingPercent, 50)
+  assert.equal(rolling.resetAt, Date.parse('2026-09-25T20:00:00.000Z'))
+  assert.deepEqual([rolling.used, rolling.total, rolling.unit], [6, 12, 'usd'])
+  assert.equal(weekly.usedPercent, 10)
+  // The month meter carries no resetsAt; the billing period end stands in.
+  assert.equal(monthly.resetAt, Date.parse('2026-10-01T00:00:00.000Z'))
+  assert.equal(monthly.usedPercent, 1)
+})
+
+test('parseOpencodeGoConsoleStatus flags a missing subscription', () => {
+  assert.throws(() => parseOpencodeGoConsoleStatus({ access: null }), /not active/)
+  assert.throws(() => parseOpencodeGoConsoleStatus(null), /not active/)
+  assert.throws(() => parseOpencodeGoConsoleStatus({ access: { meters: {} } }), /Missing usage fields/)
+})
+
+test('parseOpencodeGoConsoleBilling reads prepaid balance in USD', () => {
+  assert.deepEqual(parseOpencodeGoConsoleBilling({
+    billingMode: 'prepaid', mode: 'pay-as-you-go', balanceMicroCents: '1250000000',
+  }), { useBalance: true, balance: 12.5 })
+  assert.deepEqual(parseOpencodeGoConsoleBilling({ billingMode: 'seat', balanceMicroCents: '0' }),
+    { useBalance: false, balance: 0 })
+  assert.deepEqual(parseOpencodeGoConsoleBilling(undefined), {})
+})
+
+function consoleFetch(routes) {
+  return async (url) => {
+    const path = String(url).replace('https://opencode.ai', '')
+    const hit = Object.entries(routes).find(([prefix]) => path.startsWith(prefix))
+    if (!hit) return new Response('not found', { status: 404 })
+    const value = hit[1]
+    if (value instanceof Response) return value
+    if (value && value.status) return new Response(JSON.stringify(value.body ?? ''), { status: value.status })
+    return new Response(JSON.stringify(value), { status: 200, headers: { 'content-type': 'application/json' } })
+  }
+}
+
+test('fetchOpencodeGoQuota reads the console API for migrated workspaces', async () => {
+  const quota = await fetchOpencodeGoQuota({ cookieHeader: '__Host-console_session=cs.x' }, {
+    fetchFn: consoleFetch({
+      '/console/api/orgs': [{ id: 'wrk_abc123', name: 'Default' }],
+      '/console/api/go/status': CONSOLE_STATUS,
+      '/console/api/billing/status': { billingMode: 'prepaid', mode: 'pay-as-you-go', balanceMicroCents: '1250000000' },
+      '/console/api/user': { id: 'usr_1', email: 'dev@example.com' },
+    }),
+  })
+  assert.equal(quota.workspaceId, 'wrk_abc123')
+  assert.equal(quota.workspaceName, 'Default')
+  assert.equal(quota.email, 'dev@example.com')
+  assert.equal(quota.rows[0].kind, 'primary')
+  assert.equal(quota.rows[0].unit, 'usd')
+  assert.equal(quota.useBalance, true)
+  assert.equal(quota.balance, 12.5)
+})
+
+test('fetchOpencodeGoQuota falls back to the legacy page with an auth cookie', async () => {
+  const page = 'rollingUsage:$R[35]={status:"ok",resetInSec:30,usagePercent:10,usage:100000000,limit:1000000000}'
+  const quota = await fetchOpencodeGoQuota({ cookieHeader: 'auth=Fe26.2x', workspaceId: 'wrk_abc123' }, {
+    fetchFn: consoleFetch({
+      '/console/api/': { status: 401, body: { _tag: 'Unauthorized' } },
+      '/workspace/': new Response(page, { status: 200 }),
+    }),
+  })
+  assert.equal(quota.rows[0].remainingPercent, 90)
+  assert.deepEqual([quota.rows[0].used, quota.rows[0].total], [100_000_000, 1_000_000_000])
+})
+
+test('fetchOpencodeGoQuota reports the console error when only a console cookie exists', async () => {
+  await assert.rejects(
+    () => fetchOpencodeGoQuota({ cookieHeader: '__Host-console_session=cs.x', workspaceId: 'wrk_abc123' }, {
+      fetchFn: consoleFetch({ '/console/api/go/status': { status: 500, body: { message: 'boom' } } }),
+    }),
+    /console HTTP 500: boom/,
+  )
+  await assert.rejects(
+    () => fetchOpencodeGoQuota({ cookieHeader: '__Host-console_session=cs.x', workspaceId: 'wrk_abc123' }, {
+      fetchFn: consoleFetch({ '/console/api/go/status': { status: 401, body: { _tag: 'Unauthorized' } } }),
+    }),
+    /invalid or expired/,
+  )
+})
+
+test('fetchOpencodeGoQuota keeps a balance-only account out of the error state', async () => {
+  const quota = await fetchOpencodeGoQuota({ cookieHeader: '__Host-console_session=cs.x', workspaceId: 'wrk_abc123' }, {
+    fetchFn: consoleFetch({
+      '/console/api/go/status': { access: null },
+      '/console/api/billing/status': { billingMode: 'prepaid', mode: 'pay-as-you-go', balanceMicroCents: '500000000' },
+    }),
+  })
+  assert.equal(quota.rows.length, 0)
+  assert.equal(quota.balance, 5)
+  await assert.rejects(
+    () => fetchOpencodeGoQuota({ cookieHeader: '__Host-console_session=cs.x', workspaceId: 'wrk_abc123' }, {
+      fetchFn: consoleFetch({
+        '/console/api/go/status': { access: null },
+        '/console/api/billing/status': { billingMode: 'seat', mode: 'invoiceable' },
+      }),
+    }),
+    /not active/,
+  )
 })

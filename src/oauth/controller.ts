@@ -140,16 +140,19 @@ import { TokenManager } from './tokens.js'
 import { QuotaStore } from './quota.js'
 import {
   fetchLatest,
+  installRelease,
   localUpdateInfo,
-  applyHostUpdate,
-  compareVersions,
   DEFAULT_PROFILE,
-  fetchDshLatest,
-  localDshInfo,
-  applyHostDshUpdate,
-  scheduleDshWebRestart,
 } from '../utils/update.js'
-import { AUTO_UPDATE_INTERVAL_MS, autoRunOutcome, defaultUpdatePrefs, readUpdatePrefs, readUpdateState, updatePrefsPath, updateStatePath, writeUpdatePrefs, writeUpdateState } from '../utils/update-prefs.js'
+import {
+  AUTO_UPDATE_INTERVAL_MS,
+  readUpdatePrefs,
+  readUpdateState,
+  updatePrefsPath,
+  updateStatePath,
+  writeUpdatePrefs,
+  writeUpdateState,
+} from '../utils/update-prefs.js'
 
 /** How often the background sweep re-checks stored credential expiry. */
 export const TOKEN_SWEEP_INTERVAL_MS = 60_000
@@ -164,16 +167,6 @@ export class AuthController {
   declare settings: any
   declare credentials: any
   declare grokLogin: string
-  declare spawnFn: any
-  declare exitFn: any
-  declare prefsPath: string
-  declare statePath: string
-  declare autoUpdate: any
-  declare autoUpdateState: any
-  declare prefsReady: Promise<any>
-  declare autoUpdateBusy: boolean
-  declare autoUpdateTimer: any
-  declare dshStuckTarget: string | undefined
   declare profile: string
   declare patchPath: string | undefined
   declare readFileFn: any
@@ -217,7 +210,14 @@ export class AuthController {
   declare tokenSweepTimer: any
   declare outboundProxy: any
   declare setOutboundProxy: any
-  constructor({ authPath, prefix, origin, settings, patchPath, credentials, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, spawnFn, profile, readFileFn, updateEnv, exitFn, prefsPath, statePath, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover, devinAutoImport, devinImport, devinDiscover, clineDiscover, clineAutoImport }: any) {
+  declare installReleaseFn: any
+  declare autoUpdate: boolean
+  declare updateState: any
+  declare prefsReady: Promise<void>
+  declare autoUpdateTimer: any
+  declare prefsFile: string
+  declare stateFile: string
+  constructor({ authPath, prefix, origin, settings, patchPath, credentials, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, profile, readFileFn, updateEnv, installReleaseFn = installRelease, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover, devinAutoImport, devinImport, devinDiscover, clineDiscover, clineAutoImport }: any) {
     this.authPath = authPath
     this.prefix = prefix
     this.origin = origin
@@ -225,20 +225,19 @@ export class AuthController {
     this.patchPath = patchPath
     this.credentials = credentials
     this.grokLogin = grokLogin
-    this.spawnFn = spawnFn
-    this.exitFn = exitFn
-    this.prefsPath = prefsPath || updatePrefsPath(dirname(authPath))
-    this.statePath = statePath || updateStatePath(dirname(authPath))
-    this.autoUpdate = defaultUpdatePrefs()
-    this.autoUpdateState = {}
-    this.prefsReady = this.#loadUpdatePrefs()
-    this.autoUpdateBusy = false
-    this.autoUpdateTimer = undefined
-    /** npm target that exited 0 but never reached the running copy; auto ticks skip it, a click retries. */
-    this.dshStuckTarget = undefined
     this.profile = profile || DEFAULT_PROFILE
     this.readFileFn = readFileFn
     this.updateEnv = updateEnv
+    this.installReleaseFn = installReleaseFn
+    this.prefsFile = updatePrefsPath(authPath)
+    this.stateFile = updateStatePath(authPath)
+    this.prefsReady = Promise.all([
+      readUpdatePrefs(this.prefsFile),
+      readUpdateState(this.stateFile),
+    ]).then(([prefs, state]) => {
+      this.autoUpdate = prefs.autoUpdate
+      this.updateState = state
+    })
     this.onAuthChanged = onAuthChanged
     this.models = models ?? new ModelSwitch()
     this.flows = new OAuthFlowManager()
@@ -634,6 +633,7 @@ export class AuthController {
     ])
     return {
       origin,
+      profile: this.profile,
       grokLogin: this.grokLogin,
       catalog: describeCatalog(catalog, {
         enabledKeys,
@@ -664,12 +664,8 @@ export class AuthController {
         env: this.updateEnv ?? process.env,
         readFileFn: this.readFileFn,
       }),
-      dshUpdate: localDshInfo(process.platform, {
-        env: this.updateEnv ?? process.env,
-        readFileFn: this.readFileFn,
-      }),
-      autoUpdate: { ...this.autoUpdate },
-      autoUpdateState: { ...this.autoUpdateState },
+      autoUpdate: this.autoUpdate === true,
+      autoUpdateState: this.updateState,
     }
   }
 
@@ -905,6 +901,13 @@ export class AuthController {
     return this.quota.consume('codex', accountIdOf('codex', live), live)
   }
 
+  /**
+   * Version check + self-install. `apply` downloads the latest tag tarball and
+   * swaps the installed package dirs in place — the profile layout is the same
+   * on desktop and web, so this never needs `dsh`/`npm`. The new copy loads on
+   * the next host start (`apply.restart` says which restart to ask for). If no
+   * installed dir exists the apply degrades to a `manual` command hint.
+   */
   async checkUpdate(payload: any = {}) {
     const apply = payload?.apply === true
     const profileOpts = {
@@ -917,42 +920,14 @@ export class AuthController {
       if (!apply || info.status !== 'update') {
         return { ...info, apply: { status: 'none' } }
       }
-      const result = await applyHostUpdate({
-        spawnFn: this.spawnFn,
+      const result = await this.installReleaseFn({
+        tag: info.latest?.tag,
         profile: this.profile,
-        latest: info.latest?.tag,
+        env: this.updateEnv ?? process.env,
+        fetchFn: this.fetchFn,
         readFileFn: this.readFileFn,
-        env: profileOpts.env,
       })
-      const next = localUpdateInfo(process.platform, profileOpts)
-      const version = next.version || result.after || ''
-      const disk = result.after || next.disk
-      if (result.ok) {
-        const caughtUp = Boolean(version && info.latest?.tag && compareVersions(version, info.latest.tag) >= 0)
-        // Manual applies restart like auto-update does — installing without a
-        // restart left the old module running and read as "update failed".
-        // Only the auto tick passes restart:false (it restarts itself once
-        // both channels are done).
-        const restart = payload.restart !== false
-        if (restart) {
-          scheduleDshWebRestart({ spawnFn: this.spawnFn, env: profileOpts.env })
-          if (typeof this.exitFn === 'function') setTimeout(() => this.exitFn(0), 200)
-        }
-        return {
-          ...info,
-          ...next,
-          version,
-          disk: disk || undefined,
-          status: caughtUp ? 'current' : info.status,
-          apply: { status: 'installed', restart, command: result.command },
-        }
-      }
-      return {
-        ...info,
-        ...next,
-        version: next.version || info.version,
-        apply: { status: result.status, error: result.error, command: result.command },
-      }
+      return { ...info, apply: result }
     } catch (error) {
       return {
         ...localUpdateInfo(process.platform, profileOpts),
@@ -965,84 +940,36 @@ export class AuthController {
     }
   }
 
-  async checkDshUpdate(payload: any = {}) {
-    const apply = payload?.apply === true
-    const targetVersion = payload?.targetVersion
-    const opts = {
-      env: this.updateEnv ?? process.env,
-      readFileFn: this.readFileFn,
-    }
-    try {
-      const info = await fetchDshLatest({ fetchFn: this.fetchFn, platform: process.platform, ...opts })
-      if (!apply) {
-        return { ...info, apply: { status: 'none' } }
-      }
-      const want = targetVersion || (info.canUpdate ? info.npm?.version : undefined)
-      if (!want || (payload?.auto === true && want === this.dshStuckTarget)) {
-        return { ...info, apply: { status: 'none' } }
-      }
-      const result: any = await applyHostDshUpdate({
-        spawnFn: this.spawnFn,
-        targetVersion: want,
-        readFileFn: this.readFileFn,
-        env: opts.env,
-      })
-      this.dshStuckTarget = result.status === 'installed-unchanged' ? want : undefined
-      const next = localDshInfo(process.platform, opts)
-      const version = next.version || result.after || info.version
-      if (result.ok) {
-        scheduleDshWebRestart({ spawnFn: this.spawnFn, env: opts.env })
-        if (typeof this.exitFn === 'function') {
-          setTimeout(() => this.exitFn(0), 200)
-        }
-      }
-      return {
-        ...info,
-        ...next,
-        version,
-        status: result.ok
-          ? (next.version && want && compareVersions(next.version, want) === 0 ? 'current' : info.status)
-          : info.status,
-        apply: {
-          status: result.status,
-          error: result.error,
-          command: result.command,
-          restart: result.ok,
-          after: result.after,
-        },
-      }
-    } catch (error) {
-      return {
-        ...localDshInfo(process.platform, opts),
-        status: 'error',
-        error: error instanceof Error ? error.message : String(error),
-        latestTag: undefined,
-        npm: undefined,
-        canUpdate: false,
-        apply: { status: 'none' },
-      }
-    }
-  }
-
-  async #loadUpdatePrefs() {
-    const [prefs, state] = await Promise.all([
-      readUpdatePrefs(this.prefsPath),
-      readUpdateState(this.statePath),
-    ])
-    this.autoUpdate = prefs
-    this.autoUpdateState = state
-    return this.autoUpdate
-  }
-
+  /** Persist the auto-update switch; turning it on runs one pass now. */
   async setAutoUpdate(payload: any = {}) {
     await this.prefsReady
-    const next = {
-      plugin: typeof payload.plugin === 'boolean' ? payload.plugin : this.autoUpdate.plugin,
-      dsh: typeof payload.dsh === 'boolean' ? payload.dsh : this.autoUpdate.dsh,
+    this.autoUpdate = payload?.autoUpdate === true
+    await writeUpdatePrefs(this.prefsFile, { autoUpdate: this.autoUpdate })
+    if (this.autoUpdate) void this.runAutoUpdate().catch(() => undefined)
+    return { autoUpdate: this.autoUpdate }
+  }
+
+  /**
+   * One auto-update pass: check the latest tag and self-install it when newer.
+   * The outcome lands in update-state.json so About can show what the
+   * background loop last did.
+   */
+  async runAutoUpdate() {
+    await this.prefsReady
+    if (!this.autoUpdate) return { skipped: true }
+    const result: any = await this.checkUpdate({ apply: true }).catch((error) => ({
+      status: 'error',
+      error: error instanceof Error ? error.message : String(error),
+    }))
+    this.updateState = {
+      at: new Date().toISOString(),
+      status: result?.apply?.status && result.apply.status !== 'none' ? result.apply.status : result?.status,
+      version: result?.version,
+      latest: result?.latest?.tag,
+      error: result?.apply?.error || result?.error,
     }
-    this.autoUpdate = await writeUpdatePrefs(this.prefsPath, next)
-    if (this.autoUpdate.plugin || this.autoUpdate.dsh) await this.runAutoUpdate()
-    return { ...this.autoUpdate }
+    await writeUpdateState(this.stateFile, this.updateState).catch(() => undefined)
+    return result
   }
 
   startAutoUpdateWatch({ intervalMs = AUTO_UPDATE_INTERVAL_MS } = {}) {
@@ -1095,51 +1022,6 @@ export class AuthController {
         await manager.account(row.id).catch(() => undefined)
       }
     }
-  }
-
-  async runAutoUpdate() {
-    if (this.autoUpdateBusy) return { plugin: null, dsh: null }
-    this.autoUpdateBusy = true
-    try {
-      await this.prefsReady
-      let plugin: any = null
-      let dsh: any = null
-      if (this.autoUpdate.plugin) {
-        plugin = await this.checkUpdate({ apply: true, restart: false })
-      }
-      if (this.autoUpdate.dsh) {
-        dsh = await this.checkDshUpdate({ apply: true, auto: true })
-      }
-      if (plugin || dsh) {
-        this.autoUpdateState = {
-          at: new Date().toISOString(),
-          ...(plugin ? { plugin: autoRunOutcome(plugin) } : {}),
-          ...(dsh ? { dsh: autoRunOutcome(dsh) } : {}),
-        }
-        try {
-          await writeUpdateState(this.statePath, this.autoUpdateState)
-        } catch { /* state file is best-effort */ }
-      }
-      if (dsh?.apply?.restart) return { plugin, dsh }
-      if (plugin?.apply?.status === 'installed') {
-        scheduleDshWebRestart({ spawnFn: this.spawnFn, env: this.updateEnv ?? process.env })
-        if (typeof this.exitFn === 'function') setTimeout(() => this.exitFn(0), 200)
-      }
-      return { plugin, dsh }
-    } finally {
-      this.autoUpdateBusy = false
-    }
-  }
-
-  /**
-   * Manual "restart dsh web" from Settings → About. Same path an update
-   * takes: schedule the detached re-exec (it waits for the listen port),
-   * then exit this process shortly after so the new one can bind.
-   */
-  async restartDsh() {
-    const result = scheduleDshWebRestart({ spawnFn: this.spawnFn, env: this.updateEnv ?? process.env })
-    if (typeof this.exitFn === 'function') setTimeout(() => this.exitFn(0), 200)
-    return { ok: true, restart: true, command: result.command }
   }
 
   async #resolveGlmIdentities() {

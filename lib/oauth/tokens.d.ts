@@ -5,6 +5,12 @@
  * every request during a token-endpoint outage re-hammers the endpoint.
  */
 export declare const REFRESH_FAILURE_BACKOFF_MS: number;
+/**
+ * Longest a request waits on a refresh. The refresh itself keeps running as
+ * the single owner of that credential version — a second redemption of a
+ * rotating refresh token would be answered with invalid_grant.
+ */
+export declare const REFRESH_WAIT_MS = 30000;
 export declare class TokenManager {
     #private;
     provider: string;
@@ -15,18 +21,11 @@ export declare class TokenManager {
     refresh: any;
     isPermanent: any;
     onRemoved: any;
+    refreshWaitMs: number;
     inflight: Map<any, any>;
     failures: Map<any, any>;
     sources: WeakMap<object, any>;
-    constructor({ provider, authPath, displayName, preemptMs, refresh, isPermanent, onRemoved }: {
-        provider: any;
-        authPath: any;
-        displayName: any;
-        preemptMs: any;
-        refresh: any;
-        isPermanent: any;
-        onRemoved: any;
-    });
+    constructor({ provider, authPath, displayName, preemptMs, refresh, isPermanent, onRemoved, refreshWaitMs }: any);
     session(id: any): Promise<any>;
     /** The stored-account row that produced this session, when known. */
     sourceOf(session: any): any;

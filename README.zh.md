@@ -13,7 +13,23 @@ dsh plugin --profile web add https://github.com/xxww0098/dsh-plugin-oauth-subs
 dsh web
 ```
 
-打开 **设置 → OAuth 订阅**。每个账号一张卡片（额度都在卡片上；Ollama Cloud 没有额度条）。关于页 **当前版本** 每次重读本进程加载的 `package.json`（不冻结模块加载时的值）。wrapper / `~/.dsh.pid` 没杀掉的旧 `dsh web` 会继续报旧版本，先 `pgrep -lf 'dsh web'`。profile `node_modules` 更新时另列 **磁盘**，即使该文件已是 latest 也可能再 `add …#<tag>`。或 `pnpm dsh web --patch ./cordis.patch.yml`（`id: oauth-subs`）。
+打开 **设置 → OAuth 订阅**。每个账号一张卡片（额度都在卡片上；Ollama Cloud 没有额度条）。关于页 **当前版本** 固定显示本进程加载插件时的版本；自安装后仍显示旧运行版本，直到重启。本插件专攻 desktop：自身不 spawn `dsh`/`npm`，也不会重启宿主——关于页对比运行版本与 GitHub 最新 tag，点 **安装更新** 会把 tag 的 tarball 自安装进 profile 的 `node_modules`（同卡还有每小时检查的自动更新开关）。profile `node_modules` 比运行进程新时会列出 **磁盘** 并标记过期进程。或 `pnpm dsh web --patch ./cordis.patch.yml`（`id: oauth-subs`）。
+
+### Desktop
+
+`desktop` profile 由 Electron 应用独占管理，`dsh plugin --profile desktop` 会被拒绝。走界面安装：
+
+1. DeepSeek Harness → **插件** → **添加插件**
+2. 粘贴 `https://github.com/xxww0098/dsh-plugin-oauth-subs` → **安装**
+3. 打开开关；组件行应显示 **运行中**
+
+数据在 `~/.dsh/profiles/desktop/data/dsh-plugin-oauth-subs/`，登录态**不**与 web profile 共享。迁移已有账号：先退出应用，把 `~/.dsh/profiles/web/data/dsh-plugin-oauth-subs/` 下的 `auth.json`（勾选状态另有 `models.json`）复制到该目录，再启动。必须在退出状态下拷贝——插件把 token 缓存在内存，热改可能被覆写。
+
+代理端口（默认 `8318`）是全局回环绑定，web 与 desktop profile 不能同时运行（`EADDRINUSE`）。杀掉另一个 profile，或在该 profile 的 `cordis.patch.yml` 里给 `id: oauth-subs` 改 `config.port`。
+
+本插件专攻 desktop：宿主生命周期面（DSH CLI/npm 更新、重启宿主）已**整体删除**而非隐藏——Electron 应用独占管理 profile 与进程。升级是自安装的：**检查更新 → 安装更新** 会下载 release tarball 原地换目录（或打开 **自动更新** 每小时检查）；装好后重启应用加载新版本。`data/` 目录保留，登录态不丢。手动兜底：**插件** → 卸载 → 添加插件 → 重装仓库地址。
+
+如果应用启动即退：检查 `launchctl getenv ELECTRON_RUN_AS_NODE`——该变量会让所有 Electron 应用退化成纯 Node 模式，`launchctl unsetenv ELECTRON_RUN_AS_NODE` 即可修复。
 
 ## 系列
 

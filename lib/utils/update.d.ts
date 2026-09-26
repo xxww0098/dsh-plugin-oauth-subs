@@ -1,19 +1,21 @@
 /**
- * Local version + GitHub latest-release check, then the host plugin updater.
+ * Local version + GitHub latest-release check, plus self-install.
+ *
+ * This plugin is desktop-first: the Electron app owns the profile (`dsh
+ * plugin --profile desktop` is refused) and the process lifecycle, so the
+ * update path never touches `dsh`/`npm` and never restarts the host. The
+ * About card compares the running version with the GitHub latest tag;
+ * `installRelease` downloads the tag tarball and swaps the installed package
+ * dirs in place (the only spawn is `tar` for unpacking), then flags the new
+ * copy as pending until the host restarts.
  *
  * About "当前版本" is the package this process actually loaded
  * (`import.meta.url` → `../../package.json`). Profile
  * `node_modules/dsh-plugin-oauth-subs/package.json` can already be newer
- * (pnpm `github:` write) while Cordis still requires another copy.
- * Compare GitHub against the running module. When disk is latest but the
- * process is behind, still `add <repo>#vX.Y.Z`. `.dsh-module-fallback` and
- * `$DSH_HOME/profiles/node_modules` are extra copies we report, not the
- * About version.
- *
- * `dsh plugin update` is `pnpm update` and can no-op on a git spec.
+ * while Cordis still requires another copy — compare GitHub against the
+ * running module. `.dsh-module-fallback` and `$DSH_HOME/profiles/node_modules`
+ * are extra copies we report, not the About version.
  */
-import { spawn } from 'node:child_process';
-import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 export declare function modulePackageJsonPath(): string;
 export declare const REPO_SLUG = "xxww0098/dsh-plugin-oauth-subs";
 export declare const REPO_URL = "https://github.com/xxww0098/dsh-plugin-oauth-subs";
@@ -24,9 +26,7 @@ export declare const PLUGIN_NAME = "dsh-plugin-oauth-subs";
 export declare const DEFAULT_PROFILE = "web";
 export declare const DSH_BIN = "dsh";
 export declare const GH_BIN = "gh";
-export declare const PLUGIN_UPDATE_TIMEOUT_MS = 180000;
 export declare const GH_API_TIMEOUT_MS = 5000;
-/** Version of the module this process actually loaded. Always re-reads disk. */
 export declare function installedVersion({ readFileFn }?: any): any;
 /** Newer of two semver-ish tags. Empty / unparseable values lose. */
 export declare function fresherVersion(left: any, right: any): string;
@@ -104,6 +104,12 @@ export declare function fetchLatest({ fetchFn, spawnFn, current, platform, timeo
 }>;
 /** `$DSH_HOME/profiles/<name>` from Cordis `ctx.baseUrl`, else web. */
 export declare function profileFromBaseUrl(baseUrl: any): string;
+/**
+ * The Electron app owns `desktop` end to end — `dsh plugin --profile desktop`
+ * is rejected outright, so updates there always mean "reinstall from the
+ * Plugins page"; anything else gets the manual CLI command as a hint.
+ */
+export declare function isElectronManagedProfile(profile: any): boolean;
 export declare function pluginUpdateArgs(profile?: string): string[];
 export declare function pluginUpdateCommand(profile?: string): string;
 export declare function pluginAddArgs(profile?: string, source?: string): string[];
@@ -116,150 +122,41 @@ export declare function extraPluginManifests(profile?: string, env?: NodeJS.Proc
 export declare function resolveProfilePluginManifest(profile?: string, env?: NodeJS.ProcessEnv, { resolveFn }?: any): any;
 export declare function canonicalPath(path: any, { realpathFn }?: any): string;
 export declare function readPackageVersion(path: any, { readFileFn }?: any): any;
-/** True when `after` reached `latest`, or moved forward when latest is unknown. */
-export declare function versionAdvanced(before: any, after: any, latest: any): boolean;
+/** `v0.0.104`/`0.0.104` → the GitHub source tarball URL for that tag. */
+export declare function releaseTarballUrl(tag: any): string | undefined;
 /**
- * `dsh plugin …` must hit the copy serving this page. PATH `dsh` is often
- * missing in a GUI-launched process, and when present it may be a different
- * install than `DSH_BIN_PATH` / `process.argv[1]`.
+ * Package dirs currently holding an install: the profile copy, the
+ * cross-profile shared copy, the `.dsh-module-fallback` copy, and whatever
+ * `require.resolve` picks from the profile manifest. Deduped by realpath —
+ * entries that do not parse as package.json simply do not exist.
  */
-export declare function dshPluginBin(env?: NodeJS.ProcessEnv): string;
-/**
- * GUI-launched dsh web often carries a minimal PATH (no ~/.local/bin, no
- * Homebrew). The spawned dsh CLI needs pnpm/node for plugin installs, so
- * prepend the usual locations before handing env to the child.
- */
-export declare function pathWithDefaults(current: any, platform?: NodeJS.Platform): any;
-/**
- * Spawn the running DSH with the given plugin args. Exit 0 is only a spawn
- * success — `applyHostUpdate` re-reads the profile package.json.
- */
-export declare function runDshPlugin({ spawnFn, profile, args, timeoutMs, env, execPath, }?: any): Promise<{
-    ok: boolean;
+export declare function installedPackageDirs(profile?: string, env?: NodeJS.ProcessEnv, { readFileFn, realpathFn, resolveFn }?: any): any[];
+export declare function installRelease(options?: any): Promise<{
+    status: string;
+    error: string;
+    command?: undefined;
+    version?: undefined;
+    dirs?: undefined;
+    restart?: undefined;
+} | {
     status: string;
     command: string;
-    error?: string;
-}>;
-/**
- * Spawn `dsh plugin update` via the running DSH copy. Exit 0 is spawn-only;
- * prefer `applyHostUpdate` when the on-disk version must have moved.
- */
-export declare function runPluginUpdate({ spawnFn, profile, timeoutMs, env, execPath, }?: {
-    spawnFn?: typeof spawn | undefined;
-    profile?: string | undefined;
-    timeoutMs?: number | undefined;
-    env?: NodeJS.ProcessEnv | undefined;
-    execPath?: string | undefined;
-}): Promise<{
-    ok: boolean;
+    error?: undefined;
+    version?: undefined;
+    dirs?: undefined;
+    restart?: undefined;
+} | {
     status: string;
+    error: string;
     command: string;
-    error?: string;
-}>;
-/**
- * Apply a host update and confirm the profile's package.json moved.
- * `dsh plugin update` is `pnpm update` and can no-op on a git-pinned
- * install; if the version did not reach `latest`, retry
- * `dsh plugin add <repo>#vX.Y.Z`.
- */
-export declare function applyHostUpdate({ spawnFn, profile, latest, timeoutMs, env, readFileFn, }?: any): Promise<{
-    before: any;
-    after: any;
-    ok: boolean;
+    version?: undefined;
+    dirs?: undefined;
+    restart?: undefined;
+} | {
     status: string;
-    command: string;
-    error?: string;
+    version: string;
+    dirs: any[];
+    restart: string;
+    error?: undefined;
+    command?: undefined;
 }>;
-export declare const DSH_REPO_SLUG = "deepseek-ai/deepseek-harness";
-export declare const DSH_REPO_URL = "https://github.com/deepseek-ai/deepseek-harness";
-export declare const DSH_TAGS_API = "https://api.github.com/repos/deepseek-ai/deepseek-harness/tags";
-export declare const DSH_RELEASES_API = "https://api.github.com/repos/deepseek-ai/deepseek-harness/releases";
-export declare const DSH_RELEASES_LATEST_HTML = "https://github.com/deepseek-ai/deepseek-harness/releases/latest";
-export declare const DSH_NPM_PACKAGE = "@deepseek-ai/dsh";
-export declare const DSH_NPM_REGISTRY_API = "https://registry.npmjs.org/@deepseek-ai/dsh";
-export declare const DSH_UPDATE_TIMEOUT_MS = 180000;
-/** npm registry versions newest-first; only these can be installed with npm -g. */
-export declare function listDshInstallVersions(npmData: any): string[];
-/**
- * The `@deepseek-ai/dsh` copy this process runs from: `DSH_BIN_PATH`, else the
- * entry script (`process.argv[1]`), realpath'd and walked up to its
- * package.json. Nothing else is consulted: `$_`, PATH `dsh`, global prefixes
- * and `dsh --version` all named some *other* install (the running Homebrew
- * copy vs `npm prefix -g`), so About flipped between versions and the updater
- * chased a copy that was not the one serving the page.
- */
-export declare function resolveDshInstall(_platform?: NodeJS.Platform, env?: NodeJS.ProcessEnv, { realpathFn, readFileFn, existsSyncFn }?: {
-    realpathFn?: typeof realpathSync | undefined;
-    readFileFn?: typeof readFileSync | undefined;
-    existsSyncFn?: typeof existsSync | undefined;
-}): {
-    binPath: string;
-    realPath: string;
-    packagePath: string;
-    version: any;
-} | undefined;
-export declare function localDshInfo(platform?: NodeJS.Platform, opts?: any): {
-    version: any;
-    binPath: string | undefined;
-    realPath: string | undefined;
-    packagePath: string | undefined;
-    platform: string;
-    repo: string;
-    repoSlug: string;
-    npmPackage: string;
-};
-export declare function fetchDshLatest({ fetchFn, spawnFn, current, platform, timeoutMs, env, readFileFn, realpathFn, existsSyncFn, }?: any): Promise<{
-    version: any;
-    status: string;
-    canUpdate: boolean;
-    latestTag: {
-        tag: any;
-        version: any;
-        name: any;
-        url: any;
-        publishedAt: any;
-    } | undefined;
-    npm: {
-        version: any;
-        stable: any;
-        publishedAt: any;
-        distTags: any;
-        versions: string[];
-    } | undefined;
-    binPath: string | undefined;
-    realPath: string | undefined;
-    packagePath: string | undefined;
-    platform: string;
-    repo: string;
-    repoSlug: string;
-    npmPackage: string;
-}>;
-/**
- * npm global prefix that owns `packagePath` — `<prefix>/lib/node_modules/…`
- * on POSIX, `<prefix>/node_modules/…` on Windows. '' for pnpm / bun / unknown
- * layouts, which fall back to npm's own `prefix -g`.
- */
-export declare function dshInstallPrefix(packagePath: any, platform?: NodeJS.Platform): string;
-export declare function dshUpdateArgs(targetVersion: any, prefix?: string): string[];
-export declare function dshUpdateCommand(targetVersion: any, prefix?: string): string;
-export declare const DSH_HOST_VERSION_STAMP_RE: RegExp;
-export declare function pluginClientJsPath(): string;
-/** Write local DSH version into the served client.js static file. */
-export declare function stampDshHostVersion(clientPath: any, version: any, { readFileFn, writeFileFn }?: {
-    readFileFn?: typeof readFileSync | undefined;
-    writeFileFn?: typeof writeFileSync | undefined;
-}): boolean;
-/** Detached re-exec of this dsh web process after the listen port is free. */
-export declare function scheduleDshWebRestart({ spawnFn, env, delaySec, execPath, argv, cwd, platform, }?: {
-    spawnFn?: typeof spawn | undefined;
-    env?: NodeJS.ProcessEnv | undefined;
-    delaySec?: number | undefined;
-    execPath?: string | undefined;
-    argv?: string[] | undefined;
-    cwd?: string | undefined;
-    platform?: NodeJS.Platform | undefined;
-}): {
-    ok: boolean;
-    command: string;
-};
-export declare function applyHostDshUpdate({ spawnFn, targetVersion, timeoutMs, env, readFileFn, realpathFn, existsSyncFn, }?: any): Promise<unknown>;

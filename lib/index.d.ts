@@ -52,4 +52,4 @@ export { CONTEXT_VARIANT_SUFFIX, codexLargeContext, applyContextMode, isCodex900
 export { parseCodexUsage, parseGrokBilling, parseGlmQuota, parseKiroUsage, parseCursorPeriodUsage, parseKimiUsage, parseCopilotUsage, parseDevinUserStatus, parseResetCredits, QuotaStore } from './oauth/quota.js';
 export { fetchClineQuota, parseClineBalance, parseClinePlan, parseClineUsage } from './oauth/cline/quota.js';
 export { formatPlanLabel, CODEX_PLAN_NAMES } from './oauth/plan.js';
-export { REPO_URL, REPO_SLUG, installedVersion, fresherVersion, fetchLatest, localUpdateInfo, profileFromBaseUrl, pluginUpdateCommand, runPluginUpdate, applyHostUpdate, DSH_REPO_URL, DSH_REPO_SLUG, DSH_NPM_PACKAGE, localDshInfo, fetchDshLatest, dshUpdateCommand, dshInstallPrefix, applyHostDshUpdate, listDshInstallVersions, scheduleDshWebRestart, } from './utils/update.js';
+export { REPO_URL, REPO_SLUG, installedVersion, fresherVersion, fetchLatest, localUpdateInfo, profileFromBaseUrl, isElectronManagedProfile, pluginUpdateCommand, } from './utils/update.js';

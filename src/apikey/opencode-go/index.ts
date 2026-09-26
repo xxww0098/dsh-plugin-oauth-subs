@@ -17,8 +17,11 @@ export const OPENCODE_GO_ORIGIN = 'https://opencode.ai'
 export const OPENCODE_GO_RESPONSES_URL = 'https://opencode.ai/zen/go/v1'
 export const OPENCODE_GO_COOKIE_MASK = '••••••••'
 
-const AUTH_COOKIE_NAMES = new Set(['auth', '__host-auth'])
-const WORKSPACE_RE = /wrk_[A-Za-z0-9]+/
+// Migrated workspaces live in the Console SPA, whose session is a separate
+// cookie; unmigrated accounts still authenticate with the legacy auth cookie.
+const AUTH_COOKIE_NAMES = new Set(['auth', '__host-auth', '__host-console_session', 'console_session'])
+const WORKSPACE_ID_RE = /^(?:wrk_|org_)[A-Za-z0-9_-]+$/
+const WORKSPACE_RE = /(?:wrk_|org_)[A-Za-z0-9_-]+/
 
 export function parseOpencodeGoCookie(raw) {
   const text = String(raw ?? '').trim()
@@ -41,14 +44,15 @@ export function parseOpencodeGoCookie(raw) {
 export function normalizeOpencodeGoWorkspaceId(raw) {
   const text = String(raw ?? '').trim()
   if (!text) return undefined
-  if (/^wrk_[A-Za-z0-9]+$/.test(text)) return text
+  if (WORKSPACE_ID_RE.test(text)) return text
   try {
     const url = new URL(text)
     const parts = url.pathname.split('/').filter(Boolean)
-    const index = parts.indexOf('workspace')
-    if (index >= 0) {
+    for (const marker of ['workspace', 'console']) {
+      const index = parts.indexOf(marker)
+      if (index < 0) continue
       const candidate = parts[index + 1]
-      if (typeof candidate === 'string' && /^wrk_[A-Za-z0-9]+$/.test(candidate)) return candidate
+      if (typeof candidate === 'string' && WORKSPACE_ID_RE.test(candidate)) return candidate
     }
   } catch {
     // not a URL

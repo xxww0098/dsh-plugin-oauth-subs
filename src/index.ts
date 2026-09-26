@@ -32,7 +32,7 @@ import { copilotCatalogModels } from './oauth/copilot/catalog.js'
 import { devinCatalogModels } from './oauth/devin/catalog.js'
 import { clineCatalogModels } from './oauth/cline/catalog.js'
 import { EffortMemory, LAST_EFFORT_FILE, startEffortRestore } from './oauth/reasoning-effort.js'
-import { localDshInfo, pluginClientJsPath, profileFromBaseUrl, stampDshHostVersion } from './utils/update.js'
+import { profileFromBaseUrl } from './utils/update.js'
 import { createOutboundSession, outboundProxyPath } from './utils/outbound.js'
 
 export const name = 'dsh-plugin-oauth-subs'
@@ -121,8 +121,6 @@ export function registerRpc(ctx, controller) {
     goClear: (payload) => controller.clearOpencodeGo(payload?.field, payload?.id),
     reset: (payload) => controller.consumeReset(payload?.provider, payload?.id),
     update: (payload) => controller.checkUpdate(payload),
-    dshUpdate: (payload) => controller.checkDshUpdate(payload),
-    dshRestart: () => controller.restartDsh(),
     autoUpdate: (payload) => controller.setAutoUpdate(payload),
     proxyGet: () => controller.outboundProxy(),
     proxySet: (payload) => controller.setOutboundProxy(payload),
@@ -295,7 +293,6 @@ export function apply(ctx, config: any = {}) {
       })
     },
     profile: profileFromBaseUrl(ctx.baseUrl),
-    exitFn: (code) => process.exit(code),
   })
 
   controller.outboundProxy = async () => {
@@ -370,19 +367,16 @@ export function apply(ctx, config: any = {}) {
   }, 'dsh-plugin-oauth-subs: local responses proxy')
 
   registerRpc(ctx, controller)
-  try {
-    stampDshHostVersion(pluginClientJsPath(), localDshInfo().version)
-  } catch { /* client.js stamp is best-effort */ }
-
-  ctx.effect(() => {
-    controller.startAutoUpdateWatch()
-    return () => controller.stopAutoUpdateWatch()
-  }, 'dsh-plugin-oauth-subs: auto-update watch')
 
   ctx.effect(() => {
     controller.startTokenSweep()
     return () => controller.stopTokenSweep()
   }, 'dsh-plugin-oauth-subs: token refresh sweep')
+
+  ctx.effect(() => {
+    controller.startAutoUpdateWatch()
+    return () => controller.stopAutoUpdateWatch()
+  }, 'dsh-plugin-oauth-subs: auto-update watch')
 }
 
 export {
@@ -493,17 +487,6 @@ export {
   fetchLatest,
   localUpdateInfo,
   profileFromBaseUrl,
+  isElectronManagedProfile,
   pluginUpdateCommand,
-  runPluginUpdate,
-  applyHostUpdate,
-  DSH_REPO_URL,
-  DSH_REPO_SLUG,
-  DSH_NPM_PACKAGE,
-  localDshInfo,
-  fetchDshLatest,
-  dshUpdateCommand,
-  dshInstallPrefix,
-  applyHostDshUpdate,
-  listDshInstallVersions,
-  scheduleDshWebRestart,
 } from './utils/update.js'

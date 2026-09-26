@@ -1,7 +1,5 @@
 import assert from 'node:assert/strict'
-import { EventEmitter } from 'node:events'
-import { writeFileSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, realpath, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
@@ -716,191 +714,94 @@ function githubLatest(tag) {
   }), { status: 200, headers: { 'content-type': 'application/json' } })
 }
 
-function spawnChild(code = 0) {
-  const child = new EventEmitter()
-  child.stdout = new EventEmitter()
-  child.stderr = new EventEmitter()
-  child.kill = () => undefined
-  queueMicrotask(() => child.emit('close', code))
-  return child
-}
-
-test('checkUpdate compare-only never spawns dsh', async () => {
+test('checkUpdate compare-only never installs; apply forwards the tag to installRelease', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
-  let spawned = 0
-  let running = '0.0.1'
+  const installs = []
   const controller = new AuthController({
     authPath: join(dir, 'auth.json'),
     prefix: 'oauth',
     origin: () => 'http://127.0.0.1:8318',
     settings: { mutate: async () => undefined },
     fetchFn: githubLatest('v9.9.9'),
-    spawnFn: () => { spawned += 1; running = '9.9.9'; return spawnChild(0) },
     profile: 'web',
     updateEnv: { DSH_HOME: dir },
-    readFileFn: (path) => {
-      const p = String(path).replace(/\\/g, '/')
-      if (p.includes('/node_modules/dsh-plugin-oauth-subs/package.json')) {
-        return JSON.stringify({ version: running })
-      }
-      return JSON.stringify({ version: running })
+    readFileFn: () => JSON.stringify({ version: '0.0.1' }),
+    installReleaseFn: async (opts) => {
+      installs.push(opts)
+      return { status: 'installed', version: '9.9.9', restart: 'host' }
     },
   })
   const check = await controller.checkUpdate({ apply: false })
   assert.equal(check.status, 'update')
   assert.equal(check.version, '0.0.1')
   assert.equal(check.apply.status, 'none')
-  assert.equal(spawned, 0)
-  const current = await controller.checkUpdate({ apply: true })
-  assert.equal(current.apply.status, 'installed')
-  assert.equal(current.apply.restart, true)
-  assert.equal(current.version, '9.9.9')
-  assert.match(current.apply.command, /dsh plugin --profile web (update dsh-plugin-oauth-subs|add https:\/\/github.com\/xxww0098\/dsh-plugin-oauth-subs#v9\.9\.9)/)
-  assert.equal(spawned >= 1, true)
+  assert.equal(installs.length, 0)
+  const apply = await controller.checkUpdate({ apply: true })
+  assert.equal(apply.status, 'update')
+  assert.equal(apply.apply.status, 'installed')
+  assert.equal(apply.apply.restart, 'host')
+  assert.equal(installs[0].tag, 'v9.9.9')
+  assert.equal(installs[0].profile, 'web')
 })
 
-test('checkUpdate manual apply schedules a restart like auto-update does', async () => {
+test('checkUpdate apply reports manual instructions when no installed copy exists', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
-  let running = '0.0.1'
-  const seen = []
   const controller = new AuthController({
     authPath: join(dir, 'auth.json'),
     prefix: 'oauth',
     origin: () => 'http://127.0.0.1:8318',
     settings: { mutate: async () => undefined },
     fetchFn: githubLatest('v9.9.9'),
-    spawnFn: (cmd, args) => { seen.push({ cmd, args }); running = '9.9.9'; return spawnChild(0) },
-    profile: 'web',
-    updateEnv: { DSH_HOME: dir },
-    readFileFn: () => JSON.stringify({ version: running }),
-  })
-  const result = await controller.checkUpdate({ apply: true })
-  assert.equal(result.apply.status, 'installed')
-  assert.equal(result.apply.restart, true)
-  assert.equal(seen.some((row) => row.cmd === '/bin/sh'), true)
-})
-
-test('checkUpdate apply with restart:false installs without scheduling a restart', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
-  let running = '0.0.1'
-  const seen = []
-  const controller = new AuthController({
-    authPath: join(dir, 'auth.json'),
-    prefix: 'oauth',
-    origin: () => 'http://127.0.0.1:8318',
-    settings: { mutate: async () => undefined },
-    fetchFn: githubLatest('v9.9.9'),
-    spawnFn: (cmd, args) => { seen.push({ cmd, args }); running = '9.9.9'; return spawnChild(0) },
-    profile: 'web',
-    updateEnv: { DSH_HOME: dir },
-    readFileFn: () => JSON.stringify({ version: running }),
-  })
-  const result = await controller.checkUpdate({ apply: true, restart: false })
-  assert.equal(result.apply.status, 'installed')
-  assert.equal(result.apply.restart, false)
-  assert.equal(seen.some((row) => row.cmd === '/bin/sh'), false)
-})
-
-test('runAutoUpdate records the last run into update-state.json', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
-  const controller = new AuthController({
-    authPath: join(dir, 'auth.json'),
-    prefix: 'oauth',
-    origin: () => 'http://127.0.0.1:8318',
-    settings: { mutate: async () => undefined },
-    fetchFn: githubLatest(`v${installedVersion()}`),
-    spawnFn: () => spawnChild(0),
-    profile: 'web',
-    updateEnv: { DSH_HOME: dir },
-  })
-  await controller.setAutoUpdate({ plugin: true })
-  const state = JSON.parse(await readFile(join(dir, 'update-state.json'), 'utf8'))
-  assert.equal(typeof state.at, 'string')
-  assert.equal(state.plugin.status, 'current')
-  const snap = await controller.snapshot()
-  assert.equal(snap.autoUpdateState.plugin.status, 'current')
-})
-
-test('checkUpdate re-reads installed version after a successful apply', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
-  let running = '0.0.70'
-  const controller = new AuthController({
-    authPath: join(dir, 'auth.json'),
-    prefix: 'oauth',
-    origin: () => 'http://127.0.0.1:8318',
-    settings: { mutate: async () => undefined },
-    fetchFn: githubLatest('v0.0.71'),
-    spawnFn: () => { running = '0.0.71'; return spawnChild(0) },
-    profile: 'web',
-    updateEnv: { DSH_HOME: dir },
-    readFileFn: () => JSON.stringify({ version: running }),
-  })
-  const before = await controller.checkUpdate({ apply: false })
-  assert.equal(before.version, '0.0.70')
-  assert.equal(before.status, 'update')
-  const after = await controller.checkUpdate({ apply: true })
-  assert.equal(after.apply.status, 'installed')
-  assert.equal(after.version, '0.0.71')
-  assert.notEqual(after.version, before.version)
-})
-
-test('checkUpdate does not claim installed when dsh exits 0 but version stays', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
-  let spawned = 0
-  const controller = new AuthController({
-    authPath: join(dir, 'auth.json'),
-    prefix: 'oauth',
-    origin: () => 'http://127.0.0.1:8318',
-    settings: { mutate: async () => undefined },
-    fetchFn: githubLatest('v9.9.9'),
-    spawnFn: () => { spawned += 1; return spawnChild(0) },
     profile: 'web',
     updateEnv: { DSH_HOME: dir },
     readFileFn: () => JSON.stringify({ version: '0.0.1' }),
+    installReleaseFn: async () => ({
+      status: 'manual',
+      command: 'dsh plugin --profile web update dsh-plugin-oauth-subs',
+    }),
   })
   const result = await controller.checkUpdate({ apply: true })
   assert.equal(result.status, 'update')
-  assert.equal(result.apply.status, 'unchanged')
-  assert.match(result.apply.error, /still 0\.0\.1/)
-  assert.match(result.apply.command, /dsh plugin --profile web add /)
-  assert.equal(spawned, 2)
+  assert.equal(result.apply.status, 'manual')
+  assert.match(result.apply.command, /dsh plugin --profile web update/)
 })
 
-test('checkUpdate does not reinstall when already current', async () => {
+test('checkUpdate apply on desktop self-installs and asks for an app restart', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
-  let spawned = 0
+  const controller = new AuthController({
+    authPath: join(dir, 'auth.json'),
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+    fetchFn: githubLatest('v9.9.9'),
+    profile: 'desktop',
+    updateEnv: { DSH_HOME: dir },
+    readFileFn: () => JSON.stringify({ version: '0.0.1' }),
+    installReleaseFn: async ({ profile }) => {
+      assert.equal(profile, 'desktop')
+      return { status: 'installed', version: '9.9.9', restart: 'app' }
+    },
+  })
+  const result = await controller.checkUpdate({ apply: true })
+  assert.equal(result.status, 'update')
+  assert.equal(result.apply.status, 'installed')
+  assert.equal(result.apply.restart, 'app')
+})
+
+test('checkUpdate apply when already current reports no-op', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
   const controller = new AuthController({
     authPath: join(dir, 'auth.json'),
     prefix: 'oauth',
     origin: () => 'http://127.0.0.1:8318',
     settings: { mutate: async () => undefined },
     fetchFn: githubLatest(`v${installedVersion()}`),
-    spawnFn: () => { spawned += 1; return spawnChild(0) },
     profile: 'web',
     updateEnv: { DSH_HOME: dir },
   })
   const result = await controller.checkUpdate({ apply: true })
   assert.equal(result.status, 'current')
   assert.equal(result.apply.status, 'none')
-  assert.equal(spawned, 0)
-})
-
-test('checkUpdate reports a failed dsh plugin update', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
-  const controller = new AuthController({
-    authPath: join(dir, 'auth.json'),
-    prefix: 'oauth',
-    origin: () => 'http://127.0.0.1:8318',
-    settings: { mutate: async () => undefined },
-    fetchFn: githubLatest('v9.9.9'),
-    spawnFn: () => spawnChild(1),
-    profile: 'web',
-    updateEnv: { DSH_HOME: dir },
-  })
-  const result = await controller.checkUpdate({ apply: true })
-  assert.equal(result.status, 'update')
-  assert.equal(result.apply.status, 'failed')
-  assert.match(result.apply.command, /dsh plugin --profile web (update|add)/)
 })
 
 test('checkUpdate stays update when disk is latest but this process is older', async () => {
@@ -915,7 +816,6 @@ test('checkUpdate stays update when disk is latest but this process is older', a
     origin: () => 'http://127.0.0.1:8318',
     settings: { mutate: async () => undefined },
     fetchFn: githubLatest('v9.9.9'),
-    spawnFn: () => spawnChild(0),
     profile: 'web',
     updateEnv: { DSH_HOME: home },
   })
@@ -929,7 +829,7 @@ test('checkUpdate stays update when disk is latest but this process is older', a
   assert.equal(result.version, installedVersion())
 })
 
-test('controller.snapshot includes dshUpdate info', async () => {
+test('controller.snapshot exposes plugin update info only — no host-cli state', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
   const controller = new AuthController({
     authPath: join(dir, 'auth.json'),
@@ -938,250 +838,65 @@ test('controller.snapshot includes dshUpdate info', async () => {
     settings: { mutate: async () => undefined },
   })
   const snap = await controller.snapshot()
-  assert.equal(typeof snap.dshUpdate, 'object')
-  assert.equal(snap.dshUpdate.repoSlug, 'deepseek-ai/deepseek-harness')
-  assert.equal(snap.dshUpdate.npmPackage, '@deepseek-ai/dsh')
+  assert.equal(typeof snap.update, 'object')
+  assert.equal(snap.update.repoSlug, 'xxww0098/dsh-plugin-oauth-subs')
+  assert.equal(snap.dshUpdate, undefined)
+  assert.equal(snap.autoUpdate, false)
+  assert.equal(snap.autoUpdateState, undefined)
 })
 
-/** `<root>/bin/dsh -> <root>/lib/node_modules/@deepseek-ai/dsh/lib/bin.js`, the npm -g layout. */
-async function fakeDshInstall(version) {
-  const root = await realpath(await mkdtemp(join(tmpdir(), 'dsh-prefix-')))
-  const pkgDir = join(root, 'lib', 'node_modules', '@deepseek-ai', 'dsh')
-  await mkdir(join(pkgDir, 'lib'), { recursive: true })
-  await mkdir(join(root, 'bin'), { recursive: true })
-  await writeFile(join(pkgDir, 'lib', 'bin.js'), '')
-  await symlink(join(pkgDir, 'lib', 'bin.js'), join(root, 'bin', 'dsh'))
-  const write = (next) => writeFileSync(join(pkgDir, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh', version: next }))
-  write(version)
-  return { root, bin: join(root, 'bin', 'dsh'), write }
-}
-
-const dshRegistry = (latest, extra = {}) => async (url) => {
-  const s = String(url)
-  if (s.includes('/tags')) return new Response(JSON.stringify([{ name: `dsh-v${latest}` }]))
-  if (s.includes('registry.npmjs.org')) {
-    const versions = Object.fromEntries([latest, ...Object.values(extra)].map((v) => [v, {}]))
-    return new Response(JSON.stringify({ 'dist-tags': { latest, ...extra }, versions }))
-  }
-  return new Response('{}')
-}
-
-test('checkDshUpdate compare-only fetches info without spawning npm', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
-  const dsh = await fakeDshInstall('0.1.2')
-  let spawned = false
-  const controller = new AuthController({
-    authPath: join(dir, 'auth.json'),
-    prefix: 'oauth',
-    origin: () => 'http://127.0.0.1:8318',
-    settings: { mutate: async () => undefined },
-    fetchFn: dshRegistry('0.1.3'),
-    updateEnv: { DSH_BIN_PATH: dsh.bin, PATH: '' },
-    spawnFn: () => { spawned = true; throw new Error('spawn') },
-  })
-  const info = await controller.checkDshUpdate({ apply: false })
-  assert.equal(spawned, false)
-  assert.equal(info.status, 'update')
-  assert.equal(info.canUpdate, true)
-  assert.equal(info.apply.status, 'none')
-})
-
-test('checkDshUpdate with apply: true installs into the running prefix and restarts once the copy matches', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
-  const dsh = await fakeDshInstall('0.1.2')
-  const seen = []
-  const controller = new AuthController({
-    authPath: join(dir, 'auth.json'),
-    prefix: 'oauth',
-    origin: () => 'http://127.0.0.1:8318',
-    settings: { mutate: async () => undefined },
-    fetchFn: dshRegistry('0.1.3'),
-    updateEnv: { DSH_BIN_PATH: dsh.bin, PATH: '' },
-    spawnFn: (cmd, args) => {
-      seen.push({ cmd, args })
-      if (cmd === 'npm') dsh.write('0.1.3')
-      return spawnChild(0)
-    },
-  })
-  const result = await controller.checkDshUpdate({ apply: true })
-  assert.equal(result.apply.status, 'installed')
-  assert.equal(result.apply.restart, true)
-  assert.equal(result.version, '0.1.3')
-  assert.equal(result.status, 'current')
-  assert.equal(seen[0].cmd, 'npm')
-  assert.deepEqual(seen[0].args, ['install', '-g', '--prefix', dsh.root, '@deepseek-ai/dsh@0.1.3'])
-  assert.equal(seen[1].cmd, '/bin/sh')
-})
-
-test('checkDshUpdate never restarts when npm exits 0 but the running copy is unchanged', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
-  const dsh = await fakeDshInstall('0.1.2-alpha.5')
-  const seen = []
-  let exited = false
-  const controller = new AuthController({
-    authPath: join(dir, 'auth.json'),
-    prefix: 'oauth',
-    origin: () => 'http://127.0.0.1:8318',
-    settings: { mutate: async () => undefined },
-    fetchFn: dshRegistry('0.1.2-rc.1', { alpha: '0.1.2-alpha.5' }),
-    updateEnv: { DSH_BIN_PATH: dsh.bin, PATH: '' },
-    exitFn: () => { exited = true },
-    spawnFn: (cmd, args) => {
-      seen.push({ cmd, args })
-      return spawnChild(0)
-    },
-  })
-  const result = await controller.checkDshUpdate({ apply: true })
-  assert.equal(result.apply.status, 'installed-unchanged')
-  assert.equal(result.apply.restart, false)
-  assert.equal(result.version, '0.1.2-alpha.5')
-  assert.equal(result.status, 'update')
-  assert.equal(seen.length, 1)
-  await new Promise((resolve) => setTimeout(resolve, 300))
-  assert.equal(exited, false)
-})
-
-test('restartDsh schedules a detached dsh web re-exec and exits the old process', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
-  const seen: any[] = []
-  let exited = false
-  const controller = new AuthController({
-    authPath: join(dir, 'auth.json'),
-    prefix: 'oauth',
-    origin: () => 'http://127.0.0.1:8318',
-    settings: { mutate: async () => undefined },
-    exitFn: () => { exited = true },
-    spawnFn: (cmd, args) => { seen.push({ cmd, args }); return spawnChild(0) },
-  })
-  const result = await controller.restartDsh()
-  assert.equal(result.ok, true)
-  assert.equal(result.restart, true)
-  assert.equal(typeof result.command, 'string')
-  assert.equal(seen.length, 1)
-  await new Promise((resolve) => setTimeout(resolve, 300))
-  assert.equal(exited, true)
-})
-
-test('checkDshUpdate apply rolls back to an older npm version', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
-  const dsh = await fakeDshInstall('0.1.2-rc.1')
-  const seen = []
-  const controller = new AuthController({
-    authPath: join(dir, 'auth.json'),
-    prefix: 'oauth',
-    origin: () => 'http://127.0.0.1:8318',
-    settings: { mutate: async () => undefined },
-    fetchFn: dshRegistry('0.1.2-rc.1', { alpha: '0.1.2-alpha.5' }),
-    updateEnv: { DSH_BIN_PATH: dsh.bin, PATH: '' },
-    spawnFn: (cmd, args) => {
-      seen.push({ cmd, args })
-      if (cmd === 'npm') dsh.write('0.1.2-alpha.5')
-      return spawnChild(0)
-    },
-  })
-  const result = await controller.checkDshUpdate({ apply: true, targetVersion: '0.1.2-alpha.5' })
-  assert.equal(seen[0].cmd, 'npm')
-  assert.deepEqual(seen[0].args, ['install', '-g', '--prefix', dsh.root, '@deepseek-ai/dsh@0.1.2-alpha.5'])
-  assert.equal(result.apply.status, 'installed')
-  assert.equal(result.apply.restart, true)
-  assert.equal(result.version, '0.1.2-alpha.5')
-})
-
-test('snapshot includes autoUpdate prefs defaulting to off', async () => {
+test('setAutoUpdate persists the switch and snapshot exposes it', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
   const controller = new AuthController({
     authPath: join(dir, 'auth.json'),
     prefix: 'oauth',
     origin: () => 'http://127.0.0.1:8318',
     settings: { mutate: async () => undefined },
+    fetchFn: githubLatest(`v${installedVersion()}`),
+    updateEnv: { DSH_HOME: dir },
   })
+  const on = await controller.setAutoUpdate({ autoUpdate: true })
+  assert.equal(on.autoUpdate, true)
+  const prefs = JSON.parse(await readFile(join(dir, 'update-prefs.json'), 'utf8'))
+  assert.equal(prefs.autoUpdate, true)
   const snap = await controller.snapshot()
-  assert.deepEqual(snap.autoUpdate, { plugin: false, dsh: false })
+  assert.equal(snap.autoUpdate, true)
+  await controller.setAutoUpdate({ autoUpdate: false })
+  const off = await controller.snapshot()
+  assert.equal(off.autoUpdate, false)
 })
 
-test('setAutoUpdate persists plugin and dsh flags independently', async () => {
+test('runAutoUpdate installs a newer tag and records the outcome', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const installs = []
   const controller = new AuthController({
     authPath: join(dir, 'auth.json'),
     prefix: 'oauth',
     origin: () => 'http://127.0.0.1:8318',
     settings: { mutate: async () => undefined },
-    spawnFn: () => { throw new Error('spawn') },
-    fetchFn: async () => new Response('{}'),
-  })
-  const pluginOn = await controller.setAutoUpdate({ plugin: true })
-  assert.deepEqual(pluginOn, { plugin: true, dsh: false })
-  const both = await controller.setAutoUpdate({ dsh: true })
-  assert.deepEqual(both, { plugin: true, dsh: true })
-  const pluginOff = await controller.setAutoUpdate({ plugin: false })
-  assert.deepEqual(pluginOff, { plugin: false, dsh: true })
-  const snap = await controller.snapshot()
-  assert.deepEqual(snap.autoUpdate, { plugin: false, dsh: true })
-})
-
-test('runAutoUpdate applies DSH when checkbox is on and npm has a newer version', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
-  const dsh = await fakeDshInstall('0.1.2')
-  const seen = []
-  const fetchFn = async (url) => {
-    const s = String(url)
-    if (s.includes('/tags')) return new Response(JSON.stringify([{ name: 'dsh-v0.1.3' }]))
-    if (s.includes('registry.npmjs.org')) {
-      return new Response(JSON.stringify({ 'dist-tags': { latest: '0.1.3' }, versions: { '0.1.3': {} } }))
-    }
-    if (s.includes('/releases/latest')) {
-      return new Response(JSON.stringify({ tag_name: 'v0.0.78', published_at: '2026-09-06T00:00:00Z' }))
-    }
-    return new Response('{}')
-  }
-  const controller = new AuthController({
-    authPath: join(dir, 'auth.json'),
-    prefix: 'oauth',
-    origin: () => 'http://127.0.0.1:8318',
-    settings: { mutate: async () => undefined },
-    fetchFn,
-    updateEnv: { DSH_BIN_PATH: dsh.bin, PATH: '' },
-    spawnFn: (cmd, args) => {
-      seen.push({ cmd, args })
-      if (cmd === 'npm') dsh.write('0.1.3')
-      return spawnChild(0)
+    fetchFn: githubLatest('v9.9.9'),
+    profile: 'desktop',
+    updateEnv: { DSH_HOME: dir },
+    readFileFn: () => JSON.stringify({ version: '0.0.1' }),
+    installReleaseFn: async ({ tag }) => {
+      installs.push(tag)
+      return { status: 'installed', version: '9.9.9', restart: 'app' }
     },
   })
-  // Turning the checkbox on runs one auto-update, which installs; the next tick sees a current copy and does nothing.
-  const first = await controller.setAutoUpdate({ dsh: true })
-  assert.equal(first.dsh, true)
+  const skipped = await controller.runAutoUpdate()
+  assert.equal(skipped.skipped, true)
+  assert.equal(installs.length, 0)
+  await controller.setAutoUpdate({ autoUpdate: true })
+  await controller.runAutoUpdate()
   const result = await controller.runAutoUpdate()
-  assert.equal(seen.filter((row) => row.cmd === 'npm' && row.args.includes('@deepseek-ai/dsh@0.1.3')).length, 1)
-  assert.equal(result.dsh.status, 'current')
-  assert.equal(result.dsh.apply.status, 'none')
-})
-
-test('runAutoUpdate skips a target that never reached the running copy; a click retries it', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
-  const dsh = await fakeDshInstall('0.1.2-alpha.5')
-  const seen = []
-  const controller = new AuthController({
-    authPath: join(dir, 'auth.json'),
-    prefix: 'oauth',
-    origin: () => 'http://127.0.0.1:8318',
-    settings: { mutate: async () => undefined },
-    fetchFn: dshRegistry('0.1.2-rc.1', { alpha: '0.1.2-alpha.5' }),
-    updateEnv: { DSH_BIN_PATH: dsh.bin, PATH: '' },
-    spawnFn: (cmd, args) => {
-      seen.push({ cmd, args })
-      return spawnChild(0)
-    },
-  })
-  const npmRuns = () => seen.filter((row) => row.cmd === 'npm').length
-  await controller.setAutoUpdate({ dsh: true })
-  assert.equal(npmRuns(), 1)
-  const tick = await controller.runAutoUpdate()
-  assert.equal(npmRuns(), 1)
-  assert.equal(tick.dsh.apply.status, 'none')
-  const click = await controller.checkDshUpdate({ apply: true, targetVersion: '0.1.2-rc.1' })
-  assert.equal(npmRuns(), 2)
-  assert.equal(click.apply.status, 'installed-unchanged')
-  assert.equal(click.apply.restart, false)
+  assert.equal(result.apply.status, 'installed')
+  assert.equal(installs.length >= 1, true)
+  assert.equal(installs[0], 'v9.9.9')
+  const state = JSON.parse(await readFile(join(dir, 'update-state.json'), 'utf8'))
+  assert.equal(state.status, 'installed')
+  assert.equal(typeof state.at, 'string')
+  const snap = await controller.snapshot()
+  assert.equal(snap.autoUpdateState.status, 'installed')
 })
 
 

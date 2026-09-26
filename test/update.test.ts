@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -11,10 +12,12 @@ import {
   formatPublishedAt,
   fresherVersion,
   hostPlatform,
+  installedPackageDirs,
   installedVersion,
-  pickDownloads,
-  applyHostUpdate,
+  installRelease,
+  isElectronManagedProfile,
   localUpdateInfo,
+  pickDownloads,
   pluginAddArgs,
   pluginUpdateArgs,
   pluginUpdateCommand,
@@ -22,25 +25,11 @@ import {
   profilePluginPackageJson,
   readPackageVersion,
   releaseInstallSource,
-  runPluginUpdate,
-  versionAdvanced,
+  releaseTarballUrl,
   workaroundCommand,
   REPO_URL,
   REPO_SLUG,
   RELEASES_API,
-  DSH_REPO_URL,
-  DSH_REPO_SLUG,
-  DSH_NPM_PACKAGE,
-  resolveDshInstall,
-  localDshInfo,
-  fetchDshLatest,
-  dshUpdateArgs,
-  dshUpdateCommand,
-  dshInstallPrefix,
-  applyHostDshUpdate,
-  listDshInstallVersions,
-  scheduleDshWebRestart,
-  stampDshHostVersion,
 } from '../lib/utils/update.js'
 
 test('hostPlatform maps node platforms', () => {
@@ -62,7 +51,15 @@ test('compareVersions orders semver tags', () => {
   assert.equal(compareVersions('0.0.14', '0.0.15') < 0, true)
 })
 
-test('installedVersion re-reads package.json and never falls back to a module-load freeze', () => {
+test('compareVersions handles prerelease semver comparisons correctly', () => {
+  assert.equal(compareVersions('0.1.3-alpha.1', '0.1.2-rc.1') > 0, true)
+  assert.equal(compareVersions('0.1.2-rc.1', '0.1.2-alpha.5') > 0, true)
+  assert.equal(compareVersions('0.1.2', '0.1.2-rc.1') > 0, true)
+  assert.equal(compareVersions('0.1.2-rc.1', '0.1.2') < 0, true)
+  assert.equal(compareVersions('dsh-v0.1.3-alpha.1', '0.1.3-alpha.1'), 0)
+})
+
+test('installedVersion accepts injected manifest reads for diagnostics', () => {
   assert.equal(installedVersion({ readFileFn: () => { throw new Error('no') } }), '')
   assert.equal(installedVersion({ readFileFn: () => '{"version":"0.0.70"}' }), '0.0.70')
   assert.equal(installedVersion({ readFileFn: () => '{"version":"0.0.71"}' }), '0.0.71')
@@ -138,6 +135,13 @@ test('profileFromBaseUrl reads $DSH_HOME/profiles/<name>', () => {
   assert.equal(profileFromBaseUrl(undefined), 'web')
 })
 
+test('isElectronManagedProfile flags only the desktop profile', () => {
+  assert.equal(isElectronManagedProfile('desktop'), true)
+  assert.equal(isElectronManagedProfile('web'), false)
+  assert.equal(isElectronManagedProfile('headless'), false)
+  assert.equal(isElectronManagedProfile(undefined), false)
+})
+
 test('pluginUpdateArgs targets this package on the named profile', () => {
   assert.deepEqual(pluginUpdateArgs('web'), ['plugin', '--profile', 'web', 'update', 'dsh-plugin-oauth-subs'])
   assert.equal(pluginUpdateCommand('web'), 'dsh plugin --profile web update dsh-plugin-oauth-subs')
@@ -195,6 +199,28 @@ test('fetchLatest stays update when the process is behind even if disk matches G
   assert.equal(update.disk, '0.0.71')
 })
 
+function fakeChild({ code = 0, error, stderr = '', stdout = '' } = {}) {
+  return (_cmd, _args, _opts) => {
+    const child = new EventEmitter()
+    child.stdout = new EventEmitter()
+    child.stderr = new EventEmitter()
+    child.kill = () => undefined
+    queueMicrotask(() => {
+      if (stdout) child.stdout.emit('data', stdout)
+      if (stderr) child.stderr.emit('data', stderr)
+      if (error) child.emit('error', error)
+      else child.emit('close', code)
+    })
+    return child
+  }
+}
+
+function missingGh() {
+  const err = new Error('spawn gh ENOENT')
+  err.code = 'ENOENT'
+  throw err
+}
+
 test('fetchLatest uses github.com latest redirect after API 403', async () => {
   const calls = []
   const fetchFn = async (url, init) => {
@@ -223,57 +249,6 @@ test('fetchLatest sends GITHUB_TOKEN as Bearer on the API request', async () => 
   await fetchLatest({ fetchFn, current: '0.0.84', env: { GITHUB_TOKEN: 'ghs_test' } })
   assert.equal(calls[0], 'Bearer ghs_test')
 })
-
-test('fetchDshLatest uses github.com latest redirect after tags API 403', async () => {
-  const fetchFn = async (url, init) => {
-    const s = String(url)
-    if (s.includes('api.github.com')) return new Response('rate limit', { status: 403 })
-    if (s.includes('registry.npmjs.org')) {
-      return new Response(JSON.stringify({ 'dist-tags': { latest: '0.1.2-rc.1' } }))
-    }
-    if (s.includes('/releases/latest') && init?.redirect === 'manual') {
-      return new Response(null, {
-        status: 302,
-        headers: { location: `${DSH_REPO_URL}/releases/tag/dsh-v0.1.5-alpha.2` },
-      })
-    }
-    return new Response('{}')
-  }
-  const info = await fetchDshLatest({ fetchFn, spawnFn: missingGh, current: '0.1.5-alpha.2', env: { PATH: '' } })
-  assert.equal(info.latestTag?.tag, 'dsh-v0.1.5-alpha.2')
-  assert.equal(info.npm?.version, '0.1.2-rc.1')
-})
-
-test('readPackageVersion and versionAdvanced require a real bump', () => {
-  assert.equal(readPackageVersion('/nope.json', { readFileFn: () => { throw new Error('missing') } }), '')
-  assert.equal(readPackageVersion('/x.json', { readFileFn: () => '{"version":"0.0.71"}' }), '0.0.71')
-  assert.equal(versionAdvanced('0.0.70', '0.0.70', '0.0.71'), false)
-  assert.equal(versionAdvanced('0.0.70', '0.0.71', '0.0.71'), true)
-  assert.equal(versionAdvanced('', '0.0.71', '0.0.71'), true)
-  assert.equal(versionAdvanced('', '', '0.0.71'), false)
-})
-
-function fakeChild({ code = 0, error, stderr = '', stdout = '' } = {}) {
-  return (_cmd, _args, _opts) => {
-    const child = new EventEmitter()
-    child.stdout = new EventEmitter()
-    child.stderr = new EventEmitter()
-    child.kill = () => undefined
-    queueMicrotask(() => {
-      if (stdout) child.stdout.emit('data', stdout)
-      if (stderr) child.stderr.emit('data', stderr)
-      if (error) child.emit('error', error)
-      else child.emit('close', code)
-    })
-    return child
-  }
-}
-
-function missingGh() {
-  const err = new Error('spawn gh ENOENT')
-  err.code = 'ENOENT'
-  throw err
-}
 
 test('fetchLatest uses gh api after GitHub API 403', async () => {
   const seen = []
@@ -307,483 +282,121 @@ test('fetchLatest uses gh api after GitHub API 403', async () => {
   assert.deepEqual(seen[0].args, ['api', `repos/${REPO_SLUG}/releases/latest`])
 })
 
-test('fetchDshLatest uses gh api after tags API 403', async () => {
-  const seen = []
-  const fetchFn = async (url) => {
-    if (String(url).includes('api.github.com')) return new Response('rate limit', { status: 403 })
-    if (String(url).includes('registry.npmjs.org')) {
-      return new Response(JSON.stringify({ 'dist-tags': { latest: '0.1.2-rc.1' } }))
-    }
-    return new Response('nope', { status: 404 })
-  }
-  const spawnFn = (cmd, args) => {
-    seen.push({ cmd, args })
-    return fakeChild({
-      code: 0,
-      stdout: JSON.stringify([{ name: 'dsh-v0.1.5-alpha.2' }]),
-    })()
-  }
-  const info = await fetchDshLatest({ fetchFn, spawnFn, current: '0.1.5-alpha.2', env: { PATH: '' } })
-  assert.equal(info.latestTag?.tag, 'dsh-v0.1.5-alpha.2')
-  assert.equal(seen[0].cmd, 'gh')
-  assert.deepEqual(seen[0].args, ['api', `repos/${DSH_REPO_SLUG}/tags`])
+test('readPackageVersion returns the manifest version or empty', () => {
+  assert.equal(readPackageVersion('/nope.json', { readFileFn: () => { throw new Error('missing') } }), '')
+  assert.equal(readPackageVersion('/x.json', { readFileFn: () => '{"version":"0.0.71"}' }), '0.0.71')
 })
 
-test('runPluginUpdate spawns PATH dsh and reports spawn success', async () => {
-  const seen = []
-  const spawnFn = (cmd, args, opts) => {
-    seen.push({ cmd, args, cwd: opts.cwd, stdio: opts.stdio })
-    return fakeChild({ code: 0 })(cmd, args, opts)
-  }
-  const result = await runPluginUpdate({ spawnFn, profile: 'web', env: { DSH_HOME: process.cwd() } })
-  assert.equal(result.ok, true)
-  assert.equal(result.status, 'spawned')
-  assert.equal(result.command, 'dsh plugin --profile web update dsh-plugin-oauth-subs')
-  assert.equal(seen[0].cmd, 'dsh')
-  assert.deepEqual(seen[0].args, ['plugin', '--profile', 'web', 'update', 'dsh-plugin-oauth-subs'])
+test('releaseTarballUrl pins the tag to the GitHub source archive', () => {
+  assert.equal(releaseTarballUrl('v0.0.104'), `${REPO_URL}/archive/refs/tags/v0.0.104.tar.gz`)
+  assert.equal(releaseTarballUrl('0.0.104'), `${REPO_URL}/archive/refs/tags/v0.0.104.tar.gz`)
+  assert.equal(releaseTarballUrl('garbage'), undefined)
 })
 
-test('runPluginUpdate spawns the running DSH binary when PATH has no dsh', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'dsh-bin-'))
-  await writeFile(join(dir, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh', version: '0.1.5-alpha.1' }))
-  const bin = join(dir, 'dsh')
-  await writeFile(bin, '#!/bin/sh\n')
-  const seen = []
-  const spawnFn = (cmd, args, opts) => {
-    seen.push({ cmd, args })
-    return fakeChild({ code: 0 })(cmd, args, opts)
-  }
-  const result = await runPluginUpdate({
-    spawnFn,
-    profile: 'web',
-    env: { DSH_HOME: process.cwd(), DSH_BIN_PATH: bin, PATH: '' },
-  })
-  assert.equal(result.ok, true)
-  assert.equal(seen[0].cmd, bin)
-  assert.deepEqual(seen[0].args, ['plugin', '--profile', 'web', 'update', 'dsh-plugin-oauth-subs'])
-  assert.equal(result.command, `${bin} plugin --profile web update dsh-plugin-oauth-subs`)
-})
-
-test('runPluginUpdate runs a .js DSH entry with process.execPath', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'dsh-js-'))
-  await writeFile(join(dir, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh', version: '0.1.5-alpha.1' }))
-  const bin = join(dir, 'cli.js')
-  await writeFile(bin, '#!/usr/bin/env node\n')
-  const seen = []
-  const spawnFn = (cmd, args, opts) => {
-    seen.push({ cmd, args })
-    return fakeChild({ code: 0 })(cmd, args, opts)
-  }
-  const execPath = '/usr/bin/node'
-  const result = await runPluginUpdate({
-    spawnFn,
-    profile: 'web',
-    execPath,
-    env: { DSH_HOME: process.cwd(), DSH_BIN_PATH: bin, PATH: '' },
-  })
-  assert.equal(result.ok, true)
-  assert.equal(seen[0].cmd, execPath)
-  assert.deepEqual(seen[0].args, [bin, 'plugin', '--profile', 'web', 'update', 'dsh-plugin-oauth-subs'])
-})
-
-function versionReader(versions) {
-  let i = 0
-  return () => JSON.stringify({ version: versions[Math.min(i++, versions.length - 1)] })
+async function fakeInstalledCopy(home, profile = 'desktop', version = '0.0.103') {
+  const dir = join(home, 'profiles', profile, 'node_modules', 'dsh-plugin-oauth-subs')
+  await mkdir(join(dir, 'lib'), { recursive: true })
+  await writeFile(join(dir, 'package.json'), JSON.stringify({ name: 'dsh-plugin-oauth-subs', version }))
+  await writeFile(join(dir, 'lib', 'stale-marker.txt'), 'old file that must not survive')
+  return dir
 }
 
-test('applyHostUpdate reports installed only when the on-disk version advanced', async () => {
-  let diskReads = 0
-  const result = await applyHostUpdate({
-    spawnFn: fakeChild({ code: 0 }),
+test('installedPackageDirs lists the profile copy and shared copies, deduped', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'dsh-home-'))
+  const dir = await fakeInstalledCopy(home)
+  const shared = join(home, 'profiles', 'node_modules', 'dsh-plugin-oauth-subs')
+  await mkdir(shared, { recursive: true })
+  await writeFile(join(shared, 'package.json'), JSON.stringify({ name: 'dsh-plugin-oauth-subs', version: '0.0.1' }))
+  const dirs = installedPackageDirs('desktop', { DSH_HOME: home }, { resolveFn: () => undefined })
+  assert.equal(dirs.length, 2)
+  assert.equal(dirs.includes(dir), true)
+  assert.equal(dirs.includes(shared), true)
+  assert.deepEqual(installedPackageDirs('desktop', { DSH_HOME: join(home, 'nope') }, { resolveFn: () => undefined }), [])
+})
+
+test('installRelease swaps every installed copy for the tag tarball', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'dsh-home-'))
+  const dir = await fakeInstalledCopy(home)
+  const shared = join(home, 'profiles', 'node_modules', 'dsh-plugin-oauth-subs')
+  await mkdir(shared, { recursive: true })
+  await writeFile(join(shared, 'package.json'), JSON.stringify({ name: 'dsh-plugin-oauth-subs', version: '0.0.1' }))
+  const seen = []
+  const fetchFn = async (url) => {
+    seen.push(String(url))
+    return new Response(Buffer.from('tarball-bytes'))
+  }
+  const extractFn = async (_archive, dest) => {
+    const root = join(dest, 'xxww0098-dsh-plugin-oauth-subs-abc1234')
+    await mkdir(join(root, 'lib'), { recursive: true })
+    await writeFile(join(root, 'package.json'), JSON.stringify({ name: 'dsh-plugin-oauth-subs', version: '0.0.104' }))
+    await writeFile(join(root, 'lib', 'index.js'), '// new build')
+  }
+  const result = await installRelease({
+    tag: 'v0.0.104',
+    profile: 'desktop',
+    env: { DSH_HOME: home },
+    fetchFn,
+    extractFn,
+    resolveFn: () => undefined,
+  })
+  assert.equal(result.status, 'installed')
+  assert.equal(result.version, '0.0.104')
+  assert.equal(result.restart, 'app')
+  assert.equal(seen[0], `${REPO_URL}/archive/refs/tags/v0.0.104.tar.gz`)
+  assert.equal(JSON.parse(await readFile(join(dir, 'package.json'), 'utf8')).version, '0.0.104')
+  assert.equal(JSON.parse(await readFile(join(shared, 'package.json'), 'utf8')).version, '0.0.104')
+  // Full replace: files dropped by the new release do not linger.
+  assert.equal(existsSync(join(dir, 'lib', 'stale-marker.txt')), false)
+  // No .bak / .work leftovers under node_modules.
+  const leftovers = (await readFile(join(dir, 'package.json'), 'utf8')).includes('0.0.104')
+  assert.equal(leftovers, true)
+  const names = await import('node:fs/promises').then((fs) => fs.readdir(join(home, 'profiles', 'desktop', 'node_modules')))
+  assert.equal(names.some((name) => name.includes('.work') || name.includes('.bak')), false)
+})
+
+test('installRelease on a web profile asks for a host restart', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'dsh-home-'))
+  await fakeInstalledCopy(home, 'web')
+  const result = await installRelease({
+    tag: 'v0.0.104',
     profile: 'web',
-    latest: 'v0.0.71',
-    env: { DSH_HOME: process.cwd() },
-    readFileFn: (path) => {
-      const p = String(path).replace(/\\/g, '/')
-      if (p.includes('/node_modules/dsh-plugin-oauth-subs/package.json')) {
-        return JSON.stringify({ version: diskReads++ === 0 ? '0.0.70' : '0.0.71' })
-      }
-      return '{"version":"0.0.71"}'
+    env: { DSH_HOME: home },
+    fetchFn: async () => new Response(Buffer.from('x')),
+    extractFn: async (_a, dest) => {
+      const root = join(dest, 'xxww0098-dsh-plugin-oauth-subs-abc1234')
+      await mkdir(root, { recursive: true })
+      await writeFile(join(root, 'package.json'), JSON.stringify({ version: '0.0.104' }))
     },
+    resolveFn: () => undefined,
   })
-  assert.equal(result.ok, true)
   assert.equal(result.status, 'installed')
-  assert.equal(result.before, '0.0.70')
-  assert.equal(result.after, '0.0.71')
-  assert.equal(result.command, 'dsh plugin --profile web update dsh-plugin-oauth-subs')
+  assert.equal(result.restart, 'host')
 })
 
-test('applyHostUpdate still adds #tag when disk is latest but the process is behind', async () => {
-  const seen = []
-  const result = await applyHostUpdate({
-    spawnFn: (cmd, args, opts) => {
-      seen.push(args)
-      return fakeChild({ code: 0 })(cmd, args, opts)
-    },
-    profile: 'web',
-    latest: 'v0.0.71',
-    env: { DSH_HOME: process.cwd() },
-    readFileFn: splitVersionReader('0.0.70', '0.0.71'),
+test('installRelease reports manual when nothing is installed on the profile', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'dsh-home-'))
+  const result = await installRelease({
+    tag: 'v0.0.104',
+    profile: 'desktop',
+    env: { DSH_HOME: home },
+    fetchFn: async () => { throw new Error('must not fetch') },
+    resolveFn: () => undefined,
   })
-  assert.equal(result.ok, true)
-  assert.equal(result.status, 'installed')
-  assert.deepEqual(seen[1], ['plugin', '--profile', 'web', 'add', `${REPO_URL}#v0.0.71`])
+  assert.equal(result.status, 'manual')
+  assert.match(result.command, /dsh plugin --profile desktop update/)
 })
 
-test('applyHostUpdate retries add #tag when update exits 0 but version is unchanged', async () => {
-  const seen = []
-  const spawnFn = (cmd, args, opts) => {
-    seen.push(args)
-    return fakeChild({ code: 0 })(cmd, args, opts)
-  }
-  const result = await applyHostUpdate({
-    spawnFn,
-    profile: 'web',
-    latest: 'v0.0.71',
-    env: { DSH_HOME: process.cwd() },
-    readFileFn: versionReader(['0.0.70', '0.0.70', '0.0.71']),
+test('installRelease reports failed with the manual fallback command on fetch errors', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'dsh-home-'))
+  await fakeInstalledCopy(home)
+  const result = await installRelease({
+    tag: 'v0.0.104',
+    profile: 'desktop',
+    env: { DSH_HOME: home },
+    fetchFn: async () => new Response('rate limited', { status: 403 }),
+    resolveFn: () => undefined,
   })
-  assert.equal(result.ok, true)
-  assert.equal(result.status, 'installed')
-  assert.deepEqual(seen[0], ['plugin', '--profile', 'web', 'update', 'dsh-plugin-oauth-subs'])
-  assert.deepEqual(seen[1], ['plugin', '--profile', 'web', 'add', `${REPO_URL}#v0.0.71`])
-  assert.equal(result.command, `dsh plugin --profile web add ${REPO_URL}#v0.0.71`)
-})
-
-test('applyHostUpdate does not claim installed when the on-disk version stays put', async () => {
-  const result = await applyHostUpdate({
-    spawnFn: fakeChild({ code: 0 }),
-    profile: 'web',
-    latest: 'v0.0.71',
-    env: { DSH_HOME: process.cwd() },
-    readFileFn: versionReader(['0.0.70', '0.0.70', '0.0.70']),
-  })
-  assert.equal(result.ok, false)
-  assert.equal(result.status, 'unchanged')
-  assert.match(result.error, /still 0\.0\.70/)
-  assert.match(result.error, /remove dsh-plugin-oauth-subs/)
-  assert.match(result.error, /add https:\/\/github.com\/xxww0098\/dsh-plugin-oauth-subs#v0\.0\.71/)
-})
-
-test('runPluginUpdate maps ENOENT to missing-dsh', async () => {
-  const result = await runPluginUpdate({
-    spawnFn: fakeChild({ error: Object.assign(new Error('spawn dsh ENOENT'), { code: 'ENOENT' }) }),
-    profile: 'web',
-    env: { DSH_HOME: process.cwd() },
-  })
-  assert.equal(result.ok, false)
-  assert.equal(result.status, 'missing-dsh')
-  assert.match(result.error, /not found on PATH/)
-})
-
-test('runPluginUpdate surfaces a nonzero exit', async () => {
-  const result = await runPluginUpdate({
-    spawnFn: fakeChild({ code: 1, stderr: 'ERR_PNPM_NO_IMPORTER  no pnpm-workspace.yaml' }),
-    profile: 'web',
-    env: { DSH_HOME: process.cwd() },
-  })
-  assert.equal(result.ok, false)
   assert.equal(result.status, 'failed')
-  assert.match(result.error, /no pnpm-workspace/)
+  assert.match(result.error, /tarball 403/)
+  assert.match(result.command, /plugin --profile desktop/)
 })
-
-test('runPluginUpdate augments a sparse GUI PATH for the spawned dsh', async () => {
-  const seen = []
-  const spawnFn = (cmd, args, opts) => {
-    seen.push(opts?.env?.PATH)
-    return fakeChild({ code: 0 })(cmd, args, opts)
-  }
-  const result = await runPluginUpdate({
-    spawnFn,
-    profile: 'web',
-    env: { DSH_HOME: process.cwd(), PATH: '/usr/bin' },
-  })
-  assert.equal(result.ok, true)
-  assert.match(seen[0], /usr\/local\/bin/)
-  assert.match(seen[0], /usr\/bin/)
-})
-
-test('applyHostUpdate retries add #tag when dsh plugin update times out', async () => {
-  const seen = []
-  const spawnFn = (cmd, args, opts) => {
-    seen.push(args)
-    if (seen.length === 1) {
-      // First spawn (plugin update) hangs until the timeout kills it.
-      const child = new EventEmitter()
-      child.stdout = new EventEmitter()
-      child.stderr = new EventEmitter()
-      child.kill = () => undefined
-      return child
-    }
-    return fakeChild({ code: 0 })(cmd, args, opts)
-  }
-  const result = await applyHostUpdate({
-    spawnFn,
-    profile: 'web',
-    latest: 'v0.0.71',
-    timeoutMs: 30,
-    env: { DSH_HOME: process.cwd() },
-    readFileFn: versionReader(['0.0.70', '0.0.70', '0.0.70', '0.0.71']),
-  })
-  assert.equal(result.ok, true)
-  assert.equal(result.status, 'installed')
-  assert.deepEqual(seen[0], ['plugin', '--profile', 'web', 'update', 'dsh-plugin-oauth-subs'])
-  assert.deepEqual(seen[1], ['plugin', '--profile', 'web', 'add', `${REPO_URL}#v0.0.71`])
-})
-
-test('compareVersions handles prerelease semver comparisons correctly', () => {
-  assert.equal(compareVersions('0.1.3-alpha.1', '0.1.2-rc.1') > 0, true)
-  assert.equal(compareVersions('0.1.2-rc.1', '0.1.2-alpha.5') > 0, true)
-  assert.equal(compareVersions('0.1.2', '0.1.2-rc.1') > 0, true)
-  assert.equal(compareVersions('0.1.2-rc.1', '0.1.2') < 0, true)
-  assert.equal(compareVersions('dsh-v0.1.3-alpha.1', '0.1.3-alpha.1'), 0)
-})
-
-test('dshUpdateArgs and dshUpdateCommand construct global npm install args', () => {
-  assert.deepEqual(dshUpdateArgs(), ['install', '-g', '@deepseek-ai/dsh@latest'])
-  assert.deepEqual(dshUpdateArgs('0.1.3-alpha.1'), ['install', '-g', '@deepseek-ai/dsh@0.1.3-alpha.1'])
-  assert.equal(dshUpdateCommand(), 'npm install -g @deepseek-ai/dsh@latest')
-  assert.equal(dshUpdateCommand('0.1.2-rc.1'), 'npm install -g @deepseek-ai/dsh@0.1.2-rc.1')
-  assert.deepEqual(dshUpdateArgs('0.1.2-rc.1', '/opt/homebrew'), ['install', '-g', '--prefix', '/opt/homebrew', '@deepseek-ai/dsh@0.1.2-rc.1'])
-})
-
-test('dshInstallPrefix derives the npm global prefix only from npm layouts', () => {
-  assert.equal(dshInstallPrefix('/opt/homebrew/lib/node_modules/@deepseek-ai/dsh/package.json', 'darwin'), '/opt/homebrew')
-  assert.equal(dshInstallPrefix('C:\\Users\\me\\AppData\\Roaming\\npm\\node_modules\\@deepseek-ai\\dsh\\package.json', 'win32'), 'C:\\Users\\me\\AppData\\Roaming\\npm')
-  assert.equal(dshInstallPrefix('/Users/me/Library/pnpm/global/5/node_modules/@deepseek-ai/dsh/package.json', 'darwin'), '')
-  assert.equal(dshInstallPrefix('', 'darwin'), '')
-})
-
-test('localDshInfo returns default repo info even if DSH binary is not found', () => {
-  const info = localDshInfo('linux', { env: { PATH: '' }, existsSyncFn: () => false })
-  assert.equal(info.repo, DSH_REPO_URL)
-  assert.equal(info.npmPackage, DSH_NPM_PACKAGE)
-  assert.equal(info.platform, 'linux')
-})
-
-test('resolveDshInstall ignores PATH, $_ and global-prefix copies that are not this process', () => {
-  const existsSyncFn = (p) => p.startsWith('/other/')
-  const realpathFn = () => '/other/lib/node_modules/@deepseek-ai/dsh/lib/bin.js'
-  const readFileFn = () => JSON.stringify({ name: '@deepseek-ai/dsh', version: '0.1.2-rc.1' })
-  const env = { PATH: '/other/bin', _: '/other/bin/dsh' }
-  assert.equal(resolveDshInstall('linux', env, { existsSyncFn, realpathFn, readFileFn }), undefined)
-})
-
-test('resolveDshInstall locates package via binary realpath tree', () => {
-  const existsSyncFn = (p) => p === '/custom/bin/dsh' || p === '/custom/package.json'
-  const realpathFn = () => '/custom/bin/dsh'
-  const readFileFn = (p) => {
-    if (p === '/custom/package.json') {
-      return JSON.stringify({ name: '@deepseek-ai/dsh', version: '0.1.2' })
-    }
-    return ''
-  }
-  const result = resolveDshInstall('linux', { DSH_BIN_PATH: '/custom/bin/dsh', PATH: '' }, { existsSyncFn, realpathFn, readFileFn })
-  assert.equal(result?.version, '0.1.2')
-  assert.equal(result?.binPath, '/custom/bin/dsh')
-  assert.equal(result?.packagePath, '/custom/package.json')
-})
-
-test('fetchDshLatest reports update when npm has a newer version', async () => {
-  const fetchFn = async (url) => {
-    const s = String(url)
-    if (s.includes('/tags')) {
-      return new Response(JSON.stringify([{ name: 'dsh-v0.1.3' }]))
-    }
-    if (s.includes('registry.npmjs.org')) {
-      return new Response(JSON.stringify({
-        'dist-tags': { latest: '0.1.3' },
-        time: { '0.1.3': '2026-09-05T10:00:00Z' },
-      }))
-    }
-    return new Response('{}')
-  }
-  const info = await fetchDshLatest({ fetchFn, current: '0.1.2-rc.1', env: { PATH: '' } })
-  assert.equal(info.status, 'update')
-  assert.equal(info.canUpdate, true)
-  assert.equal(info.npm?.version, '0.1.3')
-  assert.equal(info.latestTag?.tag, 'dsh-v0.1.3')
-})
-
-test('fetchDshLatest reports github-only when GitHub tag is newer but npm is not', async () => {
-  const fetchFn = async (url) => {
-    const s = String(url)
-    if (s.includes('/tags')) {
-      return new Response(JSON.stringify([{ name: 'dsh-v0.1.3-alpha.1' }]))
-    }
-    if (s.includes('registry.npmjs.org')) {
-      return new Response(JSON.stringify({
-        'dist-tags': { latest: '0.1.2-rc.1' },
-        time: { '0.1.2-rc.1': '2026-09-03T06:21:52Z' },
-      }))
-    }
-    return new Response('{}')
-  }
-  const info = await fetchDshLatest({ fetchFn, current: '0.1.2-rc.1', env: { PATH: '' } })
-  assert.equal(info.status, 'github-only')
-  assert.equal(info.canUpdate, false)
-  assert.equal(info.latestTag?.tag, 'dsh-v0.1.3-alpha.1')
-  assert.equal(info.npm?.version, '0.1.2-rc.1')
-})
-
-test('fetchDshLatest installs the newest published version even when the latest tag trails next', async () => {
-  const fetchFn = async (url) => {
-    const s = String(url)
-    if (s.includes('/tags')) {
-      return new Response(JSON.stringify([{ name: 'dsh-v0.1.5-rc.2' }]))
-    }
-    if (s.includes('registry.npmjs.org')) {
-      return new Response(JSON.stringify({
-        'dist-tags': { latest: '0.1.5-rc.1', next: '0.1.5-rc.2', alpha: '0.1.5-alpha.2' },
-        versions: { '0.1.5-rc.2': {}, '0.1.5-rc.1': {}, '0.1.5-alpha.2': {} },
-        time: { '0.1.5-rc.2': '2026-09-10T14:57:10Z' },
-      }))
-    }
-    return new Response('{}')
-  }
-  const info = await fetchDshLatest({ fetchFn, current: '0.1.5-rc.1', env: { PATH: '' } })
-  assert.equal(info.status, 'update')
-  assert.equal(info.canUpdate, true)
-  assert.equal(info.npm?.version, '0.1.5-rc.2')
-  assert.equal(info.npm?.stable, '0.1.5-rc.1')
-  assert.equal(info.npm?.publishedAt, '2026-09-10 22:57:10')
-})
-
-test('fetchDshLatest reports current when installed matches latest release', async () => {
-  const fetchFn = async (url) => {
-    const s = String(url)
-    if (s.includes('/tags')) {
-      return new Response(JSON.stringify([{ name: 'dsh-v0.1.2' }]))
-    }
-    if (s.includes('registry.npmjs.org')) {
-      return new Response(JSON.stringify({
-        'dist-tags': { latest: '0.1.2' },
-      }))
-    }
-    return new Response('{}')
-  }
-  const info = await fetchDshLatest({ fetchFn, current: '0.1.2', env: { PATH: '' } })
-  assert.equal(info.status, 'current')
-  assert.equal(info.canUpdate, false)
-})
-
-function fakeDshFs(version) {
-  const bin = '/opt/homebrew/bin/dsh'
-  const pkg = '/opt/homebrew/lib/node_modules/@deepseek-ai/dsh/package.json'
-  const state = { version }
-  return {
-    state,
-    env: { DSH_BIN_PATH: bin, PATH: '' },
-    existsSyncFn: (p) => p === bin || p === pkg,
-    realpathFn: () => '/opt/homebrew/lib/node_modules/@deepseek-ai/dsh/lib/bin.js',
-    readFileFn: (p) => (p === pkg ? JSON.stringify({ name: '@deepseek-ai/dsh', version: state.version }) : ''),
-  }
-}
-
-test('applyHostDshUpdate installs into the running prefix and reports installed once the copy matches', async () => {
-  const fs = fakeDshFs('0.1.2-alpha.5')
-  const seen = []
-  const spawnFn = (cmd, args, opts) => {
-    seen.push({ cmd, args })
-    fs.state.version = '0.1.2-rc.1'
-    return fakeChild({ code: 0 })(cmd, args, opts)
-  }
-  const result = await applyHostDshUpdate({ spawnFn, targetVersion: '0.1.2-rc.1', ...fs })
-  assert.equal(result.ok, true)
-  assert.equal(result.status, 'installed')
-  assert.equal(result.before, '0.1.2-alpha.5')
-  assert.equal(result.after, '0.1.2-rc.1')
-  assert.equal(seen[0].cmd, 'npm')
-  assert.deepEqual(seen[0].args, ['install', '-g', '--prefix', '/opt/homebrew', '@deepseek-ai/dsh@0.1.2-rc.1'])
-})
-
-test('applyHostDshUpdate is not ok when npm exits 0 but the running copy keeps the old version', async () => {
-  const fs = fakeDshFs('0.1.2-alpha.5')
-  const result = await applyHostDshUpdate({ spawnFn: fakeChild({ code: 0 }), targetVersion: '0.1.2-rc.1', ...fs })
-  assert.equal(result.ok, false)
-  assert.equal(result.status, 'installed-unchanged')
-  assert.equal(result.after, '0.1.2-alpha.5')
-  assert.match(result.error, /0\.1\.2-alpha\.5 · \/opt\/homebrew\/lib\/node_modules\/@deepseek-ai\/dsh/)
-})
-
-test('applyHostDshUpdate reports failed on nonzero exit', async () => {
-  const spawnFn = fakeChild({ code: 1, stderr: 'EACCES permission denied' })
-  const result = await applyHostDshUpdate({
-    spawnFn,
-    env: { PATH: '/bin:/usr/bin' },
-  })
-  assert.equal(result.ok, false)
-  assert.equal(result.status, 'failed')
-  assert.match(result.error, /permission denied/)
-})
-
-test('applyHostDshUpdate reports missing-npm on ENOENT', async () => {
-  const spawnFn = () => {
-    const err = new Error('spawn npm ENOENT')
-    err.code = 'ENOENT'
-    throw err
-  }
-  const result = await applyHostDshUpdate({ spawnFn, env: { PATH: '' } })
-  assert.equal(result.ok, false)
-  assert.equal(result.status, 'missing-npm')
-})
-
-
-test('listDshInstallVersions sorts npm versions newest first and includes dist-tags', () => {
-  const rows = listDshInstallVersions({
-    versions: { '0.1.2-alpha.5': {}, '0.1.2-rc.1': {}, '0.1.1': {} },
-    'dist-tags': { latest: '0.1.2-rc.1', alpha: '0.1.2-alpha.5' },
-  })
-  assert.deepEqual(rows, ['0.1.2-rc.1', '0.1.2-alpha.5', '0.1.1'])
-})
-
-test('fetchDshLatest returns installable npm versions for the picker', async () => {
-  const fetchFn = async (url) => {
-    const s = String(url)
-    if (s.includes('/tags')) return new Response(JSON.stringify([{ name: 'dsh-v0.1.3-alpha.1' }]))
-    if (s.includes('registry.npmjs.org')) {
-      return new Response(JSON.stringify({
-        'dist-tags': { latest: '0.1.2-rc.1', alpha: '0.1.2-alpha.5' },
-        versions: { '0.1.2-rc.1': {}, '0.1.2-alpha.5': {}, '0.1.1': {} },
-        time: { '0.1.2-rc.1': '2026-09-03T06:21:52Z' },
-      }))
-    }
-    return new Response('{}')
-  }
-  const info = await fetchDshLatest({ fetchFn, current: '0.1.2-rc.1', env: { PATH: '' } })
-  assert.deepEqual(info.npm?.versions, ['0.1.2-rc.1', '0.1.2-alpha.5', '0.1.1'])
-})
-
-test('scheduleDshWebRestart spawns a delayed detached re-exec', () => {
-  const seen = []
-  const spawnFn = (cmd, args, opts) => {
-    seen.push({ cmd, args, detached: opts.detached, stdio: opts.stdio })
-    return { unref() {} }
-  }
-  const result = scheduleDshWebRestart({
-    spawnFn,
-    delaySec: 2,
-    execPath: '/usr/bin/node',
-    argv: ['node', '/Users/me/.local/bin/dsh', 'web'],
-    cwd: '/tmp',
-    platform: 'linux',
-    env: { PATH: '/bin' },
-  })
-  assert.equal(result.ok, true)
-  assert.equal(seen[0].cmd, '/bin/sh')
-  assert.equal(seen[0].args[0], '-c')
-  assert.match(seen[0].args[1], /sleep 2; exec /)
-  assert.match(seen[0].args[1], /dsh/)
-  assert.equal(seen[0].detached, true)
-})
-
-test('stampDshHostVersion rewrites the served client.js sentinel', () => {
-  let written = ''
-  const ok = stampDshHostVersion('client.js', '0.1.2-rc.1', {
-    readFileFn: () => "const DSH_HOST_VERSION_STAMP = ''\nconst x = 1\n",
-    writeFileFn: (_path, text) => { written = String(text) },
-  })
-  assert.equal(ok, true)
-  assert.match(written, /const DSH_HOST_VERSION_STAMP = "0\.1\.2-rc\.1"/)
-})
-

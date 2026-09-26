@@ -10,7 +10,7 @@ OpenCode Go 是 **API key 范围**，不是 OAuth 家族。
 - 对话 / 部署：`opencode-go.json` 是**多账号 vault**（每个账号 `apiKey` + `cookieHeader` + `workspaceId`）；活动账号的 key 镜像进宿主凭据 `OPENCODE_API_KEY`，没有任何账号还带 key 时清掉该凭据（否则 DSH 路由会留在模型列表里）。DSH 内置 pi-ai `opencode-go` provider 自带 27 个官方模型（3 种协议），但 llm-pi-ai 只在 profile 点名它时才注册路由，所以插件**不写** `providers.opencode-go`：内置 27 个归 DSH 模型设置页，要用由用户自己开。插件改为**自带完整官方目录**、按 wire 协议分两条自有路由（`opencode-go-flash` completions 27 行 + `opencode-go-responses` 5 行，见下），直连 `https://opencode.ai/zen/go`，不走回环网关。
 - Settings 用通用 `ProviderCard` / `AccountCard`：一账号一卡、卡片内额度条、点卡切换、`退出` 删号；主按钮打开居中 Dialog（`CenterDialog`），在窗内粘贴 key / cookie / workspace 后 `goSave`。
 - 账号 id 取工作区 `wrk_…`；没有工作区时取 key/cookie 的 `go_<12hex>` 哈希（同 key 再粘不会多一张卡）。
-- 卡片标题优先显示登录邮箱：dashboard `GET /workspace/{wrk_}/go` 的 RSC payload 里有 `userEmail["wrk_…"]`，刷新额度时刮下来存进 vault（`email`），下次 snapshot 起用；没有 cookie / 刮不到时退回工作区 id，再退回 key 尾巴。**API key 本身拿不到邮箱**（`GET /zen/go/v1/usage` 只返回用量，无身份接口）。
+- 卡片标题优先显示登录邮箱：Console 账号从 `GET /console/api/user` 拿，未迁移工作区仍从 dashboard `GET /workspace/{wrk_}/go` 的 RSC payload 刮 `userEmail["wrk_…"]`；刷新额度时存进 vault（`email`），下次 snapshot 起用；没有 cookie / 刮不到时退回工作区 id，再退回 key 尾巴。**API key 本身拿不到邮箱**（`GET /zen/go/v1/usage` 只返回用量，无身份接口）。
 - Settings > 模型 列插件自有的两条家族组：`OpenCode Go`（completions 27 行）与 `OpenCode Go · Responses`（5 行）；DSH 内置 `opencode-go` 的 27 个模型归 DSH 模型设置页。`OPENCODE_API_KEY` 未注入时模型照列但**不勾选**，两条插件路由都 unset（DSH 模型列表里也不出现）。
 
 ## 文件
@@ -19,7 +19,7 @@ OpenCode Go 是 **API key 范围**，不是 OAuth 家族。
 |---|---|
 | [`index.ts`](index.ts) | cookie / workspace 解析、账号 id / key 遮罩、公开 snapshot（不回传 key/cookie） |
 | [`store.ts`](store.ts) | `<dataDir>/opencode-go.json` 0600 多账号 vault（旧单账号文件自动迁移）。不进 `auth.json` |
-| [`quota.ts`](quota.ts) | cookie + workspace 刮 `/workspace/{id}/go`（额度 + `userEmail["wrk_…"]` 登录邮箱）；缺 workspace 时 `GET /_server?id=` 工作区列表 |
+| [`quota.ts`](quota.ts) | 已迁移账号：cookie + `x-org-id` 打 `/console/api/{orgs,go/status,billing/status,user}`（Console JSON API）；未迁移账号兜底刮 `/workspace/{id}/go`（额度 + `userEmail["wrk_…"]` 邮箱）；缺 workspace 时先 `/console/api/orgs` 再 `GET /_server?id=` |
 | [`models.ts`](models.ts) | 完整官方 Go 目录：completions 27 行 + responses 5 行（name / id / api / context / maxTokens / input / reasoningEfforts / compat）；两条自有路由定义 |
 
 调度：Settings 左侧家族胶囊（`.osubs-tabs`），排在 Copilot 之后换行；**不是**右侧 util，也**不**另开 API-key 胶囊。新增 / 更新账号走 RPC `goSave`（`{ id?, apiKey?, cookie?, workspace? }`），字段清除走 `goClear`（`{ id?, field }`）；切换 / 删号 / 额度刷新走通用 `switch` / `logout` / `quota`（`provider: 'opencode-go'`），controller 内部分派到本目录。**没有** `proxy.ts` hop，**没有** `cache.ts`。
@@ -71,8 +71,8 @@ DSH 会把每会话 `sessionId` 交给 pi-ai，但 pi-ai 0.85.1 的 openai-compl
 | 字段 | 用户贴什么 | 本目录 |
 |---|---|---|
 | API key | `sk-…`（DSH 对话用） | vault `apiKey`；活动账号镜像到 `OPENCODE_API_KEY` |
-| 会话 cookie | 原始 token（`Fe26.2…`）或完整 Cookie 头（`auth=Fe26.2…`） | `parseOpencodeGoCookie` → 只保留 `auth` / `__Host-auth` |
-| 工作区 ID 覆盖 | `wrk_…` 或 `https://opencode.ai/workspace/wrk_…/go` | `normalizeOpencodeGoWorkspaceId` |
+| 会话 cookie | Console 页 `__Host-console_session=…`/`console_session=…`，或旧面板 `Fe26.2…`/`auth=…` | `parseOpencodeGoCookie` → 保留 `auth` / `__Host-auth` / `__Host-console_session` / `console_session` |
+| 工作区 ID 覆盖 | `wrk_…`/`org_…`，或 `https://opencode.ai/console/<id>/go`、`/workspace/<id>/go` URL | `normalizeOpencodeGoWorkspaceId` |
 
 Cookie 认证基于 Web，可在 Windows 与 WSL 间共享。**不要**把 cookie 当 OAuth `accessToken` 写进 `auth.json`。
 
@@ -80,17 +80,46 @@ snapshot 每行只给 `apiKeySet` / `cookieSet` / `workspaceId`。key / cookie �
 
 ## 额度
 
-一线对照：[steipete/CodexBar](https://github.com/steipete/CodexBar) `OpenCodeGoUsageFetcher`（web cookie 路径，不是 `GET /zen/go/v1/usage` Bearer）。
+一线对照：[steipete/CodexBar](https://github.com/steipete/CodexBar) `OpenCodeGoUsageFetcher` +
+`OpenCodeGoLegacyFallback`（web cookie 路径，不是 `GET /zen/go/v1/usage` Bearer）。
+
+**2026-09 Console 迁移**：opencode.ai 把已迁移工作区的 dashboard 换成 SPA
+（`/console/<id>/go`，壳页只有 `<div id="app">`），旧 `/_server` server-fn 与
+`/workspace/{id}/go` 回包成 302 → `/console/login`。Console 是 JSON API，
+走 `__Host-console_session`/`console_session` cookie + `x-org-id` 头（缺头 400）：
 
 ```text
-cookie → GET https://opencode.ai/_server?id=<workspaces>   （缺 workspace 时）
-cookie → GET https://opencode.ai/workspace/{wrk_}/go
-  解析 rollingUsage / weeklyUsage / monthlyUsage
-  usagePercent 是 0…100；剩余 = 100 − used
-  resetAt = now + resetInSec × 1000（key `/zen/go/v1/usage` 的 ISO resetsAt 也认）
-  usage / limit → 每行的 token used / total（103.7M / 1.2B；点数字切 k/M ↔ 原值，存 localStorage）
-  status ≠ "ok" → 该行 warn 标签
-  顺带刮 userEmail / workspace name（"Default"）、useBalance + balance（余额兜底）
+cookie → GET /console/api/orgs             → [{id: wrk_|org_, name}]  工作区 + 名字
+cookie → GET /console/api/user             → {email}                  登录邮箱
+cookie + x-org-id → GET /console/api/go/status
+  → {access: {startsAt, endsAt, cancelAtPeriodEnd,
+      meters: {fiveHour: {resetsAt?, usedMicroCents, limitMicroCents},
+               week:     {startsAt, resetsAt, …},
+               month:    {usedMicroCents, limitMicroCents}            ← 无 resetsAt
+      }}}          access:null / 整包 null = 无 Go 订阅
+cookie + x-org-id → GET /console/api/billing/status
+  → {billingMode: prepaid|legacy|seat|credit, mode: pay-as-you-go|invoiceable,
+     balanceMicroCents: "<digits>"}        balance = /1e8 USD；useBalance ← prepaid
+```
+
+meter 是**花费额度**不是 token：行 `used/total` 按 USD（micro-cents/1e8），
+`unit:'usd'`（`fiveHour` $12 / `week` $30 / `month` $60，go-plus ×4）。
+`month` 无 `resetsAt` → 用 `access.endsAt`（账期结束）。`access:null` 且
+prepaid 余额 >0 → `rows:[]` + 余额兜底，不报红；都没有 → `no_subscription` 错误。
+Console 401/403/跳 login → `cookie is invalid or expired`；其余非 200 →
+`console HTTP <status>[: message]`。
+
+**Fallback 次序**（对齐 CodexBar `OpenCodeGoLegacyFallback`）：console 先；
+console 失败且 header 里有 `auth`/`__Host-auth` → 走 legacy；legacy 也失败时，
+若 header 带 console cookie 且 console 错误不是「凭证失效」→ 回 console 的
+真实错误（不能让 legacy 的 invalid-cookie 盖住 console 的 5xx）。
+
+```text
+legacy（未迁移工作区，保持不变）：
+cookie → GET /_server?id=<workspaces>                    （缺 workspace 时）
+cookie → GET /workspace/{wrk_}/go
+  解析 rollingUsage / weeklyUsage / monthlyUsage（usagePercent / resetInSec /
+  status / usage / limit token 行）+ userEmail + workspace name + useBalance/balance
 ```
 
 工作区 server-fn id 钉 `def39973159c7f0483d8793a822b8dbb10d067e12c65455fcb4608459ba0234f`。
@@ -119,7 +148,7 @@ cookie → GET https://opencode.ai/workspace/{wrk_}/go
 - 官方 Go：https://opencode.ai/docs/zh-cn/go/
 - API 端点：https://opencode.ai/docs/zh-cn/go/#api-%E7%AB%AF%E7%82%B9
 - 设置形：Orca OpenCode Go 提供商（cookie + workspace ID 覆盖）
-- 额度刮页：[steipete/CodexBar](https://github.com/steipete/CodexBar) `OpenCodeGoUsageFetcher`
+- 额度：CodexBar [`OpenCodeGoUsageFetcher`](https://github.com/steipete/CodexBar/blob/main/Sources/CodexBarCore/Providers/OpenCodeGo/OpenCodeGoUsageFetcher.swift)（console 优先 + legacy 兜底）、`OpenCodeGoZenBalanceParser`（billing status）；Console 字段 schema 实测自 `/console/assets/index-*.js` 打包产物（`x-org-id`、`goStatus`→`/orgs/:orgId/go/status` 的 header 别名、`BillingStatus`/`meters` 类定义）
 - 宿主对话：DSH pi-ai `opencode-go` + `OPENCODE_API_KEY`
 
 总表见 [`docs/oauth.md`](../../../docs/oauth.md)。

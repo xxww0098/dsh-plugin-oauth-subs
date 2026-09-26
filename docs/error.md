@@ -2,6 +2,25 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-26：全家族请求时好时坏 = TokenManager 刷新状态机把可恢复的刷新变成请求失败
+
+**现象**：token 端点一次抖动后，已过期账号的请求连续 5 分钟秒失败（重放缓存错误）；token 端点挂住时该账号所有请求一起挂死；preempt 窗口内（token 仍有效）每个请求都要等刷新 RTT；别的写者已轮换 refresh token 时本请求报 `login expired` / `session changed`。
+**根因**：`tokens.ts` 的失败退避对已过期 token 直接 `throw failed.error`，sweep 一次失败就锁死 5 分钟；各家 `refresh*` 均无超时，共享 inflight 永不 settle；due-but-valid 也同步 await 刷新；刷新成功但 `updateAccountSession` 版本不匹配、或 `invalid_grant` 而 `deleteSession` 未删（已被轮换）时不回读存储。
+**修复**：退避只豁免仍有效的 token，过期一律重试（inflight 去重）；请求最多等 `REFRESH_WAIT_MS`（30s），刷新本身仍是该版本唯一 owner（不二次兑换 refresh token），超时且 token 仍有效就用旧 token；剩余 >30s 的 due token 后台刷新、立即放行；保存失配 / 非本次删除的 `invalid_grant` 回读同 id 的新会话（`#successor`）再决定报错。顺带 `attemptUpstream` 转发上游 4xx/5xx 时带上 `retry-after`，客户端按上游节奏退避。
+
+## 2026-09-25：OpenCode Go 抓不到额度 = dashboard 迁移成 Console SPA，旧刮页与旧 cookie 双失效
+
+**现象**：OpenCode Go 卡片额度一直「cookie is invalid or expired」，重贴 cookie 也一样。活测本机账号：`/_server` server-fn 回包成「302 → /console/login」，`/console/api/*` 对旧 `auth` cookie 401。
+**根因**：opencode.ai 把已迁移工作区的 dashboard 换成 Console SPA（`/console/<id>/go` 只剩 `<div id="app">` 壳），额度改走 JSON API `/console/api/{orgs,go/status,billing/status,user}` + `x-org-id` 头 + `__Host-console_session`/`console_session` cookie；旧 `/_server`/`/workspace/{id}/go` 刮页路径对迁移账号失效，且 `parseOpencodeGoCookie` 白名单没有 console cookie，新 cookie 根本存不进 vault。
+**修复**：`quota.ts` 改 console 优先 + legacy 兜底（对齐 CodexBar `OpenCodeGoLegacyFallback` 次序：console 失败且有 `auth` cookie 才走旧刮页；带 console cookie 时 legacy 的 invalid-cookie 不盖 console 真实错误）；`go/status` 的 `access.meters.{fiveHour,week,month}` micro-cents 计花费行（`unit:'usd'`，month 无 resetsAt 用 `access.endsAt`），`access:null` 看 prepaid 余额，有则余额兜底无则 `no_subscription`；`billing/status`→useBalance/balance，`/user`→邮箱，`/orgs`→workspace id+name。`parseOpencodeGoCookie` 放行 `__Host-console_session`/`console_session`；`normalizeOpencodeGoWorkspaceId` 收 `org_` 与 `/console/<id>` URL。注意：迁移账号必须重贴 Console 页 cookie，旧 `auth` 串对 console 必然 401。
+
+## 2026-09-25：Desktop profile 上「检查更新→更新」必败 = Electron 独占管理拒绝 CLI plugin 变更
+
+**现象**：desktop profile 跑插件时 About 页点更新，`dsh plugin --profile desktop update` 被宿主拒绝（`managed exclusively by the Electron application`），成功后还会 `scheduleDshWebRestart`+`exit(0)` 把宿主进程杀掉而无 `dsh web` 兜底。
+**根因**：自更新链路只按 `profileFromBaseUrl` 换 `--profile` 参数，没区分「CLI 可写」与「Electron 托管」profile。
+**修复**：插件定为专攻 desktop——先删净宿主生命周期面（`checkDshUpdate`/`restartDsh` RPC、npm/`dsh` spawn 机械、`scheduleDshWebRestart`/`stampDshHostVersion`、DSH 版本卡/重启按钮），再以 `installRelease` 重建升级：下载 tag 的 GitHub tarball → `tar -xf` 抽出 → `rename`+`fs.cp` 原子换所有已装目录（`profiles/<p>/node_modules`、跨 profile 共享副本、`.dsh-module-fallback`，按 realpath 去重；失败回滚 .bak）。`data/` 在 node_modules 外不受影响；运行进程保持旧模块，`staleProcess`/`apply.restart` 提示重启宿主/应用生效。自动更新恢复为单布尔 `autoUpdate`（`update-prefs.json`）+ `update-state.json` 最近结果 + 每小时 watch；About 页开关行回归。无已装目录时 apply 降级 `manual` + `dsh plugin update` 命令兜底。
+**发布前审查补救**：拷贝先在同级临时目录完成并验版本，所有副本保留备份到全部换完；任一失败逆序回滚，回滚失败的备份不删除。自安装串行排队、work 路径唯一；目标只认 profile 下真实目录（不再从本插件 self-resolve）；运行版本在模块加载时钉住，换盘后仍提示重启。
+
 ## 2026-09-24：全家族会话「卡死」= 路由 maxTokens 写真实输出上限，把自动压缩阈值饿死
 
 **现象**：长会话状态在跑但长时间无思考。分析两个导出 session（oauth-codex gpt-6-luna / oauth-devin swe-2）：每步跑**两次**压缩摘要调用（30–55s/次，无思考输出），analyzer 记 `compaction 44 / 38` 次重写；中途切 swe-2 时携带 141k/240k tokens 直接超其有效预算被判「超上下文」。

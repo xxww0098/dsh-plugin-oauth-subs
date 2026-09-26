@@ -13,7 +13,23 @@ dsh plugin --profile web add https://github.com/xxww0098/dsh-plugin-oauth-subs
 dsh web
 ```
 
-Open **Settings → OAuth subs**. One card per account (quota on every card; Ollama Cloud has no quota bars). About **Installed** re-reads the `package.json` this process loaded (not a module-load freeze). A leftover `dsh web` after a wrapper/pidfile restart still serves the old process until that PID is killed (`pgrep -lf 'dsh web'`). If profile `node_modules` is newer, About lists **On disk** and may `add …#<tag>` even when that file is already latest. Or `pnpm dsh web --patch ./cordis.patch.yml` (`id: oauth-subs`).
+Open **Settings → OAuth subs**. One card per account (quota on every card; Ollama Cloud has no quota bars). About **Installed** shows the version captured when this process loaded the plugin; after a self-install it stays on the old running version until restart. The plugin is desktop-first: it never spawns `dsh`/`npm` and never restarts the host — the About card compares the running version with the GitHub latest tag, and **安装更新** self-installs the tag tarball into the profile's `node_modules` (an hourly auto-update switch lives in the same card). If profile `node_modules` is newer than the running process, About lists **On disk** and flags the stale process. Or `pnpm dsh web --patch ./cordis.patch.yml` (`id: oauth-subs`).
+
+### Desktop
+
+The `desktop` profile is managed exclusively by the Electron app — `dsh plugin --profile desktop` is rejected. Install through the UI instead:
+
+1. DeepSeek Harness → **插件** (Plugins) → **添加插件**
+2. Paste `https://github.com/xxww0098/dsh-plugin-oauth-subs` → **安装**
+3. Toggle the plugin on; the component row should read **运行中**
+
+Data lives under `~/.dsh/profiles/desktop/data/dsh-plugin-oauth-subs/` — logins are **not** shared with the web profile. To migrate existing accounts, quit the app, then copy `auth.json` (and `models.json` for picker state) from `~/.dsh/profiles/web/data/dsh-plugin-oauth-subs/` into that directory and relaunch. Copy while the app is stopped: the plugin holds tokens in memory and may overwrite a hot edit.
+
+The proxy port (`8318` by default) is a global loopback bind — web and desktop profiles cannot run simultaneously (`EADDRINUSE`). Kill the other profile or set a different `config.port` under `id: oauth-subs` in the profile's `cordis.patch.yml`.
+
+This plugin is specialized for Desktop: the host-lifecycle surface (DSH-CLI/npm update, restart-host) has been **removed**, not hidden — the Electron app owns the profile and process. Updates are self-installed: **检查更新 → 安装更新** downloads the release tarball and swaps the plugin dirs in place (or turn on **Auto-update** for hourly checks); restart the app to load the new copy. Your `data/` directory survives either way. Manual fallback: **插件** → 卸载 → 添加插件 → reinstall the repo URL.
+
+If the app exits instantly on launch, check `launchctl getenv ELECTRON_RUN_AS_NODE` — that variable in the user launchd environment forces every Electron app into plain Node mode; `launchctl unsetenv ELECTRON_RUN_AS_NODE` fixes it.
 
 ## Families
 

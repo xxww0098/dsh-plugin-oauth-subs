@@ -1032,7 +1032,8 @@ async function attemptUpstream(response, { url, headers, body, stream, fetchFn, 
     const parsed = upstreamErrorPayload(await upstream.text(), family, upstream.status)
     if (upstream.status === 401) throw new UnauthorizedUpstream(parsed)
     if (fallbackStatuses?.has(upstream.status)) throw new GatewayUpstream(upstream.status, parsed)
-    sendJson(response, upstream.status, parsed)
+    const retryAfter = upstream.headers?.get?.('retry-after')
+    sendJson(response, upstream.status, parsed, retryAfter ? { 'retry-after': retryAfter } : {})
     return
   }
 

@@ -13,12 +13,17 @@ function accountCardPills(family, locale, { plan, active, region } = {}) {
   return tags
 }
 
-test('settings bundle ships the DSH restart action and its stale hints', async () => {
+test('settings bundle ships self-update but no host-lifecycle surface', async () => {
   const text = await readFile(new URL('../lib/ui/client.js', import.meta.url), 'utf8')
-  assert.match(text, /dshRestart/)
-  assert.match(text, /重启宿主/)
-  assert.match(text, /Restart DSH/)
-  assert.match(text, /dshRestartStale/)
+  // Gone for good: dsh-cli update, host restart, dsh auto-update channel.
+  assert.equal(text.includes('dshRestart'), false)
+  assert.equal(text.includes('checkDshUpdate'), false)
+  assert.equal(text.includes('Restart DSH'), false)
+  // Kept: the plugin auto-update switch, now backed by self-install.
+  assert.match(text, /autoUpdate/)
+  assert.match(text, /osubs-auto-row/)
+  assert.match(text, /自动更新/)
+  assert.match(text, /Auto-update/)
 })
 
 test('GLM card boost wording is exactly 150%配额 / 150% quota', () => {
@@ -422,11 +427,11 @@ test('About Installed prefers the fresher of checkUpdate and snapshot', async ()
   assert.match(src, /setSnap\(\(current\) => current \? \{ \.\.\.current, update: \{ \.\.\.current\.update, \.\.\.result \} \}/)
 })
 
-test('About DSH GitHub latest tag shows published time before the tag', async () => {
+test('About panel carries no DSH-cli version rows', async () => {
   const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
-  const row = src.match(/t\.dshLatestTag[\s\S]*?t\.dshStableVersion/)?.[0] ?? ''
-  assert.match(row, /Boolean\(dshTag\?\.publishedAt\) && h\('span', \{ className: 'osubs-note' \}, dshTag\.publishedAt\),\s*aboutLink\(dshTag\?\.url, dshTag\?\.tag\)/)
-  assert.equal(/aboutLink\(dshTag\?\.url, dshTag\?\.tag\),\s*Boolean\(dshTag\?\.publishedAt\)/.test(row), false)
+  assert.equal(src.includes('dshLatestTag'), false)
+  assert.equal(src.includes('dshStableVersion'), false)
+  assert.equal(src.includes('dshTag'), false)
   assert.match(src, /\.osubs-kv-value \.osubs-note:not\(:last-child\)::after \{ content: ' ·'/)
 })
 
