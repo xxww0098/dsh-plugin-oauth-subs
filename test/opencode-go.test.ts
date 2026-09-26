@@ -287,6 +287,38 @@ function consoleFetch(routes) {
   }
 }
 
+test('Go API key supplies quota when the cookie is absent or expired', async () => {
+  const calls = []
+  const fetchFn = async (url, init: any = {}) => {
+    const path = String(url).replace('https://opencode.ai', '')
+    calls.push(path)
+    if (path === '/zen/go/v1/usage') {
+      assert.equal(init.headers.Authorization, 'Bearer sk-test')
+      return new Response(JSON.stringify({ usage: {
+        rolling: { status: 'ok', percent: 0, resetsAt: '2026-09-26T15:00:00Z' },
+        weekly: { status: 'ok', percent: 12, resetsAt: '2026-09-28T00:00:00Z' },
+        monthly: { status: 'ok', percent: 74, resetsAt: '2026-10-10T00:00:00Z' },
+      } }), { status: 200 })
+    }
+    return new Response('sign in', { status: 401 })
+  }
+  const dir = await mkdtemp(join(tmpdir(), 'opencode-go-'))
+  const store = new OpencodeGoStore({ path: join(dir, 'opencode-go.json'), fetchFn })
+  const saved = await store.save({ apiKey: 'sk-test' })
+  let row = (await store.snapshot()).accounts[0]
+  assert.equal(row.quota.status, 'ready')
+  assert.deepEqual(row.quota.rows.map((item) => item.remainingPercent), [100, 88, 26])
+  assert.equal(row.quota.rows[1].resetAt, Date.parse('2026-09-28T00:00:00Z'))
+  assert.deepEqual(calls, ['/zen/go/v1/usage'])
+
+  await store.save({ id: saved.id, cookie: 'auth=Fe26.expired' })
+  row = (await store.snapshot()).accounts[0]
+  assert.equal(row.quota.status, 'ready')
+  assert.equal(row.quota.rows[2].remainingPercent, 26)
+  assert.ok(calls.includes('/console/api/orgs'))
+  assert.equal(calls.at(-1), '/zen/go/v1/usage')
+})
+
 test('fetchOpencodeGoQuota reads the console API for migrated workspaces', async () => {
   const quota = await fetchOpencodeGoQuota({ cookieHeader: '__Host-console_session=cs.x' }, {
     fetchFn: consoleFetch({

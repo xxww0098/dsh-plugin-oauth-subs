@@ -147,7 +147,7 @@ export class OpencodeGoStore {
     const entry = this.vault.accounts[id]
     const quota = this.quotas.get(id)
     const stale = Date.now() - (quota?.updatedAt ?? 0) > this.ttlMs
-    const shouldRefresh = Boolean(entry?.cookieHeader)
+    const shouldRefresh = Boolean(entry?.cookieHeader || entry?.apiKey)
       && (quota === undefined || quota.status === 'idle' || (quota.status === 'error' && stale))
     if (shouldRefresh) await this.#refreshOne(id, quota).catch(() => undefined)
     return this.quotas.get(id) ?? { status: 'idle' }
@@ -223,7 +223,7 @@ export class OpencodeGoStore {
     this.vault.accounts[target] = entry
     this.vault.activeId = target
     await this.#persist()
-    if (entry.cookieHeader) await this.#refreshOne(target, this.quotas.get(target)).catch(() => undefined)
+    if (entry.cookieHeader || entry.apiKey) await this.#refreshOne(target, this.quotas.get(target)).catch(() => undefined)
     else this.quotas.set(target, { status: 'idle' })
     return { id: target, created }
   }
@@ -283,7 +283,7 @@ export class OpencodeGoStore {
     const pending = this.inflight.get(id)
     if (pending) return pending
     const entry = this.vault.accounts[id]
-    if (!entry?.cookieHeader) {
+    if (!entry?.cookieHeader && !entry?.apiKey) {
       this.quotas.set(id, { status: 'idle' })
       return this.#snapshot()
     }

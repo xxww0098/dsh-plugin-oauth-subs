@@ -1364,3 +1364,14 @@ DeepSeek Harness 语言已选中文，OAuth 订阅页仍显示英文。
 
 ### 修复
 优先读取宿主页面的 `document.documentElement.lang`，空值时才回退浏览器语言；日期也用该语言格式化。
+
+## 2026-09-26：OpenCode Go 旧 cookie 失效后额度空白
+
+### 现象
+桌面端显示 `OpenCode Go cookie is invalid or expired`，但 Console 网页仍可看额度。
+
+### 根因
+本地只存旧 `auth` cookie；额度刷新只允许 cookie，忽略仍有效的 API key。
+
+### 修复
+cookie 缺失或读取失败时用 API key 的 `/zen/go/v1/usage` 读用量百分比与重置时间；账号仍可显示额度。
