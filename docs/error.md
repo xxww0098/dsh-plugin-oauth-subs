@@ -2,6 +2,12 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-26：文档把 OpenCode Go 和旧更新流程写错
+
+**现象**：双语 README 缺 OpenCode Go 家族行、导入表与家族表连在一起，仍称 Ollama Cloud 有 20 个回退模型；产品与设计稿描述已移除的 DSH 更新 / 重启按钮，部分相对链接打不开。
+**根因**：模型目录与桌面更新流程变更后，入口文档和设计稿没有同步；相对链接按错误目录解析。
+**修复**：双语入口补直连路由与账号位置，模型行数对齐本轮目录审查；产品 / 设计稿改成单张插件更新卡；修正本地链接并核对 24 份受版本控制的 Markdown。
+
 ## 2026-09-26：全家族请求时好时坏 = TokenManager 刷新状态机把可恢复的刷新变成请求失败
 
 **现象**：token 端点一次抖动后，已过期账号的请求连续 5 分钟秒失败（重放缓存错误）；token 端点挂住时该账号所有请求一起挂死；preempt 窗口内（token 仍有效）每个请求都要等刷新 RTT；别的写者已轮换 refresh token 时本请求报 `login expired` / `session changed`。
@@ -27,11 +33,11 @@
 **根因**：路由行把厂商输出上限当 `maxTokens` 写进 llm-pi-ai，宿主 `dsh-compaction-basic` 阈值 = `min(窗口×0.8, 窗口 − 该值 − headroom 65536)`：codex 258k→64464（25%）、swe-2 262k→68464（26%）、grok 500k=maxTokens 时阈值转负、自动压缩整体禁用；114k 窗口模型连 65536 headroom 都放不下。
 **修复**：`toHarnessModel` 路由 `maxTokens` 封顶 `HARNESS_REQUEST_MAX_TOKENS`=32768（llm-pi-ai 自身默认；真实上限仍留家族目录行，Devin/Antigravity/GLM hop 用自己的 cap，Codex/Copilot 本就 strip）；`syncHarnessModels` 向 profile `cordis.patch.yml` 末尾维护一段 marker 包裹的 `id: compaction-basic` override——`modelPolicies` 里窗口 <655360 的模型 `headroomTokens` 按窗口 10% 收缩（compaction-basic Config 无 volatile 字段且 live entry 嵌在 cordis:group 里，`settings.mutate`/`configEditor` 都够不到，patch 层 id 扁平匹配可达；手写同名条目存在则整体跳过）。另：Devin `forwardDevin` 不走 `forward()` 重试环，摘要调用 `UND_ERR_SOCKET` 后 5 次重试全 `ECONNRESET` 把整轮打死——补 head 未提交前有界重试（3 次，1s/4s 退避），对齐 passthrough 家族语义。线上 `cordis.patch.yml` 旧值在下一次 sync（登录 / 导入 / 额度刷新 / warmCatalogs）自动改写。
 
-## 2026-11-02：Cursor `grok-4.7` 一跑就「AI Model Not Found: Invalid parameters for registry model」= effort 参数 id/value 全错
+## 2026-09-22：Cursor `grok-4.7` 一跑就「AI Model Not Found: Invalid parameters for registry model」= effort 参数 id/value 全错
 
 **现象**：oauth-cursor 选 Grok 4.7（±fast）任何 effort 都整轮失败，上游回 `Invalid parameters for registry model: "grok-4.7"`；不带 effort 的请求正常。
 **根因**：`cursorModelParameters` 对所有家族一律发 `{id:'reasoning', value:'extra-high'}`，但 grok-4.7 注册表要的是 `reasoning_effort`=`xhigh`——参数 id 和值都按家族分（4.5/4.6 是 `effort`，gpt-5.5 是 `reasoning`=`extra-high`，kimi/glm 是 `reasoning`=`max`），错一个就 400。
-**修复**：`CURSOR_PARAM_STYLES` + live AvailableModels 变体逐字导出每族参数样式（effortParam / efforts / contexts / fast），`cursorModelParameters` 按样式发 context→effort→fast，未知家族省略 effort；picker `reasoningEfforts` 改按家族广告值（composer-2.5/default 不再假提供 effort）。活测 2026-11-02（Pro 账号）：grok-4.7±fast xhigh、grok-4.6±fast、kimi-k3 max、glm-5.2 max、composer-2.5±fast、default 全 200。
+**修复**：`CURSOR_PARAM_STYLES` + live AvailableModels 变体逐字导出每族参数样式（effortParam / efforts / contexts / fast），`cursorModelParameters` 按样式发 context→effort→fast，未知家族省略 effort；picker `reasoningEfforts` 改按家族广告值（composer-2.5/default 不再假提供 effort）。活测 2026-09-22（Pro 账号）：grok-4.7±fast xhigh、grok-4.6±fast、kimi-k3 max、glm-5.2 max、composer-2.5±fast、default 全 200。
 
 ## 2026-09-23：全家族模型目录年检——Devin / Antigravity / Cursor / Cline / Kimi 有缺行，Grok / GLM / Kiro / Ollama 无漂移
 
@@ -111,7 +117,7 @@
 
 **现象**：`strictNullChecks` 落地后逐个开关实测——`strictFunctionTypes` / `strictBindCallApply` / `strictPropertyInitialization` / `noImplicitThis` / `alwaysStrict` 全是 **0**（`declare` 字段那一轮顺手清掉了），`--strict` 只剩 **25** 条 `useUnknownInCatchVariables`；而 `--noImplicitAny` 是 **2082** 条。
 **根因**：25 条全是 `catch (error)` 后直接读 `error.message` / `error?.code`——把 catch 变量从 `any` 收紧成 `unknown` 正是这个开关要抓的东西。2082 条里 **1726 条**是 TS7006「参数隐式 any」（`value` 139 / `session` 128 / `payload` 73 / `id` 62 …），绝大多数**只能标 `: any`**。
-**修复**：在 [`src/utils/http.ts`](src/utils/http.ts) 里 `describeError(error: unknown)` 旁边加两个同风格的无 cast 助手 `errorCode(error)` / `errorMessage(error)`（用 `'code' in error` 收窄），替换 7 个文件 25 处 `error.message` / `error?.code`。开启 `"useUnknownInCatchVariables": true`，695 tests 全绿。
+**修复**：在 [`src/utils/http.ts`](../src/utils/http.ts) 里 `describeError(error: unknown)` 旁边加两个同风格的无 cast 助手 `errorCode(error)` / `errorMessage(error)`（用 `'code' in error` 收窄），替换 7 个文件 25 处 `error.message` / `error?.code`。开启 `"useUnknownInCatchVariables": true`，695 tests 全绿。
 **判断（不做的事）**：`noImplicitAny` **不清扫**。给 1726 个参数补 `: any` 只是把「隐式」变「显式」，不产生任何安全性，属于用注解掩盖诊断；它需要的是逐模块设计类型面。这条结论已写进棘轮脚本头部，避免以后有人再当清扫项试一遍。
 **收口**：棘轮第二项改名 `strict`，显式传 `--strictNullChecks --useUnknownInCatchVariables`；两项基线均 **0**。
 ## 2026-09-19：strictNullChecks 收敛 431→0 并开关落地，棘轮两项归零
@@ -165,24 +171,24 @@
 **根因**：Cline 只给**非流式**回包套 `{success,data}` 信封（SSE 不套），CLI 因为始终 `stream: true` 从没撞上；bearer 必须是 `workos:<jwt>`（`provider-auth-registry.ts` `formatAccessToken` 加的前缀）；Anthropic 经 OpenRouter 要显式 `cache_control` 断点，CLI 不发，隐式前缀缓存只对 OpenAI 系生效。
 **修复**：`unwrapClineEnvelope` 在非流式分支先解包再过 usage 映射；`formatClineAccessToken` 幂等加前缀（导入 / 粘贴 / 刷新同一入口）；`CLINE_REASONING` 无 `off` 键（CLI 禁用思考时不发字段）、`max`→`xhigh`。活测：设备码 → `POST /auth/register` → `/users/me` + `/balance`（微美元）+ `/plan`（无订阅 404）全通，proxy 流式与非流式都拿到 `ok` 与 usage。
 
-## 2026-10-23：xAI Grok 额度显示「0 / 0」——上游改了 GetGrokCreditsConfig schema
+## 2026-09-18：xAI Grok 额度显示「0 / 0」——上游改了 GetGrokCreditsConfig schema
 
 **现象**：SuperGrok Heavy 账号额度卡只有「每周 0 / 0」和重置倒计时，没有用量条；billing JSON 与 gRPC 帧都 200。
 **根因**：①billing 的 `onDemandCap{val:0}`（pay-as-you-go 关闭）被 `grokOnDemandBag` 当成真额度包，造出 0/0 行；②上游把 GetGrokCreditsConfig 的 usage float 从 nested field 1 移走（周期挪到 nested field 8 `{type,start,end}`），解码器只认旧形状，拿不到 percent 也填不进 0/0 行。
 **修复**：`grokOnDemandBag` 与 monthly 一样要求 `total > 0`；`decodeGrokCreditsFrame` 读 nested field 8 的 start/end（旧 field 4/5 保留回退），有周期无 usage 时按 proto3 省略零值 = 0% 已用（与 grok.com 网页一致）；snapshot 的 `periodStart` 并入行。活测：Heavy 账号返回 weekly 100% 剩余 + 正确 resetAt。
 
-## 2026-10-22：令牌生命周期对齐 CLIProxyAPI——401 刷新重试 / 后台 sweep / 失败退避
+## 2026-09-18：令牌生命周期对齐 CLIProxyAPI——401 刷新重试 / 后台 sweep / 失败退避
 
 **现象**：对照 router-for-me/CLIProxyAPI 后发现三处缺口——①上游 401（令牌被吊销/轮转但未到 expiresAt）直接透传给客户端，用户只能重登；②令牌纯惰性刷新，闲置后首个请求付刷新 RTT，refresh token 静默死亡只在请求中暴露；③token 端点瞬时故障时每个请求都重打端点，且仍有效的旧 access token 被白白丢弃；④同账号重登录整体覆盖 session，丢 projectId / cachedEmail 等水合字段。
 **根因**：`TokenManager` 只有「到期前 preempt 窗口内惰性刷新」一条路径，无强制刷新、无失败退避；`saveSession` 无合并语义。
 **修复**：`refreshNow(id, failedAccessToken)`（已轮转的并发刷新直接复用，不二次兑换 refresh token）；`forward()` 捕获 `UnauthorizedUpstream` 刷新一次重试，失败则原样透传上游 401 body；`startTokenSweep` 每 60s 扫全部已存账号；瞬时刷新失败记 5min 退避且未过期令牌继续服务；`saveSession` 同 id 合并非凭据字段（`SESSION_CREDENTIAL_KEYS` 除外）。Kiro / Cursor / Devin 自有 transport 的 401 不在本次范围（Devin 已有 jwt 401 重试先例）。
 
-## 2026-10-21：手动更新「经常失败」——装上了但不重启、update 超时即放弃
+## 2026-09-17：手动更新「经常失败」——装上了但不重启、update 超时即放弃
 
 **现象**：关于页手动点更新常报失败或装完版本仍旧；自动更新却稳定。根因有三：①手动 apply 不传 restart，装上后进程仍跑旧模块，用户不重启就永远「有新版本」；②`dsh plugin update`（pnpm update，对 git spec 常 no-op）一超时就不再走确定性的 `add <repo>#tag`；③GUI 启动的 dsh web PATH 极简，spawn 的 dsh 找不到 pnpm/node。
 **修复**：手动 apply 默认 `restart !== false`（与自动更新、DSH 卡一致，装完自动重启）；`applyHostUpdate` 在 update 超时后仍重试 `add #tag`；`runDshPlugin` 与 npm 一样补 PATH 默认值。UI 拆开「检查更新」与「更新到 vX」，加版本带、进度秒数与自动更新「上次检查」行（`update-state.json` 记录 lastRun）。
 
-## 2026-10-20：Devin hop 的三个活测结论（双前缀 / ide_name / fast）
+## 2026-09-17：Devin hop 的三个活测结论（双前缀 / ide_name / fast）
 
 **现象**：接入 Devin 时发现三类会做错的事——①给已带 `devin-session-token$` 的 token 再加前缀，上游 401；②`GetCliModelConfigs` 用 `ide_name: devin` 只回 1 条 stub config（209→1），MITM 真二进制后确认 `chisel`/`3000.10.31` 才是 CLI 真实指纹；③`GetCliModelConfigs` 有 `*-fast` 真后端变体，过 `applyFastMode` 会把模型 id 剥掉 `-fast`。
 **根因**：token 导入/粘贴/paste 共用入口，不 normalize 就双前缀；服务端按客户端身份区分目录；共享 fast-mode 语义把「快档」当后缀 flag，和 Devin 把它当独立模型冲突。

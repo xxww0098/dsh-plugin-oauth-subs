@@ -8,32 +8,32 @@ web
 
 ## Users
 
-Primary user: a person already running DeepSeek Harness locally on their own machine, using their own vendor subscriptions. Job: get those plans into DSH so chat uses them instead of buying separate API keys.
+Primary user: a person already running DeepSeek Harness locally, using vendor subscriptions or an OpenCode Go API key. Job: use those accounts from the DSH model picker.
 
-Success: signed in, remaining quota visible per account, wanted models enabled in the picker, chat going through this plugin’s loopback proxy.
+Success: account connected, available quota visible where the provider exposes it, wanted models enabled in the picker, and chat reaching the selected provider.
 
 ## Product Purpose
 
-dsh-plugin-oauth-subs is a DeepSeek Harness plugin. It signs the operator into ChatGPT Codex, xAI Grok, Zhipu GLM (Z.ai / BigModel), AWS Kiro, Google Antigravity, Cursor, Ollama Cloud, Kimi Code Plan, GitHub Copilot, Devin Agent, and Cline with official OAuth or documented local import, then syncs routes into llm-pi-ai.
+dsh-plugin-oauth-subs is a DeepSeek Harness plugin. It connects ChatGPT Codex, xAI Grok, Zhipu GLM (Z.ai / BigModel), AWS Kiro, Google Antigravity, Cursor, Ollama Cloud, Kimi Code Plan, GitHub Copilot, Devin Agent, Cline, and OpenCode Go through their supported login, import, or API-key flows, then syncs routes into llm-pi-ai.
 
-It is not a second LLM adapter. After Settings closes, DSH still calls the loopback proxy.
+After Settings closes, DSH continues using the configured loopback or direct routes.
 
 ## Positioning
 
-Neighboring products cannot truthfully claim this: official (or documented CLI/IDE) subscription auth for those families, inside DSH Settings, with a loopback hop that maps each family onto DSH’s closed api union (`openai-responses` | `openai-completions` | `anthropic-messages`) without inventing a fourth protocol.
+The plugin connects these accounts inside DSH Settings. Subscription chat uses a loopback hop; OpenCode Go uses its direct API routes. Every route stays within DSH’s `openai-responses`, `openai-completions`, and `anthropic-messages` API types.
 
 ## Operating Context
 
 - Install: `dsh plugin --profile web add …` then `dsh web`.
 - Surface: Settings → OAuth 订阅 (icon tabs: families, then Models and About).
-- Tokens live in the DSH profile data dir (`auth.json` 0600); models in `models.json` beside it.
-- Chat plane: llm-pi-ai → `127.0.0.1:8318` → vendor. Bind is loopback-only.
-- About can check and apply plugin GitHub updates and DSH npm versions; GitHub-only DSH tags are display, not installable.
+- Subscription tokens live in the DSH profile data dir (`auth.json` 0600); OpenCode Go accounts use `opencode-go.json`; model selections use `models.json`.
+- Chat plane: llm-pi-ai → loopback `127.0.0.1:8318` → subscription provider, or direct OpenCode Go API. The proxy binds only to loopback.
+- About checks GitHub plugin releases and installs a selected plugin release into the profile. The running version changes after the host or app restarts.
 - Host theme, locale, and dialog chrome come from DSH web; this plugin does not ship a standalone site.
 
 ## Capabilities and Constraints
 
-- Eleven OAuth families, each with its own tab, catalog, cache, and hop (see AGENTS.md and `docs/oauth.md`).
+- Twelve provider tabs: ten under `src/oauth/`, plus Ollama Cloud and OpenCode Go under `src/apikey/`. OpenCode Go uses direct routes without a loopback hop (see [AGENTS.md](AGENTS.md) and [docs/oauth.md](docs/oauth.md)).
 - Many accounts per family; one stored session is one card; quota (remaining bars) lives on every card; click card to switch. Ollama Cloud has no quota bars.
 - Add-account chrome is a centered dialog, not a sheet or drawer.
 - Model checkboxes sync into llm-pi-ai; unsigned families show rows disabled until login.
@@ -52,7 +52,7 @@ Neighboring products cannot truthfully claim this: official (or documented CLI/I
 - Shipped Settings UI: `src/ui/client.ts`.
 - Visual contract notes: `design-system/MASTER.md`, `design-system/pages/settings-workbench.md`.
 - Binding product/UI rules: `AGENTS.md`.
-- Family hops: `docs/oauth.md` and `src/oauth/<id>/README.md`.
+- Provider hops and direct routes: `docs/oauth.md`, `src/oauth/<id>/README.md`, and `src/apikey/<id>/README.md`.
 - Fault log: `docs/error.md`.
 - Do not fabricate testimonials, customers, benchmarks, or pricing.
 

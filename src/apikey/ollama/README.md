@@ -16,8 +16,8 @@ Ollama **Cloud** 订阅（[ollama.com](https://ollama.com)）。**不是**本机
 | [`catalog.ts`](catalog.ts) | 登录后 `GET /api/tags` + `POST /api/show`（窗口 + `capabilities` → `input`）；静态 `OLLAMA_MODELS` 只做离线 fallback |
 | [`cache.ts`](cache.ts) | 剥 Codex / Grok 字段。没有文档化的 sticky id / cache-read |
 
-调度：[`../proxy.ts`](../proxy.ts) `family === 'ollama'` 剥 cache 字段，`forward()` 到 `https://ollama.com/v1/chat/completions`。
-额度：[`../quota.ts`](../quota.ts) `fetchOllamaQuota` 并行 `GET /api/usage` + `POST /api/me`。`limits.*.usage` 是 0..1 分数。有 `resets_at` / `reset_at` / `resetAt` / `next_reset` 就用。Session 缺 stamp 时用下一 UTC 5h unix 桶（`18000 - (epoch % 18000)`，[ollama#12532](https://github.com/ollama/ollama/issues/12532)），不是从上次点击起算 5h。Weekly 缺 stamp 时用下一 UTC 7d 桶、偏移 −4d（`604800 - ((epoch - 4d) % 604800)`，周一 00:00 UTC），不编 `now+7d`。
+调度：[`../../oauth/proxy.ts`](../../oauth/proxy.ts) `family === 'ollama'` 剥 cache 字段，`forward()` 到 `https://ollama.com/v1/chat/completions`。
+额度：[`../../oauth/quota.ts`](../../oauth/quota.ts) `fetchOllamaQuota` 并行 `GET /api/usage` + `POST /api/me`。`limits.*.usage` 是 0..1 分数。有 `resets_at` / `reset_at` / `resetAt` / `next_reset` 就用。Session 缺 stamp 时用下一 UTC 5h unix 桶（`18000 - (epoch % 18000)`，[ollama#12532](https://github.com/ollama/ollama/issues/12532)），不是从上次点击起算 5h。Weekly 缺 stamp 时用下一 UTC 7d 桶、偏移 −4d（`604800 - ((epoch - 4d) % 604800)`，周一 00:00 UTC），不编 `now+7d`。
 套餐：`me.Plan`（`pro` → Pro），不走 Codex `pro` → Pro 20x。
 
 ## 协议

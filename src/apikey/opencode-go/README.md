@@ -56,7 +56,7 @@ DSH 会把每会话 `sessionId` 交给 pi-ai，但 pi-ai 0.85.1 的 openai-compl
 
 官方 [Go · API 端点](https://opencode.ai/docs/zh-cn/go/#api-%E7%AB%AF%E7%82%B9)。两条路由就是协议分发：completions 行 `/v1/chat/completions`（`@ai-sdk/openai-compatible`），responses 行 `/v1/responses`。
 
-每行的 name / context / maxTokens / input / reasoningEfforts / compat 钉在 [`models.ts`](models.ts)，来源：官方 `GET https://opencode.ai/zen/go/v1/models`（公开 40 行、本机 key 33 行）+ Go docs 端点表 + models.dev `opencode-go` + 内置 pi-ai catalog（DeepSeek 方言与 effort 阶梯）。completions 行写 `openai` / `deepseek` compat；responses 行不写 compat（`sessionAffinityFormat` 是 llm-pi-ai 的 withhold 字段，profile 不许声明）。
+每行的 name / context / maxTokens / input / reasoningEfforts / compat 钉在 [`models.ts`](models.ts)，来源：官方 `GET https://opencode.ai/zen/go/v1/models`（2026-09-26 本机 key 35 行）+ Go docs 端点表 + models.dev `opencode-go` + 内置 pi-ai catalog（DeepSeek 方言与 effort 阶梯）。completions 行写 `openai` / `deepseek` compat；responses 行不写 compat（`sessionAffinityFormat` 是 llm-pi-ai 的 withhold 字段，profile 不许声明）。
 
 2026-09-23 逐行实测 `/chat/completions`：completions 27 行全部 200；Grok 4.6/4.7、GPT-5.6 Luna、Muse Spark 1.2/1.3 只走 `/responses`；7 个公开 id 两种协议都回 `Model is unavailable`（`kimi-k2.5` / `glm-5` / `qwen3.5-plus` / `mimo-v2-pro` / `mimo-v2-omni` / `hy3-preview` / `grok-4.5`），不进目录。`deepseek-flash` 与 `deepseek-v4.1-flash` 是同一模型的两个 id（实测都 200），picker 只留 docs 现行 id `deepseek-v4.1-flash`，不再出现两条同名行。
 
