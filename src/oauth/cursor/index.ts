@@ -68,9 +68,15 @@ export function cursorEffortKey(value) {
   return ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(key) ? key : undefined
 }
 
+export function cursorContextValueTokens(value) {
+  const text = String(value ?? '').trim().toLowerCase()
+  const match = text.match(/^(\d+)([km])$/)
+  return match ? Number(match[1]) * (match[2] === 'm' ? 1_000_000 : 1_000) : undefined
+}
+
 /**
  * RequestedModel parameter style per picker family, from live
- * AvailableModels variants (2026-11 probe, Pro account): the registry
+ * AvailableModels variants (2026-09-26 probe, Pro account): the registry
  * validates Run parameters verbatim — a wrong id OR value fails the whole
  * Run with 'Invalid parameters for registry model'. effortParam is the
  * parameter id that family takes ('reasoning' / 'effort' / 'reasoning_effort'),
@@ -79,11 +85,15 @@ export function cursorEffortKey(value) {
  * absent here keep the picker effort list but send no effort parameter —
  * guessing an id 400s, omitting falls back to the registry default.
  */
+const CURSOR_CLAUDE_EFFORTS = { low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh', max: 'max' }
+const CURSOR_GPT56_EFFORTS = { off: 'none', ...CURSOR_CLAUDE_EFFORTS }
+const CURSOR_MUSE_EFFORTS = { minimal: 'minimal', ...CURSOR_CLAUDE_EFFORTS }
+
 export const CURSOR_PARAM_STYLES = Object.freeze({
   'grok-4.7': {
     effortParam: 'reasoning_effort',
     efforts: { low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh' },
-    contexts: ['256k', '500k'],
+    contexts: ['256k'],
     fast: true,
   },
   'grok-4.6': {
@@ -104,6 +114,15 @@ export const CURSOR_PARAM_STYLES = Object.freeze({
     contexts: ['272k', '1m'],
     fast: true,
   },
+  'claude-fable-5-1': { effortParam: 'effort', efforts: CURSOR_CLAUDE_EFFORTS, contexts: ['300k'], fast: false },
+  'claude-opus-5-5': { effortParam: 'effort', efforts: CURSOR_CLAUDE_EFFORTS, contexts: ['300k'], fast: true },
+  'claude-opus-5': { effortParam: 'effort', efforts: CURSOR_CLAUDE_EFFORTS, contexts: ['300k'], fast: true },
+  'claude-sonnet-5': { effortParam: 'effort', efforts: CURSOR_CLAUDE_EFFORTS, contexts: ['300k'], fast: false },
+  'gemini-3.8-flash': { effortParam: 'reasoning_effort', efforts: { low: 'low', medium: 'medium', high: 'high' }, contexts: [], fast: false },
+  'muse-spark-1.3': { effortParam: 'effort', efforts: CURSOR_MUSE_EFFORTS, contexts: ['300k'], fast: false },
+  'gpt-5.6-sol': { effortParam: 'reasoning', efforts: CURSOR_GPT56_EFFORTS, contexts: ['272k'], fast: true },
+  'gpt-5.6-terra': { effortParam: 'reasoning', efforts: CURSOR_GPT56_EFFORTS, contexts: ['272k'], fast: true },
+  'gpt-5.6-luna': { effortParam: 'reasoning', efforts: CURSOR_GPT56_EFFORTS, contexts: ['272k'], fast: true },
   'kimi-k3': {
     effortParam: 'reasoning',
     efforts: { low: 'low', high: 'high', max: 'max' },
@@ -134,32 +153,30 @@ function cursorModel(id, name, contextWindow, maxTokens, reasoningEfforts: any =
   return { id, name, contextWindow, maxTokens, input, reasoningEfforts }
 }
 
-/** Static fallback aligned to cursor.com/docs/models-and-pricing (checked 2026-09-23). Live GetUsableModels may add Auto / Fast / extra families. reasoningEfforts come from the family's CURSOR_PARAM_STYLES entry — the wire values the registry actually takes. */
+/** Static fallback aligned to cursor.com/docs/models-and-pricing and 2026-09-26 AvailableModels. Live GetUsableModels may add Auto / Fast / extra families. reasoningEfforts come from the family's CURSOR_PARAM_STYLES entry — the wire values the registry actually takes. */
 export const CURSOR_MODELS = Object.freeze([
-  cursorModel('composer-2.5', 'Composer 2.5', 200_000, 64_000, false),
-  // Live AvailableModels: contextTokenLimit 500000, supportsImages false
-  // (256k only applies to its non-max variants, which collapse into this row).
-  cursorModel('grok-4.7', 'Grok 4.7', 500_000, 64_000, CURSOR_PARAM_STYLES['grok-4.7'].efforts, ['text']),
+  cursorModel('composer-2.5', 'Composer 2.5', 200_000, 64_000, false, ['text']),
+  // The non-max variant takes 256k; 500k is a separate Max Mode variant.
+  cursorModel('grok-4.7', 'Grok 4.7', 256_000, 64_000, CURSOR_PARAM_STYLES['grok-4.7'].efforts, ['text']),
   cursorModel('grok-4.6', 'Grok 4.6', 256_000, 64_000, CURSOR_PARAM_STYLES['grok-4.6'].efforts),
   cursorModel('grok-4.5', 'Grok 4.5', 256_000, 64_000, CURSOR_PARAM_STYLES['grok-4.5'].efforts),
-  cursorModel('claude-fable-5-1', 'Claude Fable 5.1', 300_000, 128_000),
+  cursorModel('claude-fable-5-1', 'Claude Fable 5.1', 300_000, 128_000, CURSOR_CLAUDE_EFFORTS),
   // docs 2026-09-23 /docs/models/claude-opus-5-5: 'replaces Opus 5', 300k
   // window (1M Max Mode); maxTokens 128k via inferCursorMaxOutputTokens.
-  cursorModel('claude-opus-5-5', 'Claude Opus 5.5', 300_000, 128_000),
+  cursorModel('claude-opus-5-5', 'Claude Opus 5.5', 300_000, 128_000, CURSOR_CLAUDE_EFFORTS),
   // Opus 5 went 'Hidden by default' in the docs table on 2026-09-23 but still
   // has an official Model ID page; hidden != unserved (docs-hidden GLM 5.2 /
   // Kimi K3 are in the 2026-09-23 live rows), so this region-locked row stays.
-  cursorModel('claude-opus-5', 'Claude Opus 5', 300_000, 128_000),
-  cursorModel('claude-sonnet-5', 'Claude Sonnet 5', 200_000, 128_000),
-  cursorModel('gemini-3.1-pro', 'Gemini 3.1 Pro', 200_000, 64_000),
-  cursorModel('gemini-3.8-flash', 'Gemini 3.8 Flash', 200_000, 64_000),
+  cursorModel('claude-opus-5', 'Claude Opus 5', 300_000, 128_000, CURSOR_CLAUDE_EFFORTS),
+  cursorModel('claude-sonnet-5', 'Claude Sonnet 5', 200_000, 128_000, CURSOR_CLAUDE_EFFORTS),
+  cursorModel('gemini-3.1-pro', 'Gemini 3.1 Pro', 200_000, 64_000, false),
+  cursorModel('gemini-3.8-flash', 'Gemini 3.8 Flash', 200_000, 64_000, CURSOR_PARAM_STYLES['gemini-3.8-flash'].efforts),
   // docs 2026-09-23 /docs/models/muse-spark-1-3: Meta's first Cursor model,
-  // Model ID muse-spark-1.3, 300k window (1M Max Mode). No live param style
-  // yet -> default picker efforts, wire effort param omitted (registry default).
-  cursorModel('muse-spark-1.3', 'Muse Spark 1.3', 300_000, 64_000),
-  cursorModel('gpt-5.6-sol', 'GPT-5.6 Sol', 272_000, 128_000),
-  cursorModel('gpt-5.6-terra', 'GPT-5.6 Terra', 272_000, 128_000),
-  cursorModel('gpt-5.6-luna', 'GPT-5.6 Luna', 272_000, 128_000),
+  // Model ID muse-spark-1.3, 300k window (1M Max Mode).
+  cursorModel('muse-spark-1.3', 'Muse Spark 1.3', 300_000, 64_000, CURSOR_MUSE_EFFORTS),
+  cursorModel('gpt-5.6-sol', 'GPT-5.6 Sol', 272_000, 128_000, CURSOR_GPT56_EFFORTS),
+  cursorModel('gpt-5.6-terra', 'GPT-5.6 Terra', 272_000, 128_000, CURSOR_GPT56_EFFORTS),
+  cursorModel('gpt-5.6-luna', 'GPT-5.6 Luna', 272_000, 128_000, CURSOR_GPT56_EFFORTS),
   // Upstream variants only offer context 272k / 1m — the registry default is 272k.
   cursorModel('gpt-5.5', 'GPT-5.5', 272_000, 128_000, CURSOR_PARAM_STYLES['gpt-5.5'].efforts),
 ])

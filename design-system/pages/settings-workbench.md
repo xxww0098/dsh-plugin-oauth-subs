@@ -14,9 +14,9 @@ already recorded in MASTER. Settings is a stacked workbench:
 1. Sticky icon tabs (`.osubs-nav`): **two capsules**, docked with
    `gap: 4px`. Left `.osubs-tabs` is family-only `repeat(9, 36px)` +
    `justify-content: space-between` + `flex: 1 1 auto` (9 icons fill
-   row 1 and stretch their gaps; the families past row 1 — Devin, Cline
-   — then the API-key tab wrap inside this group). Right `.osubs-tabs-util` stays 36px, Models on row 1
-   and GitHub/About on row 2. Do not add a third API-key capsule. Do
+   row 1 and stretch their gaps; Devin, Cline, and OpenCode Go wrap
+   inside this group). Right `.osubs-tabs-util` stays 36px, Models on row 1
+   and About on row 2. Do not add a third API-key capsule. Do
    not `margin-left: auto`, nav `space-between`, or
    `width: max-content` on the family capsule.
 2. One family card (or Models / About)
@@ -30,38 +30,20 @@ buttons 32px (primary 36px). Still 13px UI / 12.5px emails.
 
 ## About cards
 
-The About tab is two update cards (OAuth Subs Plugin / DeepSeek Harness)
-with one shared anatomy — no account cards, no dialog:
+The About tab has one plugin update card — no account cards or dialog:
 
-- Card head: title + status pill on the left (`osubs-pill` — ok `已是最新`,
-  warn `有新版本`, bad `检查失败`/`更新失败`, neutral otherwise). Right side:
-  the DeepSeek Harness card keeps a `重启宿主` / `Restart DSH` button left of
-  the check-only 检查更新 (never installs, calls the host `dshRestart` RPC —
-  detached re-exec + exit); the plugin card only has 检查更新. Buttons are
-  `osubs-btn--sm` and disable while a restart is in flight.
-- Version band (`.osubs-ver`): `当前 → 最新` mono numerals with an SVG
-  arrow; the arrow pulses while applying. The apply CTA
-  (`更新到 vX` / `重试更新到 vX`, `osubs-btn--update`) docks right and
-  shows elapsed seconds while running. Check and apply are separate
-  actions — never one button that silently switches roles.
-- kv list (`.osubs-kv`) is hairline-separated rows (`--osubs-hair`):
-  muted label left, value right. Versions/tags are mono
-  (`osubs-mono`); npm dist-tags render as `osubs-tag--plain` chips.
-  The last row is the auto-update row (`.osubs-auto-row`): the whole
-  row is the label — title + a faint note (`每小时检查一次…` plus
-  `上次检查 HH:mm · 结果` from `update-state.json`) on the left,
-  `osubs-auto-track` switch on the right.
-- Repo rows link out with the LobeHub GitHub mark (`osubs-link--icon`).
-- Error detail, stale-process, and apply-result hints live under the list
-  in `.osubs-hints`; the pill carries the headline state. A successful
-  manual apply auto-restarts dsh web (same as auto-update).
-- Every “please restart dsh web” hint is actionable through the same
-  `立即重启` / `Restart now` text action (`.osubs-link--action`): the
-  plugin card's apply-needs-restart hint, the global host-stale banner, and
-  the OpenCode Go save-failure hint. Clicking keeps the button busy and
-  shows `正在重启 dsh web…` under the card; a host too old to expose
-  `dshRestart` falls back to the `dshRestartStale` copy. About still opens
-  no dialog — the action is one click and the page recovers by itself.
+- The header shows the plugin title, a status pill, and a check button.
+  Checking and installing are separate actions; the install button appears
+  in the version band only when a newer GitHub release is available.
+- The version band compares the running plugin with the latest release.
+  If the profile copy is newer than the running process, show the disk
+  version and a restart hint; installing does not restart the host or app.
+- The key/value list shows repository and runtime details. Its final row
+  holds the hourly auto-update switch and the last check result from
+  `update-state.json`.
+- Errors and installation results sit below the list. Keep their message
+  actionable, including a manual install fallback when automatic install
+  cannot find the profile's plugin directory.
 
 ## Quota
 
@@ -95,5 +77,4 @@ non-destructive dialog; Cancel on the card stops the flow.
 
 ## What this page does not own
 
-GLM opaque `user.id` (PR #80) and Cursor JWT `sub` identity (in-flight
-PR). Hop, cache, and quota math on the wire. Version bumps.
+Vendor hop, cache, and quota math on the wire. Release version bumps.

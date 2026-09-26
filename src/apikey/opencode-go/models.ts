@@ -7,11 +7,11 @@
  * wire protocol. OpenCode Go speaks three protocols, so this plugin owns the
  * complete list on two routes of its own:
  *
- *   `opencode-go-flash`     openai-completions  — 27 models (display "OpenCode Go")
- *   `opencode-go-responses` openai-responses    —  5 models
+ *   `opencode-go-flash`     openai-completions  — 28 models (display "OpenCode Go")
+ *   `opencode-go-responses` openai-responses    —  6 models
  *
- * Sources (all 2026-09-23):
- *   - `GET https://opencode.ai/zen/go/v1/models` (public 40, this key 33)
+ * Sources (2026-09-23, refreshed 2026-09-26):
+ *   - `GET https://opencode.ai/zen/go/v1/models` (this key 35)
  *   - Go docs model list + "API 端点" table (protocol per model)
  *   - models.dev provider `opencode-go` (contextWindow / maxTokens / input /
  *     effort ladders) and the installed pi-ai catalog (`compat` dialects)
@@ -23,7 +23,9 @@
  *     the gateway does not serve them on either protocol here. The legacy
  *     alias `deepseek-flash` is served too but not listed: it is the same
  *     model as the docs id `deepseek-v4.1-flash`, and two rows rendered as
- *     duplicates in the picker. 28 -> 27 completions rows after that.
+ *     duplicates in the picker. 2026-09-26: `space-bunny-free` and
+ *     `gpt-6-luna` each answered 200 on their respective endpoints, including
+ *     high / none / max effort probes; model limits come from models.dev.
  */
 
 export const OPENCODE_GO_BUILTIN_ROUTE_ID = 'opencode-go'
@@ -62,6 +64,7 @@ const EFFORT_HY4 = { off: 'none', high: 'high' }
 const EFFORT_HY3 = { off: 'none', low: 'low', high: 'high' }
 const EFFORT_GROK = { low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh' }
 const EFFORT_GPT56 = { low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh', max: 'max' }
+const EFFORT_GPT6 = { off: 'none', ...EFFORT_GPT56 }
 const EFFORT_MUSE = { minimal: 'minimal', low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh' }
 
 /** pi-ai completions dialects: plain OpenAI-compat, and DeepSeek's. */
@@ -115,6 +118,7 @@ export const OPENCODE_GO_EXTRA_MODELS = Object.freeze([
   model('hy4-preview', 'Hy4 Preview', 1_024_000, 64_000, TEXT, EFFORT_HY4, { compat: OPENAI_COMPAT }),
   model('hy3', 'Hy3', 256_000, 128_000, TEXT, EFFORT_HY3, { compat: OPENAI_COMPAT }),
   model('omen-alpha', 'Omen Alpha', 500_000, 128_000, TEXT_IMAGE, EFFORT_LOW_HIGH, { compat: OPENAI_COMPAT }),
+  model('space-bunny-free', 'Space Bunny Free', 1_048_576, 524_288, TEXT_IMAGE, EFFORT_GPT56, { compat: DEEPSEEK_COMPAT }),
 ])
 
 /** Official Go models that only answer on /responses. */
@@ -122,6 +126,7 @@ export const OPENCODE_GO_RESPONSES_MODELS = Object.freeze([
   model('grok-4.7', 'Grok 4.7', 500_000, 500_000, TEXT_IMAGE, EFFORT_GROK),
   model('grok-4.6', 'Grok 4.6', 500_000, 500_000, TEXT_IMAGE, EFFORT_GROK),
   model('gpt-5.6-luna', 'GPT-5.6 Luna', 1_050_000, 128_000, TEXT_IMAGE, EFFORT_GPT56),
+  model('gpt-6-luna', 'GPT-6 Luna', 1_050_000, 128_000, TEXT_IMAGE, EFFORT_GPT6),
   model('muse-spark-1.3-contributor', 'Muse Spark 1.3 Contributor', 1_048_576, 131_072, TEXT_IMAGE, EFFORT_MUSE),
   model('muse-spark-1.2-contributor', 'Muse Spark 1.2 Contributor', 1_048_576, 131_072, TEXT_IMAGE, EFFORT_MUSE),
 ])

@@ -84,7 +84,7 @@ import {
   pinCursorSystemPrefix,
   resetCursorSystemPins,
 } from '../lib/oauth/cursor/cache.js'
-import { consumeCursorFrames, mapCursorUsage, openaiToCursor } from '../lib/oauth/cursor/request.js'
+import { consumeCursorFrames, cursorModelParameters, mapCursorUsage, openaiToCursor } from '../lib/oauth/cursor/request.js'
 
 function jwt(payload) {
   const header = Buffer.from(JSON.stringify({ alg: 'none' })).toString('base64url')
@@ -244,7 +244,17 @@ test('cursor catalog is Completions at /cursor, not /cursor/v1', () => {
     low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh',
   })
   assert.deepEqual(route.models.find((model) => model.id === 'gpt-5.5').reasoningEfforts, CURSOR_REASONING)
+  assert.deepEqual(route.models.find((model) => model.id === 'composer-2.5').input, ['text'])
+  assert.equal(route.models.find((model) => model.id === 'gemini-3.1-pro').reasoningEfforts, false)
+  assert.equal(route.models.find((model) => model.id === 'claude-opus-5-5').reasoningEfforts.max, 'max')
+  assert.equal(route.models.find((model) => model.id === 'gpt-5.6-sol').reasoningEfforts.off, 'none')
   resetCursorCatalogCache()
+  assert.deepEqual(cursorModelParameters({ model: 'claude-opus-5-5', reasoning_effort: 'max' }), [
+    { id: 'context', value: '300k' }, { id: 'effort', value: 'max' }, { id: 'fast', value: 'false' },
+  ])
+  assert.deepEqual(cursorModelParameters({ model: 'grok-4.7', reasoning_effort: 'xhigh' }), [
+    { id: 'context', value: '256k' }, { id: 'reasoning_effort', value: 'xhigh' }, { id: 'fast', value: 'false' },
+  ])
   const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
   assert.equal(catalog['oauth-cursor'].models.length, CURSOR_MODELS.length)
 })
@@ -488,7 +498,7 @@ test('cursor registry parameters use the family wire spelling (grok-4.7 reasonin
   const decoded = decodeAgentClientMessage(built.requestBytes)
   assert.equal(decoded.modelId, 'grok-4.7')
   assert.deepEqual(decoded.parameters, [
-    { id: 'context', value: '500k' },
+    { id: 'context', value: '256k' },
     { id: 'reasoning_effort', value: 'xhigh' },
     { id: 'fast', value: 'false' },
   ])
@@ -502,7 +512,7 @@ test('cursor registry parameters use the family wire spelling (grok-4.7 reasonin
   const fastDecoded = decodeAgentClientMessage(fast.requestBytes)
   assert.equal(fastDecoded.modelId, 'grok-4.7')
   assert.deepEqual(fastDecoded.parameters, [
-    { id: 'context', value: '500k' },
+    { id: 'context', value: '256k' },
     { id: 'reasoning_effort', value: 'xhigh' },
     { id: 'fast', value: 'true' },
   ])
@@ -515,7 +525,7 @@ test('cursor registry parameters use the family wire spelling (grok-4.7 reasonin
     messages: [{ role: 'user', content: 'hi' }],
   })
   assert.deepEqual(decodeAgentClientMessage(off.requestBytes).parameters, [
-    { id: 'context', value: '500k' },
+    { id: 'context', value: '256k' },
     { id: 'fast', value: 'false' },
   ])
   resetCursorSystemPins()
@@ -979,7 +989,7 @@ test('cursor static catalog matches the live Cursor model set and has no Fast ro
   assert.equal(ids.some((id) => id.endsWith('-fast')), false)
   assert.equal(ids.includes('default'), false)
   assert.equal(CURSOR_MODELS.find((model) => model.id === 'grok-4.5').contextWindow, 256_000)
-  assert.equal(CURSOR_MODELS.find((model) => model.id === 'grok-4.7').contextWindow, 500_000)
+  assert.equal(CURSOR_MODELS.find((model) => model.id === 'grok-4.7').contextWindow, 256_000)
   assert.deepEqual(CURSOR_MODELS.find((model) => model.id === 'grok-4.7').input, ['text'])
   assert.equal(CURSOR_MODELS.find((model) => model.id === 'claude-opus-5').contextWindow, 300_000)
   assert.equal(CURSOR_MODELS.find((model) => model.id === 'claude-opus-5-5').contextWindow, 300_000)
@@ -1036,7 +1046,7 @@ test('cursor picker collapses effort/fast/thinking/max-mode and hides tab intern
   assert.equal(cursorSourceIsFast('default'), false)
   assert.equal(inferCursorContextWindow('grok-4.5', 'Grok 4.5'), 256_000)
   assert.equal(inferCursorContextWindow('grok-4.6', 'Grok 4.6'), 256_000)
-  assert.equal(inferCursorContextWindow('grok-4.7', 'Grok 4.7'), 500_000)
+  assert.equal(inferCursorContextWindow('grok-4.7', 'Grok 4.7'), 256_000)
   assert.equal(inferCursorContextWindow('claude-opus-5', 'Claude Opus 5'), 300_000)
   assert.equal(inferCursorContextWindow('claude-fable-5-1', 'Claude Fable 5.1'), 300_000)
   assert.equal(inferCursorMaxOutputTokens('gpt-5.5', 'GPT-5.5'), 128_000)
@@ -1060,6 +1070,14 @@ test('cursor picker collapses effort/fast/thinking/max-mode and hides tab intern
   ])
   assert.equal(fromAvailable.some((row) => row.id === 'composer-2-fast'), true)
   assert.equal(fromAvailable.some((row) => row.id === 'kimi-k2.5-fast'), false)
+  const nonMax = toCursorPickerModels(
+    [{ id: 'grok-4.7', name: 'Grok 4.7', contextWindow: 500_000 }],
+    [{ name: 'grok-4.7', contextTokenLimit: 500_000, variants: [
+      { isMaxMode: false, parameters: [{ id: 'context', value: '256k' }] },
+      { isMaxMode: true, parameters: [{ id: 'context', value: '500k' }] },
+    ] }],
+  )
+  assert.equal(nonMax.find((row) => row.id === 'grok-4.7').contextWindow, 256_000)
 })
 
 test('mocked GetUsableModels expands cursor catalog and yaml beyond the static 5', async () => {

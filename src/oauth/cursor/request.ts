@@ -12,7 +12,7 @@ import {
   peelCursorFastSuffix,
   pinCursorSystemPrefix,
 } from './cache.js'
-import { CURSOR_REASONING } from './index.js'
+import { CURSOR_REASONING, cursorContextValueTokens } from './index.js'
 import { cursorCatalogModels, cursorParamStyle } from './registry.js'
 import {
   decodeAgentServerMessage,
@@ -174,15 +174,6 @@ function vendorEffort(style, value) {
   return undefined
 }
 
-function contextValueTokens(value) {
-  const text = String(value ?? '').trim().toLowerCase()
-  const k = text.match(/^(\d+)k$/)?.[1]
-  if (k) return Number(k) * 1_000
-  const m = text.match(/^(\d+)m$/)?.[1]
-  if (m) return Number(m) * 1_000_000
-  return undefined
-}
-
 /**
  * The context parameter matching the picker row's advertised window. A wrong
  * or unadvertised value fails the same registry check, so only an exact match
@@ -195,7 +186,7 @@ function cursorContextParameter(family, style) {
   const row = cursorCatalogModels().find((model) => model.id === family)
   const window = row?.contextWindow
   if (!Number.isFinite(window)) return undefined
-  const hit = [...contexts].find((value) => contextValueTokens(value) === window)
+  const hit = [...contexts].find((value) => cursorContextValueTokens(value) === window)
   return hit ? { id: 'context', value: hit } : undefined
 }
 

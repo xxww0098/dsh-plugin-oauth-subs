@@ -70,9 +70,8 @@ export declare function ollamaSnapshotContextWindow(id: any): any;
  */
 export declare function ollamaContextWindow(id: any, show: any): any;
 /**
- * 20-row Cloud snapshot. Windows are POST /api/show
- * `model_info.*.context_length` (19 rows 2026-09-03; `deepseek-v4.1-flash`
- * 2026-09-11). `input` is that show's `capabilities` (`vision` →
+ * 17-row Cloud `/api/tags` snapshot (2026-09-26). Windows are POST /api/show
+ * `model_info.*.context_length`. `input` is that show's `capabilities` (`vision` →
  * text+image). Live tags+show replace this after login.
  */
 export declare const OLLAMA_MODELS: readonly {
