@@ -84,6 +84,7 @@ export declare class AuthController {
         copilot: boolean;
         devin: boolean;
         cline: boolean;
+        anthropic: boolean;
     }>;
     status(provider: any): Promise<{
         detail?: any;
@@ -485,6 +486,9 @@ export declare class AuthController {
             size: any;
         }[];
         running: any;
+        devVersion: string | undefined;
+        linked: boolean;
+        linkedPath: string | undefined;
         disk: any;
         resolved: any;
         runningPath: string;
@@ -509,6 +513,9 @@ export declare class AuthController {
         };
         version: any;
         running: any;
+        devVersion: string | undefined;
+        linked: boolean;
+        linkedPath: string | undefined;
         disk: any;
         resolved: any;
         runningPath: string;
@@ -569,7 +576,7 @@ export declare class AuthController {
         kind?: undefined;
         startUrl?: undefined;
     } | {
-        authorizeUrl: string;
+        authorizeUrl: any;
         mode: string;
         region: string;
         redirectUri?: undefined;

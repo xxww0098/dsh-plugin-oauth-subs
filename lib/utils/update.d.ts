@@ -50,6 +50,9 @@ export declare function pickDownloads(assets: any, host: any): {
 export declare function localUpdateInfo(platform?: NodeJS.Platform, opts?: any): {
     version: any;
     running: any;
+    devVersion: string | undefined;
+    linked: boolean;
+    linkedPath: string | undefined;
     disk: any;
     resolved: any;
     runningPath: string;
@@ -87,6 +90,9 @@ export declare function fetchLatest({ fetchFn, spawnFn, current, platform, timeo
         size: any;
     }[];
     running: any;
+    devVersion: string | undefined;
+    linked: boolean;
+    linkedPath: string | undefined;
     disk: any;
     resolved: any;
     runningPath: string;

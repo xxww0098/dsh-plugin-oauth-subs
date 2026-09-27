@@ -15,6 +15,7 @@
 export declare function glmLoginFailureMessage(error: any): string;
 export declare class GlmCliFlowManager {
     attempts: Map<string, any>;
+    starting: Set<string>;
     constructor();
     isBusy(provider: any): boolean;
     pending(provider: any): any;
@@ -22,8 +23,8 @@ export declare class GlmCliFlowManager {
         region?: string | undefined;
         fetchFn?: typeof fetch | undefined;
     }): Promise<{
-        authorizeUrl: string;
-        flowId: string;
+        authorizeUrl: any;
+        flowId: any;
         mode: string;
         waitToken: () => Promise<unknown>;
         cancel: () => void;

@@ -13,6 +13,7 @@ export declare function kiroIdcSession(tokens: any, registered: any, { kind }?: 
 }): any;
 export declare class KiroIdcFlowManager {
     attempts: Map<string, any>;
+    starting: Set<string>;
     constructor();
     isBusy(provider: any): boolean;
     pending(provider: any): any;

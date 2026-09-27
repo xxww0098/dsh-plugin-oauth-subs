@@ -13,6 +13,7 @@ export declare function oauthCallbackFromUrl(url: any, fallbackPath: any): {
 };
 export declare class OAuthFlowManager {
     attempts: Map<string, any>;
+    starting: Set<string>;
     constructor();
     isBusy(provider: any): boolean;
     pending(provider: any): any;

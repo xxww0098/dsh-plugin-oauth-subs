@@ -12,6 +12,11 @@ export declare const STREAM_ATTEMPTS = 3;
  * bounded, retryable proxy fault instead of a client-side timeout.
  */
 export declare const UPSTREAM_IDLE_TIMEOUT_MS = 120000;
+/**
+ * Delay before the next retry: the backoff schedule with shrink-only jitter
+ * (never longer than the base, so tests and callers can bound the wait).
+ */
+export declare function retryDelayMs(failedAttempt: any, random?: () => number): number;
 export { describeError } from '../utils/http.js';
 export declare function createProxy({ port, apiKey, tokens, fetchFn, maxRequestBodyBytes, upstreamIdleTimeoutMs, onAntigravityValidation, cursorRpc, devinChat }: any): {
     origin: () => string;

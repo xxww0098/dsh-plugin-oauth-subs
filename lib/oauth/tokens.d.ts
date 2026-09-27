@@ -11,6 +11,14 @@ export declare const REFRESH_FAILURE_BACKOFF_MS: number;
  * rotating refresh token would be answered with invalid_grant.
  */
 export declare const REFRESH_WAIT_MS = 30000;
+/**
+ * Upper bound on one refresh exchange (pi-ai bounds the same exchange at 15s).
+ * Family refresh calls carry no AbortSignal: a token endpoint that accepts the
+ * connection and stalls would otherwise hold the single-flight inflight until
+ * undici's own timeouts, so every request for that account pays the full
+ * waiter timeout instead of failing over to a still-valid token.
+ */
+export declare const REFRESH_EXCHANGE_TIMEOUT_MS = 20000;
 export declare class TokenManager {
     #private;
     provider: string;
@@ -22,10 +30,11 @@ export declare class TokenManager {
     isPermanent: any;
     onRemoved: any;
     refreshWaitMs: number;
+    exchangeTimeoutMs: number;
     inflight: Map<any, any>;
     failures: Map<any, any>;
     sources: WeakMap<object, any>;
-    constructor({ provider, authPath, displayName, preemptMs, refresh, isPermanent, onRemoved, refreshWaitMs }: any);
+    constructor({ provider, authPath, displayName, preemptMs, refresh, isPermanent, onRemoved, refreshWaitMs, exchangeTimeoutMs }: any);
     session(id: any): Promise<any>;
     /** The stored-account row that produced this session, when known. */
     sourceOf(session: any): any;
