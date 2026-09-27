@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { test } from 'node:test'
+import { after, test } from 'node:test'
 import { AuthController } from '../lib/oauth/controller.js'
 import { TokenManager } from '../lib/oauth/tokens.js'
 import { accountIdOf, getSession, listStoredSessions, replaceAccountId, saveSession, updateAccountSession } from '../lib/oauth/store.js'
@@ -10,6 +10,13 @@ import { kiroSession } from '../lib/oauth/kiro/index.js'
 import { createProxy } from '../lib/oauth/proxy.js'
 import { CODEX_API_URL, CODEX_TOKEN_URL } from '../lib/oauth/codex/index.js'
 import { ANTIGRAVITY_GENERATE_URL } from '../lib/oauth/antigravity/index.js'
+
+// The host process's event loop is never empty; refresh timeout timers are
+// deliberately unref'd (src/oauth/tokens.ts waitFor), so a bare pending await
+// can drain the loop mid-test on CI and node:test then cancels the file's
+// remaining tests as cancelledByParent. Keep one ref'd handle for the file.
+const keepalive = setInterval(() => {}, 60_000)
+after(() => clearInterval(keepalive))
 
 function deferred() {
   let resolve
