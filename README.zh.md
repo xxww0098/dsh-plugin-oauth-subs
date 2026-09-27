@@ -6,6 +6,8 @@
 
 把 **ChatGPT / Codex**、**xAI Grok**、**智谱 GLM**、**AWS Kiro**、**Google Antigravity**、**Cursor**、**Ollama Cloud**、**Kimi Code Plan**、**GitHub Copilot**、**Devin Agent**、**Cline**、**Claude** 的订阅，以及 **OpenCode Go** API key 接到 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。订阅家族通过本机回环代理；OpenCode Go 直连其 API。模型路由使用 DSH 的 `openai-responses`、`openai-completions`、`anthropic-messages` 三种 `api`。
 
+![订阅工作台 —— 额度页签、账号卡片与供应商栏](docs/readme-workbench.png)
+
 ## 安装
 
 ```sh

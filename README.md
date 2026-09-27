@@ -6,6 +6,8 @@
 
 Use a **ChatGPT / Codex**, **xAI Grok**, **Zhipu GLM**, **AWS Kiro**, **Google Antigravity**, **Cursor**, **Ollama Cloud**, **Kimi Code Plan**, **GitHub Copilot**, **Devin Agent**, **Cline**, or **Claude** subscription—or an **OpenCode Go** API key—inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). The subscription families use a loopback proxy; OpenCode Go routes directly to its API. Model routes use the DSH `api` values `openai-responses`, `openai-completions`, and `anthropic-messages`.
 
+![Subscription workbench — quota tab with per-account cards and provider rail](docs/readme-workbench.png)
+
 ## Install
 
 ```sh
