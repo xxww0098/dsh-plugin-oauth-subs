@@ -2,6 +2,12 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-27：CI 恒定取消 token-lifecycle 后 5 个测试 = unref'd 刷新超时把事件循环排空
+
+**现象**：`506869d` 起每次 CI `fail 0 / cancelled 5`——`token-lifecycle.test.ts` 第 454 行起的 5 个测试全部 `cancelledByParent`（"event loop has already resolved"），再后两个测试根本没注册；本地 macOS 全绿不复现。
+**根因**：`tokens.ts waitFor` 的超时 timer 按惯例 `unref`（插件计时器不钉住宿主），而测试的等待链只剩「unref'd 计时器 + 永不 settle 的 mock promise」= 零 ref'd handle——Linux CI 上循环排空，node:test 判定文件根测试已结束，pending 与排队中的后续测试一并取消；macOS 有 ambient handle 兜底所以本地不炸。
+**修复**：测试侧补一个文件级 `setInterval` keepalive + `after()` 清理——宿主进程的事件循环本就不会空，测试环境要模拟这个前提；生产 `unref` 语义保留不动。
+
 ## 2026-09-27：Claude 家族「导入本机 Claude Code」在 macOS 必失败——凭据只在 Keychain，明文文件被删
 
 **现象**：Claude 标签页点「导入本机 Claude Code」报「未找到 ~/.claude/.credentials.json」。本机实测：`~/.local/bin/claude auth status` = `{loggedIn:false, authMethod:"none"}`；`~/.claude/` 无 `.credentials.json`（只剩 `.credentials.lock`）；Keychain 无 `Claude Code-credentials`（109 项里只有 Claude Desktop 的 `Claude Safe Storage`）；`~/.claude.json` 的 `oauthAccount`（claude_max / default_claude_max_20x）是不含 token 的残留缓存。直接跑 `lib/oauth/anthropic/import.js` 复现 `anthropic-import-empty`。
