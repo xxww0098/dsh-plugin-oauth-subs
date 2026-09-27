@@ -2,9 +2,8 @@
 
 This is the composed system for **dsh-plugin-oauth-subs** Settings.
 It is an authenticated OAuth workbench inside DSH, not a marketing
-landing. Binding UI rules stay in [`AGENTS.md`](../AGENTS.md)
-(`Settings — one account, one card` / `Settings — design details`).
-This file is the visual contract those sections point at.
+landing. Cross-family rules are in [`AGENTS.md`](../AGENTS.md), and
+page-specific behavior is in [`pages/settings-workbench.md`](pages/settings-workbench.md).
 
 Catalog note: the first SaaS product-type hit in
 `nextlevelbuilder/ui-ux-pro-max-skill` is Hero + Features + CTA /
@@ -25,15 +24,15 @@ The overlay below is what this plugin actually ships.
 
 ## Shell
 
-- Inherit the host theme. Tokens are `currentColor` mixes already in
-  AGENTS.md: `--osubs-line` 16%, `--osubs-fill` 6%, `--osubs-muted` 66%.
+- Inherit the host theme. Tokens are `currentColor` mixes:
+  `--osubs-line` 16%, `--osubs-fill` 6%, `--osubs-muted` 66%.
 - No glassmorphism on the shell. Optional `backdrop-blur-xs` **only**
   on the centered Dialog overlay (`--dsw-mask-blur`).
 - No hardcoded light-theme grays. Dark host stays dark.
 - Icon-only tabs, sticky `.osubs-nav`, **two groups docked** with a 4px
-  seam: left family capsule fills leftover width (`repeat(8, 36px)` +
-  `space-between`, families only; Copilot then OpenCode Go wrap inside)
-  then utility capsule (Models over GitHub). Do not add a third API-key
+  seam: left family capsule fills leftover width (`repeat(9, 36px)` +
+  `space-between`, families only; Devin, Cline, and OpenCode Go wrap inside)
+  then utility capsule (Models over About). Do not add a third API-key
   capsule. Do not `margin-left: auto` /
   nav `space-between` / `.osubs-tabs { width: max-content }` (those
   leave a hole).
