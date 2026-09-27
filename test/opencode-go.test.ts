@@ -151,6 +151,26 @@ test('OpencodeGoStore keeps many accounts, activates on save, and never exposes 
   assert.equal(row.quota.status, 'idle')
 })
 
+test('OpencodeGoStore keeps an editable display name for a key-only account', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'opencode-go-'))
+  const path = opencodeGoFilePath(join(dir, 'auth.json'))
+  const fetchFn = async () => new Response(JSON.stringify({ usage: { rolling: { percent: 0, resetsAt: '2026-10-01T00:00:00Z' } } }), { status: 200 })
+  const store = new OpencodeGoStore({ path, fetchFn })
+  const { id } = await store.save({ apiKey: 'sk-one' })
+  const second = await store.save({ apiKey: 'sk-two' })
+  await store.save({ id, displayName: 'user@example.com' })
+  const reloaded = new OpencodeGoStore({ path, fetchFn })
+  const snap = await reloaded.snapshot()
+  const row = snap.accounts.find((entry) => entry.id === id)
+  assert.equal(snap.activeId, second.id)
+  assert.equal(row.account, 'user@example.com')
+  assert.equal(row.displayName, 'user@example.com')
+  assert.equal(row.apiKeySet, true)
+  assert.equal('apiKey' in row, false)
+  assert.equal(reloaded.keyOf(id), 'sk-one')
+  await assert.rejects(store.save({ displayName: 'stray' }), /API key or cookie is required/)
+})
+
 test('OpencodeGoStore caches email, workspace name, tokens, and billing', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'opencode-go-'))
   const path = opencodeGoFilePath(join(dir, 'auth.json'))
@@ -286,6 +306,38 @@ function consoleFetch(routes) {
     return new Response(JSON.stringify(value), { status: 200, headers: { 'content-type': 'application/json' } })
   }
 }
+
+test('Go API key supplies quota when the cookie is absent or expired', async () => {
+  const calls = []
+  const fetchFn = async (url, init: any = {}) => {
+    const path = String(url).replace('https://opencode.ai', '')
+    calls.push(path)
+    if (path === '/zen/go/v1/usage') {
+      assert.equal(init.headers.Authorization, 'Bearer sk-test')
+      return new Response(JSON.stringify({ usage: {
+        rolling: { status: 'ok', percent: 0, resetsAt: '2026-09-26T15:00:00Z' },
+        weekly: { status: 'ok', percent: 12, resetsAt: '2026-09-28T00:00:00Z' },
+        monthly: { status: 'ok', percent: 74, resetsAt: '2026-10-10T00:00:00Z' },
+      } }), { status: 200 })
+    }
+    return new Response('sign in', { status: 401 })
+  }
+  const dir = await mkdtemp(join(tmpdir(), 'opencode-go-'))
+  const store = new OpencodeGoStore({ path: join(dir, 'opencode-go.json'), fetchFn })
+  const saved = await store.save({ apiKey: 'sk-test' })
+  let row = (await store.snapshot()).accounts[0]
+  assert.equal(row.quota.status, 'ready')
+  assert.deepEqual(row.quota.rows.map((item) => item.remainingPercent), [100, 88, 26])
+  assert.equal(row.quota.rows[1].resetAt, Date.parse('2026-09-28T00:00:00Z'))
+  assert.deepEqual(calls, ['/zen/go/v1/usage'])
+
+  await store.save({ id: saved.id, cookie: 'auth=Fe26.expired' })
+  row = (await store.snapshot()).accounts[0]
+  assert.equal(row.quota.status, 'ready')
+  assert.equal(row.quota.rows[2].remainingPercent, 26)
+  assert.ok(calls.includes('/console/api/orgs'))
+  assert.equal(calls.at(-1), '/zen/go/v1/usage')
+})
 
 test('fetchOpencodeGoQuota reads the console API for migrated workspaces', async () => {
   const quota = await fetchOpencodeGoQuota({ cookieHeader: '__Host-console_session=cs.x' }, {

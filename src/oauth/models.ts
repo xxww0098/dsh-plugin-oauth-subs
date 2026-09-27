@@ -694,12 +694,12 @@ export function filterProviders(providers: Record<string, any>, selected) {
   }))
 }
 
-/** `undefined` when the host has no readable settings.get; `{}` when the section is empty. */
+/** `undefined` when the host cannot describe llm-pi-ai; `{}` when its providers are empty. */
 export async function peekPiAiProviders(settings) {
-  if (settings == null || typeof settings.get !== 'function') return undefined
+  if (settings == null || typeof settings.describe !== 'function') return undefined
   try {
-    const raw = await settings.get('llm-pi-ai')
-    if (raw == null || typeof raw !== 'object') return {}
+    const raw = (await settings.describe()).find((row) => row.ns === 'llm-pi-ai')?.value
+    if (raw == null || typeof raw !== 'object') return undefined
     const providers = raw.providers
     if (providers == null || typeof providers !== 'object' || Array.isArray(providers)) return {}
     return providers

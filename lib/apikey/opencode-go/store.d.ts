@@ -36,6 +36,7 @@ export declare class OpencodeGoStore {
             id: any;
             active: boolean;
             account: string;
+            displayName: string;
             email: string;
             workspaceId: string;
             workspaceName: string;
@@ -44,7 +45,7 @@ export declare class OpencodeGoStore {
             quota: any;
         }[];
     }>;
-    save({ id, apiKey, cookie, workspace }?: any): Promise<{
+    save({ id, apiKey, cookie, workspace, displayName }?: any): Promise<{
         id: string;
         created: boolean;
     }>;
@@ -55,6 +56,7 @@ export declare class OpencodeGoStore {
             id: any;
             active: boolean;
             account: string;
+            displayName: string;
             email: string;
             workspaceId: string;
             workspaceName: string;
@@ -75,6 +77,7 @@ export declare class OpencodeGoStore {
             id: any;
             active: boolean;
             account: string;
+            displayName: string;
             email: string;
             workspaceId: string;
             workspaceName: string;
@@ -90,6 +93,7 @@ export declare class OpencodeGoStore {
             id: any;
             active: boolean;
             account: string;
+            displayName: string;
             email: string;
             workspaceId: string;
             workspaceName: string;

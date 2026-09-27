@@ -10,7 +10,8 @@ OpenCode Go 是 **API key 范围**，不是 OAuth 家族。
 - 对话 / 部署：`opencode-go.json` 是**多账号 vault**（每个账号 `apiKey` + `cookieHeader` + `workspaceId`）；活动账号的 key 镜像进宿主凭据 `OPENCODE_API_KEY`，没有任何账号还带 key 时清掉该凭据（否则 DSH 路由会留在模型列表里）。DSH 内置 pi-ai `opencode-go` provider 自带 27 个官方模型（3 种协议），但 llm-pi-ai 只在 profile 点名它时才注册路由，所以插件**不写** `providers.opencode-go`：内置 27 个归 DSH 模型设置页，要用由用户自己开。插件改为**自带完整官方目录**、按 wire 协议分两条自有路由（`opencode-go-flash` completions 27 行 + `opencode-go-responses` 5 行，见下），直连 `https://opencode.ai/zen/go`，不走回环网关。
 - Settings 用通用 `ProviderCard` / `AccountCard`：一账号一卡、卡片内额度条、点卡切换、`退出` 删号；主按钮打开居中 Dialog（`CenterDialog`），在窗内粘贴 key / cookie / workspace 后 `goSave`。
 - 账号 id 取工作区 `wrk_…`；没有工作区时取 key/cookie 的 `go_<12hex>` 哈希（同 key 再粘不会多一张卡）。
-- 卡片标题优先显示登录邮箱：Console 账号从 `GET /console/api/user` 拿，未迁移工作区仍从 dashboard `GET /workspace/{wrk_}/go` 的 RSC payload 刮 `userEmail["wrk_…"]`；刷新额度时存进 vault（`email`），下次 snapshot 起用；没有 cookie / 刮不到时退回工作区 id，再退回 key 尾巴。**API key 本身拿不到邮箱**（`GET /zen/go/v1/usage` 只返回用量，无身份接口）。
+- 卡片标题优先显示本地名称，未设置时显示登录邮箱：Console 账号从 `GET /console/api/user` 拿，未迁移工作区仍从 dashboard `GET /workspace/{wrk_}/go` 的 RSC payload 刮 `userEmail["wrk_…"]`；刷新额度时存进 vault（`email`），下次 snapshot 起用；没有 cookie / 刮不到时退回工作区 id，再退回 key 尾巴。**API key 本身拿不到邮箱**（`GET /zen/go/v1/usage` 只返回用量，无身份接口）。
+- 只有 API key 时无法自动拿到邮箱；每张卡的「修改名称」把用户指定的显示名称存进本地 vault，并优先用作标题，不改变凭据。
 - Settings > 模型 列插件自有的两条家族组：`OpenCode Go`（completions 27 行）与 `OpenCode Go · Responses`（5 行）；DSH 内置 `opencode-go` 的 27 个模型归 DSH 模型设置页。`OPENCODE_API_KEY` 未注入时模型照列但**不勾选**，两条插件路由都 unset（DSH 模型列表里也不出现）。
 
 ## 文件
@@ -19,7 +20,7 @@ OpenCode Go 是 **API key 范围**，不是 OAuth 家族。
 |---|---|
 | [`index.ts`](index.ts) | cookie / workspace 解析、账号 id / key 遮罩、公开 snapshot（不回传 key/cookie） |
 | [`store.ts`](store.ts) | `<dataDir>/opencode-go.json` 0600 多账号 vault（旧单账号文件自动迁移）。不进 `auth.json` |
-| [`quota.ts`](quota.ts) | 已迁移账号：cookie + `x-org-id` 打 `/console/api/{orgs,go/status,billing/status,user}`（Console JSON API）；未迁移账号兜底刮 `/workspace/{id}/go`（额度 + `userEmail["wrk_…"]` 邮箱）；缺 workspace 时先 `/console/api/orgs` 再 `GET /_server?id=` |
+| [`quota.ts`](quota.ts) | 已迁移账号：cookie + `x-org-id` 打 `/console/api/{orgs,go/status,billing/status,user}`；未迁移账号兜底刮 `/workspace/{id}/go`；cookie 缺失或失效时用 API key 读 `/zen/go/v1/usage`（仅百分比和重置时间，无邮箱、余额） |
 | [`models.ts`](models.ts) | 完整官方 Go 目录：completions 27 行 + responses 5 行（name / id / api / context / maxTokens / input / reasoningEfforts / compat）；两条自有路由定义 |
 
 调度：Settings 左侧家族胶囊（`.osubs-tabs`），排在 Copilot 之后换行；**不是**右侧 util，也**不**另开 API-key 胶囊。新增 / 更新账号走 RPC `goSave`（`{ id?, apiKey?, cookie?, workspace? }`），字段清除走 `goClear`（`{ id?, field }`）；切换 / 删号 / 额度刷新走通用 `switch` / `logout` / `quota`（`provider: 'opencode-go'`），controller 内部分派到本目录。**没有** `proxy.ts` hop，**没有** `cache.ts`。
@@ -33,6 +34,8 @@ OpenCode Go 是 **API key 范围**，不是 OAuth 家族。
 - snapshot 每行只给 `apiKeySet` / `cookieSet` / 遮罩尾巴（`sk-…1234`），不回传 key 或 cookie 明文。
 
 路由：插件启动 / `sync()` 写两条自有路由（`ensureOpencodeGoRoute`）：
+
+同步从 DSH `settings.describe()` 读取 `llm-pi-ai` 当前路由，再用 `settings.mutate()` 改写；有 Go key 时读不到配置，或写入失败会报错，避免模型页勾选与 DSH 提供商列表脱节。
 
 ```text
 opencode-go-flash     openai-completions  https://opencode.ai/zen/go/v1
@@ -74,7 +77,7 @@ DSH 会把每会话 `sessionId` 交给 pi-ai，但 pi-ai 0.85.1 的 openai-compl
 | 会话 cookie | Console 页 `__Host-console_session=…`/`console_session=…`，或旧面板 `Fe26.2…`/`auth=…` | `parseOpencodeGoCookie` → 保留 `auth` / `__Host-auth` / `__Host-console_session` / `console_session` |
 | 工作区 ID 覆盖 | `wrk_…`/`org_…`，或 `https://opencode.ai/console/<id>/go`、`/workspace/<id>/go` URL | `normalizeOpencodeGoWorkspaceId` |
 
-Cookie 认证基于 Web，可在 Windows 与 WSL 间共享。**不要**把 cookie 当 OAuth `accessToken` 写进 `auth.json`。
+Cookie 认证基于 Web，可在 Windows 与 WSL 间共享。**不要**把 cookie 当 OAuth `accessToken` 写进 `auth.json`。若 cookie 失效但 API key 有效，额度回退到 `GET /zen/go/v1/usage` 的 `usage.{rolling,weekly,monthly}.{percent,resetsAt}`；此接口不返回邮箱、余额。
 
 snapshot 每行只给 `apiKeySet` / `cookieSet` / `workspaceId`。key / cookie 明文不出 RPC，也不回给浏览器。
 

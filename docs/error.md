@@ -1364,3 +1364,36 @@ DeepSeek Harness 语言已选中文，OAuth 订阅页仍显示英文。
 
 ### 修复
 优先读取宿主页面的 `document.documentElement.lang`，空值时才回退浏览器语言；日期也用该语言格式化。
+
+## 2026-09-26：OpenCode Go 旧 cookie 失效后额度空白
+
+### 现象
+桌面端显示 `OpenCode Go cookie is invalid or expired`，但 Console 网页仍可看额度。
+
+### 根因
+本地只存旧 `auth` cookie；额度刷新只允许 cookie，忽略仍有效的 API key。
+
+### 修复
+cookie 缺失或读取失败时用 API key 的 `/zen/go/v1/usage` 读用量百分比与重置时间；账号仍可显示额度。
+
+## 2026-09-26：OpenCode Go 账号显示密钥尾号
+
+### 现象
+额度已恢复，账号卡片仍显示 `…CBk5`，无法分辨账号。
+
+### 根因
+只有 API key 的账号没有邮箱；Go 用量接口也不返回身份，界面退回密钥尾号。
+
+### 修复
+账号卡片增加「修改名称」；本地保存显示名称并优先用作标题，不改 API key 或额度。
+
+## 2026-09-26：OpenCode Go 已勾选模型没有进入 DSH
+
+### 现象
+插件模型页已勾选 OpenCode Go，DSH 提供商列表仍没有对应路由。
+
+### 根因
+路由同步用不存在的 `settings.get()` 读取宿主配置，收到 `unreadable` 后静默跳过。
+
+### 修复
+改用 DSH 的 `settings.describe()` 读取现有配置；有 Go key 时读不到配置，或写入失败时向界面报错。
