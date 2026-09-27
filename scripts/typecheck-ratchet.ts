@@ -34,7 +34,7 @@
 import { spawnSync } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(HERE, '..')
@@ -65,6 +65,12 @@ export function runTypecheck(args, { spawnFn = spawnSync, tsc = TSC } = {}) {
     maxBuffer: 64 * 1024 * 1024,
   })
   if (result.error) throw result.error
+  // tsc: 0 = clean, 1 = diagnostics (counted below), 2 = fatal/config. Anything
+  // else (killed, crashed, broken config) must not masquerade as "zero errors".
+  const status = typeof result.status === 'number' ? result.status : 0
+  if (status !== 0 && status !== 1) {
+    throw new Error(`tsc exited with status ${status}${result.signal ? ` (signal ${result.signal})` : ''}`)
+  }
   return `${result.stdout ?? ''}${result.stderr ?? ''}`
 }
 
@@ -74,7 +80,15 @@ export function summarize(output) {
   let total = 0
   for (const line of output.split('\n')) {
     const match = line.match(/^(.+?)\((\d+),(\d+)\): error TS\d+:/)
-    if (!match) continue
+    if (!match) {
+      // Non-positional diagnostics (broken config, global errors) carry no
+      // file(line,col) but still mean the build is broken.
+      if (/error TS\d+:/.test(line)) {
+        total += 1
+        byFile.set('<global>', (byFile.get('<global>') ?? 0) + 1)
+      }
+      continue
+    }
     total += 1
     byFile.set(match[1], (byFile.get(match[1]) ?? 0) + 1)
   }
@@ -132,4 +146,6 @@ function main() {
   }
 }
 
-if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) main()
+// pathToFileURL percent-encodes spaces/unicode and adds the Windows drive
+// letter; hand-building `file://` + argv[1] never matched there.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main()

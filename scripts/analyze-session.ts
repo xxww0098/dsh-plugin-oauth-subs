@@ -42,9 +42,12 @@ async function main() {
   }
   if (args.failBelow != null && report.weightedCacheHit * 100 < args.failBelow) {
     console.error(`cache hit ${(report.weightedCacheHit * 100).toFixed(1)}% is below ${args.failBelow}%`)
-    process.exit(1)
+    // process.exit() would truncate the buffered stdout report when piped (the
+    // exact --fail-below CI case); set the code and let the process drain.
+    process.exitCode = 1
+    return
   }
-  if (!report.healthy && args.failBelow != null) process.exit(1)
+  if (!report.healthy && args.failBelow != null) process.exitCode = 1
 }
 
 main().catch((error) => {
