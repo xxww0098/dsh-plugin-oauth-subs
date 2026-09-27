@@ -509,13 +509,58 @@ async function fetchConsoleOpencodeGoQuota(workspaceId, workspaceName, cookieHea
   }
 }
 
-async function fetchKeyOpencodeGoQuota(apiKey, { fetchFn, signal, now }: any) {
+/**
+ * The Console meters also answer the Zen API key as a Bearer token (no cookie,
+ * no `x-org-id`): same micro-cent spend rows as the cookie route, and the only
+ * key-only source that carries concrete amounts. `/zen/go/v1/usage` stays the
+ * percent-only fallback for keys this route rejects.
+ */
+async function fetchKeyConsoleOpencodeGoQuota(apiKey, { fetchFn, signal, now }: any) {
+  const response = await fetchFn(OPENCODE_GO_ORIGIN + '/console/api/go/status', {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'User-Agent': OPENCODE_GO_PAGE_UA,
+      Accept: 'application/json',
+    },
+    signal,
+    redirect: 'manual',
+  })
+  const text = await response.text()
+  if (!response.ok) throw new Error(`OpenCode Go console HTTP ${response.status}${serverMessage(text)}`)
+  let payload
+  try {
+    payload = JSON.parse(text)
+  } catch {
+    throw new Error('OpenCode Go console returned non-JSON')
+  }
+  const result: any = { ...parseOpencodeGoConsoleStatus(payload, now) }
+  if (typeof payload?.useBalance === 'boolean') result.useBalance = payload.useBalance
+  const product = stringField(payload?.renewalProduct)
+  if (product) result.planType = product
+  return result
+}
+
+/** Percent + reset only: the official usage API has no amounts. */
+async function fetchKeyUsageOpencodeGoQuota(apiKey, { fetchFn, signal, now }: any) {
   const response = await fetchFn(OPENCODE_GO_ORIGIN + '/zen/go/v1/usage', {
     headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },
     signal,
   })
   if (!response.ok) throw new Error(`OpenCode Go key usage HTTP ${response.status}`)
   return parseOpencodeGoUsage(await response.text(), now)
+}
+
+async function fetchKeyOpencodeGoQuota(apiKey, ctx: any) {
+  try {
+    return await fetchKeyConsoleOpencodeGoQuota(apiKey, ctx)
+  } catch (consoleError) {
+    try {
+      return await fetchKeyUsageOpencodeGoQuota(apiKey, ctx)
+    } catch {
+      throw consoleError
+    }
+  }
 }
 
 export async function fetchOpencodeGoQuota(entry, options: any = {}) {
@@ -529,7 +574,7 @@ export async function fetchOpencodeGoQuota(entry, options: any = {}) {
   const timer = setTimeout(() => ac.abort(), timeoutMs)
   try {
     const ctx = { fetchFn, signal: ac.signal, now }
-    if (!cookieHeader) return fetchKeyOpencodeGoQuota(apiKey, ctx)
+    if (!cookieHeader) return await fetchKeyOpencodeGoQuota(apiKey, ctx)
     try {
       const preset = normalizeOpencodeGoWorkspaceId(entry?.workspaceId)
       const workspace = preset
@@ -540,7 +585,11 @@ export async function fetchOpencodeGoQuota(entry, options: any = {}) {
         () => fetchLegacyOpencodeGoQuota(workspace.id, cookieHeader, ctx))
     } catch (error) {
       if (!apiKey) throw error
-      return fetchKeyOpencodeGoQuota(apiKey, { fetchFn, signal: AbortSignal.timeout(timeoutMs), now })
+      // Reuse the outer controller: a fresh AbortSignal.timeout() would hand the
+      // fallback a second full budget (2x worst-case), and a bare `return`
+      // inside try/finally clears the timer before the fetch settles — the same
+      // disabled-timeout bug as the key-only path above.
+      return await fetchKeyOpencodeGoQuota(apiKey, { fetchFn, signal: ac.signal, now })
     }
   } finally {
     clearTimeout(timer)

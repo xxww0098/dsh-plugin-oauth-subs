@@ -24,7 +24,7 @@ import { readPrivateText, writePrivateText } from '../utils/private-text.js'
 
 export { readPrivateText, writePrivateText }
 
-export const PROVIDER_IDS = Object.freeze(['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline'])
+export const PROVIDER_IDS = Object.freeze(['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline', 'anthropic'])
 
 export function defaultDataDir() {
   return join(homedir(), '.dsh', 'plugins', 'oauth-subs')
@@ -62,6 +62,13 @@ export function accountIdOf(provider, session) {
     return `${account}@${region}`
   } else if (provider === 'kiro') {
     return kiroAccountId(session)
+  } else if (provider === 'anthropic') {
+    // The OAuth token carries no identity; accountId is the profile uuid
+    // (opaque, never exposed) and the card label is the profile email.
+    const id = typeof session.accountId === 'string' && session.accountId.trim()
+      ? session.accountId.trim()
+      : (typeof session.account === 'string' && session.account.trim() ? session.account.trim() : undefined)
+    if (id) return id
   } else if (typeof session.account === 'string' && session.account.trim()) {
     return session.account.trim()
   }
@@ -424,6 +431,15 @@ export function publicSession(provider, session) {
       method: session.source,
       methodLabel: clineSourceLabel(session.source),
       organizationName: session.organizationName,
+      expiresAt: session.expiresAt,
+    }
+  }
+  if (provider === 'anthropic') {
+    return {
+      account: session.account,
+      planType,
+      planLabel,
+      scopes: session.scope,
       expiresAt: session.expiresAt,
     }
   }

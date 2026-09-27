@@ -84,6 +84,9 @@ export async function fetchAntigravityCloudCode(url, init, fetchFn = fetch) {
     try {
       const response = await fetchFn(urls[i], init)
       if (response.ok || !retryHubOnProd(response) || last) return response
+      // Retrying this URL: release the unused body, or the socket stays pinned
+      // until GC and repeated 5xx retries exhaust the pool.
+      try { await response.body?.cancel() } catch { /* body already gone */ }
     } catch (error) {
       lastError = error
       if (last) throw error

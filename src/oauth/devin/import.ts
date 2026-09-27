@@ -74,7 +74,10 @@ export function isDevinCredentialsToml(text) {
  */
 export async function importDevinAuth({ paths = devinCredentialsPaths() } = {}) {
   for (const path of paths) {
+    // A candidate that exists but cannot be read (EACCES/ELOOP/non-regular)
+    // means "not this one": it must not abort the whole search.
     const text = await readPrivateText(path, 'devin credentials', { allowBroadMode: true })
+      .catch(() => undefined)
     if (text === undefined) continue
     const parsed = parseDevinCredentialsToml(text)
     if (!parsed) continue

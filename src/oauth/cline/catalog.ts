@@ -21,7 +21,7 @@ export function resetClineCatalogCache() {
 }
 
 export function clineCatalogModels() {
-  return cached.models?.length ? cached.models : [...CLINE_MODELS]
+  return cached.models?.length ? [...cached.models] : [...CLINE_MODELS]
 }
 
 function slugOf(id) {
@@ -87,7 +87,7 @@ export function toClinePickerModels(payload, { models = CLINE_MODELS } = {}) {
 
 export async function refreshClineCatalog(session, options: any = {}) {
   const ttlMs = options.ttlMs ?? CLINE_CATALOG_TTL_MS
-  if (cached.models?.length && Date.now() < cached.expiresAt) return cached.models
+  if (cached.models?.length && Date.now() < cached.expiresAt) return [...cached.models]
   try {
     const fetchFn = options.fetchFn ?? fetch
     const response = await fetchFn(CLINE_RECOMMENDED_MODELS_URL, {
@@ -99,12 +99,12 @@ export async function refreshClineCatalog(session, options: any = {}) {
       if (parsed.length > 0) {
         cached.models = parsed
         cached.expiresAt = Date.now() + ttlMs
-        return parsed
+        return [...parsed]
       }
     }
   } catch {
     // Discovery must not block chat or login.
   }
-  if (cached.models?.length) return cached.models
+  if (cached.models?.length) return [...cached.models]
   return [...CLINE_MODELS]
 }

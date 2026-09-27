@@ -28,7 +28,7 @@ export function kimiCatalogTokenHash(token) {
 }
 
 export function kimiCatalogModels() {
-  return cached.models?.length ? cached.models : [...KIMI_MODELS]
+  return cached.models?.length ? [...cached.models] : [...KIMI_MODELS]
 }
 
 function asPositiveInt(value) {
@@ -98,7 +98,7 @@ export async function refreshKimiCatalog(session, options: any = {}) {
   if (!token) return [...KIMI_MODELS]
   const tokenHash = kimiCatalogTokenHash(token)
   if (cached.tokenHash === tokenHash && cached.models?.length && Date.now() < cached.expiresAt) {
-    return cached.models
+    return [...cached.models]
   }
   try {
     const fetchFn = options.fetchFn ?? fetch
@@ -121,6 +121,6 @@ export async function refreshKimiCatalog(session, options: any = {}) {
   } catch {
     // Discovery must not block chat or login.
   }
-  if (cached.tokenHash === tokenHash && cached.models?.length) return cached.models
+  if (cached.tokenHash === tokenHash && cached.models?.length) return [...cached.models]
   return [...KIMI_MODELS]
 }

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { request as httpRequest } from 'node:http'
 import { test } from 'node:test'
-import { createProxy, describeError, hasOutputEvent, STREAM_ATTEMPTS } from '../lib/oauth/proxy.js'
+import { createProxy, describeError, hasOutputEvent, retryDelayMs, STREAM_ATTEMPTS } from '../lib/oauth/proxy.js'
 import { CODEX_API_URL } from '../lib/oauth/codex/index.js'
 import { GLM_ANTHROPIC_URL, GLM_ANTHROPIC_VERSION, GLM_CODING_URL, GLM_USER_AGENT } from '../lib/oauth/glm/index.js'
 import { resetGlmSystemPins } from '../lib/oauth/glm/cache.js'
@@ -1425,6 +1425,68 @@ test('proxy strips upstream content-encoding/content-length after undici decompr
     assert.equal(res.headers.get('content-length'), null)
     assert.equal(res.headers.get('x-upstream-marker'), 'kept')
     assert.equal(await res.text(), '{"id":"resp","ok":true}')
+  } finally {
+    await proxy.close()
+  }
+})
+
+
+test('retry backoff jitters below the base so concurrent requests never retry in lockstep', async () => {
+  assert.equal(retryDelayMs(0, () => 0), 1000, 'jitter floor at attempt 0 is the full base')
+  assert.equal(retryDelayMs(1, () => 0), 4000)
+  assert.equal(retryDelayMs(0, () => 0.5), 875)
+  const delayed = retryDelayMs(0, () => 0.99)
+  assert.ok(delayed >= 750 && delayed <= 1000, `shrink-only jitter stays within the base: ${delayed}`)
+})
+
+test('a forwarded 429 also carries the retry-after-ms header when upstream sends one', async () => {
+  let calls = 0
+  const fetchFn = async () => {
+    calls += 1
+    return new Response('{"error":{"message":"slow down"}}', {
+      status: 429,
+      headers: { 'content-type': 'application/json', 'retry-after-ms': '700' },
+    })
+  }
+  await withProxy(fetchFn, async (port) => {
+    const response = await post(port)
+    assert.equal(calls, 1, 'status answers are the client\u2019s to pace, not the proxy\u2019s')
+    assert.equal(response.status, 429)
+    assert.equal(response.headers.get('retry-after-ms'), '700')
+    assert.match((await response.json()).error.message, /slow down/)
+  })
+})
+
+test('a 401 refresh retry does not pay the retry backoff', { timeout: 5000 }, async () => {
+  let calls = 0
+  const started = Date.now()
+  const fetchFn = async () => {
+    calls += 1
+    if (calls === 1) {
+      return new Response('{"error":{"message":"token revoked"}}', { status: 401, headers: { 'content-type': 'application/json' } })
+    }
+    return streamingUpstream([sse(CREATED, DELTA, DONE)])
+  }
+  const proxy = createProxy({
+    port: 0,
+    apiKey: 'secret-key',
+    fetchFn,
+    tokens: {
+      codex: {
+        session: async () => ({ accessToken: 'stale-tok', accountId: 'acct' }),
+        sourceOf: (session) => ({ id: 'acct-1', session }),
+        refreshNow: async () => ({ session: { accessToken: 'fresh-tok', accountId: 'acct' } }),
+      },
+      grok: { session: async () => { throw new Error('not logged in') } },
+    },
+  })
+  const server = await proxy.listen()
+  try {
+    const response = await post(server.address().port, { model: 'gpt-5.6-luna', stream: true, input: [], prompt_cache_key: 'refresh-pacing' })
+    assert.equal(calls, 2, 'the refreshed token is retried once')
+    assert.equal(response.status, 200)
+    const elapsed = Date.now() - started
+    assert.ok(elapsed < 900, `refreshed retry must be immediate, took ${elapsed}ms`)
   } finally {
     await proxy.close()
   }

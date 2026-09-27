@@ -145,9 +145,12 @@ function trimmed(value) {
 export function formatClineAccessToken(value) {
   const token = trimmed(value)
   if (!token) return undefined
-  return token.toLowerCase().startsWith(CLINE_ACCESS_TOKEN_PREFIX)
-    ? token
-    : `${CLINE_ACCESS_TOKEN_PREFIX}${token}`
+  if (token.toLowerCase().startsWith(CLINE_ACCESS_TOKEN_PREFIX)) {
+    // Keep the body, normalize the prefix case: a stored `Workos:`/`WORKOS:`
+    // value otherwise survives into requests and string checks.
+    return `${CLINE_ACCESS_TOKEN_PREFIX}${token.slice(CLINE_ACCESS_TOKEN_PREFIX.length)}`
+  }
+  return `${CLINE_ACCESS_TOKEN_PREFIX}${token}`
 }
 
 /** `normalizeStoredAccessToken` — the bare WorkOS JWT. */

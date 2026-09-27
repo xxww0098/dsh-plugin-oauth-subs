@@ -105,13 +105,18 @@ async function listen(handler, spec) {
 
 export class OAuthFlowManager {
   declare attempts: Map<string, any>
+  declare starting: Set<string>
 
   constructor() {
     this.attempts = new Map()
+    // Slots reserved by start() before its first await. The busy guard alone is
+    // not atomic across awaits, so two concurrent start() calls would both pass
+    // it and each bind a listener / register a device flow.
+    this.starting = new Set()
   }
 
   isBusy(provider) {
-    return this.attempts.has(provider)
+    return this.attempts.has(provider) || this.starting.has(provider)
   }
 
   pending(provider) {
@@ -119,9 +124,10 @@ export class OAuthFlowManager {
   }
 
   async start(provider, spec) {
-    if (this.attempts.has(provider)) {
+    if (this.isBusy(provider)) {
       throw new Error(`a ${provider} login attempt is already in progress`)
     }
+    this.starting.add(provider)
     const input = {
       redirectUri: '',
       state: randomToken(32),
@@ -187,7 +193,13 @@ export class OAuthFlowManager {
       settle(undefined, code)
     }
 
-    const bound = await listen(handler, spec.listen)
+    let bound
+    try {
+      bound = await listen(handler, spec.listen)
+    } catch (error) {
+      this.starting.delete(provider)
+      throw error
+    }
     servers = bound.servers
     input.redirectUri = `http://${spec.listen.host}:${bound.port}${spec.callbackPath}`
 
@@ -196,8 +208,23 @@ export class OAuthFlowManager {
     }, timeoutMs)
     timer.unref()
 
+    let authorizeUrl
+    try {
+      authorizeUrl = spec.buildAuthorizeUrl(input)
+    } catch (error) {
+      // Registration failed after listen(): release the bound callback port and
+      // the timer, or the listener outlives the attempt.
+      for (const server of servers) {
+        server.close()
+        server.closeAllConnections?.()
+      }
+      if (timer !== undefined) clearTimeout(timer)
+      this.starting.delete(provider)
+      throw error
+    }
+
     const attempt = {
-      authorizeUrl: spec.buildAuthorizeUrl(input),
+      authorizeUrl,
       redirectUri: input.redirectUri,
       pkce: input.pkce,
       state: input.state,
@@ -233,6 +260,7 @@ export class OAuthFlowManager {
       },
     }
     this.attempts.set(provider, attempt)
+    this.starting.delete(provider)
     return attempt
   }
 }

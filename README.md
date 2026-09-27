@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml/badge.svg)](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml)
 
-Use a **ChatGPT / Codex**, **xAI Grok**, **Zhipu GLM**, **AWS Kiro**, **Google Antigravity**, **Cursor**, **Ollama Cloud**, **Kimi Code Plan**, **GitHub Copilot**, **Devin Agent**, or **Cline** subscription—or an **OpenCode Go** API key—inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). The subscription families use a loopback proxy; OpenCode Go routes directly to its API. Model routes use the DSH `api` values `openai-responses`, `openai-completions`, and `anthropic-messages`.
+Use a **ChatGPT / Codex**, **xAI Grok**, **Zhipu GLM**, **AWS Kiro**, **Google Antigravity**, **Cursor**, **Ollama Cloud**, **Kimi Code Plan**, **GitHub Copilot**, **Devin Agent**, **Cline**, or **Claude** subscription—or an **OpenCode Go** API key—inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). The subscription families use a loopback proxy; OpenCode Go routes directly to its API. Model routes use the DSH `api` values `openai-responses`, `openai-completions`, and `anthropic-messages`.
 
 ## Install
 
@@ -47,6 +47,7 @@ If the app exits instantly on launch, check `launchctl getenv ELECTRON_RUN_AS_NO
 | GitHub Copilot | Device-code (no PKCE); import `~/.config/github-copilot/hosts.json`; optional `GITHUB_TOKEN` | `openai-completions` | `https://api.githubcopilot.com/chat/completions` (`tid=` session) |
 | Devin Agent | PKCE `127.0.0.1:59653`; import `~/.local/share/devin/credentials.toml`; paste `devin-session-token$…` | `openai-completions` | Connect `server.codeium.com` `ApiServerService/GetChatMessage` |
 | Cline | WorkOS device-code (no PKCE); import `~/.cline/data/settings/providers.json` | `openai-completions` | `https://api.cline.bot/api/v1/chat/completions` |
+| Claude (Anthropic) | PKCE `claude.ai` (loopback `/callback`); import `~/.claude/.credentials.json` | `anthropic-messages` | `api.anthropic.com/v1/messages` (`claude-code-20250219` + `oauth-2025-04-20` beta identity) |
 | OpenCode Go | Paste API key; optional Console cookie and workspace for quota | `openai-completions` / `openai-responses` | Direct `https://opencode.ai/zen/go/v1` |
 
 ### Import existing credentials
@@ -65,6 +66,7 @@ If the app exits instantly on launch, check `launchctl getenv ELECTRON_RUN_AS_NO
 | `~/.config/github-copilot/hosts.json`; OpenCode `~/.local/share/opencode/auth.json`; `COPILOT_GITHUB_TOKEN` / `GITHUB_TOKEN` / `GH_TOKEN` | Copilot |
 | `~/.local/share/devin/credentials.toml` (`$XDG_DATA_HOME/devin/`; Windows `%LOCALAPPDATA%\devin\`); `DEVIN_API_KEY` / `WINDSURF_API_KEY` | Devin |
 | `~/.cline/data/settings/providers.json` | Cline |
+| `~/.claude/.credentials.json` (Keychain copy not read) | Claude |
 | Settings paste: OpenCode Go API key; optional Console cookie / workspace | OpenCode Go |
 
 Subscription tokens: `<profile>/data/dsh-plugin-oauth-subs/auth.json` (`0600`). OpenCode Go accounts: `opencode-go.json` in the same directory. Model selections: `models.json`.
@@ -125,6 +127,7 @@ Login and chat use official client identity; UA / fingerprint live in each `src/
 | Copilot | No | Live `GET {api}/models` (static floor refreshed from GitHub's official docs tables + models.dev `github-copilot`, 2026-09-23). Prefix-hash + `X-Interaction-Id` | live `reasoning_effort` when the catalog advertises it |
 | Devin | Yes. `-fast` is a real backend variant (not Codex Priority), never through `applyFastMode` | Live `GetCliModelConfigs` (2026-09-23: 49 families / 81 picker rows; the static fallback mirrors them) | Mapped to backend `chat_model_uid` per family (`defaultUid`); `thinking` / `fast` / `1m` become picker rows |
 | Cline | No | Live `GET /ai/cline/recommended-models` (static feed snapshot fallback) | minimal / low / medium / high / xhigh / max → `reasoning_effort` (`max`→`xhigh`) |
+| Claude | No | Static catalog pinned to pi-ai's `anthropic.json` (Claude Code set; cross-checked against Kiro rows) | Host-native mapping: adaptive ids (Opus 5 / 4.8 / 4.7, Sonnet 5 / 4.6, Fable) → `output_config.effort` (4.6 family to `max`); classic ids keep budget thinking |
 | OpenCode Go | No | 28 Completions + 6 Responses rows; see [model audit](docs/model-audit-2026-09-26.md) | Depends on the model; DSH closed effort keys |
 
 Codex Priority echo `created=auto` / `completed=default` is not a confirmation (openai/codex#14204). 2026-08-26 Luna: 88.3 vs 57.5 tok/s (1.54×); 2026-08-30 interleaved mean 1.33× (1.90 then 0.93). Throughput-only; TTFT and cache unchanged.
@@ -145,6 +148,7 @@ Codex Priority echo `created=auto` / `completed=default` is not a confirmation (
 | GitHub Copilot | `api.github.com/copilot_internal/user` | Plan badge (Free / Pro / Pro+ / Business / Enterprise) plus Premium remaining percent |
 | Devin | `server.codeium.com` `SeatManagementService/GetUserStatus` | Plan badge (Pro / Max / Teams / Enterprise / Free / Trial) plus daily + weekly remaining bars when the tier exposes them |
 | Cline | `api.cline.bot` `/users/me` + `/users/{id}/balance` (micro-USD) + `/users/me/plan`; ClinePass adds `/plan/usage-limits` | Plan badge plus prepaid **credit balance** (`$x.xx`); ClinePass adds 5-hour / weekly / monthly bars. Credit accounts have no window bars |
+| Claude (Anthropic) | No usage endpoint — a 1-token probe on `/v1/messages` reads the unified rate-limit headers | 5-hour + weekly **remaining** bars with reset time; a 429 still reports utilization |
 | OpenCode Go | Console `/console/api/{orgs,go/status,billing/status,user}`; legacy workspace fallback | Per-account Go usage, balance, and account email when the Console cookie is available |
 
 Refresh about once a minute, or **Refresh quota**. Bars: `hsl(remaining × 1.2, 78%, 38%)`. Codex `pro` → **Pro 20x** / $200, `prolite` → **Pro 5x** / $100. Plus/Pro may bank weekly resets — one confirm button per credit on the Codex card (Harness risk dialog, then `POST …/consume` with `{ redeem_request_id }` + `idempotencyKey`). That spend refreshes the **weekly** window. Grok has no equivalent. Ollama Cloud has no documented quota JSON (`/api/quota` 404); the card stays idle with no bars.

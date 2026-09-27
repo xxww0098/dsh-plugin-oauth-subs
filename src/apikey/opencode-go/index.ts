@@ -26,6 +26,10 @@ const WORKSPACE_RE = /(?:wrk_|org_)[A-Za-z0-9_-]+/
 export function parseOpencodeGoCookie(raw) {
   const text = String(raw ?? '').trim()
   if (!text) return undefined
+  // Settings redisplays the mask; saving it back must not be persisted as a
+  // real `auth=••••••••` credential (it has no '=', so it would slip through
+  // to the bare-token fallback below).
+  if (isOpencodeGoCookieMask(text)) return undefined
   const parts = text.split(';').map((part) => part.trim()).filter(Boolean)
   const picked: string[] = []
   for (const part of parts) {

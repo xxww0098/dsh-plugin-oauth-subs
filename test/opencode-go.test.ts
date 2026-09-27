@@ -329,7 +329,7 @@ test('Go API key supplies quota when the cookie is absent or expired', async () 
   assert.equal(row.quota.status, 'ready')
   assert.deepEqual(row.quota.rows.map((item) => item.remainingPercent), [100, 88, 26])
   assert.equal(row.quota.rows[1].resetAt, Date.parse('2026-09-28T00:00:00Z'))
-  assert.deepEqual(calls, ['/zen/go/v1/usage'])
+  assert.deepEqual(calls, ['/console/api/go/status', '/zen/go/v1/usage'])
 
   await store.save({ id: saved.id, cookie: 'auth=Fe26.expired' })
   row = (await store.snapshot()).accounts[0]
@@ -337,6 +337,48 @@ test('Go API key supplies quota when the cookie is absent or expired', async () 
   assert.equal(row.quota.rows[2].remainingPercent, 26)
   assert.ok(calls.includes('/console/api/orgs'))
   assert.equal(calls.at(-1), '/zen/go/v1/usage')
+})
+
+test('Go API key reads concrete console meters through Bearer before the percent fallback', async () => {
+  const calls = []
+  const fetchFn = async (url, init: any = {}) => {
+    const path = String(url).replace('https://opencode.ai', '')
+    calls.push(path)
+    if (path === '/console/api/go/status') {
+      assert.equal(init.headers.Authorization, 'Bearer sk-console')
+      return new Response(JSON.stringify({ ...CONSOLE_STATUS, useBalance: false, renewalProduct: 'go' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    }
+    return new Response('nope', { status: 500 })
+  }
+  const quota = await fetchOpencodeGoQuota({ apiKey: 'sk-console' }, { fetchFn })
+  assert.deepEqual(calls, ['/console/api/go/status'])
+  assert.equal(quota.planType, 'go')
+  assert.equal(quota.useBalance, false)
+  assert.equal(quota.rows[0].unit, 'usd')
+  assert.deepEqual([quota.rows[0].used, quota.rows[0].total], [6, 12])
+  assert.equal(quota.rows[2].resetAt, Date.parse('2026-10-01T00:00:00.000Z'))
+})
+
+test('Go API key falls back to percent-only usage when the console route rejects it', async () => {
+  const calls = []
+  const fetchFn = async (url, init: any = {}) => {
+    const path = String(url).replace('https://opencode.ai', '')
+    calls.push(path)
+    if (path === '/zen/go/v1/usage') {
+      assert.equal(init.headers.Authorization, 'Bearer sk-fallback')
+      return new Response(JSON.stringify({ usage: {
+        rolling: { status: 'ok', percent: 20, resetsAt: '2026-09-26T15:00:00Z' },
+      } }), { status: 200 })
+    }
+    return new Response(JSON.stringify({ _tag: 'Unauthorized' }), { status: 401 })
+  }
+  const quota = await fetchOpencodeGoQuota({ apiKey: 'sk-fallback' }, { fetchFn })
+  assert.deepEqual(calls, ['/console/api/go/status', '/zen/go/v1/usage'])
+  assert.equal(quota.rows[0].usedPercent, 20)
+  assert.equal(quota.rows[0].used, undefined)
 })
 
 test('fetchOpencodeGoQuota reads the console API for migrated workspaces', async () => {

@@ -8,6 +8,9 @@ models.json
 *.tsbuildinfo
 .local/
 
+# 本地 dev 构建计数（npm run dev-build）——本机状态，不入库
+.dev-build.json
+
 # graft's local graph cache — regenerable, not committed (run `graft build`).
 /graft/
 

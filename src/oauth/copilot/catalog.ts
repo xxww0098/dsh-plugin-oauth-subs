@@ -31,7 +31,7 @@ export function copilotCatalogTokenHash(token) {
 }
 
 export function copilotCatalogModels() {
-  return cached.models?.length ? cached.models : [...COPILOT_MODELS]
+  return cached.models?.length ? [...cached.models] : [...COPILOT_MODELS]
 }
 
 function asPositiveInt(value) {
@@ -111,7 +111,7 @@ export async function refreshCopilotCatalog(session, options: any = {}) {
   if (!token) return [...COPILOT_MODELS]
   const tokenHash = copilotCatalogTokenHash(token)
   if (cached.tokenHash === tokenHash && cached.models?.length && Date.now() < cached.expiresAt) {
-    return cached.models
+    return [...cached.models]
   }
   try {
     const fetchFn = options.fetchFn ?? fetch
@@ -130,12 +130,12 @@ export async function refreshCopilotCatalog(session, options: any = {}) {
         cached.tokenHash = tokenHash
         cached.models = parsed
         cached.expiresAt = Date.now() + (options.ttlMs ?? COPILOT_CATALOG_TTL_MS)
-        return parsed
+        return [...parsed]
       }
     }
   } catch {
     // Discovery must not block chat or login.
   }
-  if (cached.tokenHash === tokenHash && cached.models?.length) return cached.models
+  if (cached.tokenHash === tokenHash && cached.models?.length) return [...cached.models]
   return [...COPILOT_MODELS]
 }

@@ -26,13 +26,18 @@ function sleep(ms, signal) {
 
 export class DeviceFlowManager {
   declare attempts: Map<string, any>
+  declare starting: Set<string>
 
   constructor() {
     this.attempts = new Map()
+    // Slots reserved by start() before its first await. The busy guard alone is
+    // not atomic across awaits, so two concurrent start() calls would both pass
+    // it and each bind a listener / register a device flow.
+    this.starting = new Set()
   }
 
   isBusy(provider) {
-    return this.attempts.has(provider)
+    return this.attempts.has(provider) || this.starting.has(provider)
   }
 
   pending(provider) {
@@ -40,9 +45,10 @@ export class DeviceFlowManager {
   }
 
   async start(provider, spec) {
-    if (this.attempts.has(provider)) {
+    if (this.isBusy(provider)) {
       throw new Error(`a ${provider} login attempt is already in progress`)
     }
+    this.starting.add(provider)
     const fetchFn = spec.fetchFn ?? fetch
     const extraHeaders = spec.headers && typeof spec.headers === 'object' ? spec.headers : {}
     const useJson = spec.jsonBody === true
@@ -59,11 +65,18 @@ export class DeviceFlowManager {
       },
       body: encode(devicePayload),
     })
-    const response = await requestDevice()
-    if (!response.ok) {
-      throw new Error(`${provider} device-code request failed (HTTP ${response.status})`)
+    let response
+    let wire
+    try {
+      response = await requestDevice()
+      if (!response.ok) {
+        throw new Error(`${provider} device-code request failed (HTTP ${response.status})`)
+      }
+      wire = await response.json()
+    } catch (error) {
+      this.starting.delete(provider)
+      throw error
     }
-    const wire = await response.json()
     if (typeof wire.device_code !== 'string' || wire.device_code.length === 0
       || typeof wire.user_code !== 'string' || wire.user_code.length === 0
       || typeof wire.verification_uri !== 'string' || wire.verification_uri.length === 0) {
@@ -93,6 +106,10 @@ export class DeviceFlowManager {
     }
 
     const poll = async () => {
+      // Bound the restart loop: a server that keeps answering expired_token
+      // must not spin here forever.
+      const maxRestarts = 3
+      let restarts = 0
       let current = wire
       let intervalMs = intervalSec * 1000
       let expiresSec = expiresInSec
@@ -133,6 +150,11 @@ export class DeviceFlowManager {
             return
           case 'expired_token':
             if (spec.restartOnExpired) {
+              if (restarts >= maxRestarts) {
+                settle(new Error('the device code expired before authorization completed'))
+                return
+              }
+              restarts += 1
               const nextResponse = await requestDevice()
               if (!nextResponse.ok) {
                 settle(new Error(`the device code expired before authorization completed`))
@@ -177,6 +199,7 @@ export class DeviceFlowManager {
       },
     }
     this.attempts.set(provider, attempt)
+    this.starting.delete(provider)
 
     void poll().catch((error) => {
       settle(error instanceof Error ? error : new Error(String(error)))

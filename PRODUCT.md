@@ -14,7 +14,7 @@ Success: account connected, available quota visible where the provider exposes i
 
 ## Product Purpose
 
-dsh-plugin-oauth-subs is a DeepSeek Harness plugin. It connects ChatGPT Codex, xAI Grok, Zhipu GLM (Z.ai / BigModel), AWS Kiro, Google Antigravity, Cursor, Ollama Cloud, Kimi Code Plan, GitHub Copilot, Devin Agent, Cline, and OpenCode Go through their supported login, import, or API-key flows, then syncs routes into llm-pi-ai.
+dsh-plugin-oauth-subs is a DeepSeek Harness plugin. It connects ChatGPT Codex, xAI Grok, Zhipu GLM (Z.ai / BigModel), AWS Kiro, Google Antigravity, Cursor, Ollama Cloud, Kimi Code Plan, GitHub Copilot, Devin Agent, Cline, Claude (Anthropic), and OpenCode Go through their supported login, import, or API-key flows, then syncs routes into llm-pi-ai.
 
 After Settings closes, DSH continues using the configured loopback or direct routes.
 

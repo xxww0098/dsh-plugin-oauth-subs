@@ -43,7 +43,7 @@ export function kiroCatalogTokenHash(token) {
 }
 
 export function kiroCatalogModels() {
-  return cached.models?.length ? cached.models : [...KIRO_MODELS]
+  return cached.models?.length ? [...cached.models] : [...KIRO_MODELS]
 }
 
 function trimmed(value) {
@@ -164,10 +164,23 @@ async function readManagementJson(response) {
   }
 }
 
+const KIRO_MANAGEMENT_TIMEOUT_MS = 15_000
+
+/**
+ * Discovery must not block chat or login — and must not hang either: bound the
+ * management call so a stalled or half-open endpoint cannot pin the caller.
+ */
+function managementSignal(ms = KIRO_MANAGEMENT_TIMEOUT_MS) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), ms)
+  if (typeof timer.unref === 'function') timer.unref()
+  return controller.signal
+}
+
 async function requestManagement(session, { region, path, method, query, fetchFn }) {
   const url = new URL(path, `https://${kiroManagementHost(region)}/`)
   const headers = { ...kiroUsageHeaders(session), accept: 'application/json' }
-  const init: any = { method, headers }
+  const init: any = { method, headers, signal: managementSignal() }
   if (method === 'GET') {
     for (const [name, value] of Object.entries(query ?? {})) {
       if (value != null && String(value).trim()) url.searchParams.set(name, String(value))
@@ -259,7 +272,7 @@ export async function refreshKiroCatalog(session, options: any = {}) {
   if (!token) return [...KIRO_MODELS]
   const tokenHash = kiroCatalogTokenHash(token)
   if (cached.tokenHash === tokenHash && cached.models?.length && Date.now() < cached.expiresAt) {
-    return cached.models
+    return [...cached.models]
   }
   try {
     const fetchLive = options.fetchLive ?? fetchKiroLiveModels
@@ -274,6 +287,6 @@ export async function refreshKiroCatalog(session, options: any = {}) {
   } catch {
     // Discovery must not block chat or login.
   }
-  if (cached.tokenHash === tokenHash && cached.models?.length) return cached.models
+  if (cached.tokenHash === tokenHash && cached.models?.length) return [...cached.models]
   return [...KIRO_MODELS]
 }

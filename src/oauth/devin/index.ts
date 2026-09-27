@@ -126,7 +126,9 @@ export function isDevinOpaqueAccount(value) {
   const raw = value.trim()
   if (raw.toLowerCase() === 'devin') return true
   if (/^devin-[A-Za-z0-9_-]{4,}$/i.test(raw)) return true
-  if (/^devin-team\$[A-Za-z0-9_-]+$/i.test(raw)) return true
+  // Any `devin-<kind>$<opaque>` id: devin-team$… and the session-token shape
+  // devin-session-token$eyJ… (the `$` used to slip past the patterns below).
+  if (/^devin-[A-Za-z0-9_-]+\$[A-Za-z0-9_-]+$/i.test(raw)) return true
   if (/^user-[0-9a-f]{16,}$/i.test(raw)) return true
   return false
 }

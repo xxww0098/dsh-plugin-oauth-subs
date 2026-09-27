@@ -20,7 +20,7 @@ OpenCode Go 是 **API key 范围**，不是 OAuth 家族。
 |---|---|
 | [`index.ts`](index.ts) | cookie / workspace 解析、账号 id / key 遮罩、公开 snapshot（不回传 key/cookie） |
 | [`store.ts`](store.ts) | `<dataDir>/opencode-go.json` 0600 多账号 vault（旧单账号文件自动迁移）。不进 `auth.json` |
-| [`quota.ts`](quota.ts) | 已迁移账号：cookie + `x-org-id` 打 `/console/api/{orgs,go/status,billing/status,user}`（Console JSON API）；未迁移账号兜底刮 `/workspace/{id}/go`（额度 + `userEmail["wrk_…"]` 邮箱），缺 workspace 时先 `/console/api/orgs` 再 `GET /_server?id=`；cookie 缺失或失效时用 API key 读 `/zen/go/v1/usage`（仅百分比和重置时间，无邮箱、余额） |
+| [`quota.ts`](quota.ts) | 已迁移账号：cookie + `x-org-id` 打 `/console/api/{orgs,go/status,billing/status,user}`（Console JSON API）；未迁移账号兜底刮 `/workspace/{id}/go`（额度 + `userEmail["wrk_…"]` 邮箱），缺 workspace 时先 `/console/api/orgs` 再 `GET /_server?id=`；cookie 缺失或失效时先按 key 打同一个 `go/status`（`Authorization: Bearer`，有 `used/limit` 金额），该路由拒绝才退回 `/zen/go/v1/usage`（仅百分比和重置时间，无邮箱、余额） |
 | [`models.ts`](models.ts) | 完整官方 Go 目录：completions 28 行 + responses 6 行（name / id / api / context / maxTokens / input / reasoningEfforts / compat）；两条自有路由定义 |
 
 调度：Settings 左侧家族胶囊（`.osubs-tabs`），排在 Copilot 之后换行；**不是**右侧 util，也**不**另开 API-key 胶囊。新增 / 更新账号走 RPC `goSave`（`{ id?, apiKey?, cookie?, workspace? }`），字段清除走 `goClear`（`{ id?, field }`）；切换 / 删号 / 额度刷新走通用 `switch` / `logout` / `quota`（`provider: 'opencode-go'`），controller 内部分派到本目录。**没有** `proxy.ts` hop，**没有** `cache.ts`。
@@ -79,7 +79,7 @@ DSH 会把每会话 `sessionId` 交给 pi-ai，但 pi-ai 0.85.1 的 openai-compl
 | 会话 cookie | Console 页 `__Host-console_session=…`/`console_session=…`，或旧面板 `Fe26.2…`/`auth=…` | `parseOpencodeGoCookie` → 保留 `auth` / `__Host-auth` / `__Host-console_session` / `console_session` |
 | 工作区 ID 覆盖 | `wrk_…`/`org_…`，或 `https://opencode.ai/console/<id>/go`、`/workspace/<id>/go` URL | `normalizeOpencodeGoWorkspaceId` |
 
-Cookie 认证基于 Web，可在 Windows 与 WSL 间共享。**不要**把 cookie 当 OAuth `accessToken` 写进 `auth.json`。若 cookie 失效但 API key 有效，额度回退到 `GET /zen/go/v1/usage` 的 `usage.{rolling,weekly,monthly}.{percent,resetsAt}`；此接口不返回邮箱、余额。
+Cookie 认证基于 Web，可在 Windows 与 WSL 间共享。**不要**把 cookie 当 OAuth `accessToken` 写进 `auth.json`。若 cookie 失效但 API key 有效，额度先按 key 打 `GET /console/api/go/status`（`Authorization: Bearer <key>`，无 cookie、无 `x-org-id`；2026-09-26 实测 200，回包带 `access.meters.{fiveHour,week,month}` 的 `usedMicroCents`/`limitMicroCents`、`useBalance`、`renewalProduct`），被拒才退回 `GET /zen/go/v1/usage` 的 `usage.{rolling,weekly,monthly}.{percent,resetsAt}`；两条 key 路径都不返回邮箱，余额只有 console Bearer 的 `useBalance` 布尔（没有 prepaid 金额）。
 
 snapshot 每行只给 `apiKeySet` / `cookieSet` / `workspaceId`。key / cookie 明文不出 RPC，也不回给浏览器。
 
@@ -114,6 +114,11 @@ prepaid 余额 >0 → `rows:[]` + 余额兜底，不报红；都没有 → `no_s
 Console 401/403/跳 login → `cookie is invalid or expired`；其余非 200 →
 `console HTTP <status>[: message]`。
 
+同一个 `go/status` 也认 `Authorization: Bearer <OPENCODE_API_KEY>`（不带 cookie、
+不带 `x-org-id`；2026-09-26 用本机 key 实测 200）：回包形状与 cookie 路径一致，
+是 key-only 唯一能拿到具体金额的来源；`/console/api/{orgs,user,billing/status}`
+对 key 仍是 401/403，所以 key 路径没有邮箱、workspace 名与 prepaid 余额。
+
 **Fallback 次序**（对齐 CodexBar `OpenCodeGoLegacyFallback`）：console 先；
 console 失败且 header 里有 `auth`/`__Host-auth` → 走 legacy；legacy 也失败时，
 若 header 带 console cookie 且 console 错误不是「凭证失效」→ 回 console 的
@@ -132,7 +137,7 @@ cookie → GET /workspace/{wrk_}/go
 
 官方限额窗口：5 小时（月限额 20%）/ 每周（50%）/ 每月（100%）。卡片三条剩余条。
 
-**不要**用 `OPENCODE_API_KEY` 打 `/zen/go/v1/usage` 当本页主路径（那是 CodexBar 的 API-key 旁路）。Orca 这两项是 cookie + workspace。
+**不要**把 `/zen/go/v1/usage`（只有百分比）当 cookie 账号的主路径——那是 CodexBar 的 API-key 旁路；key-only 兜底也要先走 `go/status` 的 Bearer 形态拿具体金额。Orca 这两项是 cookie + workspace。
 
 ## 不要
 

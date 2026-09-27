@@ -17,6 +17,7 @@ import { KIMI_MODELS } from './kimi/index.js'
 import { COPILOT_MODELS } from './copilot/index.js'
 import { DEVIN_MODELS } from './devin/index.js'
 import { CLINE_MODELS } from './cline/index.js'
+import { ANTHROPIC_MODELS } from './anthropic/index.js'
 import {
   OPENCODE_GO_BUILTIN_ROUTE_ID,
   OPENCODE_GO_ROUTES,
@@ -113,7 +114,7 @@ export function modelKey(provider, id) {
   return `${provider}/${id}`
 }
 
-export const FAMILY_IDS = Object.freeze(['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline'])
+export const FAMILY_IDS = Object.freeze(['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline', 'anthropic'])
 
 /**
  * OpenCode Go picker families: direct API-key routes, not OAuth logins, and
@@ -423,6 +424,22 @@ export function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaM
       models: clineRows,
     }
   }
+  if (loggedIn.anthropic) {
+    providers[`${prefix}-anthropic`] = {
+      displayName: 'OAuth · Claude',
+      api: HARNESS_ANTHROPIC_API,
+      apiKeyEnv: OAUTH_CREDENTIAL_REF,
+      // Anthropic SDK posts `{baseURL}/v1/messages`. This is the real
+      // api.anthropic.com lane, so the host keeps its native anthropic
+      // treatment: thinking maps by model id (adaptive ids take
+      // output_config.effort, classic ids budget thinking), cache_control
+      // checkpoints ride the body, and signed thinking blocks replay as-is —
+      // no forceAdaptiveThinking / allowEmptySignature compat needed here
+      // (that is a ZCode-gateway workaround, not an Anthropic one).
+      baseURL: `${origin}/anthropic`,
+      models: ANTHROPIC_MODELS.map(toHarnessModel),
+    }
+  }
   return providers
 }
 
@@ -438,7 +455,7 @@ export function catalogProviders({ prefix, origin, cursorModels, ollamaModels, k
   const providers = buildProviders({
     prefix,
     origin,
-    loggedIn: { codex: true, grok: true, glm: true, kiro: true, antigravity: true, cursor: true, ollama: true, kimi: true, copilot: true, devin: true, cline: true },
+    loggedIn: { codex: true, grok: true, glm: true, kiro: true, antigravity: true, cursor: true, ollama: true, kimi: true, copilot: true, devin: true, cline: true, anthropic: true },
     cursorModels,
     ollamaModels,
     kiroModels,
@@ -481,6 +498,7 @@ export function familyOfProvider(provider) {
   if (String(provider).endsWith('-copilot')) return 'copilot'
   if (String(provider).endsWith('-devin')) return 'devin'
   if (String(provider).endsWith('-cline')) return 'cline'
+  if (String(provider).endsWith('-anthropic')) return 'anthropic'
   return String(provider)
 }
 

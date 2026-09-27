@@ -23,6 +23,15 @@ node --experimental-strip-types scripts/typecheck-ratchet.ts --update # accept d
 
 Raising a baseline is a deliberate act a reviewer should see; keep both at 0.
 
+## 本地安装与发布
+
+插件面板「添加插件」认三种来源（包名 / GitHub 地址 / 本地目录），本仓库三种都要能装；完整流程与版本号规则见 [AGENTS.md](AGENTS.md) 的「安装 / 测试 / 发布」一节：
+
+- **开发/测试**：面板选「本地插件目录」填本仓库绝对路径（profile 里落成 `link:`），日常用 `npm run dev-build`（build + 递增 `.dev-build.json` 计数，About 显示 `0.0.105-dev.N`）；配好 profile 的 `hmr` 后构建即热重载，不用重启宿主；依赖走仓库自己的 `node_modules`（先 `npm install`）。
+- **验证发布版**：填 GitHub 地址（可加 `#vX.Y.Z`）——装的是仓库里**已提交**的 `lib/`，不会重新构建，所以构建产物必须随源码提交。
+- **安装包测试**：本地打 tgz 验证打包产物时必须用测试版本号 `<仓库版本>-test.<n>`；仓库 `package.json` 永远是正式号（`test/package-surface.test.ts` 会把关）。
+- **发布门禁（维护者）**：`npm test` 全绿 → 提交 `lib/` → `git tag vX.Y.Z` + GitHub Release → 需要面板「包名」安装时 `npm publish`（`prepublishOnly` 会先跑 `npm test`）。
+
 ## Session diagnosis
 
 When a user reports slow Codex turns or a flood of `stream ended before a terminal response event`, ask for the `session.jsonl` (or the DSH session zip) and run:

@@ -25,7 +25,7 @@ export function resetCursorCatalogCache() {
 }
 
 export function cursorCatalogModels() {
-  return cursorCatalogCache.models?.length ? cursorCatalogCache.models : [...CURSOR_MODELS]
+  return cursorCatalogCache.models?.length ? [...cursorCatalogCache.models] : [...CURSOR_MODELS]
 }
 
 /** Live AvailableModels-derived parameter styles, keyed by picker family. */

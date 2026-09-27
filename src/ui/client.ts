@@ -88,6 +88,9 @@ window.__ModuleLoader__.load({
         clineImportEmpty: '未找到 ~/.cline/data/settings/providers.json',
         clineCredits: '额度余额',
         clineDevice: '设备码登录',
+        anthropicTitle: 'Claude',
+        anthropicImport: '导入本机 Claude Code',
+        anthropicImportEmpty: '未找到 ~/.claude/.credentials.json',
         apiKeyTitle: 'API Key',
         opencodeGoTitle: 'OpenCode Go',
         opencodeGoHint: '粘贴 OpenCode Go API key 用于对话；会话 cookie 与工作区 ID 只用来读额度。可添加多个账号，点卡片切换。',
@@ -224,6 +227,8 @@ window.__ModuleLoader__.load({
         installed: '当前版本',
         onDisk: '磁盘',
         loadedFrom: '加载自',
+        linkedPath: '本地路径',
+        updateLinked: '本地链接',
         latest: '最新版本',
         os: '系统',
         checkUpdate: '检查更新',
@@ -301,6 +306,9 @@ window.__ModuleLoader__.load({
         clineImportEmpty: 'No ~/.cline/data/settings/providers.json found',
         clineCredits: 'Credits',
         clineDevice: 'Device code',
+        anthropicTitle: 'Claude',
+        anthropicImport: 'Import local Claude Code',
+        anthropicImportEmpty: 'No ~/.claude/.credentials.json found',
         apiKeyTitle: 'API Key',
         opencodeGoTitle: 'OpenCode Go',
         opencodeGoHint: 'Paste the OpenCode Go API key for chat; session cookie and workspace id only read quota. Add several accounts and click a card to switch.',
@@ -437,6 +445,8 @@ window.__ModuleLoader__.load({
         installed: 'Installed',
         onDisk: 'On disk',
         loadedFrom: 'Loaded from',
+        linkedPath: 'Local path',
+        updateLinked: 'Local link',
         latest: 'Latest',
         os: 'OS',
         checkUpdate: 'Check for updates',
@@ -1425,7 +1435,7 @@ window.__ModuleLoader__.load({
     }
 
     // LobeHub mono SVG paths from @lobehub/icons-static-svg@1.94.0
-    // https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/{codex,grok,zai,kiro,antigravity,cursor,ollama,kimi,copilot,devin,cline,github}.svg
+    // https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/{codex,grok,zai,kiro,antigravity,cursor,ollama,kimi,copilot,devin,cline,anthropic,github}.svg
     const TAB_ICONS = {
       codex: { d: 'M8.086.457a6.105 6.105 0 013.046-.415c1.333.153 2.521.72 3.564 1.7a.117.117 0 00.107.029c1.408-.346 2.762-.224 4.061.366l.063.03.154.076c1.357.703 2.33 1.77 2.918 3.198.278.679.418 1.388.421 2.126a5.655 5.655 0 01-.18 1.631.167.167 0 00.04.155 5.982 5.982 0 011.578 2.891c.385 1.901-.01 3.615-1.183 5.14l-.182.22a6.063 6.063 0 01-2.934 1.851.162.162 0 00-.108.102c-.255.736-.511 1.364-.987 1.992-1.199 1.582-2.962 2.462-4.948 2.451-1.583-.008-2.986-.587-4.21-1.736a.145.145 0 00-.14-.032c-.518.167-1.04.191-1.604.185a5.924 5.924 0 01-2.595-.622 6.058 6.058 0 01-2.146-1.781c-.203-.269-.404-.522-.551-.821a7.74 7.74 0 01-.495-1.283 6.11 6.11 0 01-.017-3.064.166.166 0 00.008-.074.115.115 0 00-.037-.064 5.958 5.958 0 01-1.38-2.202 5.196 5.196 0 01-.333-1.589 6.915 6.915 0 01.188-2.132c.45-1.484 1.309-2.648 2.577-3.493.282-.188.55-.334.802-.438.286-.12.573-.22.861-.304a.129.129 0 00.087-.087A6.016 6.016 0 015.635 2.31C6.315 1.464 7.132.846 8.086.457zm-.804 7.85a.848.848 0 00-1.473.842l1.694 2.965-1.688 2.848a.849.849 0 001.46.864l1.94-3.272a.849.849 0 00.007-.854l-1.94-3.393zm5.446 6.24a.849.849 0 000 1.695h4.848a.849.849 0 000-1.696h-4.848z', clip: true },
       grok: { d: 'M9.27 15.29l7.978-5.897c.391-.29.95-.177 1.137.272.98 2.369.542 5.215-1.41 7.169-1.951 1.954-4.667 2.382-7.149 1.406l-2.711 1.257c3.889 2.661 8.611 2.003 11.562-.953 2.341-2.344 3.066-5.539 2.388-8.42l.006.007c-.983-4.232.242-5.924 2.75-9.383.06-.082.12-.164.179-.248l-3.301 3.305v-.01L9.267 15.292M7.623 16.723c-2.792-2.67-2.31-6.801.071-9.184 1.761-1.763 4.647-2.483 7.166-1.425l2.705-1.25a7.808 7.808 0 00-1.829-1A8.975 8.975 0 005.984 5.83c-2.533 2.536-3.33 6.436-1.962 9.764 1.022 2.487-.653 4.246-2.34 6.022-.599.63-1.199 1.259-1.682 1.925l7.62-6.815' },
@@ -1444,6 +1454,8 @@ window.__ModuleLoader__.load({
       models: { d: 'M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z' },
       // LobeHub `Cline` icon (`@lobehub/icons-static-svg` icons/cline.svg, two subpaths joined)
       cline: { d: 'M17.035 3.991c2.75 0 4.98 2.24 4.98 5.003v1.667l1.45 2.896a1.01 1.01 0 01-.002.909l-1.448 2.864v1.668c0 2.762-2.23 5.002-4.98 5.002H7.074c-2.751 0-4.98-2.24-4.98-5.002V17.33l-1.48-2.855a1.01 1.01 0 01-.003-.927l1.482-2.887V8.994c0-2.763 2.23-5.003 4.98-5.003h9.962zM8.265 9.6a2.274 2.274 0 00-2.274 2.274v4.042a2.274 2.274 0 004.547 0v-4.042A2.274 2.274 0 008.265 9.6zm7.326 0a2.274 2.274 0 00-2.274 2.274v4.042a2.274 2.274 0 104.548 0v-4.042A2.274 2.274 0 0015.59 9.6zM12.054 5.558a2.779 2.779 0 100-5.558 2.779 2.779 0 000 5.558z', clip: true },
+      // LobeHub `Anthropic` icon (`@lobehub/icons-static-svg` icons/anthropic.svg)
+      anthropic: { d: 'M13.827 3.52h3.603L24 20h-3.603l-6.57-16.48zm-7.258 0h3.767L16.906 20h-3.674l-1.343-3.461H5.017l-1.344 3.46H0L6.57 3.522zm4.132 9.959L8.453 7.687 6.205 13.48H10.7z' },
       // LobeHub `OpenCode` icon (`@lobehub/icons-static-svg` icons/opencode.svg)
       opencodeGo: { d: 'M16 6H8v12h8V6zm4 16H4V2h16v20z' },
     }
@@ -2114,7 +2126,7 @@ window.__ModuleLoader__.load({
             className: 'osubs-login osubs-login-ghost',
             onClick: () => { onImport(id); closeAdd() },
           },
-            h('span', null, id === 'cursor' ? t.cursorImport : id === 'kimi' ? t.kimiImport : id === 'copilot' ? t.copilotImport : id === 'devin' ? t.devinImport : id === 'cline' ? t.clineImport : t.import),
+            h('span', null, id === 'cursor' ? t.cursorImport : id === 'kimi' ? t.kimiImport : id === 'copilot' ? t.copilotImport : id === 'devin' ? t.devinImport : id === 'cline' ? t.clineImport : id === 'anthropic' ? t.anthropicImport : t.import),
           ),
         ),
         id === 'kimi' && showKey && !busy && h('form', {
@@ -2718,11 +2730,12 @@ window.__ModuleLoader__.load({
     }
 
     /** current → latest band; the apply CTA docks on the right when given. */
-    function VersionBand({ currentLabel, latestLabel, current, latest, latestChips, busy, cta }) {
+    function VersionBand({ currentLabel, latestLabel, current, latest, currentChips, latestChips, busy, cta }) {
       return h('div', { className: 'osubs-ver' + (busy ? ' osubs-ver--busy' : '') },
         h('div', { className: 'osubs-ver-cell' },
           h('span', { className: 'osubs-note' }, currentLabel),
           h('span', { className: 'osubs-ver-num' }, current || '—'),
+          ...(Array.isArray(currentChips) ? currentChips : []),
         ),
         h('span', { className: 'osubs-ver-arrow' }, h(IconArrow)),
         h('div', { className: 'osubs-ver-cell' },
@@ -2747,13 +2760,19 @@ window.__ModuleLoader__.load({
     }) {
       const repo = local?.repo || update?.repo || 'https://github.com/xxww0098/dsh-plugin-oauth-subs'
       const slug = local?.repoSlug || update?.repoSlug || 'xxww0098/dsh-plugin-oauth-subs'
-      const version = fresherAboutVersion(update?.version, local?.version) || '—'
       const latest = update?.latest
       const latestTag = latest?.tag || latest?.name || ''
       const apply = applyLabel(t, update)
       const stale = update?.staleProcess || local?.staleProcess
       const disk = update?.disk || local?.disk
       const loaded = update?.runningPath || local?.runningPath
+      // A 「本地插件目录」 install is a link: into a working tree outside the
+      // profiles root. Its manifest version is the repo's official number, so
+      // About shows the derived `<version>-dev` build instead of the release.
+      const linkedPath = update?.linkedPath || local?.linkedPath
+      const linked = Boolean(linkedPath) || update?.linked === true || local?.linked === true
+      const devVersion = update?.devVersion || local?.devVersion
+      const version = (linked && devVersion) || fresherAboutVersion(update?.version, local?.version) || '—'
       const autoNote = () => {
         const bits = [t.autoUpdateHourly]
         if (autoState?.at) {
@@ -2767,7 +2786,7 @@ window.__ModuleLoader__.load({
         return s.length > 72 ? '…' + s.slice(-70) : s
       }
 
-      const pluginPill = update?.status === 'update'
+      const releasePill = update?.status === 'update'
         ? h(StatusPill, { tone: 'warn', label: fill(t.updateReady, latestTag) })
         : update?.status === 'current'
           ? h(StatusPill, { tone: 'ok', icon: h(IconCheck), label: t.updateCurrent })
@@ -2778,8 +2797,11 @@ window.__ModuleLoader__.load({
               : update?.status === 'error'
                 ? h(StatusPill, { tone: 'bad', label: t.updateError })
                 : null
+      const pluginPill = linked && update?.status !== 'update'
+        ? h(StatusPill, { label: t.updateLinked })
+        : releasePill
 
-      const pluginCta = update?.status === 'update' && latestTag
+      const pluginCta = !linked && update?.status === 'update' && latestTag
         ? h(Button, {
             size: 'sm',
             mark: true,
@@ -2817,6 +2839,10 @@ window.__ModuleLoader__.load({
               h('span', null, t.repo),
               h('a', { className: 'osubs-link osubs-link--icon', href: repo, target: '_blank', rel: 'noreferrer' },
                 h(TabIcon, { name: 'github' }), slug),
+            ),
+            linked && linkedPath && h('div', { className: 'osubs-kv-row' },
+              h('span', null, t.linkedPath),
+              h('span', { className: 'osubs-note', title: linkedPath }, shortPath(linkedPath)),
             ),
             disk && disk !== version && h('div', { className: 'osubs-kv-row' },
               h('span', null, t.onDisk),
@@ -2919,7 +2945,7 @@ window.__ModuleLoader__.load({
             setError(t.hostStale)
             return
           }
-          setError(message === 'cursor-import-empty' ? t.cursorImportEmpty : message === 'ollama-import-empty' ? t.ollamaImportEmpty : message === 'kimi-import-empty' ? t.kimiImportEmpty : message === 'copilot-import-empty' ? t.copilotImportEmpty : message === 'devin-import-empty' ? t.devinImportEmpty : message === 'cline-import-empty' ? t.clineImportEmpty : message)
+          setError(message === 'cursor-import-empty' ? t.cursorImportEmpty : message === 'ollama-import-empty' ? t.ollamaImportEmpty : message === 'kimi-import-empty' ? t.kimiImportEmpty : message === 'copilot-import-empty' ? t.copilotImportEmpty : message === 'devin-import-empty' ? t.devinImportEmpty : message === 'cline-import-empty' ? t.clineImportEmpty : message === 'anthropic-import-empty' ? t.anthropicImportEmpty : message)
         }
       }
 
@@ -2988,6 +3014,7 @@ window.__ModuleLoader__.load({
             h(Tab, { id: 'copilot', label: t.copilotTitle, current: tab, onSelect: setTab, icon: 'copilot' }),
             h(Tab, { id: 'devin', label: t.devinTitle, current: tab, onSelect: setTab, icon: 'devin' }),
             h(Tab, { id: 'cline', label: t.clineTitle, current: tab, onSelect: setTab, icon: 'cline' }),
+            h(Tab, { id: 'anthropic', label: t.anthropicTitle, current: tab, onSelect: setTab, icon: 'anthropic' }),
             h(Tab, { id: 'apikey', label: t.apiKeyTitle, current: tab, onSelect: setTab, icon: 'opencodeGo' }),
           ),
           h('div', { className: 'osubs-tabs-util' },
@@ -3008,6 +3035,7 @@ window.__ModuleLoader__.load({
           panel('copilot', card('copilot', t.copilotTitle)),
           panel('devin', card('devin', t.devinTitle)),
           panel('cline', card('cline', t.clineTitle)),
+          panel('anthropic', card('anthropic', t.anthropicTitle)),
           panel('apikey', card('opencode-go', t.opencodeGoTitle)),
           panel('models', h(ModelPicker, {
             t,

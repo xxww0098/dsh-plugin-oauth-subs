@@ -100,6 +100,25 @@ test('OAuthFlowManager accepts a pasted callback URL with matching state', async
   assert.equal(flows.isBusy('codex'), false)
 })
 
+test('OAuthFlowManager reserves the slot before awaiting listen', async () => {
+  const flows = new OAuthFlowManager()
+  const spec = {
+    callbackPath: '/auth/callback',
+    listen: { host: '127.0.0.1', ports: [0] },
+    timeoutMs: 5_000,
+    buildAuthorizeUrl: ({ redirectUri }) => `https://example.test/authorize?redirect_uri=${encodeURIComponent(redirectUri)}`,
+  }
+  const first = flows.start('codex', spec)
+  // The reservation must be visible synchronously, before listen() resolves —
+  // otherwise a second call passes the guard and binds a second listener.
+  assert.equal(flows.isBusy('codex'), true)
+  await assert.rejects(() => flows.start('codex', spec), /already in progress/)
+  const attempt = await first
+  assert.equal(flows.isBusy('codex'), true)
+  attempt.cancel()
+  assert.equal(flows.isBusy('codex'), false)
+})
+
 test('OAuthFlowManager keeps waitCode a string and stores Kiro callback metadata', async () => {
   const flows = new OAuthFlowManager()
   const attempt = await flows.start('kiro', {

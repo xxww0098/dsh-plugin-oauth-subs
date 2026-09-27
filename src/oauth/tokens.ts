@@ -16,10 +16,26 @@ export const REFRESH_FAILURE_BACKOFF_MS = 5 * 60_000
  */
 export const REFRESH_WAIT_MS = 30_000
 
+/**
+ * Upper bound on one refresh exchange (pi-ai bounds the same exchange at 15s).
+ * Family refresh calls carry no AbortSignal: a token endpoint that accepts the
+ * connection and stalls would otherwise hold the single-flight inflight until
+ * undici's own timeouts, so every request for that account pays the full
+ * waiter timeout instead of failing over to a still-valid token.
+ */
+export const REFRESH_EXCHANGE_TIMEOUT_MS = 20_000
+
 class RefreshTimeout extends Error {
   constructor(displayName, timeoutMs) {
     super(`${displayName} token refresh timed out after ${timeoutMs}ms`)
     this.name = 'RefreshTimeout'
+  }
+}
+
+class RefreshExchangeTimeout extends Error {
+  constructor(displayName, timeoutMs) {
+    super(`${displayName} token exchange timed out after ${timeoutMs}ms`)
+    this.name = 'RefreshExchangeTimeout'
   }
 }
 
@@ -44,16 +60,18 @@ export class TokenManager {
   declare isPermanent: any
   declare onRemoved: any
   declare refreshWaitMs: number
+  declare exchangeTimeoutMs: number
   declare inflight: Map<any, any>
   declare failures: Map<any, any>
   declare sources: WeakMap<object, any>
 
-  constructor({ provider, authPath, displayName, preemptMs, refresh, isPermanent, onRemoved, refreshWaitMs = REFRESH_WAIT_MS }: any) {
+  constructor({ provider, authPath, displayName, preemptMs, refresh, isPermanent, onRemoved, refreshWaitMs = REFRESH_WAIT_MS, exchangeTimeoutMs = REFRESH_EXCHANGE_TIMEOUT_MS }: any) {
     this.provider = provider
     this.authPath = authPath
     this.displayName = displayName
     this.preemptMs = preemptMs
     this.refreshWaitMs = refreshWaitMs
+    this.exchangeTimeoutMs = exchangeTimeoutMs
     this.refresh = refresh
     this.isPermanent = isPermanent
     this.onRemoved = onRemoved
@@ -115,7 +133,9 @@ export class TokenManager {
       // A transient endpoint failure must not kill a request whose access
       // token is still valid. Forced refreshes (post-401) rethrow instead:
       // the proxy needs a rotated token or nothing.
-      const transient = error instanceof RefreshTimeout || this.failures.get(source.version)?.error === error
+      const transient = error instanceof RefreshTimeout
+        || error instanceof RefreshExchangeTimeout
+        || this.failures.get(source.version)?.error === error
       if (!force && transient && source.session.expiresAt > Date.now()) return this.#serve(source)
       throw error
     }
@@ -153,7 +173,10 @@ export class TokenManager {
   async #refresh(source) {
     let next
     try {
-      next = await this.refresh(source.session)
+      // The owner must settle even when the token endpoint stalls, so the
+      // inflight slot frees for the next attempt; waitFor detaches from the
+      // hung fetch without leaving its rejection unhandled.
+      next = await waitFor(this.refresh(source.session), this.exchangeTimeoutMs, () => new RefreshExchangeTimeout(this.displayName, this.exchangeTimeoutMs))
     } catch (error) {
       if (this.isPermanent(error)) {
         const removed = await deleteSession(this.provider, this.authPath, source.id, source)

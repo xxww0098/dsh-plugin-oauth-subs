@@ -5,7 +5,7 @@
  */
 
 import { kimiCatalogModels } from './catalog.js'
-import { KIMI_MODELS, KIMI_REASONING } from './index.js'
+import { KIMI_MODELS } from './index.js'
 
 const OFF = new Set(['off', 'none', 'disabled', false, null, ''])
 
@@ -42,7 +42,7 @@ export function applyKimiThinking(payload: any = {}, model?) {
   const wire = wireEffort(effort, efforts) ?? (effort === undefined ? undefined : wireEffort('medium', efforts))
   if (wire === undefined) return next
   if (wire === 'off' || OFF.has(wire)) {
-    if (Object.hasOwn(efforts, 'off') || Object.values(KIMI_REASONING).includes('off')) {
+    if (Object.hasOwn(efforts, 'off')) {
       next.thinking = { type: 'disabled' }
     } else {
       delete next.thinking

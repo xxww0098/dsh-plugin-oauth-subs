@@ -27,6 +27,15 @@ import {
 
 const CLINE_QUOTA_TIMEOUT_MS = 10_000
 
+/** Release an unread response body so its socket is not pinned until GC. */
+function drainBody(response) {
+  try {
+    return response?.body?.cancel?.() ?? Promise.resolve()
+  } catch {
+    return Promise.resolve()
+  }
+}
+
 function timeoutSignal(ms) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), ms)
@@ -197,7 +206,6 @@ export async function fetchClineQuota(session, fetchFn = fetch) {
   const authorization = `Bearer ${clineBearer(session)}`
   const headers = { accept: 'application/json', authorization }
   const meWait = timeoutSignal(CLINE_QUOTA_TIMEOUT_MS)
-  const planWait = timeoutSignal(CLINE_QUOTA_TIMEOUT_MS)
   try {
     const me = envelope(await fetchFn(CLINE_ME_URL, { headers, signal: meWait.signal })
       .then((response) => readJson(response, 'cline me')))
@@ -205,8 +213,12 @@ export async function fetchClineQuota(session, fetchFn = fetch) {
       ? me.id.trim()
       : typeof session?.userId === 'string' && session.userId.trim() ? session.userId.trim() : undefined
     if (!userId) throw new Error('cline account id is unavailable')
+    // Arm each follow-up with its own full budget. Creating planWait up front
+    // let a slow `me` read eat the plan request's timeout, and the abort was
+    // swallowed by .catch(() => undefined), silently dropping plan/caps.
     const balanceWait = timeoutSignal(CLINE_QUOTA_TIMEOUT_MS)
     const limitsWait = timeoutSignal(CLINE_QUOTA_TIMEOUT_MS)
+    const planWait = timeoutSignal(CLINE_QUOTA_TIMEOUT_MS)
     try {
       const [balance, plan, limits] = await Promise.all([
         fetchFn(clineBalanceUrl(userId), { headers, signal: balanceWait.signal })
@@ -215,11 +227,20 @@ export async function fetchClineQuota(session, fetchFn = fetch) {
         // Both plan reads 404 for a credit account; they stay best-effort so
         // the balance row survives a missing plan.
         fetchFn(CLINE_PLAN_URL, { headers, signal: planWait.signal })
-          .then((response) => (response.ok ? response.json() : undefined))
+          .then(async (response) => {
+            if (response.ok) return response.json()
+            // A credit account 404s here: consume the body or the socket stays pinned.
+            await drainBody(response)
+            return undefined
+          })
           .then((payload) => parseClinePlan(payload))
           .catch(() => undefined),
         fetchFn(CLINE_PLAN_LIMITS_URL, { headers, signal: limitsWait.signal })
-          .then((response) => (response.ok ? response.json() : undefined))
+          .then(async (response) => {
+            if (response.ok) return response.json()
+            await drainBody(response)
+            return undefined
+          })
           .then((payload) => parseClinePlanLimits(payload))
           .catch(() => []),
       ])
@@ -227,9 +248,9 @@ export async function fetchClineQuota(session, fetchFn = fetch) {
     } finally {
       balanceWait.cancel()
       limitsWait.cancel()
+      planWait.cancel()
     }
   } finally {
     meWait.cancel()
-    planWait.cancel()
   }
 }

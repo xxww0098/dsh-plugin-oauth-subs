@@ -35,6 +35,9 @@ export function applyCodexCache(payload) {
 
 export function codexCacheHeaders(cacheSessionId) {
   if (typeof cacheSessionId !== 'string' || cacheSessionId.length === 0) return {}
+  // Never emit control bytes (CR/LF/NUL) as header values: a cache id reaching
+  // this function from an untrusted payload must not be able to split headers.
+  if (/[\u0000-\u001f\u007f]/.test(cacheSessionId)) return {}
   return {
     'session-id': cacheSessionId,
     'thread-id': cacheSessionId,

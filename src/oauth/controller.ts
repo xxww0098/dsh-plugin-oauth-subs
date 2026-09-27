@@ -120,6 +120,15 @@ import {
 } from './cline/index.js'
 import { clineCatalogModels, refreshClineCatalog } from './cline/catalog.js'
 import { CLINE_IMPORT_EMPTY, importClineAuth } from './cline/import.js'
+import {
+  anthropicFlow,
+  anthropicProfile,
+  ANTHROPIC_PREEMPT_MS,
+  exchangeAnthropicCode,
+  isAnthropicPermanentRefreshError,
+  refreshAnthropic,
+} from './anthropic/index.js'
+import { importAnthropicAuth } from './anthropic/import.js'
 import { devinUserStatus, resolveDevinIdentity } from './devin/transport.js'
 import { OpencodeGoStore, opencodeGoFilePath } from '../apikey/opencode-go/store.js'
 import { opencodeGoKeyHint } from '../apikey/opencode-go/index.js'
@@ -385,6 +394,15 @@ export class AuthController {
         isPermanent: isClinePermanentRefreshError,
         onRemoved: () => this.onAuthChanged?.('cline'),
       }),
+      anthropic: new TokenManager({
+        displayName: 'Claude (Pro/Max)',
+        preemptMs: ANTHROPIC_PREEMPT_MS,
+        provider: 'anthropic',
+        authPath: this.authPath,
+        refresh: (session) => refreshAnthropic(session, fetchFn),
+        isPermanent: isAnthropicPermanentRefreshError,
+        onRemoved: () => this.onAuthChanged?.('anthropic'),
+      }),
     }
     this.quota = new QuotaStore({ tokens: this.tokens, fetchFn, ttlMs: quotaTtlMs })
     this.fetchFn = fetchFn
@@ -413,6 +431,7 @@ export class AuthController {
       copilot: (await getSession('copilot', this.authPath)) !== undefined,
       devin: (await getSession('devin', this.authPath)) !== undefined,
       cline: (await getSession('cline', this.authPath)) !== undefined,
+      anthropic: (await getSession('anthropic', this.authPath)) !== undefined,
     }
   }
 
@@ -616,9 +635,11 @@ export class AuthController {
     else this.quota.clear('devin')
     if (loggedIn.cline) await this.#ensureAccountQuota('cline')
     else this.quota.clear('cline')
+    if (loggedIn.anthropic) await this.#ensureAccountQuota('anthropic')
+    else this.quota.clear('anthropic')
     const enabledKeys = this.models.enabledKeys(catalog)
     const opencodeGo = await this.opencodeGoSnapshot()
-    const [codexAccounts, grokAccounts, glmAccounts, kiroAccounts, antigravityAccounts, cursorAccounts, ollamaAccounts, kimiAccounts, copilotAccounts, devinAccounts, clineAccounts] = await Promise.all([
+    const [codexAccounts, grokAccounts, glmAccounts, kiroAccounts, antigravityAccounts, cursorAccounts, ollamaAccounts, kimiAccounts, copilotAccounts, devinAccounts, clineAccounts, anthropicAccounts] = await Promise.all([
       this.#accountsWithQuota('codex'),
       this.#accountsWithQuota('grok'),
       this.#accountsWithQuota('glm'),
@@ -630,6 +651,7 @@ export class AuthController {
       this.#accountsWithQuota('copilot'),
       this.#accountsWithQuota('devin'),
       this.#accountsWithQuota('cline'),
+      this.#accountsWithQuota('anthropic'),
     ])
     return {
       origin,
@@ -656,6 +678,7 @@ export class AuthController {
         copilot: { ...(await this.status('copilot')), activeId: copilotAccounts.find((row) => row.active)?.id, accounts: copilotAccounts },
         devin: { ...(await this.status('devin')), activeId: devinAccounts.find((row) => row.active)?.id, accounts: devinAccounts },
         cline: { ...(await this.status('cline')), activeId: clineAccounts.find((row) => row.active)?.id, accounts: clineAccounts },
+        anthropic: { ...(await this.status('anthropic')), activeId: anthropicAccounts.find((row) => row.active)?.id, accounts: anthropicAccounts },
         'opencode-go': opencodeGo,
       },
       opencodeGo,
@@ -802,7 +825,7 @@ export class AuthController {
 
   async refreshQuota(provider, accountId?) {
     if (provider === 'opencode-go') return this.refreshOpencodeGoQuota(accountId)
-    if (provider === 'codex' || provider === 'grok' || provider === 'glm' || provider === 'kiro' || provider === 'antigravity' || provider === 'cursor' || provider === 'ollama' || provider === 'kimi' || provider === 'copilot' || provider === 'devin' || provider === 'cline') {
+    if (provider === 'codex' || provider === 'grok' || provider === 'glm' || provider === 'kiro' || provider === 'antigravity' || provider === 'cursor' || provider === 'ollama' || provider === 'kimi' || provider === 'copilot' || provider === 'devin' || provider === 'cline' || provider === 'anthropic') {
       const rows = await this.#liveAccounts(provider)
       const targets = accountId
         ? rows.filter((row) => row.id === accountId)
@@ -872,7 +895,7 @@ export class AuthController {
           await this.sync().catch(() => undefined)
         }
       }
-      const latest = provider === 'ollama' || provider === 'kimi' || provider === 'copilot' || provider === 'devin' || provider === 'cline' ? await this.#liveAccounts(provider) : rows
+      const latest = provider === 'ollama' || provider === 'kimi' || provider === 'copilot' || provider === 'devin' || provider === 'cline' || provider === 'anthropic' ? await this.#liveAccounts(provider) : rows
       if (accountId) {
         const hit = latest.find((row) => row.id === accountId) ?? latest.find((row) => row.active)
         return this.quota.peek(provider, hit?.id ?? accountId)
@@ -880,7 +903,7 @@ export class AuthController {
       const active = latest.find((row) => row.active)
       return this.quota.peek(provider, active?.id)
     }
-    const [codex, grok, glm, kiro, antigravity, cursor, ollama, kimi, copilot, devin, cline] = await Promise.all([
+    const [codex, grok, glm, kiro, antigravity, cursor, ollama, kimi, copilot, devin, cline, anthropic] = await Promise.all([
       this.refreshQuota('codex'),
       this.refreshQuota('grok'),
       this.refreshQuota('glm'),
@@ -892,8 +915,9 @@ export class AuthController {
       this.refreshQuota('copilot'),
       this.refreshQuota('devin'),
       this.refreshQuota('cline'),
+      this.refreshQuota('anthropic'),
     ])
-    return { codex, grok, glm, kiro, antigravity, cursor, ollama, kimi, copilot, devin, cline }
+    return { codex, grok, glm, kiro, antigravity, cursor, ollama, kimi, copilot, devin, cline, anthropic }
   }
 
   async consumeReset(provider, accountId) {
@@ -1397,6 +1421,27 @@ export class AuthController {
     return next
   }
 
+  /**
+   * Hydrate the profile identity (account uuid + email) onto a stored
+   * anthropic login. Best-effort: a profile failure leaves the generic
+   * refresh-token-suffix id and the login still works.
+   */
+  async #finishAnthropicIdentity(source) {
+    if (!source?.session) return
+    try {
+      const profile = await anthropicProfile(source.session, this.fetchFn)
+      const email = profile.email ?? source.session.account
+      const uuid = profile.uuid ?? source.session.accountId
+      if (email === source.session.account && uuid === source.session.accountId) return
+      const next = { ...source.session }
+      if (email) next.account = email
+      if (uuid) next.accountId = uuid
+      await updateAccountSession('anthropic', source, next, this.authPath, uuid)
+    } catch {
+      // identity is a hint, never a gate
+    }
+  }
+
   async #rememberClineIdentity(row, quota) {
     if (!quota || quota.status !== 'ready') return
     const account = typeof quota.account === 'string' && quota.account.trim() ? quota.account.trim() : undefined
@@ -1627,6 +1672,12 @@ export class AuthController {
         mode: 'device',
       }
     }
+    if (provider === 'anthropic') {
+      const attempt = await this.flows.start('anthropic', anthropicFlow)
+      const claim = this.claim('anthropic')
+      void this.completePkce('anthropic', attempt, claim)
+      return { authorizeUrl: attempt.authorizeUrl, redirectUri: attempt.redirectUri, mode: 'pkce' }
+    }
     if (provider !== 'grok') throw new Error(`unknown provider ${provider}`)
     const useDevice = (mode ?? this.grokLogin) !== 'pkce'
     if (useDevice) {
@@ -1700,12 +1751,15 @@ export class AuthController {
           ? await exchangeAntigravityCode(code, attempt.redirectUri, { fetchFn: this.fetchFn })
         : provider === 'devin'
           ? await exchangeDevinCode(code, attempt.pkce.verifier, { fetchFn: this.fetchFn })
+        : provider === 'anthropic'
+          ? await exchangeAnthropicCode(code, attempt.pkce.verifier, attempt.redirectUri, attempt.state, this.fetchFn)
           : await exchangeGrokCode(code, attempt.pkce.verifier, attempt.redirectUri, attempt.pkce.challenge)
       if (this.claims.get(provider) !== claim) return
       const saved = await saveSession(provider, provider === 'devin' ? await this.#finishDevinSession(session) : session, this.authPath)
       this.lastError.delete(provider)
       if (provider === 'kiro') await this.#discoverKiro(session)
       if (provider === 'devin') await this.#discoverDevin(session)
+      if (provider === 'anthropic') await this.#finishAnthropicIdentity(saved)
       this.onAuthChanged?.(provider)
       void this.quota.refresh(provider)
       if (provider === 'antigravity') void this.#probeAntigravity(saved)
@@ -2079,6 +2133,8 @@ export class AuthController {
             ? await this.#importDevin()
           : provider === 'cline'
             ? await this.#importCline()
+          : provider === 'anthropic'
+            ? await importAnthropicAuth()
           : await importGrokAuth()
     this.claim(provider)
     this.flows.pending(provider)?.cancel()
@@ -2100,6 +2156,11 @@ export class AuthController {
     if (provider === 'copilot') await this.#discoverCopilot(sessions[0])
     if (provider === 'devin') await this.#discoverDevin(sessions[0])
     if (provider === 'cline') await this.#discoverCline(sessions[0])
+    if (provider === 'anthropic') {
+      const stored = await listStoredSessions('anthropic', this.authPath)
+      const row = stored.find((candidate) => candidate.session.accessToken === sessions[0]?.accessToken)
+      if (row) await this.#finishAnthropicIdentity(row)
+    }
     this.onAuthChanged?.(provider)
     void this.quota.refresh(provider)
     return {

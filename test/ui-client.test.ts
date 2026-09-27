@@ -116,11 +116,11 @@ test('Settings Cursor tab uses Import local Cursor copy and shows source, never 
   assert.match(src, /cursorImport:\s*'导入本机 Cursor'/)
   assert.match(src, /cursorImport:\s*'Import local Cursor'/)
   assert.match(src, /cursorImportEmpty:\s*'本机没有 Cursor CLI 或 IDE 登录'/)
-  assert.match(src, /id === 'cursor' \? t\.cursorImport : id === 'kimi' \? t\.kimiImport : id === 'copilot' \? t\.copilotImport : id === 'devin' \? t\.devinImport : id === 'cline' \? t\.clineImport : t\.import/)
+  assert.match(src, /id === 'cursor' \? t\.cursorImport : id === 'kimi' \? t\.kimiImport : id === 'copilot' \? t\.copilotImport : id === 'devin' \? t\.devinImport : id === 'cline' \? t\.clineImport : id === 'anthropic' \? t\.anthropicImport : t\.import/)
   assert.match(src, /\(id === 'cursor' \|\| id === 'ollama' \|\| id === 'kimi' \|\| id === 'copilot' \|\| id === 'devin' \|\| id === 'cline'\) && row\.methodLabel/)
   assert.match(src, /message === 'cursor-import-empty' \? t\.cursorImportEmpty/)
   assert.match(src, /h\(Tab, \{ id: 'cursor'/)
-  assert.match(src, /icons\/\{codex,grok,zai,kiro,antigravity,cursor,ollama,kimi,copilot,devin,cline,github\}\.svg/)
+  assert.match(src, /icons\/\{codex,grok,zai,kiro,antigravity,cursor,ollama,kimi,copilot,devin,cline,anthropic,github\}\.svg/)
   assert.match(src, /cursor: \{ d: 'M22\.106 5\.68L12\.5\.135a\.998\.998 0 00-\.998 0L1\.893 5\.68/)
   assert.match(src, /cursor: \{ d: '[^']+', clip: true \}/)
   assert.equal(src.includes('M11.925 24l10.425-6'), false)
@@ -128,7 +128,7 @@ test('Settings Cursor tab uses Import local Cursor copy and shows source, never 
   assert.equal(/cursor[\s\S]{0,200}accessToken/.test(src), false)
   const tabOrder = src.match(/h\(Tab, \{ id: '(\w+)'/g) ?? []
   const ids = tabOrder.map((row) => /id: '(\w+)'/.exec(row)?.[1])
-  assert.deepEqual(ids.slice(0, 14), ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline', 'apikey', 'models', 'about'])
+  assert.deepEqual(ids.slice(0, 15), ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline', 'anthropic', 'apikey', 'models', 'about'])
 })
 
 test('Settings Ollama tab is Cloud key paste after Cursor, never localhost', async () => {
@@ -190,7 +190,7 @@ test('Settings tab bar is two docked capsules; OAuth spreads leftover width betw
   assert.equal(/id: 'apikey'/.test(util), false)
   const tabOrder = src.match(/h\(Tab, \{ id: '(\w+)'/g) ?? []
   const ids = tabOrder.map((row) => /id: '(\w+)'/.exec(row)?.[1])
-  assert.deepEqual(ids, ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline', 'apikey', 'models', 'about'])
+  assert.deepEqual(ids, ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline', 'anthropic', 'apikey', 'models', 'about'])
 })
 
 test('OpenCode Go renders through the shared account cards and add-account dialog', async () => {
@@ -377,7 +377,7 @@ test('Add account opens a centered dialog, not a sheet', async () => {
   assert.match(src, /id === 'glm' && !busy && h\('div', \{ className: 'osubs-glm-logins' \}/)
   assert.match(src, /id === 'kiro' && !busy && h\('div', \{ className: 'osubs-logins' \}/)
   assert.match(src, /id === 'ollama' && !busy && h\('div', \{ className: 'osubs-logins' \}/)
-  assert.match(src, /id === 'cursor' \? t\.cursorImport : id === 'kimi' \? t\.kimiImport : id === 'copilot' \? t\.copilotImport : id === 'devin' \? t\.devinImport : id === 'cline' \? t\.clineImport : t\.import/)
+  assert.match(src, /id === 'cursor' \? t\.cursorImport : id === 'kimi' \? t\.kimiImport : id === 'copilot' \? t\.copilotImport : id === 'devin' \? t\.devinImport : id === 'cline' \? t\.clineImport : id === 'anthropic' \? t\.anthropicImport : t\.import/)
   assert.match(src, /h\('span', null, t\.ollamaImport\)/)
   assert.equal(/osubs-sheet|osubs-drawer|role: 'sheet'|side.?sheet|侧边抽屉/i.test(src), false)
 })
@@ -437,9 +437,19 @@ test('Settings Copilot tab is device-code after Kimi, never @lobehub/icons', asy
 test('About Installed prefers the fresher of checkUpdate and snapshot', async () => {
   const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
   assert.match(src, /function fresherAboutVersion/)
-  assert.match(src, /const version = fresherAboutVersion\(update\?\.version, local\?\.version\)/)
+  assert.match(src, /const version = \(linked && devVersion\) \|\| fresherAboutVersion\(update\?\.version, local\?\.version\) \|\| '—'/)
   assert.equal(src.includes('const version = local?.version || update?.version'), false)
   assert.match(src, /setSnap\(\(current\) => current \? \{ \.\.\.current, update: \{ \.\.\.current\.update, \.\.\.result \} \}/)
+})
+
+test('About shows the derived -dev version for a linked working tree', async () => {
+  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  assert.match(src, /const devVersion = update\?\.devVersion \|\| local\?\.devVersion/)
+  assert.match(src, /const linkedPath = update\?\.linkedPath \|\| local\?\.linkedPath/)
+  assert.match(src, /linked && linkedPath && h\('div', \{ className: 'osubs-kv-row' \}/)
+  // The dev marker lives in the version string; no hint copy or chip in the card.
+  assert.equal(src.includes('updateLinkedHint'), false)
+  assert.equal(src.includes('currentChips: linked'), false)
 })
 
 test('About panel carries no DSH-cli version rows', async () => {

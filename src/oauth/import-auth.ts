@@ -64,7 +64,14 @@ async function readJson(path) {
   try {
     return JSON.parse(await readFile(path, 'utf8'))
   } catch (error) {
-    if (errorCode(error) === 'ENOENT') return undefined
+    // Probe semantics: a candidate that is missing, unreadable (EACCES/EPERM/
+    // ELOOP/EISDIR) or malformed means "no session here". One bad file must not
+    // abort the whole multi-path import search.
+    const code = errorCode(error)
+    if (code === 'ENOENT' || code === 'EACCES' || code === 'EPERM' || code === 'ELOOP' || code === 'EISDIR') {
+      return undefined
+    }
+    if (error instanceof SyntaxError) return undefined
     throw error
   }
 }

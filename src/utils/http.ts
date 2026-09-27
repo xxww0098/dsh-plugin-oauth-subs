@@ -11,7 +11,18 @@ export class RequestError extends Error {
 }
 
 export function sendJson(response: ServerResponse, status: number, body: unknown, extraHeaders: Record<string, unknown> = {}) {
-  const text = typeof body === 'string' ? body : JSON.stringify(body)
+  let text
+  if (typeof body === 'string') {
+    text = body
+  } else {
+    try {
+      // JSON.stringify returns undefined for undefined/functions/symbols, and
+      // throws on circular input: neither may crash before writeHead.
+      text = JSON.stringify(body) ?? 'null'
+    } catch {
+      text = 'null'
+    }
+  }
   const headers: Record<string, string | number> = {
     'content-type': 'application/json; charset=utf-8',
     'cache-control': 'no-store',

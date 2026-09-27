@@ -178,6 +178,50 @@ test('localUpdateInfo reports the running module when profile disk is newer', ()
   assert.equal(info.staleProcess, true)
 })
 
+test('localUpdateInfo marks a link: install pointing outside the profiles root', () => {
+  const linkedDir = '/Users/dev/Code/REPO/dsh-plugin-oauth-subs'
+  const info = localUpdateInfo('linux', {
+    profile: 'desktop',
+    env: { DSH_HOME: '/tmp/dsh-home' },
+    readFileFn: splitVersionReader('0.0.105', '0.0.105'),
+    realpathFn: (path) => String(path).includes('/node_modules/dsh-plugin-oauth-subs')
+      ? linkedDir
+      : path,
+  })
+  assert.equal(info.linked, true)
+  assert.equal(info.linkedPath, linkedDir)
+  assert.equal(info.devVersion, '0.0.105-dev')
+  assert.equal(info.staleProcess, false)
+})
+
+test('localUpdateInfo prefers the dev-build counter when the linked tree has one', () => {
+  const linkedDir = '/Users/dev/Code/REPO/dsh-plugin-oauth-subs'
+  const info = localUpdateInfo('linux', {
+    profile: 'desktop',
+    env: { DSH_HOME: '/tmp/dsh-home' },
+    readFileFn: (path) => {
+      const p = String(path).replace(/\\/g, '/')
+      if (p.endsWith('.dev-build.json')) return JSON.stringify({ base: '0.0.105', n: 4 })
+      return JSON.stringify({ version: '0.0.105' })
+    },
+    realpathFn: (path) => String(path).includes('/node_modules/dsh-plugin-oauth-subs')
+      ? linkedDir
+      : path,
+  })
+  assert.equal(info.devVersion, '0.0.105-dev.4')
+})
+
+test('localUpdateInfo leaves an installed profile copy unmarked', () => {
+  const info = localUpdateInfo('linux', {
+    profile: 'desktop',
+    env: { DSH_HOME: '/tmp/dsh-home' },
+    readFileFn: splitVersionReader('0.0.105', '0.0.105'),
+  })
+  assert.equal(info.linked, false)
+  assert.equal(info.linkedPath, undefined)
+  assert.equal(info.devVersion, undefined)
+})
+
 test('fetchLatest stays update when the process is behind even if disk matches GitHub', async () => {
   const fetchFn = async () => new Response(JSON.stringify({
     tag_name: 'v0.0.71',

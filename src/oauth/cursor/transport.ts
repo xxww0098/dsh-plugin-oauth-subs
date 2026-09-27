@@ -1,10 +1,37 @@
 /** Cursor AgentService lifecycle and OpenAI streaming translation. */
 
-import { once } from 'node:events'
 import { RequestError, describeError, sendJson } from '../../utils/http.js'
 import { cursorConversationId } from './cache.js'
 import { cursorToOpenai, createCursorOpenaiStream, openaiToCursor } from './request.js'
 import { runCursorAgent } from './h2-session.js'
+
+/**
+ * A destroyed response emits 'close', never 'drain', so awaiting 'drain' alone
+ * hangs forever when the client goes away. Race drain against close/error/abort
+ * so a disconnected client fails fast instead of pinning the upstream run.
+ */
+function waitForDrain(response, signal) {
+  if (response.destroyed) return Promise.reject(new Error('client disconnected'))
+  return new Promise((resolve, reject) => {
+    const onDrain = () => { cleanup(); resolve(undefined) }
+    const onClose = () => { cleanup(); reject(new Error('client disconnected before drain')) }
+    const onError = (error) => { cleanup(); reject(error) }
+    const onAbort = () => { cleanup(); reject(signal?.reason ?? new Error('aborted')) }
+    const cleanup = () => {
+      response.off('drain', onDrain)
+      response.off('close', onClose)
+      response.off('error', onError)
+      if (signal) signal.removeEventListener('abort', onAbort)
+    }
+    response.once('drain', onDrain)
+    response.once('close', onClose)
+    response.once('error', onError)
+    if (signal) {
+      if (signal.aborted) { onAbort(); return }
+      signal.addEventListener('abort', onAbort, { once: true })
+    }
+  })
+}
 
 export async function forwardCursor(response, { payload, cacheSessionId, stream, session, signal, runFn = runCursorAgent }: any) {
   const conversationId = cacheSessionId ?? cursorConversationId(payload)
@@ -31,7 +58,8 @@ export async function forwardCursor(response, { payload, cacheSessionId, stream,
     })
   }
   const write = async (chunk) => {
-    if (!response.write(`data: ${JSON.stringify(chunk)}\n\n`)) await once(response, 'drain', { signal })
+    if (response.destroyed) throw new Error('client disconnected before write')
+    if (!response.write(`data: ${JSON.stringify(chunk)}\n\n`)) await waitForDrain(response, signal)
   }
   const fail = async (message) => {
     if (!headSent) {
@@ -41,7 +69,8 @@ export async function forwardCursor(response, { payload, cacheSessionId, stream,
     // Once output commits the status, a structured SSE error is the only way
     // to distinguish a failed run from a successfully completed answer.
     console.error(`[oauth-subs] cursor upstream error mid-stream: ${message}`)
-    await write({ error: { message, type: 'server_error', code: 'cursor_upstream' } })
+    // The client may already be gone: the error report itself must not throw.
+    await write({ error: { message, type: 'server_error', code: 'cursor_upstream' } }).catch(() => {})
     if (!response.writableEnded && !response.destroyed) response.end()
   }
   let collected

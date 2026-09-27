@@ -37,7 +37,7 @@ export function ollamaCatalogTokenHash(token) {
 }
 
 export function ollamaCatalogModels() {
-  return cached.models?.length ? cached.models : [...OLLAMA_MODELS]
+  return cached.models?.length ? [...cached.models] : [...OLLAMA_MODELS]
 }
 
 export function toOllamaPickerModels(tags) {
@@ -81,9 +81,16 @@ async function showModel(id, { fetchFn, token, signal }) {
   }
 }
 
+/** Cap the /api/show fan-out: an uncapped burst trips upstream rate limiting. */
+const OLLAMA_SHOW_CONCURRENCY = 4
+
 async function applyOllamaShowWindows(models, options) {
   if (!models.length) return models
-  const shows = await Promise.all(models.map((model) => showModel(model.id, options)))
+  const shows: any[] = []
+  for (let i = 0; i < models.length; i += OLLAMA_SHOW_CONCURRENCY) {
+    const batch = models.slice(i, i + OLLAMA_SHOW_CONCURRENCY)
+    shows.push(...await Promise.all(batch.map((model) => showModel(model.id, options))))
+  }
   return models.map((model, index) => {
     const show = shows[index]
     if (!show || typeof show !== 'object') return model
@@ -101,7 +108,7 @@ export async function refreshOllamaCatalog(session, options: any = {}) {
   if (!token) return [...OLLAMA_MODELS]
   const tokenHash = ollamaCatalogTokenHash(token)
   if (cached.tokenHash === tokenHash && cached.models?.length && Date.now() < cached.expiresAt) {
-    return cached.models
+    return [...cached.models]
   }
   try {
     const fetchFn = options.fetchFn ?? fetch
@@ -126,6 +133,6 @@ export async function refreshOllamaCatalog(session, options: any = {}) {
   } catch {
     // Discovery must not block chat or login.
   }
-  if (cached.tokenHash === tokenHash && cached.models?.length) return cached.models
+  if (cached.tokenHash === tokenHash && cached.models?.length) return [...cached.models]
   return [...OLLAMA_MODELS]
 }

@@ -26,6 +26,7 @@
 | GitHub Copilot | [anomalyco/opencode](https://github.com/anomalyco/opencode) `plugin/github-copilot` | [github/docs copilot 数据表](https://github.com/github/docs/tree/main/data/tables/copilot)（GA / 可用性，2026-09-23）+ [models.dev](https://models.dev/api.json) `github-copilot`（id / 窗口）；[goose githubcopilot.rs](https://github.com/aaif-goose/goose)；[Cherry Studio CopilotService.ts](https://github.com/CherryHQ/cherry-studio)；[hermes-agent copilot_auth.py](https://github.com/NousResearch/hermes-agent/blob/main/hermes_cli/copilot_auth.py) | UA `GitHubCopilotChat/0.35.0`；client `Iv1.b507a08c87ecfe98` | [`copilot/README.md`](../src/oauth/copilot/README.md) |
 | Devin | Devin CLI `3000.10.31`（app.devin.ai PKCE + server.codeium.com Connect/proto） | [can1357/oh-my-pi](https://github.com/can1357/oh-my-pi) `pi-catalog` devin + vendored `exa.*` protos | MITM 实测指纹 `ide_name: chisel` / `3000.10.31` / `Basic <tok>-<tok>`；`devin-session-token$` 前缀只加一次 | [`devin/README.md`](../src/oauth/devin/README.md) |
 | Cline | Cline CLI `3.0.62`（npm `cline` + `@cline/core 0.0.83`） | [cline/cline](https://github.com/cline/cline) tag `cli-v3.0.62`（Apache-2.0）；[models.dev](https://models.dev/api.json) `openrouter` 桶做模型元数据（静态快照 2026-09-23） | WorkOS 设备码 + `POST /api/v1/auth/register` 兑换；Bearer `workos:<jwt>`；`X-Task-ID` 会话钉 | [`cline/README.md`](../src/oauth/cline/README.md) |
+| Claude (Anthropic) | Claude Code CLI `claude-cli/2.1.280`（无公开源码，指纹对照 senpi/pi-ai） | [code-yeongyu/oh-my-openagent](https://github.com/code-yeongyu/oh-my-openagent) 引擎 `@code-yeongyu/senpi` 包内 `@earendil-works/pi-ai`（`auth/oauth/anthropic.js` + `api/anthropic-messages.js`，2026-09-26 dev）；统一限额头见 [pi-usage-limit-tracker](https://pi.dev) | PKCE `claude.ai/oauth/authorize`（`code=true`，state 回传）；token `platform.claude.com/v1/oauth/token`；`anthropic-beta: claude-code-20250219,oauth-2025-04-20` + `x-app: cli`；身份 `api.anthropic.com/api/oauth/profile` | [`anthropic/README.md`](../src/oauth/anthropic/README.md) |
 | 宿主 | [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) | DSH `llm-pi-ai` `api` 闭集 | 本机回环代理 | [`README.md`](../README.md) |
 | OpenCode Go（API key） | [opencode.ai/docs/go](https://opencode.ai/docs/go/) | [stablyai/orca](https://github.com/stablyai/orca)；[steipete/CodexBar](https://github.com/steipete/CodexBar) | 宿主内置 pi-ai `opencode-go`（27 模型）由用户在 DSH 模型页自行开启；插件不写该 profile。插件自有目录：`OpenCode Go`（openai-completions 28 行）+ `OpenCode Go · Responses`（6 行），通过 `OPENCODE_API_KEY` 直连；不服务的公开 ID 不进目录。插件路由带必需的 `x-opencode-session`（pi-ai 0.85.1 不发会话头）。额度走 Console `/console/api/{orgs,go/status,billing/status,user}` + `x-org-id`，未迁移账号兜底旧 `/workspace/{id}/go` | [`opencode-go/README.md`](../src/apikey/opencode-go/README.md) |
 
@@ -141,6 +142,23 @@ pi-cursor-sdk 自己走 **API key + `Agent.create`**，不是 OAuth。本 hop �
 一线：官方 Kimi Code CLI。设备码（无 PKCE）对照 MIT [Leechael/pi-provider-kimi-code](https://github.com/Leechael/pi-provider-kimi-code)。`client_id` `17e5f671-d194-4dfb-9706-5516cb48c098`。导入 `~/.kimi-code/credentials/kimi-code.json`。
 
 **不要发明：** PKCE；第四种 DSH `api` 字符串；Codex / Grok 缓存头；把 UA 扮成 `pi-provider-kimi-code`。不要 vendoring `moonshot_search` / `moonshot_fetch`。
+
+## Claude (Anthropic)
+
+一线指纹：Claude Code CLI `claude-cli/2.1.280`（无公开源码），逐项对照 senpi/pi-ai
+（oh-my-openagent 引擎包内 `@earendil-works/pi-ai`，2026-09-26 dev 快照）：
+PKCE `claude.ai/oauth/authorize`（`code=true`、state 在授权与交换都回传）、
+token `platform.claude.com/v1/oauth/token`（JSON）、
+hop `api.anthropic.com/v1/messages` 带 `anthropic-beta: claude-code-20250219,oauth-2025-04-20`
++ `x-app: cli`、身份 `api.anthropic.com/api/oauth/profile`（uuid 入 vault 不外露，email 做标签）。
+额度无专用端点：读 Messages 响应的 `anthropic-ratelimit-unified-{5h,7d}-{utilization,reset}`
+（1-token 探针，429 也算答案）。导入 `~/.claude/.credentials.json`（Keychain 不读）。
+
+**不要发明：** scope / beta / client id 变体；`anthropic-beta` 加未钉 feature；会话 / 缓存
+id 字段（Messages API 未知顶层字段 400）；`cache_control` 检查点（宿主 lane 已管理）；
+dated 模型行；Fast 变体；更快额度轮询。thinking 由宿主按 id 自动分派
+（自适应 id 走 `output_config.effort`，经典 id 走 budget），路由不带
+`forceAdaptiveThinking` / `allowEmptySignature`（那是 GLM 网关 workaround）。
 
 ## GitHub Copilot
 

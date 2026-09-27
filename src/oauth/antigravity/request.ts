@@ -332,26 +332,33 @@ function dereferenceSchema(schema, rootDefs: any = {}, visited = new Set()) {
   if (Array.isArray(schema)) return schema.map((item) => dereferenceSchema(item, rootDefs, visited))
   if (visited.has(schema)) return schema
   visited.add(schema)
-  const defs = { ...rootDefs }
-  if (isPlainObject(schema.$defs)) Object.assign(defs, schema.$defs)
-  if (isPlainObject(schema.definitions)) Object.assign(defs, schema.definitions)
-  if (typeof schema.$ref === 'string') {
-    const match = schema.$ref.match(/^#\/(?:\$defs|definitions)\/(.+)$/)
-    if (match?.[1] && defs[match[1]] !== undefined) {
-      const resolved = dereferenceSchema(defs[match[1]], defs, visited)
-      if (isPlainObject(resolved)) {
-        const { $ref: _, ...rest } = schema
-        const restCleaned = dereferenceSchema(rest, defs, visited)
-        return isPlainObject(restCleaned) ? { ...resolved, ...restCleaned } : resolved
+  try {
+    const defs = { ...rootDefs }
+    if (isPlainObject(schema.$defs)) Object.assign(defs, schema.$defs)
+    if (isPlainObject(schema.definitions)) Object.assign(defs, schema.definitions)
+    if (typeof schema.$ref === 'string') {
+      const match = schema.$ref.match(/^#\/(?:\$defs|definitions)\/(.+)$/)
+      if (match?.[1] && defs[match[1]] !== undefined) {
+        const resolved = dereferenceSchema(defs[match[1]], defs, visited)
+        if (isPlainObject(resolved)) {
+          const { $ref: _, ...rest } = schema
+          const restCleaned = dereferenceSchema(rest, defs, visited)
+          return isPlainObject(restCleaned) ? { ...resolved, ...restCleaned } : resolved
+        }
+        return resolved
       }
-      return resolved
     }
+    const out: any = {}
+    for (const [key, value] of Object.entries(schema)) {
+      out[key] = dereferenceSchema(value, defs, visited)
+    }
+    return out
+  } finally {
+    // visited must track the recursion *path*, not every object ever seen: a
+    // schema that $refs the same definition twice has to resolve both times
+    // (the global set returned the second reference still carrying its $ref).
+    visited.delete(schema)
   }
-  const out: any = {}
-  for (const [key, value] of Object.entries(schema)) {
-    out[key] = dereferenceSchema(value, defs, visited)
-  }
-  return out
 }
 
 function ensureRootObjectSchema(schema) {

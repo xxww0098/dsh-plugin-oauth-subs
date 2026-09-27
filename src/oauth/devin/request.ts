@@ -138,6 +138,20 @@ function maxTokensOf(payload, modelRow) {
 }
 
 /**
+ * Null/'' are common "unset" sentinels in OpenAI SDK payloads, but Number(null)
+ * and Number('') are both 0 — which is finite and would silently become a real
+ * temperature/top_p. Only accept an actual finite number or numeric string.
+ */
+function numericOr(value, fallback) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : fallback
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : fallback
+  }
+  return fallback
+}
+
+/**
  * Build the GetChatMessageRequest fields (submessages already encoded) plus
  * the conversation ids the transport needs. `metadata` is applied at send
  * time by the transport (it carries the per-request user_jwt).
@@ -201,8 +215,8 @@ export function openaiToDevin(payload, { cascadeId, executionId }: any = {}) {
     executionId: executionId ?? devinExecutionId(),
     configuration: encodeCompletionConfiguration({
       maxTokens: maxTokensOf(source, row),
-      temperature: Number.isFinite(Number(source.temperature)) ? Number(source.temperature) : 0.4,
-      topP: Number.isFinite(Number(source.top_p)) ? Number(source.top_p) : 1,
+      temperature: numericOr(source.temperature, 0.4),
+      topP: numericOr(source.top_p, 1),
       stopPatterns: stopPatterns(source),
     }),
     tools: devinTools(source.tools),

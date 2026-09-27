@@ -1,6 +1,5 @@
 /** Cloud Code HTTP lifecycle and OpenAI streaming translation. */
 
-import { once } from 'node:events'
 import { RequestError, describeError, sendJson } from '../../utils/http.js'
 import {
   ANTIGRAVITY_GENERATE_URL,
@@ -80,6 +79,34 @@ export async function forwardAntigravity(response, { payload, cacheSessionId, st
     'cache-control': 'no-store',
     'x-content-type-options': 'nosniff',
   })
+/**
+ * A destroyed response emits 'close', never 'drain', so awaiting 'drain' alone
+ * hangs forever when the client goes away. Race drain against close/error/abort
+ * so a disconnected client fails fast instead of pinning the upstream reader.
+ */
+function waitForDrain(response, signal) {
+  if (response.destroyed) return Promise.reject(new Error('client disconnected'))
+  return new Promise((resolve, reject) => {
+    const onDrain = () => { cleanup(); resolve(undefined) }
+    const onClose = () => { cleanup(); reject(new Error('client disconnected before drain')) }
+    const onError = (error) => { cleanup(); reject(error) }
+    const onAbort = () => { cleanup(); reject(signal?.reason ?? new Error('aborted')) }
+    const cleanup = () => {
+      response.off('drain', onDrain)
+      response.off('close', onClose)
+      response.off('error', onError)
+      if (signal) signal.removeEventListener('abort', onAbort)
+    }
+    response.once('drain', onDrain)
+    response.once('close', onClose)
+    response.once('error', onError)
+    if (signal) {
+      if (signal.aborted) { onAbort(); return }
+      signal.addEventListener('abort', onAbort, { once: true })
+    }
+  })
+}
+
   const id = `chatcmpl-${Date.now()}`
   const streamMapper = createAntigravityOpenaiStream({ model, id, sessionId })
   let rest = ''
@@ -91,21 +118,28 @@ export async function forwardAntigravity(response, { payload, cacheSessionId, st
     response.end()
     return
   }
-  while (true) {
-    const { done, value } = await reader.read()
-    rest += decoder.decode(value, { stream: !done })
-    const parsed = parseAntigravitySseBlocks(done ? `${rest}\n\n` : rest)
-    rest = parsed.rest
-    for (const event of parsed.events) {
-      const chunk = streamMapper.push(event)
-      if (chunk) {
-        if (!response.write(`data: ${JSON.stringify(chunk)}\n\n`)) await once(response, 'drain', { signal })
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      rest += decoder.decode(value, { stream: !done })
+      const parsed = parseAntigravitySseBlocks(done ? `${rest}\n\n` : rest)
+      rest = parsed.rest
+      for (const event of parsed.events) {
+        const chunk = streamMapper.push(event)
+        if (chunk) {
+          if (!response.write(`data: ${JSON.stringify(chunk)}\n\n`)) await waitForDrain(response, signal)
+        }
       }
+      if (done) break
     }
-    if (done) break
+  } finally {
+    // Never leave the upstream connection pinned when the client goes away.
+    await reader.cancel().catch(() => {})
+    reader.releaseLock()
   }
+  if (response.destroyed) return
   if (!response.write(`data: ${JSON.stringify(streamMapper.finish())}\n\n`)) {
-    await once(response, 'drain', { signal })
+    await waitForDrain(response, signal).catch(() => {})
   }
   response.write('data: [DONE]\n\n')
   if (!response.writableEnded && !response.destroyed) response.end()

@@ -2,6 +2,42 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-27：新增 Claude (Anthropic) 订阅家族——归因钉 senpi/pi-ai，活测待首次登录
+
+**现象**：宿主本来说 anthropic-messages，但没有任何一家直连 `api.anthropic.com` 的 OAuth 订阅家族；Claude Pro/Max 只能靠别家代理。
+**归因**：Claude Code CLI 无公开源码，登录/请求/目录逐项钉 [oh-my-openagent](https://github.com/code-yeongyu/oh-my-openagent) 引擎 `@code-yeongyu/senpi` 包内 pi-ai（2026-09-26 dev）：PKCE `claude.ai/oauth/authorize`（`code=true`、state 交换回传）、token `platform.claude.com/v1/oauth/token`（JSON）、hop 头 `anthropic-beta: claude-code-20250219,oauth-2025-04-20` + `claude-cli/2.1.280` + `x-app: cli`、身份 `api.anthropic.com/api/oauth/profile`；目录 pi-ai `anthropic.json` 并与 Kiro 行交叉核对；额度无端点，读 `anthropic-ratelimit-unified-{5h,7d}-{utilization,reset}`（社区读取器佐证，1-token 探针）。
+**修复**：`src/oauth/anthropic/`（index/cache/request/quota/import）+ store / controller / proxy `/anthropic/v1/messages` / models（路由**不带** `forceAdaptiveThinking`——真 Anthropic 由宿主按 id 自分派 thinking，GLM 的 compat 是网关 workaround）/ UI tab / `docs/oauth.md` 行与节 / README 双语表。**待活测**：首次登录后跑 ①浏览器登录 round-trip ②`刷新额度` 看 5h/7d 条 ③`npm run analyze` 看前缀缓存命中（宿主 cache_control 检查点应直接生效）④401 后自动刷新重试；结论回填本条。
+
+## 2026-09-27：对照 omo/senpi（pi-ai）审请求与刷新链路——token 端点挂死仍钉住 inflight；4xx/5xx 契约维持不学它的代理内重试
+
+**现象**：分析 code-yeongyu/oh-my-openagent（引擎为 `@code-yeongyu/senpi`，pi-ai 层）的 OAuth 缓存与请求实现后对照本项目：①token 端点「接了连接不回包」时，共享 inflight 永不 settle——等待方 30s 超时放行了，但该账号后续每个请求仍各等满 30s 直到 undici 自身超时；②各家族重试退避 [1000, 4000] 固定值，多会话并发故障时会同步重试（thundering herd）；③401 刷新重试前白付 1–4s 退避。
+**根因**：`tokens.ts` 对 owner（`#refresh`）没有交换超时——上一条 2026-10-23 记录里「各家 refresh* 均无超时，共享 inflight 永不 settle」只修了等待方（`REFRESH_WAIT_MS`），owner 侧未封口；退避无抖动、无差别。
+**修复**：`TokenManager` 增加 `REFRESH_EXCHANGE_TIMEOUT_MS`（20s，senpi/pi-ai 同款封口为 15s）：交换超时记为瞬时失败退避，token 仍有效则继续用旧 token，inflight 槽位释放给下一次尝试；`forward()` 退避加 SDK 同款 shrink-only 25% 抖动（`retryDelayMs`），且只在真重试前生效——401 刷新重试与网关 reroute 不再付退避；转发的 4xx/5xx 顺带透传 `retry-after-ms`。senpi 的代理内 429/5xx 重试（SDK 契约）**不采纳**：本项目 2026-10-23 已定「4xx/5xx 带 retry-after 转发、客户端按上游节奏退避」，代理内重试会叠加宿主重试倍数；cursor 会话投毒轮换（0-token resource_exhausted 换 conversation id）、Rendezvous 多账号亲和、cache-keepalive 暖 ping（其闸门只认 api.anthropic.com，本项目无此 lane）均无对应故障证据，暂不引入。
+
+## 2026-09-26：热链改动其实不用重启应用 = 漏配 dsh-hmr 的 root
+
+**现象**：文档与 About 卡都写着热链改完要「重启宿主」，用户质疑「不是热更新吗」。
+**根因**：DSH 自带 `@deepseek-ai/dsh-hmr`（源码模块热重载）与 `@deepseek-ai/dsh-client-hmr`（client entry 轮询热替换），但 base 组合包默认给 `hmr` 的 `root: []`——只监听 patch / 清单，不监听源码；热链仓库在 profile 之外，不配 `root` 就永远走不到热重载。
+**修复**：desktop profile patch 加 `- id: hmr` + `config.root: [<仓库绝对路径>]`；AGENTS.md 新增「热重载（本地插件目录）」小节（宿主半 `dsh-hmr`、UI 半 `dsh-client-hmr` 500ms 轮询、换包版本仍需重启）；About 卡热链提示改为「`npm run build` 生效（宿主已配 hmr 时无需重启）」。
+
+## 2026-09-26：热链安装的 About 看不出是本地开发版（当前版本与正式版同号）
+
+**现象**：用面板「本地插件目录」装成本仓库热链后，关于页仍显示「当前版本 0.0.105 / 最新版本 v0.0.105 · 已是最新」，与正式发布版无从区分——用户读成「当前版本没反应过来」。
+**根因**：热链的版本号就是仓库 `package.json`（按约定必须是正式号），而 `localUpdateInfo` 只报 `running`/`disk` 版本，没区分「profile 里的真实副本」与「指向仓库的 link」。
+**修复**：`localUpdateInfo` 增加 `linked`/`linkedPath`（realpath 落在 `~/.dsh/profiles` 之外即热链）与派生版本 `devVersion`——`npm run dev-build` 每次构建把仓库根 `.dev-build.json`（git-ignored）的计数 +1，About 的「当前版本」显示 `0.0.105-dev.N`（无 stamp 时退回 `-dev`），另列本地路径并撤掉自动更新 CTA；仓库清单与正式安装包仍按正式号显示；`test/dev-version.test.ts` + `test/update.test.ts` 覆盖。
+
+## 2026-09-26：插件面板新增三种安装来源，本项目的测试/发布流程没跟上
+
+**现象**：DSH 插件面板可直接按包名 / GitHub 地址 / 本地目录安装；本项目文档仍只有「打 tgz + pnpm add」一条路，且 `dsh-plugin-oauth-subs` 在 npm 上 404（「包名」入口装了会 not-found），GitHub 地址入口依赖仓库里**已提交**的 `lib/`。
+**根因**：来源由 DSH 插件管理器解析（`parseInstallSpec`：绝对路径 / git / tarball / registry）；本地目录落成 `link:`，git 与 registry 走 pnpm，git / npm 安装**不会**重新构建，打包产物必须随源码提交。
+**修复**：AGENTS.md 测试/发布章节按三种入口重写（本地目录热链做开发、测试版号 tgz 验打包产物、GitHub tag 走发布；发布门禁含 `lib/` 提交与 GitHub 地址冒烟）；新增 `test/package-surface.test.ts` 守 `dsh.bundle.patch` / `files` / 入口 / 版本号（提交的号不许带 prerelease），`prepublishOnly` 跑 `npm test`。
+
+## 2026-09-26：OpenCode Go 卡片只剩百分比 = key 兜底漏掉同一 Console 接口的 Bearer 形态
+
+**现象**：只存 API key（或 cookie 已失效）的 OpenCode Go 卡片只剩「剩余 X%」，没有旧版的 `$used / $limit` 具体金额；同一账号 `/zen/go/v1/usage` 只回 `percent`/`resetsAt`。
+**根因**：cookie 失效后的 key 兜底只打官方 usage API（无金额）；实测 `GET /console/api/go/status` 也认 `Authorization: Bearer <key>`（无 cookie、无 `x-org-id`），回包带 `access.meters.{fiveHour,week,month}` 的 `usedMicroCents`/`limitMicroCents`——2026-09-26 本机 key 实测 200，`month` 74% 与 usage API 一致。
+**修复**：key 路径先打 `go/status` Bearer（复用 `parseOpencodeGoConsoleStatus`，`unit:'usd'` 行 + `useBalance`/`renewalProduct`），被拒才退回 `/zen/go/v1/usage` 百分比；`test/opencode-go.test.ts` 补两条用例，家族 README 记明次序。
+
 ## 2026-09-26：文档把 OpenCode Go 和旧更新流程写错
 
 **现象**：双语 README 缺 OpenCode Go 家族行、导入表与家族表连在一起，仍称 Ollama Cloud 有 20 个回退模型；产品与设计稿描述已移除的 DSH 更新 / 重启按钮，部分相对链接打不开。
@@ -1414,3 +1450,216 @@ OpenCode Go 少 GPT-6 Luna / Space Bunny Free；Cline 少 3 条当前免费模�
 
 ### 修复
 按各家公开/账号目录更新静态目录，Cursor 活目录优先取非 Max 变体窗口，Go 新增两行用当前 key 验证协议与思考档；其余家族审查结果见 `docs/model-audit-2026-09-26.md`。
+
+## 2026-09-26：Cursor 刷新遇到一次 5xx/429 就要求重新登录
+
+### 现象
+Cursor 账号在 token 到期前后碰到一次上游 5xx/429，之后每次刷新都报 `known-bad refresh token`，宿主按永久失效处理，用户被迫重新登录。
+
+### 根因
+`refreshCursorTokens` 对任何 `!response.ok` 都调用 `markCursorRefreshFailed`，10 分钟退避把瞬时错误写成「已知坏 token」；`isCursorPermanentRefreshError` 又匹配 `known-bad refresh` 文案，瞬时抖动因此升级成永久失效。
+
+### 修复
+只有 401/403 才标记 known-bad，429/5xx 直接抛瞬时错误、不进退避表。
+
+## 2026-09-26：OpenCode Go 额度刷新可能永久挂住（10s 超时被提前解除）
+
+### 现象
+只存 API key 的 OpenCode Go 账号，额度刷新偶尔一直不返回，卡片停在加载状态。
+
+### 根因
+`fetchOpencodeGoQuota` 的 key 分支写成 `return fetchKeyOpencodeGoQuota(...)`，`try/finally` 立刻执行 `clearTimeout`，`AbortController` 再没人 abort，10s 超时形同虚设。
+
+### 修复
+key 分支改成 `return await ...`，与 cookie 分支一致，超时期间 abort 真正生效。
+
+## 2026-09-26：RPC 路由可被 body.method 改写成任意特权方法
+
+### 现象
+向任意已注册路径（如 `/api/oauth-subs-auth/status`）POST 时带上 `method` 字段，即可调用 `key` / `logout` / `proxySet` / `import` / `reset` 等特权方法，绕过按路由绑定。
+
+### 根因
+fetch 路由处理器优先取 `body.method` 而不是注册时的路由名，`dispatch` 又只按方法名查表，等于把方法选择权交给请求体。
+
+### 修复
+始终用路由自身的 `name` 派发；UI 本来就按 `/oauth-subs-auth/<method>` 调用，不需要 body 里的 method。
+
+## 2026-09-26：Devin 收到 temperature/top_p = null 时被当成 0
+
+### 现象
+OpenAI 客户端把未设置的 `temperature` / `top_p` 传成 `null` 时，Devin 实际下发 0；`top_p=0` 让采样退化到只剩最高概率 token。
+
+### 根因
+`Number(null)` 与 `Number('')` 都等于 0，而 `Number.isFinite(0)` 为真，「未设置」被判成合法数值，默认值 0.4 / 1 被跳过。
+
+### 修复
+新增 `numericOr`：只接受真正的有限数字或非空数字字符串，null/undefined/`''` 一律回落默认值，显式 0 仍保留。
+
+## 2026-09-26：analyze-session --fail-below 在管道里丢报告
+
+### 现象
+`npm run analyze -- --json --fail-below N` 接管道或重定向时，命中率不达标就退出，报告被截断甚至完全丢失。
+
+### 根因
+`process.exit(1)` 紧跟异步 `process.stdout.write`，管道场景 stdout 是异步缓冲，exit 先终止进程。
+
+### 修复
+改成 `process.exitCode = 1` 并 return，让进程自然退出把缓冲刷完。
+
+## 2026-09-26：三家流式响应在客户端断开后挂死（Antigravity / Kiro / Cursor）
+
+### 现象
+客户端中途断开后转发循环停在 `once(response, 'drain')` 永不返回，上游连接一直被占住；上游读取失败时既没有 SSE 错误事件也没有 `end()`，客户端一直挂着。
+
+### 根因
+被销毁的 response 只会发 `close`/`error`，永远不发 `drain`，单等 `drain` 就是无限等待；Antigravity 读循环外层没有 try/finally，Kiro/Cursor 的 catch 里写错误事件本身还会再抛。
+
+### 修复
+三家写路径统一改成 `waitForDrain`（drain/close/error/abort 竞速，断开即抛）；Antigravity 读循环补 try/finally 释放 reader，Kiro/Cursor 的错误上报改成不可抛。
+
+## 2026-09-26：几处请求超时形同虚设或干脆没有
+
+### 现象
+Cline 额度的 plan/caps 偶尔静默丢失；Kiro 模型发现可能永久卡住；插件自更新下载卡死时一直不返回。
+
+### 根因
+Cline 的 `planWait` 在顺序执行的 `me` 请求之前就启动，慢 `me` 吃光 plan 预算且 abort 被 `.catch(() => undefined)` 吞掉；Kiro `requestManagement` 与 `update.ts` 的 tarball 下载都没有 AbortSignal。
+
+### 修复
+Cline 把 `planWait` 挪到真正发请求前（各自独立预算）；Kiro management 调用加 15s 上界；tarball 下载加 60s 超时并在 finally 清理计时器。
+
+## 2026-09-26：模型目录缓存按引用外泄（含刷新成功路径）
+
+### 现象
+调用方对 `*CatalogModels()` / `refresh*Catalog()` 的返回值做 `.sort()`/`.push()` 会污染进程级缓存，之后所有读取都拿到被改过的目录。
+
+### 根因
+`return cached.models` 与刷新成功路径的 `return parsed` 直接把内部数组引用交出去（只有静态回退路径做了拷贝）。
+
+### 修复
+所有返回点改为返回副本（ollama / kimi / kiro / copilot / cline / cursor 六家，含 cline 与 copilot 的刷新成功路径）。
+
+## 2026-09-26：Copilot 401/403 重试丢掉会话来源与 refresh token
+
+### 现象
+paste/env/cli 来源的 Copilot 会话碰到一次 401/403 后语义变成 oauth（来源标签、密钥过期处理都变），且 GitHub 未轮换 refresh token 时旧值被丢弃。
+
+### 根因
+catch 分支硬编码 `source: 'oauth'`，`refreshToken` 只取 `rotated.githubRefreshToken ?? rotated.githubToken`，没有像主路径那样回退 `session.refreshToken`。
+
+### 修复
+catch 分支对齐主路径：source 保留 cli/paste/env，refreshToken 回退 `session.refreshToken`。
+
+## 2026-09-26：Kimi 思考档门禁恒真，以及掩码 / 导入 / 前缀四处小故障
+
+### 现象
+Kimi 的 per-model 思考能力判断被架空；OpenCode Go 把界面掩码 `••••••••` 存成真 cookie；导入时一个不可读的候选文件会中断整轮多路径搜索；Cline 存成 `Workos:` 的前缀原样带进请求。
+
+### 根因
+`Object.values(KIMI_REASONING).includes('off')` 是编译期常量恒真；`parseOpencodeGoCookie` 没用已有的 `isOpencodeGoCookieMask`；`readJson`/`readPrivateText` 只容忍 ENOENT；前缀判断用小写比较却返回原串。
+
+### 修复
+删掉恒真项；掩码直接拒绝；导入候选读取失败视为「此路无会话」继续下一个；前缀大小写归一。
+
+## 2026-09-26：typecheck-ratchet 三处漏判
+
+### 现象
+ratchet 可能在类型检查实际失败时报「0 errors」通过；非定位型诊断（坏配置、全局错误）完全不计入；入口判断在 Windows 上永不成立，脚本被 import 时还会执行 main。
+
+### 根因
+只检查 `spawnSync` 的 `result.error`（仅覆盖 spawn 失败），不看 tsc 退出码；正则只匹配 `file(line,col): error`；用 `file://` + `process.argv[1]` 手拼 URL 比较。
+
+### 修复
+tsc 退出码非 0/1 直接抛错；非定位型 `error TS` 计入 `<global>`；改用 `pathToFileURL(process.argv[1]).href`。
+
+## 2026-09-26：四个登录流程管理器可被并发 start() 绕过占用检查
+
+### 现象
+双击「登录」或界面重试时，同一 provider 会同时起两次登录：两个回调监听端口（OAuthFlowManager）或两次 device 注册；先 settle 的那个把另一个的占用记录删掉，后一个成了无人认领的泄漏。
+
+### 根因
+`attempts.has(provider)` 检查与 `attempts.set(provider, attempt)` 之间隔着 `await`（listen / glmCliInit / device-code 请求 / registerKiroOidcClient），守卫在这段时间里不是原子的。
+
+### 修复
+四个管理器（flow.ts、glm/cli-flow.ts、grok/device-flow.ts、kiro/idc-flow.ts）新增 `starting` 预留集合：守卫改为 `isBusy()`（含 starting），首个 await 之前先占位，注册成功后释放、失败路径清理；补两条并发回归测试。
+
+## 2026-09-26：三处「没有上界」的增长/扇出
+
+### 现象
+Ollama 云目录刷新会对每个模型同时发一个 `POST /api/show`（20+ 行就 20+ 并发），易被上游限流；Grok 设备码 `expired_token` 重启没有次数上限；Devin 的 `userJwtCache` 只写不清，长驻宿主按 session 无限增长。
+
+### 根因
+`applyOllamaShowWindows` 用无上限 `Promise.all` 扇出；`restartOnExpired` 每次都重置 deadline；`userJwtCache` 只在重新铸造时覆盖，没有容量上限。
+
+### 修复
+`/api/show` 按 4 个一批分批；Grok 重启上限 3 次；Devin 缓存上限 16 条（FIFO 淘汰，未命中重铸即可）。
+
+## 2026-09-26：未消费的响应体把 socket 占住
+
+### 现象
+Cline 信用额度账号的 plan/limits 404 与 Devin 401 重试路径都不读 body，undici 下未读 body 会一直占着 socket，反复刷新额度会耗尽连接池。
+
+### 根因
+`.then((response) => response.ok ? response.json() : undefined)` 在非 ok 时既不读也不 cancel；401 重试前也没释放被拒的响应。
+
+### 修复
+Cline 加 `drainBody(response)`（`body.cancel()`）用于两条 404 路径；Devin 重试前 cancel 掉 401 的 body。
+
+## 2026-09-26：sendJson 遇到不可序列化 body 直接崩 / codex 缓存头不校验控制字符
+
+### 现象
+`sendJson(response, status, undefined)` 或循环引用时，`JSON.stringify` 返回 `undefined` 或抛错，`Buffer.byteLength(undefined)` 在 writeHead 之前就崩，客户端拿不到任何响应；`codexCacheHeaders` 只检查非空字符串就把值塞进三个 HTTP 头。
+
+### 根因
+缺少「不可序列化」兜底；缺少 header 值控制字符校验。
+
+### 修复
+`sendJson` 对 string/其它分别处理并 try/catch，失败回落 `'null'`；`codexCacheHeaders` 命中 `[\u0000-\u001f\u007f]` 直接返回 `{}`。
+
+## 2026-09-26：OpenCode Go 额度兜底分支：双份超时预算 + 同类漏 await
+
+### 现象
+cookie 链路失败后走 key 兜底时，最坏耗时可接近两倍超时；且该分支同样可能永久挂住。
+
+### 根因
+兜底新建了 `AbortSignal.timeout(timeoutMs)`（第二份预算），并且写成 `return fetchKey...`——外层 `finally` 立即 `clearTimeout`，和之前修过的 key-only 路径是同一个漏 `await`。
+
+### 修复
+复用外层 `ac.signal` 并改为 `return await`，整次调用只吃一份预算。
+
+## 2026-09-26：flow 注册失败不释放已绑定的回调端口
+
+### 现象
+`listen()` 成功后若 `spec.buildAuthorizeUrl()` 抛错，回调监听端口与超时计时器都不会释放。
+
+### 根因
+注册失败路径只清理了预留位，没有关掉已经绑定的 server。
+
+### 修复
+失败时 `server.close()` + `closeAllConnections()` + `clearTimeout(timer)` 后再抛。
+
+## 2026-09-26：Antigravity 同一个 $ref 被引用两次时解析不完整
+
+### 现象
+工具 schema 里同一份定义被两个位置 `$ref` 时，第二处仍带着未解析的 `$ref` 发给上游。
+
+### 根因
+`dereferenceSchema` 的 `visited` 同时当环检测与「已处理」备忘录用，第二次遇到同一对象直接原样返回。
+
+### 修复
+`visited` 改为只记录当前递归路径（`finally` 中 delete），重复引用照常解析，真正的环仍被拦住。
+
+## 2026-09-26：Devin 的 devin-session-token$… 被当成显示名
+
+### 现象
+形如 `devin-session-token$eyJ…` 的不透明 id 没被 `isDevinOpaqueAccount` 拦住，会当作显示名露到界面上。
+
+### 根因
+只匹配了 `devin-team$…`，而 session token 形态里 `$` 前面是 `devin-session-token`。
+
+### 修复
+模式放宽为 `/^devin-[A-Za-z0-9_-]+\$[A-Za-z0-9_-]+$/i`，覆盖两种形态。
+
+
+
+

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { AuthController } from '../lib/oauth/controller.js'
+import { TokenManager } from '../lib/oauth/tokens.js'
 import { accountIdOf, getSession, listStoredSessions, replaceAccountId, saveSession, updateAccountSession } from '../lib/oauth/store.js'
 import { kiroSession } from '../lib/oauth/kiro/index.js'
 import { createProxy } from '../lib/oauth/proxy.js'
@@ -547,3 +548,62 @@ test('the token sweep refreshes an expired login before any request arrives', { 
   assert.equal((await getSession('kiro', authPath)).accessToken, 'swept-access')
 })
 
+
+test('a hung token endpoint cannot pin the refresh inflight', { timeout: 5000 }, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-refresh-hang-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const authPath = join(dir, 'auth.json')
+  const expired = account('hang', true)
+  await saveSession('kiro', expired, authPath)
+  const id = accountIdOf('kiro', expired)
+  let calls = 0
+  const manager = new TokenManager({
+    provider: 'kiro',
+    authPath,
+    displayName: 'Kiro',
+    preemptMs: 300_000,
+    refreshWaitMs: 200,
+    exchangeTimeoutMs: 40,
+    refresh: async (current) => {
+      calls += 1
+      if (calls === 1) return new Promise(() => {})
+      return { ...current, accessToken: 'access-hang-2', expiresAt: Date.now() + 3_600_000 }
+    },
+    isPermanent: () => false,
+  })
+  await assert.rejects(manager.account(id), /token exchange timed out after 40ms/)
+  const second = await manager.account(id)
+  assert.equal(calls, 2, 'the timed-out exchange frees the inflight slot for a fresh attempt')
+  assert.equal(second.session.accessToken, 'access-hang-2')
+})
+
+test('an exchange timeout is transient: a still-valid token keeps serving', { timeout: 5000 }, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-refresh-transient-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const authPath = join(dir, 'auth.json')
+  const nearly = kiroSession({
+    accessToken: 'access-nearly',
+    refreshToken: `rt_${'nearly'.repeat(120)}`,
+    account: 'nearly@example.test',
+    authMethod: 'social',
+    expiresAt: Date.now() + 1500,
+  })
+  await saveSession('kiro', nearly, authPath)
+  let calls = 0
+  const manager = new TokenManager({
+    provider: 'kiro',
+    authPath,
+    displayName: 'Kiro',
+    preemptMs: 300_000,
+    refreshWaitMs: 2000,
+    exchangeTimeoutMs: 40,
+    refresh: async () => {
+      calls += 1
+      return new Promise(() => {})
+    },
+    isPermanent: () => false,
+  })
+  const served = await manager.account(accountIdOf('kiro', nearly))
+  assert.equal(calls, 1)
+  assert.equal(served.session.accessToken, 'access-nearly', 'the expired-soon token still serves while the endpoint stalls')
+})

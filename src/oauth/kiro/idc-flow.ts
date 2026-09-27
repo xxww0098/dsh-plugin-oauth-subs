@@ -91,13 +91,18 @@ export function kiroIdcSession(tokens, registered, { kind = 'builder' } = {}) {
 
 export class KiroIdcFlowManager {
   declare attempts: Map<string, any>
+  declare starting: Set<string>
 
   constructor() {
     this.attempts = new Map()
+    // Slots reserved by start() before its first await. The busy guard alone is
+    // not atomic across awaits, so two concurrent start() calls would both pass
+    // it and each bind a listener / register a device flow.
+    this.starting = new Set()
   }
 
   isBusy(provider) {
-    return this.attempts.has(provider)
+    return this.attempts.has(provider) || this.starting.has(provider)
   }
 
   pending(provider) {
@@ -105,18 +110,26 @@ export class KiroIdcFlowManager {
   }
 
   async start(provider, { region = KIRO_DEFAULT_REGION, startUrl = BUILDER_ID_START_URL, kind = 'builder', fetchFn = fetch } = {}) {
-    if (this.attempts.has(provider)) {
+    if (this.isBusy(provider)) {
       throw new Error(`a ${provider} login attempt is already in progress`)
     }
+    this.starting.add(provider)
     const issuer = typeof startUrl === 'string' && startUrl.trim() ? startUrl.trim() : BUILDER_ID_START_URL
-    const registered = await registerKiroOidcClient({ region, startUrl: issuer, fetchFn })
-    const started = await postJson(`${oidcEndpoint(region)}/device_authorization`, {
-      clientId: registered.clientId,
-      clientSecret: registered.clientSecret,
-      startUrl: issuer,
-    }, fetchFn)
-    if (!started.ok) {
-      throw new Error(`kiro device authorization failed (HTTP ${started.status}): ${started.text.slice(0, 240)}`)
+    let registered
+    let started
+    try {
+      registered = await registerKiroOidcClient({ region, startUrl: issuer, fetchFn })
+      started = await postJson(`${oidcEndpoint(region)}/device_authorization`, {
+        clientId: registered.clientId,
+        clientSecret: registered.clientSecret,
+        startUrl: issuer,
+      }, fetchFn)
+      if (!started.ok) {
+        throw new Error(`kiro device authorization failed (HTTP ${started.status}): ${started.text.slice(0, 240)}`)
+      }
+    } catch (error) {
+      this.starting.delete(provider)
+      throw error
     }
     const wire = started.body
     const deviceCode = wire.deviceCode ?? wire.device_code
@@ -162,6 +175,7 @@ export class KiroIdcFlowManager {
       },
     }
     this.attempts.set(provider, attempt)
+    this.starting.delete(provider)
 
     void (async () => {
       let intervalMs = intervalSec * 1000

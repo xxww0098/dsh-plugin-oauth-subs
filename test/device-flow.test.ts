@@ -69,6 +69,39 @@ test('device flow omits scope when spec has none', async () => {
   attempt.cancel()
 })
 
+test('device flow reserves the slot before awaiting the device-code request', async () => {
+  let release
+  const gate = new Promise((resolve) => { release = resolve })
+  const devices = new DeviceFlowManager()
+  const spec = {
+    clientId: 'cid',
+    deviceCodeUrl: 'https://auth.x.ai/oauth2/device/code',
+    tokenUrl: 'https://auth.x.ai/oauth2/token',
+    fetchFn: async (url) => {
+      if (String(url).includes('device')) {
+        await gate
+        return jsonResponse(200, {
+          device_code: 'dev',
+          user_code: 'WDJB-MJHT',
+          verification_uri: 'https://auth.x.ai/device',
+          interval: 0.01,
+          expires_in: 30,
+        })
+      }
+      return jsonResponse(200, { error: 'authorization_pending' })
+    },
+  }
+  const first = devices.start('grok', spec)
+  // Visible synchronously: the guard alone cannot span the awaited fetch.
+  assert.equal(devices.isBusy('grok'), true)
+  await assert.rejects(() => devices.start('grok', spec), /already in progress/)
+  release()
+  const attempt = await first
+  assert.equal(attempt.userCode, 'WDJB-MJHT')
+  attempt.cancel()
+  assert.equal(devices.isBusy('grok'), false)
+})
+
 test('device flow restarts device auth on expired_token when spec.restartOnExpired', async () => {
   let devices = 0
   let polls = 0

@@ -358,7 +358,7 @@ export async function refreshCursorCatalog(session, options: any = {}) {
   // cache key alongside the token.
   const tokenHash = cursorCatalogTokenHash(`${token}\n${cursorUpstreamProxy() ?? ''}`)
   if (cursorCatalogCache.tokenHash === tokenHash && cursorCatalogCache.models?.length && Date.now() < cursorCatalogCache.expiresAt) {
-    return cursorCatalogCache.models
+    return [...cursorCatalogCache.models]
   }
   try {
     const fetchUsable = options.fetchUsable ?? fetchCursorUsableModels
@@ -379,6 +379,6 @@ export async function refreshCursorCatalog(session, options: any = {}) {
   } catch {
     // Discovery must not block chat or login.
   }
-  if (cursorCatalogCache.tokenHash === tokenHash && cursorCatalogCache.models?.length) return cursorCatalogCache.models
+  if (cursorCatalogCache.tokenHash === tokenHash && cursorCatalogCache.models?.length) return [...cursorCatalogCache.models]
   return mergeCursorStaticFloor([])
 }
