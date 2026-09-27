@@ -40,6 +40,9 @@ export declare function devinUserStatus(session: any, { fetchFn, signal }?: any)
             planInfo: {
                 teamsTier: any;
                 planName: any;
+                monthlyPromptCredits: number | undefined;
+                monthlyFlowCredits: number | undefined;
+                monthlyFlexCreditPurchaseAmount: number | undefined;
                 devinInfo: {
                     canUseCli: boolean | undefined;
                     webappHost: any;
@@ -52,8 +55,13 @@ export declare function devinUserStatus(session: any, { fetchFn, signal }?: any)
             } | undefined;
             planStart: any;
             planEnd: any;
-            availablePromptCredits: any;
-            usedPromptCredits: any;
+            availableFlexCredits: number | undefined;
+            usedFlowCredits: number | undefined;
+            usedPromptCredits: number | undefined;
+            usedFlexCredits: number | undefined;
+            availablePromptCredits: number | undefined;
+            availableFlowCredits: number | undefined;
+            overageBalanceMicros: number | undefined;
             dailyQuotaRemainingPercent: any;
             weeklyQuotaRemainingPercent: any;
             dailyQuotaResetAt: number | undefined;
@@ -64,6 +72,9 @@ export declare function devinUserStatus(session: any, { fetchFn, signal }?: any)
     planInfo: {
         teamsTier: any;
         planName: any;
+        monthlyPromptCredits: number | undefined;
+        monthlyFlowCredits: number | undefined;
+        monthlyFlexCreditPurchaseAmount: number | undefined;
         devinInfo: {
             canUseCli: boolean | undefined;
             webappHost: any;

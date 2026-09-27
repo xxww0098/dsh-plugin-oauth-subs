@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { test } from 'node:test'
-import { GLM_BOOST_HINT, GLM_BOOST_LABEL, glmCardBoost } from '../lib/oauth/glm/boost.js'
+import { GLM_BOOST_LABEL, glmCardBoost } from '../lib/oauth/glm/boost.js'
 
 test('settings language follows the host page before the OS browser language', async () => {
   const src = await readFile(new URL('../lib/ui/client.js', import.meta.url), 'utf8')
@@ -28,6 +28,22 @@ function accountCardPills(family, locale, { plan, active, region } = {}) {
   return tags
 }
 
+test('Settings workbench enters as a sidebar panel below 插件', async () => {
+  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  assert.match(src, /ctx\.slots\.inject\('main'/)
+  assert.match(src, /name: 'main',\s*key: 'oauth-subs'/)
+  assert.match(src, /ctx\.slots\.inject\('sidebar\.panellist'/)
+  assert.match(src, /name: 'sidebar\.panellist',\s*id: 'oauth-subs',\s*order: 5/)
+  assert.match(src, /function PanelGlyph\(\{ size \}\)/)
+  assert.equal(src.includes("ctx.slots.inject('settings.section'"), false)
+  assert.equal(src.includes('plugins.detail.section'), false)
+  // Retained main panels stay mounted — the poll must yield while hidden.
+  assert.match(src, /if \(!document\.hidden\) void refresh\(\)/)
+  const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
+  assert.ok(pkg.dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-layout'))
+  assert.ok(pkg.dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-sidebar'))
+})
+
 test('settings bundle ships self-update but no host-lifecycle surface', async () => {
   const text = await readFile(new URL('../lib/ui/client.js', import.meta.url), 'utf8')
   // Gone for good: dsh-cli update, host restart, dsh auto-update channel.
@@ -44,15 +60,11 @@ test('settings bundle ships self-update but no host-lifecycle surface', async ()
 test('GLM card boost wording is exactly 150%配额 / 150% quota', () => {
   assert.equal(GLM_BOOST_LABEL.zh, '150%配额')
   assert.equal(GLM_BOOST_LABEL.en, '150% quota')
-  assert.equal(GLM_BOOST_HINT.zh, 'ZCode 登录使用享 150%配额')
-  assert.equal(GLM_BOOST_HINT.en, 'ZCode session: 150% quota')
   assert.deepEqual(glmCardBoost('glm', 'zh'), {
     label: '150%配额',
-    hint: 'ZCode 登录使用享 150%配额',
   })
   assert.deepEqual(glmCardBoost('glm', 'en'), {
     label: '150% quota',
-    hint: 'ZCode session: 150% quota',
   })
 })
 
@@ -85,16 +97,15 @@ test('Settings GLM card hides opaque ZCode user.id in identityOf', async () => {
   assert.equal(/\[A-Za-z0-9\]\{2,24\}/.test(src), false)
 })
 
-test('Settings client paints the GLM boost pill and hint only on the GLM card', async () => {
+test('Settings client paints the GLM boost pill only on the GLM card', async () => {
   const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
   assert.match(src, /glmBoost:\s*'150%配额'/)
   assert.match(src, /glmBoost:\s*'150% quota'/)
-  assert.match(src, /glmBoostHint:\s*'ZCode 登录使用享 150%配额'/)
-  assert.match(src, /glmBoostHint:\s*'ZCode session: 150% quota'/)
+  assert.equal(src.includes('glmBoostHint'), false)
+  assert.equal(src.includes('ZCode 登录使用享 150%配额'), false)
+  assert.equal(src.includes('ZCode session: 150% quota'), false)
   assert.match(src, /id === 'glm' && h\('span', \{ className: 'osubs-tag osubs-tag--plain' \}, t\.glmBoost\)/)
-  assert.match(src, /family === 'glm' && h\('p', \{ className: 'osubs-note' \}, t\.glmBoostHint\)/)
   assert.equal((src.match(/t\.glmBoost\b/g) || []).length, 1)
-  assert.equal((src.match(/t\.glmBoostHint\b/g) || []).length, 1)
 })
 
 test('Settings Ollama card hides ollama-hex title and uses remaining row labels', async () => {
@@ -119,78 +130,87 @@ test('Settings Cursor tab uses Import local Cursor copy and shows source, never 
   assert.match(src, /id === 'cursor' \? t\.cursorImport : id === 'kimi' \? t\.kimiImport : id === 'copilot' \? t\.copilotImport : id === 'devin' \? t\.devinImport : id === 'cline' \? t\.clineImport : id === 'anthropic' \? t\.anthropicImport : t\.import/)
   assert.match(src, /\(id === 'cursor' \|\| id === 'ollama' \|\| id === 'kimi' \|\| id === 'copilot' \|\| id === 'devin' \|\| id === 'cline'\) && row\.methodLabel/)
   assert.match(src, /message === 'cursor-import-empty' \? t\.cursorImportEmpty/)
-  assert.match(src, /h\(Tab, \{ id: 'cursor'/)
-  assert.match(src, /icons\/\{codex,grok,zai,kiro,antigravity,cursor,ollama,kimi,copilot,devin,cline,anthropic,github\}\.svg/)
+  assert.match(src, /quotaPanel\('cursor'\)/)
+  assert.match(src, /icons\/\{grok,zai,antigravity,cursor,ollama,kimi,copilot,cline,anthropic,github\}\.svg/)
+  assert.match(src, /icons\/\{codex,kiro,devin\}-color\.svg/)
   assert.match(src, /cursor: \{ d: 'M22\.106 5\.68L12\.5\.135a\.998\.998 0 00-\.998 0L1\.893 5\.68/)
   assert.match(src, /cursor: \{ d: '[^']+', clip: true \}/)
   assert.equal(src.includes('M11.925 24l10.425-6'), false)
   assert.equal(src.includes('session.accessToken'), false)
   assert.equal(/cursor[\s\S]{0,200}accessToken/.test(src), false)
-  const tabOrder = src.match(/h\(Tab, \{ id: '(\w+)'/g) ?? []
-  const ids = tabOrder.map((row) => /id: '(\w+)'/.exec(row)?.[1])
-  assert.deepEqual(ids.slice(0, 15), ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline', 'anthropic', 'apikey', 'models', 'about'])
+  const panelOrder = src.match(/quotaPanel\('([\w-]+)'/g) ?? []
+  const ids = panelOrder.map((row) => /quotaPanel\('([\w-]+)'/.exec(row)?.[1])
+  assert.deepEqual(ids, ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline', 'anthropic', 'opencode-go'])
 })
 
 test('Settings Ollama tab is Cloud key paste after Cursor, never localhost', async () => {
   const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
-  assert.match(src, /ollamaTitle:\s*'Ollama Cloud'/)
-  assert.equal((src.match(/ollamaTitle:\s*'Ollama Cloud'/g) || []).length, 2)
+  assert.match(src, /ollama: 'Ollama'/)
   assert.match(src, /ollamaLoginApiKey:\s*'粘贴 API Key'/)
   assert.match(src, /ollamaLoginApiKey:\s*'Paste API key'/)
   assert.match(src, /ollamaImport:\s*'导入 OLLAMA_API_KEY'/)
-  assert.match(src, /h\(Tab, \{ id: 'ollama'/)
-  assert.match(src, /panel\('ollama', card\('ollama'/) 
+  assert.match(src, /quotaPanel\('ollama'\)/)
   assert.match(src, /ollama: \{ d: 'M7\.905 1\.09/)
   assert.match(src, /id === 'ollama' && !busy && h\('div', \{ className: 'osubs-logins' \}/)
   assert.match(src, /h\('span', null, t\.ollamaImport\)/)
   assert.match(src, /id !== 'glm' && id !== 'kiro' && id !== 'ollama' && id !== 'opencode-go' && !busy/)
   assert.equal(src.includes('127.0.0.1:11434'), false)
   assert.equal(src.includes('localhost:11434'), false)
-  assert.match(src, /\.osubs-tabs \{[\s\S]*grid-template-columns: repeat\(9, 36px\)/)
-  assert.match(src, /\.osubs-tab \{[\s\S]*width: 36px; height: 36px; min-width: 36px/)
-  assert.equal(/\.osubs-tab \{[\s\S]*flex: 1 1 0/.test(src), false)
-  assert.equal(/\.osubs-tabs \{[\s\S]*flex: 1 1 0/.test(src), false)
-  assert.match(src, /\.osubs-nav \{[\s\S]*position: sticky/)
+  assert.match(src, /\.osubs-ptabs \{[\s\S]*border-bottom: 1px solid var\(--osubs-line\)/)
+  assert.match(src, /\.osubs-pane \{[\s\S]*overflow-y: auto/)
+  assert.equal((src.match(/\.osubs-rail \{[^}]*position: sticky/) || []).length, 0)
+  assert.match(src, /\.osubs-rail-item \{[\s\S]*border-radius: 8px/)
 })
 
-test('Settings tab bar is two docked capsules; OAuth spreads leftover width between 9 icons', async () => {
+test('Settings entry is horizontal page tabs over a family rail, page padded', async () => {
   const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
-  const oauth = src.match(/className: 'osubs-tabs'[\s\S]*?className: 'osubs-tabs-util'/)?.[0] ?? ''
-  const util = src.match(/className: 'osubs-tabs-util'[\s\S]*?\),\s*\),/)?.[0] ?? ''
-  assert.match(src, /className: 'osubs-nav', role: 'tablist'/)
-  const navCss = src.match(/\.osubs-nav \{[^}]*\}/)?.[0] ?? ''
-  const tabsCss = src.match(/\.osubs-tabs \{[^}]*\}/)?.[0] ?? ''
-  const utilCss = src.match(/\.osubs-tabs-util \{[^}]*\}/)?.[0] ?? ''
-  const tabCss = src.match(/\.osubs-tab \{[^}]*\}/)?.[0] ?? ''
-  assert.match(navCss, /display: flex;/)
-  assert.match(navCss, /justify-content: flex-start/)
-  assert.match(navCss, /gap: 4px/)
-  assert.equal(navCss.includes('space-between'), false)
-  assert.match(tabsCss, /grid-template-columns: repeat\(9, 36px\)/)
-  assert.match(tabsCss, /justify-content: space-between/)
-  assert.match(tabsCss, /flex: 1 1 auto/)
-  assert.equal(tabsCss.includes('max-content'), false)
-  assert.equal(tabsCss.includes('flex: none'), false)
-  assert.match(tabCss, /width: 36px; height: 36px; min-width: 36px/)
-  assert.equal(tabCss.includes('flex: 1 1 0'), false)
-  assert.match(utilCss, /grid-template-columns: 36px/)
-  assert.equal(utilCss.includes('margin-left: auto'), false)
-  assert.match(oauth, /id: 'codex'/)
-  assert.match(oauth, /id: 'kimi'/)
-  assert.equal(/id: 'opencode'/.test(oauth), false)
-  assert.match(oauth, /id: 'copilot'/)
-  assert.match(oauth, /id: 'apikey'/)
-  assert.equal(/id: 'models'/.test(oauth), false)
-  assert.equal(/id: 'about'/.test(oauth), false)
-  assert.match(util, /id: 'models'/)
-  assert.match(util, /id: 'about'/)
-  assert.equal(/id: 'kimi'/.test(util), false)
-  assert.equal(/id: 'opencode'/.test(util), false)
-  assert.equal(/id: 'copilot'/.test(util), false)
-  assert.equal(/id: 'apikey'/.test(util), false)
-  const tabOrder = src.match(/h\(Tab, \{ id: '(\w+)'/g) ?? []
-  const ids = tabOrder.map((row) => /id: '(\w+)'/.exec(row)?.[1])
-  assert.deepEqual(ids, ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline', 'anthropic', 'apikey', 'models', 'about'])
+  assert.match(src, /className: 'osubs-ptabs', role: 'tablist'/)
+  const pageTabs = src.match(/h\(PageTab, \{ id: '(\w+)'/g) ?? []
+  const pageIds = pageTabs.map((row) => /id: '(\w+)'/.exec(row)?.[1])
+  assert.deepEqual(pageIds, ['quota', 'models', 'version'])
+
+  // No family tabs in the top bar; families live in the rail below.
+  assert.equal(/id: 'codex'/.test(pageTabs.join(' ')), false)
+  assert.equal(/id: 'apikey'/.test(pageTabs.join(' ')), false)
+
+  const rootCss = src.match(/^\.osubs \{[^}]*\}/m)?.[0] ?? ''
+  const ptabsCss = src.match(/\.osubs-ptabs \{[^}]*\}/)?.[0] ?? ''
+  const ptabCss = src.match(/\.osubs-ptab \{[^}]*\}/)?.[0] ?? ''
+  const ptabOnCss = src.match(/\.osubs-ptab--on \{[^}]*\}/)?.[0] ?? ''
+  const railCss = src.match(/\.osubs-rail \{[^}]*\}/)?.[0] ?? ''
+  const railItemCss = src.match(/\.osubs-rail-item \{[^}]*\}/)?.[0] ?? ''
+  // Fixed three-region layout: the page itself does not scroll; the
+  // topbar + family rail are fixed regions and only the right pane
+  // scrolls, so the scrollbar never overlaps the tab strip.
+  assert.match(rootCss, /padding: 0 var\(--osubs-s5\) var\(--osubs-s5\)/)
+  assert.match(rootCss, /overflow: hidden/)
+  assert.equal(rootCss.includes('overflow-y'), false)
+  assert.match(src, /\.osubs-body \{[^}]*min-height: 0/)
+  assert.match(src, /\.osubs-pane \{[^}]*overflow-y: auto/)
+  assert.match(ptabsCss, /flex: none/)
+  assert.equal(ptabsCss.includes('position: sticky'), false)
+  assert.match(ptabsCss, /margin: 0 calc\(-1 \* var\(--osubs-s5\)\)/)
+  assert.match(ptabsCss, /border-bottom: 1px solid var\(--osubs-line\)/)
+  assert.match(ptabsCss, /-webkit-app-region: drag/)
+  assert.match(ptabCss, /-webkit-app-region: no-drag/)
+  assert.match(ptabCss, /cursor: pointer/)
+  assert.match(ptabCss, /appearance: none/)
+  assert.match(ptabOnCss, /box-shadow: inset 0 -2px 0 var\(--osubs-accent\)/)
+  assert.match(railCss, /display: flex/)
+  assert.match(railCss, /flex-direction: column/)
+  assert.match(railCss, /overflow-y: auto/)
+  assert.match(railItemCss, /cursor: pointer/)
+  assert.match(railItemCss, /appearance: none/)
+  assert.match(src, /\.osubs-rail-item--on \{[^}]*font-weight: 600/)
+  assert.match(src, /className: 'osubs-rail-label'/)
+
+  // Rail lists every family; 'all' entry first, opencode-go bucket last.
+  assert.match(src, /\{ id: 'all', name: t\.allFamilies/)
+  assert.match(src, /'codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama',/)
+  assert.match(src, /'kimi', 'copilot', 'devin', 'cline', 'anthropic', 'opencode-go',/)
+  const panelOrder = src.match(/quotaPanel\('([\w-]+)'/g) ?? []
+  const ids = panelOrder.map((row) => /quotaPanel\('([\w-]+)'/.exec(row)?.[1])
+  assert.deepEqual(ids, ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline', 'anthropic', 'opencode-go'])
 })
 
 test('OpenCode Go renders through the shared account cards and add-account dialog', async () => {
@@ -199,7 +219,7 @@ test('OpenCode Go renders through the shared account cards and add-account dialo
   assert.match(src, /opencodeGoKey:\s*'API key'/)
   assert.match(src, /opencodeGoHostStale/)
   assert.equal(src.includes('OpencodeGoPanel'), false)
-  assert.match(src, /panel\('apikey', card\('opencode-go', t\.opencodeGoTitle\)\)/)
+  assert.match(src, /quotaPanel\('opencode-go'\)/)
   assert.match(src, /onGoSave: async \(payload\) => \{\s*await callRpc\(rpc, 'goSave', payload\)\s*await refresh\(\)\s*\}/)
   assert.match(src, /id === 'opencode-go' && !busy && h\('form'/)
   assert.match(src, /roster\.some\(\(row\) => row\.apiKeySet\) \? t\.opencodeGoKeySet : t\.opencodeGoKeyPlaceholder/)
@@ -226,14 +246,12 @@ test('OpenCode Go rows carry tokens, status, workspace name, and balance fallbac
 
 test('Settings Kimi tab uses LobeHub Kimi path, device login, and never @lobehub/icons', async () => {
   const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
-  assert.match(src, /kimiTitle:\s*'月之暗面'/)
-  assert.match(src, /kimiTitle:\s*'Kimi'/)
+  assert.match(src, /kimi: 'Kimi'/)
   assert.match(src, /kimiImport:\s*'导入本机 Kimi Code'/)
   assert.match(src, /kimiImport:\s*'Import local Kimi Code'/)
   assert.match(src, /LobeHub `Kimi` icon/)
   assert.match(src, /kimi: \{ d: 'M21\.846 0a1\.923/)
-  assert.match(src, /h\(Tab, \{ id: 'kimi', label: t\.kimiTitle, current: tab, onSelect: setTab, icon: 'kimi' \}/)
-  assert.match(src, /panel\('kimi', card\('kimi'/) 
+  assert.match(src, /quotaPanel\('kimi'\)/)
   assert.match(src, /id === 'grok' \|\| id === 'kimi' \|\| id === 'copilot' \|\| id === 'cline' \? t\.device/)
   assert.match(src, /id === 'kimi' && showKey && !busy/)
   assert.match(src, /family === 'kimi'\) return account && !isKimiOpaqueIdentity/)
@@ -309,6 +327,15 @@ test('Settings quota error wraps and does not dump upstream JSON', async () => {
   assert.equal(longPlain.includes('x'.repeat(200)), false)
 })
 
+test('Settings quota UI labels scoped weekly meters by model', async () => {
+  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  const body = src.match(/function rowLabel\(row, t, family\) \{[\s\S]*?\n    \}/)?.[0]
+  assert.ok(body)
+  const rowLabel = new Function('antigravityGroupLabel', body + '; return rowLabel')(() => '') as (row: any, t: any, family: string) => string
+  assert.equal(rowLabel({ kind: 'weekly_scoped', product: 'Fable' }, { weekly: '每周' }, 'anthropic'), '每周 · Fable')
+  assert.equal(rowLabel({ kind: 'weekly' }, { weekly: 'Weekly' }, 'anthropic'), 'Weekly')
+})
+
 test('QuotaRow is a remaining bar for Codex remainingPercent and Cursor usedPercent', async () => {
   const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
   assert.match(src, /function remainingPercentOf\(row\)/)
@@ -318,8 +345,8 @@ test('QuotaRow is a remaining bar for Codex remainingPercent and Cursor usedPerc
   assert.match(src, /100 - row\.usedPercent/)
   assert.match(src, /const remaining = remainingPercentOf\(row\)/)
   assert.match(src, /h\(QuotaMeter,/)
-  assert.match(src, /function QuotaMeter\(\{ t, remainingPercent, amount, label, reset, onToggleAmount \}\)/)
-  assert.match(src, /reset && h\('span', \{ className: 'osubs-qreset' \}, reset\)/)
+  assert.match(src, /function QuotaMeter\(\{ t, remainingPercent, amount, label, reset, period, onToggleAmount \}\)/)
+  assert.match(src, /reset && h\('span', \{ className: 'osubs-qreset' \}, period \? `\$\{period\} · ` : '', reset\)/)
   assert.match(src, /h\(RemainingBar, \{ remainingPercent, tone \}\)/)
   assert.match(src, /fill\(t\.leftPercent, remainingPercent\)/)
   assert.match(src, /scaleX\(\$\{Math\.max\(0, Math\.min\(100, remainingPercent\)\) \/ 100\}\)/)
@@ -352,9 +379,9 @@ test('QuotaMeter owns each window reset; nothing floats between bars', async () 
   const row = src.match(/function QuotaRow\([\s\S]*?\n    \}/)?.[0] ?? ''
   const qmeterCss = src.match(/\.osubs-qmeter \{[^}]*\}/)?.[0] ?? ''
   const qresetCss = src.match(/\.osubs-qreset \{[^}]*\}/)?.[0] ?? ''
-  assert.match(meter, /reset && h\('span', \{ className: 'osubs-qreset' \}, reset\)/)
+  assert.match(meter, /reset && h\('span', \{ className: 'osubs-qreset' \}, period \? `\$\{period\} · ` : '', reset\)/)
   assert.match(meter, /osubs-qreset[\s\S]*RemainingBar/)
-  assert.match(row, /reset,\s*onToggleAmount: tokens \? onToggleUnits : undefined,\s*\}\),/)
+  assert.match(row, /reset,\s*period,\s*onToggleAmount: tokens \? onToggleUnits : undefined,\s*\}\),/)
   assert.equal(/reset && h\('span', \{ className: 'osubs-note' \}, reset\)/.test(row), false)
   assert.match(qmeterCss, /display: flex/)
   assert.match(qmeterCss, /flex-direction: column/)
@@ -373,7 +400,8 @@ test('Add account opens a centered dialog, not a sheet', async () => {
   assert.match(src, /className: 'osubs-dsw'/)
   assert.match(src, /setAddOpen\(true\)/)
   assert.match(src, /onClick: \(\) => setAddOpen\(true\)/)
-  assert.match(src, /label: busy \? t\.continueAuth : loggedIn \? t\.addAccount : t\.login/)
+  assert.match(src, /label: busy \? t\.continueAuth : t\.login/)
+  assert.match(src, /loggedIn && !busy && h\(Button, \{\s*size: 'sm',\s*onClick: \(\) => setAddOpen\(true\),\s*label: t\.addAccount,/)
   assert.match(src, /id === 'glm' && !busy && h\('div', \{ className: 'osubs-glm-logins' \}/)
   assert.match(src, /id === 'kiro' && !busy && h\('div', \{ className: 'osubs-logins' \}/)
   assert.match(src, /id === 'ollama' && !busy && h\('div', \{ className: 'osubs-logins' \}/)
@@ -403,31 +431,41 @@ test('Settings has no OpenCode Go Free tab or harness family', async () => {
   assert.equal(src.includes('opencode: {'), false)
 })
 
-test('Settings Models keeps locked Copilot visible and jumps to the family tab', async () => {
+test('Settings Models is a searchable switch table; locked groups still offer sign-in', async () => {
   const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
-  const family = src.match(/function ModelFamily\([\s\S]*?\n    \}/)?.[0] ?? ''
-  assert.equal(family.includes('osubs-family--locked'), false)
-  assert.equal(family.includes('t.modelsNeedLogin'), false)
-  assert.match(family, /onOpenFamily\?\.\(group\.family\)/)
-  assert.match(family, /label: t\.login/)
-  assert.match(family, /h\('div', \{ className: 'osubs-models'/)
-  assert.equal(family.includes('style: { opacity: locked'), false)
-  assert.match(family, /const enabledCount = locked \? 0 : models\.filter\(\(model\) => model\.enabled\)\.length/)
-  assert.match(src, /checked: Boolean\(model\.enabled\) && !locked/)
-  assert.match(src, /onOpenFamily: \(family\) => setTab\(String\(family\)\.startsWith\('opencode-go'\) \? 'apikey' : family\)/)
-  assert.match(src, /hidden: tab !== id/)
+  const panel = src.match(/function ModelsPanel\([\s\S]*?\n    \}/)?.[0] ?? ''
+  const row = src.match(/function ModelRow\([\s\S]*?\n    \}/)?.[0] ?? ''
+  const switchCss = src.match(/\.osubs-switch \{[^}]*\}/)?.[0] ?? ''
+  assert.equal(panel.includes('osubs-family--locked'), false)
+  assert.match(panel, /t\.modelsNeedLogin/)
+  assert.match(panel, /onOpenFamily\?\.\(group\.family\)/)
+  assert.match(panel, /label: t\.login/)
+  assert.match(panel, /className: 'osubs-mtable'/)
+  assert.match(panel, /placeholder: t\.modelsSearch/)
+  assert.match(panel, /onFamily\(group\.family, true\)/)
+  assert.match(panel, /onFamily\(group\.family, false\)/)
+  assert.equal(panel.includes('style: { opacity: locked'), false)
+  assert.match(row, /const enabled = Boolean\(model\.enabled\) && !locked/)
+  assert.match(row, /h\(Switch, \{/)
+  assert.match(row, /onToggle\(model\.key, on\)/)
+  assert.match(switchCss, /cursor: pointer/)
+  assert.match(src, /onOpenFamily: \(fam\) => \{ setFamily\(railIdOf\(fam\)\); setView\('quota'\) \}/)
+  assert.match(src, /hidden: !show/)
+  assert.match(src, /modelsHint:\s*'勾选即同步。'/)
+  assert.match(src, /modelsHint:\s*'Check to sync\.'/)
+  assert.equal(src.includes('Fast 仅 Codex Priority'), false)
+  assert.equal(src.includes('900K 默认关'), false)
+  assert.equal(src.includes('Fast is Codex Priority only'), false)
 })
 
 test('Settings Copilot tab is device-code after Kimi, never @lobehub/icons', async () => {
   const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
-  assert.match(src, /copilotTitle:\s*'GitHub Copilot'/)
-  assert.equal((src.match(/copilotTitle:\s*'GitHub Copilot'/g) || []).length, 2)
+  assert.match(src, /copilot: 'Copilot'/)
   assert.match(src, /copilotLoginApiKey:\s*'粘贴 GitHub Token'/)
   assert.match(src, /copilotLoginApiKey:\s*'Paste GitHub token'/)
   assert.match(src, /copilotImport:\s*'导入本机 Copilot'/)
   assert.match(src, /LobeHub `Copilot` icon/)
-  assert.match(src, /h\(Tab, \{ id: 'copilot', label: t\.copilotTitle, current: tab, onSelect: setTab, icon: 'copilot' \}/)
-  assert.match(src, /panel\('copilot', card\('copilot'/) 
+  assert.match(src, /quotaPanel\('copilot'\)/)
   assert.match(src, /id === 'grok' \|\| id === 'kimi' \|\| id === 'copilot' \|\| id === 'cline' \? t\.device/)
   assert.match(src, /id === 'copilot' && h\('button'/)
   assert.match(src, /t\.copilotImport/)
@@ -452,12 +490,24 @@ test('About shows the derived -dev version for a linked working tree', async () 
   assert.equal(src.includes('currentChips: linked'), false)
 })
 
+test('About keeps the auto-update switch but states hot reload for a linked tree', async () => {
+  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  // The switch stays for every install; only its note forks. A link hot-reloads
+  // from the working tree, so it must not promise "install, then restart the
+  // host" — and its release-tag outcome would always read as 「已是最新」.
+  assert.match(src, /h\(AutoUpdateRow, \{/)
+  assert.match(src, /const bits = \[linked \? t\.autoUpdateLinked : t\.autoUpdateHourly\]/)
+  assert.match(src, /const outcome = linked \? '' : autoRunText\(t, autoState\)/)
+  assert.match(src, /autoUpdateLinked: '本地链接：npm run build 后热重载生效，无需重启宿主（需 profile 配 hmr root）'/)
+  assert.match(src, /autoUpdateLinked: 'Local link: npm run build hot-reloads the plugin/)
+  assert.equal(src.includes("autoUpdateLinked: '每小时检查一次"), false)
+})
+
 test('About panel carries no DSH-cli version rows', async () => {
   const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
   assert.equal(src.includes('dshLatestTag'), false)
   assert.equal(src.includes('dshStableVersion'), false)
   assert.equal(src.includes('dshTag'), false)
-  assert.match(src, /\.osubs-kv-value \.osubs-note:not\(:last-child\)::after \{ content: ' ·'/)
 })
 
 test('QuotaResetBox enables only the earliest expiring credit button and disables the rest', async () => {

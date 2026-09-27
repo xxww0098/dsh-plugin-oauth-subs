@@ -17,8 +17,10 @@
  *   - Account identity: GET api.anthropic.com/api/oauth/profile
  *     (`user:profile` scope) — account uuid + email, community-documented
  *     from Claude Code's own post-login call.
+ *   - Usage: GET api.anthropic.com/api/oauth/usage — present in the pinned CLI
+ *     and live-verified for scoped weekly model limits.
  *
- * Do not invent: scopes, beta headers, dated model rows, or a quota endpoint —
+ * Do not invent: scopes, beta headers, dated model rows, or unverified endpoints —
  * see README.md for the do-not list.
  */
 export declare const ANTHROPIC_CLIENT_ID = "9d1c250a-e61b-44e9-88ed-594fedd33385";
@@ -27,6 +29,7 @@ export declare const ANTHROPIC_TOKEN_URL = "https://platform.claude.com/v1/oauth
 export declare const ANTHROPIC_API_BASE = "https://api.anthropic.com";
 export declare const ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages";
 export declare const ANTHROPIC_PROFILE_URL = "https://api.anthropic.com/api/oauth/profile";
+export declare const ANTHROPIC_USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
 export declare const ANTHROPIC_CALLBACK_PATH = "/callback";
 /**
  * Claude Code's scopes at the time of pinning (pi-ai `SCOPES`). `user:profile`

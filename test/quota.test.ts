@@ -565,6 +565,48 @@ test('QuotaStore uses grok.com credits when CLI billing omits the weekly percent
   assert.deepEqual(Buffer.from(credits.body), GROK_WEB_EMPTY_FRAME)
 })
 
+test('parseGrokBilling renders {val} cents money fields as usd rows', () => {
+  const parsed = parseGrokBilling({
+    config: {
+      subscription_tier: 'SuperGrokPro',
+      currentPeriod: { type: 'USAGE_PERIOD_TYPE_MONTHLY', end: '2026-10-01T00:00:00Z' },
+      monthlyLimit: { val: 99900 },
+      onDemandCap: { val: 5000 },
+      onDemandUsed: { val: 1200 },
+      prepaidBalance: { val: 1250 },
+      usage: { includedUsed: { val: 12345 }, totalUsed: { val: 12345 } },
+    },
+  }, { cliUser: { hasGrokCodeAccess: true, subscription: { tier: 'SuperGrokPro', status: 'active' } } })
+  const [main, onDemand, prepaid] = parsed.rows
+  assert.equal(main.kind, 'cycle')
+  assert.equal(main.unit, 'usd')
+  assert.equal(main.used, 123.45)
+  assert.equal(main.total, 999)
+  assert.equal(main.remaining, 875.55)
+  assert.equal(onDemand.kind, 'product')
+  assert.equal(onDemand.product, 'on-demand')
+  assert.equal(onDemand.unit, 'usd')
+  assert.equal(onDemand.used, 12)
+  assert.equal(onDemand.total, 50)
+  assert.equal(onDemand.remainingPercent, 76)
+  assert.equal(prepaid.kind, 'prepaid')
+  assert.equal(prepaid.unit, 'usd')
+  assert.equal(prepaid.remaining, 12.5)
+})
+
+test('parseGrokBilling maps a daily window to the 24h row kind', () => {
+  const parsed = parseGrokBilling({
+    config: {
+      creditUsagePercent: 30,
+      currentPeriod: { type: 'USAGE_PERIOD_TYPE_DAILY', end: '2026-10-02T00:00:00Z' },
+    },
+  })
+  assert.equal(parsed.rows[0].kind, 'primary')
+  assert.equal(parsed.rows[0].key, 'daily')
+  assert.equal(parsed.rows[0].windowMinutes, 1440)
+  assert.equal(parsed.rows[0].remainingPercent, 70)
+})
+
 const SKILLSTAR_ANTIGRAVITY_MODELS = {
   models: {
     'claude-sonnet-4-6': {

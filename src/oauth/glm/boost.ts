@@ -15,16 +15,10 @@ export const GLM_BOOST_LABEL = Object.freeze({
   en: '150% quota',
 })
 
-export const GLM_BOOST_HINT = Object.freeze({
-  zh: 'ZCode 登录使用享 150%配额',
-  en: 'ZCode session: 150% quota',
-})
-
 export function glmCardBoost(family, locale = 'zh') {
   if (family !== 'glm') return undefined
   const loc = locale === 'en' ? 'en' : 'zh'
   return {
     label: GLM_BOOST_LABEL[loc],
-    hint: GLM_BOOST_HINT[loc],
   }
 }

@@ -294,14 +294,15 @@ test('snapshot shows quota on every cursor account', async () => {
   const second = roster.find((row) => row.account === 'b@x')
   assert.equal(first.quota.status, 'ready')
   assert.equal(second.quota.status, 'ready')
-  assert.equal(first.quota.rows.length, 2)
-  assert.equal(first.quota.rows.every((row) => row.kind === 'product'), true)
+  assert.equal(first.quota.rows.length, 3)
+  assert.equal(first.quota.rows[0].kind, 'cycle')
+  assert.equal(first.quota.rows[0].unit, 'usd')
   assert.equal(first.quota.rows.find((row) => row.product === 'auto').usedPercent, 0)
   assert.equal(second.quota.rows.find((row) => row.product === 'auto').usedPercent, 0)
   assert.equal(second.methodLabel, 'IDE')
 })
 
-test('parseCursorPeriodUsage emits two used-percent product bars, not spend cap', () => {
+test('parseCursorPeriodUsage emits included-spend usd row plus two used-percent bars', () => {
   const parsed = parseCursorPeriodUsage({
     planUsage: {
       totalPercentUsed: 44,
@@ -317,9 +318,13 @@ test('parseCursorPeriodUsage emits two used-percent product bars, not spend cap'
   assert.equal(parsed.planType, 'pro')
   assert.equal(formatPlanLabel(parsed.planType, 'cursor'), 'Pro')
   assert.equal(parsed.account, 'q@x')
-  assert.equal(parsed.rows.length, 2)
-  assert.equal(parsed.rows.every((row) => row.kind === 'product'), true)
-  assert.equal(parsed.rows.some((row) => row.kind === 'cycle'), false)
+  assert.equal(parsed.rows.length, 3)
+  const included = parsed.rows[0]
+  assert.equal(included.kind, 'cycle')
+  assert.equal(included.unit, 'usd')
+  assert.equal(included.used, 400)
+  assert.equal(included.total, 400)
+  assert.equal(included.remainingPercent, 0)
   const composer = parsed.rows.find((row) => row.product === 'auto')
   const api = parsed.rows.find((row) => row.product === 'api')
   assert.equal(composer.usedPercent, 51)
@@ -331,8 +336,8 @@ test('parseCursorPeriodUsage emits two used-percent product bars, not spend cap'
   assert.equal(api.used, undefined)
   assert.equal(api.total, undefined)
   assert.equal(JSON.stringify(parsed).includes('40000'), false)
-  assert.equal(composer.resetAt, Date.parse('2026-10-01T00:00:00.000Z'))
-  assert.equal(api.resetAt, composer.resetAt)
+  assert.equal(included.resetAt, Date.parse('2026-10-01T00:00:00.000Z'))
+  assert.equal(api.resetAt, included.resetAt)
 })
 
 test('parseCursorPeriodUsage keeps a sub-1 API percent visible and prefers stripe Ultra', () => {
@@ -371,10 +376,16 @@ test('parseCursorPeriodUsage always emits both bars at 0% when percents are miss
     membershipType: 'proplus',
   })
   assert.equal(formatPlanLabel(parsed.planType, 'cursor'), 'Pro+')
-  assert.equal(parsed.rows.length, 2)
-  assert.equal(parsed.rows[0].usedPercent, 0)
+  const included = parsed.rows[0]
+  assert.equal(included.kind, 'cycle')
+  assert.equal(included.unit, 'usd')
+  assert.equal(included.used, 0)
+  assert.equal(included.total, 400)
+  assert.equal(included.remainingPercent, 100)
+  assert.equal(parsed.rows.length, 3)
   assert.equal(parsed.rows[1].usedPercent, 0)
-  assert.equal(parsed.rows[0].total, undefined)
+  assert.equal(parsed.rows[2].usedPercent, 0)
+  assert.equal(parsed.rows[1].total, undefined)
 })
 
 test('cursor cache sanitizer and sticky conversation id across two turns', () => {

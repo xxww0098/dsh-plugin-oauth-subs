@@ -13,7 +13,7 @@ dsh plugin --profile web add https://github.com/xxww0098/dsh-plugin-oauth-subs
 dsh web
 ```
 
-打开 **设置 → OAuth 订阅**。每个账号一张卡片（额度都在卡片上；Ollama Cloud 没有额度条）。关于页 **当前版本** 固定显示本进程加载插件时的版本；自安装后仍显示旧运行版本，直到重启。本插件专攻 desktop：自身不 spawn `dsh`/`npm`，也不会重启宿主——关于页对比运行版本与 GitHub 最新 tag，点 **安装更新** 会把 tag 的 tarball 自安装进 profile 的 `node_modules`（同卡还有每小时检查的自动更新开关）。profile `node_modules` 比运行进程新时会列出 **磁盘** 并标记过期进程。或 `pnpm dsh web --patch ./cordis.patch.yml`（`id: oauth-subs`）。
+打开主页侧边栏 **订阅**（**插件**按钮下方的入口）。工作台顶部固定三个页签——**额度 / 模型 / 版本**，左侧是供应商栏，右侧内容区滚动。每个账号一张卡片（额度都在卡片上；Ollama Cloud 没有额度条）。**版本**页的 **当前版本** 固定显示本进程加载插件时的版本；自安装后仍显示旧运行版本，直到重启。本插件专攻 desktop：自身不 spawn `dsh`/`npm`，也不会重启宿主——版本卡对比运行版本与 GitHub 最新 tag，点 **安装更新** 会把 tag 的 tarball 自安装进 profile 的 `node_modules`（同卡还有每小时检查的自动更新开关；「本地插件目录」热链时开关照旧，只是提示改成 `npm run build` 热重载、不列 release 结果）。profile `node_modules` 比运行进程新时会列出 **磁盘** 并标记过期进程。或 `pnpm dsh web --patch ./cordis.patch.yml`（`id: oauth-subs`）。
 
 ### Desktop
 
@@ -58,7 +58,7 @@ dsh web
 | `~/.grok/auth.json`、`~/.hermes/auth.json` | Grok |
 | `~/.zcode/v2/config.json`（旧路径 `cli/config.json` / `config.json` 仍读） | GLM |
 | `~/.kiro/credentials.json`；`credentials.json`（kiro.rs 当前目录）；`~/.aws/sso/cache/kiro-auth-token.json` | Kiro |
-| 设置页粘贴：kami / JSON / CSV / Social refresh / `ksk_…` | Kiro |
+| 面板粘贴：kami / JSON / CSV / Social refresh / `ksk_…` | Kiro |
 | `~/.gemini/antigravity-cli/antigravity-oauth-token`；`~/.cli-proxy-api/antigravity-*.json` | Antigravity |
 | macOS Keychain `cursor-access-token` / `cursor-refresh-token`；IDE `state.vscdb`（只读当前用户）；`CURSOR_ACCESS_TOKEN` | Cursor |
 | 环境变量 `OLLAMA_API_KEY`（不是 `~/.ollama/id_ed25519.pub`） | Ollama Cloud |
@@ -67,7 +67,7 @@ dsh web
 | `~/.local/share/devin/credentials.toml`（`$XDG_DATA_HOME/devin/`；Windows `%LOCALAPPDATA%\devin\`）；`DEVIN_API_KEY` / `WINDSURF_API_KEY` | Devin |
 | `~/.cline/data/settings/providers.json` | Cline |
 | `~/.claude/.credentials.json`（不读 Keychain 副本） | Claude |
-| 设置页粘贴：OpenCode Go API key；可选 Console cookie / 工作区 | OpenCode Go |
+| 面板粘贴：OpenCode Go API key；可选 Console cookie / 工作区 | OpenCode Go |
 
 订阅令牌：`<profile>/data/dsh-plugin-oauth-subs/auth.json`（`0600`）。OpenCode Go 账号：同目录 `opencode-go.json`。模型选择：`models.json`。
 
@@ -75,12 +75,12 @@ dsh web
 
 | 平面 | 作用 |
 |---|---|
-| 设置页 | 登录 / 导入 / 退出，同步模型 |
+| 订阅面板 | 登录 / 导入 / 退出，同步模型 |
 | llm-pi-ai | DSH 调用面；订阅家族走本机代理，OpenCode Go 直连其 API |
 | 回环 | `http://127.0.0.1:8318/{codex,grok}/v1/responses`、`/glm/v1/messages`（Completions 残留 `/glm/v1/chat/completions` 留到下次 sync）、`/{kiro,antigravity,cursor,ollama,kimi,copilot,devin,cline}/v1/chat/completions` |
 | 上游 | 使用刷新后的订阅令牌或活动 OpenCode Go API key |
 
-设置页关闭后，DSH 继续使用已配置的路由。代理只监听回环地址，并用本地凭证 `DSH_OAUTH_SUBS_API_KEY` 鉴权；OpenCode Go 不经过它。技术栈与模块树：[AGENTS.md](AGENTS.md)。上游对照：[docs/oauth.md](docs/oauth.md)。
+面板关闭后，DSH 继续使用已配置的路由。代理只监听回环地址，并用本地凭证 `DSH_OAUTH_SUBS_API_KEY` 鉴权；OpenCode Go 不经过它。技术栈与模块树：[AGENTS.md](AGENTS.md)。上游对照：[docs/oauth.md](docs/oauth.md)。
 
 ## 缓存
 
@@ -111,7 +111,7 @@ node --experimental-strip-types scripts/analyze-session.ts --fail-below 80 path/
 
 ## Fast / 模型 / 推理
 
-登录和对话走官方客户端身份；UA / 指纹见各 `src/oauth/<id>/README.md`。对照仓库见 [docs/oauth.md](docs/oauth.md)。设置 → **模型**：按系列勾选（默认全开，**900K 除外**）。推理等级在 Harness **会话**模型菜单里设，不在「设置 → 模型」。Fast 和 900K 都更耗额度。
+登录和对话走官方客户端身份；UA / 指纹见各 `src/oauth/<id>/README.md`。对照仓库见 [docs/oauth.md](docs/oauth.md)。面板 **模型** 页签：按系列勾选（默认全开，**900K 除外**）。推理等级在 Harness **会话**模型菜单里设，不在「模型」页签。Fast 和 900K 都更耗额度。
 
 | 系列 | Fast | 窗口 | 思考 |
 |---|---|---|---|
@@ -138,17 +138,17 @@ Codex Priority 回显 `created=auto` / `completed=default` 不能当确认（ope
 |---|---|---|
 | ChatGPT Codex | `chatgpt.com/backend-api/wham/usage` | 套餐等级（Plus / Pro / Team …）+ 5 小时窗口 + 每周窗口，展示**剩余**百分比和重置时间 |
 | ChatGPT Codex 重置 | `…/wham/rate-limit-reset-credits` 与 `/consume` | 银行的周窗口重置券和过期时间；Codex 卡片上按券各一颗确认按钮 |
-| xAI Grok | `cli-chat-proxy.grok.com/v1/billing?format=credits`，并读 `/v1/user?include=subscription` | 套餐等级（SuperGrok / X Premium+ …）+ 本周期用量、预付余额、产品分项 |
+| xAI Grok | `cli-chat-proxy.grok.com/v1/billing?format=credits` + `/v1/user?include=subscription` + `grok.com` `GetGrokCreditsConfig`（gRPC-web） | 套餐徽章（SuperGrok / X Premium+ …）、Grok Code 准入标、带周期区间的用量条、产品分项；`{val}` 美分字段在计费账号下发时转美元行（月度包含池 / 按需封顶 / 预付余额） |
 | 智谱 GLM | `api.z.ai` 或 `open.bigmodel.cn` 的 `monitor/usage/quota/limit` | 套餐徽章（Lite / Pro / Max）+ Coding Plan 积分窗口；站点随当前账号 |
 | AWS Kiro | `q.<region>.amazonaws.com/getUsageLimits` | 本周期用量、上限，以及适用的试用或赠送额度 |
 | Google Antigravity | daily-cloudcode-pa 的 `loadCodeAssist` + `fetchAvailableModels`（prod 仅 5xx / 传输失败回落） | 套餐徽章（Pro / Ultra / Free / Standard）+ SkillStar 模型分组剩余条和重置时间 |
-| Cursor | `api2.cursor.sh` `DashboardService/GetCurrentPeriodUsage` | 套餐徽章（Free / Pro / Pro+ / Ultra …）+ 周期剩余百分比 |
+| Cursor | `api2.cursor.sh` `DashboardService/GetCurrentPeriodUsage` | 套餐徽章（Free / Pro / Pro+ / Ultra …）+ 包含额度美元数（`includedSpend`/`limit`，美分 → `$已用/$总额`）和分项剩余百分比 |
 | Ollama Cloud | 没有文档化的额度 JSON | 不显示额度条 |
 | Kimi Code | `api.kimi.com/coding/v1/usages` + `/me` | `/me.user_level_name` 套餐徽章 + 剩余条；API 没给重置时刻就不编 |
 | GitHub Copilot | `api.github.com/copilot_internal/user` | 套餐徽章（Free / Pro / Pro+ / Business / Enterprise）+ Premium 剩余百分比 |
-| Devin | `server.codeium.com` `SeatManagementService/GetUserStatus` | 套餐徽章（Pro / Max / Teams / Enterprise / Free / Trial）+ 层可见时的每日 / 每周剩余条 |
+| Devin | `server.codeium.com` `SeatManagementService/GetUserStatus` | 套餐徽章（Pro / Max / Teams / Enterprise / Free / Trial）+ Prompt / Flow / Flex 点数桶（已用 / 月度额度，随 `plan_end` 重置）+ 美元超额余额 + 层可见时的每日 / 每周剩余条 |
 | Cline | `api.cline.bot` `/users/me` + `/users/{id}/balance`（微美元）+ `/users/me/plan`；ClinePass 另有 `/plan/usage-limits` | 套餐徽章 + 预付**额度余额**（`$x.xx`）；ClinePass 才有 5 小时 / 每周 / 每月条。credit 账号没有窗口条 |
-| Claude (Anthropic) | 无 usage 端点——用 1-token 探针打 `/v1/messages` 读统一限额头 | 5 小时 + 每周**剩余**条与重置时间；429 也照样报利用率 |
+| Claude (Anthropic) | `api/oauth/usage`（`limits[]`：session / weekly_all / weekly_scoped）+ 1-token 探针打 `/v1/messages` 读统一限额头 | 5 小时 + 每周**剩余**条与重置时间；模型专属周条（如 Fable，走 `weekly_scoped` / `7d_oi` 头 / `seven_day_*` 字段）；429 也照样报利用率 |
 | OpenCode Go | Console `/console/api/{orgs,go/status,billing/status,user}`；旧工作区回落 | 按账号显示 Go 用量、余额；提供 Console cookie 时可显示邮箱 |
 
 约每分钟刷新一次，也可点 **刷新额度**。进度条：`hsl(剩余 × 1.2, 78%, 38%)`。Codex `pro` → **Pro 20x** / $200，`prolite` → **Pro 5x** / $100。Plus/Pro 可能有银行的周窗口重置券——每张未用券在 Codex 卡片上各一颗确认按钮（Harness 风险确认后 `POST …/consume`，请求体 `{ redeem_request_id }`，并带 `idempotencyKey`）。消耗的是 **周额度窗口**。Grok 没有对应能力。Ollama Cloud 没有文档化的额度 JSON（`/api/quota` 404）；卡片 idle，不画额度条。
@@ -158,7 +158,7 @@ Codex Priority 回显 `created=auto` / `completed=default` 不能当确认（ope
 | 选项 | 默认 | 说明 |
 |---|---|---|
 | `port` | `8318` | 本机代理端口 |
-| `provider` | `oauth` | 同步到 DSH 的路由 ID 前缀（`oauth-codex` / `oauth-grok` / `oauth-glm` / `oauth-antigravity`） |
+| `provider` | `oauth` | 同步到 DSH 的路由 ID 前缀；每个家族都是 `oauth-<id>`（`oauth-codex`、`oauth-grok`……） |
 | `dataDir` | profile 数据目录 | `auth.json`、`models.json` 与 `proxy-key` 位置 |
 | `grokLogin` | `device` | `device` 或 `pkce` |
 | `proxyUrl` | 设置页 / 环境 | 模型 / 额度 / 登录出站 HTTP(S) 代理 |

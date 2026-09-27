@@ -1,5 +1,6 @@
 /**
- * Browser half. Registers the "OAuth 订阅" settings section.
+ * Browser half. Registers the "OAuth 订阅" workbench as a main sidebar
+ * panel (左栏插件按钮下方的订阅入口 → 额度/模型/版本).
  *
  * DSH client-modules serves the compiled classic script and requires the
  * `__ModuleLoader__.load` handoff (id = package name). Shared requires are
@@ -43,56 +44,45 @@ window.__ModuleLoader__.load({
 
     const COPY: { zh: Copy; en: Copy } = {
       zh: {
-        nav: 'OAuth 订阅',
-        codexTitle: 'ChatGPT Codex',
-        grokTitle: 'xAI Grok',
-        glmTitle: '智谱 GLM',
-        kiroTitle: 'AWS Kiro',
-        antigravityTitle: 'Antigravity',
+        nav: '订阅额度与模型',
+        panel: '订阅',
+        providers: '供应商',
         antigravityPastePlaceholder: 'http://localhost:51121/oauth-callback?code=…&state=…',
         antigravityVerify: 'Google 需要验证此账号才能对话',
         antigravityVerifyGo: '去验证',
-        cursorTitle: 'Cursor',
         cursorImport: '导入本机 Cursor',
         cursorImportEmpty: '本机没有 Cursor CLI 或 IDE 登录',
-        ollamaTitle: 'Ollama Cloud',
         ollamaLoginApiKey: '粘贴 API Key',
         ollamaKeyPlaceholder: 'ollama.com API key',
         ollamaKeyGo: '保存密钥',
         ollamaKeyHint: '在 ollama.com/settings/keys 创建。也可设置环境变量 OLLAMA_API_KEY。',
         ollamaImport: '导入 OLLAMA_API_KEY',
         ollamaImportEmpty: '未找到 OLLAMA_API_KEY',
-        kimiTitle: '月之暗面',
         kimiLoginApiKey: '粘贴 API Key',
         kimiKeyPlaceholder: 'KIMI_API_KEY 或 sk-…',
         kimiKeyGo: '保存密钥',
         kimiKeyHint: '粘贴 Kimi Code API key。也可导入本机 ~/.kimi-code/credentials/kimi-code.json。',
         kimiImport: '导入本机 Kimi Code',
         kimiImportEmpty: '未找到 kimi-code.json 或 KIMI_API_KEY',
-        copilotTitle: 'GitHub Copilot',
         copilotLoginApiKey: '粘贴 GitHub Token',
         copilotKeyPlaceholder: 'ghu_… / ghp_… / GITHUB_TOKEN',
         copilotKeyGo: '保存密钥',
         copilotKeyHint: '粘贴 GitHub Copilot 用的 ghu_ / ghp_ token。也可导入本机 ~/.config/github-copilot/hosts.json。',
         copilotImport: '导入本机 Copilot',
         copilotImportEmpty: '未找到 hosts.json、OpenCode auth.json 或 GITHUB_TOKEN',
-        devinTitle: 'Devin Agent',
         devinLoginApiKey: '粘贴会话 Token',
         devinKeyPlaceholder: 'devin-session-token$…',
         devinKeyGo: '保存密钥',
         devinKeyHint: '粘贴 Devin 会话 token。也可导入本机 ~/.local/share/devin/credentials.toml。',
         devinImport: '导入本机 Devin CLI',
         devinImportEmpty: '未找到 credentials.toml',
-        clineTitle: 'Cline',
         clineImport: '导入本机 Cline CLI',
         clineImportEmpty: '未找到 ~/.cline/data/settings/providers.json',
         clineCredits: '额度余额',
         clineDevice: '设备码登录',
-        anthropicTitle: 'Claude',
         anthropicImport: '导入本机 Claude Code',
-        anthropicImportEmpty: '未找到 ~/.claude/.credentials.json',
+        anthropicImportEmpty: '未找到本机 Claude Code 登录（钥匙串或 ~/.claude/.credentials.json）',
         apiKeyTitle: 'API Key',
-        opencodeGoTitle: 'OpenCode Go',
         opencodeGoHint: '粘贴 OpenCode Go API key 用于对话；会话 cookie 与工作区 ID 只用来读额度。可添加多个账号，点卡片切换。',
         opencodeGoKey: 'API Key',
         opencodeGoKeyPlaceholder: 'sk-… / OPENCODE_API_KEY',
@@ -102,8 +92,6 @@ window.__ModuleLoader__.load({
         opencodeGoCookieSet: '已保存，留空保持不变',
         opencodeGoWorkspace: '工作区 ID（可选）',
         opencodeGoWorkspacePlaceholder: 'wrk_…/org_… 或 https://opencode.ai/console/wrk_…/go',
-        opencodeGoName: '显示名称',
-        opencodeGoEditName: '修改名称',
         opencodeGoSave: '保存',
         opencodeGoFailed: '保存失败',
         opencodeGoHostStale: '宿主进程还是旧版本，请重启宿主后再保存',
@@ -164,16 +152,13 @@ window.__ModuleLoader__.load({
         paste: '粘贴回调地址',
         pastePlaceholder: 'http://localhost:1455/auth/callback?code=…&state=…',
         submitPaste: '提交',
-        loggedOut: '未登录',
-        loggedIn: '已登录',
-        busy: '等待授权…',
         openUrl: '打开授权页',
         userCode: '配对码',
         copy: '复制',
         error: '失败',
         noRpc: '宿主 RPC 不可用。确认插件已加载到 web profile。',
         quota: '额度',
-        quotaRefresh: '刷新额度',
+        quotaRefresh: '刷新',
         quotaUnitToggle: '切换单位 k/M',
         quotaLoading: '正在读取额度…',
         quotaFailed: '额度读取失败',
@@ -193,6 +178,11 @@ window.__ModuleLoader__.load({
         leftPercent: '剩余 {n}%',
         cursorComposer: '补全 & Composer',
         cursorApi: 'API 调用',
+        cursorIncluded: '包含额度',
+        devinPromptCredits: 'Prompt 点数',
+        devinFlowCredits: 'Flow 点数',
+        devinFlexCredits: 'Flex 点数',
+        devinOverage: '超额余额',
         resetIn: '{n}后重置',
         expiresIn: '{n}后过期',
         unitMinutes: '{n} 分钟',
@@ -207,20 +197,32 @@ window.__ModuleLoader__.load({
         glmWeekly: '每周剩余',
         glmMcp: 'ZCode MCP',
         glmBoost: '150%配额',
-        glmBoostHint: 'ZCode 登录使用享 150%配额',
         prepaid: '预付余额',
+        unlimited: '不限量',
         quotaModels: '本周模型用量',
         grokCode: 'Grok Code',
+        grokCodeHint: '账号已开通 Grok Code',
+        grokMonthly: '月度额度',
+        grokOnDemand: '按需消费',
         agGemini: 'Gemini 模型',
         agClaudeGpt: 'Claude 和 GPT 模型',
         modelsTitle: '模型',
-        modelsHint: '勾选即同步。Fast 仅 Codex Priority，更耗额度；900K 默认关。',
+        modelsHint: '勾选即同步。',
         modelsOn: '已开启 {n}',
         modelsAll: '全选',
         modelsNone: '全关',
         modelsNeedLogin: '登录后同步',
+        modelsEnabled: '已启用 {n}',
+        modelsSearch: '搜索模型',
+        modelsColumnName: '模型名称',
+        modelsColumnOn: '启用',
+        modelsEmpty: '没有匹配的模型',
+        allFamilies: '全部',
+        tabVersion: '版本',
+        loading: '加载中…',
         fastTag: 'Fast',
         largeTag: '900K',
+        visionTag: '视觉输入',
         aboutTitle: '关于',
         repo: '仓库',
         repoOpen: '打开仓库',
@@ -247,6 +249,7 @@ window.__ModuleLoader__.load({
         autoUpdate: '检测到新版本时自动更新',
         autoUpdateShort: '自动更新',
         autoUpdateHourly: '每小时检查一次，装好新版后重启宿主生效',
+        autoUpdateLinked: '本地链接：npm run build 后热重载生效，无需重启宿主（需 profile 配 hmr root）',
         autoLastCheck: '上次检查 {n}',
         autoRunInstalled: '已装 {n}',
         autoRunCurrent: '已是最新',
@@ -261,56 +264,45 @@ window.__ModuleLoader__.load({
         pluginAboutTitle: 'OAuth 订阅插件',
       },
       en: {
-        nav: 'OAuth subs',
-        codexTitle: 'ChatGPT Codex',
-        grokTitle: 'xAI Grok',
-        glmTitle: 'Zhipu GLM',
-        kiroTitle: 'AWS Kiro',
-        antigravityTitle: 'Antigravity',
+        nav: 'Subscriptions & models',
+        panel: 'Subscriptions',
+        providers: 'Providers',
         antigravityPastePlaceholder: 'http://localhost:51121/oauth-callback?code=…&state=…',
         antigravityVerify: 'Google needs to verify this account before chat',
         antigravityVerifyGo: 'Verify',
-        cursorTitle: 'Cursor',
         cursorImport: 'Import local Cursor',
         cursorImportEmpty: 'No Cursor CLI or IDE login on this machine',
-        ollamaTitle: 'Ollama Cloud',
         ollamaLoginApiKey: 'Paste API key',
         ollamaKeyPlaceholder: 'ollama.com API key',
         ollamaKeyGo: 'Save key',
         ollamaKeyHint: 'Create a key at ollama.com/settings/keys. Or set OLLAMA_API_KEY in the environment.',
         ollamaImport: 'Import OLLAMA_API_KEY',
         ollamaImportEmpty: 'OLLAMA_API_KEY not found',
-        kimiTitle: 'Kimi',
         kimiLoginApiKey: 'Paste API key',
         kimiKeyPlaceholder: 'KIMI_API_KEY or sk-…',
         kimiKeyGo: 'Save key',
         kimiKeyHint: 'Paste a Kimi Code API key. Or import ~/.kimi-code/credentials/kimi-code.json.',
         kimiImport: 'Import local Kimi Code',
         kimiImportEmpty: 'No kimi-code.json or KIMI_API_KEY found',
-        copilotTitle: 'GitHub Copilot',
         copilotLoginApiKey: 'Paste GitHub token',
         copilotKeyPlaceholder: 'ghu_… / ghp_… / GITHUB_TOKEN',
         copilotKeyGo: 'Save token',
         copilotKeyHint: 'Paste a GitHub Copilot ghu_ / ghp_ token. Or import ~/.config/github-copilot/hosts.json.',
         copilotImport: 'Import local Copilot',
         copilotImportEmpty: 'No hosts.json, OpenCode auth.json, or GITHUB_TOKEN found',
-        devinTitle: 'Devin Agent',
         devinLoginApiKey: 'Paste session token',
         devinKeyPlaceholder: 'devin-session-token$…',
         devinKeyGo: 'Save token',
         devinKeyHint: 'Paste a Devin session token. Or import ~/.local/share/devin/credentials.toml.',
         devinImport: 'Import local Devin CLI',
         devinImportEmpty: 'No credentials.toml found',
-        clineTitle: 'Cline',
         clineImport: 'Import local Cline CLI',
         clineImportEmpty: 'No ~/.cline/data/settings/providers.json found',
         clineCredits: 'Credits',
         clineDevice: 'Device code',
-        anthropicTitle: 'Claude',
         anthropicImport: 'Import local Claude Code',
-        anthropicImportEmpty: 'No ~/.claude/.credentials.json found',
+        anthropicImportEmpty: 'No local Claude Code login found (Keychain or ~/.claude/.credentials.json)',
         apiKeyTitle: 'API Key',
-        opencodeGoTitle: 'OpenCode Go',
         opencodeGoHint: 'Paste the OpenCode Go API key for chat; session cookie and workspace id only read quota. Add several accounts and click a card to switch.',
         opencodeGoKey: 'API key',
         opencodeGoKeyPlaceholder: 'sk-… / OPENCODE_API_KEY',
@@ -320,8 +312,6 @@ window.__ModuleLoader__.load({
         opencodeGoCookieSet: 'Stored — leave blank to keep',
         opencodeGoWorkspace: 'Workspace id (optional)',
         opencodeGoWorkspacePlaceholder: 'wrk_…/org_… or https://opencode.ai/console/wrk_…/go',
-        opencodeGoName: 'Display name',
-        opencodeGoEditName: 'Edit name',
         opencodeGoSave: 'Save',
         opencodeGoFailed: 'Save failed',
         opencodeGoHostStale: 'The host process is outdated — restart the host, then save again',
@@ -382,16 +372,13 @@ window.__ModuleLoader__.load({
         paste: 'Paste callback URL',
         pastePlaceholder: 'http://localhost:1455/auth/callback?code=…&state=…',
         submitPaste: 'Submit',
-        loggedOut: 'Signed out',
-        loggedIn: 'Signed in',
-        busy: 'Waiting for authorization…',
         openUrl: 'Open authorize URL',
         userCode: 'User code',
         copy: 'Copy',
         error: 'Failed',
         noRpc: 'Host RPC is unavailable. Confirm the plugin is loaded into the web profile.',
         quota: 'Quota',
-        quotaRefresh: 'Refresh quota',
+        quotaRefresh: 'Refresh',
         quotaUnitToggle: 'Switch k/M units',
         quotaLoading: 'Reading quota…',
         quotaFailed: 'Could not read quota',
@@ -411,6 +398,11 @@ window.__ModuleLoader__.load({
         leftPercent: '{n}% left',
         cursorComposer: 'Tab completion & Composer',
         cursorApi: 'API',
+        cursorIncluded: 'Included usage',
+        devinPromptCredits: 'Prompt Credits',
+        devinFlowCredits: 'Flow Credits',
+        devinFlexCredits: 'Flex Credits',
+        devinOverage: 'Overage balance',
         resetIn: 'resets in {n}',
         expiresIn: 'expires in {n}',
         unitMinutes: '{n} min',
@@ -425,20 +417,32 @@ window.__ModuleLoader__.load({
         glmWeekly: 'Weekly remaining',
         glmMcp: 'ZCode MCP',
         glmBoost: '150% quota',
-        glmBoostHint: 'ZCode session: 150% quota',
         prepaid: 'Prepaid',
+        unlimited: 'Unlimited',
         quotaModels: 'Models this week',
         grokCode: 'Grok Code',
+        grokCodeHint: 'Grok Code access enabled',
+        grokMonthly: 'Monthly',
+        grokOnDemand: 'Pay-as-you-go',
         agGemini: 'Gemini Models',
         agClaudeGpt: 'Claude and GPT models',
         modelsTitle: 'Models',
-        modelsHint: 'Check to sync. Fast is Codex Priority only and spends more. 900K is off by default.',
+        modelsHint: 'Check to sync.',
         modelsOn: '{n} on',
         modelsAll: 'All on',
         modelsNone: 'All off',
         modelsNeedLogin: 'Syncs after sign-in',
+        modelsEnabled: '{n} enabled',
+        modelsSearch: 'Search models',
+        modelsColumnName: 'Model',
+        modelsColumnOn: 'Enabled',
+        modelsEmpty: 'No models match',
+        allFamilies: 'All',
+        tabVersion: 'Version',
+        loading: 'Loading…',
         fastTag: 'Fast',
         largeTag: '900K',
+        visionTag: 'Vision input',
         aboutTitle: 'About',
         repo: 'Repository',
         repoOpen: 'Open repo',
@@ -465,6 +469,7 @@ window.__ModuleLoader__.load({
         autoUpdate: 'Auto-update when a new version is found',
         autoUpdateShort: 'Auto-update',
         autoUpdateHourly: 'Checks hourly; restart the host app to load an installed update',
+        autoUpdateLinked: 'Local link: npm run build hot-reloads the plugin — no host restart (needs an hmr root in the profile)',
         autoLastCheck: 'Last check {n}',
         autoRunInstalled: 'installed {n}',
         autoRunCurrent: 'up to date',
@@ -549,6 +554,12 @@ window.__ModuleLoader__.load({
       if (hours) bits.push(fill(units.hour, hours))
       if (minutes || bits.length === 0) bits.push(fill(units.minute, minutes))
       return fill(units.suffix, bits.join(' '))
+    }
+
+    function formatDay(stamp) {
+      const date = new Date(stamp)
+      if (!Number.isFinite(date.getTime())) return ''
+      return `${date.getMonth() + 1}/${date.getDate()}`
     }
 
     function formatStamp(resetAt) {
@@ -801,6 +812,7 @@ window.__ModuleLoader__.load({
   --osubs-warn: color-mix(in oklab, #b45309 70%, currentColor);
   --osubs-bad: color-mix(in oklab, #e5484d 62%, currentColor);
   --osubs-ring: color-mix(in oklab, currentColor 45%, transparent);
+  --osubs-accent: var(--dsw-alias-button-primary-fill, #4d6bfe);
   --osubs-s1: 4px;
   --osubs-s2: 8px;
   --osubs-s3: 12px;
@@ -811,6 +823,9 @@ window.__ModuleLoader__.load({
   gap: 0;
   width: 100%;
   max-width: 1000px;
+  height: 100%;
+  padding: 0 var(--osubs-s5) var(--osubs-s5);
+  overflow: hidden;
   font-variant-numeric: tabular-nums;
 }
 .osubs, .osubs * { box-sizing: border-box; min-width: 0; }
@@ -885,44 +900,75 @@ window.__ModuleLoader__.load({
   display: flex; justify-content: space-between; gap: var(--osubs-s3);
   align-items: center; flex-wrap: wrap;
 }
+.osubs-card-side { display: flex; align-items: center; gap: 10px; }
+/* Legend card: the provider name sits on the card's top border — the
+   line runs out to both sides and is knocked out behind the text
+   (fieldset-legend style). Scoped to provider cards only; the Version
+   card keeps its plain head. */
+.osubs-card--legend { position: relative; }
+.osubs-card--legend .osubs-card-head { justify-content: flex-end; }
+.osubs-card--legend .osubs-card-title {
+  position: absolute; top: 0; left: 8px; transform: translateY(-50%);
+  padding: 0 8px; z-index: 1;
+  background: var(--dsw-alias-bg-layer-2, Canvas);
+}
 .osubs-card-title {
   font-size: 15px; font-weight: 600; letter-spacing: -0.01em;
 }
-/* Pin the icon tabs to the top of the host settings scroller
-   (options overflow-y auto). Bleed 24px to match that column's
-   side padding so cards cannot peek in the gutter. */
-.osubs-nav {
-  position: sticky; top: 0; z-index: 6; flex: none;
-  display: flex; justify-content: flex-start; align-items: flex-start; gap: 4px;
-  margin: 0 -24px; padding: 0 24px var(--osubs-s4);
-  background: var(--dsw-alias-bg-layer-2, Canvas);
-  box-shadow: 0 1px 0 var(--osubs-line);
+/* Fixed three-region layout: this 64px topbar and the family rail never
+   move; only .osubs-pane scrolls. The bar is a full-bleed strip with a
+   bottom seam; its blank area is a window-drag region, the tab buttons
+   stay clickable. */
+.osubs-ptabs {
+  flex: none;
+  display: flex; align-items: flex-end; gap: 18px; height: 64px;
+  margin: 0 calc(-1 * var(--osubs-s5)); padding: 0 var(--osubs-s5);
+  border-bottom: 1px solid var(--osubs-line);
+  -webkit-app-region: drag;
 }
-.osubs-pane { display: flex; flex-direction: column; gap: var(--osubs-s4); min-width: 0; }
+.osubs-ptab {
+  height: 40px; padding: 0 2px; -webkit-app-region: no-drag;
+  border: 0; border-radius: 0;
+  background: transparent; color: var(--osubs-muted);
+  font: inherit; font-size: 13px; font-weight: 500; line-height: 1;
+  cursor: pointer; appearance: none; -webkit-appearance: none;
+  box-shadow: inset 0 -2px 0 transparent;
+  transition: color 160ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.osubs-ptab:hover:not(.osubs-ptab--on) { color: inherit; }
+.osubs-ptab--on { color: var(--osubs-accent); box-shadow: inset 0 -2px 0 var(--osubs-accent); }
+.osubs-ptab:focus-visible { outline: 2px solid var(--osubs-ring); outline-offset: -2px; }
+.osubs-body { flex: 1 1 auto; min-height: 0; display: flex; align-items: stretch; gap: 20px; padding-top: var(--osubs-s4); }
+/* top padding gives the legend title room to straddle the first card's
+   border inside the scrollport instead of clipping at its edge */
+.osubs-pane { display: flex; flex-direction: column; gap: var(--osubs-s4); min-width: 0; min-height: 0; flex: 1 1 auto; overflow-y: auto; padding-top: 10px; }
+.osubs-pane-panel { display: flex; flex-direction: column; gap: var(--osubs-s4); min-width: 0; }
 .osubs-pane-panel[hidden] { display: none !important; }
-.osubs-tabs {
-  display: grid; grid-template-columns: repeat(9, 36px); justify-content: space-between;
-  gap: 4px; padding: 4px; flex: 1 1 auto;
-  border: 1px solid var(--osubs-line); border-radius: 12px;
-  background: var(--osubs-fill);
+.osubs-rail-label {
+  padding: 0 10px 4px;
+  font-size: 11px; letter-spacing: .04em; color: var(--osubs-faint);
 }
-.osubs-tabs-util {
-  display: grid; grid-template-columns: 36px; grid-auto-rows: 36px;
-  gap: 4px; padding: 4px; flex: none;
-  border: 1px solid var(--osubs-line); border-radius: 12px;
-  background: var(--osubs-fill);
+.osubs-rail {
+  flex: 0 0 176px; display: flex; flex-direction: column; gap: 2px;
+  overflow-y: auto; min-height: 0;
 }
-.osubs-tab {
-  width: 36px; height: 36px; min-width: 36px; padding: 0;
-  display: inline-flex; align-items: center; justify-content: center;
-  border: 0; border-radius: 9px;
+.osubs-rail-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  width: 100%; min-height: 32px; padding: 4px 10px;
+  border: 0; border-radius: 8px;
   background: transparent; color: inherit;
-  cursor: pointer;
-  transition: background-color 160ms cubic-bezier(0.16, 1, 0.3, 1), color 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  font: inherit; font-size: 12.5px; line-height: 1.3; text-align: left;
+  cursor: pointer; appearance: none; -webkit-appearance: none;
+  transition: background-color 140ms cubic-bezier(0.16, 1, 0.3, 1);
 }
-.osubs-tab:hover:not(.osubs-tab--on) { background: color-mix(in oklab, currentColor 8%, transparent); }
-.osubs-tab--on { background: var(--osubs-fill-2); box-shadow: inset 0 0 0 1px var(--osubs-edge); }
-.osubs-tab:focus-visible { outline: 2px solid var(--osubs-ring); outline-offset: 1px; }
+.osubs-rail-item:hover:not(.osubs-rail-item--on) { background: var(--osubs-fill); }
+.osubs-rail-item--on { background: var(--osubs-fill-2); font-weight: 600; }
+.osubs-rail-item:focus-visible { outline: 2px solid var(--osubs-ring); outline-offset: -1px; }
+.osubs-rail-ic { display: inline-flex; align-items: center; flex: none; color: var(--osubs-muted); }
+.osubs-rail-item--on .osubs-rail-ic { color: var(--osubs-accent); }
+.osubs-rail-icon { width: 16px; height: 16px; flex: none; }
+.osubs-rail-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.osubs-rail-count { flex: none; font-size: 11px; color: var(--osubs-faint); font-variant-numeric: tabular-nums; }
 .osubs-tab-icon { width: 18px; height: 18px; display: block; flex: none; }
 .osubs-about { display: flex; flex-direction: column; gap: var(--osubs-s3); font-size: 13px; line-height: 1.45; }
 .osubs-about .osubs-link,
@@ -937,10 +983,6 @@ window.__ModuleLoader__.load({
 .osubs-kv > :first-child { border-top: 0; padding-top: 0; }
 .osubs-kv-row > :first-child { color: var(--osubs-muted); flex: none; }
 .osubs-kv-row > :last-child { text-align: right; min-width: 0; }
-.osubs-kv-value { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: baseline; gap: 6px var(--osubs-s2); text-align: right; }
-.osubs-kv-value .osubs-note { white-space: nowrap; }
-.osubs-kv-value .osubs-note:not(:first-child)::before { content: '· '; color: var(--osubs-faint); }
-.osubs-kv-value .osubs-note:not(:last-child)::after { content: ' ·'; color: var(--osubs-faint); }
 .osubs-select {
   appearance: none; font: inherit; font-size: 13px; line-height: 1.45;
   color: inherit; cursor: pointer; text-align: right;
@@ -957,15 +999,16 @@ window.__ModuleLoader__.load({
 
 /* About update cards: current → latest band + the apply CTA. */
 .osubs-ver {
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  padding: 10px 12px;
-  border: 1px solid var(--osubs-hair); border-radius: 10px;
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 12px 14px;
+  border: 1px solid var(--osubs-hair); border-radius: 12px;
   background: var(--osubs-fill);
 }
-.osubs-ver-cell { display: flex; align-items: baseline; gap: 6px; min-width: 0; flex-wrap: wrap; }
+.osubs-ver-cell { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.osubs-ver-label { font-size: 11px; line-height: 1.45; color: var(--osubs-faint); }
 .osubs-ver-num {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 14px; font-weight: 600; letter-spacing: -0.01em;
+  font-size: 15px; font-weight: 600; letter-spacing: -0.015em;
   overflow-wrap: anywhere;
 }
 .osubs-ver-num--next { color: var(--osubs-warn); }
@@ -1098,11 +1141,6 @@ window.__ModuleLoader__.load({
 }
 .osubs-textarea::placeholder { color: var(--osubs-faint); }
 .osubs-textarea:focus-visible { outline: 2px solid var(--osubs-ring); outline-offset: 1px; }
-.osubs-status { display: inline-flex; align-items: center; gap: 6px; flex: none; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--osubs-muted); }
-.osubs-status::before { content: ""; width: 6px; height: 6px; border-radius: 99px; background: var(--osubs-faint); }
-.osubs-status--on::before { background: var(--osubs-ok); }
-.osubs-status--busy::before { background: var(--osubs-warn); animation: osubs-pulse 1.4s ease-in-out infinite; }
-
 .osubs-eyebrow { font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--osubs-muted); }
 .osubs-tag {
   flex: none; padding: 2px 5px; border-radius: 5px;
@@ -1155,7 +1193,7 @@ window.__ModuleLoader__.load({
 .osubs-link:focus-visible { outline: 2px solid var(--osubs-ring); outline-offset: 2px; border-radius: 2px; }
 
 .osubs-quota { display: flex; flex-direction: column; gap: 12px; padding-top: 12px; border-top: 1px solid var(--osubs-hair); }
-.osubs-quota-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+
 .osubs-qrow { display: flex; flex-direction: column; gap: 6px; }
 .osubs-qrow-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 12px; }
 .osubs-qcluster { display: flex; flex-direction: column; gap: 10px; }
@@ -1283,26 +1321,89 @@ window.__ModuleLoader__.load({
 }
 .osubs-dsw-btn:disabled { opacity: .4; cursor: default; pointer-events: none; }
 
-.osubs-family { display: flex; flex-direction: column; gap: var(--osubs-s2); }
-.osubs-family + .osubs-family { padding-top: var(--osubs-s4); border-top: 1px solid var(--osubs-hair); }
-.osubs-family-title { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; }
-.osubs-family-meta { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; min-width: 0; }
-.osubs-family-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
-.osubs-models { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(215px, 100%), 1fr)); column-gap: 14px; row-gap: 1px; }
-.osubs-model {
-  display: flex; align-items: center; gap: 9px;
-  min-height: 32px; padding: 0 8px; border-radius: 7px; cursor: pointer;
-  transition: background-color 120ms ease;
+.osubs-mtools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.osubs-msearch { position: relative; flex: 1 1 160px; max-width: 300px; }
+.osubs-msearch svg {
+  position: absolute; left: 9px; top: 50%; transform: translateY(-50%);
+  width: 13px; height: 13px; color: var(--osubs-faint); pointer-events: none;
 }
-.osubs-model:hover { background: var(--osubs-fill); }
-.osubs-model:has(input:disabled) { cursor: default; }
-.osubs-model:has(input:disabled):hover { background: transparent; }
-.osubs-model:has(input:focus-visible) { outline: 2px solid var(--osubs-ring); outline-offset: -1px; }
-.osubs-model input { flex: none; width: 14px; height: 14px; margin: 0; accent-color: currentColor; cursor: pointer; }
-.osubs-model input:disabled { cursor: default; }
-.osubs-model > span { flex: 1 1 auto; font-size: 12.5px; overflow-wrap: anywhere; }
+.osubs-msearch input {
+  width: 100%; height: 30px; padding: 0 10px 0 28px; box-sizing: border-box;
+  border: 1px solid var(--osubs-edge); border-radius: 8px;
+  background: transparent; color: inherit; caret-color: currentColor;
+  font: inherit; font-size: 12px;
+}
+.osubs-msearch input::placeholder { color: var(--osubs-faint); }
+.osubs-msearch input:focus-visible { outline: 2px solid var(--osubs-ring); outline-offset: 1px; }
+.osubs-mcount {
+  margin-left: auto; flex: none;
+  font-size: 12px; color: var(--osubs-muted); white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.osubs-mtable { border: 1px solid var(--osubs-line); border-radius: 10px; overflow: hidden; }
+.osubs-mtable > * + * { border-top: 1px solid var(--osubs-hair); }
+.osubs-mhead {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  height: 34px; padding: 0 12px;
+  font-size: 11px; color: var(--osubs-faint); background: var(--osubs-fill);
+}
+.osubs-mgroup {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  min-height: 34px; padding: 4px 12px;
+  font-size: 12px; font-weight: 700; letter-spacing: .02em;
+  background: var(--osubs-fill);
+}
+.osubs-mgroup-side { display: inline-flex; align-items: center; gap: 8px; flex: none; font-weight: 600; color: var(--osubs-muted); }
+.osubs-mrow {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  min-height: 42px; padding: 4px 12px;
+}
+.osubs-mrow:hover { background: var(--osubs-fill); }
+.osubs-mname { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; font-size: 13px; }
+.osubs-vision { flex: none; display: inline-flex; margin-left: -2px; color: var(--osubs-faint); }
+.osubs-vision svg { width: 13px; height: 13px; display: block; }
+.osubs-mempty { padding: 14px 12px; }
+
+.osubs-switch { position: relative; display: inline-flex; flex: none; cursor: pointer; }
+.osubs-switch input {
+  position: absolute; width: 1px; height: 1px; margin: 0;
+  opacity: 0; pointer-events: none;
+}
+.osubs-switch-track {
+  display: block; width: 34px; height: 20px; border-radius: 99px;
+  border: 1px solid var(--osubs-edge); background: var(--osubs-fill-2);
+  position: relative;
+  transition: background-color 160ms cubic-bezier(0.16, 1, 0.3, 1), border-color 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.osubs-switch-track::before {
+  content: ''; position: absolute; top: 2px; left: 2px;
+  width: 14px; height: 14px; border-radius: 99px;
+  background: color-mix(in oklab, currentColor 62%, transparent);
+  transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1), background-color 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.osubs-switch input:checked ~ .osubs-switch-track {
+  background: color-mix(in oklab, var(--osubs-ok) 30%, transparent);
+  border-color: color-mix(in oklab, var(--osubs-ok) 60%, transparent);
+}
+.osubs-switch input:checked ~ .osubs-switch-track::before { transform: translateX(14px); background: var(--osubs-ok); }
+.osubs-switch:has(input:focus-visible) .osubs-switch-track { outline: 2px solid var(--osubs-ring); outline-offset: 2px; }
+.osubs-switch:has(input:disabled) { cursor: default; opacity: .55; }
+
+@media (max-width: 720px) {
+  .osubs { padding: 0 var(--osubs-s3) var(--osubs-s3); }
+  .osubs-ptabs {
+    margin: 0 calc(-1 * var(--osubs-s3)); padding: 0 var(--osubs-s3);
+  }
+  .osubs-body { flex-direction: column; }
+  .osubs-rail { flex: none; width: 100%; position: static; flex-direction: row; flex-wrap: wrap; }
+  .osubs-rail-item { width: auto; }
+}
 
 @keyframes osubs-pulse { 0%, 100% { opacity: 1 } 50% { opacity: .3 } }
+@keyframes osubs-spin { to { transform: rotate(360deg) } }
+.osubs-refresh { display: inline-flex; align-items: center; gap: 5px; }
+.osubs-refresh svg { width: 12px; height: 12px; display: block; }
+.osubs-refresh--spin svg { animation: osubs-spin .8s linear infinite; }
 @keyframes osubs-fade { from { opacity: 0 } to { opacity: 1 } }
 @keyframes osubs-dialog-in {
   from { opacity: 0; transform: translateY(10px) scale(0.98); }
@@ -1316,10 +1417,12 @@ window.__ModuleLoader__.load({
   .osubs-dsw-mask,
   .osubs-dsw-card,
   .osubs-hold-tip { animation: none !important; }
-  .osubs-status--busy::before { animation: none !important; }
   .osubs-ver--busy .osubs-ver-arrow { animation: none !important; }
+  .osubs-refresh--spin svg { animation: osubs-pulse 1.4s ease-in-out infinite !important; }
   .osubs-bar > i { transition: background-color 160ms ease; }
-  .osubs-auto-track, .osubs-auto-track::before { transition: none !important; }
+  .osubs-auto-track, .osubs-auto-track::before,
+  .osubs-switch-track, .osubs-switch-track::before,
+  .osubs-ptab, .osubs-rail-item { transition: none !important; }
   .osubs-dsw-card { transform: none; }
 }
 `
@@ -1434,13 +1537,15 @@ window.__ModuleLoader__.load({
       }, children, open && h('span', { className: 'osubs-hold-tip', role: 'tooltip' }, label))
     }
 
-    // LobeHub mono SVG paths from @lobehub/icons-static-svg@1.94.0
-    // https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/{codex,grok,zai,kiro,antigravity,cursor,ollama,kimi,copilot,devin,cline,anthropic,github}.svg
+    // LobeHub icons from @lobehub/icons-static-svg@1.95.1
+    // https://unpkg.com/@lobehub/icons-static-svg@1.95.1/icons/{grok,zai,antigravity,cursor,ollama,kimi,copilot,cline,anthropic,github}.svg
+    // `raw` entries are the official colored variants (icons/{codex,kiro,devin}-color.svg)
+    // inlined verbatim so the rail shows real brand marks without a dep.
     const TAB_ICONS = {
-      codex: { d: 'M8.086.457a6.105 6.105 0 013.046-.415c1.333.153 2.521.72 3.564 1.7a.117.117 0 00.107.029c1.408-.346 2.762-.224 4.061.366l.063.03.154.076c1.357.703 2.33 1.77 2.918 3.198.278.679.418 1.388.421 2.126a5.655 5.655 0 01-.18 1.631.167.167 0 00.04.155 5.982 5.982 0 011.578 2.891c.385 1.901-.01 3.615-1.183 5.14l-.182.22a6.063 6.063 0 01-2.934 1.851.162.162 0 00-.108.102c-.255.736-.511 1.364-.987 1.992-1.199 1.582-2.962 2.462-4.948 2.451-1.583-.008-2.986-.587-4.21-1.736a.145.145 0 00-.14-.032c-.518.167-1.04.191-1.604.185a5.924 5.924 0 01-2.595-.622 6.058 6.058 0 01-2.146-1.781c-.203-.269-.404-.522-.551-.821a7.74 7.74 0 01-.495-1.283 6.11 6.11 0 01-.017-3.064.166.166 0 00.008-.074.115.115 0 00-.037-.064 5.958 5.958 0 01-1.38-2.202 5.196 5.196 0 01-.333-1.589 6.915 6.915 0 01.188-2.132c.45-1.484 1.309-2.648 2.577-3.493.282-.188.55-.334.802-.438.286-.12.573-.22.861-.304a.129.129 0 00.087-.087A6.016 6.016 0 015.635 2.31C6.315 1.464 7.132.846 8.086.457zm-.804 7.85a.848.848 0 00-1.473.842l1.694 2.965-1.688 2.848a.849.849 0 001.46.864l1.94-3.272a.849.849 0 00.007-.854l-1.94-3.393zm5.446 6.24a.849.849 0 000 1.695h4.848a.849.849 0 000-1.696h-4.848z', clip: true },
+      codex: { raw: '<path d="M19.503 0H4.496A4.496 4.496 0 000 4.496v15.007A4.496 4.496 0 004.496 24h15.007A4.496 4.496 0 0024 19.503V4.496A4.496 4.496 0 0019.503 0z" fill="#fff"/><path d="M9.064 3.344a4.578 4.578 0 012.285-.312c1 .115 1.891.54 2.673 1.275.01.01.024.017.037.021a.09.09 0 00.043 0 4.55 4.55 0 013.046.275l.047.022.116.057a4.581 4.581 0 012.188 2.399c.209.51.313 1.041.315 1.595a4.24 4.24 0 01-.134 1.223.123.123 0 00.03.115c.594.607.988 1.33 1.183 2.17.289 1.425-.007 2.71-.887 3.854l-.136.166a4.548 4.548 0 01-2.201 1.388.123.123 0 00-.081.076c-.191.551-.383 1.023-.74 1.494-.9 1.187-2.222 1.846-3.711 1.838-1.187-.006-2.239-.44-3.157-1.302a.107.107 0 00-.105-.024c-.388.125-.78.143-1.204.138a4.441 4.441 0 01-1.945-.466 4.544 4.544 0 01-1.61-1.335c-.152-.202-.303-.392-.414-.617a5.81 5.81 0 01-.37-.961 4.582 4.582 0 01-.014-2.298.124.124 0 00.006-.056.085.085 0 00-.027-.048 4.467 4.467 0 01-1.034-1.651 3.896 3.896 0 01-.251-1.192 5.189 5.189 0 01.141-1.6c.337-1.112.982-1.985 1.933-2.618.212-.141.413-.251.601-.33.215-.089.43-.164.646-.227a.098.098 0 00.065-.066 4.51 4.51 0 01.829-1.615 4.535 4.535 0 011.837-1.388zm3.482 10.565a.637.637 0 000 1.272h3.636a.637.637 0 100-1.272h-3.636zM8.462 9.23a.637.637 0 00-1.106.631l1.272 2.224-1.266 2.136a.636.636 0 101.095.649l1.454-2.455a.636.636 0 00.005-.64L8.462 9.23z" fill="url(#osubs-lg-codex)"/><defs><linearGradient gradientUnits="userSpaceOnUse" id="osubs-lg-codex" x1="12" x2="12" y1="3" y2="21"><stop stop-color="#B1A7FF"/><stop offset=".5" stop-color="#7A9DFF"/><stop offset="1" stop-color="#3941FF"/></linearGradient></defs>' },
       grok: { d: 'M9.27 15.29l7.978-5.897c.391-.29.95-.177 1.137.272.98 2.369.542 5.215-1.41 7.169-1.951 1.954-4.667 2.382-7.149 1.406l-2.711 1.257c3.889 2.661 8.611 2.003 11.562-.953 2.341-2.344 3.066-5.539 2.388-8.42l.006.007c-.983-4.232.242-5.924 2.75-9.383.06-.082.12-.164.179-.248l-3.301 3.305v-.01L9.267 15.292M7.623 16.723c-2.792-2.67-2.31-6.801.071-9.184 1.761-1.763 4.647-2.483 7.166-1.425l2.705-1.25a7.808 7.808 0 00-1.829-1A8.975 8.975 0 005.984 5.83c-2.533 2.536-3.33 6.436-1.962 9.764 1.022 2.487-.653 4.246-2.34 6.022-.599.63-1.199 1.259-1.682 1.925l7.62-6.815' },
       zai: { d: 'M12.105 2L9.927 4.953H.653L2.83 2h9.276zM23.254 19.048L21.078 22h-9.242l2.174-2.952h9.244zM24 2L9.264 22H0L14.736 2H24z' },
-      kiro: { d: 'M4.594 6.677C6.67-2.226 18.746-2.211 21.16 6.632c.353 1.297 1.725 7.582-1.673 13.747-1.545 2.797-5.841 5.49-6.99 1.883C8.6 25.477 3.315 24.1 5.789 18.609l-.318.143c-3.57 1.305-3.863-1.208-3.173-2.513.45-.84.727-1.335.937-1.897.353-.975.458-1.568.593-2.498.27-1.837.277-3.607.765-5.167zm8.37.01a.92.92 0 00-.81.428c-.217.323-.33.825-.33 1.462 0 .705.15 1.89 1.14 1.89h.008c.757 0 1.214-.705 1.214-1.89 0-.622-.127-1.125-.367-1.455a1.014 1.014 0 00-.855-.435zm4.08 0a.92.92 0 00-.81.428c-.217.323-.33.825-.33 1.462 0 .705.15 1.89 1.14 1.89h.008c.757 0 1.215-.705 1.215-1.89 0-.622-.128-1.125-.368-1.455a1.014 1.014 0 00-.855-.435z' },
+      kiro: { raw: '<path d="M18.8 0H5.2A5.2 5.2 0 000 5.2v13.6A5.2 5.2 0 005.2 24h13.6a5.2 5.2 0 005.2-5.2V5.2A5.2 5.2 0 0018.8 0z" fill="#9046FF"/><path d="M7.97 16.376c-1.644 3.642 1.86 4.556 4.443 2.424.76 2.39 3.608.607 4.631-1.247 2.251-4.084 1.342-8.249 1.108-9.108-1.6-5.859-9.6-5.869-10.976.03-.323 1.033-.328 2.206-.507 3.423-.09.617-.16 1.009-.393 1.655-.139.373-.323.7-.62 1.257-.458.865-.264 2.53 2.101 1.665l.224-.1h-.01l-.001.001z" fill="#fff"/><path d="M12.722 10.985c-.656 0-.755-.785-.755-1.252 0-.423.074-.756.218-.97a.61.61 0 01.537-.283c.229 0 .428.095.567.289.159.218.243.55.243.964 0 .785-.303 1.252-.805 1.252h-.005zm2.703 0c-.656 0-.755-.785-.755-1.252 0-.423.074-.756.219-.97a.61.61 0 01.536-.283c.229 0 .428.095.567.289.159.218.243.55.243.964 0 .785-.303 1.252-.805 1.252h-.005z" fill="#000"/>' },
       antigravity: { d: 'M21.751 22.607c1.34 1.005 3.35.335 1.508-1.508C17.73 15.74 18.904 1 12.037 1 5.17 1 6.342 15.74.815 21.1c-2.01 2.009.167 2.511 1.507 1.506 5.192-3.517 4.857-9.714 9.715-9.714 4.857 0 4.522 6.197 9.714 9.715z', clip: true },
       cursor: { d: 'M22.106 5.68L12.5.135a.998.998 0 00-.998 0L1.893 5.68a.84.84 0 00-.419.726v11.186c0 .3.16.577.42.727l9.607 5.547a.999.999 0 00.998 0l9.608-5.547a.84.84 0 00.42-.727V6.407a.84.84 0 00-.42-.726zm-.603 1.176L12.228 22.92c-.063.108-.228.064-.228-.061V12.34a.59.59 0 00-.295-.51l-9.11-5.26c-.107-.062-.063-.228.062-.228h18.55c.264 0 .428.286.296.514z', clip: true },
       ollama: { d: 'M7.905 1.09c.216.085.411.225.588.41.295.306.544.744.734 1.263.191.522.315 1.1.362 1.68a5.054 5.054 0 012.049-.636l.051-.004c.87-.07 1.73.087 2.48.474.101.053.2.11.297.17.05-.569.172-1.134.36-1.644.19-.52.439-.957.733-1.264a1.67 1.67 0 01.589-.41c.257-.1.53-.118.796-.042.401.114.745.368 1.016.737.248.337.434.769.561 1.287.23.934.27 2.163.115 3.645l.053.04.026.019c.757.576 1.284 1.397 1.563 2.35.435 1.487.216 3.155-.534 4.088l-.018.021.002.003c.417.762.67 1.567.724 2.4l.002.03c.064 1.065-.2 2.137-.814 3.19l-.007.01.01.024c.472 1.157.62 2.322.438 3.486l-.006.039a.651.651 0 01-.747.536.648.648 0 01-.54-.742c.167-1.033.01-2.069-.48-3.123a.643.643 0 01.04-.617l.004-.006c.604-.924.854-1.83.8-2.72-.046-.779-.325-1.544-.8-2.273a.644.644 0 01.18-.886l.009-.006c.243-.159.467-.565.58-1.12a4.229 4.229 0 00-.095-1.974c-.205-.7-.58-1.284-1.105-1.683-.595-.454-1.383-.673-2.38-.61a.653.653 0 01-.632-.371c-.314-.665-.772-1.141-1.343-1.436a3.288 3.288 0 00-1.772-.332c-1.245.099-2.343.801-2.67 1.686a.652.652 0 01-.61.425c-1.067.002-1.893.252-2.497.703-.522.39-.878.935-1.066 1.588a4.07 4.07 0 00-.068 1.886c.112.558.331 1.02.582 1.269l.008.007c.212.207.257.53.109.785-.36.622-.629 1.549-.673 2.44-.05 1.018.186 1.902.719 2.536l.016.019a.643.643 0 01.095.69c-.576 1.236-.753 2.252-.562 3.052a.652.652 0 01-1.269.298c-.243-1.018-.078-2.184.473-3.498l.014-.035-.008-.012a4.339 4.339 0 01-.598-1.309l-.005-.019a5.764 5.764 0 01-.177-1.785c.044-.91.278-1.842.622-2.59l.012-.026-.002-.002c-.293-.418-.51-.953-.63-1.545l-.005-.024a5.352 5.352 0 01.093-2.49c.262-.915.777-1.701 1.536-2.269.06-.045.123-.09.186-.132-.159-1.493-.119-2.73.112-3.67.127-.518.314-.95.562-1.287.27-.368.614-.622 1.015-.737.266-.076.54-.059.797.042zm4.116 9.09c.936 0 1.8.313 2.446.855.63.527 1.005 1.235 1.005 1.94 0 .888-.406 1.58-1.133 2.022-.62.375-1.451.557-2.403.557-1.009 0-1.871-.259-2.493-.734-.617-.47-.963-1.13-.963-1.845 0-.707.398-1.417 1.056-1.946.668-.537 1.55-.849 2.485-.849zm0 .896a3.07 3.07 0 00-1.916.65c-.461.37-.722.835-.722 1.25 0 .428.21.829.61 1.134.455.347 1.124.548 1.943.548.799 0 1.473-.147 1.932-.426.463-.28.7-.686.7-1.257 0-.423-.246-.89-.683-1.256-.484-.405-1.14-.643-1.864-.643zm.662 1.21l.004.004c.12.151.095.37-.056.49l-.292.23v.446a.375.375 0 01-.376.373.375.375 0 01-.376-.373v-.46l-.271-.218a.347.347 0 01-.052-.49.353.353 0 01.494-.051l.215.172.22-.174a.353.353 0 01.49.051zm-5.04-1.919c.478 0 .867.39.867.871a.87.87 0 01-.868.871.87.87 0 01-.867-.87.87.87 0 01.867-.872zm8.706 0c.48 0 .868.39.868.871a.87.87 0 01-.868.871.87.87 0 01-.867-.87.87.87 0 01.867-.872zM7.44 2.3l-.003.002a.659.659 0 00-.285.238l-.005.006c-.138.189-.258.467-.348.832-.17.692-.216 1.631-.124 2.782.43-.128.899-.208 1.404-.237l.01-.001.019-.034c.046-.082.095-.161.148-.239.123-.771.022-1.692-.253-2.444-.134-.364-.297-.65-.453-.813a.628.628 0 00-.107-.09L7.44 2.3zm9.174.04l-.002.001a.628.628 0 00-.107.09c-.156.163-.32.45-.453.814-.29.794-.387 1.776-.23 2.572l.058.097.008.014h.03a5.184 5.184 0 011.466.212c.086-1.124.038-2.043-.128-2.722-.09-.365-.21-.643-.349-.832l-.004-.006a.659.659 0 00-.285-.239h-.004z', clip: true },
@@ -1448,8 +1553,8 @@ window.__ModuleLoader__.load({
       kimi: { d: 'M21.846 0a1.923 1.923 0 110 3.846H20.15a.226.226 0 01-.227-.226V1.923C19.923.861 20.784 0 21.846 0z M11.065 11.199l7.257-7.2c.137-.136.06-.41-.116-.41H14.3a.164.164 0 00-.117.051l-7.82 7.756c-.122.12-.302.013-.302-.179V3.82c0-.127-.083-.23-.185-.23H3.186c-.103 0-.186.103-.186.23V19.77c0 .128.083.23.186.23h2.69c.103 0 .186-.102.186-.23v-3.25c0-.069.025-.135.069-.178l2.424-2.406a.158.158 0 01.205-.023l6.484 4.772a7.677 7.677 0 003.453 1.283c.108.012.2-.095.2-.23v-3.06c0-.117-.07-.212-.164-.227a5.028 5.028 0 01-2.027-.807l-5.613-4.064c-.117-.078-.132-.279-.028-.381z', clip: true },
       // LobeHub `Copilot` icon (`@lobehub/icons-static-svg` icons/copilot.svg)
       copilot: { d: 'M9 23l.073-.001a2.53 2.53 0 01-2.347-1.838l-.697-2.433a2.529 2.529 0 00-2.426-1.839h-.497l-.104-.002c-4.485 0-2.935-5.278-1.75-9.225l.162-.525C2.412 3.99 3.883 1 6.25 1h8.86c1.12 0 2.106.745 2.422 1.829l.715 2.453a2.53 2.53 0 002.247 1.823l.147.005.534.001c3.557.115 3.088 3.745 2.156 7.206l-.113.413c-.154.548-.315 1.089-.47 1.607l-.163.525C21.588 20.01 20.116 23 17.75 23h-8.75zm8.22-15.89l-3.856.001a2.526 2.526 0 00-2.35 1.615L9.21 15.04a2.529 2.529 0 01-2.43 1.847l3.853.002c1.056 0 1.992-.661 2.361-1.644l1.796-6.287a2.529 2.529 0 012.43-1.848z', clip: true },
-      // LobeHub `Devin` icon (`@lobehub/icons-static-svg` icons/devin.svg, three subpaths joined)
-      devin: { d: 'M2.033 9.867l2.554 1.483a.589.589 0 00.592 0l2.554-1.483.01-.008a.608.608 0 00.11-.084l.013-.015a.631.631 0 00.076-.1c.003-.005.008-.01.01-.016a.558.558 0 00.052-.125l.007-.028a.611.611 0 00.019-.14V7.868c0-.572.307-1.105.8-1.392a1.595 1.595 0 011.598 0l1.277.742a.54.54 0 00.129.053l.028.01c.044.01.088.015.133.016h.006l.013-.002a.587.587 0 00.27-.074l.011-.004 2.554-1.483a.596.596 0 00.297-.516V2.253a.595.595 0 00-.297-.516L12.293.257a.587.587 0 00-.591 0L9.148 1.737l-.01.01a.609.609 0 00-.109.083l-.014.015a.632.632 0 00-.076.1c-.003.005-.008.01-.01.016a.57.57 0 00-.052.124l-.007.028a.612.612 0 00-.018.14v1.483c0 .572-.307 1.105-.8 1.393a1.597 1.597 0 01-1.599 0l-1.276-.742a.603.603 0 00-.13-.053l-.028-.008a.658.658 0 00-.133-.018h-.02a.57.57 0 00-.269.074c-.003.002-.008.002-.012.005L2.033 5.872a.596.596 0 00-.297.515v2.966c0 .213.113.41.297.515z M15.943 10.607a1.596 1.596 0 011.599 0l1.276.74c.041.025.085.04.13.055l.028.008c.043.01.088.016.133.018h.005c.005 0 .01-.002.014-.003a.474.474 0 00.122-.016l.021-.005a.616.616 0 00.126-.052c.004-.002.009-.002.013-.005l2.554-1.482a.597.597 0 00.297-.516V6.383a.596.596 0 00-.297-.515l-2.552-1.483a.587.587 0 00-.592 0l-2.553 1.482-.011.008a.61.61 0 00-.108.084l-.014.016a.637.637 0 00-.076.1c-.003.005-.008.01-.01.016a.57.57 0 00-.052.124l-.007.029a.612.612 0 00-.018.14v1.482c0 .572-.307 1.105-.8 1.393a1.597 1.597 0 01-1.599 0l-1.276-.742a.584.584 0 00-.13-.053l-.028-.008a.62.62 0 00-.133-.018h-.02a.587.587 0 00-.269.074l-.012.004L9.15 10a.596.596 0 00-.296.516v2.966c0 .212.112.409.296.515l2.554 1.483s.008.002.012.005c.04.022.082.04.126.052l.02.004a.57.57 0 00.123.017l.014.002h.006c.054 0 .108-.01.16-.025a.587.587 0 00.13-.054l1.277-.741a1.597 1.597 0 012.398 1.392v1.482c0 .049.007.095.019.14l.007.028a.619.619 0 00.051.125c.004.006.008.01.01.016a.6.6 0 00.076.1l.014.015c.033.032.069.06.108.084.004.002.006.006.011.008l2.554 1.483a.59.59 0 00.593 0l2.554-1.483a.597.597 0 00.296-.516v-2.965a.595.595 0 00-.296-.516l-2.554-1.483s-.008-.002-.012-.005a.54.54 0 00-.126-.051c-.007-.003-.013-.003-.02-.005a.635.635 0 00-.125-.017h-.018a.557.557 0 00-.16.026.588.588 0 00-.13.053l-1.276.742a1.595 1.595 0 01-1.598 0 1.615 1.615 0 010-2.785l-.005-.001z M14.848 18.265l-2.554-1.482-.012-.005a.526.526 0 00-.126-.052c-.007-.002-.014-.002-.02-.005a.64.64 0 00-.124-.017h-.02a.56.56 0 00-.16.026.588.588 0 00-.13.053l-1.276.742a1.594 1.594 0 01-1.598 0c-.493-.286-.8-.82-.8-1.393V14.65a.563.563 0 00-.018-.14l-.008-.028a.604.604 0 00-.051-.124l-.01-.017a.603.603 0 00-.076-.1l-.014-.015a.596.596 0 00-.109-.084c-.003-.002-.005-.006-.01-.008L5.178 12.65a.587.587 0 00-.591 0l-2.554 1.483a.596.596 0 00-.297.516v2.965c0 .213.113.41.297.516l2.554 1.483.012.004a.618.618 0 00.267.074l.016.002h.007a.55.55 0 00.16-.026.584.584 0 00.129-.053l1.277-.742a1.597 1.597 0 012.398 1.393v1.482c0 .05.007.095.019.14l.007.028c.013.044.03.085.051.125l.01.016c.022.036.047.07.076.1l.014.015c.032.032.069.06.109.084l.01.008 2.554 1.483a.587.587 0 00.593 0l2.554-1.483a.596.596 0 00.296-.515v-2.966a.596.596 0 00-.296-.516h-.002z', clip: true },
+      // LobeHub `Devin` colored icon (`@lobehub/icons-static-svg` icons/devin-color.svg)
+      devin: { raw: '<path d="M2.033 9.867l2.554 1.483a.589.589 0 00.592 0l2.554-1.483.01-.008a.608.608 0 00.11-.084l.013-.015a.631.631 0 00.076-.1c.003-.005.008-.01.01-.016a.558.558 0 00.052-.125l.007-.028a.611.611 0 00.019-.14V7.868c0-.572.307-1.105.8-1.392a1.595 1.595 0 011.598 0l1.277.742a.54.54 0 00.129.053l.028.01c.044.01.088.015.133.016h.006l.013-.002a.587.587 0 00.27-.074l.011-.004 2.554-1.483a.596.596 0 00.297-.516V2.253a.595.595 0 00-.297-.516L12.293.257a.587.587 0 00-.591 0L9.148 1.737l-.01.01a.609.609 0 00-.109.083l-.014.015a.632.632 0 00-.076.1c-.003.005-.008.01-.01.016a.57.57 0 00-.052.124l-.007.028a.612.612 0 00-.018.14v1.483c0 .572-.307 1.105-.8 1.393a1.597 1.597 0 01-1.599 0l-1.276-.742a.603.603 0 00-.13-.053l-.028-.008a.658.658 0 00-.133-.018h-.02a.57.57 0 00-.269.074c-.003.002-.008.002-.012.005L2.033 5.872a.596.596 0 00-.297.515v2.966c0 .213.113.41.297.515z" fill="#3969CA"/><path d="M15.943 10.607a1.596 1.596 0 011.599 0l1.276.74c.041.025.085.04.13.055l.028.008c.043.01.088.016.133.018h.005c.005 0 .01-.002.014-.003a.474.474 0 00.122-.016l.021-.005a.616.616 0 00.126-.052c.004-.002.009-.002.013-.005l2.554-1.482a.597.597 0 00.297-.516V6.383a.596.596 0 00-.297-.515l-2.552-1.483a.587.587 0 00-.592 0l-2.553 1.482-.011.008a.61.61 0 00-.108.084l-.014.016a.637.637 0 00-.076.1c-.003.005-.008.01-.01.016a.57.57 0 00-.052.124l-.007.029a.612.612 0 00-.018.14v1.482c0 .572-.307 1.105-.8 1.393a1.597 1.597 0 01-1.599 0l-1.276-.742a.584.584 0 00-.13-.053l-.028-.008a.62.62 0 00-.133-.018h-.02a.587.587 0 00-.269.074l-.012.004L9.15 10a.596.596 0 00-.296.516v2.966c0 .212.112.409.296.515l2.554 1.483s.008.002.012.005c.04.022.082.04.126.052l.02.004a.57.57 0 00.123.017l.014.002h.006c.054 0 .108-.01.16-.025a.587.587 0 00.13-.054l1.277-.741a1.597 1.597 0 012.398 1.392v1.482c0 .049.007.095.019.14l.007.028a.619.619 0 00.051.125c.004.006.008.01.01.016a.6.6 0 00.076.1l.014.015c.033.032.069.06.108.084.004.002.006.006.011.008l2.554 1.483a.59.59 0 00.593 0l2.554-1.483a.597.597 0 00.296-.516v-2.965a.595.595 0 00-.296-.515a.54.54 0 00-.126-.051c-.007-.003-.013-.003-.02-.005a.635.635 0 00-.125-.017h-.018a.557.557 0 00-.16.026.588.588 0 00-.13.053l-1.276.742a1.595 1.595 0 01-1.598 0 1.615 1.615 0 010-2.785l-.005-.001z" fill="#21C19A"/><path d="M14.848 18.265l-2.554-1.482-.012-.005a.526.526 0 00-.126-.052c-.007-.002-.014-.002-.02-.005a.64.64 0 00-.124-.017h-.02a.56.56 0 00-.16.026.588.588 0 00-.13.053l-1.276.742a1.594 1.594 0 01-1.598 0c-.493-.286-.8-.82-.8-1.393V14.65a.563.563 0 00-.018-.14l-.008-.028a.604.604 0 00-.051-.124l-.01-.017a.603.603 0 00-.076-.1l-.014-.015a.596.596 0 00-.109-.084c-.003-.002-.005-.006-.01-.008L5.178 12.65a.587.587 0 00-.591 0l-2.554 1.483a.596.596 0 00-.297.516v2.965c0 .213.113.41.297.516l2.554 1.483.012.004a.618.618 0 00.267.074l.016.002h.007a.55.55 0 00.16-.026.584.584 0 00.129-.053l1.277-.742a1.597 1.597 0 012.398 1.393v1.482c0 .05.007.095.019.14l.007.028c.013.044.03.085.051.125l.01.016c.022.036.047.07.076.1l.014.015c.032.032.069.06.109.084l.01.008 2.554 1.483a.587.587 0 00.593 0l2.554-1.483a.596.596 0 00.296-.515v-2.966a.596.596 0 00-.296-.516h-.002z" fill="#0294DE"/>' },
       github: { d: 'M12 0c6.63 0 12 5.276 12 11.79-.001 5.067-3.29 9.567-8.175 11.187-.6.118-.825-.25-.825-.56 0-.398.015-1.665.015-3.242 0-1.105-.375-1.813-.81-2.181 2.67-.295 5.475-1.297 5.475-5.822 0-1.297-.465-2.344-1.23-3.169.12-.295.54-1.503-.12-3.125 0 0-1.005-.324-3.3 1.209a11.32 11.32 0 00-3-.398c-1.02 0-2.04.133-3 .398-2.295-1.518-3.3-1.209-3.3-1.209-.66 1.622-.24 2.83-.12 3.125-.765.825-1.23 1.887-1.23 3.169 0 4.51 2.79 5.527 5.46 5.822-.345.294-.66.81-.765 1.577-.69.31-2.415.81-3.495-.973-.225-.354-.9-1.223-1.845-1.209-1.005.015-.405.56.015.781.51.28 1.095 1.327 1.23 1.666.24.663 1.02 1.93 4.035 1.385 0 .988.015 1.916.015 2.196 0 .31-.225.664-.825.56C3.303 21.374-.003 16.867 0 11.791 0 5.276 5.37 0 12 0z' },
       models: { d: 'M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z' },
       // LobeHub `Cline` icon (`@lobehub/icons-static-svg` icons/cline.svg, two subpaths joined)
@@ -1460,10 +1565,20 @@ window.__ModuleLoader__.load({
       opencodeGo: { d: 'M16 6H8v12h8V6zm4 16H4V2h16v20z' },
     }
 
-    function TabIcon({ name }) {
+    function TabIcon({ name, className }) {
       const icon = TAB_ICONS[name]
+      if (icon.raw) {
+        return h('svg', {
+          className: className ?? 'osubs-tab-icon',
+          viewBox: '0 0 24 24',
+          width: 18,
+          height: 18,
+          'aria-hidden': 'true',
+          dangerouslySetInnerHTML: { __html: icon.raw },
+        })
+      }
       return h('svg', {
-        className: 'osubs-tab-icon',
+        className: className ?? 'osubs-tab-icon',
         viewBox: '0 0 24 24',
         width: 18,
         height: 18,
@@ -1473,16 +1588,65 @@ window.__ModuleLoader__.load({
       }, h('path', icon.clip ? { d: icon.d, clipRule: 'evenodd' } : { d: icon.d }))
     }
 
-    function Tab({ id, label, current, onSelect, icon }) {
+    function PageTab({ id, label, view, onSelect }) {
       return h('button', {
         type: 'button',
         role: 'tab',
-        'aria-selected': current === id,
-        'aria-label': label,
-        title: label,
-        className: `osubs-tab${current === id ? ' osubs-tab--on' : ''}`,
+        'aria-selected': view === id,
+        className: `osubs-ptab${view === id ? ' osubs-ptab--on' : ''}`,
         onClick: () => onSelect(id),
-      }, h(TabIcon, { name: icon }))
+      }, label)
+    }
+
+    function IconGrid() {
+      return h('svg', {
+        className: 'osubs-rail-icon',
+        viewBox: '0 0 24 24', fill: 'none',
+        stroke: 'currentColor', strokeWidth: 2, strokeLinejoin: 'round',
+        'aria-hidden': 'true',
+      },
+        h('rect', { x: 4, y: 4, width: 7, height: 7, rx: 1.5 }),
+        h('rect', { x: 13, y: 4, width: 7, height: 7, rx: 1.5 }),
+        h('rect', { x: 4, y: 13, width: 7, height: 7, rx: 1.5 }),
+        h('rect', { x: 13, y: 13, width: 7, height: 7, rx: 1.5 }),
+      )
+    }
+
+    function RailItem({ item, current, onSelect }) {
+      return h('button', {
+        type: 'button',
+        'aria-current': current === item.id ? 'true' : undefined,
+        className: `osubs-rail-item${current === item.id ? ' osubs-rail-item--on' : ''}`,
+        onClick: () => onSelect(item.id),
+      },
+        h('span', { className: 'osubs-rail-ic', style: item.color ? { color: item.color } : undefined },
+          item.id === 'all'
+            ? h(IconGrid)
+            : item.icon && h(TabIcon, { name: item.icon, className: 'osubs-rail-icon' })),
+        h('span', { className: 'osubs-rail-name' }, item.name),
+        item.count !== undefined && h('span', { className: 'osubs-rail-count' }, item.count),
+      )
+    }
+
+    function Switch({ checked, disabled, onChange, label }) {
+      return h('label', { className: 'osubs-switch' },
+        h('input', {
+          type: 'checkbox',
+          checked,
+          disabled,
+          'aria-label': label,
+          onChange: (event) => { if (!disabled) onChange?.(event.currentTarget.checked) },
+        }),
+        h('span', { className: 'osubs-switch-track', 'aria-hidden': 'true' }),
+      )
+    }
+
+    function IconSearch() {
+      return h('svg', {
+        viewBox: '0 0 24 24', fill: 'none',
+        stroke: 'currentColor', strokeWidth: 2.2, strokeLinecap: 'round',
+        'aria-hidden': 'true',
+      }, h('circle', { cx: 11, cy: 11, r: 7 }), h('path', { d: 'm20 20-3.8-3.8' }))
     }
 
     function antigravityGroupLabel(product, t) {
@@ -1505,6 +1669,17 @@ window.__ModuleLoader__.load({
         }
       }
       if (row.kind === 'heading') return antigravityGroupLabel(row.product, t)
+      if (family === 'grok') {
+        if (row.product === 'monthly') return t.grokMonthly
+        if (row.product === 'on-demand') return t.grokOnDemand
+      }
+      if (family === 'devin') {
+        if (row.product === 'prompt') return t.devinPromptCredits
+        if (row.product === 'flow') return t.devinFlowCredits
+        if (row.product === 'flex') return t.devinFlexCredits
+        if (row.product === 'overage') return t.devinOverage
+      }
+      if (family === 'cursor' && row.product === 'included') return t.cursorIncluded
       if (family === 'cursor' && row.kind === 'product') {
         if (row.product === 'auto' || row.key === 'product:auto') return t.cursorComposer
         if (row.product === 'api' || row.key === 'product:api') return t.cursorApi
@@ -1517,6 +1692,10 @@ window.__ModuleLoader__.load({
           return `${minutes}m`
         }
         return t.primary
+      }
+      if (row.kind === 'weekly_scoped') {
+        const model = String(row.product ?? '').trim()
+        return model ? `${t.weekly} · ${model}` : t.weekly
       }
       if (row.kind === 'weekly') return t.weekly
       if (row.kind === 'monthly') return t.monthly
@@ -1538,7 +1717,7 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function QuotaMeter({ t, remainingPercent, amount, label, reset, onToggleAmount }) {
+    function QuotaMeter({ t, remainingPercent, amount, label, reset, period, onToggleAmount }) {
       const tone = quotaTone(remainingPercent)
       const color = tone ? `var(--osubs-${tone})` : 'inherit'
       const caption = remainingPercent === undefined ? '' : fill(t.leftPercent, remainingPercent)
@@ -1556,7 +1735,7 @@ window.__ModuleLoader__.load({
             caption,
           ),
         ),
-        reset && h('span', { className: 'osubs-qreset' }, reset),
+        reset && h('span', { className: 'osubs-qreset' }, period ? `${period} · ` : '', reset),
         remainingPercent !== undefined && h(RemainingBar, { remainingPercent, tone }),
       )
     }
@@ -1566,11 +1745,15 @@ window.__ModuleLoader__.load({
         return h('div', { className: 'osubs-qgroup' }, antigravityGroupLabel(row.product, t))
       }
       if (row.kind === 'prepaid') {
-        // Cline credits are USD (balance is micro-USD upstream); the shared
-        // prepaid row is Grok's unitless on-demand bag.
-        const amount = family === 'cline'
-          ? formatUsd(Number(row.remaining ?? 0))
-          : formatAmount(row.remaining)
+        // Unlimited buckets (Devin's -1 sentinel) show a label, no number.
+        // Cline credits and Devin's overage balance are USD (upstream cents /
+        // micro-USD already converted); the shared prepaid row is Grok's
+        // unitless on-demand bag.
+        const amount = row.unlimited === true
+          ? t.unlimited
+          : row.unit === 'usd' || family === 'cline'
+            ? formatUsd(Number(row.remaining ?? 0))
+            : formatAmount(row.remaining)
         return h('div', { className: 'osubs-qrow-head' },
           h('span', { style: { color: 'var(--osubs-muted)' } }, rowLabel(row, t, family)),
           h('span', { className: 'osubs-mono' }, amount),
@@ -1587,6 +1770,10 @@ window.__ModuleLoader__.load({
             : `${formatAmount(row.used)} / ${formatAmount(row.total)}`
         : ''
       const reset = formatReset(row.resetAt, t)
+      const periodStartMs = typeof row.periodStart === 'number' ? row.periodStart : Date.parse(row.periodStart ?? '')
+      const period = reset && Number.isFinite(periodStartMs)
+        ? `${formatDay(periodStartMs)}–${formatDay(row.resetAt)}`
+        : undefined
       return h('div', { className: 'osubs-qrow' },
         h(QuotaMeter, {
           t,
@@ -1594,6 +1781,7 @@ window.__ModuleLoader__.load({
           amount,
           label: rowLabel(row, t, family),
           reset,
+          period,
           onToggleAmount: tokens ? onToggleUnits : undefined,
         }),
         row.status && row.status !== 'ok' && h('span', { className: 'osubs-tag osubs-tag--warn' }, row.status),
@@ -1853,7 +2041,7 @@ window.__ModuleLoader__.load({
       return nodes
     }
 
-    function QuotaBlock({ t, quota, onRefresh, onReset, family }) {
+    function QuotaBlock({ t, quota, onReset, family }) {
       const [exactUnits, setExactUnits] = useState(readExactAmountUnits)
       if (!quota || quota.status === 'idle') return null
       const rows = Array.isArray(quota.rows) ? quota.rows : []
@@ -1875,13 +2063,6 @@ window.__ModuleLoader__.load({
         }
         : undefined
       return h('div', { className: 'osubs-quota' },
-        h('div', { className: 'osubs-quota-head' },
-          h('span', { className: 'osubs-eyebrow' }, t.quota),
-          h('div', { className: 'osubs-actions' },
-            h(Button, { size: 'sm', onClick: onRefresh, label: t.quotaRefresh }),
-          ),
-        ),
-        family === 'glm' && h('p', { className: 'osubs-note' }, t.glmBoostHint),
         quota.status === 'loading' && rows.length === 0 && h('p', { className: 'osubs-hint' }, t.quotaLoading),
         quota.status === 'error' && !hasUsage && h('p', {
           className: 'osubs-hint osubs-bad',
@@ -1893,9 +2074,11 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function AccountCard({ t, id, row, quota, onSwitch, onLogout, onRefreshQuota, onResetQuota, onEditGoName }) {
+    function AccountCard({ t, id, row, quota, onSwitch, onLogout, onRefreshQuota, onResetQuota }) {
       const regionLabel = (region) => region === 'bigmodel' ? t.glmRegionCn : t.glmRegionGlobal
       const planLabel = planOf({ ...row, quota }, id)
+      const [refreshBusy, setRefreshBusy] = useState(false)
+      const refreshing = refreshBusy || quota?.status === 'loading'
       const clickable = !row.active
       return h('article', {
         className: `osubs-acct${row.active ? ' osubs-acct--on' : ''}`,
@@ -1920,12 +2103,31 @@ window.__ModuleLoader__.load({
               id === 'kiro' && row.methodLabel && h('span', { className: 'osubs-tag' }, row.methodLabel),
               (id === 'cursor' || id === 'ollama' || id === 'kimi' || id === 'copilot' || id === 'devin' || id === 'cline') && row.methodLabel && h('span', { className: 'osubs-tag' }, row.methodLabel),
               id === 'opencode-go' && row.workspaceName && h('span', { className: 'osubs-tag osubs-tag--plain' }, row.workspaceName),
+              id === 'grok' && quota?.hasGrokCodeAccess === true && h('span', { className: 'osubs-tag osubs-tag--plain', title: t.grokCodeHint }, t.grokCode),
+              id === 'grok' && quota?.subscriptionStatus && quota.subscriptionStatus !== 'active' && h('span', { className: 'osubs-tag osubs-tag--warn' }, quota.subscriptionStatus),
               id === 'glm' && h('span', { className: 'osubs-tag osubs-tag--plain' }, t.glmBoost),
             ),
           ),
           h('div', { className: 'osubs-actions', onClick: (event) => event.stopPropagation() },
-            id === 'opencode-go' && h(Button, { size: 'sm', onClick: () => onEditGoName(row), label: t.opencodeGoEditName }),
             !row.active && h(Button, { size: 'sm', onClick: () => onSwitch(id, row.id), label: t.switchTo }),
+            h(Button, {
+              size: 'sm',
+              disabled: refreshing,
+              onClick: async () => {
+                if (refreshBusy) return
+                setRefreshBusy(true)
+                try {
+                  await Promise.all([
+                    onRefreshQuota(id, row.id),
+                    new Promise((resolve) => setTimeout(resolve, 400)),
+                  ])
+                } finally {
+                  setRefreshBusy(false)
+                }
+              },
+              label: h('span', { className: 'osubs-refresh' + (refreshing ? ' osubs-refresh--spin' : '') },
+                h(IconRefresh), t.quotaRefresh),
+            }),
             h(Button, { size: 'sm', onClick: () => onLogout(id, row.id), label: t.logout }),
           ),
         ),
@@ -1942,7 +2144,6 @@ window.__ModuleLoader__.load({
             t,
             family: id,
             quota,
-            onRefresh: () => onRefreshQuota(id, row.id),
             onReset: id === 'codex' && onResetQuota ? () => onResetQuota(id, row.id) : undefined,
           }),
           id === 'opencode-go' && quota?.useBalance && Number(quota.balance) > 0
@@ -1969,12 +2170,9 @@ window.__ModuleLoader__.load({
       const [goWorkspace, setGoWorkspace] = useState('')
       const [goBusy, setGoBusy] = useState(false)
       const [goMessage, setGoMessage] = useState('')
-      const [goEdit, setGoEdit] = useState(null)
-      const [goName, setGoName] = useState('')
       const roster = Array.isArray(account?.accounts) ? account.accounts : []
       const loggedIn = Boolean(account?.loggedIn) || roster.length > 0
       const busy = Boolean(account?.busy)
-      const status = busy ? t.busy : loggedIn ? t.loggedIn : t.loggedOut
       const closeAdd = () => {
         setGoMessage('')
         setAddOpen(false)
@@ -1982,12 +2180,16 @@ window.__ModuleLoader__.load({
       useEffect(() => {
         if (busy) setAddOpen(true)
       }, [busy])
-      return h('section', { className: 'osubs-card' },
+      return h('section', { className: 'osubs-card osubs-card--legend' },
         h('header', { className: 'osubs-card-head' },
           h('h3', { className: 'osubs-card-title' }, title),
-          h('span', {
-            className: `osubs-status${loggedIn ? ' osubs-status--on' : busy ? ' osubs-status--busy' : ''}`,
-          }, status),
+          h('div', { className: 'osubs-card-side' },
+            loggedIn && !busy && h(Button, {
+              size: 'sm',
+              onClick: () => setAddOpen(true),
+              label: t.addAccount,
+            }),
+          ),
         ),
         roster.length > 0 && h('div', { className: 'osubs-accts' },
           roster.map((row) => h(AccountCard, {
@@ -1999,53 +2201,8 @@ window.__ModuleLoader__.load({
             onLogout,
             onRefreshQuota,
             onResetQuota,
-            onEditGoName: (row) => {
-              setGoName(row.displayName || row.email || '')
-              setGoMessage('')
-              setGoEdit(row)
-            },
             key: row.id,
           })),
-        ),
-        goEdit && h(CenterDialog, {
-          titleId: 'osubs-go-name',
-          title: t.opencodeGoEditName,
-          closeLabel: t.dialogClose,
-          onClose: () => setGoEdit(null),
-          cardClass: 'osubs-dsw-card osubs-dsw-card--add',
-          bodyClass: 'osubs-dsw-body osubs-dsw-body--stack',
-        },
-          h('form', {
-            className: 'osubs-fields',
-            onSubmit: async (event) => {
-              event.preventDefault()
-              if (goBusy) return
-              setGoBusy(true)
-              setGoMessage('')
-              try {
-                await onGoSave({ id: goEdit.id, displayName: goName })
-                setGoEdit(null)
-              } catch (error) {
-                setGoMessage(t.opencodeGoFailed + ': ' + (error instanceof Error ? error.message : String(error)))
-              } finally {
-                setGoBusy(false)
-              }
-            },
-          },
-            h('input', {
-              className: 'osubs-input',
-              value: goName,
-              onChange: (event) => setGoName(event.target.value),
-              'aria-label': t.opencodeGoName,
-              placeholder: t.opencodeGoName,
-              maxLength: 120,
-              autoFocus: true,
-            }),
-            h('div', { className: 'osubs-actions' },
-              h(Button, { type: 'submit', variant: 'primary', disabled: goBusy, label: t.opencodeGoSave }),
-            ),
-          ),
-          goMessage && h('p', { className: 'osubs-hint osubs-bad' }, goMessage),
         ),
         account?.detail && h('p', { className: 'osubs-hint osubs-bad' }, `${t.error}: ${account.detail}`),
         pending?.userCode && busy && h('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
@@ -2058,11 +2215,11 @@ window.__ModuleLoader__.load({
           target: '_blank',
           rel: 'noreferrer',
         }, t.openUrl),
-        h('div', { className: 'osubs-actions' },
+        (!loggedIn || busy) && h('div', { className: 'osubs-actions' },
           h(Button, {
             variant: 'primary',
             onClick: () => setAddOpen(true),
-            label: busy ? t.continueAuth : loggedIn ? t.addAccount : t.login,
+            label: busy ? t.continueAuth : t.login,
           }),
           busy && h(Button, { onClick: () => onCancel(id), label: t.cancel }),
         ),
@@ -2557,49 +2714,99 @@ window.__ModuleLoader__.load({
     }
 
     function ModelRow({ t, model, onToggle, locked }) {
-      return h('label', { className: 'osubs-model' },
-        h('input', {
-          type: 'checkbox',
-          checked: Boolean(model.enabled) && !locked,
+      const enabled = Boolean(model.enabled) && !locked
+      return h('div', { className: 'osubs-mrow' },
+        h('div', { className: 'osubs-mname' },
+          h('span', null, model.name),
+          Array.isArray(model.input) && model.input.includes('image')
+            && h('span', { className: 'osubs-vision', title: t.visionTag }, h(IconEye)),
+          model.large && h('span', { className: 'osubs-tag' }, t.largeTag),
+          model.fast && h('span', { className: 'osubs-tag osubs-tag--fast' }, t.fastTag),
+        ),
+        h(Switch, {
+          checked: enabled,
           disabled: Boolean(locked),
-          onChange: () => { if (!locked) onToggle(model.key, !model.enabled) },
+          label: model.name,
+          onChange: (on) => onToggle(model.key, on),
         }),
-        h('span', null, model.name),
-        model.large && h('span', { className: 'osubs-tag' }, t.largeTag),
-        model.fast && h('span', { className: 'osubs-tag osubs-tag--fast' }, t.fastTag),
       )
     }
 
-    function ModelFamily({ t, group, onToggle, onFamily, onOpenFamily }) {
-      const models = Array.isArray(group.models) ? group.models : []
-      const locked = !group.loggedIn
-      const enabledCount = locked ? 0 : models.filter((model) => model.enabled).length
-      return h('div', { className: 'osubs-family' },
-        h('div', { className: 'osubs-family-head' },
-          h('div', { className: 'osubs-family-meta' },
-            h('h4', { className: 'osubs-family-title' }, group.displayName),
-            h('span', { className: 'osubs-note' }, fill(t.modelsOn, `${enabledCount} / ${models.length}`)),
-          ),
-          locked
-            ? h(Button, { size: 'sm', variant: 'primary', onClick: () => onOpenFamily?.(group.family), label: t.login })
-            : h('div', { className: 'osubs-seg' },
-              h(Button, { size: 'sm', onClick: () => onFamily(group.family, true), label: t.modelsAll }),
-              h(Button, { size: 'sm', onClick: () => onFamily(group.family, false), label: t.modelsNone }),
+    function ModelsPanel({ t, catalog, scope, railIdOf, query, onQuery, onToggle, onFamily, onAll, onOpenFamily }) {
+      const all = Array.isArray(catalog) ? catalog : []
+      const q = String(query ?? '').trim().toLowerCase()
+      const groups = all
+        .filter((group) => scope === 'all' || railIdOf(group.family) === scope)
+        .map((group) => ({
+          ...group,
+          models: (Array.isArray(group.models) ? group.models : [])
+            .filter((model) => !q || `${model.name} ${model.id}`.toLowerCase().includes(q)),
+        }))
+        .filter((group) => !q || group.models.length > 0)
+      const total = groups.reduce((n, group) => n + group.models.length, 0)
+      const enabled = groups.reduce((n, group) => (
+        n + (group.loggedIn ? group.models.filter((model) => model.enabled).length : 0)
+      ), 0)
+      const scopeAll = scope === 'all'
+      const single = groups.length === 1 ? groups[0] : undefined
+      const rows = []
+      for (const group of groups) {
+        if (!single) {
+          const groupOn = group.loggedIn ? group.models.filter((model) => model.enabled).length : 0
+          rows.push(h('div', { className: 'osubs-mgroup', key: `g:${group.provider}` },
+            h('span', null, group.displayName),
+            h('span', { className: 'osubs-mgroup-side' },
+              group.loggedIn && h('span', { className: 'osubs-note' }, fill(t.modelsEnabled, `${groupOn} / ${group.models.length}`)),
+              group.loggedIn && h('div', { className: 'osubs-seg' },
+                h(Button, { size: 'sm', onClick: () => onFamily(group.family, true), label: t.modelsAll }),
+                h(Button, { size: 'sm', onClick: () => onFamily(group.family, false), label: t.modelsNone }),
+              ),
+              !group.loggedIn && h('span', { className: 'osubs-note' }, t.modelsNeedLogin),
+              !group.loggedIn && h(Button, { size: 'sm', onClick: () => onOpenFamily?.(group.family), label: t.login }),
             ),
-        ),
-        h('div', { className: 'osubs-models' },
-          models.map((model) => h(ModelRow, { t, model, onToggle, locked, key: model.key })),
-        ),
-      )
-    }
-
-    function ModelPicker({ t, catalog, onToggle, onFamily, onOpenFamily }) {
-      const groups = Array.isArray(catalog) ? catalog : []
+          ))
+        }
+        for (const model of group.models) {
+          rows.push(h(ModelRow, { t, model, onToggle, locked: !group.loggedIn, key: model.key }))
+        }
+      }
       return h('section', { className: 'osubs-card' },
-        h('header', { className: 'osubs-card-head' },
-          h('h3', { className: 'osubs-card-title' }, t.modelsTitle),
+        h('div', { className: 'osubs-mtools' },
+          h('div', { className: 'osubs-msearch' },
+            h(IconSearch),
+            h('input', {
+              value: query,
+              placeholder: t.modelsSearch,
+              'aria-label': t.modelsSearch,
+              autoComplete: 'off',
+              onChange: (event) => onQuery(event.target.value),
+            }),
+          ),
+          h('span', { className: 'osubs-mcount' }, fill(t.modelsEnabled, `${enabled} / ${total}`)),
+          scopeAll && h('div', { className: 'osubs-seg' },
+            h(Button, { size: 'sm', onClick: () => onAll(true), label: t.modelsAll }),
+            h(Button, { size: 'sm', onClick: () => onAll(false), label: t.modelsNone }),
+          ),
+          single && (single.loggedIn
+            ? h('div', { className: 'osubs-seg' },
+              h(Button, { size: 'sm', onClick: () => onFamily(single.family, true), label: t.modelsAll }),
+              h(Button, { size: 'sm', onClick: () => onFamily(single.family, false), label: t.modelsNone }),
+            )
+            : h(Fragment || 'span', null,
+              h('span', { className: 'osubs-note' }, t.modelsNeedLogin),
+              h(Button, { size: 'sm', variant: 'primary', onClick: () => onOpenFamily?.(single.family), label: t.login }),
+            )),
         ),
-        groups.map((group) => h(ModelFamily, { t, group, onToggle, onFamily, onOpenFamily, key: group.provider })),
+        h('p', { className: 'osubs-note' }, t.modelsHint),
+        h('div', { className: 'osubs-mtable' },
+          h('div', { className: 'osubs-mhead' },
+            h('span', null, t.modelsColumnName),
+            h('span', null, t.modelsColumnOn),
+          ),
+          rows.length === 0 && h('p', { className: 'osubs-hint osubs-mempty' },
+            all.length === 0 ? t.loading : t.modelsEmpty),
+          ...rows,
+        ),
       )
     }
 
@@ -2618,6 +2825,28 @@ window.__ModuleLoader__.load({
         stroke: 'currentColor', strokeWidth: 3.2, strokeLinecap: 'round', strokeLinejoin: 'round',
         'aria-hidden': 'true',
       }, h('path', { d: 'M20 6 9 17l-5-5' }))
+    }
+
+    function IconRefresh() {
+      return h('svg', {
+        width: 12, height: 12, viewBox: '0 0 24 24', fill: 'none',
+        stroke: 'currentColor', strokeWidth: 2.2, strokeLinecap: 'round', strokeLinejoin: 'round',
+        'aria-hidden': 'true',
+      },
+        h('path', { d: 'M21 12a9 9 0 1 1-3-6.7' }),
+        h('path', { d: 'M21 3v6h-6' }),
+      )
+    }
+
+    function IconEye() {
+      return h('svg', {
+        width: 13, height: 13, viewBox: '0 0 24 24', fill: 'none',
+        stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round',
+        'aria-hidden': 'true',
+      },
+        h('path', { d: 'M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12Z' }),
+        h('circle', { cx: 12, cy: 12, r: 2.8 }),
+      )
     }
 
     function StatusPill({ tone, icon, label }) {
@@ -2730,18 +2959,16 @@ window.__ModuleLoader__.load({
     }
 
     /** current → latest band; the apply CTA docks on the right when given. */
-    function VersionBand({ currentLabel, latestLabel, current, latest, currentChips, latestChips, busy, cta }) {
+    function VersionBand({ currentLabel, latestLabel, current, latest, busy, cta, latestHot }) {
       return h('div', { className: 'osubs-ver' + (busy ? ' osubs-ver--busy' : '') },
         h('div', { className: 'osubs-ver-cell' },
-          h('span', { className: 'osubs-note' }, currentLabel),
+          h('span', { className: 'osubs-ver-label' }, currentLabel),
           h('span', { className: 'osubs-ver-num' }, current || '—'),
-          ...(Array.isArray(currentChips) ? currentChips : []),
         ),
         h('span', { className: 'osubs-ver-arrow' }, h(IconArrow)),
         h('div', { className: 'osubs-ver-cell' },
-          h('span', { className: 'osubs-note' }, latestLabel),
-          h('span', { className: 'osubs-ver-num' + (latest ? ' osubs-ver-num--next' : '') }, latest || '—'),
-          ...(Array.isArray(latestChips) ? latestChips : []),
+          h('span', { className: 'osubs-ver-label' }, latestLabel),
+          h('span', { className: 'osubs-ver-num' + (latestHot ? ' osubs-ver-num--next' : '') }, latest || '—'),
         ),
         cta && h('span', { className: 'osubs-ver-cta' }, cta),
       )
@@ -2773,10 +3000,15 @@ window.__ModuleLoader__.load({
       const linked = Boolean(linkedPath) || update?.linked === true || local?.linked === true
       const devVersion = update?.devVersion || local?.devVersion
       const version = (linked && devVersion) || fresherAboutVersion(update?.version, local?.version) || '—'
+      // The hourly pass installs a release into the profile copy; a linked
+      // working tree has no copy to swap and hot-reloads from `npm run build`,
+      // so its note states that instead of promising a host restart. The run
+      // outcome is dropped there too: it compares the repo's official number
+      // with the release tag and would always read as 「已是最新」.
       const autoNote = () => {
-        const bits = [t.autoUpdateHourly]
+        const bits = [linked ? t.autoUpdateLinked : t.autoUpdateHourly]
         if (autoState?.at) {
-          const outcome = autoRunText(t, autoState)
+          const outcome = linked ? '' : autoRunText(t, autoState)
           bits.push(fill(t.autoLastCheck, formatClock(autoState.at)) + (outcome ? ' · ' + outcome : ''))
         }
         return bits.join(' · ')
@@ -2832,6 +3064,7 @@ window.__ModuleLoader__.load({
             latestLabel: t.latest,
             current: version,
             latest: latestTag,
+            latestHot: update?.status === 'update',
             cta: pluginCta,
           }),
           h('div', { className: 'osubs-kv' },
@@ -2875,12 +3108,39 @@ window.__ModuleLoader__.load({
       return h(Frag, null, pluginCard)
     }
 
+    const FAMILY_ORDER = [
+      'codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama',
+      'kimi', 'copilot', 'devin', 'cline', 'anthropic', 'opencode-go',
+    ]
+    const FAMILY_NAME = {
+      codex: 'Codex', grok: 'Grok', glm: 'GLM', kiro: 'Kiro', antigravity: 'Antigravity',
+      cursor: 'Cursor', ollama: 'Ollama', kimi: 'Kimi', copilot: 'Copilot', devin: 'Devin',
+      cline: 'Cline', anthropic: 'Claude', 'opencode-go': 'OpenCode Go',
+    }
+    const FAMILY_ICON = {
+      codex: 'codex', grok: 'grok', glm: 'zai', kiro: 'kiro', antigravity: 'antigravity',
+      cursor: 'cursor', ollama: 'ollama', kimi: 'kimi', copilot: 'copilot', devin: 'devin',
+      cline: 'cline', anthropic: 'anthropic', 'opencode-go': 'opencodeGo',
+    }
+    // Brand tints for rail icons whose LobeHub set is mono-only (or whose
+    // color variant needs a tile to read); codex/kiro/devin render their
+    // official colored SVG via `raw`, and grok/cursor/ollama stay
+    // monochrome like their official marks. Hues follow lobehub icons.
+    const FAMILY_COLOR = {
+      glm: '#6366f1', antigravity: '#3186ff', kimi: '#1783ff',
+      copilot: '#8957e5', cline: '#ee6a5e', anthropic: '#d97757',
+      'opencode-go': '#f472b6',
+    }
+    const railIdOf = (fam) => String(fam ?? '').startsWith('opencode-go') ? 'opencode-go' : String(fam ?? '')
+
     function SettingsSection({ rpc, close: _close }) {
       const t = COPY[localeOf()]
       const [snap, setSnap] = useState(readStoredSnap)
       const [pending, setPending] = useState({})
       const [error, setError] = useState('')
-      const [tab, setTab] = useState('codex')
+      const [view, setView] = useState('quota')
+      const [family, setFamily] = useState('all')
+      const [query, setQuery] = useState('')
       // Seed from the last stored snapshot so reopening the tab shows the
       // previously fetched versions instantly instead of a loading flash.
       const [update, setUpdate] = useState(() => readStoredSnap()?.update ?? null)
@@ -2900,7 +3160,9 @@ window.__ModuleLoader__.load({
 
       useEffect(() => {
         void refresh()
-        const timer = setInterval(() => void refresh(), 1500)
+        // The panel stays mounted when inactive (main panels are
+        // retained) — skip polls while the window itself is hidden.
+        const timer = setInterval(() => { if (!document.hidden) void refresh() }, 1500)
         return () => clearInterval(timer)
       }, [refresh])
 
@@ -2961,28 +3223,28 @@ window.__ModuleLoader__.load({
       }
 
       useEffect(() => {
-        if (tab === 'about') {
+        if (view === 'version') {
           // Re-check on every open, but quietly when a cached result is
           // already rendered — only the very first visit shows busy.
           if (!updateBusy) void checkUpdate(false, update !== null)
         }
-      }, [tab])
+      }, [view])
 
       if (rpc === undefined) {
         return h('p', { className: 'osubs-hint' }, t.noRpc)
       }
 
-      const panel = (id, child) => h('div', {
+      const panel = (id, child, show) => h('div', {
         key: id,
-        hidden: tab !== id,
+        hidden: !show,
         className: 'osubs-pane-panel',
         role: 'tabpanel',
       }, child)
 
-      const card = (id, title) => h(ProviderCard, {
+      const card = (id) => h(ProviderCard, {
         t,
         id,
-        title,
+        title: FAMILY_NAME[id] ?? id,
         account: snap?.accounts?.[id],
         pending: pending[id],
         onLogin: (provider, mode, extra) => run('login', { provider, mode, ...extra }),
@@ -3000,51 +3262,60 @@ window.__ModuleLoader__.load({
         },
       })
 
+      const catalogGroups = Array.isArray(snap?.catalog) ? snap.catalog : []
+      const accountCountOf = (id) => {
+        const roster = snap?.accounts?.[id]?.accounts
+        return Array.isArray(roster) ? roster.length : 0
+      }
+      const modelCountOf = (id) => catalogGroups.reduce(
+        (n, group) => n + (railIdOf(group.family) === id && Array.isArray(group.models) ? group.models.length : 0), 0)
+      const railCount = (id) => view === 'models' ? modelCountOf(id) : accountCountOf(id)
+      const railItems = [
+        { id: 'all', name: t.allFamilies, count: FAMILY_ORDER.reduce((n, id) => n + railCount(id), 0) },
+        ...FAMILY_ORDER.map((id) => ({ id, name: FAMILY_NAME[id] ?? id, icon: FAMILY_ICON[id], color: FAMILY_COLOR[id], count: railCount(id) })),
+      ]
+      const quotaPanel = (id) => panel(
+        id, card(id), view === 'quota' && (family === 'all' || family === id),
+      )
+
       return h('div', { className: 'osubs' },
-        h('div', { className: 'osubs-nav', role: 'tablist' },
-          h('div', { className: 'osubs-tabs' },
-            h(Tab, { id: 'codex', label: t.codexTitle, current: tab, onSelect: setTab, icon: 'codex' }),
-            h(Tab, { id: 'grok', label: t.grokTitle, current: tab, onSelect: setTab, icon: 'grok' }),
-            h(Tab, { id: 'glm', label: t.glmTitle, current: tab, onSelect: setTab, icon: 'zai' }),
-            h(Tab, { id: 'kiro', label: t.kiroTitle, current: tab, onSelect: setTab, icon: 'kiro' }),
-            h(Tab, { id: 'antigravity', label: t.antigravityTitle, current: tab, onSelect: setTab, icon: 'antigravity' }),
-            h(Tab, { id: 'cursor', label: t.cursorTitle, current: tab, onSelect: setTab, icon: 'cursor' }),
-            h(Tab, { id: 'ollama', label: t.ollamaTitle, current: tab, onSelect: setTab, icon: 'ollama' }),
-            h(Tab, { id: 'kimi', label: t.kimiTitle, current: tab, onSelect: setTab, icon: 'kimi' }),
-            h(Tab, { id: 'copilot', label: t.copilotTitle, current: tab, onSelect: setTab, icon: 'copilot' }),
-            h(Tab, { id: 'devin', label: t.devinTitle, current: tab, onSelect: setTab, icon: 'devin' }),
-            h(Tab, { id: 'cline', label: t.clineTitle, current: tab, onSelect: setTab, icon: 'cline' }),
-            h(Tab, { id: 'anthropic', label: t.anthropicTitle, current: tab, onSelect: setTab, icon: 'anthropic' }),
-            h(Tab, { id: 'apikey', label: t.apiKeyTitle, current: tab, onSelect: setTab, icon: 'opencodeGo' }),
-          ),
-          h('div', { className: 'osubs-tabs-util' },
-            h(Tab, { id: 'models', label: t.modelsTitle, current: tab, onSelect: setTab, icon: 'models' }),
-            h(Tab, { id: 'about', label: t.aboutTitle, current: tab, onSelect: setTab, icon: 'github' }),
-          ),
+        h('div', { className: 'osubs-ptabs', role: 'tablist' },
+          h(PageTab, { id: 'quota', label: t.quota, view, onSelect: setView }),
+          h(PageTab, { id: 'models', label: t.modelsTitle, view, onSelect: setView }),
+          h(PageTab, { id: 'version', label: t.tabVersion, view, onSelect: setView }),
         ),
-        h('div', { className: 'osubs-pane' },
+        h('div', { className: 'osubs-body' },
+          view !== 'version' && h('div', { className: 'osubs-rail' },
+            h('div', { className: 'osubs-rail-label' }, t.providers),
+            railItems.map((item) => h(RailItem, { item, current: family, onSelect: setFamily, key: item.id }))),
+          h('div', { className: 'osubs-pane' },
           error && h('p', { className: 'osubs-hint osubs-bad' }, error),
-          panel('codex', card('codex', t.codexTitle)),
-          panel('grok', card('grok', t.grokTitle)),
-          panel('glm', card('glm', t.glmTitle)),
-          panel('kiro', card('kiro', t.kiroTitle)),
-          panel('antigravity', card('antigravity', t.antigravityTitle)),
-          panel('cursor', card('cursor', t.cursorTitle)),
-          panel('ollama', card('ollama', t.ollamaTitle)),
-          panel('kimi', card('kimi', t.kimiTitle)),
-          panel('copilot', card('copilot', t.copilotTitle)),
-          panel('devin', card('devin', t.devinTitle)),
-          panel('cline', card('cline', t.clineTitle)),
-          panel('anthropic', card('anthropic', t.anthropicTitle)),
-          panel('apikey', card('opencode-go', t.opencodeGoTitle)),
-          panel('models', h(ModelPicker, {
+          quotaPanel('codex'),
+          quotaPanel('grok'),
+          quotaPanel('glm'),
+          quotaPanel('kiro'),
+          quotaPanel('antigravity'),
+          quotaPanel('cursor'),
+          quotaPanel('ollama'),
+          quotaPanel('kimi'),
+          quotaPanel('copilot'),
+          quotaPanel('devin'),
+          quotaPanel('cline'),
+          quotaPanel('anthropic'),
+          quotaPanel('opencode-go'),
+          panel('models', h(ModelsPanel, {
             t,
             catalog: snap?.catalog,
+            scope: family,
+            railIdOf,
+            query,
+            onQuery: setQuery,
             onToggle: (key, on) => run('models', { key, on }),
-            onFamily: (family, on) => run('models', { family, on }),
-            onOpenFamily: (family) => setTab(String(family).startsWith('opencode-go') ? 'apikey' : family),
-          })),
-          panel('about', h(AboutPanel, {
+            onFamily: (fam, on) => run('models', { family: fam, on }),
+            onAll: (on) => run('models', { all: on }),
+            onOpenFamily: (fam) => { setFamily(railIdOf(fam)); setView('quota') },
+          }), view === 'models'),
+          panel('version', h(AboutPanel, {
             t,
             local: snap?.update,
             update,
@@ -3057,20 +3328,41 @@ window.__ModuleLoader__.load({
               setSnap((current) => current ? { ...current, autoUpdate: checked } : current)
               void run('autoUpdate', { autoUpdate: checked })
             },
-          })),
+          }), view === 'version'),
+          ),
         ),
+      )
+    }
+
+    /** Sidebar rail glyph: a quota gauge — arc + needle. Matches the
+        host's outline icon idiom; the PanelRow button owns the chrome. */
+    function PanelGlyph({ size }) {
+      return h('svg', {
+        viewBox: '0 0 20 20', width: size, height: size,
+        fill: 'none', stroke: 'currentColor', strokeWidth: 1.5,
+        strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': 'true',
+      },
+        h('path', { d: 'M3.4 14a6.8 6.8 0 1 1 13.2 0' }),
+        h('path', { d: 'M10 13.6 13.4 8.4' }),
+        h('circle', { cx: 10, cy: 13.7, r: 1.5, fill: 'currentColor', stroke: 'none' }),
       )
     }
 
     function apply(ctx) {
       const connection = ctx.get('connection')
-      ctx.slots.inject('settings.section', () => ctx.slots.register({
-        name: 'settings.section',
-        id: 'oauth-subs',
-        order: 91,
-        label: () => COPY[localeOf()].nav,
+      const label = () => COPY[localeOf()].panel
+      ctx.slots.inject('main', () => ctx.slots.register({
+        name: 'main',
+        key: 'oauth-subs',
+        label,
         inject: () => ({ rpc: connection?.rpc }),
       }, SettingsSection))
+      ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
+        name: 'sidebar.panellist',
+        id: 'oauth-subs',
+        order: 5,
+        label,
+      }, PanelGlyph))
     }
 
     exports.name = name

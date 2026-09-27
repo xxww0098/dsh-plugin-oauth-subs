@@ -91,18 +91,44 @@ function devinStatusBytes({
   dailyReset = 1_700_000_000,
   weeklyReset = 1_700_100_000,
   displayName = 'Devin Team',
+  monthlyPrompt = undefined,
+  monthlyFlow = undefined,
+  monthlyFlex = undefined,
+  usedPrompt = undefined,
+  usedFlow = undefined,
+  usedFlex = undefined,
+  availablePrompt = undefined,
+  availableFlow = undefined,
+  availableFlex = undefined,
+  overageMicros = undefined,
+  planEnd = undefined,
+  planInfoExtra = Buffer.alloc(0),
+  planStatusExtra = Buffer.alloc(0),
 } = {}) {
   const planInfo = Buffer.concat([
     encodeUint(1, teamsTier),
     encodeString(2, planName),
+    ...(monthlyPrompt !== undefined ? [encodeUint(12, monthlyPrompt)] : []),
+    ...(monthlyFlow !== undefined ? [encodeUint(13, monthlyFlow)] : []),
+    ...(monthlyFlex !== undefined ? [encodeUint(14, monthlyFlex)] : []),
+    planInfoExtra,
     encodeMessage(33, encodeString(8, displayName)),
   ])
   const planStatus = Buffer.concat([
     encodeMessage(1, planInfo),
+    ...(planEnd !== undefined ? [encodeMessage(3, encodeUint(1, planEnd))] : []),
+    ...(availableFlex !== undefined ? [encodeUint(4, availableFlex)] : []),
+    ...(usedFlow !== undefined ? [encodeUint(5, usedFlow)] : []),
+    ...(usedPrompt !== undefined ? [encodeUint(6, usedPrompt)] : []),
+    ...(usedFlex !== undefined ? [encodeUint(7, usedFlex)] : []),
+    ...(availablePrompt !== undefined ? [encodeUint(8, availablePrompt)] : []),
+    ...(availableFlow !== undefined ? [encodeUint(9, availableFlow)] : []),
     encodeUint(14, dailyRemaining),
     encodeUint(15, weeklyRemaining),
+    ...(overageMicros !== undefined ? [encodeUint(16, overageMicros)] : []),
     encodeUint(17, dailyReset),
     encodeUint(18, weeklyReset),
+    planStatusExtra,
   ])
   const userStatus = Buffer.concat([
     encodeString(3, name),
@@ -271,6 +297,55 @@ test('GetUserStatus decode feeds quota rows with ms resets and plan', () => {
   assert.equal(parsed.rows[0].resetAt, 1_700_000_000_000)
   assert.equal(parsed.rows[1].kind, 'weekly')
   assert.equal(parsed.rows[1].remainingPercent, 60)
+})
+
+test('credit buckets emit used/limit rows and overage shows as usd', () => {
+  const parsed = parseDevinUserStatus(decodeGetUserStatusResponse(devinStatusBytes({
+    monthlyPrompt: 2000,
+    usedPrompt: 300,
+    availablePrompt: 1700,
+    monthlyFlow: 100,
+    usedFlow: 10,
+    availableFlow: 90,
+    availableFlex: 25,
+    overageMicros: 1_829_587_876,
+    planEnd: 1_700_200_000,
+  })))
+  assert.equal(parsed.rows.length, 6)
+  const [prompt, flow, flex, overage, daily, weekly] = parsed.rows
+  assert.deepEqual(
+    { kind: prompt.kind, product: prompt.product, used: prompt.used, total: prompt.total, remaining: prompt.remaining, remainingPercent: prompt.remainingPercent, resetAt: prompt.resetAt },
+    { kind: 'cycle', product: 'prompt', used: 300, total: 2000, remaining: 1700, remainingPercent: 85, resetAt: 1_700_200_000_000 },
+  )
+  assert.equal(flow.kind, 'cycle')
+  assert.equal(flow.used, 10)
+  assert.equal(flow.total, 100)
+  assert.equal(flex.kind, 'prepaid')
+  assert.equal(flex.remaining, 25)
+  assert.equal(overage.kind, 'prepaid')
+  assert.equal(overage.product, 'overage')
+  assert.equal(overage.unit, 'usd')
+  assert.ok(Math.abs(overage.remaining - 1829.587876) < 1e-6)
+  assert.equal(daily.kind, 'primary')
+  assert.equal(weekly.kind, 'weekly')
+})
+
+test('credit sentinel -1 (Pro/Max uncapped) renders an unlimited row', () => {
+  // int32 -1 is a 10-byte varint: field 8 = planStatus.available_prompt_credits,
+  // field 12 = planInfo.monthly_prompt_credits. Live Pro payload carries both.
+  const availMinusOne = Buffer.from([0x40, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01])
+  const monthlyMinusOne = Buffer.from([0x60, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01])
+  const parsed = parseDevinUserStatus(decodeGetUserStatusResponse(devinStatusBytes({
+    planInfoExtra: monthlyMinusOne,
+    planStatusExtra: availMinusOne,
+  })))
+  assert.equal(parsed.rows.length, 3)
+  assert.deepEqual(
+    { kind: parsed.rows[0].kind, product: parsed.rows[0].product, unlimited: parsed.rows[0].unlimited },
+    { kind: 'prepaid', product: 'prompt', unlimited: true },
+  )
+  assert.equal(parsed.rows[1].kind, 'primary')
+  assert.equal(parsed.rows[2].kind, 'weekly')
 })
 
 test('picker collapse keeps variants, defaults, and modifier buckets', () => {

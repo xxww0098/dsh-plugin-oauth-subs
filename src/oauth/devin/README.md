@@ -111,6 +111,8 @@ unary GetUserStatus  server.codeium.com  /exa.seat_management_pb.SeatManagementS
 
 `decodePlanStatus` 把 `dailyQuotaResetAt` / `weeklyQuotaResetAt`（unix 秒）转成 **毫秒**。`hideDailyQuota` / `hideWeeklyQuota` 为 true 时不画那条行。套餐：优先 `planInfo.planName`，否则 `userStatus.teamsTier` 查 `DEVIN_TIER_NAMES`，最后 `planInfo.isDevin` 兜底 `'devin'`。`plan_start`/`plan_end` 是 protobuf Timestamp（unix 秒，proto.ts 里已转毫秒）。
 
+点数桶（Prompt / Flow / Flex Credits）排在日/周条之前：月额度 = `planInfo.monthly*Credits`（field 12/13/14），已用 = `planStatus.used*Credits`（6/5/7），**`available*Credits`（8/9/4）是服务器报的剩余余额**——加购会让它偏离 limit−used。Pro/Max 套餐 `monthly_*_credits` 与 `available_*_credits` 发 `-1`（无限哨兵，int32 十字节 varint，proto.ts 按有符号解）——渲染为「不限量」行；limit=0 且全零的桶不发行，只有余额的桶画预付式「剩余 N」行。`overage_balance_micros`（16，int64 微美元）≠0 时追加一行美元「超额余额」。周期重置用 `plan_end`。字段语义对照 oh-my-pi `usage/devin.ts`（`DevinCreditBucket`）。
+
 ## 缓存
 
 | | |

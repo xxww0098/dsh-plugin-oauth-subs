@@ -901,3 +901,4 @@ test('runAutoUpdate installs a newer tag and records the outcome', async () => {
   const snap = await controller.snapshot()
   assert.equal(snap.autoUpdateState.status, 'installed')
 })
+
