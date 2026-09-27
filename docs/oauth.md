@@ -151,8 +151,10 @@ PKCE `claude.ai/oauth/authorize`（`code=true`、state 在授权与交换都回�
 token `platform.claude.com/v1/oauth/token`（JSON）、
 hop `api.anthropic.com/v1/messages` 带 `anthropic-beta: claude-code-20250219,oauth-2025-04-20`
 + `x-app: cli`、身份 `api.anthropic.com/api/oauth/profile`（uuid 入 vault 不外露，email 做标签）。
-额度无专用端点：读 Messages 响应的 `anthropic-ratelimit-unified-{5h,7d}-{utilization,reset}`
-（1-token 探针，429 也算答案）。导入 `~/.claude/.credentials.json`（Keychain 不读）。
+额度：Messages 响应的 `anthropic-ratelimit-unified-{5h,7d}-{utilization,reset}` 供 5h/7d
+进度使用；经钉住 CLI 与 Max 活测确认的 `GET api.anthropic.com/api/oauth/usage`
+`limits[].weekly_scoped` 补模型专属周限额（Fable）。导入按钉住客户端顺序读 macOS Keychain
+`Claude Code-credentials`（账号 `$USER`）与 `<CLAUDE_CONFIG_DIR 或 ~/.claude>/.credentials.json`。
 
 **不要发明：** scope / beta / client id 变体；`anthropic-beta` 加未钉 feature；会话 / 缓存
 id 字段（Messages API 未知顶层字段 400）；`cache_control` 检查点（宿主 lane 已管理）；

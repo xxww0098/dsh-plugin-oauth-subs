@@ -37,7 +37,7 @@ npm run analyze -- path/to/session.jsonl
 - `lib/` 是仓库里构建好的，git / npm 安装**不会**重新构建——提交前必须 `npm run build`。
 - 先确认在看哪个 profile：`ls -la ~/.dsh/profiles/*/node_modules/dsh-plugin-oauth-subs`（symlink = link 到本仓库；实体目录 = 安装副本）。web profile 默认就是 link。
 - 插件自更新不会碰 link：`installedPackageDirs` 只认 `~/.dsh/profiles/` 下的真实副本（realpath 去重），指向仓库的 symlink 被跳过。
-- 热链要在界面上认得出：`localUpdateInfo` 给出 `linked` / `linkedPath`（realpath 落在 `~/.dsh/profiles` 之外即热链）与 `devVersion`，About 的当前版本直接显示 `<版本>-dev.<n>`、另列本地路径、撤掉自动更新 CTA——否则仓库正式号会被当成发布版报「已是最新」。
+- 热链要在界面上认得出：`localUpdateInfo` 给出 `linked` / `linkedPath`（realpath 落在 `~/.dsh/profiles` 之外即热链）与 `devVersion`，About 的当前版本直接显示 `<版本>-dev.<n>`、另列本地路径、撤掉「安装更新」CTA；**自动更新开关保留**，但热链下 note 换成 `autoUpdateLinked`（「本地链接：npm run build 后热重载生效，无需重启宿主」，需 profile 配 hmr root）且不显示 release 结果——否则仓库正式号会被当成发布版报「已是最新」，并在热更新下继续承诺重启。
 
 ### 热重载（本地插件目录）
 
@@ -129,10 +129,13 @@ node --input-type=module -e '
 - Hop references — `docs/oauth.md`. Official/community repos per family;
   update its table whenever a hop copies a new client or reverse.
 - UI page rules — `design-system/MASTER.md` +
-  `design-system/pages/settings-workbench.md` (tabs, cards, quota bars,
-  dialogs). Family tabs are icon-only 36×36 LobeHub mono paths inlined in
-  `TAB_ICONS`; one stored session = one `AccountCard`; quota bars are
-  remaining-bars; add-account chrome is a centered Dialog.
+  `design-system/pages/settings-workbench.md` (page tabs, rail, cards,
+  quota bars, dialogs). Entry is a `sidebar.panellist` glyph under the
+  插件 rail button → a keyed `main` panel (not Settings); top nav is
+  额度/模型/版本 `PageTab`s; families live in a left rail with 16px
+  LobeHub marks inlined in `TAB_ICONS`; one stored session = one
+  `AccountCard`; quota bars are remaining-bars; model toggles are
+  `Switch` rows; add-account chrome is a centered Dialog.
 
 ## Rules (cross-family)
 

@@ -1,15 +1,22 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, writeFile, rm } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { createProxy, hasOutputEvent } from '../lib/oauth/proxy.js'
-import { ANTHROPIC_MESSAGES_URL, ANTHROPIC_MODELS, ANTHROPIC_BETA, ANTHROPIC_USER_AGENT, anthropicSession, anthropicUpstreamHeaders, exchangeAnthropicCode, isAnthropicPermanentRefreshError } from '../lib/oauth/anthropic/index.js'
+import { ANTHROPIC_MESSAGES_URL, ANTHROPIC_USAGE_URL, ANTHROPIC_MODELS, ANTHROPIC_BETA, ANTHROPIC_USER_AGENT, anthropicSession, anthropicUpstreamHeaders, exchangeAnthropicCode, isAnthropicPermanentRefreshError } from '../lib/oauth/anthropic/index.js'
 import { OAuthEndpointError } from '../lib/oauth/codex/index.js'
 import { applyAnthropicCache, anthropicConversationId, ANTHROPIC_STABLE_SESSION } from '../lib/oauth/anthropic/cache.js'
 import { normalizeAnthropicMessagesBody } from '../lib/oauth/anthropic/request.js'
-import { fetchAnthropicQuota, parseAnthropicRateLimitHeaders } from '../lib/oauth/anthropic/quota.js'
-import { importAnthropicAuth, ANTHROPIC_IMPORT_EMPTY } from '../lib/oauth/anthropic/import.js'
+import { fetchAnthropicQuota, parseAnthropicRateLimitHeaders, parseAnthropicUsage } from '../lib/oauth/anthropic/quota.js'
+import {
+  importAnthropicAuth,
+  ANTHROPIC_IMPORT_EMPTY,
+  anthropicKeychainAccount,
+  anthropicKeychainService,
+  readAnthropicKeychainTokens,
+} from '../lib/oauth/anthropic/import.js'
 import { accountIdOf, listAccounts, publicSession, saveSession } from '../lib/oauth/store.js'
 import { FAMILY_IDS, familyOfProvider, buildProviders } from '../lib/oauth/models.js'
 
@@ -142,7 +149,60 @@ test('models wiring: family suffix and harness route', () => {
   assert.equal(route.models.find((model) => model.id === 'claude-opus-5-5').maxTokens, 32_768)
 })
 
-test('quota: unified rate-limit headers on 200 and 429', async () => {
+test('quota: parses the OAuth usage endpoint scoped Fable meter', () => {
+  const parsed = parseAnthropicUsage({
+    five_hour: { utilization: 11, resets_at: '2026-09-27T09:39:59.972728+00:00' },
+    seven_day: { utilization: 3, resets_at: '2026-10-03T00:59:59.972750+00:00' },
+    limits: [
+      { kind: 'session', percent: 11, resets_at: '2026-09-27T09:39:59.972728+00:00' },
+      { kind: 'weekly_all', percent: 3, resets_at: '2026-10-03T00:59:59.972750+00:00' },
+      {
+        kind: 'weekly_scoped', group: 'weekly', percent: 0, is_active: false,
+        resets_at: '2026-10-03T01:00:00+00:00',
+        scope: { model: { id: null, display_name: 'Fable' }, surface: null },
+      },
+    ],
+  })
+  assert.equal(parsed.rows.length, 3)
+  assert.equal(parsed.rows[0].kind, 'primary')
+  assert.equal(parsed.rows[1].kind, 'weekly')
+  const fable = parsed.rows[2]
+  assert.equal(fable.key, 'anthropic-7d-fable')
+  assert.equal(fable.kind, 'weekly_scoped')
+  assert.equal(fable.product, 'Fable')
+  assert.equal(fable.usedPercent, 0)
+  assert.equal(fable.remainingPercent, 100)
+  assert.equal(fable.resetAt, Date.parse('2026-10-03T01:00:00+00:00'))
+
+  const fallback = parseAnthropicUsage({ five_hour: { utilization: 25 }, seven_day: { utilization: 50 } })
+  assert.deepEqual(fallback.rows.map((row) => row.kind), ['primary', 'weekly'])
+  assert.deepEqual(parseAnthropicUsage({ limits: [{ kind: 'weekly_scoped', percent: 20, scope: {} }] }).rows, [])
+})
+
+test('quota: legacy seven_day_* fields fill scoped meters not covered by limits[]', () => {
+  const parsed = parseAnthropicUsage({
+    seven_day: { utilization: 6, resets_at: '2026-10-03T00:59:59Z' },
+    seven_day_sonnet: { utilization: 41, resets_at: '2026-10-03T00:59:59Z' },
+    seven_day_opus: null,
+    seven_day_overage_included: { utilization: 12, resets_at: '2026-10-03T01:00:00Z' },
+  })
+  assert.deepEqual(parsed.rows.map((row) => row.key), ['anthropic-7d', 'anthropic-7d-sonnet', 'anthropic-7d-fable'])
+  const fable = parsed.rows[2]
+  assert.equal(fable.kind, 'weekly_scoped')
+  assert.equal(fable.product, 'Fable')
+  assert.equal(fable.usedPercent, 12)
+  assert.equal(fable.remainingPercent, 88)
+
+  // limits[] wins over the same-named legacy field.
+  const deduped = parseAnthropicUsage({
+    seven_day_overage_included: { utilization: 99 },
+    limits: [{ kind: 'weekly_scoped', percent: 2, scope: { model: { display_name: 'Fable' } } }],
+  })
+  assert.deepEqual(deduped.rows.map((row) => row.product), ['Fable'])
+  assert.equal(deduped.rows[0].usedPercent, 2)
+})
+
+test('quota: merges OAuth scoped meters with Messages headers and falls back safely', async () => {
   const headers = {
     'anthropic-ratelimit-unified-5h-utilization': '0.29',
     'anthropic-ratelimit-unified-5h-reset': '2026-09-27T05:00:00Z',
@@ -157,32 +217,99 @@ test('quota: unified rate-limit headers on 200 and 429', async () => {
   assert.equal(parsed.rows[1].resetAt, undefined, 'a missing reset header is omitted, not invented')
   assert.deepEqual(parseAnthropicRateLimitHeaders(new Headers()).rows, [])
 
-  let calls = 0
+  const fableHeaders = parseAnthropicRateLimitHeaders(new Headers({
+    'anthropic-ratelimit-unified-7d_oi-utilization': '0.25',
+    'anthropic-ratelimit-unified-7d_oi-reset': '2026-10-03T01:00:00Z',
+  }))
+  assert.equal(fableHeaders.rows.length, 1)
+  assert.equal(fableHeaders.rows[0].key, 'anthropic-7d-fable')
+  assert.equal(fableHeaders.rows[0].kind, 'weekly_scoped')
+  assert.equal(fableHeaders.rows[0].product, 'Fable')
+  assert.equal(fableHeaders.rows[0].remainingPercent, 75)
+
+  const usagePayload = {
+    limits: [
+      { kind: 'session', percent: 11, resets_at: '2026-09-27T09:39:59Z' },
+      { kind: 'weekly_all', percent: 3, resets_at: '2026-10-03T00:59:59Z' },
+      { kind: 'weekly_scoped', percent: 0, resets_at: '2026-10-03T01:00:00Z', scope: { model: { display_name: 'Fable' } } },
+    ],
+  }
+  const urls = []
   const fetchFn = async (url, init) => {
-    calls += 1
-    assert.equal(String(url), ANTHROPIC_MESSAGES_URL)
+    const target = String(url)
+    urls.push(target)
+    assert.equal(init.headers.authorization, 'Bearer sk-ant-oat01-example')
+    if (target === ANTHROPIC_USAGE_URL) return Response.json(usagePayload)
+    assert.equal(target, ANTHROPIC_MESSAGES_URL)
     const body = JSON.parse(init.body)
     assert.equal(body.max_tokens, 1)
     assert.equal(body.model, 'claude-haiku-4-5')
-    assert.equal(init.headers.authorization, 'Bearer sk-ant-oat01-example')
     return new Response(JSON.stringify({ id: 'msg_1' }), { status: 200, headers })
   }
   const quota = await fetchAnthropicQuota({ accessToken: 'sk-ant-oat01-example' }, fetchFn)
-  assert.equal(calls, 1)
-  assert.equal(quota.rows.length, 2)
+  assert.deepEqual(urls.sort(), [ANTHROPIC_MESSAGES_URL, ANTHROPIC_USAGE_URL].sort())
+  assert.equal(quota.rows.length, 3)
+  assert.equal(quota.rows[0].usedPercent, 29, 'Messages headers remain the primary source for existing bars')
+  assert.equal(quota.rows[2].product, 'Fable')
 
-  const exhausted = await fetchAnthropicQuota({ accessToken: 'sk-ant-oat01-example' }, async () =>
-    new Response(JSON.stringify({ error: { message: 'rate limited' } }), {
+  const exhausted = await fetchAnthropicQuota({ accessToken: 'sk-ant-oat01-example' }, async (url) => {
+    if (String(url) === ANTHROPIC_USAGE_URL) return Response.json({})
+    return new Response(JSON.stringify({ error: { message: 'rate limited' } }), {
       status: 429,
       headers: { 'anthropic-ratelimit-unified-5h-utilization': '1' },
-    }))
+    })
+  })
   assert.equal(exhausted.subscriptionStatus, 'rate_limited')
   assert.equal(exhausted.rows[0].usedPercent, 100)
+
+  const headerFallback = await fetchAnthropicQuota({ accessToken: 'sk-ant-oat01-example' }, async (url) => {
+    if (String(url) === ANTHROPIC_USAGE_URL) throw new Error('usage endpoint unavailable')
+    return new Response('{}', { status: 200, headers: { 'anthropic-ratelimit-unified-5h-utilization': '0.2' } })
+  })
+  assert.equal(headerFallback.rows.length, 1)
+  assert.equal(headerFallback.rows[0].remainingPercent, 80)
 
   await assert.rejects(
     fetchAnthropicQuota({ accessToken: 'sk-ant-oat01-example' }, async () => Response.json({ id: 'msg_2' })),
     /no unified rate-limit headers/,
   )
+})
+
+test('quota: keeps prior scoped meters while the usage endpoint is rate limited', async () => {
+  const prior = [
+    { key: 'anthropic-7d-fable', kind: 'weekly_scoped', label: 'Fable', product: 'Fable', usedPercent: 2, remainingPercent: 98, resetAt: 1790989200000 },
+  ]
+  const headerRows = { 'anthropic-ratelimit-unified-7d-utilization': '0.06' }
+  const limited = await fetchAnthropicQuota({ accessToken: 'sk-ant-oat01-example' }, async (url) => {
+    if (String(url) === ANTHROPIC_USAGE_URL) {
+      return Response.json({ error: { type: 'rate_limit_error', message: 'Rate limited' } }, { status: 429 })
+    }
+    return new Response('{}', { status: 200, headers: headerRows })
+  }, prior)
+  assert.deepEqual(limited.rows.map((row) => row.key), ['anthropic-7d', 'anthropic-7d-fable'])
+
+  // A 200 without scoped entries means the meter is gone — do not resurrect it.
+  const gone = await fetchAnthropicQuota({ accessToken: 'sk-ant-oat01-example' }, async (url) => {
+    if (String(url) === ANTHROPIC_USAGE_URL) {
+      return Response.json({ limits: [{ kind: 'weekly_all', percent: 6, resets_at: '2026-10-03T00:59:59Z' }] })
+    }
+    return new Response('{}', { status: 200, headers: headerRows })
+  }, prior)
+  assert.deepEqual(gone.rows.map((row) => row.key), ['anthropic-7d'])
+
+  // Header 7d_oi and limits[] describe the same meter — emit it once.
+  const both = await fetchAnthropicQuota({ accessToken: 'sk-ant-oat01-example' }, async (url) => {
+    if (String(url) === ANTHROPIC_USAGE_URL) {
+      return Response.json({
+        limits: [{ kind: 'weekly_scoped', percent: 2, scope: { model: { display_name: 'Fable' } } }],
+      })
+    }
+    return new Response('{}', {
+      status: 200,
+      headers: { ...headerRows, 'anthropic-ratelimit-unified-7d_oi-utilization': '0.4' },
+    })
+  })
+  assert.deepEqual(both.rows.filter((row) => row.kind === 'weekly_scoped').map((row) => row.key), ['anthropic-7d-fable'])
 })
 
 test('proxy: /anthropic/v1/messages forwards with the oauth identity and strips DSH fields', async () => {
@@ -307,4 +434,130 @@ test('import: reads ~/.claude/.credentials.json and reports its own empty marker
   const empty = join(dir, 'empty.json')
   await writeFile(empty, JSON.stringify({}))
   await assert.rejects(importAnthropicAuth([empty]), (error) => error.message === ANTHROPIC_IMPORT_EMPTY)
+})
+
+const CLAUDE_KEYCHAIN_JSON = JSON.stringify({
+  claudeAiOauth: {
+    accessToken: 'sk-ant-oat01-keychain',
+    refreshToken: 'ref-keychain',
+    expiresAt: Date.now() + 3_600_000,
+    scopes: ['user:inference'],
+  },
+})
+
+test('import: macOS reads the pinned Keychain item first, plaintext file stays the fallback', async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'anthropic-keychain-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const calls: any[] = []
+  const execFileFn = async (file, args, options) => {
+    calls.push({ file, args, options })
+    return { stdout: CLAUDE_KEYCHAIN_JSON }
+  }
+  const result = await importAnthropicAuth(undefined, {
+    platform: 'darwin',
+    env: { USER: 'tester' },
+    home: dir,
+    execFileFn,
+  })
+  assert.equal(result.session.accessToken, 'sk-ant-oat01-keychain')
+  assert.equal(result.session.refreshToken, 'ref-keychain')
+  assert.equal(result.source, 'keychain:Claude Code-credentials')
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].file, 'security')
+  assert.deepEqual(calls[0].args, [
+    'find-generic-password',
+    '-a',
+    'tester',
+    '-w',
+    '-s',
+    'Claude Code-credentials',
+  ])
+  assert.ok(calls[0].options.timeout > 0)
+})
+
+test('import: a failed macOS Keychain probe falls back to the plaintext file', async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'anthropic-keychain-fallback-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const configDir = join(dir, 'relocated')
+  const credentials = join(configDir, '.credentials.json')
+  await mkdir(configDir, { recursive: true })
+  await writeFile(credentials, JSON.stringify({
+    claudeAiOauth: {
+      accessToken: 'sk-ant-oat01-file',
+      refreshToken: 'ref-file',
+      expiresAt: Date.now() + 3_600_000,
+      scopes: ['user:inference'],
+    },
+  }))
+  let probed = false
+  const execFileFn = async () => {
+    probed = true
+    throw new Error('security: The specified item could not be found in the keychain.')
+  }
+  const result = await importAnthropicAuth(undefined, {
+    platform: 'darwin',
+    env: { USER: 'tester', CLAUDE_CONFIG_DIR: configDir },
+    home: dir,
+    execFileFn,
+  })
+  assert.equal(probed, true)
+  assert.equal(result.session.accessToken, 'sk-ant-oat01-file')
+  assert.equal(result.source, credentials)
+})
+
+test('import: non-darwin never probes the Keychain and honours CLAUDE_CONFIG_DIR', async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'anthropic-config-dir-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const configDir = join(dir, 'claude-config')
+  await mkdir(configDir, { recursive: true })
+  await writeFile(join(configDir, '.credentials.json'), JSON.stringify({
+    claudeAiOauth: {
+      accessToken: 'sk-ant-oat01-linux',
+      refreshToken: 'ref-linux',
+      expiresAt: Date.now() + 3_600_000,
+    },
+  }))
+  let probed = false
+  const result = await importAnthropicAuth(undefined, {
+    platform: 'linux',
+    env: { CLAUDE_CONFIG_DIR: configDir },
+    home: dir,
+    execFileFn: async () => { probed = true; return { stdout: CLAUDE_KEYCHAIN_JSON } },
+  })
+  assert.equal(probed, false)
+  assert.equal(result.session.accessToken, 'sk-ant-oat01-linux')
+  assert.equal(result.source, join(configDir, '.credentials.json'))
+})
+
+test('keychain service / account mirror the pinned client RD() and tA()', () => {
+  assert.equal(anthropicKeychainService({ env: {} }), 'Claude Code-credentials')
+  assert.equal(
+    anthropicKeychainService({ env: { CLAUDE_CONFIG_DIR: '/tmp/relocated' } }),
+    `Claude Code-credentials-${createHash('sha256').update('/tmp/relocated').digest('hex').slice(0, 8)}`,
+  )
+  assert.match(
+    anthropicKeychainService({ env: { CLAUDE_SECURESTORAGE_CONFIG_DIR: '/tmp/secure' } }),
+    /^Claude Code-credentials-[0-9a-f]{8}$/,
+  )
+  assert.equal(
+    anthropicKeychainService({ env: { CLAUDE_SECURESTORAGE_CONFIG_DIR: '' } }),
+    'Claude Code-credentials',
+  )
+  assert.equal(
+    anthropicKeychainService({ env: { CLAUDE_CODE_OAUTH_CLIENT_ID: 'custom-client' } }),
+    'Claude Code-custom-oauth-credentials',
+  )
+  assert.equal(anthropicKeychainAccount({ env: { USER: 'tester' } }), 'tester')
+  assert.equal(anthropicKeychainAccount({ env: { USER: 'bad user/name' } }), 'claude-code-user')
+  // No USER in env falls through to the OS account name (tA()), never empty.
+  assert.match(anthropicKeychainAccount({ env: {} }), /^[a-zA-Z0-9._-]+$/)
+})
+
+test('readAnthropicKeychainTokens: darwin only, non-JSON payload is not a login', async () => {
+  let called = 0
+  const execFileFn = async () => { called++; return { stdout: 'not json' } }
+  assert.equal(await readAnthropicKeychainTokens({ platform: 'linux', execFileFn }), undefined)
+  assert.equal(called, 0)
+  assert.equal(await readAnthropicKeychainTokens({ platform: 'darwin', env: { USER: 'tester' }, execFileFn }), undefined)
+  assert.equal(called, 1)
 })

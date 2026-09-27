@@ -108,14 +108,23 @@ export declare function parseCursorPeriodUsage(payload: any, extras?: any): {
 } | {
     planType: string | number | undefined;
     account: string | undefined;
-    rows: {
+    rows: ({
         resetAt?: any;
         key: string;
         kind: string;
         product: any;
         usedPercent: number;
         remainingPercent: number;
-    }[];
+    } | {
+        resetAt?: any;
+        remainingPercent?: number | undefined;
+        key: string;
+        kind: string;
+        product: string;
+        unit: string;
+        used: number;
+        total: number;
+    } | undefined)[];
 };
 export declare function fetchCursorQuota(session: any, fetchFn?: typeof fetch): Promise<{
     rows: never[];
@@ -124,14 +133,23 @@ export declare function fetchCursorQuota(session: any, fetchFn?: typeof fetch): 
 } | {
     planType: string | number | undefined;
     account: string | undefined;
-    rows: {
+    rows: ({
         resetAt?: any;
         key: string;
         kind: string;
         product: any;
         usedPercent: number;
         remainingPercent: number;
-    }[];
+    } | {
+        resetAt?: any;
+        remainingPercent?: number | undefined;
+        key: string;
+        kind: string;
+        product: string;
+        unit: string;
+        used: number;
+        total: number;
+    } | undefined)[];
 }>;
 /** Global 5h unix buckets. ollama/ollama#12532: `18000 - (epoch % 18000)`. */
 export declare const OLLAMA_SESSION_WINDOW_S = 18000;
@@ -173,6 +191,8 @@ export declare function fetchCopilotQuota(session: any, fetchFn?: typeof fetch):
  * GetUserStatusResponse → public quota. `plan_status` carries the daily /
  * weekly quota percents (already *remaining*) and unix-second resets; the
  * plan label is `plan_name` or the `teams_tier` enum (16 = Devin Pro).
+ * Credit buckets (prompt / flow / flex) and the accrued overage balance
+ * (micro-USD) come first; plan_end is the billing-cycle reset.
  */
 export declare function parseDevinUserStatus(payload: any): {
     planType: any;

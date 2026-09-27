@@ -169,10 +169,11 @@ POST /aiserver.v1.AuthService/GetEmail                    {}
 
 套餐优先 stripe `individualMembershipType` / `membershipType`，再 usage `membershipType`，缺省才是 Pro。IDE Ultra 活探测 usage 没有 membershipType，必须读 stripe。
 
-两条 `kind: 'product'`，对齐 Cursor 仪表盘百分比（不是 `includedSpend/limit` 美分封顶）。`0.454` 是 0.454 **百分**，不是分数。`clampUsedPct`：已用 > 0 且四舍五入成 0 则显示 1（对上 Cursor「1% API」）。
+一条 `kind: 'cycle'` 美元行 + 两条 `kind: 'product'` 百分比条。美元行取 `planUsage.includedSpend / limit`——**单位是美分**，即 Cursor 仪表盘 `displayMessage`「You've used N% of your included usage」的同一口径；`limit <= 0` 或缺 `includedSpend` 时不发这行。百分比条对齐仪表盘（不是美分封顶）。`0.454` 是 0.454 **百分**，不是分数。`clampUsedPct`：已用 > 0 且四舍五入成 0 则显示 1（对上 Cursor「1% API」）。
 
-| `product` | 字段 | zh | en |
+| `product`/`kind` | 字段 | zh | en |
 |---|---|---|---|
+| `cycle:included` | `planUsage.includedSpend` / `limit`（美分 → `$used/$total`） | 包含额度 | Included usage |
 | `auto` | `planUsage.autoPercentUsed` | 补全 & Composer | Tab completion & Composer |
 | `api` | `planUsage.apiPercentUsed` | API 调用 | API |
 

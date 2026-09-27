@@ -2,11 +2,18 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
-## 2026-09-27：新增 Claude (Anthropic) 订阅家族——归因钉 senpi/pi-ai，活测待首次登录
+## 2026-09-27：Claude 家族「导入本机 Claude Code」在 macOS 必失败——凭据只在 Keychain，明文文件被删
 
-**现象**：宿主本来说 anthropic-messages，但没有任何一家直连 `api.anthropic.com` 的 OAuth 订阅家族；Claude Pro/Max 只能靠别家代理。
-**归因**：Claude Code CLI 无公开源码，登录/请求/目录逐项钉 [oh-my-openagent](https://github.com/code-yeongyu/oh-my-openagent) 引擎 `@code-yeongyu/senpi` 包内 pi-ai（2026-09-26 dev）：PKCE `claude.ai/oauth/authorize`（`code=true`、state 交换回传）、token `platform.claude.com/v1/oauth/token`（JSON）、hop 头 `anthropic-beta: claude-code-20250219,oauth-2025-04-20` + `claude-cli/2.1.280` + `x-app: cli`、身份 `api.anthropic.com/api/oauth/profile`；目录 pi-ai `anthropic.json` 并与 Kiro 行交叉核对；额度无端点，读 `anthropic-ratelimit-unified-{5h,7d}-{utilization,reset}`（社区读取器佐证，1-token 探针）。
-**修复**：`src/oauth/anthropic/`（index/cache/request/quota/import）+ store / controller / proxy `/anthropic/v1/messages` / models（路由**不带** `forceAdaptiveThinking`——真 Anthropic 由宿主按 id 自分派 thinking，GLM 的 compat 是网关 workaround）/ UI tab / `docs/oauth.md` 行与节 / README 双语表。**待活测**：首次登录后跑 ①浏览器登录 round-trip ②`刷新额度` 看 5h/7d 条 ③`npm run analyze` 看前缀缓存命中（宿主 cache_control 检查点应直接生效）④401 后自动刷新重试；结论回填本条。
+**现象**：Claude 标签页点「导入本机 Claude Code」报「未找到 ~/.claude/.credentials.json」。本机实测：`~/.local/bin/claude auth status` = `{loggedIn:false, authMethod:"none"}`；`~/.claude/` 无 `.credentials.json`（只剩 `.credentials.lock`）；Keychain 无 `Claude Code-credentials`（109 项里只有 Claude Desktop 的 `Claude Safe Storage`）；`~/.claude.json` 的 `oauthAccount`（claude_max / default_claude_max_20x）是不含 token 的残留缓存。直接跑 `lib/oauth/anthropic/import.js` 复现 `anthropic-import-empty`。
+**根因**：`import.ts` 只读 `~/.claude/.credentials.json`，但钉住的 `claude-cli/2.1.280` 在 macOS 把 OAuth 凭据存 **Keychain**，且 keychain 写成功后会**删掉明文文件**：二进制里 `var Joe="-credentials"`、`function RD(n=""){…return \`Claude Code\${nn().OAUTH_FILE_SUFFIX}\${n}\${c}\`}`（服务名 `Claude Code-credentials`、账号 `tA()`=`$USER`）、`function A(e){return N()&&e!==void 0?oe(e):ne}`（darwin 异步读走 Keychain）、组合存储 `keychain-with-plaintext-fallback` 的 `update()` 在 `e.update()` 成功后 `await r.delete(s)` 删明文。文件只是 Linux/Windows 回退 ⇒ **登录了也读不到**。次要缺口：`credentialsPaths()` 未认 `CLAUDE_CONFIG_DIR`（Claude Code 认，并据此给服务名加 `-<sha256(configDir)前8位>` 后缀）。
+**修复**：`src/oauth/anthropic/import.ts` 改按钉住客户端的顺序取凭据——darwin 先 `security find-generic-password -a $USER -w -s "Claude Code-credentials"`（服务名 / 账号 / `CLAUDE_CONFIG_DIR` hash 后缀 / `CLAUDE_CODE_OAUTH_CLIENT_ID` 变体逐项照抄二进制 `RD()`/`tA()`，超时 30s 留给系统授权弹窗），失败或非 darwin 再读 `<CLAUDE_CONFIG_DIR 或 ~/.claude>/.credentials.json`（现在认 `CLAUDE_CONFIG_DIR`）；显式传 `paths` 时只读文件（测试 / 已知路径）。UI 文案改成「未找到本机 Claude Code 登录（钥匙串或 ~/.claude/.credentials.json）」，家族 README 与 `docs/oauth.md` 的「Keychain 不读」同步改口。**活测（2026-09-27）**：往登录钥匙串临时写入一条假 `Claude Code-credentials`（`-A`，同一脚本跑完即删、已确认删除），从仓库 `lib/` 直接跑 `importAnthropicAuth()` → `source=keychain:Claude Code-credentials`，token / expiresAt / scopes 全部取到；本机 Claude Code 仍是登出状态，真登录 + 首次系统授权弹窗 + UI 点击这三段待补测。
+
+## 2026-09-27：Claude (Anthropic) 订阅——Fable 专属周限额进度条缺失
+
+**现象**：Claude 账号卡显示 5h/7d 用量，却没有 Fable 单独周限额。
+**归因**：Messages 的 `anthropic-ratelimit-unified-{5h,7d}-{utilization,reset}` 只给统一窗口；钉住的 Claude Code CLI 2.1.280 还调用 `GET api.anthropic.com/api/oauth/usage`，Max 实测 `limits[]` 以 `weekly_scoped` + `scope.model.display_name=Fable` 返回专属百分比与重置时间。
+**修复**：保留 Messages 头作现有 5h/7d 来源，并合并 usage 的 `weekly_scoped` 行；即使 `is_active=false`、利用率为 0 也显示。UI 标签为「每周 · Fable」；错误时两种数据源互为回退。
+**活测**：用户已完成浏览器登录，截图确认账号卡和原 5h/7d 条；真实 saved session 调用新 `fetchAnthropicQuota()` 返回 5h 11%/89% remaining、weekly 3%/97%、Fable 0%/100%（有 `resetAt`）；`npm test` 749/749。前缀缓存命中与 401 自动刷新仍另待测。
 
 ## 2026-09-27：对照 omo/senpi（pi-ai）审请求与刷新链路——token 端点挂死仍钉住 inflight；4xx/5xx 契约维持不学它的代理内重试
 
@@ -14,11 +21,11 @@
 **根因**：`tokens.ts` 对 owner（`#refresh`）没有交换超时——上一条 2026-10-23 记录里「各家 refresh* 均无超时，共享 inflight 永不 settle」只修了等待方（`REFRESH_WAIT_MS`），owner 侧未封口；退避无抖动、无差别。
 **修复**：`TokenManager` 增加 `REFRESH_EXCHANGE_TIMEOUT_MS`（20s，senpi/pi-ai 同款封口为 15s）：交换超时记为瞬时失败退避，token 仍有效则继续用旧 token，inflight 槽位释放给下一次尝试；`forward()` 退避加 SDK 同款 shrink-only 25% 抖动（`retryDelayMs`），且只在真重试前生效——401 刷新重试与网关 reroute 不再付退避；转发的 4xx/5xx 顺带透传 `retry-after-ms`。senpi 的代理内 429/5xx 重试（SDK 契约）**不采纳**：本项目 2026-10-23 已定「4xx/5xx 带 retry-after 转发、客户端按上游节奏退避」，代理内重试会叠加宿主重试倍数；cursor 会话投毒轮换（0-token resource_exhausted 换 conversation id）、Rendezvous 多账号亲和、cache-keepalive 暖 ping（其闸门只认 api.anthropic.com，本项目无此 lane）均无对应故障证据，暂不引入。
 
-## 2026-09-26：热链改动其实不用重启应用 = 漏配 dsh-hmr 的 root
+## 2026-09-27：热链改动其实不用重启应用 = 漏配 dsh-hmr 的 root
 
-**现象**：文档与 About 卡都写着热链改完要「重启宿主」，用户质疑「不是热更新吗」。
-**根因**：DSH 自带 `@deepseek-ai/dsh-hmr`（源码模块热重载）与 `@deepseek-ai/dsh-client-hmr`（client entry 轮询热替换），但 base 组合包默认给 `hmr` 的 `root: []`——只监听 patch / 清单，不监听源码；热链仓库在 profile 之外，不配 `root` 就永远走不到热重载。
-**修复**：desktop profile patch 加 `- id: hmr` + `config.root: [<仓库绝对路径>]`；AGENTS.md 新增「热重载（本地插件目录）」小节（宿主半 `dsh-hmr`、UI 半 `dsh-client-hmr` 500ms 轮询、换包版本仍需重启）；About 卡热链提示改为「`npm run build` 生效（宿主已配 hmr 时无需重启）」。
+**现象**：文档与 About 卡都写着热链改完要「重启宿主」，用户质疑「不是热更新吗」；2026-09-27 同一处复发——热链 profile 的版本卡仍挂着「自动更新」开关与「每小时检查一次，装好新版后重启宿主生效 · 上次检查 21:55 · 已是最新」，用户再问「我们现在不是热更新了吗」（热链既没有「装新版」这一步，也没有重启）。
+**根因**：DSH 自带 `@deepseek-ai/dsh-hmr`（源码模块热重载）与 `@deepseek-ai/dsh-client-hmr`（client entry 轮询热替换），但 base 组合包默认给 `hmr` 的 `root: []`——只监听 patch / 清单，不监听源码；热链仓库在 profile 之外，不配 `root` 就永远走不到热重载。第二次复发是文案没跟 `linked` 分叉：`installedPackageDirs` 按 realpath 跳过 symlink，热链没有可替换的安装副本，`autoUpdateHourly` 的重启承诺与自动更新结果的「已是最新」（拿仓库正式号比 release tag）在热链下都不成立。
+**修复**：desktop profile patch 加 `- id: hmr` + `config.root: [<仓库绝对路径>]`；AGENTS.md 新增「热重载（本地插件目录）」小节（宿主半 `dsh-hmr`、UI 半 `dsh-client-hmr` 500ms 轮询、换包版本仍需重启）。2026-09-27 收口残留：AboutPanel 的 `AutoUpdateRow` **保留**（用户明确要求别移除开关），note 在 `linked` 时改用 `autoUpdateLinked`「本地链接：npm run build 后热重载生效，无需重启宿主（需 profile 配 hmr root）」且不再拼 release 结果（`autoRunText` 拿仓库正式号比 tag 只会是「已是最新」）；宿主 watch 不动；design-system 版本卡与双语 README 同步；`test/ui-client.test.ts` 覆盖。
 
 ## 2026-09-26：热链安装的 About 看不出是本地开发版（当前版本与正式版同号）
 

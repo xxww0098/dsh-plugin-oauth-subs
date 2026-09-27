@@ -56,6 +56,8 @@ DSH  →  本机 Responses 代理  →  POST https://api.x.ai/v1/responses
 
 没有 Codex 那种重置卷 API。卡片不显示「重置额度」。
 
+金额字段全部是 `{ val: <cents> }`（CodexBar `x.ai/billing` 文档口径）：`monthlyLimit` + `usage.includedUsed/totalUsed` = 月度包含池，`onDemandCap`/`onDemandUsed` = 按需消费封顶，`prepaidBalance` = 预付余额 —— 统一计费账号（SuperGrok / X Premium+）这些字段全是 `{val:0}` 或不发，**只有裸百分比**；非统一计费账号才有美元数。`{val}` 形才按美分转 USD（`unit:'usd'`），裸数字照旧当无单位 credits。周期 type 映射：MONTHLY→cycle、DAILY→primary(24h)、其余→weekly。`hasGrokCodeAccess` 渲染成卡片上的 `Grok Code` 标。`x.ai/billing` JSON-RPC 只接在 TUI 里（agent stdio 1.0.41 仍 -32601），别当数据源加。gRPC 帧 nested field 7 = `{type, f32}` 语义未考（疑产品/周期子项），fields 11/13 是 flag —— 不解不画。
+
 档位：JWT / user `subscription_tier` 数字 → `GROK_TIER_NAMES`（Free / SuperGrok / X Basic / X Premium / X Premium+ / SuperGrok Heavy / Lite / Plus）。`SuperGrokPro` 显示 **SuperGrok Heavy**。
 
 ## 缓存

@@ -9,28 +9,29 @@
  *      Kimi Code Plan, GitHub Copilot, and Devin Agent logins
  *   3. syncs logged-in catalogs into llm-pi-ai
  *
- * The client half (Settings > OAuth 订阅) is discovered from package.json
- * `dsh.client` — this module only owns the node process.
+ * The client half (左侧栏面板：插件按钮下方的订阅入口 →
+ * 额度/模型/版本工作台) is discovered from package.json `dsh.client` —
+ * this module only owns the node process.
  */
 import z from '@deepseek-ai/schemastery';
 export declare const name = "dsh-plugin-oauth-subs";
 export declare const inject: string[];
 /** Schemastery Standard Schema — Cordis reads Config["~standard"].validate. */
-export declare const Config: z<Schemastery.ObjectS<{
-    port: z<number, number>;
-    provider: z<string, string>;
-    dataDir: z<string, string>;
-    grokLogin: z<"pkce" | "device", "pkce" | "device">;
-    proxyUrl: z<string, string>;
-    cursorProxy: z<string, string>;
-}>, Schemastery.ObjectT<{
-    port: z<number, number>;
-    provider: z<string, string>;
-    dataDir: z<string, string>;
-    grokLogin: z<"pkce" | "device", "pkce" | "device">;
-    proxyUrl: z<string, string>;
-    cursorProxy: z<string, string>;
-}>>;
+export declare const Config: z<Schemastery.ObjectS<NoInfer<{
+    port: z<number, number, "defined">;
+    provider: z<string, string, "defined">;
+    dataDir: z<string, string, "plain">;
+    grokLogin: z<"pkce" | "device", "pkce" | "device", "defined">;
+    proxyUrl: z<string, string, "plain">;
+    cursorProxy: z<string, string, "plain">;
+}>>, Schemastery.ObjectT<NoInfer<{
+    port: z<number, number, "defined">;
+    provider: z<string, string, "defined">;
+    dataDir: z<string, string, "plain">;
+    grokLogin: z<"pkce" | "device", "pkce" | "device", "defined">;
+    proxyUrl: z<string, string, "plain">;
+    cursorProxy: z<string, string, "plain">;
+}>>, "plain">;
 export declare function registerRpc(ctx: any, controller: any): void;
 export declare function apply(ctx: any, config?: any): void;
 export { CODEX_CLIENT_ID, CODEX_AUTHORIZE_URL, CODEX_TOKEN_URL, CODEX_API_URL, CODEX_ORIGINATOR, CODEX_USER_AGENT, codexCredentialHeaders, } from './oauth/codex/index.js';

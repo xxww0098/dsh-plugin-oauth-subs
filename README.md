@@ -13,7 +13,7 @@ dsh plugin --profile web add https://github.com/xxww0098/dsh-plugin-oauth-subs
 dsh web
 ```
 
-Open **Settings → OAuth subs**. One card per account (quota on every card; Ollama Cloud has no quota bars). About **Installed** shows the version captured when this process loaded the plugin; after a self-install it stays on the old running version until restart. The plugin is desktop-first: it never spawns `dsh`/`npm` and never restarts the host — the About card compares the running version with the GitHub latest tag, and **安装更新** self-installs the tag tarball into the profile's `node_modules` (an hourly auto-update switch lives in the same card). If profile `node_modules` is newer than the running process, About lists **On disk** and flags the stale process. Or `pnpm dsh web --patch ./cordis.patch.yml` (`id: oauth-subs`).
+Open **订阅 / Subscriptions** — the host home sidebar entry under **插件 Plugins**. The workbench pins three top tabs — **额度 Quota**, **模型 Models**, **版本 Version** — with a provider rail on the left and a scrollable pane on the right. One card per account (quota on every card; Ollama Cloud has no quota bars). The **Version** card's **Installed** shows the version captured when this process loaded the plugin; after a self-install it stays on the old running version until restart. The plugin is desktop-first: it never spawns `dsh`/`npm` and never restarts the host — the Version card compares the running version with the GitHub latest tag, and **安装更新** self-installs the tag tarball into the profile's `node_modules` (an hourly auto-update switch lives in the same card; on a local-directory link the switch stays, but its note says `npm run build` hot-reloads the plugin and drops the release-tag result). If profile `node_modules` is newer than the running process, the card lists **On disk** and flags the stale process. Or `pnpm dsh web --patch ./cordis.patch.yml` (`id: oauth-subs`).
 
 ### Desktop
 
@@ -58,7 +58,7 @@ If the app exits instantly on launch, check `launchctl getenv ELECTRON_RUN_AS_NO
 | `~/.grok/auth.json`, `~/.hermes/auth.json` | Grok |
 | `~/.zcode/v2/config.json` (also older `cli/config.json` / `config.json`) | GLM |
 | `~/.kiro/credentials.json`; `credentials.json` (kiro.rs CWD); `~/.aws/sso/cache/kiro-auth-token.json` | Kiro |
-| Settings paste: kami / JSON / CSV / Social refresh / `ksk_…` | Kiro |
+| Panel paste: kami / JSON / CSV / Social refresh / `ksk_…` | Kiro |
 | `~/.gemini/antigravity-cli/antigravity-oauth-token`; `~/.cli-proxy-api/antigravity-*.json` | Antigravity |
 | macOS Keychain `cursor-access-token` / `cursor-refresh-token`; IDE `state.vscdb` (current OS user only); `CURSOR_ACCESS_TOKEN` | Cursor |
 | `OLLAMA_API_KEY` env (not `~/.ollama/id_ed25519.pub`) | Ollama Cloud |
@@ -67,7 +67,7 @@ If the app exits instantly on launch, check `launchctl getenv ELECTRON_RUN_AS_NO
 | `~/.local/share/devin/credentials.toml` (`$XDG_DATA_HOME/devin/`; Windows `%LOCALAPPDATA%\devin\`); `DEVIN_API_KEY` / `WINDSURF_API_KEY` | Devin |
 | `~/.cline/data/settings/providers.json` | Cline |
 | `~/.claude/.credentials.json` (Keychain copy not read) | Claude |
-| Settings paste: OpenCode Go API key; optional Console cookie / workspace | OpenCode Go |
+| Panel paste: OpenCode Go API key; optional Console cookie / workspace | OpenCode Go |
 
 Subscription tokens: `<profile>/data/dsh-plugin-oauth-subs/auth.json` (`0600`). OpenCode Go accounts: `opencode-go.json` in the same directory. Model selections: `models.json`.
 
@@ -75,12 +75,12 @@ Subscription tokens: `<profile>/data/dsh-plugin-oauth-subs/auth.json` (`0600`). 
 
 | Plane | Role |
 |---|---|
-| Settings | Login / import / logout, then model sync |
+| Subscriptions panel | Login / import / logout, then model sync |
 | llm-pi-ai | DSH call plane; routes subscription families to the loopback proxy and OpenCode Go directly to its API |
 | Loopback | `http://127.0.0.1:8318/{codex,grok}/v1/responses`, `/glm/v1/messages` (Completions leftover `/glm/v1/chat/completions` until the next sync), `/{kiro,antigravity,cursor,ollama,kimi,copilot,devin,cline}/v1/chat/completions` |
 | Upstream | Refreshed subscription bearer or the active OpenCode Go API key |
 
-After Settings closes, DSH continues using the configured routes. The proxy binds only to loopback and uses `DSH_OAUTH_SUBS_API_KEY`; OpenCode Go bypasses it. Stack and module tree: [AGENTS.md](AGENTS.md). Upstream references: [docs/oauth.md](docs/oauth.md).
+After the panel closes, DSH continues using the configured routes. The proxy binds only to loopback and uses `DSH_OAUTH_SUBS_API_KEY`; OpenCode Go bypasses it. Stack and module tree: [AGENTS.md](AGENTS.md). Upstream references: [docs/oauth.md](docs/oauth.md).
 
 ## Cache
 
@@ -111,7 +111,7 @@ The analyzer labels each call `cold_start` / `delta` / `compaction` / `rebuild` 
 
 ## Fast / models / reasoning
 
-Login and chat use official client identity; UA / fingerprint live in each `src/oauth/<id>/README.md`. The repos those fingerprints were copied from are listed in [docs/oauth.md](docs/oauth.md). Settings → **Models**: per-family checkboxes (default all on except **900K**). Reasoning is set in the Harness session menu, not Settings → Models. Fast and 900K spend quota faster.
+Login and chat use official client identity; UA / fingerprint live in each `src/oauth/<id>/README.md`. The repos those fingerprints were copied from are listed in [docs/oauth.md](docs/oauth.md). The panel's **Models** tab: per-family checkboxes (default all on except **900K**). Reasoning is set in the Harness session menu, not the Models tab. Fast and 900K spend quota faster.
 
 | Family | Fast | Window | Thinking |
 |---|---|---|---|
@@ -138,17 +138,17 @@ Codex Priority echo `created=auto` / `completed=default` is not a confirmation (
 |---|---|---|
 | ChatGPT Codex | `chatgpt.com/backend-api/wham/usage` | Plan badge (Plus / Pro / Team …) plus 5-hour + weekly windows, **remaining** percent and reset time |
 | ChatGPT Codex reset | `…/wham/rate-limit-reset-credits` + `/consume` | Banked weekly-window reset credits and expiry; one confirm button per credit on the Codex card |
-| xAI Grok | `cli-chat-proxy.grok.com/v1/billing?format=credits` plus `/v1/user?include=subscription` | Plan badge (SuperGrok / X Premium+ …) plus period usage, prepaid balance, product split |
+| xAI Grok | `cli-chat-proxy.grok.com/v1/billing?format=credits` plus `/v1/user?include=subscription` + `grok.com` `GetGrokCreditsConfig` (gRPC-web) | Plan badge (SuperGrok / X Premium+ …), Grok Code access tag, period usage with cycle date range, product split; `{val}` cent fields become USD rows (included pool, pay-as-you-go cap, prepaid) when billed |
 | Zhipu GLM | `api.z.ai` or `open.bigmodel.cn` `monitor/usage/quota/limit` | Plan badge (Lite / Pro / Max) plus Coding Plan credit windows; host follows the active account |
 | AWS Kiro | `q.<region>.amazonaws.com/getUsageLimits` | Current cycle usage, limit, and any trial or bonus allowance |
 | Google Antigravity | daily-cloudcode-pa `loadCodeAssist` + `fetchAvailableModels` (prod only on 5xx / transport) | Plan badge (Pro / Ultra / Free / Standard) plus SkillStar model-group remaining bars and reset time |
-| Cursor | `api2.cursor.sh` `DashboardService/GetCurrentPeriodUsage` | Plan badge (Free / Pro / Pro+ / Ultra …) plus cycle remaining percent |
+| Cursor | `api2.cursor.sh` `DashboardService/GetCurrentPeriodUsage` | Plan badge (Free / Pro / Pro+ / Ultra …) plus included-usage dollars (`includedSpend`/`limit`, cents → `$used/$total`) and per-split remaining percent |
 | Ollama Cloud | No documented quota JSON | No quota bars |
 | Kimi Code | `api.kimi.com/coding/v1/usages` + `/me` | Plan badge from `/me.user_level_name` plus remaining bars; no invented reset times |
 | GitHub Copilot | `api.github.com/copilot_internal/user` | Plan badge (Free / Pro / Pro+ / Business / Enterprise) plus Premium remaining percent |
-| Devin | `server.codeium.com` `SeatManagementService/GetUserStatus` | Plan badge (Pro / Max / Teams / Enterprise / Free / Trial) plus daily + weekly remaining bars when the tier exposes them |
+| Devin | `server.codeium.com` `SeatManagementService/GetUserStatus` | Plan badge (Pro / Max / Teams / Enterprise / Free / Trial) plus Prompt / Flow / Flex credit buckets (used / monthly grant, resets at `plan_end`), overage balance in USD, and daily + weekly remaining bars when the tier exposes them |
 | Cline | `api.cline.bot` `/users/me` + `/users/{id}/balance` (micro-USD) + `/users/me/plan`; ClinePass adds `/plan/usage-limits` | Plan badge plus prepaid **credit balance** (`$x.xx`); ClinePass adds 5-hour / weekly / monthly bars. Credit accounts have no window bars |
-| Claude (Anthropic) | No usage endpoint — a 1-token probe on `/v1/messages` reads the unified rate-limit headers | 5-hour + weekly **remaining** bars with reset time; a 429 still reports utilization |
+| Claude (Anthropic) | `api/oauth/usage` (`limits[]`: session / weekly_all / weekly_scoped) + 1-token probe on `/v1/messages` for unified rate-limit headers | 5-hour + weekly **remaining** bars with reset time; model-scoped weekly bars (e.g. Fable, via `weekly_scoped` / `7d_oi` headers / `seven_day_*` fields); a 429 still reports utilization |
 | OpenCode Go | Console `/console/api/{orgs,go/status,billing/status,user}`; legacy workspace fallback | Per-account Go usage, balance, and account email when the Console cookie is available |
 
 Refresh about once a minute, or **Refresh quota**. Bars: `hsl(remaining × 1.2, 78%, 38%)`. Codex `pro` → **Pro 20x** / $200, `prolite` → **Pro 5x** / $100. Plus/Pro may bank weekly resets — one confirm button per credit on the Codex card (Harness risk dialog, then `POST …/consume` with `{ redeem_request_id }` + `idempotencyKey`). That spend refreshes the **weekly** window. Grok has no equivalent. Ollama Cloud has no documented quota JSON (`/api/quota` 404); the card stays idle with no bars.
@@ -158,7 +158,7 @@ Refresh about once a minute, or **Refresh quota**. Bars: `hsl(remaining × 1.2, 
 | Option | Default | Notes |
 |---|---|---|
 | `port` | `8318` | Loopback proxy port |
-| `provider` | `oauth` | llm-pi-ai route prefix (`oauth-codex` / `oauth-grok` / `oauth-glm` / `oauth-antigravity`) |
+| `provider` | `oauth` | llm-pi-ai route prefix; every family lands at `oauth-<id>` (`oauth-codex`, `oauth-grok`, …) |
 | `dataDir` | profile data dir | `auth.json`, `models.json`, and `proxy-key` |
 | `grokLogin` | `device` | `device` or `pkce` |
 | `proxyUrl` | settings / env | Outbound HTTP(S) proxy for model / quota / login hops |
