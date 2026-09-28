@@ -774,6 +774,46 @@ test('syncHarnessModels rejects a silent drop after mutate', async () => {
   )
 })
 
+test('cacheRetention long rides only the Completions routes and survives sync', async () => {
+  const all = { codex: true, grok: true, glm: true, kiro: true, antigravity: true, cursor: true, ollama: true, kimi: true, copilot: true, devin: true, cline: true, anthropic: true }
+  const providers = buildProviders({ prefix: 'oauth', origin: 'http://127.0.0.1:8318', loggedIn: all })
+  const completions = Object.keys(providers).filter((id) => providers[id].api === HARNESS_COMPLETIONS_API).sort()
+  assert.deepEqual(completions, ['oauth-antigravity', 'oauth-cline', 'oauth-copilot', 'oauth-cursor', 'oauth-devin', 'oauth-kimi', 'oauth-kiro', 'oauth-ollama'])
+  for (const [id, value] of Object.entries(providers)) {
+    assert.equal(value.cacheRetention, value.api === HARNESS_COMPLETIONS_API ? 'long' : undefined, id)
+  }
+  // OpenCode Go direct routes are not ours to retune.
+  const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://127.0.0.1:8318' })
+  for (const route of OPENCODE_GO_ROUTES) assert.equal(catalog[route.id].cacheRetention, undefined)
+
+  const settings = createPiAiSettings()
+  await syncHarnessModels({ settings, prefix: 'oauth', origin: 'http://127.0.0.1:8318', loggedIn: all })
+  const stored = await peekPiAiProviders(settings)
+  for (const id of completions) assert.equal(stored[id].cacheRetention, 'long', id)
+  assert.equal(stored['oauth-codex'].cacheRetention, undefined)
+  assert.equal(stored['oauth-anthropic'].cacheRetention, undefined)
+})
+
+test('syncHarnessModels rejects a host that drops cacheRetention', async () => {
+  const stored = {}
+  const settings = {
+    async mutate(_ns, ops) {
+      for (const op of ops) {
+        if (op.op !== 'set') continue
+        const { cacheRetention, ...rest } = op.value
+        stored[op.path[1]] = rest
+      }
+    },
+    describe() {
+      return [{ ns: 'llm-pi-ai', value: { providers: stored } }]
+    },
+  }
+  await assert.rejects(
+    syncHarnessModels({ settings, prefix: 'oauth', origin: 'http://127.0.0.1:8318', loggedIn: { ollama: true } }),
+    /did not persist providers\.oauth-ollama\.cacheRetention/,
+  )
+})
+
 test('bare api openai is refused by the DSH union and leaves the store unchanged', async () => {
   const settings = createPiAiSettings({ 'oauth-codex': { api: 'openai-responses', models: [{ id: 'gpt-5.5' }] } })
   await assert.rejects(settings.mutate('llm-pi-ai', [
