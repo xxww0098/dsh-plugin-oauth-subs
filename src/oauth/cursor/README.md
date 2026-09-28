@@ -19,7 +19,7 @@ Cursor 订阅（Composer / Claude / GPT / Grok via Cursor infra）。原生 wire
 | [`request.ts`](request.ts) | OpenAI Completions ↔ `AgentClientMessage` / `AgentServerMessage` |
 | [`cache.ts`](cache.ts) | `AgentRunRequest.conversation_id` + 稳定 turn id。禁止 `Date.now()` / 每次 `randomUUID()` |
 | [`proto.ts`](proto.ts) | 最小 protobuf + Connect framing（Run / GetUsableModels / AvailableModels） |
-| [`h2-session.ts`](h2-session.ts) | Node `http2` 进程内会话（unary + streaming）；`connectFn` 允许返回 Promise |
+| [`h2-session.ts`](h2-session.ts) | Node `http2` 进程内 RPC（unary + streaming），走池化会话、只关自己的流；`connectFn` 允许返回 Promise |
 | [`upstream-proxy.ts`](upstream-proxy.ts) | 可选上游代理：HTTP CONNECT / SOCKS5 隧道（区域锁出口） |
 | [`transport.ts`](transport.ts) | Completions HTTP / SSE 输出与 Run 事件消费背压 |
 
@@ -52,7 +52,7 @@ Run 握手必须按类型回帧，不能一律当原生工具拒绝：
 
 工具结果续跑：Cursor 没有无状态的 tool-result action。下一轮把**完成轮**（user + MCP 调用 + result）写进 `conversationState`（`parseTurns` 只在还有未答复 toolCall 时才算 in-flight），并把工具输出作为**当前 user 消息**（`openaiToCursor` 的 `continuationText`）。只重发原 user 文本会让模型重复调用同一个工具。
 
-HTTP/2 请求取消 / unary 超时必须销毁该请求独占的连接，`close()` 的优雅关闭不会终止活动流；已结算后不再消费消息或写 KV 回复。预取消信号不建立连接。`onEvent` 的异步消费完成前暂停接收，SSE 背压沿调用链传回 Run。EOF 的 Connect 残帧必须报错。每次 Run 在 `upstreamRequest(...).run` 里执行：首字节 120s 覆盖 h2 拨号 + 第一个 DATA 帧，每帧 `touch()`；role 块随第一块内容才发，输出前的 Connect 错误帧按 `connectCodeStatus` 回 JSON（`unauthenticated`→401 先刷新一次再试，`resource_exhausted`→429，`invalid_argument`→400…），非 200 的 h2 头按原状态码回；都不在代理内重放，只重试传输故障。已输出后的异常直接断流（`destroy`），不写 SSE 错误块、不追加 DONE。见[故障记录](../../../docs/error.md)。
+h2 会话按 (origin, 出口代理) 池化：`cursorH2Connect` 每键一个会话，并发拨号合并，close / GOAWAY / error / 60s 无帧即出池（空闲是优雅 `close()`，在途流跑完），会话 `unref()`，插件停止或配置变化时 `clearCursorH2Pool()` 清池。Run 与 unary 只拥有自己的流：结束、取消、unary 超时都 `stream.close(NGHTTP2_CANCEL)`（上游停止该流的工作），绝不 `destroy` 共享会话；调用方放弃后才落地的拨号照样入池，但不交给它。已结算后不再消费消息或写 KV 回复。预取消信号不建立连接。`onEvent` 的异步消费完成前暂停接收，SSE 背压沿调用链传回 Run。EOF 的 Connect 残帧必须报错。每次 Run 在 `upstreamRequest(...).run` 里执行：首字节 120s 覆盖 h2 拨号 + 第一个 DATA 帧，每帧 `touch()`；role 块随第一块内容才发，输出前的 Connect 错误帧按 `connectCodeStatus` 回 JSON（`unauthenticated`→401 先刷新一次再试，`resource_exhausted`→429，`invalid_argument`→400…），非 200 的 h2 头按原状态码回；都不在代理内重放，只重试传输故障。已输出后的异常直接断流（`destroy`），不写 SSE 错误块、不追加 DONE。见[故障记录](../../../docs/error.md)。
 
 ### 上游代理（区域锁出口）
 

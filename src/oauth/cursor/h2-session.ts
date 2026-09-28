@@ -1,9 +1,12 @@
 /**
  * In-process Node http2 client for Cursor Connect RPCs.
- * Each RPC owns a session that is destroyed when the call settles.
+ * RPCs share the pooled session from `cursorH2Connect`; each owns only its
+ * stream and cancels it (RST_STREAM CANCEL) when the call settles, so a
+ * cancelled Run stops upstream work without touching its neighbours.
  * Do not add Bun.
  */
 
+import http2 from 'node:http2'
 import {
   CURSOR_AGENT_URL,
   CURSOR_API2_URL,
@@ -56,6 +59,11 @@ function requestHeaders(session, { path, unary }) {
   }
 }
 
+/** Cancel a stream the call is leaving; a finished stream is left alone. */
+function cancelStream(stream) {
+  if (stream && !stream.closed) stream.close(http2.constants.NGHTTP2_CANCEL)
+}
+
 /**
  * Region-gated providers refuse the run outright. Point the user at the
  * upstream proxy knob instead of leaving a bare "unsupported region" error.
@@ -84,14 +92,15 @@ export async function cursorUnaryRpc({
   return new Promise((resolve, reject) => {
     let settled = false
     let client
+    let stream
+    const onClientError = (error) => fail(new Error(describeH2TransportError(error, url)))
     const finish = (error, value?) => {
       if (settled) return
       settled = true
       if (timer) clearTimeout(timer)
       signal?.removeEventListener('abort', onAbort)
-      // Unary sessions are one-shot too; close() would wait forever for a
-      // timed-out response whose stream remains open.
-      client?.destroy()
+      client?.off('error', onClientError)
+      cancelStream(stream)
       if (error !== undefined) reject(error)
       else resolve(value)
     }
@@ -103,15 +112,12 @@ export async function cursorUnaryRpc({
     const onAbort = () => fail(signal.reason)
     signal?.addEventListener('abort', onAbort, { once: true })
     // connectFn may be async (upstream proxy tunnel): a dial that lands after
-    // settle must still destroy the session it produced.
+    // settle stays pooled for the next call and is not used here.
     Promise.resolve(connectFn(url)).then((connected) => {
-      if (settled) {
-        connected.destroy()
-        return
-      }
+      if (settled) return
       client = connected
-      client.on('error', (error) => fail(new Error(describeH2TransportError(error, url))))
-      const stream = client.request(requestHeaders(session, { path, unary: true }))
+      client.on('error', onClientError)
+      stream = client.request(requestHeaders(session, { path, unary: true }))
       const chunks: any[] = []
       stream.on('data', (chunk) => {
         if (!settled) chunks.push(Buffer.from(chunk))
@@ -121,7 +127,7 @@ export async function cursorUnaryRpc({
         if (!settled) finish(undefined, Buffer.concat(chunks))
       })
       stream.end(body)
-    }, fail)
+    }).catch(fail)
   })
 }
 
@@ -175,13 +181,16 @@ export async function runCursorAgent(session, built, {
   return new Promise((resolve, reject) => {
     let settled = false
     let client
+    let stream
+    const onClientError = (error) => finish(new Error(describeH2TransportError(error, url)))
     const finish = (error?) => {
       if (settled) return
       settled = true
       signal?.removeEventListener('abort', onAbort)
-      // Each Run owns its session. Graceful close waits for the active stream
-      // and would keep consuming upstream work after the caller has left.
-      client?.destroy()
+      client?.off('error', onClientError)
+      // Cancel only this Run's stream: upstream stops working on it, the
+      // pooled session and any other Run on it carry on.
+      cancelStream(stream)
       if (error !== undefined) reject(error)
       else resolve({ events, collected })
     }
@@ -189,19 +198,16 @@ export async function runCursorAgent(session, built, {
     const onAbort = () => fail(signal.reason)
     signal?.addEventListener('abort', onAbort, { once: true })
     // connectFn may be async (upstream proxy tunnel): a dial that lands after
-    // settle must still destroy the session it produced.
+    // settle stays pooled for the next Run and is not used here.
     Promise.resolve(connectFn(url)).then((connected) => {
-      if (settled) {
-        connected.destroy()
-        return
-      }
+      if (settled) return
       client = connected
-      client.on('error', (error) => finish(new Error(describeH2TransportError(error, url))))
+      client.on('error', onClientError)
       start(client)
-    }, fail)
+    }).catch(fail)
 
     const start = (connected) => {
-      const stream = connected.request(requestHeaders(session, { path: CURSOR_RUN_PATH, unary: false }))
+      stream = connected.request(requestHeaders(session, { path: CURSOR_RUN_PATH, unary: false }))
       let rest = Buffer.alloc(0)
       const send = (bytes) => {
         if (stream.destroyed || stream.closed) return

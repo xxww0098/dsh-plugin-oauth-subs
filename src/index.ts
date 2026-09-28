@@ -26,6 +26,7 @@ import { createProxy } from './oauth/proxy.js'
 import { catalogProviders, OAUTH_CREDENTIAL_REF, ModelSwitch } from './oauth/models.js'
 import { cursorCatalogModels } from './oauth/cursor/catalog.js'
 import { configureCursorUpstreamProxy } from './oauth/cursor/index.js'
+import { clearCursorH2Pool } from './oauth/cursor/upstream-proxy.js'
 import { ollamaCatalogModels } from './apikey/ollama/catalog.js'
 import { kiroCatalogModels } from './oauth/kiro/catalog.js'
 import { kimiCatalogModels } from './oauth/kimi/catalog.js'
@@ -258,6 +259,8 @@ export function apply(ctx, config: any = {}) {
   const prefix = String(config.provider ?? 'oauth').trim() || 'oauth'
   const grokLogin = config.grokLogin === 'pkce' ? 'pkce' : 'device'
   configureCursorUpstreamProxy(config.cursorProxy)
+  // Config change re-applies the plugin: its pooled h2 sessions go with the old config.
+  ctx.effect(() => clearCursorH2Pool, 'dsh-plugin-oauth-subs: cursor h2 pool')
   const dataDir = resolveDataDir(ctx, config)
   const authPath = authFilePath(dataDir)
   const models = new ModelSwitch({

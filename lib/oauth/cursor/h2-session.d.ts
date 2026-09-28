@@ -1,6 +1,8 @@
 /**
  * In-process Node http2 client for Cursor Connect RPCs.
- * Each RPC owns a session that is destroyed when the call settles.
+ * RPCs share the pooled session from `cursorH2Connect`; each owns only its
+ * stream and cancels it (RST_STREAM CANCEL) when the call settles, so a
+ * cancelled Run stops upstream work without touching its neighbours.
  * Do not add Bun.
  */
 import { CURSOR_AGENT_URL, CURSOR_RUN_PATH } from './index.js';
