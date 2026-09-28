@@ -2,6 +2,13 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-28：Cursor 每次 Run / 一元 RPC 都新建 h2 连接
+
+**现象**：每次 Run 和目录 RPC 都重新走 TCP + TLS（经代理还要 CONNECT / SOCKS5 握手），结束时 `client.destroy()` 整条连接。
+**根因**：`cursorH2Connect` 每次 `http2.connect`；取消要停上游（09-08），当时只能靠销毁独占会话实现。
+**修复**：`cursorH2Connect` 按 (origin, 出口代理) 池化一个会话，并发拨号合并；close / GOAWAY / error / 60s 无帧出池，会话 `unref()`，插件 effect 清理时 `clearCursorH2Pool()`。`runCursorAgent` / `cursorUnaryRpc` 结束或取消只 `stream.close(NGHTTP2_CANCEL)` 自己的流；放弃后才落地的拨号入池不交给该调用方。
+**活测（2026-09-28，宿主 Node v24.21.0）**：worktree `lib/` 的 `runCursorAgent` 连续 2 次 composer-2.5（未刷新）：均回 PONG（5.3s / 3.6s），`http2.connect` 共 1 次。
+
 ## 2026-09-28：Antigravity 长会话约第 128 次工具调用后前缀逐轮断裂
 
 **现象**：按调用序号统计的命中率，0–119 次 88–94%，120–159 次 49.9%，160–199 次 40.9%。

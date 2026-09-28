@@ -265,15 +265,8 @@ function watchConnect(client, timeoutMs) {
   return client
 }
 
-/**
- * `http2.connect` replacement for the Cursor hop. When an upstream proxy
- * applies the tunnel is dialed first, then http2 attaches over it — the
- * TLS handshake to the Cursor host still happens inside `createConnection`
- * so ALPN/session handling is unchanged. Without a proxy this is a plain
- * `http2.connect`. Either way the session must connect within `timeoutMs`.
- */
-export async function cursorH2Connect(url, { timeoutMs = DIAL_TIMEOUT_MS } = {}) {
-  const proxy = await cursorEgressProxy(url)
+/** Dial one h2 session to `url` over `proxy` (or directly). */
+async function dialH2(url, proxy, timeoutMs) {
   if (!proxy) return watchConnect(http2.connect(url), timeoutMs)
   const target = new URL(url)
   let tunnel
@@ -288,4 +281,48 @@ export async function cursorH2Connect(url, { timeoutMs = DIAL_TIMEOUT_MS } = {})
       ? tlsConnect({ socket: tunnel, servername: bareHost(target.hostname), ALPNProtocols: ['h2'] })
       : tunnel),
   }), timeoutMs)
+}
+
+const IDLE_MS = 60_000
+/** One session (or in-flight dial) per `origin\0proxy`; concurrent dials share the promise. */
+const pool = new Map<string, Promise<any>>()
+
+/** Drop every pooled session (plugin stop / config change); in-flight streams finish. */
+export function clearCursorH2Pool() {
+  const entries = [...pool.values()]
+  pool.clear()
+  for (const entry of entries) entry.then((client) => client.close(), () => {})
+}
+
+/**
+ * `http2.connect` replacement for the Cursor hop, pooled: Run and unary RPCs
+ * share one session per (origin, egress) and close only their own stream.
+ * When an upstream proxy applies the tunnel is dialed first, then http2
+ * attaches over it — the TLS handshake to the Cursor host still happens
+ * inside `createConnection` so ALPN/session handling is unchanged. A session
+ * must connect within `timeoutMs`; it leaves the pool on close / GOAWAY /
+ * error / 60s without frames (graceful close, open streams run on).
+ */
+export async function cursorH2Connect(url, { timeoutMs = DIAL_TIMEOUT_MS } = {}) {
+  const proxy = await cursorEgressProxy(url)
+  const key = `${new URL(url).origin}\0${proxy ?? ''}`
+  for (;;) {
+    let entry = pool.get(key)
+    if (!entry) {
+      entry = dialH2(url, proxy, timeoutMs)
+      pool.set(key, entry)
+      const evict = () => { if (pool.get(key) === entry) pool.delete(key) }
+      entry.then((client) => {
+        client.unref()
+        client.on('error', evict)
+        client.once('goaway', evict)
+        client.once('close', evict)
+        client.setTimeout(IDLE_MS, () => { evict(); client.close() })
+      }, evict)
+    }
+    const client = await entry
+    if (!client.closed && !client.destroyed) return client
+    // Closed but its 'close' / 'goaway' has not reached the pool yet.
+    if (pool.get(key) === entry) pool.delete(key)
+  }
 }

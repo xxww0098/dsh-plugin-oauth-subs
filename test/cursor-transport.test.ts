@@ -5,7 +5,7 @@ import net from 'node:net'
 import { mock, test } from 'node:test'
 import { setImmediate as nextTurn } from 'node:timers/promises'
 import { cursorUnaryRpc, runCursorAgent } from '../lib/oauth/cursor/h2-session.js'
-import { cursorH2Connect, dialCursorProxy } from '../lib/oauth/cursor/upstream-proxy.js'
+import { clearCursorH2Pool, cursorH2Connect, dialCursorProxy } from '../lib/oauth/cursor/upstream-proxy.js'
 import { configureCursorUpstreamProxy } from '../lib/oauth/cursor/index.js'
 import { configureOutbound } from '../lib/utils/outbound.js'
 import { createProxy } from '../lib/oauth/proxy.js'
@@ -54,7 +54,7 @@ async function withH2Peer(run) {
     return client
   }
   try {
-    await run({ server, url, connectFn })
+    await run({ server, url, connectFn, peers })
   } finally {
     for (const client of clients) client.destroy()
     for (const peer of peers) peer.destroy()
@@ -488,18 +488,19 @@ test('Cursor server messages expose MCP args and native exec cases', () => {
 })
 
 
-function connectForwarder(targetPort, seen = [], sockets = new Set()) {
+function connectForwarder(targetPort, seen = [], sockets = new Set(), answered: Promise<unknown> = Promise.resolve()) {
   const proxy = net.createServer((socket) => {
     sockets.add(socket)
     socket.on('error', () => {})
     socket.once('close', () => sockets.delete(socket))
     let head = Buffer.alloc(0)
-    const onData = (chunk) => {
+    const onData = async (chunk) => {
       head = Buffer.concat([head, chunk])
       const at = head.indexOf('\r\n\r\n')
       if (at < 0) return
       socket.off('data', onData)
       seen.push(head.subarray(0, at).toString('latin1'))
+      await answered
       socket.write('HTTP/1.1 200 Connection Established\r\n\r\n')
       const upstream = net.connect(targetPort, '127.0.0.1')
       sockets.add(upstream)
@@ -693,5 +694,176 @@ test('Cursor region error points at the upstream proxy knob', async () => {
     await once(peer, 'data', { signal: AbortSignal.timeout(1000) })
     peer.end(end)
     await rejected
+  })
+})
+
+// Pooled h2 session (slice 12): runs omit connectFn, so they dial through cursorH2Connect.
+function answerEachRun(server, text = 'pooled') {
+  let streams = 0
+  server.on('stream', (peer) => {
+    streams += 1
+    peer.on('error', () => {})
+    peer.respond({ ':status': 200 })
+    peer.once('data', () => peer.end(Buffer.concat([textFrame(text), turnEndedFrame()])))
+  })
+  return () => streams
+}
+
+test('Cursor pooled: 3 runs share 1 server session', async () => {
+  await withH2Peer(async ({ server, url, peers }) => {
+    const streams = answerEachRun(server)
+    for (let i = 0; i < 3; i += 1) {
+      assert.equal((await runCursorAgent(session, built, { url })).collected.text, 'pooled')
+    }
+    assert.equal(streams(), 3)
+    assert.equal(peers.size, 1)
+  })
+})
+
+test('Cursor pooled: cancel resets only its stream (CANCEL) and the session is reused', async () => {
+  await withH2Peer(async ({ server, url, peers }) => {
+    const accepted = once(server, 'stream', { signal: AbortSignal.timeout(1000) })
+    const controller = new AbortController()
+    const run = runCursorAgent(session, built, { url, signal: controller.signal, onEvent: () => controller.abort() })
+    const rejected = assert.rejects(run, /aborted/i)
+    const [peer] = await accepted
+    peer.on('error', () => {})
+    peer.respond({ ':status': 200 })
+    await once(peer, 'data', { signal: AbortSignal.timeout(1000) })
+    const closed = once(peer, 'close', { signal: AbortSignal.timeout(1000) })
+    peer.write(textFrame('first'))
+    await rejected
+    await closed
+    assert.equal(peer.rstCode, http2.constants.NGHTTP2_CANCEL)
+    answerEachRun(server, 'after cancel')
+    assert.equal((await runCursorAgent(session, built, { url })).collected.text, 'after cancel')
+    assert.equal(peers.size, 1)
+  })
+})
+
+test('Cursor pooled: GOAWAY evicts the session and the next run dials a new one', async () => {
+  await withH2Peer(async ({ server, url, peers }) => {
+    answerEachRun(server)
+    await runCursorAgent(session, built, { url })
+    const client = await cursorH2Connect(url)
+    const away = once(client, 'goaway', { signal: AbortSignal.timeout(1000) })
+    for (const peer of peers) peer.goaway()
+    await away
+    await runCursorAgent(session, built, { url })
+    assert.equal(peers.size, 2)
+  })
+})
+
+test('Cursor pooled: concurrent runs do not interfere (cancel and Connect error stay per stream)', async () => {
+  const errorLog = mock.method(console, 'error', () => {})
+  try {
+    await withH2Peer(async ({ server, url, peers }) => {
+      const byName = new Map()
+      server.on('stream', (peer) => {
+        peer.on('error', () => {})
+        peer.respond({ ':status': 200 })
+        peer.once('data', (chunk) => byName.get(splitConnectFrames(chunk).frames[0].payload.toString())?.(peer))
+      })
+      const opened = (name) => new Promise<any>((resolve) => byName.set(name, resolve))
+      const run = (name, options = {}) => runCursorAgent(session, { requestBytes: Buffer.from(name) }, { url, ...options })
+      const [a, b, c] = [opened('a'), opened('b'), opened('c')]
+      const controller = new AbortController()
+      const runA = assert.rejects(run('a', { signal: controller.signal }), /aborted/i)
+      const runB = run('b')
+      const runC = assert.rejects(run('c'), (error: any) => error.status === 429)
+      const [peerA, peerB, peerC] = await Promise.all([a, b, c])
+      const closedA = once(peerA, 'close', { signal: AbortSignal.timeout(1000) })
+      controller.abort()
+      await runA
+      await closedA
+      assert.equal(peerA.rstCode, http2.constants.NGHTTP2_CANCEL)
+      peerC.end(connectErrorFrame('resource_exhausted', 'offline quota'))
+      await runC
+      peerB.end(Buffer.concat([textFrame('b survives'), turnEndedFrame()]))
+      assert.equal((await runB).collected.text, 'b survives')
+      assert.equal(peers.size, 1)
+    })
+  } finally {
+    errorLog.mock.restore()
+  }
+})
+
+test('Cursor pooled: a stalled handshake is still bounded by the first-byte timer', async (t) => {
+  // Accepts TCP but never answers the TLS ClientHello.
+  const sockets = new Set<net.Socket>()
+  const blackhole = net.createServer((socket) => {
+    sockets.add(socket)
+    socket.on('error', () => {})
+  })
+  blackhole.listen(0, '127.0.0.1')
+  await once(blackhole, 'listening')
+  t.after(() => {
+    for (const socket of sockets) socket.destroy()
+    blackhole.close()
+  })
+  const url = `https://127.0.0.1:${blackhole.address().port}`
+  const errorLog = mock.method(console, 'error', () => {})
+  try {
+    await withCursorProxy({
+      tokens: { cursor: { session: async () => session } },
+      upstreamTimeouts: { firstByteMs: 200, budgetMs: 400 },
+      cursorRpc: (current, request, options) => runCursorAgent(current, request, { ...options, url }),
+    }, async (post) => {
+      const started = Date.now()
+      assert.equal((await post()).status, 504)
+      assert.ok(Date.now() - started < 2000)
+    })
+  } finally {
+    errorLog.mock.restore()
+  }
+})
+
+test('Cursor pooled: a late dial is pooled, not handed to the caller that gave up; dials coalesce', async (t) => {
+  const release = Promise.withResolvers<void>()
+  const server = http2.createServer()
+  const peers = new Set<http2.ServerHttp2Session>()
+  server.on('session', (peer) => {
+    peers.add(peer)
+    peer.on('error', () => {})
+  })
+  const streams = answerEachRun(server, 'late')
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  const h2port = server.address().port
+  const sockets = new Set()
+  const seen = []
+  const proxy = await connectForwarder(h2port, seen, sockets, release.promise)
+  configureCursorUpstreamProxy(`http://127.0.0.1:${proxy.address().port}`)
+  t.after(() => {
+    for (const peer of peers) peer.destroy()
+    for (const socket of sockets) socket.destroy()
+    server.close()
+    proxy.close()
+    configureCursorUpstreamProxy(undefined)
+  })
+  const url = `http://127.0.0.1:${h2port}`
+  const controller = new AbortController()
+  const gaveUp = assert.rejects(runCursorAgent(session, built, { url, signal: controller.signal }), /aborted/i)
+  const waiting = runCursorAgent(session, built, { url })
+  while (!seen.length) await new Promise((resolve) => setTimeout(resolve, 5))
+  controller.abort()
+  await gaveUp
+  const landed = once(server, 'session', { signal: AbortSignal.timeout(1000) })
+  release.resolve()
+  await landed
+  assert.equal((await waiting).collected.text, 'late')
+  assert.equal((await runCursorAgent(session, built, { url })).collected.text, 'late')
+  assert.equal(seen.length, 1)
+  assert.equal(peers.size, 1)
+  assert.equal(streams(), 2)
+})
+
+test('clearCursorH2Pool closes pooled sessions so the next run dials again', async () => {
+  await withH2Peer(async ({ server, url, peers }) => {
+    answerEachRun(server)
+    await runCursorAgent(session, built, { url })
+    clearCursorH2Pool()
+    await runCursorAgent(session, built, { url })
+    assert.equal(peers.size, 2)
   })
 })
