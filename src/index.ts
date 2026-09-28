@@ -271,6 +271,7 @@ export function apply(ctx, config: any = {}) {
     path: outboundProxyPath(dataDir),
     configUrl: config.proxyUrl,
   })
+  ctx.effect(() => () => { void outbound.close() }, 'dsh-plugin-oauth-subs: outbound proxy agent')
 
   let patchPath: string | undefined
   try {

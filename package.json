@@ -69,7 +69,8 @@
     "@deepseek-ai/cordis": "^4.0.1"
   },
   "dependencies": {
-    "@deepseek-ai/schemastery": "^3.18.1"
+    "@deepseek-ai/schemastery": "^3.18.1",
+    "undici": "^7.30.0"
   },
   "devDependencies": {
     "@types/node": "^22.20.1",

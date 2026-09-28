@@ -8,10 +8,9 @@
  */
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
-
-const require = createRequire(import.meta.url)
+import { ProxyAgent, fetch } from 'undici'
+import { describeError } from './http.js'
 
 export const OUTBOUND_PROXY_FILE = 'outbound-proxy.json'
 
@@ -123,15 +122,13 @@ export async function writeOutboundPrefs(path, prefs) {
 }
 
 function makeAgent(url, agentFor) {
-  if (!url) return undefined
-  if (typeof agentFor === 'function') return agentFor(url)
+  return typeof agentFor === 'function' ? agentFor(url) : new ProxyAgent(url)
+}
+
+async function release(agent) {
   try {
-    const { ProxyAgent } = require('undici')
-    return new ProxyAgent(url)
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error)
-    throw new Error(`outbound proxy: cannot load undici ProxyAgent (${detail})`)
-  }
+    await agent?.close?.()
+  } catch { /* already closed */ }
 }
 
 function requestUrl(input) {
@@ -144,23 +141,10 @@ function requestUrl(input) {
   }
 }
 
-export function createOutboundFetch({
-  proxyUrl,
-  env = process.env,
-  fetchFn = fetch,
-  agentFor,
-}: any = {}) {
-  const resolved = normalizeProxyUrl(proxyUrl)
-  const agent = makeAgent(resolved, agentFor)
-  if (!agent) return fetchFn
-  const noProxy = envNoProxy(env)
-  return (input, init: any = {}) => {
-    const target = requestUrl(input)
-    if (!target || shouldBypassProxy(target, noProxy)) return fetchFn(input, init)
-    return fetchFn(input, { ...init, dispatcher: agent })
-  }
-}
-
+/**
+ * Owns the proxy agent. `ready` always settles; a build failure is kept as
+ * `error` and fails every proxied request instead of silently going direct.
+ */
 export function createOutboundSession({
   path,
   configUrl,
@@ -170,43 +154,44 @@ export function createOutboundSession({
 }: any = {}) {
   let settingsUrl = ''
   let agent = undefined
-  let readyResolve
-  const ready = path
-    ? new Promise((resolve) => {
-      readyResolve = resolve
-    })
-    : Promise.resolve()
+  let error = ''
+  // Last proxied transport failure: an agent that builds fine can still point
+  // at a dead proxy, and the settings page must show that too.
+  let failure = ''
 
   function resolvedUrl() {
     return resolveProxyUrl(configUrl, settingsUrl, env)
   }
 
-  function rebuild() {
-    const url = resolvedUrl()
-    agent = url ? makeAgent(url, agentFor) : undefined
-  }
-
   async function load() {
-    if (path) {
-      const prefs = await readOutboundPrefs(path)
-      settingsUrl = prefs.url
+    try {
+      if (path) settingsUrl = (await readOutboundPrefs(path)).url
+      const url = resolvedUrl()
+      agent = url ? makeAgent(url, agentFor) : undefined
+    } catch (caught) {
+      error = describeError(caught)
     }
-    rebuild()
-    readyResolve?.()
   }
 
-  if (path) {
-    void load()
-  } else {
-    rebuild()
-  }
+  const ready = load()
 
   const wrapped = (input, init: any = {}) => {
     const target = requestUrl(input)
-    if (!agent || !target || shouldBypassProxy(target, envNoProxy(env))) {
-      return fetchFn(input, init)
+    if (!target || shouldBypassProxy(target, envNoProxy(env))) return fetchFn(input, init)
+    if (!agent) {
+      return error
+        ? Promise.reject(new Error(`outbound proxy unavailable: ${error}`))
+        : fetchFn(input, init)
     }
-    return fetchFn(input, { ...init, dispatcher: agent })
+    const via = redactProxyUrl(resolvedUrl())
+    return fetchFn(input, { ...init, dispatcher: agent }).then((response) => {
+      failure = ''
+      return response
+    }, (caught) => {
+      if (init?.signal?.aborted) throw caught
+      failure = `${describeError(caught)} via ${via}`
+      throw new Error(`outbound proxy unavailable: ${failure}`)
+    })
   }
 
   return {
@@ -219,22 +204,38 @@ export function createOutboundSession({
         url: redactProxyUrl(url),
         source: proxySource(configUrl, settingsUrl, env),
         configured: Boolean(url),
+        ...(error || failure ? { error: error || failure } : {}),
       }
     },
     async setUrl(raw) {
       const text = raw == null ? '' : String(raw).trim()
-      if (text) {
-        const normalized = normalizeProxyUrl(text)
-        if (!normalized) {
-          throw new Error('Invalid proxy URL; use http(s)://host:port')
-        }
-        settingsUrl = normalized
-      } else {
-        settingsUrl = ''
+      const nextSettings = text ? normalizeProxyUrl(text) : ''
+      if (nextSettings === undefined) {
+        throw new Error('Invalid proxy URL; use http(s)://host:port')
       }
-      if (path) await writeOutboundPrefs(path, { url: settingsUrl })
-      rebuild()
+      // Build → persist → swap: a failure at either step leaves file and state as they were.
+      const url = resolveProxyUrl(configUrl, nextSettings, env)
+      const next = url ? makeAgent(url, agentFor) : undefined
+      try {
+        if (path) await writeOutboundPrefs(path, { url: nextSettings })
+      } catch (caught) {
+        void release(next)
+        throw caught
+      }
+      const prev = agent
+      settingsUrl = nextSettings
+      agent = next
+      error = ''
+      failure = ''
+      void release(prev)
       return this.snapshot()
+    },
+    /** Frees the agent; later proxied requests fail instead of going direct. */
+    async close() {
+      const prev = agent
+      agent = undefined
+      if (resolvedUrl()) error = 'closed'
+      await release(prev)
     },
   }
 }

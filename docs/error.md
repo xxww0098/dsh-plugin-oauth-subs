@@ -2,6 +2,13 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-28：配了出站代理（设置页 / `proxyUrl` / `HTTPS_PROXY`）插件整体卡死，重启也不恢复
+
+**现象**：任一来源配了出站代理后，回环代理不监听、设置页 `status` 永远等待；`specs/request-path-upgrades/assets/repro/outbound-deadlock.mjs` 打印 `ready STILL PENDING` + unhandledRejection。
+**根因**：`outbound.ts` 用 `require('undici')` 懒加载 `ProxyAgent`，而 undici 不在 `dependencies` 里，构建抛错；`load()` 在 resolve `ready` 之前抛出，`ready` 永不 settle，`src/index.ts` 的启动链卡在 `await outbound.ready`。`setUrl` 先写文件再构建，坏 URL 一旦落盘每次重启都卡死。
+**修复**：`undici@^7` 进 `dependencies`，`outbound.ts` 静态 `import { fetch, ProxyAgent }`（全仓唯一 undici 导入方）；`ready = load()` 必然 settle，失败存为 `snapshot().error`；`setUrl` 改为构建 → 写文件 → 替换，任一步失败文件和状态都不动；已配置但不可用的代理让请求报 `outbound proxy unavailable: …`，绝不悄悄直连（死端口的最近一次失败也进 `snapshot().error`）；新增 `close()` 由 `ctx.effect` 清理调用；删死代码 `createOutboundFetch`。设置页主栏在 `snap.proxy.error` 存在时加一行 `.osubs-hint.osubs-bad`。
+**活测（2026-09-28，宿主 Node v24.21.0 + undici 7.30.0）**：repro 翻转为 `ready resolved`；worktree `lib/` 的 `fetchCodexQuota` 经代理 `127.0.0.1:9` → `outbound proxy unavailable: fetch failed: ECONNREFUSED via http://127.0.0.1:9`，不配代理 → 正常返回 planType/rows/resetCredits（上游共 2 次请求）。
+
 ## 2026-09-27：CI 恒定取消 token-lifecycle 后 5 个测试 = unref'd 刷新超时把事件循环排空
 
 **现象**：`506869d` 起每次 CI `fail 0 / cancelled 5`——`token-lifecycle.test.ts` 第 454 行起的 5 个测试全部 `cancelledByParent`（"event loop has already resolved"），再后两个测试根本没注册；本地 macOS 全绿不复现。

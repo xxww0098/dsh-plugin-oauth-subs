@@ -27,15 +27,21 @@ export declare function readOutboundPrefs(path: any): Promise<{
 export declare function writeOutboundPrefs(path: any, prefs: any): Promise<{
     url: any;
 }>;
-export declare function createOutboundFetch({ proxyUrl, env, fetchFn, agentFor, }?: any): any;
+/**
+ * Owns the proxy agent. `ready` always settles; a build failure is kept as
+ * `error` and fails every proxied request instead of silently going direct.
+ */
 export declare function createOutboundSession({ path, configUrl, env, fetchFn, agentFor, }?: any): {
-    ready: Promise<unknown>;
+    ready: Promise<void>;
     fetchFn: (input: any, init?: any) => any;
     resolvedUrl: () => string | undefined;
     snapshot(): {
+        error?: string | undefined;
         url: string;
         source: string;
         configured: boolean;
     };
     setUrl(raw: any): Promise<any>;
+    /** Frees the agent; later proxied requests fail instead of going direct. */
+    close(): Promise<void>;
 };

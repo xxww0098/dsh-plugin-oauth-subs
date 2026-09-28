@@ -5,7 +5,6 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import {
   OUTBOUND_PROXY_FILE,
-  createOutboundFetch,
   createOutboundSession,
   defaultOutboundPrefs,
   envProxyUrl,
@@ -85,24 +84,89 @@ test('readOutboundPrefs returns defaults when the file is missing', async () => 
   assert.deepEqual(normalizeOutboundPrefs({ url: 1 }), { url: '' })
 })
 
-test('createOutboundFetch injects dispatcher except for loopback', async () => {
+test('createOutboundSession injects dispatcher except for loopback', async () => {
   const seen = []
-  const fakeFetch = async (input, init = {}) => {
-    seen.push({ input, dispatcher: init.dispatcher })
-    return { ok: true }
-  }
   const agent = { kind: 'proxy-agent' }
-  const fetchFn = createOutboundFetch({
-    proxyUrl: 'http://127.0.0.1:7890',
+  const session = createOutboundSession({
+    configUrl: 'http://127.0.0.1:7890',
     env: {},
-    fetchFn: fakeFetch,
+    fetchFn: async (input, init: any = {}) => {
+      seen.push({ input, dispatcher: init.dispatcher })
+      return { ok: true }
+    },
     agentFor: () => agent,
   })
-  await fetchFn('https://api.x.ai/v1/responses', { method: 'POST' })
-  await fetchFn('http://127.0.0.1:8318/health')
+  await session.ready
+  await session.fetchFn('https://api.x.ai/v1/responses', { method: 'POST' })
+  await session.fetchFn('http://127.0.0.1:8318/health')
   assert.equal(seen.length, 2)
   assert.equal(seen[0].dispatcher, agent)
   assert.equal(seen[1].dispatcher, undefined)
+})
+
+test('createOutboundSession without agentFor resolves ready and fails loudly on a dead proxy', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-proxy-'))
+  const session = createOutboundSession({
+    path: outboundProxyPath(dir),
+    env: { HTTPS_PROXY: 'http://127.0.0.1:9' },
+  })
+  await session.ready
+  assert.equal(session.snapshot().configured, true)
+  await assert.rejects(
+    () => session.fetchFn('https://example.invalid/v1/models'),
+    /^Error: outbound proxy unavailable: .*ECONNREFUSED via http:\/\/127\.0\.0\.1:9$/,
+  )
+  assert.match(session.snapshot().error, /ECONNREFUSED/)
+  await session.close()
+})
+
+test('createOutboundSession keeps ready settling when the agent cannot be built', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-proxy-'))
+  const path = outboundProxyPath(dir)
+  await writeOutboundPrefs(path, { url: 'http://127.0.0.1:7890' })
+  const seen = []
+  const session = createOutboundSession({
+    path,
+    env: {},
+    fetchFn: async (input) => {
+      seen.push(input)
+      return { ok: true }
+    },
+    agentFor: () => {
+      throw new Error('boom')
+    },
+  })
+  await session.ready
+  assert.equal(session.snapshot().error, 'boom')
+  await assert.rejects(() => session.fetchFn('https://chatgpt.com/backend-api/codex/models'), /outbound proxy unavailable: boom/)
+  await session.fetchFn('http://127.0.0.1:8318/health')
+  assert.deepEqual(seen, ['http://127.0.0.1:8318/health'])
+})
+
+test('createOutboundSession setUrl leaves prefs and state alone when the agent cannot be built', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-proxy-'))
+  const path = outboundProxyPath(dir)
+  await writeOutboundPrefs(path, { url: 'http://127.0.0.1:7890' })
+  const seen = []
+  const session = createOutboundSession({
+    path,
+    env: {},
+    fetchFn: async (input, init: any = {}) => {
+      seen.push(init.dispatcher)
+      return { ok: true }
+    },
+    agentFor: (url) => {
+      if (url.includes('10.0.0.9')) throw new Error('cannot build')
+      return { uri: url }
+    },
+  })
+  await session.ready
+  const before = session.snapshot()
+  await assert.rejects(() => session.setUrl('http://10.0.0.9:8080'), /cannot build/)
+  assert.deepEqual(session.snapshot(), before)
+  assert.equal(await readFile(path, 'utf8'), '{"url":"http://127.0.0.1:7890"}\n')
+  await session.fetchFn('https://chatgpt.com/backend-api/codex/models')
+  assert.deepEqual(seen.at(-1), { uri: 'http://127.0.0.1:7890' })
 })
 
 test('createOutboundSession setUrl persists and rebuilds the agent', async () => {
