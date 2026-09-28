@@ -13,6 +13,9 @@
  * prompt should have hit.
  */
 
+import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { join } from 'node:path'
+import { zstdDecompressSync } from 'node:zlib'
 import { describeError } from './http.js'
 
 const STREAM_ENDED = /stream ended before a terminal response event/i
@@ -430,5 +433,439 @@ export function formatReport(report) {
     `tools       ${report.toolErrors.length} errors  host-timeout ${causes.host_timeout}  cascade ${causes.cascade_abort}  invalid ${causes.invalid}  transport ${report.transportFaults.length}`,
     `verdict     ${report.healthy ? 'HEALTHY' : 'REGRESSION'} — ${report.verdict}`,
   ]
+  return lines.join('\n')
+}
+
+// ── Directory mode: many sessions, one aggregate per provider ─────────────
+
+const ZSTD_MAGIC = 0xfd2fb528
+const SESSION_FILE = /^session.*\.jsonl(\.zstd)?$/
+const IDLE_TIMEOUT_300 = /stream idle timeout/i
+const PROXY_EXHAUSTED = /upstream failed \d+ times/
+const PROXY_504 = /no output within/
+const COLD_POOL_MS = 4_000
+const TTFB_SLOW_MS = 120_000
+const SILENCE_LONG_MS = 110_000
+const TOP_FAILURES = 20
+export const CALL_INDEX_BUCKETS = Object.freeze(['0-39', '40-79', '80-119', '120-159', '160-199', '200+'])
+
+/**
+ * DSH appends one zstd frame per write. `zstdDecompressSync(buf)` returns only
+ * the first frame (209 B of a 1265-frame file), so walk the frames by consumed
+ * input. A truncated tail frame (session still being written) is dropped.
+ */
+export function decodeSessionBuffer(buf: Buffer) {
+  if (buf.length < 4 || buf.readUInt32LE(0) !== ZSTD_MAGIC) return buf.toString('utf8')
+  const parts: Buffer[] = []
+  let offset = 0
+  while (offset < buf.length) {
+    let out
+    try {
+      // @types/node lacks the `{ info: true }` overload.
+      out = (zstdDecompressSync as any)(buf.subarray(offset), { info: true })
+    } catch {
+      break
+    }
+    if (!out.engine.bytesWritten) break
+    parts.push(out.buffer)
+    offset += out.engine.bytesWritten
+  }
+  return Buffer.concat(parts).toString('utf8')
+}
+
+/** Plain session.jsonl or DSH's multi-frame session*.jsonl.zstd. */
+export function readSessionText(path: string) {
+  return decodeSessionBuffer(readFileSync(path))
+}
+
+function sessionFiles(dir: string, since: number | null, out: string[] = []) {
+  for (const name of readdirSync(dir)) {
+    const path = join(dir, name)
+    const stat = statSync(path)
+    if (stat.isDirectory()) sessionFiles(path, since, out)
+    // mtime is the last append: an older file holds no event inside the window.
+    else if (SESSION_FILE.test(name) && (since == null || stat.mtimeMs >= since)) out.push(path)
+  }
+  return out
+}
+
+/** Absolute frame times: `{ time }` chunks and `{ time0, dt[] }` chunk runs. */
+function frameTimes(frames) {
+  const out: number[] = []
+  for (const frame of frames) {
+    if (typeof frame?.time === 'number') {
+      out.push(frame.time)
+    } else if (typeof frame?.time0 === 'number') {
+      let time = frame.time0
+      out.push(time)
+      for (const dt of Array.isArray(frame.dt) ? frame.dt : []) out.push(time += num(dt))
+    }
+  }
+  return out.sort((a, b) => a - b)
+}
+
+/** Terminal `finish` failure of an attempt: nested in assistant/attempt, or a
+ * top-level assistant/chunk in older sessions. */
+function attemptFailure(event) {
+  const frames = event.type === 'assistant/attempt' ? event.data?.stream : [event.data]
+  for (const frame of Array.isArray(frames) ? frames : []) {
+    const failure = frame?.chunk?.type === 'finish' ? frame.chunk.reason?.failure : null
+    if (failure) return { code: failure.code ?? '?', message: String(failure.message ?? '') }
+  }
+  return null
+}
+
+/**
+ * One session → calls, host retries, and failed attempts. An attempt starts at
+ * `step/start` or `llm/retry-started`; its frames are the message's `stream`,
+ * or (older sessions) the top-level chunk events since that start. A failed
+ * attempt followed by `llm/retry` is a retry, otherwise it is terminal.
+ */
+function sessionRecords(events) {
+  let provider = null
+  let model = null
+  const starts = new Map()
+  const frames = new Map()
+  const pending = new Map()
+  const seen = new Set()
+  const perProvider = new Map()
+  const retries: any[] = []
+  const failures: any[] = []
+  for (const event of events) {
+    const key = stepKey(event)
+    const type = event.type
+    const failure = type === 'assistant/attempt' || type === 'assistant/chunk' ? attemptFailure(event) : null
+    if (failure) failures.push(pending.set(key, { ...failure, provider, model, time: event.time }).get(key))
+    if (type === 'request/header') {
+      const config = event.data?.header?.config ?? event.data?.config ?? {}
+      if (config.provider) {
+        provider = config.provider
+        model = config.model ?? null
+      }
+    } else if (type === 'step/start' || type === 'llm/retry-started') {
+      if (key) {
+        starts.set(key, event.time)
+        frames.set(key, [])
+        pending.delete(key)
+      }
+    } else if (type === 'assistant/chunk' || (typeof type === 'string' && type.endsWith('-chunks'))) {
+      if (key) frames.get(key)?.push(type === 'assistant/chunk' ? { time: event.time } : { time0: event.time0, dt: event.data?.dt })
+    } else if (type === 'llm/retry') {
+      const retried = event.data?.failure ?? {}
+      retries.push({ provider: event.data?.provider ?? provider, model, code: retried.code ?? '?', message: String(retried.message ?? ''), time: event.time })
+      if (pending.has(key)) pending.get(key).retried = true
+    } else if (type === 'assistant/message') {
+      const usage = usageOf(event)
+      const callKey = key ?? `seq:${event.seq}`
+      if (!usage || seen.has(callKey)) continue
+      seen.add(callKey)
+      const source = event.data?.message?.source ?? {}
+      const callProvider = source.provider ?? provider ?? '(unknown)'
+      const stream = Array.isArray(event.data?.stream) && event.data.stream.length ? event.data.stream : frames.get(key) ?? []
+      const times = frameTimes(stream)
+      const start = starts.get(key)
+      let silenceMs: number | null = null
+      for (let i = 1; i < times.length; i++) silenceMs = Math.max(silenceMs ?? 0, times[i] - times[i - 1])
+      const list = perProvider.get(callProvider) ?? perProvider.set(callProvider, []).get(callProvider)
+      list.push({
+        provider: callProvider,
+        model: source.model ?? model ?? '(unknown)',
+        time: event.time ?? null,
+        start: typeof start === 'number' ? start : null,
+        index: list.length,
+        ttfbMs: times.length && typeof start === 'number' && times[0] >= start ? times[0] - start : null,
+        silenceMs,
+        inputTokens: num(usage.inputTokens),
+        outputTokens: num(usage.outputTokens),
+        cacheReadTokens: num(usage.cacheReadTokens),
+        cacheWriteTokens: num(usage.cacheWriteTokens),
+      })
+    }
+  }
+  const calls: any[] = []
+  for (const list of perProvider.values()) calls.push(...annotateCacheCalls(list, events))
+  return { calls, retries, failures: failures.filter((failure) => !failure.retried) }
+}
+
+/** Failure text safe to aggregate: no paths, ids, or tokens; digit runs folded. */
+export function normalizeFailureMessage(message) {
+  return String(message ?? '')
+    .replace(/(?:~|\/(?:Users|home|Volumes|private|tmp|var))\/[^\s'"`)]*/g, '<path>')
+    .replace(/\b[0-9a-f]{8,}(?:-[0-9a-f]{4,})*\b/gi, '<h>')
+    .replace(/\b(?=[\w-]*\d)(?=[\w-]*[a-z])[\w-]{20,}/gi, '<t>')
+    .replace(/\d{3,}/g, 'N')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 120)
+}
+
+function quantile(sorted: number[], fraction) {
+  return sorted.length ? sorted[Math.floor(fraction * (sorted.length - 1))] : null
+}
+
+function sortedValues(calls, field) {
+  return calls.map((call) => call[field]).filter((value) => typeof value === 'number').sort((a, b) => a - b)
+}
+
+function callIndexBucket(index) {
+  if (index >= 200) return '200+'
+  const low = Math.floor(index / 40) * 40
+  return `${low}-${low + 39}`
+}
+
+function groupStats({ calls, retries, failures }) {
+  const inputTokens = calls.reduce((sum, call) => sum + call.inputTokens, 0)
+  const cacheReadTokens = calls.reduce((sum, call) => sum + call.cacheReadTokens, 0)
+  const cacheWriteTokens = calls.reduce((sum, call) => sum + call.cacheWriteTokens, 0)
+
+  const buckets = Object.fromEntries(CALL_INDEX_BUCKETS.map((name) => [name, { calls: 0, input: 0, read: 0 }]))
+  for (const call of calls) {
+    const bucket = buckets[callIndexBucket(call.index)]
+    bucket.calls += 1
+    bucket.input += call.inputTokens
+    bucket.read += call.cacheReadTokens
+  }
+
+  const retryCodes = {}
+  for (const retry of retries) retryCodes[retry.code] = (retryCodes[retry.code] ?? 0) + 1
+  const failedAttempts = [...retries, ...failures]
+  const matching = (pattern) => failedAttempts.filter((attempt) => pattern.test(attempt.message)).length
+
+  const failureGroups = new Map()
+  for (const failure of failures) {
+    const message = normalizeFailureMessage(failure.message)
+    const key = `${failure.code}\0${message}`
+    const group = failureGroups.get(key) ?? failureGroups.set(key, { code: failure.code, message, n: 0 }).get(key)
+    group.n += 1
+  }
+
+  const ttfb = sortedValues(calls, 'ttfbMs')
+  const silence = sortedValues(calls, 'silenceMs')
+  const idle = sortedValues(calls, 'poolIdleMs')
+  const coldTtfb = sortedValues(calls.filter((call) => call.poolIdleMs > COLD_POOL_MS), 'ttfbMs')
+  const warmTtfb = sortedValues(calls.filter((call) => call.poolIdleMs != null && call.poolIdleMs <= COLD_POOL_MS), 'ttfbMs')
+  const coldP50 = quantile(coldTtfb, 0.5)
+  const warmP50 = quantile(warmTtfb, 0.5)
+
+  return {
+    calls: calls.length,
+    inputTokens,
+    cacheReadTokens,
+    cacheWriteTokens,
+    weightedCacheHit: hitRate(cacheReadTokens, inputTokens),
+    uncachedBreakdown: uncachedBreakdown(calls),
+    hitByCallIndex: Object.fromEntries(Object.entries(buckets).map(([name, bucket]) => [
+      name,
+      { calls: bucket.calls, hit: hitRate(bucket.read, bucket.input) },
+    ])),
+    retries: retryCodes,
+    idleTimeout300: matching(IDLE_TIMEOUT_300),
+    proxyExhausted: matching(PROXY_EXHAUSTED),
+    proxy504: matching(PROXY_504),
+    terminalFailures: failures.length,
+    failures: [...failureGroups.values()].sort((a, b) => b.n - a.n).slice(0, TOP_FAILURES),
+    ttfbMs: {
+      n: ttfb.length,
+      p50: quantile(ttfb, 0.5),
+      p95: quantile(ttfb, 0.95),
+      p99: quantile(ttfb, 0.99),
+      max: ttfb.at(-1) ?? null,
+      over120s: ttfb.filter((value) => value > TTFB_SLOW_MS).length,
+    },
+    silenceMs: {
+      p99: quantile(silence, 0.99),
+      max: silence.at(-1) ?? null,
+      over110s: silence.filter((value) => value > SILENCE_LONG_MS).length,
+    },
+    poolIdle: {
+      n: idle.length,
+      over4sShare: idle.length ? idle.filter((value) => value > COLD_POOL_MS).length / idle.length : null,
+      p75Ms: quantile(idle, 0.75),
+    },
+    coldPenaltyMs: coldP50 != null && warmP50 != null ? coldP50 - warmP50 : null,
+  }
+}
+
+/**
+ * Pool idle = this request's start minus the latest response end on the same
+ * provider at or before it, across sessions: the connection pool is per
+ * process, so that is how long the most recently freed socket sat idle.
+ */
+function annotatePoolIdle(calls) {
+  const ends = calls.map((call) => call.time).filter((time) => typeof time === 'number').sort((a, b) => a - b)
+  for (const call of calls) {
+    if (call.start == null) continue
+    let low = 0
+    let high = ends.length
+    while (low < high) {
+      const mid = (low + high) >> 1
+      if (ends[mid] <= call.start) low = mid + 1
+      else high = mid
+    }
+    if (low) call.poolIdleMs = call.start - ends[low - 1]
+  }
+}
+
+function toIso(ms) {
+  return ms == null ? null : new Date(ms).toISOString()
+}
+
+/**
+ * Aggregate every session under `root` whose events fall in [since, until).
+ * The same session may exist as session.jsonl.zstd and session.v3/v4.jsonl.zstd;
+ * only the highest `session.version` copy of each `session.id` counts.
+ */
+export function analyzeSessionDir(root: string, { since = null, until = null }: { since?: number | null, until?: number | null } = {}) {
+  const inWindow = (time) => typeof time === 'number' && (since == null || time >= since) && (until == null || time < until)
+  const sessions = new Map()
+  let files = 0
+  let unreadable = 0
+  for (const path of sessionFiles(root, since)) {
+    files += 1
+    let events
+    try {
+      events = parseSessionEvents(readSessionText(path))
+    } catch {
+      unreadable += 1
+      continue
+    }
+    const head = events.find((event) => event.type === 'session')
+    const id = head?.id ?? path
+    const version = num(head?.version) || Number(/\.v(\d+)\./.exec(path)?.[1] ?? 1)
+    if ((sessions.get(id)?.version ?? -1) >= version) continue
+    sessions.set(id, { version, ...sessionRecords(events) })
+  }
+
+  const providers = new Map()
+  const models = new Map()
+  const add = (kind, record) => {
+    for (const [map, name] of [[providers, record.provider ?? '(unknown)'], [models, `${record.provider ?? '(unknown)'}/${record.model ?? '(unknown)'}`]]) {
+      const group = map.get(name) ?? map.set(name, { calls: [], retries: [], failures: [] }).get(name)
+      group[kind].push(record)
+    }
+  }
+  for (const session of sessions.values()) {
+    for (const kind of ['calls', 'retries', 'failures']) {
+      for (const record of session[kind]) if (inWindow(record.time)) add(kind, record)
+    }
+  }
+  for (const group of providers.values()) annotatePoolIdle(group.calls)
+
+  const byCalls = (map) => Object.fromEntries([...map.entries()]
+    .map(([name, group]) => [name, groupStats(group)])
+    .sort((a, b) => (b[1].inputTokens + b[1].cacheReadTokens) - (a[1].inputTokens + a[1].cacheReadTokens)))
+  return {
+    window: { since: toIso(since), until: toIso(until) },
+    files,
+    sessions: sessions.size,
+    duplicateFiles: files - unreadable - sessions.size,
+    unreadableFiles: unreadable,
+    providers: byCalls(providers),
+    models: byCalls(models),
+  }
+}
+
+const pct = (value) => (value == null ? '—' : `${(value * 100).toFixed(1)}%`)
+const secs = (ms) => (ms == null ? '—' : `${(ms / 1000).toFixed(1)}s`)
+
+export function formatAggregate(report) {
+  const lines = [
+    `window      ${report.window.since ?? '—'} → ${report.window.until ?? '—'}`,
+    `sessions    ${report.sessions} (${report.files} files, ${report.duplicateFiles} duplicate, ${report.unreadableFiles} unreadable)`,
+    '',
+    'provider                    calls  prompt     hit  ttfb p50/p95/p99/max       >120s  silence p99/max  >110s  idle>4s  idle p75  cold+',
+  ]
+  for (const [name, s] of Object.entries<any>(report.providers)) {
+    lines.push([
+      name.padEnd(26),
+      String(s.calls).padStart(6),
+      `${((s.inputTokens + s.cacheReadTokens) / 1e6).toFixed(0)}M`.padStart(7),
+      pct(s.weightedCacheHit).padStart(7),
+      `${secs(s.ttfbMs.p50)}/${secs(s.ttfbMs.p95)}/${secs(s.ttfbMs.p99)}/${secs(s.ttfbMs.max)}`.padStart(26),
+      String(s.ttfbMs.over120s).padStart(6),
+      `${secs(s.silenceMs.p99)}/${secs(s.silenceMs.max)}`.padStart(16),
+      String(s.silenceMs.over110s).padStart(6),
+      pct(s.poolIdle.over4sShare).padStart(8),
+      secs(s.poolIdle.p75Ms).padStart(9),
+      secs(s.coldPenaltyMs).padStart(6),
+    ].join(' '))
+  }
+  lines.push('', 'faults')
+  for (const [name, s] of Object.entries<any>(report.providers)) {
+    const retries = Object.entries(s.retries).map(([code, n]) => `${code} ${n}`).join(', ')
+    if (!retries && !s.terminalFailures) continue
+    lines.push(`  ${name}: retries ${retries || '0'}; idle300 ${s.idleTimeout300}  exhausted ${s.proxyExhausted}  504 ${s.proxy504}  terminal ${s.terminalFailures}`)
+    for (const failure of s.failures.slice(0, 5)) lines.push(`      ${String(failure.n).padStart(3)}× ${failure.code}: ${failure.message}`)
+  }
+  lines.push('', `hit by call index  ${CALL_INDEX_BUCKETS.join(' / ')}`)
+  for (const [name, s] of Object.entries<any>(report.providers)) {
+    lines.push(`  ${name.padEnd(26)} ${CALL_INDEX_BUCKETS.map((bucket) => {
+      const b = s.hitByCallIndex[bucket]
+      return b.calls ? `${pct(b.hit)} (${b.calls})` : '—'
+    }).join(' / ')}`)
+  }
+  lines.push('', 'models')
+  for (const [name, s] of Object.entries<any>(report.models)) {
+    lines.push(`  ${name.padEnd(48)} ${String(s.calls).padStart(6)} ${pct(s.weightedCacheHit).padStart(7)}  ttfb p50 ${secs(s.ttfbMs.p50)}`)
+  }
+  return lines.join('\n')
+}
+
+const retryTotal = (s) => Object.values<number>(s.retries).reduce((sum, n) => sum + n, 0)
+
+const COMPARED = {
+  hit: (s) => s.weightedCacheHit,
+  retriesPer1k: (s) => per1k(retryTotal(s), s),
+  idleTimeout300Per1k: (s) => per1k(s.idleTimeout300, s),
+  proxyExhaustedPer1k: (s) => per1k(s.proxyExhausted, s),
+  proxy504Per1k: (s) => per1k(s.proxy504, s),
+  terminalFailuresPer1k: (s) => per1k(s.terminalFailures, s),
+  ttfbOver120sPer1k: (s) => per1k(s.ttfbMs.over120s, s),
+  silenceOver110sPer1k: (s) => per1k(s.silenceMs.over110s, s),
+  ttfbP50Ms: (s) => s.ttfbMs.p50,
+  ttfbP95Ms: (s) => s.ttfbMs.p95,
+  poolIdleOver4sShare: (s) => s.poolIdle.over4sShare,
+  coldPenaltyMs: (s) => s.coldPenaltyMs,
+}
+
+function per1k(count, s) {
+  return s.calls ? (1000 * count) / s.calls : null
+}
+
+/** Per-provider deltas `next − base`; counts normalized per 1k calls. */
+export function compareReports(base, next) {
+  const names = [...new Set([...Object.keys(next.providers), ...Object.keys(base.providers)])]
+  const providers = {}
+  for (const name of names) {
+    const a = base.providers[name]
+    const b = next.providers[name]
+    const row: Record<string, any> = { calls: { base: a?.calls ?? 0, next: b?.calls ?? 0 } }
+    for (const [metric, read] of Object.entries(COMPARED)) {
+      const x = a ? read(a) : null
+      const y = b ? read(b) : null
+      row[metric] = { base: x, next: y, delta: x == null || y == null ? null : y - x }
+    }
+    providers[name] = row
+  }
+  return { base: base.window, next: next.window, providers }
+}
+
+export function formatComparison(diff) {
+  const value = (metric, v) => {
+    if (v == null) return '—'
+    if (metric === 'hit' || metric === 'poolIdleOver4sShare') return `${(v * 100).toFixed(1)}`
+    if (metric.endsWith('Ms')) return `${(v / 1000).toFixed(1)}s`
+    return v.toFixed(1)
+  }
+  const lines = [`base ${diff.base.since ?? '—'} → ${diff.base.until ?? '—'}  vs  next ${diff.next.since ?? '—'} → ${diff.next.until ?? '—'}`]
+  for (const [name, row] of Object.entries<any>(diff.providers)) {
+    lines.push('', `${name}  calls ${row.calls.base} → ${row.calls.next}`)
+    for (const metric of Object.keys(COMPARED)) {
+      const { base, next, delta } = row[metric]
+      if (base == null && next == null) continue
+      const sign = delta != null && delta > 0 ? '+' : ''
+      lines.push(`  ${metric.padEnd(24)} ${value(metric, base).padStart(8)} → ${value(metric, next).padStart(8)}  (${delta == null ? '—' : sign + value(metric, delta)})`)
+    }
+  }
   return lines.join('\n')
 }

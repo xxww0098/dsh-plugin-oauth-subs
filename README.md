@@ -107,7 +107,10 @@ Remaining uncached tokens are almost all new tool output (`delta`) plus expected
 npm run analyze -- path/to/session.jsonl
 node --experimental-strip-types scripts/analyze-session.ts --json path/to/session.jsonl
 node --experimental-strip-types scripts/analyze-session.ts --fail-below 80 path/to/session.jsonl
+npm run analyze -- --dir ~/.dsh/sessions --since 30d [--until ISO] [--json] [--compare base.json]
 ```
+
+Directory mode aggregates every session (plain or zstd, one copy per session id) per provider and model: hit rate by call index, host retries, 300s idle timeouts, TTFB, stream silence, and pool idle; `--compare` prints per-1k-call deltas against a saved `--json` report.
 
 The analyzer labels each call `cold_start` / `delta` / `compaction` / `rebuild` / `affinity_miss` so a compacted session is not flagged as a shard regression. Import as `dsh-plugin-oauth-subs/analyze-session`.
 

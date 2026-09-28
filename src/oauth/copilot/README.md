@@ -60,7 +60,7 @@ DSH POST /copilot/v1/chat/completions
 | device | `POST https://github.com/login/device/code` JSON `{client_id,scope}` |
 | token | `POST https://github.com/login/oauth/access_token` JSON device_code grant |
 | 换票 | `GET https://api.github.com/copilot_internal/v2/token` `Authorization: token <ghu_>` |
-| 刷新 | 再换票。GitHub App `refresh_token` 过期才走 GitHub token URL。401 / 403 = 永久，必须重登 |
+| 刷新 | 再换票。GitHub App `refresh_token` 过期才走 GitHub token URL。401 / `invalid_grant` = 永久，必须重登（403 仍先尝试 GitHub 换票，失败按临时处理） |
 | UA / 身份 | `GitHubCopilotChat/0.35.0` + vscode-chat 头。session token 绑定这套头，缺了 Business/预览 403 |
 
 `authorization_pending` = 继续等；`slow_down` = interval +5s；`expired_token` = **重新** device（`DeviceFlowManager.restartOnExpired`）。
@@ -111,7 +111,7 @@ Copilot Completions 是 **前缀哈希** + `X-Interaction-Id` 会话粘滞。官
 | 2 | `applyCopilotCache` | 剥 Codex/Grok 字段；首段 system 钉住，后续快照停到 **messages suffix** |
 | 3 | `copilotCacheHeaders` / `copilotUpstreamHeaders` | `X-Interaction-Id`。不写 `session-id` / `x-grok-conv-id` |
 
-命中：上游 `prompt_tokens_details.cached_tokens` / `cache_read_input_tokens` → `mapCopilotUsage`（JSON 和 SSE 都走代理）。流式缺省 `stream_options.include_usage`。没有字段不发明 0。不要 `Date.now()`。缺省 pin `dsh-copilot` **会**写成 `X-Interaction-Id`（官方总是发 session id）。
+命中：上游 `prompt_tokens_details.cached_tokens` / `cache_read_input_tokens` → `mapCopilotUsage`（JSON 和 SSE 都走代理）。流式缺省 `stream_options.include_usage`。没有字段不发明 0。不要 `Date.now()`。缺省 pin `dsh-copilot` **会**写成 `X-Interaction-Id`（官方总是发 session id），但 `isCopilotFallback` 为真时不钉系统提示——回退 id 不是一条对话。
 
 ## 不要
 

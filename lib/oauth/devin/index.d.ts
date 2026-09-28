@@ -9,6 +9,7 @@
  * Reference: Devin CLI 3000.10.31 (binary strings + live wire probes) and
  * oh-my-pi `pi-catalog` devin provider (Connect framing + message shapes).
  */
+import { outboundFetch } from '../../utils/outbound.js';
 export declare const DEVIN_WEBAPP_URL = "https://app.devin.ai";
 export declare const DEVIN_API_URL = "https://api.devin.ai";
 export declare const DEVIN_API_SERVER = "https://server.codeium.com";
@@ -100,7 +101,7 @@ export declare function devinSession({ accessToken, expiresAt, account, planType
     expiresAt: number;
 };
 export declare const DEVIN_SOURCES: readonly string[];
-export declare function devinSourceLabel(source: any): "key" | "env" | "CLI" | "PKCE" | undefined;
+export declare function devinSourceLabel(source: any): "env" | "CLI" | "PKCE" | "key" | undefined;
 export declare function devinApiServer(session: any): string;
 /**
  * The token has no refresh grant. When the stored expiry is near, probe
@@ -108,7 +109,6 @@ export declare function devinApiServer(session: any): string;
  * 401 → re-login. Never mutates the stored credential.
  */
 export declare function refreshDevin(session: any, { fetchFn, statusFn }?: any): Promise<any>;
-export declare function isDevinPermanentRefreshError(error: any): boolean;
 /**
  * Loopback PKCE spec for the shared OAuthFlowManager. The authorize URL is
  * what `devin auth login` builds (including `cli_pkce_marker=1`).
@@ -126,7 +126,7 @@ export declare const devinFlow: Readonly<{
     }): string;
 }>;
 export declare function exchangeDevinCode(code: any, verifier: any, { fetchFn }?: {
-    fetchFn?: typeof fetch | undefined;
+    fetchFn?: typeof outboundFetch | undefined;
 }): Promise<{
     source: any;
     apiServer?: string | undefined;

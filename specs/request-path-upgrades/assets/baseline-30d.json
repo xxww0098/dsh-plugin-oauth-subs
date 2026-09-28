@@ -1,0 +1,3780 @@
+{
+  "window": {
+    "since": "2026-08-29T00:00:00.000Z",
+    "until": "2026-09-28T00:00:00.000Z"
+  },
+  "files": 496,
+  "sessions": 473,
+  "duplicateFiles": 23,
+  "unreadableFiles": 0,
+  "providers": {
+    "opencode-go-flash": {
+      "calls": 10430,
+      "inputTokens": 17242653,
+      "cacheReadTokens": 2049854336,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0.9916585176739378,
+      "uncachedBreakdown": {
+        "cold_start": 142775,
+        "delta": 13238801,
+        "compaction": 0,
+        "rebuild": 1201937,
+        "prefix_break": 496132,
+        "affinity_miss": 2163008
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 3904,
+          "hit": 0.9688991116220586
+        },
+        "40-79": {
+          "calls": 2303,
+          "hit": 0.9910918136268062
+        },
+        "80-119": {
+          "calls": 1288,
+          "hit": 0.9944070512799313
+        },
+        "120-159": {
+          "calls": 994,
+          "hit": 0.9960792667751013
+        },
+        "160-199": {
+          "calls": 709,
+          "hit": 0.998472666865077
+        },
+        "200+": {
+          "calls": 1232,
+          "hit": 0.9981409048613209
+        }
+      },
+      "retries": {
+        "TRANSPORT": 26,
+        "SERVER": 2,
+        "TIMEOUT": 1
+      },
+      "idleTimeout300": 0,
+      "proxyExhausted": 0,
+      "proxy504": 0,
+      "terminalFailures": 3,
+      "failures": [
+        {
+          "code": "TRANSPORT",
+          "message": "Connection error.",
+          "n": 2
+        },
+        {
+          "code": "INVALID_REQUEST",
+          "message": "N: {\"type\":\"MissingSessionID\",\"message\":\"Error from provider (Console Go): Request is missing x-opencode-session and can",
+          "n": 1
+        }
+      ],
+      "ttfbMs": {
+        "n": 10430,
+        "p50": 4791,
+        "p95": 16567,
+        "p99": 30868,
+        "max": 177395,
+        "over120s": 1
+      },
+      "silenceMs": {
+        "p99": 2721,
+        "max": 51391,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 10429,
+        "over4sShare": 0.10806405216223991,
+        "p75Ms": 295
+      },
+      "coldPenaltyMs": 2391
+    },
+    "oauth-ollama": {
+      "calls": 7134,
+      "inputTokens": 458863827,
+      "cacheReadTokens": 961392486,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0.6769147774244042,
+      "uncachedBreakdown": {
+        "cold_start": 2243464,
+        "delta": 9506781,
+        "compaction": 0,
+        "rebuild": 50867593,
+        "prefix_break": 589644,
+        "affinity_miss": 395656345
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 2974,
+          "hit": 0.7320662968848799
+        },
+        "40-79": {
+          "calls": 1553,
+          "hit": 0.7487061031024024
+        },
+        "80-119": {
+          "calls": 856,
+          "hit": 0.6744752449244416
+        },
+        "120-159": {
+          "calls": 555,
+          "hit": 0.6105604409998494
+        },
+        "160-199": {
+          "calls": 402,
+          "hit": 0.5888828286379584
+        },
+        "200+": {
+          "calls": 794,
+          "hit": 0.6481527555691124
+        }
+      },
+      "retries": {
+        "SERVER": 10,
+        "TIMEOUT": 24
+      },
+      "idleTimeout300": 27,
+      "proxyExhausted": 1,
+      "proxy504": 0,
+      "terminalFailures": 4,
+      "failures": [
+        {
+          "code": "TIMEOUT",
+          "message": "pi-ai stream idle timeout after Nms",
+          "n": 3
+        },
+        {
+          "code": "SERVER",
+          "message": "N: {\"message\":\"Internal Server Error (ref: <h>)\",\"type\":\"api_error\",\"param\":null,\"code\":null}",
+          "n": 1
+        }
+      ],
+      "ttfbMs": {
+        "n": 7134,
+        "p50": 3450,
+        "p95": 32050,
+        "p99": 72466,
+        "max": 297287,
+        "over120s": 38
+      },
+      "silenceMs": {
+        "p99": 13499,
+        "max": 66968,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 7133,
+        "over4sShare": 0.12238889667741483,
+        "p75Ms": 466
+      },
+      "coldPenaltyMs": 2035
+    },
+    "oauth-grok": {
+      "calls": 3340,
+      "inputTokens": 25052290,
+      "cacheReadTokens": 669200640,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0.9639147507811022,
+      "uncachedBreakdown": {
+        "cold_start": 330660,
+        "delta": 9671320,
+        "compaction": 3116509,
+        "rebuild": 731650,
+        "prefix_break": 1019470,
+        "affinity_miss": 10182681
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 1249,
+          "hit": 0.9145454447524938
+        },
+        "40-79": {
+          "calls": 771,
+          "hit": 0.9701575518189911
+        },
+        "80-119": {
+          "calls": 451,
+          "hit": 0.9781417801186132
+        },
+        "120-159": {
+          "calls": 378,
+          "hit": 0.9814315894170622
+        },
+        "160-199": {
+          "calls": 226,
+          "hit": 0.9750904970397015
+        },
+        "200+": {
+          "calls": 265,
+          "hit": 0.9841744056590938
+        }
+      },
+      "retries": {
+        "TIMEOUT": 7,
+        "TRANSPORT": 2,
+        "SERVER": 1
+      },
+      "idleTimeout300": 7,
+      "proxyExhausted": 1,
+      "proxy504": 0,
+      "terminalFailures": 2,
+      "failures": [
+        {
+          "code": "PI_AI_ERROR",
+          "message": "Error Code null: Internal error during token parsing",
+          "n": 1
+        },
+        {
+          "code": "PI_AI_ERROR",
+          "message": "Error Code null: The model is currently at capacity due to high demand. Please try again in a few minutes, or use a high",
+          "n": 1
+        }
+      ],
+      "ttfbMs": {
+        "n": 3340,
+        "p50": 5987,
+        "p95": 24449,
+        "p99": 41769,
+        "max": 159399,
+        "over120s": 1
+      },
+      "silenceMs": {
+        "p99": 27736,
+        "max": 106823,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 3339,
+        "over4sShare": 0.12159329140461216,
+        "p75Ms": 356
+      },
+      "coldPenaltyMs": 793
+    },
+    "oauth-devin": {
+      "calls": 3053,
+      "inputTokens": 8224740,
+      "cacheReadTokens": 365933933,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0.9780180426286684,
+      "uncachedBreakdown": {
+        "cold_start": 760944,
+        "delta": 65027,
+        "compaction": 2116697,
+        "rebuild": 312983,
+        "prefix_break": 121372,
+        "affinity_miss": 4847717
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 847,
+          "hit": 0.9320093362702789
+        },
+        "40-79": {
+          "calls": 420,
+          "hit": 0.9856600966470874
+        },
+        "80-119": {
+          "calls": 276,
+          "hit": 0.9783108553989542
+        },
+        "120-159": {
+          "calls": 162,
+          "hit": 0.9865182088111587
+        },
+        "160-199": {
+          "calls": 153,
+          "hit": 0.9625250588875552
+        },
+        "200+": {
+          "calls": 1195,
+          "hit": 0.9908968417522629
+        }
+      },
+      "retries": {
+        "SERVER": 7,
+        "TRANSPORT": 3
+      },
+      "idleTimeout300": 0,
+      "proxyExhausted": 0,
+      "proxy504": 0,
+      "terminalFailures": 1,
+      "failures": [
+        {
+          "code": "SERVER",
+          "message": "N: {\"message\":\"fetch failed: ECONNRESET\"}",
+          "n": 1
+        }
+      ],
+      "ttfbMs": {
+        "n": 3053,
+        "p50": 6465,
+        "p95": 22740,
+        "p99": 58338,
+        "max": 180634,
+        "over120s": 6
+      },
+      "silenceMs": {
+        "p99": 47597,
+        "max": 152781,
+        "over110s": 2
+      },
+      "poolIdle": {
+        "n": 3052,
+        "over4sShare": 0.06094364351245085,
+        "p75Ms": 331
+      },
+      "coldPenaltyMs": 2716
+    },
+    "oauth-antigravity": {
+      "calls": 1766,
+      "inputTokens": 77217535,
+      "cacheReadTokens": 214897031,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0.73566010056479,
+      "uncachedBreakdown": {
+        "cold_start": 590111,
+        "delta": 7776291,
+        "compaction": 0,
+        "rebuild": 165638,
+        "prefix_break": 59505870,
+        "affinity_miss": 9179625
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 618,
+          "hit": 0.8461382048107199
+        },
+        "40-79": {
+          "calls": 454,
+          "hit": 0.9378893367861723
+        },
+        "80-119": {
+          "calls": 326,
+          "hit": 0.8871256710287887
+        },
+        "120-159": {
+          "calls": 217,
+          "hit": 0.49876367064597116
+        },
+        "160-199": {
+          "calls": 128,
+          "hit": 0.4087206298686003
+        },
+        "200+": {
+          "calls": 23,
+          "hit": 0.7575382395425753
+        }
+      },
+      "retries": {
+        "TIMEOUT": 1,
+        "SERVER": 3
+      },
+      "idleTimeout300": 1,
+      "proxyExhausted": 0,
+      "proxy504": 0,
+      "terminalFailures": 3,
+      "failures": [
+        {
+          "code": "QUOTA",
+          "message": "N: {\"code\":N,\"message\":\"Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 1h",
+          "n": 3
+        }
+      ],
+      "ttfbMs": {
+        "n": 1766,
+        "p50": 4384,
+        "p95": 11994,
+        "p99": 19559,
+        "max": 81884,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": 1515,
+        "max": 3449,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 1765,
+        "over4sShare": 0.07252124645892351,
+        "p75Ms": 130
+      },
+      "coldPenaltyMs": 1732
+    },
+    "deepseek-official": {
+      "calls": 2024,
+      "inputTokens": 3100931,
+      "cacheReadTokens": 273734016,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0.988798628808956,
+      "uncachedBreakdown": {
+        "cold_start": 88431,
+        "delta": 3012500,
+        "compaction": 0,
+        "rebuild": 0,
+        "prefix_break": 0,
+        "affinity_miss": 0
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 923,
+          "hit": 0.9708106793344405
+        },
+        "40-79": {
+          "calls": 621,
+          "hit": 0.9929997128483103
+        },
+        "80-119": {
+          "calls": 244,
+          "hit": 0.9953450483528575
+        },
+        "120-159": {
+          "calls": 94,
+          "hit": 0.9954166963282708
+        },
+        "160-199": {
+          "calls": 40,
+          "hit": 0.998107843405477
+        },
+        "200+": {
+          "calls": 102,
+          "hit": 0.9985476569304805
+        }
+      },
+      "retries": {},
+      "idleTimeout300": 0,
+      "proxyExhausted": 0,
+      "proxy504": 0,
+      "terminalFailures": 0,
+      "failures": [],
+      "ttfbMs": {
+        "n": 2024,
+        "p50": 915,
+        "p95": 1856,
+        "p99": 2302,
+        "max": 4324,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": 892,
+        "max": 1583,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 2023,
+        "over4sShare": 0.0365793376173999,
+        "p75Ms": 86
+      },
+      "coldPenaltyMs": 504
+    },
+    "oauth-codex": {
+      "calls": 3148,
+      "inputTokens": 27531064,
+      "cacheReadTokens": 234536448,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0.8949466731305481,
+      "uncachedBreakdown": {
+        "cold_start": 1763520,
+        "delta": 9209279,
+        "compaction": 14241105,
+        "rebuild": 1091372,
+        "prefix_break": 263146,
+        "affinity_miss": 962642
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 2417,
+          "hit": 0.8948283198495884
+        },
+        "40-79": {
+          "calls": 496,
+          "hit": 0.9087911676212362
+        },
+        "80-119": {
+          "calls": 165,
+          "hit": 0.8955417341733078
+        },
+        "120-159": {
+          "calls": 70,
+          "hit": 0.7454366580705916
+        },
+        "160-199": {
+          "calls": 0,
+          "hit": 0
+        },
+        "200+": {
+          "calls": 0,
+          "hit": 0
+        }
+      },
+      "retries": {
+        "TRANSPORT": 8,
+        "SERVER": 27
+      },
+      "idleTimeout300": 0,
+      "proxyExhausted": 28,
+      "proxy504": 0,
+      "terminalFailures": 6,
+      "failures": [
+        {
+          "code": "SERVER",
+          "message": "OpenAI API error (N): N \"codex upstream failed 3 times: fetch failed: ECONNRESET\"",
+          "n": 3
+        },
+        {
+          "code": "PI_AI_ERROR",
+          "message": "This content was flagged for possible cybersecurity risk. If this seems wrong, try rephrasing your request. To get autho",
+          "n": 1
+        },
+        {
+          "code": "INVALID_REQUEST",
+          "message": "OpenAI API error (N): {\"message\":\"codex upstream N with empty body\",\"type\":\"invalid_request_error\",\"code\":\"invalid_reque",
+          "n": 1
+        },
+        {
+          "code": "PI_AI_ERROR",
+          "message": "Cannot find module '<path>' imported from <path>",
+          "n": 1
+        }
+      ],
+      "ttfbMs": {
+        "n": 3148,
+        "p50": 3794,
+        "p95": 20732,
+        "p99": 37030,
+        "max": 83167,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": 11160,
+        "max": 17870,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 3147,
+        "over4sShare": 0.15570384493168096,
+        "p75Ms": 940
+      },
+      "coldPenaltyMs": 6063
+    },
+    "oc": {
+      "calls": 1348,
+      "inputTokens": 2181742,
+      "cacheReadTokens": 258868096,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0.9916424311284192,
+      "uncachedBreakdown": {
+        "cold_start": 0,
+        "delta": 2171812,
+        "compaction": 9930,
+        "rebuild": 0,
+        "prefix_break": 0,
+        "affinity_miss": 0
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 568,
+          "hit": 0.9710441246322539
+        },
+        "40-79": {
+          "calls": 247,
+          "hit": 0.9951594490063591
+        },
+        "80-119": {
+          "calls": 187,
+          "hit": 0.9966169352213314
+        },
+        "120-159": {
+          "calls": 152,
+          "hit": 0.9976871005920056
+        },
+        "160-199": {
+          "calls": 81,
+          "hit": 0.9986089961299525
+        },
+        "200+": {
+          "calls": 113,
+          "hit": 0.9924676007320659
+        }
+      },
+      "retries": {
+        "TRANSPORT": 6,
+        "TIMEOUT": 1
+      },
+      "idleTimeout300": 0,
+      "proxyExhausted": 0,
+      "proxy504": 0,
+      "terminalFailures": 1,
+      "failures": [
+        {
+          "code": "INVALID_REQUEST",
+          "message": "N: {\"type\":\"MissingSessionID\",\"message\":\"Error from provider (Console Go): Request is missing x-opencode-session and can",
+          "n": 1
+        }
+      ],
+      "ttfbMs": {
+        "n": 1348,
+        "p50": 5931,
+        "p95": 14134,
+        "p99": 22159,
+        "max": 42509,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": 3057,
+        "max": 6963,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 1347,
+        "over4sShare": 0.12249443207126949,
+        "p75Ms": 489
+      },
+      "coldPenaltyMs": 2684
+    },
+    "ollama": {
+      "calls": 371,
+      "inputTokens": 27395877,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0,
+      "uncachedBreakdown": {
+        "cold_start": 132384,
+        "delta": 0,
+        "compaction": 0,
+        "rebuild": 0,
+        "prefix_break": 0,
+        "affinity_miss": 27263493
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 267,
+          "hit": 0
+        },
+        "40-79": {
+          "calls": 80,
+          "hit": 0
+        },
+        "80-119": {
+          "calls": 24,
+          "hit": 0
+        },
+        "120-159": {
+          "calls": 0,
+          "hit": 0
+        },
+        "160-199": {
+          "calls": 0,
+          "hit": 0
+        },
+        "200+": {
+          "calls": 0,
+          "hit": 0
+        }
+      },
+      "retries": {
+        "TRANSPORT": 20
+      },
+      "idleTimeout300": 0,
+      "proxyExhausted": 0,
+      "proxy504": 0,
+      "terminalFailures": 4,
+      "failures": [
+        {
+          "code": "TRANSPORT",
+          "message": "Connection error.",
+          "n": 4
+        }
+      ],
+      "ttfbMs": {
+        "n": 371,
+        "p50": 10297,
+        "p95": 27648,
+        "p99": 38980,
+        "max": 82828,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": 35404,
+        "max": 59477,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 370,
+        "over4sShare": 0.002702702702702703,
+        "p75Ms": 73
+      },
+      "coldPenaltyMs": -6113
+    },
+    "oauth-cline": {
+      "calls": 196,
+      "inputTokens": 4467106,
+      "cacheReadTokens": 16017438,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0.7819279745743913,
+      "uncachedBreakdown": {
+        "cold_start": 170907,
+        "delta": 707896,
+        "compaction": 1187153,
+        "rebuild": 62245,
+        "prefix_break": 348517,
+        "affinity_miss": 1990388
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 122,
+          "hit": 0.7096091923698608
+        },
+        "40-79": {
+          "calls": 72,
+          "hit": 0.8300972714804244
+        },
+        "80-119": {
+          "calls": 2,
+          "hit": 0.926446996726421
+        },
+        "120-159": {
+          "calls": 0,
+          "hit": 0
+        },
+        "160-199": {
+          "calls": 0,
+          "hit": 0
+        },
+        "200+": {
+          "calls": 0,
+          "hit": 0
+        }
+      },
+      "retries": {
+        "TRANSPORT": 2,
+        "SERVER": 5
+      },
+      "idleTimeout300": 0,
+      "proxyExhausted": 6,
+      "proxy504": 0,
+      "terminalFailures": 4,
+      "failures": [
+        {
+          "code": "INVALID_REQUEST",
+          "message": "Failed to create stream: inference request failed: failed to generate stream from Vercel: failed to invoke model 'google",
+          "n": 1
+        },
+        {
+          "code": "AUTH",
+          "message": "N \"access forbidden: cline-free/muse-spark-1.3-contributor is not available in your region\"",
+          "n": 1
+        },
+        {
+          "code": "PI_AI_ERROR",
+          "message": "Provider finish_reason: other",
+          "n": 1
+        },
+        {
+          "code": "SERVER",
+          "message": "N \"cline upstream failed 3 times: fetch failed: ECONNRESET\"",
+          "n": 1
+        }
+      ],
+      "ttfbMs": {
+        "n": 196,
+        "p50": 5051,
+        "p95": 18352,
+        "p99": 43825,
+        "max": 102833,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": 29690,
+        "max": 68489,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 195,
+        "over4sShare": 0.23076923076923078,
+        "p75Ms": 1770
+      },
+      "coldPenaltyMs": 2891
+    },
+    "oauth-glm": {
+      "calls": 24,
+      "inputTokens": 93627,
+      "cacheReadTokens": 535424,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0.8511615115467586,
+      "uncachedBreakdown": {
+        "cold_start": 0,
+        "delta": 54895,
+        "compaction": 0,
+        "rebuild": 20608,
+        "prefix_break": 0,
+        "affinity_miss": 18124
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 24,
+          "hit": 0.8511615115467586
+        },
+        "40-79": {
+          "calls": 0,
+          "hit": 0
+        },
+        "80-119": {
+          "calls": 0,
+          "hit": 0
+        },
+        "120-159": {
+          "calls": 0,
+          "hit": 0
+        },
+        "160-199": {
+          "calls": 0,
+          "hit": 0
+        },
+        "200+": {
+          "calls": 0,
+          "hit": 0
+        }
+      },
+      "retries": {},
+      "idleTimeout300": 0,
+      "proxyExhausted": 0,
+      "proxy504": 0,
+      "terminalFailures": 2,
+      "failures": [
+        {
+          "code": "AUTH",
+          "message": "N {\"error\":\"unauthorized\"}",
+          "n": 2
+        }
+      ],
+      "ttfbMs": {
+        "n": 24,
+        "p50": 1989,
+        "p95": 4441,
+        "p99": 4569,
+        "max": 5685,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": 644,
+        "max": 2772,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 23,
+        "over4sShare": 0.17391304347826086,
+        "p75Ms": 2750
+      },
+      "coldPenaltyMs": -707
+    },
+    "oauth-opencode": {
+      "calls": 7,
+      "inputTokens": 200163,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0,
+      "uncachedBreakdown": {
+        "cold_start": 13716,
+        "delta": 0,
+        "compaction": 0,
+        "rebuild": 0,
+        "prefix_break": 0,
+        "affinity_miss": 186447
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 7,
+          "hit": 0
+        },
+        "40-79": {
+          "calls": 0,
+          "hit": 0
+        },
+        "80-119": {
+          "calls": 0,
+          "hit": 0
+        },
+        "120-159": {
+          "calls": 0,
+          "hit": 0
+        },
+        "160-199": {
+          "calls": 0,
+          "hit": 0
+        },
+        "200+": {
+          "calls": 0,
+          "hit": 0
+        }
+      },
+      "retries": {
+        "SERVER": 5
+      },
+      "idleTimeout300": 0,
+      "proxyExhausted": 0,
+      "proxy504": 0,
+      "terminalFailures": 3,
+      "failures": [
+        {
+          "code": "AUTH",
+          "message": "N: {\"type\":\"RegionError\",\"message\":\"This model is not available in your country.\"}",
+          "n": 2
+        },
+        {
+          "code": "SERVER",
+          "message": "N: {\"type\":\"error\",\"message\":\"Internal server error\"}",
+          "n": 1
+        }
+      ],
+      "ttfbMs": {
+        "n": 7,
+        "p50": 7865,
+        "p95": 26650,
+        "p99": 26650,
+        "max": 37517,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": 2777,
+        "max": 3561,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 6,
+        "over4sShare": 0,
+        "p75Ms": 336
+      },
+      "coldPenaltyMs": null
+    },
+    "oauth-cursor": {
+      "calls": 8,
+      "inputTokens": 13490,
+      "cacheReadTokens": 26496,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0.6626319211724103,
+      "uncachedBreakdown": {
+        "cold_start": 0,
+        "delta": 13490,
+        "compaction": 0,
+        "rebuild": 0,
+        "prefix_break": 0,
+        "affinity_miss": 0
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 8,
+          "hit": 0.6626319211724103
+        },
+        "40-79": {
+          "calls": 0,
+          "hit": 0
+        },
+        "80-119": {
+          "calls": 0,
+          "hit": 0
+        },
+        "120-159": {
+          "calls": 0,
+          "hit": 0
+        },
+        "160-199": {
+          "calls": 0,
+          "hit": 0
+        },
+        "200+": {
+          "calls": 0,
+          "hit": 0
+        }
+      },
+      "retries": {
+        "TRANSPORT": 12
+      },
+      "idleTimeout300": 0,
+      "proxyExhausted": 0,
+      "proxy504": 0,
+      "terminalFailures": 6,
+      "failures": [
+        {
+          "code": "PI_AI_ERROR",
+          "message": "AI Model Not Found: Invalid parameters for registry model: \"grok-4.7\"",
+          "n": 2
+        },
+        {
+          "code": "PI_AI_ERROR",
+          "message": "dsh owns tool execution",
+          "n": 2
+        },
+        {
+          "code": "TRANSPORT",
+          "message": "Stream ended without finish_reason",
+          "n": 2
+        }
+      ],
+      "ttfbMs": {
+        "n": 8,
+        "p50": 1754,
+        "p95": 4147,
+        "p99": 4147,
+        "max": 4802,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": 3902,
+        "max": 7412,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 7,
+        "over4sShare": 0.7142857142857143,
+        "p75Ms": 886083
+      },
+      "coldPenaltyMs": 503
+    },
+    "oauth-anthropic": {
+      "calls": 0,
+      "inputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0,
+      "uncachedBreakdown": {
+        "cold_start": 0,
+        "delta": 0,
+        "compaction": 0,
+        "rebuild": 0,
+        "prefix_break": 0,
+        "affinity_miss": 0
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 0,
+          "hit": 0
+        },
+        "40-79": {
+          "calls": 0,
+          "hit": 0
+        },
+        "80-119": {
+          "calls": 0,
+          "hit": 0
+        },
+        "120-159": {
+          "calls": 0,
+          "hit": 0
+        },
+        "160-199": {
+          "calls": 0,
+          "hit": 0
+        },
+        "200+": {
+          "calls": 0,
+          "hit": 0
+        }
+      },
+      "retries": {
+        "RATE_LIMIT": 5
+      },
+      "idleTimeout300": 0,
+      "proxyExhausted": 1,
+      "proxy504": 0,
+      "terminalFailures": 1,
+      "failures": [
+        {
+          "code": "SERVER",
+          "message": "N {\"error\":\"anthropic upstream failed 3 times: fetch failed: ECONNRESET\"}",
+          "n": 1
+        }
+      ],
+      "ttfbMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "p99": null,
+        "max": null,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": null,
+        "max": null,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 0,
+        "over4sShare": null,
+        "p75Ms": null
+      },
+      "coldPenaltyMs": null
+    },
+    "opencode-go": {
+      "calls": 0,
+      "inputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0,
+      "uncachedBreakdown": {
+        "cold_start": 0,
+        "delta": 0,
+        "compaction": 0,
+        "rebuild": 0,
+        "prefix_break": 0,
+        "affinity_miss": 0
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 0,
+          "hit": 0
+        },
+        "40-79": {
+          "calls": 0,
+          "hit": 0
+        },
+        "80-119": {
+          "calls": 0,
+          "hit": 0
+        },
+        "120-159": {
+          "calls": 0,
+          "hit": 0
+        },
+        "160-199": {
+          "calls": 0,
+          "hit": 0
+        },
+        "200+": {
+          "calls": 0,
+          "hit": 0
+        }
+      },
+      "retries": {},
+      "idleTimeout300": 0,
+      "proxyExhausted": 0,
+      "proxy504": 0,
+      "terminalFailures": 4,
+      "failures": [
+        {
+          "code": "AUTH",
+          "message": "OpenAI API error (N): {\"type\":\"RegionError\",\"message\":\"This model is not available in your country.\"}",
+          "n": 3
+        },
+        {
+          "code": "INVALID_REQUEST",
+          "message": "OpenAI API error (N): {\"type\":\"MissingSessionID\",\"message\":\"Error from provider (Console Go): Request is missing x-openc",
+          "n": 1
+        }
+      ],
+      "ttfbMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "p99": null,
+        "max": null,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": null,
+        "max": null,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 0,
+        "over4sShare": null,
+        "p75Ms": null
+      },
+      "coldPenaltyMs": null
+    }
+  },
+  "models": {
+    "opencode-go-flash/deepseek-flash": {
+      "calls": 9859,
+      "inputTokens": 13676162,
+      "cacheReadTokens": 1940074240,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0.9930000464818842,
+      "uncachedBreakdown": {
+        "cold_start": 17114,
+        "delta": 12457111,
+        "compaction": 0,
+        "rebuild": 1201937,
+        "prefix_break": 0,
+        "affinity_miss": 0
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 3729,
+          "hit": 0.9705517098125906
+        },
+        "40-79": {
+          "calls": 2150,
+          "hit": 0.9937328560248282
+        },
+        "80-119": {
+          "calls": 1181,
+          "hit": 0.9964071477452019
+        },
+        "120-159": {
+          "calls": 914,
+          "hit": 0.9980395234185258
+        },
+        "160-199": {
+          "calls": 667,
+          "hit": 0.9984956511691923
+        },
+        "200+": {
+          "calls": 1218,
+          "hit": 0.9981546164444468
+        }
+      },
+      "retries": {
+        "TRANSPORT": 16,
+        "SERVER": 2,
+        "TIMEOUT": 1
+      },
+      "idleTimeout300": 0,
+      "proxyExhausted": 0,
+      "proxy504": 0,
+      "terminalFailures": 1,
+      "failures": [
+        {
+          "code": "INVALID_REQUEST",
+          "message": "N: {\"type\":\"MissingSessionID\",\"message\":\"Error from provider (Console Go): Request is missing x-opencode-session and can",
+          "n": 1
+        }
+      ],
+      "ttfbMs": {
+        "n": 9859,
+        "p50": 4913,
+        "p95": 16644,
+        "p99": 30948,
+        "max": 177395,
+        "over120s": 1
+      },
+      "silenceMs": {
+        "p99": 1939,
+        "max": 51391,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 9858,
+        "over4sShare": 0.10225197808886184,
+        "p75Ms": 280
+      },
+      "coldPenaltyMs": 2445
+    },
+    "oauth-ollama/deepseek-v4.1-flash": {
+      "calls": 4754,
+      "inputTokens": 24766185,
+      "cacheReadTokens": 945268966,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0.9744687757196543,
+      "uncachedBreakdown": {
+        "cold_start": 1208842,
+        "delta": 8668601,
+        "compaction": 0,
+        "rebuild": 2036593,
+        "prefix_break": 479605,
+        "affinity_miss": 12372544
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 2038,
+          "hit": 0.9552680319864927
+        },
+        "40-79": {
+          "calls": 1106,
+          "hit": 0.9822808019248875
+        },
+        "80-119": {
+          "calls": 534,
+          "hit": 0.9880730871190664
+        },
+        "120-159": {
+          "calls": 355,
+          "hit": 0.9757316668418093
+        },
+        "160-199": {
+          "calls": 231,
+          "hit": 0.9648668770757377
+        },
+        "200+": {
+          "calls": 490,
+          "hit": 0.9775984552773104
+        }
+      },
+      "retries": {
+        "SERVER": 10,
+        "TIMEOUT": 24
+      },
+      "idleTimeout300": 27,
+      "proxyExhausted": 1,
+      "proxy504": 0,
+      "terminalFailures": 4,
+      "failures": [
+        {
+          "code": "TIMEOUT",
+          "message": "pi-ai stream idle timeout after Nms",
+          "n": 3
+        },
+        {
+          "code": "SERVER",
+          "message": "N: {\"message\":\"Internal Server Error (ref: <h>)\",\"type\":\"api_error\",\"param\":null,\"code\":null}",
+          "n": 1
+        }
+      ],
+      "ttfbMs": {
+        "n": 4754,
+        "p50": 2681,
+        "p95": 43971,
+        "p99": 89409,
+        "max": 297287,
+        "over120s": 38
+      },
+      "silenceMs": {
+        "p99": 15830,
+        "max": 64265,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 4754,
+        "over4sShare": 0.13209928481278924,
+        "p75Ms": 502
+      },
+      "coldPenaltyMs": 2088
+    },
+    "oauth-grok/grok-4.6": {
+      "calls": 3213,
+      "inputTokens": 24570530,
+      "cacheReadTokens": 648868096,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0.9635148192405584,
+      "uncachedBreakdown": {
+        "cold_start": 330660,
+        "delta": 9329363,
+        "compaction": 3116509,
+        "rebuild": 731650,
+        "prefix_break": 991206,
+        "affinity_miss": 10071142
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 1194,
+          "hit": 0.9143427779764685
+        },
+        "40-79": {
+          "calls": 731,
+          "hit": 0.969139545831995
+        },
+        "80-119": {
+          "calls": 419,
+          "hit": 0.9769277557552574
+        },
+        "120-159": {
+          "calls": 378,
+          "hit": 0.9814315894170622
+        },
+        "160-199": {
+          "calls": 226,
+          "hit": 0.9750904970397015
+        },
+        "200+": {
+          "calls": 265,
+          "hit": 0.9841744056590938
+        }
+      },
+      "retries": {
+        "TIMEOUT": 7,
+        "TRANSPORT": 2,
+        "SERVER": 1
+      },
+      "idleTimeout300": 7,
+      "proxyExhausted": 1,
+      "proxy504": 0,
+      "terminalFailures": 1,
+      "failures": [
+        {
+          "code": "PI_AI_ERROR",
+          "message": "Error Code null: The model is currently at capacity due to high demand. Please try again in a few minutes, or use a high",
+          "n": 1
+        }
+      ],
+      "ttfbMs": {
+        "n": 3213,
+        "p50": 6170,
+        "p95": 24732,
+        "p99": 42048,
+        "max": 159399,
+        "over120s": 1
+      },
+      "silenceMs": {
+        "p99": 27824,
+        "max": 106823,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 3212,
+        "over4sShare": 0.12391033623910336,
+        "p75Ms": 343
+      },
+      "coldPenaltyMs": 660
+    },
+    "oauth-ollama/glm-5.3-flash": {
+      "calls": 2018,
+      "inputTokens": 360684752,
+      "cacheReadTokens": 16123520,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0.0427897187989546,
+      "uncachedBreakdown": {
+        "cold_start": 971162,
+        "delta": 838180,
+        "compaction": 0,
+        "rebuild": 48029449,
+        "prefix_break": 110039,
+        "affinity_miss": 310735922
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 821,
+          "hit": 0.09100425071981254
+        },
+        "40-79": {
+          "calls": 403,
+          "hit": 0.08469347173832664
+        },
+        "80-119": {
+          "calls": 282,
+          "hit": 0.07706513323248453
+        },
+        "120-159": {
+          "calls": 160,
+          "hit": 0
+        },
+        "160-199": {
+          "calls": 131,
+          "hit": 0
+        },
+        "200+": {
+          "calls": 221,
+          "hit": 0
+        }
+      },
+      "retries": {},
+      "idleTimeout300": 0,
+      "proxyExhausted": 0,
+      "proxy504": 0,
+      "terminalFailures": 0,
+      "failures": [],
+      "ttfbMs": {
+        "n": 2018,
+        "p50": 6927,
+        "p95": 20897,
+        "p99": 38997,
+        "max": 69891,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": 8734,
+        "max": 66968,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 2017,
+        "over4sShare": 0.1036192364898364,
+        "p75Ms": 446
+      },
+      "coldPenaltyMs": 2071
+    },
+    "oauth-devin/swe-2": {
+      "calls": 3053,
+      "inputTokens": 8224740,
+      "cacheReadTokens": 365933933,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0.9780180426286684,
+      "uncachedBreakdown": {
+        "cold_start": 760944,
+        "delta": 65027,
+        "compaction": 2116697,
+        "rebuild": 312983,
+        "prefix_break": 121372,
+        "affinity_miss": 4847717
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 847,
+          "hit": 0.9320093362702789
+        },
+        "40-79": {
+          "calls": 420,
+          "hit": 0.9856600966470874
+        },
+        "80-119": {
+          "calls": 276,
+          "hit": 0.9783108553989542
+        },
+        "120-159": {
+          "calls": 162,
+          "hit": 0.9865182088111587
+        },
+        "160-199": {
+          "calls": 153,
+          "hit": 0.9625250588875552
+        },
+        "200+": {
+          "calls": 1195,
+          "hit": 0.9908968417522629
+        }
+      },
+      "retries": {
+        "SERVER": 7,
+        "TRANSPORT": 3
+      },
+      "idleTimeout300": 0,
+      "proxyExhausted": 0,
+      "proxy504": 0,
+      "terminalFailures": 1,
+      "failures": [
+        {
+          "code": "SERVER",
+          "message": "N: {\"message\":\"fetch failed: ECONNRESET\"}",
+          "n": 1
+        }
+      ],
+      "ttfbMs": {
+        "n": 3053,
+        "p50": 6465,
+        "p95": 22740,
+        "p99": 58338,
+        "max": 180634,
+        "over120s": 6
+      },
+      "silenceMs": {
+        "p99": 47597,
+        "max": 152781,
+        "over110s": 2
+      },
+      "poolIdle": {
+        "n": 3052,
+        "over4sShare": 0.06094364351245085,
+        "p75Ms": 331
+      },
+      "coldPenaltyMs": 2716
+    },
+    "oauth-antigravity/gemini-3.8-flash-high": {
+      "calls": 1758,
+      "inputTokens": 77149366,
+      "cacheReadTokens": 214741786,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0.7356913168782862,
+      "uncachedBreakdown": {
+        "cold_start": 578497,
+        "delta": 7745797,
+        "compaction": 0,
+        "rebuild": 165638,
+        "prefix_break": 59500274,
+        "affinity_miss": 9159160
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 610,
+          "hit": 0.8469243788813193
+        },
+        "40-79": {
+          "calls": 454,
+          "hit": 0.9378893367861723
+        },
+        "80-119": {
+          "calls": 326,
+          "hit": 0.8871256710287887
+        },
+        "120-159": {
+          "calls": 217,
+          "hit": 0.49876367064597116
+        },
+        "160-199": {
+          "calls": 128,
+          "hit": 0.4087206298686003
+        },
+        "200+": {
+          "calls": 23,
+          "hit": 0.7575382395425753
+        }
+      },
+      "retries": {
+        "TIMEOUT": 1,
+        "SERVER": 3
+      },
+      "idleTimeout300": 1,
+      "proxyExhausted": 0,
+      "proxy504": 0,
+      "terminalFailures": 3,
+      "failures": [
+        {
+          "code": "QUOTA",
+          "message": "N: {\"code\":N,\"message\":\"Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 1h",
+          "n": 3
+        }
+      ],
+      "ttfbMs": {
+        "n": 1758,
+        "p50": 4388,
+        "p95": 12019,
+        "p99": 19559,
+        "max": 81884,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": 1515,
+        "max": 3449,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 1758,
+        "over4sShare": 0.07224118316268487,
+        "p75Ms": 128
+      },
+      "coldPenaltyMs": 1724
+    },
+    "deepseek-official/deepseek-flash": {
+      "calls": 2024,
+      "inputTokens": 3100931,
+      "cacheReadTokens": 273734016,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0.988798628808956,
+      "uncachedBreakdown": {
+        "cold_start": 88431,
+        "delta": 3012500,
+        "compaction": 0,
+        "rebuild": 0,
+        "prefix_break": 0,
+        "affinity_miss": 0
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 923,
+          "hit": 0.9708106793344405
+        },
+        "40-79": {
+          "calls": 621,
+          "hit": 0.9929997128483103
+        },
+        "80-119": {
+          "calls": 244,
+          "hit": 0.9953450483528575
+        },
+        "120-159": {
+          "calls": 94,
+          "hit": 0.9954166963282708
+        },
+        "160-199": {
+          "calls": 40,
+          "hit": 0.998107843405477
+        },
+        "200+": {
+          "calls": 102,
+          "hit": 0.9985476569304805
+        }
+      },
+      "retries": {},
+      "idleTimeout300": 0,
+      "proxyExhausted": 0,
+      "proxy504": 0,
+      "terminalFailures": 0,
+      "failures": [],
+      "ttfbMs": {
+        "n": 2024,
+        "p50": 915,
+        "p95": 1856,
+        "p99": 2302,
+        "max": 4324,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": 892,
+        "max": 1583,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 2023,
+        "over4sShare": 0.0365793376173999,
+        "p75Ms": 86
+      },
+      "coldPenaltyMs": 504
+    },
+    "oc/deepseek-flash": {
+      "calls": 1348,
+      "inputTokens": 2181742,
+      "cacheReadTokens": 258868096,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0.9916424311284192,
+      "uncachedBreakdown": {
+        "cold_start": 0,
+        "delta": 2171812,
+        "compaction": 9930,
+        "rebuild": 0,
+        "prefix_break": 0,
+        "affinity_miss": 0
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 568,
+          "hit": 0.9710441246322539
+        },
+        "40-79": {
+          "calls": 247,
+          "hit": 0.9951594490063591
+        },
+        "80-119": {
+          "calls": 187,
+          "hit": 0.9966169352213314
+        },
+        "120-159": {
+          "calls": 152,
+          "hit": 0.9976871005920056
+        },
+        "160-199": {
+          "calls": 81,
+          "hit": 0.9986089961299525
+        },
+        "200+": {
+          "calls": 113,
+          "hit": 0.9924676007320659
+        }
+      },
+      "retries": {
+        "TRANSPORT": 6,
+        "TIMEOUT": 1
+      },
+      "idleTimeout300": 0,
+      "proxyExhausted": 0,
+      "proxy504": 0,
+      "terminalFailures": 1,
+      "failures": [
+        {
+          "code": "INVALID_REQUEST",
+          "message": "N: {\"type\":\"MissingSessionID\",\"message\":\"Error from provider (Console Go): Request is missing x-opencode-session and can",
+          "n": 1
+        }
+      ],
+      "ttfbMs": {
+        "n": 1348,
+        "p50": 5931,
+        "p95": 14134,
+        "p99": 22159,
+        "max": 42509,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": 3057,
+        "max": 6963,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 1347,
+        "over4sShare": 0.12249443207126949,
+        "p75Ms": 489
+      },
+      "coldPenaltyMs": 2684
+    },
+    "oauth-codex/gpt-6-astra-fast": {
+      "calls": 944,
+      "inputTokens": 5859664,
+      "cacheReadTokens": 111072640,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0.9498884072274844,
+      "uncachedBreakdown": {
+        "cold_start": 289108,
+        "delta": 3744698,
+        "compaction": 721221,
+        "rebuild": 315693,
+        "prefix_break": 32981,
+        "affinity_miss": 755963
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 657,
+          "hit": 0.9441079741019373
+        },
+        "40-79": {
+          "calls": 242,
+          "hit": 0.9518030951229401
+        },
+        "80-119": {
+          "calls": 45,
+          "hit": 0.9834023315030053
+        },
+        "120-159": {
+          "calls": 0,
+          "hit": 0
+        },
+        "160-199": {
+          "calls": 0,
+          "hit": 0
+        },
+        "200+": {
+          "calls": 0,
+          "hit": 0
+        }
+      },
+      "retries": {
+        "TRANSPORT": 2,
+        "SERVER": 1
+      },
+      "idleTimeout300": 0,
+      "proxyExhausted": 0,
+      "proxy504": 0,
+      "terminalFailures": 1,
+      "failures": [
+        {
+          "code": "PI_AI_ERROR",
+          "message": "This content was flagged for possible cybersecurity risk. If this seems wrong, try rephrasing your request. To get autho",
+          "n": 1
+        }
+      ],
+      "ttfbMs": {
+        "n": 944,
+        "p50": 4697,
+        "p95": 10521,
+        "p99": 14129,
+        "max": 23260,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": 12139,
+        "max": 17870,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 944,
+        "over4sShare": 0.03072033898305085,
+        "p75Ms": 431
+      },
+      "coldPenaltyMs": -241
+    },
+    "opencode-go-flash/deepseek-v4.1-flash": {
+      "calls": 571,
+      "inputTokens": 3566491,
+      "cacheReadTokens": 109780096,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0.9685346414532976,
+      "uncachedBreakdown": {
+        "cold_start": 125661,
+        "delta": 781690,
+        "compaction": 0,
+        "rebuild": 0,
+        "prefix_break": 496132,
+        "affinity_miss": 2163008
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 175,
+          "hit": 0.9402364159351334
+        },
+        "40-79": {
+          "calls": 153,
+          "hit": 0.9580477085441665
+        },
+        "80-119": {
+          "calls": 107,
+          "hit": 0.9712798542623654
+        },
+        "120-159": {
+          "calls": 80,
+          "hit": 0.9718405636110982
+        },
+        "160-199": {
+          "calls": 42,
+          "hit": 0.9981155762286207
+        },
+        "200+": {
+          "calls": 14,
+          "hit": 0.9969562906024514
+        }
+      },
+      "retries": {
+        "TRANSPORT": 10
+      },
+      "idleTimeout300": 0,
+      "proxyExhausted": 0,
+      "proxy504": 0,
+      "terminalFailures": 2,
+      "failures": [
+        {
+          "code": "TRANSPORT",
+          "message": "Connection error.",
+          "n": 2
+        }
+      ],
+      "ttfbMs": {
+        "n": 571,
+        "p50": 2926,
+        "p95": 10251,
+        "p99": 25647,
+        "max": 84854,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": 7924,
+        "max": 14445,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 571,
+        "over4sShare": 0.2084063047285464,
+        "p75Ms": 2055
+      },
+      "coldPenaltyMs": 2069
+    },
+    "oauth-ollama/deepseek-v4-flash:0731": {
+      "calls": 362,
+      "inputTokens": 73412890,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0,
+      "uncachedBreakdown": {
+        "cold_start": 63460,
+        "delta": 0,
+        "compaction": 0,
+        "rebuild": 801551,
+        "prefix_break": 0,
+        "affinity_miss": 72547879
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 115,
+          "hit": 0
+        },
+        "40-79": {
+          "calls": 44,
+          "hit": 0
+        },
+        "80-119": {
+          "calls": 40,
+          "hit": 0
+        },
+        "120-159": {
+          "calls": 40,
+          "hit": 0
+        },
+        "160-199": {
+          "calls": 40,
+          "hit": 0
+        },
+        "200+": {
+          "calls": 83,
+          "hit": 0
+        }
+      },
+      "retries": {},
+      "idleTimeout300": 0,
+      "proxyExhausted": 0,
+      "proxy504": 0,
+      "terminalFailures": 0,
+      "failures": [],
+      "ttfbMs": {
+        "n": 362,
+        "p50": 3999,
+        "p95": 10234,
+        "p99": 16711,
+        "max": 51184,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": 1830,
+        "max": 2274,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 362,
+        "over4sShare": 0.09944751381215469,
+        "p75Ms": 187
+      },
+      "coldPenaltyMs": 3658
+    },
+    "oauth-codex/gpt-5.6-luna-fast": {
+      "calls": 1282,
+      "inputTokens": 5075986,
+      "cacheReadTokens": 55989376,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0.9168761826057791,
+      "uncachedBreakdown": {
+        "cold_start": 650036,
+        "delta": 3603533,
+        "compaction": 232812,
+        "rebuild": 171741,
+        "prefix_break": 230165,
+        "affinity_miss": 187699
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 1211,
+          "hit": 0.9093912211925143
+        },
+        "40-79": {
+          "calls": 63,
+          "hit": 0.9517210954798407
+        },
+        "80-119": {
+          "calls": 8,
+          "hit": 0.9603476122365114
+        },
+        "120-159": {
+          "calls": 0,
+          "hit": 0
+        },
+        "160-199": {
+          "calls": 0,
+          "hit": 0
+        },
+        "200+": {
+          "calls": 0,
+          "hit": 0
+        }
+      },
+      "retries": {
+        "SERVER": 1
+      },
+      "idleTimeout300": 0,
+      "proxyExhausted": 0,
+      "proxy504": 0,
+      "terminalFailures": 1,
+      "failures": [
+        {
+          "code": "PI_AI_ERROR",
+          "message": "Cannot find module '<path>' imported from <path>",
+          "n": 1
+        }
+      ],
+      "ttfbMs": {
+        "n": 1282,
+        "p50": 2547,
+        "p95": 5674,
+        "p99": 7774,
+        "max": 11988,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": 3635,
+        "max": 4932,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 1281,
+        "over4sShare": 0.0741608118657299,
+        "p75Ms": 167
+      },
+      "coldPenaltyMs": 509
+    },
+    "ollama/glm-5.3-flash:cloud": {
+      "calls": 371,
+      "inputTokens": 27395877,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0,
+      "uncachedBreakdown": {
+        "cold_start": 132384,
+        "delta": 0,
+        "compaction": 0,
+        "rebuild": 0,
+        "prefix_break": 0,
+        "affinity_miss": 27263493
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 267,
+          "hit": 0
+        },
+        "40-79": {
+          "calls": 80,
+          "hit": 0
+        },
+        "80-119": {
+          "calls": 24,
+          "hit": 0
+        },
+        "120-159": {
+          "calls": 0,
+          "hit": 0
+        },
+        "160-199": {
+          "calls": 0,
+          "hit": 0
+        },
+        "200+": {
+          "calls": 0,
+          "hit": 0
+        }
+      },
+      "retries": {
+        "TRANSPORT": 20
+      },
+      "idleTimeout300": 0,
+      "proxyExhausted": 0,
+      "proxy504": 0,
+      "terminalFailures": 4,
+      "failures": [
+        {
+          "code": "TRANSPORT",
+          "message": "Connection error.",
+          "n": 4
+        }
+      ],
+      "ttfbMs": {
+        "n": 371,
+        "p50": 10297,
+        "p95": 27648,
+        "p99": 38980,
+        "max": 82828,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": 35404,
+        "max": 59477,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 370,
+        "over4sShare": 0.002702702702702703,
+        "p75Ms": 73
+      },
+      "coldPenaltyMs": -6113
+    },
+    "oauth-codex/gpt-6-luna": {
+      "calls": 399,
+      "inputTokens": 13214741,
+      "cacheReadTokens": 14035968,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0.5150679932767988,
+      "uncachedBreakdown": {
+        "cold_start": 256307,
+        "delta": 420013,
+        "compaction": 12538421,
+        "rebuild": 0,
+        "prefix_break": 0,
+        "affinity_miss": 0
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 221,
+          "hit": 0.551892834832296
+        },
+        "40-79": {
+          "calls": 99,
+          "hit": 0.4773535538355731
+        },
+        "80-119": {
+          "calls": 40,
+          "hit": 0.447527317582069
+        },
+        "120-159": {
+          "calls": 39,
+          "hit": 0.4837544362616556
+        },
+        "160-199": {
+          "calls": 0,
+          "hit": 0
+        },
+        "200+": {
+          "calls": 0,
+          "hit": 0
+        }
+      },
+      "retries": {
+        "TRANSPORT": 3,
+        "SERVER": 19
+      },
+      "idleTimeout300": 0,
+      "proxyExhausted": 22,
+      "proxy504": 0,
+      "terminalFailures": 3,
+      "failures": [
+        {
+          "code": "SERVER",
+          "message": "OpenAI API error (N): N \"codex upstream failed 3 times: fetch failed: ECONNRESET\"",
+          "n": 3
+        }
+      ],
+      "ttfbMs": {
+        "n": 399,
+        "p50": 14670,
+        "p95": 43314,
+        "p99": 72706,
+        "max": 83167,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": 11960,
+        "max": 13786,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 399,
+        "over4sShare": 0.7994987468671679,
+        "p75Ms": 68535
+      },
+      "coldPenaltyMs": 8509
+    },
+    "oauth-codex/gpt-6-astra": {
+      "calls": 225,
+      "inputTokens": 1594048,
+      "cacheReadTokens": 21351296,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0.9305284767140558,
+      "uncachedBreakdown": {
+        "cold_start": 115982,
+        "delta": 762004,
+        "compaction": 292672,
+        "rebuild": 404410,
+        "prefix_break": 0,
+        "affinity_miss": 18980
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 164,
+          "hit": 0.9254747066581657
+        },
+        "40-79": {
+          "calls": 40,
+          "hit": 0.97000254438787
+        },
+        "80-119": {
+          "calls": 21,
+          "hit": 0.8937990290230972
+        },
+        "120-159": {
+          "calls": 0,
+          "hit": 0
+        },
+        "160-199": {
+          "calls": 0,
+          "hit": 0
+        },
+        "200+": {
+          "calls": 0,
+          "hit": 0
+        }
+      },
+      "retries": {},
+      "idleTimeout300": 0,
+      "proxyExhausted": 0,
+      "proxy504": 0,
+      "terminalFailures": 0,
+      "failures": [],
+      "ttfbMs": {
+        "n": 225,
+        "p50": 5472,
+        "p95": 10152,
+        "p99": 16079,
+        "max": 27246,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": 9468,
+        "max": 12274,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 225,
+        "over4sShare": 0.06666666666666667,
+        "p75Ms": 787
+      },
+      "coldPenaltyMs": -1239
+    },
+    "oauth-codex/gpt-6-sol-fast": {
+      "calls": 177,
+      "inputTokens": 572094,
+      "cacheReadTokens": 19717632,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0.9718037592030567,
+      "uncachedBreakdown": {
+        "cold_start": 70903,
+        "delta": 337581,
+        "compaction": 163610,
+        "rebuild": 0,
+        "prefix_break": 0,
+        "affinity_miss": 0
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 66,
+          "hit": 0.9463990754742513
+        },
+        "40-79": {
+          "calls": 40,
+          "hit": 0.9905755388056695
+        },
+        "80-119": {
+          "calls": 40,
+          "hit": 0.9823160835157878
+        },
+        "120-159": {
+          "calls": 31,
+          "hit": 0.9751282701743803
+        },
+        "160-199": {
+          "calls": 0,
+          "hit": 0
+        },
+        "200+": {
+          "calls": 0,
+          "hit": 0
+        }
+      },
+      "retries": {
+        "TRANSPORT": 2,
+        "SERVER": 2
+      },
+      "idleTimeout300": 0,
+      "proxyExhausted": 2,
+      "proxy504": 0,
+      "terminalFailures": 0,
+      "failures": [],
+      "ttfbMs": {
+        "n": 177,
+        "p50": 3001,
+        "p95": 5424,
+        "p99": 8022,
+        "max": 16156,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": 7786,
+        "max": 10508,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 177,
+        "over4sShare": 0.1016949152542373,
+        "p75Ms": 282
+      },
+      "coldPenaltyMs": 658
+    },
+    "oauth-grok/grok-4.7": {
+      "calls": 112,
+      "inputTokens": 351802,
+      "cacheReadTokens": 19821824,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0.9825612906673297,
+      "uncachedBreakdown": {
+        "cold_start": 0,
+        "delta": 270158,
+        "compaction": 0,
+        "rebuild": 0,
+        "prefix_break": 0,
+        "affinity_miss": 81644
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 40,
+          "hit": 0.9404654203988531
+        },
+        "40-79": {
+          "calls": 40,
+          "hit": 0.9896989938929504
+        },
+        "80-119": {
+          "calls": 32,
+          "hit": 0.9962488294686944
+        },
+        "120-159": {
+          "calls": 0,
+          "hit": 0
+        },
+        "160-199": {
+          "calls": 0,
+          "hit": 0
+        },
+        "200+": {
+          "calls": 0,
+          "hit": 0
+        }
+      },
+      "retries": {},
+      "idleTimeout300": 0,
+      "proxyExhausted": 0,
+      "proxy504": 0,
+      "terminalFailures": 0,
+      "failures": [],
+      "ttfbMs": {
+        "n": 112,
+        "p50": 2970,
+        "p95": 6380,
+        "p99": 7088,
+        "max": 7223,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": 15731,
+        "max": 19085,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 112,
+        "over4sShare": 0.03571428571428571,
+        "p75Ms": 444
+      },
+      "coldPenaltyMs": 987
+    },
+    "oauth-cline/cline-free/gemini-3.8-flash": {
+      "calls": 126,
+      "inputTokens": 2386065,
+      "cacheReadTokens": 10088814,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0.8087304093290203,
+      "uncachedBreakdown": {
+        "cold_start": 150986,
+        "delta": 464887,
+        "compaction": 1187153,
+        "rebuild": 41278,
+        "prefix_break": 97148,
+        "affinity_miss": 444613
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 82,
+          "hit": 0.6626324288029654
+        },
+        "40-79": {
+          "calls": 42,
+          "hit": 0.9162354328123394
+        },
+        "80-119": {
+          "calls": 2,
+          "hit": 0.926446996726421
+        },
+        "120-159": {
+          "calls": 0,
+          "hit": 0
+        },
+        "160-199": {
+          "calls": 0,
+          "hit": 0
+        },
+        "200+": {
+          "calls": 0,
+          "hit": 0
+        }
+      },
+      "retries": {
+        "SERVER": 5
+      },
+      "idleTimeout300": 0,
+      "proxyExhausted": 6,
+      "proxy504": 0,
+      "terminalFailures": 3,
+      "failures": [
+        {
+          "code": "INVALID_REQUEST",
+          "message": "Failed to create stream: inference request failed: failed to generate stream from Vercel: failed to invoke model 'google",
+          "n": 1
+        },
+        {
+          "code": "PI_AI_ERROR",
+          "message": "Provider finish_reason: other",
+          "n": 1
+        },
+        {
+          "code": "SERVER",
+          "message": "N \"cline upstream failed 3 times: fetch failed: ECONNRESET\"",
+          "n": 1
+        }
+      ],
+      "ttfbMs": {
+        "n": 126,
+        "p50": 5117,
+        "p95": 11851,
+        "p99": 22694,
+        "max": 25671,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": 4523,
+        "max": 22695,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 126,
+        "over4sShare": 0.30952380952380953,
+        "p75Ms": 13370
+      },
+      "coldPenaltyMs": 2983
+    },
+    "oauth-cline/cline-free/deepseek-v4.1-flash": {
+      "calls": 69,
+      "inputTokens": 2061120,
+      "cacheReadTokens": 5928624,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0.7420292815389329,
+      "uncachedBreakdown": {
+        "cold_start": 0,
+        "delta": 243009,
+        "compaction": 0,
+        "rebuild": 20967,
+        "prefix_break": 251369,
+        "affinity_miss": 1545775
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 39,
+          "hit": 0.7920061225651946
+        },
+        "40-79": {
+          "calls": 30,
+          "hit": 0.7087088089404047
+        },
+        "80-119": {
+          "calls": 0,
+          "hit": 0
+        },
+        "120-159": {
+          "calls": 0,
+          "hit": 0
+        },
+        "160-199": {
+          "calls": 0,
+          "hit": 0
+        },
+        "200+": {
+          "calls": 0,
+          "hit": 0
+        }
+      },
+      "retries": {
+        "TRANSPORT": 2
+      },
+      "idleTimeout300": 0,
+      "proxyExhausted": 0,
+      "proxy504": 0,
+      "terminalFailures": 0,
+      "failures": [],
+      "ttfbMs": {
+        "n": 69,
+        "p50": 4670,
+        "p95": 18733,
+        "p99": 83934,
+        "max": 102833,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": 32871,
+        "max": 68489,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 69,
+        "over4sShare": 0.08695652173913043,
+        "p75Ms": 275
+      },
+      "coldPenaltyMs": 1382
+    },
+    "oauth-codex/gpt-6-sol": {
+      "calls": 73,
+      "inputTokens": 240589,
+      "cacheReadTokens": 6279680,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0.9631013689772615,
+      "uncachedBreakdown": {
+        "cold_start": 65495,
+        "delta": 175094,
+        "compaction": 0,
+        "rebuild": 0,
+        "prefix_break": 0,
+        "affinity_miss": 0
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 61,
+          "hit": 0.9551399542022508
+        },
+        "40-79": {
+          "calls": 12,
+          "hit": 0.9910881784885013
+        },
+        "80-119": {
+          "calls": 0,
+          "hit": 0
+        },
+        "120-159": {
+          "calls": 0,
+          "hit": 0
+        },
+        "160-199": {
+          "calls": 0,
+          "hit": 0
+        },
+        "200+": {
+          "calls": 0,
+          "hit": 0
+        }
+      },
+      "retries": {
+        "TRANSPORT": 1,
+        "SERVER": 4
+      },
+      "idleTimeout300": 0,
+      "proxyExhausted": 4,
+      "proxy504": 0,
+      "terminalFailures": 0,
+      "failures": [],
+      "ttfbMs": {
+        "n": 73,
+        "p50": 8538,
+        "p95": 12411,
+        "p99": 14299,
+        "max": 16766,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": 7767,
+        "max": 11874,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 73,
+        "over4sShare": 0.0684931506849315,
+        "p75Ms": 445
+      },
+      "coldPenaltyMs": -815
+    },
+    "oauth-codex/gpt-6-luna-fast": {
+      "calls": 37,
+      "inputTokens": 576904,
+      "cacheReadTokens": 4350080,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0.8829093011059098,
+      "uncachedBreakdown": {
+        "cold_start": 315689,
+        "delta": 148957,
+        "compaction": 112258,
+        "rebuild": 0,
+        "prefix_break": 0,
+        "affinity_miss": 0
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 37,
+          "hit": 0.8829093011059098
+        },
+        "40-79": {
+          "calls": 0,
+          "hit": 0
+        },
+        "80-119": {
+          "calls": 0,
+          "hit": 0
+        },
+        "120-159": {
+          "calls": 0,
+          "hit": 0
+        },
+        "160-199": {
+          "calls": 0,
+          "hit": 0
+        },
+        "200+": {
+          "calls": 0,
+          "hit": 0
+        }
+      },
+      "retries": {},
+      "idleTimeout300": 0,
+      "proxyExhausted": 0,
+      "proxy504": 0,
+      "terminalFailures": 0,
+      "failures": [],
+      "ttfbMs": {
+        "n": 37,
+        "p50": 2901,
+        "p95": 5532,
+        "p99": 6375,
+        "max": 21219,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": 7295,
+        "max": 11126,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 37,
+        "over4sShare": 0.21621621621621623,
+        "p75Ms": 2255
+      },
+      "coldPenaltyMs": 1330
+    },
+    "oauth-codex/gpt-5.6-luna": {
+      "calls": 11,
+      "inputTokens": 397038,
+      "cacheReadTokens": 1739776,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0.8141915955249264,
+      "uncachedBreakdown": {
+        "cold_start": 0,
+        "delta": 17399,
+        "compaction": 180111,
+        "rebuild": 199528,
+        "prefix_break": 0,
+        "affinity_miss": 0
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 0,
+          "hit": 0
+        },
+        "40-79": {
+          "calls": 0,
+          "hit": 0
+        },
+        "80-119": {
+          "calls": 11,
+          "hit": 0.8141915955249264
+        },
+        "120-159": {
+          "calls": 0,
+          "hit": 0
+        },
+        "160-199": {
+          "calls": 0,
+          "hit": 0
+        },
+        "200+": {
+          "calls": 0,
+          "hit": 0
+        }
+      },
+      "retries": {},
+      "idleTimeout300": 0,
+      "proxyExhausted": 0,
+      "proxy504": 0,
+      "terminalFailures": 0,
+      "failures": [],
+      "ttfbMs": {
+        "n": 11,
+        "p50": 4355,
+        "p95": 6344,
+        "p99": 6344,
+        "max": 7916,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": 4704,
+        "max": 5443,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 11,
+        "over4sShare": 0.09090909090909091,
+        "p75Ms": 1104
+      },
+      "coldPenaltyMs": -648
+    },
+    "oauth-grok/grok-4.7-build-fast": {
+      "calls": 15,
+      "inputTokens": 129958,
+      "cacheReadTokens": 510720,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0.7971555133780152,
+      "uncachedBreakdown": {
+        "cold_start": 0,
+        "delta": 71799,
+        "compaction": 0,
+        "rebuild": 0,
+        "prefix_break": 28264,
+        "affinity_miss": 29895
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 15,
+          "hit": 0.7971555133780152
+        },
+        "40-79": {
+          "calls": 0,
+          "hit": 0
+        },
+        "80-119": {
+          "calls": 0,
+          "hit": 0
+        },
+        "120-159": {
+          "calls": 0,
+          "hit": 0
+        },
+        "160-199": {
+          "calls": 0,
+          "hit": 0
+        },
+        "200+": {
+          "calls": 0,
+          "hit": 0
+        }
+      },
+      "retries": {},
+      "idleTimeout300": 0,
+      "proxyExhausted": 0,
+      "proxy504": 0,
+      "terminalFailures": 1,
+      "failures": [
+        {
+          "code": "PI_AI_ERROR",
+          "message": "Error Code null: Internal error during token parsing",
+          "n": 1
+        }
+      ],
+      "ttfbMs": {
+        "n": 15,
+        "p50": 2216,
+        "p95": 4520,
+        "p99": 4520,
+        "max": 4940,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": 5762,
+        "max": 6765,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 15,
+        "over4sShare": 0.26666666666666666,
+        "p75Ms": 3028
+      },
+      "coldPenaltyMs": 615
+    },
+    "oauth-glm/glm-5.3": {
+      "calls": 21,
+      "inputTokens": 56271,
+      "cacheReadTokens": 513792,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0.9012898574368096,
+      "uncachedBreakdown": {
+        "cold_start": 0,
+        "delta": 35663,
+        "compaction": 0,
+        "rebuild": 20608,
+        "prefix_break": 0,
+        "affinity_miss": 0
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 21,
+          "hit": 0.9012898574368096
+        },
+        "40-79": {
+          "calls": 0,
+          "hit": 0
+        },
+        "80-119": {
+          "calls": 0,
+          "hit": 0
+        },
+        "120-159": {
+          "calls": 0,
+          "hit": 0
+        },
+        "160-199": {
+          "calls": 0,
+          "hit": 0
+        },
+        "200+": {
+          "calls": 0,
+          "hit": 0
+        }
+      },
+      "retries": {},
+      "idleTimeout300": 0,
+      "proxyExhausted": 0,
+      "proxy504": 0,
+      "terminalFailures": 1,
+      "failures": [
+        {
+          "code": "AUTH",
+          "message": "N {\"error\":\"unauthorized\"}",
+          "n": 1
+        }
+      ],
+      "ttfbMs": {
+        "n": 21,
+        "p50": 2093,
+        "p95": 4569,
+        "p99": 4569,
+        "max": 5685,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": 644,
+        "max": 2772,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 21,
+        "over4sShare": 0.19047619047619047,
+        "p75Ms": 3089
+      },
+      "coldPenaltyMs": -1430
+    },
+    "oauth-antigravity/gemini-3.7-flash-high": {
+      "calls": 8,
+      "inputTokens": 68169,
+      "cacheReadTokens": 155245,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0.694875880652063,
+      "uncachedBreakdown": {
+        "cold_start": 11614,
+        "delta": 30494,
+        "compaction": 0,
+        "rebuild": 0,
+        "prefix_break": 5596,
+        "affinity_miss": 20465
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 8,
+          "hit": 0.694875880652063
+        },
+        "40-79": {
+          "calls": 0,
+          "hit": 0
+        },
+        "80-119": {
+          "calls": 0,
+          "hit": 0
+        },
+        "120-159": {
+          "calls": 0,
+          "hit": 0
+        },
+        "160-199": {
+          "calls": 0,
+          "hit": 0
+        },
+        "200+": {
+          "calls": 0,
+          "hit": 0
+        }
+      },
+      "retries": {},
+      "idleTimeout300": 0,
+      "proxyExhausted": 0,
+      "proxy504": 0,
+      "terminalFailures": 0,
+      "failures": [],
+      "ttfbMs": {
+        "n": 8,
+        "p50": 3145,
+        "p95": 5248,
+        "p99": 5248,
+        "max": 8472,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": 71,
+        "max": 283,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 7,
+        "over4sShare": 0.14285714285714285,
+        "p75Ms": 836
+      },
+      "coldPenaltyMs": 5887
+    },
+    "oauth-opencode/muse-spark-1.3-contributor-free": {
+      "calls": 7,
+      "inputTokens": 200163,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0,
+      "uncachedBreakdown": {
+        "cold_start": 13716,
+        "delta": 0,
+        "compaction": 0,
+        "rebuild": 0,
+        "prefix_break": 0,
+        "affinity_miss": 186447
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 7,
+          "hit": 0
+        },
+        "40-79": {
+          "calls": 0,
+          "hit": 0
+        },
+        "80-119": {
+          "calls": 0,
+          "hit": 0
+        },
+        "120-159": {
+          "calls": 0,
+          "hit": 0
+        },
+        "160-199": {
+          "calls": 0,
+          "hit": 0
+        },
+        "200+": {
+          "calls": 0,
+          "hit": 0
+        }
+      },
+      "retries": {
+        "SERVER": 5
+      },
+      "idleTimeout300": 0,
+      "proxyExhausted": 0,
+      "proxy504": 0,
+      "terminalFailures": 3,
+      "failures": [
+        {
+          "code": "AUTH",
+          "message": "N: {\"type\":\"RegionError\",\"message\":\"This model is not available in your country.\"}",
+          "n": 2
+        },
+        {
+          "code": "SERVER",
+          "message": "N: {\"type\":\"error\",\"message\":\"Internal server error\"}",
+          "n": 1
+        }
+      ],
+      "ttfbMs": {
+        "n": 7,
+        "p50": 7865,
+        "p95": 26650,
+        "p99": 26650,
+        "max": 37517,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": 2777,
+        "max": 3561,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 6,
+        "over4sShare": 0,
+        "p75Ms": 336
+      },
+      "coldPenaltyMs": null
+    },
+    "oauth-glm/glm-5.3-flash": {
+      "calls": 3,
+      "inputTokens": 37356,
+      "cacheReadTokens": 21632,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0.366718654641622,
+      "uncachedBreakdown": {
+        "cold_start": 0,
+        "delta": 19232,
+        "compaction": 0,
+        "rebuild": 0,
+        "prefix_break": 0,
+        "affinity_miss": 18124
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 3,
+          "hit": 0.366718654641622
+        },
+        "40-79": {
+          "calls": 0,
+          "hit": 0
+        },
+        "80-119": {
+          "calls": 0,
+          "hit": 0
+        },
+        "120-159": {
+          "calls": 0,
+          "hit": 0
+        },
+        "160-199": {
+          "calls": 0,
+          "hit": 0
+        },
+        "200+": {
+          "calls": 0,
+          "hit": 0
+        }
+      },
+      "retries": {},
+      "idleTimeout300": 0,
+      "proxyExhausted": 0,
+      "proxy504": 0,
+      "terminalFailures": 1,
+      "failures": [
+        {
+          "code": "AUTH",
+          "message": "N {\"error\":\"unauthorized\"}",
+          "n": 1
+        }
+      ],
+      "ttfbMs": {
+        "n": 3,
+        "p50": 1773,
+        "p95": 1773,
+        "p99": 1773,
+        "max": 2088,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": 226,
+        "max": 296,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 2,
+        "over4sShare": 0,
+        "p75Ms": 123
+      },
+      "coldPenaltyMs": null
+    },
+    "oauth-cursor/grok-4.7": {
+      "calls": 3,
+      "inputTokens": 13490,
+      "cacheReadTokens": 26496,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0.6626319211724103,
+      "uncachedBreakdown": {
+        "cold_start": 0,
+        "delta": 13490,
+        "compaction": 0,
+        "rebuild": 0,
+        "prefix_break": 0,
+        "affinity_miss": 0
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 3,
+          "hit": 0.6626319211724103
+        },
+        "40-79": {
+          "calls": 0,
+          "hit": 0
+        },
+        "80-119": {
+          "calls": 0,
+          "hit": 0
+        },
+        "120-159": {
+          "calls": 0,
+          "hit": 0
+        },
+        "160-199": {
+          "calls": 0,
+          "hit": 0
+        },
+        "200+": {
+          "calls": 0,
+          "hit": 0
+        }
+      },
+      "retries": {},
+      "idleTimeout300": 0,
+      "proxyExhausted": 0,
+      "proxy504": 0,
+      "terminalFailures": 1,
+      "failures": [
+        {
+          "code": "PI_AI_ERROR",
+          "message": "AI Model Not Found: Invalid parameters for registry model: \"grok-4.7\"",
+          "n": 1
+        }
+      ],
+      "ttfbMs": {
+        "n": 3,
+        "p50": 4147,
+        "p95": 4147,
+        "p99": 4147,
+        "max": 4802,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": 3902,
+        "max": 7412,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 3,
+        "over4sShare": 0.6666666666666666,
+        "p75Ms": 886083
+      },
+      "coldPenaltyMs": 187
+    },
+    "oauth-cline/moonshotai/kimi-k3": {
+      "calls": 1,
+      "inputTokens": 19921,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0,
+      "uncachedBreakdown": {
+        "cold_start": 19921,
+        "delta": 0,
+        "compaction": 0,
+        "rebuild": 0,
+        "prefix_break": 0,
+        "affinity_miss": 0
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 1,
+          "hit": 0
+        },
+        "40-79": {
+          "calls": 0,
+          "hit": 0
+        },
+        "80-119": {
+          "calls": 0,
+          "hit": 0
+        },
+        "120-159": {
+          "calls": 0,
+          "hit": 0
+        },
+        "160-199": {
+          "calls": 0,
+          "hit": 0
+        },
+        "200+": {
+          "calls": 0,
+          "hit": 0
+        }
+      },
+      "retries": {},
+      "idleTimeout300": 0,
+      "proxyExhausted": 0,
+      "proxy504": 0,
+      "terminalFailures": 0,
+      "failures": [],
+      "ttfbMs": {
+        "n": 1,
+        "p50": 31373,
+        "p95": 31373,
+        "p99": 31373,
+        "max": 31373,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": 1024,
+        "max": 1024,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 0,
+        "over4sShare": null,
+        "p75Ms": null
+      },
+      "coldPenaltyMs": null
+    },
+    "oauth-cursor/grok-4.7-fast": {
+      "calls": 0,
+      "inputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0,
+      "uncachedBreakdown": {
+        "cold_start": 0,
+        "delta": 0,
+        "compaction": 0,
+        "rebuild": 0,
+        "prefix_break": 0,
+        "affinity_miss": 0
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 0,
+          "hit": 0
+        },
+        "40-79": {
+          "calls": 0,
+          "hit": 0
+        },
+        "80-119": {
+          "calls": 0,
+          "hit": 0
+        },
+        "120-159": {
+          "calls": 0,
+          "hit": 0
+        },
+        "160-199": {
+          "calls": 0,
+          "hit": 0
+        },
+        "200+": {
+          "calls": 0,
+          "hit": 0
+        }
+      },
+      "retries": {},
+      "idleTimeout300": 0,
+      "proxyExhausted": 0,
+      "proxy504": 0,
+      "terminalFailures": 1,
+      "failures": [
+        {
+          "code": "PI_AI_ERROR",
+          "message": "AI Model Not Found: Invalid parameters for registry model: \"grok-4.7\"",
+          "n": 1
+        }
+      ],
+      "ttfbMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "p99": null,
+        "max": null,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": null,
+        "max": null,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 0,
+        "over4sShare": null,
+        "p75Ms": null
+      },
+      "coldPenaltyMs": null
+    },
+    "oauth-cursor/grok-4.6": {
+      "calls": 5,
+      "inputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0,
+      "uncachedBreakdown": {
+        "cold_start": 0,
+        "delta": 0,
+        "compaction": 0,
+        "rebuild": 0,
+        "prefix_break": 0,
+        "affinity_miss": 0
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 5,
+          "hit": 0
+        },
+        "40-79": {
+          "calls": 0,
+          "hit": 0
+        },
+        "80-119": {
+          "calls": 0,
+          "hit": 0
+        },
+        "120-159": {
+          "calls": 0,
+          "hit": 0
+        },
+        "160-199": {
+          "calls": 0,
+          "hit": 0
+        },
+        "200+": {
+          "calls": 0,
+          "hit": 0
+        }
+      },
+      "retries": {
+        "TRANSPORT": 12
+      },
+      "idleTimeout300": 0,
+      "proxyExhausted": 0,
+      "proxy504": 0,
+      "terminalFailures": 4,
+      "failures": [
+        {
+          "code": "PI_AI_ERROR",
+          "message": "dsh owns tool execution",
+          "n": 2
+        },
+        {
+          "code": "TRANSPORT",
+          "message": "Stream ended without finish_reason",
+          "n": 2
+        }
+      ],
+      "ttfbMs": {
+        "n": 5,
+        "p50": 1407,
+        "p95": 1754,
+        "p99": 1754,
+        "max": 1779,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": 1,
+        "max": 1,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 4,
+        "over4sShare": 0.75,
+        "p75Ms": 20145
+      },
+      "coldPenaltyMs": 156
+    },
+    "oauth-cline/cline-free/muse-spark-1.3-contributor": {
+      "calls": 0,
+      "inputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0,
+      "uncachedBreakdown": {
+        "cold_start": 0,
+        "delta": 0,
+        "compaction": 0,
+        "rebuild": 0,
+        "prefix_break": 0,
+        "affinity_miss": 0
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 0,
+          "hit": 0
+        },
+        "40-79": {
+          "calls": 0,
+          "hit": 0
+        },
+        "80-119": {
+          "calls": 0,
+          "hit": 0
+        },
+        "120-159": {
+          "calls": 0,
+          "hit": 0
+        },
+        "160-199": {
+          "calls": 0,
+          "hit": 0
+        },
+        "200+": {
+          "calls": 0,
+          "hit": 0
+        }
+      },
+      "retries": {},
+      "idleTimeout300": 0,
+      "proxyExhausted": 0,
+      "proxy504": 0,
+      "terminalFailures": 1,
+      "failures": [
+        {
+          "code": "AUTH",
+          "message": "N \"access forbidden: cline-free/muse-spark-1.3-contributor is not available in your region\"",
+          "n": 1
+        }
+      ],
+      "ttfbMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "p99": null,
+        "max": null,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": null,
+        "max": null,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 0,
+        "over4sShare": null,
+        "p75Ms": null
+      },
+      "coldPenaltyMs": null
+    },
+    "oauth-anthropic/claude-opus-5-5": {
+      "calls": 0,
+      "inputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0,
+      "uncachedBreakdown": {
+        "cold_start": 0,
+        "delta": 0,
+        "compaction": 0,
+        "rebuild": 0,
+        "prefix_break": 0,
+        "affinity_miss": 0
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 0,
+          "hit": 0
+        },
+        "40-79": {
+          "calls": 0,
+          "hit": 0
+        },
+        "80-119": {
+          "calls": 0,
+          "hit": 0
+        },
+        "120-159": {
+          "calls": 0,
+          "hit": 0
+        },
+        "160-199": {
+          "calls": 0,
+          "hit": 0
+        },
+        "200+": {
+          "calls": 0,
+          "hit": 0
+        }
+      },
+      "retries": {
+        "RATE_LIMIT": 5
+      },
+      "idleTimeout300": 0,
+      "proxyExhausted": 1,
+      "proxy504": 0,
+      "terminalFailures": 1,
+      "failures": [
+        {
+          "code": "SERVER",
+          "message": "N {\"error\":\"anthropic upstream failed 3 times: fetch failed: ECONNRESET\"}",
+          "n": 1
+        }
+      ],
+      "ttfbMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "p99": null,
+        "max": null,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": null,
+        "max": null,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 0,
+        "over4sShare": null,
+        "p75Ms": null
+      },
+      "coldPenaltyMs": null
+    },
+    "oauth-codex/gpt-5.6-terra-fast": {
+      "calls": 0,
+      "inputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0,
+      "uncachedBreakdown": {
+        "cold_start": 0,
+        "delta": 0,
+        "compaction": 0,
+        "rebuild": 0,
+        "prefix_break": 0,
+        "affinity_miss": 0
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 0,
+          "hit": 0
+        },
+        "40-79": {
+          "calls": 0,
+          "hit": 0
+        },
+        "80-119": {
+          "calls": 0,
+          "hit": 0
+        },
+        "120-159": {
+          "calls": 0,
+          "hit": 0
+        },
+        "160-199": {
+          "calls": 0,
+          "hit": 0
+        },
+        "200+": {
+          "calls": 0,
+          "hit": 0
+        }
+      },
+      "retries": {},
+      "idleTimeout300": 0,
+      "proxyExhausted": 0,
+      "proxy504": 0,
+      "terminalFailures": 1,
+      "failures": [
+        {
+          "code": "INVALID_REQUEST",
+          "message": "OpenAI API error (N): {\"message\":\"codex upstream N with empty body\",\"type\":\"invalid_request_error\",\"code\":\"invalid_reque",
+          "n": 1
+        }
+      ],
+      "ttfbMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "p99": null,
+        "max": null,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": null,
+        "max": null,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 0,
+        "over4sShare": null,
+        "p75Ms": null
+      },
+      "coldPenaltyMs": null
+    },
+    "opencode-go/muse-spark-1.3-contributor": {
+      "calls": 0,
+      "inputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0,
+      "uncachedBreakdown": {
+        "cold_start": 0,
+        "delta": 0,
+        "compaction": 0,
+        "rebuild": 0,
+        "prefix_break": 0,
+        "affinity_miss": 0
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 0,
+          "hit": 0
+        },
+        "40-79": {
+          "calls": 0,
+          "hit": 0
+        },
+        "80-119": {
+          "calls": 0,
+          "hit": 0
+        },
+        "120-159": {
+          "calls": 0,
+          "hit": 0
+        },
+        "160-199": {
+          "calls": 0,
+          "hit": 0
+        },
+        "200+": {
+          "calls": 0,
+          "hit": 0
+        }
+      },
+      "retries": {},
+      "idleTimeout300": 0,
+      "proxyExhausted": 0,
+      "proxy504": 0,
+      "terminalFailures": 3,
+      "failures": [
+        {
+          "code": "AUTH",
+          "message": "OpenAI API error (N): {\"type\":\"RegionError\",\"message\":\"This model is not available in your country.\"}",
+          "n": 3
+        }
+      ],
+      "ttfbMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "p99": null,
+        "max": null,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": null,
+        "max": null,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 0,
+        "over4sShare": null,
+        "p75Ms": null
+      },
+      "coldPenaltyMs": null
+    },
+    "opencode-go/grok-4.6": {
+      "calls": 0,
+      "inputTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "weightedCacheHit": 0,
+      "uncachedBreakdown": {
+        "cold_start": 0,
+        "delta": 0,
+        "compaction": 0,
+        "rebuild": 0,
+        "prefix_break": 0,
+        "affinity_miss": 0
+      },
+      "hitByCallIndex": {
+        "0-39": {
+          "calls": 0,
+          "hit": 0
+        },
+        "40-79": {
+          "calls": 0,
+          "hit": 0
+        },
+        "80-119": {
+          "calls": 0,
+          "hit": 0
+        },
+        "120-159": {
+          "calls": 0,
+          "hit": 0
+        },
+        "160-199": {
+          "calls": 0,
+          "hit": 0
+        },
+        "200+": {
+          "calls": 0,
+          "hit": 0
+        }
+      },
+      "retries": {},
+      "idleTimeout300": 0,
+      "proxyExhausted": 0,
+      "proxy504": 0,
+      "terminalFailures": 1,
+      "failures": [
+        {
+          "code": "INVALID_REQUEST",
+          "message": "OpenAI API error (N): {\"type\":\"MissingSessionID\",\"message\":\"Error from provider (Console Go): Request is missing x-openc",
+          "n": 1
+        }
+      ],
+      "ttfbMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "p99": null,
+        "max": null,
+        "over120s": 0
+      },
+      "silenceMs": {
+        "p99": null,
+        "max": null,
+        "over110s": 0
+      },
+      "poolIdle": {
+        "n": 0,
+        "over4sShare": null,
+        "p75Ms": null
+      },
+      "coldPenaltyMs": null
+    }
+  }
+}

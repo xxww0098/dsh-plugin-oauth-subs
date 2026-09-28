@@ -6,6 +6,7 @@
  * that cannot call `/copilot_internal/v2/token` (preview 400).
  * Login is RFC 8628 device-code only — no PKCE, github.com only.
  */
+import { outboundFetch } from '../../utils/outbound.js';
 export { applyCopilotCache, copilotCacheHeaders, copilotCacheSessionId, resetCopilotPins } from './cache.js';
 export declare const COPILOT_CLIENT_ID = "Iv1.b507a08c87ecfe98";
 export declare const COPILOT_SCOPE = "read:user";
@@ -53,7 +54,7 @@ export declare const COPILOT_MODELS: readonly {
     maxTokens: any;
     input: any[];
 }[];
-export declare function copilotSourceLabel(source: any): "key" | "env" | "CLI" | "OAuth" | undefined;
+export declare function copilotSourceLabel(source: any): "env" | "CLI" | "key" | "OAuth" | undefined;
 export declare function isCopilotKeySource(source: any): boolean;
 export declare function copilotAccountFingerprint(token: any): string;
 export declare function copilotDefaultAccount(token: any): string;
@@ -68,13 +69,13 @@ export declare function copilotIdentityHeaders(): {
     'copilot-integration-id': string;
 };
 export declare function copilotDeviceSpec({ fetchFn }?: {
-    fetchFn?: typeof fetch | undefined;
+    fetchFn?: typeof outboundFetch | undefined;
 }): {
     clientId: string;
     scope: string;
     deviceCodeUrl: string;
     tokenUrl: string;
-    fetchFn: typeof fetch;
+    fetchFn: typeof outboundFetch;
     jsonBody: boolean;
     restartOnExpired: boolean;
     headers: {
@@ -107,7 +108,7 @@ export declare function exchangeCopilotToken(githubToken: any, { fetchFn, signal
     apiEndpoint: string;
 }>;
 export declare function completeCopilotDevice(tokens: any, { fetchFn }?: {
-    fetchFn?: typeof fetch | undefined;
+    fetchFn?: typeof outboundFetch | undefined;
 }): Promise<{
     apiEndpoint?: string | undefined;
     githubRefreshToken?: string | undefined;
@@ -121,7 +122,7 @@ export declare function completeCopilotDevice(tokens: any, { fetchFn }?: {
     account: string;
     source: any;
 }>;
-export declare function refreshCopilot(session: any, fetchFn?: typeof fetch): Promise<{
+export declare function refreshCopilot(session: any, fetchFn?: typeof outboundFetch): Promise<{
     apiEndpoint?: string | undefined;
     githubRefreshToken?: string | undefined;
     githubToken?: string | undefined;
@@ -134,7 +135,6 @@ export declare function refreshCopilot(session: any, fetchFn?: typeof fetch): Pr
     account: string;
     source: any;
 }>;
-export declare function isCopilotPermanentRefreshError(error: any): boolean;
 export declare function copilotUpstreamHeaders(session: any, cacheSessionId: any, extra?: any): {
     'openai-intent': string;
     'x-github-api-version': string;

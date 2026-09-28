@@ -284,7 +284,7 @@ export declare function commandCodeAuthFilePath(home: any): string;
 export declare function commandCodeKeyHint(key: any): string;
 /** Friendly account label; opaque fingerprint/key-tail ids and raw user uuids stay out of the UI. */
 export declare function pickCommandCodeHumanAccount(...candidates: any[]): string | undefined;
-export declare function commandCodeSourceLabel(source: any): "key" | "env" | "CLI" | "browser" | undefined;
+export declare function commandCodeSourceLabel(source: any): "env" | "CLI" | "key" | "browser" | undefined;
 /**
  * The CLI's auth server tries ports 5959–5968 (`findAvailablePort(5959,10)`)
  * on 127.0.0.1 and the studio page GET-redirects to `/callback` carrying

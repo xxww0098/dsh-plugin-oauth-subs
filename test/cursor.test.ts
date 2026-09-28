@@ -72,7 +72,8 @@ import {
   resolveCursorLocalCredentials,
   windowsUsernameFromEnv,
 } from '../lib/oauth/cursor/import.js'
-import { resetCursorRefreshGuard } from '../lib/oauth/cursor/refresh-guard.js'
+import { ImportedLoginStale } from '../lib/oauth/tokens.js'
+import { configureOutbound } from '../lib/utils/outbound.js'
 import {
   CURSOR_STABLE_SESSION,
   applyCursorCache,
@@ -124,7 +125,6 @@ function emptyImport(overrides = {}) {
     home: tmpdir(),
     execFileFn: async () => ({ stdout: '' }),
     readVscdbFn: async () => ({}),
-    fetchFn: async () => { throw new Error('import must not hit the network in this case') },
     ...overrides,
   }
 }
@@ -157,7 +157,6 @@ test('cursor poll waits on 404 then stores tokens', async () => {
 })
 
 test('cursor refresh parses exchange_user_api_key', async () => {
-  resetCursorRefreshGuard()
   const next = validAccess('refresh@x')
   const tokens = await refreshCursorTokens('rt-old', {
     fetchFn: async (url, init) => {
@@ -672,33 +671,28 @@ test('vscdb import with cachedEmail sets that email', async () => {
   assert.equal(publicSession('cursor', imported.session).account, 'cached@x')
 })
 
-test('expired access refreshes Keychain then vscdb when refresh tokens differ', async () => {
-  resetCursorRefreshGuard()
+test('expired Keychain and vscdb are stale: import redeems neither refresh token', async () => {
   const stale = expiredAccess('stale@x')
-  const next = validAccess('fresh@x')
-  let refreshCalls = 0
-  const session = await resolveCursorLocalCredentials(emptyImport({
-    platform: 'darwin',
-    execFileFn: async (_cmd, args) => {
-      const service = args[args.indexOf('-s') + 1]
-      if (service === 'cursor-access-token') return { stdout: stale }
-      if (service === 'cursor-refresh-token') return { stdout: 'rt-stale' }
-      throw new Error(service)
-    },
-    readVscdbFn: async () => ({ accessToken: stale, refreshToken: 'rt-ide-other' }),
-    fetchFn: async (url, init) => {
-      refreshCalls += 1
-      assert.equal(url, CURSOR_REFRESH_URL)
-      if (init.headers.authorization === 'Bearer rt-stale') {
-        return new Response('nope', { status: 401 })
-      }
-      assert.equal(init.headers.authorization, 'Bearer rt-ide-other')
-      return json({ accessToken: next, refreshToken: 'rt-ide-other' })
-    },
-  }))
-  assert.equal(session.source, 'ide_vscdb')
-  assert.equal(session.accessToken, next)
-  assert.equal(refreshCalls, 2)
+  const calls: any[] = []
+  configureOutbound({ fetchFn: async (url) => { calls.push(String(url)); throw new Error('import must not exchange') } })
+  try {
+    await assert.rejects(
+      () => importCursorAuth(emptyImport({
+        platform: 'darwin',
+        execFileFn: async (_cmd, args) => {
+          const service = args[args.indexOf('-s') + 1]
+          if (service === 'cursor-access-token') return { stdout: stale }
+          if (service === 'cursor-refresh-token') return { stdout: 'rt-stale' }
+          throw new Error(service)
+        },
+        readVscdbFn: async () => ({ accessToken: stale, refreshToken: 'rt-ide-other' }),
+      })),
+      (error: any) => error instanceof ImportedLoginStale && error.status === 403 && /run cursor-agent/.test(error.message),
+    )
+  } finally {
+    configureOutbound()
+  }
+  assert.deepEqual(calls, [])
 })
 
 test('empty machine throws cursor-import-empty, not a stack', async () => {
@@ -712,7 +706,6 @@ test('CURSOR_ACCESS_TOKEN env wins and does not refresh', async () => {
   const access = validAccess('env@x')
   const session = await resolveCursorLocalCredentials(emptyImport({
     env: { CURSOR_ACCESS_TOKEN: access },
-    fetchFn: async () => { throw new Error('env import must not refresh') },
   }))
   assert.equal(session.source, 'env')
   assert.equal(session.accessToken, access)
@@ -869,6 +862,39 @@ test('snapshot backfills opaque cursor vault from vscdb cachedEmail', async () =
   const roster = await listAccounts('cursor', authPath)
   assert.equal(roster[0].id, 'from-ide@x')
   assert.equal(roster.some((row) => row.id === opaque || row.account === opaque), false)
+})
+
+test('snapshot opens state.vscdb only for a Cursor row lacking identity, once per TTL', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-cursor-vscdb-'))
+  const authPath = join(dir, 'auth.json')
+  const exp = Math.floor(Date.now() / 1000) + 3600
+  await saveSession('cursor', cursorSession({
+    accessToken: jwt({ sub: 'auth0|named', exp }),
+    refreshToken: 'rt-named',
+    source: 'pkce',
+    account: 'named@x',
+  }), authPath)
+  let opens = 0
+  const controller = new AuthController({
+    authPath,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+    cursorAutoImport: false,
+    cursorImport: emptyImport({ readVscdbFn: async () => { opens += 1; return {} } }),
+    fetchFn: async () => json({ planUsage: { autoPercentUsed: 8, apiPercentUsed: 0 }, membershipType: 'pro' }),
+  })
+  await controller.snapshot()
+  assert.equal(opens, 0)
+  await saveSession('cursor', cursorSession({
+    accessToken: jwt({ sub: 'auth0|opaque2', exp }),
+    refreshToken: 'rt-opaque',
+    source: 'pkce',
+    account: 'auth0|opaque2',
+  }), authPath)
+  await controller.snapshot()
+  await controller.snapshot()
+  assert.equal(opens, 1)
 })
 
 test('refreshQuota GetEmail backfills opaque PKCE and stripe Ultra percents', async () => {

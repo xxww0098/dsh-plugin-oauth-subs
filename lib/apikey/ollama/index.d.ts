@@ -88,7 +88,7 @@ export declare const OLLAMA_MODELS: readonly {
         max: "max";
     }>;
 }[];
-export declare function ollamaSourceLabel(source: any): "key" | "env" | undefined;
+export declare function ollamaSourceLabel(source: any): "env" | "key" | undefined;
 export declare function parseOllamaApiKey(value: any): string;
 /** Stable vault id that is not the raw key. */
 export declare function ollamaAccountFingerprint(key: any): string;
@@ -105,7 +105,6 @@ export declare function ollamaSession({ accessToken, account, source, }?: any): 
     source: any;
 };
 export declare function refreshOllama(session: any): Promise<any>;
-export declare function isOllamaPermanentRefreshError(): boolean;
 export declare function ollamaUpstreamHeaders(session: any): {
     authorization: string;
 };

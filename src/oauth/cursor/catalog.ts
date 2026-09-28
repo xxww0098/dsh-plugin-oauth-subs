@@ -6,8 +6,9 @@
  */
 
 import { createHash } from 'node:crypto'
-import { CURSOR_MODELS, CURSOR_PARAM_STYLES, CURSOR_REASONING, cursorContextValueTokens, cursorEffortKey, cursorStyleReasoningEfforts, cursorUpstreamProxy } from './index.js'
+import { CURSOR_MODELS, CURSOR_PARAM_STYLES, CURSOR_REASONING, cursorContextValueTokens, cursorEffortKey, cursorStyleReasoningEfforts, cursorAgentUrl } from './index.js'
 import { fetchCursorAvailableModels, fetchCursorUsableModels } from './h2-session.js'
+import { cursorEgressProxy } from './upstream-proxy.js'
 import { cursorCatalogCache, cursorCatalogModels, resetCursorCatalogCache, setCursorParamStyles } from './registry.js'
 
 export { cursorCatalogModels, resetCursorCatalogCache } from './registry.js'
@@ -356,7 +357,7 @@ export async function refreshCursorCatalog(session, options: any = {}) {
   // The live list is region-filtered: the egress (direct vs configured
   // upstream proxy) changes which families Cursor offers, so it joins the
   // cache key alongside the token.
-  const tokenHash = cursorCatalogTokenHash(`${token}\n${cursorUpstreamProxy() ?? ''}`)
+  const tokenHash = cursorCatalogTokenHash(`${token}\n${await cursorEgressProxy(cursorAgentUrl()) ?? ''}`)
   if (cursorCatalogCache.tokenHash === tokenHash && cursorCatalogCache.models?.length && Date.now() < cursorCatalogCache.expiresAt) {
     return [...cursorCatalogCache.models]
   }

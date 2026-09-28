@@ -10,6 +10,7 @@
  * ClinePass limits surface only as a 429/402 body — so the card carries the
  * credit balance (`prepaid` row) and the plan name.
  */
+import { outboundFetch } from '../../utils/outbound.js';
 /** `normalizeCreditBalance` — micro-USD → USD. */
 export declare function clineCreditUsd(value: any): number | undefined;
 export declare function parseClineBalance(payload: any): {
@@ -44,7 +45,7 @@ export declare function parseClineUsage(user: any, balance: any, plan: any, limi
     planType: any;
     rows: any[];
 };
-export declare function fetchClineQuota(session: any, fetchFn?: typeof fetch): Promise<{
+export declare function fetchClineQuota(session: any, fetchFn?: typeof outboundFetch): Promise<{
     account: string | undefined;
     userId: any;
     planType: any;

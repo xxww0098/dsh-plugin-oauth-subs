@@ -1,6 +1,8 @@
 /**
  * In-process Node http2 client for Cursor Connect RPCs.
- * Each RPC owns a session that is destroyed when the call settles.
+ * RPCs share the pooled session from `cursorH2Connect`; each owns only its
+ * stream and cancels it (RST_STREAM CANCEL) when the call settles, so a
+ * cancelled Run stops upstream work without touching its neighbours.
  * Do not add Bun.
  */
 import { CURSOR_AGENT_URL, CURSOR_RUN_PATH } from './index.js';
@@ -23,6 +25,9 @@ export declare function fetchCursorAvailableModels(session: any, { connectFn, si
  * blob KV get/set, and per-case exec messages so a model turn can complete.
  * Native Cursor tools are rejected with typed results so the model falls back
  * to the MCP tools; MCP calls are handed to DSH, which owns execution.
+ * `touch` runs once per DATA chunk (the attempt's first-byte / idle clock).
+ * A Connect error or a non-200 head rejects with an `UpstreamFailure` carrying
+ * its HTTP status; socket faults and truncation reject with a plain Error.
  */
-export declare function runCursorAgent(session: any, built: any, { signal, connectFn, url, onEvent, }?: any): Promise<unknown>;
+export declare function runCursorAgent(session: any, built: any, { signal, connectFn, url, onEvent, touch, }?: any): Promise<unknown>;
 export { CURSOR_AGENT_URL, CURSOR_RUN_PATH, splitConnectFrames };

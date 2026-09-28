@@ -26,7 +26,7 @@ Anthropic 订阅 OAuth。直接打 `api.anthropic.com/v1/messages`（Anthropic M
 | state | 授权与 token 交换都回传（pi-ai 把 `state` 一起 POST） | pi-ai exchangeAuthorizationCode |
 
 刷新：`grant_type=refresh_token` + `client_id`，JSON。`invalid_grant` / `invalid_client` /
-`unauthorized_client` 判永久失败（重新登录）。
+`unauthorized_client` 或 401 判永久失败（重新登录，共享 `isPermanentRefreshFailure`，无本家额外码）。
 
 ### 账号身份
 
@@ -116,8 +116,16 @@ usage 失败直接抛错，调用方照旧服务上一快照。刷新由家族 q
    `claude-code-user`）。超时 30s——首次读会弹一次系统授权，要留出点「始终允许」的时间。
 2. **`<CLAUDE_CONFIG_DIR 或 ~/.claude>/.credentials.json`**（明文回退，同一份 `claudeAiOauth` 字段）。
 
-两个 store 存同一份文档，2.1.283 先写 Keychain，写成功后**删掉明文文件**。
-本插件只读：不 `add-generic-password`、不写 `.credentials.json`。已导入会话到期后重新读同一份 store，
-不用共享 refresh 换票——换票会轮换 refresh，写不回就把 Claude Code 的登录毁掉。
-传 `paths` 时只按显式路径找（测试用），不碰 Keychain。钥匙串拒绝读取报 `anthropic-import-locked`，
-不假装「没登录」。
+两个 store 存同一份文档，2.1.283 先写 Keychain，写成功后**删掉明文文件**（组合存储
+`keychain-with-plaintext-fallback` 的 `update()`）⇒ macOS 上文件通常不存在，只读文件的实现永远读不到登录。
+传 `paths` 时只按显式路径找（测试用），不碰 Keychain。Keychain 缺席当「本机没登录」；拒绝读取 / 弹窗超时时导入报
+`anthropic-import-locked`（UI 提示允许系统弹窗后重试），不假装「没登录」，也不把堆栈抛给 UI。重读时锁住按 store 过期处理。
+
+**导入只读**（决定 4）：导入的 session 带 `source`（`keychain:<服务名>` 或 `.credentials.json` 路径），浏览器登录没有。
+临期时 `anthropicImported` 钩子只重读同一 store（`rereadAnthropicImport`，Keychain 按记下的服务名），过期 > 现在 + 15s
+才采用；store 也过期 → `ImportedLoginStale`（403）「… run claude or use browser login」，不删登录。从不换票、从不写
+Keychain / 文件。
+
+轮换证据：来源一 本机 Claude Code `2.1.283` 二进制内嵌 JS——刷新 POST `platform.claude.com/v1/oauth/token`，解构
+`refresh_token`（缺省沿用旧值），比较并交换写回 Keychain / `.credentials.json`，竞态落败的 token 会被 revoke ⇒ 会轮换。
+来源二（被动观察：插件自有登录在宿主自然刷新前后各记一次 refresh token sha256 前 8 位）：待合入后记录。

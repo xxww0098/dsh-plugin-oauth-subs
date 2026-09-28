@@ -541,18 +541,22 @@ export function decodeUnaryBody(buf) {
   return bytes
 }
 
-/** Connect end trailer: `{ error: { code, message } }` or `{}` on success. */
-export function connectTrailerError(text) {
+/**
+ * Connect end trailer: `{ error: { code, message } }` or `{}` on success.
+ * Returns the error's Connect `code` (when it has one) and a readable message.
+ */
+export function connectTrailerError(text): { code: string, message: string } | undefined {
   const trimmed = String(text ?? '').trim()
   if (!trimmed) return undefined
   let parsed
   try {
     parsed = JSON.parse(trimmed)
   } catch {
-    return trimmed.slice(0, 300)
+    return { code: '', message: trimmed.slice(0, 300) }
   }
   const error = parsed?.error
   if (!error) return undefined
+  const code = typeof error.code === 'string' ? error.code : ''
   const message = [error.code, error.message].filter((part) => typeof part === 'string' && part.trim()).join(': ')
-  return message || JSON.stringify(error).slice(0, 300)
+  return { code, message: message || JSON.stringify(error).slice(0, 300) }
 }

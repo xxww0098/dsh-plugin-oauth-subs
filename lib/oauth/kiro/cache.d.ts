@@ -13,8 +13,10 @@
  * conversationId also includes the model id so switching the picker does
  * not reuse another model's AWS conversation.
  */
-/** When DSH sends neither session_id nor prompt_cache_key, still pin a constant. */
+/** When DSH sends neither session_id nor prompt_cache_key, key on a constant (never pinned). */
 export declare const KIRO_STABLE_SESSION = "dsh-kiro";
+/** `dsh-kiro` or `dsh-kiro:<model>` is not a conversation: it never pins. */
+export declare function isKiroFallback(id: any): boolean;
 export declare function kiroCacheSessionId(key: any): string | undefined;
 export declare function resetKiroSystemPins(): void;
 /**

@@ -45,6 +45,11 @@ export function peelCursorFastSuffix(modelId) {
 const SYSTEM_PINS = new Map()
 const SYSTEM_PIN_CAP = 64
 
+/** `dsh-cursor` or `dsh-cursor:<model>` is not a conversation: it never pins. */
+export function isCursorFallback(id) {
+  return typeof id !== 'string' || id === '' || id === CURSOR_STABLE_SESSION || id.startsWith(`${CURSOR_STABLE_SESSION}:`)
+}
+
 export function cursorCacheSessionId(key) {
   if (typeof key !== 'string') return undefined
   const cleaned = key.trim().replace(/[^A-Za-z0-9._:-]/g, '-')
@@ -81,7 +86,7 @@ function appendCursorModel(base, modelId) {
 export function pinCursorSystemPrefix(conversationId, systemText) {
   const text = typeof systemText === 'string' ? systemText : ''
   if (!text) return { pinned: '', extra: '' }
-  if (!conversationId || conversationId === CURSOR_STABLE_SESSION) {
+  if (isCursorFallback(conversationId)) {
     return { pinned: text, extra: '' }
   }
   const existing = SYSTEM_PINS.get(conversationId)
@@ -109,15 +114,14 @@ export function cursorConversationId(payload: any = {}, explicit?) {
 }
 
 export function applyCursorCache(payload: any = {}) {
+  // Derive before stripping: `prompt_cache_key` is DSH's session id.
+  const cacheSessionId = cursorConversationId(payload)
   const next = { ...payload }
   delete next.prompt_cache_retention
   delete next.prompt_cache_options
   delete next.prompt_cache_key
   delete next.service_tier
-  return {
-    payload: next,
-    cacheSessionId: cursorConversationId(next),
-  }
+  return { payload: next, cacheSessionId }
 }
 
 /** Cursor does not sticky-route on Codex / Grok HTTP headers. */

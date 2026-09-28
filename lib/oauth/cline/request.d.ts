@@ -24,5 +24,12 @@ export declare function applyClineStreamUsage(payload?: any): any;
  * a DSH non-streaming call would otherwise read `choices` off the envelope.
  */
 export declare function unwrapClineEnvelope(payload: any): any;
+/**
+ * The daily free-model cap (live 2026-09-28): HTTP 429
+ * `{"code":"INFERENCE_CAP_ERROR","message":"Error 429: Daily free limit reached on model …"}`.
+ * Forwarded as-is the host reads RATE_LIMIT and retries 5 times; the
+ * `usage limit reached:` prefix makes it QUOTA_EXCEEDED, which it does not.
+ */
+export declare function clineQuotaFailure(status: any, payload: any): import("../upstream.js").UpstreamFailure | undefined;
 /** Map vendor cache-read aliases. Absent field stays absent — do not invent 0. */
 export declare function mapClineUsage(usage: any): any;

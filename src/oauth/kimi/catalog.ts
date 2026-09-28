@@ -12,6 +12,7 @@ import {
   KIMI_REASONING,
   kimiUpstreamHeaders,
 } from './index.js'
+import { outboundFetch } from '../../utils/outbound.js'
 
 export const KIMI_CATALOG_TTL_MS = 5 * 60_000
 
@@ -101,7 +102,7 @@ export async function refreshKimiCatalog(session, options: any = {}) {
     return [...cached.models]
   }
   try {
-    const fetchFn = options.fetchFn ?? fetch
+    const fetchFn = options.fetchFn ?? outboundFetch
     const response = await fetchFn(KIMI_MODELS_URL, {
       headers: {
         ...kimiUpstreamHeaders(session),

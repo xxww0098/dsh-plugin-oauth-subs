@@ -1,6 +1,7 @@
 /**
- * Outbound HTTP(S) proxy for upstream model / quota / login hops.
- * Never used for the 127.0.0.1 loopback server itself.
+ * Single owner of outbound HTTP: chat, quota, catalog, refresh, and login
+ * hops all go through `outboundFetch`; the Cursor h2 dialer asks
+ * `outboundProxyFor`. Nothing else in src/ imports undici or the global fetch.
  *
  * Resolution: plugin config proxyUrl > Settings outbound-proxy.json > env
  * (HTTPS_PROXY / HTTP_PROXY / ALL_PROXY). Loopback and NO_PROXY stay direct.
@@ -8,10 +9,9 @@
  */
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
-
-const require = createRequire(import.meta.url)
+import { Agent, Headers, ProxyAgent, fetch } from 'undici'
+import { describeError } from './http.js'
 
 export const OUTBOUND_PROXY_FILE = 'outbound-proxy.json'
 
@@ -122,16 +122,22 @@ export async function writeOutboundPrefs(path, prefs) {
   return next
 }
 
+/**
+ * chatgpt.com / ollama.com send no `Keep-Alive` hint, so undici's 4s default
+ * would drop a pooled socket before the next turn and pay a fresh handshake
+ * (~1.7s to chatgpt.com). A stale socket reset before output is retried
+ * upstream as a pre-output transport failure.
+ */
+const KEEP_ALIVE = { keepAliveTimeout: 60_000, keepAliveMaxTimeout: 600_000 }
+
 function makeAgent(url, agentFor) {
-  if (!url) return undefined
-  if (typeof agentFor === 'function') return agentFor(url)
+  return typeof agentFor === 'function' ? agentFor(url) : new ProxyAgent({ uri: url, ...KEEP_ALIVE })
+}
+
+async function release(agent) {
   try {
-    const { ProxyAgent } = require('undici')
-    return new ProxyAgent(url)
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error)
-    throw new Error(`outbound proxy: cannot load undici ProxyAgent (${detail})`)
-  }
+    await agent?.close?.()
+  } catch { /* already closed */ }
 }
 
 function requestUrl(input) {
@@ -144,97 +150,152 @@ function requestUrl(input) {
   }
 }
 
-export function createOutboundFetch({
-  proxyUrl,
-  env = process.env,
-  fetchFn = fetch,
-  agentFor,
-}: any = {}) {
-  const resolved = normalizeProxyUrl(proxyUrl)
-  const agent = makeAgent(resolved, agentFor)
-  if (!agent) return fetchFn
-  const noProxy = envNoProxy(env)
-  return (input, init: any = {}) => {
-    const target = requestUrl(input)
-    if (!target || shouldBypassProxy(target, noProxy)) return fetchFn(input, init)
-    return fetchFn(input, { ...init, dispatcher: agent })
-  }
+/** Global fetch sent `user-agent: node`; undici's own fetch would say `undici`. */
+function withDefaultUserAgent(input, headers) {
+  const next = new Headers(headers ?? (typeof input === 'object' ? input?.headers : undefined))
+  if (!next.has('user-agent')) next.set('user-agent', 'node')
+  return next
 }
 
+/**
+ * One configured owner: a direct Agent plus the proxy agent. `ready` always
+ * settles; a build failure is kept as `error` and fails every proxied request
+ * instead of silently going direct.
+ */
 export function createOutboundSession({
-  path,
-  configUrl,
+  path = undefined,
+  configUrl = undefined,
   env = process.env,
   fetchFn = fetch,
-  agentFor,
+  agentFor = undefined,
 }: any = {}) {
   let settingsUrl = ''
+  const direct = new Agent(KEEP_ALIVE)
   let agent = undefined
-  let readyResolve
-  const ready = path
-    ? new Promise((resolve) => {
-      readyResolve = resolve
-    })
-    : Promise.resolve()
+  let error = ''
+  // Last proxied transport failure: an agent that builds fine can still point
+  // at a dead proxy, and the settings page must show that too.
+  let failure = ''
 
   function resolvedUrl() {
     return resolveProxyUrl(configUrl, settingsUrl, env)
   }
 
-  function rebuild() {
-    const url = resolvedUrl()
-    agent = url ? makeAgent(url, agentFor) : undefined
-  }
-
   async function load() {
-    if (path) {
-      const prefs = await readOutboundPrefs(path)
-      settingsUrl = prefs.url
+    try {
+      if (path) settingsUrl = (await readOutboundPrefs(path)).url
+      const url = resolvedUrl()
+      agent = url ? makeAgent(url, agentFor) : undefined
+    } catch (caught) {
+      error = describeError(caught)
     }
-    rebuild()
-    readyResolve?.()
   }
 
-  if (path) {
-    void load()
-  } else {
-    rebuild()
+  const ready = load()
+
+  /** Proxy URL for `target`, or undefined when it goes direct (unset, NO_PROXY, loopback). */
+  function proxyFor(target) {
+    const url = resolvedUrl()
+    if (!url || !target || shouldBypassProxy(target, envNoProxy(env))) return undefined
+    return url
   }
 
-  const wrapped = (input, init: any = {}) => {
-    const target = requestUrl(input)
-    if (!agent || !target || shouldBypassProxy(target, envNoProxy(env))) {
-      return fetchFn(input, init)
+  async function request(input, init: any = {}) {
+    // A configured proxy must never be skipped because its prefs file is still loading.
+    await ready
+    const options = { ...init, headers: withDefaultUserAgent(input, init?.headers) }
+    if (!proxyFor(requestUrl(input))) return fetchFn(input, { ...options, dispatcher: direct })
+    if (!agent) throw new Error(`outbound proxy unavailable: ${error || 'closed'}`)
+    const via = redactProxyUrl(resolvedUrl())
+    try {
+      const response = await fetchFn(input, { ...options, dispatcher: agent })
+      failure = ''
+      return response
+    } catch (caught) {
+      if (init?.signal?.aborted) throw caught
+      failure = `${describeError(caught)} via ${via}`
+      throw new Error(`outbound proxy unavailable: ${failure}`)
     }
-    return fetchFn(input, { ...init, dispatcher: agent })
   }
 
   return {
     ready,
-    fetchFn: wrapped,
-    resolvedUrl,
+    request,
+    async proxyFor(target) {
+      await ready
+      return proxyFor(target)
+    },
     snapshot() {
       const url = resolvedUrl()
       return {
         url: redactProxyUrl(url),
         source: proxySource(configUrl, settingsUrl, env),
         configured: Boolean(url),
+        ...(error || failure ? { error: error || failure } : {}),
       }
     },
     async setUrl(raw) {
       const text = raw == null ? '' : String(raw).trim()
-      if (text) {
-        const normalized = normalizeProxyUrl(text)
-        if (!normalized) {
-          throw new Error('Invalid proxy URL; use http(s)://host:port')
-        }
-        settingsUrl = normalized
-      } else {
-        settingsUrl = ''
+      const nextSettings = text ? normalizeProxyUrl(text) : ''
+      if (nextSettings === undefined) {
+        throw new Error('Invalid proxy URL; use http(s)://host:port')
       }
-      if (path) await writeOutboundPrefs(path, { url: settingsUrl })
-      rebuild()
+      // Build → persist → swap: a failure at either step leaves file and state as they were.
+      const url = resolveProxyUrl(configUrl, nextSettings, env)
+      const next = url ? makeAgent(url, agentFor) : undefined
+      try {
+        if (path) await writeOutboundPrefs(path, { url: nextSettings })
+      } catch (caught) {
+        void release(next)
+        throw caught
+      }
+      const prev = agent
+      settingsUrl = nextSettings
+      agent = next
+      error = ''
+      failure = ''
+      void release(prev)
       return this.snapshot()
     },
+    /** Frees both agents; later proxied requests fail instead of going direct. */
+    async close() {
+      const prev = agent
+      agent = undefined
+      if (resolvedUrl()) error = 'closed'
+      await Promise.all([release(prev), release(direct)])
+    },
   }
+}
+
+// Until the plugin configures the owner (unit tests, live scripts) every hop
+// goes direct through undici — never through the global fetch. Built lazily,
+// so a configured plugin never holds a second, unclosed Agent.
+let current
+let unconfigured
+
+function owner() {
+  current ??= unconfigured = createOutboundSession({ env: {} })
+  return current
+}
+
+/**
+ * Point the module-level owner at this plugin instance. The caller's
+ * `ctx.effect` cleanup calls `close()` on the returned session; a newer
+ * instance simply replaces it, so hot reload order does not matter.
+ */
+export function configureOutbound(options: any = {}) {
+  if (current && current === unconfigured) void current.close()
+  unconfigured = undefined
+  current = createOutboundSession(options)
+  return current
+}
+
+/** The one outbound fetch: direct Agent, or ProxyAgent when a proxy applies. */
+export function outboundFetch(input, init: any = undefined) {
+  return owner().request(input, init)
+}
+
+/** Proxy URL (with credentials) the Cursor h2 dialer should tunnel through, if any. */
+export function outboundProxyFor(url) {
+  return owner().proxyFor(url)
 }

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
+  QUOTA_TTL_MS,
   QuotaStore,
   applyGrokCreditsSnapshot,
   asNumber,
@@ -245,6 +246,35 @@ test('QuotaStore fetches Codex usage + reset credits and caches', async () => {
   assert.equal(second.status, 'ready')
 })
 
+test('passive quota stays fresh for 60s; the TTL boundary revalidates', async (t) => {
+  assert.equal(QUOTA_TTL_MS, 60_000)
+  t.mock.timers.enable({ apis: ['Date'], now: 1_000_000 })
+  let usage = 0
+  const fetchFn = async (url) => {
+    if (String(url) === CODEX_USAGE_URL) usage += 1
+    return new Response(JSON.stringify({
+      plan_type: 'plus',
+      rate_limit: { primary_window: { used_percent: usage, limit_window_seconds: 18_000 } },
+    }), { status: 200 })
+  }
+  const store = new QuotaStore({
+    fetchFn,
+    tokens: { codex: { session: async () => ({ accessToken: 'tok', accountId: 'acct-1' }) } },
+  })
+  await store.ensure('codex', 'acct-1')
+  assert.equal(usage, 1)
+  t.mock.timers.tick(QUOTA_TTL_MS - 1)
+  await store.ensure('codex', 'acct-1')
+  assert.equal(usage, 1)
+  t.mock.timers.tick(1)
+  // Stale-while-revalidate: the cached rows come back now, one refresh runs.
+  const stale = await store.ensure('codex', 'acct-1')
+  assert.equal(stale.rows[0].remainingPercent, 99)
+  await store.inflight.get('codex\0acct-1')
+  assert.equal(usage, 2)
+  assert.equal(store.peek('codex', 'acct-1').rows[0].remainingPercent, 98)
+})
+
 test('QuotaStore keeps Codex usage if reset-credits 404s', async () => {
   const fetchFn = async (url) => {
     if (String(url) === CODEX_RESET_CREDITS_URL) return new Response('nope', { status: 404 })
@@ -360,7 +390,7 @@ test('QuotaStore GLM quota hop uses ZCode Desktop 3.10.1 fingerprint', async () 
     assert.equal(headers['HTTP-Referer'], 'https://zcode.z.ai')
     assert.equal(headers.referer, 'https://zcode.z.ai')
     assert.equal(headers['X-Title'], 'Z Code@electron')
-    assert.match(headers['x-session-id'], /^sess_[0-9a-f]{24}$/)
+    assert.equal(headers['x-session-id'], 'dsh-glm')
     assert.equal(JSON.stringify(headers).includes('dsh-plugin-oauth-subs'), false)
   }
   assert.equal(seen[0].headers['x-session-id'], seen[1].headers['x-session-id'])

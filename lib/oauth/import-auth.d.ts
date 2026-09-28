@@ -31,6 +31,7 @@ export declare function tokensFromHermes(raw: any, keys: any): {
 export declare function tokensFromGrokCli(raw: any): any;
 export declare function importCodexAuth(): Promise<{
     session: {
+        source: any;
         planType?: any;
         emailAddress?: any;
         idToken?: any;
@@ -41,6 +42,22 @@ export declare function importCodexAuth(): Promise<{
     };
     source: string;
 }>;
+/** Codex CLI / Hermes imports carry their file path; PKCE logins carry none. */
+export declare const codexImported: {
+    cli: string;
+    is: (session: any) => boolean;
+    reread: (session: any) => Promise<{
+        source: any;
+        planType?: any;
+        emailAddress?: any;
+        idToken?: any;
+        accessToken: any;
+        refreshToken: any;
+        expiresAt: any;
+        accountId: any;
+    } | undefined>;
+    identity: (session: any) => any;
+};
 export declare function importGrokAuth(paths?: string[]): Promise<{
     session: {
         clientId?: any;

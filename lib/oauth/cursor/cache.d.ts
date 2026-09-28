@@ -32,6 +32,8 @@ export declare function peelCursorFastSuffix(modelId: any): {
     modelId: string;
     requestedFast: boolean;
 };
+/** `dsh-cursor` or `dsh-cursor:<model>` is not a conversation: it never pins. */
+export declare function isCursorFallback(id: any): boolean;
 export declare function cursorCacheSessionId(key: any): string | undefined;
 export declare function resetCursorSystemPins(): void;
 /**

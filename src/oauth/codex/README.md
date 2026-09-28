@@ -10,7 +10,7 @@
 | 文件 | 职责 |
 |---|---|
 | [`index.ts`](index.ts) | 客户端 id、端点、目录、PKCE authorize、换票、刷新、上游头 |
-| [`request.ts`](request.ts) | Responses 体：把 `input` 里的 system/developer 抬到 `instructions`，后缀停放，剥 gpt-5.6 拒收字段 |
+| [`request.ts`](request.ts) | Responses 体：把 `input` 里的 system/developer 抬到 `instructions`，后缀停放，剥 gpt-5.6 拒收字段；`encodeCodexBody` zstd 压缩 |
 | [`cache.ts`](cache.ts) | `prompt_cache_key` + `session-id` / `thread-id` / `x-client-request-id`。禁止给别的家族用 |
 
 调度：[`../proxy.ts`](../proxy.ts) `family === 'codex'` → `normalizeCodexResponsesBody` + `applyCodexCache` + `codexCacheHeaders`。
@@ -33,9 +33,13 @@
 
 入口：`codexFlow.buildAuthorizeUrl` → `exchangeCodexCode` → `codexSession`。
 `chatgpt_account_id` 必须从 id_token `https://api.openai.com/auth` 解出，没有就不能用订阅。
-永久刷新失败码：`refresh_token_expired` / `reused` / `invalidated` / `invalid_grant`（`isCodexPermanentRefreshError`）。
+永久刷新失败：401，共享码 `invalid_grant` / `invalid_client` / `unauthorized_client`，加本家额外码 `refresh_token_expired` / `reused` / `invalidated`（`CODEX_PERMANENT_REFRESH_CODES`，读 `error` 或 `error.code`）。
 
-导入：[`../import-auth.ts`](../import-auth.ts) `importCodexAuth` 读本机 Codex CLI `auth.json`。
+导入：[`../import-auth.ts`](../import-auth.ts) `importCodexAuth` 读本机 Codex CLI `auth.json`（其次 `~/.hermes/auth.json`）。
+
+**导入只读**（决定 4）：导入的 session 带 `source: <auth.json 路径>`，PKCE 登录没有。`TokenManager` 的 `codexImported` 钩子临期只重读该文件（过期 > 现在 + 15s 才采用，经版本守卫写回 vault），**从不**拿与 CLI 共享的 refresh token 换票；文件也过期 → `ImportedLoginStale`（403）「… run codex or use browser login」，不删登录；重读到的 `accountId` 与存储行不同（CLI 换了号）同样抛 `ImportedLoginStale`，不采用。过期取 access JWT `exp`：旧的 `last_refresh + 1h` 会把 CLI 约 8 天才轮换一次的活 token 判为临期、每个请求都重读。硬切：本改动前导入的登录没有 `source`，仍按插件自有登录换票，需手动重新导入一次。
+
+轮换证据：来源一 openai/codex `rust-v0.155.1` `codex-rs/login/src/auth/manager.rs`——`RefreshResponse.refresh_token: Option<String>`，`persist_tokens` 有新值即覆盖并 `storage.save`；`refresh_token_reused` 归为 Exhausted ⇒ refresh token 一次性、会轮换。CLI 在 JWT `exp` 前 5 分钟主动刷新（取不到 `exp` 时 `last_refresh` 超 8 天）。来源二（被动观察：插件自有登录在宿主自然刷新前后各记一次 refresh token sha256 前 8 位）：待合入后记录。
 
 ## 对话
 
@@ -46,6 +50,7 @@ DSH  →  本机 Responses 代理  →  POST chatgpt.com/backend-api/codex/respo
 ```
 
 头：`codexUpstreamHeaders`（`Authorization`、`chatgpt-account-id`、`originator`、`openai-beta: responses=experimental`）+ `session-id` / `thread-id` / `x-client-request-id`。同一 DSH 请求重试时回放 `x-codex-turn-state`。
+请求体：`encodeCodexBody` 用 zstd 压缩（`content-encoding: zstd`，默认级别，不设大小门槛），每个请求只压一次，重试复用同一份字节；后端解码失败（400 / 415）时不回退明文。
 Fast：body `service_tier` 从 `fast` 改成 `priority`，并带 `x-codex-routing-hint`（`codexRoutingHint`，见 openai/codex#37345）。
 `store` 必须 `false`。`include` 默认 `reasoning.encrypted_content`。剥掉 `prompt_cache_retention` / `prompt_cache_options` / `safety_identifier` / `max_output_tokens`（gpt-5.6 400，Codex #39397）。
 

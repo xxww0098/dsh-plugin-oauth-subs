@@ -18,6 +18,23 @@ test('settings language follows the host page before the OS browser language', a
   assert.match(formatStamp(Date.UTC(2026, 9, 5, 12, 20)), /10月5日/)
 })
 
+test('panelVisible needs a visible window and a rendered panel', async () => {
+  const src = await readFile(new URL('../lib/ui/client.js', import.meta.url), 'utf8')
+  const body = src.match(/function panelVisible\(el, doc\) \{[\s\S]*?\n        \}/)?.[0]
+  assert.ok(body)
+  const panelVisible = new Function(`${body}; return panelVisible`)() as (el: any, doc: any) => boolean
+  const shown = { checkVisibility: () => true }
+  const retained = { checkVisibility: () => false }
+  assert.equal(panelVisible(shown, { hidden: false }), true)
+  assert.equal(panelVisible(shown, { hidden: true }), false)
+  assert.equal(panelVisible(retained, { hidden: false }), false)
+  // Engines without checkVisibility (and the no-rpc early return, which has
+  // no root) fall back to the window check alone.
+  assert.equal(panelVisible({}, { hidden: false }), true)
+  assert.equal(panelVisible(null, { hidden: false }), true)
+  assert.equal(panelVisible(null, { hidden: true }), false)
+})
+
 function accountCardPills(family, locale, { plan, active, region } = {}) {
   const tags = []
   if (plan) tags.push(plan)
@@ -37,8 +54,17 @@ test('Settings workbench enters as a sidebar panel below 插件', async () => {
   assert.match(src, /function PanelGlyph\(\{ size \}\)/)
   assert.equal(src.includes("ctx.slots.inject('settings.section'"), false)
   assert.equal(src.includes('plugins.detail.section'), false)
-  // Retained main panels stay mounted — the poll must yield while hidden.
-  assert.match(src, /if \(!document\.hidden\) void refresh\(\)/)
+  // Retained main panels stay mounted — the poll gates on real visibility,
+  // re-arms only after the previous refresh settles, and wakes on
+  // visibilitychange.
+  assert.match(src, /if \(panelVisible\(root\.current, document\)\) \{\s*await Promise\.race\(\[refresh\(\), new Promise\(\(resolve\) => setTimeout\(resolve, 30_000\)\)\]\)/)
+  // After the user's own action the status read must not join a stale poll build.
+  assert.match(src, /callRpc\(rpc, 'status', fresh \? \{ fresh: true \} : undefined\)/)
+  assert.match(src, /return result\s*\}\s*await refresh\(true\)/)
+  assert.match(src, /if \(live\) timer = setTimeout\(tick, 1500\)/)
+  assert.match(src, /document\.addEventListener\('visibilitychange', onVisibility\)/)
+  assert.match(src, /className: 'osubs', ref: root/)
+  assert.equal(src.includes('setInterval'), false)
   const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
   assert.ok(pkg.dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-layout'))
   assert.ok(pkg.dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-sidebar'))
@@ -221,7 +247,7 @@ test('OpenCode Go renders through the shared account cards and add-account dialo
   assert.match(src, /opencodeGoHostStale/)
   assert.equal(src.includes('OpencodeGoPanel'), false)
   assert.match(src, /quotaPanel\('opencode-go'\)/)
-  assert.match(src, /onGoSave: async \(payload\) => \{\s*await callRpc\(rpc, 'goSave', payload\)\s*await refresh\(\)\s*\}/)
+  assert.match(src, /onGoSave: async \(payload\) => \{\s*await callRpc\(rpc, 'goSave', payload\)\s*await refresh\(true\)\s*\}/)
   assert.match(src, /id === 'opencode-go' && !busy && h\('form'/)
   assert.match(src, /roster\.some\(\(row\) => row\.apiKeySet\) \? t\.opencodeGoKeySet : t\.opencodeGoKeyPlaceholder/)
   assert.match(src, /roster\.some\(\(row\) => row\.cookieSet\) \? t\.opencodeGoCookieSet : t\.opencodeGoCookiePlaceholder/)

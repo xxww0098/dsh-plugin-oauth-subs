@@ -24,8 +24,9 @@
 
 import os from 'node:os'
 import { join } from 'node:path'
-import { OAuthEndpointError, oauthError } from '../codex/index.js'
+import { OAuthEndpointError, oauthError } from '../tokens.js'
 import { applyClineCache, clineCacheHeaders, clineCacheSessionId, resetClinePins } from './cache.js'
+import { outboundFetch } from '../../utils/outbound.js'
 
 export const CLINE_API_ORIGIN = 'https://api.cline.bot'
 export const CLINE_API_BASE = `${CLINE_API_ORIGIN}/api/v1`
@@ -182,7 +183,7 @@ export function clineBalanceUrl(userId) {
  * `restartOnExpired` matches the CLI, which requests a fresh code on
  * `expired_token` instead of failing the login.
  */
-export function clineDeviceSpec({ fetchFn = fetch } = {}) {
+export function clineDeviceSpec({ fetchFn = outboundFetch } = {}) {
   return {
     clientId: CLINE_WORKOS_CLIENT_ID,
     deviceCodeUrl: CLINE_WORKOS_DEVICE_URL,
@@ -212,7 +213,7 @@ function clineUserInfo(payload) {
  * tokenType, expiresAt, userInfo}}`. The WorkOS pair alone is not a Cline
  * session — this exchange is what mints the `usr-…` account id.
  */
-export async function registerClineTokens(tokens, { fetchFn = fetch, signal, source = 'oauth' }: any = {}) {
+export async function registerClineTokens(tokens, { fetchFn = outboundFetch, signal, source = 'oauth' }: any = {}) {
   const accessToken = trimmed(tokens?.access_token)
   const refreshToken = trimmed(tokens?.refresh_token)
   if (!accessToken || !refreshToken) {
@@ -290,7 +291,7 @@ export function isClineOpaqueAccount(value) {
 }
 
 /** `refreshClineToken`: JSON `{refreshToken, grantType:"refresh_token"}`. */
-export async function refreshCline(session, fetchFn = fetch, { signal }: any = {}) {
+export async function refreshCline(session, fetchFn = outboundFetch, { signal }: any = {}) {
   const refreshToken = trimmed(session?.refreshToken)
   if (!refreshToken) throw new Error('cline session needs a refresh token')
   const response = await fetchFn(CLINE_REFRESH_URL, {
@@ -307,12 +308,6 @@ export async function refreshCline(session, fetchFn = fetch, { signal }: any = {
     throw new OAuthEndpointError('cline refresh: refresh token was rejected', 401, 'invalid_grant')
   }
   return clineSessionFromAuthData(payload.data, session)
-}
-
-export function isClinePermanentRefreshError(error) {
-  if (!(error instanceof OAuthEndpointError)) return false
-  if (error.status === 401 || error.status === 403) return true
-  return error.oauthCode === 'invalid_grant'
 }
 
 /**
@@ -366,7 +361,7 @@ export function parseClineUserInfo(payload) {
   }
 }
 
-export async function resolveClineIdentity(session, { fetchFn = fetch, signal }: any = {}) {
+export async function resolveClineIdentity(session, { fetchFn = outboundFetch, signal }: any = {}) {
   const token = trimmed(session?.accessToken)
   if (!token) return undefined
   try {

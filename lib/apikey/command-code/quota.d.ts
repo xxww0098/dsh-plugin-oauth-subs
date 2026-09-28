@@ -13,6 +13,7 @@
  * projectUsageView: remaining monthly+purchased+free against the plan's
  * monthly total when a subscription is active, else spent+remaining.
  */
+import { outboundFetch } from '../../utils/outbound.js';
 /**
  * `getPlanInfo`: planId lowercased, `_`→`-`, longest-prefix match against the
  * plan table (so `individual-pro-v1` wins over `individual-pro`). Unknown ids
@@ -43,7 +44,7 @@ export declare function parseCommandCodeUsage({ whoami, credits, subscription, s
  * `limits=1` flag come from it), credits+subscriptions in parallel, then the
  * usage summary scoped to the subscription's currentPeriodStart.
  */
-export declare function fetchCommandCodeQuota(session: any, fetchFn?: typeof fetch, { timeoutMs }?: any): Promise<{
+export declare function fetchCommandCodeQuota(session: any, fetchFn?: typeof outboundFetch, { timeoutMs }?: any): Promise<{
     account: any;
     planType: any;
     userId: any;

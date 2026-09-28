@@ -139,14 +139,13 @@ export async function readAnthropicKeychainTokens({
   env = process.env,
   execFileFn = execFileAsync,
   timeoutMs = ANTHROPIC_KEYCHAIN_TIMEOUT_MS,
-  service,
+  service = anthropicKeychainService({ env }),
 }: any = {}) {
   if (platform !== 'darwin') return undefined
-  const name = typeof service === 'string' && service ? service : anthropicKeychainService({ env })
   try {
     const { stdout } = await execFileFn(
       'security',
-      ['find-generic-password', '-a', anthropicKeychainAccount({ env }), '-w', '-s', name],
+      ['find-generic-password', '-a', anthropicKeychainAccount({ env }), '-w', '-s', service],
       { encoding: 'utf8', timeout: timeoutMs },
     )
     const raw = String(stdout ?? '').trim()
@@ -170,11 +169,6 @@ export async function readAnthropicKeychainTokens({
   }
 }
 
-/** A session imported from Claude Code's own store — not a plugin-owned browser login. */
-export function isAnthropicImportedSource(source) {
-  return typeof source === 'string' && (source.startsWith('keychain:') || source.endsWith('/.credentials.json') || source.endsWith('\\.credentials.json'))
-}
-
 /**
  * `paths` pins the plaintext candidates and skips the OS store — tests and
  * callers that already know the file. Called bare it mirrors the pinned client:
@@ -186,9 +180,10 @@ export async function importAnthropicAuth(paths = undefined, deps: any = {}) {
   if (paths === undefined && (deps.platform ?? process.platform) === 'darwin') {
     const service = anthropicKeychainService(deps)
     tried.push(`keychain:${service}`)
+    const source = `keychain:${service}`
     try {
       const tokens = tokensFromClaudeCode(await readAnthropicKeychainTokens({ ...deps, service }))
-      if (tokens !== undefined) return { session: sessionFromTokens(tokens), source: `keychain:${service}` }
+      if (tokens !== undefined) return { session: { ...sessionFromTokens(tokens), source }, source }
     } catch (error) {
       if ((error as any)?.code !== ANTHROPIC_IMPORT_LOCKED) throw error
       keychainDenied = true
@@ -201,35 +196,39 @@ export async function importAnthropicAuth(paths = undefined, deps: any = {}) {
     if (raw === undefined) continue
     const tokens = tokensFromClaudeCode(raw)
     if (tokens === undefined) continue
-    return { session: sessionFromTokens(tokens), source: path }
+    return { session: { ...sessionFromTokens(tokens), source: path }, source: path }
   }
   const error: any = new Error(keychainDenied ? ANTHROPIC_IMPORT_LOCKED : ANTHROPIC_IMPORT_EMPTY)
   error.code = error.message
   throw error
 }
 
+/** A session imported from Claude Code's own store — not a plugin-owned browser login. */
+export function isAnthropicImportedSource(source) {
+  return typeof source === 'string' && (source.startsWith('keychain:') || /[\\/]\.credentials\.json$/.test(source))
+}
+
 /**
- * Re-read an imported Claude Code login. Does not exchange the refresh
- * token and does not write the store: the refresh token is shared with
- * Claude Code, and rotating it without writing the successor back leaves
- * the local login `invalid_grant`.
+ * Re-read an imported Claude Code login from the store it came from. Never
+ * exchanges the refresh token and never writes the store: it is shared with
+ * Claude Code, and rotating it here leaves Claude Code's copy `invalid_grant`.
  */
 export async function rereadAnthropicImport(source, deps: any = {}) {
   if (!isAnthropicImportedSource(source)) return undefined
-  if (source.startsWith('keychain:')) {
-    const service = source.slice('keychain:'.length)
-    let raw
-    try {
-      raw = await readAnthropicKeychainTokens({ ...deps, service })
-    } catch (error) {
-      if ((error as any)?.code === ANTHROPIC_IMPORT_LOCKED) return undefined
+  // A locked Keychain on reread is "no fresh login" → stale, not a prompt.
+  const raw = source.startsWith('keychain:')
+    ? await readAnthropicKeychainTokens({ ...deps, service: source.slice('keychain:'.length) }).catch((error) => {
+      if (error?.code === ANTHROPIC_IMPORT_LOCKED) return undefined
       throw error
-    }
-    const tokens = tokensFromClaudeCode(raw)
-    if (tokens === undefined) return undefined
-    return { ...sessionFromTokens(tokens), source }
-  }
-  const tokens = tokensFromClaudeCode(await readJson(source))
-  if (tokens === undefined) return undefined
-  return { ...sessionFromTokens(tokens), source }
+    })
+    : await readJson(source)
+  const tokens = tokensFromClaudeCode(raw)
+  return tokens === undefined ? undefined : { ...sessionFromTokens(tokens), source }
+}
+
+/** Imported Claude Code logins reread the Keychain / .credentials.json; PKCE logins exchange. */
+export const anthropicImported = {
+  cli: 'claude',
+  is: (session) => isAnthropicImportedSource(session?.source),
+  reread: (session) => rereadAnthropicImport(session.source),
 }

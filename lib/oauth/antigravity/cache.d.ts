@@ -14,12 +14,14 @@
  *
  * DSH prepends a runtime-context system snapshot and may reshuffle
  * tool JSON every step. First system / equivalent tools /
- * thinkingConfig per session are pinned.
+ * thinkingConfig per real session are pinned; fallback ids never pin.
  */
-/** When DSH sends neither session_id nor prompt_cache_key, still pin a constant. */
+/** When DSH sends neither session_id nor prompt_cache_key, key on a constant (never pinned). */
 export declare const ANTIGRAVITY_STABLE_SESSION = "dsh-antigravity";
 export declare function antigravityCacheSessionId(key: any): string | undefined;
 export declare function resetAntigravitySystemPins(): void;
+/** `dsh-antigravity` or `dsh-antigravity:<model>` is not a conversation: it never pins. */
+export declare function isAntigravityFallback(id: any): boolean;
 export declare function pinAntigravitySystemInstruction(sessionId: any, parts: any): {
     parts: any;
     extra: undefined;
@@ -37,8 +39,9 @@ export declare function pinAntigravitySystemInstruction(sessionId: any, parts: a
 export declare function pinAntigravityTools(sessionId: any, tools: any): any;
 /**
  * Sticky-first thinkingConfig. Once a session has sent (or omitted)
- * a thinking object, keep that choice even if a later payload flaps
- * reasoning_effort. Do not invent implicitCacheConfig.
+ * a thinking object, keep that choice while later payloads omit
+ * reasoning_effort; an explicit, different reasoning_effort is the
+ * user changing it and replaces the pin. Do not invent implicitCacheConfig.
  */
-export declare function pinAntigravityThinking(sessionId: any, thinking: any): any;
+export declare function pinAntigravityThinking(sessionId: any, thinking: any, effort?: any): any;
 export declare function antigravitySessionIdOf(payload?: any, explicit?: any): any;

@@ -168,3 +168,20 @@ test('RPC fetch routes mount via ctx.get when inject never fires', async () => {
   const body = await response.json()
   assert.deepEqual(body.result, { ok: true, value: snapshot })
 })
+
+test('status passes fresh through so a post-action read never joins a stale poll build', async () => {
+  const routes = new Map()
+  const connection = { fetch: { register(route) { routes.set(route.path, route); return () => routes.delete(route.path) } } }
+  const ctx = { logger: { warn() {}, info() {} }, inject(deps, callback) { if (deps.includes('connection')) callback({ connection }) } }
+  const seen = []
+  registerRpc(ctx, { snapshot: async (fresh) => { seen.push(fresh); return {} } })
+  const route = routes.get('/api/oauth-subs-auth/status')
+  for (const payload of [{ fresh: true }, {}]) {
+    await route.fetch(new Request('http://127.0.0.1/api/oauth-subs-auth/status', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'client-request', rpcId: 'r', method: 'oauth-subs-auth/status', payload }),
+    }))
+  }
+  assert.deepEqual(seen, [true, false])
+})

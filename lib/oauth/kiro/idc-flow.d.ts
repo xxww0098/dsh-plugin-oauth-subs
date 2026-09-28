@@ -2,6 +2,7 @@
  * AWS SSO OIDC device authorization for Builder ID and IAM Identity Center.
  * JSON bodies (not form-urlencoded). Register a public client every login.
  */
+import { outboundFetch } from '../../utils/outbound.js';
 export declare function registerKiroOidcClient({ region, startUrl, fetchFn, signal }?: any): Promise<{
     clientId: any;
     clientSecret: any;
@@ -21,7 +22,7 @@ export declare class KiroIdcFlowManager {
         region?: string | undefined;
         startUrl?: string | undefined;
         kind?: string | undefined;
-        fetchFn?: typeof fetch | undefined;
+        fetchFn?: typeof outboundFetch | undefined;
     }): Promise<{
         verificationUrl: any;
         verificationUri: any;

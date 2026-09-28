@@ -8,6 +8,7 @@
  */
 
 import { ANTHROPIC_USAGE_URL, anthropicUsageHeaders } from './index.js'
+import { outboundFetch } from '../../utils/outbound.js'
 
 function parsePercent(value) {
   if (typeof value !== 'string' && typeof value !== 'number') return undefined
@@ -115,7 +116,7 @@ export function parseAnthropicUsage(payload) {
   return { rows }
 }
 
-export async function fetchAnthropicQuota(session, fetchFn = fetch) {
+export async function fetchAnthropicQuota(session, fetchFn = outboundFetch) {
   const response = await fetchFn(ANTHROPIC_USAGE_URL, {
     method: 'GET',
     headers: anthropicUsageHeaders(session),

@@ -68,15 +68,15 @@ DSH chat/completions  →  POST https://q.<region>.amazonaws.com/
 
 - `developer` 以及未知角色 → system。官方 wire **没有**独立 system 字段（[kiro.rs](https://github.com/ZyphrZero/kiro.rs) `build_history` / kiro-proxy PROTOCOL.md）。system 钉成 **history 第一条** `userInputMessage` + 固定 ack `I will follow these instructions.`，**不要**每轮拼进 `currentMessage.content`。
 - 历史是 `userInputMessage` / `assistantResponseMessage` 成对。当前 user 文本只是这一轮。
-- `conversationId` = DSH `session_id` / `prompt_cache_key` **加上 model**（`session:deepseek-3.2`），缺 pin 时 `dsh-kiro:<model>`。**永远不要** `Date.now()`。静态目录各钉各的，切换 picker 不共用一条 AWS conversation。
+- `conversationId` = DSH `session_id` / `prompt_cache_key` **加上 model**（`session:deepseek-3.2`），缺 pin 时 `dsh-kiro:<model>`，`isKiroFallback` 为真时不钉系统提示。**永远不要** `Date.now()`。静态目录各钉各的，切换 picker 不共用一条 AWS conversation。
 - tools 仍在 **current** `userInputMessageContext.tools`（官方也是挂 current，不在 conversationState 顶层）。
 - `toolResults` 必须紧跟带该 `toolUseId` 的 `assistantResponseMessage`（history user 或 current）。`relocateDisplacedToolResults` 先按 id 把错位的 result 挪回发出它的 assistant 后面（并发交错：A / user / B / result(A) → AWS 400）；再走原来的 `flushAssistant` 再 `flushUser`。不编造 “Tool results provided.”；有 `toolResults` 时 `content` 保持空串，只有既无文本也无 results 才写占位 `.`。
 - `normalizeToolUseId`：已符合 `^[a-zA-Z0-9_.:-]{1,64}$` 的 id 只做 `call_` / `toolu_` / `tool_` → `tooluse_`；带 `|` 或超长的 OpenAI Responses 复合 id（`call_…|fc_…`）用稳定 sha256 映成 `tooluse_<32>`，use 和 result 共用同一张表。
-- 上游 401/403 改写成 400（非 AUTH），避免 DSH 把订阅打成「API 密钥无效」。`MONTHLY_REQUEST_COUNT` 回 429，文案前缀 `usage limit reached: `，type `insufficient_quota`：DSH 的 `classifyPiAiError` 先判额度措辞、后判 429，所以归为 QUOTA_EXCEEDED、不重试。这个措辞是契约，去掉就会变回可锤的 429。`INSUFFICIENT_MODEL_CAPACITY` → 503；`USER_REQUEST_RATE_EXCEEDED` → 429（有则带 Retry-After，不带额度措辞）；超大 / `TOO_BIG` 保持 400/413。流内异常（非流式）走同一套分类定状态码。TokenManager 已经会刷新，不要再抄 kiro-cli 403 级联。
+- 上游 401/403 先经 `run` 的刷新钩子（`tokens.ts` `forcedRefresh` → `refreshNow`）刷一次再试；仍失败改写成 400（非 AUTH），避免 DSH 把订阅打成「API 密钥无效」。`MONTHLY_REQUEST_COUNT` → 429 `usage limit reached: <厂商原文>`（`upstream.ts` `quotaFailure`，不带 Retry-After）：DSH 的 `classifyPiAiError` 先判额度措辞、后判 429，所以归为 QUOTA_EXCEEDED、不重试。这个措辞是契约，去掉就会变回可锤的 429。`INSUFFICIENT_MODEL_CAPACITY` → 503；`USER_REQUEST_RATE_EXCEEDED` → 429（有则带 Retry-After，不带额度措辞）；超大 / `TOO_BIG` 保持 400/413。流内异常（非流式）走同一套分类定状态码。不要再抄 kiro-cli 403 级联。
 - eventstream 里结构化 thinking / `text`（无 `content`）映成 Completions `reasoning_content`。不要把思考压成 `<thinking>` XML 写进 `content`。
 - 网络块不是帧边界。`KiroEventStreamParser` 拒绝非法帧长 / header 长度，`finish()` 拒绝 EOF 残帧；不能在毒前缀后继续积累数据。见[故障记录](../../../docs/error.md)。
 - 流式工具按 `toolUseId` 分配稳定且互异的 OpenAI `index`，参数片段始终是字符串；交错工具不能拼成同一个调用。
-- 异常 / 畸形帧不是成功结束：发头前回错误 HTTP 状态，发头后发 OpenAI `error` SSE，不追加成功 `finish_reason` / `[DONE]`；停止消费并释放上游 reader。
+- 传输层跑在 `upstreamRequest().run` 里（首字节 120s / 预算 270s / 空闲 270s，每块上游数据 `touch()`）；第一块映射后的输出之前不写头。输出前：厂商异常帧按 `classifyKiroHopError` 回 HTTP 状态、不重放；畸形帧 / EOF 残帧 / 断流是传输故障，由 `run` 重试。输出后任何失败都 `destroy`，不写 `error` SSE，不追加成功 `finish_reason` / `[DONE]`；停止消费并释放上游 reader。
 
 命中：有 `metadataEvent.tokenUsage`（或嵌套 `metadataEvent` / snake_case）时用精确字段，`cacheReadInputTokens` → `prompt_tokens_details.cached_tokens`。
 
@@ -129,6 +129,7 @@ proxy 只删 `prompt_cache_retention` / `prompt_cache_options`，**不**把 `pro
 - 不要把 Social 的 `redirect_uri` 在 authorize 和 token 之间改掉（HTTP 500）。
 - 不要在 refresh 成功后保留旧 `expiresAt`（TokenManager 会每轮打 `/refreshToken` → 429）。
 - 不要把 refresh 429 映射成代理 500；原样回 429（有则带 Retry-After）。
+- 刷新永久失败只认 `KiroHttpError` 的 401 或 body `error` 码（`invalid_grant` 等），不扫消息文本。
 - 不要只 stub `GenerateAssistantResponse`（会 501）。
 - 不要在 eventstream 非 string 头上 `break`（会丢掉 `:event-type`）。
 - 不要只认 `metadataEvent.tokenUsage`。现场流经常只有 `contextUsageEvent` + `meteringEvent`（credit）。

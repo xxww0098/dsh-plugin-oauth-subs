@@ -14,7 +14,7 @@ export declare function cursorCatalogTokenHash(token: any): string;
 export declare function isGpt56Model(id: any, name?: string): boolean;
 export declare function clampCursorContextWindow(id: any, name: any, window: any): any;
 /** pi-cursor `inferCursorContextWindow` — GetUsableModels has no window field. */
-export declare function inferCursorContextWindow(id: any, name?: string): 1000000 | 200000 | 300000 | 256000 | 500000 | 272000;
+export declare function inferCursorContextWindow(id: any, name?: string): 1000000 | 200000 | 300000 | 500000 | 256000 | 272000;
 /** pi-cursor `inferCursorMaxOutputTokens`. */
 export declare function inferCursorMaxOutputTokens(id: any, name?: string): 128000 | 64000;
 /** Tab / chat internals stay out of the Settings grid (`/cursor.models all` is Pi opt-in). */

@@ -10,6 +10,7 @@ import {
   kiroSession,
   oidcEndpoint,
 } from './index.js'
+import { outboundFetch } from '../../utils/outbound.js'
 
 const DEFAULT_INTERVAL_SEC = 5
 const DEFAULT_EXPIRES_IN_SEC = 900
@@ -52,7 +53,7 @@ async function postJson(url, body, fetchFn, signal?) {
   return { ok: response.ok, status: response.status, body: parsed, text }
 }
 
-export async function registerKiroOidcClient({ region = KIRO_DEFAULT_REGION, startUrl, fetchFn = fetch, signal }: any = {}) {
+export async function registerKiroOidcClient({ region = KIRO_DEFAULT_REGION, startUrl, fetchFn = outboundFetch, signal }: any = {}) {
   const issuer = startUrl || BUILDER_ID_START_URL
   const result = await postJson(`${oidcEndpoint(region)}/client/register`, {
     clientName: 'dsh-plugin-oauth-subs',
@@ -109,7 +110,7 @@ export class KiroIdcFlowManager {
     return this.attempts.get(provider)
   }
 
-  async start(provider, { region = KIRO_DEFAULT_REGION, startUrl = BUILDER_ID_START_URL, kind = 'builder', fetchFn = fetch } = {}) {
+  async start(provider, { region = KIRO_DEFAULT_REGION, startUrl = BUILDER_ID_START_URL, kind = 'builder', fetchFn = outboundFetch } = {}) {
     if (this.isBusy(provider)) {
       throw new Error(`a ${provider} login attempt is already in progress`)
     }

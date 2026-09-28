@@ -17,7 +17,8 @@
 import { randomBytes } from 'node:crypto'
 import { arch as osArch, release as osRelease } from 'node:os'
 import { decodeJwtPayload } from '../../utils/jwt.js'
-import { glmCacheSessionId } from './cache.js'
+import { GLM_STABLE_SESSION, glmCacheSessionId } from './cache.js'
+import { outboundFetch } from '../../utils/outbound.js'
 
 export const GLM_CLIENT_ID = 'client_P8X5CMWmlaRO9gyO-KSqtg'
 export const GLM_BIGMODEL_APP_ID = 'zcode'
@@ -320,8 +321,6 @@ export function glmBizBase(region = 'zai') {
   return normalizeGlmRegion(region) === 'bigmodel' ? 'https://open.bigmodel.cn' : GLM_BIZ_BASE
 }
 
-const GLM_PROCESS_SESSION_ID = `sess_${randomBytes(12).toString('hex')}`
-
 function randomHex(bytes = 16) {
   return randomBytes(bytes).toString('hex')
 }
@@ -393,7 +392,7 @@ export function glmDesktopHeaders(sessionId?) {
     'x-zcode-session-type': 'main',
     'x-zcode-trace-id': randomHex(),
     'x-request-id': randomHex(),
-    'x-session-id': glmCacheSessionId(sessionId) || GLM_PROCESS_SESSION_ID,
+    'x-session-id': glmCacheSessionId(sessionId) || GLM_STABLE_SESSION,
     'x-query-id': randomHex(),
     'HTTP-Referer': GLM_REFERER,
     referer: GLM_REFERER,
@@ -610,7 +609,7 @@ async function readJson(response, label) {
   return text ? JSON.parse(text) : undefined
 }
 
-export async function glmCliInit({ region = 'zai', fetchFn = fetch, pollToken = createPollToken() } = {}) {
+export async function glmCliInit({ region = 'zai', fetchFn = outboundFetch, pollToken = createPollToken() } = {}) {
   const resolved = normalizeGlmRegion(region)
   const response = await fetchFn(GLM_CLI_INIT_URL, {
     method: 'POST',
@@ -621,7 +620,7 @@ export async function glmCliInit({ region = 'zai', fetchFn = fetch, pollToken = 
   return { ...started, pollToken, region: resolved }
 }
 
-export async function glmCliPoll({ flowId, pollToken, region = 'zai', fetchFn = fetch }: any = {}) {
+export async function glmCliPoll({ flowId, pollToken, region = 'zai', fetchFn = outboundFetch }: any = {}) {
   const response = await fetchFn(`${GLM_CLI_POLL_URL}/${encodeURIComponent(flowId)}`, {
     method: 'GET',
     headers: cliJsonHeaders({ authorization: `Bearer ${pollToken}` }),
@@ -629,10 +628,13 @@ export async function glmCliPoll({ flowId, pollToken, region = 'zai', fetchFn = 
   return parseCliPoll(await readJson(response, 'glm cli poll'), region)
 }
 
+// getJson/postJson are bounded at 10s: a hung identity/login call must not
+// stall the shared settings snapshot.
 async function getJson(url, headers, fetchFn) {
   return readJson(await fetchFn(url, {
     method: 'GET',
     headers: { accept: 'application/json', ...glmDesktopHeaders(), ...headers },
+    signal: AbortSignal.timeout(10_000),
   }), url)
 }
 
@@ -641,10 +643,11 @@ async function postJson(url, body, headers, fetchFn) {
     method: 'POST',
     headers: codingPlanJsonHeaders(headers),
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(10_000),
   }), url)
 }
 
-export async function businessLogin(oauthAccessToken, { fetchFn = fetch, region = 'zai' } = {}) {
+export async function businessLogin(oauthAccessToken, { fetchFn = outboundFetch, region = 'zai' } = {}) {
   const url = normalizeGlmRegion(region) === 'bigmodel'
     ? 'https://open.bigmodel.cn/api/auth/z/login'
     : GLM_BUSINESS_LOGIN_URL
@@ -667,7 +670,7 @@ function asKeyArray(value) {
   return []
 }
 
-export async function mintGlmApiKey(oauthAccessToken, { fetchFn = fetch, region = 'zai' } = {}) {
+export async function mintGlmApiKey(oauthAccessToken, { fetchFn = outboundFetch, region = 'zai' } = {}) {
   const bizToken = await businessLogin(oauthAccessToken, { fetchFn, region })
   const auth = { authorization: `Bearer ${bizToken}` }
   const base = glmBizBase(region)
@@ -720,7 +723,7 @@ export function glmSession({ accessToken, account, accountId, region = 'zai', zc
   }
 }
 
-export async function fetchGlmUserinfo(source, { fetchFn = fetch, region }: any = {}) {
+export async function fetchGlmUserinfo(source, { fetchFn = outboundFetch, region }: any = {}) {
   const resolved = normalizeGlmRegion(region ?? source?.region)
   // bigmodel.cn business APIs only take the BigModel business access token;
   // the zcode JWT answers 401 「令牌已过期或验证不正确」. Z.ai userinfo takes
@@ -761,7 +764,7 @@ export async function fetchGlmUserinfo(source, { fetchFn = fetch, region }: any 
   return undefined
 }
 
-export async function resolveGlmIdentity(source, { fetchFn = fetch } = {}) {
+export async function resolveGlmIdentity(source, { fetchFn = outboundFetch } = {}) {
   const fromHand = pickGlmHumanAccount(
     source?.email,
     source?.account,
@@ -789,7 +792,7 @@ export function displayGlmAccount(session) {
     )
 }
 
-export async function completeGlmCli(ready, { fetchFn = fetch, region = 'zai' } = {}) {
+export async function completeGlmCli(ready, { fetchFn = outboundFetch, region = 'zai' } = {}) {
   const resolved = normalizeGlmRegion(region)
   // BigModel: the Coding Plan bearer is the provider business access token
   // (`data.bigmodel.access_token`). The zcode JWT is Start-Plan only — writing
@@ -821,6 +824,3 @@ export async function refreshGlm(session) {
   return session
 }
 
-export function isGlmPermanentRefreshError() {
-  return false
-}

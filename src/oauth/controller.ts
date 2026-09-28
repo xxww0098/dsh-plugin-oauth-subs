@@ -13,7 +13,7 @@ import { accountIdOf, deleteSession, getStoredSession, getSession, listStoredSes
 import {
   codexFlow,
   exchangeCodexCode,
-  isCodexPermanentRefreshError,
+  CODEX_PERMANENT_REFRESH_CODES,
   refreshCodex,
 } from './codex/index.js'
 import {
@@ -21,13 +21,11 @@ import {
   grokDeviceSpec,
   grokFlow,
   exchangeGrokCode,
-  isGrokPermanentRefreshError,
   refreshGrok,
 } from './grok/index.js'
 import {
   GLM_MODELS,
   glmSession,
-  isGlmPermanentRefreshError,
   normalizeGlmRegion,
   pickGlmHumanAccount,
   pickGlmName,
@@ -39,7 +37,6 @@ import {
   allocateKiroMachineId,
   canonicalizeKiroMethod,
   exchangeKiroSocialCode,
-  isKiroPermanentRefreshError,
   kiroSession,
   kiroSocialFlow,
   refreshKiro,
@@ -55,21 +52,19 @@ import {
   ANTIGRAVITY_PREEMPT_MS,
   applyAntigravityValidation,
   exchangeAntigravityCode,
-  isAntigravityPermanentRefreshError,
   probeAntigravityValidation,
   refreshAntigravity,
 } from './antigravity/index.js'
-import { importAntigravityAuth, importCodexAuth, importGrokAuth, importGlmAuth, importKiroAuth } from './import-auth.js'
+import { codexImported, importAntigravityAuth, importCodexAuth, importGrokAuth, importGlmAuth, importKiroAuth } from './import-auth.js'
 import { CursorPollFlowManager } from './cursor/pkce-flow.js'
 import {
   cursorAccountFromToken,
-  isCursorPermanentRefreshError,
   pickCursorHumanAccount,
   refreshCursor,
 } from './cursor/index.js'
-import { CURSOR_IMPORT_EMPTY, importCursorAuth, readCursorVscdbTokens } from './cursor/import.js'
+import { CURSOR_IMPORT_EMPTY, cursorImported, importCursorAuth, readCursorVscdbTokens } from './cursor/import.js'
 import { cursorCatalogModels, refreshCursorCatalog } from './cursor/catalog.js'
-import { ollamaSession, refreshOllama, isOllamaPermanentRefreshError, resolveOllamaIdentity, isOllamaOpaqueAccount } from '../apikey/ollama/index.js'
+import { ollamaSession, refreshOllama, resolveOllamaIdentity, isOllamaOpaqueAccount } from '../apikey/ollama/index.js'
 import { OLLAMA_IMPORT_EMPTY, importOllamaAuth } from '../apikey/ollama/import.js'
 import { ollamaCatalogModels, refreshOllamaCatalog } from '../apikey/ollama/catalog.js'
 import {
@@ -77,7 +72,6 @@ import {
   commandCodeSession,
   commandCodeSessionFromCallback,
   isCommandCodeOpaqueAccount,
-  isCommandCodePermanentRefreshError,
   refreshCommandCode,
   resolveCommandCodeIdentity,
 } from '../apikey/command-code/index.js'
@@ -88,18 +82,16 @@ import {
   completeKimiDevice as sessionFromKimiDevice,
   configureKimiIdentity,
   isKimiOpaqueAccount,
-  isKimiPermanentRefreshError,
   kimiDeviceSpec,
   kimiSession,
   refreshKimi,
   resolveKimiIdentity,
 } from './kimi/index.js'
-import { KIMI_IMPORT_EMPTY, importKimiAuth } from './kimi/import.js'
+import { KIMI_IMPORT_EMPTY, importKimiAuth, kimiImported } from './kimi/import.js'
 import { kimiCatalogModels, refreshKimiCatalog } from './kimi/catalog.js'
 import {
   completeCopilotDevice as sessionFromCopilotDevice,
   isCopilotOpaqueAccount,
-  isCopilotPermanentRefreshError,
   isCopilotSessionToken,
   copilotDeviceSpec,
   mintCopilotSessionFromGithub,
@@ -113,7 +105,6 @@ import {
   devinSession,
   exchangeDevinCode,
   isDevinOpaqueAccount,
-  isDevinPermanentRefreshError,
   isDevinSessionToken,
   pickDevinHumanAccount,
   refreshDevin,
@@ -124,22 +115,20 @@ import {
   clineDeviceSpec,
   clineSessionFromAuthData,
   isClineOpaqueAccount,
-  isClinePermanentRefreshError,
   refreshCline,
   registerClineTokens,
   resolveClineIdentity,
 } from './cline/index.js'
 import { clineCatalogModels, refreshClineCatalog } from './cline/catalog.js'
-import { CLINE_IMPORT_EMPTY, importClineAuth } from './cline/import.js'
+import { CLINE_IMPORT_EMPTY, clineImported, importClineAuth } from './cline/import.js'
 import {
   anthropicFlowFor,
   anthropicProfile,
   ANTHROPIC_PREEMPT_MS,
   exchangeAnthropicCode,
-  isAnthropicPermanentRefreshError,
   refreshAnthropic,
 } from './anthropic/index.js'
-import { importAnthropicAuth, isAnthropicImportedSource, rereadAnthropicImport } from './anthropic/import.js'
+import { anthropicImported, importAnthropicAuth } from './anthropic/import.js'
 import { devinUserStatus, resolveDevinIdentity } from './devin/transport.js'
 import { OpencodeGoStore, opencodeGoFilePath } from '../apikey/opencode-go/store.js'
 import { opencodeGoKeyHint } from '../apikey/opencode-go/index.js'
@@ -173,6 +162,7 @@ import {
   writeUpdatePrefs,
   writeUpdateState,
 } from '../utils/update-prefs.js'
+import { outboundFetch } from '../utils/outbound.js'
 
 /** How often the background sweep re-checks stored credential expiry. */
 export const TOKEN_SWEEP_INTERVAL_MS = 60_000
@@ -227,6 +217,8 @@ export class AuthController {
   declare claims: Map<string, number>
   declare tokens: Record<string, TokenManager>
   declare quota: QuotaStore
+  #identityTried = new Map<string, number>()
+  #snapshotRun: Promise<Record<string, any>> | undefined
   declare fetchFn: any
   declare opencodeGo: any
   declare opencodeGoAdopted: boolean
@@ -240,7 +232,7 @@ export class AuthController {
   declare autoUpdateTimer: any
   declare prefsFile: string
   declare stateFile: string
-  constructor({ authPath, prefix, origin, settings, patchPath, credentials, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, profile, readFileFn, updateEnv, installReleaseFn = installRelease, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover, devinAutoImport, devinImport, devinDiscover, clineDiscover, clineAutoImport, commandCodeAutoImport, commandCodeImport }: any) {
+  constructor({ authPath, prefix, origin, settings, patchPath, credentials, grokLogin = 'device', onAuthChanged, models, fetchFn = outboundFetch, quotaTtlMs, profile, readFileFn, updateEnv, installReleaseFn = installRelease, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover, devinAutoImport, devinImport, devinDiscover, clineDiscover, clineAutoImport, commandCodeAutoImport, commandCodeImport }: any) {
     this.authPath = authPath
     this.prefix = prefix
     this.origin = origin
@@ -261,7 +253,11 @@ export class AuthController {
       this.autoUpdate = prefs.autoUpdate
       this.updateState = state
     })
-    this.onAuthChanged = onAuthChanged
+    // Any login-state change re-arms the throttled identity discovery.
+    this.onAuthChanged = (provider) => {
+      this.#identityTried.clear()
+      onAuthChanged?.(provider)
+    }
     this.models = models ?? new ModelSwitch()
     this.flows = new OAuthFlowManager()
     this.devices = new DeviceFlowManager()
@@ -320,7 +316,8 @@ export class AuthController {
         provider: 'codex',
         authPath: this.authPath,
         refresh: (session) => refreshCodex(session, fetchFn),
-        isPermanent: isCodexPermanentRefreshError,
+        permanentCodes: CODEX_PERMANENT_REFRESH_CODES,
+        imported: codexImported,
         onRemoved: () => this.onAuthChanged?.('codex'),
       }),
       grok: new TokenManager({
@@ -329,7 +326,6 @@ export class AuthController {
         provider: 'grok',
         authPath: this.authPath,
         refresh: (session) => refreshGrok(session, fetchFn),
-        isPermanent: isGrokPermanentRefreshError,
         onRemoved: () => this.onAuthChanged?.('grok'),
       }),
       glm: new TokenManager({
@@ -338,7 +334,6 @@ export class AuthController {
         provider: 'glm',
         authPath: this.authPath,
         refresh: refreshGlm,
-        isPermanent: isGlmPermanentRefreshError,
         onRemoved: () => this.onAuthChanged?.('glm'),
       }),
       kiro: new TokenManager({
@@ -347,7 +342,6 @@ export class AuthController {
         provider: 'kiro',
         authPath: this.authPath,
         refresh: (session) => refreshKiro(session, { fetchFn }),
-        isPermanent: isKiroPermanentRefreshError,
         onRemoved: () => this.onAuthChanged?.('kiro'),
       }),
       antigravity: new TokenManager({
@@ -356,7 +350,6 @@ export class AuthController {
         provider: 'antigravity',
         authPath: this.authPath,
         refresh: (session) => refreshAntigravity(session, fetchFn),
-        isPermanent: isAntigravityPermanentRefreshError,
         onRemoved: () => this.onAuthChanged?.('antigravity'),
       }),
       cursor: new TokenManager({
@@ -365,7 +358,7 @@ export class AuthController {
         provider: 'cursor',
         authPath: this.authPath,
         refresh: (session) => refreshCursor(session, fetchFn),
-        isPermanent: isCursorPermanentRefreshError,
+        imported: cursorImported(this.cursorImport),
         onRemoved: () => this.onAuthChanged?.('cursor'),
       }),
       ollama: new TokenManager({
@@ -374,7 +367,6 @@ export class AuthController {
         provider: 'ollama',
         authPath: this.authPath,
         refresh: refreshOllama,
-        isPermanent: isOllamaPermanentRefreshError,
         onRemoved: () => this.onAuthChanged?.('ollama'),
       }),
       kimi: new TokenManager({
@@ -383,7 +375,7 @@ export class AuthController {
         provider: 'kimi',
         authPath: this.authPath,
         refresh: (session) => refreshKimi(session, fetchFn),
-        isPermanent: isKimiPermanentRefreshError,
+        imported: kimiImported,
         onRemoved: () => this.onAuthChanged?.('kimi'),
       }),
       copilot: new TokenManager({
@@ -392,7 +384,6 @@ export class AuthController {
         provider: 'copilot',
         authPath: this.authPath,
         refresh: (session) => refreshCopilot(session, fetchFn),
-        isPermanent: isCopilotPermanentRefreshError,
         onRemoved: () => this.onAuthChanged?.('copilot'),
       }),
       devin: new TokenManager({
@@ -401,7 +392,6 @@ export class AuthController {
         provider: 'devin',
         authPath: this.authPath,
         refresh: (session) => refreshDevin(session, { fetchFn, statusFn: devinUserStatus }),
-        isPermanent: isDevinPermanentRefreshError,
         onRemoved: () => this.onAuthChanged?.('devin'),
       }),
       cline: new TokenManager({
@@ -410,7 +400,7 @@ export class AuthController {
         provider: 'cline',
         authPath: this.authPath,
         refresh: (session) => refreshCline(session, fetchFn),
-        isPermanent: isClinePermanentRefreshError,
+        imported: clineImported,
         onRemoved: () => this.onAuthChanged?.('cline'),
       }),
       anthropic: new TokenManager({
@@ -418,8 +408,8 @@ export class AuthController {
         preemptMs: ANTHROPIC_PREEMPT_MS,
         provider: 'anthropic',
         authPath: this.authPath,
-        refresh: (session) => this.#refreshAnthropic(session),
-        isPermanent: isAnthropicPermanentRefreshError,
+        refresh: (session) => refreshAnthropic(session, fetchFn),
+        imported: anthropicImported,
         onRemoved: () => this.onAuthChanged?.('anthropic'),
       }),
       'command-code': new TokenManager({
@@ -428,7 +418,6 @@ export class AuthController {
         provider: 'command-code',
         authPath: this.authPath,
         refresh: refreshCommandCode,
-        isPermanent: isCommandCodePermanentRefreshError,
         onRemoved: () => this.onAuthChanged?.('command-code'),
       }),
     }
@@ -602,7 +591,20 @@ export class AuthController {
    * `lib/`. The callers are untyped on purpose — do not "restore" the inferred
    * type without re-checking `lib/` size.
    */
-  async snapshot(): Promise<Record<string, any>> {
+  snapshot(fresh = false): Promise<Record<string, any>> {
+    // Concurrent polls share one build; cleared on settle so a failure never
+    // pins. A post-mutation caller passes `fresh` so it never joins a build
+    // that started before its write — later polls join the fresh one.
+    if (fresh || !this.#snapshotRun) {
+      const run = this.#buildSnapshot().finally(() => {
+        if (this.#snapshotRun === run) this.#snapshotRun = undefined
+      })
+      this.#snapshotRun = run
+    }
+    return this.#snapshotRun
+  }
+
+  async #buildSnapshot(): Promise<Record<string, any>> {
     await this.models.ready
     await this.prefsReady
     await this.#resolveGlmIdentities()
@@ -1085,14 +1087,30 @@ export class AuthController {
     }
   }
 
+  /**
+   * Rows still missing a readable identity, minus those tried within the
+   * passive quota TTL — the snapshot poll must not re-hit userinfo / state.vscdb
+   * every tick. `onAuthChanged` clears the table.
+   */
+  #identityDue(provider, rows, hasIdentity) {
+    const now = Date.now()
+    return rows.filter((row) => {
+      if (hasIdentity(row.session?.account)) return false
+      const key = `${provider}\0${row.id}`
+      const last = this.#identityTried.get(key)
+      if (last !== undefined && now - last < this.quota.ttlMs) return false
+      this.#identityTried.set(key, now)
+      return true
+    })
+  }
+
   async #resolveGlmIdentities() {
-    const rows = await listStoredSessions('glm', this.authPath)
+    // Keep the strict check: an opaque letters+digits id (poll user.id like
+    // dnarplz6) must re-resolve to an email/name. A resolved username that is
+    // also letters+digits (xxww0098) re-resolves once and is a no-op when
+    // userinfo returns the same value — displayGlmAccount shows it meanwhile.
+    const rows = this.#identityDue('glm', await listStoredSessions('glm', this.authPath), pickGlmHumanAccount)
     await Promise.all(rows.map(async (row) => {
-      // Keep the strict check: an opaque letters+digits id (poll user.id like
-      // dnarplz6) must re-resolve to an email/name. A resolved username that is
-      // also letters+digits (xxww0098) re-resolves once and is a no-op when
-      // userinfo returns the same value — displayGlmAccount shows it meanwhile.
-      if (pickGlmHumanAccount(row.session?.account)) return
       const account = await resolveGlmIdentity(row.session, { fetchFn: this.fetchFn }).catch(() => undefined)
       if (!account || account === row.session.account) return
       const next = { ...row.session, account, displayName: account }
@@ -1171,10 +1189,10 @@ export class AuthController {
   }
 
   async #resolveCursorIdentities() {
-    const rows = await listStoredSessions('cursor', this.authPath)
+    const rows = this.#identityDue('cursor', await listStoredSessions('cursor', this.authPath), pickCursorHumanAccount)
+    if (rows.length === 0) return
     const vscdb = await this.#readCursorVscdbHint()
     await Promise.all(rows.map(async (row) => {
-      if (pickCursorHumanAccount(row.session?.account)) return
       const account = pickCursorHumanAccount(
         cursorAccountFromToken(row.session?.accessToken),
         this.#cachedEmailFor(row.session, vscdb),
@@ -1230,7 +1248,7 @@ export class AuthController {
     const rows = await listStoredSessions('cursor', this.authPath)
     if (rows.length > 0) return
     try {
-      const result = await importCursorAuth({ fetchFn: this.fetchFn, ...this.cursorImport })
+      const result = await importCursorAuth(this.cursorImport)
       if (result?.session) {
         await saveSession('cursor', result.session, this.authPath)
         await this.#discoverCursor(result.session)
@@ -1246,7 +1264,7 @@ export class AuthController {
 
   async #importCursor() {
     const existing = await listStoredSessions('cursor', this.authPath)
-    const result = await importCursorAuth({ fetchFn: this.fetchFn, ...this.cursorImport })
+    const result = await importCursorAuth(this.cursorImport)
     const incomingId = accountIdOf('cursor', result.session)
     const hit = existing.find((row) => row.id === incomingId)
     if (hit?.session?.source === 'pkce') {
@@ -1527,28 +1545,6 @@ export class AuthController {
     return next
   }
 
-  /** Read Claude Code's login. Does not write the keychain or credentials file. */
-  async #importAnthropic() {
-    const result = await importAnthropicAuth()
-    return { ...result, session: { ...result.session, source: result.source } }
-  }
-
-  /**
-   * Imported sessions share Claude Code's refresh token. Exchanging it
-   * rotates the token and leaves the keychain / .credentials.json copy
-   * invalid. Re-read the store instead; never write it.
-   */
-  async #refreshAnthropic(session) {
-    if (isAnthropicImportedSource(session?.source)) {
-      const reread = await rereadAnthropicImport(session.source)
-      if (reread && reread.expiresAt > Date.now() + 15_000) return reread
-      const error: any = new Error('anthropic imported login is stale; refresh Claude Code or use browser login')
-      error.code = 'anthropic-import-stale'
-      throw error
-    }
-    return refreshAnthropic(session, this.fetchFn)
-  }
-
   /**
    * Hydrate the profile identity (account uuid + email) onto a stored
    * anthropic login. Best-effort: a profile failure leaves the generic
@@ -1639,7 +1635,7 @@ export class AuthController {
     this.devinAutoImportTried = true
     const rows = await listStoredSessions('devin', this.authPath)
     // A foreign-shaped row (wrong-prefix token) is not a devin login; it must
-    // not block the CLI import. Its refresh 401s out via isDevinPermanentRefreshError.
+    // not block the CLI import. Its refresh 401s out via isPermanentRefreshFailure.
     if (rows.some((row) => isDevinSessionToken(row?.session?.accessToken))) return
     try {
       const result = await importDevinAuth({ ...this.devinImport })
@@ -2275,12 +2271,12 @@ export class AuthController {
   async switchAccount(provider, id) {
     if (provider === 'opencode-go') {
       await this.switchOpencodeGo(id)
-      return this.snapshot()
+      return this.snapshot(true)
     }
     await switchAccount(provider, id, this.authPath)
     this.lastError.delete(provider)
     this.onAuthChanged?.(provider)
-    return this.snapshot()
+    return this.snapshot(true)
   }
 
   async importFrom(provider) {
@@ -2311,7 +2307,7 @@ export class AuthController {
           : provider === 'command-code'
             ? await this.#importCommandCode()
           : provider === 'anthropic'
-            ? await this.#importAnthropic()
+            ? await importAnthropicAuth()
           : await importGrokAuth()
     this.claim(provider)
     this.flows.pending(provider)?.cancel()
@@ -2366,7 +2362,7 @@ export class AuthController {
       // Mutate failures must reach the RPC so the picker can show them.
       await this.sync(undefined, { recover: false })
     }
-    return this.snapshot()
+    return this.snapshot(true)
   }
 
   async sync(selected?, options: any = {}) {

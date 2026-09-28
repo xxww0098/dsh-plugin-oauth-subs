@@ -313,7 +313,7 @@ export function devinToOpenai(collected, { model, id }: any = {}) {
 /* ---- OpenAI SSE mapper ---------------------------------------------------- */
 
 /**
- * Translate Devin stream events into OpenAI chat.completion.chunk SSE. Events
+ * Translate Devin stream events into OpenAI chat.completion.chunk objects. Events
  * come from runDevinChat: {type:'text'|'thinking'|'tool'|'usage'|'done', …}.
  */
 export function createDevinOpenaiStream({ model, id }: any = {}) {
@@ -339,7 +339,7 @@ export function createDevinOpenaiStream({ model, id }: any = {}) {
       choices: [choice],
     }
     if (usage) body.usage = usage
-    return `data: ${JSON.stringify(body)}\n\n`
+    return body
   }
 
   function toolIndex(callId) {
@@ -351,13 +351,13 @@ export function createDevinOpenaiStream({ model, id }: any = {}) {
     id: completionId,
     text: () => text,
     thinking: () => thinking,
+    /**
+     * The role chunk rides with the first content chunk: usage or a stop
+     * before any output must not commit the client head.
+     */
     push(event) {
       if (!event || typeof event !== 'object') return []
       const chunks: any[] = []
-      if (!sentRole) {
-        sentRole = true
-        chunks.push(chunk({ role: 'assistant' }))
-      }
       if (event.type === 'thinking' && event.delta) {
         thinking += event.delta
         chunks.push(chunk({ reasoning_content: event.delta }))
@@ -385,6 +385,10 @@ export function createDevinOpenaiStream({ model, id }: any = {}) {
       } else if (event.type === 'stop') {
         stopReason = event.reason
       }
+      if (chunks.length && !sentRole) {
+        sentRole = true
+        chunks.unshift(chunk({ role: 'assistant' }))
+      }
       return chunks
     },
     finish() {
@@ -392,7 +396,6 @@ export function createDevinOpenaiStream({ model, id }: any = {}) {
       if (!sentRole) chunks.push(chunk({ role: 'assistant' }))
       const finishReason = devinStopReasonToFinish(stopReason, toolIndexes.size > 0)
       chunks.push(chunk({}, finishReason, latestUsage ? mapDevinUsage(latestUsage) : undefined))
-      chunks.push('data: [DONE]\n\n')
       return chunks
     },
   }

@@ -9,7 +9,8 @@
 
 import { copilotCacheSessionId, COPILOT_STABLE_SESSION } from './cache.js'
 import { createHash } from 'node:crypto'
-import { OAuthEndpointError, oauthError } from '../codex/index.js'
+import { OAuthEndpointError, oauthError } from '../tokens.js'
+import { outboundFetch } from '../../utils/outbound.js'
 
 export { applyCopilotCache, copilotCacheHeaders, copilotCacheSessionId, resetCopilotPins } from './cache.js'
 
@@ -327,7 +328,7 @@ export function copilotIdentityHeaders() {
   }
 }
 
-export function copilotDeviceSpec({ fetchFn = fetch } = {}) {
+export function copilotDeviceSpec({ fetchFn = outboundFetch } = {}) {
   return {
     clientId: COPILOT_CLIENT_ID,
     scope: COPILOT_SCOPE,
@@ -414,7 +415,7 @@ export function parseCopilotTokenPayload(payload) {
   }
 }
 
-export async function exchangeCopilotToken(githubToken, { fetchFn = fetch, signal }: any = {}) {
+export async function exchangeCopilotToken(githubToken, { fetchFn = outboundFetch, signal }: any = {}) {
   const token = trimmed(githubToken)
   if (!token) throw new Error('copilot GitHub token is empty')
   const response = await fetchFn(COPILOT_EXCHANGE_URL, {
@@ -439,7 +440,7 @@ export async function exchangeCopilotToken(githubToken, { fetchFn = fetch, signa
   throw await oauthError(response, 'copilot')
 }
 
-export async function completeCopilotDevice(tokens, { fetchFn = fetch } = {}) {
+export async function completeCopilotDevice(tokens, { fetchFn = outboundFetch } = {}) {
   const github = trimmed(tokens?.access_token)
   if (!github) throw new Error('copilot device flow returned no access token')
   const exchanged = await exchangeCopilotToken(github, { fetchFn })
@@ -487,7 +488,7 @@ async function refreshGithubToken(session, fetchFn) {
   }
 }
 
-export async function refreshCopilot(session, fetchFn = fetch) {
+export async function refreshCopilot(session, fetchFn = outboundFetch) {
   if (!session?.githubToken && !session?.refreshToken && !session?.accessToken) {
     throw new Error('copilot session needs a GitHub token')
   }
@@ -542,12 +543,6 @@ export async function refreshCopilot(session, fetchFn = fetch) {
   }
 }
 
-export function isCopilotPermanentRefreshError(error) {
-  if (!(error instanceof OAuthEndpointError)) return false
-  if (error.status === 401 || error.status === 403) return true
-  return error.oauthCode === 'invalid_grant'
-}
-
 export function copilotUpstreamHeaders(session, cacheSessionId, extra: any = {}) {
   const sessionPin = copilotCacheSessionId(cacheSessionId) || COPILOT_STABLE_SESSION
   const headers = {
@@ -572,7 +567,7 @@ export function parseCopilotUser(payload) {
   return { account }
 }
 
-export async function resolveCopilotIdentity(session, { fetchFn = fetch, signal }: any = {}) {
+export async function resolveCopilotIdentity(session, { fetchFn = outboundFetch, signal }: any = {}) {
   const github = trimmed(session?.githubToken)
     ?? (isGithubUserToken(session?.refreshToken) ? trimmed(session.refreshToken) : undefined)
     ?? (isGithubUserToken(session?.accessToken) ? trimmed(session.accessToken) : undefined)
@@ -593,7 +588,7 @@ export async function resolveCopilotIdentity(session, { fetchFn = fetch, signal 
   }
 }
 
-export async function mintCopilotSessionFromGithub(githubToken, { fetchFn = fetch, source = 'paste', account }: any = {}) {
+export async function mintCopilotSessionFromGithub(githubToken, { fetchFn = outboundFetch, source = 'paste', account }: any = {}) {
   const github = parseCopilotApiKey(githubToken)
   const exchanged = await exchangeCopilotToken(github, { fetchFn })
   return copilotSession({

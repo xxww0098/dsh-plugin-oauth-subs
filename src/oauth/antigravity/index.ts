@@ -17,6 +17,8 @@ import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { outboundFetch } from '../../utils/outbound.js'
+import { oauthError } from '../tokens.js'
 
 // Public Google installed-app client from CLIProxyAPI constants.go (not a private secret).
 export const ANTIGRAVITY_CLIENT_ID = [
@@ -76,7 +78,7 @@ function retryHubOnProd(response) {
 }
 
 /** POST a hub Cloud Code RPC: daily, then IDE prod on transport / 5xx. */
-export async function fetchAntigravityCloudCode(url, init, fetchFn = fetch) {
+export async function fetchAntigravityCloudCode(url, init, fetchFn = outboundFetch) {
   const urls = antigravityCloudCodeFallbacks(url)
   let lastError
   for (let i = 0; i < urls.length; i++) {
@@ -191,8 +193,6 @@ export const ANTIGRAVITY_PLAN_NAMES = Object.freeze({
   legacy_tier: 'Legacy',
   legacytier: 'Legacy',
 })
-
-const PERMANENT_REFRESH = new Set(['invalid_grant', 'invalid_client', 'unauthorized_client'])
 
 export function antigravityPlatform(platform = process.platform, arch = process.arch) {
   const os = platform === 'darwin' ? 'darwin' : platform === 'win32' ? 'windows' : 'linux'
@@ -545,19 +545,7 @@ async function readJson(response, label) {
   return text ? JSON.parse(text) : undefined
 }
 
-async function oauthError(response, label) {
-  const text = await response.text()
-  let code
-  try {
-    code = JSON.parse(text)?.error
-  } catch {
-    code = undefined
-  }
-  const error = new Error(`${label} failed (HTTP ${response.status})${text ? `: ${text.slice(0, 240)}` : ''}`)
-  return typeof code === 'string' ? Object.assign(error, { code }) : error
-}
-
-export async function exchangeAntigravityTokens(body, fetchFn = fetch) {
+export async function exchangeAntigravityTokens(body, fetchFn = outboundFetch) {
   const response = await fetchFn(ANTIGRAVITY_TOKEN_URL, {
     method: 'POST',
     headers: tokenHeaders(),
@@ -567,7 +555,7 @@ export async function exchangeAntigravityTokens(body, fetchFn = fetch) {
   return response.json()
 }
 
-export async function fetchAntigravityUserInfo(accessToken, { fetchFn = fetch } = {}) {
+export async function fetchAntigravityUserInfo(accessToken, { fetchFn = outboundFetch } = {}) {
   const response = await fetchFn(ANTIGRAVITY_USERINFO_URL, {
     method: 'GET',
     headers: antigravityUserinfoHeaders(accessToken),
@@ -578,7 +566,7 @@ export async function fetchAntigravityUserInfo(accessToken, { fetchFn = fetch } 
   return email
 }
 
-export async function onboardAntigravityUser(accessToken, tierId, { fetchFn = fetch, sleep = delay } = {}) {
+export async function onboardAntigravityUser(accessToken, tierId, { fetchFn = outboundFetch, sleep = delay } = {}) {
   const raw = JSON.stringify({
     tier_id: tierId,
     metadata: antigravityControlPlaneMetadata(),
@@ -600,7 +588,7 @@ export async function onboardAntigravityUser(accessToken, tierId, { fetchFn = fe
   throw new Error(`antigravity onboardUser did not complete after ${ANTIGRAVITY_ONBOARD_ATTEMPTS} attempts`)
 }
 
-export async function fetchAntigravityProject({ accessToken, fetchFn = fetch, sleep }: any = {}) {
+export async function fetchAntigravityProject({ accessToken, fetchFn = outboundFetch, sleep }: any = {}) {
   const response = await fetchAntigravityCloudCode(ANTIGRAVITY_LOAD_CODE_ASSIST_URL, {
     method: 'POST',
     headers: antigravityLoadCodeAssistHeaders(accessToken),
@@ -615,7 +603,7 @@ export async function fetchAntigravityProject({ accessToken, fetchFn = fetch, sl
   return { projectId, planType: antigravityPlanType(loadResp), loadResp }
 }
 
-export async function completeAntigravityLogin(tokens, { fetchFn = fetch, sleep, account }: any = {}) {
+export async function completeAntigravityLogin(tokens, { fetchFn = outboundFetch, sleep, account }: any = {}) {
   const accessToken = trimmed(tokens?.access_token ?? tokens?.accessToken)
   const refreshToken = trimmed(tokens?.refresh_token ?? tokens?.refreshToken)
   if (!accessToken) throw new Error('antigravity token exchange returned no access token')
@@ -633,7 +621,7 @@ export async function completeAntigravityLogin(tokens, { fetchFn = fetch, sleep,
   })
 }
 
-export async function exchangeAntigravityCode(code, redirectUri, { fetchFn = fetch } = {}) {
+export async function exchangeAntigravityCode(code, redirectUri, { fetchFn = outboundFetch } = {}) {
   const tokens = await exchangeAntigravityTokens(new URLSearchParams({
     code,
     client_id: ANTIGRAVITY_CLIENT_ID,
@@ -644,7 +632,7 @@ export async function exchangeAntigravityCode(code, redirectUri, { fetchFn = fet
   return completeAntigravityLogin(tokens, { fetchFn })
 }
 
-export async function refreshAntigravity(session, fetchFn = fetch) {
+export async function refreshAntigravity(session, fetchFn = outboundFetch) {
   const tokens: any = await exchangeAntigravityTokens(new URLSearchParams({
     client_id: ANTIGRAVITY_CLIENT_ID,
     client_secret: ANTIGRAVITY_CLIENT_SECRET,
@@ -684,7 +672,7 @@ export function applyAntigravityValidation(session, info) {
 }
 
 /** Tiny generateContent so Settings can show the verify banner before DSH chats. */
-export async function probeAntigravityValidation(session, { fetchFn = fetch } = {}) {
+export async function probeAntigravityValidation(session, { fetchFn = outboundFetch } = {}) {
   const projectId = trimmed(session?.projectId)
   if (!projectId || !trimmed(session?.accessToken)) return undefined
   const body = JSON.stringify({
@@ -712,12 +700,6 @@ export async function probeAntigravityValidation(session, { fetchFn = fetch } = 
   } catch {
     return undefined
   }
-}
-
-export function isAntigravityPermanentRefreshError(error) {
-  if (parseAntigravityValidation(error) || error?.code === ANTIGRAVITY_VERIFY_CODE) return false
-  const code = error?.code ?? error?.error
-  return typeof code === 'string' && PERMANENT_REFRESH.has(code)
 }
 
 export function antigravityRequestId() {

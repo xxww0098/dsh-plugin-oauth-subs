@@ -61,8 +61,9 @@ DSH chat/completions  →  POST daily-cloudcode-pa.googleapis.com/v1internal:gen
 - `request.tools` / `generationConfig.thinkingConfig` 按 session 钉住，避免 DSH 抖前缀。不发 `implicitCacheConfig`。
 - **thinkingConfig：** `claude-*` / `gpt-oss-*` **整段省略**。不要用 `reasoning_effort` 改写 flash `-high` 线 id。`gemini-3.5-flash*`（含 `gemini-3.5-flash-lite`）/ `gemini-3-flash-agent`（legacy，上游 500，不在 catalog）/ `gemini-3.1-pro-*` / `gemini-pro-agent` 用 Pi 的 `thinkingBudget`（id 已带 effort 时也可省略）。其它 Gemini flash 仍可用 sticky `thinkingLevel`。
 - 转换后 **合并相邻同 role** 的 `contents`（Cloud Code 否则 400）。多余 system 快照只停在末尾，**不要**插进 model `functionCall` 组和它的 `functionResponse` 之间。
-- Gemini 3 / Cloud Code 的 `functionCall` part 必须带回原 `thoughtSignature`（[Google thought signatures](https://ai.google.dev/gemini-api/docs/thought-signatures)）。官方 wire 是 **part 级** camelCase，也接受 `thought_signature` / 嵌在 `functionCall` 里的入站。`collectAntigravityParts` 把它抄到 OpenAI `tool_calls` 的 `thoughtSignature` / `thought_signature` / `extra_content.google.thought_signature`；`openaiToAntigravity` 写回 part。DSH 若剥掉未知键，进程内按 `sessionId` + tool id / `name+args` 再贴（#72）。一组 Gemini 3 functionCall **第一条查找后仍无签名** → 丢掉这组 unsigned `functionCall`，配对的 tool 结果改成 user `[Observation from \`name\`:\n…]` 文本。Claude / GPT-OSS **仍发** unsigned `functionCall`。**不要**编空串或 `skip_thought_signature_validator`。`part.thought` 仍不进可见文本；若签名只在 thought part 上，转给随后第一条无签名的 functionCall。
+- Gemini 3 / Cloud Code 的 `functionCall` part 必须带回原 `thoughtSignature`（[Google thought signatures](https://ai.google.dev/gemini-api/docs/thought-signatures)）。官方 wire 是 **part 级** camelCase，也接受 `thought_signature` / 嵌在 `functionCall` 里的入站。`collectAntigravityParts` 把它抄到 OpenAI `tool_calls` 的 `thoughtSignature` / `thought_signature` / `extra_content.google.thought_signature`；`openaiToAntigravity` 写回 part。DSH 若剥掉未知键，进程内按真实 `sessionId` + tool id / `name+args` 再贴（#72）：回退 id 不存签名；每会话 4096 键 LRU（查找也刷新）、最多 64 会话、全局 64 MiB 超出先淘汰最久没用的整个会话。一组 Gemini 3 functionCall **第一条查找后仍无签名** → 丢掉这组 unsigned `functionCall`，配对的 tool 结果改成 user `[Observation from \`name\`:\n…]` 文本。Claude / GPT-OSS **仍发** unsigned `functionCall`。**不要**编空串或 `skip_thought_signature_validator`。`part.thought` 仍不进可见文本；若签名只在 thought part 上，转给随后第一条无签名的 functionCall。
 - chat 头 **只有** User-Agent。不要加 `anthropic-beta` / `Client-Metadata` / `x-goog-api-client`。
+- `forwardAntigravity` 跑在 `upstreamRequest(...).run` 里（`src/oauth/upstream.ts` 的计时 / 重试 / 失败映射）：第一块映射输出才写响应头。200 体里的 Google RPC 错误（外层 `error` 或 `response.error`）由 `antigravityBodyError` 转成带 `error.code`（否则 RPC `status` 名）状态码的失败——输出前回 JSON，输出后 destroy，**不要**收成 `stop` + `[DONE]`。Cloud Code 流总以带 `finishReason` 的帧结束，没有就是截断。输出前 401 刷新一次再试。不要猜额度谓词：Antigravity 还没有已知的额度耗尽负载，429 原样转发。
 - SSE 文本是累积的，用 `incrementalSuffix` 切成 OpenAI delta；终帧带 `mapAntigravityUsage`，否则 DSH 显示「用量 0 tok」。`transport.ts` 跨网络块保持 UTF-8 解码状态，网络分片不能成为字符边界（[故障记录](../../../docs/error.md#2026-09-08antigravity-流式多字节字符损坏)）。
 
 ## 模型
@@ -114,12 +115,12 @@ DSH 每步再插 runtime-context system，工具 JSON 的 key 顺序也会抖。
 | 1 | `antigravitySessionIdOf` | DSH `session_id` / `prompt_cache_key` 原样（官方 `LLM_SESSION_ID` = 一条对话，跨模型共用）。两边都缺时 **`dsh-antigravity:<model>`**（裸 `dsh-antigravity` 只在没有 model 时） |
 | 2 | `pinAntigravitySystemInstruction` | 每个 session 钉住 **第一次** system 文本；增量以 **user** 回合追加（Gemini 没有 GLM 那种 trailing system） |
 | 3 | `pinAntigravityTools` | 每个 session 钉住 **第一次** tools JSON。后来 DSH 只是 key 顺序 / 声明顺序抖、names+schemas 等价 → 复用首份字节。增删工具才换列表（接受 miss） |
-| 4 | `pinAntigravityThinking` | sticky-first：第一次发过 `thinkingLevel` 就一直带同一份；第一次没带就一直不带。不要补 `implicitCacheConfig` |
+| 4 | `pinAntigravityThinking` | sticky-first：后续请求没带 `reasoning_effort` 时沿用首份（带或不带）；显式换了 `reasoning_effort` 就是用户改了推理强度，新值替换 pin。不要补 `implicitCacheConfig` |
 | 5 | `mapAntigravityUsage` / `cachedTokensOf` | `cachedContentTokenCount` / `cacheTokensDetails` / CLI `cache_read_tokens` / `cacheReadTokens` / `cacheReadInputTokens` → OpenAI `prompt_tokens_details.cached_tokens` |
 
 `requestId` 每 HTTP 调用仍是新的 `agent-<uuid>`，它不是缓存键。不要写 `cachedContent` 资源名。
 
-裸常量（`dsh-antigravity`）**不**进 pin map：没有 model、也没有 DSH 会话时不要把所有用户钉成同一段。`dsh-antigravity:<model>` 会进 pin map，换 picker 不会串到别的模型。
+回退 id（裸 `dsh-antigravity` 或 `dsh-antigravity:<model>`，`isAntigravityFallback`）**不**进 pin map：没有 DSH 会话时，system / tools / thinking 都不跨会话钉。
 禁止 `` sessionId: `-${Date.now()}` ``，否则每请求换会话，缓存必 0。
 
 进程内 `SESSION_PINS`（cap 64）只服务 Antigravity。测试用 `resetAntigravitySystemPins()`。不要和 GLM 共用 Map。

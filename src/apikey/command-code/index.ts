@@ -30,6 +30,7 @@
 import { createHash } from 'node:crypto'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { outboundFetch } from '../../utils/outbound.js'
 
 export const COMMAND_CODE_API_BASE = 'https://api.commandcode.ai'
 export const COMMAND_CODE_GENERATE_URL = `${COMMAND_CODE_API_BASE}/alpha/generate`
@@ -342,7 +343,7 @@ export function commandCodeSessionFromCallback(callback: any = {}) {
  * `/alpha/whoami` → identity. Returns undefined on any failure (paste form
  * stores the account hint instead); never throws for quota/identity display.
  */
-export async function resolveCommandCodeIdentity(session, { fetchFn = fetch, signal }: any = {}) {
+export async function resolveCommandCodeIdentity(session, { fetchFn = outboundFetch, signal }: any = {}) {
   const key = typeof session?.accessToken === 'string' ? session.accessToken.trim() : ''
   if (!key) return undefined
   try {

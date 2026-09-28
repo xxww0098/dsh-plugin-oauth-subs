@@ -22,6 +22,7 @@
  * `provider-auth-registry.ts`).
  */
 import { applyClineCache, clineCacheHeaders, clineCacheSessionId, resetClinePins } from './cache.js';
+import { outboundFetch } from '../../utils/outbound.js';
 export declare const CLINE_API_ORIGIN = "https://api.cline.bot";
 export declare const CLINE_API_BASE = "https://api.cline.bot/api/v1";
 export declare const CLINE_CHAT_URL = "https://api.cline.bot/api/v1/chat/completions";
@@ -128,7 +129,7 @@ export declare const CLINE_MODELS: readonly {
     contextWindow: number;
     maxTokens: number;
 }[];
-export declare function clineSourceLabel(source: any): "key" | "env" | "CLI" | "OAuth" | undefined;
+export declare function clineSourceLabel(source: any): "env" | "CLI" | "key" | "OAuth" | undefined;
 /** `formatAccessToken` — idempotent `workos:` prefix on the bearer value. */
 export declare function formatClineAccessToken(value: any): string | undefined;
 /** `normalizeStoredAccessToken` — the bare WorkOS JWT. */
@@ -144,12 +145,12 @@ export declare function clineBalanceUrl(userId: any): string;
  * `expired_token` instead of failing the login.
  */
 export declare function clineDeviceSpec({ fetchFn }?: {
-    fetchFn?: typeof fetch | undefined;
+    fetchFn?: typeof outboundFetch | undefined;
 }): {
     clientId: string;
     deviceCodeUrl: string;
     tokenUrl: string;
-    fetchFn: typeof fetch;
+    fetchFn: typeof outboundFetch;
     restartOnExpired: boolean;
 };
 /**
@@ -186,7 +187,7 @@ export declare function clineSessionFromAuthData(data: any, fallback?: any): {
 export declare function clineDefaultAccount(token: any): string;
 export declare function isClineOpaqueAccount(value: any): boolean;
 /** `refreshClineToken`: JSON `{refreshToken, grantType:"refresh_token"}`. */
-export declare function refreshCline(session: any, fetchFn?: typeof fetch, { signal }?: any): Promise<{
+export declare function refreshCline(session: any, fetchFn?: typeof outboundFetch, { signal }?: any): Promise<{
     planType?: string | undefined;
     source: any;
     tokenType?: string | undefined;
@@ -196,7 +197,6 @@ export declare function refreshCline(session: any, fetchFn?: typeof fetch, { sig
     expiresAt: number;
     account: string;
 }>;
-export declare function isClinePermanentRefreshError(error: any): boolean;
 /**
  * `buildClineRequestHeaders` from `request-headers.ts` plus the CLI's own
  * client context (`apps/cli/src/main.ts`: name `cline-cli`, platform `cli`).

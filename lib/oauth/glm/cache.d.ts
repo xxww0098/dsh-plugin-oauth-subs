@@ -14,6 +14,8 @@
  * blob can still hit. Thinking models also need `clear_thinking: false`
  * (owned by request.ts).
  */
+/** `x-session-id` when DSH sends no session: one constant, same across restarts and hot reloads. */
+export declare const GLM_STABLE_SESSION = "dsh-glm";
 export declare function glmCacheSessionId(key: any): string | undefined;
 export declare function resetGlmSystemPins(): void;
 /**

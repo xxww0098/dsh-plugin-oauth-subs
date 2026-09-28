@@ -19,6 +19,7 @@
 import { once } from 'node:events'
 import { setTimeout as delay } from 'node:timers/promises'
 import { RequestError, describeError, sendJson } from '../../utils/http.js'
+import { outboundFetch } from '../../utils/outbound.js'
 import { COMMAND_CODE_GENERATE_URL, commandCodeUpstreamHeaders } from './index.js'
 import {
   commandCodeToOpenai,
@@ -74,7 +75,7 @@ async function readErrorBody(response) {
  * {type:'text'|'reasoning'|'tool'|'usage'|'finish', …} deltas; the resolved
  * value is the fully collected turn.
  */
-export async function runCommandCodeChat(session, body, { signal, onEvent, fetchFn = fetch }: any = {}) {
+export async function runCommandCodeChat(session, body, { signal, onEvent, fetchFn = outboundFetch }: any = {}) {
   if (!session?.accessToken) {
     throw new CommandCodeTransportError('Command Code chat needs an API key', { status: 401 })
   }
@@ -212,7 +213,7 @@ export async function forwardCommandCode(response, {
   stream,
   session,
   signal,
-  fetchFn = fetch,
+  fetchFn = outboundFetch,
   runFn = runCommandCodeChat,
 }: any = {}) {
   if (!session?.accessToken) {

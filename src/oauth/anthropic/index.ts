@@ -31,7 +31,8 @@
  * see README.md for the do-not list.
  */
 
-import { OAuthEndpointError, oauthError } from '../codex/index.js'
+import { oauthError } from '../tokens.js'
+import { outboundFetch } from '../../utils/outbound.js'
 
 export const ANTHROPIC_CLIENT_ID = '9d1c250a-e61b-44d9-88ed-5944d1962f5e'
 /** `CLAUDE_AI_AUTHORIZE_URL` in Claude Code 2.1.283. Subscription / Max / Pro. */
@@ -110,7 +111,7 @@ export const anthropicFlow = anthropicFlowFor('claudeai')
  * The token exchange echoes `state` (pi-ai posts it; Claude Code sends it) —
  * completePkce passes the flow manager's own state back in.
  */
-export async function exchangeAnthropicCode(code, verifier, redirectUri, state, fetchFn = fetch) {
+export async function exchangeAnthropicCode(code, verifier, redirectUri, state, fetchFn = outboundFetch) {
   const response = await fetchFn(ANTHROPIC_TOKEN_URL, {
     method: 'POST',
     headers: { 'content-type': 'application/json', accept: 'application/json' },
@@ -127,7 +128,7 @@ export async function exchangeAnthropicCode(code, verifier, redirectUri, state, 
   return anthropicSession(await response.json())
 }
 
-export async function refreshAnthropic(session, fetchFn = fetch) {
+export async function refreshAnthropic(session, fetchFn = outboundFetch) {
   const response = await fetchFn(ANTHROPIC_TOKEN_URL, {
     method: 'POST',
     headers: { 'content-type': 'application/json', accept: 'application/json' },
@@ -139,13 +140,6 @@ export async function refreshAnthropic(session, fetchFn = fetch) {
   })
   if (!response.ok) throw await oauthError(response, 'anthropic')
   return anthropicSession(await response.json(), session)
-}
-
-/** Token-endpoint grants that mean the login is gone, not merely stale. */
-const PERMANENT_REFRESH_CODES = new Set(['invalid_grant', 'invalid_client', 'unauthorized_client'])
-
-export function isAnthropicPermanentRefreshError(error) {
-  return error instanceof OAuthEndpointError && PERMANENT_REFRESH_CODES.has(error.oauthCode)
 }
 
 export function anthropicSession(tokens, fallback: any = undefined) {
@@ -173,7 +167,7 @@ export function anthropicSession(tokens, fallback: any = undefined) {
  * failure must not kill a finished login (the vault falls back to the
  * refresh-token-suffix id and the card shows the token shape).
  */
-export async function anthropicProfile(session, fetchFn = fetch) {
+export async function anthropicProfile(session, fetchFn = outboundFetch) {
   const response = await fetchFn(ANTHROPIC_PROFILE_URL, {
     headers: { ...anthropicUpstreamHeaders(session), accept: 'application/json' },
   })

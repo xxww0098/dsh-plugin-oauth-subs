@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { normalizeCodexResponsesBody } from '../lib/oauth/codex/request.js'
+import { zstdDecompressSync } from 'node:zlib'
+import { encodeCodexBody, normalizeCodexResponsesBody } from '../lib/oauth/codex/request.js'
 
 test('lifts developer/system input into required instructions', () => {
   const out = normalizeCodexResponsesBody({
@@ -144,4 +145,13 @@ test('does not duplicate extra when instructions already contain the lifted pref
   })
   assert.equal(out.instructions, 'You are DSH.\n\nPlan: already in instructions.')
   assert.deepEqual(out.input, [{ role: 'user', content: 'hi' }])
+})
+
+test('encodeCodexBody zstd-compresses the body and round-trips it byte for byte', () => {
+  const plain = Buffer.from(JSON.stringify({ model: 'gpt-5.6-luna', instructions: 'Ünïcode sys ✓ '.repeat(8000), input: [] }))
+  const { body, headers } = encodeCodexBody(plain)
+  assert.deepEqual(headers, { 'content-encoding': 'zstd' })
+  assert.ok(zstdDecompressSync(body).equals(plain))
+  assert.ok(body.length < plain.length / 10)
+  console.log(`encodeCodexBody: ${plain.length} B -> ${body.length} B`)
 })

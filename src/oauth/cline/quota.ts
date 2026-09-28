@@ -24,6 +24,7 @@ import {
   clineBearer,
   parseClineUserInfo,
 } from './index.js'
+import { outboundFetch } from '../../utils/outbound.js'
 
 const CLINE_QUOTA_TIMEOUT_MS = 10_000
 
@@ -202,7 +203,7 @@ export function parseClineUsage(user, balance, plan, limits: any[] = []) {
   }
 }
 
-export async function fetchClineQuota(session, fetchFn = fetch) {
+export async function fetchClineQuota(session, fetchFn = outboundFetch) {
   const authorization = `Bearer ${clineBearer(session)}`
   const headers = { accept: 'application/json', authorization }
   const meWait = timeoutSignal(CLINE_QUOTA_TIMEOUT_MS)

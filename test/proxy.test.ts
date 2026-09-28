@@ -1,12 +1,21 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { request as httpRequest } from 'node:http'
 import { test } from 'node:test'
-import { createProxy, describeError, hasOutputEvent, retryDelayMs, STREAM_ATTEMPTS } from '../lib/oauth/proxy.js'
+import { zstdDecompressSync } from 'node:zlib'
+import { createProxy, describeError } from '../lib/oauth/proxy.js'
+import { UPSTREAM_ATTEMPTS, UpstreamFailure } from '../lib/oauth/upstream.js'
+import { classifySseFrame, SseFrameScanner } from '../lib/oauth/responses-sse.js'
 import { CODEX_API_URL } from '../lib/oauth/codex/index.js'
 import { GLM_ANTHROPIC_URL, GLM_ANTHROPIC_VERSION, GLM_CODING_URL, GLM_USER_AGENT } from '../lib/oauth/glm/index.js'
 import { resetGlmSystemPins } from '../lib/oauth/glm/cache.js'
 import { GROK_STABLE_SESSION, resetGrokSystemPins } from '../lib/oauth/grok/cache.js'
 import { codexCacheSessionId } from '../lib/oauth/codex/cache.js'
+
+/** The upstream body as text: Codex sends it zstd-compressed. */
+const upstreamText = (init) => init.headers?.['content-encoding'] === 'zstd'
+  ? zstdDecompressSync(init.body).toString()
+  : init.body?.toString()
 
 function rawRequest(port, { method = 'GET', path = '/', headers = {}, body } = {}) {
   return new Promise((resolve, reject) => {
@@ -23,7 +32,7 @@ function rawRequest(port, { method = 'GET', path = '/', headers = {}, body } = {
 test('proxy requires the local bearer and forwards Codex Responses', async () => {
   const seen = []
   const fetchFn = async (url, init) => {
-    seen.push({ url: String(url), headers: init.headers, body: init.body?.toString() })
+    seen.push({ url: String(url), headers: init.headers, body: upstreamText(init) })
     return new Response('{"id":"resp"}', { status: 200, headers: { 'content-type': 'application/json' } })
   }
   const proxy = createProxy({
@@ -177,7 +186,7 @@ test('proxy GLM chat hop forwards ZCode Desktop 3.10.1 headers', async () => {
       assert.equal(headers['X-Title'], 'Z Code@electron')
       assert.equal(headers['X-Release-Channel'], 'production')
       assert.equal(headers['x-zcode-session-type'], 'main')
-      assert.match(headers['x-session-id'], /^sess_[0-9a-f]{24}$/)
+      assert.equal(headers['x-session-id'], 'dsh-glm')
       assert.equal(JSON.stringify(headers).includes('dsh-plugin-oauth-subs'), false)
     }
     assert.equal(seen[0].headers['x-session-id'], seen[1].headers['x-session-id'])
@@ -194,7 +203,7 @@ test('proxy GLM Anthropic hop is ZCode default: /api/anthropic + cache_control',
   resetGlmSystemPins()
   const seen = []
   const fetchFn = async (url, init) => {
-    seen.push({ url: String(url), headers: init.headers, body: JSON.parse(String(init.body)) })
+    seen.push({ url: String(url), headers: init.headers, body: JSON.parse(upstreamText(init)) })
     return new Response('{"id":"msg"}', { status: 200, headers: { 'content-type': 'application/json' } })
   }
   const proxy = createProxy({
@@ -350,7 +359,7 @@ test('proxy asks upstream for SSE when the body streams', async () => {
 test('proxy peels -fast and injects Codex Priority; never sets Grok service_tier', async () => {
   const seen = []
   const fetchFn = async (url, init) => {
-    seen.push({ headers: init.headers, body: JSON.parse(init.body.toString()) })
+    seen.push({ headers: init.headers, body: JSON.parse(upstreamText(init)) })
     return new Response('{"id":"resp"}', { status: 200, headers: { 'content-type': 'application/json' } })
   }
   const proxy = createProxy({
@@ -441,7 +450,7 @@ test('proxy peels -fast and injects Codex Priority; never sets Grok service_tier
 test('proxy GLM chat hop remaps developer; Grok pins leading input as system', async () => {
   const seen = []
   const fetchFn = async (url, init) => {
-    seen.push({ url: String(url), body: JSON.parse(String(init.body)) })
+    seen.push({ url: String(url), body: JSON.parse(upstreamText(init)) })
     return new Response('{"id":"ok"}', { status: 200, headers: { 'content-type': 'application/json' } })
   }
   const proxy = createProxy({
@@ -529,6 +538,37 @@ test('proxy health remains public and the removed HTTP management plane stays un
     const preflight = await fetch(`http://127.0.0.1:${port}/codex/v1/responses`, { method: 'OPTIONS' })
     assert.equal(preflight.status, 401)
     assert.equal(preflight.headers.get('access-control-allow-origin'), null)
+  } finally {
+    await proxy.close()
+  }
+})
+
+test('proxy health counts inbound prompt_cache_key per family without exposing ids', async () => {
+  const proxy = createProxy({
+    port: 0,
+    apiKey: 'k',
+    fetchFn: async () => new Response('{"id":"resp"}', { status: 200, headers: { 'content-type': 'application/json' } }),
+    tokens: {
+      codex: { session: async () => ({ accessToken: 'codex-tok', accountId: 'acct' }) },
+      grok: { session: async () => { throw new Error('no') } },
+    },
+  })
+  const server = await proxy.listen()
+  const { port } = server.address()
+  const counts = async () => (await (await fetch(`http://127.0.0.1:${port}/health`)).json()).inboundCacheKeys.codex ?? { with: 0, without: 0 }
+  const post = (body) => fetch(`http://127.0.0.1:${port}/codex/v1/responses`, {
+    method: 'POST',
+    headers: { authorization: 'Bearer k', 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  }).then((r) => r.text())
+  try {
+    const before = await counts()
+    await post({ model: 'gpt-5.5', prompt_cache_key: 'session-secret-id' })
+    await post({ model: 'gpt-5.5' })
+    const after = await counts()
+    assert.deepEqual(after, { with: before.with + 1, without: before.without + 1 })
+    const raw = await (await fetch(`http://127.0.0.1:${port}/health`)).text()
+    assert.equal(raw.includes('session-secret-id'), false)
   } finally {
     await proxy.close()
   }
@@ -693,14 +733,26 @@ test('proxy skips upstream work after a disconnect during token loading', async 
 
 const SSE = { 'content-type': 'text/event-stream' }
 const sse = (...events) => events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join('')
-const CREATED = { type: 'response.created', response: { id: 'r1' } }
+// Live captures (2026-09-28): every frame before the first output event, with
+// instructions, tool descriptions and ids blanked to same-length placeholders.
+// The capture's instructions were 20 B; DSH's own system prompt is ~128 KB and
+// both preamble frames echo it, so pad to 200 KiB here — past the old 64 KiB cap.
+const fixture = (name) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
+  .replace(/"instructions":"x*"/g, `"instructions":"${'x'.repeat(200 * 1024)}"`)
+const CODEX_PREAMBLE = fixture('codex-preamble.sse')
+const GROK_PREAMBLE = fixture('grok-preamble.sse')
 const DELTA = { type: 'response.output_text.delta', delta: 'hi' }
 const DONE = { type: 'response.completed', response: { id: 'r1' } }
 
+// Enqueued in 16 KiB slices, as the network delivers them: frames and UTF-8
+// sequences straddle chunk boundaries.
 function streamingUpstream(chunks, { failAfter, headers = SSE } = {}) {
   return new Response(new ReadableStream({
     start(controller) {
-      for (const chunk of chunks) controller.enqueue(new TextEncoder().encode(chunk))
+      for (const chunk of chunks) {
+        const bytes = new TextEncoder().encode(chunk)
+        for (let i = 0; i < bytes.length; i += 16 * 1024) controller.enqueue(bytes.subarray(i, i + 16 * 1024))
+      }
       if (failAfter === undefined) controller.close()
       else setTimeout(() => controller.error(Object.assign(new Error('terminated'), { code: 'UND_ERR_SOCKET' })), failAfter)
     },
@@ -715,7 +767,7 @@ async function withProxy(fetchFn, run, options = {}) {
     ...options,
     tokens: {
       codex: { session: async () => ({ accessToken: 'codex-tok', accountId: 'acct' }) },
-      grok: { session: async () => { throw new Error('not logged in') } },
+      grok: { session: async () => ({ accessToken: 'grok-tok' }) },
     },
   })
   const server = await proxy.listen()
@@ -741,15 +793,15 @@ test('a stream that ends carrying only the preamble is retried, and the client s
   const fetchFn = async () => {
     calls += 1
     return calls === 1
-      ? streamingUpstream([sse(CREATED)])
-      : streamingUpstream([sse(CREATED, DELTA, DONE)])
+      ? streamingUpstream([CODEX_PREAMBLE])
+      : streamingUpstream([CODEX_PREAMBLE + sse(DELTA, DONE)])
   }
   await withProxy(fetchFn, async (port) => {
     const response = await post(port)
     const text = await response.text()
     assert.equal(calls, 2, 'the dead first attempt must be retried')
     assert.equal(response.status, 200)
-    assert.equal(text.match(/response\.created/g).length, 1, 'the retried preamble must not reach the client twice')
+    assert.equal(text.match(/^event: response\.created$/gm).length, 1, 'the retried preamble must not reach the client twice')
     assert.match(text, /response\.completed/)
   })
 })
@@ -761,8 +813,8 @@ test('Codex retries replay x-codex-turn-state from the failed attempt', async ()
     calls += 1
     seen.push(init.headers)
     return calls === 1
-      ? streamingUpstream([sse(CREATED)], { headers: { ...SSE, 'x-codex-turn-state': 'turn-abc' } })
-      : streamingUpstream([sse(CREATED, DELTA, DONE)])
+      ? streamingUpstream([CODEX_PREAMBLE], { headers: { ...SSE, 'x-codex-turn-state': 'turn-abc' } })
+      : streamingUpstream([CODEX_PREAMBLE + sse(DELTA, DONE)])
   }
   await withProxy(fetchFn, async (port) => {
     const response = await post(port)
@@ -774,11 +826,52 @@ test('Codex retries replay x-codex-turn-state from the failed attempt', async ()
   })
 })
 
+test('Codex request bodies go upstream zstd-compressed once; retries resend the same Buffer', async () => {
+  const seen = []
+  const fetchFn = async (_url, init) => {
+    seen.push(init)
+    return seen.length === 1
+      ? streamingUpstream([CODEX_PREAMBLE])
+      : streamingUpstream([CODEX_PREAMBLE + sse(DELTA, DONE)])
+  }
+  const instructions = 'You are DSH. '.repeat(10_000) // ~128KB, the size of the real system prompt
+  await withProxy(fetchFn, async (port) => {
+    const response = await post(port, { model: 'gpt-5.6-luna', stream: true, instructions, input: [{ role: 'user', content: 'hi' }] })
+    await response.text()
+    assert.equal(response.status, 200)
+  })
+  assert.equal(seen.length, 2)
+  assert.equal(seen[0].headers['content-encoding'], 'zstd')
+  assert.equal(seen[1].body, seen[0].body, 'a retry must reuse the compressed bytes, not recompress')
+  const plain = zstdDecompressSync(seen[0].body)
+  const payload = JSON.parse(plain.toString())
+  assert.equal(payload.instructions, instructions.trim())
+  assert.ok(plain.equals(Buffer.from(JSON.stringify(payload))), 'decompresses to the exact JSON the proxy serialised')
+  console.log(`codex zstd: ${plain.length} B -> ${seen[0].body.length} B`)
+})
+
+test('non-Codex families still send a plaintext request body', async () => {
+  const seen = []
+  const fetchFn = async (_url, init) => {
+    seen.push(init)
+    return new Response('{"id":"resp"}', { status: 200, headers: { 'content-type': 'application/json' } })
+  }
+  await withProxy(fetchFn, async (port) => {
+    await fetch(`http://127.0.0.1:${port}/grok/v1/responses`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer secret-key', 'content-type': 'application/json' },
+      body: '{"model":"grok-4.6","input":[]}',
+    })
+  })
+  assert.equal(seen[0].headers['content-encoding'], undefined)
+  assert.equal(JSON.parse(seen[0].body.toString()).model, 'grok-4.6')
+})
+
 test('a genuine response.failed is forwarded, never retried away', async () => {
   let calls = 0
   const fetchFn = async () => {
     calls += 1
-    return streamingUpstream([sse(CREATED, { type: 'response.failed', response: { error: { code: 'server_error', message: 'boom' } } })])
+    return streamingUpstream([CODEX_PREAMBLE + sse({ type: 'response.failed', response: { error: { code: 'server_error', message: 'boom' } } })])
   }
   await withProxy(fetchFn, async (port) => {
     const text = await (await post(port)).text()
@@ -791,7 +884,7 @@ test('a break after output has been committed reaches the client as a broken str
   let calls = 0
   const fetchFn = async () => {
     calls += 1
-    return streamingUpstream([sse(CREATED, DELTA)], { failAfter: 10 })
+    return streamingUpstream([CODEX_PREAMBLE + sse(DELTA)], { failAfter: 10 })
   }
   await withProxy(fetchFn, async (port, logs) => {
     const response = await post(port)
@@ -801,18 +894,35 @@ test('a break after output has been committed reaches the client as a broken str
   })
 })
 
+test('a stall after output is cut by the idle timer and destroyed, one attempt', async () => {
+  let calls = 0
+  const fetchFn = async () => {
+    calls += 1
+    return new Response(new ReadableStream({
+      start(controller) { controller.enqueue(new TextEncoder().encode(CODEX_PREAMBLE + sse(DELTA))) },
+    }), { status: 200, headers: SSE })
+  }
+  await withProxy(fetchFn, async (port, logs) => {
+    const response = await post(port)
+    assert.equal(response.status, 200)
+    await assert.rejects(response.text(), 'a stalled stream must break, not hang or end cleanly')
+    assert.equal(calls, 1)
+    assert.match(logs.join('\n'), /failed mid-response: upstream sent no data for 0\.05s/)
+  }, { upstreamTimeouts: { idleMs: 50 } })
+})
+
 test('exhausting the retries answers with a real error instead of a silent EOF', async () => {
   let calls = 0
-  const fetchFn = async () => { calls += 1; return streamingUpstream([sse(CREATED)]) }
+  const fetchFn = async () => { calls += 1; return streamingUpstream([CODEX_PREAMBLE]) }
   await withProxy(fetchFn, async (port) => {
     const response = await post(port)
-    assert.equal(calls, STREAM_ATTEMPTS)
+    assert.equal(calls, UPSTREAM_ATTEMPTS)
     assert.equal(response.status, 502)
     assert.match((await response.json()).error, /failed 3 times.*no output events/s)
   })
 })
 
-test('an upstream that never sends a byte is cut by the idle watchdog and retried', async () => {
+test('an upstream that never sends a byte is cut by the first-byte timer, retried within budget, then 504', async () => {
   let calls = 0
   const fetchFn = async () => {
     calls += 1
@@ -820,11 +930,26 @@ test('an upstream that never sends a byte is cut by the idle watchdog and retrie
   }
   await withProxy(fetchFn, async (port, logs) => {
     const response = await post(port)
-    assert.equal(calls, STREAM_ATTEMPTS, 'a silent upstream must be retried, not held for the client timeout')
+    // 40ms + ≤1s backoff + 40ms fits 1.1s; the 4s backoff does not.
+    assert.equal(calls, 2, 'a silent upstream must be retried, not held for the client timeout')
+    assert.equal(response.status, 504)
+    assert.match((await response.json()).error, /codex upstream: no output within 1\.1s \(2 attempts\): no first byte within 0\.04s/)
+    assert.match(logs.join('\n'), /retrying upstream \(attempt 2\/3\).*no first byte/)
+  }, { upstreamTimeouts: { firstByteMs: 40, budgetMs: 1100 } })
+})
+
+test('three fast ECONNRESETs still answer 502 with the proxyExhausted wording', async () => {
+  let calls = 0
+  const fetchFn = async () => {
+    calls += 1
+    throw new TypeError('fetch failed', { cause: Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' }) })
+  }
+  await withProxy(fetchFn, async (port) => {
+    const response = await post(port)
+    assert.equal(calls, UPSTREAM_ATTEMPTS)
     assert.equal(response.status, 502)
-    assert.match((await response.json()).error, /failed 3 times.*no data/s)
-    assert.match(logs.join('\n'), /upstream sent no data for 40ms/)
-  }, { upstreamIdleTimeoutMs: 40 })
+    assert.equal((await response.json()).error, 'codex upstream failed 3 times: fetch failed: ECONNRESET')
+  })
 })
 
 test('a pre-header fetch fault is retried too', async () => {
@@ -832,7 +957,7 @@ test('a pre-header fetch fault is retried too', async () => {
   const fetchFn = async () => {
     calls += 1
     if (calls === 1) throw new TypeError('fetch failed', { cause: Object.assign(new Error('other side closed'), { code: 'UND_ERR_SOCKET' }) })
-    return streamingUpstream([sse(CREATED, DELTA, DONE)])
+    return streamingUpstream([CODEX_PREAMBLE + sse(DELTA, DONE)])
   }
   await withProxy(fetchFn, async (port) => {
     assert.match(await (await post(port)).text(), /response\.completed/)
@@ -846,7 +971,7 @@ test('a client disconnect during the silent window stops the proxy instead of re
     calls += 1
     return new Response(new ReadableStream({
       start(controller) {
-        controller.enqueue(new TextEncoder().encode(sse(CREATED)))
+        controller.enqueue(new TextEncoder().encode(CODEX_PREAMBLE))
         init.signal.addEventListener('abort', () => controller.error(init.signal.reason ?? new Error('aborted')), { once: true })
       },
     }), { status: 200, headers: SSE })
@@ -875,12 +1000,83 @@ test('non-streaming responses bypass the gate untouched', async () => {
   })
 })
 
-test('hasOutputEvent treats only the preamble as retryable', () => {
-  assert.equal(hasOutputEvent(sse(CREATED)), false)
-  assert.equal(hasOutputEvent(sse(CREATED, { type: 'response.in_progress' })), false)
-  assert.equal(hasOutputEvent(sse(CREATED, DELTA)), true)
-  assert.equal(hasOutputEvent(sse(CREATED, { type: 'response.failed' })), true)
-  assert.equal(hasOutputEvent(''), false)
+test('the head waits through a real preamble and goes out once output arrives', async () => {
+  for (const [family, preamble] of [['codex', CODEX_PREAMBLE], ['grok', GROK_PREAMBLE]]) {
+    let release
+    const fetchFn = async () => new Response(new ReadableStream({
+      async start(controller) {
+        const bytes = new TextEncoder().encode(preamble)
+        for (let i = 0; i < bytes.length; i += 16 * 1024) controller.enqueue(bytes.subarray(i, i + 16 * 1024))
+        await new Promise((resolve) => { release = resolve })
+        controller.enqueue(new TextEncoder().encode(sse(DELTA, DONE)))
+        controller.close()
+      },
+    }), { status: 200, headers: SSE })
+    await withProxy(fetchFn, async (port) => {
+      let headed = false
+      const inflight = fetch(`http://127.0.0.1:${port}/${family}/v1/responses`, {
+        method: 'POST',
+        headers: { authorization: 'Bearer secret-key', 'content-type': 'application/json' },
+        body: JSON.stringify({ model: family === 'codex' ? 'gpt-5.6-luna' : 'grok-4.7', stream: true, input: [] }),
+      }).then((response) => { headed = true; return response })
+      await new Promise((resolve) => setTimeout(resolve, 80))
+      assert.equal(headed, false, `${family}: a ${preamble.length}B preamble must not commit the head`)
+      release()
+      const text = await (await inflight).text()
+      assert.equal(text, preamble + sse(DELTA, DONE), `${family}: the preamble is sent exactly once, in order`)
+    })
+  }
+})
+
+test('past 2 MiB with no output the gate commits rather than kill the response', async () => {
+  let calls = 0
+  const body = CODEX_PREAMBLE.repeat(6)
+  const fetchFn = async () => { calls += 1; return streamingUpstream([body]) }
+  await withProxy(fetchFn, async (port, logs) => {
+    const response = await post(port)
+    assert.equal(response.status, 200)
+    assert.equal(await response.text(), body)
+    assert.equal(calls, 1, 'a committed body cannot be retried')
+    assert.match(logs.join('\n'), /codex buffered \d+B with no output event; committing without retry protection/)
+  })
+})
+
+test('classifySseFrame reads the top-level type, event line first', () => {
+  const frames = CODEX_PREAMBLE.split('\n\n').slice(0, -1)
+  assert.deepEqual(frames.map(classifySseFrame), ['preamble', 'preamble'], 'nested "type" keys in the echoed request are not events')
+  assert.deepEqual(GROK_PREAMBLE.split('\n\n').slice(0, -1).map(classifySseFrame), ['preamble', 'preamble'])
+  assert.equal(classifySseFrame(`data: ${JSON.stringify({ type: 'response.in_progress', response: { text: { format: { type: 'text' } } } })}`), 'preamble')
+  assert.equal(classifySseFrame(`data: ${JSON.stringify(DELTA)}`), 'output')
+  assert.equal(classifySseFrame('event: response.failed\ndata: {"type":"response.failed"}'), 'output')
+  assert.equal(classifySseFrame('event: codex.rate_limits\ndata: {"type":"response.output_text.delta"}'), 'preamble', 'the event line wins')
+  assert.equal(classifySseFrame('event: message_start\ndata: {"type":"message_start"}'), 'output')
+  assert.equal(classifySseFrame('data: {"type":\ndata: "response.queued"}'), 'preamble', 'multi-line data joins')
+  assert.equal(classifySseFrame(': keep-alive'), 'other')
+  assert.equal(classifySseFrame('data: [DONE]'), 'other')
+  assert.equal(classifySseFrame('data: {"type":"response.created"'), 'other', 'a torn frame is never guessed at')
+  assert.equal(classifySseFrame(''), 'other')
+})
+
+test('SseFrameScanner classifies only whole frames, across any split', () => {
+  const frame = `data: ${JSON.stringify({ type: 'response.output_text.delta', delta: '你好 — ok' })}\r\n\r\n`
+  const bytes = new TextEncoder().encode(CODEX_PREAMBLE + frame + 'event: response.comp')
+  const kinds = (step) => {
+    const scanner = new SseFrameScanner()
+    const out = []
+    for (let i = 0; i < bytes.length; i += step) out.push(...scanner.push(bytes.subarray(i, i + step)))
+    return out
+  }
+  for (const step of [1, 3, 7, 16 * 1024, bytes.length]) {
+    const frames = kinds(step)
+    assert.deepEqual(frames.map((f) => f.kind), ['preamble', 'preamble', 'output'], `step ${step}`)
+    assert.equal(frames.reduce((n, f) => n + f.bytes, 0), bytes.length - 'event: response.comp'.length, `step ${step}: the tail waits`)
+  }
+  // Every split point through the multi-byte delta still decodes to one output frame.
+  const delta = new TextEncoder().encode(frame)
+  for (let cut = 1; cut < delta.length; cut++) {
+    const scanner = new SseFrameScanner()
+    assert.deepEqual([...scanner.push(delta.subarray(0, cut)), ...scanner.push(delta.subarray(cut))].map((f) => f.kind), ['output'], `cut ${cut}`)
+  }
 })
 
 test('describeError unwraps the undici cause behind "fetch failed"', () => {
@@ -908,7 +1104,7 @@ test('a streamed 200 with an empty body is retried', async () => {
     calls += 1
     return calls === 1
       ? new Response(new ReadableStream({ start: (c) => c.close() }), { status: 200, headers: SSE })
-      : streamingUpstream([sse(CREATED, DELTA, DONE)])
+      : streamingUpstream([CODEX_PREAMBLE + sse(DELTA, DONE)])
   }
   await withProxy(fetchFn, async (port) => {
     assert.match(await (await post(port)).text(), /response\.completed/)
@@ -928,7 +1124,7 @@ test('codexCacheSessionId sanitizes and clips instead of dropping the key', () =
 async function captureCodex(run) {
   const seen = []
   const fetchFn = async (_url, init) => {
-    seen.push({ headers: init.headers, body: JSON.parse(init.body.toString()) })
+    seen.push({ headers: init.headers, body: JSON.parse(upstreamText(init)) })
     return new Response('{"id":"resp"}', { status: 200, headers: { 'content-type': 'application/json' } })
   }
   const proxy = createProxy({
@@ -1039,7 +1235,7 @@ test('proxy parks extra leading developer and strips prompt_cache_retention on t
 test('GLM hop pins x-session-id from DSH and strips prompt_cache_retention', async () => {
   const seen = []
   const fetchFn = async (_url, init) => {
-    seen.push({ headers: init.headers, body: JSON.parse(String(init.body)) })
+    seen.push({ headers: init.headers, body: JSON.parse(upstreamText(init)) })
     return new Response('{"id":"chat"}', { status: 200, headers: { 'content-type': 'application/json' } })
   }
   const proxy = createProxy({
@@ -1123,7 +1319,7 @@ test('GLM hop parks extra leading system snapshots after the conversation', asyn
   resetGlmSystemPins()
   const seen = []
   const fetchFn = async (_url, init) => {
-    seen.push(JSON.parse(String(init.body)))
+    seen.push(JSON.parse(upstreamText(init)))
     return new Response('{"id":"chat"}', { status: 200, headers: { 'content-type': 'application/json' } })
   }
   const proxy = createProxy({
@@ -1179,7 +1375,7 @@ test('GLM hop parks extra leading system snapshots after the conversation', asyn
 test('Grok 4.7 Fast keeps its real backend id and does not ride Codex Priority', async () => {
   const seen = []
   const fetchFn = async (url, init) => {
-    seen.push({ headers: init.headers, body: JSON.parse(init.body.toString()) })
+    seen.push({ headers: init.headers, body: JSON.parse(upstreamText(init)) })
     return new Response('{"id":"resp"}', { status: 200, headers: { 'content-type': 'application/json' } })
   }
   const proxy = createProxy({
@@ -1315,7 +1511,8 @@ test('Grok hop parks extra leading system snapshots after the conversation', asy
   }
 })
 
-test('cursor streaming surfaces an upstream run error as JSON, not a naked stream end', async () => {
+test('cursor streaming surfaces a pre-output Connect error as JSON with its status, never retried', async () => {
+  let calls = 0
   const proxy = createProxy({
     port: 0,
     apiKey: 'secret-key',
@@ -1326,7 +1523,10 @@ test('cursor streaming surfaces an upstream run error as JSON, not a naked strea
       },
     },
     cursorRpc: async () => {
-      throw new Error("Composer 2 is retired: We're upgrading you to Composer 2.5, our most powerful model yet.")
+      calls += 1
+      // What runCursorAgent rejects with for an `invalid_argument` end frame.
+      const message = "Composer 2 is retired: We're upgrading you to Composer 2.5, our most powerful model yet."
+      throw new UpstreamFailure(400, message, { code: 'http', payload: { error: { message, code: 'invalid_argument' } } })
     },
   })
   const server = await proxy.listen()
@@ -1337,15 +1537,16 @@ test('cursor streaming surfaces an upstream run error as JSON, not a naked strea
       headers: { authorization: 'Bearer secret-key', 'content-type': 'application/json' },
       body: JSON.stringify({ model: 'composer-2', stream: true, messages: [{ role: 'user', content: 'hi' }] }),
     })
-    assert.equal(res.status, 502)
+    assert.equal(res.status, 400)
     const body = await res.json()
     assert.equal(body.error.message, "Composer 2 is retired: We're upgrading you to Composer 2.5, our most powerful model yet.")
+    assert.equal(calls, 1)
   } finally {
     await proxy.close()
   }
 })
 
-test('cursor mid-stream failure surfaces a structured error without a successful terminal event', async () => {
+test('cursor mid-stream failure drops the stream instead of writing an SSE error block', async () => {
   const proxy = createProxy({
     port: 0,
     apiKey: 'secret-key',
@@ -1358,7 +1559,9 @@ test('cursor mid-stream failure surfaces a structured error without a successful
     cursorRpc: async (session, built, { onEvent }) => {
       assert.equal(session.accessToken, 'cursor-tok')
       assert.ok(Buffer.isBuffer(built.requestBytes))
-      await onEvent({ kind: 'interaction', turnEnded: false })
+      await onEvent({ kind: 'interaction', text: 'partial' })
+      // Let the committed chunk reach the socket before the break.
+      await new Promise((resolve) => setTimeout(resolve, 20))
       throw new Error("Composer 2 is retired: We're upgrading you to Composer 2.5, our most powerful model yet.")
     },
   })
@@ -1371,13 +1574,18 @@ test('cursor mid-stream failure surfaces a structured error without a successful
       body: JSON.stringify({ model: 'composer-2', stream: true, messages: [{ role: 'user', content: 'hi' }] }),
     })
     assert.equal(res.status, 200)
-    const text = await res.text()
-    assert.match(text, /Composer 2 is retired: We're upgrading you to Composer 2\.5/)
-    const chunks = [...text.matchAll(/^data: (.+)$/gm)].map(match => JSON.parse(match[1]))
-    const failure = chunks.find(chunk => chunk.error)
-    assert.equal(failure.error.code, 'cursor_upstream')
-    assert.equal(failure.error.type, 'server_error')
-    assert.equal(chunks.some(chunk => chunk.choices?.[0]?.finish_reason), false)
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let text = ''
+    await assert.rejects(async () => {
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) return
+        text += decoder.decode(value, { stream: true })
+      }
+    }, /terminated/)
+    assert.match(text, /partial/)
+    assert.equal(text.includes('cursor_upstream'), false)
     assert.equal(text.includes('[DONE]'), false)
   } finally {
     await proxy.close()
@@ -1431,12 +1639,45 @@ test('proxy strips upstream content-encoding/content-length after undici decompr
 })
 
 
-test('retry backoff jitters below the base so concurrent requests never retry in lockstep', async () => {
-  assert.equal(retryDelayMs(0, () => 0), 1000, 'jitter floor at attempt 0 is the full base')
-  assert.equal(retryDelayMs(1, () => 0), 4000)
-  assert.equal(retryDelayMs(0, () => 0.5), 875)
-  const delayed = retryDelayMs(0, () => 0.99)
-  assert.ok(delayed >= 750 && delayed <= 1000, `shrink-only jitter stays within the base: ${delayed}`)
+test('a 401 refresh retry keeps the route overrides: stream accept, zstd, Copilot agent initiator', { timeout: 5000 }, async () => {
+  const seen = []
+  const fetchFn = async (url, init) => {
+    seen.push(init.headers)
+    if (seen.length % 2 === 1) return new Response('{"error":{"message":"expired"}}', { status: 401, headers: { 'content-type': 'application/json' } })
+    return new Response(`${CODEX_PREAMBLE}${sse(DELTA, DONE)}`, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+  }
+  const tokens = () => ({
+    session: async () => ({ accessToken: 'stale-tok', accountId: 'acct', expiresAt: Date.now() + 3_600_000 }),
+    sourceOf: (session) => ({ id: 'acct-1', session }),
+    refreshNow: async () => ({ session: { accessToken: 'fresh-tok', accountId: 'acct', expiresAt: Date.now() + 3_600_000 } }),
+  })
+  const proxy = createProxy({ port: 0, apiKey: 'secret-key', fetchFn, tokens: { codex: tokens(), copilot: tokens() } })
+  const server = await proxy.listen()
+  const port = server.address().port
+  const send = (path, body) => fetch(`http://127.0.0.1:${port}${path}`, {
+    method: 'POST',
+    headers: { authorization: 'Bearer secret-key', 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  }).then((response) => response.text())
+  try {
+    await send('/codex/v1/responses', { model: 'gpt-5.6-luna', stream: true, input: [] })
+    await send('/copilot/v1/chat/completions', {
+      model: 'gpt-4.1',
+      stream: true,
+      messages: [{ role: 'user', content: 'x' }, { role: 'assistant', content: 'y' }, { role: 'tool', tool_call_id: 't', content: 'z' }],
+    })
+    assert.equal(seen.length, 4)
+    const [codexFirst, codexRetry, copilotFirst, copilotRetry] = seen
+    assert.equal(codexRetry.authorization, 'Bearer fresh-tok')
+    for (const key of ['accept', 'content-encoding']) assert.equal(codexRetry[key], codexFirst[key], `codex ${key}`)
+    assert.equal(codexRetry.accept, 'text/event-stream')
+    assert.equal(codexRetry['content-encoding'], 'zstd')
+    assert.equal(copilotFirst['x-initiator'], 'agent')
+    assert.equal(copilotRetry['x-initiator'], 'agent')
+    assert.equal(copilotRetry.accept, 'text/event-stream')
+  } finally {
+    await proxy.close()
+  }
 })
 
 test('a forwarded 429 also carries the retry-after-ms header when upstream sends one', async () => {
@@ -1465,7 +1706,7 @@ test('a 401 refresh retry does not pay the retry backoff', { timeout: 5000 }, as
     if (calls === 1) {
       return new Response('{"error":{"message":"token revoked"}}', { status: 401, headers: { 'content-type': 'application/json' } })
     }
-    return streamingUpstream([sse(CREATED, DELTA, DONE)])
+    return streamingUpstream([CODEX_PREAMBLE + sse(DELTA, DONE)])
   }
   const proxy = createProxy({
     port: 0,

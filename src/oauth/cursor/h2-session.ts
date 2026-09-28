@@ -1,9 +1,12 @@
 /**
  * In-process Node http2 client for Cursor Connect RPCs.
- * Each RPC owns a session that is destroyed when the call settles.
+ * RPCs share the pooled session from `cursorH2Connect`; each owns only its
+ * stream and cancels it (RST_STREAM CANCEL) when the call settles, so a
+ * cancelled Run stops upstream work without touching its neighbours.
  * Do not add Bun.
  */
 
+import http2 from 'node:http2'
 import {
   CURSOR_AGENT_URL,
   CURSOR_API2_URL,
@@ -29,6 +32,7 @@ import {
   splitConnectFrames,
 } from './proto.js'
 import { consumeCursorFrames } from './request.js'
+import { UpstreamFailure, connectCodeStatus } from '../upstream.js'
 
 function hexOf(buf) {
   return Buffer.isBuffer(buf) ? buf.toString('hex') : ''
@@ -53,6 +57,11 @@ function requestHeaders(session, { path, unary }) {
     ':path': path,
     ...headers,
   }
+}
+
+/** Cancel a stream the call is leaving; a finished stream is left alone. */
+function cancelStream(stream) {
+  if (stream && !stream.closed) stream.close(http2.constants.NGHTTP2_CANCEL)
 }
 
 /**
@@ -83,14 +92,15 @@ export async function cursorUnaryRpc({
   return new Promise((resolve, reject) => {
     let settled = false
     let client
+    let stream
+    const onClientError = (error) => fail(new Error(describeH2TransportError(error, url)))
     const finish = (error, value?) => {
       if (settled) return
       settled = true
       if (timer) clearTimeout(timer)
       signal?.removeEventListener('abort', onAbort)
-      // Unary sessions are one-shot too; close() would wait forever for a
-      // timed-out response whose stream remains open.
-      client?.destroy()
+      client?.off('error', onClientError)
+      cancelStream(stream)
       if (error !== undefined) reject(error)
       else resolve(value)
     }
@@ -102,15 +112,12 @@ export async function cursorUnaryRpc({
     const onAbort = () => fail(signal.reason)
     signal?.addEventListener('abort', onAbort, { once: true })
     // connectFn may be async (upstream proxy tunnel): a dial that lands after
-    // settle must still destroy the session it produced.
+    // settle stays pooled for the next call and is not used here.
     Promise.resolve(connectFn(url)).then((connected) => {
-      if (settled) {
-        connected.destroy()
-        return
-      }
+      if (settled) return
       client = connected
-      client.on('error', (error) => fail(new Error(describeH2TransportError(error, url))))
-      const stream = client.request(requestHeaders(session, { path, unary: true }))
+      client.on('error', onClientError)
+      stream = client.request(requestHeaders(session, { path, unary: true }))
       const chunks: any[] = []
       stream.on('data', (chunk) => {
         if (!settled) chunks.push(Buffer.from(chunk))
@@ -120,7 +127,7 @@ export async function cursorUnaryRpc({
         if (!settled) finish(undefined, Buffer.concat(chunks))
       })
       stream.end(body)
-    }, fail)
+    }).catch(fail)
   })
 }
 
@@ -155,12 +162,16 @@ export async function fetchCursorAvailableModels(session, { connectFn, signal, t
  * blob KV get/set, and per-case exec messages so a model turn can complete.
  * Native Cursor tools are rejected with typed results so the model falls back
  * to the MCP tools; MCP calls are handed to DSH, which owns execution.
+ * `touch` runs once per DATA chunk (the attempt's first-byte / idle clock).
+ * A Connect error or a non-200 head rejects with an `UpstreamFailure` carrying
+ * its HTTP status; socket faults and truncation reject with a plain Error.
  */
 export async function runCursorAgent(session, built, {
   signal,
   connectFn = cursorH2Connect,
   url = cursorAgentUrl() || CURSOR_AGENT_URL,
   onEvent,
+  touch,
 }: any = {}) {
   signal?.throwIfAborted()
   const blobStore = built.blobStore ?? new Map()
@@ -170,13 +181,16 @@ export async function runCursorAgent(session, built, {
   return new Promise((resolve, reject) => {
     let settled = false
     let client
+    let stream
+    const onClientError = (error) => finish(new Error(describeH2TransportError(error, url)))
     const finish = (error?) => {
       if (settled) return
       settled = true
       signal?.removeEventListener('abort', onAbort)
-      // Each Run owns its session. Graceful close waits for the active stream
-      // and would keep consuming upstream work after the caller has left.
-      client?.destroy()
+      client?.off('error', onClientError)
+      // Cancel only this Run's stream: upstream stops working on it, the
+      // pooled session and any other Run on it carry on.
+      cancelStream(stream)
       if (error !== undefined) reject(error)
       else resolve({ events, collected })
     }
@@ -184,19 +198,16 @@ export async function runCursorAgent(session, built, {
     const onAbort = () => fail(signal.reason)
     signal?.addEventListener('abort', onAbort, { once: true })
     // connectFn may be async (upstream proxy tunnel): a dial that lands after
-    // settle must still destroy the session it produced.
+    // settle stays pooled for the next Run and is not used here.
     Promise.resolve(connectFn(url)).then((connected) => {
-      if (settled) {
-        connected.destroy()
-        return
-      }
+      if (settled) return
       client = connected
-      client.on('error', (error) => finish(new Error(describeH2TransportError(error, url))))
+      client.on('error', onClientError)
       start(client)
-    }, fail)
+    }).catch(fail)
 
     const start = (connected) => {
-      const stream = connected.request(requestHeaders(session, { path: CURSOR_RUN_PATH, unary: false }))
+      stream = connected.request(requestHeaders(session, { path: CURSOR_RUN_PATH, unary: false }))
       let rest = Buffer.alloc(0)
       const send = (bytes) => {
         if (stream.destroyed || stream.closed) return
@@ -209,8 +220,9 @@ export async function runCursorAgent(session, built, {
           const text = describeCursorRunError(msg.message)
           collected.error = text
           events.push(msg)
-          await onEvent?.(msg)
-          finish(new Error(text))
+          // Unknown codes are only logged — never guessed to be quota or permanent.
+          console.error(`[oauth-subs] cursor Connect error ${msg.code ?? '(no code)'}: ${text}`)
+          finish(new UpstreamFailure(connectCodeStatus(msg.code), text, { code: 'http', payload: { error: { message: text, code: msg.code } } }))
           return
         }
         if (msg.kind === 'kv') {
@@ -287,18 +299,31 @@ export async function runCursorAgent(session, built, {
         }
       }
 
+      // Connect streams answer 200 and put errors in the end frame; any other
+      // status is an edge/HTTP answer whose body is not Connect framing.
+      let status = 200
+      stream.once('response', (headers) => { status = Number(headers[':status']) || 200 })
       const consume = async () => {
         try {
           // Pull one chunk at a time: a blocked downstream consumer must stop
           // HTTP/2 reads, not accumulate unobserved callback promises.
           for await (const chunk of stream) {
             if (settled) return
+            touch?.()
+            if (status !== 200) {
+              if (rest.length < 4096) rest = Buffer.concat([rest, chunk])
+              continue
+            }
             const messages: any[] = []
             rest = consumeCursorFrames(chunk, rest, (msg) => messages.push(msg))
             for (const msg of messages) {
               if (settled) return
               await handle(msg)
             }
+          }
+          if (status !== 200) {
+            const text = rest.toString('utf8').trim().slice(0, 300)
+            throw new UpstreamFailure(status, `cursor upstream ${status}${text ? `: ${text}` : ''}`, { code: 'http' })
           }
           if (rest.length) throw new Error('cursor Connect stream truncated at EOF: ' + rest.length + ' buffered bytes')
           finish()

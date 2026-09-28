@@ -5,6 +5,7 @@
  * (`app_EMoamEEZ73f0CkXaXp7hrann`, auth.openai.com, originator
  * `codex_cli_rs`). Token exchange is form-encoded; refresh is JSON.
  */
+import { outboundFetch } from '../../utils/outbound.js';
 export declare const CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 export declare const CODEX_AUTHORIZE_URL = "https://auth.openai.com/oauth/authorize";
 export declare const CODEX_TOKEN_URL = "https://auth.openai.com/oauth/token";
@@ -23,6 +24,8 @@ export declare const CODEX_PREEMPT_MS: number;
  *  Every catalog row shares this default. */
 export declare const CODEX_CONTEXT_WINDOW = 258000;
 export declare const CODEX_DEFAULT_MAX_TOKENS = 128000;
+/** Codex token-endpoint codes for a dead refresh token, beyond the shared grant codes. */
+export declare const CODEX_PERMANENT_REFRESH_CODES: string[];
 /**
  * `reasoning.effort` values the Codex Responses API accepts, probed against
  * chatgpt.com on 2026-08-26. `minimal` is rejected by every Codex model, and
@@ -155,7 +158,7 @@ export declare function codexSession(tokens: any, fallback?: any): {
     expiresAt: any;
     accountId: any;
 };
-export declare function exchangeCodexCode(code: any, verifier: any, redirectUri: any, fetchFn?: typeof fetch): Promise<{
+export declare function exchangeCodexCode(code: any, verifier: any, redirectUri: any, fetchFn?: typeof outboundFetch): Promise<{
     planType?: any;
     emailAddress?: any;
     idToken?: any;
@@ -164,7 +167,7 @@ export declare function exchangeCodexCode(code: any, verifier: any, redirectUri:
     expiresAt: any;
     accountId: any;
 }>;
-export declare function refreshCodex(session: any, fetchFn?: typeof fetch): Promise<{
+export declare function refreshCodex(session: any, fetchFn?: typeof outboundFetch): Promise<{
     planType?: any;
     emailAddress?: any;
     idToken?: any;
@@ -173,7 +176,6 @@ export declare function refreshCodex(session: any, fetchFn?: typeof fetch): Prom
     expiresAt: any;
     accountId: any;
 }>;
-export declare function isCodexPermanentRefreshError(error: any): boolean;
 /** originator + User-Agent pair the token endpoint and Responses API both expect. */
 export declare function codexCredentialHeaders(): {
     originator: string;
@@ -195,9 +197,3 @@ export declare function codexUpstreamHeaders(session: any): {
     authorization: string;
     'chatgpt-account-id': any;
 };
-export declare class OAuthEndpointError extends Error {
-    status: any;
-    oauthCode: any;
-    constructor(message: any, status?: any, oauthCode?: any);
-}
-export declare function oauthError(response: any, label: any): Promise<OAuthEndpointError>;

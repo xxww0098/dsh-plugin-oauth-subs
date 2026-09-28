@@ -17,6 +17,7 @@ import {
   OLLAMA_TAGS_URL,
   ollamaPrettyName,
 } from './index.js'
+import { outboundFetch } from '../../utils/outbound.js'
 
 export const OLLAMA_CATALOG_TTL_MS = 5 * 60_000
 
@@ -111,7 +112,7 @@ export async function refreshOllamaCatalog(session, options: any = {}) {
     return [...cached.models]
   }
   try {
-    const fetchFn = options.fetchFn ?? fetch
+    const fetchFn = options.fetchFn ?? outboundFetch
     const response = await fetchFn(OLLAMA_TAGS_URL, {
       headers: { authorization: `Bearer ${token}` },
       signal: options.signal,

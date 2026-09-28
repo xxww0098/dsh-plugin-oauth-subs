@@ -14,6 +14,7 @@
  * monthly total when a subscription is active, else spent+remaining.
  */
 
+import { outboundFetch } from '../../utils/outbound.js'
 import {
   COMMAND_CODE_CREDITS_URL,
   COMMAND_CODE_PLAN_CREDITS,
@@ -175,7 +176,7 @@ async function readJson(response, what) {
  * `limits=1` flag come from it), credits+subscriptions in parallel, then the
  * usage summary scoped to the subscription's currentPeriodStart.
  */
-export async function fetchCommandCodeQuota(session, fetchFn = fetch, { timeoutMs = 10_000 }: any = {}) {
+export async function fetchCommandCodeQuota(session, fetchFn = outboundFetch, { timeoutMs = 10_000 }: any = {}) {
   const headers = commandCodeUpstreamHeaders(session)
   const signal = AbortSignal.timeout(timeoutMs)
   const whoami = await fetchFn(`${COMMAND_CODE_WHOAMI_URL}?limits=1`, { method: 'GET', headers, signal })

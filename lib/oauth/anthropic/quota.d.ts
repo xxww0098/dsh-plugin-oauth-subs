@@ -6,10 +6,11 @@
  * stablyai/orca's claude-oauth-usage-request.ts: no billable Messages probe.
  * On failure the caller keeps the previous snapshot, so throwing is enough.
  */
+import { outboundFetch } from '../../utils/outbound.js';
 export declare function parseAnthropicUsage(payload: any): {
     rows: any[];
 };
-export declare function fetchAnthropicQuota(session: any, fetchFn?: typeof fetch): Promise<{
+export declare function fetchAnthropicQuota(session: any, fetchFn?: typeof outboundFetch): Promise<{
     planType: any;
     account: any;
     subscriptionStatus: string;

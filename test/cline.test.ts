@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { isPermanentRefreshFailure } from '../lib/oauth/tokens.js'
 import { AuthController } from '../lib/oauth/controller.js'
 import { accountIdOf, publicSession, saveSession, listStoredSessions } from '../lib/oauth/store.js'
 import {
@@ -34,7 +35,6 @@ import {
   clineSessionFromAuthData,
   clineUpstreamHeaders,
   formatClineAccessToken,
-  isClinePermanentRefreshError,
   normalizeClineAccessToken,
   refreshCline,
   registerClineTokens,
@@ -157,11 +157,11 @@ test('refresh rejection is permanent: HTTP 401 and success:false', async () => {
     userInfo: { email: 'ada@example.com', clineUserId: 'usr-01ABC' },
   }, {})
   const unauthorized = await refreshCline(session, async () => json({ error: 'Unauthorized' }, 401)).catch((error) => error)
-  assert.equal(isClinePermanentRefreshError(unauthorized), true)
+  assert.equal(isPermanentRefreshFailure(unauthorized), true)
   const rejected = await refreshCline(session, async () => json({ success: false, error: 'invalid refresh token' })).catch((error) => error)
-  assert.equal(isClinePermanentRefreshError(rejected), true)
+  assert.equal(isPermanentRefreshFailure(rejected), true)
   const transient = await refreshCline(session, async () => json({ error: 'boom' }, 500)).catch((error) => error)
-  assert.equal(isClinePermanentRefreshError(transient), false)
+  assert.equal(isPermanentRefreshFailure(transient), false)
 })
 
 test('catalog is Completions at /cline with declared effort keys only', () => {
@@ -263,15 +263,15 @@ test('system snapshots park at the suffix so the first system blob keeps hitting
 
 test('an incompatible system head re-pins instead of serving the stale prompt', () => {
   resetClinePins()
-  // DSH sends no session_id, so the pin key is the family constant — a model
-  // switch or a new session must not inherit the previous system head.
-  const first = applyClineCache({ messages: [{ role: 'system', content: 'model A prompt' }, { role: 'user', content: 'a' }] })
-  const second = applyClineCache({ messages: [{ role: 'system', content: 'model B prompt' }, { role: 'user', content: 'a' }] })
+  // A model switch inside one conversation must not inherit the previous system head.
+  const session_id = 'session-cline-repin'
+  applyClineCache({ session_id, messages: [{ role: 'system', content: 'model A prompt' }, { role: 'user', content: 'a' }] })
+  const second = applyClineCache({ session_id, messages: [{ role: 'system', content: 'model B prompt' }, { role: 'user', content: 'a' }] })
   assert.deepEqual(second.payload.messages, [
     { role: 'system', content: 'model B prompt' },
     { role: 'user', content: 'a' },
   ])
-  const third = applyClineCache({ messages: [{ role: 'system', content: 'model B prompt\nmore' }, { role: 'user', content: 'a' }] })
+  const third = applyClineCache({ session_id, messages: [{ role: 'system', content: 'model B prompt\nmore' }, { role: 'user', content: 'a' }] })
   assert.deepEqual(third.payload.messages, [
     { role: 'system', content: 'model B prompt' },
     { role: 'user', content: 'a' },

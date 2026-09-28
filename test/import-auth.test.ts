@@ -11,6 +11,8 @@ import {
   glmKeyCandidateFromZcodeConfig,
   glmKeyFromZcodeConfig,
   glmKeyFromZcodeCredentials,
+  codexImported,
+  importCodexAuth,
   importGlmAuth,
   importGrokAuth,
   tokensFromGrokCli,
@@ -31,6 +33,32 @@ function grokAccess(extra = {}) {
     ...extra,
   })
 }
+
+test('Codex CLI import records its file as source and takes expiry from the JWT', async (t) => {
+  const home = await mkdtemp(join(tmpdir(), 'codex-import-'))
+  const previous = process.env.HOME
+  process.env.HOME = home
+  t.after(() => { process.env.HOME = previous })
+  await mkdir(join(home, '.codex'), { recursive: true })
+  const exp = Math.floor(Date.now() / 1000) + 10 * 86_400
+  await writeFile(join(home, '.codex', 'auth.json'), JSON.stringify({
+    tokens: {
+      access_token: jwt({ exp }),
+      refresh_token: 'rt-codex-cli',
+      id_token: jwt({ email: 'cli@example.test', 'https://api.openai.com/auth': { chatgpt_account_id: 'acct-cli' } }),
+    },
+    // Codex CLI rotates every ~8 days; last_refresh + 1h would call a live token stale.
+    last_refresh: new Date(Date.now() - 2 * 86_400_000).toISOString(),
+  }))
+  const result = await importCodexAuth()
+  const path = join(home, '.codex', 'auth.json')
+  assert.equal(result.source, path)
+  assert.equal(result.session.source, path)
+  assert.equal(result.session.expiresAt, exp * 1000)
+  assert.equal(codexImported.is(result.session), true)
+  const reread = await codexImported.reread(result.session)
+  assert.equal(reread.accessToken, result.session.accessToken)
+})
 
 test('codexSession accepts Codex CLI token files (expires_in + id_token claims)', () => {
   const idToken = jwt({

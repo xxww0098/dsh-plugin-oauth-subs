@@ -6,6 +6,7 @@
  *   external_idp    Microsoft Entra / Azure AD refresh_token grant
  *   api_key         ksk_… bearer
  */
+import { outboundFetch } from '../../utils/outbound.js';
 export declare const KIRO_PORTAL_URL = "https://app.kiro.dev";
 export declare const KIRO_AUTH_HOST = "prod.us-east-1.auth.desktop.kiro.dev";
 export declare const KIRO_AUTH_URL = "https://prod.us-east-1.auth.desktop.kiro.dev";
@@ -94,7 +95,7 @@ export declare function canonicalizeKiroMethod(value: any, { tokenEndpoint }?: a
  * with clientId+clientSecret.
  */
 export declare function inferKiroAuthMethod(raw?: any): string;
-export declare function kiroAccountKind(session?: any): "social" | "idc" | "entra" | "builder" | "key";
+export declare function kiroAccountKind(session?: any): "key" | "entra" | "idc" | "builder" | "social";
 export declare function kiroMethodLabel(methodOrSession: any): "Builder" | "IdC" | "Entra" | "API key" | "Social";
 export declare function kiroAccountId(session?: any): string;
 export declare function oidcEndpoint(region?: string): string;
@@ -144,22 +145,23 @@ export declare function kiroSocialFlow(): {
 export declare class KiroHttpError extends Error {
     status: any;
     retryAfter: string | undefined;
-    constructor(message: any, status: any, { retryAfter }?: any);
+    oauthCode: string | undefined;
+    constructor(message: any, status: any, { retryAfter, oauthCode }?: any);
 }
+export declare function headerOf(response: any, name: any): any;
 export declare function kiroSession(fields?: any): any;
 export declare function exchangeKiroSocialCode(code: any, verifier: any, redirectUri: any, { fetchFn, callback, machineId: priorMachineId }?: any): Promise<any>;
 export declare function refreshKiroSocial(session: any, { fetchFn }?: {
-    fetchFn?: typeof fetch | undefined;
+    fetchFn?: typeof outboundFetch | undefined;
 }): Promise<any>;
 export declare function refreshKiroIdc(session: any, { fetchFn }?: {
-    fetchFn?: typeof fetch | undefined;
+    fetchFn?: typeof outboundFetch | undefined;
 }): Promise<any>;
 export declare function refreshKiroExternalIdp(session: any, { fetchFn }?: {
-    fetchFn?: typeof fetch | undefined;
+    fetchFn?: typeof outboundFetch | undefined;
 }): Promise<any>;
 export declare function refreshKiro(session: any, { fetchFn }?: {
-    fetchFn?: typeof fetch | undefined;
+    fetchFn?: typeof outboundFetch | undefined;
 }): Promise<any>;
-export declare function isKiroPermanentRefreshError(error: any): boolean;
 export declare function isKiroCredential(raw: any): boolean;
 export declare function kiroSessionFromImport(raw: any): any;

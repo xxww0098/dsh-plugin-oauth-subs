@@ -26,6 +26,7 @@ import { createProxy } from './oauth/proxy.js'
 import { catalogProviders, OAUTH_CREDENTIAL_REF, ModelSwitch } from './oauth/models.js'
 import { cursorCatalogModels } from './oauth/cursor/catalog.js'
 import { configureCursorUpstreamProxy } from './oauth/cursor/index.js'
+import { clearCursorH2Pool } from './oauth/cursor/upstream-proxy.js'
 import { ollamaCatalogModels } from './apikey/ollama/catalog.js'
 import { kiroCatalogModels } from './oauth/kiro/catalog.js'
 import { kimiCatalogModels } from './oauth/kimi/catalog.js'
@@ -35,7 +36,7 @@ import { clineCatalogModels } from './oauth/cline/catalog.js'
 import { commandCodeCatalogModels } from './apikey/command-code/catalog.js'
 import { EffortMemory, LAST_EFFORT_FILE, startEffortRestore } from './oauth/reasoning-effort.js'
 import { profileFromBaseUrl } from './utils/update.js'
-import { createOutboundSession, outboundProxyPath } from './utils/outbound.js'
+import { configureOutbound, outboundProxyPath } from './utils/outbound.js'
 import { donateQr } from './utils/donate.js'
 
 export const name = 'dsh-plugin-oauth-subs'
@@ -109,7 +110,7 @@ function rpcFrom(scope) {
 
 export function registerRpc(ctx, controller) {
   const methods = {
-    status: () => controller.snapshot(),
+    status: (payload) => controller.snapshot(payload?.fresh === true),
     login: (payload) => controller.login(payload?.provider, payload),
     key: (payload) => controller.useKey(payload?.provider, payload?.key, payload),
     manual: (payload) => controller.manual(payload?.provider, payload?.input),
@@ -261,6 +262,8 @@ export function apply(ctx, config: any = {}) {
   const prefix = String(config.provider ?? 'oauth').trim() || 'oauth'
   const grokLogin = config.grokLogin === 'pkce' ? 'pkce' : 'device'
   configureCursorUpstreamProxy(config.cursorProxy)
+  // Config change re-applies the plugin: its pooled h2 sessions go with the old config.
+  ctx.effect(() => clearCursorH2Pool, 'dsh-plugin-oauth-subs: cursor h2 pool')
   const dataDir = resolveDataDir(ctx, config)
   const authPath = authFilePath(dataDir)
   const models = new ModelSwitch({
@@ -270,10 +273,11 @@ export function apply(ctx, config: any = {}) {
     path: join(dataDir, LAST_EFFORT_FILE),
   })
 
-  const outbound = createOutboundSession({
+  const outbound = configureOutbound({
     path: outboundProxyPath(dataDir),
     configUrl: config.proxyUrl,
   })
+  ctx.effect(() => () => { void outbound.close() }, 'dsh-plugin-oauth-subs: outbound proxy agent')
 
   let patchPath: string | undefined
   try {
@@ -291,7 +295,6 @@ export function apply(ctx, config: any = {}) {
     credentials: ctx.credentials,
     grokLogin,
     models,
-    fetchFn: outbound.fetchFn,
     onAuthChanged: () => {
       controller.sync().catch((error) => {
         ctx.logger?.warn?.(`dsh-plugin-oauth-subs: llm-pi-ai sync failed: ${error.message}`)
@@ -309,8 +312,8 @@ export function apply(ctx, config: any = {}) {
     return outbound.setUrl(payload?.url)
   }
   const snapshot = controller.snapshot.bind(controller)
-  controller.snapshot = async () => {
-    const view = await snapshot()
+  controller.snapshot = async (fresh = false) => {
+    const view = await snapshot(fresh)
     if (outbound.ready) await outbound.ready
     return { ...view, proxy: outbound.snapshot() }
   }
@@ -351,7 +354,6 @@ export function apply(ctx, config: any = {}) {
           port,
           apiKey,
           tokens: controller.tokens,
-          fetchFn: outbound.fetchFn,
         })
         await proxy.listen()
         ctx.logger?.info?.(`dsh-plugin-oauth-subs: proxy on ${proxy.origin()}`)

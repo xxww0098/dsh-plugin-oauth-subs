@@ -50,13 +50,17 @@ DSH POST /kimi/v1/chat/completions
 | `client_id` | `17e5f671-d194-4dfb-9706-5516cb48c098` |
 | device | `POST https://auth.kimi.com/api/oauth/device_authorization` body 只有 `client_id` |
 | token | `POST https://auth.kimi.com/api/oauth/token` `grant_type=urn:ietf:params:oauth:grant-type:device_code` |
-| 刷新 | 同 token URL，`grant_type=refresh_token`。401 / 403 / `invalid_grant` = 永久，必须重登 |
+| 刷新 | 同 token URL，`grant_type=refresh_token`。401 / `invalid_grant` = 永久，必须重登；403 按临时失败 |
 | UA | `dsh-plugin-oauth-subs` + `X-Msh-*`（设备 id 在插件 data dir，不是 `~/.kimi-code`） |
 
 `authorization_pending` = 继续等；`slow_down` = interval +5s；`expired_token` = **重新** device_authorization（`DeviceFlowManager.restartOnExpired`）。
 
 入口：`kimiDeviceSpec` → `DeviceFlowManager.start('kimi')` → `completeKimiDevice` → `kimiSession`。
 导入：[`import.ts`](import.ts) `importKimiAuth`。空花名册只自动导入 `kimi-code.json` 一次。已存 session **绝不**静默覆盖。
+
+**导入只读**（决定 4）：`source: 'cli'` 的登录临期时，`kimiImported` 钩子只重读 `kimi-code.json`，过期 > 现在 + 15s 才采用；文件也过期 → `ImportedLoginStale`（403）「… run kimi or use browser login」，不删登录。`kimi-code.json` 只有 token、没有账号标识，所以不校验「CLI 换了号」。`oauth` 登录照常刷新。
+
+轮换证据：来源一 MoonshotAI/kimi-cli `1.52.0` `src/kimi_cli/auth/oauth.py`——`refresh_token()` 的响应经 `OAuthToken.from_response` 必取 `refresh_token`，`save_tokens` 写回 `~/.kimi/credentials/kimi-code.json`（跨进程 `.lock`），注释明写 rotated ⇒ 会轮换。来源二（被动观察：插件自有登录在宿主自然刷新前后各记一次 refresh token sha256 前 8 位）：待合入后记录。
 
 粘贴 `KIMI_API_KEY` / `sk-` 是 KEY source，不刷新。
 
@@ -90,7 +94,7 @@ Kimi 是 **前缀哈希**，没有分片键。
 | 2 | `applyKimiCache` | 剥 Codex/Grok 字段；首段 system 钉住，后续快照停到 **messages suffix** |
 | 3 | `kimiCacheHeaders` | 空。不写 `session-id` / `x-grok-conv-id` |
 
-`dsh-kimi` 只给分析器标签，**不**写进 upstream body。上游若带回 `cached_tokens` / `cache_read_*`，hop 译成 `prompt_tokens_details.cached_tokens`；没有字段不发明 0。流式缺省 `include_usage`。不要 `Date.now()`。
+`dsh-kimi` 只给分析器标签，**不**写进 upstream body，也不钉系统提示（`isKimiFallback`）。上游若带回 `cached_tokens` / `cache_read_*`，hop 译成 `prompt_tokens_details.cached_tokens`；没有字段不发明 0。流式缺省 `include_usage`。不要 `Date.now()`。
 
 ## 不要
 

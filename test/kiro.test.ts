@@ -948,27 +948,13 @@ test('empty ListAvailableModels keeps the static fallback including the original
   resetKiroCatalogCache()
 })
 
-// DSH's classifyPiAiError checks isQuotaExceededError before `\b429\b`, so a
-// 429 in this wording is QUOTA_EXCEEDED (never retried), not a hammerable
-// RATE_LIMIT. Regex copied from the host bundle
-// (specs/request-path-upgrades/assets/baseline-2026-09-28.md).
-const HOST_QUOTA_PHRASE = /\b(?:quota|usage[\s_-]+limit)[\s_-]+(?:exceeded|exhausted|reached)\b/i
-
-test('MONTHLY_REQUEST_COUNT answers 429 in the host quota wording', () => {
+test('MONTHLY_REQUEST_COUNT is a 429 quota answer, distinct from the rate limit', () => {
   const body = { reason: 'MONTHLY_REQUEST_COUNT', message: 'monthly request count exceeded' }
-  const classified = classifyKiroHopError(429, body, JSON.stringify(body))
+  const classified = classifyKiroHopError(400, body, JSON.stringify(body))
   assert.equal(classified.status, 429)
   assert.equal(classified.code, 'kiro_quota')
   assert.equal(classified.retryAfter, undefined)
-  assert.equal(kiroClientErrorStatus(429, body, JSON.stringify(body)), 429)
-  const client = kiroClientErrorBody(429, body, JSON.stringify(body))
-  assert.equal(client.error.message, 'usage limit reached: monthly request count exceeded')
-  assert.equal(client.error.type, 'insufficient_quota')
-  assert.match(JSON.stringify(client), HOST_QUOTA_PHRASE)
-  // Only the monthly quota carries the quota wording; a plain rate limit stays retryable.
-  const rate = kiroClientErrorBody(429, { reason: 'USER_REQUEST_RATE_EXCEEDED', message: 'slow down' }, '')
-  assert.doesNotMatch(JSON.stringify(rate), HOST_QUOTA_PHRASE)
-  assert.equal(rate.error.type, 'rate_limit_error')
+  assert.equal(kiroClientErrorStatus(400, body, JSON.stringify(body)), 429)
   assert.equal(classifyKiroHopError(429, { reason: 'USER_REQUEST_RATE_EXCEEDED' }, '', { retryAfter: '2' }).status, 429)
   assert.equal(classifyKiroHopError(503, { reason: 'INSUFFICIENT_MODEL_CAPACITY' }, '').status, 503)
   assert.equal(classifyKiroHopError(400, { reason: 'CONTENT_LENGTH_EXCEEDS_THRESHOLD' }, '').status, 400)

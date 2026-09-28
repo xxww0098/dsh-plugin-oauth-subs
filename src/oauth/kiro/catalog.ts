@@ -26,6 +26,7 @@ import {
   kiroUsageHeaders,
   kiroUsageRegions,
 } from './index.js'
+import { outboundFetch } from '../../utils/outbound.js'
 
 export const KIRO_CATALOG_TTL_MS = 5 * 60_000
 export const KIRO_STATIC_FALLBACK_COUNT = 18
@@ -246,7 +247,7 @@ function modelsFrom(body) {
  * a hard stop — keep going. Empty / failed discovery returns [].
  */
 export async function fetchKiroLiveModels(session, options: any = {}) {
-  const fetchFn = options.fetchFn ?? fetch
+  const fetchFn = options.fetchFn ?? outboundFetch
   const regions = [...new Set([
     ...(options.regions ?? kiroUsageRegions(session)),
     ...KIRO_USAGE_REGIONS,

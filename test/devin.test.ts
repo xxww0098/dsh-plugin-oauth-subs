@@ -3,6 +3,7 @@ import { chmod, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { isPermanentRefreshFailure } from '../lib/oauth/tokens.js'
 import { AuthController } from '../lib/oauth/controller.js'
 import { accountIdOf, listStoredSessions, publicSession, saveSession } from '../lib/oauth/store.js'
 import {
@@ -25,7 +26,6 @@ import {
   devinSourceLabel,
   exchangeDevinCode,
   isDevinOpaqueAccount,
-  isDevinPermanentRefreshError,
   isDevinSessionToken,
   normalizeDevinToken,
   pickDevinHumanAccount,
@@ -38,6 +38,7 @@ import {
   devinCascadeId,
   devinExecutionId,
   deterministicDevinId,
+  isDevinFallback,
 } from '../lib/oauth/devin/cache.js'
 import {
   createDevinOpenaiStream,
@@ -69,10 +70,11 @@ import {
   setDevinCatalogModels,
   toDevinPickerModels,
 } from '../lib/oauth/devin/catalog.js'
-import { DevinTransportError, runDevinChat } from '../lib/oauth/devin/transport.js'
+import { devinUserStatus, runDevinChat } from '../lib/oauth/devin/transport.js'
 import { parseDevinUserStatus } from '../lib/oauth/quota.js'
 import { formatPlanLabel } from '../lib/oauth/plan.js'
 import { createProxy } from '../lib/oauth/proxy.js'
+import { UpstreamFailure } from '../lib/oauth/upstream.js'
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
@@ -221,14 +223,14 @@ test('refreshDevin extends a live token via status probe; 401 is permanent', asy
   const expired = devinSession({ accessToken: 'tok', expiresAt: Date.now() - 1000 })
   const ok = await refreshDevin(expired, { statusFn: async () => ({}) })
   assert.ok(ok.expiresAt > Date.now())
-  try {
-    await refreshDevin(expired, { statusFn: async () => { throw new Error('HTTP 401') } })
-    assert.fail('expected refresh to throw')
-  } catch (error) {
-    assert.equal(isDevinPermanentRefreshError(error), true)
-  }
-  assert.equal(isDevinPermanentRefreshError(new Error('expired; sign in again')), true)
-  assert.equal(isDevinPermanentRefreshError(new Error('socket hangup')), false)
+  const status = (code) => (session) => devinUserStatus(session, { fetchFn: async () => new Response('denied', { status: code }) })
+  const unauthorized = await refreshDevin(expired, { statusFn: status(401) }).catch((error) => error)
+  assert.equal(isPermanentRefreshFailure(unauthorized), true)
+  // Only the typed status counts: 403 and "401" in message text stay transient.
+  const forbidden = await refreshDevin(expired, { statusFn: status(403) }).catch((error) => error)
+  assert.equal(isPermanentRefreshFailure(forbidden), false)
+  assert.equal(isPermanentRefreshFailure(new Error('HTTP 401')), false)
+  assert.equal(isPermanentRefreshFailure(new Error('socket hangup')), false)
 })
 
 test('import reads credentials.toml; token never reaches publicSession', async () => {
@@ -457,7 +459,14 @@ test('cache strips codex fields; cascade id is deterministic per pin', () => {
   for (const key of ['session_id', 'prompt_cache_key', 'prompt_cache_retention', 'service_tier']) {
     assert.equal(Object.hasOwn(payload, key), false)
   }
-  assert.equal(applyDevinCache({ model: 'swe-2' }).cacheSessionId, undefined)
+  // No DSH key: one per-model fallback, owned by cache.ts (not the transport).
+  const fallback = applyDevinCache({ model: 'swe-2' }).cacheSessionId
+  assert.equal(fallback, 'dsh-devin:swe-2')
+  assert.equal(isDevinFallback(fallback), true)
+  assert.equal(isDevinFallback(cacheSessionId), false)
+  assert.equal(devinCascadeId({ model: 'swe-2' }), deterministicDevinId(fallback))
+  // The proxy path (transport hashes the passed id) and the builder fallback agree.
+  assert.equal(devinCascadeId({ prompt_cache_key: 'pck-1' }), deterministicDevinId(cacheSessionId))
   assert.equal(devinCacheSessionId(''), undefined)
   assert.equal(devinCacheSessionId('a b!c'), 'devin-a-b-c')
   const cascade = devinCascadeId({ prompt_cache_key: 'pck-1' })
@@ -557,8 +566,11 @@ test('devinToOpenai maps finish reasons and cache usage', () => {
   assert.equal(mapDevinUsage(undefined), undefined)
 })
 
-test('stream mapper emits role, content, tool arg deltas, finish, DONE', () => {
-  const mapper = createDevinOpenaiStream({ model: 'swe-2', id: 's1' })
+test('stream mapper emits role with the first content, tool arg deltas, finish', () => {
+  const created = createDevinOpenaiStream({ model: 'swe-2', id: 's1' })
+  const json = (chunks) => chunks.map((chunk) => JSON.stringify(chunk))
+  const mapper = { push: (event) => json(created.push(event)), finish: () => json(created.finish()) }
+  assert.deepEqual(mapper.push({ type: 'usage', usage: { inputTokens: 1 } }), [], 'usage alone commits nothing')
   const first = mapper.push({ type: 'thinking', delta: 'think' })
   assert.match(first[0], /"role":"assistant"/)
   assert.match(first[1], /"reasoning_content":"think"/)
@@ -573,7 +585,7 @@ test('stream mapper emits role, content, tool arg deltas, finish, DONE', () => {
   const tail = mapper.finish()
   assert.match(tail[0], /"finish_reason":"tool_calls"/)
   assert.match(tail[0], /"prompt_tokens":5/)
-  assert.equal(tail.at(-1), 'data: [DONE]\n\n')
+  assert.equal(tail.length, 1)
 })
 
 test('proxy serves /devin/v1/models and chat via runFn; responses is 501', async () => {
@@ -761,17 +773,12 @@ test('runDevinChat surfaces trailer errors and empty streams', async () => {
   ]), { status: 200 })
   await assert.rejects(
     runDevinChat(devinSession({ accessToken: 'x' }), openaiToDevin({ model: 'swe-2', messages: [] }, {}), { fetchFn: failFetch }),
-    (error) => error instanceof DevinTransportError && error.retryable !== true,
+    (error) => error instanceof UpstreamFailure && error.status === 401 && error.code === 'http' && /bad token/.test(error.message),
   )
   const emptyFetch = async () => new Response(Buffer.alloc(0), { status: 200 })
   await assert.rejects(
     runDevinChat(devinSession({ accessToken: 'x' }), openaiToDevin({ model: 'swe-2', messages: [] }, {}), { fetchFn: emptyFetch }),
-    (error) => /empty body|without a message/.test(error.message) && error.retryable === true,
-  )
-  const unavailableFetch = async () => new Response('upstream unavailable', { status: 503 })
-  await assert.rejects(
-    runDevinChat(devinSession({ accessToken: 'x' }), openaiToDevin({ model: 'swe-2', messages: [] }, {}), { fetchFn: unavailableFetch }),
-    (error) => error.status === 503 && error.retryable !== true,
+    /empty body|without an end frame/,
   )
 })
 
@@ -965,25 +972,199 @@ test('forwardDevin replays socket-level failures until the stream commits', asyn
     proxy.close()
   }
 
-  // Upstream answers are forwarded once, never replayed here — the host owns
-  // retries for 4xx/5xx and Connect trailer errors alike.
-  for (const [label, answer, status] of [
-    ['permanent 403', () => new DevinTransportError('Devin chat failed (HTTP 403): forbidden', { status: 403 }), 403],
-    ['HTTP 503', () => new DevinTransportError('Devin chat failed (HTTP 503): unavailable', { status: 503 }), 503],
-    ['trailer error', () => new DevinTransportError('Devin chat stream error: deadline_exceeded: context deadline exceeded'), 500],
-  ] as const) {
-    calls = 0
-    const refuse = async () => {
-      calls += 1
-      throw answer()
-    }
-    const server = await (await make(refuse)).listen()
+  // A permanent 403 answer is not replayed.
+  calls = 0
+  const forbidden = async () => {
+    calls += 1
+    throw new UpstreamFailure(403, 'Devin chat failed (HTTP 403): forbidden', { code: 'http' })
+  }
+  const denied = await (await make(forbidden)).listen()
+  try {
+    const res = await post(denied.address().port, { model: 'swe-2', messages: [{ role: 'user', content: 'ping' }] })
+    assert.equal(res.status, 403)
+    assert.equal(calls, 1)
+  } finally {
+    denied.close()
+  }
+})
+
+function devinProxy({ fetchFn, tokens = undefined, upstreamTimeouts = undefined }) {
+  return createProxy({
+    port: 0,
+    apiKey: 'proxy-key-devin-attempt',
+    fetchFn,
+    upstreamTimeouts,
+    tokens: { devin: tokens ?? { session: async () => devinSession({ accessToken: 'devin-session-token$attempt' }) } },
+  })
+}
+
+function postDevin(port, stream = false) {
+  return fetch(`http://127.0.0.1:${port}/devin/v1/chat/completions`, {
+    method: 'POST',
+    headers: { authorization: 'Bearer proxy-key-devin-attempt', 'content-type': 'application/json' },
+    body: JSON.stringify({ model: 'swe-2', stream, messages: [{ role: 'user', content: 'ping' }] }),
+  })
+}
+
+/** GetUserJwt refused (token-only chat); every chat call answered by `chat(n)`. */
+function devinFetch(chat) {
+  const counts = { chat: 0 }
+  const fetchFn = async (url) => {
+    if (String(url).endsWith(DEVIN_USER_JWT_PATH)) return new Response('nope', { status: 404 })
+    counts.chat += 1
+    return chat(counts.chat)
+  }
+  return { fetchFn, counts }
+}
+
+const trailer = (code) => frameConnect(Buffer.from(JSON.stringify({ error: { code, message: code } })), { compress: false, end: true })
+
+test('devin: a stalled stream answers 504 before any head', async () => {
+  const { fetchFn, counts } = devinFetch(() => new Response(new ReadableStream({ start() {} }), { status: 200 }))
+  const proxy = await devinProxy({ fetchFn, upstreamTimeouts: { firstByteMs: 50, budgetMs: 300 } }).listen()
+  try {
+    const res = await postDevin(proxy.address().port, true)
+    assert.equal(res.status, 504)
+    assert.match(res.headers.get('content-type'), /json/)
+    assert.match(JSON.stringify(await res.json()), /no first byte within 0.05s/)
+    assert.equal(counts.chat, 1)
+  } finally {
+    proxy.close()
+  }
+})
+
+test('devin: an upstream 503 is forwarded once, never replayed', async () => {
+  const { fetchFn, counts } = devinFetch(() => new Response('overloaded', { status: 503 }))
+  const proxy = await devinProxy({ fetchFn }).listen()
+  try {
+    const res = await postDevin(proxy.address().port, true)
+    assert.equal(res.status, 503)
+    assert.match(JSON.stringify(await res.json()), /HTTP 503/)
+    assert.equal(counts.chat, 1)
+  } finally {
+    proxy.close()
+  }
+})
+
+test('devin: Connect trailer codes map to status before output; after output the stream is destroyed', async () => {
+  const { fetchFn, counts } = devinFetch(() => new Response(trailer('deadline_exceeded'), { status: 200 }))
+  const proxy = await devinProxy({ fetchFn }).listen()
+  try {
+    const res = await postDevin(proxy.address().port, true)
+    assert.equal(res.status, 504)
+    assert.match(JSON.stringify(await res.json()), /deadline_exceeded/)
+    assert.equal(counts.chat, 1)
+  } finally {
+    proxy.close()
+  }
+
+  const late = devinFetch(() => new Response(new ReadableStream({
+    start(controller) {
+      controller.enqueue(new Uint8Array(frameConnect(encodeString(3, 'partial'), { compress: true })))
+      setTimeout(() => { controller.enqueue(new Uint8Array(trailer('unavailable'))); controller.close() }, 30)
+    },
+  }), { status: 200 }))
+  const broken = await devinProxy({ fetchFn: late.fetchFn }).listen()
+  try {
+    const res = await postDevin(broken.address().port, true)
+    assert.equal(res.status, 200)
+    await assert.rejects(res.text())
+    assert.equal(late.counts.chat, 1)
+  } finally {
+    broken.close()
+  }
+})
+
+const usageFrame = () => frameConnect(encodeMessage(7, Buffer.concat([encodeUint(2, 11), encodeUint(3, 4)])), { compress: true })
+
+test('devin: a usage-only frame does not commit the head; a following trailer error answers JSON', async () => {
+  const { fetchFn, counts } = devinFetch(() => new Response(Buffer.concat([usageFrame(), trailer('resource_exhausted')]), { status: 200 }))
+  const proxy = await devinProxy({ fetchFn }).listen()
+  try {
+    const res = await postDevin(proxy.address().port, true)
+    assert.equal(res.status, 429)
+    assert.match(res.headers.get('content-type'), /json/)
+    assert.match(JSON.stringify(await res.json()), /resource_exhausted/)
+    assert.equal(counts.chat, 1)
+  } finally {
+    proxy.close()
+  }
+})
+
+test('devin: EOF without the Connect end frame (or inside a frame) is a cut stream, retried before output', async () => {
+  const stopFrame = frameConnect(encodeUint(5, 1), { compress: true })
+  const cuts = [
+    stopFrame,
+    Buffer.concat([stopFrame, frameConnect(encodeString(3, 'lost'), { compress: true }).subarray(0, 7)]),
+  ]
+  for (const cut of cuts) {
+    const { fetchFn, counts } = devinFetch((n) => (n === 1 ? new Response(cut, { status: 200 }) : okChatStream()))
+    const proxy = await devinProxy({ fetchFn }).listen()
     try {
-      const res = await post(server.address().port, { model: 'swe-2', messages: [{ role: 'user', content: 'ping' }] })
-      assert.equal(res.status, status, label)
-      assert.equal(calls, 1, label)
+      const res = await postDevin(proxy.address().port, true)
+      assert.equal(res.status, 200)
+      const text = await res.text()
+      assert.match(text, /"content":"ok"/)
+      assert.doesNotMatch(text, /lost/)
+      assert.equal(counts.chat, 2)
     } finally {
-      server.close()
+      proxy.close()
     }
+  }
+
+  const late = devinFetch(() => new Response(new ReadableStream({
+    start(controller) {
+      controller.enqueue(new Uint8Array(frameConnect(encodeString(3, 'partial'), { compress: true })))
+      setTimeout(() => controller.close(), 30)
+    },
+  }), { status: 200 }))
+  const broken = await devinProxy({ fetchFn: late.fetchFn }).listen()
+  try {
+    const res = await postDevin(broken.address().port, true)
+    assert.equal(res.status, 200)
+    await assert.rejects(res.text(), 'after output a cut stream is destroyed, not ended clean')
+    assert.equal(late.counts.chat, 1)
+  } finally {
+    broken.close()
+  }
+})
+
+test('runDevinChat releases the upstream body when the stream throws', async () => {
+  let cancelled = false
+  const fetchFn = async (url) => {
+    if (String(url).endsWith(DEVIN_USER_JWT_PATH)) return new Response('nope', { status: 404 })
+    return new Response(new ReadableStream({
+      start(controller) { controller.enqueue(new Uint8Array(trailer('unavailable'))) },
+      cancel() { cancelled = true },
+    }), { status: 200 })
+  }
+  await assert.rejects(
+    runDevinChat(devinSession({ accessToken: 'x' }), openaiToDevin({ model: 'swe-2', messages: [] }, {}), { fetchFn }),
+    (error) => error instanceof UpstreamFailure && error.status === 503,
+  )
+  assert.equal(cancelled, true, 'the socket is not left pinned')
+})
+
+test('devin: a token-only 401 refreshes the login once, then retries', async () => {
+  const session = devinSession({ accessToken: 'devin-session-token$refresh' })
+  const refreshed = []
+  const tokens = {
+    session: async () => session,
+    sourceOf: (value) => (value === session ? { id: 'ada' } : undefined),
+    refreshNow: async (id, failed) => {
+      refreshed.push([id, failed])
+      return { session: devinSession({ accessToken: 'devin-session-token$refresh' }) }
+    },
+  }
+  const { fetchFn, counts } = devinFetch((n) => (n === 1 ? new Response('unauthorized', { status: 401 }) : okChatStream()))
+  const proxy = await devinProxy({ fetchFn, tokens }).listen()
+  try {
+    const res = await postDevin(proxy.address().port)
+    assert.equal(res.status, 200)
+    assert.equal((await res.json()).choices[0].message.content, 'ok')
+    assert.deepEqual(refreshed, [['ada', 'devin-session-token$refresh']])
+    assert.equal(counts.chat, 2)
+  } finally {
+    proxy.close()
   }
 })

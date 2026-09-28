@@ -5,13 +5,24 @@
  * `X-Interaction-Id` session sticky. There is no Codex `prompt_cache_key`
  * and no Grok `x-grok-conv-id`. Extra DSH snapshots park at the messages
  * suffix. Never stamp Date.now(). Fallback `dsh-copilot` is written as
- * X-Interaction-Id (official always sends a session id).
+ * X-Interaction-Id (official always sends a session id) and never pins.
  */
 
 const SYSTEM_PIN_CAP = 64
 const SYSTEM_PINS = new Map()
 
 export const COPILOT_STABLE_SESSION = 'dsh-copilot'
+
+/** A fallback id is not a conversation: it never pins a system prompt. */
+export function isCopilotFallback(id) {
+  return typeof id !== 'string' || id === '' || id === COPILOT_STABLE_SESSION || id.startsWith(`${COPILOT_STABLE_SESSION}:`)
+}
+
+export function copilotConversationId(payload: any = {}) {
+  return copilotCacheSessionId(payload.session_id)
+    ?? copilotCacheSessionId(payload.prompt_cache_key)
+    ?? COPILOT_STABLE_SESSION
+}
 
 export function copilotCacheSessionId(key) {
   if (typeof key !== 'string') return undefined
@@ -48,7 +59,7 @@ function splitLeadingSystem(messages) {
 }
 
 export function stabilizeCopilotSystemPrefix(messages, sessionId) {
-  if (!Array.isArray(messages) || !sessionId) return messages
+  if (!Array.isArray(messages) || isCopilotFallback(sessionId)) return messages
   const { head, rest } = splitLeadingSystem(messages)
   if (head.length === 0) return messages
   const text = head.map(systemText).join('\n\n')
@@ -72,9 +83,7 @@ export function stabilizeCopilotSystemPrefix(messages, sessionId) {
 }
 
 export function applyCopilotCache(payload: any = {}) {
-  const cacheSessionId = copilotCacheSessionId(payload.session_id)
-    ?? copilotCacheSessionId(payload.prompt_cache_key)
-    ?? COPILOT_STABLE_SESSION
+  const cacheSessionId = copilotConversationId(payload)
   const next = { ...payload }
   delete next.prompt_cache_key
   delete next.prompt_cache_retention

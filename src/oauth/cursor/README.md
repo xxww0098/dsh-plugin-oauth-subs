@@ -15,11 +15,10 @@ Cursor 订阅（Composer / Claude / GPT / Grok via Cursor infra）。原生 wire
 | [`catalog.ts`](catalog.ts) | 登录后 GetUsableModels + AvailableModels 活目录；静态 `CURSOR_MODELS` 只做离线 fallback |
 | [`pkce-flow.ts`](pkce-flow.ts) | 打开 `loginDeepControl` + poll 直到 tokens |
 | [`import.ts`](import.ts) | 本机 CLI Keychain / IDE `state.vscdb` / `CURSOR_ACCESS_TOKEN` |
-| [`refresh-guard.ts`](refresh-guard.ts) | 已知坏 refresh 短退避，避免 stale CLI 卡住 snapshot |
 | [`request.ts`](request.ts) | OpenAI Completions ↔ `AgentClientMessage` / `AgentServerMessage` |
 | [`cache.ts`](cache.ts) | `AgentRunRequest.conversation_id` + 稳定 turn id。禁止 `Date.now()` / 每次 `randomUUID()` |
 | [`proto.ts`](proto.ts) | 最小 protobuf + Connect framing（Run / GetUsableModels / AvailableModels） |
-| [`h2-session.ts`](h2-session.ts) | Node `http2` 进程内会话（unary + streaming）；`connectFn` 允许返回 Promise |
+| [`h2-session.ts`](h2-session.ts) | Node `http2` 进程内 RPC（unary + streaming），走池化会话、只关自己的流；`connectFn` 允许返回 Promise |
 | [`upstream-proxy.ts`](upstream-proxy.ts) | 可选上游代理：HTTP CONNECT / SOCKS5 隧道（区域锁出口） |
 | [`transport.ts`](transport.ts) | Completions HTTP / SSE 输出与 Run 事件消费背压 |
 
@@ -52,11 +51,11 @@ Run 握手必须按类型回帧，不能一律当原生工具拒绝：
 
 工具结果续跑：Cursor 没有无状态的 tool-result action。下一轮把**完成轮**（user + MCP 调用 + result）写进 `conversationState`（`parseTurns` 只在还有未答复 toolCall 时才算 in-flight），并把工具输出作为**当前 user 消息**（`openaiToCursor` 的 `continuationText`）。只重发原 user 文本会让模型重复调用同一个工具。
 
-HTTP/2 请求取消 / unary 超时必须销毁该请求独占的连接，`close()` 的优雅关闭不会终止活动流；已结算后不再消费消息或写 KV 回复。预取消信号不建立连接。`onEvent` 的异步消费完成前暂停接收，SSE 背压沿调用链传回 Run。EOF 的 Connect 残帧必须报错；已输出后的异常发 OpenAI error SSE，不混入回答文字或追加 DONE。见[故障记录](../../../docs/error.md)。
+h2 会话按 (origin, 出口代理) 池化：`cursorH2Connect` 每键一个会话，并发拨号合并，close / GOAWAY / error / 60s 无帧即出池（空闲是优雅 `close()`，在途流跑完），会话 `unref()`，插件停止或配置变化时 `clearCursorH2Pool()` 清池。Run 与 unary 只拥有自己的流：结束、取消、unary 超时都 `stream.close(NGHTTP2_CANCEL)`（上游停止该流的工作），绝不 `destroy` 共享会话；调用方放弃后才落地的拨号照样入池，但不交给它。已结算后不再消费消息或写 KV 回复。预取消信号不建立连接。`onEvent` 的异步消费完成前暂停接收，SSE 背压沿调用链传回 Run。EOF 的 Connect 残帧必须报错。每次 Run 在 `upstreamRequest(...).run` 里执行：首字节 120s 覆盖 h2 拨号 + 第一个 DATA 帧，每帧 `touch()`；role 块随第一块内容才发，输出前的 Connect 错误帧按 `connectCodeStatus` 回 JSON（`unauthenticated`→401 先刷新一次再试，`resource_exhausted`→429，`invalid_argument`→400…），非 200 的 h2 头按原状态码回；都不在代理内重放，只重试传输故障。已输出后的异常直接断流（`destroy`），不写 SSE 错误块、不追加 DONE。见[故障记录](../../../docs/error.md)。
 
 ### 上游代理（区域锁出口）
 
-Cursor 按请求**出口 IP** 做合规区锁：Anthropic / OpenAI / Gemini 在受限区域直接 `Model not available: This model provider is not supported in your region`（Composer / Grok / Kimi / GLM 不受限）。官方客户端走 `http.proxy`；本 hop 等价物是**插件配置 `cursorProxy`**，或环境变量 `PI_CURSOR_PROXY` / `CURSOR_PROXY`（`http://`、`https://`、`socks5://`，可带 `user:pass@`）。配置后 `cursorH2Connect` 先对代理做 CONNECT / SOCKS5 握手，再在隧道上做 TLS+h2 —— `connectFn` 因此允许返回 Promise。只有 h2 RPC 面（agentn Run / GetUsableModels、api2 unary）走隧道；auth poll / refresh / quota JSON 仍直连。目录缓存键并入代理出口，切代理即重新拉活目录。未配代理时区域错误会追加指向该配置的提示。
+Cursor 按请求**出口 IP** 做合规区锁：Anthropic / OpenAI / Gemini 在受限区域直接 `Model not available: This model provider is not supported in your region`（Composer / Grok / Kimi / GLM 不受限）。官方客户端走 `http.proxy`；本 hop 等价物是**插件配置 `cursorProxy`**，或环境变量 `PI_CURSOR_PROXY` / `CURSOR_PROXY`（`http://`、`https://`、`socks5://`，可带 `user:pass@`）。配置后 `cursorH2Connect` 先对代理做 CONNECT / SOCKS5 握手，再在隧道上做 TLS+h2 —— `connectFn` 因此允许返回 Promise。h2 RPC 面（agentn Run / GetUsableModels、api2 unary）的出口优先级：`cursorProxy` → `PI_CURSOR_PROXY` / `CURSOR_PROXY` → 插件出站代理（`outboundProxyFor`，遵守 NO_PROXY / 回环直连）；h2 会话 10s 内连不上即销毁报 `cursor h2 connect timeout`。auth poll / refresh / quota JSON 走 `outboundFetch`（出站代理，不走 `cursorProxy`）。目录缓存键并入代理出口，切代理即重新拉活目录。未配代理时区域错误会追加指向该配置的提示。
 
 ## 登录
 
@@ -66,7 +65,7 @@ Cursor 按请求**出口 IP** 做合规区锁：Anthropic / OpenAI / Gemini 在�
 | 本机导入 | 「导入本机 Cursor」 | 见下。**不是**第二套 OAuth |
 | 空花名册自动导入 | 无按钮 | roster 为空时尝试一次本机复用。**绝不**覆盖已存 PKCE/session |
 
-刷新：`POST https://api2.cursor.sh/auth/exchange_user_api_key`，`Authorization: Bearer <refresh>`，body `{}`。过期用 JWT `exp` 减 5 分钟。
+刷新：`POST https://api2.cursor.sh/auth/exchange_user_api_key`，`Authorization: Bearer <refresh>`，body `{}`。过期用 JWT `exp` 减 5 分钟。永久失败（401 / `invalid_grant` 类）与退避都归 `TokenManager`；403 / 429 / 5xx 是临时失败。
 
 **不要**在插件加载时静默扫 Keychain / `state.vscdb` 覆盖已有会话。自动导入只在 cursor 花名册为空时走一次。
 
@@ -75,7 +74,7 @@ Cursor 按请求**出口 IP** 做合规区锁：Anthropic / OpenAI / Gemini 在�
 可见标题只走人类 id，顺序：
 
 1. JWT `email` / `preferred_username`（`cursorAccountFromToken`，不验签）
-2. session `cachedEmail` / IDE `state.vscdb` `cursorAuth/cachedEmail`
+2. session `cachedEmail` / IDE `state.vscdb` `cursorAuth/cachedEmail`（snapshot 只在有账号缺人类 id 时才打开 `state.vscdb`，每账号每 60s 最多一次，登录态变化重置）
 3. `POST …/aiserver.v1.AuthService/GetEmail` `{ email }`（刷新额度必打；usage JSON 没有 email）
 4. 必要时 `POST …/aiserver.v1.DashboardService/GetMe`（`email` 优先，否则 `firstName` + `lastName`）
 5. `GetCurrentPeriodUsage` JSON `email`（有才用；活探测里没有）
@@ -91,7 +90,7 @@ Cursor 按请求**出口 IP** 做合规区锁：Anthropic / OpenAI / Gemini 在�
 1. `CURSOR_ACCESS_TOKEN`（不 refresh）
 2. 并行读 Keychain 与 vscdb
 3. 仍有效的本地 access（先 Keychain 再 vscdb）—— **零网络**
-4. 否则 refresh Keychain；失败且 vscdb refresh 不同再 refresh vscdb
+4. 否则本机登录已过期：抛 `ImportedLoginStale`（「run cursor-agent (or open Cursor)」）。**不**在导入时换票——refresh token 属于 CLI / IDE
 5. `saveSession`，`source` 标 `cli_keychain` / `ide_vscdb` / `env`
 6. 刷新额度
 
@@ -110,6 +109,10 @@ IDE `state.vscdb`（只读，`node:sqlite` `DatabaseSync`，用完 close）：
 - WSL: **仅当前** Windows 用户（`USERPROFILE` / `USERNAME` → `/mnt/c/Users/<you>/AppData/Roaming/Cursor/...`）。不扫 Public / Default / 其他 profile。
 
 键：`cursorAuth/accessToken`、`cursorAuth/refreshToken`、`cursorAuth/cachedEmail`（可选，给卡抬头）。缺文件 = 空，不把堆栈抛给 UI。
+
+**导入只读**（决定 4）：`cli_keychain` / `ide_vscdb` 登录临期时，`cursorImported` 钩子只重读同一 store（Keychain 或 vscdb，零网络），过期 > 现在 + 15s 才采用；store 也过期 → `ImportedLoginStale`（403），不删登录；access JWT 的 `sub` 与存储行不同（换了号）同样抛 `ImportedLoginStale`，不采用。`pkce` / `env` 不受影响。
+
+轮换证据：来源一 cursor-agent `2026.09.26-dd393fe` 打包 `index.js`（`./src/auth-refresh.ts`）——CLI 没有 refresh_token grant，只用 API key 经 `/auth/exchange_user_api_key` 重铸，Keychain 走 `setSecretIfChanged`；IDE vscdb 里 `cursorAuth/accessToken` 与 `cursorAuth/refreshToken` 是同一个 JWT ⇒ **不轮换**。决定 4 的默认仍是只读；用户要放开时，本家族可以放开。来源二（被动观察：插件自有登录在宿主自然刷新前后各记一次 refresh token sha256 前 8 位）：待合入后记录。
 
 空结果：zh「本机没有 Cursor CLI 或 IDE 登录」。Keychain 第一次读可能弹系统授权；vscdb 键名可能被 Cursor 改掉——见 `docs/error.md`。
 
@@ -184,7 +187,7 @@ POST /aiserver.v1.AuthService/GetEmail                    {}
 | | |
 |---|---|
 | 后端 | Cursor Agent 会话（`AgentRunRequest.conversation_id`）。prefix 是 conversationState blobs |
-| 粘性 id | DSH `session_id` / `prompt_cache_key` **加上 model**；缺 pin 时 `dsh-cursor:<model>`（裸 `dsh-cursor` 只在没有 model 时）。禁止 `Date.now()`。历史 turn 的 `messageId` / `requestId` 用内容哈希，禁止每跳 `randomUUID()` |
+| 粘性 id | DSH `session_id` / `prompt_cache_key` **加上 model**；缺 pin 时 `dsh-cursor:<model>`（裸 `dsh-cursor` 只在没有 model 时），`isCursorFallback` 为真时不钉系统提示。禁止 `Date.now()`。历史 turn 的 `messageId` / `requestId` 用内容哈希，禁止每跳 `randomUUID()` |
 | HTTP | `x-request-id` = `x-original-request-id`（SDK handshake）。不写 Codex `session-id` / Grok `x-grok-conv-id` |
 | 停额外 snapshot | 第一条 system 钉在 `root_prompt_messages_json`；后续 DSH snapshot 再追加一条 system blob（Cursor 前缀列表，不是 GLM 尾 system，也不是 Gemini 尾 user） |
 | 命中字段 | `TurnEndedUpdate.cache_read_tokens`（field 3）→ OpenAI `prompt_tokens_details.cached_tokens`。`input_tokens` 是整段 prompt（含 cache），与 `@cursor/sdk` `toTokenUsage` 一致 |

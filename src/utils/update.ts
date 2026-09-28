@@ -27,6 +27,7 @@ import { errorCode } from './http.js'
 import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { outboundFetch } from './outbound.js'
 
 export function modulePackageJsonPath() {
   return fileURLToPath(new URL('../../package.json', import.meta.url))
@@ -337,7 +338,7 @@ export function formatPublishedAt(iso) {
 }
 
 export async function fetchLatest({
-  fetchFn = fetch,
+  fetchFn = outboundFetch,
   spawnFn = spawn,
   current,
   platform = process.platform,
@@ -635,7 +636,7 @@ async function performInstallRelease({
   tag,
   profile = DEFAULT_PROFILE,
   env = process.env,
-  fetchFn = fetch,
+  fetchFn = outboundFetch,
   extractFn,
   readFileFn,
   realpathFn,

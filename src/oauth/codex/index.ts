@@ -7,6 +7,8 @@
  */
 
 import { decodeJwtPayload } from '../../utils/jwt.js'
+import { outboundFetch } from '../../utils/outbound.js'
+import { oauthError } from '../tokens.js'
 
 export const CODEX_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann'
 export const CODEX_AUTHORIZE_URL = 'https://auth.openai.com/oauth/authorize'
@@ -27,12 +29,12 @@ export const CODEX_PREEMPT_MS = 5 * 60_000
 export const CODEX_CONTEXT_WINDOW = 258_000
 export const CODEX_DEFAULT_MAX_TOKENS = 128_000
 
-const PERMANENT_REFRESH_CODES = new Set([
+/** Codex token-endpoint codes for a dead refresh token, beyond the shared grant codes. */
+export const CODEX_PERMANENT_REFRESH_CODES = [
   'refresh_token_expired',
   'refresh_token_reused',
   'refresh_token_invalidated',
-  'invalid_grant',
-])
+]
 
 /**
  * `reasoning.effort` values the Codex Responses API accepts, probed against
@@ -180,7 +182,7 @@ export function codexSession(tokens, fallback?) {
   }
 }
 
-export async function exchangeCodexCode(code, verifier, redirectUri, fetchFn = fetch) {
+export async function exchangeCodexCode(code, verifier, redirectUri, fetchFn = outboundFetch) {
   const response = await fetchFn(CODEX_TOKEN_URL, {
     method: 'POST',
     headers: {
@@ -199,7 +201,7 @@ export async function exchangeCodexCode(code, verifier, redirectUri, fetchFn = f
   return codexSession(await response.json())
 }
 
-export async function refreshCodex(session, fetchFn = fetch) {
+export async function refreshCodex(session, fetchFn = outboundFetch) {
   const response = await fetchFn(CODEX_TOKEN_URL, {
     method: 'POST',
     headers: {
@@ -214,10 +216,6 @@ export async function refreshCodex(session, fetchFn = fetch) {
   })
   if (!response.ok) throw await oauthError(response, 'codex')
   return codexSession(await response.json(), session)
-}
-
-export function isCodexPermanentRefreshError(error) {
-  return error instanceof OAuthEndpointError && PERMANENT_REFRESH_CODES.has(error.oauthCode)
 }
 
 /** originator + User-Agent pair the token endpoint and Responses API both expect. */
@@ -251,33 +249,4 @@ export function codexUpstreamHeaders(session) {
     'openai-beta': 'responses=experimental',
     accept: 'application/json',
   }
-}
-
-export class OAuthEndpointError extends Error {
-  declare status: any
-  declare oauthCode: any
-
-  constructor(message, status?, oauthCode?) {
-    super(message)
-    this.name = 'OAuthEndpointError'
-    this.status = status
-    this.oauthCode = oauthCode
-  }
-}
-
-export async function oauthError(response, label) {
-  let body = ''
-  try { body = await response.text() } catch { body = '' }
-  let code
-  try {
-    const parsed = JSON.parse(body)
-    code = parsed.error ?? parsed.error_code
-    const description = parsed.error_description ?? parsed.message
-    if (typeof description === 'string' && description.length > 0) {
-      return new OAuthEndpointError(`${label}: ${description}`, response.status, code)
-    }
-  } catch {
-    // not JSON
-  }
-  return new OAuthEndpointError(`${label} request failed (HTTP ${response.status})${body ? `: ${body.slice(0, 240)}` : ''}`, response.status, code)
 }

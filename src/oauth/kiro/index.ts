@@ -8,6 +8,8 @@
  */
 
 import { createHash, randomUUID } from 'node:crypto'
+import { outboundFetch } from '../../utils/outbound.js'
+import { oauthCodeOf } from '../tokens.js'
 
 export const KIRO_PORTAL_URL = 'https://app.kiro.dev'
 export const KIRO_AUTH_HOST = 'prod.us-east-1.auth.desktop.kiro.dev'
@@ -436,16 +438,18 @@ function refreshExpiresAt(body: any = {}) {
 export class KiroHttpError extends Error {
   declare status: any
   declare retryAfter: string | undefined
+  declare oauthCode: string | undefined
 
-  constructor(message, status, { retryAfter }: any = {}) {
+  constructor(message, status, { retryAfter, oauthCode }: any = {}) {
     super(message)
     this.name = 'KiroHttpError'
     this.status = status
+    if (oauthCode) this.oauthCode = oauthCode
     if (retryAfter != null && String(retryAfter).trim()) this.retryAfter = String(retryAfter).trim()
   }
 }
 
-function headerOf(response, name) {
+export function headerOf(response, name) {
   const headers = response?.headers
   if (!headers) return undefined
   if (typeof headers.get === 'function') return headers.get(name) ?? undefined
@@ -495,13 +499,13 @@ async function readJson(response, label) {
     throw new KiroHttpError(
       `${label} failed (HTTP ${response.status})${text ? `: ${text.slice(0, 240)}` : ''}`,
       response.status,
-      { retryAfter: headerOf(response, 'retry-after') },
+      { retryAfter: headerOf(response, 'retry-after'), oauthCode: oauthCodeOf(text) },
     )
   }
   return text ? JSON.parse(text) : {}
 }
 
-export async function exchangeKiroSocialCode(code, verifier, redirectUri, { fetchFn = fetch, callback, machineId: priorMachineId }: any = {}) {
+export async function exchangeKiroSocialCode(code, verifier, redirectUri, { fetchFn = outboundFetch, callback, machineId: priorMachineId }: any = {}) {
   const machineId = allocateKiroMachineId(priorMachineId)
   const response = await fetchFn(`${KIRO_AUTH_URL}/oauth/token`, {
     method: 'POST',
@@ -531,7 +535,7 @@ export async function exchangeKiroSocialCode(code, verifier, redirectUri, { fetc
   })
 }
 
-export async function refreshKiroSocial(session, { fetchFn = fetch } = {}) {
+export async function refreshKiroSocial(session, { fetchFn = outboundFetch } = {}) {
   const refreshToken = validateKiroRefreshToken(session.refreshToken)
   const region = session.authRegion || session.region || KIRO_DEFAULT_REGION
   const host = `prod.${region}.auth.desktop.kiro.dev`
@@ -555,7 +559,7 @@ export async function refreshKiroSocial(session, { fetchFn = fetch } = {}) {
   })
 }
 
-export async function refreshKiroIdc(session, { fetchFn = fetch } = {}) {
+export async function refreshKiroIdc(session, { fetchFn = outboundFetch } = {}) {
   const refreshToken = validateKiroRefreshToken(session.refreshToken)
   const region = session.authRegion || session.region || KIRO_DEFAULT_REGION
   const response = await fetchFn(`${oidcEndpoint(region)}/token`, {
@@ -584,7 +588,7 @@ export async function refreshKiroIdc(session, { fetchFn = fetch } = {}) {
   })
 }
 
-export async function refreshKiroExternalIdp(session, { fetchFn = fetch } = {}) {
+export async function refreshKiroExternalIdp(session, { fetchFn = outboundFetch } = {}) {
   const tokenEndpoint = validateKiroIdpEndpoint(session.tokenEndpoint)
   const refreshToken = validateKiroRefreshToken(session.refreshToken)
   if (!trimmed(session.clientId)) throw new Error('kiro enterprise SSO needs a client id')
@@ -614,17 +618,12 @@ export async function refreshKiroExternalIdp(session, { fetchFn = fetch } = {}) 
   })
 }
 
-export async function refreshKiro(session, { fetchFn = fetch } = {}) {
+export async function refreshKiro(session, { fetchFn = outboundFetch } = {}) {
   const method = canonicalizeKiroMethod(session?.authMethod, { tokenEndpoint: session?.tokenEndpoint })
   if (method === 'api_key') return session
   if (method === 'external_idp') return refreshKiroExternalIdp(session, { fetchFn })
   if (method === 'idc') return refreshKiroIdc(session, { fetchFn })
   return refreshKiroSocial(session, { fetchFn })
-}
-
-export function isKiroPermanentRefreshError(error) {
-  const text = error instanceof Error ? error.message : String(error)
-  return /invalid_grant|Invalid refresh token/i.test(text)
 }
 
 export function isKiroCredential(raw) {

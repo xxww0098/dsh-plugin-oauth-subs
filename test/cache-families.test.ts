@@ -9,6 +9,19 @@ import { applyCursorCache, cursorCacheHeaders, cursorCacheSessionId, cursorConve
 import { applyOllamaCache, ollamaCacheHeaders, ollamaCacheSessionId, OLLAMA_STABLE_SESSION } from '../lib/apikey/ollama/cache.js'
 import { applyKimiCache, kimiCacheHeaders, kimiCacheSessionId, KIMI_STABLE_SESSION, resetKimiPins } from '../lib/oauth/kimi/cache.js'
 import { applyCopilotCache, copilotCacheHeaders, copilotCacheSessionId, COPILOT_STABLE_SESSION, resetCopilotPins } from '../lib/oauth/copilot/cache.js'
+import { applyClineCache, CLINE_STABLE_SESSION, isClineFallback, resetClinePins } from '../lib/oauth/cline/cache.js'
+import { applyDevinCache } from '../lib/oauth/devin/cache.js'
+import { openaiToKiro } from '../lib/oauth/kiro/request.js'
+import { openaiToAntigravity } from '../lib/oauth/antigravity/request.js'
+import { openaiToCursor } from '../lib/oauth/cursor/request.js'
+import { openaiToDevin } from '../lib/oauth/devin/request.js'
+import { isKimiFallback } from '../lib/oauth/kimi/cache.js'
+import { isCopilotFallback } from '../lib/oauth/copilot/cache.js'
+import { isKiroFallback } from '../lib/oauth/kiro/cache.js'
+import { isCursorFallback, resetCursorSystemPins } from '../lib/oauth/cursor/cache.js'
+import { isAntigravityFallback, resetAntigravitySystemPins } from '../lib/oauth/antigravity/cache.js'
+import { devinConversationId, isDevinFallback } from '../lib/oauth/devin/cache.js'
+import { readdirSync, readFileSync } from 'node:fs'
 
 const dirty = 'session 772f7f3a/foo'
 
@@ -240,4 +253,150 @@ test('Copilot cache strips Codex/Grok fields and writes X-Interaction-Id', () =>
   assert.equal(applyCopilotCache({}).cacheSessionId, COPILOT_STABLE_SESSION)
   assert.deepEqual(copilotCacheHeaders(), { 'x-interaction-id': COPILOT_STABLE_SESSION })
   resetCopilotPins()
+})
+
+// What pi-ai sends once a Completions route has `cacheRetention: 'long'`.
+const HOST_ID = 'session-6f1c2a9e-0b7d-4c55-9a43-2e8f7d1b3c60'
+const hostBody = (model) => ({
+  model,
+  messages: [{ role: 'system', content: 'You are DSH.' }, { role: 'user', content: 'hi' }],
+  stream: true,
+  prompt_cache_key: HOST_ID,
+  prompt_cache_retention: '24h',
+})
+
+test('Cursor derives the conversation id from prompt_cache_key before deleting it', () => {
+  const { payload, cacheSessionId } = applyCursorCache(hostBody('composer-2'))
+  assert.equal(cacheSessionId, `${HOST_ID}:composer-2`)
+  assert.equal(Object.hasOwn(payload, 'prompt_cache_key'), false)
+  assert.equal(Object.hasOwn(payload, 'prompt_cache_retention'), false)
+})
+
+test('every Completions family keys on the host session id and sends no prompt_cache_* upstream', () => {
+  resetKiroSystemPins()
+  resetKimiPins()
+  resetCopilotPins()
+  resetClinePins()
+  const families = {
+    cursor: () => applyCursorCache(hostBody('composer-2')),
+    ollama: () => applyOllamaCache(hostBody('deepseek-v4.1-flash')),
+    kimi: () => applyKimiCache(hostBody('k3')),
+    copilot: () => applyCopilotCache(hostBody('gpt-4.1')),
+    cline: () => applyClineCache(hostBody('cline-free/deepseek-v4.1-flash')),
+    devin: () => applyDevinCache(hostBody('swe-2')),
+    // Custom transports build a fresh wire body from the host payload.
+    kiro: () => {
+      const conversationId = kiroConversationId(hostBody('claude-sonnet-4.5'))
+      return { cacheSessionId: conversationId, payload: openaiToKiro(hostBody('claude-sonnet-4.5'), { conversationId }) }
+    },
+    antigravity: () => {
+      const sessionId = antigravitySessionIdOf(hostBody('gemini-3.7-flash-high'))
+      return { cacheSessionId: sessionId, payload: openaiToAntigravity(hostBody('gemini-3.7-flash-high'), { projectId: 'p', sessionId }) }
+    },
+  }
+  for (const [family, run] of Object.entries(families)) {
+    const { payload, cacheSessionId } = run()
+    assert.ok(String(cacheSessionId).includes(HOST_ID), `${family} id ${cacheSessionId}`)
+    const wire = JSON.stringify(payload)
+    assert.equal(wire.includes('prompt_cache_key'), false, family)
+    assert.equal(wire.includes('prompt_cache_retention'), false, family)
+  }
+  resetKiroSystemPins()
+  resetKimiPins()
+  resetCopilotPins()
+  resetClinePins()
+})
+
+// Each family's system prompt as it reaches the wire, via the same id the proxy derives.
+const FALLBACK_FAMILIES = {
+  kimi: (body) => applyKimiCache(body).payload.messages[0].content,
+  copilot: (body) => applyCopilotCache(body).payload.messages[0].content,
+  cline: (body) => applyClineCache(body).payload.messages[0].content,
+  kiro: (body) => openaiToKiro(body, { conversationId: kiroConversationId(body) })
+    .conversationState.history[0].userInputMessage.content,
+  cursor: (body) => openaiToCursor(body, { conversationId: applyCursorCache(body).cacheSessionId }).systemPrompt,
+  antigravity: (body) => openaiToAntigravity(body, { projectId: 'p', sessionId: antigravitySessionIdOf(body) })
+    .request.systemInstruction.parts[0].text,
+  devin: (body) => openaiToDevin(body).fields.prompt,
+}
+const MODELS = {
+  kimi: 'k3', copilot: 'gpt-4.1', cline: 'cline-free/deepseek-v4.1-flash', kiro: 'claude-sonnet-4.5',
+  cursor: 'composer-2', antigravity: 'gemini-3.7-flash-high', devin: 'swe-2',
+}
+const resetAllPins = () => {
+  resetKimiPins(); resetCopilotPins(); resetClinePins(); resetKiroSystemPins(); resetCursorSystemPins(); resetAntigravitySystemPins()
+}
+
+test('two id-less sessions each keep their own system prompt (fallback ids never pin)', () => {
+  resetAllPins()
+  for (const [family, systemOf] of Object.entries(FALLBACK_FAMILIES)) {
+    const body = (system) => ({
+      model: MODELS[family],
+      messages: [{ role: 'system', content: system }, { role: 'user', content: 'hi' }],
+    })
+    // The last one extends A: a fallback pin would park it and serve A's head.
+    for (const system of ['You are session A.', 'You are session B.', 'You are session A.', 'You are session A. Also C.']) {
+      assert.ok(String(systemOf(body(system))).includes(system), `${family}: ${system}`)
+    }
+  }
+  resetAllPins()
+})
+
+test('fallback predicates match the bare constant and its model-suffixed form only', () => {
+  const cases = {
+    kimi: [isKimiFallback, KIMI_STABLE_SESSION],
+    copilot: [isCopilotFallback, COPILOT_STABLE_SESSION],
+    cline: [isClineFallback, CLINE_STABLE_SESSION],
+    kiro: [isKiroFallback, KIRO_STABLE_SESSION],
+    cursor: [isCursorFallback, CURSOR_STABLE_SESSION],
+    antigravity: [isAntigravityFallback, ANTIGRAVITY_STABLE_SESSION],
+    devin: [isDevinFallback, 'dsh-devin'],
+  }
+  for (const [family, [isFallback, constant]] of Object.entries(cases)) {
+    assert.equal(isFallback(constant), true, family)
+    assert.equal(isFallback(`${constant}:some-model`), true, family)
+    assert.equal(isFallback(undefined), true, family)
+    assert.equal(isFallback(HOST_ID), false, family)
+    assert.equal(isFallback(`${HOST_ID}:some-model`), false, family)
+    assert.equal(isFallback(`${constant}x`), false, family)
+  }
+  // The resolvers' own fallbacks are what the predicates recognise.
+  assert.equal(isKiroFallback(kiroConversationId({ model: 'claude-sonnet-4.5' })), true)
+  assert.equal(isCursorFallback(cursorConversationId({ model: 'composer-2' })), true)
+  assert.equal(isAntigravityFallback(antigravitySessionIdOf({ model: 'gemini-3.7-flash-high' })), true)
+  assert.equal(isDevinFallback(devinConversationId({ model: 'swe-2' })), true)
+  assert.equal(isKimiFallback(applyKimiCache({}).cacheSessionId), true)
+  assert.equal(isCopilotFallback(applyCopilotCache({}).cacheSessionId), true)
+  assert.equal(isClineFallback(applyClineCache({}).cacheSessionId), true)
+})
+
+// Firewall: no clock or RNG in a session-id position — in any cache.ts nor in
+// any module exporting a request-header builder (GLM's per-process random
+// `x-session-id` lived in glm/index.ts).
+const RANDOM = /Date\.now|Math\.random|randomUUID|randomBytes|randomHex/
+const ID_WORD = /session[-_]?id|conversation[-_]?id|conv[-_]id|cascade|interaction[-_]id|task[-_]id|thread[-_]id|prompt_cache_key/i
+const ID_CONST = /[A-Z][A-Z_]*SESSION/
+const inSessionPosition = (line) => RANDOM.test(line) && (ID_WORD.test(line) || ID_CONST.test(line))
+
+test('firewall: no Date.now / Math.random / randomUUID / randomBytes in session-id positions', () => {
+  assert.equal(inSessionPosition("const GLM_PROCESS_SESSION_ID = `sess_${randomBytes(12).toString('hex')}`"), true)
+  assert.equal(inSessionPosition("conversationId: `-${Date.now()}`,"), true)
+  assert.equal(inSessionPosition("'x-grok-req-id': extra.reqId ? extra.reqId : randomUUID(),"), false)
+  const roots = ['src/oauth', 'src/apikey']
+  const files = roots.flatMap((root) => readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .flatMap((entry) => readdirSync(`${root}/${entry.name}`)
+      .filter((name) => name.endsWith('.ts'))
+      .map((name) => `${root}/${entry.name}/${name}`)))
+  const scanned = files.filter((file) => file.endsWith('/cache.ts')
+    || /export (async )?function \w*Headers\(/.test(readFileSync(file, 'utf8')))
+  assert.ok(scanned.includes('src/oauth/glm/index.ts'))
+  assert.ok(scanned.length >= 20, `scanned ${scanned.length}`)
+  const hits = scanned.flatMap((file) => readFileSync(file, 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, (block) => block.replace(/[^\n]/g, ''))
+    .split('\n')
+    .map((line, index) => ({ at: `${file}:${index + 1}`, code: line.replace(/(^|[^:'"`])\/\/.*$/, '$1') }))
+    .filter(({ code }) => inSessionPosition(code))
+    .map(({ at }) => at))
+  assert.deepEqual(hits, [])
 })
