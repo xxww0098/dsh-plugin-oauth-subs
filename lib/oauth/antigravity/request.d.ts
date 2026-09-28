@@ -2,6 +2,7 @@
  * OpenAI chat/completions ↔ daily-cloudcode-pa generateContent (hub).
  * Body always includes project + model + userAgent: "antigravity".
  */
+import { UpstreamFailure } from '../upstream.js';
 export { ANTIGRAVITY_STABLE_SESSION, resetAntigravitySystemPins, } from './cache.js';
 export declare function resetAntigravityThoughtSignatures(): void;
 /** Cloud Code / Gemini REST: part-level thoughtSignature (also accept snake / nested). */
@@ -36,6 +37,12 @@ export declare function openaiToAntigravity(payload: any, { projectId, sessionId
     requestId: string;
     request: any;
 };
+/**
+ * Cloud Code can answer 200 with a Google RPC error in the body, outer or under
+ * `response`. It becomes an upstream failure with its own status (`code`, else
+ * the RPC `status` name) — never a clean `stop` the host reads as success.
+ */
+export declare function antigravityBodyError(body: any): UpstreamFailure | undefined;
 export declare function collectAntigravityParts(body: any, { sessionId }?: any): {
     text: string;
     toolCalls: any[];

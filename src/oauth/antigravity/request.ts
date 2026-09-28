@@ -3,6 +3,7 @@
  * Body always includes project + model + userAgent: "antigravity".
  */
 
+import { UpstreamFailure, connectCodeStatus } from '../upstream.js'
 import { antigravityRequestId, ANTIGRAVITY_BODY_USER_AGENT } from './index.js'
 import {
   antigravitySessionIdOf,
@@ -635,7 +636,23 @@ function finishReason(raw) {
   return 'stop'
 }
 
+/**
+ * Cloud Code can answer 200 with a Google RPC error in the body, outer or under
+ * `response`. It becomes an upstream failure with its own status (`code`, else
+ * the RPC `status` name) — never a clean `stop` the host reads as success.
+ */
+export function antigravityBodyError(body) {
+  const error = body?.error ?? body?.response?.error
+  if (!error) return undefined
+  const code = Number(error.code)
+  const status = code >= 400 && code <= 599 ? code : connectCodeStatus(String(error.status ?? '').toLowerCase())
+  const detail = typeof error === 'string' ? error : error.message ?? error.status ?? status
+  return new UpstreamFailure(status, `antigravity upstream error: ${detail}`, { code: 'http', payload: { error } })
+}
+
 export function collectAntigravityParts(body, { sessionId }: any = {}) {
+  const failure = antigravityBodyError(body)
+  if (failure) throw failure
   const response = body?.response ?? body
   const candidate = response?.candidates?.[0]
   const parts = Array.isArray(candidate?.content?.parts) ? candidate.content.parts : []

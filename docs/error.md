@@ -9,6 +9,12 @@
 **修复**：`request.ts` 签名桶只给真实会话 id（`isAntigravityFallback` 为门，回退 id 不存也不查）；每会话 4096 键、get 和 set 都刷新（Map 插入序 = LRU）；最多 64 会话；全局 key + 签名文本 64 MiB，超出先淘汰最久没用的整个会话。合成回放 300 次调用：第 1 次的签名仍挂着，没有 functionCall 变文本，相邻两轮 `contents` 前缀逐字节延长（243 → 26462@128 → 62410@300 字节）。
 **活测（2026-09-28）**：gemini-3-flash 真实签名长度 140（low）/ 2516（high）字符；设想的 32 MiB 对应 128 B/键，「典型 × 4096 × 64」≈ 640 MiB 远超，所以上限按实测改为 64 MiB：满载会话（4096 键 × ~2.6 KB）≈ 10.5 MiB，可整存约 6 个。gemini-3.1-pro-high 这次 400 INVALID_ARGUMENT，未取到样本。
 
+## 2026-09-28：Antigravity 上游卡住或回 `body.error` 时被收成正常结束
+
+**现象**：Antigravity 流式在读上游之前就写 200 头；上游卡住没有任何计时器，只能等宿主 300s 看门狗；Cloud Code 200 里带 Google RPC 错误（外层 `error` 或 `response.error`）时代理照常发 `finish_reason: "stop"` + `[DONE]`，宿主当成功的空回答。
+**根因**：`antigravity/transport.ts` 自己管 HTTP，没接 04 的尝试原语；`collectAntigravityParts` 只看 `candidates`，忽略 `error`。
+**修复**：`forwardAntigravity` 在 `upstreamRequest(...).run` 里执行（首字节 120s / 预算 270s 从路由 `startedAt` 起 / 空闲 270s），第一块映射输出才写头；`antigravityBodyError` 把 `error.code`（否则 RPC `status` 名经 `connectCodeStatus`）转成 `UpstreamFailure`：输出前回该状态码的 JSON，输出后 `destroy`；无 `finishReason` 的 EOF 当截断（输出前重试、输出后 destroy）；输出前 401 经 `tokens.refreshNow` 刷新一次再试。daily → prod URL 回退不变。
+**活测（2026-09-28，宿主 Node v24.21.0）**：worktree `lib/` 的 `createProxy` 2 次 gemini-3.7-flash-high 流式、未刷新：均 200 + `[DONE]`，`max_tokens: 64` 那次只有终帧 `finish_reason: length`（3.7s），另一次 1 块内容 + `stop`（1.5s）；Cloud Code 终帧都带 `finishReason`。
 ## 2026-09-28：上游空闲约 4s 就断连，下一轮重新握手
 
 **现象**：两轮之间空闲超过约 4s（codex 14%，其余家族 10–16%），下一个请求要重新 TCP + TLS 握手（chatgpt.com 约 1.7s，ollama.com 约 0.5s）。

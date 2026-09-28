@@ -1,6 +1,7 @@
 /** Cloud Code HTTP lifecycle and OpenAI streaming translation. */
 
-import { RequestError, describeError, sendJson } from '../../utils/http.js'
+import { RequestError, sendJson } from '../../utils/http.js'
+import { UpstreamFailure, upstreamRequest } from '../upstream.js'
 import {
   ANTIGRAVITY_GENERATE_URL,
   ANTIGRAVITY_STREAM_URL,
@@ -24,58 +25,6 @@ async function rememberAntigravityValidation(session, info, tokens, onValidation
   onValidation?.(next)
 }
 
-export async function forwardAntigravity(response, { payload, cacheSessionId, stream, session, tokens, fetchFn, signal, onValidation }) {
-  const projectId = session.projectId
-  if (typeof projectId !== 'string' || !projectId.trim()) {
-    throw new RequestError(403, 'antigravity session is missing project_id')
-  }
-  const built = openaiToAntigravity(payload, { projectId, sessionId: cacheSessionId })
-  const sessionId = built.request.sessionId
-  const body = Buffer.from(JSON.stringify(built))
-  const url = stream ? ANTIGRAVITY_STREAM_URL : ANTIGRAVITY_GENERATE_URL
-  const headers = {
-    ...antigravityChatHeaders(session),
-    ...(stream ? { accept: 'text/event-stream' } : {}),
-  }
-
-  let upstream
-  try {
-    upstream = await fetchAntigravityCloudCode(url, { method: 'POST', headers, body, signal }, fetchFn)
-  } catch (error) {
-    if (signal.aborted) throw error
-    throw new RequestError(502, describeError(error))
-  }
-
-  if (upstream.status >= 400) {
-    const text = await upstream.text()
-    let parsed
-    try { parsed = text ? JSON.parse(text) : null } catch { parsed = { error: { message: text } } }
-    const validation = parseAntigravityValidation(parsed) ?? parseAntigravityValidation(text)
-    if (validation) {
-      await rememberAntigravityValidation(session, validation, tokens, onValidation)
-      sendJson(response, 400, antigravityValidationClientError(validation))
-      return
-    }
-    sendJson(response, upstream.status, parsed ?? { error: { message: `antigravity upstream ${upstream.status}` } })
-    return
-  }
-
-  const model = typeof payload.model === 'string' ? payload.model : 'antigravity'
-  if (!stream) {
-    const text = await upstream.text()
-    let parsed
-    try { parsed = text ? JSON.parse(text) : {} } catch {
-      throw new RequestError(502, 'antigravity upstream returned invalid JSON')
-    }
-    sendJson(response, 200, antigravityToOpenai(parsed, { model, sessionId }))
-    return
-  }
-
-  response.writeHead(200, {
-    'content-type': 'text/event-stream; charset=utf-8',
-    'cache-control': 'no-store',
-    'x-content-type-options': 'nosniff',
-  })
 /**
  * A destroyed response emits 'close', never 'drain', so awaiting 'drain' alone
  * hangs forever when the client goes away. Race drain against close/error/abort
@@ -104,40 +53,110 @@ function waitForDrain(response, signal) {
   })
 }
 
-  const id = `chatcmpl-${Date.now()}`
-  const streamMapper = createAntigravityOpenaiStream({ model, id, sessionId })
-  let rest = ''
-  const decoder = new TextDecoder()
-  const reader = upstream.body?.getReader()
-  if (!reader) {
-    response.write(`data: ${JSON.stringify(streamMapper.finish())}\n\n`)
-    response.write('data: [DONE]\n\n')
-    response.end()
-    return
+const finishReasonOf = (event) => (event?.response ?? event)?.candidates?.[0]?.finishReason
+
+/**
+ * Runs inside `upstreamRequest`: the head waits for the first mapped chunk, so
+ * a stall, a transport fault, or a Google error before output is still a JSON
+ * error with a real status; after output it destroys the response.
+ */
+export async function forwardAntigravity(response, { payload, cacheSessionId, stream, session, tokens, fetchFn, signal, startedAt, upstreamTimeouts, onValidation }) {
+  const projectId = session.projectId
+  if (typeof projectId !== 'string' || !projectId.trim()) {
+    throw new RequestError(403, 'antigravity session is missing project_id')
   }
-  try {
-    while (true) {
-      const { done, value } = await reader.read()
-      rest += decoder.decode(value, { stream: !done })
-      const parsed = parseAntigravitySseBlocks(done ? `${rest}\n\n` : rest)
-      rest = parsed.rest
-      for (const event of parsed.events) {
-        const chunk = streamMapper.push(event)
-        if (chunk) {
-          if (!response.write(`data: ${JSON.stringify(chunk)}\n\n`)) await waitForDrain(response, signal)
-        }
-      }
-      if (done) break
+  const built = openaiToAntigravity(payload, { projectId, sessionId: cacheSessionId })
+  const sessionId = built.request.sessionId
+  const body = Buffer.from(JSON.stringify(built))
+  const url = stream ? ANTIGRAVITY_STREAM_URL : ANTIGRAVITY_GENERATE_URL
+  const model = typeof payload.model === 'string' ? payload.model : 'antigravity'
+
+  await upstreamRequest({ family: 'antigravity', signal, startedAt, stream, response, timeouts: upstreamTimeouts }).run(async (attempt) => {
+    const headers = {
+      ...antigravityChatHeaders(session),
+      ...(stream ? { accept: 'text/event-stream' } : {}),
     }
-  } finally {
-    // Never leave the upstream connection pinned when the client goes away.
-    await reader.cancel().catch(() => {})
-    reader.releaseLock()
-  }
-  if (response.destroyed) return
-  if (!response.write(`data: ${JSON.stringify(streamMapper.finish())}\n\n`)) {
-    await waitForDrain(response, signal).catch(() => {})
-  }
-  response.write('data: [DONE]\n\n')
-  if (!response.writableEnded && !response.destroyed) response.end()
+    const upstream = await fetchAntigravityCloudCode(url, { method: 'POST', headers, body, signal: attempt.signal }, fetchFn)
+    attempt.signal.throwIfAborted()
+
+    if (upstream.status >= 400) {
+      const text = await upstream.text()
+      let parsed
+      try { parsed = text ? JSON.parse(text) : null } catch { parsed = { error: { message: text } } }
+      const validation = parseAntigravityValidation(parsed) ?? parseAntigravityValidation(text)
+      if (validation) {
+        await rememberAntigravityValidation(session, validation, tokens, onValidation)
+        throw new UpstreamFailure(400, 'antigravity account needs validation', { code: 'http', payload: antigravityValidationClientError(validation) })
+      }
+      throw new UpstreamFailure(upstream.status, `antigravity upstream ${upstream.status}`, {
+        code: 'http',
+        payload: parsed ?? { error: { message: `antigravity upstream ${upstream.status}` } },
+      })
+    }
+
+    if (!stream) {
+      const text = await upstream.text()
+      let parsed
+      try { parsed = text ? JSON.parse(text) : {} } catch {
+        throw new UpstreamFailure(502, 'antigravity upstream returned invalid JSON', { code: 'http' })
+      }
+      sendJson(response, 200, antigravityToOpenai(parsed, { model, sessionId }))
+      return
+    }
+
+    const streamMapper = createAntigravityOpenaiStream({ model, id: `chatcmpl-${Date.now()}`, sessionId })
+    const write = async (chunk) => {
+      if (!response.headersSent) {
+        response.writeHead(200, {
+          'content-type': 'text/event-stream; charset=utf-8',
+          'cache-control': 'no-store',
+          'x-content-type-options': 'nosniff',
+        })
+      }
+      if (!response.write(`data: ${JSON.stringify(chunk)}\n\n`)) await waitForDrain(response, attempt.signal)
+    }
+    let finished = false
+    let rest = ''
+    const decoder = new TextDecoder()
+    const reader = upstream.body?.getReader()
+    try {
+      while (reader) {
+        const { done, value } = await reader.read()
+        // A read that settles after a timer fired must not reach the client.
+        attempt.signal.throwIfAborted()
+        if (!done) attempt.touch()
+        rest += decoder.decode(value, { stream: !done })
+        const parsed = parseAntigravitySseBlocks(done ? `${rest}\n\n` : rest)
+        rest = parsed.rest
+        for (const event of parsed.events) {
+          if (finishReasonOf(event)) finished = true
+          const chunk = streamMapper.push(event)
+          if (chunk) await write(chunk)
+        }
+        if (done) break
+      }
+    } finally {
+      // Never leave the upstream connection pinned when the client goes away.
+      await reader?.cancel().catch(() => {})
+      reader?.releaseLock()
+    }
+    // Cloud Code always closes with a finishReason frame; an EOF without one
+    // is a cut stream — retried before output, destroyed after.
+    if (!finished) throw new UpstreamFailure(502, 'antigravity stream ended without a finishReason', { code: 'transport' })
+    await write(streamMapper.finish())
+    response.write('data: [DONE]\n\n')
+    if (!response.writableEnded && !response.destroyed) response.end()
+  }, {
+    // One forced refresh on a pre-output 401 (F4e); a failed refresh forwards
+    // the upstream's own 401.
+    refresh: async () => {
+      const source = typeof tokens?.sourceOf === 'function' ? tokens.sourceOf(session) : undefined
+      const next = source && typeof tokens.refreshNow === 'function'
+        ? await tokens.refreshNow(source.id, session.accessToken).catch(() => undefined)
+        : undefined
+      if (!next?.session) return false
+      session = next.session
+      return true
+    },
+  })
 }
