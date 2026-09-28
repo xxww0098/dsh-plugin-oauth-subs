@@ -5,6 +5,7 @@
  * (`app_EMoamEEZ73f0CkXaXp7hrann`, auth.openai.com, originator
  * `codex_cli_rs`). Token exchange is form-encoded; refresh is JSON.
  */
+import { outboundFetch } from '../../utils/outbound.js';
 export declare const CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 export declare const CODEX_AUTHORIZE_URL = "https://auth.openai.com/oauth/authorize";
 export declare const CODEX_TOKEN_URL = "https://auth.openai.com/oauth/token";
@@ -155,7 +156,7 @@ export declare function codexSession(tokens: any, fallback?: any): {
     expiresAt: any;
     accountId: any;
 };
-export declare function exchangeCodexCode(code: any, verifier: any, redirectUri: any, fetchFn?: typeof fetch): Promise<{
+export declare function exchangeCodexCode(code: any, verifier: any, redirectUri: any, fetchFn?: typeof outboundFetch): Promise<{
     planType?: any;
     emailAddress?: any;
     idToken?: any;
@@ -164,7 +165,7 @@ export declare function exchangeCodexCode(code: any, verifier: any, redirectUri:
     expiresAt: any;
     accountId: any;
 }>;
-export declare function refreshCodex(session: any, fetchFn?: typeof fetch): Promise<{
+export declare function refreshCodex(session: any, fetchFn?: typeof outboundFetch): Promise<{
     planType?: any;
     emailAddress?: any;
     idToken?: any;

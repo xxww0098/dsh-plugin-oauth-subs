@@ -12,6 +12,7 @@
  * x-goog-api-client. Body metadata: { ideType: 'ANTIGRAVITY' }.
  * onboardUser keeps the longer UA + x-goog-api-client gl-node/22.21.1.
  */
+import { outboundFetch } from '../../utils/outbound.js';
 export declare const ANTIGRAVITY_CLIENT_ID: string;
 export declare const ANTIGRAVITY_CLIENT_SECRET: string;
 export declare const ANTIGRAVITY_CALLBACK_PORT = 51121;
@@ -46,7 +47,7 @@ export declare function antigravityFetchModelsUrls(): string[];
 /** Daily first, then IDE prod. onboardUser stays daily-only. */
 export declare function antigravityCloudCodeFallbacks(url: any): string[];
 /** POST a hub Cloud Code RPC: daily, then IDE prod on transport / 5xx. */
-export declare function fetchAntigravityCloudCode(url: any, init: any, fetchFn?: typeof fetch): Promise<Response>;
+export declare function fetchAntigravityCloudCode(url: any, init: any, fetchFn?: typeof outboundFetch): Promise<any>;
 export declare const ANTIGRAVITY_SCOPE: string;
 /**
  * Current official Antigravity.app short version when the desktop app
@@ -253,12 +254,12 @@ export declare function antigravitySession({ accessToken, refreshToken, expiresA
     account: string;
     projectId: any;
 };
-export declare function exchangeAntigravityTokens(body: any, fetchFn?: typeof fetch): Promise<unknown>;
+export declare function exchangeAntigravityTokens(body: any, fetchFn?: typeof outboundFetch): Promise<any>;
 export declare function fetchAntigravityUserInfo(accessToken: any, { fetchFn }?: {
-    fetchFn?: typeof fetch | undefined;
+    fetchFn?: typeof outboundFetch | undefined;
 }): Promise<string>;
 export declare function onboardAntigravityUser(accessToken: any, tierId: any, { fetchFn, sleep }?: {
-    fetchFn?: typeof fetch | undefined;
+    fetchFn?: typeof outboundFetch | undefined;
     sleep?: typeof delay | undefined;
 }): Promise<any>;
 export declare function fetchAntigravityProject({ accessToken, fetchFn, sleep }?: any): Promise<{
@@ -277,7 +278,7 @@ export declare function completeAntigravityLogin(tokens: any, { fetchFn, sleep, 
     projectId: any;
 }>;
 export declare function exchangeAntigravityCode(code: any, redirectUri: any, { fetchFn }?: {
-    fetchFn?: typeof fetch | undefined;
+    fetchFn?: typeof outboundFetch | undefined;
 }): Promise<{
     validationUrl?: string | undefined;
     needsValidation?: boolean | undefined;
@@ -288,7 +289,7 @@ export declare function exchangeAntigravityCode(code: any, redirectUri: any, { f
     account: string;
     projectId: any;
 }>;
-export declare function refreshAntigravity(session: any, fetchFn?: typeof fetch): Promise<{
+export declare function refreshAntigravity(session: any, fetchFn?: typeof outboundFetch): Promise<{
     validationUrl?: string | undefined;
     needsValidation?: boolean | undefined;
     planType?: any;
@@ -301,7 +302,7 @@ export declare function refreshAntigravity(session: any, fetchFn?: typeof fetch)
 export declare function applyAntigravityValidation(session: any, info: any): any;
 /** Tiny generateContent so Settings can show the verify banner before DSH chats. */
 export declare function probeAntigravityValidation(session: any, { fetchFn }?: {
-    fetchFn?: typeof fetch | undefined;
+    fetchFn?: typeof outboundFetch | undefined;
 }): Promise<{
     required: boolean;
     validationUrl: any;

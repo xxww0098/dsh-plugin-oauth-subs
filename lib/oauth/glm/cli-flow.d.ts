@@ -4,6 +4,7 @@
  * `region` is `zai` (global) or `bigmodel` (China); the CLI provider id
  * posted to /oauth/cli/init is `zai` or `bigmodel`.
  */
+import { outboundFetch } from '../../utils/outbound.js';
 /**
  * Upstream OAuth incidents the client cannot fix. `3004 invalid_flow` is the
  * server killing the flow while exchanging the browser code — reported for
@@ -21,7 +22,7 @@ export declare class GlmCliFlowManager {
     pending(provider: any): any;
     start(provider: any, { region, fetchFn }?: {
         region?: string | undefined;
-        fetchFn?: typeof fetch | undefined;
+        fetchFn?: typeof outboundFetch | undefined;
     }): Promise<{
         authorizeUrl: any;
         flowId: any;

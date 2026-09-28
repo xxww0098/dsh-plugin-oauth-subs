@@ -6,6 +6,7 @@
  * the desktop IDE and not `@cursor/sdk` `client-type: sdk` (that path is
  * API-key Agent.create, not this OAuth hop).
  */
+import { outboundFetch } from '../../utils/outbound.js';
 export declare const CURSOR_LOGIN_URL = "https://cursor.com/loginDeepControl";
 export declare const CURSOR_POLL_URL = "https://api2.cursor.sh/auth/poll";
 export declare const CURSOR_REFRESH_URL = "https://api2.cursor.sh/auth/exchange_user_api_key";
@@ -325,7 +326,7 @@ export declare function refreshCursorTokens(refreshToken: any, { fetchFn, signal
     refreshToken: string;
     expiresAt: number;
 }>;
-export declare function refreshCursor(session: any, fetchFn?: typeof fetch): Promise<any>;
+export declare function refreshCursor(session: any, fetchFn?: typeof outboundFetch): Promise<any>;
 export declare function isCursorPermanentRefreshError(error: any): boolean;
 export declare function completeCursorLogin(tokens: any, { source }?: {
     source?: string | undefined;

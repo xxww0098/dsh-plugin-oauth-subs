@@ -25,6 +25,7 @@
  */
 
 import { OAuthEndpointError, oauthError } from '../codex/index.js'
+import { outboundFetch } from '../../utils/outbound.js'
 
 export const ANTHROPIC_CLIENT_ID = '9d1c250a-e61b-44e9-88ed-594fedd33385'
 export const ANTHROPIC_AUTHORIZE_URL = 'https://claude.ai/oauth/authorize'
@@ -81,7 +82,7 @@ export const anthropicFlow = {
  * The token exchange echoes `state` (pi-ai posts it; Claude Code sends it) —
  * completePkce passes the flow manager's own state back in.
  */
-export async function exchangeAnthropicCode(code, verifier, redirectUri, state, fetchFn = fetch) {
+export async function exchangeAnthropicCode(code, verifier, redirectUri, state, fetchFn = outboundFetch) {
   const response = await fetchFn(ANTHROPIC_TOKEN_URL, {
     method: 'POST',
     headers: { 'content-type': 'application/json', accept: 'application/json' },
@@ -98,7 +99,7 @@ export async function exchangeAnthropicCode(code, verifier, redirectUri, state, 
   return anthropicSession(await response.json())
 }
 
-export async function refreshAnthropic(session, fetchFn = fetch) {
+export async function refreshAnthropic(session, fetchFn = outboundFetch) {
   const response = await fetchFn(ANTHROPIC_TOKEN_URL, {
     method: 'POST',
     headers: { 'content-type': 'application/json', accept: 'application/json' },
@@ -144,7 +145,7 @@ export function anthropicSession(tokens, fallback: any = undefined) {
  * failure must not kill a finished login (the vault falls back to the
  * refresh-token-suffix id and the card shows the token shape).
  */
-export async function anthropicProfile(session, fetchFn = fetch) {
+export async function anthropicProfile(session, fetchFn = outboundFetch) {
   const response = await fetchFn(ANTHROPIC_PROFILE_URL, {
     headers: { ...anthropicUpstreamHeaders(session), accept: 'application/json' },
   })

@@ -11,6 +11,7 @@
  */
 
 import { decodeJwtPayload } from '../../utils/jwt.js'
+import { outboundFetch } from '../../utils/outbound.js'
 
 export const DEVIN_WEBAPP_URL = 'https://app.devin.ai'
 export const DEVIN_API_URL = 'https://api.devin.ai'
@@ -203,7 +204,7 @@ export function devinApiServer(session) {
  * GetUserStatus: a live session token stays valid, a dead one is a permanent
  * 401 → re-login. Never mutates the stored credential.
  */
-export async function refreshDevin(session, { fetchFn = fetch, statusFn }: any = {}) {
+export async function refreshDevin(session, { fetchFn = outboundFetch, statusFn }: any = {}) {
   const access = normalizeDevinToken(session?.accessToken)
   if (!access) throw new Error('devin session needs a session token')
   if (session?.expiresAt && Date.now() < session.expiresAt) return session
@@ -246,7 +247,7 @@ export const devinFlow = Object.freeze({
   },
 })
 
-export async function exchangeDevinCode(code, verifier, { fetchFn = fetch } = {}) {
+export async function exchangeDevinCode(code, verifier, { fetchFn = outboundFetch } = {}) {
   const response = await fetchFn(`${DEVIN_API_URL}${DEVIN_TOKEN_PATH}`, {
     method: 'POST',
     headers: {

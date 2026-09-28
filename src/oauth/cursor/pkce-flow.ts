@@ -4,6 +4,7 @@
  */
 
 import { completeCursorLogin, cursorLoginParams, pollCursorAuth } from './index.js'
+import { outboundFetch } from '../../utils/outbound.js'
 
 function sleep(ms, signal) {
   return new Promise<void>((resolve, reject) => {
@@ -38,7 +39,7 @@ export class CursorPollFlowManager {
     return this.attempts.get(provider)
   }
 
-  async start(provider, { fetchFn = fetch } = {}) {
+  async start(provider, { fetchFn = outboundFetch } = {}) {
     if (this.attempts.has(provider)) {
       throw new Error(`a ${provider} login attempt is already in progress`)
     }

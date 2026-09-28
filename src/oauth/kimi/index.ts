@@ -12,6 +12,7 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import os from 'node:os'
 import { OAuthEndpointError, oauthError } from '../codex/index.js'
+import { outboundFetch } from '../../utils/outbound.js'
 
 export { applyKimiCache, kimiCacheHeaders, kimiCacheSessionId, resetKimiPins } from './cache.js'
 
@@ -203,7 +204,7 @@ export function kimiCredentialHeaders() {
   }
 }
 
-export function kimiDeviceSpec({ fetchFn = fetch } = {}) {
+export function kimiDeviceSpec({ fetchFn = outboundFetch } = {}) {
   return {
     clientId: KIMI_CLIENT_ID,
     deviceCodeUrl: KIMI_DEVICE_URL,
@@ -266,7 +267,7 @@ export async function completeKimiDevice(tokens) {
   return kimiSessionFromTokens(tokens, { source: 'oauth' })
 }
 
-export async function refreshKimi(session, fetchFn = fetch) {
+export async function refreshKimi(session, fetchFn = outboundFetch) {
   if (isKimiKeySource(session?.source) || session?.refreshToken === session?.accessToken) {
     if (!session?.accessToken) throw new Error('kimi session needs an API key')
     return session
@@ -325,7 +326,7 @@ export function parseKimiUserInfo(payload) {
   }
 }
 
-export async function resolveKimiIdentity(session, { fetchFn = fetch, signal }: any = {}) {
+export async function resolveKimiIdentity(session, { fetchFn = outboundFetch, signal }: any = {}) {
   const token = trimmed(session?.accessToken)
   if (!token) return undefined
   try {

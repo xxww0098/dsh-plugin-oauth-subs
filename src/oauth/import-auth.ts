@@ -33,6 +33,7 @@ import {
 } from './kiro/import.js'
 import { antigravitySession, completeAntigravityLogin } from './antigravity/index.js'
 import { decodeJwtPayload } from '../utils/jwt.js'
+import { outboundFetch } from '../utils/outbound.js'
 
 const GROK_TOKEN_ENDPOINT = 'https://auth.x.ai/oauth2/token'
 
@@ -585,7 +586,7 @@ async function readAntigravityJsonFiles(dir) {
   }
 }
 
-export async function importAntigravityAuth({ paths, fetchFn = fetch }: any = {}) {
+export async function importAntigravityAuth({ paths, fetchFn = outboundFetch }: any = {}) {
   const tried: any[] = []
   const candidates = paths ?? [
     ...antigravityAuthSearchPaths(),

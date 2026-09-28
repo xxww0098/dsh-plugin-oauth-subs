@@ -85,6 +85,7 @@ import { DEVIN_TIER_NAMES, pickDevinHumanAccount } from './devin/index.js'
 import { fetchClineQuota } from './cline/quota.js'
 import { fetchAnthropicQuota } from './anthropic/quota.js'
 import { devinUserStatus } from './devin/transport.js'
+import { outboundFetch } from '../utils/outbound.js'
 
 export const QUOTA_TTL_MS = 10_000
 export const QUOTA_TIMEOUT_MS = 10_000
@@ -898,7 +899,7 @@ async function fetchCursorJson(fetchFn, url, init, label) {
   }
 }
 
-export async function fetchCursorQuota(session, fetchFn = fetch) {
+export async function fetchCursorQuota(session, fetchFn = outboundFetch) {
   const wait = timeoutSignal(QUOTA_TIMEOUT_MS)
   const headers = cursorUsageHeaders(session)
   try {
@@ -1025,7 +1026,7 @@ export function parseOllamaUsage(payload, me, now = Date.now()) {
   }
 }
 
-export async function fetchOllamaQuota(session, fetchFn = fetch) {
+export async function fetchOllamaQuota(session, fetchFn = outboundFetch) {
   const headers = ollamaUpstreamHeaders(session)
   const usageWait = timeoutSignal(QUOTA_TIMEOUT_MS)
   const meWait = timeoutSignal(QUOTA_TIMEOUT_MS)
@@ -1115,7 +1116,7 @@ export function parseKimiUsage(payload, me) {
   }
 }
 
-export async function fetchKimiQuota(session, fetchFn = fetch) {
+export async function fetchKimiQuota(session, fetchFn = outboundFetch) {
   const headers = kimiUpstreamHeaders(session)
   const usageWait = timeoutSignal(QUOTA_TIMEOUT_MS)
   const meWait = timeoutSignal(QUOTA_TIMEOUT_MS)
@@ -1209,7 +1210,7 @@ function copilotQuotaToken(session) {
   throw new Error('copilot session needs a GitHub token')
 }
 
-export async function fetchCopilotQuota(session, fetchFn = fetch) {
+export async function fetchCopilotQuota(session, fetchFn = outboundFetch) {
   const wait = timeoutSignal(QUOTA_TIMEOUT_MS)
   try {
     const response = await fetchFn(COPILOT_QUOTA_URL, {
@@ -1344,7 +1345,7 @@ export function parseDevinUserStatus(payload) {
   }
 }
 
-export async function fetchDevinQuota(session, fetchFn = fetch) {
+export async function fetchDevinQuota(session, fetchFn = outboundFetch) {
   const wait = timeoutSignal(QUOTA_TIMEOUT_MS)
   try {
     const parsed = parseDevinUserStatus(await devinUserStatus(session, { fetchFn, signal: wait.signal }))
@@ -1358,7 +1359,7 @@ export async function fetchDevinQuota(session, fetchFn = fetch) {
   }
 }
 
-export async function fetchGlmQuota(session, fetchFn = fetch) {
+export async function fetchGlmQuota(session, fetchFn = outboundFetch) {
   const wait = timeoutSignal(QUOTA_TIMEOUT_MS)
   try {
     const response = await fetchFn(glmQuotaUrl(session.region), {
@@ -1724,7 +1725,7 @@ function pickGoogleAiPlan(...values) {
   return undefined
 }
 
-export async function fetchAntigravityQuota(session, fetchFn = fetch) {
+export async function fetchAntigravityQuota(session, fetchFn = outboundFetch) {
   const load = await loadAntigravityCodeAssistForQuota(session, fetchFn)
   const projectId = extractCloudaicompanionProject(load)
     ?? (typeof session.projectId === 'string' && session.projectId.trim() ? session.projectId.trim() : undefined)
@@ -1747,7 +1748,7 @@ export async function fetchAntigravityQuota(session, fetchFn = fetch) {
   return { planType, rows: [...rows, ...credits] }
 }
 
-export async function fetchKiroQuota(session, fetchFn = fetch) {
+export async function fetchKiroQuota(session, fetchFn = outboundFetch) {
   const attempts = kiroUsageAttempts(session)
   let lastError
   for (let index = 0; index < attempts.length; index++) {
@@ -1807,7 +1808,7 @@ async function readJson(response, label) {
   }
 }
 
-export async function fetchCodexQuota(session, fetchFn = fetch) {
+export async function fetchCodexQuota(session, fetchFn = outboundFetch) {
   const headers = codexUpstreamHeaders(session)
   const usageWait = timeoutSignal(QUOTA_TIMEOUT_MS)
   const resetWait = timeoutSignal(QUOTA_TIMEOUT_MS)
@@ -1840,7 +1841,7 @@ export function consumeResetBody(redeemRequestId) {
   }
 }
 
-export async function consumeCodexReset(session, fetchFn = fetch) {
+export async function consumeCodexReset(session, fetchFn = outboundFetch) {
   const wait = timeoutSignal(QUOTA_TIMEOUT_MS)
   const redeemRequestId = randomUUID()
   try {
@@ -1860,7 +1861,7 @@ export async function consumeCodexReset(session, fetchFn = fetch) {
   }
 }
 
-export async function fetchGrokQuota(session, fetchFn = fetch) {
+export async function fetchGrokQuota(session, fetchFn = outboundFetch) {
   const headers = grokQuotaHeaders(session)
   const billingWait = timeoutSignal(QUOTA_TIMEOUT_MS)
   const userWait = timeoutSignal(QUOTA_TIMEOUT_MS)
@@ -1926,7 +1927,7 @@ export class QuotaStore {
   declare cache: Map<string, any>
   declare inflight: Map<string, any>
 
-  constructor({ tokens, fetchFn = fetch, ttlMs = QUOTA_TTL_MS }: any = {}) {
+  constructor({ tokens, fetchFn = outboundFetch, ttlMs = QUOTA_TTL_MS }: any = {}) {
     this.tokens = tokens
     this.fetchFn = fetchFn
     this.ttlMs = ttlMs

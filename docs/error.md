@@ -2,6 +2,13 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-28：配了出站代理，Cursor 目录 / h2 对话和未穿线的调用点仍直连
+
+**现象**：设了出站代理（设置页 / `proxyUrl` / `HTTPS_PROXY`）后，Cursor `GetUsableModels` / Run 仍从本机出口发出（区域锁家族照样被拒）；任何没被传 `fetchFn` 的调用点也悄悄直连。
+**根因**：出站所有权靠 `index.ts` 把 `outbound.fetchFn` 一路穿线，`src/` 里 33 个文件 92 处 `fetchFn = fetch` / `?? fetch` 默认值是全局 fetch，漏穿一处就绕过代理；Cursor h2 拨号只认 `cursorProxy` / `CURSOR_PROXY`，根本不问出站代理。
+**修复**：`outbound.ts` 成为模块级唯一所有者：`configureOutbound()`（`src/index.ts` 调，`ctx.effect` 清理 `close()`）+ `outboundFetch`（undici `fetch` + 直连 `Agent` / `ProxyAgent`，未配置前也走直连 `Agent`，已配置时等 `ready` 再选路，缺 UA 补 `user-agent: node`）+ `outboundProxyFor(url)`；92 处默认值全换成 `outboundFetch`，删 `createOutboundSession().fetchFn`。Cursor 拨号优先级 `cursorProxy` → `PI_CURSOR_PROXY`/`CURSOR_PROXY` → `outboundProxyFor`（NO_PROXY / 回环直连），h2 连接 10s 未连上即销毁。`test/outbound-firewall.test.ts` 扫 `src/`：undici 导入、`= fetch` 默认值、裸 `fetch(`、`setGlobalDispatcher` 出现即按 文件:行 报错。
+**活测（2026-09-28，宿主 Node v24.21.0）**：worktree `lib/` 经 `outboundFetch` 的 Codex `GET /models` → 200（9 个模型）；Cursor `GetUsableModels` 经 `cursorH2Connect`（未配代理，直连）→ 241 个模型；各 1 次，未刷新。
+
 ## 2026-09-28：配了出站代理（设置页 / `proxyUrl` / `HTTPS_PROXY`）插件整体卡死，重启也不恢复
 
 **现象**：任一来源配了出站代理后，回环代理不监听、设置页 `status` 永远等待；`specs/request-path-upgrades/assets/repro/outbound-deadlock.mjs` 打印 `ready STILL PENDING` + unhandledRejection。

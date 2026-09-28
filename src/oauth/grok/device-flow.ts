@@ -1,3 +1,4 @@
+import { outboundFetch } from '../../utils/outbound.js'
 /**
  * RFC 8628 device-authorization flow. The user opens a verification URL and
  * types a short code while the plugin polls the token endpoint.
@@ -49,7 +50,7 @@ export class DeviceFlowManager {
       throw new Error(`a ${provider} login attempt is already in progress`)
     }
     this.starting.add(provider)
-    const fetchFn = spec.fetchFn ?? fetch
+    const fetchFn = spec.fetchFn ?? outboundFetch
     const extraHeaders = spec.headers && typeof spec.headers === 'object' ? spec.headers : {}
     const useJson = spec.jsonBody === true
     const devicePayload: any = { client_id: spec.clientId }

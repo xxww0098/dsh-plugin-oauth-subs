@@ -162,6 +162,7 @@ import {
   writeUpdatePrefs,
   writeUpdateState,
 } from '../utils/update-prefs.js'
+import { outboundFetch } from '../utils/outbound.js'
 
 /** How often the background sweep re-checks stored credential expiry. */
 export const TOKEN_SWEEP_INTERVAL_MS = 60_000
@@ -226,7 +227,7 @@ export class AuthController {
   declare autoUpdateTimer: any
   declare prefsFile: string
   declare stateFile: string
-  constructor({ authPath, prefix, origin, settings, patchPath, credentials, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, profile, readFileFn, updateEnv, installReleaseFn = installRelease, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover, devinAutoImport, devinImport, devinDiscover, clineDiscover, clineAutoImport }: any) {
+  constructor({ authPath, prefix, origin, settings, patchPath, credentials, grokLogin = 'device', onAuthChanged, models, fetchFn = outboundFetch, quotaTtlMs, profile, readFileFn, updateEnv, installReleaseFn = installRelease, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover, devinAutoImport, devinImport, devinDiscover, clineDiscover, clineAutoImport }: any) {
     this.authPath = authPath
     this.prefix = prefix
     this.origin = origin

@@ -10,6 +10,7 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { decodeJwtPayload } from '../../utils/jwt.js'
 import { isCursorRefreshKnownBad, markCursorRefreshFailed, markCursorRefreshSucceeded } from './refresh-guard.js'
+import { outboundFetch } from '../../utils/outbound.js'
 
 export const CURSOR_LOGIN_URL = 'https://cursor.com/loginDeepControl'
 export const CURSOR_POLL_URL = 'https://api2.cursor.sh/auth/poll'
@@ -385,7 +386,7 @@ export function cursorUsageHeaders(session) {
   }
 }
 
-export async function pollCursorAuth(uuid, verifier, { fetchFn = fetch, sleep, signal, maxAttempts = CURSOR_POLL_MAX_ATTEMPTS }: any = {}) {
+export async function pollCursorAuth(uuid, verifier, { fetchFn = outboundFetch, sleep, signal, maxAttempts = CURSOR_POLL_MAX_ATTEMPTS }: any = {}) {
   const wait = sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)))
   let delay = CURSOR_POLL_BASE_DELAY_MS
   let consecutiveErrors = 0
@@ -421,7 +422,7 @@ export async function pollCursorAuth(uuid, verifier, { fetchFn = fetch, sleep, s
   throw new Error('Cursor authentication polling timeout')
 }
 
-export async function refreshCursorTokens(refreshToken, { fetchFn = fetch, signal }: any = {}) {
+export async function refreshCursorTokens(refreshToken, { fetchFn = outboundFetch, signal }: any = {}) {
   const token = trimmed(refreshToken)
   if (!token) throw new Error('cursor refresh needs a refresh token')
   if (isCursorRefreshKnownBad(token)) throw new Error('Cursor token refresh failed: known-bad refresh token')
@@ -451,7 +452,7 @@ export async function refreshCursorTokens(refreshToken, { fetchFn = fetch, signa
   }
 }
 
-export async function refreshCursor(session, fetchFn = fetch) {
+export async function refreshCursor(session, fetchFn = outboundFetch) {
   if (session?.source === 'env' || session?.refreshToken === session?.accessToken) {
     if (cursorAccessStillValid(session.accessToken)) return session
     throw Object.assign(new Error('Cursor env token expired; sign in again'), { permanent: true })

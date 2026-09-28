@@ -13,6 +13,7 @@
  * Desktop). Completions leftover (`/api/coding/paas/v4/chat/completions`)
  * stays until the next llm-pi-ai sync. Not chatgpt.com.
  */
+import { outboundFetch } from '../../utils/outbound.js';
 export declare const GLM_CLIENT_ID = "client_P8X5CMWmlaRO9gyO-KSqtg";
 export declare const GLM_BIGMODEL_APP_ID = "zcode";
 export declare const GLM_CLI_INIT_URL = "https://zcode.z.ai/api/v1/oauth/cli/init";
@@ -261,7 +262,7 @@ export declare class GlmHttpError extends Error {
 }
 export declare function glmCliInit({ region, fetchFn, pollToken }?: {
     region?: string | undefined;
-    fetchFn?: typeof fetch | undefined;
+    fetchFn?: typeof outboundFetch | undefined;
     pollToken?: string | undefined;
 }): Promise<{
     pollToken: string;
@@ -290,11 +291,11 @@ export declare function glmCliPoll({ flowId, pollToken, region, fetchFn }?: any)
     accountId: string | undefined;
 }>;
 export declare function businessLogin(oauthAccessToken: any, { fetchFn, region }?: {
-    fetchFn?: typeof fetch | undefined;
+    fetchFn?: typeof outboundFetch | undefined;
     region?: string | undefined;
 }): Promise<string>;
 export declare function mintGlmApiKey(oauthAccessToken: any, { fetchFn, region }?: {
-    fetchFn?: typeof fetch | undefined;
+    fetchFn?: typeof outboundFetch | undefined;
     region?: string | undefined;
 }): Promise<string>;
 export declare function glmSession({ accessToken, account, accountId, region, zcodeJwt, oauthAccess }?: any): {
@@ -309,11 +310,11 @@ export declare function glmSession({ accessToken, account, accountId, region, zc
 };
 export declare function fetchGlmUserinfo(source: any, { fetchFn, region }?: any): Promise<string | undefined>;
 export declare function resolveGlmIdentity(source: any, { fetchFn }?: {
-    fetchFn?: typeof fetch | undefined;
+    fetchFn?: typeof outboundFetch | undefined;
 }): Promise<string | undefined>;
 export declare function displayGlmAccount(session: any): string | undefined;
 export declare function completeGlmCli(ready: any, { fetchFn, region }?: {
-    fetchFn?: typeof fetch | undefined;
+    fetchFn?: typeof outboundFetch | undefined;
     region?: string | undefined;
 }): Promise<{
     oauthAccess?: string | undefined;

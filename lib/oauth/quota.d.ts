@@ -24,6 +24,7 @@
  * Unified-billing SuperGrok / X Premium+ payloads often omit that percent
  * on the CLI JSON; the grok.com gRPC-web path still has the weekly pool.
  */
+import { outboundFetch } from '../utils/outbound.js';
 export declare const QUOTA_TTL_MS = 10000;
 export declare const QUOTA_TIMEOUT_MS = 10000;
 export declare function asNumber(value: any): number | undefined;
@@ -126,7 +127,7 @@ export declare function parseCursorPeriodUsage(payload: any, extras?: any): {
         total: number;
     } | undefined)[];
 };
-export declare function fetchCursorQuota(session: any, fetchFn?: typeof fetch): Promise<{
+export declare function fetchCursorQuota(session: any, fetchFn?: typeof outboundFetch): Promise<{
     rows: never[];
     planType?: undefined;
     account?: undefined;
@@ -162,7 +163,7 @@ export declare function parseOllamaUsage(payload: any, me: any, now?: number): {
     account: string | undefined;
     rows: any[];
 };
-export declare function fetchOllamaQuota(session: any, fetchFn?: typeof fetch): Promise<{
+export declare function fetchOllamaQuota(session: any, fetchFn?: typeof outboundFetch): Promise<{
     planType: string | undefined;
     account: string | undefined;
     rows: any[];
@@ -172,7 +173,7 @@ export declare function parseKimiUsage(payload: any, me: any): {
     account: string | undefined;
     rows: any[];
 };
-export declare function fetchKimiQuota(session: any, fetchFn?: typeof fetch): Promise<{
+export declare function fetchKimiQuota(session: any, fetchFn?: typeof outboundFetch): Promise<{
     planType: string | undefined;
     account: string | undefined;
     rows: any[];
@@ -182,7 +183,7 @@ export declare function parseCopilotUsage(payload: any, user?: any): {
     account: any;
     rows: any[];
 };
-export declare function fetchCopilotQuota(session: any, fetchFn?: typeof fetch): Promise<{
+export declare function fetchCopilotQuota(session: any, fetchFn?: typeof outboundFetch): Promise<{
     account: any;
     planType: any;
     rows: any[];
@@ -199,12 +200,12 @@ export declare function parseDevinUserStatus(payload: any): {
     account: string | undefined;
     rows: any[];
 };
-export declare function fetchDevinQuota(session: any, fetchFn?: typeof fetch): Promise<{
+export declare function fetchDevinQuota(session: any, fetchFn?: typeof outboundFetch): Promise<{
     account: any;
     planType: any;
     rows: any[];
 }>;
-export declare function fetchGlmQuota(session: any, fetchFn?: typeof fetch): Promise<any>;
+export declare function fetchGlmQuota(session: any, fetchFn?: typeof outboundFetch): Promise<any>;
 /** SkillStar `parse_model_windows` — group fetchAvailableModels into product bars. */
 export declare function parseAntigravityModelQuota(payload: any): {
     rows: any[];
@@ -216,11 +217,11 @@ export declare function parseAntigravityQuotaSummary(payload: any): {
 };
 export declare function parseAntigravityPaidCredits(payload: any): any[];
 export declare function pickAntigravityPlanName(payload: any): string | undefined;
-export declare function fetchAntigravityQuota(session: any, fetchFn?: typeof fetch): Promise<{
+export declare function fetchAntigravityQuota(session: any, fetchFn?: typeof outboundFetch): Promise<{
     planType: string | undefined;
     rows: any[];
 }>;
-export declare function fetchKiroQuota(session: any, fetchFn?: typeof fetch): Promise<{
+export declare function fetchKiroQuota(session: any, fetchFn?: typeof outboundFetch): Promise<{
     rows: never[];
     planType?: undefined;
     account?: undefined;
@@ -238,7 +239,7 @@ export declare function fetchKiroQuota(session: any, fetchFn?: typeof fetch): Pr
         resetAt: number | undefined;
     }[];
 }>;
-export declare function fetchCodexQuota(session: any, fetchFn?: typeof fetch): Promise<{
+export declare function fetchCodexQuota(session: any, fetchFn?: typeof outboundFetch): Promise<{
     resetCredits: {
         nextExpiresAt?: number | undefined;
         availableCount: number;
@@ -267,11 +268,11 @@ export declare function consumeResetBody(redeemRequestId: any): {
     redeem_request_id: any;
     idempotencyKey: any;
 };
-export declare function consumeCodexReset(session: any, fetchFn?: typeof fetch): Promise<{
+export declare function consumeCodexReset(session: any, fetchFn?: typeof outboundFetch): Promise<{
     ok: boolean;
     redeemRequestId: `${string}-${string}-${string}-${string}-${string}`;
 }>;
-export declare function fetchGrokQuota(session: any, fetchFn?: typeof fetch): Promise<any>;
+export declare function fetchGrokQuota(session: any, fetchFn?: typeof outboundFetch): Promise<any>;
 export declare class QuotaStore {
     #private;
     tokens: any;

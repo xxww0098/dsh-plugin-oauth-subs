@@ -56,7 +56,7 @@ HTTP/2 请求取消 / unary 超时必须销毁该请求独占的连接，`close(
 
 ### 上游代理（区域锁出口）
 
-Cursor 按请求**出口 IP** 做合规区锁：Anthropic / OpenAI / Gemini 在受限区域直接 `Model not available: This model provider is not supported in your region`（Composer / Grok / Kimi / GLM 不受限）。官方客户端走 `http.proxy`；本 hop 等价物是**插件配置 `cursorProxy`**，或环境变量 `PI_CURSOR_PROXY` / `CURSOR_PROXY`（`http://`、`https://`、`socks5://`，可带 `user:pass@`）。配置后 `cursorH2Connect` 先对代理做 CONNECT / SOCKS5 握手，再在隧道上做 TLS+h2 —— `connectFn` 因此允许返回 Promise。只有 h2 RPC 面（agentn Run / GetUsableModels、api2 unary）走隧道；auth poll / refresh / quota JSON 仍直连。目录缓存键并入代理出口，切代理即重新拉活目录。未配代理时区域错误会追加指向该配置的提示。
+Cursor 按请求**出口 IP** 做合规区锁：Anthropic / OpenAI / Gemini 在受限区域直接 `Model not available: This model provider is not supported in your region`（Composer / Grok / Kimi / GLM 不受限）。官方客户端走 `http.proxy`；本 hop 等价物是**插件配置 `cursorProxy`**，或环境变量 `PI_CURSOR_PROXY` / `CURSOR_PROXY`（`http://`、`https://`、`socks5://`，可带 `user:pass@`）。配置后 `cursorH2Connect` 先对代理做 CONNECT / SOCKS5 握手，再在隧道上做 TLS+h2 —— `connectFn` 因此允许返回 Promise。h2 RPC 面（agentn Run / GetUsableModels、api2 unary）的出口优先级：`cursorProxy` → `PI_CURSOR_PROXY` / `CURSOR_PROXY` → 插件出站代理（`outboundProxyFor`，遵守 NO_PROXY / 回环直连）；h2 会话 10s 内连不上即销毁报 `cursor h2 connect timeout`。auth poll / refresh / quota JSON 走 `outboundFetch`（出站代理，不走 `cursorProxy`）。目录缓存键并入代理出口，切代理即重新拉活目录。未配代理时区域错误会追加指向该配置的提示。
 
 ## 登录
 

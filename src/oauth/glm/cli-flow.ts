@@ -6,6 +6,7 @@
  */
 
 import { GlmBusinessError, GlmHttpError, completeGlmCli, glmCliInit, glmCliPoll } from './index.js'
+import { outboundFetch } from '../../utils/outbound.js'
 
 /**
  * Official poll loop (auth-login-polling.ts): transport errors and
@@ -78,7 +79,7 @@ export class GlmCliFlowManager {
     return this.attempts.get(provider)
   }
 
-  async start(provider, { region = 'zai', fetchFn = fetch } = {}) {
+  async start(provider, { region = 'zai', fetchFn = outboundFetch } = {}) {
     if (this.isBusy(provider)) {
       throw new Error(`a ${provider} login attempt is already in progress`)
     }
