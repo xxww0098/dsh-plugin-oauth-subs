@@ -9,7 +9,7 @@ import { applyCursorCache, cursorCacheHeaders, cursorCacheSessionId, cursorConve
 import { applyOllamaCache, ollamaCacheHeaders, ollamaCacheSessionId, OLLAMA_STABLE_SESSION } from '../lib/apikey/ollama/cache.js'
 import { applyKimiCache, kimiCacheHeaders, kimiCacheSessionId, KIMI_STABLE_SESSION, resetKimiPins } from '../lib/oauth/kimi/cache.js'
 import { applyCopilotCache, copilotCacheHeaders, copilotCacheSessionId, COPILOT_STABLE_SESSION, resetCopilotPins } from '../lib/oauth/copilot/cache.js'
-import { applyClineCache, resetClinePins } from '../lib/oauth/cline/cache.js'
+import { applyClineCache, CLINE_STABLE_SESSION, isClineFallback, resetClinePins } from '../lib/oauth/cline/cache.js'
 import { applyDevinCache } from '../lib/oauth/devin/cache.js'
 import { openaiToKiro } from '../lib/oauth/kiro/request.js'
 import { openaiToAntigravity } from '../lib/oauth/antigravity/request.js'
@@ -334,7 +334,8 @@ test('two id-less sessions each keep their own system prompt (fallback ids never
       model: MODELS[family],
       messages: [{ role: 'system', content: system }, { role: 'user', content: 'hi' }],
     })
-    for (const system of ['You are session A.', 'You are session B.', 'You are session A.']) {
+    // The last one extends A: a fallback pin would park it and serve A's head.
+    for (const system of ['You are session A.', 'You are session B.', 'You are session A.', 'You are session A. Also C.']) {
       assert.ok(String(systemOf(body(system))).includes(system), `${family}: ${system}`)
     }
   }
@@ -345,6 +346,7 @@ test('fallback predicates match the bare constant and its model-suffixed form on
   const cases = {
     kimi: [isKimiFallback, KIMI_STABLE_SESSION],
     copilot: [isCopilotFallback, COPILOT_STABLE_SESSION],
+    cline: [isClineFallback, CLINE_STABLE_SESSION],
     kiro: [isKiroFallback, KIRO_STABLE_SESSION],
     cursor: [isCursorFallback, CURSOR_STABLE_SESSION],
     antigravity: [isAntigravityFallback, ANTIGRAVITY_STABLE_SESSION],
@@ -365,6 +367,7 @@ test('fallback predicates match the bare constant and its model-suffixed form on
   assert.equal(isDevinFallback(devinConversationId({ model: 'swe-2' })), true)
   assert.equal(isKimiFallback(applyKimiCache({}).cacheSessionId), true)
   assert.equal(isCopilotFallback(applyCopilotCache({}).cacheSessionId), true)
+  assert.equal(isClineFallback(applyClineCache({}).cacheSessionId), true)
 })
 
 // Firewall: no clock or RNG in a session-id position — in any cache.ts nor in

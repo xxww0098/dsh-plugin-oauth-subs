@@ -263,15 +263,15 @@ test('system snapshots park at the suffix so the first system blob keeps hitting
 
 test('an incompatible system head re-pins instead of serving the stale prompt', () => {
   resetClinePins()
-  // DSH sends no session_id, so the pin key is the family constant — a model
-  // switch or a new session must not inherit the previous system head.
-  const first = applyClineCache({ messages: [{ role: 'system', content: 'model A prompt' }, { role: 'user', content: 'a' }] })
-  const second = applyClineCache({ messages: [{ role: 'system', content: 'model B prompt' }, { role: 'user', content: 'a' }] })
+  // A model switch inside one conversation must not inherit the previous system head.
+  const session_id = 'session-cline-repin'
+  applyClineCache({ session_id, messages: [{ role: 'system', content: 'model A prompt' }, { role: 'user', content: 'a' }] })
+  const second = applyClineCache({ session_id, messages: [{ role: 'system', content: 'model B prompt' }, { role: 'user', content: 'a' }] })
   assert.deepEqual(second.payload.messages, [
     { role: 'system', content: 'model B prompt' },
     { role: 'user', content: 'a' },
   ])
-  const third = applyClineCache({ messages: [{ role: 'system', content: 'model B prompt\nmore' }, { role: 'user', content: 'a' }] })
+  const third = applyClineCache({ session_id, messages: [{ role: 'system', content: 'model B prompt\nmore' }, { role: 'user', content: 'a' }] })
   assert.deepEqual(third.payload.messages, [
     { role: 'system', content: 'model B prompt' },
     { role: 'user', content: 'a' },
