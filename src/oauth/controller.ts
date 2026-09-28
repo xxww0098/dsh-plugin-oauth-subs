@@ -579,10 +579,16 @@ export class AuthController {
    * `lib/`. The callers are untyped on purpose — do not "restore" the inferred
    * type without re-checking `lib/` size.
    */
-  snapshot(): Promise<Record<string, any>> {
-    // Concurrent callers (poll, post-mutation RPCs) share one build; cleared on
-    // settle so a failure never pins and the next call rebuilds.
-    this.#snapshotRun ??= this.#buildSnapshot().finally(() => { this.#snapshotRun = undefined })
+  snapshot(fresh = false): Promise<Record<string, any>> {
+    // Concurrent polls share one build; cleared on settle so a failure never
+    // pins. A post-mutation caller passes `fresh` so it never joins a build
+    // that started before its write — later polls join the fresh one.
+    if (fresh || !this.#snapshotRun) {
+      const run = this.#buildSnapshot().finally(() => {
+        if (this.#snapshotRun === run) this.#snapshotRun = undefined
+      })
+      this.#snapshotRun = run
+    }
     return this.#snapshotRun
   }
 
@@ -2130,12 +2136,12 @@ export class AuthController {
   async switchAccount(provider, id) {
     if (provider === 'opencode-go') {
       await this.switchOpencodeGo(id)
-      return this.snapshot()
+      return this.snapshot(true)
     }
     await switchAccount(provider, id, this.authPath)
     this.lastError.delete(provider)
     this.onAuthChanged?.(provider)
-    return this.snapshot()
+    return this.snapshot(true)
   }
 
   async importFrom(provider) {
@@ -2219,7 +2225,7 @@ export class AuthController {
       // Mutate failures must reach the RPC so the picker can show them.
       await this.sync(undefined, { recover: false })
     }
-    return this.snapshot()
+    return this.snapshot(true)
   }
 
   async sync(selected?, options: any = {}) {

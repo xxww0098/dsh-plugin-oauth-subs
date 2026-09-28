@@ -748,6 +748,24 @@ test('concurrent snapshots share one build: one quota round per account, none wi
   assert.deepEqual(calls, { 'tok-a': round, 'tok-b': round })
 })
 
+test('a post-mutation snapshot never joins a build that started before the write', async (t) => {
+  let release
+  let held = Promise.resolve()
+  const { controller, calls } = await grokPair(t, { gate: () => held })
+  held = new Promise((resolve) => { release = resolve })
+  const poll = controller.snapshot()
+  // The poll's build has read the store (b@x active) and is parked on quota.
+  while (calls['tok-a'] + calls['tok-b'] === 0) await new Promise((resolve) => setImmediate(resolve))
+  const switched = controller.switchAccount('grok', 'a@x')
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  release()
+  held = Promise.resolve()
+  const [stale, fresh] = await Promise.all([poll, switched])
+  assert.notEqual(fresh, stale)
+  const active = fresh.accounts.grok.accounts.find((row) => row.active)
+  assert.equal(active.id, 'a@x')
+})
+
 test('refreshQuota bypasses the TTL once and joins an in-flight refresh', async (t) => {
   let release
   let held = Promise.resolve()
