@@ -11,7 +11,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'n
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import os from 'node:os'
-import { OAuthEndpointError, oauthError } from '../codex/index.js'
+import { oauthError } from '../tokens.js'
 import { outboundFetch } from '../../utils/outbound.js'
 
 export { applyKimiCache, kimiCacheHeaders, kimiCacheSessionId, resetKimiPins } from './cache.js'
@@ -296,12 +296,6 @@ export async function refreshKimi(session, fetchFn = outboundFetch) {
     planType: next.planType ?? session.planType,
     source: session.source === 'cli' ? 'cli' : 'oauth',
   }
-}
-
-export function isKimiPermanentRefreshError(error) {
-  if (!(error instanceof OAuthEndpointError)) return false
-  if (error.status === 401 || error.status === 403) return true
-  return error.oauthCode === 'invalid_grant'
 }
 
 export function kimiUpstreamHeaders(session) {

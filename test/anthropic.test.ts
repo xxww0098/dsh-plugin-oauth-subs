@@ -6,8 +6,8 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { createProxy } from '../lib/oauth/proxy.js'
 import { classifySseFrame } from '../lib/oauth/responses-sse.js'
-import { ANTHROPIC_MESSAGES_URL, ANTHROPIC_USAGE_URL, ANTHROPIC_MODELS, ANTHROPIC_BETA, ANTHROPIC_USER_AGENT, anthropicSession, anthropicUpstreamHeaders, exchangeAnthropicCode, isAnthropicPermanentRefreshError } from '../lib/oauth/anthropic/index.js'
-import { OAuthEndpointError } from '../lib/oauth/codex/index.js'
+import { ANTHROPIC_MESSAGES_URL, ANTHROPIC_USAGE_URL, ANTHROPIC_MODELS, ANTHROPIC_BETA, ANTHROPIC_USER_AGENT, anthropicSession, anthropicUpstreamHeaders, exchangeAnthropicCode } from '../lib/oauth/anthropic/index.js'
+import { OAuthEndpointError, isPermanentRefreshFailure } from '../lib/oauth/tokens.js'
 import { applyAnthropicCache, anthropicConversationId, ANTHROPIC_STABLE_SESSION } from '../lib/oauth/anthropic/cache.js'
 import { normalizeAnthropicMessagesBody } from '../lib/oauth/anthropic/request.js'
 import { fetchAnthropicQuota, parseAnthropicRateLimitHeaders, parseAnthropicUsage } from '../lib/oauth/anthropic/quota.js'
@@ -411,9 +411,9 @@ test('proxy: an anthropic 401 refreshes once and retries with the rotated token'
 })
 
 test('permanent refresh errors: invalid_grant is permanent, transient ones are not', () => {
-  assert.equal(isAnthropicPermanentRefreshError(new OAuthEndpointError('x', 400, 'invalid_grant')), true)
-  assert.equal(isAnthropicPermanentRefreshError(new OAuthEndpointError('x', 429, 'rate_limit_error')), false)
-  assert.equal(isAnthropicPermanentRefreshError(new Error('plain')), false)
+  assert.equal(isPermanentRefreshFailure(new OAuthEndpointError('x', 400, 'invalid_grant')), true)
+  assert.equal(isPermanentRefreshFailure(new OAuthEndpointError('x', 429, 'rate_limit_error')), false)
+  assert.equal(isPermanentRefreshFailure(new Error('plain')), false)
 })
 
 test('import: reads ~/.claude/.credentials.json and reports its own empty marker', async (t) => {

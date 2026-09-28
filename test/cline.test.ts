@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { isPermanentRefreshFailure } from '../lib/oauth/tokens.js'
 import { AuthController } from '../lib/oauth/controller.js'
 import { accountIdOf, publicSession, saveSession, listStoredSessions } from '../lib/oauth/store.js'
 import {
@@ -34,7 +35,6 @@ import {
   clineSessionFromAuthData,
   clineUpstreamHeaders,
   formatClineAccessToken,
-  isClinePermanentRefreshError,
   normalizeClineAccessToken,
   refreshCline,
   registerClineTokens,
@@ -157,11 +157,11 @@ test('refresh rejection is permanent: HTTP 401 and success:false', async () => {
     userInfo: { email: 'ada@example.com', clineUserId: 'usr-01ABC' },
   }, {})
   const unauthorized = await refreshCline(session, async () => json({ error: 'Unauthorized' }, 401)).catch((error) => error)
-  assert.equal(isClinePermanentRefreshError(unauthorized), true)
+  assert.equal(isPermanentRefreshFailure(unauthorized), true)
   const rejected = await refreshCline(session, async () => json({ success: false, error: 'invalid refresh token' })).catch((error) => error)
-  assert.equal(isClinePermanentRefreshError(rejected), true)
+  assert.equal(isPermanentRefreshFailure(rejected), true)
   const transient = await refreshCline(session, async () => json({ error: 'boom' }, 500)).catch((error) => error)
-  assert.equal(isClinePermanentRefreshError(transient), false)
+  assert.equal(isPermanentRefreshFailure(transient), false)
 })
 
 test('catalog is Completions at /cline with declared effort keys only', () => {

@@ -54,7 +54,7 @@ export declare const COPILOT_MODELS: readonly {
     maxTokens: any;
     input: any[];
 }[];
-export declare function copilotSourceLabel(source: any): "env" | "key" | "CLI" | "OAuth" | undefined;
+export declare function copilotSourceLabel(source: any): "env" | "CLI" | "key" | "OAuth" | undefined;
 export declare function isCopilotKeySource(source: any): boolean;
 export declare function copilotAccountFingerprint(token: any): string;
 export declare function copilotDefaultAccount(token: any): string;
@@ -135,7 +135,6 @@ export declare function refreshCopilot(session: any, fetchFn?: typeof outboundFe
     account: string;
     source: any;
 }>;
-export declare function isCopilotPermanentRefreshError(error: any): boolean;
 export declare function copilotUpstreamHeaders(session: any, cacheSessionId: any, extra?: any): {
     'openai-intent': string;
     'x-github-api-version': string;

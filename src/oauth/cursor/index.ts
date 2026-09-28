@@ -10,6 +10,7 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { decodeJwtPayload } from '../../utils/jwt.js'
 import { isCursorRefreshKnownBad, markCursorRefreshFailed, markCursorRefreshSucceeded } from './refresh-guard.js'
+import { OAuthEndpointError, isPermanentRefreshFailure, oauthError } from '../tokens.js'
 import { outboundFetch } from '../../utils/outbound.js'
 
 export const CURSOR_LOGIN_URL = 'https://cursor.com/loginDeepControl'
@@ -425,7 +426,7 @@ export async function pollCursorAuth(uuid, verifier, { fetchFn = outboundFetch, 
 export async function refreshCursorTokens(refreshToken, { fetchFn = outboundFetch, signal }: any = {}) {
   const token = trimmed(refreshToken)
   if (!token) throw new Error('cursor refresh needs a refresh token')
-  if (isCursorRefreshKnownBad(token)) throw new Error('Cursor token refresh failed: known-bad refresh token')
+  if (isCursorRefreshKnownBad(token)) throw new OAuthEndpointError('Cursor token refresh failed: known-bad refresh token', 401)
   const response = await fetchFn(CURSOR_REFRESH_URL, {
     method: 'POST',
     headers: {
@@ -436,12 +437,12 @@ export async function refreshCursorTokens(refreshToken, { fetchFn = outboundFetc
     signal,
   })
   if (!response.ok) {
-    // Only a genuine auth failure is sticky. Marking transient 429/5xx responses
-    // known-bad made the guard throw 'known-bad refresh', which
-    // isCursorPermanentRefreshError() reports as permanent — forcing a full
-    // re-login after a single upstream blip.
-    if (response.status === 401 || response.status === 403) markCursorRefreshFailed(token)
-    throw new Error(`Cursor token refresh failed: ${response.status}`)
+    // Only a permanent failure is sticky: the known-bad guard replays it as a
+    // 401, so marking a transient 403/429/5xx would force a full re-login
+    // after a single upstream blip.
+    const error = await oauthError(response, 'Cursor token refresh')
+    if (isPermanentRefreshFailure(error)) markCursorRefreshFailed(token)
+    throw error
   }
   const data = parseCursorTokenResponse(await response.json(), 'Cursor token refresh')
   markCursorRefreshSucceeded(token)
@@ -455,7 +456,7 @@ export async function refreshCursorTokens(refreshToken, { fetchFn = outboundFetc
 export async function refreshCursor(session, fetchFn = outboundFetch) {
   if (session?.source === 'env' || session?.refreshToken === session?.accessToken) {
     if (cursorAccessStillValid(session.accessToken)) return session
-    throw Object.assign(new Error('Cursor env token expired; sign in again'), { permanent: true })
+    throw new OAuthEndpointError('Cursor env token expired; sign in again', 401)
   }
   const tokens = await refreshCursorTokens(session.refreshToken, { fetchFn })
   return cursorSession({
@@ -465,12 +466,6 @@ export async function refreshCursor(session, fetchFn = outboundFetch) {
     cachedEmail: session.cachedEmail,
     source: session.source,
   })
-}
-
-export function isCursorPermanentRefreshError(error) {
-  if (error?.permanent === true) return true
-  const message = error instanceof Error ? error.message : String(error ?? '')
-  return /401|403|invalid refresh|expired; sign in again|known-bad refresh/i.test(message)
 }
 
 export async function completeCursorLogin(tokens, { source = 'pkce' } = {}) {

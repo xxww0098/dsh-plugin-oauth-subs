@@ -3,6 +3,7 @@ import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { OAuthEndpointError, isPermanentRefreshFailure } from '../lib/oauth/tokens.js'
 import { AuthController } from '../lib/oauth/controller.js'
 import { saveSession } from '../lib/oauth/store.js'
 import { catalogProviders } from '../lib/oauth/models.js'
@@ -45,7 +46,6 @@ import {
   detectAntigravityVersion,
   exchangeAntigravityCode,
   fetchAntigravityProject,
-  isAntigravityPermanentRefreshError,
   normalizeAntigravityVersion,
   parseAntigravityPlistVersion,
   parseAntigravityVersionText,
@@ -850,9 +850,9 @@ test('proxy rewrites Cloud Code VALIDATION_REQUIRED to a 400, not a 403', async 
     assert.equal(payload.error.type, 'invalid_request')
     assert.equal(String(payload.error.message).includes('密钥'), false)
     assert.equal(JSON.stringify(payload).includes('plt='), false)
-    assert.equal(isAntigravityPermanentRefreshError({ code: ANTIGRAVITY_VERIFY_CODE }), false)
-    assert.equal(isAntigravityPermanentRefreshError(googleValidationDenied()), false)
-    assert.equal(isAntigravityPermanentRefreshError({ code: 'invalid_grant' }), true)
+    assert.equal(isPermanentRefreshFailure({ code: ANTIGRAVITY_VERIFY_CODE }), false)
+    assert.equal(isPermanentRefreshFailure(googleValidationDenied()), false)
+    assert.equal(isPermanentRefreshFailure(new OAuthEndpointError('antigravity token: Bad Request', 400, 'invalid_grant')), true)
     assert.equal(remembered[0].needsValidation, true)
     assert.equal(remembered[0].validationUrl.startsWith('https://accounts.google.com/'), true)
   } finally {

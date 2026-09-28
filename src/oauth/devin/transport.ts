@@ -132,7 +132,7 @@ export async function devinUserJwt(session, { fetchFn = outboundFetch, signal }:
 
 /**
  * SeatManagementService/GetUserStatus (unary application/proto, raw body) —
- * the quota + identity RPC. Throws on HTTP errors; 401/403 are permanent.
+ * the quota + identity RPC. Throws on HTTP errors; 401 is permanent.
  */
 export async function devinUserStatus(session, { fetchFn = outboundFetch, signal }: any = {}) {
   const base = devinApiServer(session)
@@ -149,7 +149,7 @@ export async function devinUserStatus(session, { fetchFn = outboundFetch, signal
       `Devin GetUserStatus failed (HTTP ${response.status}): ${payload.toString('utf8').slice(0, 300)}`,
       { status: response.status },
     )
-    if (response.status === 401 || response.status === 403) error.permanent = true
+    if (response.status === 401) error.permanent = true
     throw error
   }
   return decodeGetUserStatusResponse(decodeUnaryBody(payload))
@@ -230,7 +230,7 @@ export async function runDevinChat(session, built, { signal, onEvent, fetchFn = 
       `Devin chat failed (HTTP ${response.status})${text ? `: ${text.slice(0, 300)}` : ''}`,
       { status: response.status },
     )
-    if (response.status === 401 || response.status === 403) error.permanent = true
+    if (response.status === 401) error.permanent = true
     throw error
   }
   if (!response.body) throw new DevinTransportError('Devin chat returned an empty body')

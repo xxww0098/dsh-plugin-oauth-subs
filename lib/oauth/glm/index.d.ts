@@ -327,4 +327,3 @@ export declare function completeGlmCli(ready: any, { fetchFn, region }?: {
     expiresAt: number;
 }>;
 export declare function refreshGlm(session: any): Promise<any>;
-export declare function isGlmPermanentRefreshError(): boolean;

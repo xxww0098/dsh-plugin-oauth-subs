@@ -105,7 +105,6 @@ export declare function ollamaSession({ accessToken, account, source, }?: any): 
     source: any;
 };
 export declare function refreshOllama(session: any): Promise<any>;
-export declare function isOllamaPermanentRefreshError(): boolean;
 export declare function ollamaUpstreamHeaders(session: any): {
     authorization: string;
 };

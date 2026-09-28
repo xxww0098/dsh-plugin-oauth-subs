@@ -101,7 +101,7 @@ export declare function devinSession({ accessToken, expiresAt, account, planType
     expiresAt: number;
 };
 export declare const DEVIN_SOURCES: readonly string[];
-export declare function devinSourceLabel(source: any): "env" | "key" | "CLI" | "PKCE" | undefined;
+export declare function devinSourceLabel(source: any): "env" | "CLI" | "PKCE" | "key" | undefined;
 export declare function devinApiServer(session: any): string;
 /**
  * The token has no refresh grant. When the stored expiry is near, probe
@@ -109,7 +109,6 @@ export declare function devinApiServer(session: any): string;
  * 401 → re-login. Never mutates the stored credential.
  */
 export declare function refreshDevin(session: any, { fetchFn, statusFn }?: any): Promise<any>;
-export declare function isDevinPermanentRefreshError(error: any): boolean;
 /**
  * Loopback PKCE spec for the shared OAuthFlowManager. The authorize URL is
  * what `devin auth login` builds (including `cli_pkce_marker=1`).

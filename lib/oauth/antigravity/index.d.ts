@@ -311,7 +311,6 @@ export declare function probeAntigravityValidation(session: any, { fetchFn }?: {
 } | {
     required: boolean;
 } | undefined>;
-export declare function isAntigravityPermanentRefreshError(error: any): boolean;
 export declare function antigravityRequestId(): string;
 declare function delay(ms: any): Promise<unknown>;
 export {};

@@ -210,21 +210,9 @@ export async function refreshDevin(session, { fetchFn = outboundFetch, statusFn 
   if (session?.expiresAt && Date.now() < session.expiresAt) return session
   const probe = typeof statusFn === 'function' ? statusFn : undefined
   if (!probe) return session
-  try {
-    await probe(session, { fetchFn })
-    return { ...session, accessToken: access, expiresAt: Date.now() + DEVIN_FALLBACK_EXPIRES_MS }
-  } catch (error) {
-    const next = error instanceof Error ? error : new Error(String(error))
-    throw /401|403|unauthenticated|permission/i.test(next.message)
-      ? Object.assign(next, { permanent: true })
-      : next
-  }
-}
-
-export function isDevinPermanentRefreshError(error) {
-  if (error?.permanent === true) return true
-  const message = error instanceof Error ? error.message : String(error ?? '')
-  return /401|403|unauthenticated|expired; sign in again/i.test(message)
+  // A probe HTTP failure is a DevinTransportError carrying its status.
+  await probe(session, { fetchFn })
+  return { ...session, accessToken: access, expiresAt: Date.now() + DEVIN_FALLBACK_EXPIRES_MS }
 }
 
 /**

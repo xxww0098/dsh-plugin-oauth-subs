@@ -33,7 +33,7 @@
 
 入口：`codexFlow.buildAuthorizeUrl` → `exchangeCodexCode` → `codexSession`。
 `chatgpt_account_id` 必须从 id_token `https://api.openai.com/auth` 解出，没有就不能用订阅。
-永久刷新失败码：`refresh_token_expired` / `reused` / `invalidated` / `invalid_grant`（`isCodexPermanentRefreshError`）。
+永久刷新失败：401，共享码 `invalid_grant` / `invalid_client` / `unauthorized_client`，加本家额外码 `refresh_token_expired` / `reused` / `invalidated`（`CODEX_PERMANENT_REFRESH_CODES`，读 `error` 或 `error.code`）。
 
 导入：[`../import-auth.ts`](../import-auth.ts) `importCodexAuth` 读本机 Codex CLI `auth.json`。
 

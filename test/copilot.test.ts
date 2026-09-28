@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { isPermanentRefreshFailure } from '../lib/oauth/tokens.js'
 import { AuthController } from '../lib/oauth/controller.js'
 import { accountIdOf, listStoredSessions, publicSession, saveSession } from '../lib/oauth/store.js'
 import {
@@ -31,7 +32,6 @@ import {
   copilotSourceLabel,
   copilotUpstreamHeaders,
   exchangeCopilotToken,
-  isCopilotPermanentRefreshError,
   parseCopilotApiKey,
   refreshCopilot,
 } from '../lib/oauth/copilot/index.js'
@@ -143,7 +143,7 @@ test('refresh posts copilot_internal; 401 is permanent', async () => {
     await refreshCopilot(session, fetchFn)
     assert.fail('expected refresh to throw')
   } catch (error) {
-    assert.equal(isCopilotPermanentRefreshError(error), true)
+    assert.equal(isPermanentRefreshFailure(error), true)
   }
 })
 

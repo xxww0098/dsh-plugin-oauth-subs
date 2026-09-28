@@ -134,7 +134,6 @@ export declare function refreshGrok(session: any, fetchFn?: typeof outboundFetch
     expiresAt: any;
     tokenEndpoint: any;
 }>;
-export declare function isGrokPermanentRefreshError(error: any): boolean;
 export declare function grokCredentialHeaders(): {
     'user-agent': string;
 };

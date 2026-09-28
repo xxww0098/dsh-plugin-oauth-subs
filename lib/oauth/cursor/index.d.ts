@@ -327,7 +327,6 @@ export declare function refreshCursorTokens(refreshToken: any, { fetchFn, signal
     expiresAt: number;
 }>;
 export declare function refreshCursor(session: any, fetchFn?: typeof outboundFetch): Promise<any>;
-export declare function isCursorPermanentRefreshError(error: any): boolean;
 export declare function completeCursorLogin(tokens: any, { source }?: {
     source?: string | undefined;
 }): Promise<{

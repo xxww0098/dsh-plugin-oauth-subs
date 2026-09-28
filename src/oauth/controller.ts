@@ -13,7 +13,7 @@ import { accountIdOf, deleteSession, getStoredSession, getSession, listStoredSes
 import {
   codexFlow,
   exchangeCodexCode,
-  isCodexPermanentRefreshError,
+  CODEX_PERMANENT_REFRESH_CODES,
   refreshCodex,
 } from './codex/index.js'
 import {
@@ -21,13 +21,11 @@ import {
   grokDeviceSpec,
   grokFlow,
   exchangeGrokCode,
-  isGrokPermanentRefreshError,
   refreshGrok,
 } from './grok/index.js'
 import {
   GLM_MODELS,
   glmSession,
-  isGlmPermanentRefreshError,
   normalizeGlmRegion,
   pickGlmHumanAccount,
   pickGlmName,
@@ -39,7 +37,6 @@ import {
   allocateKiroMachineId,
   canonicalizeKiroMethod,
   exchangeKiroSocialCode,
-  isKiroPermanentRefreshError,
   kiroSession,
   kiroSocialFlow,
   refreshKiro,
@@ -55,7 +52,6 @@ import {
   ANTIGRAVITY_PREEMPT_MS,
   applyAntigravityValidation,
   exchangeAntigravityCode,
-  isAntigravityPermanentRefreshError,
   probeAntigravityValidation,
   refreshAntigravity,
 } from './antigravity/index.js'
@@ -63,13 +59,12 @@ import { importAntigravityAuth, importCodexAuth, importGrokAuth, importGlmAuth, 
 import { CursorPollFlowManager } from './cursor/pkce-flow.js'
 import {
   cursorAccountFromToken,
-  isCursorPermanentRefreshError,
   pickCursorHumanAccount,
   refreshCursor,
 } from './cursor/index.js'
 import { CURSOR_IMPORT_EMPTY, importCursorAuth, readCursorVscdbTokens } from './cursor/import.js'
 import { cursorCatalogModels, refreshCursorCatalog } from './cursor/catalog.js'
-import { ollamaSession, refreshOllama, isOllamaPermanentRefreshError, resolveOllamaIdentity, isOllamaOpaqueAccount } from '../apikey/ollama/index.js'
+import { ollamaSession, refreshOllama, resolveOllamaIdentity, isOllamaOpaqueAccount } from '../apikey/ollama/index.js'
 import { OLLAMA_IMPORT_EMPTY, importOllamaAuth } from '../apikey/ollama/import.js'
 import { ollamaCatalogModels, refreshOllamaCatalog } from '../apikey/ollama/catalog.js'
 import { kiroCatalogModels, refreshKiroCatalog } from './kiro/catalog.js'
@@ -77,7 +72,6 @@ import {
   completeKimiDevice as sessionFromKimiDevice,
   configureKimiIdentity,
   isKimiOpaqueAccount,
-  isKimiPermanentRefreshError,
   kimiDeviceSpec,
   kimiSession,
   refreshKimi,
@@ -88,7 +82,6 @@ import { kimiCatalogModels, refreshKimiCatalog } from './kimi/catalog.js'
 import {
   completeCopilotDevice as sessionFromCopilotDevice,
   isCopilotOpaqueAccount,
-  isCopilotPermanentRefreshError,
   isCopilotSessionToken,
   copilotDeviceSpec,
   mintCopilotSessionFromGithub,
@@ -102,7 +95,6 @@ import {
   devinSession,
   exchangeDevinCode,
   isDevinOpaqueAccount,
-  isDevinPermanentRefreshError,
   isDevinSessionToken,
   pickDevinHumanAccount,
   refreshDevin,
@@ -113,7 +105,6 @@ import {
   clineDeviceSpec,
   clineSessionFromAuthData,
   isClineOpaqueAccount,
-  isClinePermanentRefreshError,
   refreshCline,
   registerClineTokens,
   resolveClineIdentity,
@@ -125,7 +116,6 @@ import {
   anthropicProfile,
   ANTHROPIC_PREEMPT_MS,
   exchangeAnthropicCode,
-  isAnthropicPermanentRefreshError,
   refreshAnthropic,
 } from './anthropic/index.js'
 import { importAnthropicAuth } from './anthropic/import.js'
@@ -308,7 +298,7 @@ export class AuthController {
         provider: 'codex',
         authPath: this.authPath,
         refresh: (session) => refreshCodex(session, fetchFn),
-        isPermanent: isCodexPermanentRefreshError,
+        permanentCodes: CODEX_PERMANENT_REFRESH_CODES,
         onRemoved: () => this.onAuthChanged?.('codex'),
       }),
       grok: new TokenManager({
@@ -317,7 +307,6 @@ export class AuthController {
         provider: 'grok',
         authPath: this.authPath,
         refresh: (session) => refreshGrok(session, fetchFn),
-        isPermanent: isGrokPermanentRefreshError,
         onRemoved: () => this.onAuthChanged?.('grok'),
       }),
       glm: new TokenManager({
@@ -326,7 +315,6 @@ export class AuthController {
         provider: 'glm',
         authPath: this.authPath,
         refresh: refreshGlm,
-        isPermanent: isGlmPermanentRefreshError,
         onRemoved: () => this.onAuthChanged?.('glm'),
       }),
       kiro: new TokenManager({
@@ -335,7 +323,6 @@ export class AuthController {
         provider: 'kiro',
         authPath: this.authPath,
         refresh: (session) => refreshKiro(session, { fetchFn }),
-        isPermanent: isKiroPermanentRefreshError,
         onRemoved: () => this.onAuthChanged?.('kiro'),
       }),
       antigravity: new TokenManager({
@@ -344,7 +331,6 @@ export class AuthController {
         provider: 'antigravity',
         authPath: this.authPath,
         refresh: (session) => refreshAntigravity(session, fetchFn),
-        isPermanent: isAntigravityPermanentRefreshError,
         onRemoved: () => this.onAuthChanged?.('antigravity'),
       }),
       cursor: new TokenManager({
@@ -353,7 +339,6 @@ export class AuthController {
         provider: 'cursor',
         authPath: this.authPath,
         refresh: (session) => refreshCursor(session, fetchFn),
-        isPermanent: isCursorPermanentRefreshError,
         onRemoved: () => this.onAuthChanged?.('cursor'),
       }),
       ollama: new TokenManager({
@@ -362,7 +347,6 @@ export class AuthController {
         provider: 'ollama',
         authPath: this.authPath,
         refresh: refreshOllama,
-        isPermanent: isOllamaPermanentRefreshError,
         onRemoved: () => this.onAuthChanged?.('ollama'),
       }),
       kimi: new TokenManager({
@@ -371,7 +355,6 @@ export class AuthController {
         provider: 'kimi',
         authPath: this.authPath,
         refresh: (session) => refreshKimi(session, fetchFn),
-        isPermanent: isKimiPermanentRefreshError,
         onRemoved: () => this.onAuthChanged?.('kimi'),
       }),
       copilot: new TokenManager({
@@ -380,7 +363,6 @@ export class AuthController {
         provider: 'copilot',
         authPath: this.authPath,
         refresh: (session) => refreshCopilot(session, fetchFn),
-        isPermanent: isCopilotPermanentRefreshError,
         onRemoved: () => this.onAuthChanged?.('copilot'),
       }),
       devin: new TokenManager({
@@ -389,7 +371,6 @@ export class AuthController {
         provider: 'devin',
         authPath: this.authPath,
         refresh: (session) => refreshDevin(session, { fetchFn, statusFn: devinUserStatus }),
-        isPermanent: isDevinPermanentRefreshError,
         onRemoved: () => this.onAuthChanged?.('devin'),
       }),
       cline: new TokenManager({
@@ -398,7 +379,6 @@ export class AuthController {
         provider: 'cline',
         authPath: this.authPath,
         refresh: (session) => refreshCline(session, fetchFn),
-        isPermanent: isClinePermanentRefreshError,
         onRemoved: () => this.onAuthChanged?.('cline'),
       }),
       anthropic: new TokenManager({
@@ -407,7 +387,6 @@ export class AuthController {
         provider: 'anthropic',
         authPath: this.authPath,
         refresh: (session) => refreshAnthropic(session, fetchFn),
-        isPermanent: isAnthropicPermanentRefreshError,
         onRemoved: () => this.onAuthChanged?.('anthropic'),
       }),
     }
@@ -1547,7 +1526,7 @@ export class AuthController {
     this.devinAutoImportTried = true
     const rows = await listStoredSessions('devin', this.authPath)
     // A foreign-shaped row (wrong-prefix token) is not a devin login; it must
-    // not block the CLI import. Its refresh 401s out via isDevinPermanentRefreshError.
+    // not block the CLI import. Its refresh 401s out via isPermanentRefreshFailure.
     if (rows.some((row) => isDevinSessionToken(row?.session?.accessToken))) return
     try {
       const result = await importDevinAuth({ ...this.devinImport })

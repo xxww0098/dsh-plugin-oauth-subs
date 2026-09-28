@@ -9,7 +9,7 @@
 
 import { copilotCacheSessionId, COPILOT_STABLE_SESSION } from './cache.js'
 import { createHash } from 'node:crypto'
-import { OAuthEndpointError, oauthError } from '../codex/index.js'
+import { OAuthEndpointError, oauthError } from '../tokens.js'
 import { outboundFetch } from '../../utils/outbound.js'
 
 export { applyCopilotCache, copilotCacheHeaders, copilotCacheSessionId, resetCopilotPins } from './cache.js'
@@ -541,12 +541,6 @@ export async function refreshCopilot(session, fetchFn = outboundFetch) {
     }
     throw error
   }
-}
-
-export function isCopilotPermanentRefreshError(error) {
-  if (!(error instanceof OAuthEndpointError)) return false
-  if (error.status === 401 || error.status === 403) return true
-  return error.oauthCode === 'invalid_grant'
 }
 
 export function copilotUpstreamHeaders(session, cacheSessionId, extra: any = {}) {

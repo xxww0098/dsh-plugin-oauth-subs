@@ -25,7 +25,7 @@ Anthropic 订阅 OAuth。直接打 `api.anthropic.com/v1/messages`（Anthropic M
 | state | 授权与 token 交换都回传（pi-ai 把 `state` 一起 POST） | pi-ai exchangeAuthorizationCode |
 
 刷新：`grant_type=refresh_token` + `client_id`，JSON。`invalid_grant` / `invalid_client` /
-`unauthorized_client` 判永久失败（重新登录）。
+`unauthorized_client` 或 401 判永久失败（重新登录，共享 `isPermanentRefreshFailure`，无本家额外码）。
 
 ### 账号身份
 

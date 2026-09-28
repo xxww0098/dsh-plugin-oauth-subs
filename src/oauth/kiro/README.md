@@ -129,6 +129,7 @@ proxy 只删 `prompt_cache_retention` / `prompt_cache_options`，**不**把 `pro
 - 不要把 Social 的 `redirect_uri` 在 authorize 和 token 之间改掉（HTTP 500）。
 - 不要在 refresh 成功后保留旧 `expiresAt`（TokenManager 会每轮打 `/refreshToken` → 429）。
 - 不要把 refresh 429 映射成代理 500；原样回 429（有则带 Retry-After）。
+- 刷新永久失败只认 `KiroHttpError` 的 401 或 body `error` 码（`invalid_grant` 等），不扫消息文本。
 - 不要只 stub `GenerateAssistantResponse`（会 501）。
 - 不要在 eventstream 非 string 头上 `break`（会丢掉 `:event-type`）。
 - 不要只认 `metadataEvent.tokenUsage`。现场流经常只有 `contextUsageEvent` + `meteringEvent`（credit）。

@@ -171,7 +171,7 @@ dated 模型行；Fast 变体；更快额度轮询。thinking 由宿主按 id �
 | 抄 | 本 hop |
 |---|---|
 | 设备码 RFC 8628 JSON `{client_id,scope:read:user}` | `copilotDeviceSpec` `jsonBody: true` |
-| `GET copilot_internal/v2/token` | `exchangeCopilotToken`；401/403 永久 |
+| `GET copilot_internal/v2/token` | `exchangeCopilotToken`；401 永久，403 临时 |
 | vscode-chat 身份头 | `Copilot-Integration-Id: vscode-chat`；UA `GitHubCopilotChat/0.35.0` |
 | `X-Interaction-Id` = session | `copilotCacheHeaders` / `copilotUpstreamHeaders` |
 | GPT 不发 `maxOutputTokens` | `applyCopilotThinking` 剥 `max_tokens` |
