@@ -57,7 +57,10 @@ test('Settings workbench enters as a sidebar panel below 插件', async () => {
   // Retained main panels stay mounted — the poll gates on real visibility,
   // re-arms only after the previous refresh settles, and wakes on
   // visibilitychange.
-  assert.match(src, /if \(panelVisible\(root\.current, document\)\) await refresh\(\)/)
+  assert.match(src, /if \(panelVisible\(root\.current, document\)\) \{\s*await Promise\.race\(\[refresh\(\), new Promise\(\(resolve\) => setTimeout\(resolve, 30_000\)\)\]\)/)
+  // After the user's own action the status read must not join a stale poll build.
+  assert.match(src, /callRpc\(rpc, 'status', fresh \? \{ fresh: true \} : undefined\)/)
+  assert.match(src, /return result\s*\}\s*await refresh\(true\)/)
   assert.match(src, /if \(live\) timer = setTimeout\(tick, 1500\)/)
   assert.match(src, /document\.addEventListener\('visibilitychange', onVisibility\)/)
   assert.match(src, /className: 'osubs', ref: root/)
@@ -243,7 +246,7 @@ test('OpenCode Go renders through the shared account cards and add-account dialo
   assert.match(src, /opencodeGoHostStale/)
   assert.equal(src.includes('OpencodeGoPanel'), false)
   assert.match(src, /quotaPanel\('opencode-go'\)/)
-  assert.match(src, /onGoSave: async \(payload\) => \{\s*await callRpc\(rpc, 'goSave', payload\)\s*await refresh\(\)\s*\}/)
+  assert.match(src, /onGoSave: async \(payload\) => \{\s*await callRpc\(rpc, 'goSave', payload\)\s*await refresh\(true\)\s*\}/)
   assert.match(src, /id === 'opencode-go' && !busy && h\('form'/)
   assert.match(src, /roster\.some\(\(row\) => row\.apiKeySet\) \? t\.opencodeGoKeySet : t\.opencodeGoKeyPlaceholder/)
   assert.match(src, /roster\.some\(\(row\) => row\.cookieSet\) \? t\.opencodeGoCookieSet : t\.opencodeGoCookiePlaceholder/)

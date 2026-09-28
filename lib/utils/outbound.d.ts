@@ -52,21 +52,8 @@ export declare function createOutboundSession({ path, configUrl, env, fetchFn, a
  * `ctx.effect` cleanup calls `close()` on the returned session; a newer
  * instance simply replaces it, so hot reload order does not matter.
  */
-export declare function configureOutbound(options?: any): {
-    ready: Promise<void>;
-    request: (input: any, init?: any) => Promise<any>;
-    proxyFor(target: any): Promise<string | undefined>;
-    snapshot(): {
-        error?: string | undefined;
-        url: string;
-        source: string;
-        configured: boolean;
-    };
-    setUrl(raw: any): Promise<any>;
-    /** Frees both agents; later proxied requests fail instead of going direct. */
-    close(): Promise<void>;
-};
+export declare function configureOutbound(options?: any): any;
 /** The one outbound fetch: direct Agent, or ProxyAgent when a proxy applies. */
-export declare function outboundFetch(input: any, init?: any): Promise<any>;
+export declare function outboundFetch(input: any, init?: any): any;
 /** Proxy URL (with credentials) the Cursor h2 dialer should tunnel through, if any. */
-export declare function outboundProxyFor(url: any): Promise<string | undefined>;
+export declare function outboundProxyFor(url: any): any;

@@ -268,8 +268,15 @@ export function createOutboundSession({
 }
 
 // Until the plugin configures the owner (unit tests, live scripts) every hop
-// goes direct through undici — never through the global fetch.
-let current = createOutboundSession({ env: {} })
+// goes direct through undici — never through the global fetch. Built lazily,
+// so a configured plugin never holds a second, unclosed Agent.
+let current
+let unconfigured
+
+function owner() {
+  current ??= unconfigured = createOutboundSession({ env: {} })
+  return current
+}
 
 /**
  * Point the module-level owner at this plugin instance. The caller's
@@ -277,16 +284,18 @@ let current = createOutboundSession({ env: {} })
  * instance simply replaces it, so hot reload order does not matter.
  */
 export function configureOutbound(options: any = {}) {
+  if (current && current === unconfigured) void current.close()
+  unconfigured = undefined
   current = createOutboundSession(options)
   return current
 }
 
 /** The one outbound fetch: direct Agent, or ProxyAgent when a proxy applies. */
 export function outboundFetch(input, init: any = undefined) {
-  return current.request(input, init)
+  return owner().request(input, init)
 }
 
 /** Proxy URL (with credentials) the Cursor h2 dialer should tunnel through, if any. */
 export function outboundProxyFor(url) {
-  return current.proxyFor(url)
+  return owner().proxyFor(url)
 }

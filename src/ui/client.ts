@@ -3154,10 +3154,12 @@ window.__ModuleLoader__.load({
       const [update, setUpdate] = useState(() => readStoredSnap()?.update ?? null)
       const [updateBusy, setUpdateBusy] = useState(false)
 
-      const refresh = useCallback(async () => {
+      // `fresh` after the user's own action: the answer must not come from a
+      // poll's snapshot that was already building before the write.
+      const refresh = useCallback(async (fresh = false) => {
         if (rpc === undefined) return
         try {
-          const next = await callRpc(rpc, 'status')
+          const next = await callRpc(rpc, 'status', fresh ? { fresh: true } : undefined)
           setSnap(next)
           writeStoredSnap(next)
           setError('')
@@ -3180,7 +3182,10 @@ window.__ModuleLoader__.load({
           if (busy) return
           busy = true
           clearTimeout(timer)
-          if (panelVisible(root.current, document)) await refresh()
+          // A status RPC that never settles must not stop polling for good.
+          if (panelVisible(root.current, document)) {
+            await Promise.race([refresh(), new Promise((resolve) => setTimeout(resolve, 30_000))])
+          }
           busy = false
           if (live) timer = setTimeout(tick, 1500)
         }
@@ -3225,7 +3230,7 @@ window.__ModuleLoader__.load({
             setSnap((current) => current ? { ...current, update: { ...current.update, ...result } } : current)
             return result
           }
-          await refresh()
+          await refresh(true)
         } catch (caught) {
           const message = caught instanceof Error ? caught.message : String(caught)
           if (isUnknownOauthMethod(message)) return
@@ -3286,7 +3291,7 @@ window.__ModuleLoader__.load({
         onUseKey: (provider, key, extra) => run('key', { provider, key, ...(typeof extra === 'string' ? { region: extra } : extra || {}) }),
         onGoSave: async (payload) => {
           await callRpc(rpc, 'goSave', payload)
-          await refresh()
+          await refresh(true)
         },
       })
 
