@@ -3,13 +3,11 @@ import { test, type TestContext } from 'node:test'
 import { createProxy } from '../lib/oauth/proxy.js'
 import { encodeKiroEventStream } from '../lib/oauth/kiro/request.js'
 
-async function streamResponse(t: TestContext, body: BodyInit, stream = true) {
-  const proxy = createProxy({
-    port: 0,
-    apiKey: 'local-test-key',
-    tokens: { kiro: { session: async () => ({ accessToken: 'test-token', region: 'us-east-1', authMethod: 'social' }) } },
-    fetchFn: async () => new Response(body),
-  })
+const kiroSession = (accessToken = 'test-token') => ({ accessToken, region: 'us-east-1', authMethod: 'social' })
+const hello = (text = 'partial') => encodeKiroEventStream([{ type: 'assistantResponseEvent', payload: { content: text } }])
+
+async function post(t: TestContext, fetchFn, { stream = true, tokens = { session: async () => kiroSession() }, upstreamTimeouts = undefined }: any = {}) {
+  const proxy = createProxy({ port: 0, apiKey: 'local-test-key', tokens: { kiro: tokens }, fetchFn, upstreamTimeouts })
   const server = await proxy.listen()
   t.after(() => proxy.close())
   return fetch('http://127.0.0.1:' + server.address().port + '/kiro/v1/chat/completions', {
@@ -19,63 +17,157 @@ async function streamResponse(t: TestContext, body: BodyInit, stream = true) {
   })
 }
 
+/** One fetchFn answer per upstream call, in order; counts the calls. */
+function upstreamSequence(...answers: Array<() => Response>) {
+  const calls: RequestInit[] = []
+  const fetchFn = async (_url, init) => {
+    calls.push(init)
+    return answers[Math.min(calls.length, answers.length) - 1]()
+  }
+  return { fetchFn, calls }
+}
+
 function eventsOf(text: string) {
   return text.split('\n\n').filter(block => block.startsWith('data: ') && block !== 'data: [DONE]')
     .map(block => JSON.parse(block.slice(6)))
 }
 
-test('Kiro streaming exception is an error, never a successful stop', async t => {
-  const frames = encodeKiroEventStream([
-    { type: 'assistantResponseEvent', payload: { content: 'partial answer' } },
-    { type: 'exception', payload: { message: 'upstream failed' } },
-  ])
-  const response = await streamResponse(t, frames)
-  const text = await response.text()
-  const chunks = eventsOf(text)
-  assert.match(chunks.find(chunk => chunk.error)?.error.message ?? '', /upstream failed/)
-  assert.equal(chunks.some(chunk => chunk.choices?.[0]?.finish_reason), false)
-  assert.equal(text.includes('[DONE]'), false)
+test('Kiro stall before the first frame answers 504 without an SSE head', async t => {
+  const { fetchFn, calls } = upstreamSequence(() => new Response(new ReadableStream({ start() {} })))
+  const response = await post(t, fetchFn, { upstreamTimeouts: { firstByteMs: 50, budgetMs: 300 } })
+  assert.equal(response.status, 504)
+  assert.match(response.headers.get('content-type') ?? '', /json/)
+  assert.match((await response.json()).error, /no first byte within 0\.05s/)
+  assert.equal(calls.length, 1, 'no retry fits the remaining budget')
 })
 
-test('Kiro malformed frames return an HTTP error and cancel unread upstream data', async t => {
+test('Kiro drop after output destroys the response instead of ending it cleanly', async t => {
+  const { fetchFn } = upstreamSequence(() => new Response(new ReadableStream({
+    start(controller) {
+      controller.enqueue(hello())
+      setTimeout(() => controller.error(new Error('socket reset')), 20)
+    },
+  })))
+  const response = await post(t, fetchFn)
+  assert.equal(response.status, 200)
+  await assert.rejects(response.text())
+})
+
+test('Kiro streaming exception after output destroys the response, never a successful stop', async t => {
+  const { fetchFn } = upstreamSequence(() => new Response(encodeKiroEventStream([
+    { type: 'assistantResponseEvent', payload: { content: 'partial answer' } },
+    { type: 'exception', payload: { message: 'upstream failed' } },
+  ])))
+  // The destroy can land before the head flushes: either way the exchange breaks.
+  await assert.rejects(post(t, fetchFn).then(response => response.text()))
+})
+
+test('Kiro truncation after visible output destroys the response', async t => {
+  const valid = hello()
+  const { fetchFn } = upstreamSequence(() => new Response(Buffer.concat([valid, valid.subarray(0, 11)])))
+  // The destroy can land before the head flushes: either way the exchange breaks.
+  await assert.rejects(post(t, fetchFn).then(response => response.text()))
+})
+
+test('Kiro exception before output is a classified HTTP error, forwarded once', async t => {
+  const { fetchFn, calls } = upstreamSequence(() => new Response(encodeKiroEventStream([
+    { type: 'exception', payload: { message: 'upstream failed' } },
+  ])))
+  const response = await post(t, fetchFn)
+  assert.equal(response.status, 502)
+  const body = await response.json()
+  assert.equal(body.error.message, 'upstream failed')
+  assert.equal(body.error.code, 'kiro_upstream')
+  assert.equal(calls.length, 1)
+})
+
+test('Kiro malformed frames before output are a transport fault: the reader is cancelled and the hop retried', async t => {
   let cancelled = false
   const invalid = Buffer.alloc(12)
   invalid.writeUInt32BE(1)
-  const response = await streamResponse(t, new ReadableStream({
-    start(controller) { controller.enqueue(invalid) },
-    cancel() { cancelled = true },
-  }))
-  assert.equal(response.status, 502)
-  assert.match((await response.json()).error.message, /frame length/i)
+  const { fetchFn, calls } = upstreamSequence(
+    () => new Response(new ReadableStream({
+      start(controller) { controller.enqueue(invalid) },
+      cancel() { cancelled = true },
+    })),
+    () => new Response(hello('recovered')),
+  )
+  const response = await post(t, fetchFn)
+  assert.equal(response.status, 200)
+  assert.equal(eventsOf(await response.text())[0].choices[0].delta.content, 'recovered')
   assert.equal(cancelled, true)
+  assert.equal(calls.length, 2)
 })
 
-test('Kiro truncation after visible output cannot become a successful completion', async t => {
-  const valid = encodeKiroEventStream([{ type: 'assistantResponseEvent', payload: { content: 'partial' } }])
-  const response = await streamResponse(t, Buffer.concat([valid, valid.subarray(0, 11)]))
-  const text = await response.text()
-  const chunks = eventsOf(text)
-  assert.equal(chunks[0].choices[0].delta.content, 'partial')
-  assert.match(chunks.find(chunk => chunk.error)?.error.message ?? '', /truncated/i)
-  assert.equal(text.includes('[DONE]'), false)
-  assert.equal(chunks.some(chunk => chunk.choices?.[0]?.finish_reason), false)
+test('Kiro non-streaming truncation is retried rather than answered empty', async t => {
+  const { fetchFn, calls } = upstreamSequence(() => new Response(Buffer.alloc(11)), () => new Response(hello('whole')))
+  const response = await post(t, fetchFn, { stream: false })
+  assert.equal(response.status, 200)
+  assert.equal((await response.json()).choices[0].message.content, 'whole')
+  assert.equal(calls.length, 2)
 })
 
-test('Kiro non-streaming truncation is an upstream error rather than an empty answer', async t => {
-  const response = await streamResponse(t, Buffer.alloc(11), false)
-  assert.equal(response.status, 502)
-  assert.match((await response.json()).error, /truncated/i)
+test('Kiro 401 refreshes exactly once, then retries with the new token', async t => {
+  let refreshes = 0
+  const first = kiroSession('stale')
+  const tokens = {
+    session: async () => first,
+    sourceOf: (session) => session === first ? { id: 'acct' } : undefined,
+    refreshNow: async (id, failed) => {
+      refreshes += 1
+      assert.deepEqual([id, failed], ['acct', 'stale'])
+      return { session: kiroSession('fresh') }
+    },
+  }
+  const { fetchFn, calls } = upstreamSequence(
+    () => new Response(JSON.stringify({ message: 'expired token' }), { status: 401 }),
+    () => new Response(hello('hello')),
+  )
+  const response = await post(t, fetchFn, { tokens })
+  assert.equal(response.status, 200)
+  assert.equal(eventsOf(await response.text())[0].choices[0].delta.content, 'hello')
+  assert.equal(refreshes, 1)
+  assert.deepEqual(calls.map(call => call.headers.authorization), ['Bearer stale', 'Bearer fresh'])
+})
+
+test('Kiro 403 that survives the refresh keeps the non-AUTH 400', async t => {
+  let refreshes = 0
+  const tokens = {
+    session: async () => kiroSession(),
+    sourceOf: () => ({ id: 'acct' }),
+    refreshNow: async () => { refreshes += 1; return { session: kiroSession('fresh') } },
+  }
+  const { fetchFn, calls } = upstreamSequence(() => new Response(JSON.stringify({ message: 'expired token' }), { status: 403 }))
+  const response = await post(t, fetchFn, { tokens, stream: false })
+  assert.equal(response.status, 400)
+  const body = await response.json()
+  assert.equal(body.error.message, 'expired token')
+  assert.equal(body.error.code, 'kiro_upstream')
+  assert.equal(refreshes, 1)
+  assert.equal(calls.length, 2)
+})
+
+test('Kiro monthly quota answers 429 with the usage-limit wording, forwarded once', async t => {
+  const { fetchFn, calls } = upstreamSequence(() => new Response(JSON.stringify({
+    reason: 'MONTHLY_REQUEST_COUNT',
+    message: 'You have reached the limit for monthly requests',
+  }), { status: 400 }))
+  const response = await post(t, fetchFn)
+  assert.equal(response.status, 429)
+  assert.deepEqual(await response.json(), { error: 'usage limit reached: You have reached the limit for monthly requests' })
+  assert.equal(calls.length, 1)
 })
 
 test('Kiro streaming tools keep distinct indexes and string argument fragments', async t => {
-  const response = await streamResponse(t, encodeKiroEventStream([
+  const { fetchFn } = upstreamSequence(() => new Response(encodeKiroEventStream([
     { type: 'toolUseEvent', payload: { toolUseId: 'a', name: 'Read', input: '{"path":' } },
     { type: 'toolUseEvent', payload: { toolUseId: 'b', name: 'Grep' } },
     { type: 'toolUseEvent', payload: { toolUseId: 'a', input: '"a.ts"}' } },
     { type: 'toolUseEvent', payload: { toolUseId: 'b', input: { pattern: 'b' } } },
     { type: 'toolUseEvent', payload: { toolUseId: 'a', stop: true } },
     { type: 'toolUseEvent', payload: { toolUseId: 'b', stop: true } },
-  ]))
+  ])))
+  const response = await post(t, fetchFn)
   assert.equal(response.status, 200)
   const chunks = eventsOf(await response.text())
   const tools = new Map()

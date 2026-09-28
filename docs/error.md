@@ -2,6 +2,13 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-28：Kiro 卡住无计时、发头后写 SSE 错误块、月度额度被当 400
+
+**现象**：Kiro 上游卡住只能等宿主 300s 看门狗；发头后异常 / 残帧写一个 `error` SSE 再正常结束（宿主按文本归 `PI_AI_ERROR`，不重试）；`MONTHLY_REQUEST_COUNT` 回 400，宿主提示成请求错误；401/403 直接 400，不刷新。
+**根因**：`kiro/transport.ts` 自己 `fetch`，没接 04 的尝试原语；错误块分支是 04 之前的写法。
+**修复**：`forwardKiro` 跑在 `upstreamRequest().run` 里（路由入口 `startedAt` 起算预算，每块 `touch()`）；首块输出前不写头；输出前厂商异常仍走 `classifyKiroHopError`、不重放，畸形帧 / 残帧 / 断流按传输故障重试；输出后一律 `destroy`。月度额度 → 429 `usage limit reached: …`（QUOTA_EXCEEDED）。401/403 以 401 交给 `run` 刷新一次（`tokens.kiro.refreshNow`）再试，仍失败维持 400。
+**活测（2026-09-28，宿主 Node v24.21.0）**：worktree `lib/` 的 `createProxy`、未刷新，KIRO FREE 账号 3 次极小流式请求：`claude-haiku-4.5`、`auto` 回 400 `Invalid model`（免费档不开放，约 1.2–2.2s 回 JSON、未重放）；`deepseek-3.2` 200，1.2s 出头，`stop` + `[DONE]`。
+
 ## 2026-09-28：上游空闲约 4s 就断连，下一轮重新握手
 
 **现象**：两轮之间空闲超过约 4s（codex 14%，其余家族 10–16%），下一个请求要重新 TCP + TLS 握手（chatgpt.com 约 1.7s，ollama.com 约 0.5s）。

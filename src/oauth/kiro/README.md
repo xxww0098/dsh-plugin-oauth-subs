@@ -72,11 +72,11 @@ DSH chat/completions  →  POST https://q.<region>.amazonaws.com/
 - tools 仍在 **current** `userInputMessageContext.tools`（官方也是挂 current，不在 conversationState 顶层）。
 - `toolResults` 必须紧跟带该 `toolUseId` 的 `assistantResponseMessage`（history user 或 current）。`relocateDisplacedToolResults` 先按 id 把错位的 result 挪回发出它的 assistant 后面（并发交错：A / user / B / result(A) → AWS 400）；再走原来的 `flushAssistant` 再 `flushUser`。不编造 “Tool results provided.”；有 `toolResults` 时 `content` 保持空串，只有既无文本也无 results 才写占位 `.`。
 - `normalizeToolUseId`：已符合 `^[a-zA-Z0-9_.:-]{1,64}$` 的 id 只做 `call_` / `toolu_` / `tool_` → `tooluse_`；带 `|` 或超长的 OpenAI Responses 复合 id（`call_…|fc_…`）用稳定 sha256 映成 `tooluse_<32>`，use 和 result 共用同一张表。
-- 上游 401/403 改写成 400（非 AUTH），避免 DSH 把订阅打成「API 密钥无效」。`MONTHLY_REQUEST_COUNT` 也回 400（不要扮成可锤的 429）；`INSUFFICIENT_MODEL_CAPACITY` → 503；`USER_REQUEST_RATE_EXCEEDED` → 429（有则带 Retry-After）；超大 / `TOO_BIG` 保持 400/413。TokenManager 已经会刷新，不要再抄 kiro-cli 403 级联。
+- 上游 401/403 先经 `run` 的刷新钩子 `refreshNow` 刷一次再试；仍失败改写成 400（非 AUTH），避免 DSH 把订阅打成「API 密钥无效」。`MONTHLY_REQUEST_COUNT` → 429 `usage limit reached: <厂商原文>`（宿主 QUOTA_EXCEEDED，不重试，不带 Retry-After）；`INSUFFICIENT_MODEL_CAPACITY` → 503；`USER_REQUEST_RATE_EXCEEDED` → 429（有则带 Retry-After）；超大 / `TOO_BIG` 保持 400/413。不要再抄 kiro-cli 403 级联。
 - eventstream 里结构化 thinking / `text`（无 `content`）映成 Completions `reasoning_content`。不要把思考压成 `<thinking>` XML 写进 `content`。
 - 网络块不是帧边界。`KiroEventStreamParser` 拒绝非法帧长 / header 长度，`finish()` 拒绝 EOF 残帧；不能在毒前缀后继续积累数据。见[故障记录](../../../docs/error.md)。
 - 流式工具按 `toolUseId` 分配稳定且互异的 OpenAI `index`，参数片段始终是字符串；交错工具不能拼成同一个调用。
-- 异常 / 畸形帧不是成功结束：发头前回错误 HTTP 状态，发头后发 OpenAI `error` SSE，不追加成功 `finish_reason` / `[DONE]`；停止消费并释放上游 reader。
+- 传输层跑在 `upstreamRequest().run` 里（首字节 120s / 预算 270s / 空闲 270s，每块上游数据 `touch()`）；第一块映射后的输出之前不写头。输出前：厂商异常帧按 `classifyKiroHopError` 回 HTTP 状态、不重放；畸形帧 / EOF 残帧 / 断流是传输故障，由 `run` 重试。输出后任何失败都 `destroy`，不写 `error` SSE，不追加成功 `finish_reason` / `[DONE]`；停止消费并释放上游 reader。
 
 命中：有 `metadataEvent.tokenUsage`（或嵌套 `metadataEvent` / snake_case）时用精确字段，`cacheReadInputTokens` → `prompt_tokens_details.cached_tokens`。
 

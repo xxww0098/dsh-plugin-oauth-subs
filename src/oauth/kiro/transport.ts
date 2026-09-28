@@ -1,6 +1,7 @@
 /** AWS EventStream HTTP lifecycle and OpenAI streaming translation. */
 
-import { RequestError, describeError, sendJson } from '../../utils/http.js'
+import { sendJson } from '../../utils/http.js'
+import { UpstreamFailure, upstreamRequest } from '../upstream.js'
 import { kiroStreamingProfileArn } from './index.js'
 import {
   classifyKiroHopError,
@@ -24,18 +25,21 @@ function headerValue(headers, name) {
   return headers[name] ?? headers[name.toLowerCase()]
 }
 
-function sendKiroUpstreamError(response, status, text, headers) {
-  let parsed
-  try { parsed = text ? JSON.parse(text) : null } catch { parsed = null }
-  const classified = classifyKiroHopError(status, parsed, text, {
-    retryAfter: headerValue(headers, 'retry-after'),
+/** A Kiro vendor answer as the failure `run` forwards once, never replays. */
+function kiroHopFailure(status, parsed, text, retryAfter = undefined) {
+  const classified = classifyKiroHopError(status, parsed, text, { retryAfter })
+  const body = kiroClientErrorBody(status, parsed, text)
+  if (classified.code === 'kiro_quota') {
+    // The host reads `usage limit reached:` as QUOTA_EXCEEDED: no retry, accurate hint.
+    return new UpstreamFailure(429, `usage limit reached: ${body.error.message}`, { code: 'quota' })
+  }
+  // 401/403 travel as 401 so `run` refreshes once; forwardKiro maps a survivor to 400.
+  const auth = (status === 401 || status === 403) && classified.code === 'kiro_upstream'
+  return new UpstreamFailure(auth ? 401 : classified.status, `kiro upstream ${status}`, {
+    code: 'http',
+    payload: body,
+    retryAfter: classified.retryAfter,
   })
-  sendJson(
-    response,
-    classified.status,
-    kiroClientErrorBody(status, parsed, text),
-    classified.retryAfter ? { 'retry-after': classified.retryAfter } : {},
-  )
 }
 
 /**
@@ -77,42 +81,58 @@ async function writeKiroSse(response, chunk, signal) {
   if (!response.write(`data: ${JSON.stringify(chunk)}\n\n`)) await waitForDrain(response, signal)
 }
 
-export async function forwardKiro(response, { payload, cacheSessionId, stream, session, fetchFn, signal }) {
+/**
+ * One Kiro hop inside the attempt primitive: timers, transport retries and a
+ * single refresh on 401/403. Nothing reaches the client before the first
+ * mapped output chunk; a failure after it destroys the response.
+ */
+export async function forwardKiro(response, { payload, cacheSessionId, stream, session, tokens, fetchFn, signal, startedAt, timeouts }) {
+  try {
+    await upstreamRequest({ family: 'kiro', signal, startedAt, stream, response, timeouts }).run(
+      (attempt) => attemptKiro(response, { payload, cacheSessionId, stream, session, fetchFn, attempt }),
+      {
+        refresh: async () => {
+          const source = typeof tokens?.sourceOf === 'function' ? tokens.sourceOf(session) : undefined
+          const next = source && typeof tokens.refreshNow === 'function'
+            ? await tokens.refreshNow(source.id, session.accessToken)
+            : undefined
+          if (!next?.session) return false
+          session = next.session
+          return true
+        },
+      },
+    )
+  } catch (error) {
+    // Still refused after the refresh: the subscription itself is valid, so
+    // keep it off the host's AUTH path ("API key invalid") with a 400.
+    if (error instanceof UpstreamFailure && error.code === 'http' && error.status === 401) {
+      throw new UpstreamFailure(400, error.message, { code: 'http', payload: error.payload })
+    }
+    throw error
+  }
+}
+
+async function attemptKiro(response, { payload, cacheSessionId, stream, session, fetchFn, attempt }) {
+  const { signal } = attempt
   const body = Buffer.from(JSON.stringify(openaiToKiro(payload, {
     conversationId: cacheSessionId,
     profileArn: kiroStreamingProfileArn(session),
   })))
-  const url = kiroChatUrl(session)
-  const headers = kiroChatHeaders(session)
-
-  let upstream
-  try {
-    upstream = await fetchFn(url, { method: 'POST', headers, body, signal })
-  } catch (error) {
-    if (signal.aborted) throw error
-    throw new RequestError(502, describeError(error))
-  }
-
+  const upstream = await fetchFn(kiroChatUrl(session), { method: 'POST', headers: kiroChatHeaders(session), body, signal })
   if (upstream.status >= 400) {
-    sendKiroUpstreamError(response, upstream.status, await upstream.text(), upstream.headers)
-    return
+    const text = await upstream.text()
+    let parsed
+    try { parsed = text ? JSON.parse(text) : null } catch { parsed = null }
+    throw kiroHopFailure(upstream.status, parsed, text, headerValue(upstream.headers, 'retry-after'))
   }
 
   const model = typeof payload.model === 'string' ? payload.model : 'kiro'
   const id = `chatcmpl-${Date.now()}`
 
   if (!stream) {
-    const buffer = Buffer.from(await upstream.arrayBuffer())
-    let openai
-    try {
-      openai = kiroToOpenai(buffer, { model, id })
-    } catch (error) {
-      throw new RequestError(502, describeError(error))
-    }
-    if (openai.error) {
-      sendJson(response, 400, kiroClientErrorBody(400, openai.error, openai.error.message))
-      return
-    }
+    // A truncated or malformed body is a transport fault: `run` retries it.
+    const openai = kiroToOpenai(Buffer.from(await upstream.arrayBuffer()), { model, id })
+    if (openai.error) throw kiroHopFailure(400, openai.error, openai.error.message)
     sendJson(response, 200, openai)
     return
   }
@@ -124,18 +144,20 @@ export async function forwardKiro(response, { payload, cacheSessionId, stream, s
   let usage
   let contextPercentage
   const reader = upstream.body?.getReader()
-  if (!reader) {
-    throw new RequestError(502, 'kiro upstream returned no event stream')
-  }
+  if (!reader) throw new Error('kiro upstream returned no event stream')
   try {
     while (true) {
       const { done, value } = await reader.read()
+      // A read that settles after a timer fired must not reach the client.
+      signal.throwIfAborted()
+      if (!done) attempt.touch()
       const events = parser.feed(value ?? Buffer.alloc(0))
       for (const event of events) {
         const type = event.type
         const data = unwrapKiroEventPayload(event.payload, type)
         if (type === 'exception' || type === 'invalidStateEvent' || event.messageType === 'exception') {
-          throw new RequestError(502, data.message || data.reason || 'kiro upstream exception')
+          // After output `run` rethrows it and answerFailure destroys the response.
+          throw kiroHopFailure(502, data, data.message || data.reason || 'kiro upstream exception')
         }
         const thought = thinkingTextFromPayload(type, data)
         if (thought) {
@@ -177,17 +199,6 @@ export async function forwardKiro(response, { payload, cacheSessionId, stream, s
         break
       }
     }
-  } catch (error) {
-    if (signal.aborted) throw error
-    const message = describeError(error)
-    console.error('[oauth-subs] kiro stream failed: ' + message)
-    if (!response.headersSent) sendKiroUpstreamError(response, 502, message, upstream.headers)
-    else {
-      // The client may already be gone: the error report itself must not throw.
-      await writeKiroSse(response, kiroClientErrorBody(502, undefined, message), signal).catch(() => {})
-      if (!response.writableEnded && !response.destroyed) response.end()
-    }
-    return
   } finally {
     await reader.cancel().catch(() => {})
     reader.releaseLock()

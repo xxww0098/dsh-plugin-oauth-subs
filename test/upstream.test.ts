@@ -378,6 +378,26 @@ test('proxy answers the Cline daily cap as a 429 usage-limit, forwarded once', a
   assert.equal(clineQuotaFailure(429, { error: { message: 'rate limited' } }), undefined, 'other 429s stay upstream answers')
 })
 
+test('host classification contract: Kiro monthly quota is QUOTA_EXCEEDED, a refused token after refresh is not AUTH', async () => {
+  const cases = [
+    [400, { reason: 'MONTHLY_REQUEST_COUNT', message: 'You have reached the limit for monthly requests' }, QUOTA_EXCEEDED_CODE],
+    [403, { message: 'The bearer token included in the request is invalid.' }, 'INVALID_REQUEST'],
+  ]
+  for (const [status, answer, code] of cases) {
+    const tokens = { kiro: {
+      session: async () => ({ accessToken: 'tok', region: 'us-east-1', authMethod: 'social' }),
+      sourceOf: () => ({ id: 'a' }),
+      refreshNow: async () => ({ session: { accessToken: 'fresh', region: 'us-east-1', authMethod: 'social' } }),
+    } }
+    await withProxy(tokens, async () => new Response(JSON.stringify(answer), { status }), async (port) => {
+      const response = await postJson(port, '/kiro/v1/chat/completions', { model: 'deepseek-3.2', stream: true, messages: [] })
+      const body = await response.json()
+      const message = `${response.status} ${JSON.stringify(body.error ?? body)}`
+      assert.equal(classifyPiAiError(message), code, message)
+    })
+  }
+})
+
 test('proxy answers a missing login as 403 before any upstream call', async () => {
   let calls = 0
   const tokens = { ollama: { session: async () => { throw new LoginRequiredError('Ollama Cloud is not logged in') } } }

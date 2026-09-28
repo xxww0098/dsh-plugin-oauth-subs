@@ -567,8 +567,11 @@ export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, max
         await forwardKiro(response, {
           ...input,
           session,
+          tokens: tokens.kiro,
           fetchFn,
           signal: client.signal,
+          startedAt,
+          timeouts: upstreamTimeouts,
         })
       } finally {
         client.cleanup()
