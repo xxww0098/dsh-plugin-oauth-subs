@@ -180,3 +180,13 @@ spec 没写到、由实施者自己拍板的决定。每条：决定 → 理由 
 - **Anthropic 从维护者 WIP 移植到钩子**：`isAnthropicImportedSource`、`rereadAnthropicImport`（读记录的 Keychain service 或 `.credentials.json`，不换票不写）、`importAnthropicAuth` 在会话上写 `source`；与 WIP 的差异：错误是 `ImportedLoginStale`（403）而不是带 `anthropic-import-stale` 码的普通错误，重读只覆盖令牌字段，未移植 `ANTHROPIC_IMPORT_LOCKED`（锁住的 Keychain 在本分支读作无登录 → stale）。→ provisional（user）：WIP 落地时删掉 `#refreshAnthropic` / `#importAnthropic`，保留 `refresh: refreshAnthropic` + `imported: anthropicImported`。
 - **轮换证据（厂商源码）**：Codex、Cline、Kimi、Anthropic 轮换；**Cursor 不轮换**（`cursor-agent` 无 refresh_token grant，IDE 把同一 JWT 同时存为 access 和 refresh）。按决定 4 仍全部只读；Cursor 是唯一可按 spec 放开的家族。→ provisional（user）。
 - **检查点证据（不阻塞，已告知用户）**：本机 Cline `cli` 登录今天 07:29 过期，而 `~/.cline` 里的 token 09-26 就过期了——说明插件一直在替 CLI 换票；合入后 Cline 会报 stale，大概率需要重新登录 Cline CLI 或改用浏览器登录（决定 4 的预期代价）。Claude Code 的 Keychain token 当前也已过期。
+
+## 12
+
+- **空闲淘汰用 `session.setTimeout(60s)`**（60s 无帧），淘汰后优雅关闭，安静但活着的流不会被杀。→ sound。
+- **池键 = origin + 代理串**：设置页运行时改出站代理不清池，新拨号用新键，旧会话 60s 内空闲淘汰；避免在 `utils/outbound.ts` 里放 Cursor 代码。→ sound。
+- **`clearCursorH2Pool` 优雅关闭而不是 destroy**，配置变化/热重载时进行中的 run 能跑完；会话已 unref，不阻塞退出。→ sound。
+- **池结构是 key → 拨号 promise 的 `Map`**，同一个 promise 负责合并并发拨号。→ sound。
+- **正常结束时服务端还没关自己那一侧，也发 RST CANCEL**（与原 destroy 行为一致）。→ sound。
+- **清池挂在 `apply()` 里 `configureCursorUpstreamProxy` 旁的 `ctx.effect`**；配置变化会重跑插件，这一个清理同时覆盖配置变化和插件停止。→ sound。
+- 活测：两次 composer-2.5 run 只建 1 次 `http2.connect`，互不干扰，保留连接池。

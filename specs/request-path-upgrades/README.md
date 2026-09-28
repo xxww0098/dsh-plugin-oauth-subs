@@ -6,7 +6,7 @@
 ## Next Agent Prompt
 
 **状态（2026-09-28）**：实施中，在集成分支 `rpu/integration`（worktree
-`/Users/xxww/Code/REPO/rpu/integration`）上推进。已合入：01、02a、02b、03、04、05a、05b、05c、05e、06、08、09、10、11、13、14、07。进行中：12。
+`/Users/xxww/Code/REPO/rpu/integration`）上推进。已合入：01、02a、02b、03、04、05a、05b、05c、05e、06、08、09、10、11、12、13、14、07。进行中：整 spec 审查。
 
 **先决条件的处理**：维护者的 WIP（约 60 个文件）仍未提交，用户指示继续。各 slice 从
 48b78b8 + spec 提交分支，只合进 `rpu/integration`，**不碰 `main`**；WIP 落地后由维护者
@@ -50,7 +50,7 @@
 - [x] 09 回退 id 不再跨会话 pin + GLM 常量 → [slices/09](slices/09-fallback-isolation.md)
 - [x] 10 Antigravity 签名表 LRU → [slices/10](slices/10-antigravity-signatures.md)
 - [x] 11 keep-alive 60s → [slices/11](slices/11-keepalive.md)
-- [ ] 12 Cursor HTTP/2 连接池 → [slices/12](slices/12-cursor-h2-pool.md)
+- [x] 12 Cursor HTTP/2 连接池 → [slices/12](slices/12-cursor-h2-pool.md)
 - [x] 13 Codex 请求体 zstd → [slices/13](slices/13-codex-zstd.md)
 - [x] 14 设置页轮询与额度 TTL → [slices/14](slices/14-settings-polling.md)
 - [ ] 15 收尾复测（合入后 ≥7 天）→ [slices/15](slices/15-closeout.md)
