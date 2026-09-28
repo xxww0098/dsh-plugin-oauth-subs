@@ -72,6 +72,17 @@ import { cursorCatalogModels, refreshCursorCatalog } from './cursor/catalog.js'
 import { ollamaSession, refreshOllama, isOllamaPermanentRefreshError, resolveOllamaIdentity, isOllamaOpaqueAccount } from '../apikey/ollama/index.js'
 import { OLLAMA_IMPORT_EMPTY, importOllamaAuth } from '../apikey/ollama/import.js'
 import { ollamaCatalogModels, refreshOllamaCatalog } from '../apikey/ollama/catalog.js'
+import {
+  commandCodeFlow,
+  commandCodeSession,
+  commandCodeSessionFromCallback,
+  isCommandCodeOpaqueAccount,
+  isCommandCodePermanentRefreshError,
+  refreshCommandCode,
+  resolveCommandCodeIdentity,
+} from '../apikey/command-code/index.js'
+import { COMMAND_CODE_IMPORT_EMPTY, importCommandCodeAuth } from '../apikey/command-code/import.js'
+import { commandCodeCatalogModels } from '../apikey/command-code/catalog.js'
 import { kiroCatalogModels, refreshKiroCatalog } from './kiro/catalog.js'
 import {
   completeKimiDevice as sessionFromKimiDevice,
@@ -121,14 +132,14 @@ import {
 import { clineCatalogModels, refreshClineCatalog } from './cline/catalog.js'
 import { CLINE_IMPORT_EMPTY, importClineAuth } from './cline/import.js'
 import {
-  anthropicFlow,
+  anthropicFlowFor,
   anthropicProfile,
   ANTHROPIC_PREEMPT_MS,
   exchangeAnthropicCode,
   isAnthropicPermanentRefreshError,
   refreshAnthropic,
 } from './anthropic/index.js'
-import { importAnthropicAuth } from './anthropic/import.js'
+import { importAnthropicAuth, isAnthropicImportedSource, rereadAnthropicImport } from './anthropic/import.js'
 import { devinUserStatus, resolveDevinIdentity } from './devin/transport.js'
 import { OpencodeGoStore, opencodeGoFilePath } from '../apikey/opencode-go/store.js'
 import { opencodeGoKeyHint } from '../apikey/opencode-go/index.js'
@@ -208,6 +219,9 @@ export class AuthController {
   declare clineDiscover: any
   declare clineAutoImport: boolean
   declare clineAutoImportTried: boolean
+  declare commandCodeAutoImport: boolean
+  declare commandCodeAutoImportTried: boolean
+  declare commandCodeImport: any
   declare lastError: Map<string, any>
   declare finalizing: Set<string>
   declare claims: Map<string, number>
@@ -226,7 +240,7 @@ export class AuthController {
   declare autoUpdateTimer: any
   declare prefsFile: string
   declare stateFile: string
-  constructor({ authPath, prefix, origin, settings, patchPath, credentials, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, profile, readFileFn, updateEnv, installReleaseFn = installRelease, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover, devinAutoImport, devinImport, devinDiscover, clineDiscover, clineAutoImport }: any) {
+  constructor({ authPath, prefix, origin, settings, patchPath, credentials, grokLogin = 'device', onAuthChanged, models, fetchFn = fetch, quotaTtlMs, profile, readFileFn, updateEnv, installReleaseFn = installRelease, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover, devinAutoImport, devinImport, devinDiscover, clineDiscover, clineAutoImport, commandCodeAutoImport, commandCodeImport }: any) {
     this.authPath = authPath
     this.prefix = prefix
     this.origin = origin
@@ -290,6 +304,11 @@ export class AuthController {
       : (process.env.NODE_TEST_CONTEXT ? undefined : ((session) => refreshClineCatalog(session, { fetchFn })))
     this.clineAutoImport = clineAutoImport ?? !process.env.NODE_TEST_CONTEXT
     this.clineAutoImportTried = false
+    // The Command Code CLI's auth.json is its only credential store — harvest
+    // it once like cursor's IDE import, so an installed CLI means instant login.
+    this.commandCodeAutoImport = commandCodeAutoImport ?? !process.env.NODE_TEST_CONTEXT
+    this.commandCodeImport = commandCodeImport && typeof commandCodeImport === 'object' ? commandCodeImport : {}
+    this.commandCodeAutoImportTried = false
     configureKimiIdentity(typeof authPath === 'string' ? dirname(authPath) : undefined)
     this.lastError = new Map()
     this.finalizing = new Set()
@@ -399,9 +418,18 @@ export class AuthController {
         preemptMs: ANTHROPIC_PREEMPT_MS,
         provider: 'anthropic',
         authPath: this.authPath,
-        refresh: (session) => refreshAnthropic(session, fetchFn),
+        refresh: (session) => this.#refreshAnthropic(session),
         isPermanent: isAnthropicPermanentRefreshError,
         onRemoved: () => this.onAuthChanged?.('anthropic'),
+      }),
+      'command-code': new TokenManager({
+        displayName: 'Command Code',
+        preemptMs: 24 * 60 * 60_000,
+        provider: 'command-code',
+        authPath: this.authPath,
+        refresh: refreshCommandCode,
+        isPermanent: isCommandCodePermanentRefreshError,
+        onRemoved: () => this.onAuthChanged?.('command-code'),
       }),
     }
     this.quota = new QuotaStore({ tokens: this.tokens, fetchFn, ttlMs: quotaTtlMs })
@@ -432,6 +460,7 @@ export class AuthController {
       devin: (await getSession('devin', this.authPath)) !== undefined,
       cline: (await getSession('cline', this.authPath)) !== undefined,
       anthropic: (await getSession('anthropic', this.authPath)) !== undefined,
+      'command-code': (await getSession('command-code', this.authPath)) !== undefined,
     }
   }
 
@@ -465,6 +494,7 @@ export class AuthController {
       copilotModels: copilotCatalogModels(),
       devinModels: devinCatalogModels(),
       clineModels: clineCatalogModels(),
+      commandCodeModels: commandCodeCatalogModels(),
       glmModels: await this.#glmModels(),
     })
   }
@@ -583,6 +613,7 @@ export class AuthController {
     await this.#maybeAutoImportCopilot()
     await this.#maybeAutoImportDevin()
     await this.#maybeAutoImportCline()
+    await this.#maybeAutoImportCommandCode()
     const loggedIn = await this.loggedIn()
     const origin = this.origin()
     const opencodeGoApiKeySet = await this.#opencodeGoKeySet()
@@ -611,6 +642,7 @@ export class AuthController {
       copilotModels: copilotCatalogModels(),
       devinModels: devinCatalogModels(),
       clineModels: clineCatalogModels(),
+      commandCodeModels: commandCodeCatalogModels(),
       glmModels,
     }), selected)
     if (loggedIn.codex) await this.#ensureAccountQuota('codex')
@@ -637,9 +669,11 @@ export class AuthController {
     else this.quota.clear('cline')
     if (loggedIn.anthropic) await this.#ensureAccountQuota('anthropic')
     else this.quota.clear('anthropic')
+    if (loggedIn['command-code']) await this.#ensureAccountQuota('command-code')
+    else this.quota.clear('command-code')
     const enabledKeys = this.models.enabledKeys(catalog)
     const opencodeGo = await this.opencodeGoSnapshot()
-    const [codexAccounts, grokAccounts, glmAccounts, kiroAccounts, antigravityAccounts, cursorAccounts, ollamaAccounts, kimiAccounts, copilotAccounts, devinAccounts, clineAccounts, anthropicAccounts] = await Promise.all([
+    const [codexAccounts, grokAccounts, glmAccounts, kiroAccounts, antigravityAccounts, cursorAccounts, ollamaAccounts, kimiAccounts, copilotAccounts, devinAccounts, clineAccounts, anthropicAccounts, commandCodeAccounts] = await Promise.all([
       this.#accountsWithQuota('codex'),
       this.#accountsWithQuota('grok'),
       this.#accountsWithQuota('glm'),
@@ -652,6 +686,7 @@ export class AuthController {
       this.#accountsWithQuota('devin'),
       this.#accountsWithQuota('cline'),
       this.#accountsWithQuota('anthropic'),
+      this.#accountsWithQuota('command-code'),
     ])
     return {
       origin,
@@ -679,6 +714,7 @@ export class AuthController {
         devin: { ...(await this.status('devin')), activeId: devinAccounts.find((row) => row.active)?.id, accounts: devinAccounts },
         cline: { ...(await this.status('cline')), activeId: clineAccounts.find((row) => row.active)?.id, accounts: clineAccounts },
         anthropic: { ...(await this.status('anthropic')), activeId: anthropicAccounts.find((row) => row.active)?.id, accounts: anthropicAccounts },
+        'command-code': { ...(await this.status('command-code')), activeId: commandCodeAccounts.find((row) => row.active)?.id, accounts: commandCodeAccounts },
         'opencode-go': opencodeGo,
       },
       opencodeGo,
@@ -1099,6 +1135,7 @@ export class AuthController {
       if (provider === 'kimi') await this.#rememberKimiIdentity(row, quota)
       if (provider === 'devin') await this.#rememberDevinIdentity(row, quota)
       if (provider === 'cline') await this.#rememberClineIdentity(row, quota)
+      if (provider === 'command-code') await this.#rememberCommandCodeIdentity(row, quota)
     }))
     return rows
   }
@@ -1282,6 +1319,75 @@ export class AuthController {
     await updateAccountSession('ollama', row, next, this.authPath)
   }
 
+  async #maybeAutoImportCommandCode() {
+    if (!this.commandCodeAutoImport || this.commandCodeAutoImportTried) return
+    this.commandCodeAutoImportTried = true
+    const rows = await listStoredSessions('command-code', this.authPath)
+    if (rows.length > 0) return
+    try {
+      const result = await importCommandCodeAuth({ env: process.env, ...this.commandCodeImport })
+      if (result?.session) {
+        const session = await this.#finishCommandCodeSession(result.session)
+        await saveSession('command-code', session, this.authPath)
+        this.onAuthChanged?.('command-code')
+        void this.quota.refresh('command-code')
+      }
+    } catch (error) {
+      if (errorCode(error) !== COMMAND_CODE_IMPORT_EMPTY && errorMessage(error) !== COMMAND_CODE_IMPORT_EMPTY) {
+        // no env key and no CLI auth.json is fine; other faults stay off the banner
+      }
+    }
+  }
+
+  async #importCommandCode() {
+    const existing = await listStoredSessions('command-code', this.authPath)
+    const result = await importCommandCodeAuth({ env: process.env, ...this.commandCodeImport })
+    const incomingId = accountIdOf('command-code', result.session)
+    // Same key via a different source (paste vs auth.json) must not mint a
+    // second account row — the bearer is the identity here, not the id shape.
+    const hit = existing.find((row) =>
+      row.id === incomingId || row.session?.accessToken === result.session.accessToken)
+    if (hit) {
+      return { source: hit.session.source, session: hit.session, skipped: true }
+    }
+    return { ...result, session: await this.#finishCommandCodeSession(result.session) }
+  }
+
+  async #finishCommandCodeSession(session) {
+    const identity = await resolveCommandCodeIdentity(session, { fetchFn: this.fetchFn })
+    if (!identity) return session
+    const next = { ...session }
+    if (identity.account) next.account = identity.account
+    if (identity.id) next.userId = identity.id
+    if (identity.userName) next.userName = identity.userName
+    if (identity.email) next.email = identity.email
+    if (identity.orgId) next.orgId = identity.orgId
+    return next
+  }
+
+  async #rememberCommandCodeIdentity(row, quota) {
+    if (!quota || quota.status !== 'ready') return
+    const account = typeof quota.account === 'string' && quota.account.trim() ? quota.account.trim() : undefined
+    const planType = typeof quota.planType === 'string' && quota.planType.trim() ? quota.planType.trim() : undefined
+    if (!account && !planType) return
+    if (
+      (!account || row.session.account === account)
+      && (!planType || row.session.planType === planType)
+    ) return
+    const next = { ...row.session }
+    if (account) next.account = account
+    if (planType) next.planType = planType
+    const nextId = accountIdOf('command-code', next)
+    if (nextId !== row.id && isCommandCodeOpaqueAccount(row.id)) {
+      const saved = await replaceAccountId('command-code', row, next, this.authPath)
+      if (!saved) return
+      this.quota.clear('command-code', row.id)
+      await this.quota.ensure('command-code', saved.id, saved.session)
+      return
+    }
+    await updateAccountSession('command-code', row, next, this.authPath)
+  }
+
   async #maybeAutoImportKimi() {
     if (!this.kimiAutoImport || this.kimiAutoImportTried) return
     this.kimiAutoImportTried = true
@@ -1419,6 +1525,28 @@ export class AuthController {
     if (identity.planType) next.planType = identity.planType
     if (identity.organizationName) next.organizationName = identity.organizationName
     return next
+  }
+
+  /** Read Claude Code's login. Does not write the keychain or credentials file. */
+  async #importAnthropic() {
+    const result = await importAnthropicAuth()
+    return { ...result, session: { ...result.session, source: result.source } }
+  }
+
+  /**
+   * Imported sessions share Claude Code's refresh token. Exchanging it
+   * rotates the token and leaves the keychain / .credentials.json copy
+   * invalid. Re-read the store instead; never write it.
+   */
+  async #refreshAnthropic(session) {
+    if (isAnthropicImportedSource(session?.source)) {
+      const reread = await rereadAnthropicImport(session.source)
+      if (reread && reread.expiresAt > Date.now() + 15_000) return reread
+      const error: any = new Error('anthropic imported login is stale; refresh Claude Code or use browser login')
+      error.code = 'anthropic-import-stale'
+      throw error
+    }
+    return refreshAnthropic(session, this.fetchFn)
   }
 
   /**
@@ -1673,10 +1801,22 @@ export class AuthController {
       }
     }
     if (provider === 'anthropic') {
-      const attempt = await this.flows.start('anthropic', anthropicFlow)
+      // Two Claude Code doors: subscription (claude.com/cai) and Console
+      // (platform.claude.com). Default is the subscription lane — a Max/Pro
+      // account cannot authorize on the Console host.
+      const flow = anthropicFlowFor(mode === 'console' ? 'console' : 'claudeai')
+      const attempt = await this.flows.start('anthropic', flow)
       const claim = this.claim('anthropic')
       void this.completePkce('anthropic', attempt, claim)
-      return { authorizeUrl: attempt.authorizeUrl, redirectUri: attempt.redirectUri, mode: 'pkce' }
+      return { authorizeUrl: attempt.authorizeUrl, redirectUri: attempt.redirectUri, mode: flow.mode }
+    }
+    if (provider === 'command-code') {
+      // Studio auth/cli redirects credentials straight to the loopback
+      // callback — collect() resolves them, no code exchange exists.
+      const attempt = await this.flows.start('command-code', commandCodeFlow)
+      const claim = this.claim('command-code')
+      void this.completeCommandCode(attempt, claim)
+      return { authorizeUrl: attempt.authorizeUrl, redirectUri: attempt.redirectUri, mode: 'oauth' }
     }
     if (provider !== 'grok') throw new Error(`unknown provider ${provider}`)
     const useDevice = (mode ?? this.grokLogin) !== 'pkce'
@@ -1909,6 +2049,28 @@ export class AuthController {
     }
   }
 
+  /**
+   * Command Code's waitCode resolves with the callback credentials
+   * {apiKey,userId,userName,keyName} — the session builds directly, there is
+   * no token exchange (flow.ts collect() already state-checked the callback).
+   */
+  async completeCommandCode(attempt, claim) {
+    try {
+      const credentials = await attempt.waitCode()
+      if (this.claims.get('command-code') !== claim) return
+      const session = await this.#finishCommandCodeSession(commandCodeSessionFromCallback(credentials))
+      await saveSession('command-code', session, this.authPath)
+      this.lastError.delete('command-code')
+      this.onAuthChanged?.('command-code')
+      void this.quota.refresh('command-code')
+    } catch (error) {
+      if (this.claims.get('command-code') !== claim) return
+      if (!(error instanceof Error && error.message === 'login cancelled')) {
+        this.lastError.set('command-code', describeError(error))
+      }
+    }
+  }
+
   async useKey(provider, key, extra) {
     const payload = typeof extra === 'string' || extra == null ? { region: extra } : extra
     if (provider === 'kiro') return this.#useKiroKey(key, payload)
@@ -1967,7 +2129,20 @@ export class AuthController {
       void this.quota.refresh('devin')
       return { account: publicSession('devin', session) }
     }
-    if (provider !== 'glm') throw new Error('only GLM, Kiro, Ollama Cloud, Kimi, Copilot, and Devin accept a pasted key')
+    if (provider === 'command-code') {
+      const session = await this.#finishCommandCodeSession(commandCodeSession({
+        accessToken: key,
+        source: 'paste',
+      }))
+      this.claim('command-code')
+      this.flows.pending('command-code')?.cancel()
+      await saveSession('command-code', session, this.authPath)
+      this.lastError.delete('command-code')
+      this.onAuthChanged?.('command-code')
+      void this.quota.refresh('command-code')
+      return { account: publicSession('command-code', session) }
+    }
+    if (provider !== 'glm') throw new Error('only GLM, Kiro, Ollama Cloud, Kimi, Copilot, Devin, and Command Code accept a pasted key')
     const accessToken = typeof key === 'string' ? key.trim() : ''
     if (accessToken.length < 8) throw new Error('glm API key is empty')
     this.claim('glm')
@@ -2133,8 +2308,10 @@ export class AuthController {
             ? await this.#importDevin()
           : provider === 'cline'
             ? await this.#importCline()
+          : provider === 'command-code'
+            ? await this.#importCommandCode()
           : provider === 'anthropic'
-            ? await importAnthropicAuth()
+            ? await this.#importAnthropic()
           : await importGrokAuth()
     this.claim(provider)
     this.flows.pending(provider)?.cancel()
@@ -2227,6 +2404,7 @@ export class AuthController {
       copilotModels: copilotCatalogModels(),
       devinModels: devinCatalogModels(),
       clineModels: clineCatalogModels(),
+      commandCodeModels: commandCodeCatalogModels(),
       glmModels: await this.#glmModels(),
     })
     return { ...synced, opencodeGoRoute }

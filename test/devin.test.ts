@@ -761,12 +761,17 @@ test('runDevinChat surfaces trailer errors and empty streams', async () => {
   ]), { status: 200 })
   await assert.rejects(
     runDevinChat(devinSession({ accessToken: 'x' }), openaiToDevin({ model: 'swe-2', messages: [] }, {}), { fetchFn: failFetch }),
-    DevinTransportError,
+    (error) => error instanceof DevinTransportError && error.retryable !== true,
   )
   const emptyFetch = async () => new Response(Buffer.alloc(0), { status: 200 })
   await assert.rejects(
     runDevinChat(devinSession({ accessToken: 'x' }), openaiToDevin({ model: 'swe-2', messages: [] }, {}), { fetchFn: emptyFetch }),
-    /empty body|without a message/,
+    (error) => /empty body|without a message/.test(error.message) && error.retryable === true,
+  )
+  const unavailableFetch = async () => new Response('upstream unavailable', { status: 503 })
+  await assert.rejects(
+    runDevinChat(devinSession({ accessToken: 'x' }), openaiToDevin({ model: 'swe-2', messages: [] }, {}), { fetchFn: unavailableFetch }),
+    (error) => error.status === 503 && error.retryable !== true,
   )
 })
 
@@ -960,18 +965,25 @@ test('forwardDevin replays socket-level failures until the stream commits', asyn
     proxy.close()
   }
 
-  // A permanent 403 answer is not replayed.
-  calls = 0
-  const forbidden = async () => {
-    calls += 1
-    throw new DevinTransportError('Devin chat failed (HTTP 403): forbidden', { status: 403 })
-  }
-  const denied = await (await make(forbidden)).listen()
-  try {
-    const res = await post(denied.address().port, { model: 'swe-2', messages: [{ role: 'user', content: 'ping' }] })
-    assert.equal(res.status, 403)
-    assert.equal(calls, 1)
-  } finally {
-    denied.close()
+  // Upstream answers are forwarded once, never replayed here — the host owns
+  // retries for 4xx/5xx and Connect trailer errors alike.
+  for (const [label, answer, status] of [
+    ['permanent 403', () => new DevinTransportError('Devin chat failed (HTTP 403): forbidden', { status: 403 }), 403],
+    ['HTTP 503', () => new DevinTransportError('Devin chat failed (HTTP 503): unavailable', { status: 503 }), 503],
+    ['trailer error', () => new DevinTransportError('Devin chat stream error: deadline_exceeded: context deadline exceeded'), 500],
+  ] as const) {
+    calls = 0
+    const refuse = async () => {
+      calls += 1
+      throw answer()
+    }
+    const server = await (await make(refuse)).listen()
+    try {
+      const res = await post(server.address().port, { model: 'swe-2', messages: [{ role: 'user', content: 'ping' }] })
+      assert.equal(res.status, status, label)
+      assert.equal(calls, 1, label)
+    } finally {
+      server.close()
+    }
   }
 })

@@ -15,7 +15,7 @@ dsh plugin --profile web add https://github.com/xxww0098/dsh-plugin-oauth-subs
 dsh web
 ```
 
-打开主页侧边栏 **订阅**（**插件**按钮下方的入口）。工作台顶部固定三个页签——**额度 / 模型 / 版本**，左侧是供应商栏，右侧内容区滚动。每个账号一张卡片（额度都在卡片上；Ollama Cloud 没有额度条）。**版本**页的 **当前版本** 固定显示本进程加载插件时的版本；自安装后仍显示旧运行版本，直到重启。本插件专攻 desktop：自身不 spawn `dsh`/`npm`，也不会重启宿主——版本卡对比运行版本与 GitHub 最新 tag，点 **安装更新** 会把 tag 的 tarball 自安装进 profile 的 `node_modules`（同卡还有每小时检查的自动更新开关；「本地插件目录」热链时开关照旧，只是提示改成 `npm run build` 热重载、不列 release 结果）。profile `node_modules` 比运行进程新时会列出 **磁盘** 并标记过期进程。或 `pnpm dsh web --patch ./cordis.patch.yml`（`id: oauth-subs`）。
+打开主页侧边栏 **订阅**（**插件**按钮下方的入口）。工作台顶部固定三个页签——**额度 / 模型 / 版本**，左侧是供应商栏，右侧内容区滚动。每个账号一张卡片（额度都在卡片上；Ollama Cloud 没有额度条）。**版本**页的 **当前版本** 固定显示本进程加载插件时的版本；自安装后仍显示旧运行版本，直到重启。本插件专攻 desktop：自身不 spawn `dsh`/`npm`，也不会重启宿主——版本卡对比运行版本与 GitHub 最新 tag，点 **安装更新** 会把 tag 的 tarball 自安装进 profile 的 `node_modules`（同卡还有每 15 分钟检查的自动更新开关；「本地插件目录」热链时开关照旧，只是提示改成 `npm run build` 热重载、不列 release 结果）。profile `node_modules` 比运行进程新时会列出 **磁盘** 并标记过期进程。或 `pnpm dsh web --patch ./cordis.patch.yml`（`id: oauth-subs`）。
 
 ### Desktop
 
@@ -29,7 +29,7 @@ dsh web
 
 代理端口（默认 `8318`）是全局回环绑定，web 与 desktop profile 不能同时运行（`EADDRINUSE`）。杀掉另一个 profile，或在该 profile 的 `cordis.patch.yml` 里给 `id: oauth-subs` 改 `config.port`。
 
-本插件专攻 desktop：宿主生命周期面（DSH CLI/npm 更新、重启宿主）已**整体删除**而非隐藏——Electron 应用独占管理 profile 与进程。升级是自安装的：**检查更新 → 安装更新** 会下载 release tarball 原地换目录（或打开 **自动更新** 每小时检查）；装好后重启应用加载新版本。`data/` 目录保留，登录态不丢。手动兜底：**插件** → 卸载 → 添加插件 → 重装仓库地址。
+本插件专攻 desktop：宿主生命周期面（DSH CLI/npm 更新、重启宿主）已**整体删除**而非隐藏——Electron 应用独占管理 profile 与进程。升级是自安装的：**检查更新 → 安装更新** 会下载 release tarball 原地换目录（或打开 **自动更新** 每 15 分钟检查）；装好后重启应用加载新版本。`data/` 目录保留，登录态不丢。手动兜底：**插件** → 卸载 → 添加插件 → 重装仓库地址。
 
 如果应用启动即退：检查 `launchctl getenv ELECTRON_RUN_AS_NODE`——该变量会让所有 Electron 应用退化成纯 Node 模式，`launchctl unsetenv ELECTRON_RUN_AS_NODE` 即可修复。
 
@@ -49,7 +49,7 @@ dsh web
 | GitHub Copilot | 设备码（无 PKCE）；导入 `~/.config/github-copilot/hosts.json`；可选 `GITHUB_TOKEN` | `openai-completions` | `https://api.githubcopilot.com/chat/completions`（`tid=` session） |
 | Devin Agent | PKCE `127.0.0.1:59653`；导入 `~/.local/share/devin/credentials.toml`；粘贴 `devin-session-token$…` | `openai-completions` | Connect `server.codeium.com` `ApiServerService/GetChatMessage` |
 | Cline | WorkOS 设备码（无 PKCE）；导入 `~/.cline/data/settings/providers.json` | `openai-completions` | `https://api.cline.bot/api/v1/chat/completions` |
-| Claude (Anthropic) | PKCE `claude.ai`（本机 `/callback` 回调）；导入 `~/.claude/.credentials.json` | `anthropic-messages` | `api.anthropic.com/v1/messages`（`claude-code-20250219` + `oauth-2025-04-20` beta 指纹） |
+| Claude (Anthropic) | PKCE Claude.ai `claude.com/cai` 或 Console `platform.claude.com`（本机 `/callback`）；只读导入本机 Claude Code 登录 | `anthropic-messages` | `api.anthropic.com/v1/messages`（`claude-code-20250219` + `oauth-2025-04-20` beta 指纹） |
 | OpenCode Go | 粘贴 API key；可选 Console cookie 与工作区以读取额度 | `openai-completions` / `openai-responses` | 直连 `https://opencode.ai/zen/go/v1` |
 
 ### 导入已有凭据
@@ -68,7 +68,7 @@ dsh web
 | `~/.config/github-copilot/hosts.json`；OpenCode `~/.local/share/opencode/auth.json`；`COPILOT_GITHUB_TOKEN` / `GITHUB_TOKEN` / `GH_TOKEN` | Copilot |
 | `~/.local/share/devin/credentials.toml`（`$XDG_DATA_HOME/devin/`；Windows `%LOCALAPPDATA%\devin\`）；`DEVIN_API_KEY` / `WINDSURF_API_KEY` | Devin |
 | `~/.cline/data/settings/providers.json` | Cline |
-| `~/.claude/.credentials.json`（不读 Keychain 副本） | Claude |
+| macOS 钥匙串 `Claude Code-credentials`，然后 `~/.claude/.credentials.json`（只读） | Claude |
 | 面板粘贴：OpenCode Go API key；可选 Console cookie / 工作区 | OpenCode Go |
 
 订阅令牌：`<profile>/data/dsh-plugin-oauth-subs/auth.json`（`0600`）。OpenCode Go 账号：同目录 `opencode-go.json`。模型选择：`models.json`。

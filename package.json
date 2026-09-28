@@ -37,6 +37,7 @@
   },
   "files": [
     "lib",
+    "assets",
     "scripts",
     "cordis.patch.yml",
     "AGENTS.md",

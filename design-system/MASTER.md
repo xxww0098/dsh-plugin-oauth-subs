@@ -29,7 +29,9 @@ Fixed three-region layout; the page itself never scrolls
 - **Left** — `.osubs-rail`: fixed provider column under the tabs, shown
   on Quota and Models only (Version is full-width). 全部 + every family
   in `FAMILY_ORDER`, each with brand mark + name + count.
-- **Right** — `.osubs-pane`: the only scroller.
+- **Right** — `.osubs-pane`: the only scroller, except the Models view
+  where the panel fills the pane (`osubs-pane-panel--fill`) so the pane,
+  toolbar and column head stay put and only `.osubs-mtable` scrolls.
 
 Exact sizes/padding live in the CSS; keep 四周留白 on all sides.
 

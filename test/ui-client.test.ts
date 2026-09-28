@@ -127,12 +127,13 @@ test('Settings Cursor tab uses Import local Cursor copy and shows source, never 
   assert.match(src, /cursorImport:\s*'导入本机 Cursor'/)
   assert.match(src, /cursorImport:\s*'Import local Cursor'/)
   assert.match(src, /cursorImportEmpty:\s*'本机没有 Cursor CLI 或 IDE 登录'/)
-  assert.match(src, /id === 'cursor' \? t\.cursorImport : id === 'kimi' \? t\.kimiImport : id === 'copilot' \? t\.copilotImport : id === 'devin' \? t\.devinImport : id === 'cline' \? t\.clineImport : id === 'anthropic' \? t\.anthropicImport : t\.import/)
-  assert.match(src, /\(id === 'cursor' \|\| id === 'ollama' \|\| id === 'kimi' \|\| id === 'copilot' \|\| id === 'devin' \|\| id === 'cline'\) && row\.methodLabel/)
+  assert.match(src, /id === 'cursor' \? t\.cursorImport : id === 'kimi' \? t\.kimiImport : id === 'copilot' \? t\.copilotImport : id === 'devin' \? t\.devinImport : id === 'cline' \? t\.clineImport : id === 'anthropic' \? t\.anthropicImport : id === 'command-code' \? t\.commandCodeImport : t\.import/)
+  assert.match(src, /\(id === 'cursor' \|\| id === 'ollama' \|\| id === 'kimi' \|\| id === 'copilot' \|\| id === 'devin' \|\| id === 'cline' \|\| id === 'command-code'\) && row\.methodLabel/)
   assert.match(src, /message === 'cursor-import-empty' \? t\.cursorImportEmpty/)
   assert.match(src, /quotaPanel\('cursor'\)/)
-  assert.match(src, /icons\/\{grok,zai,antigravity,cursor,ollama,kimi,copilot,cline,anthropic,github\}\.svg/)
-  assert.match(src, /icons\/\{codex,kiro,devin\}-color\.svg/)
+  assert.match(src, /icons\/\{grok,zai,cursor,ollama,cline,github,opencode\}\.svg/)
+  assert.match(src, /icons\/\{codex,kiro,antigravity,kimi,copilot,devin\}-color\.svg/)
+  assert.match(src, /icons\/claude-color\.svg/)
   assert.match(src, /cursor: \{ d: 'M22\.106 5\.68L12\.5\.135a\.998\.998 0 00-\.998 0L1\.893 5\.68/)
   assert.match(src, /cursor: \{ d: '[^']+', clip: true \}/)
   assert.equal(src.includes('M11.925 24l10.425-6'), false)
@@ -140,7 +141,7 @@ test('Settings Cursor tab uses Import local Cursor copy and shows source, never 
   assert.equal(/cursor[\s\S]{0,200}accessToken/.test(src), false)
   const panelOrder = src.match(/quotaPanel\('([\w-]+)'/g) ?? []
   const ids = panelOrder.map((row) => /quotaPanel\('([\w-]+)'/.exec(row)?.[1])
-  assert.deepEqual(ids, ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline', 'anthropic', 'opencode-go'])
+  assert.deepEqual(ids, ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline', 'anthropic', 'opencode-go', 'command-code'])
 })
 
 test('Settings Ollama tab is Cloud key paste after Cursor, never localhost', async () => {
@@ -167,7 +168,7 @@ test('Settings entry is horizontal page tabs over a family rail, page padded', a
   assert.match(src, /className: 'osubs-ptabs', role: 'tablist'/)
   const pageTabs = src.match(/h\(PageTab, \{ id: '(\w+)'/g) ?? []
   const pageIds = pageTabs.map((row) => /id: '(\w+)'/.exec(row)?.[1])
-  assert.deepEqual(pageIds, ['quota', 'models', 'version'])
+  assert.deepEqual(pageIds, ['quota', 'models', 'version', 'donate'])
 
   // No family tabs in the top bar; families live in the rail below.
   assert.equal(/id: 'codex'/.test(pageTabs.join(' ')), false)
@@ -210,7 +211,7 @@ test('Settings entry is horizontal page tabs over a family rail, page padded', a
   assert.match(src, /'kimi', 'copilot', 'devin', 'cline', 'anthropic', 'opencode-go',/)
   const panelOrder = src.match(/quotaPanel\('([\w-]+)'/g) ?? []
   const ids = panelOrder.map((row) => /quotaPanel\('([\w-]+)'/.exec(row)?.[1])
-  assert.deepEqual(ids, ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline', 'anthropic', 'opencode-go'])
+  assert.deepEqual(ids, ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline', 'anthropic', 'opencode-go', 'command-code'])
 })
 
 test('OpenCode Go renders through the shared account cards and add-account dialog', async () => {
@@ -250,7 +251,7 @@ test('Settings Kimi tab uses LobeHub Kimi path, device login, and never @lobehub
   assert.match(src, /kimiImport:\s*'导入本机 Kimi Code'/)
   assert.match(src, /kimiImport:\s*'Import local Kimi Code'/)
   assert.match(src, /LobeHub `Kimi` icon/)
-  assert.match(src, /kimi: \{ d: 'M21\.846 0a1\.923/)
+  assert.match(src, /kimi: \{ raw: '<rect width="24" height="24" rx="5" fill="#000"\/>/)
   assert.match(src, /quotaPanel\('kimi'\)/)
   assert.match(src, /id === 'grok' \|\| id === 'kimi' \|\| id === 'copilot' \|\| id === 'cline' \? t\.device/)
   assert.match(src, /id === 'kimi' && showKey && !busy/)
@@ -405,7 +406,7 @@ test('Add account opens a centered dialog, not a sheet', async () => {
   assert.match(src, /id === 'glm' && !busy && h\('div', \{ className: 'osubs-glm-logins' \}/)
   assert.match(src, /id === 'kiro' && !busy && h\('div', \{ className: 'osubs-logins' \}/)
   assert.match(src, /id === 'ollama' && !busy && h\('div', \{ className: 'osubs-logins' \}/)
-  assert.match(src, /id === 'cursor' \? t\.cursorImport : id === 'kimi' \? t\.kimiImport : id === 'copilot' \? t\.copilotImport : id === 'devin' \? t\.devinImport : id === 'cline' \? t\.clineImport : id === 'anthropic' \? t\.anthropicImport : t\.import/)
+  assert.match(src, /id === 'cursor' \? t\.cursorImport : id === 'kimi' \? t\.kimiImport : id === 'copilot' \? t\.copilotImport : id === 'devin' \? t\.devinImport : id === 'cline' \? t\.clineImport : id === 'anthropic' \? t\.anthropicImport : id === 'command-code' \? t\.commandCodeImport : t\.import/)
   assert.match(src, /h\('span', null, t\.ollamaImport\)/)
   assert.equal(/osubs-sheet|osubs-drawer|role: 'sheet'|side.?sheet|侧边抽屉/i.test(src), false)
 })
@@ -451,6 +452,12 @@ test('Settings Models is a searchable switch table; locked groups still offer si
   assert.match(switchCss, /cursor: pointer/)
   assert.match(src, /onOpenFamily: \(fam\) => \{ setFamily\(railIdOf\(fam\)\); setView\('quota'\) \}/)
   assert.match(src, /hidden: !show/)
+  // Models pane never scrolls — the fill chain clamps the card so only
+  // the model table scrolls and its column head stays pinned.
+  assert.match(src, /view === 'models', true\)/)
+  assert.match(src, /\.osubs-pane-panel--fill \{[^}]*min-height: 0/)
+  assert.match(src, /\.osubs-pane-panel--fill \.osubs-mtable \{[^}]*overflow-y: auto/)
+  assert.match(src, /\.osubs-pane-panel--fill \.osubs-mhead \{[^}]*position: sticky/)
   assert.match(src, /modelsHint:\s*'勾选即同步。'/)
   assert.match(src, /modelsHint:\s*'Check to sync\.'/)
   assert.equal(src.includes('Fast 仅 Codex Priority'), false)

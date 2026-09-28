@@ -53,6 +53,6 @@ export { applyFastMode, modelSupportsFastMode } from './utils/fast-mode.js';
 export { CONTEXT_VARIANT_SUFFIX, codexLargeContext, applyContextMode, isCodex900kBase, peelContextSuffix, } from './utils/context-mode.js';
 export { parseCodexUsage, parseGrokBilling, parseGlmQuota, parseKiroUsage, parseCursorPeriodUsage, parseKimiUsage, parseCopilotUsage, parseDevinUserStatus, parseResetCredits, QuotaStore } from './oauth/quota.js';
 export { fetchClineQuota, parseClineBalance, parseClinePlan, parseClineUsage } from './oauth/cline/quota.js';
-export { fetchAnthropicQuota, parseAnthropicRateLimitHeaders } from './oauth/anthropic/quota.js';
+export { fetchAnthropicQuota } from './oauth/anthropic/quota.js';
 export { formatPlanLabel, CODEX_PLAN_NAMES } from './oauth/plan.js';
 export { REPO_URL, REPO_SLUG, installedVersion, fresherVersion, fetchLatest, localUpdateInfo, profileFromBaseUrl, isElectronManagedProfile, pluginUpdateCommand, } from './utils/update.js';

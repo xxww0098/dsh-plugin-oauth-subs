@@ -52,6 +52,9 @@ export declare class AuthController {
     clineDiscover: any;
     clineAutoImport: boolean;
     clineAutoImportTried: boolean;
+    commandCodeAutoImport: boolean;
+    commandCodeAutoImportTried: boolean;
+    commandCodeImport: any;
     lastError: Map<string, any>;
     finalizing: Set<string>;
     claims: Map<string, number>;
@@ -70,7 +73,7 @@ export declare class AuthController {
     autoUpdateTimer: any;
     prefsFile: string;
     stateFile: string;
-    constructor({ authPath, prefix, origin, settings, patchPath, credentials, grokLogin, onAuthChanged, models, fetchFn, quotaTtlMs, profile, readFileFn, updateEnv, installReleaseFn, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover, devinAutoImport, devinImport, devinDiscover, clineDiscover, clineAutoImport }: any);
+    constructor({ authPath, prefix, origin, settings, patchPath, credentials, grokLogin, onAuthChanged, models, fetchFn, quotaTtlMs, profile, readFileFn, updateEnv, installReleaseFn, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover, devinAutoImport, devinImport, devinDiscover, clineDiscover, clineAutoImport, commandCodeAutoImport, commandCodeImport }: any);
     claim(provider: any): number;
     loggedIn(): Promise<{
         codex: boolean;
@@ -85,6 +88,7 @@ export declare class AuthController {
         devin: boolean;
         cline: boolean;
         anthropic: boolean;
+        'command-code': boolean;
     }>;
     status(provider: any): Promise<{
         detail?: any;
@@ -618,6 +622,12 @@ export declare class AuthController {
     completeGlm(attempt: any): Promise<void>;
     completeCursor(attempt: any): Promise<void>;
     completeKiroIdc(attempt: any): Promise<void>;
+    /**
+     * Command Code's waitCode resolves with the callback credentials
+     * {apiKey,userId,userName,keyName} — the session builds directly, there is
+     * no token exchange (flow.ts collect() already state-checked the callback).
+     */
+    completeCommandCode(attempt: any, claim: any): Promise<void>;
     useKey(provider: any, key: any, extra: any): Promise<{
         method: any;
         account: {

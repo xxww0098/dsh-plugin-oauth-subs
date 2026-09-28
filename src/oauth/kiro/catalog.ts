@@ -75,7 +75,7 @@ function inferKiroInput(id) {
 function inferKiroReasoning(id) {
   const key = id.toLowerCase()
   if (key.startsWith('gpt-')) return { ...KIRO_REASONING_GPT }
-  if (/claude-(?:opus-5|opus-4\.[78]|sonnet-5|fable-5)|(?:^|-)auto$/.test(key) || key === 'auto') {
+  if (/claude-(?:opus-5|opus-4\.[78]|sonnet-5|fable-5(?:\.1|-1)?)|(?:^|-)auto$/.test(key) || key === 'auto') {
     return { ...KIRO_REASONING_CLAUDE_XHIGH }
   }
   if (/claude-(?:opus-4\.6|sonnet-4\.6)/.test(key)) return { ...KIRO_REASONING_CLAUDE }
@@ -87,10 +87,21 @@ function inferKiroWindow(id) {
   if (key.startsWith('gpt-')) return KIRO_GPT_CONTEXT
   if (key.includes('deepseek')) return KIRO_DEEPSEEK_CONTEXT
   if (key.includes('qwen')) return KIRO_QWEN_CONTEXT
-  if (/claude-(?:opus-5|opus-4\.[6-8]|sonnet-5|sonnet-4\.6|fable-5)|(?:^|-)auto$/.test(key) || key === 'auto') {
+  if (/claude-(?:opus-5|opus-4\.[6-8]|sonnet-5|sonnet-4\.6|fable-5(?:\.1|-1)?)|(?:^|-)auto$/.test(key) || key === 'auto') {
     return KIRO_LARGE_CONTEXT
   }
   return KIRO_CONTEXT_WINDOW
+}
+
+function liveInputOf(model) {
+  const types = model?.supportedInputTypes ?? model?.supported_input_types
+  if (Array.isArray(types) && types.some((t) => String(t).toUpperCase() === 'IMAGE')) {
+    return [...KIRO_VISION_INPUT]
+  }
+  if (Array.isArray(types) && types.length > 0) {
+    return [...KIRO_TEXT_INPUT]
+  }
+  return undefined
 }
 
 function liveRows(models) {
@@ -104,6 +115,7 @@ function liveRows(models) {
       name: trimmed(model.displayName ?? model.display_name ?? model.name) || humanizeKiroModelId(id),
       contextWindow: asPositive(limits.maxInputTokens ?? limits.max_input_tokens ?? model.contextWindow),
       maxTokens: asPositive(limits.maxOutputTokens ?? limits.max_output_tokens ?? model.maxTokens),
+      input: liveInputOf(model),
     })
   }
   return out
@@ -131,7 +143,7 @@ export function toKiroPickerModels(live, fallback = KIRO_MODELS) {
       row.name || existing?.name || humanizeKiroModelId(row.id),
       row.contextWindow || existing?.contextWindow || inferKiroWindow(row.id),
       row.maxTokens || existing?.maxTokens || KIRO_MAX_TOKENS,
-      existing?.input ?? inferKiroInput(row.id),
+      row.input ?? existing?.input ?? inferKiroInput(row.id),
       existing?.reasoningEfforts ?? inferKiroReasoning(row.id),
     ))
   }
@@ -151,7 +163,7 @@ export function toKiroPickerModels(live, fallback = KIRO_MODELS) {
 export function originalKiroFallbackIds() {
   return KIRO_MODELS
     .map((model) => model.id)
-    .filter((id) => id !== 'auto' && id !== 'claude-fable-5')
+    .filter((id) => id !== 'auto' && id !== 'claude-fable-5' && id !== 'claude-fable-5.1')
 }
 
 async function readManagementJson(response) {

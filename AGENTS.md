@@ -133,7 +133,8 @@ node --input-type=module -e '
   quota bars, dialogs). Entry is a `sidebar.panellist` glyph under the
   插件 rail button → a keyed `main` panel (not Settings); top nav is
   额度/模型/版本 `PageTab`s; families live in a left rail with 16px
-  LobeHub marks inlined in `TAB_ICONS`; one stored session = one
+  LobeHub marks inlined in `TAB_ICONS` (sourcing rules →
+  settings-workbench.md Rail icons); one stored session = one
   `AccountCard`; quota bars are remaining-bars; model toggles are
   `Switch` rows; add-account chrome is a centered Dialog.
 
@@ -156,6 +157,13 @@ node --input-type=module -e '
   `toHarnessModel` clamps it to `HARNESS_REQUEST_MAX_TOKENS` (32768) because
   the host reserves it against the window for compaction pressure; the real
   cap stays on the family catalog row.
+- settings.yaml `name` is the picker's model alias — always `<agent>/<id>`
+  (`harnessModelAlias` + `HARNESS_MODEL_AGENT`, mirroring the UI
+  `FAMILY_NAME`; e.g. `OpenCode Go/deepseek-v4.1-flash`). The host shows
+  it without the provider group, so the alias must name the family.
+  Catalog rows keep the pretty `name` for the plugin's own Models page —
+  adding a model row never touches the alias; any new route writer applies
+  the same helper at its write seam.
 - Public sessions never expose tokens, refresh secrets, or opaque account
   ids (`user-…`, `devin-team$…`).
 - Adding a family: new `src/oauth/<id>/` + README + `docs/oauth.md` row +
@@ -189,7 +197,8 @@ node --input-type=module -e '
    <id> account`。
 4. **models** — 见下「模型参数 → 模型页」。
 5. **UI** — `ui/client.ts` tab / 图标 / copy（zh+en）；`src/index.ts`
-   re-export。
+   re-export。图标从哪来、`d`/`raw`/tint 怎么选 →
+   `design-system/pages/settings-workbench.md` Rail icons。
 6. **测试** — `test/<id>.test.ts`：login parse、session round-trip、
    catalog、cache 隔离、proxy 路由、quota snapshot。
 7. **活测 + 文档收口** — `npm run analyze` 看命中率；`docs/error.md`
@@ -221,15 +230,17 @@ hop 与 cache 同一 PR 原子落地，缓存命中率最后验证**。
 2. **静态目录**：`<id>/index.ts` `<ID>_MODELS`。`reasoningEfforts`
    键只用 DSH 闭集七值，厂商拼写进 value；`input` 只 `text`/`image`。
 3. **接线**：`models.ts` `FAMILY_IDS` + `buildProviders` +
-   `catalogProviders` + `familyOfProvider` 后缀；`controller.ts`
+   `catalogProviders` + `familyOfProvider` 后缀 + `HARNESS_MODEL_AGENT`
+   agent 名；`controller.ts`
    snapshot / accounts 分支；有活目录的家族加 `<id>CatalogModels()`
    并在 login / import / 额度刷新 / `warmCatalogs` 时重 sync
    （Cursor / Devin 先例）。`api` 取闭集三值之一；`baseURL` 对齐该
    SDK 真实 post 路径（Completions 家 `…/<id>`，Anthropic / Responses
    按各家注释）；`compat` 只许 `openai-completions`。
 4. **渲染**：`describeCatalog` → Settings 模型页（未登录也列出、
-   锁定 +「登录后同步」）；`sync()` → `settings.yaml` `oauth-<id>`
-   路由（只写已登录 + 已勾选）。变体：`-900k` 走
+   锁定 +「登录后同步」，行名仍是美化 `name`）；`sync()` →
+   `settings.yaml` `oauth-<id>` 路由（只写已登录 + 已勾选，行 `name`
+   落 `<agent>/<id>` 别名）。变体：`-900k` 走
    `withPickerVariants` / `context-mode`（默认关）；`-fast` 只在该家
    有真 Fast 语义时加（Codex Priority / Cursor RequestedModel / Devin
    后端变体），没有就不发明。
@@ -249,6 +260,8 @@ hop 与 cache 同一 PR 原子落地，缓存命中率最后验证**。
   `assertDshServiceableProvider` 是本地闸门，过了它才可能过宿主原子
   mutate。
 - [ ] `familyOfProvider` 加了 `-<id>` 后缀，否则模型页归错家族。
+- [ ] `HARNESS_MODEL_AGENT` 有 `<id>` 条目且与 UI `FAMILY_NAME` 同
+  名——漏了 settings.yaml 别名退回裸 provider id。
 - [ ] `publicSession` 不暴露 token / refresh / opaque account id。
 - [ ] quota cache key 是 `provider\0accountId`；snapshot hydrate 每个
   已存账号，不只 active。

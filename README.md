@@ -15,7 +15,7 @@ dsh plugin --profile web add https://github.com/xxww0098/dsh-plugin-oauth-subs
 dsh web
 ```
 
-Open **订阅 / Subscriptions** — the host home sidebar entry under **插件 Plugins**. The workbench pins three top tabs — **额度 Quota**, **模型 Models**, **版本 Version** — with a provider rail on the left and a scrollable pane on the right. One card per account (quota on every card; Ollama Cloud has no quota bars). The **Version** card's **Installed** shows the version captured when this process loaded the plugin; after a self-install it stays on the old running version until restart. The plugin is desktop-first: it never spawns `dsh`/`npm` and never restarts the host — the Version card compares the running version with the GitHub latest tag, and **安装更新** self-installs the tag tarball into the profile's `node_modules` (an hourly auto-update switch lives in the same card; on a local-directory link the switch stays, but its note says `npm run build` hot-reloads the plugin and drops the release-tag result). If profile `node_modules` is newer than the running process, the card lists **On disk** and flags the stale process. Or `pnpm dsh web --patch ./cordis.patch.yml` (`id: oauth-subs`).
+Open **订阅 / Subscriptions** — the host home sidebar entry under **插件 Plugins**. The workbench pins three top tabs — **额度 Quota**, **模型 Models**, **版本 Version** — with a provider rail on the left and a scrollable pane on the right. One card per account (quota on every card; Ollama Cloud has no quota bars). The **Version** card's **Installed** shows the version captured when this process loaded the plugin; after a self-install it stays on the old running version until restart. The plugin is desktop-first: it never spawns `dsh`/`npm` and never restarts the host — the Version card compares the running version with the GitHub latest tag, and **安装更新** self-installs the tag tarball into the profile's `node_modules` (a 15-minute auto-update switch lives in the same card; on a local-directory link the switch stays, but its note says `npm run build` hot-reloads the plugin and drops the release-tag result). If profile `node_modules` is newer than the running process, the card lists **On disk** and flags the stale process. Or `pnpm dsh web --patch ./cordis.patch.yml` (`id: oauth-subs`).
 
 ### Desktop
 
@@ -29,7 +29,7 @@ Data lives under `~/.dsh/profiles/desktop/data/dsh-plugin-oauth-subs/` — login
 
 The proxy port (`8318` by default) is a global loopback bind — web and desktop profiles cannot run simultaneously (`EADDRINUSE`). Kill the other profile or set a different `config.port` under `id: oauth-subs` in the profile's `cordis.patch.yml`.
 
-This plugin is specialized for Desktop: the host-lifecycle surface (DSH-CLI/npm update, restart-host) has been **removed**, not hidden — the Electron app owns the profile and process. Updates are self-installed: **检查更新 → 安装更新** downloads the release tarball and swaps the plugin dirs in place (or turn on **Auto-update** for hourly checks); restart the app to load the new copy. Your `data/` directory survives either way. Manual fallback: **插件** → 卸载 → 添加插件 → reinstall the repo URL.
+This plugin is specialized for Desktop: the host-lifecycle surface (DSH-CLI/npm update, restart-host) has been **removed**, not hidden — the Electron app owns the profile and process. Updates are self-installed: **检查更新 → 安装更新** downloads the release tarball and swaps the plugin dirs in place (or turn on **Auto-update** for 15-minute checks); restart the app to load the new copy. Your `data/` directory survives either way. Manual fallback: **插件** → 卸载 → 添加插件 → reinstall the repo URL.
 
 If the app exits instantly on launch, check `launchctl getenv ELECTRON_RUN_AS_NODE` — that variable in the user launchd environment forces every Electron app into plain Node mode; `launchctl unsetenv ELECTRON_RUN_AS_NODE` fixes it.
 
@@ -49,7 +49,7 @@ If the app exits instantly on launch, check `launchctl getenv ELECTRON_RUN_AS_NO
 | GitHub Copilot | Device-code (no PKCE); import `~/.config/github-copilot/hosts.json`; optional `GITHUB_TOKEN` | `openai-completions` | `https://api.githubcopilot.com/chat/completions` (`tid=` session) |
 | Devin Agent | PKCE `127.0.0.1:59653`; import `~/.local/share/devin/credentials.toml`; paste `devin-session-token$…` | `openai-completions` | Connect `server.codeium.com` `ApiServerService/GetChatMessage` |
 | Cline | WorkOS device-code (no PKCE); import `~/.cline/data/settings/providers.json` | `openai-completions` | `https://api.cline.bot/api/v1/chat/completions` |
-| Claude (Anthropic) | PKCE `claude.ai` (loopback `/callback`); import `~/.claude/.credentials.json` | `anthropic-messages` | `api.anthropic.com/v1/messages` (`claude-code-20250219` + `oauth-2025-04-20` beta identity) |
+| Claude (Anthropic) | PKCE Claude.ai `claude.com/cai` or Console `platform.claude.com` (loopback `/callback`); read-only import of the local Claude Code login | `anthropic-messages` | `api.anthropic.com/v1/messages` (`claude-code-20250219` + `oauth-2025-04-20` beta identity) |
 | OpenCode Go | Paste API key; optional Console cookie and workspace for quota | `openai-completions` / `openai-responses` | Direct `https://opencode.ai/zen/go/v1` |
 
 ### Import existing credentials
@@ -68,7 +68,7 @@ If the app exits instantly on launch, check `launchctl getenv ELECTRON_RUN_AS_NO
 | `~/.config/github-copilot/hosts.json`; OpenCode `~/.local/share/opencode/auth.json`; `COPILOT_GITHUB_TOKEN` / `GITHUB_TOKEN` / `GH_TOKEN` | Copilot |
 | `~/.local/share/devin/credentials.toml` (`$XDG_DATA_HOME/devin/`; Windows `%LOCALAPPDATA%\devin\`); `DEVIN_API_KEY` / `WINDSURF_API_KEY` | Devin |
 | `~/.cline/data/settings/providers.json` | Cline |
-| `~/.claude/.credentials.json` (Keychain copy not read) | Claude |
+| macOS Keychain `Claude Code-credentials`, then `~/.claude/.credentials.json` (read-only) | Claude |
 | Panel paste: OpenCode Go API key; optional Console cookie / workspace | OpenCode Go |
 
 Subscription tokens: `<profile>/data/dsh-plugin-oauth-subs/auth.json` (`0600`). OpenCode Go accounts: `opencode-go.json` in the same directory. Model selections: `models.json`.

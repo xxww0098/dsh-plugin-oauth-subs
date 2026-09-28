@@ -32,9 +32,11 @@ import { kimiCatalogModels } from './oauth/kimi/catalog.js'
 import { copilotCatalogModels } from './oauth/copilot/catalog.js'
 import { devinCatalogModels } from './oauth/devin/catalog.js'
 import { clineCatalogModels } from './oauth/cline/catalog.js'
+import { commandCodeCatalogModels } from './apikey/command-code/catalog.js'
 import { EffortMemory, LAST_EFFORT_FILE, startEffortRestore } from './oauth/reasoning-effort.js'
 import { profileFromBaseUrl } from './utils/update.js'
 import { createOutboundSession, outboundProxyPath } from './utils/outbound.js'
+import { donateQr } from './utils/donate.js'
 
 export const name = 'dsh-plugin-oauth-subs'
 export const inject = ['settings', 'credentials']
@@ -125,6 +127,7 @@ export function registerRpc(ctx, controller) {
     autoUpdate: (payload) => controller.setAutoUpdate(payload),
     proxyGet: () => controller.outboundProxy(),
     proxySet: (payload) => controller.setOutboundProxy(payload),
+    donate: () => donateQr(),
   }
 
   const dispatch = async (endpoint, payload) => {
@@ -328,6 +331,7 @@ export function apply(ctx, config: any = {}) {
         copilotModels: copilotCatalogModels(),
         devinModels: devinCatalogModels(),
         clineModels: clineCatalogModels(),
+        commandCodeModels: commandCodeCatalogModels(),
       })
       return catalog[provider]?.models.find((model) => model.id === modelId)?.reasoningEfforts
     },
@@ -489,7 +493,7 @@ export {
 } from './utils/context-mode.js'
 export { parseCodexUsage, parseGrokBilling, parseGlmQuota, parseKiroUsage, parseCursorPeriodUsage, parseKimiUsage, parseCopilotUsage, parseDevinUserStatus, parseResetCredits, QuotaStore } from './oauth/quota.js'
 export { fetchClineQuota, parseClineBalance, parseClinePlan, parseClineUsage } from './oauth/cline/quota.js'
-export { fetchAnthropicQuota, parseAnthropicRateLimitHeaders } from './oauth/anthropic/quota.js'
+export { fetchAnthropicQuota } from './oauth/anthropic/quota.js'
 export { formatPlanLabel, CODEX_PLAN_NAMES } from './oauth/plan.js'
 export {
   REPO_URL,

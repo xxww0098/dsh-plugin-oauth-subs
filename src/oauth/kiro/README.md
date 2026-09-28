@@ -72,7 +72,7 @@ DSH chat/completions  →  POST https://q.<region>.amazonaws.com/
 - tools 仍在 **current** `userInputMessageContext.tools`（官方也是挂 current，不在 conversationState 顶层）。
 - `toolResults` 必须紧跟带该 `toolUseId` 的 `assistantResponseMessage`（history user 或 current）。`relocateDisplacedToolResults` 先按 id 把错位的 result 挪回发出它的 assistant 后面（并发交错：A / user / B / result(A) → AWS 400）；再走原来的 `flushAssistant` 再 `flushUser`。不编造 “Tool results provided.”；有 `toolResults` 时 `content` 保持空串，只有既无文本也无 results 才写占位 `.`。
 - `normalizeToolUseId`：已符合 `^[a-zA-Z0-9_.:-]{1,64}$` 的 id 只做 `call_` / `toolu_` / `tool_` → `tooluse_`；带 `|` 或超长的 OpenAI Responses 复合 id（`call_…|fc_…`）用稳定 sha256 映成 `tooluse_<32>`，use 和 result 共用同一张表。
-- 上游 401/403 改写成 400（非 AUTH），避免 DSH 把订阅打成「API 密钥无效」。`MONTHLY_REQUEST_COUNT` 也回 400（不要扮成可锤的 429）；`INSUFFICIENT_MODEL_CAPACITY` → 503；`USER_REQUEST_RATE_EXCEEDED` → 429（有则带 Retry-After）；超大 / `TOO_BIG` 保持 400/413。TokenManager 已经会刷新，不要再抄 kiro-cli 403 级联。
+- 上游 401/403 改写成 400（非 AUTH），避免 DSH 把订阅打成「API 密钥无效」。`MONTHLY_REQUEST_COUNT` 回 429，文案前缀 `usage limit reached: `，type `insufficient_quota`：DSH 的 `classifyPiAiError` 先判额度措辞、后判 429，所以归为 QUOTA_EXCEEDED、不重试。这个措辞是契约，去掉就会变回可锤的 429。`INSUFFICIENT_MODEL_CAPACITY` → 503；`USER_REQUEST_RATE_EXCEEDED` → 429（有则带 Retry-After，不带额度措辞）；超大 / `TOO_BIG` 保持 400/413。流内异常（非流式）走同一套分类定状态码。TokenManager 已经会刷新，不要再抄 kiro-cli 403 级联。
 - eventstream 里结构化 thinking / `text`（无 `content`）映成 Completions `reasoning_content`。不要把思考压成 `<thinking>` XML 写进 `content`。
 - 网络块不是帧边界。`KiroEventStreamParser` 拒绝非法帧长 / header 长度，`finish()` 拒绝 EOF 残帧；不能在毒前缀后继续积累数据。见[故障记录](../../../docs/error.md)。
 - 流式工具按 `toolUseId` 分配稳定且互异的 OpenAI `index`，参数片段始终是字符串；交错工具不能拼成同一个调用。
@@ -84,14 +84,14 @@ DSH chat/completions  →  POST https://q.<region>.amazonaws.com/
 
 ## 模型
 
-`KIRO_MODELS` 是离线 fallback，对齐 [kiro.dev/docs/models](https://kiro.dev/docs/models)（含 **Auto**）+ [effort](https://kiro.dev/docs/models/effort)。id 用点号（`claude-sonnet-5`）。`claude-fable-5` 来自 pi-provider-kiro 0.10.2 bootstrap（官方表未列）。GPT-5.6 Sol/Terra/Luna 行不删。
-2026-09-25 官方表新增 Claude Fable 5.1 Enterprise Preview（仅管理员开通，US East）；本机个人账号 `ListAvailableModels` 只回 9 行、无 Fable。它由已接线的活目录按账号权限加入，不在所有用户共用的离线 fallback 发明可调用的 id。
+`KIRO_MODELS` 是离线 fallback，对齐 [kiro.dev/docs/models](https://kiro.dev/docs/models)（含 **Auto**、**Claude Fable 5.1**）+ [effort](https://kiro.dev/docs/models/effort)。id 用点号（`claude-sonnet-5`、`claude-fable-5.1`）。`claude-fable-5` 作为旧版兼容 ID 保留。GPT-5.6 Sol/Terra/Luna 官方已全系升级为 1M 窗口（`KIRO_GPT_CONTEXT = 1_000_000`）。
+官方表 2026-09-25 新增 Claude Fable 5.1（1M 窗口、6x 计费，US East only）；`claude-sonnet-4` 显示名对齐官方 Claude Sonnet 4.0。
 
-登录 / 导入 / 额度刷新后 `refreshKiroCatalog` 打 management `https://management.<region>.kiro.dev/` `List-Available-Models`（空或区域 403 再探 `us-east-1` / `eu-central-1`，不在第一个 403 停），按 token hash 缓存，merge 进 picker 和 `oauth-kiro.models` yaml。失败或空列表不挡对话，回静态 fallback。对话 hop **仍是** `q.<region>.amazonaws.com` GenerateAssistantResponse。
+登录 / 导入 / 额度刷新后 `refreshKiroCatalog` 打 management `https://management.<region>.kiro.dev/` `List-Available-Models`（空或区域 403 再探 `us-east-1` / `eu-central-1`，不在第一个 403 停），按 token hash 缓存，merge 进 picker 和 `oauth-kiro.models` yaml。活目录合并支持读取上游 `supportedInputTypes`（如 DeepSeek 3.2 / Qwen3 / MiniMax M2.1 具备 IMAGE 时自动升级为 `text+image`）。失败或空列表不挡对话，回静态 fallback。对话 hop **仍是** `q.<region>.amazonaws.com` GenerateAssistantResponse。
 
-- GPT-5.6 / Claude / Auto：输入 `text+image`。OSS（DeepSeek / MiniMax / GLM-5 / Qwen）：`text`。
-- 思考：GPT-5.6 DSH 档位 `off`–`max`，关思考的 **wire** 是 `none`（`off: "none"`）。Opus 5 / 4.8 / 4.7、Sonnet 5、Fable 5、Auto 有 `xhigh`；4.6 家族到 `max`；Haiku / OSS 为 `false`。不要把 `none` 当 DSH 键——整段 `oauth-kiro` 写不进 settings.yaml。
-- 目录必须有 Opus 5、Opus 4.8；Sonnet 主推是 **Claude Sonnet 5**（4.5 仍保留）。
+- GPT-5.6 / Claude / Auto：输入 `text+image`。OSS（DeepSeek / MiniMax / GLM-5 / Qwen）：静态回退为 `text`，活目录发现 `IMAGE` 输入时动态启用图文。
+- 思考：GPT-5.6 DSH 档位 `off`–`max`，关思考的 **wire** 是 `none`（`off: "none"`）。Opus 5 / 4.8 / 4.7、Sonnet 5、Fable 5 / 5.1、Auto 有 `xhigh`；4.6 家族到 `max`；Haiku / OSS 为 `false`。不要把 `none` 当 DSH 键——整段 `oauth-kiro` 写不进 settings.yaml。
+- 目录必须有 Opus 5、Opus 4.8；Sonnet 主推是 **Claude Sonnet 5**（4.5 与 4.0 仍保留）。
 
 ## 额度
 

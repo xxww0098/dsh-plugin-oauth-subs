@@ -37,5 +37,5 @@ test('writeUpdateState round-trips the last run outcome', async () => {
   const state = { at: '2026-09-25T12:00:00.000Z', status: 'installed', version: '0.0.104' }
   await writeUpdateState(path, state)
   assert.deepEqual(await readUpdateState(path), state)
-  assert.equal(AUTO_UPDATE_INTERVAL_MS, 3_600_000)
+  assert.equal(AUTO_UPDATE_INTERVAL_MS, 15 * 60_000)
 })

@@ -181,6 +181,23 @@ export class OAuthFlowManager {
         settle(new Error(`authorization failed: ${errorDescription}`))
         return
       }
+      // Families whose callback carries credentials instead of an OAuth
+      // `code` provide spec.collect: it validates the required fields and
+      // returns the attempt result (Command Code's apiKey bundle). The state
+      // check above already ran, so collect only sees matching attempts.
+      if (typeof spec.collect === 'function') {
+        const result = spec.collect(url)
+        if (result === undefined || result === null) {
+          response.writeHead(400, { 'content-type': 'text/plain' })
+          response.end('missing callback parameters')
+          return
+        }
+        response.writeHead(200, { 'content-type': 'text/html' })
+        response.end(SUCCESS_PAGE)
+        callback = oauthCallbackFromUrl(url, spec.callbackPath)
+        settle(undefined, result)
+        return
+      }
       const code = url.searchParams.get('code')
       if (code === null || code.length === 0) {
         response.writeHead(400, { 'content-type': 'text/plain' })
@@ -235,6 +252,22 @@ export class OAuthFlowManager {
       manual(rawInput) {
         if (settled) throw new Error(`the ${provider} login attempt already finished`)
         const trimmed = rawInput.trim()
+        if (typeof spec.collect === 'function') {
+          if (!/^https?:\/\//i.test(trimmed)) {
+            throw new Error('paste the complete callback URL')
+          }
+          const url = new URL(trimmed)
+          if (url.searchParams.get('state') !== input.state) {
+            throw new Error('state mismatch: paste the complete callback URL from this login attempt')
+          }
+          const result = spec.collect(url)
+          if (result === undefined || result === null) {
+            throw new Error('no credentials found in the pasted callback URL')
+          }
+          callback = oauthCallbackFromPasted(trimmed, spec.callbackPath)
+          settle(undefined, result)
+          return
+        }
         let code
         let pastedState
         if (/^https?:\/\//i.test(trimmed)) {

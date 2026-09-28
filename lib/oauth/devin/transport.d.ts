@@ -14,7 +14,8 @@
 export declare class DevinTransportError extends Error {
     status: any;
     permanent: boolean | undefined;
-    constructor(message: any, { status }?: any);
+    retryable: boolean | undefined;
+    constructor(message: any, { status, retryable }?: any);
 }
 /**
  * Best-effort GetUserJwt: mints metadata.user_jwt and may redirect to a

@@ -115,9 +115,12 @@ export declare function kiroUsageFromContext(percent: any, model: any, text?: st
 export declare function resolveKiroUsage(collected: any, model: any): any;
 export declare function kiroToOpenaiChunk(delta: any, { model, id, done, finishReason, usage }?: any): any;
 /**
- * Classify hop errors so DSH does not hammer a hard monthly quota as a
- * generic 429, or treat size / capacity as AUTH. 401/403 still become
- * 400 (subscription key stays valid) unless TokenManager already refreshed.
+ * Classify hop errors so DSH stops on a hard monthly quota instead of
+ * hammering it, and never treats size / capacity as AUTH. The monthly quota
+ * answers 429 in the host's quota wording (kiroClientErrorBody): DSH checks
+ * quota phrases before 429, so it reports QUOTA_EXCEEDED and does not retry.
+ * 401/403 still become 400 (subscription key stays valid) unless
+ * TokenManager already refreshed.
  */
 export declare function classifyKiroHopError(status: any, parsed: any, text: any, { retryAfter }?: any): {
     status: any;

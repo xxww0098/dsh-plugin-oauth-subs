@@ -7,7 +7,7 @@
 | Codex | ChatGPT 账号 `GET /backend-api/codex/models?client_version=0.155.1`：7 个可见基础 ID，与 `CODEX_MODELS` 一致；另 2 个 hidden 内部行。 | 保留 7 个基础行及 20 个 picker 变体。 |
 | Grok | 该账号 `GET https://cli-chat-proxy.grok.com/v1/models`：4 行，恰为 4.7、4.7 Build Fast、4.6、4.5；[官方推理档](https://docs.x.ai/developers/model-capabilities/text/reasoning)仍匹配。 | 不变。 |
 | GLM | [Coding Plan 官方表](https://docs.z.ai/devpack/overview)：实际服务 5.3 / 5.3 Flash，旧 ID 自动改道；第三行 Turbo 为 ZCode 启用的既有目录规则。 | 不添加未在套餐内的 FlashX。 |
-| Kiro | [官方模型表](https://kiro.dev/docs/models/)更新于 9 月 25 日；本账号 `ListAvailableModels` 9 行，现有 20 行离线目录经活目录合并。Fable 5.1 是仅 Enterprise 可开通的预览。 | Fable 5.1 交给账号活目录；不放入通用离线目录。 |
+| Kiro | [官方模型表](https://kiro.dev/docs/models/)：GPT-5.6 Sol / Terra / Luna 升级至 1M 窗口；新增 Claude Fable 5.1（1M，6x，US East）；Claude Sonnet 4 命名规范为 4.0；本账号 `ListAvailableModels` 实测返回 5 款 OSS 模型的 image 输入支持。 | `KIRO_GPT_CONTEXT` 升为 1M；离线回退目录加入 `claude-fable-5.1`（保留兼容 `claude-fable-5`）；Sonnet 4 显示名对齐 4.0；活目录合并支持动态识别 `supportedInputTypes` 中的 image 输入。 |
 | Antigravity | [CLIProxyAPI `models.json`](https://github.com/router-for-me/CLIProxyAPI/blob/main/internal/registry/models/models.json) `antigravity` 仍为 12 行，与静态目录一致。 | 不变。 |
 | Cursor | 本账号 `GetUsableModels` + `AvailableModels` 生成 60 行；[官方模型页](https://cursor.com/docs/models-and-pricing)的主推模型仍由 15 行离线目录覆盖。 | 校正非 Max Mode Grok 4.7 窗口、Composer 输入、9 家族的参数 ID/思考档；活目录归并时排除 Max Mode 专属窗口，不把 60 行写死。 |
 | Ollama Cloud | [官方文档](https://docs.ollama.com/cloud)指定公开 `/api/tags` 为云端 ID 来源；接口现有 17 行。 | 离线目录 20 → 17，删除接口已消失的 3 行。 |

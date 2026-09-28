@@ -61,29 +61,33 @@ const UNARY_HEADERS = Object.freeze({
 })
 
 /**
- * Bounded replay for socket-level failures before any client byte commits —
+ * Bounded replay for transport faults before any client byte commits —
  * the same contract the shared forward() loop gives the other families
  * (STREAM_ATTEMPTS / RETRY_BACKOFF_MS), which this Connect-RPC hop bypasses.
  */
 const DEVIN_STREAM_ATTEMPTS = 3
 const DEVIN_RETRY_BACKOFF_MS = [1000, 4000]
 
-/** Auth/permission and upstream 4xx answers are final; transport-level throws and 5xx are worth a replay. */
+/**
+ * Only transport faults replay: socket errors, an empty body, a stream that
+ * carried no message. HTTP statuses and Connect trailer errors are the
+ * upstream's answer — forwarded once and retried by the host, never here
+ * (docs/error.md: 4xx/5xx 转发、代理内不重试).
+ */
 function devinRetryable(error) {
-  if (error instanceof DevinTransportError) {
-    return error.status === undefined || error.status >= 500
-  }
-  return true
+  return error instanceof DevinTransportError ? error.retryable === true : true
 }
 
 export class DevinTransportError extends Error {
   declare status: any
   declare permanent: boolean | undefined
+  declare retryable: boolean | undefined
 
-  constructor(message, { status }: any = {}) {
+  constructor(message, { status, retryable }: any = {}) {
     super(message)
     this.name = 'DevinTransportError'
     this.status = status
+    this.retryable = retryable
   }
 }
 
@@ -232,7 +236,7 @@ export async function runDevinChat(session, built, { signal, onEvent, fetchFn = 
     if (response.status === 401 || response.status === 403) error.permanent = true
     throw error
   }
-  if (!response.body) throw new DevinTransportError('Devin chat returned an empty body')
+  if (!response.body) throw new DevinTransportError('Devin chat returned an empty body', { retryable: true })
 
   const collected: any = {
     text: '',
@@ -316,7 +320,7 @@ export async function runDevinChat(session, built, { signal, onEvent, fetchFn = 
 
   collected.toolCalls = [...toolCalls.values()]
   if (!collected.text && collected.toolCalls.length === 0 && !collected.thinking && collected.stopReason === undefined) {
-    throw new DevinTransportError('Devin chat stream ended without a message')
+    throw new DevinTransportError('Devin chat stream ended without a message', { retryable: true })
   }
   return collected
 }

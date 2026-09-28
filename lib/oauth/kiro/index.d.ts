@@ -22,7 +22,7 @@ export declare const KIRO_NEVER_EXPIRES = 8640000000000000;
 export declare const KIRO_DEFAULT_REGION = "us-east-1";
 export declare const KIRO_CONTEXT_WINDOW = 200000;
 export declare const KIRO_LARGE_CONTEXT = 1000000;
-export declare const KIRO_GPT_CONTEXT = 272000;
+export declare const KIRO_GPT_CONTEXT = 1000000;
 export declare const KIRO_DEEPSEEK_CONTEXT = 128000;
 export declare const KIRO_QWEN_CONTEXT = 256000;
 export declare const KIRO_MAX_TOKENS = 64000;
@@ -58,9 +58,9 @@ export declare const KIRO_REASONING_GPT: Readonly<{
     max: "max";
 }>;
 /**
- * Offline fallback. Matches kiro.dev/docs/models including Auto.
- * `claude-fable-5` is in the pi-provider-kiro 0.10.2 bootstrap (not the
- * public docs table). Live ListAvailableModels may add more.
+ * Offline fallback. Matches kiro.dev/docs/models including Auto and Claude Fable 5.1.
+ * `claude-fable-5` is retained for pi-provider-kiro bootstrap compatibility.
+ * Live ListAvailableModels may add more.
  */
 export declare const KIRO_MODELS: readonly {
     id: any;

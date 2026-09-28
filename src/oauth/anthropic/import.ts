@@ -2,7 +2,7 @@
  * Import an existing Claude Code login so a user who already ran
  * `claude login` on this machine does not have to repeat the browser flow.
  *
- * Stores, in the order the pinned client (`claude-cli/2.1.280`) reads them —
+ * Stores, in the order the pinned client (`claude-cli/2.1.283`) reads them —
  * the macOS Keychain first, the plaintext file as its fallback:
  *
  *   macOS Keychain   service "Claude Code-credentials", account $USER
@@ -13,7 +13,7 @@
  *   <CLAUDE_CONFIG_DIR or ~/.claude>/.credentials.json   plaintext store
  *     { "claudeAiOauth": { "accessToken", "refreshToken", "expiresAt", "scopes" } }
  *
- * Both stores hold the same document, and 2.1.280 writes the Keychain first and
+ * Both stores hold the same document, and 2.1.283 writes the Keychain first and
  * deletes the plaintext file once that write succeeds (the composed
  * `keychain-with-plaintext-fallback` store's `update()`). On macOS the file is
  * therefore normally absent: a file-only reader can never see a macOS login.
@@ -34,6 +34,8 @@ import { anthropicSession } from './index.js'
 const execFileAsync = promisify(execFile)
 
 export const ANTHROPIC_IMPORT_EMPTY = 'anthropic-import-empty'
+/** Keychain item is there, but this process was not allowed to read it. */
+export const ANTHROPIC_IMPORT_LOCKED = 'anthropic-import-locked'
 
 /**
  * Read budget for the Keychain probe. An absent item returns at once; a present
@@ -117,30 +119,60 @@ function sessionFromTokens(tokens) {
   })
 }
 
+function keychainMissing(error) {
+  const message = `${error?.stderr ?? ''} ${error?.message ?? error ?? ''}`
+  return /could not be found/i.test(message) || error?.code === 44 || error?.status === 44
+}
+
 /**
- * macOS only. Every failure — absent item, refused read, dismissed dialog,
- * non-JSON payload — means "no login here"; never surface it to the UI.
+ * macOS only. Read-only: `find-generic-password -w`. Never
+ * `add-generic-password`, never a write to `.credentials.json` — that
+ * document is Claude Code's own login, and a partial rewrite or a refresh
+ * that rotates the shared refresh token destroys it.
+ *
+ * Absent item or a non-JSON payload → `undefined`. Refused / timed-out
+ * read throws `anthropic-import-locked` so the UI can ask for the system
+ * prompt instead of claiming there is no login.
  */
 export async function readAnthropicKeychainTokens({
   platform = process.platform,
   env = process.env,
   execFileFn = execFileAsync,
   timeoutMs = ANTHROPIC_KEYCHAIN_TIMEOUT_MS,
+  service,
 }: any = {}) {
   if (platform !== 'darwin') return undefined
+  const name = typeof service === 'string' && service ? service : anthropicKeychainService({ env })
   try {
     const { stdout } = await execFileFn(
       'security',
-      ['find-generic-password', '-a', anthropicKeychainAccount({ env }), '-w', '-s', anthropicKeychainService({ env })],
+      ['find-generic-password', '-a', anthropicKeychainAccount({ env }), '-w', '-s', name],
       { encoding: 'utf8', timeout: timeoutMs },
     )
     const raw = String(stdout ?? '').trim()
     if (!raw) return undefined
-    const parsed = JSON.parse(raw)
+    let parsed
+    try {
+      parsed = JSON.parse(raw)
+    } catch {
+      // A malformed item is not a login and not a permission denial —
+      // reporting it as locked would prompt for a system grant that fixes
+      // nothing.
+      return undefined
+    }
     return parsed && typeof parsed === 'object' ? parsed : undefined
-  } catch {
-    return undefined
+  } catch (error) {
+    if (keychainMissing(error)) return undefined
+    const denied: any = new Error(ANTHROPIC_IMPORT_LOCKED)
+    denied.code = ANTHROPIC_IMPORT_LOCKED
+    denied.cause = error
+    throw denied
   }
+}
+
+/** A session imported from Claude Code's own store — not a plugin-owned browser login. */
+export function isAnthropicImportedSource(source) {
+  return typeof source === 'string' && (source.startsWith('keychain:') || source.endsWith('/.credentials.json') || source.endsWith('\\.credentials.json'))
 }
 
 /**
@@ -150,11 +182,17 @@ export async function readAnthropicKeychainTokens({
  */
 export async function importAnthropicAuth(paths = undefined, deps: any = {}) {
   const tried: any[] = []
+  let keychainDenied = false
   if (paths === undefined && (deps.platform ?? process.platform) === 'darwin') {
     const service = anthropicKeychainService(deps)
     tried.push(`keychain:${service}`)
-    const tokens = tokensFromClaudeCode(await readAnthropicKeychainTokens(deps))
-    if (tokens !== undefined) return { session: sessionFromTokens(tokens), source: `keychain:${service}` }
+    try {
+      const tokens = tokensFromClaudeCode(await readAnthropicKeychainTokens({ ...deps, service }))
+      if (tokens !== undefined) return { session: sessionFromTokens(tokens), source: `keychain:${service}` }
+    } catch (error) {
+      if ((error as any)?.code !== ANTHROPIC_IMPORT_LOCKED) throw error
+      keychainDenied = true
+    }
   }
   const candidates = paths ?? credentialsPaths(deps)
   for (const path of candidates) {
@@ -165,8 +203,33 @@ export async function importAnthropicAuth(paths = undefined, deps: any = {}) {
     if (tokens === undefined) continue
     return { session: sessionFromTokens(tokens), source: path }
   }
-  const error: any = new Error(`no Anthropic session found in ${tried.join(' or ')}`)
-  error.code = ANTHROPIC_IMPORT_EMPTY
-  error.message = ANTHROPIC_IMPORT_EMPTY
+  const error: any = new Error(keychainDenied ? ANTHROPIC_IMPORT_LOCKED : ANTHROPIC_IMPORT_EMPTY)
+  error.code = error.message
   throw error
+}
+
+/**
+ * Re-read an imported Claude Code login. Does not exchange the refresh
+ * token and does not write the store: the refresh token is shared with
+ * Claude Code, and rotating it without writing the successor back leaves
+ * the local login `invalid_grant`.
+ */
+export async function rereadAnthropicImport(source, deps: any = {}) {
+  if (!isAnthropicImportedSource(source)) return undefined
+  if (source.startsWith('keychain:')) {
+    const service = source.slice('keychain:'.length)
+    let raw
+    try {
+      raw = await readAnthropicKeychainTokens({ ...deps, service })
+    } catch (error) {
+      if ((error as any)?.code === ANTHROPIC_IMPORT_LOCKED) return undefined
+      throw error
+    }
+    const tokens = tokensFromClaudeCode(raw)
+    if (tokens === undefined) return undefined
+    return { ...sessionFromTokens(tokens), source }
+  }
+  const tokens = tokensFromClaudeCode(await readJson(source))
+  if (tokens === undefined) return undefined
+  return { ...sessionFromTokens(tokens), source }
 }

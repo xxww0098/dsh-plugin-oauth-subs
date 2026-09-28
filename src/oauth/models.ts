@@ -13,6 +13,7 @@ import { KIRO_MODELS } from './kiro/index.js'
 import { ANTIGRAVITY_MODELS } from './antigravity/index.js'
 import { CURSOR_MODELS } from './cursor/index.js'
 import { OLLAMA_MODELS } from '../apikey/ollama/index.js'
+import { COMMAND_CODE_MAX_TOKENS, COMMAND_CODE_MODELS } from '../apikey/command-code/index.js'
 import { KIMI_MODELS } from './kimi/index.js'
 import { COPILOT_MODELS } from './copilot/index.js'
 import { DEVIN_MODELS } from './devin/index.js'
@@ -114,7 +115,7 @@ export function modelKey(provider, id) {
   return `${provider}/${id}`
 }
 
-export const FAMILY_IDS = Object.freeze(['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline', 'anthropic'])
+export const FAMILY_IDS = Object.freeze(['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline', 'anthropic', 'command-code'])
 
 /**
  * OpenCode Go picker families: direct API-key routes, not OAuth logins, and
@@ -251,7 +252,19 @@ function clineHarnessModels(clineModels) {
   return CLINE_MODELS
 }
 
-export function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels, clineModels }) {
+/**
+ * Command Code rows carry no per-model output cap — the CLI applies
+ * `max_tokens ?? 64000` for every model, so the family constant is the real
+ * cap toHarnessModel clamps against the request budget.
+ */
+function commandCodeHarnessModels(commandCodeModels) {
+  const rows = Array.isArray(commandCodeModels) && commandCodeModels.length > 0
+    ? commandCodeModels
+    : COMMAND_CODE_MODELS
+  return rows.map((model) => ({ ...model, maxTokens: model.maxTokens ?? COMMAND_CODE_MAX_TOKENS }))
+}
+
+export function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels, clineModels, commandCodeModels }) {
   const providers = {}
   if (loggedIn.codex) {
     providers[`${prefix}-codex`] = {
@@ -424,6 +437,25 @@ export function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaM
       models: clineRows,
     }
   }
+  if (loggedIn['command-code']) {
+    const commandCodeRows = commandCodeHarnessModels(commandCodeModels).map(toHarnessModel)
+    const commandCodeHasEffort = commandCodeRows.some((model) => model.reasoningEfforts && typeof model.reasoningEfforts === 'object')
+    providers[`${prefix}-command-code`] = {
+      displayName: 'OAuth · Command Code',
+      api: HARNESS_COMPLETIONS_API,
+      apiKeyEnv: OAUTH_CREDENTIAL_REF,
+      // Completions hop is /command-code/v1/chat/completions. DSH posts
+      // `{baseURL}/v1/chat/completions`, so baseURL is `${origin}/command-code`.
+      baseURL: `${origin}/command-code`,
+      ...(commandCodeHasEffort ? {
+        compat: {
+          supportsReasoningEffort: true,
+          thinkingFormat: 'openai',
+        },
+      } : {}),
+      models: commandCodeRows,
+    }
+  }
   if (loggedIn.anthropic) {
     providers[`${prefix}-anthropic`] = {
       displayName: 'OAuth · Claude',
@@ -451,11 +483,11 @@ export function describeProviders(providers: Record<string, any>) {
   }))
 }
 
-export function catalogProviders({ prefix, origin, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels = undefined, clineModels }: any) {
+export function catalogProviders({ prefix, origin, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels = undefined, clineModels, commandCodeModels }: any) {
   const providers = buildProviders({
     prefix,
     origin,
-    loggedIn: { codex: true, grok: true, glm: true, kiro: true, antigravity: true, cursor: true, ollama: true, kimi: true, copilot: true, devin: true, cline: true, anthropic: true },
+    loggedIn: { codex: true, grok: true, glm: true, kiro: true, antigravity: true, cursor: true, ollama: true, kimi: true, copilot: true, devin: true, cline: true, anthropic: true, 'command-code': true },
     cursorModels,
     ollamaModels,
     kiroModels,
@@ -464,6 +496,7 @@ export function catalogProviders({ prefix, origin, cursorModels, ollamaModels, k
     devinModels,
     glmModels,
     clineModels,
+    commandCodeModels,
   })
   // OpenCode Go is API key, not OAuth: the picker lists only the supplemental
   // route this plugin writes; the controller decides locked vs usable from
@@ -499,6 +532,7 @@ export function familyOfProvider(provider) {
   if (String(provider).endsWith('-devin')) return 'devin'
   if (String(provider).endsWith('-cline')) return 'cline'
   if (String(provider).endsWith('-anthropic')) return 'anthropic'
+  if (String(provider).endsWith('-command-code')) return 'command-code'
   return String(provider)
 }
 
@@ -509,6 +543,25 @@ export function familyOfKey(key) {
 
 export function familyCatalogKeys(catalog, family) {
   return catalogKeys(catalog).filter((key) => familyOfKey(key) === family)
+}
+
+/**
+ * settings.yaml `name` is the picker's per-model label — DSH shows it in the
+ * trigger and headers without the provider group, so synced rows carry the
+ * family as "<agent>/<model id>" ("OpenCode Go/deepseek-v4.1-flash"). Catalog
+ * rows keep their pretty `name` for the plugin's own Models page; only the
+ * two settings writes below apply the alias. Agent labels mirror FAMILY_NAME
+ * in src/ui/client.ts.
+ */
+const HARNESS_MODEL_AGENT: Record<string, string> = {
+  codex: 'Codex', grok: 'Grok', glm: 'GLM', kiro: 'Kiro', antigravity: 'Antigravity',
+  cursor: 'Cursor', ollama: 'Ollama', kimi: 'Kimi', copilot: 'Copilot', devin: 'Devin',
+  cline: 'Cline', anthropic: 'Claude', 'opencode-go': 'OpenCode Go', 'command-code': 'Command Code',
+}
+
+function harnessModelAlias(provider, id) {
+  const family = String(provider).startsWith('opencode-go') ? 'opencode-go' : familyOfProvider(provider)
+  return `${HARNESS_MODEL_AGENT[family] ?? family}/${id}`
 }
 
 export function describeCatalog(providers: Record<string, any>, { enabledKeys, loggedIn }: any = {}) {
@@ -780,7 +833,7 @@ function sameOpencodeGoRoute(route, existing, models) {
   if (!sameOpencodeGoHeaders(existing, route)) return false
   return Array.isArray(existing.models)
     && existing.models.length === models.length
-    && existing.models.every((model, index) => model?.id === models[index]?.id)
+    && existing.models.every((model, index) => model?.id === models[index]?.id && model?.name === models[index]?.name)
 }
 
 /**
@@ -826,9 +879,10 @@ export async function ensureOpencodeGoRoute(settings, { selected, apiKeySet = tr
   for (const route of OPENCODE_GO_ROUTES) {
     const models = locked
       ? []
-      : selection === null
-        ? route.models
-        : route.models.filter((model) => selection.has(`${route.id}/${model.id}`))
+      : (selection === null
+          ? route.models
+          : route.models.filter((model) => selection.has(`${route.id}/${model.id}`)))
+        .map((model) => ({ ...model, name: harnessModelAlias(route.id, model.id) }))
     const existing = providers[route.id]
     if (existing === undefined) {
       if (models.length > 0) {
@@ -866,11 +920,11 @@ async function assertPersistedProviders(settings, expectedIds) {
   }
 }
 
-export async function syncHarnessModels({ settings, patchPath, prefix, origin, loggedIn, selected, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels, clineModels }) {
+export async function syncHarnessModels({ settings, patchPath, prefix, origin, loggedIn, selected, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels, clineModels, commandCodeModels }) {
   const routePrefix = String(prefix ?? '').trim()
   if (!routePrefix) throw new Error('Harness route prefix cannot be empty')
   const providers = filterProviders(buildProviders({
-    prefix: routePrefix, origin, loggedIn, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels, clineModels,
+    prefix: routePrefix, origin, loggedIn, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels, clineModels, commandCodeModels,
   }), selected)
   for (const [id, value] of Object.entries(providers)) {
     assertDshServiceableProvider(id, value)
@@ -880,7 +934,12 @@ export async function syncHarnessModels({ settings, patchPath, prefix, origin, l
     await settings.mutate('llm-pi-ai', [
       ...owned.map((provider) => ({ op: 'unset', path: ['providers', provider] })),
       ...Object.entries(providers).map(([provider, value]) => ({
-        op: 'set', path: ['providers', provider], value,
+        op: 'set',
+        path: ['providers', provider],
+        value: {
+          ...value,
+          models: value.models.map((model) => ({ ...model, name: harnessModelAlias(provider, model.id) })),
+        },
       })),
     ])
   } catch (error) {

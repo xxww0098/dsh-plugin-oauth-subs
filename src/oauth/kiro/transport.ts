@@ -8,6 +8,7 @@ import {
   kiroChatHeaders,
   kiroChatUrl,
   kiroClientErrorBody,
+  kiroClientErrorStatus,
   kiroToOpenai,
   kiroToOpenaiChunk,
   KiroEventStreamParser,
@@ -114,7 +115,8 @@ export async function forwardKiro(response, { payload, cacheSessionId, stream, s
       throw new RequestError(502, describeError(error))
     }
     if (openai.error) {
-      sendJson(response, 400, kiroClientErrorBody(400, openai.error, openai.error.message))
+      const status = kiroClientErrorStatus(400, openai.error, openai.error.message)
+      sendJson(response, status, kiroClientErrorBody(400, openai.error, openai.error.message))
       return
     }
     sendJson(response, 200, openai)

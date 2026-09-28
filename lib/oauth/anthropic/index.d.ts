@@ -4,10 +4,17 @@
  * `auth/oauth/anthropic.js` + `api/anthropic-messages.js`, engine of
  * oh-my-openagent) and cross-checked against Claude Code's documented flow:
  *
- *   - PKCE (S256) at claude.ai/oauth/authorize, client id
- *     `9d1c250a-e61b-44e9-88ed-594fedd33385`, loopback `/callback`
- *     (Claude Code binds a random port; the client accepts any localhost
- *     port, so we reuse the shared flow manager's listener).
+ *   - PKCE (S256), client id `9d1c250a-e61b-44d9-88ed-5944d1962f5e`
+ *     (the `CLIENT_ID` literal in the pinned 2.1.283 binary; pi-ai's
+ *     `…-44e9-88ed-594fedd33385` is retired). Two authorize hosts, chosen
+ *     by `loginWithClaudeAi` in `AVn()`:
+ *       Claude.ai subscription → `https://claude.com/cai/oauth/authorize`
+ *       Console / API billing  → `https://platform.claude.com/oauth/authorize`
+ *     `claude.ai/oauth/authorize` is the legacy spelling (Cloudflare
+ *     challenge; `claude.com/cai` 307s there for a cookieless client, but
+ *     a real browser lands on the Claude.ai login page). Loopback
+ *     `/callback` — Claude Code binds a random port; any localhost port
+ *     is accepted, so we reuse the shared flow manager's listener.
  *   - Token exchange + refresh POST JSON to
  *     platform.claude.com/v1/oauth/token (the console.anthropic.com host is
  *     the legacy spelling).
@@ -23,8 +30,13 @@
  * Do not invent: scopes, beta headers, dated model rows, or unverified endpoints —
  * see README.md for the do-not list.
  */
-export declare const ANTHROPIC_CLIENT_ID = "9d1c250a-e61b-44e9-88ed-594fedd33385";
-export declare const ANTHROPIC_AUTHORIZE_URL = "https://claude.ai/oauth/authorize";
+export declare const ANTHROPIC_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
+/** `CLAUDE_AI_AUTHORIZE_URL` in Claude Code 2.1.283. Subscription / Max / Pro. */
+export declare const ANTHROPIC_CLAUDE_AI_AUTHORIZE_URL = "https://claude.com/cai/oauth/authorize";
+/** `CONSOLE_AUTHORIZE_URL` in Claude Code 2.1.283. API-billing Console account. */
+export declare const ANTHROPIC_CONSOLE_AUTHORIZE_URL = "https://platform.claude.com/oauth/authorize";
+/** Default authorize host: the subscription lane this family exists for. */
+export declare const ANTHROPIC_AUTHORIZE_URL = "https://claude.com/cai/oauth/authorize";
 export declare const ANTHROPIC_TOKEN_URL = "https://platform.claude.com/v1/oauth/token";
 export declare const ANTHROPIC_API_BASE = "https://api.anthropic.com";
 export declare const ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages";
@@ -35,10 +47,15 @@ export declare const ANTHROPIC_CALLBACK_PATH = "/callback";
  * Claude Code's scopes at the time of pinning (pi-ai `SCOPES`). `user:profile`
  * backs the profile lookup; `user:inference` is the chat grant.
  */
-export declare const ANTHROPIC_SCOPE = "org:create_api_key user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload";
-/** Claude Code identity the OAuth lane must present (pi-ai `claudeCodeVersion`). */
-export declare const ANTHROPIC_CLI_VERSION = "2.1.280";
-export declare const ANTHROPIC_USER_AGENT = "claude-cli/2.1.280";
+/**
+ * `c6r()` of Claude Code 2.1.283: `org:create_api_key` + `user:profile`
+ * plus the inference set, plus `user:plugins` when
+ * `PLUGINS_SCOPE_REGISTERED` (true in the prod config object).
+ */
+export declare const ANTHROPIC_SCOPE = "org:create_api_key user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload user:plugins";
+/** Claude Code identity the OAuth lane must present. Pinned to the local 2.1.283 binary. */
+export declare const ANTHROPIC_CLI_VERSION = "2.1.283";
+export declare const ANTHROPIC_USER_AGENT = "claude-cli/2.1.283";
 /** Beta features the subscription lane requires; order mirrors pi-ai. */
 export declare const ANTHROPIC_BETA = "claude-code-20250219,oauth-2025-04-20";
 /** pi-ai reserves a 5-minute refresh window on the returned expiry. */
@@ -50,11 +67,27 @@ export declare const ANTHROPIC_TEXT_INPUT: readonly string[];
  * refresh-token-suffix id applies (store.accountIdOf).
  */
 export declare function isAnthropicOAuthToken(value: any): boolean;
+/** `loginWithClaudeAi` in the pinned binary. Anything else is the Console host. */
+export declare function anthropicAuthorizeUrl(mode: any): "https://claude.com/cai/oauth/authorize" | "https://platform.claude.com/oauth/authorize";
+export declare function anthropicFlowFor(mode?: string): {
+    callbackPath: string;
+    listen: {
+        host: string;
+    };
+    mode: string;
+    buildAuthorizeUrl({ redirectUri, state, pkce }: {
+        redirectUri: any;
+        state: any;
+        pkce: any;
+    }): string;
+};
+/** Subscription lane. Console is `anthropicFlowFor('console')`. */
 export declare const anthropicFlow: {
     callbackPath: string;
     listen: {
         host: string;
     };
+    mode: string;
     buildAuthorizeUrl({ redirectUri, state, pkce }: {
         redirectUri: any;
         state: any;
@@ -118,6 +151,17 @@ export declare function anthropicUpstreamHeaders(session: any): {
     accept: string;
 };
 /**
+ * GET /api/oauth/usage is an OAuth-management endpoint, not a Messages lane:
+ * Claude Code calls it with just the bearer and the oauth beta (same shape
+ * stablyai/orca's claude-oauth-usage-request.ts sends). Sending the Messages
+ * fingerprint here only widens the surface its aggressive limiter keys on.
+ */
+export declare function anthropicUsageHeaders(session: any): {
+    authorization: string;
+    'anthropic-beta': string;
+    'user-agent': string;
+};
+/**
  * Offline fallback matching pi-ai's `providers/data/anthropic.json` catalog
  * (the Claude Code subscription set) cross-checked against our Kiro family
  * rows for the same underlying models. Dash ids are the api.anthropic.com
@@ -153,5 +197,3 @@ export declare const ANTHROPIC_MODELS: readonly {
     maxTokens: any;
     input: readonly string[];
 }[];
-/** Cheapest served row — the quota probe's model. */
-export declare const ANTHROPIC_PROBE_MODEL = "claude-haiku-4-5";

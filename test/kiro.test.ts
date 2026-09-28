@@ -47,6 +47,7 @@ import {
 import {
   classifyKiroHopError,
   collectKiroEvents,
+  kiroClientErrorBody,
   kiroClientErrorStatus,
   kiroToOpenai,
   normalizeToolUseId,
@@ -204,7 +205,7 @@ test('formatPlanLabel maps Kiro slugs without colliding with Codex Pro 20x', () 
   assert.equal(formatPlanLabel('KIRO POWERED', 'kiro'), 'Powered')
 })
 
-test('Kiro catalog matches kiro.dev models plus Auto and Fable 5, with native ids', () => {
+test('Kiro catalog matches kiro.dev models plus Auto and Fable 5/5.1, with native ids', () => {
   const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
   const kiro = catalog['oauth-kiro']
   assert.deepEqual(kiro.models.map((model) => model.id), [
@@ -217,6 +218,7 @@ test('Kiro catalog matches kiro.dev models plus Auto and Fable 5, with native id
     'claude-opus-4.6',
     'claude-opus-4.5',
     'claude-sonnet-5',
+    'claude-fable-5.1',
     'claude-fable-5',
     'claude-sonnet-4.6',
     'claude-sonnet-4.5',
@@ -232,8 +234,12 @@ test('Kiro catalog matches kiro.dev models plus Auto and Fable 5, with native id
   assert.equal(kiro.models.find((model) => model.id === 'claude-sonnet-4-8'), undefined)
   assert.equal(kiro.models.find((model) => model.id === 'auto')?.name, 'Auto')
   assert.equal(kiro.models.find((model) => model.id === 'claude-fable-5')?.name, 'Claude Fable 5')
+  assert.equal(kiro.models.find((model) => model.id === 'claude-fable-5.1')?.name, 'Claude Fable 5.1')
+  assert.equal(kiro.models.find((model) => model.id === 'claude-fable-5.1')?.contextWindow, 1_000_000)
+  assert.equal(kiro.models.find((model) => model.id === 'gpt-5.6-sol').contextWindow, 1_000_000)
   assert.equal(kiro.models.find((model) => model.id === 'claude-opus-5').contextWindow, 1_000_000)
   assert.equal(kiro.models.find((model) => model.id === 'claude-sonnet-5').name, 'Claude Sonnet 5')
+  assert.equal(kiro.models.find((model) => model.id === 'claude-sonnet-4').name, 'Claude Sonnet 4.0')
   assert.deepEqual(kiro.models.find((model) => model.id === 'claude-opus-4.8').input, ['text', 'image'])
   assert.deepEqual(kiro.models.find((model) => model.id === 'gpt-5.6-sol').input, ['text', 'image'])
   assert.deepEqual(kiro.models.find((model) => model.id === 'glm-5').input, ['text'])
@@ -248,6 +254,13 @@ test('Kiro catalog matches kiro.dev models plus Auto and Fable 5, with native id
     max: 'max',
   })
   assert.deepEqual(kiro.models.find((model) => model.id === 'claude-opus-5').reasoningEfforts, {
+    low: 'low',
+    medium: 'medium',
+    high: 'high',
+    max: 'max',
+    xhigh: 'xhigh',
+  })
+  assert.deepEqual(kiro.models.find((model) => model.id === 'claude-fable-5.1').reasoningEfforts, {
     low: 'low',
     medium: 'medium',
     high: 'high',
@@ -528,7 +541,7 @@ test('controller snapshot lists Kiro catalog and quota on every account', async 
     },
   })
   const snap = await controller.snapshot()
-  assert.equal(snap.catalog.length, 14)
+  assert.equal(snap.catalog.length, 15)
   assert.equal(snap.catalog.some((row) => row.family === 'kiro'), true)
   const roster = snap.accounts.kiro.accounts
   assert.equal(roster.length, 2)
@@ -906,6 +919,7 @@ test('live catalog mock expands beyond static fallback and includes auto', async
           { modelId: 'auto', displayName: 'Auto' },
           { modelId: 'gpt-5.6-sol', displayName: 'GPT-5.6 Sol' },
           { modelId: 'kiro-live-only', displayName: 'Kiro Live Only' },
+          { modelId: 'deepseek-3.2', displayName: 'DeepSeek 3.2', supportedInputTypes: ['TEXT', 'IMAGE'] },
         ],
       })
     },
@@ -917,6 +931,7 @@ test('live catalog mock expands beyond static fallback and includes auto', async
   assert.ok(models.some((model) => model.id === 'kiro-live-only'))
   assert.ok(models.some((model) => model.id === 'gpt-5.6-sol'))
   assert.ok(models.some((model) => model.id === 'gpt-5.6-terra'))
+  assert.deepEqual(models.find((model) => model.id === 'deepseek-3.2')?.input, ['text', 'image'])
   resetKiroCatalogCache()
 })
 
@@ -933,13 +948,27 @@ test('empty ListAvailableModels keeps the static fallback including the original
   resetKiroCatalogCache()
 })
 
-test('MONTHLY_REQUEST_COUNT is not a 429', () => {
+// DSH's classifyPiAiError checks isQuotaExceededError before `\b429\b`, so a
+// 429 in this wording is QUOTA_EXCEEDED (never retried), not a hammerable
+// RATE_LIMIT. Regex copied from the host bundle
+// (specs/request-path-upgrades/assets/baseline-2026-09-28.md).
+const HOST_QUOTA_PHRASE = /\b(?:quota|usage[\s_-]+limit)[\s_-]+(?:exceeded|exhausted|reached)\b/i
+
+test('MONTHLY_REQUEST_COUNT answers 429 in the host quota wording', () => {
   const body = { reason: 'MONTHLY_REQUEST_COUNT', message: 'monthly request count exceeded' }
   const classified = classifyKiroHopError(429, body, JSON.stringify(body))
-  assert.equal(classified.status, 400)
-  assert.notEqual(classified.status, 429)
+  assert.equal(classified.status, 429)
   assert.equal(classified.code, 'kiro_quota')
-  assert.equal(kiroClientErrorStatus(429, body, JSON.stringify(body)), 400)
+  assert.equal(classified.retryAfter, undefined)
+  assert.equal(kiroClientErrorStatus(429, body, JSON.stringify(body)), 429)
+  const client = kiroClientErrorBody(429, body, JSON.stringify(body))
+  assert.equal(client.error.message, 'usage limit reached: monthly request count exceeded')
+  assert.equal(client.error.type, 'insufficient_quota')
+  assert.match(JSON.stringify(client), HOST_QUOTA_PHRASE)
+  // Only the monthly quota carries the quota wording; a plain rate limit stays retryable.
+  const rate = kiroClientErrorBody(429, { reason: 'USER_REQUEST_RATE_EXCEEDED', message: 'slow down' }, '')
+  assert.doesNotMatch(JSON.stringify(rate), HOST_QUOTA_PHRASE)
+  assert.equal(rate.error.type, 'rate_limit_error')
   assert.equal(classifyKiroHopError(429, { reason: 'USER_REQUEST_RATE_EXCEEDED' }, '', { retryAfter: '2' }).status, 429)
   assert.equal(classifyKiroHopError(503, { reason: 'INSUFFICIENT_MODEL_CAPACITY' }, '').status, 503)
   assert.equal(classifyKiroHopError(400, { reason: 'CONTENT_LENGTH_EXCEEDS_THRESHOLD' }, '').status, 400)

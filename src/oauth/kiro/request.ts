@@ -671,15 +671,18 @@ function hopErrorBlob(parsed, text) {
 }
 
 /**
- * Classify hop errors so DSH does not hammer a hard monthly quota as a
- * generic 429, or treat size / capacity as AUTH. 401/403 still become
- * 400 (subscription key stays valid) unless TokenManager already refreshed.
+ * Classify hop errors so DSH stops on a hard monthly quota instead of
+ * hammering it, and never treats size / capacity as AUTH. The monthly quota
+ * answers 429 in the host's quota wording (kiroClientErrorBody): DSH checks
+ * quota phrases before 429, so it reports QUOTA_EXCEEDED and does not retry.
+ * 401/403 still become 400 (subscription key stays valid) unless
+ * TokenManager already refreshed.
  */
 export function classifyKiroHopError(status, parsed, text, { retryAfter }: any = {}) {
   const blob = hopErrorBlob(parsed, text)
   const headerRetry = retryAfter != null && String(retryAfter).trim() ? String(retryAfter).trim() : undefined
   if (blob.includes(KIRO_REASON_CODES.MONTHLY_REQUEST_COUNT)) {
-    return { status: 400, code: 'kiro_quota', retryAfter: undefined }
+    return { status: 429, code: 'kiro_quota', retryAfter: undefined }
   }
   if (blob.includes(KIRO_REASON_CODES.INSUFFICIENT_MODEL_CAPACITY)) {
     return { status: 503, code: 'kiro_capacity', retryAfter: headerRetry }
@@ -705,6 +708,9 @@ export function kiroClientErrorStatus(status, parsed, text) {
   return classifyKiroHopError(status, parsed, text).status
 }
 
+/** DSH's retry layer reads this phrase as QUOTA_EXCEEDED (checked before 429) and stops. */
+const KIRO_QUOTA_WORDING = 'usage limit reached'
+
 export function kiroClientErrorBody(status, parsed, text) {
   const raw = isPlainObject(parsed) ? parsed : {}
   const classified = classifyKiroHopError(status, raw, text)
@@ -714,10 +720,11 @@ export function kiroClientErrorBody(status, parsed, text) {
     || trimmed(raw.reason)
     || (typeof text === 'string' && text.trim() ? text.trim().slice(0, 800) : undefined)
     || `kiro upstream ${classified.status}`
+  const quota = classified.code === 'kiro_quota'
   return {
     error: {
-      message,
-      type: classified.status === 429 ? 'rate_limit_error' : 'invalid_request_error',
+      message: quota ? `${KIRO_QUOTA_WORDING}: ${message}` : message,
+      type: quota ? 'insufficient_quota' : classified.status === 429 ? 'rate_limit_error' : 'invalid_request_error',
       code: classified.code,
     },
   }

@@ -54,7 +54,7 @@ export declare const MODEL_FAMILY_IDS: readonly string[];
 export declare const RETIRED_FAMILY_IDS: readonly string[];
 export declare function ownedProviderIds(prefix: any): string[];
 export declare function withPickerVariants(models: any): any[];
-export declare function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels, clineModels }: {
+export declare function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels, clineModels, commandCodeModels }: {
     prefix: any;
     origin: any;
     loggedIn: any;
@@ -66,13 +66,14 @@ export declare function buildProviders({ prefix, origin, loggedIn, cursorModels,
     devinModels: any;
     glmModels: any;
     clineModels: any;
+    commandCodeModels: any;
 }): {};
 export declare function describeProviders(providers: Record<string, any>): {
     provider: string;
     api: any;
     models: any;
 }[];
-export declare function catalogProviders({ prefix, origin, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels, clineModels }: any): {};
+export declare function catalogProviders({ prefix, origin, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels, clineModels, commandCodeModels }: any): {};
 export declare function catalogKeys(providers: Record<string, any>): any[];
 export declare function familyOfProvider(provider: any): string;
 export declare function familyOfKey(key: any): string;
@@ -173,7 +174,7 @@ export declare function ensureOpencodeGoRoute(settings: any, { selected, apiKeyS
     routes: any[];
     error?: undefined;
 }>;
-export declare function syncHarnessModels({ settings, patchPath, prefix, origin, loggedIn, selected, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels, clineModels }: {
+export declare function syncHarnessModels({ settings, patchPath, prefix, origin, loggedIn, selected, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels, clineModels, commandCodeModels }: {
     settings: any;
     patchPath: any;
     prefix: any;
@@ -188,6 +189,7 @@ export declare function syncHarnessModels({ settings, patchPath, prefix, origin,
     devinModels: any;
     glmModels: any;
     clineModels: any;
+    commandCodeModels: any;
 }): Promise<{
     routes: {
         provider: string;

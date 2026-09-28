@@ -1,35 +1,15 @@
 /**
  * Anthropic subscription quota.
  *
- * Claude Code exposes the unified 5-hour / weekly meters as rate-limit headers
- * on Messages responses. Its OAuth usage endpoint additionally reports scoped
- * weekly limits (for example, the separate Fable meter). Keep the tiny Messages
- * probe as the source for the established bars and use GET /api/oauth/usage to
- * enrich them with any model-scoped rows; if either endpoint is unavailable,
- * the other can still provide useful quota data.
+ * GET /api/oauth/usage is the only source — one response carries the 5-hour,
+ * weekly, and every model-scoped meter (Fable etc.). Same design as
+ * stablyai/orca's claude-oauth-usage-request.ts: no billable Messages probe.
+ * On failure the caller keeps the previous snapshot, so throwing is enough.
  */
 export declare function parseAnthropicUsage(payload: any): {
     rows: any[];
 };
-export declare function parseAnthropicRateLimitHeaders(headers: any): {
-    rows: ({
-        resetAt?: number | undefined;
-        key: string;
-        kind: any;
-        label: any;
-        usedPercent: number;
-        remainingPercent: number;
-    } | {
-        key: string;
-        product: string;
-        resetAt?: number | undefined;
-        kind: any;
-        label: any;
-        usedPercent: number;
-        remainingPercent: number;
-    } | undefined)[];
-};
-export declare function fetchAnthropicQuota(session: any, fetchFn?: typeof fetch, previousRows?: any): Promise<{
+export declare function fetchAnthropicQuota(session: any, fetchFn?: typeof fetch): Promise<{
     planType: any;
     account: any;
     subscriptionStatus: string;

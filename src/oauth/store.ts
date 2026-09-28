@@ -16,6 +16,7 @@ import { kiroAccountId, kiroMethodLabel } from './kiro/index.js'
 import { displayGlmAccount } from './glm/index.js'
 import { displayCursorAccount } from './cursor/index.js'
 import { ollamaSourceLabel } from '../apikey/ollama/index.js'
+import { commandCodeDefaultAccount, commandCodeSourceLabel, pickCommandCodeHumanAccount } from '../apikey/command-code/index.js'
 import { kimiSourceLabel } from './kimi/index.js'
 import { copilotSourceLabel } from './copilot/index.js'
 import { devinSourceLabel, pickDevinHumanAccount } from './devin/index.js'
@@ -24,7 +25,7 @@ import { readPrivateText, writePrivateText } from '../utils/private-text.js'
 
 export { readPrivateText, writePrivateText }
 
-export const PROVIDER_IDS = Object.freeze(['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline', 'anthropic'])
+export const PROVIDER_IDS = Object.freeze(['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline', 'anthropic', 'command-code'])
 
 export function defaultDataDir() {
   return join(homedir(), '.dsh', 'plugins', 'oauth-subs')
@@ -69,6 +70,14 @@ export function accountIdOf(provider, session) {
       ? session.accountId.trim()
       : (typeof session.account === 'string' && session.account.trim() ? session.account.trim() : undefined)
     if (id) return id
+  } else if (provider === 'command-code') {
+    // Human identity first (userName/account/email — opaque fingerprints are
+    // filtered); the user uuid, then a sha256 fingerprint — never the raw
+    // key tail the generic fallback would use.
+    const id = pickCommandCodeHumanAccount(session.userName, session.account, session.email)
+      ?? (typeof session.userId === 'string' && session.userId.trim() ? session.userId.trim() : undefined)
+      ?? commandCodeDefaultAccount(session.accessToken)
+    return id
   } else if (typeof session.account === 'string' && session.account.trim()) {
     return session.account.trim()
   }
@@ -400,6 +409,17 @@ export function publicSession(provider, session) {
       planLabel,
       method: session.source,
       methodLabel: kimiSourceLabel(session.source),
+      expiresAt: session.expiresAt,
+    }
+  }
+  if (provider === 'command-code') {
+    return {
+      account: pickCommandCodeHumanAccount(session.userName, session.account, session.email)
+        ?? session.account,
+      planType,
+      planLabel,
+      method: session.source,
+      methodLabel: commandCodeSourceLabel(session.source),
       expiresAt: session.expiresAt,
     }
   }

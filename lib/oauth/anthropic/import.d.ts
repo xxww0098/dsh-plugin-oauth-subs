@@ -2,7 +2,7 @@
  * Import an existing Claude Code login so a user who already ran
  * `claude login` on this machine does not have to repeat the browser flow.
  *
- * Stores, in the order the pinned client (`claude-cli/2.1.280`) reads them —
+ * Stores, in the order the pinned client (`claude-cli/2.1.283`) reads them —
  * the macOS Keychain first, the plaintext file as its fallback:
  *
  *   macOS Keychain   service "Claude Code-credentials", account $USER
@@ -13,7 +13,7 @@
  *   <CLAUDE_CONFIG_DIR or ~/.claude>/.credentials.json   plaintext store
  *     { "claudeAiOauth": { "accessToken", "refreshToken", "expiresAt", "scopes" } }
  *
- * Both stores hold the same document, and 2.1.280 writes the Keychain first and
+ * Both stores hold the same document, and 2.1.283 writes the Keychain first and
  * deletes the plaintext file once that write succeeds (the composed
  * `keychain-with-plaintext-fallback` store's `update()`). On macOS the file is
  * therefore normally absent: a file-only reader can never see a macOS login.
@@ -23,6 +23,8 @@
  * finisher the browser login uses).
  */
 export declare const ANTHROPIC_IMPORT_EMPTY = "anthropic-import-empty";
+/** Keychain item is there, but this process was not allowed to read it. */
+export declare const ANTHROPIC_IMPORT_LOCKED = "anthropic-import-locked";
 /**
  * Read budget for the Keychain probe. An absent item returns at once; a present
  * one can wait on the system "…wants to use your confidential information"
@@ -37,10 +39,18 @@ export declare function anthropicKeychainService({ env }?: any): string;
 /** `tA()` of the pinned client: `$USER` while it is a safe keychain account name. */
 export declare function anthropicKeychainAccount({ env }?: any): string;
 /**
- * macOS only. Every failure — absent item, refused read, dismissed dialog,
- * non-JSON payload — means "no login here"; never surface it to the UI.
+ * macOS only. Read-only: `find-generic-password -w`. Never
+ * `add-generic-password`, never a write to `.credentials.json` — that
+ * document is Claude Code's own login, and a partial rewrite or a refresh
+ * that rotates the shared refresh token destroys it.
+ *
+ * Absent item or a non-JSON payload → `undefined`. Refused / timed-out
+ * read throws `anthropic-import-locked` so the UI can ask for the system
+ * prompt instead of claiming there is no login.
  */
-export declare function readAnthropicKeychainTokens({ platform, env, execFileFn, timeoutMs, }?: any): Promise<any>;
+export declare function readAnthropicKeychainTokens({ platform, env, execFileFn, timeoutMs, service, }?: any): Promise<any>;
+/** A session imported from Claude Code's own store — not a plugin-owned browser login. */
+export declare function isAnthropicImportedSource(source: any): boolean;
 /**
  * `paths` pins the plaintext candidates and skips the OS store — tests and
  * callers that already know the file. Called bare it mirrors the pinned client:
@@ -58,3 +68,19 @@ export declare function importAnthropicAuth(paths?: undefined, deps?: any): Prom
     };
     source: string;
 }>;
+/**
+ * Re-read an imported Claude Code login. Does not exchange the refresh
+ * token and does not write the store: the refresh token is shared with
+ * Claude Code, and rotating it without writing the successor back leaves
+ * the local login `invalid_grant`.
+ */
+export declare function rereadAnthropicImport(source: any, deps?: any): Promise<{
+    source: any;
+    planType?: any;
+    accountId?: any;
+    account?: any;
+    scope?: any;
+    accessToken: any;
+    refreshToken: any;
+    expiresAt: number;
+} | undefined>;

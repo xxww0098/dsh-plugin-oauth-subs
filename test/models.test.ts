@@ -220,6 +220,10 @@ test('syncHarnessModels unsets owned routes then sets the live catalog', async (
   const set = ops[0].mutations.filter((row) => row.op === 'set')
   assert.equal(set.length, 1)
   assert.deepEqual(set[0].path, ['providers', 'oauth-codex'])
+  // settings.yaml `name` is the picker label: "<agent>/<model id>" alias,
+  // while the catalog/describeCatalog names stay pretty for the Models page.
+  assert.equal(set[0].value.models.find((model) => model.id === 'gpt-6-sol').name, 'Codex/gpt-6-sol')
+  assert.equal(set[0].value.models.find((model) => model.id === 'gpt-6-sol-900k').name, 'Codex/gpt-6-sol-900k')
   assert.equal(result.routes[0].models.includes('gpt-6-astra'), true)
   assert.equal(result.routes[0].models.includes('gpt-6-astra-fast'), true)
   assert.equal(result.routes[0].models.includes('gpt-6-astra-900k'), true)
@@ -261,7 +265,7 @@ test('ensureOpencodeGoRoute writes only the supplemental route and takes the old
   assert.equal(extra.baseURL, 'https://opencode.ai/zen/go/v1')
   assert.deepEqual(extra.headers, GO_SESSION)
   assert.deepEqual(extra.models.map((model) => model.id), OPENCODE_GO_EXTRA_MODELS.map((model) => model.id))
-  assert.equal(extra.models[0].name, 'DeepSeek V4.1 Flash')
+  assert.equal(extra.models[0].name, 'OpenCode Go/deepseek-v4.1-flash')
   assert.deepEqual(extra.models[0].input, ['text', 'image'])
   assert.deepEqual(extra.models[0].reasoningEfforts, { low: 'low', high: 'high', max: 'max' })
   assert.deepEqual(extra.models[0].compat, {
@@ -685,6 +689,7 @@ test('logged-in GLM + Kiro persist together: anthropic GLM without completions c
   assert.equal(kiro.models.length, KIRO_MODELS.length)
   assert.ok(KIRO_MODELS.length >= 18)
   assert.ok(KIRO_MODELS.some((model) => model.id === 'auto'))
+  assert.ok(KIRO_MODELS.some((model) => model.id === 'claude-fable-5.1'))
   assert.ok(KIRO_MODELS.some((model) => model.id === 'claude-fable-5'))
   assert.deepEqual(kiro.models.map((model) => model.id), KIRO_MODELS.map((model) => model.id))
   assert.deepEqual(kiro.models.find((model) => model.id === 'gpt-5.6-sol').reasoningEfforts, {

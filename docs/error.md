@@ -2,6 +2,36 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-28：Devin / Command Code 在代理内重放上游 5xx（Command Code 还有 429）
+
+**现象**：上游返回 5xx 或 Connect 错误时，代理先自己重放 3 次再回 502，宿主又按 SERVER 重试 5 次，一次故障最多打出 15 次上游请求。Command Code 连 429 和厂商标了 `isRetryable` 的 `error` 事件也重放。
+**根因**：两家各有私有的 `runRetrying`，`devinRetryable` / `commandCodeRetryable` 把状态码 ≥500（以及无状态的 trailer 错误、429）当成传输故障。这违背了「4xx/5xx 转发、代理内不重试」的契约（09-27 条）。
+**修复**：TransportError 带显式 `retryable`，只有传输故障（socket 错、空 body、无消息结束、未 finish 就断流）为 true；HTTP 状态、trailer 错误、`error` 事件转发一次，交给宿主重试。
+
+## 2026-09-28：Kiro 月度额度耗尽（始 09-03）——400 改为 429 + 额度措辞
+
+**现象**：09-03 时 `MONTHLY_REQUEST_COUNT` 被当成普通 429 反复重试，当时改成回 400 止住了。但 400 会被宿主归为 INVALID_REQUEST，提示成「请求无效」，与额度耗尽的实际情况不符。
+**根因**：宿主只按错误文本分类，`classifyPiAiError` 先判断额度措辞（`isQuotaExceededError`），再判断 429。当时的文案不带额度措辞，只能靠 400 来避免被重试。
+**修复**：回 429，文案前缀 `usage limit reached: `，type `insufficient_quota`，宿主归为 QUOTA_EXCEEDED、不重试，提示也准确。非流式的流内异常也按同一分类定状态码。测试把宿主的额度正则钉进 `kiro.test.ts`。
+
+## 2026-09-28：Kiro 官方模型目录与 GPT-5.6 1M 窗口更新
+
+**现象**：Kiro 设置页选择器缺少官方新模型 Claude Fable 5.1；GPT-5.6 全系上下文仍为 272K；Sonnet 4 显示名未对齐官方 4.0；活目录合并缺少对 `supportedInputTypes` 图像输入能力的动态解析。
+**根因**：Kiro 官方在 2026-09-14 将 GPT-5.6 Sol / Terra / Luna 升级至 1M 窗口，9-25 官方模型表上线 Claude Fable 5.1（1M 窗口、6x 计费，US East）并将 Sonnet 4 标为 4.0；`KIRO_GPT_CONTEXT` 和离线回退表未同步更新。
+**修复**：`KIRO_GPT_CONTEXT` 升级为 1,000,000；离线回退目录加入 `claude-fable-5.1` 并保留 `claude-fable-5` 兼容行；`claude-sonnet-4` 显示名更新为 Claude Sonnet 4.0；活目录解析增加 `supportedInputTypes` 支持，并与 `inferKiroReasoning` / `inferKiroWindow` 联动。
+
+## 2026-09-28：Claude 两种登录全断 = 只开了 Console 门，且导入换票会毁掉本机 refresh
+
+**现象**：浏览器登录进 Claude Console（API 账单账号），Max/Pro 的 Claude.ai 订阅对不上；旧地址 `claude.ai/oauth/authorize` 仍是 Cloudflare 403。导入若拿共享 refresh 去换票，钥匙串里的 refresh 被轮换作废，Claude Code 自己的登录一起死。
+**根因**：2.1.283 把两种登录拆开——`CLAUDE_AI_AUTHORIZE_URL=https://claude.com/cai/oauth/authorize`、`CONSOLE_AUTHORIZE_URL=https://platform.claude.com/oauth/authorize`（`AVn()` 按 `loginWithClaudeAi` 选择）。插件只钉了 Console。无 cookie 的 `claude.com/cai/oauth/authorize` 会 307 到 `claude.ai/oauth/authorize`（Cloudflare），真浏览器能落到 Claude.ai 登录页。导入读的是同一份钥匙串 refresh；`grant_type=refresh_token` 会轮换，写不回 store 就把本机登录毁掉。scope 还缺 `user:plugins`。
+**修复**：登录拆成 Claude.ai 订阅与 Console 两个按钮，分别打上面两个 host。导入只读钥匙串/文件，不写、不删 `.credentials.json`；已导入会话到期后重新读取本机 store，不用共享 refresh 换票。scope 补 `user:plugins`，指纹钉 2.1.283。钥匙串拒绝读取时报 `anthropic-import-locked`，不再假装「没登录」。
+
+## 2026-09-28：Claude 额度抓取不稳定 = 每次刷新都附赠一次真实计费的 Messages 探针
+
+**现象**：Claude 账号卡额度时好时坏——偶发报错、429、或某几条 meter 掉线。
+**根因**：`fetchAnthropicQuota` 每次刷新**并行**打两个端点：`GET /api/oauth/usage` + 真实 `POST /v1/messages`（`max_tokens:1` ping）只为读 `anthropic-ratelimit-unified-*` 头。探针是计费推理调用——账号真到 5h 顶、上游过载或排队时它就 429/超时，而 usage 端点本身限流又凶，两请求并发把失败面翻倍；且探针纯属冗余，usage 一次响应已带全 5h/7d/`limits[]` scoped。
+**修复**：对齐 stablyai/orca `claude-oauth-usage-request.ts`——usage 端点为唯一来源（指纹收窄到 `Bearer` + `anthropic-beta: oauth-2025-04-20` + UA），计费 Messages 探针与统一限额头解析整路删除，失败抛错由调用方服务上一快照；Fable 旧字段补 `fable_weekly` / `fable_seven_day` / `seven_day_fable` 拼写。
+
 ## 2026-09-27：CI 恒定取消 token-lifecycle 后 5 个测试 = unref'd 刷新超时把事件循环排空
 
 **现象**：`506869d` 起每次 CI `fail 0 / cancelled 5`——`token-lifecycle.test.ts` 第 454 行起的 5 个测试全部 `cancelledByParent`（"event loop has already resolved"），再后两个测试根本没注册；本地 macOS 全绿不复现。
@@ -796,13 +826,13 @@ PKCE 卡抬头 `auth0|user_…`、PRO、已用 0%/0%。IDE 卡 PRO（实 Ultra�
 ## 2026-09-03：Kiro 复合 tool id / 静态目录缺口 / 思考 XML
 
 ### 现象
-Responses 形 `call_…|fc_…` 超 64 且含 `|` → AWS 400。picker 仍是静态表，缺 Auto / `claude-fable-5`。`MONTHLY_REQUEST_COUNT` 被当 429 锤。思考事件写成 `<thinking>` 进 `content`。
+Responses 形 `call_…|fc_…` 超 64 且含 `|` → AWS 400。picker 仍是静态表，缺 Auto / `claude-fable-5`。思考事件写成 `<thinking>` 进 `content`。（月度额度那一项已移到 09-28 条。）
 
 ### 根因
 翻译层 + 离线目录。hop 仍是 `q.<region>.amazonaws.com` `GenerateAssistantResponse`，不是 `runtime.*.kiro.dev`。
 
 ### 修复
-非法 id 稳定 remap 成 `tooluse_<32>`（use/result 同一函数）。登录后 `ListAvailableModels`（空/403 再探 us-east-1 / eu-central-1）。`MONTHLY_REQUEST_COUNT` → 400。thinking → `reasoning_content`。GPT-5.6 Sol/Terra/Luna 不删。
+非法 id 稳定 remap 成 `tooluse_<32>`（use/result 同一函数）。登录后 `ListAvailableModels`（空/403 再探 us-east-1 / eu-central-1）。thinking → `reasoning_content`。GPT-5.6 Sol/Terra/Luna 不删。
 
 ## 2026-09-03：Ollama Cloud — signin 不是 Bearer，无 cache-read
 
@@ -1672,6 +1702,20 @@ cookie 链路失败后走 key 兜底时，最坏耗时可接近两倍超时；�
 
 ### 修复
 模式放宽为 `/^devin-[A-Za-z0-9_-]+\$[A-Za-z0-9_-]+$/i`，覆盖两种形态。
+
+## 2026-09-28：Command Code 新家族接入 + 活测收口
+
+### 现象
+新增 `command-code`（`src/apikey/command-code/`）。归因自 npm `command-code@1.66.0` bundle：推理唯一入口 `POST api.commandcode.ai/alpha/generate`，AI-SDK 风格 JSONL 事件流，**不兼容** OpenAI/Anthropic/Responses 任一闭集；hop 做成翻译层（`request.ts`/`transport.ts`），不做薄透传。
+
+### 根因 / 钉住的协议点
+- 登录两条：浏览器（`commandcode.ai/studio/auth/cli` → loopback `:5959-5968/callback`）回调**直接带** `apiKey/userId/userName/keyName/state`，无 code 交换——`flow.ts` 加了 `spec.collect` 钩子承接凭据包；API key 走 `COMMAND_CODE_API_KEY` → `~/.commandcode/auth.json`（与 CLI `getCommandAuthKey` 同序）。
+- `threadId` 是会话亲和键，非 uuid 会被上游丢——cache.ts 对非 uuid 的 DSH 键做 sha256→uuid v5 推导，缺省回 `dsh-command-code:<model>` 常量种子。
+- 目录无 `/alpha/models`，静态 82 行取自 bundle 注册表 `uD`（剔 hidden/别名），effort 拼写逐模型取 `kr` 表。
+- 额度四端点与 CLI `fetchUsageData` 同序；`windowLimits.{fiveHour,weekly}` 为 null（账号未限速）时不产行，credits 全零且无订阅时 credits 行隐藏（CLI 同款）。
+
+### 活测结论
+真 key（`xxww0098` 账号）实测：`whoami`/`credits`/`subscriptions`/`usage/summary` 全 200，身份正确提升为 `xxww0098`；`generate` 请求过了形状校验、在计费门拿 402（该账号 0 额度、无订阅）——wire 已验证到计费校验层，完整对话需有额度的账号再验。单测 19 条 + 全量 778 绿。
 
 
 

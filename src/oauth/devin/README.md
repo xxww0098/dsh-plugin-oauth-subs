@@ -39,6 +39,8 @@ DSH POST /devin/v1/chat/completions
 
 非流 Completions：Connect 是流；hop **收集整段再回一条 JSON**。
 
+重放只在输出前、只限传输故障：socket 错、空 body、没有任何消息就结束。HTTP 状态（含 5xx）和 Connect trailer 错误是上游的答复，转发一次，由宿主重试，代理内不重放。
+
 `GetUserJwt` 是 best-effort：返回 `user_jwt` 填进 Metadata field 21、可能给 `custom_api_server_url`（per-deployment 后端）。**session token 本身就够聊天**；失败不挡对话。jwt 约 15 分钟有效，`devinChatAuth` 按 `exp−90s` 复用（每跳一次 RPC ≈2s）；chat 401 时丢掉重试一次 token-only。所有 RPC 带 `Authorization: Basic <token>-<token>`（CLI 的 `api_key-session_id` 形状，session id 即 token 本身，MITM 实测）。
 
 API server 解析顺序：`WINDSURF_API_SERVER_URL` env → session `apiServer`（GetUserJwt 的 `custom_api_server_url`）→ `DEVIN_API_SERVER`。

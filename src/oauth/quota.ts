@@ -84,6 +84,7 @@ import { COPILOT_QUOTA_URL, copilotIdentityHeaders, isGithubUserToken, parseCopi
 import { DEVIN_TIER_NAMES, pickDevinHumanAccount } from './devin/index.js'
 import { fetchClineQuota } from './cline/quota.js'
 import { fetchAnthropicQuota } from './anthropic/quota.js'
+import { fetchCommandCodeQuota } from '../apikey/command-code/quota.js'
 import { devinUserStatus } from './devin/transport.js'
 
 export const QUOTA_TTL_MS = 10_000
@@ -2044,7 +2045,9 @@ export class QuotaStore {
               : provider === 'cline'
                 ? await fetchClineQuota(session, this.fetchFn)
               : provider === 'anthropic'
-                ? await fetchAnthropicQuota(session, this.fetchFn, previous?.rows)
+                ? await fetchAnthropicQuota(session, this.fetchFn)
+              : provider === 'command-code'
+                ? await fetchCommandCodeQuota(session, this.fetchFn)
               : await fetchGrokQuota(session, this.fetchFn)
       const entry = {
         status: 'ready',

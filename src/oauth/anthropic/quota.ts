@@ -1,23 +1,13 @@
 /**
  * Anthropic subscription quota.
  *
- * Claude Code exposes the unified 5-hour / weekly meters as rate-limit headers
- * on Messages responses. Its OAuth usage endpoint additionally reports scoped
- * weekly limits (for example, the separate Fable meter). Keep the tiny Messages
- * probe as the source for the established bars and use GET /api/oauth/usage to
- * enrich them with any model-scoped rows; if either endpoint is unavailable,
- * the other can still provide useful quota data.
+ * GET /api/oauth/usage is the only source — one response carries the 5-hour,
+ * weekly, and every model-scoped meter (Fable etc.). Same design as
+ * stablyai/orca's claude-oauth-usage-request.ts: no billable Messages probe.
+ * On failure the caller keeps the previous snapshot, so throwing is enough.
  */
 
-import { ANTHROPIC_MESSAGES_URL, ANTHROPIC_USAGE_URL, ANTHROPIC_PROBE_MODEL, anthropicUpstreamHeaders } from './index.js'
-
-function parseFraction(value) {
-  if (typeof value !== 'string' && typeof value !== 'number') return undefined
-  const raw = typeof value === 'string' ? value.trim() : value
-  const fraction = Number(raw)
-  if (!Number.isFinite(fraction) || fraction < 0 || fraction > 1) return undefined
-  return fraction
-}
+import { ANTHROPIC_USAGE_URL, anthropicUsageHeaders } from './index.js'
 
 function parsePercent(value) {
   if (typeof value !== 'string' && typeof value !== 'number') return undefined
@@ -75,12 +65,14 @@ function modelKey(value) {
 // Legacy flat windows the usage payload still emits alongside `limits[]`.
 // `seven_day_overage_included` is the Fable-scoped weekly meter (`7d_oi` in
 // unified headers — Claude Code's label map renders it as "Fable 5 limit").
-const LEGACY_SCOPED = [
+const LEGACY_SCOPED: Array<[string | string[], string]> = [
   ['seven_day_opus', 'Opus'],
   ['seven_day_sonnet', 'Sonnet'],
   ['seven_day_cowork', 'Cowork'],
   ['seven_day_oauth_apps', 'OAuth Apps'],
-  ['seven_day_overage_included', 'Fable'],
+  // The Fable meter's flat-window spelling has drifted; orca maps
+  // fable_weekly / fable_seven_day / seven_day_fable for the same bucket.
+  [['seven_day_overage_included', 'fable_weekly', 'fable_seven_day', 'seven_day_fable'], 'Fable'],
 ]
 
 export function parseAnthropicUsage(payload) {
@@ -111,9 +103,10 @@ export function parseAnthropicUsage(payload) {
     }
   }
 
-  for (const [field, label] of LEGACY_SCOPED) {
+  for (const [fields, label] of LEGACY_SCOPED) {
     if (scoped.has(label.toLowerCase())) continue
-    const window = payload[field]
+    const names = Array.isArray(fields) ? fields : [fields]
+    const window = names.map((name) => payload[name]).find((value) => value && typeof value === 'object')
     const row = percentRow('weekly_scoped', 'anthropic-7d-' + modelKey(label), label,
       window?.utilization ?? window?.percent,
       window?.resets_at ?? window?.reset_at ?? window?.resetAt)
@@ -122,98 +115,25 @@ export function parseAnthropicUsage(payload) {
   return { rows }
 }
 
-function windowRow(kind, label, headers, suffix) {
-  const used = parseFraction(headers.get('anthropic-ratelimit-unified-' + suffix + '-utilization'))
-  if (used === undefined) return undefined
-  const resetAt = parseReset(headers.get('anthropic-ratelimit-unified-' + suffix + '-reset'))
-  const usedPercent = Math.max(0, Math.min(100, Math.round(used * 1000) / 10))
-  return {
-    key: 'anthropic-' + suffix,
-    kind,
-    label,
-    usedPercent,
-    remainingPercent: Math.max(0, Math.min(100, Math.round((100 - usedPercent) * 10) / 10)),
-    ...(resetAt !== undefined ? { resetAt } : {}),
-  }
-}
-
-export function parseAnthropicRateLimitHeaders(headers) {
-  const get = headers?.get?.bind(headers)
-  if (typeof get !== 'function') return { rows: [] }
-  // `7d_oi` is the Fable-scoped "overage included" weekly bucket.
-  const fable = windowRow('weekly_scoped', 'Fable', headers, '7d_oi')
-  const rows = [
-    windowRow('primary', '5 小时 · 5-hour', headers, '5h'),
-    windowRow('weekly', '每周 · Weekly', headers, '7d'),
-    fable ? { ...fable, key: 'anthropic-7d-fable', product: 'Fable' } : undefined,
-  ].filter(Boolean)
-  return { rows }
-}
-
-async function attempt(fetcher) {
-  try { return await fetcher() } catch (error) { return { error } }
-}
-
-async function fetchUsage(session, fetchFn) {
+export async function fetchAnthropicQuota(session, fetchFn = fetch) {
   const response = await fetchFn(ANTHROPIC_USAGE_URL, {
     method: 'GET',
-    headers: anthropicUpstreamHeaders(session),
+    headers: anthropicUsageHeaders(session),
     signal: AbortSignal.timeout(10_000),
   })
   let payload
   try { payload = await response.json() } catch { payload = undefined }
-  return { status: response.status, ...parseAnthropicUsage(payload) }
-}
-
-async function fetchMessageHeaders(session, fetchFn) {
-  const response = await fetchFn(ANTHROPIC_MESSAGES_URL, {
-    method: 'POST',
-    headers: { ...anthropicUpstreamHeaders(session), 'content-type': 'application/json' },
-    body: JSON.stringify({
-      model: ANTHROPIC_PROBE_MODEL,
-      max_tokens: 1,
-      messages: [{ role: 'user', content: 'ping' }],
-    }),
-    signal: AbortSignal.timeout(10_000),
-  })
-  const parsed = parseAnthropicRateLimitHeaders(response.headers)
-  let body = ''
-  if (parsed.rows.length === 0) {
-    try { body = await response.text() } catch { body = '' }
-  } else {
-    try { await response.body?.cancel() } catch { /* response body is not needed */ }
-  }
-  return { status: response.status, body, ...parsed }
-}
-
-export async function fetchAnthropicQuota(session, fetchFn = fetch, previousRows: any = undefined) {
-  const [usage, message] = await Promise.all([
-    attempt(() => fetchUsage(session, fetchFn)),
-    attempt(() => fetchMessageHeaders(session, fetchFn)),
-  ])
-  const usageRows = Array.isArray(usage?.rows) ? usage.rows : []
-  const messageRows = Array.isArray(message?.rows) ? message.rows : []
-  const rows = [...messageRows]
-  for (const row of usageRows) {
-    if (rows.some((current) => current.key === row.key)) continue
-    if (row.kind === 'weekly_scoped' || !rows.some((current) => current.kind === row.kind)) rows.push(row)
-  }
-  if (rows.length === 0) {
-    const details = message?.body ? ': ' + message.body.slice(0, 200) : ''
-    const status = message?.status ?? usage?.status
-    throw new Error('anthropic quota: no unified rate-limit headers or OAuth usage limits (HTTP ' + (status ?? 'unavailable') + ')' + details)
-  }
-  // The usage endpoint rate-limits aggressively; a 429 must not silently drop
-  // model-scoped meters we knew about. A 200 without them means they are gone.
-  if (usage?.status !== 200 && Array.isArray(previousRows)) {
-    for (const row of previousRows) {
-      if (row?.kind === 'weekly_scoped' && !rows.some((current) => current.key === row.key)) rows.push(row)
-    }
+  const rows = parseAnthropicUsage(payload).rows
+  // A non-200 with no readable meters is a failure: throw and let the caller
+  // keep the previous snapshot. A 200 without meters means they are gone.
+  if (rows.length === 0 && response.status !== 200) {
+    const details = typeof payload?.error?.message === 'string' ? ': ' + payload.error.message.slice(0, 200) : ''
+    throw new Error(`anthropic quota: OAuth usage limits unavailable (HTTP ${response.status})${details}`)
   }
   return {
     planType: session.planType,
     account: session.account,
-    subscriptionStatus: message?.status === 429 || usage?.status === 429 ? 'rate_limited' : 'active',
+    subscriptionStatus: response.status === 429 ? 'rate_limited' : 'active',
     rows,
   }
 }
