@@ -98,3 +98,42 @@ export declare function analyzeSession(text: any): {
     eventCount: number;
 };
 export declare function formatReport(report: any): string;
+export declare const CALL_INDEX_BUCKETS: readonly string[];
+/**
+ * DSH appends one zstd frame per write. `zstdDecompressSync(buf)` returns only
+ * the first frame (209 B of a 1265-frame file), so walk the frames by consumed
+ * input. A truncated tail frame (session still being written) is dropped.
+ */
+export declare function decodeSessionBuffer(buf: Buffer): string;
+/** Plain session.jsonl or DSH's multi-frame session*.jsonl.zstd. */
+export declare function readSessionText(path: string): string;
+/** Failure text safe to aggregate: no paths, ids, or tokens; digit runs folded. */
+export declare function normalizeFailureMessage(message: any): string;
+/**
+ * Aggregate every session under `root` whose events fall in [since, until).
+ * The same session may exist as session.jsonl.zstd and session.v3/v4.jsonl.zstd;
+ * only the highest `session.version` copy of each `session.id` counts.
+ */
+export declare function analyzeSessionDir(root: string, { since, until }?: {
+    since?: number | null;
+    until?: number | null;
+}): {
+    window: {
+        since: string | null;
+        until: string | null;
+    };
+    files: number;
+    sessions: number;
+    duplicateFiles: number;
+    unreadableFiles: number;
+    providers: any;
+    models: any;
+};
+export declare function formatAggregate(report: any): string;
+/** Per-provider deltas `next − base`; counts normalized per 1k calls. */
+export declare function compareReports(base: any, next: any): {
+    base: any;
+    next: any;
+    providers: {};
+};
+export declare function formatComparison(diff: any): string;

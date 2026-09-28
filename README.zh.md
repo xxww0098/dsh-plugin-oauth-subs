@@ -107,7 +107,10 @@ dsh web
 npm run analyze -- path/to/session.jsonl
 node --experimental-strip-types scripts/analyze-session.ts --json path/to/session.jsonl
 node --experimental-strip-types scripts/analyze-session.ts --fail-below 80 path/to/session.jsonl
+npm run analyze -- --dir ~/.dsh/sessions --since 30d [--until ISO] [--json] [--compare base.json]
 ```
+
+目录模式按 provider 与模型汇总所有会话（明文或 zstd，同一会话 id 只算一份）：按调用序号的命中率、宿主重试、300s 空闲超时、首字节、流内静默、连接池空闲；`--compare` 对照之前保存的 `--json` 报告，按每 1k 次调用输出差值。
 
 分析器给每步打标 `cold_start` / `delta` / `compaction` / `rebuild` / `affinity_miss`，避免把压缩会话误判成分片回归。也可 `import` `dsh-plugin-oauth-subs/analyze-session`。
 
