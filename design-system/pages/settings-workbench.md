@@ -106,9 +106,18 @@ quota rows, mid-auth pairing code + authorize URL, one CTA
 (登录 / 添加账号 / 继续授权), Cancel while busy.
 
 The Dialog owns methods: every family's login / import / paste / key /
-manual flows live inside it. A mid-auth pairing code may repeat inside
-the dialog so a just-opened login never hides the user code; overlay /
-Escape still closes it.
+manual flows live inside it. Header = family mark + 添加账号 + family
+name. Method rows carry a chevron (rotates when its inline form is open;
+only one form open at a time; the form renders directly under its own
+row, never after the whole list) and spin while starting — the other rows
+disable so a double click can't fork two flows. Key fields are masked,
+autofocused, and their submit stays disabled until non-empty.
+
+Mid-auth the method list is replaced by `AuthPanel`: waiting status,
+the pairing code (large, one-click copy), a full-width 打开授权页 CTA,
+the callback paste (PKCE/OAuth only), and Cancel. Focus moves into the
+dialog, Tab is trapped, and focus returns to the opener on close;
+overlay / Escape still close it.
 
 ## What this page does not own
 

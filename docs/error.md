@@ -2,6 +2,24 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-28：添加账号弹窗里展开的输入框掉到列表最底部
+
+**现象**：Kiro「Enterprise / API Key / Refresh」等方式行展开后，输入框渲染在所有方式行和「导入」之后，离被点的那一行很远。
+**根因**：`ProviderCard` 把每个内联表单写成 `.osubs-logins` 列表的兄弟节点，统一排在列表后面。
+**修复**：表单移进列表、紧跟触发它的方式行（Kimi / Copilot / Devin / Command Code / Ollama / GLM / Kiro 全部）；样式选择器由 `+` 改为 `>`。
+
+## 2026-09-28：退出账号后，重启 / 热重载又自动登录回来
+
+**现象**：在 Cursor / Devin / Cline / Command Code（以及 Ollama / Kimi / Copilot）点「退出」，`auth.json` 里的账号确实删了，但宿主重启或插件热重载后账号又回来了，看起来像退出没生效。
+**根因**：这 7 个家族每次启动都会自动导入：该家族没有账号时，就从本机 CLI / IDE 凭证（Cursor 钥匙串、Devin toml、Cline / Command Code CLI 文件）导入一次。`*AutoImportTried` 只存在内存里，重建实例后就清零，于是自动导入把刚退出的账号又写了回去。
+**修复**：`logout` 把家族名写进 `auth.json` 旁边的 `signed-out.json`，自动导入遇到在列表里的家族就跳过。手动「导入本机会话」和重新登录不受影响，也不需要清除这个标记：自动导入只在该家族没有账号时运行。回归测试 `test/cursor.test.ts`「signing out survives a restart」。
+
+## 2026-09-28：Kiro Builder ID 额度读取失败 · Invalid profileArn.（HTTP 400）
+
+**现象**：粘贴凭证导入的 Builder ID（`idc`，无 `profileArn`）账号卡报「额度读取失败 · Invalid profileArn. (HTTP 400)」，对话正常。
+**根因**：`kiroEffectiveProfileArn` 认定 `BUILDER_ID_PROFILE_ARN` 是占位、不发给用量端点，而导入的 Builder ID 本来就没存 ARN，`getUsageLimits` 只能不带 ARN 发出。活测：不带 ARN 回 400 `Invalid profileArn.`，带 Builder ID 常量回 200（KIRO POWER）。重试只在 403 时继续，400 直接抛出。
+**修复**：额度改用对话 / 目录同一个 ARN（`kiroStreamingProfileArn` 改名 `kiroProfileArn`；social → Social 常量、其余 → Builder ID 常量、api_key 不带），删除 `kiroEffectiveProfileArn` 和不带 ARN 的重试；只有 403 才换区。
+
 ## 2026-09-28：Grok 首轮第二步只回会话标题就结束（「会断」）
 
 **现象**：新会话 `grok-4.7` 第一轮跑完一次工具调用，第二步只输出一行标题（如「排查TPS数据异常」）就正常结束；推理里写着 "create a concise title"。
@@ -26,6 +44,7 @@
 **现象**：Kiro 设置页选择器缺少官方新模型 Claude Fable 5.1；GPT-5.6 全系上下文仍为 272K；Sonnet 4 显示名未对齐官方 4.0；活目录合并缺少对 `supportedInputTypes` 图像输入能力的动态解析。
 **根因**：Kiro 官方在 2026-09-14 将 GPT-5.6 Sol / Terra / Luna 升级至 1M 窗口，9-25 官方模型表上线 Claude Fable 5.1（1M 窗口、6x 计费，US East）并将 Sonnet 4 标为 4.0；`KIRO_GPT_CONTEXT` 和离线回退表未同步更新。
 **修复**：`KIRO_GPT_CONTEXT` 升级为 1,000,000；离线回退目录加入 `claude-fable-5.1` 并保留 `claude-fable-5` 兼容行；`claude-sonnet-4` 显示名更新为 Claude Sonnet 4.0；活目录解析增加 `supportedInputTypes` 支持，并与 `inferKiroReasoning` / `inferKiroWindow` 联动。
+**跟进（同日，活目录）**：Kiro 选择器里列出的 Claude 在两个账号上都用不了，发出去是 400 `INVALID_MODEL_ID`。后端按 origin 放行模型：chat 发 `AI_EDITOR`，而目录请求用的是 `KIRO_CLI`；静态文档行又无条件合并进选择器，账号用不了的模型也会列出来。`origin=KIRO_CONSOLE` 能列出全部 21 个（含 `claude-opus-5.5`），但那是治理目录，拿它发 chat 是请求格式错误。出口直连、Cloudflare `loc=CN`，和 Cursor 一样按出口区域过滤：换到 `loc=US` 出口后当场出现 Claude（Power 19 个，Free 8 个）。全模型活测：Power 的 19 个模型流式 + 非流式 38/38 返回 200，Free 的 8 个也全部 200；列表外的模型（Fable 5.1 / 5，Free 上的 Opus / GPT）都是 400 `INVALID_MODEL_ID`。修复：目录请求改用 `KIRO_CHAT_ORIGIN`；目录缓存 key 加上出口代理，手动刷新时强制重拉；活列表非空就直接当选择器，窗口 / 输出 / 输入 / effort 全部读接口字段；静态表改成 `KIRO_CONSOLE` 快照，只在离线时用。Auto 按用户要求从 Kiro 和 Cursor 的选择器里移除。
 
 ## 2026-09-28：Claude 两种登录全断 = 只开了 Console 门，且导入换票会毁掉本机 refresh
 
@@ -1790,3 +1809,14 @@ DSH 每次追加写一个独立 zstd 帧，Node 的一次性解压只解第一�
 
 ### 修复
 `analyze-session.ts` `decodeSessionBuffer` 按 `{ info: true }` 的 `engine.bytesWritten` 逐帧前进，截断的尾帧丢弃；目录模式同一 `session.id` 只留最高 `version`。全量 496 个文件与 `zstd -dc` 逐行一致，基线见 `specs/request-path-upgrades/assets/baseline-30d.*`。
+
+## 2026-09-28：Kiro 会话 TPS / 缓存命中率全空
+
+### 现象
+`oauth-kiro` / `claude-opus-5.5` 会话 49 次调用，37 次 `outputTokens: 0`，全部没有 cache 字段；analyze 报 `REGRESSION affinity-miss 48`，界面没有 TPS 与命中率。
+
+### 根因
+现场 wire 没有 `metadataEvent.tokenUsage`，走 `contextUsageEvent` 兜底；兜底输出只按可见 `content` 字数估，思考与工具参数不计，思考 + 工具步骤恒为 0。analyze 把「上游不给 cache 字段」当成亲和失效。
+
+### 修复
+`resolveKiroUsage` 兜底按 正文 + 思考 + 工具参数 估输出（流式 / 非流式同一口径）；analyze 在所有调用都没有 cache 字段时报 `UNMEASURED`，不再算 affinity-miss。Kiro 真实命中率仍不可测，直到上游下发 tokenUsage。

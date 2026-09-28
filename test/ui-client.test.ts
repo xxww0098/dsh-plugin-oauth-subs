@@ -437,6 +437,31 @@ test('Add account opens a centered dialog, not a sheet', async () => {
   assert.equal(/osubs-sheet|osubs-drawer|role: 'sheet'|side.?sheet|侧边抽屉/i.test(src), false)
 })
 
+test('Add-account dialog guides mid-auth, traps focus, and guards double starts', async () => {
+  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  // Header names the family with its mark; focus moves in, is trapped, and returns.
+  assert.match(src, /subtitle: title,/)
+  assert.match(src, /const trap = \(event\) =>/)
+  assert.match(src, /opener\.focus\(\{ preventScroll: true \}\)/)
+  // Mid-auth: one AuthPanel with status, copyable code, authorize CTA, paste, cancel.
+  assert.match(src, /busy && h\(AuthPanel, \{/)
+  assert.match(src, /function PairCode\(\{ t, code, large \}\)/)
+  assert.match(src, /navigator\.clipboard\.writeText/)
+  assert.match(src, /waitingAuth:\s*'等待授权完成'/)
+  assert.match(src, /waitingAuth:\s*'Waiting for authorization'/)
+  // One inline method form at a time; secrets masked; empty submits disabled.
+  assert.match(src, /const toggleMethod = \(next\) =>/)
+  assert.match(src, /'aria-expanded': showKey, onClick: \(\) => toggleMethod\('key'\)/)
+  assert.match(src, /placeholder: t\.ollamaKeyPlaceholder,\s*type: 'password',\s*autoFocus: true/)
+  assert.match(src, /disabled: !apiKey\.trim\(\), label: t\.ollamaKeyGo/)
+  // Start guard: pressed row spins, the rest disable until the host answers.
+  assert.match(src, /const begin = async \(key, action, close = false\) =>/)
+  assert.match(src, /\.osubs-login\[aria-busy="true"\]::after/)
+  // Disabled primary never falls back to transparent bg + primary foreground.
+  assert.match(src, /\.osubs-btn--primary\[disabled\] \{[^}]*background: var\(--osubs-fill-2\);[^}]*color: var\(--osubs-faint\)/)
+  assert.match(src, /\.osubs a\.osubs-btn--primary:visited/)
+})
+
 test('Reset-credit confirm stays a centered alertdialog', async () => {
   const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
   assert.match(src, /function WarnDialog/)

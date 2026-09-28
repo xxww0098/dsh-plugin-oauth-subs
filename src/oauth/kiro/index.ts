@@ -34,9 +34,11 @@ export const KIRO_DEFAULT_REGION = 'us-east-1'
 export const KIRO_CONTEXT_WINDOW = 200_000
 export const KIRO_LARGE_CONTEXT = 1_000_000
 export const KIRO_GPT_CONTEXT = 1_000_000
-export const KIRO_DEEPSEEK_CONTEXT = 128_000
+export const KIRO_DEEPSEEK_CONTEXT = 164_000
+export const KIRO_MINIMAX_CONTEXT = 196_000
 export const KIRO_QWEN_CONTEXT = 256_000
 export const KIRO_MAX_TOKENS = 64_000
+export const KIRO_MAX_TOKENS_128K = 128_000
 export const KIRO_VISION_INPUT = Object.freeze(['text', 'image'])
 export const KIRO_TEXT_INPUT = Object.freeze(['text'])
 export const KIRO_METHODS = Object.freeze(['social', 'idc', 'external_idp', 'api_key'])
@@ -79,37 +81,38 @@ const ALLOWED_IDP_SUFFIXES = Object.freeze([
   '.microsoftonline.cn',
 ])
 
-function kiroModel(id, name, contextWindow, input = KIRO_VISION_INPUT, reasoningEfforts: any = false) {
-  return { id, name, contextWindow, maxTokens: KIRO_MAX_TOKENS, input, reasoningEfforts }
+function kiroModel(id, name, contextWindow, input = KIRO_VISION_INPUT, reasoningEfforts: any = false, maxTokens = KIRO_MAX_TOKENS) {
+  return { id, name, contextWindow, maxTokens, input, reasoningEfforts }
 }
 
 /**
- * Offline fallback. Matches kiro.dev/docs/models including Auto and Claude Fable 5.1.
- * `claude-fable-5` is retained for pi-provider-kiro bootstrap compatibility.
- * Live ListAvailableModels may add more.
+ * Offline fallback only — a non-empty live ListAvailableModels replaces it.
+ * Snapshot of ListAvailableModels origin=KIRO_CONSOLE (2026-09-28, the full
+ * governance catalog) minus Auto; `claude-fable-5` is retained for
+ * pi-provider-kiro bootstrap compatibility.
  */
 export const KIRO_MODELS = Object.freeze([
-  kiroModel('gpt-5.6-sol', 'GPT-5.6 Sol', KIRO_GPT_CONTEXT, KIRO_VISION_INPUT, KIRO_REASONING_GPT),
-  kiroModel('gpt-5.6-terra', 'GPT-5.6 Terra', KIRO_GPT_CONTEXT, KIRO_VISION_INPUT, KIRO_REASONING_GPT),
-  kiroModel('gpt-5.6-luna', 'GPT-5.6 Luna', KIRO_GPT_CONTEXT, KIRO_VISION_INPUT, KIRO_REASONING_GPT),
-  kiroModel('claude-opus-5', 'Claude Opus 5', KIRO_LARGE_CONTEXT, KIRO_VISION_INPUT, KIRO_REASONING_CLAUDE_XHIGH),
-  kiroModel('claude-opus-4.8', 'Claude Opus 4.8', KIRO_LARGE_CONTEXT, KIRO_VISION_INPUT, KIRO_REASONING_CLAUDE_XHIGH),
-  kiroModel('claude-opus-4.7', 'Claude Opus 4.7', KIRO_LARGE_CONTEXT, KIRO_VISION_INPUT, KIRO_REASONING_CLAUDE_XHIGH),
+  kiroModel('gpt-5.6-sol', 'GPT-5.6 Sol', KIRO_GPT_CONTEXT, KIRO_VISION_INPUT, KIRO_REASONING_GPT, KIRO_MAX_TOKENS_128K),
+  kiroModel('gpt-5.6-terra', 'GPT-5.6 Terra', KIRO_GPT_CONTEXT, KIRO_VISION_INPUT, KIRO_REASONING_GPT, KIRO_MAX_TOKENS_128K),
+  kiroModel('gpt-5.6-luna', 'GPT-5.6 Luna', KIRO_GPT_CONTEXT, KIRO_VISION_INPUT, KIRO_REASONING_GPT, KIRO_MAX_TOKENS_128K),
+  kiroModel('claude-opus-5.5', 'Claude Opus 5.5', KIRO_LARGE_CONTEXT, KIRO_VISION_INPUT, KIRO_REASONING_CLAUDE_XHIGH, KIRO_MAX_TOKENS_128K),
+  kiroModel('claude-opus-5', 'Claude Opus 5', KIRO_LARGE_CONTEXT, KIRO_VISION_INPUT, KIRO_REASONING_CLAUDE_XHIGH, KIRO_MAX_TOKENS_128K),
+  kiroModel('claude-opus-4.8', 'Claude Opus 4.8', KIRO_LARGE_CONTEXT, KIRO_VISION_INPUT, KIRO_REASONING_CLAUDE_XHIGH, KIRO_MAX_TOKENS_128K),
+  kiroModel('claude-opus-4.7', 'Claude Opus 4.7', KIRO_LARGE_CONTEXT, KIRO_VISION_INPUT, KIRO_REASONING_CLAUDE_XHIGH, KIRO_MAX_TOKENS_128K),
   kiroModel('claude-opus-4.6', 'Claude Opus 4.6', KIRO_LARGE_CONTEXT, KIRO_VISION_INPUT, KIRO_REASONING_CLAUDE),
   kiroModel('claude-opus-4.5', 'Claude Opus 4.5', KIRO_CONTEXT_WINDOW, KIRO_VISION_INPUT, false),
   kiroModel('claude-sonnet-5', 'Claude Sonnet 5', KIRO_LARGE_CONTEXT, KIRO_VISION_INPUT, KIRO_REASONING_CLAUDE_XHIGH),
-  kiroModel('claude-fable-5.1', 'Claude Fable 5.1', KIRO_LARGE_CONTEXT, KIRO_VISION_INPUT, KIRO_REASONING_CLAUDE_XHIGH),
+  kiroModel('claude-fable-5.1', 'Claude Fable 5.1', KIRO_LARGE_CONTEXT, KIRO_VISION_INPUT, KIRO_REASONING_CLAUDE_XHIGH, KIRO_MAX_TOKENS_128K),
   kiroModel('claude-fable-5', 'Claude Fable 5', KIRO_LARGE_CONTEXT, KIRO_VISION_INPUT, KIRO_REASONING_CLAUDE_XHIGH),
   kiroModel('claude-sonnet-4.6', 'Claude Sonnet 4.6', KIRO_LARGE_CONTEXT, KIRO_VISION_INPUT, KIRO_REASONING_CLAUDE),
   kiroModel('claude-sonnet-4.5', 'Claude Sonnet 4.5', KIRO_CONTEXT_WINDOW, KIRO_VISION_INPUT, false),
   kiroModel('claude-sonnet-4', 'Claude Sonnet 4.0', KIRO_CONTEXT_WINDOW, KIRO_VISION_INPUT, false),
-  kiroModel('auto', 'Auto', KIRO_LARGE_CONTEXT, KIRO_VISION_INPUT, KIRO_REASONING_CLAUDE_XHIGH),
   kiroModel('claude-haiku-4.5', 'Claude Haiku 4.5', KIRO_CONTEXT_WINDOW, KIRO_VISION_INPUT, false),
-  kiroModel('deepseek-3.2', 'DeepSeek 3.2', KIRO_DEEPSEEK_CONTEXT, KIRO_TEXT_INPUT, false),
-  kiroModel('minimax-m2.5', 'MiniMax M2.5', KIRO_CONTEXT_WINDOW, KIRO_TEXT_INPUT, false),
+  kiroModel('deepseek-3.2', 'DeepSeek 3.2', KIRO_DEEPSEEK_CONTEXT, KIRO_VISION_INPUT, false),
+  kiroModel('minimax-m2.5', 'MiniMax M2.5', KIRO_MINIMAX_CONTEXT, KIRO_TEXT_INPUT, false),
   kiroModel('glm-5', 'GLM-5', KIRO_CONTEXT_WINDOW, KIRO_TEXT_INPUT, false),
-  kiroModel('minimax-m2.1', 'MiniMax M2.1', KIRO_CONTEXT_WINDOW, KIRO_TEXT_INPUT, false),
-  kiroModel('qwen3-coder-next', 'Qwen3 Coder Next', KIRO_QWEN_CONTEXT, KIRO_TEXT_INPUT, false),
+  kiroModel('minimax-m2.1', 'MiniMax M2.1', KIRO_MINIMAX_CONTEXT, KIRO_VISION_INPUT, false),
+  kiroModel('qwen3-coder-next', 'Qwen3 Coder Next', KIRO_QWEN_CONTEXT, KIRO_VISION_INPUT, false),
 ])
 
 export const KIRO_PLAN_NAMES = Object.freeze({
@@ -311,13 +314,7 @@ export function kiroTokenTypeHeader(session) {
   return undefined
 }
 
-export function kiroEffectiveProfileArn(session) {
-  const arn = typeof session?.profileArn === 'string' ? session.profileArn.trim() : ''
-  if (!arn || arn === BUILDER_ID_PROFILE_ARN) return undefined
-  return arn
-}
-
-export function kiroStreamingProfileArn(session) {
+export function kiroProfileArn(session) {
   const method = canonicalizeKiroMethod(session?.authMethod, { tokenEndpoint: session?.tokenEndpoint })
   if (method === 'api_key') return undefined
   if (typeof session?.profileArn === 'string' && session.profileArn.trim()) return session.profileArn.trim()

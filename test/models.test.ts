@@ -688,7 +688,7 @@ test('logged-in GLM + Kiro persist together: anthropic GLM without completions c
   assert.equal(kiro.compat.thinkingFormat, 'openai')
   assert.equal(kiro.models.length, KIRO_MODELS.length)
   assert.ok(KIRO_MODELS.length >= 18)
-  assert.ok(KIRO_MODELS.some((model) => model.id === 'auto'))
+  assert.equal(KIRO_MODELS.some((model) => model.id === 'auto'), false)
   assert.ok(KIRO_MODELS.some((model) => model.id === 'claude-fable-5.1'))
   assert.ok(KIRO_MODELS.some((model) => model.id === 'claude-fable-5'))
   assert.deepEqual(kiro.models.map((model) => model.id), KIRO_MODELS.map((model) => model.id))

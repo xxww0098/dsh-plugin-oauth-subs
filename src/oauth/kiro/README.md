@@ -80,22 +80,22 @@ DSH chat/completions  →  POST https://q.<region>.amazonaws.com/
 
 命中：有 `metadataEvent.tokenUsage`（或嵌套 `metadataEvent` / snake_case）时用精确字段，`cacheReadInputTokens` → `prompt_tokens_details.cached_tokens`。
 
-**现场 wire 往往没有 `metadataEvent`。** kiro-cli / kirogo / kiro.rs 实测 `:event-type` 是 `initial-response`、`assistantResponseEvent`、`toolUseEvent`、`contextUsageEvent`、`meteringEvent`。`meteringEvent.usage` 是 **credit**，不是 token。没有 tokenUsage 时，`prompt_tokens` = `contextUsagePercentage / 100 *` 该模型 `contextWindow`；`completion_tokens` 按输出字数估。AWS 连 context 也没下发时才保持 0/0/0。头解码仍要走过非 string 类型。
+**现场 wire 往往没有 `metadataEvent`。** kiro-cli / kirogo / kiro.rs 实测 `:event-type` 是 `initial-response`、`assistantResponseEvent`、`toolUseEvent`、`contextUsageEvent`、`meteringEvent`。`meteringEvent.usage` 是 **credit**，不是 token。没有 tokenUsage 时，`prompt_tokens` = `contextUsagePercentage / 100 *` 该模型 `contextWindow`；`completion_tokens` 按正文 + 思考 + 工具参数的字数估（只算正文会让思考 + 工具步骤恒为 0）。没有 cache 字段时命中率不可测，`npm run analyze` 报 `UNMEASURED`。AWS 连 context 也没下发时才保持 0/0/0。头解码仍要走过非 string 类型。
 
 ## 模型
 
-`KIRO_MODELS` 是离线 fallback，对齐 [kiro.dev/docs/models](https://kiro.dev/docs/models)（含 **Auto**、**Claude Fable 5.1**）+ [effort](https://kiro.dev/docs/models/effort)。id 用点号（`claude-sonnet-5`、`claude-fable-5.1`）。`claude-fable-5` 作为旧版兼容 ID 保留。GPT-5.6 Sol/Terra/Luna 官方已全系升级为 1M 窗口（`KIRO_GPT_CONTEXT = 1_000_000`）。
-官方表 2026-09-25 新增 Claude Fable 5.1（1M 窗口、6x 计费，US East only）；`claude-sonnet-4` 显示名对齐官方 Claude Sonnet 4.0。
+**选择器以接口为准，不以文档为准。** 登录 / 导入 / 额度刷新 / 启动 warmup 后，`refreshKiroCatalog` 打 management `https://management.<region>.kiro.dev/` `List-Available-Models`，`origin` 用对话同一个 `KIRO_CHAT_ORIGIN`（`AI_EDITOR`）。遇到空列表或区域 403 会再探 `us-east-1` / `eu-central-1`，不在第一个 403 停。结果按 token hash 缓存。**活列表非空就是选择器本身**，同时写进 `oauth-kiro.models` yaml，不再补静态行。每行从接口读：`tokenLimits` → 窗口 / 输出上限，`supportedInputTypes` → `text` / `image`，`additionalModelRequestFieldsSchema` → effort（Claude 读 `output_config.effort`，GPT 读 `reasoning.effort`，`none` → `off`；schema 为 `null` 就是不支持思考）。静态行只提供排序和美化名（`GPT-5.6 Sol`、`Claude Sonnet 4.0`），接口没给的字段才用它补。**Auto 不进选择器**（2026-09-28 移除），活列表列出来也跳过。对话 hop **仍是** `q.<region>.amazonaws.com` GenerateAssistantResponse。
 
-登录 / 导入 / 额度刷新后 `refreshKiroCatalog` 打 management `https://management.<region>.kiro.dev/` `List-Available-Models`（空或区域 403 再探 `us-east-1` / `eu-central-1`，不在第一个 403 停），按 token hash 缓存，merge 进 picker 和 `oauth-kiro.models` yaml。活目录合并支持读取上游 `supportedInputTypes`（如 DeepSeek 3.2 / Qwen3 / MiniMax M2.1 具备 IMAGE 时自动升级为 `text+image`）。失败或空列表不挡对话，回静态 fallback。对话 hop **仍是** `q.<region>.amazonaws.com` GenerateAssistantResponse。
-
-- GPT-5.6 / Claude / Auto：输入 `text+image`。OSS（DeepSeek / MiniMax / GLM-5 / Qwen）：静态回退为 `text`，活目录发现 `IMAGE` 输入时动态启用图文。
-- 思考：GPT-5.6 DSH 档位 `off`–`max`，关思考的 **wire** 是 `none`（`off: "none"`）。Opus 5 / 4.8 / 4.7、Sonnet 5、Fable 5 / 5.1、Auto 有 `xhigh`；4.6 家族到 `max`；Haiku / OSS 为 `false`。不要把 `none` 当 DSH 键——整段 `oauth-kiro` 写不进 settings.yaml。
+- **后端按 origin 放行模型**（2026-09-28 活测）。chat 发 `AI_EDITOR`，只有这个 origin 的列表才是能对话的模型；不在列表里的模型会 400 `INVALID_MODEL_ID`。Builder ID Power：GPT-5.6 ×3 + 5 个 OSS；Social Free：5 个 OSS。两个账号都**没有** Claude，在所有 chat origin（`AI_EDITOR` / `CLI` / `KIRO_CLI` / `IDE` / `MD_IDE`）下发 Claude 都是 `INVALID_MODEL_ID`。当时出口直连、Cloudflare `loc=CN`。列表按**出口区域**过滤（与 Cursor 同理）：要用 Claude 就给插件配一个非中国大陆出口的出站代理（`outbound-proxy.json` / 插件 `proxyUrl` / `HTTPS_PROXY`），chat、目录、额度都会走它。目录缓存 key 是 token 加出口代理；手动「刷新」总是重拉，因为系统 VPN 切换出口时 key 感知不到。同一账号换到 `loc=US` 出口后当场实测：Builder ID Power 19 个（GPT-5.6 ×3 + Claude 11 + OSS 5），Social Free 8 个（Sonnet 4.5 / 4、Haiku 4.5 + OSS 5），Haiku chat 200。接口和官网都没有 GPT-6，GPT 只有 5.6 Sol / Terra / Luna。
+- **全模型活测（2026-09-28，`loc=US`）**：经本地代理 `/kiro/v1/chat/completions`，Builder ID Power 列出的 19 个模型，流式和非流式都返回 200 `OK`（38/38）。Social Free 列出的 8 个也全部 200。列表外的模型都是 400 `INVALID_MODEL_ID`：Fable 5.1 / Fable 5（企业预览），以及 Free 账号上的 Opus 4.8 / GPT-5.6 Luna。每个账号的列表就是它的实际权限。
+- `origin=KIRO_CONSOLE` 返回全部 21 个模型（治理目录，含 Claude 与 `claude-opus-5.5`），但它**不是**权限列表，发 chat 时是 `Improperly formed request`。不要拿它当选择器。合法 origin 可以用非法值让接口报错列出：`CLI, MD_IDE, AI_EDITOR, IDE, KIRO_WEB, SM_AI_STUDIO_IDE, KIRO_CONSOLE, KIRO_CLI`。
+- `KIRO_MODELS` 只是离线 fallback（活列表失败或为空时用）：取 2026-09-28 `KIRO_CONSOLE` 快照去掉 Auto，外加兼容 ID `claude-fable-5`（[pi-provider-kiro](https://github.com/mikeyobrien/pi-provider-kiro) bootstrap）。id 用点号（`claude-sonnet-5`、`claude-fable-5.1`）。快照值：Opus 5.5 / 5 / 4.8 / 4.7、Fable 5.1、GPT-5.6 输出上限 128K，其余 64K；DeepSeek 3.2 164K、MiniMax 196K、Qwen3 Coder Next 256K（官方文档表写的 128K / 200K 是取整值）。
+- 思考：GPT-5.6 DSH 档位 `off`–`max`，关思考的 **wire** 是 `none`（`off: "none"`）。Opus 5.5 / 5 / 4.8 / 4.7、Sonnet 5、Fable 5 / 5.1 有 `xhigh`；4.6 家族到 `max`；Haiku / Opus 4.5 / Sonnet 4.5 / 4.0 / OSS 为 `false`。不要把 `none` 当 DSH 键——整段 `oauth-kiro` 写不进 settings.yaml。
 - 目录必须有 Opus 5、Opus 4.8；Sonnet 主推是 **Claude Sonnet 5**（4.5 与 4.0 仍保留）。
 
 ## 额度
 
-`fetchKiroQuota` 打用量 host（`us-east-1` / `eu-central-1`）。`parseKiroUsage` 一条 cycle：`currentUsage` / `usageLimit` + 进行中的 trial / bonus。卡片显示进度条。没有 Codex 重置卷。
+`fetchKiroQuota` 打用量 host（`us-east-1` / `eu-central-1`）。`profileArn` 与对话、目录同源（`kiroProfileArn`）：Builder ID 不带 ARN 会 400 `Invalid profileArn.`。只有 403 才换下一个区。`parseKiroUsage` 一条 cycle：`currentUsage` / `usageLimit` + 进行中的 trial / bonus。卡片显示进度条。没有 Codex 重置卷。
 
 ## 缓存
 

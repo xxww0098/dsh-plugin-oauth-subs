@@ -1,7 +1,9 @@
 /**
- * Live Kiro picker catalog. ListAvailableModels on management.<region>.kiro.dev
- * merges into the Settings picker + oauth-kiro.models yaml. KIRO_MODELS is
- * the offline fallback only. Chat still hops q.<region>.amazonaws.com.
+ * Live Kiro picker catalog. ListAvailableModels on management.<region>.kiro.dev,
+ * asked with the chat origin, is the picker + oauth-kiro.models yaml: the
+ * backend gates chat per origin, so a model missing from that list 400s
+ * INVALID_MODEL_ID. KIRO_MODELS is the offline fallback only. Chat still hops
+ * q.<region>.amazonaws.com.
  */
 
 import { createHash } from 'node:crypto'
@@ -22,14 +24,14 @@ import {
   KIRO_USAGE_REGIONS,
   KIRO_VISION_INPUT,
   kiroManagementHost,
-  kiroStreamingProfileArn,
+  kiroProfileArn,
   kiroUsageHeaders,
   kiroUsageRegions,
 } from './index.js'
-import { outboundFetch } from '../../utils/outbound.js'
+import { KIRO_CHAT_ORIGIN } from './request.js'
+import { outboundFetch, outboundProxyFor } from '../../utils/outbound.js'
 
 export const KIRO_CATALOG_TTL_MS = 5 * 60_000
-export const KIRO_STATIC_FALLBACK_COUNT = 18
 
 const cached: { tokenHash: string; models?: any[]; expiresAt: number } = { tokenHash: '', models: undefined, expiresAt: 0 }
 
@@ -69,14 +71,14 @@ function humanizeKiroModelId(id) {
 
 function inferKiroInput(id) {
   const key = id.toLowerCase()
-  if (key === 'auto' || key.startsWith('claude-') || key.startsWith('gpt-')) return [...KIRO_VISION_INPUT]
+  if (key.startsWith('claude-') || key.startsWith('gpt-')) return [...KIRO_VISION_INPUT]
   return [...KIRO_TEXT_INPUT]
 }
 
 function inferKiroReasoning(id) {
   const key = id.toLowerCase()
   if (key.startsWith('gpt-')) return { ...KIRO_REASONING_GPT }
-  if (/claude-(?:opus-5|opus-4\.[78]|sonnet-5|fable-5(?:\.1|-1)?)|(?:^|-)auto$/.test(key) || key === 'auto') {
+  if (/claude-(?:opus-5|opus-4\.[78]|sonnet-5|fable-5(?:\.1|-1)?)/.test(key)) {
     return { ...KIRO_REASONING_CLAUDE_XHIGH }
   }
   if (/claude-(?:opus-4\.6|sonnet-4\.6)/.test(key)) return { ...KIRO_REASONING_CLAUDE }
@@ -88,7 +90,7 @@ function inferKiroWindow(id) {
   if (key.startsWith('gpt-')) return KIRO_GPT_CONTEXT
   if (key.includes('deepseek')) return KIRO_DEEPSEEK_CONTEXT
   if (key.includes('qwen')) return KIRO_QWEN_CONTEXT
-  if (/claude-(?:opus-5|opus-4\.[6-8]|sonnet-5|sonnet-4\.6|fable-5(?:\.1|-1)?)|(?:^|-)auto$/.test(key) || key === 'auto') {
+  if (/claude-(?:opus-5|opus-4\.[6-8]|sonnet-5|sonnet-4\.6|fable-5(?:\.1|-1)?)/.test(key)) {
     return KIRO_LARGE_CONTEXT
   }
   return KIRO_CONTEXT_WINDOW
@@ -105,18 +107,40 @@ function liveInputOf(model) {
   return undefined
 }
 
+const KIRO_DSH_EFFORTS = new Set(['minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
+
+/**
+ * Effort ladder from the row's request-field schema: Claude
+ * `output_config.effort`, GPT `reasoning.effort` (`none` → DSH `off`).
+ * A null schema means no reasoning fields; an absent one defers to fallback.
+ */
+function liveEffortsOf(model) {
+  const schema = model?.additionalModelRequestFieldsSchema
+  if (schema === undefined) return undefined
+  const props = schema?.properties
+  const values = props?.output_config?.properties?.effort?.enum ?? props?.reasoning?.properties?.effort?.enum
+  const efforts = {}
+  for (const value of Array.isArray(values) ? values : []) {
+    const key = value === 'none' ? 'off' : value
+    if (key === 'off' || KIRO_DSH_EFFORTS.has(key)) efforts[key] = value
+  }
+  return Object.keys(efforts).length ? efforts : false
+}
+
 function liveRows(models) {
   const out: any[] = []
   for (const model of models ?? []) {
     const id = kiroModelIdOf(model)
-    if (!id) continue
+    // Auto stays out of the picker even when the live list offers it.
+    if (!id || id === 'auto') continue
     const limits = model.tokenLimits && typeof model.tokenLimits === 'object' ? model.tokenLimits : {}
     out.push({
       id,
-      name: trimmed(model.displayName ?? model.display_name ?? model.name) || humanizeKiroModelId(id),
+      name: trimmed(model.displayName ?? model.display_name ?? model.modelName ?? model.name),
       contextWindow: asPositive(limits.maxInputTokens ?? limits.max_input_tokens ?? model.contextWindow),
       maxTokens: asPositive(limits.maxOutputTokens ?? limits.max_output_tokens ?? model.maxTokens),
       input: liveInputOf(model),
+      reasoningEfforts: liveEffortsOf(model),
     })
   }
   return out
@@ -133,38 +157,27 @@ function kiroModelRow(id, name, contextWindow, maxTokens, input, reasoningEffort
   }
 }
 
-/** Merge live ListAvailableModels onto the static fallback. Empty live → []. */
+/**
+ * Live ListAvailableModels is the picker: fallback rows it omits are dropped
+ * (they would 400 INVALID_MODEL_ID). Fallback only lends order, pretty names,
+ * and anything the live row lacks. Empty live → [].
+ */
 export function toKiroPickerModels(live, fallback = KIRO_MODELS) {
+  const known = new Map((fallback ?? []).map((row, index) => [row.id, { row, index }]))
   const byId = new Map()
-  for (const row of fallback ?? []) byId.set(row.id, { ...row, input: [...row.input] })
   for (const row of liveRows(live)) {
-    const existing = byId.get(row.id)
+    const existing = known.get(row.id)?.row
     byId.set(row.id, kiroModelRow(
       row.id,
-      row.name || existing?.name || humanizeKiroModelId(row.id),
+      existing?.name || row.name || humanizeKiroModelId(row.id),
       row.contextWindow || existing?.contextWindow || inferKiroWindow(row.id),
       row.maxTokens || existing?.maxTokens || KIRO_MAX_TOKENS,
       row.input ?? existing?.input ?? inferKiroInput(row.id),
-      existing?.reasoningEfforts ?? inferKiroReasoning(row.id),
+      row.reasoningEfforts ?? existing?.reasoningEfforts ?? inferKiroReasoning(row.id),
     ))
   }
-  const out: any[] = []
-  const seen = new Set()
-  for (const row of fallback ?? []) {
-    const next = byId.get(row.id)
-    if (next) out.push(next)
-    seen.add(row.id)
-  }
-  for (const [id, row] of byId) {
-    if (!seen.has(id)) out.push(row)
-  }
-  return out
-}
-
-export function originalKiroFallbackIds() {
-  return KIRO_MODELS
-    .map((model) => model.id)
-    .filter((id) => id !== 'auto' && id !== 'claude-fable-5' && id !== 'claude-fable-5.1')
+  const rank = (id) => known.get(id)?.index ?? known.size
+  return [...byId.values()].sort((a, b) => rank(a.id) - rank(b.id))
 }
 
 async function readManagementJson(response) {
@@ -210,7 +223,7 @@ async function listAvailableModels(session, { region, profileArn, fetchFn }) {
     region,
     path: KIRO_LIST_MODELS_PATH,
     method: 'GET',
-    query: { origin: 'KIRO_CLI', profileArn },
+    query: { origin: KIRO_CHAT_ORIGIN, profileArn },
     fetchFn,
   })
   return { status: response.status, body: await readManagementJson(response) }
@@ -252,7 +265,7 @@ export async function fetchKiroLiveModels(session, options: any = {}) {
     ...(options.regions ?? kiroUsageRegions(session)),
     ...KIRO_USAGE_REGIONS,
   ].filter(Boolean))]
-  let profileArn = trimmed(options.profileArn) || kiroStreamingProfileArn(session)
+  let profileArn = trimmed(options.profileArn) || kiroProfileArn(session)
   for (const region of regions) {
     try {
       if (profileArn) {
@@ -283,7 +296,9 @@ export async function fetchKiroLiveModels(session, options: any = {}) {
 export async function refreshKiroCatalog(session, options: any = {}) {
   const token = typeof session?.accessToken === 'string' ? session.accessToken.trim() : ''
   if (!token) return [...KIRO_MODELS]
-  const tokenHash = kiroCatalogTokenHash(token)
+  // The live list is region-filtered by egress (a CN egress gets no Claude),
+  // so a proxy change must miss the cache just like a new token.
+  const tokenHash = kiroCatalogTokenHash(`${token}\n${await outboundProxyFor(`https://${kiroManagementHost()}/`) ?? ''}`)
   if (cached.tokenHash === tokenHash && cached.models?.length && Date.now() < cached.expiresAt) {
     return [...cached.models]
   }

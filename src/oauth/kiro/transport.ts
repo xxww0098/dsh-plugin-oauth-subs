@@ -3,7 +3,7 @@
 import { sendJson } from '../../utils/http.js'
 import { UpstreamFailure, pumpBody, quotaFailure, upstreamRequest, writeSse } from '../upstream.js'
 import { forcedRefresh } from '../tokens.js'
-import { headerOf, kiroStreamingProfileArn } from './index.js'
+import { headerOf, kiroProfileArn } from './index.js'
 import {
   classifyKiroHopError,
   kiroChatHeaders,
@@ -61,7 +61,7 @@ async function attemptKiro(response, { payload, cacheSessionId, stream, session,
   const { signal } = attempt
   const body = Buffer.from(JSON.stringify(openaiToKiro(payload, {
     conversationId: cacheSessionId,
-    profileArn: kiroStreamingProfileArn(session),
+    profileArn: kiroProfileArn(session),
   })))
   const upstream = await fetchFn(kiroChatUrl(session), { method: 'POST', headers: kiroChatHeaders(session), body, signal })
   if (upstream.status >= 400) {
@@ -85,6 +85,7 @@ async function attemptKiro(response, { payload, cacheSessionId, stream, session,
   const parser = new KiroEventStreamParser()
   let accText = ''
   let accThinking = ''
+  let accToolText = ''
   const toolIndexes = new Map<string, number>()
   let usage
   let contextPercentage
@@ -116,13 +117,15 @@ async function attemptKiro(response, { payload, cacheSessionId, stream, session,
         const toolUseId = data.toolUseId ?? data.tool_use_id
         if (!toolUseId || data.stop) continue
         if (!toolIndexes.has(toolUseId)) toolIndexes.set(toolUseId, toolIndexes.size)
+        const args = typeof data.input === 'string' ? data.input : (data.input != null ? JSON.stringify(data.input) : '')
+        accToolText += `${data.name ?? ''}${args}`
         const delta = { tool_calls: [{
           index: toolIndexes.get(toolUseId),
           id: toolUseId,
           type: 'function',
           function: {
             ...(data.name ? { name: data.name } : {}),
-            arguments: typeof data.input === 'string' ? data.input : (data.input != null ? JSON.stringify(data.input) : ''),
+            arguments: args,
           },
         }] }
         await writeSse(response, kiroToOpenaiChunk(delta, { model, id }), signal)
@@ -139,7 +142,7 @@ async function attemptKiro(response, { payload, cacheSessionId, stream, session,
     id,
     done: true,
     finishReason: toolIndexes.size ? 'tool_calls' : 'stop',
-    usage: resolveKiroUsage({ usage, contextPercentage, text: accText }, model),
+    usage: resolveKiroUsage({ usage, contextPercentage, text: accText, thinking: accThinking, toolText: accToolText }, model),
   }), signal)
   await writeSse(response, '[DONE]', signal)
   if (!response.writableEnded && !response.destroyed) response.end()

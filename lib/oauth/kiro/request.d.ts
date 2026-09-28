@@ -112,6 +112,9 @@ export declare function kiroUsageFromContext(percent: any, model: any, text?: st
     completion_tokens: number;
     total_tokens: number;
 } | undefined;
+/** Everything the model generated: reply, thinking, and tool-call arguments.
+ * Counting only `text` made thinking + tool steps report 0 output tokens. */
+export declare function kiroOutputText(collected: any): string;
 export declare function resolveKiroUsage(collected: any, model: any): any;
 export declare function kiroToOpenaiChunk(delta: any, { model, id, done, finishReason, usage }?: any): any;
 /**

@@ -786,6 +786,38 @@ test('empty-roster auto-import saves CLI source; PKCE is not overwritten', async
   assert.equal(accountIdOf('cursor', rows[0].session), 'auto@x')
 })
 
+test('signing out survives a restart: auto-import does not restore the family', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-cursor-signout-'))
+  const authPath = join(dir, 'auth.json')
+  const access = validAccess('auto@x')
+  const make = () => new AuthController({
+    authPath,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+    cursorAutoImport: true,
+    cursorImport: emptyImport({
+      platform: 'darwin',
+      execFileFn: async (_cmd, args) => {
+        const service = args[args.indexOf('-s') + 1]
+        return { stdout: service === 'cursor-access-token' ? access : 'rt-auto' }
+      },
+    }),
+    fetchFn: async () => json({ planUsage: { totalPercentUsed: 5, includedSpend: 0, limit: 10 }, membershipType: 'pro', email: 'auto@x' }),
+  })
+  const first = make()
+  assert.equal((await first.snapshot()).accounts.cursor.loggedIn, true)
+  await first.logout('cursor', 'auto@x')
+  assert.deepEqual(await listStoredSessions('cursor', authPath), [])
+
+  const restarted = make()
+  assert.equal((await restarted.snapshot(true)).accounts.cursor.loggedIn, false)
+  assert.deepEqual(await listStoredSessions('cursor', authPath), [])
+  // An explicit import still works after signing out.
+  await restarted.importFrom('cursor')
+  assert.equal((await listStoredSessions('cursor', authPath)).length, 1)
+})
+
 test('snapshot backfills opaque cursor vault when usage has email', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-cursor-usage-'))
   const authPath = join(dir, 'auth.json')
@@ -1055,8 +1087,8 @@ test('cursor picker collapses effort/fast/thinking/max-mode and hides tab intern
     { id: 'cursor-chat', name: 'Chat' },
   ])
   const ids = rows.map((row) => row.id)
-  assert.equal(ids.includes('default'), true)
-  assert.equal(rows.find((row) => row.id === 'default').name, 'Cursor Auto')
+  assert.equal(ids.includes('default'), false)
+  assert.equal(ids.includes('default-fast'), false)
   assert.equal(ids.includes('gpt-5.5'), true)
   assert.equal(ids.includes('gpt-5.5-high-fast'), false)
   assert.equal(ids.includes('gpt-5.5-none'), false)
@@ -1149,8 +1181,7 @@ test('mocked GetUsableModels expands cursor catalog and yaml beyond the static 5
     fetchUsable: async () => decoded,
     fetchAvailable: async () => available,
   })
-  assert.equal(models.some((model) => model.id === 'default'), true)
-  assert.equal(models.find((model) => model.id === 'default').name, 'Cursor Auto')
+  assert.equal(models.some((model) => model.id === 'default'), false)
   assert.equal(models.some((model) => model.id === 'claude-4.6-sonnet'), true)
   assert.equal(models.some((model) => model.id === 'gemini-3.1-pro'), true)
   assert.equal(models.some((model) => model.id === 'kimi-k2.5'), true)
@@ -1387,7 +1418,7 @@ test('warmCatalogs discovers the live cursor catalog at startup and re-syncs', a
   })
   await controller.warmCatalogs()
   const ids = (yaml.providers['oauth-cursor']?.models ?? []).map((model) => model.id)
-  assert.deepEqual(ids, ['default', 'glm-5.2', 'kimi-k3'])
+  assert.deepEqual(ids, ['glm-5.2', 'kimi-k3'])
   resetCursorCatalogCache()
 })
 

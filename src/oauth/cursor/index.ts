@@ -154,7 +154,7 @@ function cursorModel(id, name, contextWindow, maxTokens, reasoningEfforts: any =
   return { id, name, contextWindow, maxTokens, input, reasoningEfforts }
 }
 
-/** Static fallback aligned to cursor.com/docs/models-and-pricing and 2026-09-26 AvailableModels. Live GetUsableModels may add Auto / Fast / extra families. reasoningEfforts come from the family's CURSOR_PARAM_STYLES entry — the wire values the registry actually takes. */
+/** Static fallback aligned to cursor.com/docs/models-and-pricing and 2026-09-26 AvailableModels. Live GetUsableModels may add Fast / extra families (Auto is kept out). reasoningEfforts come from the family's CURSOR_PARAM_STYLES entry — the wire values the registry actually takes. */
 export const CURSOR_MODELS = Object.freeze([
   cursorModel('composer-2.5', 'Composer 2.5', 200_000, 64_000, false, ['text']),
   // The non-max variant takes 256k; 500k is a separate Max Mode variant.

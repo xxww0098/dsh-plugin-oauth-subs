@@ -3,6 +3,7 @@
  * Codex PKCE (+ paste callback + import), Grok device-code (primary) + PKCE fallback.
  */
 
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { describeError, errorCode, errorMessage } from '../utils/http.js'
 import { OAuthFlowManager } from './flow.js'
@@ -77,7 +78,7 @@ import {
 } from '../apikey/command-code/index.js'
 import { COMMAND_CODE_IMPORT_EMPTY, importCommandCodeAuth } from '../apikey/command-code/import.js'
 import { commandCodeCatalogModels } from '../apikey/command-code/catalog.js'
-import { kiroCatalogModels, refreshKiroCatalog } from './kiro/catalog.js'
+import { kiroCatalogModels, refreshKiroCatalog, resetKiroCatalogCache } from './kiro/catalog.js'
 import {
   completeKimiDevice as sessionFromKimiDevice,
   configureKimiIdentity,
@@ -896,6 +897,9 @@ export class AuthController {
       }
       if (provider === 'kiro') {
         const before = kiroCatalogModels().map((model) => model.id).join('\0')
+        // A manual refresh re-asks: the list follows the egress region, and a
+        // system VPN change is invisible to the token + proxy cache key.
+        resetKiroCatalogCache()
         await Promise.all(targets.map((row) => this.#discoverKiro(row.session)))
         if (this.settings && kiroCatalogModels().map((model) => model.id).join('\0') !== before) {
           await this.sync().catch(() => undefined)
@@ -1245,6 +1249,7 @@ export class AuthController {
   async #maybeAutoImportCursor() {
     if (!this.cursorAutoImport || this.cursorAutoImportTried) return
     this.cursorAutoImportTried = true
+    if (await this.#signedOutOf('cursor')) return
     const rows = await listStoredSessions('cursor', this.authPath)
     if (rows.length > 0) return
     try {
@@ -1276,6 +1281,7 @@ export class AuthController {
   async #maybeAutoImportOllama() {
     if (!this.ollamaAutoImport || this.ollamaAutoImportTried) return
     this.ollamaAutoImportTried = true
+    if (await this.#signedOutOf('ollama')) return
     const rows = await listStoredSessions('ollama', this.authPath)
     if (rows.length > 0) return
     try {
@@ -1340,6 +1346,7 @@ export class AuthController {
   async #maybeAutoImportCommandCode() {
     if (!this.commandCodeAutoImport || this.commandCodeAutoImportTried) return
     this.commandCodeAutoImportTried = true
+    if (await this.#signedOutOf('command-code')) return
     const rows = await listStoredSessions('command-code', this.authPath)
     if (rows.length > 0) return
     try {
@@ -1409,6 +1416,7 @@ export class AuthController {
   async #maybeAutoImportKimi() {
     if (!this.kimiAutoImport || this.kimiAutoImportTried) return
     this.kimiAutoImportTried = true
+    if (await this.#signedOutOf('kimi')) return
     const rows = await listStoredSessions('kimi', this.authPath)
     if (rows.length > 0) return
     try {
@@ -1430,6 +1438,7 @@ export class AuthController {
   async #maybeAutoImportCopilot() {
     if (!this.copilotAutoImport || this.copilotAutoImportTried) return
     this.copilotAutoImportTried = true
+    if (await this.#signedOutOf('copilot')) return
     const rows = await listStoredSessions('copilot', this.authPath)
     if (rows.length > 0) return
     try {
@@ -1451,6 +1460,7 @@ export class AuthController {
   async #maybeAutoImportCline() {
     if (!this.clineAutoImport || this.clineAutoImportTried) return
     this.clineAutoImportTried = true
+    if (await this.#signedOutOf('cline')) return
     const rows = await listStoredSessions('cline', this.authPath)
     if (rows.length > 0) return
     try {
@@ -1633,6 +1643,7 @@ export class AuthController {
   async #maybeAutoImportDevin() {
     if (!this.devinAutoImport || this.devinAutoImportTried) return
     this.devinAutoImportTried = true
+    if (await this.#signedOutOf('devin')) return
     const rows = await listStoredSessions('devin', this.authPath)
     // A foreign-shaped row (wrong-prefix token) is not a devin login; it must
     // not block the CLI import. Its refresh 401s out via isPermanentRefreshFailure.
@@ -2253,6 +2264,33 @@ export class AuthController {
     this.cursorFlows.pending(provider)?.cancel()
   }
 
+  // Auto-import restores an empty family from local CLI/IDE credentials on
+  // every start (and every hot reload). A family the user signed out of must
+  // stay signed out; an explicit import or login still works.
+  #signedOutFile() {
+    return join(dirname(this.authPath), 'signed-out.json')
+  }
+
+  async #signedOut(): Promise<string[]> {
+    try {
+      const list = JSON.parse(await readFile(this.#signedOutFile(), 'utf8'))
+      return Array.isArray(list) ? list : []
+    } catch {
+      return []
+    }
+  }
+
+  async #signedOutOf(provider) {
+    return (await this.#signedOut()).includes(provider)
+  }
+
+  async #markSignedOut(provider) {
+    const list = await this.#signedOut()
+    if (list.includes(provider)) return
+    await mkdir(dirname(this.#signedOutFile()), { recursive: true })
+    await writeFile(this.#signedOutFile(), `${JSON.stringify([...list, provider])}\n`)
+  }
+
   async logout(provider, id) {
     if (provider === 'opencode-go') return this.logoutOpencodeGo(id)
     this.claim(provider)
@@ -2262,6 +2300,7 @@ export class AuthController {
     this.kiroFlows.pending(provider)?.cancel()
     this.cursorFlows.pending(provider)?.cancel()
     await deleteSession(provider, this.authPath, id)
+    await this.#markSignedOut(provider)
     this.lastError.delete(provider)
     this.quota.clear(provider, id)
     this.onAuthChanged?.(provider)

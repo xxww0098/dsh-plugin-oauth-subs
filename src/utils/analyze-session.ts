@@ -367,7 +367,12 @@ export function analyzeSession(text) {
   const weightedHit = hitRate(cacheReadTokens, inputTokens)
   const reuseValues = calls.map((call) => call.reuse).filter((value) => typeof value === 'number')
   const prefixReuseMedian = median(reuseValues)
-  const healthy = weightedHit >= 0.8 && affinityMisses.length === 0 && transportFaults.length === 0
+  // Upstream never reported a cache field (Kiro without metadataEvent): the
+  // hit rate is unmeasured, and zero-cache calls are not affinity misses.
+  const cacheMeasured = calls.some((call) => call.hasCacheField)
+  const healthy = cacheMeasured
+    ? weightedHit >= 0.8 && affinityMisses.length === 0 && transportFaults.length === 0
+    : transportFaults.length === 0
 
   const steps = events
     .filter((event) => event.type === 'step/start')
@@ -393,7 +398,8 @@ export function analyzeSession(text) {
     prefixReuseMedian,
     zeroCacheCount: zeroCache.length,
     zeroCacheAfterWarmup: zeroAfterWarmup.length,
-    affinityMissCount: affinityMisses.length,
+    affinityMissCount: cacheMeasured ? affinityMisses.length : 0,
+    cacheMeasured,
     compactionCallCount: compactionCalls.length,
     rebuildCallCount: rebuildCalls.length,
     uncachedBreakdown: uncachedBreakdown(calls),
@@ -403,7 +409,9 @@ export function analyzeSession(text) {
     durationMs: callTimes.length >= 2 ? callTimes[callTimes.length - 1] - callTimes[0] : 0,
     wallMs: times.length >= 2 ? Math.max(...times) - Math.min(...times) : 0,
     healthy,
-    verdict: healthy
+    verdict: !cacheMeasured
+      ? (transportFaults.length ? 'transport faults in the session' : 'cache unmeasured: upstream reported no cache field')
+      : healthy
       ? 'cache affinity looks healthy'
       : affinityMisses.length
         ? 'cache affinity regression: later calls missed the shard'
@@ -426,12 +434,14 @@ export function formatReport(report) {
     `uncached    ${report.inputTokens.toLocaleString('en-US')}`,
     `cache read  ${report.cacheReadTokens.toLocaleString('en-US')}`,
     `output      ${report.outputTokens.toLocaleString('en-US')}`,
-    `hit         ${pct}%  prefix-reuse median ${reuse}`,
+    report.cacheMeasured === false
+      ? `hit         unmeasured (no cache field from upstream)`
+      : `hit         ${pct}%  prefix-reuse median ${reuse}`,
     `zero-cache  ${report.zeroCacheCount} (after warmup ${report.zeroCacheAfterWarmup})  affinity-miss ${report.affinityMissCount ?? 0}`,
     `rewrite     compaction ${report.compactionCallCount ?? 0}  rebuild ${report.rebuildCallCount ?? 0}`,
     `uncached as cold ${breakdown.cold_start ?? 0}  rebuild ${breakdown.rebuild ?? 0}  compaction ${breakdown.compaction ?? 0}  delta ${breakdown.delta ?? 0}  affinity ${breakdown.affinity_miss ?? 0}`,
     `tools       ${report.toolErrors.length} errors  host-timeout ${causes.host_timeout}  cascade ${causes.cascade_abort}  invalid ${causes.invalid}  transport ${report.transportFaults.length}`,
-    `verdict     ${report.healthy ? 'HEALTHY' : 'REGRESSION'} — ${report.verdict}`,
+    `verdict     ${report.cacheMeasured === false ? (report.healthy ? 'UNMEASURED' : 'REGRESSION') : report.healthy ? 'HEALTHY' : 'REGRESSION'} — ${report.verdict}`,
   ]
   return lines.join('\n')
 }

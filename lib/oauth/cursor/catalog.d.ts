@@ -30,6 +30,7 @@ export declare function cursorSourceIsFast(id: any): boolean;
  * One picker family id: drop effort / fast / thinking / max-mode / window
  * suffixes. Keep `codex-max` as a product name. Fast is re-emitted as a
  * sibling `{family}-fast` when any source id for that family is Fast.
+ * Auto (`auto` / `default`, with any suffix) → '' so it stays out of the picker.
  */
 export declare function cursorPickerFamilyId(id: any): string;
 /**

@@ -45,7 +45,7 @@ import { GROK_WEB_EMPTY_FRAME, decodeGrokCreditsFrame } from './grok/credits-fra
 import { formatPlanLabel, pickPlanRaw } from './plan.js'
 import { glmMcpUsageHeaders, glmMcpUsageUrl, glmQuotaUrl, glmToolUsageUrl, glmUpstreamHeaders } from './glm/index.js'
 import {
-  kiroEffectiveProfileArn,
+  kiroProfileArn,
   kiroUsageHeaders,
   kiroUsageRegions,
   kiroUsageUrl,
@@ -1421,16 +1421,6 @@ export async function fetchGlmQuota(session, fetchFn = outboundFetch) {
   }
 }
 
-function kiroUsageAttempts(session) {
-  const arn = kiroEffectiveProfileArn(session)
-  const attempts: any[] = []
-  for (const region of kiroUsageRegions(session)) {
-    if (arn) attempts.push({ region, profileArn: arn })
-    attempts.push({ region, profileArn: undefined })
-  }
-  return attempts
-}
-
 function antigravityModelsMap(payload) {
   if (!payload || typeof payload !== 'object') return undefined
   const models = payload.models
@@ -1749,14 +1739,15 @@ export async function fetchAntigravityQuota(session, fetchFn = outboundFetch) {
   return { planType, rows: [...rows, ...credits] }
 }
 
+// getUsageLimits 400s "Invalid profileArn." without an ARN (Builder ID) —
+// send the ARN chat uses; a regional 403 moves on to the next region.
 export async function fetchKiroQuota(session, fetchFn = outboundFetch) {
-  const attempts = kiroUsageAttempts(session)
+  const profileArn = kiroProfileArn(session)
   let lastError
-  for (let index = 0; index < attempts.length; index++) {
-    const attempt = attempts[index]
+  for (const region of kiroUsageRegions(session)) {
     const wait = timeoutSignal(QUOTA_TIMEOUT_MS)
     try {
-      const response = await fetchFn(kiroUsageUrl(attempt.region, attempt.profileArn), {
+      const response = await fetchFn(kiroUsageUrl(region, profileArn), {
         method: 'GET',
         headers: kiroUsageHeaders(session),
         signal: wait.signal,
@@ -1766,13 +1757,12 @@ export async function fetchKiroQuota(session, fetchFn = outboundFetch) {
       }
       const text = await response.text()
       lastError = new Error(`kiro usage failed (HTTP ${response.status})${text ? `: ${text.slice(0, 180)}` : ''}`)
-      if (response.status === 403 && index + 1 < attempts.length) continue
-      throw lastError
+      if (response.status !== 403) throw lastError
     } finally {
       wait.cancel()
     }
   }
-  throw lastError ?? new Error('kiro usage failed')
+  throw lastError
 }
 
 function grokQuotaHeaders(session) {

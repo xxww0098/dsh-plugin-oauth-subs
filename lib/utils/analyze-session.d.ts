@@ -64,6 +64,7 @@ export declare function analyzeSession(text: any): {
     zeroCacheCount: any;
     zeroCacheAfterWarmup: any;
     affinityMissCount: any;
+    cacheMeasured: any;
     compactionCallCount: any;
     rebuildCallCount: any;
     uncachedBreakdown: {

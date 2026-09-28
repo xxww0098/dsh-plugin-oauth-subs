@@ -24,9 +24,11 @@ export declare const KIRO_DEFAULT_REGION = "us-east-1";
 export declare const KIRO_CONTEXT_WINDOW = 200000;
 export declare const KIRO_LARGE_CONTEXT = 1000000;
 export declare const KIRO_GPT_CONTEXT = 1000000;
-export declare const KIRO_DEEPSEEK_CONTEXT = 128000;
+export declare const KIRO_DEEPSEEK_CONTEXT = 164000;
+export declare const KIRO_MINIMAX_CONTEXT = 196000;
 export declare const KIRO_QWEN_CONTEXT = 256000;
 export declare const KIRO_MAX_TOKENS = 64000;
+export declare const KIRO_MAX_TOKENS_128K = 128000;
 export declare const KIRO_VISION_INPUT: readonly string[];
 export declare const KIRO_TEXT_INPUT: readonly string[];
 export declare const KIRO_METHODS: readonly string[];
@@ -59,9 +61,10 @@ export declare const KIRO_REASONING_GPT: Readonly<{
     max: "max";
 }>;
 /**
- * Offline fallback. Matches kiro.dev/docs/models including Auto and Claude Fable 5.1.
- * `claude-fable-5` is retained for pi-provider-kiro bootstrap compatibility.
- * Live ListAvailableModels may add more.
+ * Offline fallback only — a non-empty live ListAvailableModels replaces it.
+ * Snapshot of ListAvailableModels origin=KIRO_CONSOLE (2026-09-28, the full
+ * governance catalog) minus Auto; `claude-fable-5` is retained for
+ * pi-provider-kiro bootstrap compatibility.
  */
 export declare const KIRO_MODELS: readonly {
     id: any;
@@ -113,8 +116,7 @@ export declare function kiroMachineId(session?: any): string;
 /** Stable 64-hex for Social UA. Pass a prior id (or session) so login/token share one machine. */
 export declare function allocateKiroMachineId(prior: any): string;
 export declare function kiroTokenTypeHeader(session: any): "API_KEY" | "EXTERNAL_IDP" | undefined;
-export declare function kiroEffectiveProfileArn(session: any): any;
-export declare function kiroStreamingProfileArn(session: any): any;
+export declare function kiroProfileArn(session: any): any;
 export declare function kiroUsageHeaders(session: any): {
     tokentype?: string | undefined;
     authorization: string;

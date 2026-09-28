@@ -115,11 +115,11 @@ export function cursorSourceIsFast(id) {
  * One picker family id: drop effort / fast / thinking / max-mode / window
  * suffixes. Keep `codex-max` as a product name. Fast is re-emitted as a
  * sibling `{family}-fast` when any source id for that family is Fast.
+ * Auto (`auto` / `default`, with any suffix) → '' so it stays out of the picker.
  */
 export function cursorPickerFamilyId(id) {
   let s = String(id ?? '').trim()
   if (!s) return ''
-  if (s === 'auto' || s === 'default') return 'default'
   if (s.startsWith('cursor-') && /^(claude|gpt|grok|gemini|composer|kimi)-/i.test(s.slice(7))) {
     s = s.slice(7)
   }
@@ -140,7 +140,7 @@ export function cursorPickerFamilyId(id) {
       }
     }
   } while (s !== prev && s)
-  return s
+  return s === 'auto' || s === 'default' ? '' : s
 }
 
 function cleanPickerName(name) {
@@ -153,7 +153,6 @@ function cleanPickerName(name) {
 }
 
 function prettyFamilyName(id) {
-  if (id === 'default') return 'Cursor Auto'
   return id
     .replace(/[-_]+/g, ' ')
     .replace(/\b\w/g, (char) => char.toUpperCase())
@@ -268,7 +267,6 @@ function cloneCursorRow(row) {
 }
 
 function cursorPickerRank(id) {
-  if (id === 'default') return { group: -1, index: 0, fast: 0, key: id }
   const fast = String(id).endsWith('-fast') ? 1 : 0
   const base = fast ? id.slice(0, -5) : id
   const index = CURSOR_MODELS.findIndex((model) => model.id === base)
@@ -319,9 +317,7 @@ export function toCursorPickerModels(usable, parameterized: any[] = []) {
   const models: any[] = []
   for (const [id, group] of groups) {
     const cleaned = group.names.map(cleanPickerName).filter(Boolean)
-    const name = id === 'default'
-      ? prettyFamilyName(id)
-      : (cleaned.sort((a, b) => a.length - b.length)[0] || prettyFamilyName(id))
+    const name = cleaned.sort((a, b) => a.length - b.length)[0] || prettyFamilyName(id)
     const inferredWindow = inferCursorContextWindow(id, name)
     // AvailableModels carries Max Mode limits on the family; Run never sets
     // maxMode, so prefer the non-Max contexts advertised by its variants.
@@ -342,8 +338,8 @@ export function toCursorPickerModels(usable, parameterized: any[] = []) {
     const efforts = style ? cursorStyleReasoningEfforts(style) : CURSOR_REASONING
     const hasFast = group.hasFast || styles.get(id)?.fast === true
     models.push(cursorModelRow(id, name, window, maxTokens, input, efforts))
-    // Auto / default never grows Fast. Static floor also stays family-only (no Fast).
-    if (id !== 'default' && hasFast) {
+    // Static floor stays family-only (no Fast).
+    if (hasFast) {
       models.push(cursorModelRow(`${id}-fast`, `${name} Fast`, window, maxTokens, input, efforts))
     }
   }

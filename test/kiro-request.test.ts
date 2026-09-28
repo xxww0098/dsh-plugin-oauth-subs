@@ -424,6 +424,19 @@ test('nested metadataEvent wrapper still maps tokenUsage', () => {
   assert.equal(openai.usage.prompt_tokens_details.cached_tokens, 90)
 })
 
+test('context fallback counts thinking and tool arguments as output, not just text', () => {
+  const frames = encodeKiroEventStream([
+    { type: 'reasoningContentEvent', payload: { text: 'x'.repeat(400) } },
+    { type: 'toolUseEvent', payload: { toolUseId: 't1', name: 'run_code', input: 'y'.repeat(396) } },
+    { type: 'toolUseEvent', payload: { toolUseId: 't1', stop: true } },
+    { type: 'contextUsageEvent', payload: { contextUsagePercentage: 10 } },
+  ])
+  const openai = kiroToOpenai(frames, { model: 'claude-haiku-4.5', id: 'chatcmpl-think' })
+  assert.equal(openai.choices[0].message.content, null)
+  assert.ok(openai.usage.completion_tokens >= 200, `completion_tokens=${openai.usage.completion_tokens}`)
+  assert.equal(resolveKiroUsage({ contextPercentage: 10, text: '', thinking: 'z'.repeat(80) }, 'claude-haiku-4.5').completion_tokens, 20)
+})
+
 test('metadataEvent tokenUsage wins over contextUsageEvent estimate', () => {
   const frames = encodeKiroEventStream([
     { type: 'assistantResponseEvent', payload: { content: 'ok' } },

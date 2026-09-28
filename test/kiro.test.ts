@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import {
+  BUILDER_ID_PROFILE_ARN,
   BUILDER_ID_START_URL,
   KIRO_MODELS,
   KIRO_PORTAL_URL,
@@ -15,7 +16,7 @@ import {
   isKiroCredential,
   kiroAccountId,
   kiroAccountKind,
-  kiroEffectiveProfileArn,
+  kiroProfileArn,
   kiroMethodLabel,
   kiroSession,
   kiroSessionFromImport,
@@ -31,7 +32,7 @@ import {
   validateKiroRefreshToken,
 } from '../lib/oauth/kiro/index.js'
 import { registerKiroOidcClient, kiroIdcSession } from '../lib/oauth/kiro/idc-flow.js'
-import { parseKiroUsage } from '../lib/oauth/quota.js'
+import { fetchKiroQuota, parseKiroUsage } from '../lib/oauth/quota.js'
 import { formatPlanLabel } from '../lib/oauth/plan.js'
 import { OAuthFlowManager } from '../lib/oauth/flow.js'
 import { AuthController } from '../lib/oauth/controller.js'
@@ -54,7 +55,6 @@ import {
   openaiToKiro,
 } from '../lib/oauth/kiro/request.js'
 import {
-  originalKiroFallbackIds,
   refreshKiroCatalog,
   resetKiroCatalogCache,
 } from '../lib/oauth/kiro/catalog.js'
@@ -163,14 +163,24 @@ test('kiroSessionFromImport reads kiro.rs camelCase and rejects truncated RTs', 
   }), /truncated/)
 })
 
-test('kiroUsageUrl never sends the Builder ID placeholder ARN', () => {
-  const arn = kiroEffectiveProfileArn({
-    profileArn: 'arn:aws:codewhisperer:us-east-1:638616132270:profile/AAAACCCCXXXX',
-  })
-  assert.equal(arn, undefined)
-  const url = kiroUsageUrl('us-east-1')
-  assert.equal(url.includes('profileArn'), false)
-  assert.equal(url.includes('isEmailRequired=true'), true)
+test('Builder ID quota sends the Builder ID ARN; only a 403 moves to the next region', async () => {
+  const session = { authMethod: 'idc', kiroProvider: 'BuilderId' }
+  const arn = `profileArn=${encodeURIComponent(BUILDER_ID_PROFILE_ARN)}`
+  const urls: string[] = []
+  const replies = [
+    new Response('{}', { status: 403 }),
+    new Response(JSON.stringify({ subscriptionInfo: { subscriptionTitle: 'KIRO POWER' } })),
+  ]
+  const quota = await fetchKiroQuota(session, async (url) => { urls.push(url); return replies.shift() })
+  assert.equal(quota.planType, 'KIRO POWER')
+  assert.deepEqual(urls.map((url) => [new URL(url).hostname.includes('us-east-1'), url.includes(arn)]), [[true, true], [false, true]])
+
+  urls.length = 0
+  await assert.rejects(
+    fetchKiroQuota(session, async (url) => { urls.push(url); return new Response('{"message":"Invalid profileArn."}', { status: 400 }) }),
+    /HTTP 400.*Invalid profileArn/,
+  )
+  assert.equal(urls.length, 1)
 })
 
 test('parseKiroUsage sums trial + bonus and reads email / plan', () => {
@@ -205,13 +215,14 @@ test('formatPlanLabel maps Kiro slugs without colliding with Codex Pro 20x', () 
   assert.equal(formatPlanLabel('KIRO POWERED', 'kiro'), 'Powered')
 })
 
-test('Kiro catalog matches kiro.dev models plus Auto and Fable 5/5.1, with native ids', () => {
+test('Kiro offline fallback is the KIRO_CONSOLE snapshot plus Fable 5 (no Auto), with native ids', () => {
   const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
   const kiro = catalog['oauth-kiro']
   assert.deepEqual(kiro.models.map((model) => model.id), [
     'gpt-5.6-sol',
     'gpt-5.6-terra',
     'gpt-5.6-luna',
+    'claude-opus-5.5',
     'claude-opus-5',
     'claude-opus-4.8',
     'claude-opus-4.7',
@@ -223,7 +234,6 @@ test('Kiro catalog matches kiro.dev models plus Auto and Fable 5/5.1, with nativ
     'claude-sonnet-4.6',
     'claude-sonnet-4.5',
     'claude-sonnet-4',
-    'auto',
     'claude-haiku-4.5',
     'deepseek-3.2',
     'minimax-m2.5',
@@ -232,7 +242,7 @@ test('Kiro catalog matches kiro.dev models plus Auto and Fable 5/5.1, with nativ
     'qwen3-coder-next',
   ])
   assert.equal(kiro.models.find((model) => model.id === 'claude-sonnet-4-8'), undefined)
-  assert.equal(kiro.models.find((model) => model.id === 'auto')?.name, 'Auto')
+  assert.equal(kiro.models.find((model) => model.id === 'auto'), undefined)
   assert.equal(kiro.models.find((model) => model.id === 'claude-fable-5')?.name, 'Claude Fable 5')
   assert.equal(kiro.models.find((model) => model.id === 'claude-fable-5.1')?.name, 'Claude Fable 5.1')
   assert.equal(kiro.models.find((model) => model.id === 'claude-fable-5.1')?.contextWindow, 1_000_000)
@@ -243,8 +253,9 @@ test('Kiro catalog matches kiro.dev models plus Auto and Fable 5/5.1, with nativ
   assert.deepEqual(kiro.models.find((model) => model.id === 'claude-opus-4.8').input, ['text', 'image'])
   assert.deepEqual(kiro.models.find((model) => model.id === 'gpt-5.6-sol').input, ['text', 'image'])
   assert.deepEqual(kiro.models.find((model) => model.id === 'glm-5').input, ['text'])
-  assert.deepEqual(kiro.models.find((model) => model.id === 'deepseek-3.2').input, ['text'])
-  assert.deepEqual(kiro.models.find((model) => model.id === 'qwen3-coder-next').input, ['text'])
+  assert.deepEqual(kiro.models.find((model) => model.id === 'deepseek-3.2').input, ['text', 'image'])
+  assert.deepEqual(kiro.models.find((model) => model.id === 'qwen3-coder-next').input, ['text', 'image'])
+  assert.equal(kiro.models.find((model) => model.id === 'minimax-m2.1').contextWindow, 196_000)
   assert.deepEqual(kiro.models.find((model) => model.id === 'gpt-5.6-sol').reasoningEfforts, {
     off: 'none',
     low: 'low',
@@ -900,10 +911,11 @@ test('interleaved A/B tool results relocate before positional flush', () => {
   assert.equal(JSON.stringify(body).includes('Tool results provided.'), false)
 })
 
-test('live catalog mock expands beyond static fallback and includes auto', async () => {
+test('live catalog replaces the fallback, asks with the chat origin, drops auto, reads live efforts', async () => {
   resetKiroCatalogCache()
   const session = kiroSession({ accessToken: 'live-tok', refreshToken: RT, authMethod: 'social' })
   const seen = []
+  const effort = (key, values) => ({ properties: { [key]: { properties: { effort: { enum: values } } } } })
   const models = await refreshKiroCatalog(session, {
     fetchFn: async (url) => {
       const href = String(url)
@@ -916,35 +928,35 @@ test('live catalog mock expands beyond static fallback and includes auto', async
       }
       return json({
         models: [
-          { modelId: 'auto', displayName: 'Auto' },
-          { modelId: 'gpt-5.6-sol', displayName: 'GPT-5.6 Sol' },
-          { modelId: 'kiro-live-only', displayName: 'Kiro Live Only' },
-          { modelId: 'deepseek-3.2', displayName: 'DeepSeek 3.2', supportedInputTypes: ['TEXT', 'IMAGE'] },
+          { modelId: 'auto', modelName: 'Auto' },
+          { modelId: 'kiro-live-only', modelName: 'Kiro Live Only', additionalModelRequestFieldsSchema: effort('output_config', ['low', 'high', 'xhigh']) },
+          { modelId: 'deepseek-3.2', modelName: 'Deepseek v3.2', supportedInputTypes: ['TEXT', 'IMAGE'], additionalModelRequestFieldsSchema: null },
+          { modelId: 'gpt-5.6-sol', modelName: 'GPT 5.6 Sol', additionalModelRequestFieldsSchema: effort('reasoning', ['none', 'high']) },
         ],
       })
     },
   })
-  assert.ok(seen.some((href) => href.includes('us-east-1')))
   assert.ok(seen.some((href) => href.includes('eu-central-1') || href.includes('List-Available-Profiles')))
-  assert.ok(models.length > KIRO_MODELS.length)
-  assert.ok(models.some((model) => model.id === 'auto'))
-  assert.ok(models.some((model) => model.id === 'kiro-live-only'))
-  assert.ok(models.some((model) => model.id === 'gpt-5.6-sol'))
-  assert.ok(models.some((model) => model.id === 'gpt-5.6-terra'))
-  assert.deepEqual(models.find((model) => model.id === 'deepseek-3.2')?.input, ['text', 'image'])
+  assert.ok(seen.filter((href) => href.includes('List-Available-Models')).every((href) => href.includes('origin=AI_EDITOR')))
+  // Fallback order first, live-only after; fallback rows the live list omits are gone.
+  assert.deepEqual(models.map((model) => model.id), ['gpt-5.6-sol', 'deepseek-3.2', 'kiro-live-only'])
+  const row = (id) => models.find((model) => model.id === id)
+  assert.equal(row('gpt-5.6-sol').name, 'GPT-5.6 Sol')
+  assert.equal(row('kiro-live-only').name, 'Kiro Live Only')
+  assert.deepEqual(row('gpt-5.6-sol').reasoningEfforts, { off: 'none', high: 'high' })
+  assert.deepEqual(row('kiro-live-only').reasoningEfforts, { low: 'low', high: 'high', xhigh: 'xhigh' })
+  assert.equal(row('deepseek-3.2').reasoningEfforts, false)
+  assert.deepEqual(row('deepseek-3.2').input, ['text', 'image'])
   resetKiroCatalogCache()
 })
 
-test('empty ListAvailableModels keeps the static fallback including the original 18', async () => {
+test('empty ListAvailableModels keeps the static fallback', async () => {
   resetKiroCatalogCache()
   const session = kiroSession({ accessToken: 'empty-tok', refreshToken: RT, authMethod: 'social' })
   const models = await refreshKiroCatalog(session, {
     fetchFn: async () => json({ models: [] }),
   })
   assert.deepEqual(models.map((model) => model.id), KIRO_MODELS.map((model) => model.id))
-  const originals = originalKiroFallbackIds()
-  assert.equal(originals.length, 18)
-  for (const id of originals) assert.ok(models.some((model) => model.id === id))
   resetKiroCatalogCache()
 })
 

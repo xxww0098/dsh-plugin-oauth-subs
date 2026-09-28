@@ -96,6 +96,19 @@ test('a later zero-cache call is a cache affinity regression', () => {
   assert.match(report.verdict, /regression/)
 })
 
+test('no cache field on any call is unmeasured, not an affinity regression', () => {
+  const text = sessionJsonl([
+    { type: 'assistant/message', data: { turn: 1, step: 1, usage: { inputTokens: 50, outputTokens: 1, totalTokens: 51 } } },
+    { type: 'assistant/message', data: { turn: 1, step: 2, usage: { inputTokens: 60, outputTokens: 2, totalTokens: 62 } } },
+  ])
+  const report = analyzeSession(text)
+  assert.equal(report.cacheMeasured, false)
+  assert.equal(report.affinityMissCount, 0)
+  assert.equal(report.healthy, true)
+  assert.match(report.verdict, /unmeasured/)
+  assert.match(formatReport(report), /UNMEASURED/)
+})
+
 test('compaction rewrite is not an affinity miss', () => {
   const text = sessionJsonl([
     {
