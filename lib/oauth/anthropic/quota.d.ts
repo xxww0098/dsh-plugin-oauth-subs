@@ -8,6 +8,7 @@
  * enrich them with any model-scoped rows; if either endpoint is unavailable,
  * the other can still provide useful quota data.
  */
+import { outboundFetch } from '../../utils/outbound.js';
 export declare function parseAnthropicUsage(payload: any): {
     rows: any[];
 };
@@ -29,7 +30,7 @@ export declare function parseAnthropicRateLimitHeaders(headers: any): {
         remainingPercent: number;
     } | undefined)[];
 };
-export declare function fetchAnthropicQuota(session: any, fetchFn?: typeof fetch, previousRows?: any): Promise<{
+export declare function fetchAnthropicQuota(session: any, fetchFn?: typeof outboundFetch, previousRows?: any): Promise<{
     planType: any;
     account: any;
     subscriptionStatus: string;

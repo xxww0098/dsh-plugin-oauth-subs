@@ -23,6 +23,7 @@ import {
   refreshCursorTokens,
 } from './index.js'
 import { isCursorRefreshKnownBad } from './refresh-guard.js'
+import { outboundFetch } from '../../utils/outbound.js'
 
 const execFileAsync = promisify(execFile)
 const KEYCHAIN_TIMEOUT_MS = 2000
@@ -161,7 +162,7 @@ async function tryRefresh(refreshToken, fetchFn) {
 }
 
 export async function resolveCursorLocalCredentials({
-  fetchFn = fetch,
+  fetchFn = outboundFetch,
   env = process.env,
   platform = process.platform,
   home = homedir(),

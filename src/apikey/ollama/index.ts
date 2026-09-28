@@ -12,6 +12,7 @@
  */
 
 import { createHash } from 'node:crypto'
+import { outboundFetch } from '../../utils/outbound.js'
 
 export const OLLAMA_CLOUD_ORIGIN = 'https://ollama.com'
 export const OLLAMA_CHAT_URL = `${OLLAMA_CLOUD_ORIGIN}/v1/chat/completions`
@@ -298,7 +299,7 @@ export function parseOllamaMe(value) {
   }
 }
 
-export async function resolveOllamaIdentity(session, { fetchFn = fetch, signal }: any = {}) {
+export async function resolveOllamaIdentity(session, { fetchFn = outboundFetch, signal }: any = {}) {
   const key = trimmed(session?.accessToken)
   if (!key) return undefined
   try {

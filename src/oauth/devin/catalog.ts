@@ -24,6 +24,7 @@ import {
   encodeGetCliModelConfigsRequest,
 } from './proto.js'
 import { describeError } from '../../utils/http.js'
+import { outboundFetch } from '../../utils/outbound.js'
 
 const EFFORT_WORDS = Object.freeze({
   none: 'off',
@@ -182,7 +183,7 @@ export function devinHasEffort() {
  * POST ApiServerService/GetCliModelConfigs (unary application/proto, raw body).
  * Returns the decoded ClientModelConfig list; throws on transport errors.
  */
-export async function devinListModelConfigs(session, { fetchFn = fetch, signal }: any = {}) {
+export async function devinListModelConfigs(session, { fetchFn = outboundFetch, signal }: any = {}) {
   const base = devinApiServer(session)
   const body = encodeGetCliModelConfigsRequest(devinMetadataBytes(session, { modelDisplays: DEVIN_MODEL_DISPLAYS }))
   const response = await fetchFn(`${base}${DEVIN_MODELS_PATH}`, {
@@ -207,7 +208,7 @@ export async function devinListModelConfigs(session, { fetchFn = fetch, signal }
  * Refresh the in-memory catalog. Live rows win when any survive filtering;
  * the static floor stays when the RPC fails or returns nothing usable.
  */
-export async function refreshDevinCatalog(session, { fetchFn = fetch, signal }: any = {}) {
+export async function refreshDevinCatalog(session, { fetchFn = outboundFetch, signal }: any = {}) {
   const configs = await devinListModelConfigs(session, { fetchFn, signal })
   const rows = toDevinPickerModels(configs)
   if (rows.length > 0) devinCatalogCache = rows

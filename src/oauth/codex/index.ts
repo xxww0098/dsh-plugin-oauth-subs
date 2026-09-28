@@ -7,6 +7,7 @@
  */
 
 import { decodeJwtPayload } from '../../utils/jwt.js'
+import { outboundFetch } from '../../utils/outbound.js'
 
 export const CODEX_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann'
 export const CODEX_AUTHORIZE_URL = 'https://auth.openai.com/oauth/authorize'
@@ -180,7 +181,7 @@ export function codexSession(tokens, fallback?) {
   }
 }
 
-export async function exchangeCodexCode(code, verifier, redirectUri, fetchFn = fetch) {
+export async function exchangeCodexCode(code, verifier, redirectUri, fetchFn = outboundFetch) {
   const response = await fetchFn(CODEX_TOKEN_URL, {
     method: 'POST',
     headers: {
@@ -199,7 +200,7 @@ export async function exchangeCodexCode(code, verifier, redirectUri, fetchFn = f
   return codexSession(await response.json())
 }
 
-export async function refreshCodex(session, fetchFn = fetch) {
+export async function refreshCodex(session, fetchFn = outboundFetch) {
   const response = await fetchFn(CODEX_TOKEN_URL, {
     method: 'POST',
     headers: {

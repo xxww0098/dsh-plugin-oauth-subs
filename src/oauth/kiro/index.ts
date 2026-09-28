@@ -8,6 +8,7 @@
  */
 
 import { createHash, randomUUID } from 'node:crypto'
+import { outboundFetch } from '../../utils/outbound.js'
 
 export const KIRO_PORTAL_URL = 'https://app.kiro.dev'
 export const KIRO_AUTH_HOST = 'prod.us-east-1.auth.desktop.kiro.dev'
@@ -500,7 +501,7 @@ async function readJson(response, label) {
   return text ? JSON.parse(text) : {}
 }
 
-export async function exchangeKiroSocialCode(code, verifier, redirectUri, { fetchFn = fetch, callback, machineId: priorMachineId }: any = {}) {
+export async function exchangeKiroSocialCode(code, verifier, redirectUri, { fetchFn = outboundFetch, callback, machineId: priorMachineId }: any = {}) {
   const machineId = allocateKiroMachineId(priorMachineId)
   const response = await fetchFn(`${KIRO_AUTH_URL}/oauth/token`, {
     method: 'POST',
@@ -530,7 +531,7 @@ export async function exchangeKiroSocialCode(code, verifier, redirectUri, { fetc
   })
 }
 
-export async function refreshKiroSocial(session, { fetchFn = fetch } = {}) {
+export async function refreshKiroSocial(session, { fetchFn = outboundFetch } = {}) {
   const refreshToken = validateKiroRefreshToken(session.refreshToken)
   const region = session.authRegion || session.region || KIRO_DEFAULT_REGION
   const host = `prod.${region}.auth.desktop.kiro.dev`
@@ -554,7 +555,7 @@ export async function refreshKiroSocial(session, { fetchFn = fetch } = {}) {
   })
 }
 
-export async function refreshKiroIdc(session, { fetchFn = fetch } = {}) {
+export async function refreshKiroIdc(session, { fetchFn = outboundFetch } = {}) {
   const refreshToken = validateKiroRefreshToken(session.refreshToken)
   const region = session.authRegion || session.region || KIRO_DEFAULT_REGION
   const response = await fetchFn(`${oidcEndpoint(region)}/token`, {
@@ -583,7 +584,7 @@ export async function refreshKiroIdc(session, { fetchFn = fetch } = {}) {
   })
 }
 
-export async function refreshKiroExternalIdp(session, { fetchFn = fetch } = {}) {
+export async function refreshKiroExternalIdp(session, { fetchFn = outboundFetch } = {}) {
   const tokenEndpoint = validateKiroIdpEndpoint(session.tokenEndpoint)
   const refreshToken = validateKiroRefreshToken(session.refreshToken)
   if (!trimmed(session.clientId)) throw new Error('kiro enterprise SSO needs a client id')
@@ -613,7 +614,7 @@ export async function refreshKiroExternalIdp(session, { fetchFn = fetch } = {}) 
   })
 }
 
-export async function refreshKiro(session, { fetchFn = fetch } = {}) {
+export async function refreshKiro(session, { fetchFn = outboundFetch } = {}) {
   const method = canonicalizeKiroMethod(session?.authMethod, { tokenEndpoint: session?.tokenEndpoint })
   if (method === 'api_key') return session
   if (method === 'external_idp') return refreshKiroExternalIdp(session, { fetchFn })

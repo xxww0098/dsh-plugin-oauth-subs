@@ -8,6 +8,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { normalizeOpencodeGoWorkspaceId } from './index.js'
+import { outboundFetch } from '../../utils/outbound.js'
 
 export const OPENCODE_GO_ORIGIN = 'https://opencode.ai'
 export const OPENCODE_GO_WORKSPACES_SERVER_ID =
@@ -265,7 +266,7 @@ async function fetchServerText({ cookieHeader, method, args = undefined, fetchFn
   return readBody(response)
 }
 
-export async function fetchOpencodeGoWorkspaceId(cookieHeader, { fetchFn = fetch, signal }: any = {}) {
+export async function fetchOpencodeGoWorkspaceId(cookieHeader, { fetchFn = outboundFetch, signal }: any = {}) {
   const first = await fetchServerText({ cookieHeader, method: 'GET', fetchFn, signal })
   let ids = pickWorkspaceIds(first)
   if (ids.length === 0) {
@@ -564,7 +565,7 @@ async function fetchKeyOpencodeGoQuota(apiKey, ctx: any) {
 }
 
 export async function fetchOpencodeGoQuota(entry, options: any = {}) {
-  const fetchFn = options.fetchFn ?? fetch
+  const fetchFn = options.fetchFn ?? outboundFetch
   const now = options.now ?? Date.now()
   const timeoutMs = options.timeoutMs ?? OPENCODE_GO_QUOTA_TIMEOUT_MS
   const cookieHeader = String(entry?.cookieHeader ?? '').trim()

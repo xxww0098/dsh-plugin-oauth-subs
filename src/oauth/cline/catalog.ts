@@ -10,6 +10,7 @@
  */
 
 import { CLINE_DEFAULT_CONTEXT, CLINE_DEFAULT_MAX_TOKENS, CLINE_INPUT, CLINE_MODELS, CLINE_RECOMMENDED_MODELS_URL, CLINE_REASONING } from './index.js'
+import { outboundFetch } from '../../utils/outbound.js'
 
 export const CLINE_CATALOG_TTL_MS = 10 * 60_000
 
@@ -89,7 +90,7 @@ export async function refreshClineCatalog(session, options: any = {}) {
   const ttlMs = options.ttlMs ?? CLINE_CATALOG_TTL_MS
   if (cached.models?.length && Date.now() < cached.expiresAt) return [...cached.models]
   try {
-    const fetchFn = options.fetchFn ?? fetch
+    const fetchFn = options.fetchFn ?? outboundFetch
     const response = await fetchFn(CLINE_RECOMMENDED_MODELS_URL, {
       headers: { accept: 'application/json' },
       signal: options.signal,

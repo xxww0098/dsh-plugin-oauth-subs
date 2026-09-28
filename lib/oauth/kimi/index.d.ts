@@ -5,6 +5,7 @@
  * (`17e5f671-d194-4dfb-9706-5516cb48c098`, https://auth.kimi.com).
  * Login is RFC 8628 device-code only — no PKCE.
  */
+import { outboundFetch } from '../../utils/outbound.js';
 export { applyKimiCache, kimiCacheHeaders, kimiCacheSessionId, resetKimiPins } from './cache.js';
 export declare const KIMI_CLIENT_ID = "17e5f671-d194-4dfb-9706-5516cb48c098";
 export declare const KIMI_OAUTH_HOST = "https://auth.kimi.com";
@@ -54,7 +55,7 @@ export declare const KIMI_MODELS: readonly {
     };
 }[];
 export declare function configureKimiIdentity(dataDir: any): void;
-export declare function kimiSourceLabel(source: any): "key" | "env" | "CLI" | "OAuth" | undefined;
+export declare function kimiSourceLabel(source: any): "env" | "key" | "CLI" | "OAuth" | undefined;
 export declare function isKimiKeySource(source: any): boolean;
 export declare function kimiAccountFingerprint(token: any): string;
 export declare function kimiDefaultAccount(token: any): string;
@@ -73,12 +74,12 @@ export declare function kimiCredentialHeaders(): {
     'x-msh-device-id': string;
 };
 export declare function kimiDeviceSpec({ fetchFn }?: {
-    fetchFn?: typeof fetch | undefined;
+    fetchFn?: typeof outboundFetch | undefined;
 }): {
     clientId: string;
     deviceCodeUrl: string;
     tokenUrl: string;
-    fetchFn: typeof fetch;
+    fetchFn: typeof outboundFetch;
     headers: {
         'user-agent': string;
         'x-msh-platform': string;
@@ -120,7 +121,7 @@ export declare function completeKimiDevice(tokens: any): Promise<{
     account: string;
     source: any;
 }>;
-export declare function refreshKimi(session: any, fetchFn?: typeof fetch): Promise<any>;
+export declare function refreshKimi(session: any, fetchFn?: typeof outboundFetch): Promise<any>;
 export declare function isKimiPermanentRefreshError(error: any): boolean;
 export declare function kimiUpstreamHeaders(session: any): {
     'user-agent': string;

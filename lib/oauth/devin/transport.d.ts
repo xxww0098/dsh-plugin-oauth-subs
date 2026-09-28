@@ -11,6 +11,7 @@
  * optionally mints a short-lived `user_jwt` + custom api server; failures are
  * non-fatal — chat works with the session token alone (verified live).
  */
+import { outboundFetch } from '../../utils/outbound.js';
 export declare class DevinTransportError extends Error {
     status: any;
     permanent: boolean | undefined;
@@ -98,7 +99,7 @@ export declare function devinChatAuth(session: any, { fetchFn, signal }?: any): 
  * GetUserStatus. Opaque ids never become the account name.
  */
 export declare function resolveDevinIdentity(session: any, { fetchFn, statusFn }?: {
-    fetchFn?: typeof fetch | undefined;
+    fetchFn?: typeof outboundFetch | undefined;
     statusFn?: typeof devinUserStatus | undefined;
 }): Promise<{
     account: string | undefined;

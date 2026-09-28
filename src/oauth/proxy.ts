@@ -53,6 +53,7 @@ import { ANTHROPIC_MESSAGES_URL, ANTHROPIC_MODELS, anthropicUpstreamHeaders } fr
 import { applyAnthropicCache } from './anthropic/cache.js'
 import { normalizeAnthropicMessagesBody } from './anthropic/request.js'
 import { withPickerVariants } from './models.js'
+import { outboundFetch } from '../utils/outbound.js'
 
 export const MAX_REQUEST_BODY_BYTES = 64 * 1024 * 1024
 /** Upstream attempts before the client is told the stream failed. */
@@ -409,7 +410,7 @@ function abortOnDisconnect(request, response) {
   }
 }
 
-export function createProxy({ port, apiKey, tokens, fetchFn = fetch, maxRequestBodyBytes = MAX_REQUEST_BODY_BYTES, upstreamIdleTimeoutMs = UPSTREAM_IDLE_TIMEOUT_MS, onAntigravityValidation = undefined, cursorRpc = undefined, devinChat = undefined }: any) {
+export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, maxRequestBodyBytes = MAX_REQUEST_BODY_BYTES, upstreamIdleTimeoutMs = UPSTREAM_IDLE_TIMEOUT_MS, onAntigravityValidation = undefined, cursorRpc = undefined, devinChat = undefined }: any) {
   let server
 
   // llm-pi-ai sends Authorization: Bearer for Completions/Responses but the

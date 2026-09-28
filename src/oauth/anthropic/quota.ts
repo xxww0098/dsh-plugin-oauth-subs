@@ -10,6 +10,7 @@
  */
 
 import { ANTHROPIC_MESSAGES_URL, ANTHROPIC_USAGE_URL, ANTHROPIC_PROBE_MODEL, anthropicUpstreamHeaders } from './index.js'
+import { outboundFetch } from '../../utils/outbound.js'
 
 function parseFraction(value) {
   if (typeof value !== 'string' && typeof value !== 'number') return undefined
@@ -186,7 +187,7 @@ async function fetchMessageHeaders(session, fetchFn) {
   return { status: response.status, body, ...parsed }
 }
 
-export async function fetchAnthropicQuota(session, fetchFn = fetch, previousRows: any = undefined) {
+export async function fetchAnthropicQuota(session, fetchFn = outboundFetch, previousRows: any = undefined) {
   const [usage, message] = await Promise.all([
     attempt(() => fetchUsage(session, fetchFn)),
     attempt(() => fetchMessageHeaders(session, fetchFn)),

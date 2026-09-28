@@ -19,6 +19,7 @@ import {
   publicOpencodeGo,
 } from './index.js'
 import { fetchOpencodeGoQuota } from './quota.js'
+import { outboundFetch } from '../../utils/outbound.js'
 
 export function opencodeGoFilePath(authPath) {
   return dirname(authPath) + '/opencode-go.json'
@@ -87,7 +88,7 @@ export class OpencodeGoStore {
   declare inflight: Map<string, any>
   declare ready: Promise<any>
 
-  constructor({ path, fetchFn = fetch, ttlMs = 10_000 }: any = {}) {
+  constructor({ path, fetchFn = outboundFetch, ttlMs = 10_000 }: any = {}) {
     this.path = path
     this.fetchFn = fetchFn
     this.ttlMs = ttlMs

@@ -5,11 +5,13 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import {
   OUTBOUND_PROXY_FILE,
-  createOutboundSession,
+  configureOutbound,
   defaultOutboundPrefs,
   envProxyUrl,
   normalizeOutboundPrefs,
   normalizeProxyUrl,
+  outboundFetch,
+  outboundProxyFor,
   outboundProxyPath,
   proxySource,
   readOutboundPrefs,
@@ -84,10 +86,10 @@ test('readOutboundPrefs returns defaults when the file is missing', async () => 
   assert.deepEqual(normalizeOutboundPrefs({ url: 1 }), { url: '' })
 })
 
-test('createOutboundSession injects dispatcher except for loopback', async () => {
+test('configureOutbound injects dispatcher except for loopback', async () => {
   const seen = []
   const agent = { kind: 'proxy-agent' }
-  const session = createOutboundSession({
+  const session = configureOutbound({
     configUrl: 'http://127.0.0.1:7890',
     env: {},
     fetchFn: async (input, init: any = {}) => {
@@ -97,35 +99,39 @@ test('createOutboundSession injects dispatcher except for loopback', async () =>
     agentFor: () => agent,
   })
   await session.ready
-  await session.fetchFn('https://api.x.ai/v1/responses', { method: 'POST' })
-  await session.fetchFn('http://127.0.0.1:8318/health')
+  await outboundFetch('https://api.x.ai/v1/responses', { method: 'POST' })
+  await outboundFetch('http://127.0.0.1:8318/health')
   assert.equal(seen.length, 2)
   assert.equal(seen[0].dispatcher, agent)
-  assert.equal(seen[1].dispatcher, undefined)
+  assert.ok(seen[1].dispatcher, 'loopback still uses the direct undici Agent')
+  assert.notEqual(seen[1].dispatcher, agent)
+  assert.equal(await outboundProxyFor('https://api.x.ai/v1/responses'), 'http://127.0.0.1:7890')
+  assert.equal(await outboundProxyFor('http://127.0.0.1:8318/health'), undefined)
+  await session.close()
 })
 
-test('createOutboundSession without agentFor resolves ready and fails loudly on a dead proxy', async () => {
+test('configureOutbound without agentFor resolves ready and fails loudly on a dead proxy', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-proxy-'))
-  const session = createOutboundSession({
+  const session = configureOutbound({
     path: outboundProxyPath(dir),
     env: { HTTPS_PROXY: 'http://127.0.0.1:9' },
   })
   await session.ready
   assert.equal(session.snapshot().configured, true)
   await assert.rejects(
-    () => session.fetchFn('https://example.invalid/v1/models'),
+    () => outboundFetch('https://example.invalid/v1/models'),
     /^Error: outbound proxy unavailable: .*ECONNREFUSED via http:\/\/127\.0\.0\.1:9$/,
   )
   assert.match(session.snapshot().error, /ECONNREFUSED/)
   await session.close()
 })
 
-test('createOutboundSession keeps ready settling when the agent cannot be built', async () => {
+test('configureOutbound keeps ready settling when the agent cannot be built', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-proxy-'))
   const path = outboundProxyPath(dir)
   await writeOutboundPrefs(path, { url: 'http://127.0.0.1:7890' })
   const seen = []
-  const session = createOutboundSession({
+  const session = configureOutbound({
     path,
     env: {},
     fetchFn: async (input) => {
@@ -138,17 +144,17 @@ test('createOutboundSession keeps ready settling when the agent cannot be built'
   })
   await session.ready
   assert.equal(session.snapshot().error, 'boom')
-  await assert.rejects(() => session.fetchFn('https://chatgpt.com/backend-api/codex/models'), /outbound proxy unavailable: boom/)
-  await session.fetchFn('http://127.0.0.1:8318/health')
+  await assert.rejects(() => outboundFetch('https://chatgpt.com/backend-api/codex/models'), /outbound proxy unavailable: boom/)
+  await outboundFetch('http://127.0.0.1:8318/health')
   assert.deepEqual(seen, ['http://127.0.0.1:8318/health'])
 })
 
-test('createOutboundSession setUrl leaves prefs and state alone when the agent cannot be built', async () => {
+test('configureOutbound setUrl leaves prefs and state alone when the agent cannot be built', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-proxy-'))
   const path = outboundProxyPath(dir)
   await writeOutboundPrefs(path, { url: 'http://127.0.0.1:7890' })
   const seen = []
-  const session = createOutboundSession({
+  const session = configureOutbound({
     path,
     env: {},
     fetchFn: async (input, init: any = {}) => {
@@ -165,15 +171,15 @@ test('createOutboundSession setUrl leaves prefs and state alone when the agent c
   await assert.rejects(() => session.setUrl('http://10.0.0.9:8080'), /cannot build/)
   assert.deepEqual(session.snapshot(), before)
   assert.equal(await readFile(path, 'utf8'), '{"url":"http://127.0.0.1:7890"}\n')
-  await session.fetchFn('https://chatgpt.com/backend-api/codex/models')
+  await outboundFetch('https://chatgpt.com/backend-api/codex/models')
   assert.deepEqual(seen.at(-1), { uri: 'http://127.0.0.1:7890' })
 })
 
-test('createOutboundSession setUrl persists and rebuilds the agent', async () => {
+test('configureOutbound setUrl persists and rebuilds the agent', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-proxy-'))
   const path = outboundProxyPath(dir)
   const seen = []
-  const session = createOutboundSession({
+  const session = configureOutbound({
     path,
     env: { HTTPS_PROXY: 'http://env:9' },
     fetchFn: async (input, init = {}) => {
@@ -192,9 +198,51 @@ test('createOutboundSession setUrl persists and rebuilds the agent', async () =>
   assert.equal(session.snapshot().source, 'settings')
   assert.equal(session.snapshot().url, 'http://***@10.0.0.2:8080')
   assert.equal((await readOutboundPrefs(path)).url, 'http://user:secret@10.0.0.2:8080')
-  await session.fetchFn('https://chatgpt.com/backend-api/codex/responses')
+  await outboundFetch('https://chatgpt.com/backend-api/codex/responses')
   assert.deepEqual(seen.at(-1), { uri: 'http://user:secret@10.0.0.2:8080' })
   await session.setUrl('')
   assert.equal(session.snapshot().source, 'env')
   await assert.rejects(() => session.setUrl('socks5://127.0.0.1:7891'), /Invalid proxy URL/)
+})
+
+test('outboundFetch goes direct through undici before configuration and defaults user-agent to node', async (t) => {
+  const { createServer } = await import('node:http')
+  const seen = []
+  const server = createServer((req, res) => {
+    seen.push(req.headers['user-agent'])
+    res.end('ok')
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()))
+  t.after(() => server.close())
+  const url = `http://127.0.0.1:${(server.address() as any).port}/`
+  // Fresh module instance: nothing has called configureOutbound yet.
+  const fresh = await import(`../lib/utils/outbound.js?unconfigured=${Date.now()}`)
+  assert.equal(await (await fresh.outboundFetch(url)).text(), 'ok')
+  await fresh.outboundFetch(url, { headers: { 'user-agent': 'custom/1' } })
+  assert.deepEqual(seen, ['node', 'custom/1'])
+  assert.equal(await fresh.outboundProxyFor('https://api.x.ai/'), undefined)
+})
+
+test('configureOutbound honors NO_PROXY and waits for saved settings before choosing a route', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-proxy-'))
+  const path = outboundProxyPath(dir)
+  await writeOutboundPrefs(path, { url: 'http://127.0.0.1:7890' })
+  const seen = []
+  const agent = { kind: 'proxy-agent' }
+  const session = configureOutbound({
+    path,
+    env: { NO_PROXY: 'api2.cursor.sh' },
+    fetchFn: async (input, init: any = {}) => {
+      seen.push(init.dispatcher)
+      return { ok: true }
+    },
+    agentFor: () => agent,
+  })
+  // No await on ready: the first request must still see the saved proxy.
+  await outboundFetch('https://chatgpt.com/backend-api/codex/models')
+  await outboundFetch('https://api2.cursor.sh/x')
+  assert.equal(seen[0], agent)
+  assert.notEqual(seen[1], agent)
+  assert.equal(await outboundProxyFor('https://api2.cursor.sh/x'), undefined)
+  await session.close()
 })

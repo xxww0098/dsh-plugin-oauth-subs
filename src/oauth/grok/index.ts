@@ -8,6 +8,7 @@
 
 import { decodeJwtPayload } from '../../utils/jwt.js'
 import { OAuthEndpointError, oauthError } from '../codex/index.js'
+import { outboundFetch } from '../../utils/outbound.js'
 
 export {
   grokAffinityHeaders,
@@ -124,7 +125,7 @@ export function resetGrokDiscovery() {
   discoveryCache = undefined
 }
 
-export async function grokDiscovery(fetchFn = fetch) {
+export async function grokDiscovery(fetchFn = outboundFetch) {
   if (discoveryCache !== undefined) return discoveryCache
   const response = await fetchFn(GROK_DISCOVERY_URL)
   if (!response.ok) throw await oauthError(response, 'grok OIDC discovery')
@@ -142,7 +143,7 @@ export async function grokDiscovery(fetchFn = fetch) {
   return discoveryCache
 }
 
-export async function grokFlow(fetchFn = fetch) {
+export async function grokFlow(fetchFn = outboundFetch) {
   const discovery = await grokDiscovery(fetchFn)
   return {
     callbackPath: GROK_CALLBACK_PATH,
@@ -165,7 +166,7 @@ export async function grokFlow(fetchFn = fetch) {
   }
 }
 
-export async function grokDeviceSpec(fetchFn = fetch) {
+export async function grokDeviceSpec(fetchFn = outboundFetch) {
   const discovery = await grokDiscovery(fetchFn)
   return {
     clientId: GROK_CLIENT_ID,
@@ -233,7 +234,7 @@ export function grokSession(tokens, tokenEndpoint, fallback?) {
   }
 }
 
-export async function exchangeGrokCode(code, verifier, redirectUri, challenge, fetchFn = fetch) {
+export async function exchangeGrokCode(code, verifier, redirectUri, challenge, fetchFn = outboundFetch) {
   const discovery = await grokDiscovery(fetchFn)
   const response = await fetchFn(discovery.tokenEndpoint, {
     method: 'POST',
@@ -261,12 +262,12 @@ export async function exchangeGrokCode(code, verifier, redirectUri, challenge, f
   return grokSession(await response.json(), discovery.tokenEndpoint)
 }
 
-export async function completeGrokDevice(tokens, fetchFn = fetch) {
+export async function completeGrokDevice(tokens, fetchFn = outboundFetch) {
   const discovery = await grokDiscovery(fetchFn)
   return grokSession(tokens, discovery.tokenEndpoint)
 }
 
-export async function refreshGrok(session, fetchFn = fetch) {
+export async function refreshGrok(session, fetchFn = outboundFetch) {
   const response = await fetchFn(session.tokenEndpoint, {
     method: 'POST',
     headers: {

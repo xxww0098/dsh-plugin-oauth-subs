@@ -15,6 +15,7 @@ import {
   copilotIdentityHeaders,
   copilotModelsUrl,
 } from './index.js'
+import { outboundFetch } from '../../utils/outbound.js'
 
 export const COPILOT_CATALOG_TTL_MS = 5 * 60_000
 
@@ -114,7 +115,7 @@ export async function refreshCopilotCatalog(session, options: any = {}) {
     return [...cached.models]
   }
   try {
-    const fetchFn = options.fetchFn ?? fetch
+    const fetchFn = options.fetchFn ?? outboundFetch
     const response = await fetchFn(copilotModelsUrl(session), {
       headers: {
         authorization: `Bearer ${token}`,

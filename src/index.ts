@@ -34,7 +34,7 @@ import { devinCatalogModels } from './oauth/devin/catalog.js'
 import { clineCatalogModels } from './oauth/cline/catalog.js'
 import { EffortMemory, LAST_EFFORT_FILE, startEffortRestore } from './oauth/reasoning-effort.js'
 import { profileFromBaseUrl } from './utils/update.js'
-import { createOutboundSession, outboundProxyPath } from './utils/outbound.js'
+import { configureOutbound, outboundProxyPath } from './utils/outbound.js'
 
 export const name = 'dsh-plugin-oauth-subs'
 export const inject = ['settings', 'credentials']
@@ -267,7 +267,7 @@ export function apply(ctx, config: any = {}) {
     path: join(dataDir, LAST_EFFORT_FILE),
   })
 
-  const outbound = createOutboundSession({
+  const outbound = configureOutbound({
     path: outboundProxyPath(dataDir),
     configUrl: config.proxyUrl,
   })
@@ -289,7 +289,6 @@ export function apply(ctx, config: any = {}) {
     credentials: ctx.credentials,
     grokLogin,
     models,
-    fetchFn: outbound.fetchFn,
     onAuthChanged: () => {
       controller.sync().catch((error) => {
         ctx.logger?.warn?.(`dsh-plugin-oauth-subs: llm-pi-ai sync failed: ${error.message}`)
@@ -348,7 +347,6 @@ export function apply(ctx, config: any = {}) {
           port,
           apiKey,
           tokens: controller.tokens,
-          fetchFn: outbound.fetchFn,
         })
         await proxy.listen()
         ctx.logger?.info?.(`dsh-plugin-oauth-subs: proxy on ${proxy.origin()}`)

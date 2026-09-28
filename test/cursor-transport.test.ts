@@ -7,6 +7,7 @@ import { setImmediate as nextTurn } from 'node:timers/promises'
 import { cursorUnaryRpc, runCursorAgent } from '../lib/oauth/cursor/h2-session.js'
 import { cursorH2Connect, dialCursorProxy } from '../lib/oauth/cursor/upstream-proxy.js'
 import { configureCursorUpstreamProxy } from '../lib/oauth/cursor/index.js'
+import { configureOutbound } from '../lib/utils/outbound.js'
 import { createProxy } from '../lib/oauth/proxy.js'
 import {
   decodeAgentServerMessage,
@@ -442,6 +443,68 @@ test('Cursor Run streams through an HTTP CONNECT upstream proxy', async (t) => {
     connectFn: cursorH2Connect,
   })
   assert.equal(collected.text, 'tunneled')
+})
+
+test('Cursor h2 dial falls back to the outbound proxy when no Cursor proxy is set', async (t) => {
+  const server = http2.createServer()
+  server.on('session', (peer) => peer.on('error', () => {}))
+  server.on('stream', (peer) => {
+    peer.respond({ ':status': 200 })
+    peer.end(Buffer.from('via outbound'))
+  })
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  const h2port = server.address().port
+  const sockets = new Set()
+  const seen = []
+  const forwarder = await connectForwarder(h2port, seen, sockets)
+  configureCursorUpstreamProxy(undefined)
+  const outbound = configureOutbound({ configUrl: `http://127.0.0.1:${forwarder.address().port}`, env: {} })
+  t.after(async () => {
+    for (const socket of sockets) socket.destroy()
+    server.close()
+    forwarder.close()
+    await outbound.close()
+    configureOutbound({ env: {} })
+  })
+  // A non-loopback host so NO_PROXY / loopback bypass does not apply; the
+  // forwarder pipes every CONNECT to the local h2 peer.
+  const body = await cursorUnaryRpc({
+    session,
+    url: `http://cursor.test:${h2port}`,
+    path: '/x',
+    connectFn: cursorH2Connect,
+    timeoutMs: 5000,
+  })
+  assert.equal(body.toString(), 'via outbound')
+  assert.match(seen[0], new RegExp(`^CONNECT cursor\\.test:${h2port} HTTP/1\\.1`))
+})
+
+test('Cursor direct h2 dial to a blackhole is rejected within the connect timeout', async (t) => {
+  // Accepts TCP but never answers the TLS ClientHello: the h2 session never connects.
+  const sockets = new Set<net.Socket>()
+  const blackhole = net.createServer((socket) => {
+    sockets.add(socket)
+    socket.on('error', () => {})
+  })
+  blackhole.listen(0, '127.0.0.1')
+  await once(blackhole, 'listening')
+  t.after(() => {
+    for (const socket of sockets) socket.destroy()
+    blackhole.close()
+  })
+  const started = Date.now()
+  await assert.rejects(
+    cursorUnaryRpc({
+      session,
+      url: `https://127.0.0.1:${blackhole.address().port}`,
+      path: '/x',
+      connectFn: (url) => cursorH2Connect(url, { timeoutMs: 200 }),
+      timeoutMs: 0,
+    }),
+    /cursor h2 connect timeout after 200ms/,
+  )
+  assert.ok(Date.now() - started < 2000)
 })
 
 test('dialCursorProxy completes a SOCKS5 handshake', async (t) => {

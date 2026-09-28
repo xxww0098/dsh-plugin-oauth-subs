@@ -3,14 +3,15 @@
  * (Anthropic / OpenAI / Gemini) are refused server-side when the request
  * leaves from an unsupported region; the official client escapes this
  * with VS Code `http.proxy`. This hop honors `PI_CURSOR_PROXY` /
- * `CURSOR_PROXY` (`http://`, `https://`, `socks5://`, optional user:pass).
- * Only the h2 RPC path (agentn Run / GetUsableModels, api2 unary) is
- * tunneled — auth poll, token refresh, and quota JSON stay direct.
+ * `CURSOR_PROXY` (`http://`, `https://`, `socks5://`, optional user:pass),
+ * then falls back to the plugin's outbound proxy (which honors NO_PROXY and
+ * loopback). Auth poll, token refresh, and quota JSON use `outboundFetch`.
  */
 
 import http2 from 'node:http2'
 import { connect as netConnect } from 'node:net'
 import { connect as tlsConnect } from 'node:tls'
+import { outboundProxyFor } from '../../utils/outbound.js'
 import { cursorUpstreamProxy } from './index.js'
 
 const DIAL_TIMEOUT_MS = 10_000
@@ -244,26 +245,47 @@ export async function dialCursorProxy(proxy, target, { timeoutMs = DIAL_TIMEOUT_
 }
 
 /**
- * `http2.connect` replacement for the Cursor hop. When an upstream proxy is
- * configured the tunnel is dialed first, then http2 attaches over it — the
+ * Egress for one Cursor h2 dial: `cursorProxy` config → `PI_CURSOR_PROXY` /
+ * `CURSOR_PROXY` → the outbound proxy for `url`. The explicit Cursor knob is
+ * taken as-is; NO_PROXY / loopback only gate the outbound fallback.
+ */
+export async function cursorEgressProxy(url) {
+  return cursorUpstreamProxy() ?? await outboundProxyFor(url)
+}
+
+/** A session that never finishes its (TLS) connect is destroyed with a clear error. */
+function watchConnect(client, timeoutMs) {
+  const timer = setTimeout(() => {
+    client.destroy(new Error(`cursor h2 connect timeout after ${timeoutMs}ms`))
+  }, timeoutMs)
+  timer.unref?.()
+  const clear = () => clearTimeout(timer)
+  client.once('connect', clear)
+  client.once('close', clear)
+  return client
+}
+
+/**
+ * `http2.connect` replacement for the Cursor hop. When an upstream proxy
+ * applies the tunnel is dialed first, then http2 attaches over it — the
  * TLS handshake to the Cursor host still happens inside `createConnection`
  * so ALPN/session handling is unchanged. Without a proxy this is a plain
- * `http2.connect`.
+ * `http2.connect`. Either way the session must connect within `timeoutMs`.
  */
-export async function cursorH2Connect(url) {
-  const proxy = cursorUpstreamProxy()
-  if (!proxy) return http2.connect(url)
+export async function cursorH2Connect(url, { timeoutMs = DIAL_TIMEOUT_MS } = {}) {
+  const proxy = await cursorEgressProxy(url)
+  if (!proxy) return watchConnect(http2.connect(url), timeoutMs)
   const target = new URL(url)
   let tunnel
   try {
-    tunnel = await dialCursorProxy(proxy, target)
+    tunnel = await dialCursorProxy(proxy, target, { timeoutMs })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     throw new Error(`cursor upstream proxy ${proxyLabel(proxy)} failed: ${message}`)
   }
-  return http2.connect(url, {
+  return watchConnect(http2.connect(url, {
     createConnection: () => (target.protocol === 'https:'
       ? tlsConnect({ socket: tunnel, servername: bareHost(target.hostname), ALPNProtocols: ['h2'] })
       : tunnel),
-  })
+  }), timeoutMs)
 }

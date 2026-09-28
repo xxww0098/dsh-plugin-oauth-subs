@@ -23,6 +23,7 @@
  * Do not invent: scopes, beta headers, dated model rows, or unverified endpoints —
  * see README.md for the do-not list.
  */
+import { outboundFetch } from '../../utils/outbound.js';
 export declare const ANTHROPIC_CLIENT_ID = "9d1c250a-e61b-44e9-88ed-594fedd33385";
 export declare const ANTHROPIC_AUTHORIZE_URL = "https://claude.ai/oauth/authorize";
 export declare const ANTHROPIC_TOKEN_URL = "https://platform.claude.com/v1/oauth/token";
@@ -65,7 +66,7 @@ export declare const anthropicFlow: {
  * The token exchange echoes `state` (pi-ai posts it; Claude Code sends it) —
  * completePkce passes the flow manager's own state back in.
  */
-export declare function exchangeAnthropicCode(code: any, verifier: any, redirectUri: any, state: any, fetchFn?: typeof fetch): Promise<{
+export declare function exchangeAnthropicCode(code: any, verifier: any, redirectUri: any, state: any, fetchFn?: typeof outboundFetch): Promise<{
     planType?: any;
     accountId?: any;
     account?: any;
@@ -74,7 +75,7 @@ export declare function exchangeAnthropicCode(code: any, verifier: any, redirect
     refreshToken: any;
     expiresAt: number;
 }>;
-export declare function refreshAnthropic(session: any, fetchFn?: typeof fetch): Promise<{
+export declare function refreshAnthropic(session: any, fetchFn?: typeof outboundFetch): Promise<{
     planType?: any;
     accountId?: any;
     account?: any;
@@ -98,7 +99,7 @@ export declare function anthropicSession(tokens: any, fallback?: any): {
  * failure must not kill a finished login (the vault falls back to the
  * refresh-token-suffix id and the card shows the token shape).
  */
-export declare function anthropicProfile(session: any, fetchFn?: typeof fetch): Promise<{
+export declare function anthropicProfile(session: any, fetchFn?: typeof outboundFetch): Promise<{
     email: any;
     uuid: any;
     organization: any;

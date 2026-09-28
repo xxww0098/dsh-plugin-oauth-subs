@@ -5,6 +5,7 @@
  * (`b1a00492-073a-47ea-816f-4c329264a828`, https://auth.x.ai). Default login is
  * RFC 8628 device-code (no loopback); PKCE on 127.0.0.1:56121 is the fallback.
  */
+import { outboundFetch } from '../../utils/outbound.js';
 export { grokAffinityHeaders, grokCacheSessionId, applyGrokCache, GROK_STABLE_SESSION, pinGrokSystemPrefix, resetGrokSystemPins, } from './cache.js';
 export declare const GROK_CLIENT_ID = "b1a00492-073a-47ea-816f-4c329264a828";
 export declare const GROK_DISCOVERY_URL = "https://auth.x.ai/.well-known/openid-configuration";
@@ -67,8 +68,8 @@ export declare const GROK_TIER_NAMES: Readonly<{
     7: "SuperGrok Plus";
 }>;
 export declare function resetGrokDiscovery(): void;
-export declare function grokDiscovery(fetchFn?: typeof fetch): Promise<any>;
-export declare function grokFlow(fetchFn?: typeof fetch): Promise<{
+export declare function grokDiscovery(fetchFn?: typeof outboundFetch): Promise<any>;
+export declare function grokFlow(fetchFn?: typeof outboundFetch): Promise<{
     callbackPath: string;
     listen: {
         host: string;
@@ -81,12 +82,12 @@ export declare function grokFlow(fetchFn?: typeof fetch): Promise<{
         nonce: any;
     }): string;
 }>;
-export declare function grokDeviceSpec(fetchFn?: typeof fetch): Promise<{
+export declare function grokDeviceSpec(fetchFn?: typeof outboundFetch): Promise<{
     clientId: string;
     scope: string;
     deviceCodeUrl: any;
     tokenUrl: any;
-    fetchFn: typeof fetch;
+    fetchFn: typeof outboundFetch;
     headers: {
         'user-agent': string;
     };
@@ -103,7 +104,7 @@ export declare function grokSession(tokens: any, tokenEndpoint: any, fallback?: 
     expiresAt: any;
     tokenEndpoint: any;
 };
-export declare function exchangeGrokCode(code: any, verifier: any, redirectUri: any, challenge: any, fetchFn?: typeof fetch): Promise<{
+export declare function exchangeGrokCode(code: any, verifier: any, redirectUri: any, challenge: any, fetchFn?: typeof outboundFetch): Promise<{
     clientId?: any;
     planType?: any;
     account?: any;
@@ -113,7 +114,7 @@ export declare function exchangeGrokCode(code: any, verifier: any, redirectUri: 
     expiresAt: any;
     tokenEndpoint: any;
 }>;
-export declare function completeGrokDevice(tokens: any, fetchFn?: typeof fetch): Promise<{
+export declare function completeGrokDevice(tokens: any, fetchFn?: typeof outboundFetch): Promise<{
     clientId?: any;
     planType?: any;
     account?: any;
@@ -123,7 +124,7 @@ export declare function completeGrokDevice(tokens: any, fetchFn?: typeof fetch):
     expiresAt: any;
     tokenEndpoint: any;
 }>;
-export declare function refreshGrok(session: any, fetchFn?: typeof fetch): Promise<{
+export declare function refreshGrok(session: any, fetchFn?: typeof outboundFetch): Promise<{
     clientId?: any;
     planType?: any;
     account?: any;

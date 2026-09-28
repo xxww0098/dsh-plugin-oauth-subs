@@ -44,6 +44,7 @@ import {
   splitConnectFrames,
   unframePayload,
 } from './proto.js'
+import { outboundFetch } from '../../utils/outbound.js'
 
 const CHAT_HEADERS = Object.freeze({
   'content-type': 'application/connect+proto',
@@ -106,7 +107,7 @@ function userJwtExpiresAt(jwt) {
  * deployment-specific api server (custom_api_server_url). Returns undefined
  * on any failure — the session token alone is accepted (verified live).
  */
-export async function devinUserJwt(session, { fetchFn = fetch, signal }: any = {}) {
+export async function devinUserJwt(session, { fetchFn = outboundFetch, signal }: any = {}) {
   const base = devinApiServer(session)
   const body = encodeGetUserJwtRequest(devinMetadataBytes(session))
   try {
@@ -133,7 +134,7 @@ export async function devinUserJwt(session, { fetchFn = fetch, signal }: any = {
  * SeatManagementService/GetUserStatus (unary application/proto, raw body) —
  * the quota + identity RPC. Throws on HTTP errors; 401/403 are permanent.
  */
-export async function devinUserStatus(session, { fetchFn = fetch, signal }: any = {}) {
+export async function devinUserStatus(session, { fetchFn = outboundFetch, signal }: any = {}) {
   const base = devinApiServer(session)
   const body = encodeGetUserStatusRequest(devinMetadataBytes(session))
   const response = await fetchFn(`${base}${DEVIN_USER_STATUS_PATH}`, {
@@ -160,7 +161,7 @@ export async function devinUserStatus(session, { fetchFn = fetch, signal }: any 
  * A stale jwt surfaces as chat 401; runDevinChat then drops it and retries
  * once token-only (a proven-good path).
  */
-export async function devinChatAuth(session, { fetchFn = fetch, signal }: any = {}) {
+export async function devinChatAuth(session, { fetchFn = outboundFetch, signal }: any = {}) {
   const key = typeof session?.accessToken === 'string' ? session.accessToken : ''
   const cached = key ? userJwtCache.get(key) : undefined
   if (cached && cached.expiresAt - USER_JWT_MARGIN_MS > Date.now()) return cached
@@ -181,7 +182,7 @@ export async function devinChatAuth(session, { fetchFn = fetch, signal }: any = 
  * Identity for a stored session: email (or display name) + plan label from
  * GetUserStatus. Opaque ids never become the account name.
  */
-export async function resolveDevinIdentity(session, { fetchFn = fetch, statusFn = devinUserStatus } = {}) {
+export async function resolveDevinIdentity(session, { fetchFn = outboundFetch, statusFn = devinUserStatus } = {}) {
   const status: any = await statusFn(session, { fetchFn })
   const user = status?.userStatus ?? {}
   const plan = status?.planInfo ?? user.planStatus?.planInfo ?? {}
@@ -201,7 +202,7 @@ export async function resolveDevinIdentity(session, { fetchFn = fetch, statusFn 
  * `onEvent` receives {type:'text'|'thinking'|'tool'|'usage'|'stop', …} deltas;
  * the resolved value is the fully collected turn.
  */
-export async function runDevinChat(session, built, { signal, onEvent, fetchFn = fetch }: any = {}) {
+export async function runDevinChat(session, built, { signal, onEvent, fetchFn = outboundFetch }: any = {}) {
   if (!session?.accessToken) throw new DevinTransportError('Devin chat needs a session token', { status: 401 })
   const attempt = (auth) => {
     const base = auth?.baseUrl ?? devinApiServer(session)
@@ -331,7 +332,7 @@ export async function forwardDevin(response, {
   stream,
   session,
   signal,
-  fetchFn = fetch,
+  fetchFn = outboundFetch,
   runFn = runDevinChat,
 }: any = {}) {
   if (!session?.accessToken) {
