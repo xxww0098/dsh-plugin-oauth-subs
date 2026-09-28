@@ -1,13 +1,13 @@
 /**
  * Loopback LLM proxy: authenticates DSH calls, dispatches family transports,
- * and gates/retries passthrough streams before output. Settings operations
+ * and gates passthrough streams before output (timing, retries and failure
+ * answers live in upstream.ts). Settings operations
  * stay on the host-owned RPC channel; vendor translation lives in each family.
  */
 
 import { createServer } from 'node:http'
 import { once } from 'node:events'
 import { randomUUID } from 'node:crypto'
-import { setTimeout as delay } from 'node:timers/promises'
 import { CODEX_API_URL, CODEX_CLIENT_VERSION, CODEX_MODELS, CODEX_MODELS_URL, codexRoutingHint, codexUpstreamHeaders } from './codex/index.js'
 import { applyCodexCache, codexCacheHeaders } from './codex/cache.js'
 import { GROK_API_URL, GROK_MODELS, grokAffinityHeaders, grokUpstreamHeaders } from './grok/index.js'
@@ -48,25 +48,16 @@ import { normalizeCodexResponsesBody } from './codex/request.js'
 import { CLINE_CHAT_URL, clineUpstreamHeaders } from './cline/index.js'
 import { clineCatalogModels } from './cline/catalog.js'
 import { applyClineCache } from './cline/cache.js'
-import { applyClineMaxCompletionTokens, applyClineStreamUsage, applyClineThinking, mapClineUsage, unwrapClineEnvelope } from './cline/request.js'
+import { applyClineMaxCompletionTokens, applyClineStreamUsage, applyClineThinking, clineQuotaFailure, mapClineUsage, unwrapClineEnvelope } from './cline/request.js'
 import { ANTHROPIC_MESSAGES_URL, ANTHROPIC_MODELS, anthropicUpstreamHeaders } from './anthropic/index.js'
 import { applyAnthropicCache } from './anthropic/cache.js'
 import { normalizeAnthropicMessagesBody } from './anthropic/request.js'
 import { withPickerVariants } from './models.js'
 import { outboundFetch } from '../utils/outbound.js'
 import { SseFrameScanner } from './responses-sse.js'
+import { UpstreamFailure, answerFailure, upstreamRequest } from './upstream.js'
 
 export const MAX_REQUEST_BODY_BYTES = 64 * 1024 * 1024
-/** Upstream attempts before the client is told the stream failed. */
-export const STREAM_ATTEMPTS = 3
-const RETRY_BACKOFF_MS = [1000, 4000]
-/**
- * OpenAI/Anthropic SDK backoff shrinks the delay by up to 25% at random, so
- * concurrent proxy requests never retry in lockstep against a recovering
- * upstream. (pi-ai, senpi's engine, jitters the same way.)
- */
-const RETRY_JITTER = 0.25
-
 /** Unclassifiable bytes a gated stream may buffer before committing anyway. */
 const MAX_UNCLASSIFIED_BYTES = 64 * 1024
 /**
@@ -74,122 +65,21 @@ const MAX_UNCLASSIFIED_BYTES = 64 * 1024
  * retry protection rather than kill a legitimate response.
  */
 const MAX_GATE_BUFFER_BYTES = 2 * 1024 * 1024
-/** Commit anyway rather than risk the client's own header timeout. */
-const COMMIT_DEADLINE_MS = 120_000
-
-/**
- * Abort a read that goes this long without a byte from upstream. llm-pi-ai's
- * own stream watchdog is 300_000ms; firing first turns a silent stall into a
- * bounded, retryable proxy fault instead of a client-side timeout.
- */
-export const UPSTREAM_IDLE_TIMEOUT_MS = 120_000
-
-class RetryableUpstream extends Error {
-  declare turnState: string | undefined
-
-  constructor(message, extra: any = {}) {
-    super(message)
-    if (typeof extra.turnState === 'string' && extra.turnState.trim()) {
-      this.turnState = extra.turnState.trim()
-    }
-  }
-}
 
 /**
  * Forward the upstream's own retry headers so the client can back off at the
  * upstream's pace (the 2026-10-23 token-lifecycle contract: 4xx/5xx answers
  * are forwarded, never retried in the proxy).
  */
-function retryAfterResponseHeaders(upstreamHeaders) {
-  const extra = {}
-  const seconds = upstreamHeaders?.get?.('retry-after')
-  if (typeof seconds === 'string' && seconds.trim()) extra['retry-after'] = seconds.trim()
-  const ms = upstreamHeaders?.get?.('retry-after-ms')
-  if (typeof ms === 'string' && ms.trim()) extra['retry-after-ms'] = ms.trim()
-  return extra
-}
-
-/**
- * Delay before the next retry: the backoff schedule with shrink-only jitter
- * (never longer than the base, so tests and callers can bound the wait).
- */
-export function retryDelayMs(failedAttempt, random = Math.random) {
-  const base = RETRY_BACKOFF_MS[Math.min(Math.max(failedAttempt, 0), RETRY_BACKOFF_MS.length - 1)]
-  return Math.round(base * (1 - random() * RETRY_JITTER))
-}
-
-function retryableUpstream(message, family, upstream?) {
-  let turnState
-  if (family === 'codex') {
-    const header = upstream?.headers?.get?.('x-codex-turn-state')
-    if (typeof header === 'string' && header.trim()) turnState = header.trim()
-  }
-  return new RetryableUpstream(message, { turnState })
-}
-
-/**
- * Upstream answered 401 before any output. The proxy may refresh the login
- * once and retry — CLIProxyAPI's tryRefreshAfterUnauthorized — so the parsed
- * error payload rides along for the client when no refresh is possible.
- */
-class UnauthorizedUpstream extends Error {
-  declare payload: any
-
-  constructor(payload) {
-    super('upstream returned 401')
-    this.name = 'UnauthorizedUpstream'
-    this.payload = payload
-  }
-}
-
-/**
- * The Coding Plan gateway (zcode.z.ai) answered before any output. A
- * coding-plan bearer the model endpoint still accepts can be refused there,
- * so `fallbackUrl` reroutes the request to the direct upstream instead of
- * surfacing the gateway error.
- */
-class GatewayUpstream extends Error {
-  declare status: number
-  declare payload: any
-
-  constructor(status, payload) {
-    super(`upstream gateway returned ${status}`)
-    this.name = 'GatewayUpstream'
-    this.status = status
-    this.payload = payload
+function retryAfterOf(upstreamHeaders) {
+  return {
+    retryAfter: upstreamHeaders?.get?.('retry-after')?.trim() || undefined,
+    retryAfterMs: upstreamHeaders?.get?.('retry-after-ms')?.trim() || undefined,
   }
 }
 
 /** Gateway answers that mean "not this hop", not "bad request body". */
 const GATEWAY_FALLBACK_STATUSES = new Set([401, 403, 404])
-
-/** Upstream accepted the request but stopped sending bytes. */
-class UpstreamIdleError extends Error {
-  declare timeoutMs: any
-
-  constructor(timeoutMs) {
-    super(`upstream sent no data for ${timeoutMs}ms`)
-    this.name = 'UpstreamIdleError'
-    this.timeoutMs = timeoutMs
-  }
-}
-
-/**
- * Reject when `promise` stays pending longer than `timeoutMs`. The caller owns
- * cancelling the underlying read: the stream loop's `finally` cancels the
- * reader, which settles the still-pending `read()` and keeps it unhandled-free.
- */
-function withIdleTimeout(promise, timeoutMs) {
-  if (!(Number.isFinite(timeoutMs) && timeoutMs > 0)) return promise
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new UpstreamIdleError(timeoutMs)), timeoutMs)
-    timer.unref?.()
-    promise.then(
-      (value) => { clearTimeout(timer); resolve(value) },
-      (error) => { clearTimeout(timer); reject(error) },
-    )
-  })
-}
 
 function readBody(request, limit = MAX_REQUEST_BODY_BYTES) {
   if (request.aborted || request.destroyed) {
@@ -413,7 +303,7 @@ function abortOnDisconnect(request, response) {
   }
 }
 
-export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, maxRequestBodyBytes = MAX_REQUEST_BODY_BYTES, upstreamIdleTimeoutMs = UPSTREAM_IDLE_TIMEOUT_MS, onAntigravityValidation = undefined, cursorRpc = undefined, devinChat = undefined }: any) {
+export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, maxRequestBodyBytes = MAX_REQUEST_BODY_BYTES, upstreamTimeouts = undefined, onAntigravityValidation = undefined, cursorRpc = undefined, devinChat = undefined }: any) {
   let server
 
   // llm-pi-ai sends Authorization: Bearer for Completions/Responses but the
@@ -429,6 +319,8 @@ export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, max
   }
 
   const handle = async (request, response) => {
+    // The pre-output budget starts here, so the tokens.session() wait counts.
+    const startedAt = Date.now()
     const url = new URL(request.url ?? '/', 'http://127.0.0.1')
     const path = url.pathname.replace(/\/+$/, '') || '/'
 
@@ -547,7 +439,8 @@ export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, max
           fetchFn,
           family: 'codex',
           maxRequestBodyBytes,
-          upstreamIdleTimeoutMs,
+          upstreamTimeouts,
+          startedAt,
           signal: client.signal,
         })
       } finally {
@@ -567,7 +460,8 @@ export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, max
           fetchFn,
           family: 'grok',
           maxRequestBodyBytes,
-          upstreamIdleTimeoutMs,
+          upstreamTimeouts,
+          startedAt,
           signal: client.signal,
         })
       } finally {
@@ -588,7 +482,8 @@ export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, max
           fetchFn,
           family: 'glm',
           maxRequestBodyBytes,
-          upstreamIdleTimeoutMs,
+          upstreamTimeouts,
+          startedAt,
           signal: client.signal,
         })
       } finally {
@@ -614,7 +509,8 @@ export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, max
           family: 'glm',
           wire: 'anthropic',
           maxRequestBodyBytes,
-          upstreamIdleTimeoutMs,
+          upstreamTimeouts,
+          startedAt,
           signal: client.signal,
         })
       } finally {
@@ -734,7 +630,8 @@ export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, max
           fetchFn,
           family: 'ollama',
           maxRequestBodyBytes,
-          upstreamIdleTimeoutMs,
+          upstreamTimeouts,
+          startedAt,
           signal: client.signal,
         })
       } finally {
@@ -771,7 +668,8 @@ export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, max
           fetchFn,
           family: 'kimi',
           maxRequestBodyBytes,
-          upstreamIdleTimeoutMs,
+          upstreamTimeouts,
+          startedAt,
           signal: client.signal,
         })
       } finally {
@@ -809,7 +707,8 @@ export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, max
           fetchFn,
           family: 'copilot',
           maxRequestBodyBytes,
-          upstreamIdleTimeoutMs,
+          upstreamTimeouts,
+          startedAt,
           signal: client.signal,
         })
       } finally {
@@ -880,8 +779,10 @@ export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, max
           headersOf: clineUpstreamHeaders,
           fetchFn,
           family: 'cline',
+          classifyFailure: clineQuotaFailure,
           maxRequestBodyBytes,
-          upstreamIdleTimeoutMs,
+          upstreamTimeouts,
+          startedAt,
           signal: client.signal,
         })
       } finally {
@@ -910,7 +811,8 @@ export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, max
           fetchFn,
           family: 'anthropic',
           maxRequestBodyBytes,
-          upstreamIdleTimeoutMs,
+          upstreamTimeouts,
+          startedAt,
           signal: client.signal,
         })
       } finally {
@@ -954,16 +856,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, max
     origin: () => originOf(port),
     async listen() {
       server = createServer((request, response) => {
-        handle(request, response).catch((error) => {
-          if (!response.headersSent) {
-            const extra = {}
-            if (error?.retryAfter != null && String(error.retryAfter).trim()) {
-              extra['retry-after'] = String(error.retryAfter).trim()
-            }
-            sendJson(response, error.status ?? 500, { error: describeError(error) }, extra)
-          }
-          else response.end()
-        })
+        handle(request, response).catch((error) => answerFailure(response, error))
       })
       await new Promise((resolve, reject) => {
         server.once('error', reject)
@@ -979,7 +872,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, max
   }
 }
 
-async function forward(request, response, { url, fallbackUrl = undefined, session, tokens, headersOf, fetchFn, family, wire = undefined, maxRequestBodyBytes, upstreamIdleTimeoutMs, signal }: any) {
+async function forward(request, response, { url, fallbackUrl = undefined, session, tokens, headersOf, fetchFn, family, wire = undefined, maxRequestBodyBytes, upstreamTimeouts, startedAt, signal, classifyFailure = undefined }: any) {
   const raw = await readBody(request, maxRequestBodyBytes)
   const { payload, cacheSessionId, stream, routingHint, grokModel, copilotVision, copilotInitiator } = rewriteUpstreamBody(raw, family, wire)
   const body = Buffer.from(JSON.stringify(payload))
@@ -997,83 +890,47 @@ async function forward(request, response, { url, fallbackUrl = undefined, sessio
       ...(copilotVision ? { 'copilot-vision-request': 'true' } : {}),
     } : {}),
   }
-
-  let lastFailure
-  let codexTurnState
-  let refreshed = false
-  // Backoff wait owed before the next attempt. Set only after a real upstream
-  // failure — a 401 refresh or gateway reroute retries immediately.
-  let pendingDelayMs = 0
+  // Codex hands back `x-codex-turn-state` on a failed attempt; the retry replays it.
+  const turn = { state: undefined }
   // One-shot reroute to the direct endpoint when the gateway refuses this hop.
   let fallbackPending = typeof fallbackUrl === 'string' && fallbackUrl.length > 0 && fallbackUrl !== url
-  for (let attempt = 0; attempt < STREAM_ATTEMPTS; attempt++) {
-    if (pendingDelayMs > 0) {
-      console.error(`[oauth-subs] ${family} retrying upstream (attempt ${attempt + 1}/${STREAM_ATTEMPTS}) in ${pendingDelayMs}ms: ${lastFailure}`)
-      await delay(pendingDelayMs, undefined, { signal })
-      pendingDelayMs = 0
-    }
-    const headers = {
-      ...baseHeaders,
-      ...(family === 'grok' ? grokAffinityHeaders(cacheSessionId, {
-        model: grokModel,
-        reqId: grokReqId,
-        retryAttempt: attempt,
-      }) : {}),
-      ...(family === 'codex' && codexTurnState ? { 'x-codex-turn-state': codexTurnState } : {}),
-    }
-    try {
-      return await attemptUpstream(response, {
-        url,
-        headers,
-        body,
-        stream,
-        fetchFn,
-        family,
-        wire,
-        upstreamIdleTimeoutMs,
-        signal,
-        fallbackStatuses: fallbackPending ? GATEWAY_FALLBACK_STATUSES : undefined,
-      })
-    } catch (error) {
-      if (signal.aborted || response.headersSent) throw error
-      if (fallbackPending && error instanceof GatewayUpstream) {
+  await upstreamRequest({ family, signal, startedAt, stream, response, timeouts: upstreamTimeouts }).run(async (attempt) => {
+    for (;;) {
+      const headers = {
+        ...baseHeaders,
+        ...(family === 'grok' ? grokAffinityHeaders(cacheSessionId, {
+          model: grokModel,
+          reqId: grokReqId,
+          retryAttempt: attempt.index,
+        }) : {}),
+        ...(family === 'codex' && turn.state ? { 'x-codex-turn-state': turn.state } : {}),
+      }
+      try {
+        return await attemptUpstream(response, { url, headers, body, stream, fetchFn, family, wire, attempt, turn, classifyFailure })
+      } catch (error) {
+        // The Coding Plan gateway (zcode.z.ai) can refuse a bearer the model
+        // endpoint still accepts: reroute once, within this attempt.
+        if (!(fallbackPending && error instanceof UpstreamFailure && error.code === 'http' && GATEWAY_FALLBACK_STATUSES.has(error.status))) throw error
         fallbackPending = false
         url = fallbackUrl
-        attempt -= 1
         console.error(`[oauth-subs] ${family} gateway ${error.status}; falling back to the direct endpoint`)
-        continue
       }
-      if (error instanceof UnauthorizedUpstream) {
-        if (fallbackPending) {
-          fallbackPending = false
-          url = fallbackUrl
-          attempt -= 1
-          continue
-        }
-        // One forced refresh per request — the same shape CLIProxyAPI runs
-        // before falling back. No usable account or a failed refresh forwards
-        // the upstream's own 401 body unchanged.
-        const source = !refreshed && typeof tokens?.sourceOf === 'function' ? tokens.sourceOf(session) : undefined
-        const next = source && typeof tokens.refreshNow === 'function'
-          ? await tokens.refreshNow(source.id, session.accessToken).catch(() => undefined)
-          : undefined
-        if (next?.session) {
-          refreshed = true
-          session = next.session
-          baseHeaders = { ...baseHeaders, ...headersOf(session, cacheSessionId) }
-          attempt -= 1
-          continue
-        }
-        sendJson(response, 401, error.payload)
-        return
-      }
-      if (!(error instanceof RetryableUpstream)) throw error
-      lastFailure = error.message
-      pendingDelayMs = retryDelayMs(attempt)
-      if (typeof error.turnState === 'string' && error.turnState) codexTurnState = error.turnState
     }
-  }
-  throw new RequestError(502, `${family} upstream failed ${STREAM_ATTEMPTS} times: ${lastFailure}`)
+  }, {
+    // One forced refresh per request — the same shape CLIProxyAPI runs before
+    // falling back. No usable account or a failed refresh forwards the
+    // upstream's own 401 body unchanged.
+    refresh: async () => {
+      const source = typeof tokens?.sourceOf === 'function' ? tokens.sourceOf(session) : undefined
+      const next = source && typeof tokens.refreshNow === 'function'
+        ? await tokens.refreshNow(source.id, session.accessToken).catch(() => undefined)
+        : undefined
+      if (!next?.session) return false
+      session = next.session
+      baseHeaders = { ...baseHeaders, ...headersOf(session, cacheSessionId) }
+      return true
+    },
+  })
 }
 
 function upstreamErrorPayload(text, family, status) {
@@ -1104,23 +961,21 @@ function completionsUsageMapper(family, wire) {
  * proves it is producing output, so a break during the silent pre-output window
  * — the signature of the 2026-08-26 incident, where every failed stream carried
  * `response.created` and nothing else — can be retried without the client ever
- * seeing a truncated stream.
+ * seeing a truncated stream. Timing and retries belong to `upstreamRequest`.
  */
-async function attemptUpstream(response, { url, headers, body, stream, fetchFn, family, wire, upstreamIdleTimeoutMs, signal, fallbackStatuses }: any) {
-  let upstream
-  try {
-    upstream = await fetchFn(url, { method: 'POST', headers, body, signal })
-  } catch (error) {
-    if (signal.aborted) throw error
-    throw retryableUpstream(describeError(error), family)
+async function attemptUpstream(response, { url, headers, body, stream, fetchFn, family, wire, attempt, turn, classifyFailure }: any) {
+  const { signal } = attempt
+  const upstream = await fetchFn(url, { method: 'POST', headers, body, signal })
+  const transport = (message) => {
+    const state = family === 'codex' ? upstream.headers?.get?.('x-codex-turn-state')?.trim() : undefined
+    if (state) turn.state = state
+    return new UpstreamFailure(502, message, { code: 'transport' })
   }
 
   if (upstream.status >= 400) {
     const parsed = upstreamErrorPayload(await upstream.text(), family, upstream.status)
-    if (upstream.status === 401) throw new UnauthorizedUpstream(parsed)
-    if (fallbackStatuses?.has(upstream.status)) throw new GatewayUpstream(upstream.status, parsed)
-    sendJson(response, upstream.status, parsed, retryAfterResponseHeaders(upstream.headers))
-    return
+    throw classifyFailure?.(upstream.status, parsed)
+      ?? new UpstreamFailure(upstream.status, `${family} upstream ${upstream.status}`, { code: 'http', payload: parsed, ...retryAfterOf(upstream.headers) })
   }
 
   const mapUsage = completionsUsageMapper(family, wire)
@@ -1153,30 +1008,26 @@ async function attemptUpstream(response, { url, headers, body, stream, fetchFn, 
     }
   }
   // Codex/Grok Responses can open with handshake-only frames. Completions
-  // SSE has no `response.created` preamble — gating it waits 64KiB / 120s.
+  // SSE has no `response.created` preamble — gating it would wait for 64KiB.
   const gate = new CommitGate(response, upstream, stream === true && (family === 'codex' || family === 'grok'), emit, family)
   let lastByteAt = Date.now()
   const reader = upstream.body?.getReader()
   try {
     while (reader) {
-      const { done, value } = await withIdleTimeout(reader.read(), upstreamIdleTimeoutMs)
+      const { done, value } = await reader.read()
+      // A read that settles after a timer fired must not reach the client.
+      signal.throwIfAborted()
       if (done) break
+      attempt.touch()
       lastByteAt = Date.now()
       if (!(await gate.push(value, signal))) continue
       await emit(value)
     }
   } catch (error) {
     if (signal.aborted) throw error
-    const silent = Date.now() - lastByteAt
-    const detail = `${describeError(error)} (silent ${silent}ms, ${gate.bytes}B seen, committed=${gate.committed})`
-    if (gate.committed) {
-      // Ending cleanly here reaches llm-pi-ai as a finished SSE stream: it reports
-      // "stream ended before a terminal response event" and retries blind.
-      console.error(`[oauth-subs] ${family} upstream stream failed mid-response: ${detail}`)
-      response.destroy(error)
-      throw error
-    }
-    throw retryableUpstream(detail, family, upstream)
+    // Committed: upstreamRequest rethrows it and answerFailure destroys the
+    // response — a clean end reads as a finished SSE stream to llm-pi-ai.
+    throw transport(`${describeError(error)} (silent ${Date.now() - lastByteAt}ms, ${gate.bytes}B seen, committed=${gate.committed})`)
   } finally {
     await reader?.cancel().catch(() => {})
     reader?.releaseLock()
@@ -1187,7 +1038,7 @@ async function attemptUpstream(response, { url, headers, body, stream, fetchFn, 
     // nothing but `response.created`, and stopped. Any other shape is forwarded
     // as-is — an unrecognised body is the upstream's answer, not a fault.
     if (gate.gated && (gate.bytes === 0 || gate.sawPreamble)) {
-      throw retryableUpstream(`stream ended with no output events (${gate.bytes}B, silent ${Date.now() - lastByteAt}ms)`, family, upstream)
+      throw transport(`stream ended with no output events (${gate.bytes}B, silent ${Date.now() - lastByteAt}ms)`)
     }
     await gate.release(signal)
   }
@@ -1215,7 +1066,6 @@ class CommitGate {
   declare committed: boolean
   declare sawPreamble: boolean
   declare gated: boolean
-  declare deadline: number
   declare scanner: SseFrameScanner | null
 
   constructor(response, upstream, stream, emit, family) {
@@ -1229,7 +1079,6 @@ class CommitGate {
     this.committed = false
     this.sawPreamble = false
     this.gated = stream === true
-    this.deadline = Date.now() + COMMIT_DEADLINE_MS
     this.scanner = new SseFrameScanner()
   }
 
@@ -1254,7 +1103,7 @@ class CommitGate {
       console.error(`[oauth-subs] ${this.family} buffered ${this.bytes}B with no output event; committing without retry protection`)
       output = true
     }
-    if (output || this.unclassified > MAX_UNCLASSIFIED_BYTES || Date.now() > this.deadline) {
+    if (output || this.unclassified > MAX_UNCLASSIFIED_BYTES) {
       await this.#flush(signal)
     }
     return false

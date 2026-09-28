@@ -44,6 +44,10 @@ DSH POST /cline/v1/chat/completions
 `baseURL` 是 `${origin}/cline`。Completions SDK 打到 `/cline/v1/chat/completions`。
 `/cline/v1/responses` 明确 501：Cline 只有 Completions。
 
+每日免费额度耗尽是 HTTP 429 `{"code":"INFERENCE_CAP_ERROR","message":"Error 429: Daily free limit reached on model …"}`
+（2026-09-28 宿主会话实录）。原样转发时宿主归为 RATE_LIMIT、白重试 5 次；`clineQuotaFailure` 经 `forward()` 的
+`classifyFailure` 钩子改写成 429 `usage limit reached: <厂商原文>`，宿主归为 QUOTA_EXCEEDED、不重试。其余 429 仍原样转发。
+
 `reasoningEfforts` 键只有 `off|minimal|low|medium|high|xhigh|max`，值是 OpenAI `reasoning_effort`
 （`minimal|low|medium|high|xhigh`，`max`→`xhigh`；**没有 `off`**，见下）。
 

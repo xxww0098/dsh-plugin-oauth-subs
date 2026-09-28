@@ -64,7 +64,7 @@ const UNARY_HEADERS = Object.freeze({
 /**
  * Bounded replay for socket-level failures before any client byte commits —
  * the same contract the shared forward() loop gives the other families
- * (STREAM_ATTEMPTS / RETRY_BACKOFF_MS), which this Connect-RPC hop bypasses.
+ * (upstream.ts UPSTREAM_ATTEMPTS / RETRY_BACKOFF_MS), which this Connect-RPC hop bypasses.
  */
 const DEVIN_STREAM_ATTEMPTS = 3
 const DEVIN_RETRY_BACKOFF_MS = [1000, 4000]

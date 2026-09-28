@@ -1,6 +1,18 @@
 /** One refresh owner per stored login and credential version. */
 
 import { deleteSession, getStoredSession, updateAccountSession } from './store.js'
+import { RequestError } from '../utils/http.js'
+
+/**
+ * The login is missing or gone and only the user can fix it. 403, so the host
+ * classifies it AUTH and does not retry; the proxy answers by `status` alone.
+ */
+export class LoginRequiredError extends RequestError {
+  constructor(message: string) {
+    super(403, message)
+    this.name = 'LoginRequiredError'
+  }
+}
 
 /**
  * How long a transient refresh failure suppresses another attempt for the same
@@ -159,7 +171,7 @@ export class TokenManager {
 
   async account(id) {
     const source = await getStoredSession(this.provider, id, this.authPath)
-    if (!source) throw new Error(`${this.displayName} is not logged in`)
+    if (!source) throw new LoginRequiredError(`${this.displayName} is not logged in`)
     return this.#resolve(source, { force: false })
   }
 
@@ -274,7 +286,7 @@ export class TokenManager {
       // invalid_grant for a token another writer already rotated.
       const successor = removed ? undefined : await this.#successor(source)
       if (successor) return successor
-      throw new Error(`${this.displayName} login expired; sign in again`)
+      throw new LoginRequiredError(`${this.displayName} login expired; sign in again`)
     }
     this.failures.delete(source.version)
     // Version-guarded: a late result cannot revive a logged-out or replaced login.

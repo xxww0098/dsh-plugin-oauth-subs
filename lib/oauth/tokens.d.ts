@@ -1,4 +1,12 @@
 /** One refresh owner per stored login and credential version. */
+import { RequestError } from '../utils/http.js';
+/**
+ * The login is missing or gone and only the user can fix it. 403, so the host
+ * classifies it AUTH and does not retry; the proxy answers by `status` alone.
+ */
+export declare class LoginRequiredError extends RequestError {
+    constructor(message: string);
+}
 /**
  * How long a transient refresh failure suppresses another attempt for the same
  * credential version. Mirrors CLIProxyAPI's refreshFailureBackoff: without it,
