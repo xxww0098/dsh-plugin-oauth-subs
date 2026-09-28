@@ -16,7 +16,7 @@ Cursor 订阅（Composer / Claude / GPT / Grok via Cursor infra）。原生 wire
 | [`pkce-flow.ts`](pkce-flow.ts) | 打开 `loginDeepControl` + poll 直到 tokens |
 | [`import.ts`](import.ts) | 本机 CLI Keychain / IDE `state.vscdb` / `CURSOR_ACCESS_TOKEN` |
 | [`request.ts`](request.ts) | OpenAI Completions ↔ `AgentClientMessage` / `AgentServerMessage` |
-| [`cache.ts`](cache.ts) | `AgentRunRequest.conversation_id` + 稳定 turn id。禁止 `Date.now()` / 每次 `randomUUID()` |
+| [`cache.ts`](cache.ts) | `AgentRunRequest.conversation_id` + 稳定 user message id。禁止 `Date.now()` / 每次 `randomUUID()` |
 | [`proto.ts`](proto.ts) | 最小 protobuf + Connect framing（Run / GetUsableModels / AvailableModels） |
 | [`h2-session.ts`](h2-session.ts) | Node `http2` 进程内 RPC（unary + streaming），走池化会话、只关自己的流；`connectFn` 允许返回 Promise |
 | [`upstream-proxy.ts`](upstream-proxy.ts) | 可选上游代理：HTTP CONNECT / SOCKS5 隧道（区域锁出口） |
@@ -47,9 +47,15 @@ Run 握手必须按类型回帧，不能一律当原生工具拒绝：
 - `ExecServerMessage.request_context_args` → `RequestContextResult.success`（带 DSH 的 `McpToolDefinition`，即 `requestContextArgs.tools`）。回 `ExecClientThrow` 会让上游直接判 `Failed to get request context`，任何模型都跑不起来。
 - `kvServerMessage`：`getBlobArgs` 回 `getBlobResult`，`setBlobArgs` 回 `setBlobResult`（两者是不同的 oneof field）。
 - 原生 Cursor 工具（`shell_args` / `read_args` / `ls_args` / `write_args` / …）回**类型化 rejection**（`Tool not available in this environment. Use the MCP tools provided instead.`），模型据此回退到 DSH 的 MCP 工具；不要用 throw，否则整轮失败。
-- `mcp_args` → 把真实参数（`google.protobuf.Value` map）转成 OpenAI `tool_calls`，然后结束本轮 Run 交给 DSH 执行。
+- `mcp_args` → 把真实参数（`google.protobuf.Value` map）转成 OpenAI `tool_calls`。一步里的并行调用会一个接一个到（活测：0 / 0.8 / 1.3s），Run 到这一步的 **checkpoint**（服务端消息顶层 field 3，紧跟最后一个调用：单调用晚约 17ms，三个并行调用与第三个同时）才结束，交给 DSH 执行；checkpoint 不来时 3s 兜底（`toolBatchGraceMs`）。以前遇到第一个调用就结束，其余的丢了，每个并行调用多花一个 Run。
 
-工具结果续跑：Cursor 没有无状态的 tool-result action。下一轮把**完成轮**（user + MCP 调用 + result）写进 `conversationState`（`parseTurns` 只在还有未答复 toolCall 时才算 in-flight），并把工具输出作为**当前 user 消息**（`openaiToCursor` 的 `continuationText`）。只重发原 user 文本会让模型重复调用同一个工具。
+**历史是 JSON 消息，不是 protobuf turn。**活测（2026-09-29）：以前发的 protobuf `ConversationTurn` 历史被服务端忽略，第二轮不记得第一轮（口令都答不出来）；把整段对话按 AI-SDK JSON 消息（`system` / `user` / `assistant` / `tool`，`tool-call` / `tool-result` 的 `toolName` 是 `CallDynamicTool`，`args: { namespace: 'dsh', toolName, arguments }`）放进 `conversationState` 的 root blob（field 1）就记得了。当前这一轮的话走 action 的 user message。
+
+工具结果续跑：Cursor 没有无状态的 tool-result action。完整的 assistant tool-call 与 tool-result（并行调用合成一条 `tool` 消息，没答复的调用补一条 `Tool result unavailable` 的错误结果，因为每个调用都要有结果）都在 JSON 历史里，当前 user 消息是 **`Continue.`**。活测三种措辞：把原始结果当 user 话，模型回「你没提问」；把原问题再发一遍，模型重新调用工具；`Continue.` 才答对。
+
+图片：user 消息里 `data:image/{png,jpeg,gif,webp};base64,…` 变成 JSON 消息里的 `{ type: 'image', mimeType, image: { __type: 'Uint8Array', hex } }`，只有最近一条带图的 user 消息保留图片（每次 Run 都要重发）。活测红 / 蓝两张图都读对；`RunRequest` field 19 的 inline-images 标志（magpie 发）没它也行，没发。
+
+没做：把工具目录写进系统消息以省掉模型的 `get_mcp_tools` 探路步（magpie 做）——活测 3 对 3 平均只快约 0.8s，噪声与之相当，不值得改系统前缀。
 
 h2 会话按 (origin, 出口代理) 池化：`cursorH2Connect` 每键一个会话，并发拨号合并，close / GOAWAY / error / 60s 无帧即出池（空闲是优雅 `close()`，在途流跑完），会话 `unref()`，插件停止或配置变化时 `clearCursorH2Pool()` 清池。Run 与 unary 只拥有自己的流：结束、取消、unary 超时都 `stream.close(NGHTTP2_CANCEL)`（上游停止该流的工作），绝不 `destroy` 共享会话；调用方放弃后才落地的拨号照样入池，但不交给它。已结算后不再消费消息或写 KV 回复。预取消信号不建立连接。`onEvent` 的异步消费完成前暂停接收，SSE 背压沿调用链传回 Run。EOF 的 Connect 残帧必须报错。每次 Run 在 `upstreamRequest(...).run` 里执行：首字节 120s 覆盖 h2 拨号 + 第一个 DATA 帧，每帧 `touch()`；role 块随第一块内容才发，输出前的 Connect 错误帧按 `connectCodeStatus` 回 JSON（`unauthenticated`→401 先刷新一次再试，`resource_exhausted`→429，`invalid_argument`→400…），非 200 的 h2 头按原状态码回；都不在代理内重放，只重试传输故障。已输出后的异常直接断流（`destroy`），不写 SSE 错误块、不追加 DONE。见[故障记录](../../../docs/error.md)。
 
@@ -198,7 +204,7 @@ POST /aiserver.v1.AuthService/GetEmail                    {}
 
 - 从 Codex / Grok / GLM / Kiro / Antigravity 抄 cache helper
 - 对 `requestContextArgs` / KV set / 原生工具统一回 `ExecClientThrow`（任一都会让整轮 Run 失败）
-- 工具结果只重发原 user 文本、不把完成轮写进 `conversationState`（模型会重复调用同一工具）
+- 用 protobuf `ConversationTurn` 放历史（服务端不读，第二轮就失忆）；把原始工具结果或原问题当续跑的 user 话（模型说「你没提问」/ 重新调用工具）
 - 用 Responses 或 Anthropic 当 DSH `api`
 - 插件加载时静默收割 IDE / Keychain 覆盖已有 PKCE
 - 打印或提交 token

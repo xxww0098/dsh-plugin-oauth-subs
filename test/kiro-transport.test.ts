@@ -6,14 +6,14 @@ import { encodeKiroEventStream } from '../lib/oauth/kiro/request.js'
 const kiroSession = (accessToken = 'test-token') => ({ accessToken, region: 'us-east-1', authMethod: 'social' })
 const hello = (text = 'partial') => encodeKiroEventStream([{ type: 'assistantResponseEvent', payload: { content: text } }])
 
-async function post(t: TestContext, fetchFn, { stream = true, tokens = { session: async () => kiroSession() }, upstreamTimeouts = undefined }: any = {}) {
+async function post(t: TestContext, fetchFn, { stream = true, tokens = { session: async () => kiroSession() }, upstreamTimeouts = undefined, body = {} }: any = {}) {
   const proxy = createProxy({ port: 0, apiKey: 'local-test-key', tokens: { kiro: tokens }, fetchFn, upstreamTimeouts })
   const server = await proxy.listen()
   t.after(() => proxy.close())
   return fetch('http://127.0.0.1:' + server.address().port + '/kiro/v1/chat/completions', {
     method: 'POST',
     headers: { authorization: 'Bearer local-test-key', 'content-type': 'application/json' },
-    body: JSON.stringify({ model: 'deepseek-3.2', stream, messages: [{ role: 'user', content: 'read files' }] }),
+    body: JSON.stringify({ model: 'deepseek-3.2', stream, messages: [{ role: 'user', content: 'read files' }], ...body }),
   })
 }
 
@@ -31,6 +31,17 @@ function eventsOf(text: string) {
   return text.split('\n\n').filter(block => block.startsWith('data: ') && block !== 'data: [DONE]')
     .map(block => JSON.parse(block.slice(6)))
 }
+
+test('Kiro hop sends the picked effort in the model schema shape, only for a model whose catalog row has that ladder', async t => {
+  const { fetchFn, calls } = upstreamSequence(() => new Response(hello('ok')))
+  assert.equal((await post(t, fetchFn, { body: { model: 'claude-opus-5', reasoning_effort: 'max' } })).status, 200)
+  assert.deepEqual(JSON.parse(String(calls[0].body)).additionalModelRequestFields, { output_config: { effort: 'max' } })
+  // no ladder on the row (DeepSeek), or no pick: nothing extra goes out
+  assert.equal((await post(t, fetchFn, { body: { reasoning_effort: 'max' } })).status, 200)
+  assert.equal(JSON.parse(String(calls[1].body)).additionalModelRequestFields, undefined)
+  assert.equal((await post(t, fetchFn, { body: { model: 'claude-opus-5' } })).status, 200)
+  assert.equal(JSON.parse(String(calls[2].body)).additionalModelRequestFields, undefined)
+})
 
 test('Kiro stall before the first frame answers 504 without an SSE head', async t => {
   const { fetchFn, calls } = upstreamSequence(() => new Response(new ReadableStream({ start() {} })))

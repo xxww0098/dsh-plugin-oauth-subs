@@ -130,6 +130,20 @@ function kiroImagesOf(content) {
   return images
 }
 
+/**
+ * A picked effort rides `additionalModelRequestFields`, in the shape the
+ * model's own schema (List-Available-Models) names: Claude
+ * `output_config.effort`, GPT `reasoning.effort`. The schema is closed — a
+ * field or value it lacks is a 400 — and `efforts` is the ladder read from
+ * it, so only a value on that ladder goes out. Live 2026-09-29: Opus 5.5
+ * low → max cost 4.3x, GPT-5.6 Luna none → max 8x.
+ */
+export function kiroEffortFields(modelId, effort, efforts) {
+  const wire = trimmed(effort)
+  if (!wire || !efforts || typeof efforts !== 'object' || !Object.values(efforts).includes(wire)) return undefined
+  return /^gpt-/i.test(modelId) ? { reasoning: { effort: wire } } : { output_config: { effort: wire } }
+}
+
 /** Only the latest images go again, as Kiro's own agent (and magpie) do. */
 function keepLatestKiroImages(users) {
   let latest = -1
@@ -274,7 +288,7 @@ function parkKiroSystemExtra(history, extra, { modelId, origin, currentHasToolRe
  * current turn stays just the new user text. conversationId is the DSH
  * pin plus model — never Date.now().
  */
-export function openaiToKiro(payload, { conversationId, profileArn, origin = KIRO_CHAT_ORIGIN }: any = {}) {
+export function openaiToKiro(payload, { conversationId, profileArn, origin = KIRO_CHAT_ORIGIN, efforts }: any = {}) {
   const modelId = trimmed(payload?.model)
   if (!modelId) throw new Error('kiro generateAssistantResponse requires a model')
   const messages = relocateDisplacedToolResults(Array.isArray(payload?.messages) ? payload.messages : [])
@@ -381,6 +395,8 @@ export function openaiToKiro(payload, { conversationId, profileArn, origin = KIR
   }
   const arn = trimmed(profileArn)
   if (arn) body.profileArn = arn
+  const effortFields = kiroEffortFields(modelId, payload?.reasoning_effort, efforts)
+  if (effortFields) body.additionalModelRequestFields = effortFields
   return body
 }
 

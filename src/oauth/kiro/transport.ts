@@ -3,6 +3,7 @@
 import { sendJson } from '../../utils/http.js'
 import { UpstreamFailure, pumpBody, quotaFailure, upstreamRequest, writeSse } from '../upstream.js'
 import { forcedRefresh } from '../tokens.js'
+import { kiroCatalogModels } from './catalog.js'
 import { headerOf, kiroProfileArn } from './index.js'
 import {
   classifyKiroHopError,
@@ -63,6 +64,7 @@ async function attemptKiro(response, { payload, cacheSessionId, stream, session,
   const body = Buffer.from(JSON.stringify(openaiToKiro(payload, {
     conversationId: cacheSessionId,
     profileArn: kiroProfileArn(session),
+    efforts: kiroCatalogModels().find((model) => model.id === payload.model)?.reasoningEfforts,
   })))
   const upstream = await fetchFn(kiroChatUrl(session), { method: 'POST', headers: kiroChatHeaders(session), body, signal })
   if (upstream.status >= 400) {

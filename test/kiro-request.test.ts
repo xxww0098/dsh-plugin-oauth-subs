@@ -93,6 +93,19 @@ test('openai messages become conversationState with dotted modelId and pinned co
   assert.equal(second.conversationState.currentMessage.userInputMessage.content.includes('You are DSH.'), false)
 })
 
+test('a picked effort rides additionalModelRequestFields in the shape the model schema names; anything off the ladder is left out', () => {
+  // Live 2026-09-29: Opus 5.5 low → max cost 4.3x, GPT-5.6 Luna none → max 8x; a field the schema lacks is a 400.
+  const claude = { low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh', max: 'max' }
+  const gpt = { off: 'none', low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh', max: 'max' }
+  const ask = (model, effort, efforts) => openaiToKiro({ model, reasoning_effort: effort, messages: [{ role: 'user', content: 'hi' }] }, { efforts }).additionalModelRequestFields
+  assert.deepEqual(ask('claude-opus-5.5', 'max', claude), { output_config: { effort: 'max' } })
+  assert.deepEqual(ask('gpt-5.6-luna', 'none', gpt), { reasoning: { effort: 'none' } })
+  assert.equal(ask('claude-sonnet-4.6', 'xhigh', { low: 'low', medium: 'medium', high: 'high', max: 'max' }), undefined)
+  assert.equal(ask('claude-haiku-4.5', 'high', false), undefined)
+  assert.equal(ask('claude-opus-5.5', undefined, claude), undefined)
+  assert.equal(ask('claude-opus-5.5', 'max', undefined), undefined)
+})
+
 const PNG = 'data:image/png;base64,AAAA'
 const JPG = 'data:image/jpg;base64,BBBB'
 const image = (url) => ({ type: 'image_url', image_url: { url } })

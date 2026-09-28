@@ -1370,11 +1370,95 @@ test('cursor hop replays a completed tool turn and continues with the tool outpu
     tools: [{ type: 'function', function: { name: 'run_code', description: 'run', parameters: { type: 'object' } } }],
   })
   const decoded = decodeAgentClientMessage(built.requestBytes)
-  assert.equal(decoded.userText, '5')
-  assert.equal(built.userText, '5')
-  assert.equal(built.turns.length, 1)
-  assert.equal(built.turns[0].steps[0].kind, 'toolCall')
-  assert.equal(built.turns[0].steps[0].result.content, '5')
+  // Every call has its result in the history; the turn goes on with a nudge, not the raw result.
+  assert.equal(decoded.userText, 'Continue.')
+  assert.deepEqual(rootMessages(built, decoded).slice(1), [
+    { role: 'user', content: [{ type: 'text', text: 'add 2+3' }] },
+    { role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'call-1', toolName: 'CallDynamicTool', args: { namespace: 'dsh', toolName: 'run_code', arguments: { code: '2+3' } } }] },
+    { role: 'tool', content: [{ type: 'tool-result', toolCallId: 'call-1', toolName: 'CallDynamicTool', result: 5, experimental_content: [{ type: 'text', text: '5' }] }] },
+  ])
+  resetCursorSystemPins()
+})
+
+/** The state's root messages in order, read back through the blob store: what Cursor is shown as the conversation. */
+function rootMessages(built, decoded) {
+  return decoded.rootBlobIds.map((id) => JSON.parse(built.blobStore.get(id).toString('utf8')))
+}
+
+test('cursor hop sends earlier turns as JSON messages in the state, so a later turn knows them', () => {
+  // Live 2026-09-29: the protobuf turn history was ignored — turn 2 did not know turn 1's code word.
+  resetCursorSystemPins()
+  const built = openaiToCursor({
+    model: 'composer-2',
+    session_id: 'sess-history',
+    messages: [
+      { role: 'system', content: 'You are DSH.' },
+      { role: 'user', content: 'code word: PELICAN' },
+      { role: 'assistant', content: 'noted' },
+      { role: 'user', content: 'what was the code word?' },
+    ],
+  })
+  const decoded = decodeAgentClientMessage(built.requestBytes)
+  assert.equal(decoded.userText, 'what was the code word?')
+  assert.deepEqual(rootMessages(built, decoded), [
+    { role: 'system', content: 'You are DSH.' },
+    { role: 'user', content: [{ type: 'text', text: 'code word: PELICAN' }] },
+    { role: 'assistant', content: [{ type: 'text', text: 'noted' }] },
+  ])
+  resetCursorSystemPins()
+})
+
+test('cursor hop sends data: images as JSON image parts, the latest image-bearing turn only (live: red / blue read back)', () => {
+  resetCursorSystemPins()
+  const image = (url) => ({ type: 'image_url', image_url: { url } })
+  const older = 'data:image/png;base64,AAEC' // bytes 00 01 02
+  const latest = 'data:image/jpeg;base64,/9j/' // bytes ff d8 ff
+  const built = openaiToCursor({
+    model: 'composer-2',
+    session_id: 'sess-image',
+    messages: [
+      { role: 'user', content: [{ type: 'text', text: 'first picture' }, image(older)] },
+      { role: 'assistant', content: 'a bar' },
+      { role: 'user', content: [{ type: 'text', text: 'and this one?' }, image(latest), image('https://example.com/x.png')] },
+    ],
+  })
+  const decoded = decodeAgentClientMessage(built.requestBytes)
+  assert.equal(decoded.userText, 'and this one?')
+  assert.deepEqual(rootMessages(built, decoded), [
+    { role: 'user', content: [{ type: 'text', text: 'first picture' }] },
+    { role: 'assistant', content: [{ type: 'text', text: 'a bar' }] },
+    { role: 'user', content: [
+      { type: 'text', text: 'and this one?' },
+      { type: 'image', mimeType: 'image/jpeg', image: { __type: 'Uint8Array', hex: 'ffd8ff' } },
+    ] },
+  ])
+  resetCursorSystemPins()
+})
+
+test('cursor hop answers a tool call the caller never resolved, and batches parallel results into one tool message', () => {
+  resetCursorSystemPins()
+  const call = (id, name) => ({ id, type: 'function', function: { name, arguments: '{}' } })
+  const built = openaiToCursor({
+    model: 'composer-2',
+    session_id: 'sess-parallel',
+    messages: [
+      { role: 'user', content: 'go' },
+      { role: 'assistant', content: '', tool_calls: [call('a', 'one'), call('b', 'two'), call('c', 'three')] },
+      { role: 'tool', tool_call_id: 'a', content: 'first' },
+      { role: 'tool', tool_call_id: 'b', content: '{"n":2}' },
+      { role: 'user', content: 'never mind, next question' },
+    ],
+  })
+  const decoded = decodeAgentClientMessage(built.requestBytes)
+  assert.equal(decoded.userText, 'never mind, next question')
+  const messages = rootMessages(built, decoded)
+  assert.deepEqual(messages.map((message) => message.role), ['user', 'assistant', 'tool'])
+  const results = messages[2].content
+  assert.deepEqual(results.map((row) => [row.toolCallId, row.result, row.isError ?? false]), [
+    ['a', 'first', false],
+    ['b', { n: 2 }, false],
+    ['c', 'Tool result unavailable', true],
+  ])
   resetCursorSystemPins()
 })
 

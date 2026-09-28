@@ -46,16 +46,7 @@ export declare function encodeMcpTools(tools: any): Buffer<ArrayBuffer>;
  * reply is a present RequestContextSuccess.
  */
 export declare function encodeRequestContextResult({ id, execId, tools }?: any): Buffer<ArrayBuffer>;
-export declare function encodeConversationState({ rootPromptBlobs, turnBlobs, mode, clientName, }: any): Buffer<ArrayBuffer>;
-export declare function encodeConversationTurn({ userMessageBlob, stepBlobs, requestId }: any): Buffer<ArrayBuffer>;
-export declare function encodeAssistantStep(text: any): Buffer<ArrayBuffer>;
-export declare function encodeThinkingStep(text: any): Buffer<ArrayBuffer>;
-export declare function encodeMcpToolStep({ toolName, toolCallId, args, result }: {
-    toolName: any;
-    toolCallId: any;
-    args: any;
-    result: any;
-}): Buffer<ArrayBuffer>;
+export declare function encodeConversationState({ rootPromptBlobs, mode, clientName, }: any): Buffer<ArrayBuffer>;
 export declare function encodeAgentRunRequest({ conversationState, userMessage, requestedModel, conversationId, mcpTools, }: {
     conversationState: any;
     userMessage: any;
@@ -114,6 +105,8 @@ export declare function decodeAgentClientMessage(buf: any): {
     tools: never[];
     maxMode?: undefined;
     hasConversationState?: undefined;
+    /** Blob ids of the state's root messages, in order. */
+    rootBlobIds?: undefined;
     parameters?: undefined;
 } | {
     conversationId: any;
@@ -122,6 +115,8 @@ export declare function decodeAgentClientMessage(buf: any): {
     userText: any;
     tools: any;
     hasConversationState: boolean;
+    /** Blob ids of the state's root messages, in order. */
+    rootBlobIds: any;
     parameters: any;
 };
 export declare function decodeAgentServerMessage(buf: any): {

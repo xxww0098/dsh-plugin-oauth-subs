@@ -35,6 +35,20 @@ function turnEndedFrame() {
   return frameConnect(encodeMessage(1, encodeMessage(14, Buffer.alloc(0))))
 }
 
+/** Server message field 3 closes a model step: live it follows the last tool call of a batch (17ms after a lone call, with the last of three). */
+function stepCheckpointFrame() {
+  return frameConnect(encodeMessage(3, Buffer.alloc(0)))
+}
+
+function mcpCallFrame(name: string, id: string, args: Record<string, unknown> = {}) {
+  return frameConnect(encodeMessage(2, encodeMessage(11, Buffer.concat([
+    encodeString(1, name),
+    ...Object.entries(args).map(([key, value]) => encodeMessage(2, Buffer.concat([encodeString(1, key), encodeBytes(2, encodeProtoValue(value))]))),
+    encodeString(3, id),
+    encodeString(5, name),
+  ]))))
+}
+
 async function withH2Peer(run) {
   const server = http2.createServer()
   const peers = new Set<http2.ServerHttp2Session>()
@@ -450,13 +464,9 @@ test('Cursor Run answers requestContext and KV, then hands MCP calls to DSH', as
     const getResult = decodeFields(fieldBytes(getReply, 2)[0])
     assert.equal(fieldBytes(getResult, 1)[0].toString('utf8'), 'payload')
 
-    // An MCP exec is surfaced as an OpenAI tool call and ends the run.
-    peer.write(frameConnect(encodeMessage(2, encodeMessage(11, Buffer.concat([
-      encodeString(1, 'run_code'),
-      encodeMessage(2, Buffer.concat([encodeString(1, 'code'), encodeBytes(2, encodeProtoValue('2 + 3'))])),
-      encodeString(3, 'call-1'),
-      encodeString(5, 'run_code'),
-    ])))))
+    // An MCP exec is surfaced as an OpenAI tool call; the step's checkpoint ends the run.
+    peer.write(mcpCallFrame('run_code', 'call-1', { code: '2 + 3' }))
+    peer.write(stepCheckpointFrame())
     const result = await run
     assert.equal(result.collected.toolCalls.length, 1)
     assert.equal(result.collected.toolCalls[0].function.name, 'run_code')
@@ -464,7 +474,43 @@ test('Cursor Run answers requestContext and KV, then hands MCP calls to DSH', as
   })
 })
 
+test('Cursor Run collects every MCP call of a step and ends at the step checkpoint, not at the first call', async () => {
+  await withH2Peer(async ({ server, url, connectFn }) => {
+    const accepted = once(server, 'stream', { signal: AbortSignal.timeout(2000) })
+    const run = runCursorAgent(session, { requestBytes: Buffer.alloc(0), tools: [] }, { url, connectFn })
+    const [peer] = await accepted
+    peer.on('error', () => {})
+    peer.respond({ ':status': 200 })
+    let done = false
+    void run.then(() => { done = true }, () => { done = true })
+    peer.write(mcpCallFrame('get_weather', 'call-a', { city: 'Paris' }))
+    await new Promise((resolve) => setTimeout(resolve, 60))
+    assert.equal(done, false, 'the second call of the batch had not arrived yet')
+    peer.write(mcpCallFrame('get_time', 'call-b', { city: 'Tokyo' }))
+    peer.write(stepCheckpointFrame())
+    const { collected } = await run
+    assert.deepEqual(collected.toolCalls.map((call) => `${call.id} ${call.function.name} ${call.function.arguments}`), [
+      'call-a get_weather {"city":"Paris"}',
+      'call-b get_time {"city":"Tokyo"}',
+    ])
+  })
+})
+
+test('Cursor Run without a step checkpoint still hands over its MCP calls once the batch grace has passed', async () => {
+  await withH2Peer(async ({ server, url, connectFn }) => {
+    const accepted = once(server, 'stream', { signal: AbortSignal.timeout(2000) })
+    const run = runCursorAgent(session, { requestBytes: Buffer.alloc(0), tools: [] }, { url, connectFn, toolBatchGraceMs: 80 })
+    const [peer] = await accepted
+    peer.on('error', () => {})
+    peer.respond({ ':status': 200 })
+    peer.write(mcpCallFrame('get_weather', 'call-a', { city: 'Paris' }))
+    const { collected } = await run
+    assert.equal(collected.toolCalls.length, 1)
+  })
+})
+
 test('Cursor server messages expose MCP args and native exec cases', () => {
+  assert.equal(decodeAgentServerMessage(encodeMessage(3, Buffer.from([8, 1]))).kind, 'checkpoint')
   const mcp = encodeMessage(2, encodeMessage(11, Buffer.concat([
     encodeString(1, 'run_code'),
     encodeMessage(2, Buffer.concat([encodeString(1, 'code'), encodeBytes(2, encodeProtoValue('2 + 3'))])),

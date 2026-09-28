@@ -19,9 +19,8 @@ export declare function openaiToCursor(payload?: any, { conversationId }?: any):
     systemPrompt: any;
     pinnedSystem: any;
     extraSystem: string;
-    userText: any;
+    userText: string;
     tools: any[];
-    turns: any[];
     requestBytes: Buffer<ArrayBuffer>;
     blobStore: Map<any, any>;
     stream: boolean;

@@ -20,14 +20,5 @@ export declare function cursorUnaryRpc({ session, url, path, body, connectFn, si
 }): Promise<unknown>;
 export declare function fetchCursorUsableModels(session: any, { connectFn, signal, timeoutMs }?: any): Promise<any[]>;
 export declare function fetchCursorAvailableModels(session: any, { connectFn, signal, timeoutMs }?: any): Promise<any>;
-/**
- * Drive AgentService/Run. Answers the run handshake (request context), the
- * blob KV get/set, and per-case exec messages so a model turn can complete.
- * Native Cursor tools are rejected with typed results so the model falls back
- * to the MCP tools; MCP calls are handed to DSH, which owns execution.
- * `touch` runs once per DATA chunk (the attempt's first-byte / idle clock).
- * A Connect error or a non-200 head rejects with an `UpstreamFailure` carrying
- * its HTTP status; socket faults and truncation reject with a plain Error.
- */
-export declare function runCursorAgent(session: any, built: any, { signal, connectFn, url, onEvent, touch, }?: any): Promise<unknown>;
+export declare function runCursorAgent(session: any, built: any, { signal, connectFn, url, onEvent, touch, toolBatchGraceMs, }?: any): Promise<unknown>;
 export { CURSOR_AGENT_URL, CURSOR_RUN_PATH, splitConnectFrames };

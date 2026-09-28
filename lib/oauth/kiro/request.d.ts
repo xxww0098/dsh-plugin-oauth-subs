@@ -43,6 +43,25 @@ export declare function kiroChatHeaders(session: any): {
     'amz-sdk-request': string;
 };
 /**
+ * A picked effort rides `additionalModelRequestFields`, in the shape the
+ * model's own schema (List-Available-Models) names: Claude
+ * `output_config.effort`, GPT `reasoning.effort`. The schema is closed — a
+ * field or value it lacks is a 400 — and `efforts` is the ladder read from
+ * it, so only a value on that ladder goes out. Live 2026-09-29: Opus 5.5
+ * low → max cost 4.3x, GPT-5.6 Luna none → max 8x.
+ */
+export declare function kiroEffortFields(modelId: any, effort: any, efforts: any): {
+    reasoning: {
+        effort: string;
+    };
+    output_config?: undefined;
+} | {
+    output_config: {
+        effort: string;
+    };
+    reasoning?: undefined;
+} | undefined;
+/**
  * IDs Kiro already accepts stay (after the existing call_/toolu_/tool_
  * → tooluse_ prefix). Compound OpenAI Responses ids (`call_…|fc_…`,
  * over 64 chars) get a stable sha256 remap so the matching tool_result
@@ -63,7 +82,7 @@ export declare function relocateDisplacedToolResults(messages: any): any;
  * current turn stays just the new user text. conversationId is the DSH
  * pin plus model — never Date.now().
  */
-export declare function openaiToKiro(payload: any, { conversationId, profileArn, origin }?: any): any;
+export declare function openaiToKiro(payload: any, { conversationId, profileArn, origin, efforts }?: any): any;
 export declare class KiroEventStreamParser {
     buf: Buffer;
     constructor();

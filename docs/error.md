@@ -18,7 +18,7 @@
 
 **现象**：Kiro 回复撞输出上限后流被销毁，宿主按 TRANSPORT 重试，重试的同一请求又撞上限。
 **根因**：流内 `ContentLengthExceededException` 帧一律走 502 异常分支；kiro.rs 把它读作 stop_reason `max_tokens`，此前的文本是好的。
-**修复**：该帧记为 `capped`，流式与非流式都以 `finish_reason: length` 收尾并保留文本。回归 `test/kiro-transport.test.ts`。帧形态来自 kiro.rs，未用活账号验证。
+**修复**：该帧记为 `capped`，流式与非流式都以 `finish_reason: length` 收尾并保留文本。回归 `test/kiro-transport.test.ts`。帧形态来自 kiro.rs；活测（2026-09-29）用 `max_tokens: 1024` 逼出上限，流是静默结束的、没有这个帧，所以这种截断分辨不出来，此处只处理真的收到帧的情形。
 
 ## 2026-09-29：Codex `promax` 套餐显示成「Promax」
 
@@ -26,23 +26,47 @@
 **根因**：`CODEX_PLAN_NAMES` 没有这个 slug，回落到首字母大写。
 **修复**：`promax` / `pro_max` / `chatgpt_promax` / `chatgpt_pro_max` → `Pro Max`，倍数官方没公布，不写。官方把 `pro` / `prolite` 的显示名改成了 Pro (More) / Pro，我们保留 20x / 5x，没跟。
 
+## 2026-09-29：Cursor 第二轮起失忆：历史用 protobuf turn 发，服务端不读
+
+**现象**：Cursor 家族第二轮问「刚才的口令是什么」答「对话里没有口令」；工具调用后接着问，模型说「你没提问」或重新调用工具。
+**根因**：`openaiToCursor` 把历史编成 protobuf `ConversationTurn`（pi-cursor 的做法），当前服务端只读 `conversationState` root blob 里的 AI-SDK JSON 消息（magpie 的做法）。活测：同样两轮，JSON 历史下答对口令。
+**修复**：整段对话按 JSON 消息放进 root blob（并行调用合成一条 `tool` 消息，没答复的调用补错误结果），续跑的 user 话是 `Continue.`（活测：原始结果当 user 话→「你没提问」，重发原问题→重新调用工具）；删掉不再用的 protobuf turn 编码。图片同路：`data:` 图变 JSON image 部分（活测红 / 蓝读对）。回归 `test/cursor.test.ts`。
+
+## 2026-09-29：Cursor 并行 tool call 只拿到第一个，其余丢了
+
+**现象**：模型一步里发多个调用（比如同时读几个文件），DSH 每轮只收到一个，每个多花一个 Run。
+**根因**：`runCursorAgent` 见到第一个 MCP exec 就 `finish()`。活测：三个并行调用分别在 0 / 0.8 / 1.3s 到，step 的 checkpoint（服务端消息顶层 field 3）与最后一个同时到，单调用只晚约 17ms。
+**修复**：Run 收齐调用直到 checkpoint，3s 兜底（`toolBatchGraceMs`）。端到端活测：一轮拿到两个调用，下一轮带两个结果，答对。回归 `test/cursor-transport.test.ts`。
+
+## 2026-09-29：Kiro 里选的 effort 档位是空操作，模型一直跑 schema 默认档
+
+**现象**：DSH 里给 Kiro 模型选 low / max 没有任何区别；GPT-5.6 默认 high，想用 none 省额度省不了。
+**根因**：目录行有档位（从模型 schema 读出），但请求转换丢掉 `reasoning_effort`，从没发 `additionalModelRequestFields`。活测该字段有效（Opus 5.5 low→max 花费 4.3×，GPT-5.6 Luna none→max 8×），形状错了会 400。
+**修复**：`openaiToKiro` 按 schema 的形状发（Claude `output_config.effort`，GPT `reasoning.effort`），只对目录行有该档位且取值在档位内的模型发。回归 `test/kiro-request.test.ts` / `test/kiro-transport.test.ts`。
+
+## 2026-09-29：`npm run analyze` 里 Kiro 命中率恒为 0.0% 是测不到，不是没命中
+
+**现象**：分析器显示 Kiro 7 天 618 次调用、83M prompt token，命中 0.0%。
+**根因**：Kiro 的流里没有 `metadataEvent`（没有 `cacheReadInputTokens`），用量靠估算；服务端其实缓存相同前缀。活测：同一约 15K token 前缀连发三次，Haiku 0.0364 → 0.0193 credit、Sonnet 0.118 → 0.063（省约一半）。
+**修复**：没有代码改动，结论记进 `kiro/README.md`；看 Kiro 的缓存效果别看分析器的命中率。
+
 ## 2026-09-29：对照 magpie（yetone/magpie）审网关 / 账号 / 额度 / hop——采纳一批小改，多账号故障转移与冷却维持不学
 
 **现象**：没有单一现象；对照出的缺口分散在下面同日各条里（冷读额度串行、状态文件非原子写、CI 与自更新都不验 `lib/`、导入登录被重登继承、Copilot 目录含 `/responses`-only 行、Kiro 丢图片、Kiro 超长提示宿主不压缩、Kiro 输出撞上限当失败）。
 **根因**：这些是我们没有、magpie 有明确处理的地方；magpie 的头号特性（网关内多账号故障转移 / 冷却 / 按缓存亲和选号 / 自动接受 Copilot 条款）不采纳，理由分别是 `specs/request-path-upgrades/choices.md` 决定 5、不替用户接受厂商条款；它对 Claude 的做法（计费头 + 请求体哈希冒充，后改为驱动本机 `claude`）随 Claude 家族下架不再相关。
-**修复**：见各条。**待活测才能动的线索**（不凭对照改）：Cursor 丢图片入参、Kiro effort 未上线、Chat 流 `finish_reason: other` 被 pi-ai 当错误（本机 7 天见 1 次，语义含糊，没改）、Codex / Grok 换号后重放他号封存的 reasoning、Cursor 并行 tool call 每个占一次 Run、Cursor 团队区域 401 应为 403、Grok 客户端版本 `0.2.93` 对官方 `1.0.41`、Codex 重置额度未指明 `credit_id`、额度快照不落盘。
+**修复**：见各条。**活测后的结论**（2026-09-29，desktop 账号，只读或极小请求）：Kiro effort、Cursor 并行 tool call / 图片 / 历史已修（见各条）；Grok 版本头**没有门槛**（`0.2.93`、`1.0.41`、远古版本、不带头都是 200），不改；Grok 两个账号之间重放封存 reasoning **没有被拒**，不改。**仍没测**：Codex 重置额度的 `credit_id`（列表里有 `id`，但消耗会花掉真实额度）、Chat 流 `finish_reason: other`（造不出来）、Cursor 团队区域 401→403、Kiro 按 profile ARN 推导区域（本机 IdC 账号区域一致）、额度快照落盘（等 WIP）。
 
 ## 2026-09-29：Kiro 目录声明支持图片，请求里却只留文本，图片被静默丢掉
 
 **现象**：用默认模型 Kiro `claude-opus-5.5`（目录 `input: [text, image]`）读图 / 贴截图，模型像没看到图一样回答，没有任何报错。
 **根因**：`openaiToKiro` 的 `flattenContent` 只取 `type === 'text'` 的部分，`image_url` 一律丢弃。
-**修复**：`data:` 图片按 kiro.rs `KiroImage` / magpie `buildKiro` 的线格发成 `userInputMessage.images`，只保留最近一条带图的 user 消息，远程 URL 与非 png/jpeg/gif/webp 不发。回归 `test/kiro-request.test.ts`。**未用活账号验证线格**；Cursor 有同样的丢图，线格更复杂，仍待活测。
+**修复**：`data:` 图片按 kiro.rs `KiroImage` / magpie `buildKiro` 的线格发成 `userInputMessage.images`，只保留最近一条带图的 user 消息，远程 URL 与非 png/jpeg/gif/webp 不发。回归 `test/kiro-request.test.ts`。2026-09-29 IdC 账号活测 haiku 4.5，红 / 蓝两张图都读对。Cursor 的同类丢图见上面 Cursor 条目，已修。
 
 ## 2026-09-29：Kiro「Input is too long」宿主认不出是上下文溢出，不会压缩，整轮失败
 
 **现象**：Kiro 会话超过真实上下文后，宿主直接报 INVALID_REQUEST，不自动压缩（只有 `CONTEXT_WINDOW_EXCEEDED` 才触发压缩后继续）。
 **根因**：pi-ai 适配器用 `isContextOverflow` + `isContextWindowExceededError` 按措辞判定；Kiro 原文 `Input is too long.` 两套都不匹配（Bedrock 那条要 `for requested model`）。
-**修复**：`kiroClientErrorBody` 对 `kiro_too_big` 加前缀 `input is too long for the model's context window: `，状态码仍是 400/413。回归 `test/kiro.test.ts`（内嵌宿主正则原文）。对照 magpie `kiroFailure`。
+**修复**：`kiroClientErrorBody` 对 `kiro_too_big` 加前缀 `input is too long for the model's context window: `，状态码仍是 400/413。回归 `test/kiro.test.ts`（内嵌宿主正则原文）。对照 magpie `kiroFailure`。活测（2026-09-29）：Kiro 对超长输入真的回 HTTP 400 `ValidationException`、`Input is too long.`、`reason: CONTENT_LENGTH_EXCEEDS_THRESHOLD`，分类与措辞都对上（拒绝耗时 19s，400 万字符 89s）。
 
 ## 2026-09-29：导入的 Codex 登录改用浏览器重登后，账号仍被当成导入登录（只读，终会再变陈旧）
 
