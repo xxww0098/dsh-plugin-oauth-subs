@@ -166,3 +166,17 @@ spec 没写到、由实施者自己拍板的决定。每条：决定 → 理由 
 - **`content-encoding` 放在 `baseHeaders`**，401 刷新重组请求头时不丢。→ sound。
 - **测试加 `upstreamText(init)` 帮手解压**，而不是逐条改旧断言。→ sound。
 - 活测：41307 B → 9722 B（23.5%）；流式 200；非流式两次都是模型 400（后端已解压并读出 `model`，不是编码被拒）。**非流式成功路径未验证**（3 次额度已用完）。→ provisional：下一次有额度时补 1 次非流式。
+
+## 07
+
+- **钩子是 `TokenManager` 构造参数 `imported: { is, reread, cli }`**，每家族在自己的读取器里导出，controller 只负责传入。→ sound。
+- **stale 文案里的 CLI 名**：`codex`、`cursor-agent (or open Cursor)`、`cline`、`kimi`、`claude`；家族名取 manager 的 `displayName`。→ sound。
+- **重读只覆盖令牌字段**（`accessToken`、`refreshToken`、`idToken`、`expiresAt`），账号标签和补全过的身份保留。→ sound。
+- **Codex 导入的过期时间改取 access token JWT 的 `exp`**：旧的 `last_refresh + 1h` 会让一个还有 10 天的 token 看起来临期，每个请求都重读。→ sound。
+- **Cursor 导入只有过期本地 token 时抛 `ImportedLoginStale`**（原为「本机没有登录」）；自动导入仍静默吞掉。→ sound。
+- **删掉 Kimi 刷新后保留 `source: 'cli'` 的 PKCE 回退**（`cli` 会话不再走换票）。→ sound。
+- **重读不校验 CLI 里还是不是同一个账号**：用户在 CLI 里换了号，存储行会用旧 id 承接新 token。→ provisional：罕见；出现问题再按账号 id 校验。
+- **重读到的仍在预取窗口内的 token 会被采用**；集成审查补上「同一版本 10s 内最多重读一次」，否则 Cursor Keychain 登录每个请求 spawn 一次 `security`。→ sound。
+- **Anthropic 从维护者 WIP 移植到钩子**：`isAnthropicImportedSource`、`rereadAnthropicImport`（读记录的 Keychain service 或 `.credentials.json`，不换票不写）、`importAnthropicAuth` 在会话上写 `source`；与 WIP 的差异：错误是 `ImportedLoginStale`（403）而不是带 `anthropic-import-stale` 码的普通错误，重读只覆盖令牌字段，未移植 `ANTHROPIC_IMPORT_LOCKED`（锁住的 Keychain 在本分支读作无登录 → stale）。→ provisional（user）：WIP 落地时删掉 `#refreshAnthropic` / `#importAnthropic`，保留 `refresh: refreshAnthropic` + `imported: anthropicImported`。
+- **轮换证据（厂商源码）**：Codex、Cline、Kimi、Anthropic 轮换；**Cursor 不轮换**（`cursor-agent` 无 refresh_token grant，IDE 把同一 JWT 同时存为 access 和 refresh）。按决定 4 仍全部只读；Cursor 是唯一可按 spec 放开的家族。→ provisional（user）。
+- **检查点证据（不阻塞，已告知用户）**：本机 Cline `cli` 登录今天 07:29 过期，而 `~/.cline` 里的 token 09-26 就过期了——说明插件一直在替 CLI 换票；合入后 Cline 会报 stale，大概率需要重新登录 Cline CLI 或改用浏览器登录（决定 4 的预期代价）。Claude Code 的 Keychain token 当前也已过期。
