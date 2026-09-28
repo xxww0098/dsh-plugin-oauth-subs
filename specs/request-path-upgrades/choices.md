@@ -141,3 +141,28 @@ spec 没写到、由实施者自己拍板的决定。每条：决定 → 理由 
   - 代理路径上的任何非中止失败都显示为「出站代理不可用」，包括经健康代理访问某个上游时的 DNS/TLS 错误（02a 的设计取舍：宁可多报）。→ sound。
   - 保活 60s 后，若上游在 60s 内静默关闭空闲连接，非对话 POST（刷新、登录换码、额度）不会被重试，只会一次性失败后进退避。→ provisional：按 11 的规则由 15 看 ECONNRESET 计数。
   - `assertPersistedProviders` 严格比对 `cacheRetention`：若宿主读回时丢掉/默认化该字段，每次 sync 都会抛错。→ provisional：08 合入主干后的活测验证。
+
+## 05（a/b/c/e）
+
+- **401 刷新钩子收成一个 `forcedRefresh(tokens, session)`（`tokens.ts`）**：05a/b/c/e 并行时各在传输层抄了一份 `forward()` 的闭包，集成时合并成一个。→ sound。
+- **Connect 错误码算上游回答，不算传输故障**：原样转发一次、不重放，包括 `unavailable`→503（决定 5，宿主自己重试 5xx）。→ sound。
+- **没有已知额度谓词的家族（Antigravity、Devin、Cursor）不改写 429**，`resource_exhausted` 就是普通 429（「不猜」）。→ sound。
+- **Connect 错误一律带码记日志**（`[oauth-subs] <family> Connect error: <code: message>`），为「Connect 错误帧到底带哪些 code」这个已知未知收集证据。→ sound。
+- **Kiro：401/403 以 401 进入 `run` 触发刷新，刷新后仍被拒就在 `forwardKiro` 改回 400**（不动 `upstream.ts` 的「只在 401 刷新」）。→ sound。
+- **Kiro：输出前的解析错误（坏帧、EOF 截断、非流式正文截断、缺正文）都按传输故障重试**；流内异常帧仍 502、非流式异常 400；额度回复 `{error: "usage limit reached: …"}`，不带 `retry-after`。→ sound。
+- **Antigravity：EOF 没有 `finishReason` 算截断**（输出前重试、输出后 destroy），活测确认 Cloud Code 总会发最后的 `finishReason`；`body.error` 的守卫放在 `collectAntigravityParts` 一处，覆盖流式/非流式/分块三条映射。→ sound。
+- **Antigravity：状态码优先取 Google `error.code`（400–599），否则把 RPC status 名小写后走 `connectCodeStatus`**。→ sound。
+- **Devin：`connectTrailerError` 改返回 `{ code, message }`；会话里缺 token 抛 `RequestError(401)`（不被当传输故障重试）；聊天错误上删掉 `permanent`，只留 `GetUserStatus` 路径上的**（这也解决了 06 账本里「Devin 聊天路径 `permanent` 无人读」那条）。→ sound。
+- **Devin 也接上 401 刷新钩子**：会话 token 不轮换，本地过期前等于用同一 token 再试一次。→ sound（共同契约要求，代价一次请求）。
+- **Cursor：非 200 的 h2 响应头按自己的状态转发**（取最多 4 KiB 正文作消息）；以前会被误读成 Connect 帧，HTTP 级 401 永远到不了刷新钩子。→ sound。
+- **Cursor：错误 JSON 形如 `{ error: { message, code: <connect code> } }`；mapper 每次尝试重建**，重试不带失败尝试的 usage。→ sound。
+- **Cursor：删掉 `runCursorAgent` 里错误消息的 `onEvent` 调用和 `forwardCursor` 的 `collected.error` 分支**，错误只以 rejection 传递。→ sound。
+- **「输出后改 destroy 导致宿主重试出现重复文本」的检查点未做**：需真实宿主。→ provisional（user）：合入主干后观察。
+- **05d（Command Code）未做**：源码只在维护者 WIP 里。→ provisional（user）：WIP 落地后补。
+
+## 13
+
+- **默认压缩级别，不设最小体积门槛**：一条代码路径；15 若见 codex ttfb 变差再加门槛。→ sound。
+- **`content-encoding` 放在 `baseHeaders`**，401 刷新重组请求头时不丢。→ sound。
+- **测试加 `upstreamText(init)` 帮手解压**，而不是逐条改旧断言。→ sound。
+- 活测：41307 B → 9722 B（23.5%）；流式 200；非流式两次都是模型 400（后端已解压并读出 `model`，不是编码被拒）。**非流式成功路径未验证**（3 次额度已用完）。→ provisional：下一次有额度时补 1 次非流式。

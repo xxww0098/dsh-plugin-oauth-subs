@@ -6,7 +6,7 @@
 ## Next Agent Prompt
 
 **状态（2026-09-28）**：实施中，在集成分支 `rpu/integration`（worktree
-`/Users/xxww/Code/REPO/rpu/integration`）上推进。已合入：01、02a、02b、03、04、06、08、09、10、11、14。进行中（W4）：05a、05b、05c、05e、07、13。
+`/Users/xxww/Code/REPO/rpu/integration`）上推进。已合入：01、02a、02b、03、04、05a、05b、05c、05e、06、08、09、10、11、13、14。进行中：07、12。
 
 **先决条件的处理**：维护者的 WIP（约 60 个文件）仍未提交，用户指示继续。各 slice 从
 48b78b8 + spec 提交分支，只合进 `rpu/integration`，**不碰 `main`**；WIP 落地后由维护者
@@ -15,7 +15,7 @@
 
 **你接下来要做的**：
 1. 读本 README、[`choices.md`](choices.md)、下一个 slice 文件和仓库根的 `AGENTS.md`。
-2. 下一个 pickup：W4 合入后开 W5（12←05e）。05d 等 WIP。每个 slice 一个 worktree
+2. 下一个 pickup：07、12 合入后做整 spec 审查；05d 与所有「需要真实宿主」的检查等 WIP 落地、合入主干后做（清单见下）。每个 slice 一个 worktree
    `/Users/xxww/Code/REPO/rpu/<slice>`，从 `rpu/integration` 分支，`npm ci`。
 3. 每轮结束前更新本节与 `choices.md`。
 
@@ -32,7 +32,7 @@
 - [x] 02b 出站 HTTP 单一所有者 → [slices/02](slices/02-outbound-owner.md)
 - [x] 03 Responses 提交闸门按帧分类 → [slices/03](slices/03-responses-gate.md)
 - [x] 04 上游尝试原语 + `forward()` → [slices/04](slices/04-upstream-attempt.md)
-- [ ] 05a–e 自定义传输层迁到原语 → [slices/05](slices/05-custom-transports.md)
+- [ ] 05a–e 自定义传输层迁到原语（a/b/c/e 已合入；05d 等 WIP） → [slices/05](slices/05-custom-transports.md)
 - [x] 06 令牌生命周期核心 → [slices/06](slices/06-token-core.md)
 - [ ] 07 导入登录只读 → [slices/07](slices/07-imported-logins.md)
 - [x] 08 Completions 会话 id 接通 → [slices/08](slices/08-conversation-id.md)
@@ -40,7 +40,7 @@
 - [x] 10 Antigravity 签名表 LRU → [slices/10](slices/10-antigravity-signatures.md)
 - [x] 11 keep-alive 60s → [slices/11](slices/11-keepalive.md)
 - [ ] 12 Cursor HTTP/2 连接池 → [slices/12](slices/12-cursor-h2-pool.md)
-- [ ] 13 Codex 请求体 zstd → [slices/13](slices/13-codex-zstd.md)
+- [x] 13 Codex 请求体 zstd → [slices/13](slices/13-codex-zstd.md)
 - [x] 14 设置页轮询与额度 TTL → [slices/14](slices/14-settings-polling.md)
 - [ ] 15 收尾复测（合入后 ≥7 天）→ [slices/15](slices/15-closeout.md)
 
