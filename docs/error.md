@@ -2,6 +2,13 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-28：Codex/Grok 提交闸门在真实流上从不生效，「只有前导就断流」照样漏到客户端
+
+**现象**：08-26 事故签名（只收到 `response.created` 就断流）本应在代理内重试，但真实流上闸门第一个 chunk 就提交响应头；`specs/request-path-upgrades/assets/repro/gate-frames.mjs` 旧版对 `response.created` 打印 `output true`。
+**根因**：`hasOutputEvent` 用正则扫缓冲文本里任意 `"type"`，`response.created` 回显的 `text.format.type` / `tools[].type` 被当成输出；前导回显约 128KB `instructions`，单凭字节也会超 64KiB 上限提交。
+**修复**：新纯模块 `src/oauth/responses-sse.ts`：`classifySseFrame` 只看完整帧的 `event:` 行（没有则 `data` 顶层 `type`），`SseFrameScanner` 按 latin1 保存未完成帧尾（字节精确、UTF-8 切断无害）。`CommitGate` 第一个 output 帧才提交；前导字节不计 64KiB，只计无法分类的帧；缓冲超 2 MiB 放行提交并 `console.error` 一行。删 `EVENT_TYPE` / `hasOutputEvent` / `hasPreambleEvent`。
+**活测（2026-09-28，宿主 Node v24.21.0）**：worktree `lib/` 的 `createProxy` 各发 1 次极小流式请求，未刷新。Codex（gpt-5.6-luna）与 Grok（grok-4.7）前导都只有 `response.created` + `response.in_progress`（各带 `event:` 行），第一个输出都是 `response.output_item.added`；没有新前导类型，本次 Codex 未出现 `codex.rate_limits`。前导实测 2950B / 2034B（提示极小，DSH 真实前导约 2×128KB，远低于 2 MiB）。脱敏夹具 `test/fixtures/{codex,grok}-preamble.sse` 的 `instructions` 刻意补到 200 KiB。
+
 ## 2026-09-28：配了出站代理，Cursor 目录 / h2 对话和未穿线的调用点仍直连
 
 **现象**：设了出站代理（设置页 / `proxyUrl` / `HTTPS_PROXY`）后，Cursor `GetUsableModels` / Run 仍从本机出口发出（区域锁家族照样被拒）；任何没被传 `fetchFn` 的调用点也悄悄直连。

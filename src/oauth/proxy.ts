@@ -54,6 +54,7 @@ import { applyAnthropicCache } from './anthropic/cache.js'
 import { normalizeAnthropicMessagesBody } from './anthropic/request.js'
 import { withPickerVariants } from './models.js'
 import { outboundFetch } from '../utils/outbound.js'
+import { SseFrameScanner } from './responses-sse.js'
 
 export const MAX_REQUEST_BODY_BYTES = 64 * 1024 * 1024
 /** Upstream attempts before the client is told the stream failed. */
@@ -66,21 +67,13 @@ const RETRY_BACKOFF_MS = [1000, 4000]
  */
 const RETRY_JITTER = 0.25
 
+/** Unclassifiable bytes a gated stream may buffer before committing anyway. */
+const MAX_UNCLASSIFIED_BYTES = 64 * 1024
 /**
- * SSE events that carry no output, so a stream ending here is worth retrying.
- * The `codex.*` frames are handshake metadata; the allow-list mirrors
- * CLIProxyAPI's `isCodexHandshakeMetadataEvent`, which solves the same problem
- * against the same backend.
+ * Everything a gated stream may buffer. Past this the gate commits without
+ * retry protection rather than kill a legitimate response.
  */
-const PREAMBLE_EVENT_TYPES = new Set([
-  'response.created',
-  'response.in_progress',
-  'response.queued',
-  'codex.rate_limits',
-  'codex.response.metadata',
-])
-const MAX_PREAMBLE_BYTES = 64 * 1024
-const EVENT_TYPE = /"type"\s*:\s*"([^"]+)"/g
+const MAX_GATE_BUFFER_BYTES = 2 * 1024 * 1024
 /** Commit anyway rather than risk the client's own header timeout. */
 const COMMIT_DEADLINE_MS = 120_000
 
@@ -1151,7 +1144,7 @@ async function attemptUpstream(response, { url, headers, body, stream, fetchFn, 
   }
   // Codex/Grok Responses can open with handshake-only frames. Completions
   // SSE has no `response.created` preamble — gating it waits 64KiB / 120s.
-  const gate = new CommitGate(response, upstream, stream === true && (family === 'codex' || family === 'grok'), emit)
+  const gate = new CommitGate(response, upstream, stream === true && (family === 'codex' || family === 'grok'), emit, family)
   let lastByteAt = Date.now()
   const reader = upstream.body?.getReader()
   try {
@@ -1205,25 +1198,29 @@ class CommitGate {
   declare response: any
   declare upstream: any
   declare emit: any
+  declare family: string
   declare buffered: Buffer[]
   declare bytes: number
+  declare unclassified: number
   declare committed: boolean
   declare sawPreamble: boolean
   declare gated: boolean
   declare deadline: number
-  declare text: string
+  declare scanner: SseFrameScanner | null
 
-  constructor(response, upstream, stream, emit) {
+  constructor(response, upstream, stream, emit, family) {
     this.response = response
     this.upstream = upstream
     this.emit = emit
+    this.family = family
     this.buffered = []
     this.bytes = 0
+    this.unclassified = 0
     this.committed = false
     this.sawPreamble = false
     this.gated = stream === true
     this.deadline = Date.now() + COMMIT_DEADLINE_MS
-    this.text = ''
+    this.scanner = new SseFrameScanner()
   }
 
   /** Returns true once the caller should write `chunk` through itself. */
@@ -1235,10 +1232,19 @@ class CommitGate {
     }
     this.buffered.push(chunk)
     this.bytes += chunk.length
-    // Byte-exact and stateless: the scan only ever matches ASCII.
-    this.text += Buffer.from(chunk).toString('latin1')
-    if (!this.sawPreamble) this.sawPreamble = hasPreambleEvent(this.text)
-    if (this.bytes > MAX_PREAMBLE_BYTES || Date.now() > this.deadline || hasOutputEvent(this.text)) {
+    // Preamble frames echo the whole request prompt (~128KB for DSH), so only
+    // bytes that are neither preamble nor output count toward the cap.
+    let output = false
+    for (const frame of this.scanner!.push(chunk)) {
+      if (frame.kind === 'output') output = true
+      else if (frame.kind === 'preamble') this.sawPreamble = true
+      else this.unclassified += frame.bytes
+    }
+    if (!output && this.bytes > MAX_GATE_BUFFER_BYTES) {
+      console.error(`[oauth-subs] ${this.family} buffered ${this.bytes}B with no output event; committing without retry protection`)
+      output = true
+    }
+    if (output || this.unclassified > MAX_UNCLASSIFIED_BYTES || Date.now() > this.deadline) {
       await this.#flush(signal)
     }
     return false
@@ -1262,7 +1268,7 @@ class CommitGate {
     })
     for (const chunk of this.buffered) await emit(chunk)
     this.buffered = []
-    this.text = ''
+    this.scanner = null
   }
 }
 
@@ -1334,23 +1340,4 @@ function forwardedHeaders(upstreamHeaders) {
     headers[key] = value
   })
   return headers
-}
-
-/**
- * True once the buffered SSE text carries an event beyond the preamble. Any
- * terminal or error event counts, so a genuine `response.failed` commits and
- * reaches the client instead of being retried.
- */
-export function hasPreambleEvent(text) {
-  for (const match of text.matchAll(EVENT_TYPE)) {
-    if (PREAMBLE_EVENT_TYPES.has(match[1])) return true
-  }
-  return false
-}
-
-export function hasOutputEvent(text) {
-  for (const match of text.matchAll(EVENT_TYPE)) {
-    if (!PREAMBLE_EVENT_TYPES.has(match[1])) return true
-  }
-  return false
 }

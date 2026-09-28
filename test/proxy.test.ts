@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { request as httpRequest } from 'node:http'
 import { test } from 'node:test'
-import { createProxy, describeError, hasOutputEvent, retryDelayMs, STREAM_ATTEMPTS } from '../lib/oauth/proxy.js'
+import { createProxy, describeError, retryDelayMs, STREAM_ATTEMPTS } from '../lib/oauth/proxy.js'
+import { classifySseFrame, SseFrameScanner } from '../lib/oauth/responses-sse.js'
 import { CODEX_API_URL } from '../lib/oauth/codex/index.js'
 import { GLM_ANTHROPIC_URL, GLM_ANTHROPIC_VERSION, GLM_CODING_URL, GLM_USER_AGENT } from '../lib/oauth/glm/index.js'
 import { resetGlmSystemPins } from '../lib/oauth/glm/cache.js'
@@ -693,14 +695,25 @@ test('proxy skips upstream work after a disconnect during token loading', async 
 
 const SSE = { 'content-type': 'text/event-stream' }
 const sse = (...events) => events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join('')
-const CREATED = { type: 'response.created', response: { id: 'r1' } }
+// Live captures (2026-09-28): every frame before the first output event, with
+// instructions, tool descriptions and ids blanked to same-length placeholders.
+// The capture's instructions were tiny, so they are padded to 200 KiB — DSH's
+// own system prompt is ~128KB, echoed by both preamble frames.
+const fixture = (name) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
+const CODEX_PREAMBLE = fixture('codex-preamble.sse')
+const GROK_PREAMBLE = fixture('grok-preamble.sse')
 const DELTA = { type: 'response.output_text.delta', delta: 'hi' }
 const DONE = { type: 'response.completed', response: { id: 'r1' } }
 
+// Enqueued in 16 KiB slices, as the network delivers them: frames and UTF-8
+// sequences straddle chunk boundaries.
 function streamingUpstream(chunks, { failAfter, headers = SSE } = {}) {
   return new Response(new ReadableStream({
     start(controller) {
-      for (const chunk of chunks) controller.enqueue(new TextEncoder().encode(chunk))
+      for (const chunk of chunks) {
+        const bytes = new TextEncoder().encode(chunk)
+        for (let i = 0; i < bytes.length; i += 16 * 1024) controller.enqueue(bytes.subarray(i, i + 16 * 1024))
+      }
       if (failAfter === undefined) controller.close()
       else setTimeout(() => controller.error(Object.assign(new Error('terminated'), { code: 'UND_ERR_SOCKET' })), failAfter)
     },
@@ -715,7 +728,7 @@ async function withProxy(fetchFn, run, options = {}) {
     ...options,
     tokens: {
       codex: { session: async () => ({ accessToken: 'codex-tok', accountId: 'acct' }) },
-      grok: { session: async () => { throw new Error('not logged in') } },
+      grok: { session: async () => ({ accessToken: 'grok-tok' }) },
     },
   })
   const server = await proxy.listen()
@@ -741,15 +754,15 @@ test('a stream that ends carrying only the preamble is retried, and the client s
   const fetchFn = async () => {
     calls += 1
     return calls === 1
-      ? streamingUpstream([sse(CREATED)])
-      : streamingUpstream([sse(CREATED, DELTA, DONE)])
+      ? streamingUpstream([CODEX_PREAMBLE])
+      : streamingUpstream([CODEX_PREAMBLE + sse(DELTA, DONE)])
   }
   await withProxy(fetchFn, async (port) => {
     const response = await post(port)
     const text = await response.text()
     assert.equal(calls, 2, 'the dead first attempt must be retried')
     assert.equal(response.status, 200)
-    assert.equal(text.match(/response\.created/g).length, 1, 'the retried preamble must not reach the client twice')
+    assert.equal(text.match(/^event: response\.created$/gm).length, 1, 'the retried preamble must not reach the client twice')
     assert.match(text, /response\.completed/)
   })
 })
@@ -761,8 +774,8 @@ test('Codex retries replay x-codex-turn-state from the failed attempt', async ()
     calls += 1
     seen.push(init.headers)
     return calls === 1
-      ? streamingUpstream([sse(CREATED)], { headers: { ...SSE, 'x-codex-turn-state': 'turn-abc' } })
-      : streamingUpstream([sse(CREATED, DELTA, DONE)])
+      ? streamingUpstream([CODEX_PREAMBLE], { headers: { ...SSE, 'x-codex-turn-state': 'turn-abc' } })
+      : streamingUpstream([CODEX_PREAMBLE + sse(DELTA, DONE)])
   }
   await withProxy(fetchFn, async (port) => {
     const response = await post(port)
@@ -778,7 +791,7 @@ test('a genuine response.failed is forwarded, never retried away', async () => {
   let calls = 0
   const fetchFn = async () => {
     calls += 1
-    return streamingUpstream([sse(CREATED, { type: 'response.failed', response: { error: { code: 'server_error', message: 'boom' } } })])
+    return streamingUpstream([CODEX_PREAMBLE + sse({ type: 'response.failed', response: { error: { code: 'server_error', message: 'boom' } } })])
   }
   await withProxy(fetchFn, async (port) => {
     const text = await (await post(port)).text()
@@ -791,7 +804,7 @@ test('a break after output has been committed reaches the client as a broken str
   let calls = 0
   const fetchFn = async () => {
     calls += 1
-    return streamingUpstream([sse(CREATED, DELTA)], { failAfter: 10 })
+    return streamingUpstream([CODEX_PREAMBLE + sse(DELTA)], { failAfter: 10 })
   }
   await withProxy(fetchFn, async (port, logs) => {
     const response = await post(port)
@@ -803,7 +816,7 @@ test('a break after output has been committed reaches the client as a broken str
 
 test('exhausting the retries answers with a real error instead of a silent EOF', async () => {
   let calls = 0
-  const fetchFn = async () => { calls += 1; return streamingUpstream([sse(CREATED)]) }
+  const fetchFn = async () => { calls += 1; return streamingUpstream([CODEX_PREAMBLE]) }
   await withProxy(fetchFn, async (port) => {
     const response = await post(port)
     assert.equal(calls, STREAM_ATTEMPTS)
@@ -832,7 +845,7 @@ test('a pre-header fetch fault is retried too', async () => {
   const fetchFn = async () => {
     calls += 1
     if (calls === 1) throw new TypeError('fetch failed', { cause: Object.assign(new Error('other side closed'), { code: 'UND_ERR_SOCKET' }) })
-    return streamingUpstream([sse(CREATED, DELTA, DONE)])
+    return streamingUpstream([CODEX_PREAMBLE + sse(DELTA, DONE)])
   }
   await withProxy(fetchFn, async (port) => {
     assert.match(await (await post(port)).text(), /response\.completed/)
@@ -846,7 +859,7 @@ test('a client disconnect during the silent window stops the proxy instead of re
     calls += 1
     return new Response(new ReadableStream({
       start(controller) {
-        controller.enqueue(new TextEncoder().encode(sse(CREATED)))
+        controller.enqueue(new TextEncoder().encode(CODEX_PREAMBLE))
         init.signal.addEventListener('abort', () => controller.error(init.signal.reason ?? new Error('aborted')), { once: true })
       },
     }), { status: 200, headers: SSE })
@@ -875,12 +888,83 @@ test('non-streaming responses bypass the gate untouched', async () => {
   })
 })
 
-test('hasOutputEvent treats only the preamble as retryable', () => {
-  assert.equal(hasOutputEvent(sse(CREATED)), false)
-  assert.equal(hasOutputEvent(sse(CREATED, { type: 'response.in_progress' })), false)
-  assert.equal(hasOutputEvent(sse(CREATED, DELTA)), true)
-  assert.equal(hasOutputEvent(sse(CREATED, { type: 'response.failed' })), true)
-  assert.equal(hasOutputEvent(''), false)
+test('the head waits through a real preamble and goes out once output arrives', async () => {
+  for (const [family, preamble] of [['codex', CODEX_PREAMBLE], ['grok', GROK_PREAMBLE]]) {
+    let release
+    const fetchFn = async () => new Response(new ReadableStream({
+      async start(controller) {
+        const bytes = new TextEncoder().encode(preamble)
+        for (let i = 0; i < bytes.length; i += 16 * 1024) controller.enqueue(bytes.subarray(i, i + 16 * 1024))
+        await new Promise((resolve) => { release = resolve })
+        controller.enqueue(new TextEncoder().encode(sse(DELTA, DONE)))
+        controller.close()
+      },
+    }), { status: 200, headers: SSE })
+    await withProxy(fetchFn, async (port) => {
+      let headed = false
+      const inflight = fetch(`http://127.0.0.1:${port}/${family}/v1/responses`, {
+        method: 'POST',
+        headers: { authorization: 'Bearer secret-key', 'content-type': 'application/json' },
+        body: JSON.stringify({ model: family === 'codex' ? 'gpt-5.6-luna' : 'grok-4.7', stream: true, input: [] }),
+      }).then((response) => { headed = true; return response })
+      await new Promise((resolve) => setTimeout(resolve, 80))
+      assert.equal(headed, false, `${family}: a ${preamble.length}B preamble must not commit the head`)
+      release()
+      const text = await (await inflight).text()
+      assert.equal(text, preamble + sse(DELTA, DONE), `${family}: the preamble is sent exactly once, in order`)
+    })
+  }
+})
+
+test('past 2 MiB with no output the gate commits rather than kill the response', async () => {
+  let calls = 0
+  const body = CODEX_PREAMBLE.repeat(6)
+  const fetchFn = async () => { calls += 1; return streamingUpstream([body]) }
+  await withProxy(fetchFn, async (port, logs) => {
+    const response = await post(port)
+    assert.equal(response.status, 200)
+    assert.equal(await response.text(), body)
+    assert.equal(calls, 1, 'a committed body cannot be retried')
+    assert.match(logs.join('\n'), /codex buffered \d+B with no output event; committing without retry protection/)
+  })
+})
+
+test('classifySseFrame reads the top-level type, event line first', () => {
+  const frames = CODEX_PREAMBLE.split('\n\n').slice(0, -1)
+  assert.deepEqual(frames.map(classifySseFrame), ['preamble', 'preamble'], 'nested "type" keys in the echoed request are not events')
+  assert.deepEqual(GROK_PREAMBLE.split('\n\n').slice(0, -1).map(classifySseFrame), ['preamble', 'preamble'])
+  assert.equal(classifySseFrame(`data: ${JSON.stringify({ type: 'response.in_progress', response: { text: { format: { type: 'text' } } } })}`), 'preamble')
+  assert.equal(classifySseFrame(`data: ${JSON.stringify(DELTA)}`), 'output')
+  assert.equal(classifySseFrame('event: response.failed\ndata: {"type":"response.failed"}'), 'output')
+  assert.equal(classifySseFrame('event: codex.rate_limits\ndata: {"type":"response.output_text.delta"}'), 'preamble', 'the event line wins')
+  assert.equal(classifySseFrame('event: message_start\ndata: {"type":"message_start"}'), 'output')
+  assert.equal(classifySseFrame('data: {"type":\ndata: "response.queued"}'), 'preamble', 'multi-line data joins')
+  assert.equal(classifySseFrame(': keep-alive'), 'other')
+  assert.equal(classifySseFrame('data: [DONE]'), 'other')
+  assert.equal(classifySseFrame('data: {"type":"response.created"'), 'other', 'a torn frame is never guessed at')
+  assert.equal(classifySseFrame(''), 'other')
+})
+
+test('SseFrameScanner classifies only whole frames, across any split', () => {
+  const frame = `data: ${JSON.stringify({ type: 'response.output_text.delta', delta: '你好 — ok' })}\r\n\r\n`
+  const bytes = new TextEncoder().encode(CODEX_PREAMBLE + frame + 'event: response.comp')
+  const kinds = (step) => {
+    const scanner = new SseFrameScanner()
+    const out = []
+    for (let i = 0; i < bytes.length; i += step) out.push(...scanner.push(bytes.subarray(i, i + step)))
+    return out
+  }
+  for (const step of [1, 3, 7, 16 * 1024, bytes.length]) {
+    const frames = kinds(step)
+    assert.deepEqual(frames.map((f) => f.kind), ['preamble', 'preamble', 'output'], `step ${step}`)
+    assert.equal(frames.reduce((n, f) => n + f.bytes, 0), bytes.length - 'event: response.comp'.length, `step ${step}: the tail waits`)
+  }
+  // Every split point through the multi-byte delta still decodes to one output frame.
+  const delta = new TextEncoder().encode(frame)
+  for (let cut = 1; cut < delta.length; cut++) {
+    const scanner = new SseFrameScanner()
+    assert.deepEqual([...scanner.push(delta.subarray(0, cut)), ...scanner.push(delta.subarray(cut))].map((f) => f.kind), ['output'], `cut ${cut}`)
+  }
 })
 
 test('describeError unwraps the undici cause behind "fetch failed"', () => {
@@ -908,7 +992,7 @@ test('a streamed 200 with an empty body is retried', async () => {
     calls += 1
     return calls === 1
       ? new Response(new ReadableStream({ start: (c) => c.close() }), { status: 200, headers: SSE })
-      : streamingUpstream([sse(CREATED, DELTA, DONE)])
+      : streamingUpstream([CODEX_PREAMBLE + sse(DELTA, DONE)])
   }
   await withProxy(fetchFn, async (port) => {
     assert.match(await (await post(port)).text(), /response\.completed/)
@@ -1465,7 +1549,7 @@ test('a 401 refresh retry does not pay the retry backoff', { timeout: 5000 }, as
     if (calls === 1) {
       return new Response('{"error":{"message":"token revoked"}}', { status: 401, headers: { 'content-type': 'application/json' } })
     }
-    return streamingUpstream([sse(CREATED, DELTA, DONE)])
+    return streamingUpstream([CODEX_PREAMBLE + sse(DELTA, DONE)])
   }
   const proxy = createProxy({
     port: 0,

@@ -23,10 +23,3 @@ export declare function createProxy({ port, apiKey, tokens, fetchFn, maxRequestB
     listen(): Promise<any>;
     close(): Promise<void>;
 };
-/**
- * True once the buffered SSE text carries an event beyond the preamble. Any
- * terminal or error event counts, so a genuine `response.failed` commits and
- * reaches the client instead of being retried.
- */
-export declare function hasPreambleEvent(text: any): boolean;
-export declare function hasOutputEvent(text: any): boolean;

@@ -4,7 +4,8 @@ import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { createProxy, hasOutputEvent } from '../lib/oauth/proxy.js'
+import { createProxy } from '../lib/oauth/proxy.js'
+import { classifySseFrame } from '../lib/oauth/responses-sse.js'
 import { ANTHROPIC_MESSAGES_URL, ANTHROPIC_USAGE_URL, ANTHROPIC_MODELS, ANTHROPIC_BETA, ANTHROPIC_USER_AGENT, anthropicSession, anthropicUpstreamHeaders, exchangeAnthropicCode, isAnthropicPermanentRefreshError } from '../lib/oauth/anthropic/index.js'
 import { OAuthEndpointError } from '../lib/oauth/codex/index.js'
 import { applyAnthropicCache, anthropicConversationId, ANTHROPIC_STABLE_SESSION } from '../lib/oauth/anthropic/cache.js'
@@ -348,7 +349,7 @@ test('proxy: /anthropic/v1/messages forwards with the oauth identity and strips 
     assert.equal(ok.status, 200)
     const text = await ok.text()
     assert.ok(text.includes('message_start'))
-    assert.ok(hasOutputEvent(text))
+    assert.equal(classifySseFrame(text.split('\n\n')[0]), 'output', 'message_start is output, not preamble')
     assert.equal(seen[0].url, ANTHROPIC_MESSAGES_URL)
     assert.equal(seen[0].headers.authorization, 'Bearer sk-ant-oat01-live')
     assert.equal(seen[0].headers['anthropic-beta'], 'claude-code-20250219,oauth-2025-04-20')
