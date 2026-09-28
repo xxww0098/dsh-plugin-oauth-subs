@@ -179,7 +179,7 @@ test('proxy GLM chat hop forwards ZCode Desktop 3.10.1 headers', async () => {
       assert.equal(headers['X-Title'], 'Z Code@electron')
       assert.equal(headers['X-Release-Channel'], 'production')
       assert.equal(headers['x-zcode-session-type'], 'main')
-      assert.match(headers['x-session-id'], /^sess_[0-9a-f]{24}$/)
+      assert.equal(headers['x-session-id'], 'dsh-glm')
       assert.equal(JSON.stringify(headers).includes('dsh-plugin-oauth-subs'), false)
     }
     assert.equal(seen[0].headers['x-session-id'], seen[1].headers['x-session-id'])

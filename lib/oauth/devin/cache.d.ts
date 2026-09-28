@@ -9,6 +9,10 @@
  * service_tier, retention, cache controls. The DSH cache keys are consumed
  * here to derive `cascade_id` instead.
  */
+/** History-free callers thread one cascade per model under this constant. */
+export declare const DEVIN_STABLE_SESSION = "dsh-devin";
+/** `dsh-devin` or `dsh-devin:<model>` is a fallback, not a DSH conversation. */
+export declare function isDevinFallback(id: any): boolean;
 /** `devin-` + sanitized dsh pin keeps log lines readable without leaking. */
 export declare function devinCacheSessionId(value: any): string | undefined;
 /**
@@ -17,9 +21,11 @@ export declare function devinCacheSessionId(value: any): string | undefined;
  */
 export declare function deterministicDevinId(seed: any): string;
 /**
- * Turn a DSH conversation key into a cascade_id. Falls back to one stable
- * cascade per model so history-free callers still thread consistently.
+ * The one Devin conversation id: the DSH key when present, otherwise one
+ * stable `dsh-devin:<model>` per model so history-free callers still thread.
  */
+export declare function devinConversationId(payload: any): string;
+/** cascade_id for a payload — the hash of its conversation id. */
 export declare function devinCascadeId(payload: any): string;
 /**
  * Strip provider-foreign cache/session fields before the wire. Returns the
@@ -27,7 +33,10 @@ export declare function devinCascadeId(payload: any): string;
  */
 export declare function applyDevinCache(payload: any): {
     payload: any;
-    cacheSessionId: string | undefined;
+    cacheSessionId: undefined;
+} | {
+    payload: any;
+    cacheSessionId: string;
 };
 /** `execution_id` is per-request — always a fresh random UUID. */
 export declare function devinExecutionId(): `${string}-${string}-${string}-${string}-${string}`;

@@ -2,7 +2,6 @@
 
 import { RequestError, describeError, sendJson } from '../../utils/http.js'
 import { kiroStreamingProfileArn } from './index.js'
-import { KIRO_STABLE_SESSION, kiroConversationId } from './cache.js'
 import {
   classifyKiroHopError,
   kiroChatHeaders,
@@ -79,11 +78,8 @@ async function writeKiroSse(response, chunk, signal) {
 }
 
 export async function forwardKiro(response, { payload, cacheSessionId, stream, session, fetchFn, signal }) {
-  const conversationId = cacheSessionId
-    ?? kiroConversationId(payload)
-    ?? KIRO_STABLE_SESSION
   const body = Buffer.from(JSON.stringify(openaiToKiro(payload, {
-    conversationId,
+    conversationId: cacheSessionId,
     profileArn: kiroStreamingProfileArn(session),
   })))
   const url = kiroChatUrl(session)

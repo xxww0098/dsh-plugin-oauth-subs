@@ -38,6 +38,7 @@ import {
   devinCascadeId,
   devinExecutionId,
   deterministicDevinId,
+  isDevinFallback,
 } from '../lib/oauth/devin/cache.js'
 import {
   createDevinOpenaiStream,
@@ -457,7 +458,14 @@ test('cache strips codex fields; cascade id is deterministic per pin', () => {
   for (const key of ['session_id', 'prompt_cache_key', 'prompt_cache_retention', 'service_tier']) {
     assert.equal(Object.hasOwn(payload, key), false)
   }
-  assert.equal(applyDevinCache({ model: 'swe-2' }).cacheSessionId, undefined)
+  // No DSH key: one per-model fallback, owned by cache.ts (not the transport).
+  const fallback = applyDevinCache({ model: 'swe-2' }).cacheSessionId
+  assert.equal(fallback, 'dsh-devin:swe-2')
+  assert.equal(isDevinFallback(fallback), true)
+  assert.equal(isDevinFallback(cacheSessionId), false)
+  assert.equal(devinCascadeId({ model: 'swe-2' }), deterministicDevinId(fallback))
+  // The proxy path (transport hashes the passed id) and the builder fallback agree.
+  assert.equal(devinCascadeId({ prompt_cache_key: 'pck-1' }), deterministicDevinId(cacheSessionId))
   assert.equal(devinCacheSessionId(''), undefined)
   assert.equal(devinCacheSessionId('a b!c'), 'devin-a-b-c')
   const cascade = devinCascadeId({ prompt_cache_key: 'pck-1' })

@@ -17,7 +17,7 @@
 import { randomBytes } from 'node:crypto'
 import { arch as osArch, release as osRelease } from 'node:os'
 import { decodeJwtPayload } from '../../utils/jwt.js'
-import { glmCacheSessionId } from './cache.js'
+import { GLM_STABLE_SESSION, glmCacheSessionId } from './cache.js'
 import { outboundFetch } from '../../utils/outbound.js'
 
 export const GLM_CLIENT_ID = 'client_P8X5CMWmlaRO9gyO-KSqtg'
@@ -321,8 +321,6 @@ export function glmBizBase(region = 'zai') {
   return normalizeGlmRegion(region) === 'bigmodel' ? 'https://open.bigmodel.cn' : GLM_BIZ_BASE
 }
 
-const GLM_PROCESS_SESSION_ID = `sess_${randomBytes(12).toString('hex')}`
-
 function randomHex(bytes = 16) {
   return randomBytes(bytes).toString('hex')
 }
@@ -394,7 +392,7 @@ export function glmDesktopHeaders(sessionId?) {
     'x-zcode-session-type': 'main',
     'x-zcode-trace-id': randomHex(),
     'x-request-id': randomHex(),
-    'x-session-id': glmCacheSessionId(sessionId) || GLM_PROCESS_SESSION_ID,
+    'x-session-id': glmCacheSessionId(sessionId) || GLM_STABLE_SESSION,
     'x-query-id': randomHex(),
     'HTTP-Referer': GLM_REFERER,
     referer: GLM_REFERER,

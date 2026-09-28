@@ -90,7 +90,7 @@ Kimi 是 **前缀哈希**，没有分片键。
 | 2 | `applyKimiCache` | 剥 Codex/Grok 字段；首段 system 钉住，后续快照停到 **messages suffix** |
 | 3 | `kimiCacheHeaders` | 空。不写 `session-id` / `x-grok-conv-id` |
 
-`dsh-kimi` 只给分析器标签，**不**写进 upstream body。上游若带回 `cached_tokens` / `cache_read_*`，hop 译成 `prompt_tokens_details.cached_tokens`；没有字段不发明 0。流式缺省 `include_usage`。不要 `Date.now()`。
+`dsh-kimi` 只给分析器标签，**不**写进 upstream body，也不钉系统提示（`isKimiFallback`）。上游若带回 `cached_tokens` / `cache_read_*`，hop 译成 `prompt_tokens_details.cached_tokens`；没有字段不发明 0。流式缺省 `include_usage`。不要 `Date.now()`。
 
 ## 不要
 

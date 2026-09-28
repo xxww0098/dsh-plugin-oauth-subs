@@ -8,6 +8,12 @@
 **根因**：chatgpt.com / ollama.com 不发 `Keep-Alive` 响应头，undici 退回默认 `keepAliveTimeout` 4s，池里的 socket 空闲 4s 即关闭。
 **修复**：`outbound.ts` 的直连 `Agent` 与 `ProxyAgent`（经 `...opts` 传到隧道 Agent）同一处设 `keepAliveTimeout: 60_000`、`keepAliveMaxTimeout: 600_000`。陈旧 socket 在输出前 ECONNRESET 由上游重试兜底，不另写代码。`test/outbound.test.ts` 用不发 Keep-Alive 的本地服务端间隔 6s 两次请求：直连与 CONNECT 隧道各 1 个连接，全局 fetch 对照为 2。
 **活测（2026-09-28，宿主 Node v24.21.0）**：worktree `lib/` 的 `outboundFetch` 直连 Codex `GET /models` 于 0s / 30s / 55s 各一次，全 200，`undici:client:connected` 共 1 次；耗时 1343 / 568 / 571ms。
+## 2026-09-28：回退会话 id 仍会 pin，两个无 id 会话串用系统提示；GLM `x-session-id` 每进程随机
+
+**现象**：没带会话 id 的请求落到 `dsh-<id>[:<model>]` 回退常量，第一个会话的系统提示（Antigravity 还有 tools / thinking）被钉给后来的会话；GLM 无 pin 时 `x-session-id` 是每进程随机的 `sess_<24hex>`，重启 / 热重载就换。
+**根因**：kiro / cursor / antigravity 的守卫只比对裸常量，而回退 id 带了 `:<model>` 后缀，永远不命中；kimi / copilot 根本没有守卫。kiro / cursor / antigravity / devin 的传输层又各自二次推导会话 id（Devin 回退只在 transport 里）。
+**修复**：六个家族的 `cache.ts` 各一个解析器（`kimiConversationId` / `copilotConversationId` / `kiroConversationId` / `cursorConversationId` / `antigravitySessionIdOf` / `devinConversationId`）+ `is<Fam>Fallback`（等于常量或以 `<常量>:` 开头）；所有 pin 以谓词为门，回退 id 一律不 pin。传输层直接用传入的 `cacheSessionId`。Antigravity thinking pin：会话内先到先得，但显式换了 `reasoning_effort` 就替换。GLM 改用 `GLM_STABLE_SESSION = 'dsh-glm'`。防火墙测试扫描所有 `cache.ts` 与导出请求头构建函数的模块，会话 id 位置不许出现 `Date.now` / `Math.random` / `randomUUID` / `randomBytes`。
+**活测**：GLM（bigmodel 账号，ZCode 网关）1 次请求带 `x-session-id: dsh-glm` → 200。
 
 ## 2026-09-28：Completions 路由从没收到 DSH 会话 id，系统提示 pin / 签名桶全进程共用
 

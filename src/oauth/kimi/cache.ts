@@ -5,13 +5,24 @@
  * There is no Codex `prompt_cache_key` and no Grok `x-grok-conv-id`.
  * This module strips those fields and parks extra DSH snapshots at the
  * messages suffix so the first system blob can still hit.
- * Never stamp Date.now(). `dsh-kimi` is analyzer-only.
+ * Never stamp Date.now(). `dsh-kimi` is analyzer-only and never pins.
  */
 
 const SYSTEM_PIN_CAP = 64
 const SYSTEM_PINS = new Map()
 
 export const KIMI_STABLE_SESSION = 'dsh-kimi'
+
+/** A fallback id is not a conversation: it never pins a system prompt. */
+export function isKimiFallback(id) {
+  return typeof id !== 'string' || id === '' || id === KIMI_STABLE_SESSION || id.startsWith(`${KIMI_STABLE_SESSION}:`)
+}
+
+export function kimiConversationId(payload: any = {}) {
+  return kimiCacheSessionId(payload.session_id)
+    ?? kimiCacheSessionId(payload.prompt_cache_key)
+    ?? KIMI_STABLE_SESSION
+}
 
 export function kimiCacheSessionId(key) {
   if (typeof key !== 'string') return undefined
@@ -48,7 +59,7 @@ function splitLeadingSystem(messages) {
 }
 
 export function stabilizeKimiSystemPrefix(messages, sessionId) {
-  if (!Array.isArray(messages) || !sessionId) return messages
+  if (!Array.isArray(messages) || isKimiFallback(sessionId)) return messages
   const { head, rest } = splitLeadingSystem(messages)
   if (head.length === 0) return messages
   const text = head.map(systemText).join('\n\n')
@@ -72,9 +83,7 @@ export function stabilizeKimiSystemPrefix(messages, sessionId) {
 }
 
 export function applyKimiCache(payload: any = {}) {
-  const cacheSessionId = kimiCacheSessionId(payload.session_id)
-    ?? kimiCacheSessionId(payload.prompt_cache_key)
-    ?? KIMI_STABLE_SESSION
+  const cacheSessionId = kimiConversationId(payload)
   const next = { ...payload }
   delete next.prompt_cache_key
   delete next.prompt_cache_retention

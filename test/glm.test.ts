@@ -614,7 +614,7 @@ function assertZcodeDesktopFingerprint(headers) {
   assert.match(headers['x-zcode-trace-id'], /^[0-9a-f]+$/)
   assert.match(headers['x-request-id'], /^[0-9a-f]+$/)
   assert.match(headers['x-query-id'], /^[0-9a-f]+$/)
-  assert.match(headers['x-session-id'], /^sess_[0-9a-f]{24}$/)
+  assert.equal(headers['x-session-id'], 'dsh-glm')
   assert.equal(blob.includes('dsh-plugin-oauth-subs'), false)
 }
 
@@ -644,12 +644,15 @@ test('glmAnthropicHeaders is Desktop plus anthropic-version', () => {
   assert.equal(JSON.stringify(headers).includes('dsh-plugin-oauth-subs'), false)
 })
 
-test('glmDesktopHeaders x-session-id equals a pinned DSH session', () => {
+test('glmDesktopHeaders x-session-id equals a pinned DSH session, else the stable constant', async () => {
   const session = glmSession({ accessToken: 'id.secret', account: 'dev@z.ai' })
   const pinned = glmUpstreamHeaders(session, 'session-772f7f3a-332c-4e0c-bff1-6074123474e3')
   assert.equal(pinned['x-session-id'], 'session-772f7f3a-332c-4e0c-bff1-6074123474e3')
   assert.equal(glmDesktopHeaders('session-cache-1')['x-session-id'], 'session-cache-1')
-  assert.match(glmDesktopHeaders()['x-session-id'], /^sess_[0-9a-f]{24}$/)
+  assert.equal(glmDesktopHeaders()['x-session-id'], 'dsh-glm')
+  // A fresh module instance (restart / hot reload) keeps the same header.
+  const reloaded = await import(`../lib/oauth/glm/index.js?reload=${process.pid}`)
+  assert.equal(reloaded.glmDesktopHeaders()['x-session-id'], 'dsh-glm')
   assert.notEqual(pinned['x-request-id'], glmUpstreamHeaders(session, 'session-cache-1')['x-request-id'])
 })
 
