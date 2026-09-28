@@ -6,6 +6,7 @@
 import { antigravityRequestId, ANTIGRAVITY_BODY_USER_AGENT } from './index.js'
 import {
   antigravitySessionIdOf,
+  isAntigravityFallback,
   pinAntigravitySystemInstruction,
   pinAntigravityThinking,
   pinAntigravityTools,
@@ -22,13 +23,25 @@ export {
  * field; we stamp extra keys on OpenAI tool_calls (echo if DSH keeps them)
  * and keep a per-session map keyed by tool id and name+args.
  * https://ai.google.dev/gemini-api/docs/thought-signatures
+ *
+ * A lost signature rewrites that functionCall to text and breaks the cached
+ * prefix from there on, so buckets are LRU (Map insertion order = recency;
+ * get and set both re-insert) and sized for whole long sessions. Only real
+ * session ids get a bucket — fallback ids are shared across conversations.
+ * The byte budget counts key + signature text and evicts whole
+ * least-recently-used sessions first. Live 2026-09-28: gemini-3-flash
+ * signatures are 140 chars (low effort) to ~2.5K (high), so one full
+ * 4096-key session is ~10.5 MiB; 64 MiB keeps ~6 of those whole.
  */
-const THOUGHT_SIGNATURES = new Map()
+const THOUGHT_SIGNATURES = new Map<string, Map<string, string>>()
 const THOUGHT_SIGNATURE_SESSION_CAP = 64
-const THOUGHT_SIGNATURES_PER_SESSION = 256
+const THOUGHT_SIGNATURES_PER_SESSION = 4096
+const THOUGHT_SIGNATURE_BYTES_CAP = 64 * 1024 * 1024
+let thoughtSignatureBytes = 0
 
 export function resetAntigravityThoughtSignatures() {
   THOUGHT_SIGNATURES.clear()
+  thoughtSignatureBytes = 0
 }
 
 function asCount(value) {
@@ -90,30 +103,62 @@ function signatureCallKey(name, args) {
   return `${n}\0${stableJson(args ?? {})}`
 }
 
-function rememberThoughtSignature(sessionId, { id, name, args, signature }: any = {}) {
-  if (!sessionId || !signature) return
+function signatureBucket(sessionId, create) {
+  if (isAntigravityFallback(sessionId)) return undefined
   let bucket = THOUGHT_SIGNATURES.get(sessionId)
-  if (!bucket) {
-    if (THOUGHT_SIGNATURES.size >= THOUGHT_SIGNATURE_SESSION_CAP) {
-      const first = THOUGHT_SIGNATURES.keys().next().value
-      THOUGHT_SIGNATURES.delete(first)
-    }
-    bucket = new Map()
-    THOUGHT_SIGNATURES.set(sessionId, bucket)
-  }
+  if (bucket) THOUGHT_SIGNATURES.delete(sessionId)
+  else if (create) bucket = new Map()
+  else return undefined
+  THOUGHT_SIGNATURES.set(sessionId, bucket)
+  if (THOUGHT_SIGNATURES.size > THOUGHT_SIGNATURE_SESSION_CAP) dropSignatureSession(THOUGHT_SIGNATURES.keys().next().value)
+  return bucket
+}
+
+function dropSignatureSession(sessionId) {
+  for (const [key, signature] of THOUGHT_SIGNATURES.get(sessionId) ?? []) thoughtSignatureBytes -= key.length + signature.length
+  THOUGHT_SIGNATURES.delete(sessionId)
+}
+
+function dropSignatureKey(bucket, key) {
+  const signature = bucket.get(key)
+  if (signature === undefined) return
+  bucket.delete(key)
+  thoughtSignatureBytes -= key.length + signature.length
+}
+
+function setSignatureKey(bucket, key, signature) {
+  dropSignatureKey(bucket, key)
+  bucket.set(key, signature)
+  thoughtSignatureBytes += key.length + signature.length
+}
+
+function rememberThoughtSignature(sessionId, { id, name, args, signature }: any = {}) {
+  if (!signature) return
+  const bucket = signatureBucket(sessionId, true)
+  if (!bucket) return
   const ck = signatureCallKey(name, args)
-  if (ck) bucket.set(ck, signature)
-  if (trimmed(id)) bucket.set(`id:${id}`, signature)
-  while (bucket.size > THOUGHT_SIGNATURES_PER_SESSION) {
-    bucket.delete(bucket.keys().next().value)
+  if (ck) setSignatureKey(bucket, ck, signature)
+  if (trimmed(id)) setSignatureKey(bucket, `id:${id}`, signature)
+  while (bucket.size > THOUGHT_SIGNATURES_PER_SESSION) dropSignatureKey(bucket, bucket.keys().next().value)
+  // This session is the most recent; older sessions go whole before it sheds its own oldest keys.
+  for (const oldest of THOUGHT_SIGNATURES.keys()) {
+    if (thoughtSignatureBytes <= THOUGHT_SIGNATURE_BYTES_CAP || oldest === sessionId) break
+    dropSignatureSession(oldest)
   }
+  while (thoughtSignatureBytes > THOUGHT_SIGNATURE_BYTES_CAP && bucket.size) dropSignatureKey(bucket, bucket.keys().next().value)
 }
 
 function lookupThoughtSignature(sessionId, { id, name, args }: any = {}) {
-  const bucket = THOUGHT_SIGNATURES.get(sessionId)
+  const bucket = signatureBucket(sessionId, false)
   if (!bucket) return undefined
-  const ck = signatureCallKey(name, args)
-  return (ck && bucket.get(ck)) || (trimmed(id) && bucket.get(`id:${id}`)) || undefined
+  for (const key of [signatureCallKey(name, args), trimmed(id) && `id:${id}`]) {
+    const signature = key && bucket.get(key)
+    if (!signature) continue
+    bucket.delete(key)
+    bucket.set(key, signature)
+    return signature
+  }
+  return undefined
 }
 
 function attachThoughtSignatureFields(target, signature) {
