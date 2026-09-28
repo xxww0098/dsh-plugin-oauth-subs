@@ -87,7 +87,6 @@ export declare class AuthController {
         copilot: boolean;
         devin: boolean;
         cline: boolean;
-        anthropic: boolean;
         'command-code': boolean;
     }>;
     status(provider: any): Promise<{

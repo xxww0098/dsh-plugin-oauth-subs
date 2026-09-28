@@ -23,6 +23,9 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # lib/ is generated and tsc never deletes: start from nothing so a file
+      # whose src was removed shows up as stale too.
+      - run: rm -rf lib
       - run: npm test
       # `npm test` just rebuilt lib/. Git installs and self-update ship the
       # committed lib/, so a src change committed without its build shows here.

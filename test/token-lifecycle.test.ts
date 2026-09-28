@@ -693,7 +693,6 @@ test('every family classifies refresh failures through one predicate: only 401 a
     copilot: () => ({ accessToken: 'tid=old', refreshToken: 'ghu_table', githubToken: 'ghu_table', expiresAt: expired, source: 'oauth' }),
     devin: () => devinSession({ accessToken: 'table', expiresAt: expired }),
     cline: () => ({ accessToken: 'a', refreshToken: 'rt', expiresAt: expired }),
-    anthropic: () => ({ accessToken: 'a', refreshToken: 'rt', expiresAt: expired }),
   }
   const rows = [
     { name: '403 rate limit', permanent: () => false, response: () => Response.json({ message: 'rate limit exceeded' }, { status: 403 }) },

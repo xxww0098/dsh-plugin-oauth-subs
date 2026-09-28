@@ -22,6 +22,17 @@ test('a browser re-login is a login of its own: it does not inherit the old impo
   assert.equal(session.planType, 'plus')
 })
 
+test('a dropped family\'s vault is never read and is gone from the file after the next write', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const path = join(dir, 'auth.json')
+  const legacy = { accessToken: 'ant', refreshToken: 'ant-r', expiresAt: 1, account: 'me@x' }
+  await writeFile(path, JSON.stringify({ anthropic: { activeId: 'me@x', accounts: { 'me@x': legacy } } }), { mode: 0o600 })
+  assert.equal((await loadStore(path)).anthropic, undefined)
+  await saveSession('codex', { accessToken: 'a', refreshToken: 'r', expiresAt: 2, emailAddress: 'me@x' }, path)
+  const written = JSON.parse(await readFile(path, 'utf8'))
+  assert.deepEqual(Object.keys(written), ['codex'])
+})
+
 test('saveSession writes atomically with mode 0600 and preserves siblings', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
   const path = join(dir, 'auth.json')

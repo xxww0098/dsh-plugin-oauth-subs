@@ -45,7 +45,6 @@ export { KIMI_CLIENT_ID, KIMI_MODELS, KIMI_CHAT_URL, kimiSession, kimiUpstreamHe
 export { COPILOT_CLIENT_ID, COPILOT_MODELS, copilotChatUrl, copilotSession, copilotUpstreamHeaders, } from './oauth/copilot/index.js';
 export { DEVIN_MODELS, DEVIN_AUTHORIZE_URL, DEVIN_TOKEN_URL, devinSession, normalizeDevinToken, } from './oauth/devin/index.js';
 export { CLINE_MODELS, CLINE_API_BASE, CLINE_CHAT_URL, CLINE_WORKOS_CLIENT_ID, clineDeviceSpec, clineSessionFromAuthData, clineUpstreamHeaders, refreshCline, } from './oauth/cline/index.js';
-export { ANTHROPIC_MODELS, ANTHROPIC_MESSAGES_URL, ANTHROPIC_TOKEN_URL, ANTHROPIC_CLIENT_ID, anthropicSession, anthropicUpstreamHeaders, refreshAnthropic, } from './oauth/anthropic/index.js';
 export { OAUTH_CREDENTIAL_REF, ModelSwitch } from './oauth/models.js';
 export { defaultDataDir } from './oauth/store.js';
 export { AuthController } from './oauth/controller.js';
@@ -53,6 +52,5 @@ export { applyFastMode, modelSupportsFastMode } from './utils/fast-mode.js';
 export { CONTEXT_VARIANT_SUFFIX, codexLargeContext, applyContextMode, isCodex900kBase, peelContextSuffix, } from './utils/context-mode.js';
 export { parseCodexUsage, parseGrokBilling, parseGlmQuota, parseKiroUsage, parseCursorPeriodUsage, parseKimiUsage, parseCopilotUsage, parseDevinUserStatus, parseResetCredits, QuotaStore } from './oauth/quota.js';
 export { fetchClineQuota, parseClineBalance, parseClinePlan, parseClineUsage } from './oauth/cline/quota.js';
-export { fetchAnthropicQuota } from './oauth/anthropic/quota.js';
 export { formatPlanLabel, CODEX_PLAN_NAMES } from './oauth/plan.js';
 export { REPO_URL, REPO_SLUG, installedVersion, fresherVersion, fetchLatest, localUpdateInfo, profileFromBaseUrl, isElectronManagedProfile, pluginUpdateCommand, } from './utils/update.js';

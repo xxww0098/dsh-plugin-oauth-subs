@@ -23,6 +23,10 @@ export declare const CODEX_PLAN_NAMES: Readonly<{
     pro5x: "Pro 5x";
     pro_5x: "Pro 5x";
     chatgpt_pro_5x: "Pro 5x";
+    promax: "Pro Max";
+    pro_max: "Pro Max";
+    chatgpt_promax: "Pro Max";
+    chatgpt_pro_max: "Pro Max";
     team: "Team";
     chatgpt_team: "Team";
     business: "Business";

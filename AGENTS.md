@@ -34,7 +34,7 @@ npm run analyze -- path/to/session.jsonl
 | 包名 `dsh-plugin-oauth-subs` | registry | 发布后的常规安装 | 要求该包已在 npm（当前未发布，`npm view` 404）；`npm publish` 后可用 |
 
 - 三种来源都要求 `dsh.bundle.patch`（`./cordis.patch.yml`）与可解析的 peer `@deepseek-ai/cordis`：面板在 pnpm 之前先校验，不通过不下载（git / tarball 是抓取后判定，失败会恢复 profile 清单与锁文件）。
-- `lib/` 是仓库里构建好的，git / npm 安装**不会**重新构建——提交前必须 `npm run build`；CI 在 `npm test` 之后检查 `git status -- lib` 是否干净，不干净即失败。
+- `lib/` 是仓库里构建好的，git / npm 安装**不会**重新构建——提交前必须 `npm run build`；CI 先删掉 `lib/` 再 `npm test`，之后检查 `git status -- lib` 是否干净，不干净（含删了 src 却留着 lib）即失败。
 - 先确认在看哪个 profile：`ls -la ~/.dsh/profiles/*/node_modules/dsh-plugin-oauth-subs`（symlink = link 到本仓库；实体目录 = 安装副本）。web profile 默认就是 link。
 - 插件自更新不会碰 link：`installedPackageDirs` 只认 `~/.dsh/profiles/` 下的真实副本（realpath 去重），指向仓库的 symlink 被跳过。
 - 热链要在界面上认得出：`localUpdateInfo` 给出 `linked` / `linkedPath`（realpath 落在 `~/.dsh/profiles` 之外即热链）与 `devVersion`，About 的当前版本直接显示 `<版本>-dev.<n>`、另列本地路径、撤掉「安装更新」CTA；**自动更新开关保留**，但热链下 note 换成 `autoUpdateLinked`（「本地链接：npm run build 后热重载生效，无需重启宿主」，需 profile 配 hmr root）且不显示 release 结果——否则仓库正式号会被当成发布版报「已是最新」，并在热更新下继续承诺重启。
@@ -122,8 +122,8 @@ node --input-type=module -e '
 
 - Source of truth per family — `src/oauth/<id>/README.md` (login, hop,
   models, quota, cache, do-not, 归因). Codex / Grok / GLM / Kiro /
-  Antigravity / Cursor / Kimi / Copilot / Devin / Cline / Anthropic live in
-  `src/oauth/`; Ollama Cloud + OpenCode Go live in `src/apikey/`.
+  Antigravity / Cursor / Kimi / Copilot / Devin / Cline live in
+  `src/oauth/`; Ollama Cloud + OpenCode Go + Command Code live in `src/apikey/`.
 - Fault log — `docs/error.md`. Every recurring fault or user-visible
   finding goes there **in the same PR** (≤12 lines: 现象/根因/修复).
 - Hop references — `docs/oauth.md`. Official/community repos per family;

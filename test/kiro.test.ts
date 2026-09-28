@@ -552,7 +552,7 @@ test('controller snapshot lists Kiro catalog and quota on every account', async 
     },
   })
   const snap = await controller.snapshot()
-  assert.equal(snap.catalog.length, 15)
+  assert.equal(snap.catalog.length, 14)
   assert.equal(snap.catalog.some((row) => row.family === 'kiro'), true)
   const roster = snap.accounts.kiro.accounts
   assert.equal(roster.length, 2)

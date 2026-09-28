@@ -212,8 +212,10 @@ test('syncHarnessModels unsets owned routes then sets the live catalog', async (
   })
   assert.equal(ops[0].target, 'llm-pi-ai')
   assert.equal(FAMILY_IDS.includes('opencode'), false)
-  assert.deepEqual([...RETIRED_FAMILY_IDS], ['opencode'])
+  assert.deepEqual([...RETIRED_FAMILY_IDS], ['opencode', 'anthropic'])
   assert.equal(ownedProviderIds('oauth').includes('oauth-opencode'), true)
+  assert.equal(FAMILY_IDS.includes('anthropic'), false)
+  assert.equal(ownedProviderIds('oauth').includes('oauth-anthropic'), true)
   const unset = ops[0].mutations.filter((row) => row.op === 'unset').map((row) => row.path.join('.'))
   assert.deepEqual(unset, ownedProviderIds('oauth').map((id) => `providers.${id}`))
   assert.equal(unset.includes('providers.oauth-opencode'), true)
@@ -780,7 +782,7 @@ test('syncHarnessModels rejects a silent drop after mutate', async () => {
 })
 
 test('cacheRetention long rides only the Completions routes and survives sync', async () => {
-  const all = { codex: true, grok: true, glm: true, kiro: true, antigravity: true, cursor: true, ollama: true, kimi: true, copilot: true, devin: true, cline: true, anthropic: true }
+  const all = { codex: true, grok: true, glm: true, kiro: true, antigravity: true, cursor: true, ollama: true, kimi: true, copilot: true, devin: true, cline: true }
   const providers = buildProviders({ prefix: 'oauth', origin: 'http://127.0.0.1:8318', loggedIn: all })
   const completions = Object.keys(providers).filter((id) => providers[id].api === HARNESS_COMPLETIONS_API).sort()
   assert.deepEqual(completions, ['oauth-antigravity', 'oauth-cline', 'oauth-copilot', 'oauth-cursor', 'oauth-devin', 'oauth-kimi', 'oauth-kiro', 'oauth-ollama'])
@@ -796,7 +798,6 @@ test('cacheRetention long rides only the Completions routes and survives sync', 
   const stored = await peekPiAiProviders(settings)
   for (const id of completions) assert.equal(stored[id].cacheRetention, 'long', id)
   assert.equal(stored['oauth-codex'].cacheRetention, undefined)
-  assert.equal(stored['oauth-anthropic'].cacheRetention, undefined)
 })
 
 test('syncHarnessModels rejects a host that drops cacheRetention', async () => {

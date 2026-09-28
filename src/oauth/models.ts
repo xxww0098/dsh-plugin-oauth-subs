@@ -18,7 +18,6 @@ import { KIMI_MODELS } from './kimi/index.js'
 import { COPILOT_MODELS } from './copilot/index.js'
 import { DEVIN_MODELS } from './devin/index.js'
 import { CLINE_MODELS } from './cline/index.js'
-import { ANTHROPIC_MODELS } from './anthropic/index.js'
 import {
   OPENCODE_GO_BUILTIN_ROUTE_ID,
   OPENCODE_GO_ROUTES,
@@ -115,7 +114,7 @@ export function modelKey(provider, id) {
   return `${provider}/${id}`
 }
 
-export const FAMILY_IDS = Object.freeze(['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline', 'anthropic', 'command-code'])
+export const FAMILY_IDS = Object.freeze(['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline', 'command-code'])
 
 /**
  * OpenCode Go picker families: direct API-key routes, not OAuth logins, and
@@ -129,7 +128,7 @@ export const APIKEY_FAMILY_IDS = Object.freeze(OPENCODE_GO_ROUTES.map((route) =>
 export const MODEL_FAMILY_IDS = Object.freeze([...FAMILY_IDS, ...APIKEY_FAMILY_IDS])
 
 /** Dropped families. Still unset leftover harness routes; never written back. */
-export const RETIRED_FAMILY_IDS = Object.freeze(['opencode'])
+export const RETIRED_FAMILY_IDS = Object.freeze(['opencode', 'anthropic'])
 
 export function ownedProviderIds(prefix) {
   return [...FAMILY_IDS, ...RETIRED_FAMILY_IDS].map((id) => `${prefix}-${id}`)
@@ -456,22 +455,6 @@ export function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaM
       models: commandCodeRows,
     }
   }
-  if (loggedIn.anthropic) {
-    providers[`${prefix}-anthropic`] = {
-      displayName: 'OAuth · Claude',
-      api: HARNESS_ANTHROPIC_API,
-      apiKeyEnv: OAUTH_CREDENTIAL_REF,
-      // Anthropic SDK posts `{baseURL}/v1/messages`. This is the real
-      // api.anthropic.com lane, so the host keeps its native anthropic
-      // treatment: thinking maps by model id (adaptive ids take
-      // output_config.effort, classic ids budget thinking), cache_control
-      // checkpoints ride the body, and signed thinking blocks replay as-is —
-      // no forceAdaptiveThinking / allowEmptySignature compat needed here
-      // (that is a ZCode-gateway workaround, not an Anthropic one).
-      baseURL: `${origin}/anthropic`,
-      models: ANTHROPIC_MODELS.map(toHarnessModel),
-    }
-  }
   // pi-ai's openai-completions sends `prompt_cache_key = sessionId` (and
   // `prompt_cache_retention: "24h"`) only when the route asks for long
   // retention; the loopback auto-detects supportsLongCacheRetention. Without
@@ -496,7 +479,7 @@ export function catalogProviders({ prefix, origin, cursorModels, ollamaModels, k
   const providers = buildProviders({
     prefix,
     origin,
-    loggedIn: { codex: true, grok: true, glm: true, kiro: true, antigravity: true, cursor: true, ollama: true, kimi: true, copilot: true, devin: true, cline: true, anthropic: true, 'command-code': true },
+    loggedIn: { codex: true, grok: true, glm: true, kiro: true, antigravity: true, cursor: true, ollama: true, kimi: true, copilot: true, devin: true, cline: true, 'command-code': true },
     cursorModels,
     ollamaModels,
     kiroModels,
@@ -540,7 +523,6 @@ export function familyOfProvider(provider) {
   if (String(provider).endsWith('-copilot')) return 'copilot'
   if (String(provider).endsWith('-devin')) return 'devin'
   if (String(provider).endsWith('-cline')) return 'cline'
-  if (String(provider).endsWith('-anthropic')) return 'anthropic'
   if (String(provider).endsWith('-command-code')) return 'command-code'
   return String(provider)
 }
@@ -565,7 +547,7 @@ export function familyCatalogKeys(catalog, family) {
 const HARNESS_MODEL_AGENT: Record<string, string> = {
   codex: 'Codex', grok: 'Grok', glm: 'GLM', kiro: 'Kiro', antigravity: 'Antigravity',
   cursor: 'Cursor', ollama: 'Ollama', kimi: 'Kimi', copilot: 'Copilot', devin: 'Devin',
-  cline: 'Cline', anthropic: 'Claude', 'opencode-go': 'OpenCode Go', 'command-code': 'Command Code',
+  cline: 'Cline', 'opencode-go': 'OpenCode Go', 'command-code': 'Command Code',
 }
 
 function harnessModelAlias(provider, id) {

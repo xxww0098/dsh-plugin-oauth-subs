@@ -10,7 +10,6 @@ import { codexImported } from '../lib/oauth/import-auth.js'
 import { cursorImported } from '../lib/oauth/cursor/import.js'
 import { clineImported } from '../lib/oauth/cline/import.js'
 import { kimiImported } from '../lib/oauth/kimi/import.js'
-import { anthropicImported } from '../lib/oauth/anthropic/import.js'
 
 // Refresh timers are unref'd (tokens.ts waitFor); keep the loop alive.
 const keepalive = setInterval(() => {}, 60_000)
@@ -118,24 +117,6 @@ const FAMILIES = [
       }
     },
   },
-  {
-    provider: 'anthropic',
-    async setup(dir) {
-      const file = join(dir, '.credentials.json')
-      return {
-        hook: anthropicImported,
-        seed: { source: file },
-        write: (tag, expiresAt) => writeFile(file, JSON.stringify({
-          claudeAiOauth: {
-            accessToken: `sk-ant-oat01-${tag}`,
-            refreshToken: `sk-ant-ort01-${tag}`,
-            expiresAt,
-            scopes: ['user:inference'],
-          },
-        })),
-      }
-    },
-  },
 ]
 
 async function importedLogin(t, family, { storedExpiresAt }) {
@@ -230,7 +211,6 @@ test('the controller wires each read-only family, and only its imported sources'
     cursor: [{ source: 'cli_keychain' }, { source: 'pkce' }],
     cline: [{ source: 'cli' }, { source: 'oauth' }],
     kimi: [{ source: 'cli' }, { source: 'oauth' }],
-    anthropic: [{ source: 'keychain:Claude Code-credentials' }, {}],
   }
   for (const [provider, [imported, owned]] of Object.entries(cases)) {
     const hook = controller.tokens[provider].imported

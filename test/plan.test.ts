@@ -21,6 +21,9 @@ test('formatPlanLabel maps Codex slugs to Plus / Pro 20x / Pro 5x / Team', () =>
   assert.equal(formatPlanLabel('chatgpt_prolite'), 'Pro 5x')
   assert.equal(formatPlanLabel('pro_5x'), 'Pro 5x')
   assert.equal(formatPlanLabel('pro_20x'), 'Pro 20x')
+  // openai/codex#47971 (2026-09-25) adds the `promax` slug; its multiplier is not published, so none is invented.
+  assert.equal(formatPlanLabel('promax'), 'Pro Max')
+  assert.equal(formatPlanLabel('chatgpt_promax'), 'Pro Max')
   assert.equal(formatPlanLabel('team'), 'Team')
   assert.equal(formatPlanLabel('enterprise'), 'Enterprise')
   assert.equal(formatPlanLabel('free_trial'), 'Free')

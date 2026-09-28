@@ -642,6 +642,27 @@ test('snapshot shows quota on every command-code account and promotes the vault 
   assert.equal(synced.routes.some((entry) => entry.provider === 'oauth-command-code'), true)
 })
 
+test('refreshQuota re-reads one command-code account instead of falling into the all-families sweep', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-cc-'))
+  const authPath = join(dir, 'auth.json')
+  await saveSession('command-code', commandCodeSession({ accessToken: KEY, source: 'paste' }), authPath)
+  let calls = 0
+  const controller = new AuthController({
+    authPath,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    commandCodeAutoImport: false,
+    settings: { mutate: async () => undefined },
+    fetchFn: (url, init) => { calls += 1; return commandCodeQuotaFetch(url, init) },
+  })
+  await controller.snapshot()
+  calls = 0
+  const quota = await controller.refreshQuota('command-code', 'xxww0098')
+  assert.equal(quota.status, 'ready')
+  assert.equal(quota.rows.find((entry) => entry.kind === 'credits')?.total, 34.5)
+  assert.ok(calls > 0, 'the manual refresh must reach the vendor')
+})
+
 test('proxy: models list, completions hop to /alpha/generate, SSE stream, /responses 501', async () => {
   const seen = []
   const session = commandCodeSession({ accessToken: KEY, source: 'paste', account: 'xxww0098' })

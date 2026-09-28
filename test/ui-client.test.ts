@@ -153,13 +153,12 @@ test('Settings Cursor tab uses Import local Cursor copy and shows source, never 
   assert.match(src, /cursorImport:\s*'导入本机 Cursor'/)
   assert.match(src, /cursorImport:\s*'Import local Cursor'/)
   assert.match(src, /cursorImportEmpty:\s*'本机没有 Cursor CLI 或 IDE 登录'/)
-  assert.match(src, /id === 'cursor' \? t\.cursorImport : id === 'kimi' \? t\.kimiImport : id === 'copilot' \? t\.copilotImport : id === 'devin' \? t\.devinImport : id === 'cline' \? t\.clineImport : id === 'anthropic' \? t\.anthropicImport : id === 'command-code' \? t\.commandCodeImport : t\.import/)
+  assert.match(src, /id === 'cursor' \? t\.cursorImport : id === 'kimi' \? t\.kimiImport : id === 'copilot' \? t\.copilotImport : id === 'devin' \? t\.devinImport : id === 'cline' \? t\.clineImport : id === 'command-code' \? t\.commandCodeImport : t\.import/)
   assert.match(src, /\(id === 'cursor' \|\| id === 'ollama' \|\| id === 'kimi' \|\| id === 'copilot' \|\| id === 'devin' \|\| id === 'cline' \|\| id === 'command-code'\) && row\.methodLabel/)
   assert.match(src, /message === 'cursor-import-empty' \? t\.cursorImportEmpty/)
   assert.match(src, /quotaPanel\('cursor'\)/)
   assert.match(src, /icons\/\{grok,zai,cursor,ollama,cline,github,opencode\}\.svg/)
   assert.match(src, /icons\/\{codex,kiro,antigravity,kimi,copilot,devin\}-color\.svg/)
-  assert.match(src, /icons\/claude-color\.svg/)
   assert.match(src, /cursor: \{ d: 'M22\.106 5\.68L12\.5\.135a\.998\.998 0 00-\.998 0L1\.893 5\.68/)
   assert.match(src, /cursor: \{ d: '[^']+', clip: true \}/)
   assert.equal(src.includes('M11.925 24l10.425-6'), false)
@@ -167,7 +166,7 @@ test('Settings Cursor tab uses Import local Cursor copy and shows source, never 
   assert.equal(/cursor[\s\S]{0,200}accessToken/.test(src), false)
   const panelOrder = src.match(/quotaPanel\('([\w-]+)'/g) ?? []
   const ids = panelOrder.map((row) => /quotaPanel\('([\w-]+)'/.exec(row)?.[1])
-  assert.deepEqual(ids, ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline', 'anthropic', 'opencode-go', 'command-code'])
+  assert.deepEqual(ids, ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline', 'opencode-go', 'command-code'])
 })
 
 test('Settings Ollama tab is Cloud key paste after Cursor, never localhost', async () => {
@@ -234,10 +233,10 @@ test('Settings entry is horizontal page tabs over a family rail, page padded', a
   // Rail lists every family; 'all' entry first, opencode-go bucket last.
   assert.match(src, /\{ id: 'all', name: t\.allFamilies/)
   assert.match(src, /'codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama',/)
-  assert.match(src, /'kimi', 'copilot', 'devin', 'cline', 'anthropic', 'opencode-go',/)
+  assert.match(src, /'kimi', 'copilot', 'devin', 'cline', 'opencode-go',/)
   const panelOrder = src.match(/quotaPanel\('([\w-]+)'/g) ?? []
   const ids = panelOrder.map((row) => /quotaPanel\('([\w-]+)'/.exec(row)?.[1])
-  assert.deepEqual(ids, ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline', 'anthropic', 'opencode-go', 'command-code'])
+  assert.deepEqual(ids, ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline', 'opencode-go', 'command-code'])
 })
 
 test('OpenCode Go renders through the shared account cards and add-account dialog', async () => {
@@ -354,15 +353,6 @@ test('Settings quota error wraps and does not dump upstream JSON', async () => {
   assert.equal(longPlain.includes('x'.repeat(200)), false)
 })
 
-test('Settings quota UI labels scoped weekly meters by model', async () => {
-  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
-  const body = src.match(/function rowLabel\(row, t, family\) \{[\s\S]*?\n    \}/)?.[0]
-  assert.ok(body)
-  const rowLabel = new Function('antigravityGroupLabel', body + '; return rowLabel')(() => '') as (row: any, t: any, family: string) => string
-  assert.equal(rowLabel({ kind: 'weekly_scoped', product: 'Fable' }, { weekly: '每周' }, 'anthropic'), '每周 · Fable')
-  assert.equal(rowLabel({ kind: 'weekly' }, { weekly: 'Weekly' }, 'anthropic'), 'Weekly')
-})
-
 test('QuotaRow is a remaining bar for Codex remainingPercent and Cursor usedPercent', async () => {
   const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
   assert.match(src, /function remainingPercentOf\(row\)/)
@@ -432,7 +422,7 @@ test('Add account opens a centered dialog, not a sheet', async () => {
   assert.match(src, /id === 'glm' && !busy && h\('div', \{ className: 'osubs-glm-logins' \}/)
   assert.match(src, /id === 'kiro' && !busy && h\('div', \{ className: 'osubs-logins' \}/)
   assert.match(src, /id === 'ollama' && !busy && h\('div', \{ className: 'osubs-logins' \}/)
-  assert.match(src, /id === 'cursor' \? t\.cursorImport : id === 'kimi' \? t\.kimiImport : id === 'copilot' \? t\.copilotImport : id === 'devin' \? t\.devinImport : id === 'cline' \? t\.clineImport : id === 'anthropic' \? t\.anthropicImport : id === 'command-code' \? t\.commandCodeImport : t\.import/)
+  assert.match(src, /id === 'cursor' \? t\.cursorImport : id === 'kimi' \? t\.kimiImport : id === 'copilot' \? t\.copilotImport : id === 'devin' \? t\.devinImport : id === 'cline' \? t\.clineImport : id === 'command-code' \? t\.commandCodeImport : t\.import/)
   assert.match(src, /h\('span', null, t\.ollamaImport\)/)
   assert.equal(/osubs-sheet|osubs-drawer|role: 'sheet'|side.?sheet|侧边抽屉/i.test(src), false)
 })

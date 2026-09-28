@@ -12,6 +12,7 @@ import {
   kiroToOpenai,
   kiroToOpenaiChunk,
   KiroEventStreamParser,
+  isKiroOutputCap,
   mapKiroUsage,
   mergeKiroText,
   openaiToKiro,
@@ -89,9 +90,14 @@ async function attemptKiro(response, { payload, cacheSessionId, stream, session,
   const toolIndexes = new Map<string, number>()
   let usage
   let contextPercentage
+  let capped = false
   if (!upstream.body) throw new Error('kiro upstream returned no event stream')
   await pumpBody(upstream.body, attempt, async (value) => {
     for (const event of parser.feed(value)) {
+      if (isKiroOutputCap(event)) {
+        capped = true
+        continue
+      }
       const type = event.type
       const data = unwrapKiroEventPayload(event.payload, type)
       if (type === 'exception' || type === 'invalidStateEvent' || event.messageType === 'exception') {
@@ -141,7 +147,7 @@ async function attemptKiro(response, { payload, cacheSessionId, stream, session,
     model,
     id,
     done: true,
-    finishReason: toolIndexes.size ? 'tool_calls' : 'stop',
+    finishReason: capped ? 'length' : toolIndexes.size ? 'tool_calls' : 'stop',
     usage: resolveKiroUsage({ usage, contextPercentage, text: accText, thinking: accThinking, toolText: accToolText }, model),
   }), signal)
   await writeSse(response, '[DONE]', signal)

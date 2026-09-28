@@ -25,7 +25,10 @@ import { readPrivateText, writePrivateText } from '../utils/private-text.js'
 
 export { readPrivateText, writePrivateText }
 
-export const PROVIDER_IDS = Object.freeze(['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline', 'anthropic', 'command-code'])
+/** Dropped families: their vault is never read and leaves the file with its next write. */
+const RETIRED_PROVIDER_IDS = Object.freeze(['anthropic'])
+
+export const PROVIDER_IDS = Object.freeze(['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline', 'command-code'])
 
 export function defaultDataDir() {
   return join(homedir(), '.dsh', 'plugins', 'oauth-subs')
@@ -63,13 +66,6 @@ export function accountIdOf(provider, session) {
     return `${account}@${region}`
   } else if (provider === 'kiro') {
     return kiroAccountId(session)
-  } else if (provider === 'anthropic') {
-    // The OAuth token carries no identity; accountId is the profile uuid
-    // (opaque, never exposed) and the card label is the profile email.
-    const id = typeof session.accountId === 'string' && session.accountId.trim()
-      ? session.accountId.trim()
-      : (typeof session.account === 'string' && session.account.trim() ? session.account.trim() : undefined)
-    if (id) return id
   } else if (provider === 'command-code') {
     // Human identity first (userName/account/email — opaque fingerprints are
     // filtered); the user uuid, then a sha256 fingerprint — never the raw
@@ -145,6 +141,7 @@ function parseStore(text, path) {
       assertSessionShape(provider, parsed[provider])
     }
   }
+  for (const provider of RETIRED_PROVIDER_IDS) delete parsed[provider]
   return parsed
 }
 
@@ -453,15 +450,6 @@ export function publicSession(provider, session) {
       method: session.source,
       methodLabel: clineSourceLabel(session.source),
       organizationName: session.organizationName,
-      expiresAt: session.expiresAt,
-    }
-  }
-  if (provider === 'anthropic') {
-    return {
-      account: session.account,
-      planType,
-      planLabel,
-      scopes: session.scope,
       expiresAt: session.expiresAt,
     }
   }

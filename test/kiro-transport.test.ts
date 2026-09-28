@@ -62,6 +62,31 @@ test('Kiro streaming exception after output destroys the response, never a succe
   await assert.rejects(post(t, fetchFn).then(response => response.text()))
 })
 
+// kiro.rs reads this in-stream exception as stop_reason max_tokens: the reply hit its output limit and the text so far is good.
+const outputCap = () => encodeKiroEventStream([
+  { type: 'assistantResponseEvent', payload: { content: 'partial answer' } },
+  { type: 'ContentLengthExceededException', messageType: 'exception', payload: { message: 'Input is too long.' } },
+])
+
+test('Kiro output limit ends the stream with finish_reason length, not a broken exchange the host retries', async t => {
+  const { fetchFn, calls } = upstreamSequence(() => new Response(outputCap()))
+  const response = await post(t, fetchFn)
+  assert.equal(response.status, 200)
+  const events = eventsOf(await response.text())
+  assert.equal(events.map(event => event.choices[0].delta?.content).filter(Boolean).join(''), 'partial answer')
+  assert.equal(events.at(-1).choices[0].finish_reason, 'length')
+  assert.equal(calls.length, 1)
+})
+
+test('Kiro output limit in a non-streaming reply is finish_reason length with the text kept', async t => {
+  const { fetchFn } = upstreamSequence(() => new Response(outputCap()))
+  const response = await post(t, fetchFn, { stream: false })
+  assert.equal(response.status, 200)
+  const body = await response.json()
+  assert.equal(body.choices[0].message.content, 'partial answer')
+  assert.equal(body.choices[0].finish_reason, 'length')
+})
+
 test('Kiro truncation after visible output destroys the response', async t => {
   const valid = hello()
   const { fetchFn } = upstreamSequence(() => new Response(Buffer.concat([valid, valid.subarray(0, 11)])))

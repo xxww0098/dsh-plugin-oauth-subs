@@ -76,6 +76,12 @@ export declare function mergeKiroText(previous: any, chunk: any): {
     delta: any;
 };
 export declare function thinkingTextFromPayload(type: any, data: any): any;
+/**
+ * The stream's own "this reply hit its output limit" (kiro.rs reads it as
+ * stop_reason max_tokens): the text so far is good, so it ends as `length`
+ * rather than a failure the host would retry into the same limit.
+ */
+export declare function isKiroOutputCap(event: any): boolean;
 export declare function collectKiroEvents(events: any): {
     text: string;
     thinking: string;
@@ -90,6 +96,7 @@ export declare function collectKiroEvents(events: any): {
     usage: any;
     contextPercentage: any;
     error: any;
+    capped: boolean;
 };
 export declare function kiroToOpenai(eventsOrBody: any, { model, id }?: any): {
     error?: {

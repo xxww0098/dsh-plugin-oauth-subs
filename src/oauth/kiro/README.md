@@ -70,6 +70,7 @@ DSH chat/completions  →  POST https://q.<region>.amazonaws.com/
 - 历史是 `userInputMessage` / `assistantResponseMessage` 成对。当前 user 文本只是这一轮。
 - `conversationId` = DSH `session_id` / `prompt_cache_key` **加上 model**（`session:deepseek-3.2`），缺 pin 时 `dsh-kiro:<model>`，`isKiroFallback` 为真时不钉系统提示。**永远不要** `Date.now()`。静态目录各钉各的，切换 picker 不共用一条 AWS conversation。
 - tools 仍在 **current** `userInputMessageContext.tools`（官方也是挂 current，不在 conversationState 顶层）。
+- 输出撞上限：流内 `ContentLengthExceededException` 帧（kiro.rs 读作 stop_reason `max_tokens`）以 `finish_reason: length` 收尾并保留已出文本，不再当 502 销毁（宿主会重试同一个还会撞上限的请求）。帧形态来自 kiro.rs，未活测。
 - 图片：user 消息里 `data:image/{png,jpeg,gif,webp};base64,…` 的 `image_url` 变成该条 `userInputMessage.images: [{format, source: {bytes}}]`（jpg → jpeg；远程 URL 和其他类型不发，一张被拒会让整轮 400）。**只有最近一条带图的 user 消息保留图片**，更早的不再重发（Kiro 自己的 agent 与 magpie 都这样；kiro.rs 是当前消息带图、历史里同图去重）。之前目录声明 `image` 而这里只留文本，图片被静默丢掉。线格来自 kiro.rs `KiroImage` 与 magpie `gateway/kiro.go`，本机未用活账号验证。
 - `toolResults` 必须紧跟带该 `toolUseId` 的 `assistantResponseMessage`（history user 或 current）。`relocateDisplacedToolResults` 先按 id 把错位的 result 挪回发出它的 assistant 后面（并发交错：A / user / B / result(A) → AWS 400）；再走原来的 `flushAssistant` 再 `flushUser`。不编造 “Tool results provided.”；有 `toolResults` 时 `content` 保持空串，只有既无文本也无 results 才写占位 `.`。
 - `normalizeToolUseId`：已符合 `^[a-zA-Z0-9_.:-]{1,64}$` 的 id 只做 `call_` / `toolu_` / `tool_` → `tooluse_`；带 `|` 或超长的 OpenAI Responses 复合 id（`call_…|fc_…`）用稳定 sha256 映成 `tooluse_<32>`，use 和 result 共用同一张表。

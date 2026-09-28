@@ -2,11 +2,35 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
-## 2026-09-29：对照 magpie（yetone/magpie）审网关 / 账号 / 额度 / hop——采纳 8 处小改，多账号故障转移与冷却维持不学
+## 2026-09-29：移除 Claude（Anthropic）家族
 
-**现象**：没有单一现象；对照出的缺口分散在下面同日各条里（冷读额度串行、状态文件非原子写、CI 与自更新都不验 `lib/`、导入登录被重登继承、Copilot 目录含 `/responses`-only 行、Kiro 丢图片、Kiro 超长提示宿主不压缩）。
-**根因**：这些是我们没有、magpie 有明确处理的地方；magpie 的头号特性（网关内多账号故障转移 / 冷却 / 按缓存亲和选号 / 计费头 + 请求体哈希冒充 Claude Code / 自动接受 Copilot 条款）不采纳，理由分别是 `specs/request-path-upgrades/choices.md` 决定 5、不加强对厂商的冒充、不替用户接受厂商条款。
-**修复**：见各条。**待活测才能动的线索**（不凭对照改）：Cursor 丢图片入参、Kiro effort 未上线、Kiro 遇输出上限（`ContentLengthExceededException`）当失败、Codex / Grok 换号后重放他号封存的 reasoning、Cursor 并行 tool call 每个占一次 Run、Cursor 团队区域 401 应为 403、Grok 客户端版本 `0.2.93` 对官方 `1.0.41`、Codex 重置额度未指明 `credit_id`、Anthropic 用量 429 无 Retry-After 退避、额度快照不落盘。
+**现象**：Claude 家族直连 `api.anthropic.com`，用订阅 OAuth 令牌加 Claude Code 的头。magpie 的 README 称 Anthropic 会按请求内容把第三方 agent 的流量判为第三方（走 Extra Usage），它因此改成驱动本机 `claude`。
+**根因**：维护者要求下架整个家族；直连有被判第三方的风险，驱动本机 `claude` 是另一套架构，不做。
+**修复**：删 `src/oauth/anthropic/` 与 `test/anthropic.test.ts`；`FAMILY_IDS` / `PROVIDER_IDS` / 代理路由 / 额度 / Settings 页签去掉。`RETIRED_FAMILY_IDS` 仍 unset 残留的 `oauth-anthropic` 路由；`auth.json` 里的 `anthropic` vault 不再读取，下次写入时消失（令牌在 Anthropic 侧不会被吊销，要撤销去 claude.ai 设置）。默认模型若指向 `oauth-anthropic/…` 需要在 DSH 里重选。
+
+## 2026-09-29：Command Code 卡片「刷新额度」不刷新它自己，还把别的家族扫一遍
+
+**现象**：点 Command Code 的「刷新额度」，它的额度不动，返回的也不是额度对象，还多打一轮别的家族的额度请求。
+**根因**：`refreshQuota(provider)` 的家族判断是手写的一串 `||`，漏了 `command-code`，掉进「无参数 = 全家族」分支，那个聚合也漏它。
+**修复**：判断与聚合都改用 `PROVIDER_IDS`，新增家族不会再被漏；补 `#rememberCommandCodeIdentity`（whoami 借额度链路把不透明的 vault id 换成账号名）。回归 `test/command-code.test.ts`。
+
+## 2026-09-29：Kiro 输出撞上限被当成失败，宿主重试同一个还会撞上限的请求
+
+**现象**：Kiro 回复撞输出上限后流被销毁，宿主按 TRANSPORT 重试，重试的同一请求又撞上限。
+**根因**：流内 `ContentLengthExceededException` 帧一律走 502 异常分支；kiro.rs 把它读作 stop_reason `max_tokens`，此前的文本是好的。
+**修复**：该帧记为 `capped`，流式与非流式都以 `finish_reason: length` 收尾并保留文本。回归 `test/kiro-transport.test.ts`。帧形态来自 kiro.rs，未用活账号验证。
+
+## 2026-09-29：Codex `promax` 套餐显示成「Promax」
+
+**现象**：新的 `promax` 套餐（openai/codex#47971，2026-09-25）在账号卡上显示「Promax」，`chatgpt_promax` 显示「Chatgpt Promax」。
+**根因**：`CODEX_PLAN_NAMES` 没有这个 slug，回落到首字母大写。
+**修复**：`promax` / `pro_max` / `chatgpt_promax` / `chatgpt_pro_max` → `Pro Max`，倍数官方没公布，不写。官方把 `pro` / `prolite` 的显示名改成了 Pro (More) / Pro，我们保留 20x / 5x，没跟。
+
+## 2026-09-29：对照 magpie（yetone/magpie）审网关 / 账号 / 额度 / hop——采纳一批小改，多账号故障转移与冷却维持不学
+
+**现象**：没有单一现象；对照出的缺口分散在下面同日各条里（冷读额度串行、状态文件非原子写、CI 与自更新都不验 `lib/`、导入登录被重登继承、Copilot 目录含 `/responses`-only 行、Kiro 丢图片、Kiro 超长提示宿主不压缩、Kiro 输出撞上限当失败）。
+**根因**：这些是我们没有、magpie 有明确处理的地方；magpie 的头号特性（网关内多账号故障转移 / 冷却 / 按缓存亲和选号 / 自动接受 Copilot 条款）不采纳，理由分别是 `specs/request-path-upgrades/choices.md` 决定 5、不替用户接受厂商条款；它对 Claude 的做法（计费头 + 请求体哈希冒充，后改为驱动本机 `claude`）随 Claude 家族下架不再相关。
+**修复**：见各条。**待活测才能动的线索**（不凭对照改）：Cursor 丢图片入参、Kiro effort 未上线、Chat 流 `finish_reason: other` 被 pi-ai 当错误（本机 7 天见 1 次，语义含糊，没改）、Codex / Grok 换号后重放他号封存的 reasoning、Cursor 并行 tool call 每个占一次 Run、Cursor 团队区域 401 应为 403、Grok 客户端版本 `0.2.93` 对官方 `1.0.41`、Codex 重置额度未指明 `credit_id`、额度快照不落盘。
 
 ## 2026-09-29：Kiro 目录声明支持图片，请求里却只留文本，图片被静默丢掉
 
@@ -20,10 +44,10 @@
 **根因**：pi-ai 适配器用 `isContextOverflow` + `isContextWindowExceededError` 按措辞判定；Kiro 原文 `Input is too long.` 两套都不匹配（Bedrock 那条要 `for requested model`）。
 **修复**：`kiroClientErrorBody` 对 `kiro_too_big` 加前缀 `input is too long for the model's context window: `，状态码仍是 400/413。回归 `test/kiro.test.ts`（内嵌宿主正则原文）。对照 magpie `kiroFailure`。
 
-## 2026-09-29：导入的 Codex / Claude 登录改用浏览器重登后，账号仍被当成导入登录（只读，终会再变陈旧）
+## 2026-09-29：导入的 Codex 登录改用浏览器重登后，账号仍被当成导入登录（只读，终会再变陈旧）
 
-**现象**：Codex / Claude 的本机导入登录变陈旧，按提示「重新登录」走浏览器授权，新令牌能用一阵，过期后又报 `imported login is stale`。
-**根因**：`saveSession` 合并同账号的旧字段，`source`（导入路径 / `keychain:…`）不在 `SESSION_CREDENTIAL_KEYS`；Codex / Anthropic 的浏览器登录不写 `source`（Cline / Kimi / Cursor 显式写 `oauth` / `pkce`），旧值被继承，`imported.is()` 仍为真，只重读 CLI 文件、从不用自己的 refresh token 换票。
+**现象**：Codex 的本机导入登录变陈旧，按提示「重新登录」走浏览器授权，新令牌能用一阵，过期后又报 `imported login is stale`。
+**根因**：`saveSession` 合并同账号的旧字段，`source`（导入路径）不在 `SESSION_CREDENTIAL_KEYS`；Codex 的浏览器登录不写 `source`（Cline / Kimi / Cursor 显式写 `oauth` / `pkce`），旧值被继承，`imported.is()` 仍为真，只重读 CLI 文件、从不用自己的 refresh token 换票。
 **修复**：`source` 归入 `SESSION_CREDENTIAL_KEYS`（重登总是重新给出）。回归 `test/store.test.ts`「a browser re-login is a login of its own…」。对照 magpie `upsertLogin`（重登整条替换）。
 
 ## 2026-09-29：Copilot 选择器列出只在 `/responses` 上服务的模型，回环 hop 只有 `/chat/completions`
@@ -48,7 +72,7 @@
 
 **现象**：历史上有 13 次「chore: rebuild lib …」补提交（按提交标题统计）；GitHub 地址安装与自更新读的是提交里的 `lib/`，src 改了没带构建产物就会发出旧代码。
 **根因**：`npm test` 在 runner 上重新构建 `lib/`，提交里的那份从没被测过；`package-surface` 只查文件存在。
-**修复**：CI 在 `npm test` 之后跑 `git status --porcelain -- lib`，非空即失败；自更新换装前也校验暂存副本有 `lib/index.js`（`swapPackageDirs`），缺了就拒绝、旧目录不动；顺带加 `concurrency`（顶掉的旧运行自动取消）和 `permissions: contents: read`。
+**修复**：CI 先 `rm -rf lib`（tsc 不删产物，删了 src 却留着 lib 也要暴露）再 `npm test`，之后跑 `git status --porcelain -- lib`，非空即失败；自更新换装前也校验暂存副本有 `lib/index.js`（`swapPackageDirs`），缺了就拒绝、旧目录不动；顺带加 `concurrency`（顶掉的旧运行自动取消）和 `permissions: contents: read`。
 
 ## 2026-09-28：添加账号弹窗里展开的输入框掉到列表最底部
 
