@@ -2,6 +2,13 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-28：Devin 传输层没有计时器，5xx 在代理内重放，流内错误一律 502 / SSE 错误块
+
+**现象**：Devin 上游卡住时代理没有任何计时器，只等宿主 300s 看门狗；HTTP ≥500 在代理内重放 3 次（宿主再重试一轮）；Connect trailer 错误（如 `deadline_exceeded`）不分码一律 502；头发出后的失败写一个 SSE 错误块再正常结束，宿主按文本归为 `PI_AI_ERROR`。
+**根因**：`forwardDevin` 自带 `runRetrying` + `devinRetryable`（≥500 可重放），绕过了 04 的 `upstreamRequest`；`connectTrailerError` 只回字符串，丢了 Connect `code`。
+**修复**：`forwardDevin` 走 `upstreamRequest(...).run`（首字节 120s / 预算 270s 从路由入口 `startedAt` 起算，`runDevinChat` 每块上游数据 `touch()`）；删 `runRetrying` / `devinRetryable` / `DEVIN_STREAM_ATTEMPTS`；HTTP 非 2xx 与 trailer 错误抛 `UpstreamFailure` code `http`（状态原样 / `connectCodeStatus`），只转发一次；空流与无消息流仍算传输故障可重试。第一块映射输出前不写头，之后失败 `destroy`。user_jwt 401 例外保留；token-only 仍 401 走共用刷新钩子一次。
+**活测（2026-09-28，宿主 Node v24.21.0）**：worktree `lib/` 的 `createProxy` 1 次流式 `swe-2` 请求、未刷新：200 `text/event-stream`，6.3s，回 `PONG` + `[DONE]`。
+
 ## 2026-09-28：上游空闲约 4s 就断连，下一轮重新握手
 
 **现象**：两轮之间空闲超过约 4s（codex 14%，其余家族 10–16%），下一个请求要重新 TCP + TLS 握手（chatgpt.com 约 1.7s，ollama.com 约 0.5s）。

@@ -156,5 +156,11 @@ export declare function splitConnectFrames(buf: any): {
 export declare function unframePayload(frame: any): any;
 /** Unary replies arrive as raw proto, a single Connect frame, or gzipped. */
 export declare function decodeUnaryBody(buf: any): any;
-/** Connect end trailer: `{ error: { code, message } }` or `{}` on success. */
-export declare function connectTrailerError(text: any): string | undefined;
+/**
+ * Connect end trailer: `{ error: { code, message } }` or `{}` on success.
+ * Returns the error's Connect `code` (when it has one) and a readable message.
+ */
+export declare function connectTrailerError(text: any): {
+    code: string;
+    message: string;
+} | undefined;
