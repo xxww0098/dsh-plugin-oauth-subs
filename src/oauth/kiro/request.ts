@@ -671,15 +671,16 @@ function hopErrorBlob(parsed, text) {
 }
 
 /**
- * Classify hop errors so DSH does not hammer a hard monthly quota as a
- * generic 429, or treat size / capacity as AUTH. 401/403 still become
- * 400 (subscription key stays valid) unless TokenManager already refreshed.
+ * Classify hop errors so DSH does not treat size / capacity as AUTH. The hard
+ * monthly quota is a 429 the transport words as `usage limit reached:` (host
+ * QUOTA_EXCEEDED, never retried). 401/403 become 400 (subscription key stays
+ * valid) once the transport's single refresh did not help.
  */
 export function classifyKiroHopError(status, parsed, text, { retryAfter }: any = {}) {
   const blob = hopErrorBlob(parsed, text)
   const headerRetry = retryAfter != null && String(retryAfter).trim() ? String(retryAfter).trim() : undefined
   if (blob.includes(KIRO_REASON_CODES.MONTHLY_REQUEST_COUNT)) {
-    return { status: 400, code: 'kiro_quota', retryAfter: undefined }
+    return { status: 429, code: 'kiro_quota', retryAfter: undefined }
   }
   if (blob.includes(KIRO_REASON_CODES.INSUFFICIENT_MODEL_CAPACITY)) {
     return { status: 503, code: 'kiro_capacity', retryAfter: headerRetry }

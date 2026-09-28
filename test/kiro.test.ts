@@ -933,13 +933,13 @@ test('empty ListAvailableModels keeps the static fallback including the original
   resetKiroCatalogCache()
 })
 
-test('MONTHLY_REQUEST_COUNT is not a 429', () => {
+test('MONTHLY_REQUEST_COUNT is a 429 quota answer, distinct from the rate limit', () => {
   const body = { reason: 'MONTHLY_REQUEST_COUNT', message: 'monthly request count exceeded' }
-  const classified = classifyKiroHopError(429, body, JSON.stringify(body))
-  assert.equal(classified.status, 400)
-  assert.notEqual(classified.status, 429)
+  const classified = classifyKiroHopError(400, body, JSON.stringify(body))
+  assert.equal(classified.status, 429)
   assert.equal(classified.code, 'kiro_quota')
-  assert.equal(kiroClientErrorStatus(429, body, JSON.stringify(body)), 400)
+  assert.equal(classified.retryAfter, undefined)
+  assert.equal(kiroClientErrorStatus(400, body, JSON.stringify(body)), 429)
   assert.equal(classifyKiroHopError(429, { reason: 'USER_REQUEST_RATE_EXCEEDED' }, '', { retryAfter: '2' }).status, 429)
   assert.equal(classifyKiroHopError(503, { reason: 'INSUFFICIENT_MODEL_CAPACITY' }, '').status, 503)
   assert.equal(classifyKiroHopError(400, { reason: 'CONTENT_LENGTH_EXCEEDS_THRESHOLD' }, '').status, 400)
