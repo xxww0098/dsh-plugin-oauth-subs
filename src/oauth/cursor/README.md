@@ -52,7 +52,7 @@ Run 握手必须按类型回帧，不能一律当原生工具拒绝：
 
 工具结果续跑：Cursor 没有无状态的 tool-result action。下一轮把**完成轮**（user + MCP 调用 + result）写进 `conversationState`（`parseTurns` 只在还有未答复 toolCall 时才算 in-flight），并把工具输出作为**当前 user 消息**（`openaiToCursor` 的 `continuationText`）。只重发原 user 文本会让模型重复调用同一个工具。
 
-HTTP/2 请求取消 / unary 超时必须销毁该请求独占的连接，`close()` 的优雅关闭不会终止活动流；已结算后不再消费消息或写 KV 回复。预取消信号不建立连接。`onEvent` 的异步消费完成前暂停接收，SSE 背压沿调用链传回 Run。EOF 的 Connect 残帧必须报错；已输出后的异常发 OpenAI error SSE，不混入回答文字或追加 DONE。见[故障记录](../../../docs/error.md)。
+HTTP/2 请求取消 / unary 超时必须销毁该请求独占的连接，`close()` 的优雅关闭不会终止活动流；已结算后不再消费消息或写 KV 回复。预取消信号不建立连接。`onEvent` 的异步消费完成前暂停接收，SSE 背压沿调用链传回 Run。EOF 的 Connect 残帧必须报错。每次 Run 在 `upstreamRequest(...).run` 里执行：首字节 120s 覆盖 h2 拨号 + 第一个 DATA 帧，每帧 `touch()`；role 块随第一块内容才发，输出前的 Connect 错误帧按 `connectCodeStatus` 回 JSON（`unauthenticated`→401 先刷新一次再试，`resource_exhausted`→429，`invalid_argument`→400…），非 200 的 h2 头按原状态码回；都不在代理内重放，只重试传输故障。已输出后的异常直接断流（`destroy`），不写 SSE 错误块、不追加 DONE。见[故障记录](../../../docs/error.md)。
 
 ### 上游代理（区域锁出口）
 

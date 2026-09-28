@@ -389,12 +389,12 @@ export function createCursorOpenaiStream({ model, id, conversationId }) {
   return {
     collected,
     conversationId,
+    /**
+     * The role chunk rides with the first content chunk: an error or an empty
+     * update must not commit the client head before any output exists.
+     */
     push(event) {
       const chunks: any[] = []
-      if (!started) {
-        started = true
-        chunks.push(cursorToOpenaiChunk({ role: 'assistant', text: '' }, { model, id }))
-      }
       if (event?.text) {
         collected.text += event.text
         chunks.push(cursorToOpenaiChunk({ text: event.text }, { model, id }))
@@ -429,6 +429,10 @@ export function createCursorOpenaiStream({ model, id, conversationId }) {
       }
       if (event?.cachedTokens) collected.usage.cachedTokens = event.cachedTokens
       if (event?.promptTokens) collected.usage.promptTokens = event.promptTokens
+      if (chunks.length && !started) {
+        started = true
+        chunks.unshift(cursorToOpenaiChunk({ role: 'assistant', text: '' }, { model, id }))
+      }
       return chunks
     },
     finish() {
@@ -461,8 +465,9 @@ export function consumeCursorFrames(chunk, rest, onMessage) {
       const text = frame.payload.toString('utf8').trim()
       if (text) {
         try {
-          const message = connectErrorMessage(JSON.parse(text))
-          if (message) onMessage({ kind: 'error', message })
+          const parsed = JSON.parse(text)
+          const message = connectErrorMessage(parsed)
+          if (message) onMessage({ kind: 'error', message, code: parsed?.error?.code })
         } catch {
           onMessage({ kind: 'error', message: text.slice(0, 300) })
         }

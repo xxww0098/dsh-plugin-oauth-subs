@@ -2,6 +2,12 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-28：Cursor Run 没有任何计时，Connect 错误一律 502，头发出后写 SSE 错误块再正常结束
+
+**现象**：Cursor 对端卡在握手或首帧前时代理一直等到宿主 300s 看门狗；「Composer 2 已下线」这类 `invalid_argument`、`unauthenticated`、`resource_exhausted` 全回 502（宿主当 SERVER 白重试）；首个事件就是错误时 mapper 先吐 role 块把 200 头提交出去；头发出后的失败写 `{error}` SSE 块再 `end()`，宿主按文本归为 `PI_AI_ERROR`。
+**根因**：`forwardCursor` 没接 04 的尝试原语；错误帧只取文案不取 `code`；role 块在第一个事件时无条件发出；`fail()` 有头发出后的错误块分支。
+**修复**：`forwardCursor` 在 `upstreamRequest(...).run` 里跑 Run（`startedAt` 取路由入口，`tokens.cursor` 传入给 401 刷新钩子），首字节 120s 覆盖 h2 拨号 + 首个 DATA 帧，`runCursorAgent` 每个 DATA chunk 调 `touch()`；Connect 错误帧 → `UpstreamFailure(connectCodeStatus(code))`（未知码 502，只记日志），非 200 的 h2 头按原状态码；`unauthenticated` 输出前刷新一次再试；role 块随第一块内容才发；删掉 `fail()`，头发出后一律 `destroy`。仍是每次 Run 一个 h2 会话（连接池见 12）。
+**活测（2026-09-28，宿主 Node v24.21.0）**：worktree `lib/` 的 `createProxy`，composer-2.5 流式 1 次、未刷新：200，5.2s，finish `stop` + `[DONE]`，cached_tokens 10549/11394。
 ## 2026-09-28：上游空闲约 4s 就断连，下一轮重新握手
 
 **现象**：两轮之间空闲超过约 4s（codex 14%，其余家族 10–16%），下一个请求要重新 TCP + TLS 握手（chatgpt.com 约 1.7s，ollama.com 约 0.5s）。

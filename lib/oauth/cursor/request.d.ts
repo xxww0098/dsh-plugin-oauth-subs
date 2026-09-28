@@ -69,6 +69,10 @@ export declare function createCursorOpenaiStream({ model, id, conversationId }: 
 }): {
     collected: any;
     conversationId: any;
+    /**
+     * The role chunk rides with the first content chunk: an error or an empty
+     * update must not commit the client head before any output exists.
+     */
     push(event: any): any[];
     finish(): {
         usage?: any;

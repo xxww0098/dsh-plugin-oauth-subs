@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { request as httpRequest } from 'node:http'
 import { test } from 'node:test'
 import { createProxy, describeError } from '../lib/oauth/proxy.js'
-import { UPSTREAM_ATTEMPTS } from '../lib/oauth/upstream.js'
+import { UPSTREAM_ATTEMPTS, UpstreamFailure } from '../lib/oauth/upstream.js'
 import { classifySseFrame, SseFrameScanner } from '../lib/oauth/responses-sse.js'
 import { CODEX_API_URL } from '../lib/oauth/codex/index.js'
 import { GLM_ANTHROPIC_URL, GLM_ANTHROPIC_VERSION, GLM_CODING_URL, GLM_USER_AGENT } from '../lib/oauth/glm/index.js'
@@ -1464,7 +1464,8 @@ test('Grok hop parks extra leading system snapshots after the conversation', asy
   }
 })
 
-test('cursor streaming surfaces an upstream run error as JSON, not a naked stream end', async () => {
+test('cursor streaming surfaces a pre-output Connect error as JSON with its status, never retried', async () => {
+  let calls = 0
   const proxy = createProxy({
     port: 0,
     apiKey: 'secret-key',
@@ -1475,7 +1476,10 @@ test('cursor streaming surfaces an upstream run error as JSON, not a naked strea
       },
     },
     cursorRpc: async () => {
-      throw new Error("Composer 2 is retired: We're upgrading you to Composer 2.5, our most powerful model yet.")
+      calls += 1
+      // What runCursorAgent rejects with for an `invalid_argument` end frame.
+      const message = "Composer 2 is retired: We're upgrading you to Composer 2.5, our most powerful model yet."
+      throw new UpstreamFailure(400, message, { code: 'http', payload: { error: { message, code: 'invalid_argument' } } })
     },
   })
   const server = await proxy.listen()
@@ -1486,15 +1490,16 @@ test('cursor streaming surfaces an upstream run error as JSON, not a naked strea
       headers: { authorization: 'Bearer secret-key', 'content-type': 'application/json' },
       body: JSON.stringify({ model: 'composer-2', stream: true, messages: [{ role: 'user', content: 'hi' }] }),
     })
-    assert.equal(res.status, 502)
+    assert.equal(res.status, 400)
     const body = await res.json()
     assert.equal(body.error.message, "Composer 2 is retired: We're upgrading you to Composer 2.5, our most powerful model yet.")
+    assert.equal(calls, 1)
   } finally {
     await proxy.close()
   }
 })
 
-test('cursor mid-stream failure surfaces a structured error without a successful terminal event', async () => {
+test('cursor mid-stream failure drops the stream instead of writing an SSE error block', async () => {
   const proxy = createProxy({
     port: 0,
     apiKey: 'secret-key',
@@ -1507,7 +1512,9 @@ test('cursor mid-stream failure surfaces a structured error without a successful
     cursorRpc: async (session, built, { onEvent }) => {
       assert.equal(session.accessToken, 'cursor-tok')
       assert.ok(Buffer.isBuffer(built.requestBytes))
-      await onEvent({ kind: 'interaction', turnEnded: false })
+      await onEvent({ kind: 'interaction', text: 'partial' })
+      // Let the committed chunk reach the socket before the break.
+      await new Promise((resolve) => setTimeout(resolve, 20))
       throw new Error("Composer 2 is retired: We're upgrading you to Composer 2.5, our most powerful model yet.")
     },
   })
@@ -1520,13 +1527,18 @@ test('cursor mid-stream failure surfaces a structured error without a successful
       body: JSON.stringify({ model: 'composer-2', stream: true, messages: [{ role: 'user', content: 'hi' }] }),
     })
     assert.equal(res.status, 200)
-    const text = await res.text()
-    assert.match(text, /Composer 2 is retired: We're upgrading you to Composer 2\.5/)
-    const chunks = [...text.matchAll(/^data: (.+)$/gm)].map(match => JSON.parse(match[1]))
-    const failure = chunks.find(chunk => chunk.error)
-    assert.equal(failure.error.code, 'cursor_upstream')
-    assert.equal(failure.error.type, 'server_error')
-    assert.equal(chunks.some(chunk => chunk.choices?.[0]?.finish_reason), false)
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let text = ''
+    await assert.rejects(async () => {
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) return
+        text += decoder.decode(value, { stream: true })
+      }
+    }, /terminated/)
+    assert.match(text, /partial/)
+    assert.equal(text.includes('cursor_upstream'), false)
     assert.equal(text.includes('[DONE]'), false)
   } finally {
     await proxy.close()

@@ -1,6 +1,7 @@
 /** Cursor AgentService lifecycle and OpenAI streaming translation. */
 
-import { RequestError, describeError, sendJson } from '../../utils/http.js'
+import { sendJson } from '../../utils/http.js'
+import { upstreamRequest } from '../upstream.js'
 import { cursorToOpenai, createCursorOpenaiStream, openaiToCursor } from './request.js'
 import { runCursorAgent } from './h2-session.js'
 
@@ -32,66 +33,57 @@ function waitForDrain(response, signal) {
   })
 }
 
-export async function forwardCursor(response, { payload, cacheSessionId, stream, session, signal, runFn = runCursorAgent }: any) {
+/**
+ * Each Run executes inside `upstreamRequest(...).run`: the first-byte window
+ * covers the h2 dial plus the first DATA frame, every frame touches the idle
+ * clock, and the head waits for the first mapped chunk so a pre-output Connect
+ * error still answers with its own status. After the head a failure destroys
+ * the response (answerFailure) — never an SSE error block and a clean end.
+ */
+export async function forwardCursor(response, { payload, cacheSessionId, stream, session, tokens, startedAt, upstreamTimeouts, signal, runFn = runCursorAgent }: any) {
   const built = openaiToCursor(payload, { conversationId: cacheSessionId })
   const model = built.pickerModel || built.modelId
   const id = `chatcmpl-${Date.now()}`
+  const upstream = upstreamRequest({ family: 'cursor', signal, startedAt, stream: stream === true, response, timeouts: upstreamTimeouts })
+  // One forced refresh on a pre-output 401 (Connect `unauthenticated`), F4e.
+  const refresh = async () => {
+    const source = tokens?.sourceOf?.(session)
+    const next = source ? await tokens.refreshNow(source.id, session.accessToken).catch(() => undefined) : undefined
+    if (!next?.session) return false
+    session = next.session
+    return true
+  }
 
   if (!stream) {
-    const { collected } = await runFn(session, built, { signal })
-    if (collected.error) throw new RequestError(502, collected.error)
-    sendJson(response, 200, cursorToOpenai(collected, { model, id, conversationId: built.conversationId }))
+    await upstream.run(async (attempt) => {
+      const { collected } = await runFn(session, built, { signal: attempt.signal, touch: attempt.touch })
+      sendJson(response, 200, cursorToOpenai(collected, { model, id, conversationId: built.conversationId }))
+    }, { refresh })
     return
   }
 
-  const mapper = createCursorOpenaiStream({ model, id, conversationId: built.conversationId })
-  let headSent = false
-  const head = () => {
-    if (headSent) return
-    headSent = true
-    response.writeHead(200, {
-      'content-type': 'text/event-stream; charset=utf-8',
-      'cache-control': 'no-store',
-      'x-content-type-options': 'nosniff',
-    })
-  }
-  const write = async (chunk) => {
-    if (response.destroyed) throw new Error('client disconnected before write')
-    if (!response.write(`data: ${JSON.stringify(chunk)}\n\n`)) await waitForDrain(response, signal)
-  }
-  const fail = async (message) => {
-    if (!headSent) {
-      sendJson(response, 502, { error: { message } })
-      return
+  await upstream.run(async (attempt) => {
+    const mapper = createCursorOpenaiStream({ model, id, conversationId: built.conversationId })
+    const write = async (chunk) => {
+      if (response.destroyed) throw new Error('client disconnected before write')
+      if (!response.headersSent) {
+        response.writeHead(200, {
+          'content-type': 'text/event-stream; charset=utf-8',
+          'cache-control': 'no-store',
+          'x-content-type-options': 'nosniff',
+        })
+      }
+      if (!response.write(`data: ${JSON.stringify(chunk)}\n\n`)) await waitForDrain(response, attempt.signal)
     }
-    // Once output commits the status, a structured SSE error is the only way
-    // to distinguish a failed run from a successfully completed answer.
-    console.error(`[oauth-subs] cursor upstream error mid-stream: ${message}`)
-    // The client may already be gone: the error report itself must not throw.
-    await write({ error: { message, type: 'server_error', code: 'cursor_upstream' } }).catch(() => {})
-    if (!response.writableEnded && !response.destroyed) response.end()
-  }
-  let collected
-  try {
-    collected = (await runFn(session, built, {
-      signal,
+    await runFn(session, built, {
+      signal: attempt.signal,
+      touch: attempt.touch,
       onEvent: async (event) => {
-        const chunks = mapper.push(event)
-        if (chunks.length) head()
-        for (const chunk of chunks) await write(chunk)
+        for (const chunk of mapper.push(event)) await write(chunk)
       },
-    })).collected
-  } catch (error) {
-    if (signal.aborted) throw error
-    await fail(describeError(error))
-    return
-  }
-  if (collected.error) {
-    await fail(collected.error)
-    return
-  }
-  head()
-  await write(mapper.finish())
-  response.write('data: [DONE]\n\n')
-  if (!response.writableEnded && !response.destroyed) response.end()
+    })
+    await write(mapper.finish())
+    response.write('data: [DONE]\n\n')
+    if (!response.writableEnded && !response.destroyed) response.end()
+  }, { refresh })
 }
