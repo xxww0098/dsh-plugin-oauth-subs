@@ -351,13 +351,13 @@ export function createDevinOpenaiStream({ model, id }: any = {}) {
     id: completionId,
     text: () => text,
     thinking: () => thinking,
+    /**
+     * The role chunk rides with the first content chunk: usage or a stop
+     * before any output must not commit the client head.
+     */
     push(event) {
       if (!event || typeof event !== 'object') return []
       const chunks: any[] = []
-      if (!sentRole) {
-        sentRole = true
-        chunks.push(chunk({ role: 'assistant' }))
-      }
       if (event.type === 'thinking' && event.delta) {
         thinking += event.delta
         chunks.push(chunk({ reasoning_content: event.delta }))
@@ -384,6 +384,10 @@ export function createDevinOpenaiStream({ model, id }: any = {}) {
         latestUsage = event.usage
       } else if (event.type === 'stop') {
         stopReason = event.reason
+      }
+      if (chunks.length && !sentRole) {
+        sentRole = true
+        chunks.unshift(chunk({ role: 'assistant' }))
       }
       return chunks
     },

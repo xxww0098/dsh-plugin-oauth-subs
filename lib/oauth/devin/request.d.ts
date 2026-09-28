@@ -75,6 +75,10 @@ export declare function createDevinOpenaiStream({ model, id }?: any): {
     id: any;
     text: () => string;
     thinking: () => string;
+    /**
+     * The role chunk rides with the first content chunk: usage or a stop
+     * before any output must not commit the client head.
+     */
     push(event: any): any[];
     finish(): any[];
 };

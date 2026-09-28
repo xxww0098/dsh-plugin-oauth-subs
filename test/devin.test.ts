@@ -775,7 +775,7 @@ test('runDevinChat surfaces trailer errors and empty streams', async () => {
   const emptyFetch = async () => new Response(Buffer.alloc(0), { status: 200 })
   await assert.rejects(
     runDevinChat(devinSession({ accessToken: 'x' }), openaiToDevin({ model: 'swe-2', messages: [] }, {}), { fetchFn: emptyFetch }),
-    /empty body|without a message/,
+    /empty body|without an end frame/,
   )
 })
 
@@ -1066,6 +1066,60 @@ test('devin: Connect trailer codes map to status before output; after output the
     const res = await postDevin(broken.address().port, true)
     assert.equal(res.status, 200)
     await assert.rejects(res.text())
+    assert.equal(late.counts.chat, 1)
+  } finally {
+    broken.close()
+  }
+})
+
+const usageFrame = () => frameConnect(encodeMessage(7, Buffer.concat([encodeUint(2, 11), encodeUint(3, 4)])), { compress: true })
+
+test('devin: a usage-only frame does not commit the head; a following trailer error answers JSON', async () => {
+  const { fetchFn, counts } = devinFetch(() => new Response(Buffer.concat([usageFrame(), trailer('resource_exhausted')]), { status: 200 }))
+  const proxy = await devinProxy({ fetchFn }).listen()
+  try {
+    const res = await postDevin(proxy.address().port, true)
+    assert.equal(res.status, 429)
+    assert.match(res.headers.get('content-type'), /json/)
+    assert.match(JSON.stringify(await res.json()), /resource_exhausted/)
+    assert.equal(counts.chat, 1)
+  } finally {
+    proxy.close()
+  }
+})
+
+test('devin: EOF without the Connect end frame (or inside a frame) is a cut stream, retried before output', async () => {
+  const stopFrame = frameConnect(encodeUint(5, 1), { compress: true })
+  const cuts = [
+    stopFrame,
+    Buffer.concat([stopFrame, frameConnect(encodeString(3, 'lost'), { compress: true }).subarray(0, 7)]),
+  ]
+  for (const cut of cuts) {
+    const { fetchFn, counts } = devinFetch((n) => (n === 1 ? new Response(cut, { status: 200 }) : okChatStream()))
+    const proxy = await devinProxy({ fetchFn }).listen()
+    try {
+      const res = await postDevin(proxy.address().port, true)
+      assert.equal(res.status, 200)
+      const text = await res.text()
+      assert.match(text, /"content":"ok"/)
+      assert.doesNotMatch(text, /lost/)
+      assert.equal(counts.chat, 2)
+    } finally {
+      proxy.close()
+    }
+  }
+
+  const late = devinFetch(() => new Response(new ReadableStream({
+    start(controller) {
+      controller.enqueue(new Uint8Array(frameConnect(encodeString(3, 'partial'), { compress: true })))
+      setTimeout(() => controller.close(), 30)
+    },
+  }), { status: 200 }))
+  const broken = await devinProxy({ fetchFn: late.fetchFn }).listen()
+  try {
+    const res = await postDevin(broken.address().port, true)
+    assert.equal(res.status, 200)
+    await assert.rejects(res.text(), 'after output a cut stream is destroyed, not ended clean')
     assert.equal(late.counts.chat, 1)
   } finally {
     broken.close()
