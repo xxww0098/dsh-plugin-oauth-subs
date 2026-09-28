@@ -832,6 +832,8 @@ export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, max
           tokens: tokens.antigravity,
           fetchFn,
           signal: client.signal,
+          startedAt,
+          upstreamTimeouts,
           onValidation: onAntigravityValidation,
         })
       } finally {

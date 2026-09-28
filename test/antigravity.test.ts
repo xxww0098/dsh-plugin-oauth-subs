@@ -2139,3 +2139,126 @@ test('claude and gpt-oss omit thinkingConfig; flash-high wire id is not rewritte
   assert.equal(agent.request.generationConfig.thinkingConfig.thinkingBudget, 10_001)
   resetAntigravitySystemPins()
 })
+
+// ── slice 05b: the Antigravity hop runs inside the upstream attempt primitive ──
+
+const agSse = (...events) => events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join('')
+
+/** A stream that sends `text` and then stays open without another byte. */
+function agStalledStream(text) {
+  return new Response(new ReadableStream({
+    start(controller) { if (text) controller.enqueue(new TextEncoder().encode(text)) },
+  }), { status: 200, headers: { 'content-type': 'text/event-stream' } })
+}
+
+async function withAntigravityProxy(fetchFn, run, { tokens = {}, upstreamTimeouts = undefined } = {}) {
+  const proxy = createProxy({
+    port: 0,
+    apiKey: 'secret-key',
+    fetchFn,
+    upstreamTimeouts,
+    tokens: {
+      antigravity: {
+        session: async () => antigravitySession({
+          accessToken: 'ag-tok', refreshToken: 'r', expiresAt: Date.now() + 60_000, account: 'dev@x', projectId: 'p',
+        }),
+        ...tokens,
+      },
+    },
+  })
+  const server = await proxy.listen()
+  try {
+    await run((body) => fetch(`http://127.0.0.1:${server.address().port}/antigravity/v1/chat/completions`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer secret-key', 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'gemini-3.7-flash-high', messages: [{ role: 'user', content: 'hi' }], ...body }),
+    }))
+  } finally {
+    await proxy.close()
+  }
+}
+
+test('Antigravity stalled while thinking answers 504 JSON — no head before the first output chunk', async () => {
+  let calls = 0
+  await withAntigravityProxy(async () => {
+    calls += 1
+    return agStalledStream(agSse(googleSseEvent({ thought: 'hmm' })))
+  }, async (post) => {
+    const response = await post({ stream: true })
+    assert.equal(response.status, 504)
+    assert.match((await response.json()).error, /antigravity upstream: no output within 0\.15s/)
+    assert.equal(calls, 1)
+  }, { upstreamTimeouts: { firstByteMs: 40, budgetMs: 150 } })
+})
+
+test('Antigravity body.error before output becomes its own status; after output it destroys the stream', async () => {
+  const exhausted = { error: { code: 429, message: 'Resource has been exhausted', status: 'RESOURCE_EXHAUSTED' } }
+  let calls = 0
+  await withAntigravityProxy(async () => {
+    calls += 1
+    return new Response(agSse(googleSseEvent({ thought: 'hmm' }), exhausted), { headers: { 'content-type': 'text/event-stream' } })
+  }, async (post) => {
+    const response = await post({ stream: true })
+    assert.equal(response.status, 429)
+    assert.deepEqual(await response.json(), exhausted)
+    assert.equal(calls, 1, 'a vendor error payload is an answer, never retried')
+  })
+
+  // Nested under `response`, status name only (non-streaming).
+  await withAntigravityProxy(async () => jsonResponse({ response: { error: { message: 'nope', status: 'PERMISSION_DENIED' } } }), async (post) => {
+    const response = await post({})
+    assert.equal(response.status, 403)
+    assert.equal((await response.json()).error.message, 'nope')
+  })
+
+  await withAntigravityProxy(async () => new Response(
+    agSse(googleSseEvent({ text: 'partial' }), exhausted),
+    { headers: { 'content-type': 'text/event-stream' } },
+  ), async (post) => {
+    // The head and first chunk may or may not reach the client before the destroy.
+    await assert.rejects(async () => (await post({ stream: true })).text(), 'an error after output must not end as finish_reason stop + [DONE]')
+  })
+})
+
+test('Antigravity EOF without a finishReason before output is retried as a cut stream', async () => {
+  let calls = 0
+  await withAntigravityProxy(async () => {
+    calls += 1
+    const events = calls === 1
+      ? [googleSseEvent({ thought: 'hmm' })]
+      : [googleSseEvent({ text: 'ok', finishReason: 'STOP' })]
+    return new Response(agSse(...events), { headers: { 'content-type': 'text/event-stream' } })
+  }, async (post) => {
+    const response = await post({ stream: true })
+    assert.equal(response.status, 200)
+    const { chunks, done } = parseOpenaiSse(await response.text())
+    assert.equal(chunks[0].choices[0].delta.content, 'ok')
+    assert.equal(done, true)
+    assert.equal(calls, 2)
+  })
+})
+
+test('Antigravity pre-output 401 refreshes once and retries with the new token', async () => {
+  const auth = []
+  const refreshed = []
+  await withAntigravityProxy(async (_url, init) => {
+    auth.push(init.headers.authorization)
+    return auth.length === 1
+      ? jsonResponse({ error: { code: 401, message: 'expired', status: 'UNAUTHENTICATED' } }, 401)
+      : new Response(agSse(googleSseEvent({ text: 'ok', finishReason: 'STOP' })), { headers: { 'content-type': 'text/event-stream' } })
+  }, async (post) => {
+    const response = await post({ stream: true })
+    assert.equal(response.status, 200)
+    assert.equal(parseOpenaiSse(await response.text()).done, true)
+    assert.deepEqual(auth, ['Bearer ag-tok', 'Bearer ag-fresh'])
+    assert.deepEqual(refreshed, [['acct-1', 'ag-tok']])
+  }, {
+    tokens: {
+      sourceOf: () => ({ id: 'acct-1' }),
+      refreshNow: async (id, failed) => {
+        refreshed.push([id, failed])
+        return { session: antigravitySession({ accessToken: 'ag-fresh', refreshToken: 'r', expiresAt: Date.now() + 60_000, account: 'dev@x', projectId: 'p' }) }
+      },
+    },
+  })
+})
