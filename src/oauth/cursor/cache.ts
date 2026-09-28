@@ -109,15 +109,14 @@ export function cursorConversationId(payload: any = {}, explicit?) {
 }
 
 export function applyCursorCache(payload: any = {}) {
+  // Derive before stripping: `prompt_cache_key` is DSH's session id.
+  const cacheSessionId = cursorConversationId(payload)
   const next = { ...payload }
   delete next.prompt_cache_retention
   delete next.prompt_cache_options
   delete next.prompt_cache_key
   delete next.service_tier
-  return {
-    payload: next,
-    cacheSessionId: cursorConversationId(next),
-  }
+  return { payload: next, cacheSessionId }
 }
 
 /** Cursor does not sticky-route on Codex / Grok HTTP headers. */

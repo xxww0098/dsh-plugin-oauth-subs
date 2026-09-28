@@ -14,7 +14,7 @@ Ollama **Cloud** 订阅（[ollama.com](https://ollama.com)）。**不是**本机
 | [`index.ts`](index.ts) | 目录、API key session、Bearer 头、`/api/me` 身份、`/api/usage` URL、退役表 |
 | [`import.ts`](import.ts) | `OLLAMA_API_KEY` 环境变量。不是 `ollama signin` |
 | [`catalog.ts`](catalog.ts) | 登录后 `GET /api/tags` + `POST /api/show`（窗口 + `capabilities` → `input`）；静态 `OLLAMA_MODELS` 只做离线 fallback |
-| [`cache.ts`](cache.ts) | 剥 Codex / Grok 字段。没有文档化的 sticky id / cache-read |
+| [`cache.ts`](cache.ts) | 剥 Codex / Grok 字段。没有文档化的 sticky id；cache-read 由上游 `usage` 自带 |
 
 调度：[`../../oauth/proxy.ts`](../../oauth/proxy.ts) `family === 'ollama'` 剥 cache 字段，`forward()` 到 `https://ollama.com/v1/chat/completions`。
 额度：[`../../oauth/quota.ts`](../../oauth/quota.ts) `fetchOllamaQuota` 并行 `GET /api/usage` + `POST /api/me`。`limits.*.usage` 是 0..1 分数。有 `resets_at` / `reset_at` / `resetAt` / `next_reset` 就用。Session 缺 stamp 时用下一 UTC 5h unix 桶（`18000 - (epoch % 18000)`，[ollama#12532](https://github.com/ollama/ollama/issues/12532)），不是从上次点击起算 5h。Weekly 缺 stamp 时用下一 UTC 7d 桶、偏移 −4d（`604800 - ((epoch - 4d) % 604800)`，周一 00:00 UTC），不编 `now+7d`。
@@ -109,7 +109,7 @@ POST /api/me      Authorization: Bearer  body {}
 
 ## 缓存
 
-无文档化 cache-read，也无 conversation / shard id。
+无 conversation / shard id。cache-read 是有的：上游 `usage.prompt_tokens_details.cached_tokens` 原样透传（deepseek-v4.1-flash 30 天加权命中 97.5%；glm-5.3-flash 多数请求不回该字段，厂商侧）。
 
 - `applyOllamaCache` 剥 `prompt_cache_key` / `prompt_cache_retention` / `prompt_cache_options` / `session_id`
 - `ollamaCacheHeaders()` 空。不写 Codex `session-id` / `x-client-request-id`，不写 Grok `x-grok-conv-id`

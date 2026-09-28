@@ -534,6 +534,37 @@ test('proxy health remains public and the removed HTTP management plane stays un
   }
 })
 
+test('proxy health counts inbound prompt_cache_key per family without exposing ids', async () => {
+  const proxy = createProxy({
+    port: 0,
+    apiKey: 'k',
+    fetchFn: async () => new Response('{"id":"resp"}', { status: 200, headers: { 'content-type': 'application/json' } }),
+    tokens: {
+      codex: { session: async () => ({ accessToken: 'codex-tok', accountId: 'acct' }) },
+      grok: { session: async () => { throw new Error('no') } },
+    },
+  })
+  const server = await proxy.listen()
+  const { port } = server.address()
+  const counts = async () => (await (await fetch(`http://127.0.0.1:${port}/health`)).json()).inboundCacheKeys.codex ?? { with: 0, without: 0 }
+  const post = (body) => fetch(`http://127.0.0.1:${port}/codex/v1/responses`, {
+    method: 'POST',
+    headers: { authorization: 'Bearer k', 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  }).then((r) => r.text())
+  try {
+    const before = await counts()
+    await post({ model: 'gpt-5.5', prompt_cache_key: 'session-secret-id' })
+    await post({ model: 'gpt-5.5' })
+    const after = await counts()
+    assert.deepEqual(after, { with: before.with + 1, without: before.without + 1 })
+    const raw = await (await fetch(`http://127.0.0.1:${port}/health`)).text()
+    assert.equal(raw.includes('session-secret-id'), false)
+  } finally {
+    await proxy.close()
+  }
+})
+
 test('proxy rejects malformed and oversized request bodies before upstream fetch', async () => {
   let calls = 0
   const proxy = createProxy({

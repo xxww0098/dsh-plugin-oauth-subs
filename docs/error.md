@@ -2,6 +2,13 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-28：Completions 路由从没收到 DSH 会话 id，系统提示 pin / 签名桶全进程共用
+
+**现象**：kiro / antigravity / cursor / ollama / kimi / copilot / devin / cline 八条回环 Completions 路由的会话键永远是 `dsh-<id>[:<model>]`：第一个会话的系统提示被 pin 给后来的会话，thinking 配置与签名桶跨会话串用。
+**根因**：pi-ai openai-completions 只在路由 `cacheRetention === 'long'`（回环自动 `supportsLongCacheRetention`）时发 `prompt_cache_key = sessionId` + `prompt_cache_retention: "24h"`，默认 `short` 什么都不发；我们的路由从没设过。Cursor `applyCursorCache` 另有一处：先删 `prompt_cache_key` 再推导会话 id，即使收到也用不上。
+**修复**：`buildProviders` 只给 `api === openai-completions` 的路由加 provider 级 `cacheRetention: 'long'`（Codex / Grok Responses 本来就有 id；GLM / Claude 的 Anthropic 线 `long` = 1h TTL 不做；OpenCode Go 直连路由不动）；`assertPersistedProviders` 校验该字段落进 settings.yaml，宿主丢字段即报错。Cursor 改为先推导再删。各家族继续剥 `prompt_cache_key` / `prompt_cache_retention`，上游不见。`/health` 新增 `inboundCacheKeys`：按家族统计入站体带 / 不带 `prompt_cache_key` 的次数（在 `rewriteUpstreamBody` 入口、剥字段之前计，只计数不记 id）。DSH 会话 id 形如 `session-<uuid v4>`（44 字符，pi-ai 截到 64）。
+**活测**：需宿主热重载，合入后在主检出做（`/health` 的 with 计数随请求增长）。Command Code 部分（`toWireThreadId` 只收 UUID，`session-` 前缀会被丢）在维护者 WIP 里，待落地后补。
+
 ## 2026-09-28：配了出站代理，Cursor 目录 / h2 对话和未穿线的调用点仍直连
 
 **现象**：设了出站代理（设置页 / `proxyUrl` / `HTTPS_PROXY`）后，Cursor `GetUsableModels` / Run 仍从本机出口发出（区域锁家族照样被拒）；任何没被传 `fetchFn` 的调用点也悄悄直连。

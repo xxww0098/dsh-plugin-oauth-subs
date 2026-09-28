@@ -440,6 +440,15 @@ export function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaM
       models: ANTHROPIC_MODELS.map(toHarnessModel),
     }
   }
+  // pi-ai's openai-completions sends `prompt_cache_key = sessionId` (and
+  // `prompt_cache_retention: "24h"`) only when the route asks for long
+  // retention; the loopback auto-detects supportsLongCacheRetention. Without
+  // it every Completions family falls back to its process-wide `dsh-<id>`
+  // constant. Responses routes already get the id; on anthropic-messages
+  // `long` means a 1h cache_control TTL, which is out of scope.
+  for (const value of Object.values(providers) as any[]) {
+    if (value.api === HARNESS_COMPLETIONS_API) value.cacheRetention = 'long'
+  }
   return providers
 }
 
@@ -855,13 +864,17 @@ export async function ensureOpencodeGoRoute(settings, { selected, apiKeySet = tr
   return { status: 'written', routes }
 }
 
-async function assertPersistedProviders(settings, expectedIds) {
+async function assertPersistedProviders(settings, expected: Record<string, any>) {
   const providers = await peekPiAiProviders(settings)
   if (providers === undefined) return
-  for (const id of expectedIds) {
+  for (const [id, value] of Object.entries(expected)) {
     const row = providers[id]
     if (!row || !Array.isArray(row.models) || row.models.length === 0) {
       throw new Error(`llm-pi-ai did not persist providers.${id}`)
+    }
+    // A schema that drops the field silently puts the route back on shared ids.
+    if (row.cacheRetention !== value.cacheRetention) {
+      throw new Error(`llm-pi-ai did not persist providers.${id}.cacheRetention`)
     }
   }
 }
@@ -887,7 +900,7 @@ export async function syncHarnessModels({ settings, patchPath, prefix, origin, l
     const detail = error instanceof Error ? error.message : String(error)
     throw new Error(`llm-pi-ai mutate failed: ${detail}`)
   }
-  await assertPersistedProviders(settings, Object.keys(providers))
+  await assertPersistedProviders(settings, providers)
   const compaction = await syncCompactionPolicies(patchPath, providers)
   return {
     routes: Object.entries(providers).map(([provider, value]) => ({

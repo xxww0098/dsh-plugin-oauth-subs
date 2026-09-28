@@ -9,6 +9,10 @@ import { applyCursorCache, cursorCacheHeaders, cursorCacheSessionId, cursorConve
 import { applyOllamaCache, ollamaCacheHeaders, ollamaCacheSessionId, OLLAMA_STABLE_SESSION } from '../lib/apikey/ollama/cache.js'
 import { applyKimiCache, kimiCacheHeaders, kimiCacheSessionId, KIMI_STABLE_SESSION, resetKimiPins } from '../lib/oauth/kimi/cache.js'
 import { applyCopilotCache, copilotCacheHeaders, copilotCacheSessionId, COPILOT_STABLE_SESSION, resetCopilotPins } from '../lib/oauth/copilot/cache.js'
+import { applyClineCache, resetClinePins } from '../lib/oauth/cline/cache.js'
+import { applyDevinCache } from '../lib/oauth/devin/cache.js'
+import { openaiToKiro } from '../lib/oauth/kiro/request.js'
+import { openaiToAntigravity } from '../lib/oauth/antigravity/request.js'
 
 const dirty = 'session 772f7f3a/foo'
 
@@ -240,4 +244,56 @@ test('Copilot cache strips Codex/Grok fields and writes X-Interaction-Id', () =>
   assert.equal(applyCopilotCache({}).cacheSessionId, COPILOT_STABLE_SESSION)
   assert.deepEqual(copilotCacheHeaders(), { 'x-interaction-id': COPILOT_STABLE_SESSION })
   resetCopilotPins()
+})
+
+// What pi-ai sends once a Completions route has `cacheRetention: 'long'`.
+const HOST_ID = 'session-6f1c2a9e-0b7d-4c55-9a43-2e8f7d1b3c60'
+const hostBody = (model) => ({
+  model,
+  messages: [{ role: 'system', content: 'You are DSH.' }, { role: 'user', content: 'hi' }],
+  stream: true,
+  prompt_cache_key: HOST_ID,
+  prompt_cache_retention: '24h',
+})
+
+test('Cursor derives the conversation id from prompt_cache_key before deleting it', () => {
+  const { payload, cacheSessionId } = applyCursorCache(hostBody('composer-2'))
+  assert.equal(cacheSessionId, `${HOST_ID}:composer-2`)
+  assert.equal(Object.hasOwn(payload, 'prompt_cache_key'), false)
+  assert.equal(Object.hasOwn(payload, 'prompt_cache_retention'), false)
+})
+
+test('every Completions family keys on the host session id and sends no prompt_cache_* upstream', () => {
+  resetKiroSystemPins()
+  resetKimiPins()
+  resetCopilotPins()
+  resetClinePins()
+  const families = {
+    cursor: () => applyCursorCache(hostBody('composer-2')),
+    ollama: () => applyOllamaCache(hostBody('deepseek-v4.1-flash')),
+    kimi: () => applyKimiCache(hostBody('k3')),
+    copilot: () => applyCopilotCache(hostBody('gpt-4.1')),
+    cline: () => applyClineCache(hostBody('cline-free/deepseek-v4.1-flash')),
+    devin: () => applyDevinCache(hostBody('swe-2')),
+    // Custom transports build a fresh wire body from the host payload.
+    kiro: () => {
+      const conversationId = kiroConversationId(hostBody('claude-sonnet-4.5'))
+      return { cacheSessionId: conversationId, payload: openaiToKiro(hostBody('claude-sonnet-4.5'), { conversationId }) }
+    },
+    antigravity: () => {
+      const sessionId = antigravitySessionIdOf(hostBody('gemini-3.7-flash-high'))
+      return { cacheSessionId: sessionId, payload: openaiToAntigravity(hostBody('gemini-3.7-flash-high'), { projectId: 'p', sessionId }) }
+    },
+  }
+  for (const [family, run] of Object.entries(families)) {
+    const { payload, cacheSessionId } = run()
+    assert.ok(String(cacheSessionId).includes(HOST_ID), `${family} id ${cacheSessionId}`)
+    const wire = JSON.stringify(payload)
+    assert.equal(wire.includes('prompt_cache_key'), false, family)
+    assert.equal(wire.includes('prompt_cache_retention'), false, family)
+  }
+  resetKiroSystemPins()
+  resetKimiPins()
+  resetCopilotPins()
+  resetClinePins()
 })
