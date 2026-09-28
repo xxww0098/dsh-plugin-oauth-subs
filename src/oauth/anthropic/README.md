@@ -114,3 +114,12 @@ Fable 周限额有三条上报路径，按优先级取一条：`limits[]` 的
 `keychain-with-plaintext-fallback` 的 `update()`）⇒ macOS 上文件通常不存在，只读文件的实现永远读不到登录。
 传 `paths` 时只按显式路径找（测试用），不碰 Keychain；Keychain 缺席 / 拒绝 / 弹窗超时一律当「本机没登录」，
 不把堆栈抛给 UI。
+
+**导入只读**（决定 4）：导入的 session 带 `source`（`keychain:<服务名>` 或 `.credentials.json` 路径），浏览器登录没有。
+临期时 `anthropicImported` 钩子只重读同一 store（`rereadAnthropicImport`，Keychain 按记下的服务名），过期 > 现在 + 15s
+才采用；store 也过期 → `ImportedLoginStale`（403）「… run claude or use browser login」，不删登录。从不换票、从不写
+Keychain / 文件。
+
+轮换证据：来源一 本机 Claude Code `2.1.283` 二进制内嵌 JS——刷新 POST `platform.claude.com/v1/oauth/token`，解构
+`refresh_token`（缺省沿用旧值），比较并交换写回 Keychain / `.credentials.json`，竞态落败的 token 会被 revoke ⇒ 会轮换。
+来源二（被动观察：插件自有登录在宿主自然刷新前后各记一次 refresh token sha256 前 8 位）：待合入后记录。

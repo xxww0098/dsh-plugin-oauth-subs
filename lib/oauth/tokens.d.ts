@@ -8,6 +8,15 @@ export declare class LoginRequiredError extends RequestError {
     constructor(message: string);
 }
 /**
+ * A login imported from a vendor CLI whose own store has also expired. The
+ * plugin never redeems the CLI's refresh token (where it rotates, that logs
+ * the CLI out), so only the user can fix it — by running that CLI. Not permanent: the
+ * login stays and the next reread picks up whatever the CLI wrote.
+ */
+export declare class ImportedLoginStale extends LoginRequiredError {
+    constructor(displayName: string, cli: string);
+}
+/**
  * How long a transient refresh failure suppresses another attempt for the same
  * credential version. Mirrors CLIProxyAPI's refreshFailureBackoff: without it,
  * every request during a token-endpoint outage re-hammers the endpoint.
@@ -65,13 +74,15 @@ export declare class TokenManager {
     /** Family grant codes that are permanent beyond the shared ones. */
     permanentCodes: readonly string[];
     onRemoved: any;
+    /** `{ is(session), reread(session), cli }` — logins owned by a vendor CLI's store. */
+    imported: any;
     refreshWaitMs: number;
     exchangeTimeoutMs: number;
     /** version → the exchange that owns it: { at, late, promise }. */
     inflight: Map<any, any>;
     failures: Map<any, any>;
     sources: WeakMap<object, any>;
-    constructor({ provider, authPath, displayName, preemptMs, refresh, permanentCodes, onRemoved, refreshWaitMs, exchangeTimeoutMs }: any);
+    constructor({ provider, authPath, displayName, preemptMs, refresh, permanentCodes, onRemoved, imported, refreshWaitMs, exchangeTimeoutMs }: any);
     session(id: any): Promise<any>;
     /** The stored-account row that produced this session, when known. */
     sourceOf(session: any): any;

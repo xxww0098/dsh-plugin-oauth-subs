@@ -55,14 +55,14 @@ import {
   probeAntigravityValidation,
   refreshAntigravity,
 } from './antigravity/index.js'
-import { importAntigravityAuth, importCodexAuth, importGrokAuth, importGlmAuth, importKiroAuth } from './import-auth.js'
+import { codexImported, importAntigravityAuth, importCodexAuth, importGrokAuth, importGlmAuth, importKiroAuth } from './import-auth.js'
 import { CursorPollFlowManager } from './cursor/pkce-flow.js'
 import {
   cursorAccountFromToken,
   pickCursorHumanAccount,
   refreshCursor,
 } from './cursor/index.js'
-import { CURSOR_IMPORT_EMPTY, importCursorAuth, readCursorVscdbTokens } from './cursor/import.js'
+import { CURSOR_IMPORT_EMPTY, cursorImported, importCursorAuth, readCursorVscdbTokens } from './cursor/import.js'
 import { cursorCatalogModels, refreshCursorCatalog } from './cursor/catalog.js'
 import { ollamaSession, refreshOllama, resolveOllamaIdentity, isOllamaOpaqueAccount } from '../apikey/ollama/index.js'
 import { OLLAMA_IMPORT_EMPTY, importOllamaAuth } from '../apikey/ollama/import.js'
@@ -77,7 +77,7 @@ import {
   refreshKimi,
   resolveKimiIdentity,
 } from './kimi/index.js'
-import { KIMI_IMPORT_EMPTY, importKimiAuth } from './kimi/import.js'
+import { KIMI_IMPORT_EMPTY, importKimiAuth, kimiImported } from './kimi/import.js'
 import { kimiCatalogModels, refreshKimiCatalog } from './kimi/catalog.js'
 import {
   completeCopilotDevice as sessionFromCopilotDevice,
@@ -110,7 +110,7 @@ import {
   resolveClineIdentity,
 } from './cline/index.js'
 import { clineCatalogModels, refreshClineCatalog } from './cline/catalog.js'
-import { CLINE_IMPORT_EMPTY, importClineAuth } from './cline/import.js'
+import { CLINE_IMPORT_EMPTY, clineImported, importClineAuth } from './cline/import.js'
 import {
   anthropicFlow,
   anthropicProfile,
@@ -118,7 +118,7 @@ import {
   exchangeAnthropicCode,
   refreshAnthropic,
 } from './anthropic/index.js'
-import { importAnthropicAuth } from './anthropic/import.js'
+import { anthropicImported, importAnthropicAuth } from './anthropic/import.js'
 import { devinUserStatus, resolveDevinIdentity } from './devin/transport.js'
 import { OpencodeGoStore, opencodeGoFilePath } from '../apikey/opencode-go/store.js'
 import { opencodeGoKeyHint } from '../apikey/opencode-go/index.js'
@@ -299,6 +299,7 @@ export class AuthController {
         authPath: this.authPath,
         refresh: (session) => refreshCodex(session, fetchFn),
         permanentCodes: CODEX_PERMANENT_REFRESH_CODES,
+        imported: codexImported,
         onRemoved: () => this.onAuthChanged?.('codex'),
       }),
       grok: new TokenManager({
@@ -339,6 +340,7 @@ export class AuthController {
         provider: 'cursor',
         authPath: this.authPath,
         refresh: (session) => refreshCursor(session, fetchFn),
+        imported: cursorImported(this.cursorImport),
         onRemoved: () => this.onAuthChanged?.('cursor'),
       }),
       ollama: new TokenManager({
@@ -355,6 +357,7 @@ export class AuthController {
         provider: 'kimi',
         authPath: this.authPath,
         refresh: (session) => refreshKimi(session, fetchFn),
+        imported: kimiImported,
         onRemoved: () => this.onAuthChanged?.('kimi'),
       }),
       copilot: new TokenManager({
@@ -379,6 +382,7 @@ export class AuthController {
         provider: 'cline',
         authPath: this.authPath,
         refresh: (session) => refreshCline(session, fetchFn),
+        imported: clineImported,
         onRemoved: () => this.onAuthChanged?.('cline'),
       }),
       anthropic: new TokenManager({
@@ -387,6 +391,7 @@ export class AuthController {
         provider: 'anthropic',
         authPath: this.authPath,
         refresh: (session) => refreshAnthropic(session, fetchFn),
+        imported: anthropicImported,
         onRemoved: () => this.onAuthChanged?.('anthropic'),
       }),
     }
@@ -1208,7 +1213,7 @@ export class AuthController {
     const rows = await listStoredSessions('cursor', this.authPath)
     if (rows.length > 0) return
     try {
-      const result = await importCursorAuth({ fetchFn: this.fetchFn, ...this.cursorImport })
+      const result = await importCursorAuth(this.cursorImport)
       if (result?.session) {
         await saveSession('cursor', result.session, this.authPath)
         await this.#discoverCursor(result.session)
@@ -1224,7 +1229,7 @@ export class AuthController {
 
   async #importCursor() {
     const existing = await listStoredSessions('cursor', this.authPath)
-    const result = await importCursorAuth({ fetchFn: this.fetchFn, ...this.cursorImport })
+    const result = await importCursorAuth(this.cursorImport)
     const incomingId = accountIdOf('cursor', result.session)
     const hit = existing.find((row) => row.id === incomingId)
     if (hit?.session?.source === 'pkce') {

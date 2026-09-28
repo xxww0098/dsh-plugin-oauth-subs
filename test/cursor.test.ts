@@ -73,6 +73,8 @@ import {
   windowsUsernameFromEnv,
 } from '../lib/oauth/cursor/import.js'
 import { resetCursorRefreshGuard } from '../lib/oauth/cursor/refresh-guard.js'
+import { ImportedLoginStale } from '../lib/oauth/tokens.js'
+import { configureOutbound } from '../lib/utils/outbound.js'
 import {
   CURSOR_STABLE_SESSION,
   applyCursorCache,
@@ -124,7 +126,6 @@ function emptyImport(overrides = {}) {
     home: tmpdir(),
     execFileFn: async () => ({ stdout: '' }),
     readVscdbFn: async () => ({}),
-    fetchFn: async () => { throw new Error('import must not hit the network in this case') },
     ...overrides,
   }
 }
@@ -672,33 +673,28 @@ test('vscdb import with cachedEmail sets that email', async () => {
   assert.equal(publicSession('cursor', imported.session).account, 'cached@x')
 })
 
-test('expired access refreshes Keychain then vscdb when refresh tokens differ', async () => {
-  resetCursorRefreshGuard()
+test('expired Keychain and vscdb are stale: import redeems neither refresh token', async () => {
   const stale = expiredAccess('stale@x')
-  const next = validAccess('fresh@x')
-  let refreshCalls = 0
-  const session = await resolveCursorLocalCredentials(emptyImport({
-    platform: 'darwin',
-    execFileFn: async (_cmd, args) => {
-      const service = args[args.indexOf('-s') + 1]
-      if (service === 'cursor-access-token') return { stdout: stale }
-      if (service === 'cursor-refresh-token') return { stdout: 'rt-stale' }
-      throw new Error(service)
-    },
-    readVscdbFn: async () => ({ accessToken: stale, refreshToken: 'rt-ide-other' }),
-    fetchFn: async (url, init) => {
-      refreshCalls += 1
-      assert.equal(url, CURSOR_REFRESH_URL)
-      if (init.headers.authorization === 'Bearer rt-stale') {
-        return new Response('nope', { status: 401 })
-      }
-      assert.equal(init.headers.authorization, 'Bearer rt-ide-other')
-      return json({ accessToken: next, refreshToken: 'rt-ide-other' })
-    },
-  }))
-  assert.equal(session.source, 'ide_vscdb')
-  assert.equal(session.accessToken, next)
-  assert.equal(refreshCalls, 2)
+  const calls: any[] = []
+  configureOutbound({ fetchFn: async (url) => { calls.push(String(url)); throw new Error('import must not exchange') } })
+  try {
+    await assert.rejects(
+      () => importCursorAuth(emptyImport({
+        platform: 'darwin',
+        execFileFn: async (_cmd, args) => {
+          const service = args[args.indexOf('-s') + 1]
+          if (service === 'cursor-access-token') return { stdout: stale }
+          if (service === 'cursor-refresh-token') return { stdout: 'rt-stale' }
+          throw new Error(service)
+        },
+        readVscdbFn: async () => ({ accessToken: stale, refreshToken: 'rt-ide-other' }),
+      })),
+      (error: any) => error instanceof ImportedLoginStale && error.status === 403 && /run cursor-agent/.test(error.message),
+    )
+  } finally {
+    configureOutbound()
+  }
+  assert.deepEqual(calls, [])
 })
 
 test('empty machine throws cursor-import-empty, not a stack', async () => {
@@ -712,7 +708,6 @@ test('CURSOR_ACCESS_TOKEN env wins and does not refresh', async () => {
   const access = validAccess('env@x')
   const session = await resolveCursorLocalCredentials(emptyImport({
     env: { CURSOR_ACCESS_TOKEN: access },
-    fetchFn: async () => { throw new Error('env import must not refresh') },
   }))
   assert.equal(session.source, 'env')
   assert.equal(session.accessToken, access)

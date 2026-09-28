@@ -58,6 +58,10 @@ DSH POST /kimi/v1/chat/completions
 入口：`kimiDeviceSpec` → `DeviceFlowManager.start('kimi')` → `completeKimiDevice` → `kimiSession`。
 导入：[`import.ts`](import.ts) `importKimiAuth`。空花名册只自动导入 `kimi-code.json` 一次。已存 session **绝不**静默覆盖。
 
+**导入只读**（决定 4）：`source: 'cli'` 的登录临期时，`kimiImported` 钩子只重读 `kimi-code.json`，过期 > 现在 + 15s 才采用；文件也过期 → `ImportedLoginStale`（403）「… run kimi or use browser login」，不删登录。`oauth` 登录照常刷新。
+
+轮换证据：来源一 MoonshotAI/kimi-cli `1.52.0` `src/kimi_cli/auth/oauth.py`——`refresh_token()` 的响应经 `OAuthToken.from_response` 必取 `refresh_token`，`save_tokens` 写回 `~/.kimi/credentials/kimi-code.json`（跨进程 `.lock`），注释明写 rotated ⇒ 会轮换。来源二（被动观察：插件自有登录在宿主自然刷新前后各记一次 refresh token sha256 前 8 位）：待合入后记录。
+
 粘贴 `KIMI_API_KEY` / `sk-` 是 KEY source，不刷新。
 
 身份：`GET /coding/v1/me` 尽力取 email / nickname / `user_level_name`。失败用 `kimi-<sha256 前 8>`，不当账号名打印 token。

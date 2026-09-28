@@ -17,6 +17,8 @@ import {
   anthropicKeychainAccount,
   anthropicKeychainService,
   readAnthropicKeychainTokens,
+  isAnthropicImportedSource,
+  rereadAnthropicImport,
 } from '../lib/oauth/anthropic/import.js'
 import { accountIdOf, listAccounts, publicSession, saveSession } from '../lib/oauth/store.js'
 import { FAMILY_IDS, familyOfProvider, buildProviders } from '../lib/oauth/models.js'
@@ -435,6 +437,40 @@ test('import: reads ~/.claude/.credentials.json and reports its own empty marker
   const empty = join(dir, 'empty.json')
   await writeFile(empty, JSON.stringify({}))
   await assert.rejects(importAnthropicAuth([empty]), (error) => error.message === ANTHROPIC_IMPORT_EMPTY)
+})
+
+test('import reread: reads the same store and never exchanges or writes', async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'anthropic-reread-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const credentials = join(dir, '.credentials.json')
+  const document = JSON.stringify({
+    claudeAiOauth: {
+      accessToken: 'sk-ant-oat01-reread',
+      refreshToken: 'ref-reread',
+      expiresAt: Date.now() + 3_600_000,
+      scopes: ['user:inference'],
+      subscriptionType: 'max',
+    },
+  })
+  await writeFile(credentials, document)
+  const imported = await importAnthropicAuth([credentials])
+  assert.equal(imported.session.source, credentials, 'the session remembers its store')
+  assert.equal(isAnthropicImportedSource(credentials), true)
+  assert.equal(isAnthropicImportedSource(undefined), false, 'a browser login is plugin-owned')
+  const session = await rereadAnthropicImport(credentials)
+  assert.equal(session.accessToken, 'sk-ant-oat01-reread')
+  assert.equal(session.source, credentials)
+  const { readFile } = await import('node:fs/promises')
+  assert.equal(await readFile(credentials, 'utf8'), document, 'the store is never written')
+
+  const services: any[] = []
+  const keychain = await rereadAnthropicImport('keychain:Claude Code-credentials-abc12345', {
+    platform: 'darwin',
+    env: { USER: 'tester' },
+    execFileFn: async (_file, args) => { services.push(args[args.indexOf('-s') + 1]); return { stdout: document } },
+  })
+  assert.equal(keychain.accessToken, 'sk-ant-oat01-reread')
+  assert.deepEqual(services, ['Claude Code-credentials-abc12345'], 'rereads the exact item it imported')
 })
 
 const CLAUDE_KEYCHAIN_JSON = JSON.stringify({
