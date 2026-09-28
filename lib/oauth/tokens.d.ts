@@ -76,6 +76,8 @@ export declare class TokenManager {
     onRemoved: any;
     /** `{ is(session), reread(session), cli }` — logins owned by a vendor CLI's store. */
     imported: any;
+    /** version → when its imported store was last reread (throttles rereads that find nothing newer). */
+    rereadAt: Map<any, number>;
     refreshWaitMs: number;
     exchangeTimeoutMs: number;
     /** version → the exchange that owns it: { at, late, promise }. */

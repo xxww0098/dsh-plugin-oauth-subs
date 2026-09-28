@@ -159,6 +159,8 @@ export class TokenManager {
   declare onRemoved: any
   /** `{ is(session), reread(session), cli }` — logins owned by a vendor CLI's store. */
   declare imported: any
+  /** version → when its imported store was last reread (throttles rereads that find nothing newer). */
+  declare rereadAt: Map<any, number>
   declare refreshWaitMs: number
   declare exchangeTimeoutMs: number
   /** version → the exchange that owns it: { at, late, promise }. */
@@ -177,6 +179,7 @@ export class TokenManager {
     this.permanentCodes = permanentCodes
     this.onRemoved = onRemoved
     this.imported = imported
+    this.rereadAt = new Map()
     this.inflight = new Map()
     this.failures = new Map()
     this.sources = new WeakMap()
@@ -227,6 +230,11 @@ export class TokenManager {
       const age = failed ? Date.now() - failed.at : Infinity
       if (left > 0 && age < REFRESH_FAILURE_BACKOFF_MS) return this.#serve(source)
       if (left <= 0 && age < REFRESH_EXPIRED_RETRY_MS) throw failed.error
+      // A reread that found nothing newer keeps this version: while it is still
+      // valid, reread at most once per window instead of on every request
+      // (a Keychain reread spawns a process).
+      const reread = this.rereadAt.get(source.version)
+      if (left > 0 && reread !== undefined && Date.now() - reread < REFRESH_EXPIRED_RETRY_MS) return this.#serve(source)
       if (left > this.refreshWaitMs) {
         this.#start(source)
         return this.#serve(source)
@@ -307,9 +315,12 @@ export class TokenManager {
   async #refresh(source, owner) {
     let next
     try {
-      next = this.imported?.is(source.session)
-        ? await this.#reread(source.session)
-        : await this.refresh(source.session)
+      if (this.imported?.is(source.session)) {
+        this.rereadAt.set(source.version, Date.now())
+        next = await this.#reread(source.session)
+      } else {
+        next = await this.refresh(source.session)
+      }
     } catch (error) {
       // A late verdict arrives after its waiters gave up: keep the login and
       // let the next timely exchange decide.

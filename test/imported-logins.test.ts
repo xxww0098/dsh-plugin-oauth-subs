@@ -227,3 +227,27 @@ test('the controller wires each read-only family, and only its imported sources'
   assert.equal(controller.tokens.devin.imported, undefined)
   assert.equal(controller.tokens.copilot.imported, undefined)
 })
+
+test('a reread that finds nothing newer is not repeated on every request', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() })
+  const dir = await mkdtemp(join(tmpdir(), 'imported-throttle-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const authPath = join(dir, 'auth.json')
+  // Inside the preempt window but past the 15s adoption margin: the CLI has
+  // not refreshed yet, so every reread returns the login unchanged.
+  const saved = await saveSession('cursor', { accessToken: 'at', refreshToken: 'rt', expiresAt: Date.now() + 25_000, account: 'u', source: 'cli_keychain' }, authPath)
+  let rereads = 0
+  const manager = new TokenManager({
+    provider: 'cursor',
+    authPath,
+    displayName: 'Cursor',
+    preemptMs: 5 * 60_000,
+    refresh: async () => { throw new Error('an imported login must never be exchanged') },
+    imported: { is: () => true, cli: 'cursor-agent', reread: async (session) => { rereads++; return { ...session } } },
+  })
+  for (let i = 0; i < 5; i++) await manager.session(saved.id)
+  assert.equal(rereads, 1)
+  t.mock.timers.tick(10_000)
+  await manager.session(saved.id)
+  assert.equal(rereads, 2)
+})
