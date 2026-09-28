@@ -15,6 +15,13 @@
 **根因**：`antigravity/transport.ts` 自己管 HTTP，没接 04 的尝试原语；`collectAntigravityParts` 只看 `candidates`，忽略 `error`。
 **修复**：`forwardAntigravity` 在 `upstreamRequest(...).run` 里执行（首字节 120s / 预算 270s 从路由 `startedAt` 起 / 空闲 270s），第一块映射输出才写头；`antigravityBodyError` 把 `error.code`（否则 RPC `status` 名经 `connectCodeStatus`）转成 `UpstreamFailure`：输出前回该状态码的 JSON，输出后 `destroy`；无 `finishReason` 的 EOF 当截断（输出前重试、输出后 destroy）；输出前 401 经 `tokens.refreshNow` 刷新一次再试。daily → prod URL 回退不变。
 **活测（2026-09-28，宿主 Node v24.21.0）**：worktree `lib/` 的 `createProxy` 2 次 gemini-3.7-flash-high 流式、未刷新：均 200 + `[DONE]`，`max_tokens: 64` 那次只有终帧 `finish_reason: length`（3.7s），另一次 1 块内容 + `stop`（1.5s）；Cloud Code 终帧都带 `finishReason`。
+## 2026-09-28：Devin 传输层没有计时器，5xx 在代理内重放，流内错误一律 502 / SSE 错误块
+
+**现象**：Devin 上游卡住时代理没有任何计时器，只等宿主 300s 看门狗；HTTP ≥500 在代理内重放 3 次（宿主再重试一轮）；Connect trailer 错误（如 `deadline_exceeded`）不分码一律 502；头发出后的失败写一个 SSE 错误块再正常结束，宿主按文本归为 `PI_AI_ERROR`。
+**根因**：`forwardDevin` 自带 `runRetrying` + `devinRetryable`（≥500 可重放），绕过了 04 的 `upstreamRequest`；`connectTrailerError` 只回字符串，丢了 Connect `code`。
+**修复**：`forwardDevin` 走 `upstreamRequest(...).run`（首字节 120s / 预算 270s 从路由入口 `startedAt` 起算，`runDevinChat` 每块上游数据 `touch()`）；删 `runRetrying` / `devinRetryable` / `DEVIN_STREAM_ATTEMPTS`；HTTP 非 2xx 与 trailer 错误抛 `UpstreamFailure` code `http`（状态原样 / `connectCodeStatus`），只转发一次；空流与无消息流仍算传输故障可重试。第一块映射输出前不写头，之后失败 `destroy`。user_jwt 401 例外保留；token-only 仍 401 走共用刷新钩子一次。
+**活测（2026-09-28，宿主 Node v24.21.0）**：worktree `lib/` 的 `createProxy` 1 次流式 `swe-2` 请求、未刷新：200 `text/event-stream`，6.3s，回 `PONG` + `[DONE]`。
+
 ## 2026-09-28：上游空闲约 4s 就断连，下一轮重新握手
 
 **现象**：两轮之间空闲超过约 4s（codex 14%，其余家族 10–16%），下一个请求要重新 TCP + TLS 握手（chatgpt.com 约 1.7s，ollama.com 约 0.5s）。

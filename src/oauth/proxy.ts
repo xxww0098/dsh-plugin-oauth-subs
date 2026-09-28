@@ -742,8 +742,11 @@ export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, max
         await forwardDevin(response, {
           ...input,
           session,
+          tokens: tokens.devin,
           fetchFn,
           signal: client.signal,
+          startedAt,
+          timeouts: upstreamTimeouts,
           runFn: devinChat,
         })
       } finally {
