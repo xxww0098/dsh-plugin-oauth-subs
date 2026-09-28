@@ -630,10 +630,13 @@ export async function glmCliPoll({ flowId, pollToken, region = 'zai', fetchFn = 
   return parseCliPoll(await readJson(response, 'glm cli poll'), region)
 }
 
+// getJson/postJson are bounded at 10s: a hung identity/login call must not
+// stall the shared settings snapshot.
 async function getJson(url, headers, fetchFn) {
   return readJson(await fetchFn(url, {
     method: 'GET',
     headers: { accept: 'application/json', ...glmDesktopHeaders(), ...headers },
+    signal: AbortSignal.timeout(10_000),
   }), url)
 }
 
@@ -642,6 +645,7 @@ async function postJson(url, body, headers, fetchFn) {
     method: 'POST',
     headers: codingPlanJsonHeaders(headers),
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(10_000),
   }), url)
 }
 

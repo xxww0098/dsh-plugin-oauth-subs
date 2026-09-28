@@ -871,6 +871,39 @@ test('snapshot backfills opaque cursor vault from vscdb cachedEmail', async () =
   assert.equal(roster.some((row) => row.id === opaque || row.account === opaque), false)
 })
 
+test('snapshot opens state.vscdb only for a Cursor row lacking identity, once per TTL', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-cursor-vscdb-'))
+  const authPath = join(dir, 'auth.json')
+  const exp = Math.floor(Date.now() / 1000) + 3600
+  await saveSession('cursor', cursorSession({
+    accessToken: jwt({ sub: 'auth0|named', exp }),
+    refreshToken: 'rt-named',
+    source: 'pkce',
+    account: 'named@x',
+  }), authPath)
+  let opens = 0
+  const controller = new AuthController({
+    authPath,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+    cursorAutoImport: false,
+    cursorImport: emptyImport({ readVscdbFn: async () => { opens += 1; return {} } }),
+    fetchFn: async () => json({ planUsage: { autoPercentUsed: 8, apiPercentUsed: 0 }, membershipType: 'pro' }),
+  })
+  await controller.snapshot()
+  assert.equal(opens, 0)
+  await saveSession('cursor', cursorSession({
+    accessToken: jwt({ sub: 'auth0|opaque2', exp }),
+    refreshToken: 'rt-opaque',
+    source: 'pkce',
+    account: 'auth0|opaque2',
+  }), authPath)
+  await controller.snapshot()
+  await controller.snapshot()
+  assert.equal(opens, 1)
+})
+
 test('refreshQuota GetEmail backfills opaque PKCE and stripe Ultra percents', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-cursor-refresh-'))
   const authPath = join(dir, 'auth.json')

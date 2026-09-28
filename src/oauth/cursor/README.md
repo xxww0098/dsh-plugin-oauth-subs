@@ -75,7 +75,7 @@ Cursor 按请求**出口 IP** 做合规区锁：Anthropic / OpenAI / Gemini 在�
 可见标题只走人类 id，顺序：
 
 1. JWT `email` / `preferred_username`（`cursorAccountFromToken`，不验签）
-2. session `cachedEmail` / IDE `state.vscdb` `cursorAuth/cachedEmail`
+2. session `cachedEmail` / IDE `state.vscdb` `cursorAuth/cachedEmail`（snapshot 只在有账号缺人类 id 时才打开 `state.vscdb`，每账号每 60s 最多一次，登录态变化重置）
 3. `POST …/aiserver.v1.AuthService/GetEmail` `{ email }`（刷新额度必打；usage JSON 没有 email）
 4. 必要时 `POST …/aiserver.v1.DashboardService/GetMe`（`email` 优先，否则 `firstName` + `lastName`）
 5. `GetCurrentPeriodUsage` JSON `email`（有才用；活探测里没有）

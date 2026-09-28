@@ -494,6 +494,12 @@ window.__ModuleLoader__.load({
       return lang.toLowerCase().startsWith('zh') ? 'zh' : 'en'
     }
 
+    // Main panels stay mounted when inactive (retained), so "mounted" is not
+    // "shown": the window must be visible and the panel itself rendered.
+    function panelVisible(el, doc) {
+      return !doc.hidden && el?.checkVisibility?.() !== false
+    }
+
     function callRpc(rpc, method, payload?) {
       if (rpc && typeof rpc.call === 'function') {
         return Promise.resolve(rpc.call('/oauth-subs-auth', method, payload ?? {})).then((result) => {
@@ -3160,12 +3166,32 @@ window.__ModuleLoader__.load({
         }
       }, [rpc, t.noRpc])
 
+      const root = useRef(null)
       useEffect(() => {
-        void refresh()
-        // The panel stays mounted when inactive (main panels are
-        // retained) — skip polls while the window itself is hidden.
-        const timer = setInterval(() => { if (!document.hidden) void refresh() }, 1500)
-        return () => clearInterval(timer)
+        // Poll only while the panel is actually on screen; the next tick is
+        // armed after the previous refresh settles, so polls never overlap.
+        // A hidden tick costs no RPC — it re-checks visibility, so switching
+        // back to a retained panel refreshes on the next tick, and a window
+        // becoming visible again refreshes at once.
+        let live = true
+        let busy = false
+        let timer
+        const tick = async () => {
+          if (busy) return
+          busy = true
+          clearTimeout(timer)
+          if (panelVisible(root.current, document)) await refresh()
+          busy = false
+          if (live) timer = setTimeout(tick, 1500)
+        }
+        const onVisibility = () => { if (!document.hidden) void tick() }
+        document.addEventListener('visibilitychange', onVisibility)
+        void tick()
+        return () => {
+          live = false
+          clearTimeout(timer)
+          document.removeEventListener('visibilitychange', onVisibility)
+        }
       }, [refresh])
 
       useEffect(() => {
@@ -3280,7 +3306,7 @@ window.__ModuleLoader__.load({
         id, card(id), view === 'quota' && (family === 'all' || family === id),
       )
 
-      return h('div', { className: 'osubs' },
+      return h('div', { className: 'osubs', ref: root },
         h('div', { className: 'osubs-ptabs', role: 'tablist' },
           h(PageTab, { id: 'quota', label: t.quota, view, onSelect: setView }),
           h(PageTab, { id: 'models', label: t.modelsTitle, view, onSelect: setView }),

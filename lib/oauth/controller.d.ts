@@ -386,7 +386,7 @@ export declare class AuthController {
      * `lib/`. The callers are untyped on purpose — do not "restore" the inferred
      * type without re-checking `lib/` size.
      */
-    snapshot(): Promise<Record<string, any>>;
+    snapshot(fresh?: boolean): Promise<Record<string, any>>;
     opencodeGoSnapshot(options?: any): Promise<{
         id: string;
         loggedIn: boolean;
