@@ -5,20 +5,19 @@
 
 ## Next Agent Prompt
 
-**状态（2026-09-28）**：spec 定稿，尚未开始实施。基线证据已冻结在
-[`assets/`](assets/)。
+**状态（2026-09-28）**：实施中，在集成分支 `rpu/integration`（worktree
+`/Users/xxww/Code/REPO/rpu/integration`）上推进。已合入：02a。进行中：01、02b。
 
-**先决条件（阻塞）**：工作区里有约 60 个未提交改动，还有未跟踪的
-`src/apikey/command-code/`、`src/utils/donate.ts`，以及 Anthropic「导入只读」修复
-（`controller.ts` `#refreshAnthropic`）。这些是 WIP，先由维护者提交或合并，所有 slice 都从
-那个提交分支。WIP 不落地，不要开工：F5、07 都改的是这些文件。
+**先决条件的处理**：维护者的 WIP（约 60 个文件）仍未提交，用户指示继续。各 slice 从
+48b78b8 + spec 提交分支，只合进 `rpu/integration`，**不碰 `main`**；WIP 落地后由维护者
+合并（预期在 `controller.ts`/`proxy.ts`/`client.ts`/`models.ts`/`quota.ts` 冲突）。依赖 WIP
+的部分暂缓：05d（Command Code）、08 的 Command Code 部分、07 的 Anthropic 迁移。
 
 **你接下来要做的**：
-1. 读本 README、[`assets/baseline-2026-09-28.md`](assets/baseline-2026-09-28.md) 和下一个
-   slice 文件，再读仓库根的 `AGENTS.md`（硬约定）。
-2. Wave 0：并行做 [01](slices/01-analyzer-dir.md) 和 [02a](slices/02-outbound-owner.md)，
-   各用一个 git worktree。
-3. 每轮结束前更新本节：状态、完成项、下一个 pickup、阻塞、改过的门禁。
+1. 读本 README、[`choices.md`](choices.md)、下一个 slice 文件和仓库根的 `AGENTS.md`。
+2. 下一个 pickup：02b 合入后开 W2（03、06、08、14、11 并行，各一个 worktree
+   `/Users/xxww/Code/REPO/rpu/<slice>`，从 `rpu/integration` 分支，`npm ci`）。
+3. 每轮结束前更新本节与 `choices.md`。
 
 **工作方式（别踩的坑）**：
 - desktop/web 两个 profile 都是 link 安装，指向本仓库根目录。在主检出里跑
@@ -29,7 +28,7 @@
 
 **全局 TODO**：
 - [ ] 01 分析器目录模式 + 冻结基线 → [slices/01](slices/01-analyzer-dir.md)
-- [ ] 02a 出站代理不再卡死启动（P0）→ [slices/02](slices/02-outbound-owner.md)
+- [x] 02a 出站代理不再卡死启动（P0）→ [slices/02](slices/02-outbound-owner.md)
 - [ ] 02b 出站 HTTP 单一所有者 → [slices/02](slices/02-outbound-owner.md)
 - [ ] 03 Responses 提交闸门按帧分类 → [slices/03](slices/03-responses-gate.md)
 - [ ] 04 上游尝试原语 + `forward()` → [slices/04](slices/04-upstream-attempt.md)
