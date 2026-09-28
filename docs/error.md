@@ -1673,6 +1673,13 @@ cookie 链路失败后走 key 兜底时，最坏耗时可接近两倍超时；�
 ### 修复
 模式放宽为 `/^devin-[A-Za-z0-9_-]+\$[A-Za-z0-9_-]+$/i`，覆盖两种形态。
 
+## 2026-09-28：会话 zstd 只解出第一帧 / 基线把 v3、v4 双份会话算两遍
 
+### 现象
+`zstdDecompressSync(buf)` 解 `~/.dsh/sessions` 只得到 120 KB（实际 1.16 GB，496 个文件全是多帧，最多 5647 帧）；原型基线把同一会话的 `session.jsonl.zstd` 与 `session.v3/v4.jsonl.zstd` 各算一遍，oauth-ollama 命中率少算 3.5pp，grok 300s 超时多算 3 次。
 
+### 根因
+DSH 每次追加写一个独立 zstd 帧，Node 的一次性解压只解第一帧；原型按文件而不是按 `session.id` 统计。
 
+### 修复
+`analyze-session.ts` `decodeSessionBuffer` 按 `{ info: true }` 的 `engine.bytesWritten` 逐帧前进，截断的尾帧丢弃；目录模式同一 `session.id` 只留最高 `version`。全量 496 个文件与 `zstd -dc` 逐行一致，基线见 `specs/request-path-upgrades/assets/baseline-30d.*`。

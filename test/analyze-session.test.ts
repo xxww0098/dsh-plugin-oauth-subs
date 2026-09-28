@@ -1,6 +1,20 @@
 import assert from 'node:assert/strict'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { test } from 'node:test'
-import { analyzeSession, formatReport, parseSessionEvents } from '../lib/utils/analyze-session.js'
+import { zstdCompressSync } from 'node:zlib'
+import {
+  analyzeSession,
+  analyzeSessionDir,
+  compareReports,
+  formatAggregate,
+  formatComparison,
+  formatReport,
+  normalizeFailureMessage,
+  parseSessionEvents,
+  readSessionText,
+} from '../lib/utils/analyze-session.js'
 
 function event(type, data = {}, extra = {}) {
   return { type, data, time: extra.time ?? 1_000, seq: extra.seq ?? 1 }
@@ -319,4 +333,170 @@ test('a nested assistant/attempt stream idle timeout is a transport fault', () =
   assert.equal(report.healthy, false)
   assert.match(report.verdict, /transport/)
   assert.match(formatReport(report), /transport 1/)
+})
+
+// ── Directory mode ──────────────────────────────────────────────────────
+
+/** DSH's on-disk shape: one zstd frame per appended line. */
+function zstdFrames(events) {
+  return Buffer.concat(events.map((item) => zstdCompressSync(Buffer.from(`${JSON.stringify(item)}\n`))))
+}
+
+function sessionDir(sessions) {
+  const root = mkdtempSync(join(tmpdir(), 'analyze-dir-'))
+  for (const [rel, events] of Object.entries(sessions)) {
+    const path = join(root, rel)
+    mkdirSync(join(path, '..'), { recursive: true })
+    writeFileSync(path, zstdFrames(events))
+  }
+  return root
+}
+
+function call(turn, step, time, provider, usage = { inputTokens: 10, cacheReadTokens: 90 }, model = 'm') {
+  return {
+    type: 'assistant/message',
+    time,
+    data: { turn, step, usage, message: provider ? { source: { provider, model } } : {} },
+  }
+}
+
+test('readSessionText decodes every zstd frame and drops a truncated tail frame', () => {
+  const events = Array.from({ length: 50 }, (_, i) => ({ type: 'step/start', time: i, data: { turn: 1, step: i } }))
+  const tail = zstdCompressSync(Buffer.from(`${JSON.stringify({ type: 'step/end', data: {} })}\n`))
+  const root = mkdtempSync(join(tmpdir(), 'analyze-zstd-'))
+  const path = join(root, 'session.v4.jsonl.zstd')
+  writeFileSync(path, Buffer.concat([zstdFrames(events), tail.subarray(0, tail.length - 3)]))
+  const decoded = parseSessionEvents(readSessionText(path))
+  assert.equal(decoded.length, 50)
+  assert.deepEqual(decoded.at(-1), events.at(-1))
+  // Single-file mode reads .zstd through the same decoder.
+  assert.equal(analyzeSession(readSessionText(path)).eventCount, 50)
+})
+
+test('calls follow message.source mid-session, else the latest request/header', () => {
+  const root = sessionDir({
+    'a/session-1/session.v4.jsonl.zstd': [
+      { type: 'session', version: 4, id: 'session-1', cwd: '/private/secret' },
+      { type: 'request/header', data: { header: { config: { provider: 'oauth-codex', model: 'gpt' } } } },
+      call(1, 1, 10, 'oauth-codex'),
+      call(1, 2, 20, null),
+      { type: 'request/header', data: { header: { config: { provider: 'oauth-grok', model: 'grok' } } } },
+      call(2, 1, 30, 'oauth-grok'),
+      call(2, 2, 40, null),
+    ],
+  })
+  const report = analyzeSessionDir(root)
+  assert.equal(report.providers['oauth-codex'].calls, 2)
+  assert.equal(report.providers['oauth-grok'].calls, 2)
+  assert.equal(report.models['oauth-grok/grok'].calls, 1)
+  assert.equal(report.models['oauth-grok/m'].calls, 1)
+  assert.ok(!JSON.stringify(report).includes('secret'))
+  assert.ok(!JSON.stringify(report).includes('session-1'))
+  assert.match(formatAggregate(report), /oauth-codex/)
+})
+
+test('only the highest version of a session counts', () => {
+  const head = (version) => ({ type: 'session', version, id: 'session-dup' })
+  const root = sessionDir({
+    'a/session-dup/session.jsonl.zstd': [head(2), call(1, 1, 10, 'oauth-codex')],
+    'a/session-dup/session.v3.jsonl.zstd': [head(3), call(1, 1, 10, 'oauth-codex')],
+    'a/session-dup/session.v4.jsonl.zstd': [head(4), call(1, 1, 10, 'oauth-codex'), call(1, 2, 20, 'oauth-codex')],
+  })
+  const report = analyzeSessionDir(root)
+  assert.equal(report.files, 3)
+  assert.equal(report.sessions, 1)
+  assert.equal(report.duplicateFiles, 2)
+  assert.equal(report.providers['oauth-codex'].calls, 2)
+})
+
+test('ttfb starts at the latest llm/retry-started; silence is measured after the first frame', () => {
+  const root = sessionDir({
+    's/session.v4.jsonl.zstd': [
+      { type: 'session', version: 4, id: 's' },
+      { type: 'step/start', time: 0, data: { turn: 1, step: 1 } },
+      { type: 'assistant/attempt', time: 300_000, data: { turn: 1, step: 1, stream: [{ type: 'chunk', time: 300_000, chunk: { type: 'finish', reason: { kind: 'error', failure: { code: 'TIMEOUT', message: 'pi-ai stream idle timeout after 300000ms' } } } }] } },
+      { type: 'llm/retry', time: 300_001, data: { turn: 1, step: 1, provider: 'oauth-ollama', failure: { code: 'TIMEOUT', message: 'pi-ai stream idle timeout after 300000ms' } } },
+      { type: 'llm/retry-started', time: 301_000, data: { turn: 1, step: 1 } },
+      {
+        ...call(1, 1, 500_000, 'oauth-ollama'),
+        data: {
+          ...call(1, 1, 500_000, 'oauth-ollama').data,
+          stream: [
+            { type: 'chunk', time: 304_000, chunk: { type: 'block-start' } },
+            { type: 'text-chunks', time0: 304_010, dt: [10, 150_000] },
+            { type: 'chunk', time: 454_030, chunk: { type: 'finish' } },
+          ],
+        },
+      },
+    ],
+  })
+  const s = analyzeSessionDir(root).providers['oauth-ollama']
+  assert.equal(s.ttfbMs.p50, 3_000)
+  assert.equal(s.silenceMs.max, 150_000)
+  assert.equal(s.silenceMs.over110s, 1)
+  assert.deepEqual(s.retries, { TIMEOUT: 1 })
+  assert.equal(s.idleTimeout300, 1)
+  assert.equal(s.terminalFailures, 0)
+})
+
+test('poolIdle spans sessions on the same provider', () => {
+  const session = (id, start, end) => [
+    { type: 'session', version: 4, id },
+    { type: 'step/start', time: start, data: { turn: 1, step: 1 } },
+    { ...call(1, 1, end, 'oauth-codex'), data: { ...call(1, 1, end, 'oauth-codex').data, stream: [{ type: 'chunk', time: start + 1_000, chunk: { type: 'finish' } }] } },
+  ]
+  const root = sessionDir({
+    'x/a/session.v4.jsonl.zstd': session('a', 0, 10_000),
+    'y/b/session.v4.jsonl.zstd': session('b', 12_000, 20_000),
+    'y/c/session.v4.jsonl.zstd': session('c', 30_000, 40_000),
+  })
+  const report = analyzeSessionDir(root)
+  const s = report.providers['oauth-codex']
+  assert.equal(s.poolIdle.n, 2)
+  assert.equal(s.poolIdle.over4sShare, 0.5)
+  assert.equal(s.coldPenaltyMs, 0)
+  const later = analyzeSessionDir(root, { since: 11_000 })
+  assert.equal(later.providers['oauth-codex'].calls, 2)
+  const diff = compareReports(report, later)
+  assert.equal(diff.providers['oauth-codex'].calls.next, 2)
+  assert.equal(diff.providers['oauth-codex'].hit.delta, 0)
+  assert.match(formatComparison(diff), /oauth-codex {2}calls 3 → 2/)
+})
+
+test('hitByCallIndex buckets by per-session call index, token-weighted', () => {
+  const events: any[] = [{ type: 'session', version: 4, id: 'long' }]
+  for (let i = 0; i < 201; i++) events.push(call(1, i + 1, i + 1, 'oauth-antigravity', i < 40 ? { inputTokens: 10, cacheReadTokens: 90 } : { inputTokens: 50, cacheReadTokens: 50 }))
+  const buckets = analyzeSessionDir(sessionDir({ 'l/session.v4.jsonl.zstd': events })).providers['oauth-antigravity'].hitByCallIndex
+  assert.deepEqual(Object.keys(buckets), ['0-39', '40-79', '80-119', '120-159', '160-199', '200+'])
+  assert.equal(buckets['0-39'].calls, 40)
+  assert.equal(buckets['0-39'].hit, 0.9)
+  assert.equal(buckets['40-79'].hit, 0.5)
+  assert.equal(buckets['160-199'].calls, 40)
+  assert.equal(buckets['200+'].calls, 1)
+})
+
+test('terminal failures are normalized and scrubbed before aggregation', () => {
+  assert.equal(
+    normalizeFailureMessage('502: {"message":"Internal Server Error (ref: d8a1138d-2f66-4331-b15f-37c65ff4eecd)"}'),
+    'N: {"message":"Internal Server Error (ref: <h>)"}',
+  )
+  assert.equal(normalizeFailureMessage('429 request_id req_011CfTY5yxDcYmfA1DgBxSDz'), 'N request_id <t>')
+  assert.equal(normalizeFailureMessage("Cannot find module '/Users/me/lib/x.js'\n  at 12"), "Cannot find module '<path>' at 12")
+  assert.equal(normalizeFailureMessage('x'.repeat(200)).length, 120)
+
+  const root = sessionDir({
+    'f/session.v4.jsonl.zstd': [
+      { type: 'session', version: 4, id: 'f' },
+      { type: 'request/header', data: { header: { config: { provider: 'oauth-codex', model: 'gpt' } } } },
+      { type: 'step/start', time: 1, data: { turn: 1, step: 1 } },
+      { type: 'assistant/chunk', time: 2, data: { turn: 1, step: 1, chunk: { type: 'finish', reason: { kind: 'error', failure: { code: 'SERVER', message: '502 "codex upstream failed 3 times: fetch failed: ECONNRESET"' } } } } },
+      { type: 'step/start', time: 3, data: { turn: 2, step: 1 } },
+      { type: 'assistant/attempt', time: 4, data: { turn: 2, step: 1, stream: [{ type: 'chunk', chunk: { type: 'finish', reason: { kind: 'error', failure: { code: 'SERVER', message: '502 "codex upstream failed 3 times: fetch failed: ECONNRESET"' } } } }] } },
+    ],
+  })
+  const s = analyzeSessionDir(root).providers['oauth-codex']
+  assert.equal(s.calls, 0)
+  assert.equal(s.terminalFailures, 2)
+  assert.equal(s.proxyExhausted, 2)
+  assert.deepEqual(s.failures, [{ code: 'SERVER', message: 'N "codex upstream failed 3 times: fetch failed: ECONNRESET"', n: 2 }])
 })
