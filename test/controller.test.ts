@@ -707,6 +707,106 @@ test('snapshot shows quota on every Grok account, not only the active one', asyn
   assert.equal(second.active, true)
 })
 
+async function grokPair(t, { fail = () => false, gate = async () => undefined } = {}) {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() })
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const authPath = join(dir, 'auth.json')
+  const later = Date.now() + 60 * 60_000
+  await saveSession('grok', { accessToken: 'tok-a', refreshToken: 'r-a', expiresAt: later, account: 'a@x' }, authPath)
+  await saveSession('grok', { accessToken: 'tok-b', refreshToken: 'r-b', expiresAt: later, account: 'b@x' }, authPath)
+  const calls = { 'tok-a': 0, 'tok-b': 0 }
+  const controller = new AuthController({
+    authPath,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+    fetchFn: async (_url, init) => {
+      const tok = String(init?.headers?.authorization ?? '').includes('tok-b') ? 'tok-b' : 'tok-a'
+      calls[tok] += 1
+      await gate()
+      if (fail(tok)) return new Response('down', { status: 503 })
+      return new Response(JSON.stringify({
+        config: { subscription_tier: 'SuperGrok', creditUsagePercent: 10 },
+      }), { status: 200, headers: { 'content-type': 'application/json' } })
+    },
+  })
+  return { controller, calls }
+}
+
+test('concurrent snapshots share one build: one quota round per account, none within the TTL', async (t) => {
+  const { controller, calls } = await grokPair(t)
+  const [one, two] = await Promise.all([controller.snapshot(), controller.snapshot()])
+  assert.equal(one, two)
+  const round = calls['tok-a']
+  assert.ok(round > 0)
+  assert.deepEqual(calls, { 'tok-a': round, 'tok-b': round })
+  for (const row of one.accounts.grok.accounts) assert.equal(row.quota.status, 'ready')
+
+  t.mock.timers.tick(59_000)
+  const again = await controller.snapshot()
+  assert.notEqual(again, one) // settled build is cleared, not pinned
+  assert.deepEqual(calls, { 'tok-a': round, 'tok-b': round })
+})
+
+test('refreshQuota bypasses the TTL once and joins an in-flight refresh', async (t) => {
+  let release
+  let held = Promise.resolve()
+  const { controller, calls } = await grokPair(t, { gate: () => held })
+  await controller.snapshot()
+  // Grok quota is several GETs per account; count rounds, not requests.
+  const round = calls['tok-a']
+  held = new Promise((resolve) => { release = resolve })
+  const first = controller.refreshQuota('grok', 'a@x')
+  while (calls['tok-a'] === round) await new Promise((resolve) => setImmediate(resolve))
+  const joined = [controller.refreshQuota('grok', 'a@x'), controller.snapshot()]
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  release()
+  held = Promise.resolve()
+  await Promise.all([first, ...joined])
+  assert.deepEqual(calls, { 'tok-a': 2 * round, 'tok-b': round })
+})
+
+test('a failed quota round recovers on the next pass after the TTL', async (t) => {
+  let down = true
+  const { controller, calls } = await grokPair(t, { fail: () => down })
+  const first = await controller.snapshot()
+  for (const row of first.accounts.grok.accounts) assert.equal(row.quota.status, 'error')
+  const round = calls['tok-a']
+  await controller.snapshot()
+  assert.equal(calls['tok-a'], round) // errors are not re-hit every poll
+  down = false
+  t.mock.timers.tick(60_000)
+  const next = await controller.snapshot()
+  for (const row of next.accounts.grok.accounts) assert.equal(row.quota.status, 'ready')
+})
+
+test('GLM identity discovery runs once per account per TTL; login changes re-arm it', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() })
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const authPath = join(dir, 'auth.json')
+  await saveSession('glm', glmSession({ accessToken: 'glm-token', region: 'bigmodel' }), authPath)
+  let userinfo = 0
+  const controller = new AuthController({
+    authPath,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+    fetchFn: async (url) => {
+      if (String(url).includes('getCustomerInfo')) userinfo += 1
+      return new Response(JSON.stringify({ data: { level: 'pro', list: [] } }), { status: 200 })
+    },
+  })
+  await controller.snapshot()
+  await controller.snapshot()
+  assert.equal(userinfo, 1)
+  controller.onAuthChanged('glm')
+  await controller.snapshot()
+  assert.equal(userinfo, 2)
+  t.mock.timers.tick(60_000)
+  await controller.snapshot()
+  assert.equal(userinfo, 3)
+})
+
 function githubLatest(tag) {
   return async () => new Response(JSON.stringify({
     tag_name: tag,

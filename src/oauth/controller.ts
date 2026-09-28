@@ -214,6 +214,8 @@ export class AuthController {
   declare claims: Map<string, number>
   declare tokens: Record<string, TokenManager>
   declare quota: QuotaStore
+  #identityTried = new Map<string, number>()
+  #snapshotRun: Promise<Record<string, any>> | undefined
   declare fetchFn: any
   declare opencodeGo: any
   declare opencodeGoAdopted: boolean
@@ -248,7 +250,11 @@ export class AuthController {
       this.autoUpdate = prefs.autoUpdate
       this.updateState = state
     })
-    this.onAuthChanged = onAuthChanged
+    // Any login-state change re-arms the throttled identity discovery.
+    this.onAuthChanged = (provider) => {
+      this.#identityTried.clear()
+      onAuthChanged?.(provider)
+    }
     this.models = models ?? new ModelSwitch()
     this.flows = new OAuthFlowManager()
     this.devices = new DeviceFlowManager()
@@ -573,7 +579,14 @@ export class AuthController {
    * `lib/`. The callers are untyped on purpose — do not "restore" the inferred
    * type without re-checking `lib/` size.
    */
-  async snapshot(): Promise<Record<string, any>> {
+  snapshot(): Promise<Record<string, any>> {
+    // Concurrent callers (poll, post-mutation RPCs) share one build; cleared on
+    // settle so a failure never pins and the next call rebuilds.
+    this.#snapshotRun ??= this.#buildSnapshot().finally(() => { this.#snapshotRun = undefined })
+    return this.#snapshotRun
+  }
+
+  async #buildSnapshot(): Promise<Record<string, any>> {
     await this.models.ready
     await this.prefsReady
     await this.#resolveGlmIdentities()
@@ -1050,14 +1063,30 @@ export class AuthController {
     }
   }
 
+  /**
+   * Rows still missing a readable identity, minus those tried within the
+   * passive quota TTL — the snapshot poll must not re-hit userinfo / state.vscdb
+   * every tick. `onAuthChanged` clears the table.
+   */
+  #identityDue(provider, rows, hasIdentity) {
+    const now = Date.now()
+    return rows.filter((row) => {
+      if (hasIdentity(row.session?.account)) return false
+      const key = `${provider}\0${row.id}`
+      const last = this.#identityTried.get(key)
+      if (last !== undefined && now - last < this.quota.ttlMs) return false
+      this.#identityTried.set(key, now)
+      return true
+    })
+  }
+
   async #resolveGlmIdentities() {
-    const rows = await listStoredSessions('glm', this.authPath)
+    // Keep the strict check: an opaque letters+digits id (poll user.id like
+    // dnarplz6) must re-resolve to an email/name. A resolved username that is
+    // also letters+digits (xxww0098) re-resolves once and is a no-op when
+    // userinfo returns the same value — displayGlmAccount shows it meanwhile.
+    const rows = this.#identityDue('glm', await listStoredSessions('glm', this.authPath), pickGlmHumanAccount)
     await Promise.all(rows.map(async (row) => {
-      // Keep the strict check: an opaque letters+digits id (poll user.id like
-      // dnarplz6) must re-resolve to an email/name. A resolved username that is
-      // also letters+digits (xxww0098) re-resolves once and is a no-op when
-      // userinfo returns the same value — displayGlmAccount shows it meanwhile.
-      if (pickGlmHumanAccount(row.session?.account)) return
       const account = await resolveGlmIdentity(row.session, { fetchFn: this.fetchFn }).catch(() => undefined)
       if (!account || account === row.session.account) return
       const next = { ...row.session, account, displayName: account }
@@ -1135,10 +1164,10 @@ export class AuthController {
   }
 
   async #resolveCursorIdentities() {
-    const rows = await listStoredSessions('cursor', this.authPath)
+    const rows = this.#identityDue('cursor', await listStoredSessions('cursor', this.authPath), pickCursorHumanAccount)
+    if (rows.length === 0) return
     const vscdb = await this.#readCursorVscdbHint()
     await Promise.all(rows.map(async (row) => {
-      if (pickCursorHumanAccount(row.session?.account)) return
       const account = pickCursorHumanAccount(
         cursorAccountFromToken(row.session?.accessToken),
         this.#cachedEmailFor(row.session, vscdb),

@@ -2,6 +2,13 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-28：设置页切走后仍每 1.5s 轮询，额度每分钟约 78 次请求
+
+**现象**：本机 13 个账号，插件面板打开过一次后，即使切到别的主面板，设置页仍每 1.5s 发一次 `status`，额度接口约每分钟 78 次。
+**根因**：主面板切走后仍保留挂载，轮询只看 `document.hidden`；`setInterval` 不等上一次 `snapshot()` 完成，并发的 snapshot 各跑一遍；被动额度 TTL 只有 10s；GLM userinfo 与 Cursor `state.vscdb` 身份回填每次 snapshot 都跑，GLM `getJson`/`postJson` 没有超时。
+**修复**：`client.ts` 新增纯函数 `panelVisible(el, doc)`（`!doc.hidden && el.checkVisibility?.() !== false`），只在可见时刷新，上一次完成后才排下一次，`visibilitychange` 回到前台立即刷新；`AuthController.snapshot()` 单飞，共享进行中的 promise，settle 后清掉；`QUOTA_TTL_MS` 与 OpenCode Go 额度 TTL 改为 60s，「刷新额度」仍绕过 TTL 并复用 `QuotaStore` 按账号去重；GLM / Cursor 身份回填每账号每 60s 最多一次（`onAuthChanged` 清表），Cursor 只在有账号缺人类 id 时才打开 `state.vscdb`；GLM `getJson`/`postJson` 加 10s 超时。
+**待验**：宿主保留的隐藏主面板上 `checkVisibility()` 是否返回 false，只能在运行中的宿主里确认；如果无效，改用 IntersectionObserver。
+
 ## 2026-09-28：配了出站代理，Cursor 目录 / h2 对话和未穿线的调用点仍直连
 
 **现象**：设了出站代理（设置页 / `proxyUrl` / `HTTPS_PROXY`）后，Cursor `GetUsableModels` / Run 仍从本机出口发出（区域锁家族照样被拒）；任何没被传 `fetchFn` 的调用点也悄悄直连。

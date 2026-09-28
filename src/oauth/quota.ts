@@ -87,7 +87,7 @@ import { fetchAnthropicQuota } from './anthropic/quota.js'
 import { devinUserStatus } from './devin/transport.js'
 import { outboundFetch } from '../utils/outbound.js'
 
-export const QUOTA_TTL_MS = 10_000
+export const QUOTA_TTL_MS = 60_000
 export const QUOTA_TIMEOUT_MS = 10_000
 const USED_RESET_STATUS = new Set(['redeemed', 'used', 'consumed', 'expired'])
 

@@ -88,7 +88,7 @@ export class OpencodeGoStore {
   declare inflight: Map<string, any>
   declare ready: Promise<any>
 
-  constructor({ path, fetchFn = outboundFetch, ttlMs = 10_000 }: any = {}) {
+  constructor({ path, fetchFn = outboundFetch, ttlMs = 60_000 }: any = {}) {
     this.path = path
     this.fetchFn = fetchFn
     this.ttlMs = ttlMs
