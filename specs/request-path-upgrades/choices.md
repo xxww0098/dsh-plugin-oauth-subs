@@ -95,3 +95,20 @@ spec 没写到、由实施者自己拍板的决定。每条：决定 → 理由 
 - **额度拉取失败同样等满 TTL** 才重试；手动「刷新额度」立即重试。→ sound。
 - **OpenCode Go 自己的额度 TTL 也从 10s 改到 60s**。→ sound。
 - **`checkVisibility()` 对宿主保留的隐藏主面板是否有效：未验证**（需在运行中的宿主里看 DevTools）。→ provisional：合入主干后验证，无效则按 spec 改 IntersectionObserver。
+
+## 09
+
+- **保留 `antigravitySessionIdOf` 这个名字**（`sessionId` 是它的线上字段名），不改成 `<fam>ConversationId`。→ sound。
+- **kiro / cursor / antigravity 解析器保留可选的 `explicit` 第二参数**，构建器把传输层的 id 经它传入。→ sound。
+- **谓词把空 / 缺失 id 也算回退**。→ sound。
+- **「显式改推理强度」= 非空且不同于已 pin 的 `reasoning_effort`**；省略时保持 pin。原测试期望「无 effort → low 仍保持 pin」，已改写。→ sound。
+- **`isDevinFallback` 导出但源码不调用**（Devin 没有 pin），只为各家族契约统一、供测试用。→ provisional：整 spec 审查时判断是否删掉。
+- **Devin 无 id 时 `applyDevinCache` 返回 `dsh-devin:<model>`**（原为 `undefined`）；`devinCascadeId(payload)` 改为哈希 `devin-<key>`，删掉「已是 UUID 就直通」；代理路径的 cascade id 不变，只影响不传 `cascadeId` 的直接调用方。→ sound。
+- **防火墙按行扫描**：同一行上时钟/随机调用与会话 id 词或 `*SESSION*` 常量共现即失败；扫描所有 `cache.ts` 和导出 `*Headers(` 的模块（全源码扫描噪声太大）。→ sound。
+- 活测：唯一已登录的 GLM 账号在 bigmodel 区，请求经 ZCode 网关（`zcode.z.ai`）而不是 Z.ai 直连；`x-session-id: dsh-glm` 回 200。Z.ai 直连未验证。→ provisional：有 Z.ai 账号时补一次。
+
+## 11
+
+- **测试真等 6s，不注入更短的超时**：间隔必须超过 undici 固定的 4s 回落才有意义，缩短就不诚实；因此 `createOutboundSession` 不加超时参数。→ sound。
+- **代理路径用本地 CONNECT 代理 + 非本地主机名测试**（本地地址总是绕过代理）；同一次运行里放一个全局 `fetch` 对照组（得 2 个连接）。→ sound。
+- 活测：Codex `GET /models` 在 0s/30s/55s 共用 1 个连接，后两次快约 0.8s。
