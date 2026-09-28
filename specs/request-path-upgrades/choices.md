@@ -1,192 +1,98 @@
-# 实施中的自主决定（choices 账本）
+# 实施中的自主决定（最终账本）
 
-spec 没写到、由实施者自己拍板的决定。每条：决定 → 理由 → 结论（sound / provisional / user）。
-最终收尾时按最终代码重写本文件。
+spec 没写到、由实施者拍板的决定，按最终代码（`rpu/integration`）重新核对过。按结论分组，
+每组内最没把握的排前面。每条都可以单独读。
 
-## 编排
+## 需要你决定或确认
 
-- **在 `rpu/integration` 集成分支上实施，不碰 `main`。** 维护者的 WIP（约 60 个文件，含 Command
-  Code、donate、Anthropic 导入只读修复）仍未提交且在持续改动；用户选择「自己提交」后又指示
-  继续。所以各 slice 从 HEAD（48b78b8）+ spec 提交分支，合进 `rpu/integration`，由维护者在
-  WIP 落地后 rebase/合并。→ provisional（user）：WIP 与 `controller.ts`、`proxy.ts`、
-  `client.ts`、`models.ts`、`quota.ts` 必有冲突，需维护者合并时处理。
-- **依赖 WIP 的部分暂缓**：05d（Command Code 源码只在 WIP 里）、08 的 Command Code 部分、07 的
-  Anthropic 迁移（`#refreshAnthropic` 只在 WIP 里）。→ provisional，WIP 落地后补。
+1. **全部工作在 `rpu/integration` 分支上，`main` 没动。** 你的 WIP（约 60 个文件，含 Command Code、
+   donate、Anthropic 导入只读修复）一直没提交且还在改，你选了「自己提交」后又让我继续，所以每个
+   slice 都从 48b78b8 分出去，只合进集成分支。合并时 `controller.ts`、`proxy.ts`、`client.ts`、
+   `models.ts`、`quota.ts`、`tokens.ts` 大概率冲突。WIP 里的 `#refreshAnthropic` / `#importAnthropic`
+   可以直接删：本分支已经把同样的「只读不换票」挂到了通用钩子上（见第 4 条）。
+2. **05d（Command Code）没做。** 它的源码只在 WIP 里。WIP 落地后补：删掉 `runRetrying` /
+   `commandCodeRetryable`，流内错误的 `statusCode` 当回复状态码；另外 DSH 会话 id 形如
+   `session-<uuid>`，Command Code 的 `toWireThreadId` 只收纯 UUID，要在 `command-code/cache.ts`
+   里去前缀或用 UUIDv5 做稳定映射，不许用随机数。
+3. **合入后 Cline 很可能要重新登录。** 本机 Cline `cli` 登录 09-28 07:29 过期，而 `~/.cline` 里的
+   token 09-26 就过期了——插件一直在替 CLI 换票。导入登录改成只读后，Cline 会报
+   「imported login is stale」。这是决定 4 的预期代价；Claude Code 的 Keychain token 当前也过期了。
+4. **Anthropic 导入只读是从你的 WIP 移植过来的，和 WIP 有三处不同**：报错是 `ImportedLoginStale`
+   （403），不是带 `anthropic-import-stale` 码的普通错误；重读只覆盖令牌字段，账号信息保留；没有
+   移植 `ANTHROPIC_IMPORT_LOCKED`，Keychain 锁住时本分支读作「没有登录」，结果也是 stale。
+5. **Cursor 的 refresh token 其实不轮换**（`cursor-agent` 没有 refresh_token grant，IDE 把同一个 JWT
+   同时存成 access 和 refresh）。按决定 4 它仍然只读；它是唯一一个按 spec 可以放开的家族，
+   要放开告诉我。
+6. **需要真实宿主的检查一个都没做**，因为宿主加载的是 `main`：02a 设置页截图评审、04「未登录 → 403」
+   在 DSH 里的显示（误导就改 409）、05「输出后断流」会不会让宿主重试出重复文本、08 的 `/health`
+   计数和 `settings.yaml` 里的 `cacheRetention`、14 的 `checkVisibility()` 对保留面板是否有效。
+   清单在 README「合入主干后才能做的检查」。
 
-## 02a
+## 暂定，等数据（交给 15 或下一次活测）
 
-- **错误行放在主栏 `.osubs-pane` 顶部**（与现有 RPC 错误提示同款 `.osubs-hint.osubs-bad`），
-  因为 `client.ts` 没有「出站代理区域」，只有 `proxyGet`/`proxySet` RPC。→ sound。
-- **死端口也进 `snapshot().error`**：代理 URL 能构建、但连不上时，记录最近一次代理路径失败，
-  下次成功或 `setUrl` 清掉；否则 spec 要求的 `HTTPS_PROXY=http://127.0.0.1:9` 在设置页看不到。
-  → sound。
-- **代理路径上除中止外的失败都包成 `outbound proxy unavailable: <detail> via <脱敏代理>`**；
-  中止原样抛出，保留代理的中止处理。→ sound。
-- **`close()` 后如仍配置了代理，`error = 'closed'`**：迟到的请求失败而不是直连。→ sound。
-- **`setUrl` 的构建错误原样抛给调用方**，不包装。→ sound。
+7. **Ollama 的 120s 首字节可能误杀长请求。** 基线里 oauth-ollama 有 38/7134（0.53%）次成功调用首字节
+   超过 120s（最长 297s），04 之后这些会被切断重试。15 只给 Devin 预设了放宽规则；建议 15 对 Ollama
+   用同一条规则（>0.5% 且基线里能成功 → 首字节放宽到整个预算）。
+8. **换票卡过 120s 后允许第二次换票。** 如果厂商其实已经处理了第一次并轮换了 token，第二次按时拿到
+   `invalid_grant` 会删号。120s 是 spec 定值，这是接受的残余风险。
+9. **保活 60s 后，非对话请求碰到陈旧连接不重试。** 刷新、登录换码、额度这些 POST 如果撞上上游已静默
+   关闭的连接，会一次性失败后进退避（对话请求会被 04 重试）。按 11 的规则由 15 看 ECONNRESET 计数，
+   升高就降到 30s。
+10. **`assertPersistedProviders` 严格比对 `cacheRetention`。** 如果宿主读回时丢掉或改写这个字段，每次
+    sync 都会报错。08 合入主干后的活测会验证。
+11. **Kiro：只在消息文本里说 refresh token 失效、状态又不是 401 的错误，现在算临时失败**（每 10s 重试，
+    不删号）。如果出现「一直刷新失败但不删号」，按 06 的反馈规则把真实错误码加进 Kiro 的 `extraCodes`。
+12. **GLM 常量会话头 `x-session-id: dsh-glm` 只在 bigmodel 区（经 ZCode 网关）验证过 200**，Z.ai 直连
+    没有账号可测。
+13. **Codex zstd 的非流式成功路径没验证。** 流式 200；非流式两次都是「模型不支持」的 400（后端已经解压
+    并读出了 `model`，所以不是编码被拒），3 次活测额度用完了。
+14. **Kimi 和 Anthropic 的导入重读不校验账号。** 其余家族（Codex `accountId`、Cursor token `sub`、
+    Cline `userId`）在 CLI 换号时会报 stale，这两家的本地凭据文件里没有账号 id。
+15. **Antigravity 在上游不给 `functionCall.id` 时，调用都叫 `call_1…`，`id:` 签名键会跨轮碰撞。** 先查
+    `name+args` 键，所以只在它缺失时可能挂错签名。这是存量问题，不在 F7 范围。
 
-## 01
+## 已定（按证据或按更严的一侧做的）
 
-- **时间窗按事件自身时间戳 `[since, until)` 计**；mtime 早于 `since` 的文件直接跳过。→ sound。
-- **多版本去重**：版本取 `session` 事件的 `version`，缺失时取文件名 `.vN.`；无 id 的会话按路径作键。→ sound。
-- **解析失败的文件计为 unreadable 并跳过**（当前数据 0 个），不中断整次运行。→ sound。
-- **`idleTimeout300` / `proxyExhausted` / `proxy504` 同时计入被重试的和终态的失败**：每次都真实付出了等待。→ sound。
-- **`poolIdle` = 请求开始 − 同 provider 在它之前最近一次成功响应结束**（不是「上一请求结束」）：并发子代理让后者对 codex 失去意义。→ sound。
-- **失败消息额外脱敏**：家目录/tmp 路径 → `<path>`，长字母数字 id → `<t>`（真实消息里有 `/Users/...` 和 `req_…`）。→ sound。
-- **不屏蔽 zstd 的 ExperimentalWarning**：Node 24.21 / 26.8 都不打印。→ sound。
-- **ttfb 检查点未触发**（最大 p99 = oauth-ollama 72.5s），但 oauth-ollama 有 38/7134（0.53%）次成功调用首字节 >120s（最长 297s），04 会把它们切断重试。spec 15 只给 Devin 预设了放宽规则。→ provisional：交给 15，按 Devin 同款规则（>0.5% 且基线成功）评估 Ollama。
-
-## 02b
-
-- **配置后 `outboundFetch` 先等 prefs 加载（`ready` 必然 settle）再路由**；只有从未调用
-  `configureOutbound` 时才直接走直连 Agent。spec 写「加载完成前走直连」，但那会让早期请求
-  绕过设置文件里保存的代理。→ sound（比 spec 更严，守住「绝不悄悄直连」）。
-- **NO_PROXY / 回环只约束 Cursor 的「出站代理回落」**；显式 `cursorProxy` / `PI_CURSOR_PROXY` /
-  `CURSOR_PROXY` 原样使用（保持现状，现有隧道测试经显式代理拨 127.0.0.1）。→ sound。
-- **保留 `createOutboundSession` 作为 `configureOutbound` 背后的工厂**，冻结的 repro 仍能跑。→ sound。
-- **`close()` 后会话仍是 current，直到新实例 `configureOutbound` 替换**：迟到请求失败而不是直连，
-  热重载顺序无关。→ sound。
-- **每个会话自带直连 Agent，`close()` 两个一起释放**。→ sound。
-- **`outboundProxyFor` 是 async（等 prefs）**；`cursorH2Connect` 本来就是 async。→ sound。
-- **Cursor 目录缓存键改用实际出口（`cursorEgressProxy`）**：换出站代理后按区域重拉目录。→ sound。
-- **10s 连接超时也覆盖经代理隧道的会话**（隧道内 TLS 同样会挂）。→ sound。
-- **防火墙额外拦 `?? fetch`、`|| fetch`、`globalThis.fetch`、`require`/`import('undici')`**。→ sound。
-- **Cursor 区域错误提示仍只看 `cursorUpstreamProxy()`**，建议配 `cursorProxy` 依然成立，未改。→ sound。
-
-## 03
-
-- **夹具只存真实前导帧（Codex 2950 B / Grok 2034 B，脱敏），测试加载时把 `instructions` 补到 200 KiB**；
-  delta / done 帧由测试合成。实测 `instructions` 只有 20 B，把 400 KB 的填充提交进仓库没有信息量。→ sound。
-- **额外脱敏 `id`、`prompt_cache_key`、`safety_identifier`**（账号/会话派生）。→ sound。
-- **扫描器用 latin1 保存帧尾**，字节数精确，帧完整后才按 UTF-8 解码；每次 push 只从旧尾部倒数 3 字节开始找分隔符。→ sound。
-- **未完成帧的字节不计入 64 KiB 上限**，只受 2 MiB 总量约束：否则一个正在到达的 128 KB `response.created` 会强制提交。→ sound。
-- **流结束时没有空行收尾的最后一帧不分类**：前导后跟它仍会重试，与 SSE 客户端丢弃未终止事件一致。→ sound。
-- **`MAX_PREAMBLE_BYTES` 改名 `MAX_UNCLASSIFIED_BYTES`**；`CommitGate` 多收一个 `family` 参数给 2 MiB 日志用。→ sound。
-- 活测：Codex、Grok 前导都是 `response.created` → `response.in_progress` → 首个输出 `response.output_item.added`，都带 `event:` 行，无新前导类型。
-
-## 06
-
-- **20s 换票等待保留，但只是单次请求的等待上限**：超时计为失败（触发 10s / 5min 退避）并把该次换票标为「迟到」，换票本身不再超时，最长占位 120s。→ sound。
-- **同版本的等待者加入进行中的换票**（上限内），而不是立即失败。→ sound。
-- **迟到的失败照常记录**，由下一次按时的尝试决定是否删号。→ sound。
-- **上游 401 触发的 `/v1` 强制刷新跳过两种退避**（沿用现状），但仍不能在未决换票期间发起第二次。→ sound。
-- **错误码只读 `error.oauthCode`**；`oauthCodeOf` 同时认对象形态 `{error:{code}}`（Codex 的额外码需要）。→ sound。
-- **只有 Codex 有 `extraCodes`**（`refresh_token_expired` / `reused` / `invalidated`）；GLM、Ollama 的刷新从不抛带类型错误，无额外码。→ sound。
-- **Antigravity 改用共享 `oauthError`，删掉它的 validation-required 例外**（那些响应是 403，本来就算临时）。→ sound。
-- **随新规则而来的行为变化**：Grok 也把 401 / `invalid_client` / `unauthorized_client` 算永久；Kiro social 端点若只在消息文本里说 refresh token 失效且状态非 401，现在按临时失败每 10s 重试，而不是删号。→ provisional：Kiro 若出现「永远刷新失败但不删号」的循环，按 06「会改变本 slice 的反馈」把真实错误码加进 Kiro `extraCodes`。
-- **Devin 聊天路径错误上的 `permanent`（仅 401）保留**，虽然刷新判定之外没人读它。→ provisional：整 spec 审查时确认是否删除。
-
-## 08
-
-- **`buildProviders` 末尾一个循环给所有 Completions 路由加 `cacheRetention: 'long'`**，新路由自动带上。→ sound。
-- **「上游不带 `prompt_cache_key`」只约束 Completions 家族**；Codex / Grok 本来就刻意上送。`prompt_cache_retention` 对所有家族都剥离（现状如此）。→ sound。
-- **`/health` 计数是模块级的**，不是每个 proxy 实例一份（避免给 `rewriteUpstreamBody` 加参数、动 5 个调用点）；热重载重新导入模块会清零。→ sound。
-- **只有非空字符串算「带 key」**；所有家族都计数。→ sound。
-- **持久化校验严格比对**：存储值必须与写入值完全一致（非 Completions 路由必须没有该字段）。→ sound。
-- DSH 会话 id 形如 `session-<uuid v4>`（44 字符）；Command Code 的 `toWireThreadId` 会丢掉它，WIP 落地后在 `command-code/cache.ts` 用去前缀或 UUIDv5 做稳定映射。→ provisional（依赖 WIP）。
-
-## 14
-
-- **合并 promise 存在私有 `#snapshotRun`，`snapshot()` 包 `#buildSnapshot()`**。→ sound。
-- **改动类 RPC（切换账号、模型开关）调 `snapshot(true)` 开新一轮**，后续轮询加入新一轮；被取代的旧轮 settle 时不清掉新轮。子代理原实现会让改动后的 RPC 拿到改动前的名单（集成审查发现并修复，有回归测试）。→ sound。
-- **身份发现节流表**：私有 `Map`，键 `provider\0accountId`，窗口复用 `quota.ttlMs`；构造器包一层 `onAuthChanged` 清表，不改调用点。只把仍缺名字的行计入节流。→ sound。
-- **主面板从隐藏回到可见时，下一个 tick（≤1.5s）才刷新**，只有窗口级 `visibilitychange` 立即刷新。→ sound。
-- **轮询间隔仍是 1.5s**（登录流程状态需要），额度来自 60s 缓存。→ sound。
-- **额度拉取失败同样等满 TTL** 才重试；手动「刷新额度」立即重试。→ sound。
-- **OpenCode Go 自己的额度 TTL 也从 10s 改到 60s**。→ sound。
-- **`checkVisibility()` 对宿主保留的隐藏主面板是否有效：未验证**（需在运行中的宿主里看 DevTools）。→ provisional：合入主干后验证，无效则按 spec 改 IntersectionObserver。
-
-## 09
-
-- **保留 `antigravitySessionIdOf` 这个名字**（`sessionId` 是它的线上字段名），不改成 `<fam>ConversationId`。→ sound。
-- **kiro / cursor / antigravity 解析器保留可选的 `explicit` 第二参数**，构建器把传输层的 id 经它传入。→ sound。
-- **谓词把空 / 缺失 id 也算回退**。→ sound。
-- **「显式改推理强度」= 非空且不同于已 pin 的 `reasoning_effort`**；省略时保持 pin。原测试期望「无 effort → low 仍保持 pin」，已改写。→ sound。
-- **`isDevinFallback` 导出但源码不调用**（Devin 没有 pin），只为各家族契约统一、供测试用。→ provisional：整 spec 审查时判断是否删掉。
-- **Devin 无 id 时 `applyDevinCache` 返回 `dsh-devin:<model>`**（原为 `undefined`）；`devinCascadeId(payload)` 改为哈希 `devin-<key>`，删掉「已是 UUID 就直通」；代理路径的 cascade id 不变，只影响不传 `cascadeId` 的直接调用方。→ sound。
-- **防火墙按行扫描**：同一行上时钟/随机调用与会话 id 词或 `*SESSION*` 常量共现即失败；扫描所有 `cache.ts` 和导出 `*Headers(` 的模块（全源码扫描噪声太大）。→ sound。
-- 活测：唯一已登录的 GLM 账号在 bigmodel 区，请求经 ZCode 网关（`zcode.z.ai`）而不是 Z.ai 直连；`x-session-id: dsh-glm` 回 200。Z.ai 直连未验证。→ provisional：有 Z.ai 账号时补一次。
-
-## 11
-
-- **测试真等 6s，不注入更短的超时**：间隔必须超过 undici 固定的 4s 回落才有意义，缩短就不诚实；因此 `createOutboundSession` 不加超时参数。→ sound。
-- **代理路径用本地 CONNECT 代理 + 非本地主机名测试**（本地地址总是绕过代理）；同一次运行里放一个全局 `fetch` 对照组（得 2 个连接）。→ sound。
-- 活测：Codex `GET /models` 在 0s/30s/55s 共用 1 个连接，后两次快约 0.8s。
-
-## 04
-
-- **`upstreamRequest` 多收一个 `response`**（只读 `headersSent`，作为 `committed()` 的提交点）。→ sound。
-- **`run` 不等传输层自己察觉超时**：忽略中止信号的 hop 也会按时放弃；`attemptUpstream` 每次 read 后检查尝试是否已中止，迟到的 read 不会到达客户端。→ sound。
-- **hop 抛出的未识别错误一律算可重试的传输故障**；刻意抛出的 `RequestError`（含 `LoginRequiredError`）从不重试。→ sound。
-- **`UpstreamFailure.code` 取 `transport | timeout | http | quota`**，另加 `retryAfterMs` 以继续转发 `retry-after-ms`。→ sound。
-- **非流式的「还能否再试」同样预留 120s**，尽管它的首字节窗口是剩余预算。→ sound（保守）。
-- **最终状态码**：最后一次失败是超时 → 504，否则 502 +「failed n times」（预算太短没重试时也会出现「failed 1 times」）。→ sound。
-- **GLM 网关回退在同一次尝试内完成**；401 刷新重试沿用同一尝试序号（Grok `retryAttempt` 头不变）。→ sound。
-- **Cline 额度回复不带 `retry-after`**（宿主不重试额度错误）；只匹配顶层 `payload.code === 'INFERENCE_CAP_ERROR'`。→ sound。
-- **repro 用 2s 首字节 / 5.5s 预算**而非等比缩放（退避不缩放），保持「第二次塞得下、第三次塞不下」的形状。→ sound。
-- **人工检查点「未登录 → 403 在 DSH 里怎么显示」未做**：需要真实宿主，而宿主加载的是 `main`。→ provisional（user）：合入主干后看；显示误导就按 04 改 409。
-
-## 10
-
-- **总量上限从 32 MiB 调到 64 MiB**：活测真实签名 140 / 2516 字符（gemini-3-flash low / high），32 MiB 只够约 128 B/键；一个满会话 ≈ 4096 × 2.6 KB ≈ 10.5 MiB，64 MiB 约容 6 个满会话，当前会话永远最新不会被整体淘汰。spec 的「典型大小 × 4096 × 64」≈ 640 MiB 不是合理上限。→ sound（按 spec「按实测调整」执行）。
-- **字节预算同时计键文本和签名文本**（键是 `name+args` JSON，可能很大）。→ sound。
-- **仅当前会话自身超预算时才淘汰它最旧的键**，其余情况整会话淘汰。→ sound。
-- **已知的存量问题未改**：上游不给 `functionCall.id` 时每个响应的调用都叫 `call_1…`，`id:` 键跨轮碰撞；先查 `name+args` 键，所以只在它缺失时可能挂错签名。→ provisional：不在 F7 范围，留给后续。
-
-## 集成审查（W0–W3 合并树）
-
-- **修复**：`index.ts` 的 `snapshot` 包装丢掉了 `fresh`，14 的「改动后开新一轮」在生产里是死代码；`status` RPC 现在接受 `{ fresh }`，UI 的动作后刷新传 `fresh`；轮询每次刷新最多等 30s，挂死的 RPC 不再永久停掉轮询；未配置时的出站会话改为懒创建，配置时关掉，热重载不再遗留第二个 Agent。
-- **不修，记录**：
-  - 换票挂过 120s 后允许第二次换票，若厂商已轮换，第二次按时的 `invalid_grant` 会删号（spec 接受的残余风险，120s 上限是 spec 定值）。→ provisional：15 观察。
-  - 代理路径上的任何非中止失败都显示为「出站代理不可用」，包括经健康代理访问某个上游时的 DNS/TLS 错误（02a 的设计取舍：宁可多报）。→ sound。
-  - 保活 60s 后，若上游在 60s 内静默关闭空闲连接，非对话 POST（刷新、登录换码、额度）不会被重试，只会一次性失败后进退避。→ provisional：按 11 的规则由 15 看 ECONNRESET 计数。
-  - `assertPersistedProviders` 严格比对 `cacheRetention`：若宿主读回时丢掉/默认化该字段，每次 sync 都会抛错。→ provisional：08 合入主干后的活测验证。
-
-## 05（a/b/c/e）
-
-- **401 刷新钩子收成一个 `forcedRefresh(tokens, session)`（`tokens.ts`）**：05a/b/c/e 并行时各在传输层抄了一份 `forward()` 的闭包，集成时合并成一个。→ sound。
-- **Connect 错误码算上游回答，不算传输故障**：原样转发一次、不重放，包括 `unavailable`→503（决定 5，宿主自己重试 5xx）。→ sound。
-- **没有已知额度谓词的家族（Antigravity、Devin、Cursor）不改写 429**，`resource_exhausted` 就是普通 429（「不猜」）。→ sound。
-- **Connect 错误一律带码记日志**（`[oauth-subs] <family> Connect error: <code: message>`），为「Connect 错误帧到底带哪些 code」这个已知未知收集证据。→ sound。
-- **Kiro：401/403 以 401 进入 `run` 触发刷新，刷新后仍被拒就在 `forwardKiro` 改回 400**（不动 `upstream.ts` 的「只在 401 刷新」）。→ sound。
-- **Kiro：输出前的解析错误（坏帧、EOF 截断、非流式正文截断、缺正文）都按传输故障重试**；流内异常帧仍 502、非流式异常 400；额度回复 `{error: "usage limit reached: …"}`，不带 `retry-after`。→ sound。
-- **Antigravity：EOF 没有 `finishReason` 算截断**（输出前重试、输出后 destroy），活测确认 Cloud Code 总会发最后的 `finishReason`；`body.error` 的守卫放在 `collectAntigravityParts` 一处，覆盖流式/非流式/分块三条映射。→ sound。
-- **Antigravity：状态码优先取 Google `error.code`（400–599），否则把 RPC status 名小写后走 `connectCodeStatus`**。→ sound。
-- **Devin：`connectTrailerError` 改返回 `{ code, message }`；会话里缺 token 抛 `RequestError(401)`（不被当传输故障重试）；聊天错误上删掉 `permanent`，只留 `GetUserStatus` 路径上的**（这也解决了 06 账本里「Devin 聊天路径 `permanent` 无人读」那条）。→ sound。
-- **Devin 也接上 401 刷新钩子**：会话 token 不轮换，本地过期前等于用同一 token 再试一次。→ sound（共同契约要求，代价一次请求）。
-- **Cursor：非 200 的 h2 响应头按自己的状态转发**（取最多 4 KiB 正文作消息）；以前会被误读成 Connect 帧，HTTP 级 401 永远到不了刷新钩子。→ sound。
-- **Cursor：错误 JSON 形如 `{ error: { message, code: <connect code> } }`；mapper 每次尝试重建**，重试不带失败尝试的 usage。→ sound。
-- **Cursor：删掉 `runCursorAgent` 里错误消息的 `onEvent` 调用和 `forwardCursor` 的 `collected.error` 分支**，错误只以 rejection 传递。→ sound。
-- **「输出后改 destroy 导致宿主重试出现重复文本」的检查点未做**：需真实宿主。→ provisional（user）：合入主干后观察。
-- **05d（Command Code）未做**：源码只在维护者 WIP 里。→ provisional（user）：WIP 落地后补。
-
-## 13
-
-- **默认压缩级别，不设最小体积门槛**：一条代码路径；15 若见 codex ttfb 变差再加门槛。→ sound。
-- **`content-encoding` 放在 `baseHeaders`**，401 刷新重组请求头时不丢。→ sound。
-- **测试加 `upstreamText(init)` 帮手解压**，而不是逐条改旧断言。→ sound。
-- 活测：41307 B → 9722 B（23.5%）；流式 200；非流式两次都是模型 400（后端已解压并读出 `model`，不是编码被拒）。**非流式成功路径未验证**（3 次额度已用完）。→ provisional：下一次有额度时补 1 次非流式。
-
-## 07
-
-- **钩子是 `TokenManager` 构造参数 `imported: { is, reread, cli }`**，每家族在自己的读取器里导出，controller 只负责传入。→ sound。
-- **stale 文案里的 CLI 名**：`codex`、`cursor-agent (or open Cursor)`、`cline`、`kimi`、`claude`；家族名取 manager 的 `displayName`。→ sound。
-- **重读只覆盖令牌字段**（`accessToken`、`refreshToken`、`idToken`、`expiresAt`），账号标签和补全过的身份保留。→ sound。
-- **Codex 导入的过期时间改取 access token JWT 的 `exp`**：旧的 `last_refresh + 1h` 会让一个还有 10 天的 token 看起来临期，每个请求都重读。→ sound。
-- **Cursor 导入只有过期本地 token 时抛 `ImportedLoginStale`**（原为「本机没有登录」）；自动导入仍静默吞掉。→ sound。
-- **删掉 Kimi 刷新后保留 `source: 'cli'` 的 PKCE 回退**（`cli` 会话不再走换票）。→ sound。
-- **重读不校验 CLI 里还是不是同一个账号**：用户在 CLI 里换了号，存储行会用旧 id 承接新 token。→ provisional：罕见；出现问题再按账号 id 校验。
-- **重读到的仍在预取窗口内的 token 会被采用**；集成审查补上「同一版本 10s 内最多重读一次」，否则 Cursor Keychain 登录每个请求 spawn 一次 `security`。→ sound。
-- **Anthropic 从维护者 WIP 移植到钩子**：`isAnthropicImportedSource`、`rereadAnthropicImport`（读记录的 Keychain service 或 `.credentials.json`，不换票不写）、`importAnthropicAuth` 在会话上写 `source`；与 WIP 的差异：错误是 `ImportedLoginStale`（403）而不是带 `anthropic-import-stale` 码的普通错误，重读只覆盖令牌字段，未移植 `ANTHROPIC_IMPORT_LOCKED`（锁住的 Keychain 在本分支读作无登录 → stale）。→ provisional（user）：WIP 落地时删掉 `#refreshAnthropic` / `#importAnthropic`，保留 `refresh: refreshAnthropic` + `imported: anthropicImported`。
-- **轮换证据（厂商源码）**：Codex、Cline、Kimi、Anthropic 轮换；**Cursor 不轮换**（`cursor-agent` 无 refresh_token grant，IDE 把同一 JWT 同时存为 access 和 refresh）。按决定 4 仍全部只读；Cursor 是唯一可按 spec 放开的家族。→ provisional（user）。
-- **检查点证据（不阻塞，已告知用户）**：本机 Cline `cli` 登录今天 07:29 过期，而 `~/.cline` 里的 token 09-26 就过期了——说明插件一直在替 CLI 换票；合入后 Cline 会报 stale，大概率需要重新登录 Cline CLI 或改用浏览器登录（决定 4 的预期代价）。Claude Code 的 Keychain token 当前也已过期。
-
-## 12
-
-- **空闲淘汰用 `session.setTimeout(60s)`**（60s 无帧），淘汰后优雅关闭，安静但活着的流不会被杀。→ sound。
-- **池键 = origin + 代理串**：设置页运行时改出站代理不清池，新拨号用新键，旧会话 60s 内空闲淘汰；避免在 `utils/outbound.ts` 里放 Cursor 代码。→ sound。
-- **`clearCursorH2Pool` 优雅关闭而不是 destroy**，配置变化/热重载时进行中的 run 能跑完；会话已 unref，不阻塞退出。→ sound。
-- **池结构是 key → 拨号 promise 的 `Map`**，同一个 promise 负责合并并发拨号。→ sound。
-- **正常结束时服务端还没关自己那一侧，也发 RST CANCEL**（与原 destroy 行为一致）。→ sound。
-- **清池挂在 `apply()` 里 `configureCursorUpstreamProxy` 旁的 `ctx.effect`**；配置变化会重跑插件，这一个清理同时覆盖配置变化和插件停止。→ sound。
-- 活测：两次 composer-2.5 run 只建 1 次 `http2.connect`，互不干扰，保留连接池。
+16. **Antigravity 签名表总量上限从 32 MiB 调到 64 MiB。** 活测签名 140 / 2516 字符，一个满会话约
+    10.5 MiB，64 MiB 约容 6 个满会话；当前会话永远最新，不会被整体淘汰。字节预算同时计键和签名。
+17. **出站配置加载完之前，`outboundFetch` 先等设置文件读完再路由**（spec 写的是「加载完前走直连」），
+    否则早期请求会绕过设置里保存的代理。只有从没调用 `configureOutbound` 时才走直连。
+18. **代理路径上任何非中止失败都显示为「出站代理不可用」**，包括经健康代理访问某个上游时的 DNS/TLS
+    错误——宁可多报，也不悄悄直连。死端口的最近一次失败也进 `snapshot().error`，错误行放在主栏顶部
+    （设置页没有单独的代理区域）。
+19. **输出前失败的分类**：hop 抛出的未识别错误算可重试的传输故障；刻意抛出的 `RequestError`（含
+    `LoginRequiredError`）不重试；Connect 错误码和厂商错误负载算上游回答，只转发一次；最后一次失败是
+    超时回 504，否则 502 +「failed n times」。
+20. **「截断」统一按传输故障处理**：Kiro 坏帧/EOF 截断、Antigravity 没有 `finishReason` 就 EOF、Devin
+    没有 Connect 结束帧就 EOF、Cursor 残留字节——输出前重试，输出后断流，不再以正常 `stop` 结束。
+21. **没有已知额度谓词的家族（Antigravity、Devin、Cursor）不改写 429**，`resource_exhausted` 就是普通
+    429；只有 Cline `INFERENCE_CAP_ERROR` 和 Kiro 月度额度改成 `usage limit reached:`（`quotaFailure`
+    一个出口，不带 `retry-after`）。所有 Connect 错误都带码记日志，给「到底会出现哪些码」攒证据。
+22. **Kiro 401/403 先刷新一次**：刷新后仍被拒就回 400（订阅本身有效，避免宿主提示「API 密钥无效」）。
+    Devin 也接了 401 刷新钩子，它的 token 不轮换，等于同一个 token 再试一次。
+23. **Cursor 非 200 的 h2 响应头按自己的状态转发**（以前会被误读成 Connect 帧，HTTP 401 永远到不了刷新）。
+24. **提交闸门**：夹具存真实前导帧（Codex 2950 B / Grok 2034 B，脱敏含 `id`、`prompt_cache_key`、
+    `safety_identifier`），测试加载时把 `instructions` 补到 200 KiB；未完成帧的字节不计入 64 KiB 上限；
+    流结束时没有空行收尾的最后一帧不分类（仍会重试）。
+25. **令牌生命周期**：20s 等待只是单次请求的上限，超时计失败并把换票标为「迟到」，换票本身最长占位
+    120s；同版本的等待者加入进行中的换票；迟到的失败只记录，由下一次按时的尝试决定删不删号；只有 Codex
+    有额外的永久错误码（`refresh_token_expired` / `reused` / `invalidated`）。
+26. **导入登录**：钩子是 `TokenManager` 的 `imported` 选项，每家族在自己目录里提供；重读只覆盖令牌字段；
+    同一版本 10s 内最多重读一次（否则 Cursor Keychain 每个请求 spawn 一次 `security`）；Codex 导入的
+    过期时间取 JWT `exp`（旧的 `last_refresh + 1h` 会让 10 天的 token 看起来临期）。
+27. **设置页**：状态读取合并成一轮；用户自己的操作之后读 `fresh` 快照，不会拿到操作前的名单；轮询间隔
+    仍 1.5s（登录流程要用），额度走 60s 缓存；额度失败也等满 TTL；每次刷新最多等 30s，挂死的 RPC 不会
+    永久停掉轮询；GLM/Cursor 身份发现每账号 60s 一次，登录状态变化时重置。
+28. **会话 id**：`cacheRetention: 'long'` 在 `buildProviders` 末尾一次性加给所有 Completions 路由；每家族
+    一个解析器 + 一个回退谓词（空 id 也算回退，Cline 也有），回退 id 一律不 pin；「显式改推理强度」=
+    非空且不同于已 pin 的值；`/health` 计数是模块级的，热重载清零。
+29. **Cursor h2 连接池**：键 = origin + 代理串（改出站代理不清池，旧会话 60s 内空闲淘汰）；60s 无帧淘汰；
+    清池是优雅关闭，进行中的 run 能跑完；一个 `ctx.effect` 同时覆盖配置变化和插件停止。
+30. **保活 60s 的测试真等 6s**：间隔必须超过 undici 固定的 4s 才能证明问题，所以不注入更短的超时。
+31. **分析器口径**：事件按自身时间戳落在 `[since, until)`；多版本会话按 `session.version` 去重；
+    `poolIdle` = 请求开始 − 同 provider 之前最近一次**成功**响应结束（并发子代理让「上一请求结束」失去
+    意义）；失败消息额外把路径脱敏成 `<path>`、长 id 脱敏成 `<t>`。去重让 oauth-ollama 命中率从 64.2%
+    变成 67.7%，按 spec 以新口径为准，差异写进了 baseline md。
+32. **收尾时把并行留下的重复收成一个所有者**：`upstream.ts` 的 `writeSse` / `pumpBody` / `waitForDrain` /
+    `quotaFailure`，`tokens.ts` 的 `forcedRefresh`；删掉 `cursor/refresh-guard.ts`、Devin 的
+    `permanent` 标记和 `DevinTransportError`；`docs/error.md` 按「同一根因一条」合并。

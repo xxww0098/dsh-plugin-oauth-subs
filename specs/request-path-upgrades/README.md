@@ -5,22 +5,19 @@
 
 ## Next Agent Prompt
 
-**状态（2026-09-28）**：实施中，在集成分支 `rpu/integration`（worktree
-`/Users/xxww/Code/REPO/rpu/integration`）上推进。已合入：01、02a、02b、03、04、05a、05b、05c、05e、06、08、09、10、11、12、13、14、07。进行中：整 spec 审查。
+**状态（2026-09-28）**：除 05d 和 15 外全部实施完毕，已过整 spec 审查，全在集成分支
+`rpu/integration`（worktree `/Users/xxww/Code/REPO/rpu/integration`）上，`npm test` 868/868。
+**`main` 没动**：维护者的 WIP 一直未提交，所以各 slice 从 48b78b8 分出、只合进集成分支。
 
-**先决条件的处理**：维护者的 WIP（约 60 个文件）仍未提交，用户指示继续。各 slice 从
-48b78b8 + spec 提交分支，只合进 `rpu/integration`，**不碰 `main`**；WIP 落地后由维护者
-合并（预期在 `controller.ts`/`proxy.ts`/`client.ts`/`models.ts`/`quota.ts` 冲突）。依赖 WIP
-的部分暂缓：05d（Command Code）、08 的 Command Code 部分、07 的 Anthropic 迁移。
-
-**你接下来要做的**：
-1. 读本 README、[`choices.md`](choices.md)、下一个 slice 文件和仓库根的 `AGENTS.md`。
-2. 下一个 pickup：07、12 合入后做整 spec 审查；05d 与所有「需要真实宿主」的检查等 WIP 落地、合入主干后做（清单见下）。每个 slice 一个 worktree
-   `/Users/xxww/Code/REPO/rpu/<slice>`，从 `rpu/integration` 分支，`npm ci`。
-3. 每轮结束前更新本节与 `choices.md`。
+**你接下来要做的**（按顺序）：
+1. 等维护者提交 WIP，再把 `rpu/integration` 合进 `main`（预期冲突：`controller.ts`、`proxy.ts`、
+   `client.ts`、`models.ts`、`quota.ts`、`tokens.ts`；WIP 的 `#refreshAnthropic` / `#importAnthropic`
+   由本分支的 `anthropicImported` 钩子取代，见 [`choices.md`](choices.md) 第 1、4 条）。
+2. 做 05d（Command Code），规则见 [slices/05](slices/05-custom-transports.md) 与 `choices.md` 第 2 条。
+3. 逐项做下面「合入主干后才能做的检查」，结论写进对应 slice 与 `docs/error.md`。
+4. 合入主干 ≥7 天后做 [15](slices/15-closeout.md)，再按 implement-spec 重写 `choices.md` 并归档本目录。
 
 **合入主干后才能做的检查**（宿主加载的是 `main` 的 `lib/`；worktree 里做不了）：
-- [ ] 05d Command Code 迁移 + 08 的 Command Code 会话 id 映射（`session-<uuid>` → 去前缀或 UUIDv5）。
 - [ ] 02a 设置页出站代理错误行：改前/改后截图、并排对比、不带预设的截图评审（`HTTPS_PROXY=http://127.0.0.1:9`）。
 - [ ] 04 人工检查点：DSH 怎么显示「未登录 → 403」；误导就改 409。
 - [ ] 05 输出后改 destroy：宿主重试是否让用户看到重复文本。
@@ -35,7 +32,8 @@
   `npm run build` / `dev-build`，宿主会立刻热重载半成品 `lib/`。所以实现、构建、测试一律在
   worktree 里做，绿了再合入主干。
 - 活测只从 worktree 的 `lib/` 直接 import 家族模块，规则见下文「验证总则」。
-- `docs/error.md` 每个 PR 都会追加条目，rebase 时的小冲突是预期内的。
+- `docs/error.md` 每个 PR 都会追加条目；本地 `.git/info/attributes` 设了
+  `docs/error.md merge=union`，合并后按「同一根因一条」手工收拢。
 
 **全局 TODO**：
 - [x] 01 分析器目录模式 + 冻结基线 → [slices/01](slices/01-analyzer-dir.md)
@@ -43,7 +41,7 @@
 - [x] 02b 出站 HTTP 单一所有者 → [slices/02](slices/02-outbound-owner.md)
 - [x] 03 Responses 提交闸门按帧分类 → [slices/03](slices/03-responses-gate.md)
 - [x] 04 上游尝试原语 + `forward()` → [slices/04](slices/04-upstream-attempt.md)
-- [ ] 05a–e 自定义传输层迁到原语（a/b/c/e 已合入；05d 等 WIP） → [slices/05](slices/05-custom-transports.md)
+- [ ] 05a–e 自定义传输层迁到原语（a/b/c/e 已合入；**05d 等 WIP**） → [slices/05](slices/05-custom-transports.md)
 - [x] 06 令牌生命周期核心 → [slices/06](slices/06-token-core.md)
 - [x] 07 导入登录只读 → [slices/07](slices/07-imported-logins.md)
 - [x] 08 Completions 会话 id 接通 → [slices/08](slices/08-conversation-id.md)
