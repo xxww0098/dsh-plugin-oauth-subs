@@ -2,6 +2,13 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-28：上游卡住时代理比宿主 300s 看门狗更晚收场，头发出后的异常收成干净 EOF
+
+**现象**：等响应头没有超时（undici 默认 300s = 宿主看门狗）；有头无体 3×120s+5s≈365s 才回 502；头发出后抛错被 `response.end()` 收成干净 EOF；Cline `INFERENCE_CAP_ERROR` 被宿主当 RATE_LIMIT 白重试 5 次；「未登录」回 500。
+**根因**：计时只有读循环里的 `withIdleTimeout`（120s、每次尝试重置），没有首字节与总预算；`listen()` 的 catch 在头发出后 `end()`；失败文案没按宿主分类器写。
+**修复**：新 `src/oauth/upstream.ts` 独占计时 / 预算 / 重试 / 失败映射：每次尝试首字节（含响应头）120s，输出前总预算 270s（从路由入口 `startedAt` 起算，含 `tokens.session()`），`已用 + 退避 + 120s ≤ 270s` 才重试，否则 504 `no output within 270s (<n> attempts)`；传输故障耗尽仍 502 `upstream failed <n> times`；输出后空闲 270s、头发出后的任何错误一律 `destroy`（`answerFailure`）。非流式首字节窗口 = 剩余预算。`forward()` 保留 Codex turn-state 回放、GLM 网关回退（同一次尝试内）、401 刷新一次立即重试。Cline 额度走 `classifyFailure` → 429 `usage limit reached:`；`LoginRequiredError`（403）→ 宿主 AUTH。删 `withIdleTimeout` / `UpstreamIdleError` / `UPSTREAM_IDLE_TIMEOUT_MS` / `COMMIT_DEADLINE_MS` / proxy 的 `STREAM_ATTEMPTS` 等。`repro/stall-budget.mjs`：两种卡住都在 2 次尝试后回 504（生产约 241s）。
+**活测（2026-09-28，宿主 Node v24.21.0）**：worktree `lib/` 的 `createProxy` 各 1 次极小流式请求、未刷新：Codex gpt-5.6-luna 200（3.2s，`response.completed`），Cline deepseek-v4.1-flash 200（2.2s）；Ollama 未登录跳过。「未登录 → 403」在 DSH 里怎么显示需真实宿主，合入后看。
+
 ## 2026-09-28：Completions 路由从没收到 DSH 会话 id，系统提示 pin / 签名桶全进程共用
 
 **现象**：kiro / antigravity / cursor / ollama / kimi / copilot / devin / cline 八条回环 Completions 路由的会话键永远是 `dsh-<id>[:<model>]`：第一个会话的系统提示被 pin 给后来的会话，thinking 配置与签名桶跨会话串用。

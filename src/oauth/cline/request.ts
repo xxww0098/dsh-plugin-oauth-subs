@@ -13,6 +13,7 @@
 
 import { clineCatalogModels } from './catalog.js'
 import { CLINE_MODELS } from './index.js'
+import { UpstreamFailure } from '../upstream.js'
 
 const OFF = new Set(['off', 'none', 'disabled', false, null, ''])
 
@@ -94,6 +95,18 @@ export function unwrapClineEnvelope(payload) {
   const data = payload.data
   if (!data || typeof data !== 'object' || Array.isArray(data)) return payload
   return data
+}
+
+/**
+ * The daily free-model cap (live 2026-09-28): HTTP 429
+ * `{"code":"INFERENCE_CAP_ERROR","message":"Error 429: Daily free limit reached on model …"}`.
+ * Forwarded as-is the host reads RATE_LIMIT and retries 5 times; the
+ * `usage limit reached:` prefix makes it QUOTA_EXCEEDED, which it does not.
+ */
+export function clineQuotaFailure(status, payload) {
+  if (payload?.code !== 'INFERENCE_CAP_ERROR') return undefined
+  const detail = typeof payload.message === 'string' && payload.message.trim() ? payload.message.trim() : `Cline ${status} INFERENCE_CAP_ERROR`
+  return new UpstreamFailure(429, `usage limit reached: ${detail}`, { code: 'quota' })
 }
 
 /** Map vendor cache-read aliases. Absent field stays absent — do not invent 0. */

@@ -2,7 +2,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { request as httpRequest } from 'node:http'
 import { test } from 'node:test'
-import { createProxy, describeError, retryDelayMs, STREAM_ATTEMPTS } from '../lib/oauth/proxy.js'
+import { createProxy, describeError } from '../lib/oauth/proxy.js'
+import { UPSTREAM_ATTEMPTS } from '../lib/oauth/upstream.js'
 import { classifySseFrame, SseFrameScanner } from '../lib/oauth/responses-sse.js'
 import { CODEX_API_URL } from '../lib/oauth/codex/index.js'
 import { GLM_ANTHROPIC_URL, GLM_ANTHROPIC_VERSION, GLM_CODING_URL, GLM_USER_AGENT } from '../lib/oauth/glm/index.js'
@@ -846,18 +847,35 @@ test('a break after output has been committed reaches the client as a broken str
   })
 })
 
+test('a stall after output is cut by the idle timer and destroyed, one attempt', async () => {
+  let calls = 0
+  const fetchFn = async () => {
+    calls += 1
+    return new Response(new ReadableStream({
+      start(controller) { controller.enqueue(new TextEncoder().encode(CODEX_PREAMBLE + sse(DELTA))) },
+    }), { status: 200, headers: SSE })
+  }
+  await withProxy(fetchFn, async (port, logs) => {
+    const response = await post(port)
+    assert.equal(response.status, 200)
+    await assert.rejects(response.text(), 'a stalled stream must break, not hang or end cleanly')
+    assert.equal(calls, 1)
+    assert.match(logs.join('\n'), /failed mid-response: upstream sent no data for 0\.05s/)
+  }, { upstreamTimeouts: { idleMs: 50 } })
+})
+
 test('exhausting the retries answers with a real error instead of a silent EOF', async () => {
   let calls = 0
   const fetchFn = async () => { calls += 1; return streamingUpstream([CODEX_PREAMBLE]) }
   await withProxy(fetchFn, async (port) => {
     const response = await post(port)
-    assert.equal(calls, STREAM_ATTEMPTS)
+    assert.equal(calls, UPSTREAM_ATTEMPTS)
     assert.equal(response.status, 502)
     assert.match((await response.json()).error, /failed 3 times.*no output events/s)
   })
 })
 
-test('an upstream that never sends a byte is cut by the idle watchdog and retried', async () => {
+test('an upstream that never sends a byte is cut by the first-byte timer, retried within budget, then 504', async () => {
   let calls = 0
   const fetchFn = async () => {
     calls += 1
@@ -865,11 +883,26 @@ test('an upstream that never sends a byte is cut by the idle watchdog and retrie
   }
   await withProxy(fetchFn, async (port, logs) => {
     const response = await post(port)
-    assert.equal(calls, STREAM_ATTEMPTS, 'a silent upstream must be retried, not held for the client timeout')
+    // 40ms + ≤1s backoff + 40ms fits 1.1s; the 4s backoff does not.
+    assert.equal(calls, 2, 'a silent upstream must be retried, not held for the client timeout')
+    assert.equal(response.status, 504)
+    assert.match((await response.json()).error, /codex upstream: no output within 1\.1s \(2 attempts\): no first byte within 0\.04s/)
+    assert.match(logs.join('\n'), /retrying upstream \(attempt 2\/3\).*no first byte/)
+  }, { upstreamTimeouts: { firstByteMs: 40, budgetMs: 1100 } })
+})
+
+test('three fast ECONNRESETs still answer 502 with the proxyExhausted wording', async () => {
+  let calls = 0
+  const fetchFn = async () => {
+    calls += 1
+    throw new TypeError('fetch failed', { cause: Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' }) })
+  }
+  await withProxy(fetchFn, async (port) => {
+    const response = await post(port)
+    assert.equal(calls, UPSTREAM_ATTEMPTS)
     assert.equal(response.status, 502)
-    assert.match((await response.json()).error, /failed 3 times.*no data/s)
-    assert.match(logs.join('\n'), /upstream sent no data for 40ms/)
-  }, { upstreamIdleTimeoutMs: 40 })
+    assert.equal((await response.json()).error, 'codex upstream failed 3 times: fetch failed: ECONNRESET')
+  })
 })
 
 test('a pre-header fetch fault is retried too', async () => {
@@ -1546,14 +1579,6 @@ test('proxy strips upstream content-encoding/content-length after undici decompr
   }
 })
 
-
-test('retry backoff jitters below the base so concurrent requests never retry in lockstep', async () => {
-  assert.equal(retryDelayMs(0, () => 0), 1000, 'jitter floor at attempt 0 is the full base')
-  assert.equal(retryDelayMs(1, () => 0), 4000)
-  assert.equal(retryDelayMs(0, () => 0.5), 875)
-  const delayed = retryDelayMs(0, () => 0.99)
-  assert.ok(delayed >= 750 && delayed <= 1000, `shrink-only jitter stays within the base: ${delayed}`)
-})
 
 test('a forwarded 429 also carries the retry-after-ms header when upstream sends one', async () => {
   let calls = 0
