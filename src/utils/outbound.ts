@@ -8,10 +8,11 @@
  * Does not call setGlobalDispatcher — DSH and other plugins keep their fetch.
  */
 
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { Agent, Headers, ProxyAgent, fetch } from 'undici'
 import { describeError } from './http.js'
+import { writePrivateText } from './private-text.js'
 
 export const OUTBOUND_PROXY_FILE = 'outbound-proxy.json'
 
@@ -117,8 +118,7 @@ export async function readOutboundPrefs(path) {
 
 export async function writeOutboundPrefs(path, prefs) {
   const next = normalizeOutboundPrefs(prefs)
-  await mkdir(dirname(path), { recursive: true })
-  await writeFile(path, JSON.stringify(next) + '\n', { encoding: 'utf8', mode: 0o600 })
+  await writePrivateText(path, JSON.stringify(next) + '\n')
   return next
 }
 

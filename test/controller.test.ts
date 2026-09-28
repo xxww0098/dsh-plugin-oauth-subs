@@ -784,6 +784,45 @@ test('refreshQuota bypasses the TTL once and joins an in-flight refresh', async 
   assert.deepEqual(calls, { 'tok-a': 2 * round, 'tok-b': round })
 })
 
+test('a cold snapshot asks every signed-in family for its quota at once, not one family after another', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const authPath = join(dir, 'auth.json')
+  const later = Date.now() + 60 * 60_000
+  await saveSession('codex', { accessToken: 'tok-c', refreshToken: 'r-c', expiresAt: later, emailAddress: 'c@x' }, authPath)
+  await saveSession('grok', { accessToken: 'tok-g', refreshToken: 'r-g', expiresAt: later, account: 'g@x' }, authPath)
+  // Each family's first request parks for up to 300ms; with one family at a
+  // time the first has always left before the second arrives.
+  const started = new Set()
+  const parked = new Set()
+  let overlapped = false
+  const controller = new AuthController({
+    authPath,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+    fetchFn: async (url) => {
+      const family = String(url).includes('chatgpt.com') ? 'codex' : 'grok'
+      if (!started.has(family)) {
+        started.add(family)
+        parked.add(family)
+        overlapped = overlapped || parked.size === 2
+        await new Promise((resolve) => setTimeout(resolve, 300))
+        parked.delete(family)
+      }
+      if (String(url).includes('rate-limit-reset-credits')) return new Response(JSON.stringify({ available_count: 0 }), { status: 200 })
+      return new Response(JSON.stringify({
+        plan_type: 'plus',
+        rate_limit: { primary_window: { used_percent: 1 } },
+        config: { subscription_tier: 'SuperGrok', creditUsagePercent: 10 },
+      }), { status: 200, headers: { 'content-type': 'application/json' } })
+    },
+  })
+  const snap = await controller.snapshot()
+  assert.equal(snap.accounts.codex.accounts[0].quota.status, 'ready')
+  assert.equal(snap.accounts.grok.accounts[0].quota.status, 'ready')
+  assert.ok(overlapped, 'the second family only started after the first had answered')
+})
+
 test('a failed quota round recovers on the next pass after the TTL', async (t) => {
   let down = true
   const { controller, calls } = await grokPair(t, { fail: () => down })

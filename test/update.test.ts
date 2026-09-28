@@ -408,8 +408,9 @@ test('installRelease on a web profile asks for a host restart', async () => {
     fetchFn: async () => new Response(Buffer.from('x')),
     extractFn: async (_a, dest) => {
       const root = join(dest, 'xxww0098-dsh-plugin-oauth-subs-abc1234')
-      await mkdir(root, { recursive: true })
+      await mkdir(join(root, 'lib'), { recursive: true })
       await writeFile(join(root, 'package.json'), JSON.stringify({ version: '0.0.104' }))
+      await writeFile(join(root, 'lib', 'index.js'), '// new build')
     },
     resolveFn: () => undefined,
   })

@@ -93,6 +93,62 @@ test('openai messages become conversationState with dotted modelId and pinned co
   assert.equal(second.conversationState.currentMessage.userInputMessage.content.includes('You are DSH.'), false)
 })
 
+const PNG = 'data:image/png;base64,AAAA'
+const JPG = 'data:image/jpg;base64,BBBB'
+const image = (url) => ({ type: 'image_url', image_url: { url } })
+
+test('data: image parts reach Kiro as userInputMessage.images (base64 bytes, jpg → jpeg); remote and unsupported ones are left out', () => {
+  resetKiroSystemPins()
+  const body = openaiToKiro({
+    model: 'claude-opus-5.5',
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'text', text: 'what is in these?' },
+        image(PNG),
+        image(JPG),
+        image('https://example.com/cat.png'),
+        image('data:image/svg+xml;base64,CCCC'),
+      ],
+    }],
+  })
+  const user = body.conversationState.currentMessage.userInputMessage
+  assert.equal(user.content, 'what is in these?')
+  assert.deepEqual(user.images, [
+    { format: 'png', source: { bytes: 'AAAA' } },
+    { format: 'jpeg', source: { bytes: 'BBBB' } },
+  ])
+})
+
+test('only the latest image-bearing user turn keeps its images, whether it is in history or current; an image-only turn is not dropped', () => {
+  resetKiroSystemPins()
+  const older = openaiToKiro({
+    model: 'claude-opus-5.5',
+    messages: [
+      { role: 'user', content: [image(PNG)] },
+      { role: 'assistant', content: 'a cat' },
+      { role: 'user', content: [{ type: 'text', text: 'and now?' }, image(JPG)] },
+    ],
+  })
+  const history = older.conversationState.history.map((entry) => entry.userInputMessage).filter(Boolean)
+  assert.equal(history.length, 1)
+  assert.equal(history[0].images, undefined) // the earlier image is not sent again
+  assert.deepEqual(older.conversationState.currentMessage.userInputMessage.images, [{ format: 'jpeg', source: { bytes: 'BBBB' } }])
+
+  const later = openaiToKiro({
+    model: 'claude-opus-5.5',
+    messages: [
+      { role: 'user', content: [image(PNG)] },
+      { role: 'assistant', content: 'a cat' },
+      { role: 'user', content: 'thanks' },
+    ],
+  })
+  const kept = later.conversationState.history.map((entry) => entry.userInputMessage).find(Boolean)
+  assert.equal(kept.content, '.') // image-only turn stays in history
+  assert.deepEqual(kept.images, [{ format: 'png', source: { bytes: 'AAAA' } }])
+  assert.equal(later.conversationState.currentMessage.userInputMessage.images, undefined)
+})
+
 test('developer role is rewritten like GLM and unknown roles do not reach Kiro', () => {
   resetKiroSystemPins()
   const body = openaiToKiro({

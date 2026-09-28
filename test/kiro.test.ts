@@ -973,6 +973,45 @@ test('MONTHLY_REQUEST_COUNT is a 429 quota answer, distinct from the rate limit'
   assert.equal(kiroClientErrorStatus(403), 400)
 })
 
+// Verbatim from DSH (`isContextWindowExceededError`, dsh-llm): the pi-ai adapter
+// maps an errored turn matching it to CONTEXT_WINDOW_EXCEEDED, the only code
+// that makes the host condense the conversation and go on.
+const STRUCTURED_CONTEXT_OVERFLOW = new RegExp(String.raw`(?:^|[^a-z0-9])context[\s_-](?:length|window)[\s_-]`
+  + String.raw`(?:exceed(?:ed|s)?|overflow(?:ed)?|limit[\s_-]exceeded)(?:$|[^a-z0-9])`, 'i')
+const TOO_LARGE_FOR_CONTEXT = new RegExp(String.raw`\b(?:request|prompt|input|messages?)\s+(?:is\s+|are\s+)?`
+  + String.raw`too\s+(?:large|long)\s+for\s+(?:(?:this|the)\s+)?`
+  + String.raw`(?:model(?:'s)?\s+)?context(?:\s+window)?\b`, 'i')
+const EXCEEDS_MODEL_CONTEXT = new RegExp(String.raw`\b(?:input|prompt|request|messages?)\b.{0,40}`
+  + String.raw`\b(?:exceed(?:s|ed)?|overflows?|is\s+larger\s+than)\b.{0,40}`
+  + String.raw`\b(?:the\s+)?(?:model(?:'s)?\s+)?context(?:\s+(?:length|window))?\b`, 'i')
+function hostSeesContextOverflow(detail) {
+  return STRUCTURED_CONTEXT_OVERFLOW.test(detail)
+    || /\b(?:maximum|max)(?:\s+(?:allowed|supported))?\s+context\s+(?:length|window)\b/i.test(detail)
+    || TOO_LARGE_FOR_CONTEXT.test(detail)
+    || /\b(?:input|prompt|request)\s+(?:is\s+)?too\s+(?:long|large)\s+for\s+(?:this|the)\s+model\b/i.test(detail)
+    || EXCEEDS_MODEL_CONTEXT.test(detail)
+}
+
+test('Kiro "Input is too long" reaches the host worded as a context overflow, so it condenses instead of failing the turn', () => {
+  for (const raw of [
+    { reason: 'CONTENT_LENGTH_EXCEEDS_THRESHOLD', message: 'Input is too long.' },
+    { reason: 'INPUT_TOO_LONG', message: 'Input is too long.' },
+  ]) {
+    assert.equal(hostSeesContextOverflow(raw.message), false, 'Kiro\'s own wording is not recognized by the host')
+    const body = kiroClientErrorBody(400, raw, JSON.stringify(raw))
+    assert.equal(body.error.code, 'kiro_too_big')
+    assert.ok(body.error.message.endsWith('Input is too long.'), 'the vendor text is kept')
+    assert.equal(hostSeesContextOverflow(JSON.stringify(body.error)), true, body.error.message)
+  }
+  // Only size answers are reworded.
+  for (const raw of [
+    { reason: 'INSUFFICIENT_MODEL_CAPACITY', message: 'high load' },
+    { reason: 'MONTHLY_REQUEST_COUNT', message: 'monthly request count exceeded' },
+  ]) {
+    assert.equal(hostSeesContextOverflow(JSON.stringify(kiroClientErrorBody(400, raw, JSON.stringify(raw)).error)), false)
+  }
+})
+
 test('thinking events do not leak XML into content', () => {
   const collected = collectKiroEvents([
     { type: 'thinkingEvent', payload: { text: 'I will plan the edit' } },

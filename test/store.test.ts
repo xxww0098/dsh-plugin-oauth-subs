@@ -5,6 +5,23 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { deleteSession, getSession, listAccounts, loadStore, saveSession, switchAccount } from '../lib/oauth/store.js'
 
+test('a browser re-login is a login of its own: it does not inherit the old import\'s read-only source', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const path = join(dir, 'auth.json')
+  await saveSession('codex', {
+    accessToken: 'imported', refreshToken: 'r1', expiresAt: 1, emailAddress: 'me@x',
+    source: '/home/me/.codex/auth.json', planType: 'plus',
+  }, path)
+  await saveSession('codex', { accessToken: 'browser', refreshToken: 'r2', expiresAt: 2, emailAddress: 'me@x' }, path)
+  const session = await getSession('codex', path)
+  assert.equal(session.accessToken, 'browser')
+  // `source` marks a login the CLI owns and this plugin may only reread; the
+  // browser login's refresh token is this plugin's own to rotate.
+  assert.equal(session.source, undefined)
+  // Hydrated hints still survive a re-login.
+  assert.equal(session.planType, 'plus')
+})
+
 test('saveSession writes atomically with mode 0600 and preserves siblings', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
   const path = join(dir, 'auth.json')

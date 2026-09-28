@@ -2,6 +2,54 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-29：对照 magpie（yetone/magpie）审网关 / 账号 / 额度 / hop——采纳 8 处小改，多账号故障转移与冷却维持不学
+
+**现象**：没有单一现象；对照出的缺口分散在下面同日各条里（冷读额度串行、状态文件非原子写、CI 与自更新都不验 `lib/`、导入登录被重登继承、Copilot 目录含 `/responses`-only 行、Kiro 丢图片、Kiro 超长提示宿主不压缩）。
+**根因**：这些是我们没有、magpie 有明确处理的地方；magpie 的头号特性（网关内多账号故障转移 / 冷却 / 按缓存亲和选号 / 计费头 + 请求体哈希冒充 Claude Code / 自动接受 Copilot 条款）不采纳，理由分别是 `specs/request-path-upgrades/choices.md` 决定 5、不加强对厂商的冒充、不替用户接受厂商条款。
+**修复**：见各条。**待活测才能动的线索**（不凭对照改）：Cursor 丢图片入参、Kiro effort 未上线、Kiro 遇输出上限（`ContentLengthExceededException`）当失败、Codex / Grok 换号后重放他号封存的 reasoning、Cursor 并行 tool call 每个占一次 Run、Cursor 团队区域 401 应为 403、Grok 客户端版本 `0.2.93` 对官方 `1.0.41`、Codex 重置额度未指明 `credit_id`、Anthropic 用量 429 无 Retry-After 退避、额度快照不落盘。
+
+## 2026-09-29：Kiro 目录声明支持图片，请求里却只留文本，图片被静默丢掉
+
+**现象**：用默认模型 Kiro `claude-opus-5.5`（目录 `input: [text, image]`）读图 / 贴截图，模型像没看到图一样回答，没有任何报错。
+**根因**：`openaiToKiro` 的 `flattenContent` 只取 `type === 'text'` 的部分，`image_url` 一律丢弃。
+**修复**：`data:` 图片按 kiro.rs `KiroImage` / magpie `buildKiro` 的线格发成 `userInputMessage.images`，只保留最近一条带图的 user 消息，远程 URL 与非 png/jpeg/gif/webp 不发。回归 `test/kiro-request.test.ts`。**未用活账号验证线格**；Cursor 有同样的丢图，线格更复杂，仍待活测。
+
+## 2026-09-29：Kiro「Input is too long」宿主认不出是上下文溢出，不会压缩，整轮失败
+
+**现象**：Kiro 会话超过真实上下文后，宿主直接报 INVALID_REQUEST，不自动压缩（只有 `CONTEXT_WINDOW_EXCEEDED` 才触发压缩后继续）。
+**根因**：pi-ai 适配器用 `isContextOverflow` + `isContextWindowExceededError` 按措辞判定；Kiro 原文 `Input is too long.` 两套都不匹配（Bedrock 那条要 `for requested model`）。
+**修复**：`kiroClientErrorBody` 对 `kiro_too_big` 加前缀 `input is too long for the model's context window: `，状态码仍是 400/413。回归 `test/kiro.test.ts`（内嵌宿主正则原文）。对照 magpie `kiroFailure`。
+
+## 2026-09-29：导入的 Codex / Claude 登录改用浏览器重登后，账号仍被当成导入登录（只读，终会再变陈旧）
+
+**现象**：Codex / Claude 的本机导入登录变陈旧，按提示「重新登录」走浏览器授权，新令牌能用一阵，过期后又报 `imported login is stale`。
+**根因**：`saveSession` 合并同账号的旧字段，`source`（导入路径 / `keychain:…`）不在 `SESSION_CREDENTIAL_KEYS`；Codex / Anthropic 的浏览器登录不写 `source`（Cline / Kimi / Cursor 显式写 `oauth` / `pkce`），旧值被继承，`imported.is()` 仍为真，只重读 CLI 文件、从不用自己的 refresh token 换票。
+**修复**：`source` 归入 `SESSION_CREDENTIAL_KEYS`（重登总是重新给出）。回归 `test/store.test.ts`「a browser re-login is a login of its own…」。对照 magpie `upsertLogin`（重登整条替换）。
+
+## 2026-09-29：Copilot 选择器列出只在 `/responses` 上服务的模型，回环 hop 只有 `/chat/completions`
+
+**现象**：（推断，本机无 Copilot 凭据、未活测）登录后目录里会有 Copilot 只在 `/responses` 上服务的行，选中后 hop 打 `/chat/completions` 拿不到该模型。
+**根因**：`toCopilotPickerModels` 不看 `/models` 行的 `supported_endpoints`；hop 只有一个端点。opencode `plugin/github-copilot/models.ts` 与 magpie `copilotAPIs` 都按这个字段选端点。
+**修复**：`supported_endpoints` 非空且不含 `/chat/completions` 的行不进目录，字段缺省或为空照收；静态楼没动（没有活目录可对）。回归 `test/copilot.test.ts`「live picker skips rows Copilot serves off /chat/completions」。
+
+## 2026-09-29：重启 / 热重载后设置页首屏要等所有家族额度逐个读完
+
+**现象**：宿主重启或热重载后，插件面板要等各家族额度读取时间之和才出第一屏；某个上游慢或挂起时，整页跟着卡到它超时（每家 10s）。
+**根因**：`#buildSnapshot` 对 13 个家族逐个 `await #ensureAccountQuota`，冷缓存时每个都同步等上游；这是 0.0.26 起逐家族加行留下的串行，不是有意限流。
+**修复**：`Promise.all(PROVIDER_IDS.map(…))`，冷读耗时降为最慢的那个上游。回归 `test/controller.test.ts`「a cold snapshot asks every signed-in family for its quota at once」。对照 magpie 的 `quotas()`（各厂商同时问）。
+
+## 2026-09-29：`signed-out.json` / 出站代理 / 更新偏好非原子写，崩溃时撕裂文件读成「没设置」
+
+**现象**：（潜在，未见实例）写到一半宿主被杀，`signed-out.json` 撕裂后读成 `[]`，退出过的家族重启又自动登录；`outbound-proxy.json` 撕裂后读成「没配代理」，请求悄悄直连。
+**根因**：这三处用裸 `writeFile`（先截断再写），读端把解析失败当默认值；其余状态文件早就走 `writePrivateText`（临时文件 + rename，0600）。
+**修复**：三处改走 `writePrivateText`；`test/atomic-writes.test.ts` 扫描 `src/`，裸 `writeFile(` 只允许 `private-text.ts` 与 `models.ts`（临时文件 + rename 用户自己的 patch）。对照 magpie 的 `edit.WriteAtomic`。
+
+## 2026-09-29：CI 不检查已提交的 `lib/` 是否与 `src/` 一致
+
+**现象**：历史上有 13 次「chore: rebuild lib …」补提交（按提交标题统计）；GitHub 地址安装与自更新读的是提交里的 `lib/`，src 改了没带构建产物就会发出旧代码。
+**根因**：`npm test` 在 runner 上重新构建 `lib/`，提交里的那份从没被测过；`package-surface` 只查文件存在。
+**修复**：CI 在 `npm test` 之后跑 `git status --porcelain -- lib`，非空即失败；自更新换装前也校验暂存副本有 `lib/index.js`（`swapPackageDirs`），缺了就拒绝、旧目录不动；顺带加 `concurrency`（顶掉的旧运行自动取消）和 `permissions: contents: read`。
+
 ## 2026-09-28：添加账号弹窗里展开的输入框掉到列表最底部
 
 **现象**：Kiro「Enterprise / API Key / Refresh」等方式行展开后，输入框渲染在所有方式行和「导入」之后，离被点的那一行很远。

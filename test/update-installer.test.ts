@@ -60,6 +60,22 @@ test('partial copy leaves the old plugin complete and removes staging', async ()
   assert.equal(existsSync(dir + '.oauth-subs-bak'), false)
 })
 
+test('a release tarball without lib/index.js is refused before any swap', async () => {
+  const { home, dir } = await fixture()
+  const result = await installRelease(options(home, {
+    extractFn: async (_archive, dest) => {
+      const root = join(dest, 'source-root')
+      await mkdir(root, { recursive: true })
+      await writeFile(join(root, 'package.json'), JSON.stringify({ version: '0.0.104' }))
+    },
+  }))
+  assert.equal(result.status, 'failed')
+  assert.match(result.error, /no lib\/index\.js/)
+  assert.equal(JSON.parse(await readFile(join(dir, 'package.json'), 'utf8')).version, '0.0.103')
+  assert.equal(existsSync(join(dir, 'lib', 'old')), true)
+  assert.equal(existsSync(dir + '.oauth-subs-bak'), false)
+})
+
 test('failure staging the second copy leaves both installed copies intact', async () => {
   const { home, dir, other } = await fixture(true)
   let copies = 0

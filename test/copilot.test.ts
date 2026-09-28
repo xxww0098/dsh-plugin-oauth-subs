@@ -304,6 +304,22 @@ test('live picker drops disabled rows and keeps vision / effort', () => {
   assert.deepEqual(models[0].reasoningEfforts, COPILOT_REASONING)
 })
 
+test('live picker skips rows Copilot serves off /chat/completions (the only endpoint the hop speaks)', () => {
+  resetCopilotCatalogCache()
+  const capabilities = { supports: { tool_calls: true } }
+  const models = toCopilotPickerModels({
+    data: [
+      { id: 'responses-only', supported_endpoints: ['/responses', 'ws:/responses'], capabilities },
+      { id: 'messages-only', supported_endpoints: ['/v1/messages'], capabilities },
+      { id: 'both', supported_endpoints: ['/responses', '/chat/completions'], capabilities },
+      { id: 'claude', supported_endpoints: ['/v1/messages', '/chat/completions'], capabilities },
+      { id: 'no-field', capabilities },
+      { id: 'empty-field', supported_endpoints: [], capabilities },
+    ],
+  })
+  assert.deepEqual(models.map((model) => model.id).sort(), ['both', 'claude', 'empty-field', 'no-field'])
+})
+
 test('cache strips Codex/Grok fields and parks extra system', () => {
   resetCopilotPins()
   const first = applyCopilotCache({

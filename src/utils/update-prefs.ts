@@ -5,8 +5,9 @@
  * single boolean and the state is the last install attempt's result.
  */
 
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import { writePrivateText } from './private-text.js'
 
 /** 15-minute cadence — the cadence the About card advertises. */
 export const AUTO_UPDATE_INTERVAL_MS = 15 * 60_000
@@ -22,10 +23,7 @@ async function readJson(path, fallback) {
   }
 }
 
-async function writeJson(path, value) {
-  await mkdir(dirname(path), { recursive: true })
-  await writeFile(path, `${JSON.stringify(value, null, 2)}\n`)
-}
+const writeJson = (path, value) => writePrivateText(path, `${JSON.stringify(value, null, 2)}\n`)
 
 export async function readUpdatePrefs(path) {
   const raw = await readJson(path, undefined)

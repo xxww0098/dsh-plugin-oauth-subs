@@ -75,6 +75,10 @@ export function toCopilotPickerModels(payload) {
     if (!id || seen.has(id)) continue
     if (row?.model_picker_enabled === false) continue
     if (row?.policy?.state === 'disabled') continue
+    // The hop only speaks /chat/completions (/responses answers 501): a model
+    // Copilot serves elsewhere alone would be offered and never work.
+    const endpoints = row?.supported_endpoints
+    if (Array.isArray(endpoints) && endpoints.length > 0 && !endpoints.includes('/chat/completions')) continue
     const toolCalls = row?.capabilities?.supports?.tool_calls
     if (toolCalls === false) continue
     seen.add(id)

@@ -5,6 +5,14 @@ on:
     branches: [main]
   pull_request:
 
+# A newer push to the same ref supersedes the run in flight.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -16,6 +24,15 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      # `npm test` just rebuilt lib/. Git installs and self-update ship the
+      # committed lib/, so a src change committed without its build shows here.
+      - name: committed lib/ matches src/
+        run: |
+          if [ -n "$(git status --porcelain -- lib)" ]; then
+            git status --short -- lib
+            echo "::error::lib/ is stale: run npm run build and commit it"
+            exit 1
+          fi
       # The build type-checks (tsconfig no longer sets `noCheck`). The ratchet
       # re-checks with --noCheck false so re-adding that switch cannot silently
       # disable checking, and tracks the strictNullChecks backlog. It fails if

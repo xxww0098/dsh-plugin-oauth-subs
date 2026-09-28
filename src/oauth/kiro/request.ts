@@ -106,6 +106,37 @@ function flattenContent(content) {
   }).filter(Boolean).join('\n')
 }
 
+const KIRO_IMAGE_FORMATS = new Set(['png', 'jpeg', 'gif', 'webp'])
+const DATA_IMAGE = /^data:image\/([\w.+-]+);base64,/i
+
+/**
+ * `data:` image parts of an OpenAI user message as Kiro `images` (base64
+ * bytes; png / jpeg / gif / webp — kiro.rs `get_image_format`). A remote URL
+ * or another type is left out: Kiro takes bytes only, and one image it
+ * refuses would fail the whole turn.
+ */
+function kiroImagesOf(content) {
+  if (!Array.isArray(content)) return []
+  const images: any[] = []
+  for (const item of content) {
+    if (item?.type !== 'image_url') continue
+    const url = typeof item.image_url === 'string' ? item.image_url : item.image_url?.url
+    const head = typeof url === 'string' ? DATA_IMAGE.exec(url) : null
+    if (!head) continue
+    const kind = head[1].toLowerCase()
+    const format = kind === 'jpg' ? 'jpeg' : kind
+    if (KIRO_IMAGE_FORMATS.has(format)) images.push({ format, source: { bytes: url.slice(head[0].length) } })
+  }
+  return images
+}
+
+/** Only the latest images go again, as Kiro's own agent (and magpie) do. */
+function keepLatestKiroImages(users) {
+  let latest = -1
+  users.forEach((user, index) => { if (user?.images?.length) latest = index })
+  users.forEach((user, index) => { if (user && index !== latest) delete user.images })
+}
+
 function tryJson(value) {
   if (isPlainObject(value)) return value
   if (typeof value !== 'string' || !value.trim()) return {}
@@ -194,7 +225,7 @@ function assistantHistoryMessage(message) {
   return { assistantResponseMessage: row }
 }
 
-function userHistoryMessage(content, { modelId, origin, toolResults }: any = {}) {
+function userHistoryMessage(content, { modelId, origin, toolResults, images }: any = {}) {
   const context: any = {}
   if (toolResults?.length) context.toolResults = toolResults
   return {
@@ -203,6 +234,7 @@ function userHistoryMessage(content, { modelId, origin, toolResults }: any = {})
       userInputMessageContext: context,
       origin: origin || KIRO_CHAT_ORIGIN,
       modelId,
+      ...(images?.length ? { images } : {}),
     },
   }
 }
@@ -249,17 +281,20 @@ export function openaiToKiro(payload, { conversationId, profileArn, origin = KIR
   const history: any[] = []
   const systemParts: any[] = []
   let pendingUser
+  let pendingImages: any[] = []
   let pendingAssistant
   let pendingToolResults: any[] = []
 
   const flushUser = () => {
-    if (!pendingUser && !pendingToolResults.length) return
+    if (!pendingUser && !pendingImages.length && !pendingToolResults.length) return
     history.push(userHistoryMessage(pendingUser || '', {
       modelId,
       origin,
       toolResults: pendingToolResults.length ? pendingToolResults : undefined,
+      images: pendingImages,
     }))
     pendingUser = undefined
+    pendingImages = []
     pendingToolResults = []
   }
 
@@ -280,6 +315,7 @@ export function openaiToKiro(payload, { conversationId, profileArn, origin = KIR
       flushAssistant()
       flushUser()
       pendingUser = flattenContent(message?.content)
+      pendingImages = kiroImagesOf(message?.content)
       continue
     }
     if (role === 'assistant') {
@@ -325,19 +361,20 @@ export function openaiToKiro(payload, { conversationId, profileArn, origin = KIR
   if (!content && !pendingToolResults.length) {
     content = trimmed(payload?.input) || '.'
   }
+  const current: any = {
+    content,
+    userInputMessageContext: userContext,
+    origin,
+    modelId,
+  }
+  if (pendingImages.length) current.images = pendingImages
+  keepLatestKiroImages([...fullHistory.map((entry: any) => entry.userInputMessage), current])
 
   const body: any = {
     conversationState: {
       conversationId: resolvedId,
       history: fullHistory,
-      currentMessage: {
-        userInputMessage: {
-          content,
-          userInputMessageContext: userContext,
-          origin,
-          modelId,
-        },
-      },
+      currentMessage: { userInputMessage: current },
       chatTriggerType: 'MANUAL',
       agentTaskType: 'vibe',
     },
@@ -726,7 +763,10 @@ export function kiroClientErrorBody(status, parsed, text) {
     || `kiro upstream ${classified.status}`
   return {
     error: {
-      message,
+      // DSH condenses the conversation and goes on only for CONTEXT_WINDOW_EXCEEDED,
+      // which its pi-ai adapter reads off wording like this; Kiro's own
+      // "Input is too long." matches none of it.
+      message: classified.code === 'kiro_too_big' ? `input is too long for the model's context window: ${message}` : message,
       type: classified.status === 429 ? 'rate_limit_error' : 'invalid_request_error',
       code: classified.code,
     },

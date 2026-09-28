@@ -86,7 +86,7 @@ Authorization: Bearer <tid=>
 Copilot-Integration-Id: vscode-chat
 ```
 
-只收 `model_picker_enabled` 且 `policy.state !== disabled` 且声明 `tool_calls` 的行。失败或空列表回落静态楼。不要把 `/v1/messages`-only 行改打 Anthropic。
+只收 `model_picker_enabled` 且 `policy.state !== disabled` 且声明 `tool_calls` 的行；`supported_endpoints` 非空却不含 `/chat/completions` 的行不收（hop 只有这一个端点，`/responses` 回 501；opencode `plugin/github-copilot/models.ts` 同样按该字段选端点，本机无 Copilot 凭据、未活测）。失败或空列表回落静态楼。不要把 `/v1/messages`-only 行改打 Anthropic。
 
 `capabilities.supports.reasoning_effort` → DSH `reasoningEfforts`（键是 picker 档，值是 vendor 拼写）。没有 effort 图就省略字段。
 
