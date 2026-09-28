@@ -2,6 +2,13 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-28：上游空闲约 4s 就断连，下一轮重新握手
+
+**现象**：两轮之间空闲超过约 4s（codex 14%，其余家族 10–16%），下一个请求要重新 TCP + TLS 握手（chatgpt.com 约 1.7s，ollama.com 约 0.5s）。
+**根因**：chatgpt.com / ollama.com 不发 `Keep-Alive` 响应头，undici 退回默认 `keepAliveTimeout` 4s，池里的 socket 空闲 4s 即关闭。
+**修复**：`outbound.ts` 的直连 `Agent` 与 `ProxyAgent`（经 `...opts` 传到隧道 Agent）同一处设 `keepAliveTimeout: 60_000`、`keepAliveMaxTimeout: 600_000`。陈旧 socket 在输出前 ECONNRESET 由上游重试兜底，不另写代码。`test/outbound.test.ts` 用不发 Keep-Alive 的本地服务端间隔 6s 两次请求：直连与 CONNECT 隧道各 1 个连接，全局 fetch 对照为 2。
+**活测（2026-09-28，宿主 Node v24.21.0）**：worktree `lib/` 的 `outboundFetch` 直连 Codex `GET /models` 于 0s / 30s / 55s 各一次，全 200，`undici:client:connected` 共 1 次；耗时 1343 / 568 / 571ms。
+
 ## 2026-09-28：Completions 路由从没收到 DSH 会话 id，系统提示 pin / 签名桶全进程共用
 
 **现象**：kiro / antigravity / cursor / ollama / kimi / copilot / devin / cline 八条回环 Completions 路由的会话键永远是 `dsh-<id>[:<model>]`：第一个会话的系统提示被 pin 给后来的会话，thinking 配置与签名桶跨会话串用。

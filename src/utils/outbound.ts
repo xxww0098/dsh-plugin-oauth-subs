@@ -122,8 +122,16 @@ export async function writeOutboundPrefs(path, prefs) {
   return next
 }
 
+/**
+ * chatgpt.com / ollama.com send no `Keep-Alive` hint, so undici's 4s default
+ * would drop a pooled socket before the next turn and pay a fresh handshake
+ * (~1.7s to chatgpt.com). A stale socket reset before output is retried
+ * upstream as a pre-output transport failure.
+ */
+const KEEP_ALIVE = { keepAliveTimeout: 60_000, keepAliveMaxTimeout: 600_000 }
+
 function makeAgent(url, agentFor) {
-  return typeof agentFor === 'function' ? agentFor(url) : new ProxyAgent(url)
+  return typeof agentFor === 'function' ? agentFor(url) : new ProxyAgent({ uri: url, ...KEEP_ALIVE })
 }
 
 async function release(agent) {
@@ -162,7 +170,7 @@ export function createOutboundSession({
   agentFor = undefined,
 }: any = {}) {
   let settingsUrl = ''
-  const direct = new Agent()
+  const direct = new Agent(KEEP_ALIVE)
   let agent = undefined
   let error = ''
   // Last proxied transport failure: an agent that builds fine can still point

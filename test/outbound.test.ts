@@ -6,6 +6,7 @@ import { test } from 'node:test'
 import {
   OUTBOUND_PROXY_FILE,
   configureOutbound,
+  createOutboundSession,
   defaultOutboundPrefs,
   envProxyUrl,
   normalizeOutboundPrefs,
@@ -245,4 +246,62 @@ test('configureOutbound honors NO_PROXY and waits for saved settings before choo
   assert.notEqual(seen[1], agent)
   assert.equal(await outboundProxyFor('https://api2.cursor.sh/x'), undefined)
   await session.close()
+})
+
+test('outboundFetch keeps an idle connection past undici\'s 4s default, direct and through the proxy', async (t) => {
+  const { createServer } = await import('node:http')
+  const { connect } = await import('node:net')
+  const { setTimeout: sleep } = await import('node:timers/promises')
+  const sockets = new Set<any>()
+  // Like chatgpt.com / ollama.com: no Keep-Alive response header.
+  async function listen(server) {
+    server.on('connection', (socket) => sockets.add(socket))
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()))
+    return (server.address() as any).port
+  }
+  async function origin() {
+    const server = createServer((req, res) => res.end('ok'))
+    server.keepAliveTimeout = 0
+    let connections = 0
+    server.on('connection', () => connections++)
+    const port = await listen(server)
+    return { server, port, connections: () => connections }
+  }
+  const direct = await origin()
+  const tunneled = await origin()
+  const control = await origin()
+  // CONNECT proxy that tunnels every host to the tunneled origin, so a
+  // non-loopback URL (loopback always bypasses the proxy) reaches it.
+  const proxy = createServer()
+  proxy.on('connect', (req, client, head) => {
+    sockets.add(client)
+    const upstream = connect(tunneled.port, '127.0.0.1', () => {
+      client.write('HTTP/1.1 200 Connection Established\r\n\r\n')
+      upstream.write(head)
+      upstream.pipe(client)
+      client.pipe(upstream)
+    })
+    sockets.add(upstream)
+  })
+  const proxyPort = await listen(proxy)
+  const plain = createOutboundSession({ env: {} })
+  const proxied = createOutboundSession({ configUrl: `http://127.0.0.1:${proxyPort}`, env: {} })
+  t.after(async () => {
+    await Promise.all([plain.close(), proxied.close()])
+    for (const socket of sockets) socket.destroy()
+    for (const server of [direct.server, tunneled.server, control.server, proxy]) server.close()
+  })
+
+  const hit = () => Promise.all([
+    plain.request(`http://127.0.0.1:${direct.port}/`, { method: 'POST', body: '{}' }).then((r) => r.text()),
+    proxied.request('http://keepalive.example/', { method: 'POST', body: '{}' }).then((r) => r.text()),
+    // Global fetch is the control: its 4s default must drop the socket in the same gap.
+    fetch(`http://127.0.0.1:${control.port}/`, { method: 'POST', body: '{}' }).then((r) => r.text()),
+  ])
+  assert.deepEqual(await hit(), ['ok', 'ok', 'ok'])
+  await sleep(6000)
+  assert.deepEqual(await hit(), ['ok', 'ok', 'ok'])
+  assert.equal(control.connections(), 2)
+  assert.equal(direct.connections(), 1)
+  assert.equal(tunneled.connections(), 1)
 })
