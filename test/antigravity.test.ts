@@ -1310,6 +1310,113 @@ test('session map reattaches thoughtSignature when DSH strips extra tool_call ke
   resetAntigravitySystemPins()
 })
 
+const SIG_MODEL = 'gemini-3.7-flash-high'
+
+function upstreamToolCall(sessionId, i, signature) {
+  return antigravityToOpenai({
+    response: {
+      candidates: [{
+        content: { parts: [{ functionCall: { id: `call_${i}`, name: 'Read', args: { path: `f${i}.ts` } }, thoughtSignature: signature }] },
+        finishReason: 'STOP',
+      }],
+    },
+  }, { model: SIG_MODEL, sessionId }).choices[0].message.tool_calls[0]
+}
+
+/** DSH echoes tool_calls (upstream ids kept) without the extra signature keys. */
+function strippedToolTurn(i) {
+  return [
+    {
+      role: 'assistant',
+      content: null,
+      tool_calls: [{ id: `call_${i}`, type: 'function', function: { name: 'Read', arguments: JSON.stringify({ path: `f${i}.ts` }) } }],
+    },
+    { role: 'tool', tool_call_id: `call_${i}`, name: 'Read', content: `body ${i}` },
+  ]
+}
+
+function replaySignatures(sessionId, calls) {
+  const built = openaiToAntigravity({
+    model: SIG_MODEL,
+    ...(sessionId ? { session_id: sessionId } : {}),
+    messages: [{ role: 'user', content: 'go' }, ...calls.flatMap((i) => strippedToolTurn(i))],
+  }, { projectId: 'p' })
+  // A call without a signature is rewritten to an observation text: report it as null.
+  const byPath = new Map(built.request.contents.flatMap((content) => content.parts)
+    .filter((part) => part.functionCall)
+    .map((part) => [part.functionCall.args.path, part.thoughtSignature]))
+  return calls.map((i) => byPath.get(`f${i}.ts`) ?? null)
+}
+
+test('session map reattaches thoughtSignature on call 1 after 300 calls; prefix grows byte-stable', (t) => {
+  resetAntigravityThoughtSignatures()
+  resetAntigravitySystemPins()
+  const sessionId = 'session-sig-300'
+  const messages: any[] = [{ role: 'user', content: 'go' }]
+  let previous = ''
+  const sizes: number[] = []
+  for (let i = 0; i < 300; i++) {
+    const call = upstreamToolCall(sessionId, i, `sig-${i}`)
+    assert.equal(call.thoughtSignature, `sig-${i}`)
+    messages.push(...strippedToolTurn(i))
+    const built = openaiToAntigravity({ model: SIG_MODEL, session_id: sessionId, messages }, { projectId: 'p' })
+    const calls = built.request.contents.flatMap((content) => content.parts).filter((part) => part.functionCall)
+    assert.equal(calls.length, i + 1, `turn ${i}: a functionCall was rewritten to text`)
+    assert.equal(calls[0].thoughtSignature, 'sig-0')
+    assert.equal(calls[i].thoughtSignature, `sig-${i}`)
+    // contents JSON minus its closing bracket: the next turn must extend it byte for byte.
+    const prefix = JSON.stringify(built.request.contents).slice(0, -1)
+    assert.ok(prefix.startsWith(previous), `turn ${i}: upstream prefix diverged`)
+    assert.ok(prefix.length > previous.length)
+    previous = prefix
+    sizes.push(Buffer.byteLength(prefix))
+  }
+  t.diagnostic(`prefix bytes by turn: ${[0, 49, 99, 127, 128, 199, 299].map((i) => `${i + 1}=${sizes[i]}`).join(' ')}`)
+  resetAntigravityThoughtSignatures()
+  resetAntigravitySystemPins()
+})
+
+test('session map is LRU per key: a read keeps an old call while newer ones age out', () => {
+  resetAntigravityThoughtSignatures()
+  const sessionId = 'session-sig-lru'
+  // Each call stores two keys (name+args, id); 2048 calls fill the 4096-key bucket.
+  for (let i = 0; i < 2048; i++) upstreamToolCall(sessionId, i, `sig-${i}`)
+  assert.deepEqual(replaySignatures(sessionId, [0]), ['sig-0'])
+  for (let i = 2048; i < 2050; i++) upstreamToolCall(sessionId, i, `sig-${i}`)
+  assert.deepEqual(replaySignatures(sessionId, [0, 1, 2, 2049]), ['sig-0', null, null, 'sig-2049'])
+  resetAntigravityThoughtSignatures()
+})
+
+test('session map isolates sessions and never keeps history for fallback ids', () => {
+  resetAntigravityThoughtSignatures()
+  upstreamToolCall('session-sig-a', 0, 'sig-a0')
+  assert.deepEqual(replaySignatures('session-sig-a', [0]), ['sig-a0'])
+  assert.deepEqual(replaySignatures('session-sig-b', [0]), [null])
+  upstreamToolCall(`${ANTIGRAVITY_STABLE_SESSION}:${SIG_MODEL}`, 1, 'sig-fallback')
+  assert.deepEqual(replaySignatures(undefined, [1]), [null])
+  assert.deepEqual(replaySignatures('session-sig-a', [1]), [null])
+  resetAntigravityThoughtSignatures()
+})
+
+test('session map 64 MiB budget evicts the least-recently-used whole session', () => {
+  resetAntigravityThoughtSignatures()
+  const big = (tag, i) => `${tag}-${i}-`.padEnd(1 << 20, 'x')
+  // 10 calls ≈ 20 MiB per session (two keys per call); three sessions fit, a fourth does not.
+  const fill = (sessionId, tag) => {
+    for (let i = 0; i < 10; i++) upstreamToolCall(sessionId, i, big(tag, i))
+  }
+  fill('session-big-a', 'a')
+  fill('session-big-b', 'b')
+  fill('session-big-c', 'c')
+  assert.equal(replaySignatures('session-big-a', [0])[0], big('a', 0)) // touch A: B is now oldest
+  fill('session-big-d', 'd')
+  assert.deepEqual(replaySignatures('session-big-b', [0, 9]), [null, null])
+  assert.deepEqual(replaySignatures('session-big-a', [0, 9]), [big('a', 0), big('a', 9)])
+  assert.deepEqual(replaySignatures('session-big-c', [0, 9]), [big('c', 0), big('c', 9)])
+  assert.deepEqual(replaySignatures('session-big-d', [0, 9]), [big('d', 0), big('d', 9)])
+  resetAntigravityThoughtSignatures()
+})
+
 test('thought-only part signature moves onto the following unsigned functionCall', () => {
   resetAntigravityThoughtSignatures()
   const openai = antigravityToOpenai({
