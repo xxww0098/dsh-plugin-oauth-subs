@@ -15,6 +15,25 @@ export class LoginRequiredError extends RequestError {
 }
 
 /**
+ * A login imported from a vendor CLI whose own store has also expired. The
+ * plugin never redeems the CLI's refresh token (where it rotates, that logs
+ * the CLI out), so only the user can fix it — by running that CLI. Not permanent: the
+ * login stays and the next reread picks up whatever the CLI wrote.
+ */
+export class ImportedLoginStale extends LoginRequiredError {
+  constructor(displayName: string, cli: string) {
+    super(`${displayName} imported login is stale; run ${cli} or use browser login`)
+    this.name = 'ImportedLoginStale'
+  }
+}
+
+/** A reread is adopted only when it outlives this margin (the 09-28 Claude rule). */
+const IMPORTED_MIN_TTL_MS = 15_000
+
+/** Fields a reread may replace on a stored login; account labels stay put. */
+const IMPORTED_TOKEN_FIELDS = ['accessToken', 'refreshToken', 'idToken', 'expiresAt']
+
+/**
  * How long a transient refresh failure suppresses another attempt for the same
  * credential version. Mirrors CLIProxyAPI's refreshFailureBackoff: without it,
  * every request during a token-endpoint outage re-hammers the endpoint.
@@ -138,6 +157,8 @@ export class TokenManager {
   /** Family grant codes that are permanent beyond the shared ones. */
   declare permanentCodes: readonly string[]
   declare onRemoved: any
+  /** `{ is(session), reread(session), cli }` — logins owned by a vendor CLI's store. */
+  declare imported: any
   declare refreshWaitMs: number
   declare exchangeTimeoutMs: number
   /** version → the exchange that owns it: { at, late, promise }. */
@@ -145,7 +166,7 @@ export class TokenManager {
   declare failures: Map<any, any>
   declare sources: WeakMap<object, any>
 
-  constructor({ provider, authPath, displayName, preemptMs, refresh, permanentCodes = [], onRemoved, refreshWaitMs = REFRESH_WAIT_MS, exchangeTimeoutMs = REFRESH_EXCHANGE_TIMEOUT_MS }: any) {
+  constructor({ provider, authPath, displayName, preemptMs, refresh, permanentCodes = [], onRemoved, imported, refreshWaitMs = REFRESH_WAIT_MS, exchangeTimeoutMs = REFRESH_EXCHANGE_TIMEOUT_MS }: any) {
     this.provider = provider
     this.authPath = authPath
     this.displayName = displayName
@@ -155,6 +176,7 @@ export class TokenManager {
     this.refresh = refresh
     this.permanentCodes = permanentCodes
     this.onRemoved = onRemoved
+    this.imported = imported
     this.inflight = new Map()
     this.failures = new Map()
     this.sources = new WeakMap()
@@ -270,10 +292,24 @@ export class TokenManager {
     await updateAccountSession(this.provider, source, { ...session, ...fields }, this.authPath)
   }
 
+  /**
+   * An imported login shares its refresh token with the vendor CLI: reread the
+   * CLI's store instead of exchanging, and never write that store.
+   */
+  async #reread(session) {
+    const fresh = await this.imported.reread(session)
+    if (!(fresh?.expiresAt > Date.now() + IMPORTED_MIN_TTL_MS)) throw new ImportedLoginStale(this.displayName, this.imported.cli)
+    const next = { ...session }
+    for (const key of IMPORTED_TOKEN_FIELDS) if (fresh[key] !== undefined) next[key] = fresh[key]
+    return next
+  }
+
   async #refresh(source, owner) {
     let next
     try {
-      next = await this.refresh(source.session)
+      next = this.imported?.is(source.session)
+        ? await this.#reread(source.session)
+        : await this.refresh(source.session)
     } catch (error) {
       // A late verdict arrives after its waiters gave up: keep the login and
       // let the next timely exchange decide.

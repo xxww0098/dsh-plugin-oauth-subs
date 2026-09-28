@@ -40,7 +40,7 @@ export declare function anthropicKeychainAccount({ env }?: any): string;
  * macOS only. Every failure — absent item, refused read, dismissed dialog,
  * non-JSON payload — means "no login here"; never surface it to the UI.
  */
-export declare function readAnthropicKeychainTokens({ platform, env, execFileFn, timeoutMs, }?: any): Promise<any>;
+export declare function readAnthropicKeychainTokens({ platform, env, execFileFn, timeoutMs, service, }?: any): Promise<any>;
 /**
  * `paths` pins the plaintext candidates and skips the OS store — tests and
  * callers that already know the file. Called bare it mirrors the pinned client:
@@ -48,6 +48,7 @@ export declare function readAnthropicKeychainTokens({ platform, env, execFileFn,
  */
 export declare function importAnthropicAuth(paths?: undefined, deps?: any): Promise<{
     session: {
+        source: string;
         planType?: any;
         accountId?: any;
         account?: any;
@@ -58,3 +59,35 @@ export declare function importAnthropicAuth(paths?: undefined, deps?: any): Prom
     };
     source: string;
 }>;
+/** A session imported from Claude Code's own store — not a plugin-owned browser login. */
+export declare function isAnthropicImportedSource(source: any): boolean;
+/**
+ * Re-read an imported Claude Code login from the store it came from. Never
+ * exchanges the refresh token and never writes the store: it is shared with
+ * Claude Code, and rotating it here leaves Claude Code's copy `invalid_grant`.
+ */
+export declare function rereadAnthropicImport(source: any, deps?: any): Promise<{
+    source: any;
+    planType?: any;
+    accountId?: any;
+    account?: any;
+    scope?: any;
+    accessToken: any;
+    refreshToken: any;
+    expiresAt: number;
+} | undefined>;
+/** Imported Claude Code logins reread the Keychain / .credentials.json; PKCE logins exchange. */
+export declare const anthropicImported: {
+    cli: string;
+    is: (session: any) => boolean;
+    reread: (session: any) => Promise<{
+        source: any;
+        planType?: any;
+        accountId?: any;
+        account?: any;
+        scope?: any;
+        accessToken: any;
+        refreshToken: any;
+        expiresAt: number;
+    } | undefined>;
+};

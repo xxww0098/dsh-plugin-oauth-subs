@@ -54,3 +54,18 @@ export declare function importKimiAuth(options?: any): Promise<{
         source: any;
     };
 }>;
+/** A `cli` login shares the CLI's rotating refresh token: reread kimi-code.json, never exchange. */
+export declare const kimiImported: {
+    cli: string;
+    is: (session: any) => boolean;
+    reread: () => Promise<{
+        planType?: string | undefined;
+        accessToken: string;
+        refreshToken: string;
+        expiresAt: number;
+        tokenEndpoint: string;
+        clientId: string;
+        account: string;
+        source: any;
+    } | undefined>;
+};

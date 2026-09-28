@@ -51,3 +51,17 @@ export declare function importClineAuth(options?: any): Promise<{
         expiresAt: any;
     };
 }>;
+/** A `cli` login shares the CLI's rotating refresh token: reread providers.json, never exchange. */
+export declare const clineImported: {
+    cli: string;
+    is: (session: any) => boolean;
+    reread: () => Promise<{
+        tokenType: string;
+        source: string;
+        userId?: string | undefined;
+        account?: string | undefined;
+        accessToken: string;
+        refreshToken: string;
+        expiresAt: any;
+    } | undefined>;
+};

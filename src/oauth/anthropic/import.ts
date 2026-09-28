@@ -126,12 +126,13 @@ export async function readAnthropicKeychainTokens({
   env = process.env,
   execFileFn = execFileAsync,
   timeoutMs = ANTHROPIC_KEYCHAIN_TIMEOUT_MS,
+  service = anthropicKeychainService({ env }),
 }: any = {}) {
   if (platform !== 'darwin') return undefined
   try {
     const { stdout } = await execFileFn(
       'security',
-      ['find-generic-password', '-a', anthropicKeychainAccount({ env }), '-w', '-s', anthropicKeychainService({ env })],
+      ['find-generic-password', '-a', anthropicKeychainAccount({ env }), '-w', '-s', service],
       { encoding: 'utf8', timeout: timeoutMs },
     )
     const raw = String(stdout ?? '').trim()
@@ -153,8 +154,9 @@ export async function importAnthropicAuth(paths = undefined, deps: any = {}) {
   if (paths === undefined && (deps.platform ?? process.platform) === 'darwin') {
     const service = anthropicKeychainService(deps)
     tried.push(`keychain:${service}`)
-    const tokens = tokensFromClaudeCode(await readAnthropicKeychainTokens(deps))
-    if (tokens !== undefined) return { session: sessionFromTokens(tokens), source: `keychain:${service}` }
+    const source = `keychain:${service}`
+    const tokens = tokensFromClaudeCode(await readAnthropicKeychainTokens({ ...deps, service }))
+    if (tokens !== undefined) return { session: { ...sessionFromTokens(tokens), source }, source }
   }
   const candidates = paths ?? credentialsPaths(deps)
   for (const path of candidates) {
@@ -163,10 +165,36 @@ export async function importAnthropicAuth(paths = undefined, deps: any = {}) {
     if (raw === undefined) continue
     const tokens = tokensFromClaudeCode(raw)
     if (tokens === undefined) continue
-    return { session: sessionFromTokens(tokens), source: path }
+    return { session: { ...sessionFromTokens(tokens), source: path }, source: path }
   }
   const error: any = new Error(`no Anthropic session found in ${tried.join(' or ')}`)
   error.code = ANTHROPIC_IMPORT_EMPTY
   error.message = ANTHROPIC_IMPORT_EMPTY
   throw error
+}
+
+/** A session imported from Claude Code's own store — not a plugin-owned browser login. */
+export function isAnthropicImportedSource(source) {
+  return typeof source === 'string' && (source.startsWith('keychain:') || /[\\/]\.credentials\.json$/.test(source))
+}
+
+/**
+ * Re-read an imported Claude Code login from the store it came from. Never
+ * exchanges the refresh token and never writes the store: it is shared with
+ * Claude Code, and rotating it here leaves Claude Code's copy `invalid_grant`.
+ */
+export async function rereadAnthropicImport(source, deps: any = {}) {
+  if (!isAnthropicImportedSource(source)) return undefined
+  const raw = source.startsWith('keychain:')
+    ? await readAnthropicKeychainTokens({ ...deps, service: source.slice('keychain:'.length) })
+    : await readJson(source)
+  const tokens = tokensFromClaudeCode(raw)
+  return tokens === undefined ? undefined : { ...sessionFromTokens(tokens), source }
+}
+
+/** Imported Claude Code logins reread the Keychain / .credentials.json; PKCE logins exchange. */
+export const anthropicImported = {
+  cli: 'claude',
+  is: (session) => isAnthropicImportedSource(session?.source),
+  reread: (session) => rereadAnthropicImport(session.source),
 }

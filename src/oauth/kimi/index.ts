@@ -294,7 +294,6 @@ export async function refreshKimi(session, fetchFn = outboundFetch) {
     ...next,
     account: next.account ?? session.account,
     planType: next.planType ?? session.planType,
-    source: session.source === 'cli' ? 'cli' : 'oauth',
   }
 }
 

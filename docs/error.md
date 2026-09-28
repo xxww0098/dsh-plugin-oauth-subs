@@ -2,6 +2,12 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-28：导入的厂商 CLI 登录被插件拿去换票，插件和 CLI 互相登出
+
+**现象**：从 Codex / Cursor / Cline / Kimi / Claude Code 导入的登录临期时，插件用与 CLI 共享的 refresh token 换票；会轮换的家族里，后换的一方拿到 `invalid_grant` / `refresh_token_reused`，被登出。本机实例：Cline `cli` 登录的 vault 到期是 09-28，`providers.json` 里的仍停在 09-26，说明插件一直在自己换票。
+**根因**：`TokenManager` 不区分登录归属，导入的会话也走各家族的 `refresh`。Cursor 导入时还会对过期的 Keychain / vscdb 当场换一次票。
+**修复**：`TokenManager` 新增 `imported: { is, reread, cli }` 钩子，由各家族注入（`codexImported` / `cursorImported` / `clineImported` / `kimiImported` / `anthropicImported`）。导入的会话临期时只重读源 store，过期时间晚于现在 + 15s 才采用，只覆盖 token 字段，经版本守卫写回；否则抛 `ImportedLoginStale`（`LoginRequiredError`，403，不算永久失败），不删号，走 10s / 5min 负缓存。Codex 导入记 `source: <路径>`，过期改取 JWT `exp`；Cursor 删掉导入时的换票。Devin `cli_toml`、Copilot `cli` 不在此列。轮换证据写在各家族 README：Cursor 不轮换，其余四家都轮换。
+**活测（只读，宿主 Node v24.21.0）**：各源重读 1 次，网络调用 0：Codex 文件可解析，有效到 10-04；Cursor Keychain 有效到 11-20，vscdb 到 11-23；Cline 可解析但已过期，临期即报 stale；Claude Code Keychain 可解析但已过期（CLI 下次运行时会刷新）；Kimi 未安装。本机存量 Codex 登录没有 `source`，要手动重新导入一次。
 ## 2026-09-28：上游空闲约 4s 就断连，下一轮重新握手
 
 **现象**：两轮之间空闲超过约 4s（codex 14%，其余家族 10–16%），下一个请求要重新 TCP + TLS 握手（chatgpt.com 约 1.7s，ollama.com 约 0.5s）。

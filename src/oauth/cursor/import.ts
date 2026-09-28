@@ -4,9 +4,11 @@
  * Resolution (Import click / empty-roster auto-import):
  *   1. CURSOR_ACCESS_TOKEN env (no refresh)
  *   2. macOS Keychain + IDE state.vscdb concurrently
- *   3. Prefer a still-valid local access token (Keychain first, then vscdb)
+ *   3. Take a still-valid local access token (Keychain first, then vscdb)
  *      with zero network
- *   4. Else refresh Keychain; if that fails and vscdb refresh differs, refresh vscdb
+ *   4. Else the local login is stale (ImportedLoginStale). The refresh token
+ *      is the CLI's / IDE's own: imports are read-only (decision 4), never
+ *      exchanged here or later — TokenManager rereads via `cursorImported`
  *
  * Never scan sibling OS profiles. WSL uses only the current Windows user.
  * Adapted from MIT Rahularya01/pi-cursor src/auth/cli-credentials.ts — not copied.
@@ -17,13 +19,8 @@ import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
-import {
-  cursorAccessStillValid,
-  cursorSession,
-  refreshCursorTokens,
-} from './index.js'
-import { isCursorRefreshKnownBad } from './refresh-guard.js'
-import { outboundFetch } from '../../utils/outbound.js'
+import { cursorAccessStillValid, cursorSession } from './index.js'
+import { ImportedLoginStale } from '../tokens.js'
 
 const execFileAsync = promisify(execFile)
 const KEYCHAIN_TIMEOUT_MS = 2000
@@ -152,17 +149,10 @@ export async function readCursorKeychainTokens({
   return tokens
 }
 
-async function tryRefresh(refreshToken, fetchFn) {
-  if (!refreshToken || isCursorRefreshKnownBad(refreshToken)) return undefined
-  try {
-    return await refreshCursorTokens(refreshToken, { fetchFn })
-  } catch {
-    return undefined
-  }
-}
+/** The stale-login hint names the client that owns each store. */
+const CURSOR_CLI = 'cursor-agent (or open Cursor)'
 
 export async function resolveCursorLocalCredentials({
-  fetchFn = outboundFetch,
   env = process.env,
   platform = process.platform,
   home = homedir(),
@@ -197,17 +187,7 @@ export async function resolveCursorLocalCredentials({
       source: 'ide_vscdb',
     })
   }
-
-  const keychainRefresh = await tryRefresh(keychain.refreshToken, fetchFn)
-  if (keychainRefresh) {
-    return cursorSession({ ...keychainRefresh, source: 'cli_keychain' })
-  }
-  if (vscdb.refreshToken && vscdb.refreshToken !== keychain.refreshToken) {
-    const vscdbRefresh = await tryRefresh(vscdb.refreshToken, fetchFn)
-    if (vscdbRefresh) {
-      return cursorSession({ ...vscdbRefresh, account: vscdb.cachedEmail, source: 'ide_vscdb' })
-    }
-  }
+  if (keychain.accessToken || vscdb.accessToken) throw new ImportedLoginStale('Cursor', CURSOR_CLI)
   return undefined
 }
 
@@ -217,4 +197,27 @@ export async function importCursorAuth(options: any = {}) {
     throw Object.assign(new Error(CURSOR_IMPORT_EMPTY), { code: CURSOR_IMPORT_EMPTY })
   }
   return { source: session.source, session }
+}
+
+/** Reread the store an imported login came from — the same readers as import, zero network. */
+export async function rereadCursorImport(session, {
+  platform = process.platform,
+  env = process.env,
+  home = homedir(),
+  execFileFn = execFileAsync,
+  readVscdbFn = defaultReadVscdb,
+}: any = {}) {
+  const tokens = session.source === 'cli_keychain'
+    ? await readCursorKeychainTokens({ platform, execFileFn })
+    : await readCursorVscdbTokens({ platform, env, home, readDb: readVscdbFn })
+  return tokens.accessToken ? cursorSession({ ...tokens, source: session.source }) : undefined
+}
+
+/** Keychain (CLI) and state.vscdb (IDE) imports; `options` injects the readers in tests. */
+export function cursorImported(options: any = {}) {
+  return {
+    cli: CURSOR_CLI,
+    is: (session) => session?.source === 'cli_keychain' || session?.source === 'ide_vscdb',
+    reread: (session) => rereadCursorImport(session, options),
+  }
 }

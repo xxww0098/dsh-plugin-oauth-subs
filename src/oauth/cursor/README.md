@@ -91,7 +91,7 @@ Cursor 按请求**出口 IP** 做合规区锁：Anthropic / OpenAI / Gemini 在�
 1. `CURSOR_ACCESS_TOKEN`（不 refresh）
 2. 并行读 Keychain 与 vscdb
 3. 仍有效的本地 access（先 Keychain 再 vscdb）—— **零网络**
-4. 否则 refresh Keychain；失败且 vscdb refresh 不同再 refresh vscdb
+4. 否则本机登录已过期：抛 `ImportedLoginStale`（「run cursor-agent (or open Cursor)」）。**不**在导入时换票——refresh token 属于 CLI / IDE
 5. `saveSession`，`source` 标 `cli_keychain` / `ide_vscdb` / `env`
 6. 刷新额度
 
@@ -110,6 +110,10 @@ IDE `state.vscdb`（只读，`node:sqlite` `DatabaseSync`，用完 close）：
 - WSL: **仅当前** Windows 用户（`USERPROFILE` / `USERNAME` → `/mnt/c/Users/<you>/AppData/Roaming/Cursor/...`）。不扫 Public / Default / 其他 profile。
 
 键：`cursorAuth/accessToken`、`cursorAuth/refreshToken`、`cursorAuth/cachedEmail`（可选，给卡抬头）。缺文件 = 空，不把堆栈抛给 UI。
+
+**导入只读**（决定 4）：`cli_keychain` / `ide_vscdb` 登录临期时，`cursorImported` 钩子只重读同一 store（Keychain 或 vscdb，零网络），过期 > 现在 + 15s 才采用；store 也过期 → `ImportedLoginStale`（403），不删登录。`pkce` / `env` 不受影响。
+
+轮换证据：来源一 cursor-agent `2026.09.26-dd393fe` 打包 `index.js`（`./src/auth-refresh.ts`）——CLI 没有 refresh_token grant，只用 API key 经 `/auth/exchange_user_api_key` 重铸，Keychain 走 `setSecretIfChanged`；IDE vscdb 里 `cursorAuth/accessToken` 与 `cursorAuth/refreshToken` 是同一个 JWT ⇒ **不轮换**。决定 4 的默认仍是只读；用户要放开时，本家族可以放开。来源二（被动观察：插件自有登录在宿主自然刷新前后各记一次 refresh token sha256 前 8 位）：待合入后记录。
 
 空结果：zh「本机没有 Cursor CLI 或 IDE 登录」。Keychain 第一次读可能弹系统授权；vscdb 键名可能被 Cursor 改掉——见 `docs/error.md`。
 
