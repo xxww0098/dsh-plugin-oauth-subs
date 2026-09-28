@@ -56,6 +56,7 @@ import { withPickerVariants } from './models.js'
 import { outboundFetch } from '../utils/outbound.js'
 import { SseFrameScanner } from './responses-sse.js'
 import { UpstreamFailure, answerFailure, upstreamRequest } from './upstream.js'
+import { forcedRefresh } from './tokens.js'
 
 export const MAX_REQUEST_BODY_BYTES = 64 * 1024 * 1024
 /** Unclassifiable bytes a gated stream may buffer before committing anyway. */
@@ -936,12 +937,9 @@ async function forward(request, response, { url, fallbackUrl = undefined, sessio
     // falling back. No usable account or a failed refresh forwards the
     // upstream's own 401 body unchanged.
     refresh: async () => {
-      const source = typeof tokens?.sourceOf === 'function' ? tokens.sourceOf(session) : undefined
-      const next = source && typeof tokens.refreshNow === 'function'
-        ? await tokens.refreshNow(source.id, session.accessToken).catch(() => undefined)
-        : undefined
-      if (!next?.session) return false
-      session = next.session
+      const next = await forcedRefresh(tokens, session)
+      if (!next) return false
+      session = next
       baseHeaders = { ...baseHeaders, ...headersOf(session, cacheSessionId) }
       return true
     },

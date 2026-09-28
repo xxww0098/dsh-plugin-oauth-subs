@@ -85,3 +85,9 @@ export declare class TokenManager {
     refreshNow(id: any, failedAccessToken: any): Promise<any>;
     remember(session: any, fields: any): Promise<void>;
 }
+/**
+ * The one-shot refresh after an upstream 401 (`run`'s `refresh` hook): the
+ * stored login behind `session`, force-refreshed. Undefined when there is none
+ * or the refresh fails — the caller then forwards the upstream's own 401.
+ */
+export declare function forcedRefresh(tokens: any, session: any): Promise<any>;

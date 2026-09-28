@@ -15,6 +15,7 @@
 import { once } from 'node:events'
 import { RequestError, sendJson } from '../../utils/http.js'
 import { UpstreamFailure, connectCodeStatus, upstreamRequest } from '../upstream.js'
+import { forcedRefresh } from '../tokens.js'
 import {
   DEVIN_TIER_NAMES,
   devinApiServer,
@@ -365,11 +366,9 @@ export async function forwardDevin(response, {
       // The shared one-shot 401 refresh. Session tokens do not rotate, so
       // before the local expiry this is one retry with the same token.
       refresh: async () => {
-        const row = typeof tokens?.sourceOf === 'function' ? tokens.sourceOf(session) : undefined
-        const next = row ? await tokens.refreshNow(row.id, session.accessToken).catch(() => undefined) : undefined
-        if (!next?.session) return false
-        session = next.session
-        return true
+        const next = await forcedRefresh(tokens, session)
+        if (next) session = next
+        return Boolean(next)
       },
     },
   )

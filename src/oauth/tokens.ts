@@ -297,3 +297,15 @@ export class TokenManager {
     throw new Error(`${this.displayName} session changed; retry the request`)
   }
 }
+
+/**
+ * The one-shot refresh after an upstream 401 (`run`'s `refresh` hook): the
+ * stored login behind `session`, force-refreshed. Undefined when there is none
+ * or the refresh fails — the caller then forwards the upstream's own 401.
+ */
+export async function forcedRefresh(tokens, session) {
+  const source = typeof tokens?.sourceOf === 'function' ? tokens.sourceOf(session) : undefined
+  if (!source || typeof tokens.refreshNow !== 'function') return undefined
+  const next = await tokens.refreshNow(source.id, session.accessToken).catch(() => undefined)
+  return next?.session
+}

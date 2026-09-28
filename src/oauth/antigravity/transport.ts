@@ -2,6 +2,7 @@
 
 import { RequestError, sendJson } from '../../utils/http.js'
 import { UpstreamFailure, upstreamRequest } from '../upstream.js'
+import { forcedRefresh } from '../tokens.js'
 import {
   ANTIGRAVITY_GENERATE_URL,
   ANTIGRAVITY_STREAM_URL,
@@ -150,13 +151,9 @@ export async function forwardAntigravity(response, { payload, cacheSessionId, st
     // One forced refresh on a pre-output 401 (F4e); a failed refresh forwards
     // the upstream's own 401.
     refresh: async () => {
-      const source = typeof tokens?.sourceOf === 'function' ? tokens.sourceOf(session) : undefined
-      const next = source && typeof tokens.refreshNow === 'function'
-        ? await tokens.refreshNow(source.id, session.accessToken).catch(() => undefined)
-        : undefined
-      if (!next?.session) return false
-      session = next.session
-      return true
+      const next = await forcedRefresh(tokens, session)
+      if (next) session = next
+      return Boolean(next)
     },
   })
 }

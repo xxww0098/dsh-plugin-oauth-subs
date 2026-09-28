@@ -2,6 +2,7 @@
 
 import { sendJson } from '../../utils/http.js'
 import { UpstreamFailure, upstreamRequest } from '../upstream.js'
+import { forcedRefresh } from '../tokens.js'
 import { kiroStreamingProfileArn } from './index.js'
 import {
   classifyKiroHopError,
@@ -92,13 +93,9 @@ export async function forwardKiro(response, { payload, cacheSessionId, stream, s
       (attempt) => attemptKiro(response, { payload, cacheSessionId, stream, session, fetchFn, attempt }),
       {
         refresh: async () => {
-          const source = typeof tokens?.sourceOf === 'function' ? tokens.sourceOf(session) : undefined
-          const next = source && typeof tokens.refreshNow === 'function'
-            ? await tokens.refreshNow(source.id, session.accessToken)
-            : undefined
-          if (!next?.session) return false
-          session = next.session
-          return true
+          const next = await forcedRefresh(tokens, session)
+          if (next) session = next
+          return Boolean(next)
         },
       },
     )
