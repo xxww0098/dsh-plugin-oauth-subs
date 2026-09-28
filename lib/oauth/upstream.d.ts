@@ -28,7 +28,8 @@ export declare function retryDelayMs(failedAttempt: any, random?: () => number):
 /**
  * `transport` (socket fault, preamble-only EOF) and `timeout` are retried
  * before output; `http` is the upstream's own answer and `quota` a family's
- * known usage-cap answer — both forwarded once, never replayed (decision 5).
+ * known usage-cap answer — both forwarded once, never replayed: the host paces
+ * its own retries.
  */
 export type UpstreamFailureCode = 'transport' | 'timeout' | 'http' | 'quota';
 export declare class UpstreamFailure extends RequestError {

@@ -697,7 +697,7 @@ test('Cursor region error points at the upstream proxy knob', async () => {
   })
 })
 
-// Pooled h2 session (slice 12): runs omit connectFn, so they dial through cursorH2Connect.
+// Pooled h2 session: runs omit connectFn, so they dial through cursorH2Connect.
 function answerEachRun(server, text = 'pooled') {
   let streams = 0
   server.on('stream', (peer) => {

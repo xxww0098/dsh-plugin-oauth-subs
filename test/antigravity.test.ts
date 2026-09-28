@@ -2247,7 +2247,7 @@ test('claude and gpt-oss omit thinkingConfig; flash-high wire id is not rewritte
   resetAntigravitySystemPins()
 })
 
-// ── slice 05b: the Antigravity hop runs inside the upstream attempt primitive ──
+// ── The Antigravity hop runs inside the upstream attempt primitive ──
 
 const agSse = (...events) => events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join('')
 

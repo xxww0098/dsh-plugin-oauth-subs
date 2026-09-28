@@ -2,11 +2,11 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
-## 2026-09-28：Cursor 每次 Run / 一元 RPC 都新建 h2 连接
+## 2026-09-28：Cursor 取消后 h2 流仍在跑；每次 Run / 一元 RPC 都新建 h2 连接
 
-**现象**：每次 Run 和目录 RPC 都重新走 TCP + TLS（经代理还要 CONNECT / SOCKS5 握手），结束时 `client.destroy()` 整条连接。
-**根因**：`cursorH2Connect` 每次 `http2.connect`；取消要停上游（09-08），当时只能靠销毁独占会话实现。
-**修复**：`cursorH2Connect` 按 (origin, 出口代理) 池化一个会话，并发拨号合并；close / GOAWAY / error / 60s 无帧出池，会话 `unref()`，插件 effect 清理时 `clearCursorH2Pool()`。`runCursorAgent` / `cursorUnaryRpc` 结束或取消只 `stream.close(NGHTTP2_CANCEL)` 自己的流；放弃后才落地的拨号入池不交给该调用方。
+**现象**：取消对话 / unary 超时后远端流未关闭，仍在收文本或回 KV（09-08）；为了停上游改成每次 Run 和目录 RPC 独占一条 h2 连接，结束时 `client.destroy()`，于是每次都重新 TCP + TLS（经代理还要 CONNECT / SOCKS5 握手）。
+**根因**：`client.close` 只优雅关闭、不终止活动流，data handler 不看结算状态；取消只能靠销毁独占会话实现，`cursorH2Connect` 每次 `http2.connect`。
+**修复**：`cursorH2Connect` 按 (origin, 出口代理) 池化一个会话，并发拨号合并；close / GOAWAY / error / 60s 无帧出池，会话 `unref()`，插件 effect 清理时 `clearCursorH2Pool()`。`runCursorAgent` / `cursorUnaryRpc` 结束或取消只 `stream.close(NGHTTP2_CANCEL)` 自己的流，结算后不再处理消息，事件消费逐条等待（背压传回上游）；放弃后才落地的拨号入池不交给该调用方。
 **活测（2026-09-28，宿主 Node v24.21.0）**：worktree `lib/` 的 `runCursorAgent` 连续 2 次 composer-2.5（未刷新）：均回 PONG（5.3s / 3.6s），`http2.connect` 共 1 次。
 
 ## 2026-09-28：Antigravity 长会话约第 128 次工具调用后前缀逐轮断裂
@@ -16,69 +16,45 @@
 **修复**：`request.ts` 签名桶只给真实会话 id（`isAntigravityFallback` 为门，回退 id 不存也不查）；每会话 4096 键、get 和 set 都刷新（Map 插入序 = LRU）；最多 64 会话；全局 key + 签名文本 64 MiB，超出先淘汰最久没用的整个会话。合成回放 300 次调用：第 1 次的签名仍挂着，没有 functionCall 变文本，相邻两轮 `contents` 前缀逐字节延长（243 → 26462@128 → 62410@300 字节）。
 **活测（2026-09-28）**：gemini-3-flash 真实签名长度 140（low）/ 2516（high）字符；设想的 32 MiB 对应 128 B/键，「典型 × 4096 × 64」≈ 640 MiB 远超，所以上限按实测改为 64 MiB：满载会话（4096 键 × ~2.6 KB）≈ 10.5 MiB，可整存约 6 个。gemini-3.1-pro-high 这次 400 INVALID_ARGUMENT，未取到样本。
 
-## 2026-09-28：Antigravity 上游卡住或回 `body.error` 时被收成正常结束
-
-**现象**：Antigravity 流式在读上游之前就写 200 头；上游卡住没有任何计时器，只能等宿主 300s 看门狗；Cloud Code 200 里带 Google RPC 错误（外层 `error` 或 `response.error`）时代理照常发 `finish_reason: "stop"` + `[DONE]`，宿主当成功的空回答。
-**根因**：`antigravity/transport.ts` 自己管 HTTP，没接 04 的尝试原语；`collectAntigravityParts` 只看 `candidates`，忽略 `error`。
-**修复**：`forwardAntigravity` 在 `upstreamRequest(...).run` 里执行（首字节 120s / 预算 270s 从路由 `startedAt` 起 / 空闲 270s），第一块映射输出才写头；`antigravityBodyError` 把 `error.code`（否则 RPC `status` 名经 `connectCodeStatus`）转成 `UpstreamFailure`：输出前回该状态码的 JSON，输出后 `destroy`；无 `finishReason` 的 EOF 当截断（输出前重试、输出后 destroy）；输出前 401 经 `tokens.refreshNow` 刷新一次再试。daily → prod URL 回退不变。
-**活测（2026-09-28，宿主 Node v24.21.0）**：worktree `lib/` 的 `createProxy` 2 次 gemini-3.7-flash-high 流式、未刷新：均 200 + `[DONE]`，`max_tokens: 64` 那次只有终帧 `finish_reason: length`（3.7s），另一次 1 块内容 + `stop`（1.5s）；Cloud Code 终帧都带 `finishReason`。
-## 2026-09-28：Devin 传输层没有计时器，5xx 在代理内重放，流内错误一律 502 / SSE 错误块
-
-**现象**：Devin 上游卡住时代理没有任何计时器，只等宿主 300s 看门狗；HTTP ≥500 在代理内重放 3 次（宿主再重试一轮）；Connect trailer 错误（如 `deadline_exceeded`）不分码一律 502；头发出后的失败写一个 SSE 错误块再正常结束，宿主按文本归为 `PI_AI_ERROR`。
-**根因**：`forwardDevin` 自带 `runRetrying` + `devinRetryable`（≥500 可重放），绕过了 04 的 `upstreamRequest`；`connectTrailerError` 只回字符串，丢了 Connect `code`。
-**修复**：`forwardDevin` 走 `upstreamRequest(...).run`（首字节 120s / 预算 270s 从路由入口 `startedAt` 起算，`runDevinChat` 每块上游数据 `touch()`）；删 `runRetrying` / `devinRetryable` / `DEVIN_STREAM_ATTEMPTS`；HTTP 非 2xx 与 trailer 错误抛 `UpstreamFailure` code `http`（状态原样 / `connectCodeStatus`），只转发一次；空流与无消息流仍算传输故障可重试。第一块映射输出前不写头，之后失败 `destroy`。user_jwt 401 例外保留；token-only 仍 401 走共用刷新钩子一次。
-**活测（2026-09-28，宿主 Node v24.21.0）**：worktree `lib/` 的 `createProxy` 1 次流式 `swe-2` 请求、未刷新：200 `text/event-stream`，6.3s，回 `PONG` + `[DONE]`。
-
 ## 2026-09-28：Codex 请求体明文上传，长会话每轮几百 KB 到 MB
 
 **现象**：Codex 请求体不压缩，光 `instructions` 就约 128KB，长会话每轮上传几百 KB 到 MB（宿主自带的 openai-codex provider 早已用 zstd）。
 **根因**：`forward()` 只发 `JSON.stringify` 后的明文 Buffer，没有按家族编码请求体的接缝。
 **修复**：`forward()` 新增路由参数 `encodeBody(buffer) → { body, headers }`，只转交；Codex 路由传 `codex/request.ts` 的 `encodeCodexBody`（`zlib.zstdCompressSync` 默认级别 + `content-encoding: zstd`，不设大小门槛），在尝试循环之前压一次，重试复用同一个 Buffer；其他家族不传，仍是明文。后端若回 400 / 415 不回退明文。
 **活测（2026-09-28，宿主 Node v24.21.0，worktree `lib/` 的 `createProxy`，未刷新）**：41307 B → 9722 B（23.5%）。流式 gpt-5.6-luna 200（2.2s，`response.completed`）；流式与非流式各 1 次 gpt-5.4-mini 回 400「model is not supported」——后端已解压并读出 `model`，非编码问题；非流式成功路径未单独验。无 ExperimentalWarning。
-## 2026-09-28：Cursor Run 没有任何计时，Connect 错误一律 502，头发出后写 SSE 错误块再正常结束
-
-**现象**：Cursor 对端卡在握手或首帧前时代理一直等到宿主 300s 看门狗；「Composer 2 已下线」这类 `invalid_argument`、`unauthenticated`、`resource_exhausted` 全回 502（宿主当 SERVER 白重试）；首个事件就是错误时 mapper 先吐 role 块把 200 头提交出去；头发出后的失败写 `{error}` SSE 块再 `end()`，宿主按文本归为 `PI_AI_ERROR`。
-**根因**：`forwardCursor` 没接 04 的尝试原语；错误帧只取文案不取 `code`；role 块在第一个事件时无条件发出；`fail()` 有头发出后的错误块分支。
-**修复**：`forwardCursor` 在 `upstreamRequest(...).run` 里跑 Run（`startedAt` 取路由入口，`tokens.cursor` 传入给 401 刷新钩子），首字节 120s 覆盖 h2 拨号 + 首个 DATA 帧，`runCursorAgent` 每个 DATA chunk 调 `touch()`；Connect 错误帧 → `UpstreamFailure(connectCodeStatus(code))`（未知码 502，只记日志），非 200 的 h2 头按原状态码；`unauthenticated` 输出前刷新一次再试；role 块随第一块内容才发；删掉 `fail()`，头发出后一律 `destroy`。仍是每次 Run 一个 h2 会话（连接池见 12）。
-**活测（2026-09-28，宿主 Node v24.21.0）**：worktree `lib/` 的 `createProxy`，composer-2.5 流式 1 次、未刷新：200，5.2s，finish `stop` + `[DONE]`，cached_tokens 10549/11394。
-## 2026-09-28：Kiro 卡住无计时、发头后写 SSE 错误块、月度额度被当 400
-
-**现象**：Kiro 上游卡住只能等宿主 300s 看门狗；发头后异常 / 残帧写一个 `error` SSE 再正常结束（宿主按文本归 `PI_AI_ERROR`，不重试）；`MONTHLY_REQUEST_COUNT` 回 400，宿主提示成请求错误；401/403 直接 400，不刷新。
-**根因**：`kiro/transport.ts` 自己 `fetch`，没接 04 的尝试原语；错误块分支是 04 之前的写法。
-**修复**：`forwardKiro` 跑在 `upstreamRequest().run` 里（路由入口 `startedAt` 起算预算，每块 `touch()`）；首块输出前不写头；输出前厂商异常仍走 `classifyKiroHopError`、不重放，畸形帧 / 残帧 / 断流按传输故障重试；输出后一律 `destroy`。月度额度 → 429 `usage limit reached: …`（QUOTA_EXCEEDED）。401/403 以 401 交给 `run` 刷新一次（`tokens.kiro.refreshNow`）再试，仍失败维持 400。
-**活测（2026-09-28，宿主 Node v24.21.0）**：worktree `lib/` 的 `createProxy`、未刷新，KIRO FREE 账号 3 次极小流式请求：`claude-haiku-4.5`、`auto` 回 400 `Invalid model`（免费档不开放，约 1.2–2.2s 回 JSON、未重放）；`deepseek-3.2` 200，1.2s 出头，`stop` + `[DONE]`。
 
 ## 2026-09-28：导入的厂商 CLI 登录被插件拿去换票，插件和 CLI 互相登出
 
 **现象**：从 Codex / Cursor / Cline / Kimi / Claude Code 导入的登录临期时，插件用与 CLI 共享的 refresh token 换票；会轮换的家族里，后换的一方拿到 `invalid_grant` / `refresh_token_reused`，被登出。本机实例：Cline `cli` 登录的 vault 到期是 09-28，`providers.json` 里的仍停在 09-26，说明插件一直在自己换票。
 **根因**：`TokenManager` 不区分登录归属，导入的会话也走各家族的 `refresh`。Cursor 导入时还会对过期的 Keychain / vscdb 当场换一次票。
-**修复**：`TokenManager` 新增 `imported: { is, reread, cli }` 钩子，由各家族注入（`codexImported` / `cursorImported` / `clineImported` / `kimiImported` / `anthropicImported`）。导入的会话临期时只重读源 store，过期时间晚于现在 + 15s 才采用，只覆盖 token 字段，经版本守卫写回；否则抛 `ImportedLoginStale`（`LoginRequiredError`，403，不算永久失败），不删号，走 10s / 5min 负缓存。Codex 导入记 `source: <路径>`，过期改取 JWT `exp`；Cursor 删掉导入时的换票。Devin `cli_toml`、Copilot `cli` 不在此列。轮换证据写在各家族 README：Cursor 不轮换，其余四家都轮换。
+**修复**：`TokenManager` 新增 `imported: { is, reread, cli }` 钩子，由各家族注入（`codexImported` / `cursorImported` / `clineImported` / `kimiImported` / `anthropicImported`）。导入的会话临期时只重读源 store，过期时间晚于现在 + 15s 才采用，只覆盖 token 字段，经版本守卫写回；否则抛 `ImportedLoginStale`（`LoginRequiredError`，403，不算永久失败），不删号，走 10s / 5min 负缓存。Codex 导入记 `source: <路径>`，过期改取 JWT `exp`；Cursor 删掉导入时的换票。Devin `cli_toml`、Copilot `cli` 不在此列。重读到的账号标识（Codex `accountId`、Cursor JWT `sub`、Cline `userId`）与存储行不同 = CLI 换了号，同样抛 `ImportedLoginStale`、不采用（Kimi / Claude Code 的 store 没有账号标识）。轮换证据写在各家族 README：Cursor 不轮换，其余四家都轮换。
 **活测（只读，宿主 Node v24.21.0）**：各源重读 1 次，网络调用 0：Codex 文件可解析，有效到 10-04；Cursor Keychain 有效到 11-20，vscdb 到 11-23；Cline 可解析但已过期，临期即报 stale；Claude Code Keychain 可解析但已过期（CLI 下次运行时会刷新）；Kimi 未安装。本机存量 Codex 登录没有 `source`，要手动重新导入一次。
+
 ## 2026-09-28：上游空闲约 4s 就断连，下一轮重新握手
 
 **现象**：两轮之间空闲超过约 4s（codex 14%，其余家族 10–16%），下一个请求要重新 TCP + TLS 握手（chatgpt.com 约 1.7s，ollama.com 约 0.5s）。
 **根因**：chatgpt.com / ollama.com 不发 `Keep-Alive` 响应头，undici 退回默认 `keepAliveTimeout` 4s，池里的 socket 空闲 4s 即关闭。
 **修复**：`outbound.ts` 的直连 `Agent` 与 `ProxyAgent`（经 `...opts` 传到隧道 Agent）同一处设 `keepAliveTimeout: 60_000`、`keepAliveMaxTimeout: 600_000`。陈旧 socket 在输出前 ECONNRESET 由上游重试兜底，不另写代码。`test/outbound.test.ts` 用不发 Keep-Alive 的本地服务端间隔 6s 两次请求：直连与 CONNECT 隧道各 1 个连接，全局 fetch 对照为 2。
 **活测（2026-09-28，宿主 Node v24.21.0）**：worktree `lib/` 的 `outboundFetch` 直连 Codex `GET /models` 于 0s / 30s / 55s 各一次，全 200，`undici:client:connected` 共 1 次；耗时 1343 / 568 / 571ms。
-## 2026-09-28：回退会话 id 仍会 pin，两个无 id 会话串用系统提示；GLM `x-session-id` 每进程随机
 
-**现象**：没带会话 id 的请求落到 `dsh-<id>[:<model>]` 回退常量，第一个会话的系统提示（Antigravity 还有 tools / thinking）被钉给后来的会话；GLM 无 pin 时 `x-session-id` 是每进程随机的 `sess_<24hex>`，重启 / 热重载就换。
-**根因**：kiro / cursor / antigravity 的守卫只比对裸常量，而回退 id 带了 `:<model>` 后缀，永远不命中；kimi / copilot 根本没有守卫。kiro / cursor / antigravity / devin 的传输层又各自二次推导会话 id（Devin 回退只在 transport 里）。
-**修复**：六个家族的 `cache.ts` 各一个解析器（`kimiConversationId` / `copilotConversationId` / `kiroConversationId` / `cursorConversationId` / `antigravitySessionIdOf` / `devinConversationId`）+ `is<Fam>Fallback`（等于常量或以 `<常量>:` 开头）；所有 pin 以谓词为门，回退 id 一律不 pin。传输层直接用传入的 `cacheSessionId`。Antigravity thinking pin：会话内先到先得，但显式换了 `reasoning_effort` 就替换。GLM 改用 `GLM_STABLE_SESSION = 'dsh-glm'`。防火墙测试扫描所有 `cache.ts` 与导出请求头构建函数的模块，会话 id 位置不许出现 `Date.now` / `Math.random` / `randomUUID` / `randomBytes`。
-**活测**：GLM（bigmodel 账号，ZCode 网关）1 次请求带 `x-session-id: dsh-glm` → 200。
-## 2026-09-28：上游卡住时代理比宿主 300s 看门狗更晚收场，头发出后的异常收成干净 EOF
+## 2026-09-28：会话 id 串用——Completions 路由从没收到 DSH 会话 id，回退 id 仍会 pin；GLM `x-session-id` 每进程随机
 
-**现象**：等响应头没有超时（undici 默认 300s = 宿主看门狗）；有头无体 3×120s+5s≈365s 才回 502；头发出后抛错被 `response.end()` 收成干净 EOF；Cline `INFERENCE_CAP_ERROR` 被宿主当 RATE_LIMIT 白重试 5 次；「未登录」回 500。
-**根因**：计时只有读循环里的 `withIdleTimeout`（120s、每次尝试重置），没有首字节与总预算；`listen()` 的 catch 在头发出后 `end()`；失败文案没按宿主分类器写。
-**修复**：新 `src/oauth/upstream.ts` 独占计时 / 预算 / 重试 / 失败映射：每次尝试首字节（含响应头）120s，输出前总预算 270s（从路由入口 `startedAt` 起算，含 `tokens.session()`），`已用 + 退避 + 120s ≤ 270s` 才重试，否则 504 `no output within 270s (<n> attempts)`；传输故障耗尽仍 502 `upstream failed <n> times`；输出后空闲 270s、头发出后的任何错误一律 `destroy`（`answerFailure`）。非流式首字节窗口 = 剩余预算。`forward()` 保留 Codex turn-state 回放、GLM 网关回退（同一次尝试内）、401 刷新一次立即重试。Cline 额度走 `classifyFailure` → 429 `usage limit reached:`；`LoginRequiredError`（403）→ 宿主 AUTH。删 `withIdleTimeout` / `UpstreamIdleError` / `UPSTREAM_IDLE_TIMEOUT_MS` / `COMMIT_DEADLINE_MS` / proxy 的 `STREAM_ATTEMPTS` 等。`repro/stall-budget.mjs`：两种卡住都在 2 次尝试后回 504（生产约 241s）。
-**活测（2026-09-28，宿主 Node v24.21.0）**：worktree `lib/` 的 `createProxy` 各 1 次极小流式请求、未刷新：Codex gpt-5.6-luna 200（3.2s，`response.completed`），Cline deepseek-v4.1-flash 200（2.2s）；Ollama 未登录跳过。「未登录 → 403」在 DSH 里怎么显示需真实宿主，合入后看。
+**现象**：八条回环 Completions 路由（kiro / antigravity / cursor / ollama / kimi / copilot / devin / cline）的会话键永远是 `dsh-<id>[:<model>]`，第一个会话的系统提示（Antigravity 还有 tools / thinking / 签名桶）被钉给后来的会话；GLM 无 pin 时 `x-session-id` 是每进程随机的 `sess_<24hex>`，重启 / 热重载就换。
+**根因**：pi-ai openai-completions 只在路由 `cacheRetention === 'long'` 时发 `prompt_cache_key = sessionId`，我们的路由从没设；Cursor 先删 `prompt_cache_key` 再推导 id。回退 id 带 `:<model>` 后缀，kiro / cursor / antigravity 的守卫只比对裸常量；kimi / copilot / cline 没有守卫；四个传输层又各自二次推导会话 id。
+**修复**：`buildProviders` 只给 Completions 路由加 `cacheRetention: 'long'`，`assertPersistedProviders` 校验它落进 settings.yaml；Cursor 先推导再删；上游仍不见 `prompt_cache_key`。`/health` 的 `inboundCacheKeys` 按家族计入站带 / 不带 key 的次数。七个家族的 `cache.ts` 各一个解析器 + `is<Fam>Fallback`（等于常量或以 `<常量>:` 开头），所有 pin 以谓词为门；传输层直接用传入的 `cacheSessionId`。Antigravity thinking pin 显式换 `reasoning_effort` 才替换。GLM 用 `dsh-glm`。防火墙测试扫所有 `cache.ts` 与导出请求头构建函数的模块，会话 id 位置不许出现时钟 / 随机数。
+**活测**：GLM（bigmodel，ZCode 网关）带 `x-session-id: dsh-glm` → 200。`/health` 计数需宿主热重载，合入后在主检出看；Command Code（`toWireThreadId` 只收 UUID）在维护者 WIP 里，待落地后补。
 
-## 2026-09-28：Completions 路由从没收到 DSH 会话 id，系统提示 pin / 签名桶全进程共用
+## 2026-09-28：上游卡住或断流时代理比宿主 300s 看门狗更晚收场，失败被收成成功 / SSE 错误块
 
-**现象**：kiro / antigravity / cursor / ollama / kimi / copilot / devin / cline 八条回环 Completions 路由的会话键永远是 `dsh-<id>[:<model>]`：第一个会话的系统提示被 pin 给后来的会话，thinking 配置与签名桶跨会话串用。
-**根因**：pi-ai openai-completions 只在路由 `cacheRetention === 'long'`（回环自动 `supportsLongCacheRetention`）时发 `prompt_cache_key = sessionId` + `prompt_cache_retention: "24h"`，默认 `short` 什么都不发；我们的路由从没设过。Cursor `applyCursorCache` 另有一处：先删 `prompt_cache_key` 再推导会话 id，即使收到也用不上。
-**修复**：`buildProviders` 只给 `api === openai-completions` 的路由加 provider 级 `cacheRetention: 'long'`（Codex / Grok Responses 本来就有 id；GLM / Claude 的 Anthropic 线 `long` = 1h TTL 不做；OpenCode Go 直连路由不动）；`assertPersistedProviders` 校验该字段落进 settings.yaml，宿主丢字段即报错。Cursor 改为先推导再删。各家族继续剥 `prompt_cache_key` / `prompt_cache_retention`，上游不见。`/health` 新增 `inboundCacheKeys`：按家族统计入站体带 / 不带 `prompt_cache_key` 的次数（在 `rewriteUpstreamBody` 入口、剥字段之前计，只计数不记 id）。DSH 会话 id 形如 `session-<uuid v4>`（44 字符，pi-ai 截到 64）。
-**活测**：需宿主热重载，合入后在主检出做（`/health` 的 with 计数随请求增长）。Command Code 部分（`toWireThreadId` 只收 UUID，`session-` 前缀会被丢）在维护者 WIP 里，待落地后补。
+**现象**：上游静默时代理不断流，只等宿主 300s 看门狗（09-10 `grok-4.6` 连续两次 `stream idle timeout`）；有头无体 3×120s+5s≈365s 才回 502；头发出后的异常被收成干净 EOF 或 `{error}` SSE 块（宿主归 `PI_AI_ERROR`），截断的 Cursor / Kiro / Devin 流、带 `body.error` 的 Antigravity 流被当成功答复；Connect 错误不分码一律 502，Devin 5xx 在代理内重放；Cline / Kiro 额度被当 RATE_LIMIT / 400；「未登录」回 500；401 刷新后的重试丢了 stream `accept` / zstd / Copilot `x-initiator`。
+**根因**：计时只有 proxy 读循环里每次尝试重置的 `withIdleTimeout`，没有首字节与总预算；Cursor / Kiro / Antigravity / Devin 各自管 HTTP / h2，各带重试、错误块分支、drain 等待与读循环（Devin 读循环没有 `finally`，抛错时钉住 socket）；错误帧只取文案不取 code；mapper 在第一个事件（含 usage / 错误）就提交 role 块；401 重试把家族头合并在已构建的头之上。
+**修复**：`src/oauth/upstream.ts` 独占计时 / 预算 / 重试 / 失败映射与头后写出：每次尝试首字节 120s，输出前预算 270s（从路由入口起算，含 `tokens.session()`），`已用 + 退避 + 120s ≤ 270s` 才重试，否则 504；传输故障耗尽 502；输出后空闲 270s，头发出后一律 `destroy`（`answerFailure`）。`writeSse` / `pumpBody`（读完必 cancel + releaseLock）/ `quotaFailure` 各一份，401 刷新钩子由 `tokens.ts` `forcedRefresh` 生成。HTTP 与 Connect 错误（`connectCodeStatus`）只转发一次；role 块随第一块内容才发。分析器补扫嵌套 failure（`stream idle timeout` = transport）。
+- Completions / Responses（`proxy.ts`）：Codex turn-state 回放、GLM 网关回退在同一次尝试内；401 刷新后按首次构建整份重组请求头；Cline `INFERENCE_CAP_ERROR` → 429 `usage limit reached:`；`LoginRequiredError` → 403。
+- Cursor：首字节覆盖 h2 拨号 + 首个 DATA 帧；非 200 的 h2 头按原状态；残帧 EOF 拒绝；`unauthenticated` 刷新一次。
+- Kiro：parser 遇非法帧长 / header 长度即报错，畸形帧 / 残帧 / 断流在输出前重试；月度额度 → 429 `usage limit reached:`；401/403 刷新一次，仍被拒改 400（不进 AUTH）。
+- Antigravity：`body.error` 按 `error.code`（否则 RPC status 名）转状态；没有 `finishReason` 的 EOF = 截断。
+- Devin：删 `runRetrying` / `devinRetryable`；usage / stop 帧不提交头；没有 Connect end 帧或带残帧的 EOF = 截断（输出前重试、输出后 destroy）。
+**活测（2026-09-28，宿主 Node v24.21.0，worktree `lib/` 的 `createProxy`，未刷新）**：Codex gpt-5.6-luna 200（3.2s）；Cline deepseek-v4.1-flash 200（2.2s）；Cursor composer-2.5 200（5.2s，cached 10549/11394）；Kiro deepseek-3.2 200（1.2s，免费档 haiku / auto 400 未重放）；Antigravity 2 次 200，终帧都带 `finishReason`；Devin swe-2 200（6.3s）。
 
 ## 2026-09-28：设置页切走后仍每 1.5s 轮询，额度每分钟约 78 次请求
 
@@ -93,26 +69,20 @@
 **根因**：`hasOutputEvent` 用正则扫缓冲文本里任意 `"type"`，`response.created` 回显的 `text.format.type` / `tools[].type` 被当成输出；前导回显约 128KB `instructions`，单凭字节也会超 64KiB 上限提交。
 **修复**：新纯模块 `src/oauth/responses-sse.ts`：`classifySseFrame` 只看完整帧的 `event:` 行（没有则 `data` 顶层 `type`），`SseFrameScanner` 按 latin1 保存未完成帧尾（字节精确、UTF-8 切断无害）。`CommitGate` 第一个 output 帧才提交；前导字节不计 64KiB，只计无法分类的帧；缓冲超 2 MiB 放行提交并 `console.error` 一行。删 `EVENT_TYPE` / `hasOutputEvent` / `hasPreambleEvent`。
 **活测（2026-09-28，宿主 Node v24.21.0）**：worktree `lib/` 的 `createProxy` 各发 1 次极小流式请求，未刷新。Codex（gpt-5.6-luna）与 Grok（grok-4.7）前导都只有 `response.created` + `response.in_progress`（各带 `event:` 行），第一个输出都是 `response.output_item.added`；没有新前导类型，本次 Codex 未出现 `codex.rate_limits`。前导实测 2950B / 2034B（提示极小，DSH 真实前导约 2×128KB，远低于 2 MiB）。脱敏夹具 `test/fixtures/{codex,grok}-preamble.sse` 的 `instructions` 刻意补到 200 KiB。
+
 ## 2026-09-28：换票超时后才成功被丢弃、过期令牌每请求都打端点、403 被当永久失败删号
 
-**现象**：token 端点慢于 20s 时换票结果被丢，下一请求再兑换同一 refresh token（轮换家族回 `invalid_grant` → 登出）；令牌已过期且端点持续失败时每个请求都打一次端点；Copilot / Kimi / Cline / Devin / Cursor 的 403、以及 Cursor / Devin / Kiro 消息里碰巧出现 `401`/`403` 字样的 5xx 都会删登录。
+**现象**：token 端点慢于 20s 时换票结果被丢，下一请求再兑换同一 refresh token（轮换家族回 `invalid_grant` → 登出）；令牌已过期且端点持续失败时每个请求都打一次端点；Copilot / Kimi / Cline / Devin / Cursor 的 403、Cursor 的一次 5xx/429（known-bad 守卫）、以及 Cursor / Devin / Kiro 消息里碰巧出现 `401`/`403` 字样的 5xx 都会删登录。
 **根因**：`#refresh` 的 `waitFor` 超时后既不持久化迟到结果、也释放了 inflight；过期令牌故意绕过失败退避；永久失败判定散在 12 个家族谓词里，一半用正则扫消息文本。
-**修复**：`src/oauth/tokens.ts` 单一所有者——`isPermanentRefreshFailure(error, extraCodes)` 只认结构化 401 / `permanent` / `invalid_grant|invalid_client|unauthorized_client` + 家族额外码（仅 Codex 有），家族谓词全部删除；`OAuthEndpointError`/`oauthError` 搬进 `tokens.ts`（`error.code` 对象形也解析），Devin/Cursor/Kiro/Antigravity 抛带 status/`oauthCode` 的错误，Cursor 只在永久失败时记 known-bad。换票自身挂在 inflight 上直到 settle 或 `REFRESH_LATE_CAP_MS`=120s：期间同版本不再发第二次换票，迟到成功照常经版本守卫的 `updateAccountSession` 写回，迟到的永久失败不删号（交给下一次及时的换票判）。过期令牌失败后 `REFRESH_EXPIRED_RETRY_MS`=10s 内直接重放上次失败；有效令牌仍是 5 分钟退避。
+**修复**：`src/oauth/tokens.ts` 单一所有者——`isPermanentRefreshFailure(error, extraCodes)` 只认结构化 401 / `invalid_grant|invalid_client|unauthorized_client` + 家族额外码（仅 Codex 有），家族谓词全部删除；`OAuthEndpointError`/`oauthError` 搬进 `tokens.ts`（`error.code` 对象形也解析），Devin（`GetUserStatus`）/Cursor/Kiro/Antigravity 抛带 status/`oauthCode` 的 `OAuthEndpointError`；Cursor 的 known-bad 守卫整个删掉（09-26 它把一次 5xx/429 记成坏 token 逼重登），永久失败记忆与退避只归 `TokenManager`。换票自身挂在 inflight 上直到 settle 或 `REFRESH_LATE_CAP_MS`=120s：期间同版本不再发第二次换票，迟到成功照常经版本守卫的 `updateAccountSession` 写回，迟到的永久失败不删号（交给下一次及时的换票判）。过期令牌失败后 `REFRESH_EXPIRED_RETRY_MS`=10s 内直接重放上次失败；有效令牌仍是 5 分钟退避。
 **验证**：`test/token-lifecycle.test.ts`（mock `Date`，保留文件级 keepalive）慢换票迟到成功 / 挂死换票 120s 上限 / 过期+失败端点 10s 内 5 次调用 1 次换票 / 10 个家族 × 5 行的表驱动判定；不做活测（活测进程不许刷新）。
 
-## 2026-09-28：配了出站代理，Cursor 目录 / h2 对话和未穿线的调用点仍直连
+## 2026-09-28：配了出站代理（设置页 / `proxyUrl` / `HTTPS_PROXY`）插件整体卡死；Cursor 与未穿线的调用点仍直连
 
-**现象**：设了出站代理（设置页 / `proxyUrl` / `HTTPS_PROXY`）后，Cursor `GetUsableModels` / Run 仍从本机出口发出（区域锁家族照样被拒）；任何没被传 `fetchFn` 的调用点也悄悄直连。
-**根因**：出站所有权靠 `index.ts` 把 `outbound.fetchFn` 一路穿线，`src/` 里 33 个文件 92 处 `fetchFn = fetch` / `?? fetch` 默认值是全局 fetch，漏穿一处就绕过代理；Cursor h2 拨号只认 `cursorProxy` / `CURSOR_PROXY`，根本不问出站代理。
-**修复**：`outbound.ts` 成为模块级唯一所有者：`configureOutbound()`（`src/index.ts` 调，`ctx.effect` 清理 `close()`）+ `outboundFetch`（undici `fetch` + 直连 `Agent` / `ProxyAgent`，未配置前也走直连 `Agent`，已配置时等 `ready` 再选路，缺 UA 补 `user-agent: node`）+ `outboundProxyFor(url)`；92 处默认值全换成 `outboundFetch`，删 `createOutboundSession().fetchFn`。Cursor 拨号优先级 `cursorProxy` → `PI_CURSOR_PROXY`/`CURSOR_PROXY` → `outboundProxyFor`（NO_PROXY / 回环直连），h2 连接 10s 未连上即销毁。`test/outbound-firewall.test.ts` 扫 `src/`：undici 导入、`= fetch` 默认值、裸 `fetch(`、`setGlobalDispatcher` 出现即按 文件:行 报错。
-**活测（2026-09-28，宿主 Node v24.21.0）**：worktree `lib/` 经 `outboundFetch` 的 Codex `GET /models` → 200（9 个模型）；Cursor `GetUsableModels` 经 `cursorH2Connect`（未配代理，直连）→ 241 个模型；各 1 次，未刷新。
-
-## 2026-09-28：配了出站代理（设置页 / `proxyUrl` / `HTTPS_PROXY`）插件整体卡死，重启也不恢复
-
-**现象**：任一来源配了出站代理后，回环代理不监听、设置页 `status` 永远等待；`specs/request-path-upgrades/assets/repro/outbound-deadlock.mjs` 打印 `ready STILL PENDING` + unhandledRejection。
-**根因**：`outbound.ts` 用 `require('undici')` 懒加载 `ProxyAgent`，而 undici 不在 `dependencies` 里，构建抛错；`load()` 在 resolve `ready` 之前抛出，`ready` 永不 settle，`src/index.ts` 的启动链卡在 `await outbound.ready`。`setUrl` 先写文件再构建，坏 URL 一旦落盘每次重启都卡死。
-**修复**：`undici@^7` 进 `dependencies`，`outbound.ts` 静态 `import { fetch, ProxyAgent }`（全仓唯一 undici 导入方）；`ready = load()` 必然 settle，失败存为 `snapshot().error`；`setUrl` 改为构建 → 写文件 → 替换，任一步失败文件和状态都不动；已配置但不可用的代理让请求报 `outbound proxy unavailable: …`，绝不悄悄直连（死端口的最近一次失败也进 `snapshot().error`）；新增 `close()` 由 `ctx.effect` 清理调用；删死代码 `createOutboundFetch`。设置页主栏在 `snap.proxy.error` 存在时加一行 `.osubs-hint.osubs-bad`。
-**活测（2026-09-28，宿主 Node v24.21.0 + undici 7.30.0）**：repro 翻转为 `ready resolved`；worktree `lib/` 的 `fetchCodexQuota` 经代理 `127.0.0.1:9` → `outbound proxy unavailable: fetch failed: ECONNREFUSED via http://127.0.0.1:9`，不配代理 → 正常返回 planType/rows/resetCredits（上游共 2 次请求）。
+**现象**：任一来源配了出站代理后，回环代理不监听、设置页 `status` 永远等待，重启也不恢复（`assets/repro/outbound-deadlock.mjs` 打印 `ready STILL PENDING`）；能跑时 Cursor `GetUsableModels` / Run 仍从本机出口发出，没被传 `fetchFn` 的调用点也悄悄直连。
+**根因**：`outbound.ts` 用 `require('undici')` 懒加载 `ProxyAgent`，而 undici 不在 `dependencies`，`load()` 在 resolve `ready` 前抛出，启动链卡在 `await outbound.ready`；`setUrl` 先写文件再构建，坏 URL 落盘后每次重启都卡。出站所有权靠一路穿线，`src/` 里 92 处 `fetchFn = fetch` 默认值是全局 fetch；Cursor h2 拨号不问出站代理。
+**修复**：`undici@^7` 进 `dependencies`，`outbound.ts` 是全仓唯一 undici 导入方和模块级唯一所有者：`configureOutbound()` + `outboundFetch`（直连 `Agent` / `ProxyAgent`，已配置时等 `ready` 再选路）+ `outboundProxyFor(url)`；`ready` 必然 settle，失败进 `snapshot().error`；`setUrl` 构建 → 写文件 → 替换；不可用的代理报 `outbound proxy unavailable: …`，绝不悄悄直连；92 处默认值换成 `outboundFetch`。Cursor 拨号 `cursorProxy` → `PI_CURSOR_PROXY` / `CURSOR_PROXY` → `outboundProxyFor`（NO_PROXY / 回环直连），h2 10s 未连上即销毁。设置页主栏在 `snap.proxy.error` 时加一行 `.osubs-hint.osubs-bad`。`test/outbound-firewall.test.ts` 扫 undici 导入、`= fetch` 默认值、裸 `fetch(`、`setGlobalDispatcher`。
+**活测（2026-09-28，宿主 Node v24.21.0 + undici 7.30.0）**：repro 翻转为 `ready resolved`；`fetchCodexQuota` 经代理 `127.0.0.1:9` → `outbound proxy unavailable: … ECONNREFUSED`，不配代理正常；`outboundFetch` 的 Codex `GET /models` 200，Cursor `GetUsableModels` 241 个模型。
 
 ## 2026-09-27：CI 恒定取消 token-lifecycle 后 5 个测试 = unref'd 刷新超时把事件循环排空
 
@@ -236,26 +206,31 @@
 **现象**：`/api/monitor/usage/quota/limit` 回 HTTP 200 + `{"code":500,"msg":"当前用户不存在coding plan","success":false}`，插件解析出 0 行但 store 记 `ready`，卡片只显示「周额度未返回，点刷新重试」，看起来像 hop 坏了。
 **根因**：`fetchGlmQuota` 只看 HTTP 状态，没解业务信封；`readJson` 只在 `!response.ok` 时抛。该账号确实没有生效的 Coding Plan——同一账号的 OAuth 兑换也会 `invalid_flow`、本地 key 也回同一句，三条证据同源。
 **修复**：`fetchGlmQuota` 在 `success === false` 或 `code ∉ {0,200}` 时抛 `glm quota failed: <msg>`，store 转 `error`，卡片显示「额度获取失败 · glm quota failed: 当前用户不存在coding plan」。判定「没额度」先看这条上游原文，再谈套餐是否要续费。
+
 ## 2026-09-21：BigModel 登录成功但额度/身份全 401「令牌已过期」= 把 zcode JWT 当 bearer
 
 **现象**：GLM 卡显示已登录（中国 / 150% 配额），额度只有「周额度未返回，点刷新重试」、抬头没名字；`open.bigmodel.cn/api/monitor/usage/quota/limit` 与 `/api/biz/customer/getCustomerInfo` 都回 `{"code":401,"msg":"令牌已过期或验证不正确"}`（`chat.z.ai/api/oauth/userinfo` 也 401）。本机存的 GLM token 解出来是 `{user_id, sub, iat}`、没有 `exp`，且 `accessToken === zcodeJwt`。
 **根因**：BigModel 路径把 **zcode JWT** 当成了 Coding Plan bearer。`completeGlmCli` 取 `ready.zcodeJwt || ready.oauthAccess`，`parseCliPoll` 的 token 链 `zai → zcode → bigmodel` 也可能先拿到 JWT。官方 `bigmodelProviderAdapter.ts:184-194` 写死：付费套餐打 bigmodel.cn 业务接口只能用 `data.bigmodel.access_token`，zcode JWT 只写 `zcodejwttoken` 给 Start Plan——「继续把 zcode JWT 写进 `oauth:bigmodel:access_token`，套餐预览会稳定报令牌已过期」；`bigmodelUsageQuotaProvider` 也固定读该 token。
 **修复**：`glmProviderAccessToken(data, region)` 只按 region 取 `data[provider].access_token`（`data.access_token` 兜底），`data.token` 永不顶替；`parseCliPoll` / `glmCliPoll` 加 `region`；BigModel `completeGlmCli` 只用 `ready.oauthAccess`，缺了直接报「without a bigmodel access token (the zcode JWT cannot chat)」；`fetchGlmUserinfo` 对 BigModel 先发业务 token（JWT 会 401，身份才回填得上）。旧 session 必须重新登录。
+
 ## 2026-09-21：「本机会话导入」报 no GLM / ZCode session found —— 其实找到了 key，是套餐未生效
 
 **现象**：`~/.zcode/v2/config.json` 明明存在、`builtin:bigmodel-coding-plan.options.apiKey` 有 49 字符明文 key，导入却报 `no GLM / ZCode session found in …`（用户会以为文件没找到）。
 **根因**：新版 ZCode 把 coding-plan key 放在 provider `options.apiKey`，同时用 `enabled: false` + `systemDisabledReason` 标死；`glmKeyFromZcodeConfig` 只返回可用 key，找不到就统一报「没会话」。实测该 key 打 `open.bigmodel.cn/api/monitor/usage/quota/limit` 返回 `{"code":500,"msg":"当前用户不存在coding plan"}`；本机 ZCode `coding-plan-cache.json` 四个 provider 全是 `coding_plan_not_entitled`，`billing/balance` 回 `plans: []`，订阅接口还报 `coding_plan_system_busy`——账号侧确实没有可用 Coding Plan（或平台套餐服务在抖），OAuth 的 `invalid_flow` 同源。
 **修复**：新增 `glmKeyCandidateFromZcodeConfig`（最佳候选 + `usable` + `systemDisabledReason`）；`glmKeyFromZcodeConfig` 现在**连系统禁用的 coding-plan key 一起返回并导入**（结果带 `note` 写原因）——那个 flag 来自 ZCode 缓存权益检查，会过期也会错（平台 `coding_plan_system_busy` 时同样标 `not_entitled`），拒绝它等于本机没有任何可导入凭据；真假交给额度和对话回答。**硬跳过的仍只有 start-plan JWT**。不做解密 `credentials.json`。
+
 ## 2026-09-21：GLM 浏览器授权「Authorization Failed」= 上游 OAuth 兑换失败（BigModel 已知缺陷）
 
 **现象**：点 GLM 登录 → 浏览器授权页完成后，落地页报「Authorization Failed / 授权失败 / 请返回 ZCode 重试」；服务端随即把 flow 判死，poll 终态 `3004 invalid_flow`。协议级复现（桌面端完全离场）：`bigmodel.cn` 同意页显示「授权成功」，落地页 `GET /api/v1/oauth/cli/callback/bigmodel?authCode&state` 被拒（通用失败页），flow 作废。另有 `POST /api/v1/oauth/token` 500 `{"code":2007,"msg":"http error"}` 的 zai 变体。
 **根因**：`zcode.z.ai` 服务端兑换授权码的缺陷，不是客户端 flow 形状问题——本 hop 的 init/poll 参数与官方 CLI `auth-login-polling.ts` 逐字一致；Desktop 的 `redirect_uri→/app/oauth/login` 改写只服务 `zcode://` 深链，落地页网桥 GET 同一个失败接口。上游 tracker：zai-org/feedback #718（BigModel 必现）、#705（3.12.3 网桥/深链双重核销）、#523（Linux token 端点 500）、#116（zai business token）。
 **修复（客户端侧）**：`glmLoginFailureMessage` 把 `invalid_flow` / `2007` 译成带 tracker 与替代路径的卡片报错；轮询语义照官方（`expires_at` 秒×1000、failed/未知立即失败、5xx/408/429/传输错误重试）。**绕行**：换另一区域按钮，或在厂商控制台建 Coding Plan API key 后用 GLM 页「API key」框粘贴（`useKey`，存成 `account: api-key`）。
+
 ## 2026-09-21：GLM 授权页「Authorization Failed」时插件还在轮询、要等超时
 
 **现象**：浏览器授权页报「Something went wrong during authorization / 授权失败」，插件侧没有立刻失败——`status: failed` 被当成 pending，一直轮到 5 分钟兜底；服务端 `expires_at`（epoch 秒）被丢弃，真实有效期短于 5 分钟时也不收口；一次 5xx / 断网直接判死。
 **根因**：`parseCliPoll` 只认 `ready`，其余一律按 pending；`parseCliInit` 的 `expiresAt > 1e12` 判断把官方秒级时间戳全部替换成 `Date.now() + 300_000`；轮询异常没有可分类的 HTTP status。
 **修复**：照 `auth-login-polling.ts`：`expires_at` 秒 ×1000（ms / 相对值兼容）、`poll_interval_sec` 地板 1s、`failed` / 未知状态立即 `glm authorization failed`（带服务端 `msg`）、5xx / 408 / 429 / 传输错误按间隔重试、其它 4xx 与 `GlmBusinessError` 终止；`readJson` 改抛带 `status` 的 `GlmHttpError`。授权页本身失败来自服务端（重开一次新 flow），插件负责把同一结论及时呈现。
+
 ## 2026-09-21：GLM Coding Plan 对话直连 model 端点，不是官方网关路径（150% 归因）
 
 **现象**：插件默认 `POST api.z.ai/api/anthropic/v1/messages`（BigModel 走 `open.bigmodel.cn`）。ZCode 开源后对照源码，官方**从不**这样发。
@@ -281,6 +256,7 @@
 **修复**：在 [`src/utils/http.ts`](../src/utils/http.ts) 里 `describeError(error: unknown)` 旁边加两个同风格的无 cast 助手 `errorCode(error)` / `errorMessage(error)`（用 `'code' in error` 收窄），替换 7 个文件 25 处 `error.message` / `error?.code`。开启 `"useUnknownInCatchVariables": true`，695 tests 全绿。
 **判断（不做的事）**：`noImplicitAny` **不清扫**。给 1726 个参数补 `: any` 只是把「隐式」变「显式」，不产生任何安全性，属于用注解掩盖诊断；它需要的是逐模块设计类型面。这条结论已写进棘轮脚本头部，避免以后有人再当清扫项试一遍。
 **收口**：棘轮第二项改名 `strict`，显式传 `--strictNullChecks --useUnknownInCatchVariables`；两项基线均 **0**。
+
 ## 2026-09-19：strictNullChecks 收敛 431→0 并开关落地，棘轮两项归零
 
 **现象**：`noCheck` 摘掉后宿主半已真检查，但 `strictNullChecks` 仍未开；`npx tsc --noEmit --strictNullChecks` 报 **431** 条（TS2345 217 / TS2339 152 / TS18048 31 / TS2322 18 …），`controller.ts`、`cursor/proto.ts`、`devin/proto.ts` 是重灾区。
@@ -320,12 +296,14 @@
 **根因**：区域门在上游按出口 IP 判，与本 hop 无关（同账号、同 token、直接打 `api.cline.bot` 也是 403）；插件没有也不该按地区猜着过滤目录——feed 是 Cline 自己的推荐列表，换个地区/出口就能用。
 **修复**：不改码。活测记录：`cline-free/deepseek-v4.1-flash` / `z-ai/glm-5.3-flash` / `cline-free/solar-pro4` / `poolside/laguna-s-2.1:free` 四条全部 200：流式出字、`reasoning_effort: low` 被接受、非流式解包后 `tool_calls` 返回 `get_weather({"city":"Paris"})`（`finish_reason: tool_calls`）；`/usages` 台账里这些调用的 `creditsUsed` 全是 `0`，余额停在 $0.335787 未动；laguna 第二次还带回 `cached_tokens: 32`。muse-spark 只能靠非受限地区出口（插件出站代理设置，未实测）。
 **踩坑**：免费档里有推理模型，`max_tokens` 给小（32）时 reasoning token 会吃满预算、`content` 为空但 `finish_reason: stop` —— 不是 hop bug；给到 512 就正常出字。
+
 ## 2026-09-19：Cline 卡片只有余额没有进度条——credit 账号没有分母，ClinePass 才有三条窗口
 
 **现象**：Cline 卡片只有「额度余额 $0.34」，没有进度条，看起来像漏做。
 **根因**：`cline` 是 credit（usage-billing）产品：`/balance` 只给余量，`/usages` 只给流水，`/users/me/plan` 对无订阅账号 404——没有「窗口 + 上限」就没有分母。官方 CLI 同样只打 `Credits: $x.xx`（`apps/cli/src/tui/interactive-welcome.ts`），整棵 TUI 搜不到 cline 的百分数字段。
 **修复**：补上只对订阅账号生效的三条窗口条：`GET /users/me/plan/usage-limits` 的 `limits[] = {type: five_hour|weekly|monthly, percentUsed, resetsAt}` 直接给服务端百分比（转成 DSH 的剩余条），cap 取 `plan.entitlements.cline_pass.inferenceCapThreshold`，单位 1e-8 USD；cap 缺失只画纯百分比条，不补默认值；credit 账号行为不变（仍是余额行）。
 **未验证**：本机账号无订阅，两个 plan 端点都 404，三条窗口的**数值**没有活体样本。已验证路由真实存在——`/users/me/plan/usage-limits` 回应用级 404 `{"data":null,"error":"no plan history found for user"}`，未知路由回 `{"error":"Not Found"}`；形状取自 MIT `pi-clinepass` `0.1.5` `src/usage.ts`。拿到订阅账号后需重跑 `fetchClineQuota` 复核。
+
 ## 2026-09-19：Cline hop 活测三条结论（响应信封 / `workos:` 前缀 / 隐式缓存）
 
 **现象**：接入 Cline（CLI 3.0.62，WorkOS 设备码）时本机账号活测暴露三件事——①非流式对话回 `200 {"data":{…choices…},"success":true}`，直通给 DSH 时读不到 `choices`；②裸 JWT 当 bearer 一律 401 `Please make sure you're using the latest version of Cline`；③`anthropic/claude-opus-5` 连打两次 `cached_tokens` 都是 0，`openai/gpt-6-astra` 第二次 1461/1464。
@@ -342,7 +320,7 @@
 
 **现象**：对照 router-for-me/CLIProxyAPI 后发现三处缺口——①上游 401（令牌被吊销/轮转但未到 expiresAt）直接透传给客户端，用户只能重登；②令牌纯惰性刷新，闲置后首个请求付刷新 RTT，refresh token 静默死亡只在请求中暴露；③token 端点瞬时故障时每个请求都重打端点，且仍有效的旧 access token 被白白丢弃；④同账号重登录整体覆盖 session，丢 projectId / cachedEmail 等水合字段。
 **根因**：`TokenManager` 只有「到期前 preempt 窗口内惰性刷新」一条路径，无强制刷新、无失败退避；`saveSession` 无合并语义。
-**修复**：`refreshNow(id, failedAccessToken)`（已轮转的并发刷新直接复用，不二次兑换 refresh token）；`forward()` 捕获 `UnauthorizedUpstream` 刷新一次重试，失败则原样透传上游 401 body；`startTokenSweep` 每 60s 扫全部已存账号；瞬时刷新失败记 5min 退避且未过期令牌继续服务；`saveSession` 同 id 合并非凭据字段（`SESSION_CREDENTIAL_KEYS` 除外）。Kiro / Cursor / Devin 自有 transport 的 401 不在本次范围（Devin 已有 jwt 401 重试先例）。
+**修复**：`refreshNow(id, failedAccessToken)`（已轮转的并发刷新直接复用，不二次兑换 refresh token）；上游 401 经 `upstreamRequest().run({ refresh })`（钩子 `tokens.ts` `forcedRefresh`）刷新一次重试，失败则原样透传上游 401 body；`startTokenSweep` 每 60s 扫全部已存账号；瞬时刷新失败记 5min 退避且未过期令牌继续服务；`saveSession` 同 id 合并非凭据字段（`SESSION_CREDENTIAL_KEYS` 除外）。自有 transport 的家族（Kiro / Cursor / Devin / Antigravity）现在共用同一钩子。
 
 ## 2026-09-17：手动更新「经常失败」——装上了但不重启、update 超时即放弃
 
@@ -420,6 +398,7 @@
 **现象**：npm 已有 0.1.5-rc.2（`next` tag），About 仍显示「GitHub 有新 Tag dsh-v0.1.5-rc.2（npm 尚未发布）」；「最新发布」停在 0.1.5-rc.1，「稳定版」显示 —。
 **根因**：`fetchDshLatest` 用 `dist-tags.latest || next || alpha` 当最新发布，`latest`=rc.1 永远压过 `next`=rc.2；服务端 npm 载荷没带 `stable`，覆盖了客户端 fallback 的稳定版字段。
 **修复**：npm 最新发布取全量版本排序首位（与 npm 页一致），`stable` 单独取 `latest` tag 并随载荷返回；rc.2 > rc.1 即 status `update`。
+
 ## 2026-09-10：OpenCode Go 页没有 API key 输入，cookie/workspace 框被撑到 240px 高
 
 **现象**：Settings > OpenCode Go 只能填 cookie 和工作区；对话密钥要去 DSH API Keys。两个输入框异常高。
@@ -431,12 +410,6 @@
 **现象**：Settings 顶栏 OpenCode Go 图标在右侧 Models/About 列，不在左侧家族胶囊。
 **根因**：新增时把 `apikey` tab 放进了 `.osubs-tabs-util`。
 **修复**：`apikey` 放进左侧 `.osubs-tabs`，排在 Copilot 之后换到第 2 行左侧；右侧 util 只留 Models + About。实现仍在 `src/apikey/opencode-go/`，不走 hop、不另开第三胶囊。
-
-## 2026-09-10：上游静默时代理不主动断流，靠客户端 300s 超时兜底
-
-**现象**：`grok-4.6` 会话最后一步上游一个字节不发，DSH 连续两次 `pi-ai stream idle timeout after 300000ms`，约 15 分钟后用户中止；分析器却报 transport 0 / HEALTHY。
-**根因**：`attemptUpstream` 的 `reader.read()` 没有读空闲看门狗；`CommitGate` 的 120s deadline 只在 `push()` 收到 chunk 时才检查，全静默流永不触发，代理一直挂着，直到 llm-pi-ai 自己的 300s 超时。失败藏在 `assistant/attempt.stream[].chunk.reason.failure`，分析器只扫顶层 error 字段所以漏报。
-**修复**：`withIdleTimeout` 给每次 `reader.read()` 加 `UPSTREAM_IDLE_TIMEOUT_MS`（默认 120s，`createProxy.upstreamIdleTimeoutMs` 可覆盖）；静默即抛 `UpstreamIdleError` → 复用既有 3 次重试。分析器补扫嵌套 failure（`stream idle timeout` = transport）。
 
 ## 2026-09-10：Cursor Run 把 requestContext / KV set / MCP 调用一律当拒绝，模型跑不通
 
@@ -503,24 +476,6 @@
 **现象**：用户全关一族后，当次路由消失，但普通同步或重启又启用模型。
 **根因**：旧全关恢复逻辑只看当前目录是否全禁用，无法区别用户选择与历史坏状态。
 **修复**：持久化显式选择标记；用户操作后同步尊重选择，无标记旧文件仍可恢复，新增普通模型仍按原默认启用。
-
-## 2026-09-08：Cursor 截断流或错误被包装为成功答复
-
-**现象**：HTTP2 在 Connect 头 / payload 中途结束时得到空白成功答复；已有输出后的异常被混进回答文字并附 DONE。
-**根因**：Run 在 EOF 未检查解析器剩余字节，HTTP 转换把传输异常当普通内容发送。
-**修复**：残帧 EOF 明确拒绝；发头后使用结构化 error SSE 且不附成功 DONE，保留已输出的正常文字。
-
-## 2026-09-08：Cursor 取消后 HTTP2 流仍继续工作
-
-**现象**：取消对话 / unary 超时后远端流未关闭，仍接收文本或回应 KV；SSE 慢消费者的等待也未传回上游。
-**根因**：client.close 仅优雅关闭，不终止活动流；data handler 未检查结算状态，onEvent 写入未等待。
-**修复**：终止时销毁请求独占的 HTTP2 连接，预取消不建连接，运行中取消保留原原因，结算后不处理消息；事件消费逐条等待并暂停上游读取，错误沿调用链传播。
-
-## 2026-09-08：Kiro 畸形或失败流被当作成功完成
-
-**现象**：非法帧前缀持续积累后续数据，截断尾帧或异常事件可能被返回为成功 stop / DONE。
-**根因**：parser 对非法长度只 break 且无 EOF 校验；流转换提前发 200 并将异常转为正常终帧。
-**修复**：非法总长 / header 长度立即报错，finish 拒绝残帧；发头前返回上游错误，发头后发送 error SSE 而非成功终帧，释放上游 reader。
 
 ## 2026-09-08：Kiro 交错工具调用被拼成同一个调用
 
@@ -1575,17 +1530,6 @@ OpenCode Go 少 GPT-6 Luna / Space Bunny Free；Cline 少 3 条当前免费模�
 
 ### 修复
 按各家公开/账号目录更新静态目录，Cursor 活目录优先取非 Max 变体窗口，Go 新增两行用当前 key 验证协议与思考档；其余家族审查结果见 `docs/model-audit-2026-09-26.md`。
-
-## 2026-09-26：Cursor 刷新遇到一次 5xx/429 就要求重新登录
-
-### 现象
-Cursor 账号在 token 到期前后碰到一次上游 5xx/429，之后每次刷新都报 `known-bad refresh token`，宿主按永久失效处理，用户被迫重新登录。
-
-### 根因
-`refreshCursorTokens` 对任何 `!response.ok` 都调用 `markCursorRefreshFailed`，10 分钟退避把瞬时错误写成「已知坏 token」；`isCursorPermanentRefreshError` 又匹配 `known-bad refresh` 文案，瞬时抖动因此升级成永久失效。
-
-### 修复
-只有 401/403 才标记 known-bad，429/5xx 直接抛瞬时错误、不进退避表。
 
 ## 2026-09-26：OpenCode Go 额度刷新可能永久挂住（10s 超时被提前解除）
 

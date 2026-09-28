@@ -65,7 +65,7 @@ Cursor 按请求**出口 IP** 做合规区锁：Anthropic / OpenAI / Gemini 在�
 | 本机导入 | 「导入本机 Cursor」 | 见下。**不是**第二套 OAuth |
 | 空花名册自动导入 | 无按钮 | roster 为空时尝试一次本机复用。**绝不**覆盖已存 PKCE/session |
 
-刷新：`POST https://api2.cursor.sh/auth/exchange_user_api_key`，`Authorization: Bearer <refresh>`，body `{}`。过期用 JWT `exp` 减 5 分钟。只有永久失败（401 / `invalid_grant` 类）才记「已知坏 refresh」，守卫以 401 重放；403 / 429 / 5xx 不记。
+刷新：`POST https://api2.cursor.sh/auth/exchange_user_api_key`，`Authorization: Bearer <refresh>`，body `{}`。过期用 JWT `exp` 减 5 分钟。永久失败（401 / `invalid_grant` 类）与退避都归 `TokenManager`；403 / 429 / 5xx 是临时失败。
 
 **不要**在插件加载时静默扫 Keychain / `state.vscdb` 覆盖已有会话。自动导入只在 cursor 花名册为空时走一次。
 
@@ -110,7 +110,7 @@ IDE `state.vscdb`（只读，`node:sqlite` `DatabaseSync`，用完 close）：
 
 键：`cursorAuth/accessToken`、`cursorAuth/refreshToken`、`cursorAuth/cachedEmail`（可选，给卡抬头）。缺文件 = 空，不把堆栈抛给 UI。
 
-**导入只读**（决定 4）：`cli_keychain` / `ide_vscdb` 登录临期时，`cursorImported` 钩子只重读同一 store（Keychain 或 vscdb，零网络），过期 > 现在 + 15s 才采用；store 也过期 → `ImportedLoginStale`（403），不删登录。`pkce` / `env` 不受影响。
+**导入只读**（决定 4）：`cli_keychain` / `ide_vscdb` 登录临期时，`cursorImported` 钩子只重读同一 store（Keychain 或 vscdb，零网络），过期 > 现在 + 15s 才采用；store 也过期 → `ImportedLoginStale`（403），不删登录；access JWT 的 `sub` 与存储行不同（换了号）同样抛 `ImportedLoginStale`，不采用。`pkce` / `env` 不受影响。
 
 轮换证据：来源一 cursor-agent `2026.09.26-dd393fe` 打包 `index.js`（`./src/auth-refresh.ts`）——CLI 没有 refresh_token grant，只用 API key 经 `/auth/exchange_user_api_key` 重铸，Keychain 走 `setSecretIfChanged`；IDE vscdb 里 `cursorAuth/accessToken` 与 `cursorAuth/refreshToken` 是同一个 JWT ⇒ **不轮换**。决定 4 的默认仍是只读；用户要放开时，本家族可以放开。来源二（被动观察：插件自有登录在宿主自然刷新前后各记一次 refresh token sha256 前 8 位）：待合入后记录。
 

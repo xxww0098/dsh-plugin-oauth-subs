@@ -37,7 +37,7 @@
 
 导入：[`../import-auth.ts`](../import-auth.ts) `importCodexAuth` 读本机 Codex CLI `auth.json`（其次 `~/.hermes/auth.json`）。
 
-**导入只读**（决定 4）：导入的 session 带 `source: <auth.json 路径>`，PKCE 登录没有。`TokenManager` 的 `codexImported` 钩子临期只重读该文件（过期 > 现在 + 15s 才采用，经版本守卫写回 vault），**从不**拿与 CLI 共享的 refresh token 换票；文件也过期 → `ImportedLoginStale`（403）「… run codex or use browser login」，不删登录。过期取 access JWT `exp`：旧的 `last_refresh + 1h` 会把 CLI 约 8 天才轮换一次的活 token 判为临期、每个请求都重读。硬切：本改动前导入的登录没有 `source`，仍按插件自有登录换票，需手动重新导入一次。
+**导入只读**（决定 4）：导入的 session 带 `source: <auth.json 路径>`，PKCE 登录没有。`TokenManager` 的 `codexImported` 钩子临期只重读该文件（过期 > 现在 + 15s 才采用，经版本守卫写回 vault），**从不**拿与 CLI 共享的 refresh token 换票；文件也过期 → `ImportedLoginStale`（403）「… run codex or use browser login」，不删登录；重读到的 `accountId` 与存储行不同（CLI 换了号）同样抛 `ImportedLoginStale`，不采用。过期取 access JWT `exp`：旧的 `last_refresh + 1h` 会把 CLI 约 8 天才轮换一次的活 token 判为临期、每个请求都重读。硬切：本改动前导入的登录没有 `source`，仍按插件自有登录换票，需手动重新导入一次。
 
 轮换证据：来源一 openai/codex `rust-v0.155.1` `codex-rs/login/src/auth/manager.rs`——`RefreshResponse.refresh_token: Option<String>`，`persist_tokens` 有新值即覆盖并 `storage.save`；`refresh_token_reused` 归为 Exhausted ⇒ refresh token 一次性、会轮换。CLI 在 JWT `exp` 前 5 分钟主动刷新（取不到 `exp` 时 `last_refresh` 超 8 天）。来源二（被动观察：插件自有登录在宿主自然刷新前后各记一次 refresh token sha256 前 8 位）：待合入后记录。
 

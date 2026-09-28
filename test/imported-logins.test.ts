@@ -181,10 +181,10 @@ for (const family of FAMILIES) {
     const isStale = (error) => error instanceof ImportedLoginStale && error.status === 403
       && /imported login is stale; run .+ or use browser login/.test(error.message)
     await assert.rejects(() => manager.session(id), isStale)
-    // 06's negative cache: the next request replays the failure without rereading.
+    // The failure backoff: the next request replays the failure without rereading.
     await assert.rejects(() => manager.session(id), isStale)
     assert.deepEqual(calls, { refresh: 0, reread: 1, removed: 0 })
-    // A post-401 refreshNow skips the backoff (06) but still only rereads.
+    // A post-401 refreshNow skips the backoff but still only rereads.
     await assert.rejects(() => manager.refreshNow(id), isStale)
     assert.deepEqual(calls, { refresh: 0, reread: 2, removed: 0 })
     assert.ok(await getStoredSession(family.provider, id, authPath), 'the login is not deleted')

@@ -39,7 +39,7 @@ DSH POST /devin/v1/chat/completions
 
 非流 Completions：Connect 是流；hop **收集整段再回一条 JSON**。
 
-失败：计时、重试、401 刷新都归 `upstream.ts` 的 `upstreamRequest`（首字节 120s、输出前预算 270s，从路由入口起算）。HTTP 非 2xx 与 Connect trailer 错误是上游自己的回答，**只转发一次、代理内不重放**：HTTP 状态原样，trailer `code` 经 `connectCodeStatus`（`deadline_exceeded`→504、`unavailable`→503、`unauthenticated`→401 …，未知码→502 并打日志）。socket 错、超时、空流 / 无消息流才在输出前重试。第一块映射输出之前不写头；之后再失败直接断流，不写 SSE 错误块。chat 401 先走 user_jwt 例外（见下），token-only 仍 401 再经 `refreshNow` 走一次共用的 401 刷新钩子后重试（session token 不轮换；`refreshDevin` 只在本地 `expiresAt` 过期后才用 `GetUserStatus` 探活，未过期时就是同一 token 再试一次）。
+失败：计时、重试、401 刷新都归 `upstream.ts` 的 `upstreamRequest`（首字节 120s、输出前预算 270s，从路由入口起算）。HTTP 非 2xx 与 Connect trailer 错误是上游自己的回答，**只转发一次、代理内不重放**：HTTP 状态原样，trailer `code` 经 `connectCodeStatus`（`deadline_exceeded`→504、`unavailable`→503、`unauthenticated`→401 …，未知码→502 并打日志）。socket 错、超时、空流 / 无消息流，以及没有 Connect end 帧（`0x02`）或残帧就 EOF 的截断，才在输出前重试。第一块内容映射输出之前不写头（role 块随首块内容走，usage / stop 帧不提交头）；之后再失败直接断流，不写 SSE 错误块。chat 401 先走 user_jwt 例外（见下），token-only 仍 401 再经共用的 401 刷新钩子（`tokens.ts` `forcedRefresh` → `refreshNow`）重试一次（session token 不轮换；`refreshDevin` 只在本地 `expiresAt` 过期后才用 `GetUserStatus` 探活，未过期时就是同一 token 再试一次）。
 
 `GetUserJwt` 是 best-effort：返回 `user_jwt` 填进 Metadata field 21、可能给 `custom_api_server_url`（per-deployment 后端）。**session token 本身就够聊天**；失败不挡对话。jwt 约 15 分钟有效，`devinChatAuth` 按 `exp−90s` 复用（每跳一次 RPC ≈2s）；chat 401 时丢掉重试一次 token-only。所有 RPC 带 `Authorization: Basic <token>-<token>`（CLI 的 `api_key-session_id` 形状，session id 即 token 本身，MITM 实测）。
 

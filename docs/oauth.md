@@ -32,7 +32,7 @@
 
 CLIProxyAPI 同时包了 Codex / Grok / Antigravity 等多家。**只**在 Antigravity 上抄它的公开 client / UA / `models.json` 形状。不要把它的多家族共用层抄进本仓库的 `cache.ts`。
 
-跨家族**令牌生命周期**另抄了它的四个模式（不是代码）：`tryRefreshAfterUnauthorized`（上游 401 → `TokenManager.refreshNow` 强制刷新重试一次，`proxy.ts` `UnauthorizedUpstream`）、`authAutoRefreshLoop`（`AuthController.startTokenSweep` 每 60s 按各家 preempt 窗口提前刷新）、`refreshFailureBackoff`（`REFRESH_FAILURE_BACKOFF_MS` 5min；瞬时失败时仍有效的旧 access token 继续服务）、`MergeExistingAuthMetadata`（`saveSession` 同 id 重登录保留非凭据字段）。它的 cooldown / 多凭据调度 / 配额响应头观察（`quota_signals.go`）**未**引入：本插件每家族只用 active 账号，不做静默跨账号 failover。
+跨家族**令牌生命周期**另抄了它的四个模式（不是代码）：`tryRefreshAfterUnauthorized`（上游 401 → `TokenManager.refreshNow` 强制刷新重试一次：`upstream.ts` `upstreamRequest().run({ refresh })`，钩子由 `tokens.ts` `forcedRefresh` 生成）、`authAutoRefreshLoop`（`AuthController.startTokenSweep` 每 60s 按各家 preempt 窗口提前刷新）、`refreshFailureBackoff`（`REFRESH_FAILURE_BACKOFF_MS` 5min；瞬时失败时仍有效的旧 access token 继续服务）、`MergeExistingAuthMetadata`（`saveSession` 同 id 重登录保留非凭据字段）。它的 cooldown / 多凭据调度 / 配额响应头观察（`quota_signals.go`）**未**引入：本插件每家族只用 active 账号，不做静默跨账号 failover。
 
 ## 怎么对照
 

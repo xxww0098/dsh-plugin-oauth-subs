@@ -27,7 +27,7 @@ export class ImportedLoginStale extends LoginRequiredError {
   }
 }
 
-/** A reread is adopted only when it outlives this margin (the 09-28 Claude rule). */
+/** A reread is adopted only when it outlives this margin. */
 const IMPORTED_MIN_TTL_MS = 15_000
 
 /** Fields a reread may replace on a stored login; account labels stay put. */

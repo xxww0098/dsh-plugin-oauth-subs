@@ -75,7 +75,7 @@ WorkOS 那一对 token 不是 Cline 会话——`register` 兑换才拿到 `usr-
 入口：`clineDeviceSpec` → `DeviceFlowManager.start('cline')` → `completeClineDevice` → `registerClineTokens` → `clineSessionFromAuthData`。
 导入：[`import.ts`](import.ts) `importClineAuth`。空花名册自动导入一次；已存 session **绝不**静默覆盖。
 
-**导入只读**（决定 4）：`source: 'cli'` 的登录临期时，`clineImported` 钩子只重读 `providers.json`，过期 > 现在 + 15s 才采用；文件也过期 → `ImportedLoginStale`（403）「… run cline or use browser login」，不删登录。`oauth` 登录照常刷新。
+**导入只读**（决定 4）：`source: 'cli'` 的登录临期时，`clineImported` 钩子只重读 `providers.json`，过期 > 现在 + 15s 才采用；文件也过期 → `ImportedLoginStale`（403）「… run cline or use browser login」，不删登录；`userId`（`usr-…`）与存储行不同同样抛 `ImportedLoginStale`，不采用。`oauth` 登录照常刷新。
 
 轮换证据：来源一 npm `@cline/core` 0.0.83 `dist/index.js`——`refreshClineToken` POST `/api/v1/auth/refresh`，取响应 `refreshToken`（缺省沿用旧值）并记 `newRefreshTokenHash`，`saveProviderSettings` 写回 `providers.json` ⇒ 会轮换。来源二（被动观察：插件自有登录在宿主自然刷新前后各记一次 refresh token sha256 前 8 位）：待合入后记录。
 账号 id 用 `userInfo.email`，其次 `clineUserId`；两者都没有时取 JWT `external_id`/`sub`，再退回常量 `cline-account`——**不用** token 片段。
@@ -140,7 +140,7 @@ Cline 背后是 OpenRouter，缓存是**隐式前缀哈希**；客户端不发 `
 | 步骤 | 函数 | 做什么 |
 |---|---|---|
 | 1 | `clineCacheSessionId` | 清洗 DSH id（1–64，`[A-Za-z0-9._:-]`） |
-| 2 | `applyClineCache` | 剥 Codex/Grok 字段；首段 system 钉住，后续**纯扩展**快照停到 **messages suffix**；不兼容的头（换模型/新会话——DSH 不发 session_id，钉键是常量）直接重钉 |
+| 2 | `applyClineCache` | 剥 Codex/Grok 字段；首段 system 钉住，后续**纯扩展**快照停到 **messages suffix**；不兼容的头（换模型）直接重钉；回退 id `dsh-cline`（`isClineFallback`）不是会话，从不钉 |
 | 3 | `clineCacheHeaders` | `{ 'X-Task-ID': <钉> }`，缺省 `dsh-cline` |
 
 活测（2026-09-19，本机账号）：`openai/gpt-6-astra` 同一 1.4k 前缀第二次 **1461/1464 cached**；
