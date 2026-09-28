@@ -68,7 +68,7 @@ export declare function devinStopReasonToFinish(reason: any, hasToolCalls: any):
  */
 export declare function devinToOpenai(collected: any, { model, id }?: any): any;
 /**
- * Translate Devin stream events into OpenAI chat.completion.chunk SSE. Events
+ * Translate Devin stream events into OpenAI chat.completion.chunk objects. Events
  * come from runDevinChat: {type:'text'|'thinking'|'tool'|'usage'|'done', …}.
  */
 export declare function createDevinOpenaiStream({ model, id }?: any): {

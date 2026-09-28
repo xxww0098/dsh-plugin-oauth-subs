@@ -448,7 +448,7 @@ export class KiroHttpError extends Error {
   }
 }
 
-function headerOf(response, name) {
+export function headerOf(response, name) {
   const headers = response?.headers
   if (!headers) return undefined
   if (typeof headers.get === 'function') return headers.get(name) ?? undefined

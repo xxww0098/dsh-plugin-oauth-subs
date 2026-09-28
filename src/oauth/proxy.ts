@@ -6,7 +6,6 @@
  */
 
 import { createServer } from 'node:http'
-import { once } from 'node:events'
 import { randomUUID } from 'node:crypto'
 import { CODEX_API_URL, CODEX_CLIENT_VERSION, CODEX_MODELS, CODEX_MODELS_URL, codexRoutingHint, codexUpstreamHeaders } from './codex/index.js'
 import { applyCodexCache, codexCacheHeaders } from './codex/cache.js'
@@ -55,7 +54,7 @@ import { normalizeAnthropicMessagesBody } from './anthropic/request.js'
 import { withPickerVariants } from './models.js'
 import { outboundFetch } from '../utils/outbound.js'
 import { SseFrameScanner } from './responses-sse.js'
-import { UpstreamFailure, answerFailure, upstreamRequest } from './upstream.js'
+import { UpstreamFailure, answerFailure, pumpBody, upstreamRequest, waitForDrain } from './upstream.js'
 import { forcedRefresh } from './tokens.js'
 
 export const MAX_REQUEST_BODY_BYTES = 64 * 1024 * 1024
@@ -936,16 +935,7 @@ async function forward(request, response, { url, fallbackUrl = undefined, sessio
       }
     }
   }, {
-    // One forced refresh per request — the same shape CLIProxyAPI runs before
-    // falling back. No usable account or a failed refresh forwards the
-    // upstream's own 401 body unchanged.
-    refresh: async () => {
-      const next = await forcedRefresh(tokens, session)
-      if (!next) return false
-      session = next
-      baseHeaders = headersFor(session)
-      return true
-    },
+    refresh: forcedRefresh(tokens, () => session, (next) => { session = next; baseHeaders = headersFor(next) }),
   })
 }
 
@@ -1020,33 +1010,23 @@ async function attemptUpstream(response, { url, headers, body, stream, fetchFn, 
   const emit = async (chunk) => {
     const parts = rewriter ? rewriter.push(chunk) : [chunk]
     for (const part of parts) {
-      if (!response.write(part)) await once(response, 'drain', { signal })
+      if (!response.write(part)) await waitForDrain(response, signal)
     }
   }
   // Codex/Grok Responses can open with handshake-only frames. Completions
   // SSE has no `response.created` preamble — gating it would wait for 64KiB.
   const gate = new CommitGate(response, upstream, stream === true && (family === 'codex' || family === 'grok'), emit, family)
   let lastByteAt = Date.now()
-  const reader = upstream.body?.getReader()
   try {
-    while (reader) {
-      const { done, value } = await reader.read()
-      // A read that settles after a timer fired must not reach the client.
-      signal.throwIfAborted()
-      if (done) break
-      attempt.touch()
+    await pumpBody(upstream.body, attempt, async (value) => {
       lastByteAt = Date.now()
-      if (!(await gate.push(value, signal))) continue
-      await emit(value)
-    }
+      if (await gate.push(value)) await emit(value)
+    })
   } catch (error) {
     if (signal.aborted) throw error
     // Committed: upstreamRequest rethrows it and answerFailure destroys the
     // response — a clean end reads as a finished SSE stream to llm-pi-ai.
     throw transport(`${describeError(error)} (silent ${Date.now() - lastByteAt}ms, ${gate.bytes}B seen, committed=${gate.committed})`)
-  } finally {
-    await reader?.cancel().catch(() => {})
-    reader?.releaseLock()
   }
 
   if (!gate.committed) {
@@ -1056,11 +1036,11 @@ async function attemptUpstream(response, { url, headers, body, stream, fetchFn, 
     if (gate.gated && (gate.bytes === 0 || gate.sawPreamble)) {
       throw transport(`stream ended with no output events (${gate.bytes}B, silent ${Date.now() - lastByteAt}ms)`)
     }
-    await gate.release(signal)
+    await gate.flush()
   }
   if (rewriter && !response.writableEnded && !response.destroyed) {
     for (const part of rewriter.flush()) {
-      if (!response.write(part)) await once(response, 'drain', { signal })
+      if (!response.write(part)) await waitForDrain(response, signal)
     }
   }
   if (!response.writableEnded && !response.destroyed) response.end()
@@ -1099,7 +1079,7 @@ class CommitGate {
   }
 
   /** Returns true once the caller should write `chunk` through itself. */
-  async push(chunk, signal) {
+  async push(chunk) {
     if (this.committed) return true
     if (!this.gated) {
       this.commit()
@@ -1120,14 +1100,9 @@ class CommitGate {
       output = true
     }
     if (output || this.unclassified > MAX_UNCLASSIFIED_BYTES) {
-      await this.#flush(signal)
+      await this.flush()
     }
     return false
-  }
-
-  /** Commit and emit whatever is buffered, for a body we decided not to retry. */
-  async release(signal) {
-    await this.#flush(signal)
   }
 
   commit() {
@@ -1136,12 +1111,10 @@ class CommitGate {
     this.response.writeHead(this.upstream.status, forwardedHeaders(this.upstream.headers))
   }
 
-  async #flush(signal) {
+  /** Commit and emit whatever is buffered — output arrived, or a body we decided not to retry. */
+  async flush() {
     this.commit()
-    const emit = this.emit ?? (async (chunk) => {
-      if (!this.response.write(chunk)) await once(this.response, 'drain', { signal })
-    })
-    for (const chunk of this.buffered) await emit(chunk)
+    for (const chunk of this.buffered) await this.emit(chunk)
     this.buffered = []
     this.scanner = null
   }

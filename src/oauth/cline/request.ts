@@ -13,7 +13,7 @@
 
 import { clineCatalogModels } from './catalog.js'
 import { CLINE_MODELS } from './index.js'
-import { UpstreamFailure } from '../upstream.js'
+import { quotaFailure } from '../upstream.js'
 
 const OFF = new Set(['off', 'none', 'disabled', false, null, ''])
 
@@ -106,7 +106,7 @@ export function unwrapClineEnvelope(payload) {
 export function clineQuotaFailure(status, payload) {
   if (payload?.code !== 'INFERENCE_CAP_ERROR') return undefined
   const detail = typeof payload.message === 'string' && payload.message.trim() ? payload.message.trim() : `Cline ${status} INFERENCE_CAP_ERROR`
-  return new UpstreamFailure(429, `usage limit reached: ${detail}`, { code: 'quota' })
+  return quotaFailure(detail)
 }
 
 /** Map vendor cache-read aliases. Absent field stays absent — do not invent 0. */

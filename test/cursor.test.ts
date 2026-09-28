@@ -72,7 +72,6 @@ import {
   resolveCursorLocalCredentials,
   windowsUsernameFromEnv,
 } from '../lib/oauth/cursor/import.js'
-import { resetCursorRefreshGuard } from '../lib/oauth/cursor/refresh-guard.js'
 import { ImportedLoginStale } from '../lib/oauth/tokens.js'
 import { configureOutbound } from '../lib/utils/outbound.js'
 import {
@@ -158,7 +157,6 @@ test('cursor poll waits on 404 then stores tokens', async () => {
 })
 
 test('cursor refresh parses exchange_user_api_key', async () => {
-  resetCursorRefreshGuard()
   const next = validAccess('refresh@x')
   const tokens = await refreshCursorTokens('rt-old', {
     fetchFn: async (url, init) => {

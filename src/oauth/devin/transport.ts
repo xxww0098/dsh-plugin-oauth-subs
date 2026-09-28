@@ -12,10 +12,9 @@
  * non-fatal — chat works with the session token alone (verified live).
  */
 
-import { once } from 'node:events'
 import { RequestError, sendJson } from '../../utils/http.js'
-import { UpstreamFailure, connectCodeStatus, upstreamRequest } from '../upstream.js'
-import { forcedRefresh } from '../tokens.js'
+import { UpstreamFailure, connectCodeStatus, pumpBody, upstreamRequest, writeSse } from '../upstream.js'
+import { OAuthEndpointError, forcedRefresh } from '../tokens.js'
 import {
   DEVIN_TIER_NAMES,
   devinApiServer,
@@ -62,23 +61,6 @@ const UNARY_HEADERS = Object.freeze({
   accept: '*/*',
 })
 
-const SSE_HEADERS = Object.freeze({
-  'content-type': 'text/event-stream; charset=utf-8',
-  'cache-control': 'no-store',
-  'x-content-type-options': 'nosniff',
-})
-
-export class DevinTransportError extends Error {
-  declare status: any
-  declare permanent: boolean | undefined
-
-  constructor(message, { status }: any = {}) {
-    super(message)
-    this.name = 'DevinTransportError'
-    this.status = status
-  }
-}
-
 const userJwtCache = new Map()
 const USER_JWT_CACHE_MAX = 16
 const USER_JWT_MARGIN_MS = 90_000
@@ -123,7 +105,8 @@ export async function devinUserJwt(session, { fetchFn = outboundFetch, signal }:
 
 /**
  * SeatManagementService/GetUserStatus (unary application/proto, raw body) —
- * the quota + identity RPC. Throws on HTTP errors; 401 is permanent.
+ * the quota + identity RPC. An HTTP error throws `OAuthEndpointError` with
+ * its status, so the refresh probe reads 401 as a dead login.
  */
 export async function devinUserStatus(session, { fetchFn = outboundFetch, signal }: any = {}) {
   const base = devinApiServer(session)
@@ -136,12 +119,7 @@ export async function devinUserStatus(session, { fetchFn = outboundFetch, signal
   })
   const payload = Buffer.from(await response.arrayBuffer())
   if (!response.ok) {
-    const error = new DevinTransportError(
-      `Devin GetUserStatus failed (HTTP ${response.status}): ${payload.toString('utf8').slice(0, 300)}`,
-      { status: response.status },
-    )
-    if (response.status === 401) error.permanent = true
-    throw error
+    throw new OAuthEndpointError(`Devin GetUserStatus failed (HTTP ${response.status}): ${payload.toString('utf8').slice(0, 300)}`, response.status)
   }
   return decodeGetUserStatusResponse(decodeUnaryBody(payload))
 }
@@ -223,7 +201,7 @@ export async function runDevinChat(session, built, { signal, onEvent, touch, fet
     const text = await response.text().catch(() => '')
     throw new UpstreamFailure(response.status, `Devin chat failed (HTTP ${response.status})${text ? `: ${text.slice(0, 300)}` : ''}`, { code: 'http' })
   }
-  if (!response.body) throw new DevinTransportError('Devin chat returned an empty body')
+  if (!response.body) throw new UpstreamFailure(502, 'Devin chat returned an empty body', { code: 'transport' })
 
   const collected: any = {
     text: '',
@@ -286,17 +264,10 @@ export async function runDevinChat(session, built, { signal, onEvent, touch, fet
     }
   }
 
-  const reader = response.body.getReader()
   let pending = Buffer.alloc(0)
   let ended = false
-  for (;;) {
-    const { done, value } = await reader.read()
-    // A read that settles after a timer fired must not reach the client.
-    signal?.throwIfAborted()
-    if (value && value.length > 0) {
-      touch?.()
-      pending = Buffer.concat([pending, Buffer.from(value)])
-    }
+  await pumpBody(response.body, { signal, touch }, async (value) => {
+    pending = Buffer.concat([pending, Buffer.from(value)])
     const { frames, rest } = splitConnectFrames(pending)
     pending = rest
     for (const item of frames) {
@@ -304,7 +275,7 @@ export async function runDevinChat(session, built, { signal, onEvent, touch, fet
         ended = true
         const trailer = connectTrailerError(unframePayload(item).toString('utf8'))
         if (trailer) {
-          // Which Connect codes Devin actually sends is still being learned.
+          // Every Connect error is logged with its code.
           console.error(`[oauth-subs] devin Connect error: ${trailer.message}`)
           throw new UpstreamFailure(connectCodeStatus(trailer.code), `Devin chat stream error: ${trailer.message}`, { code: 'http' })
         }
@@ -313,8 +284,7 @@ export async function runDevinChat(session, built, { signal, onEvent, touch, fet
       consume(decodeGetChatMessageResponse(unframePayload(item)))
     }
     if (pendingWrites.length) await Promise.all(pendingWrites.splice(0))
-    if (done) break
-  }
+  })
   // Connect always closes with an end frame: a clean EOF before it (or inside
   // a frame) is a cut stream — retried before output, destroyed after.
   if (!ended || pending.length > 0) {
@@ -323,7 +293,7 @@ export async function runDevinChat(session, built, { signal, onEvent, touch, fet
 
   collected.toolCalls = [...toolCalls.values()]
   if (!collected.text && collected.toolCalls.length === 0 && !collected.thinking && collected.stopReason === undefined) {
-    throw new DevinTransportError('Devin chat stream ended without a message')
+    throw new UpstreamFailure(502, 'Devin chat stream ended without a message', { code: 'transport' })
   }
   return collected
 }
@@ -355,39 +325,29 @@ export async function forwardDevin(response, {
   const built = openaiToDevin(source, cacheSessionId ? { cascadeId: deterministicDevinId(cacheSessionId) } : {})
   const model = source.model ?? built.chatModelUid
   const id = `chatcmpl-${Date.now()}`
-  const write = async (chunk) => {
-    if (!response.write(chunk)) await once(response, 'drain', { signal })
-  }
+  const upstream = upstreamRequest({ family: 'devin', signal, startedAt, stream, response, timeouts })
+  // Session tokens do not rotate, so before the local expiry this is one retry with the same token.
+  const refresh = forcedRefresh(tokens, () => session, (next) => { session = next })
 
-  // The mapper is rebuilt per attempt: a retry must not carry the failed
-  // attempt's usage or stop reason. The head waits for the first content chunk.
-  let mapper
-  const collected = await upstreamRequest({ family: 'devin', signal, startedAt, stream, response, timeouts }).run(
-    (attempt) => {
-      mapper = stream ? createDevinOpenaiStream({ model, id }) : undefined
-      const onEvent = mapper && (async (event) => {
-        const chunks = mapper.push(event)
-        if (chunks.length && !response.headersSent) response.writeHead(200, SSE_HEADERS)
-        for (const chunk of chunks) await write(chunk)
-      })
-      return runFn(session, built, { signal: attempt.signal, touch: attempt.touch, fetchFn, ...(onEvent ? { onEvent } : {}) })
-    },
-    {
-      // The shared one-shot 401 refresh. Session tokens do not rotate, so
-      // before the local expiry this is one retry with the same token.
-      refresh: async () => {
-        const next = await forcedRefresh(tokens, session)
-        if (next) session = next
-        return Boolean(next)
-      },
-    },
-  )
-
-  if (!mapper) {
+  if (!stream) {
+    const collected = await upstream.run((attempt) => runFn(session, built, { signal: attempt.signal, touch: attempt.touch, fetchFn }), { refresh })
     sendJson(response, 200, devinToOpenai(collected, { model, id }))
     return
   }
-  if (!response.headersSent) response.writeHead(200, SSE_HEADERS)
-  for (const chunk of mapper.finish()) await write(chunk)
-  if (!response.writableEnded && !response.destroyed) response.end()
+
+  await upstream.run(async (attempt) => {
+    // Rebuilt per attempt: a retry must not carry the failed attempt's usage or stop reason.
+    const mapper = createDevinOpenaiStream({ model, id })
+    await runFn(session, built, {
+      signal: attempt.signal,
+      touch: attempt.touch,
+      fetchFn,
+      onEvent: async (event) => {
+        for (const chunk of mapper.push(event)) await writeSse(response, chunk, attempt.signal)
+      },
+    })
+    for (const chunk of mapper.finish()) await writeSse(response, chunk, attempt.signal)
+    await writeSse(response, '[DONE]', attempt.signal)
+    if (!response.writableEnded && !response.destroyed) response.end()
+  }, { refresh })
 }

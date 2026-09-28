@@ -210,7 +210,7 @@ export async function refreshDevin(session, { fetchFn = outboundFetch, statusFn 
   if (session?.expiresAt && Date.now() < session.expiresAt) return session
   const probe = typeof statusFn === 'function' ? statusFn : undefined
   if (!probe) return session
-  // A probe HTTP failure is a DevinTransportError carrying its status.
+  // A probe HTTP failure is an OAuthEndpointError carrying its status.
   await probe(session, { fetchFn })
   return { ...session, accessToken: access, expiresAt: Date.now() + DEVIN_FALLBACK_EXPIRES_MS }
 }

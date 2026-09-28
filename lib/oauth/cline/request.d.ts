@@ -10,7 +10,6 @@
  *  3. `reasoning_effort` stays on the wire only when the catalog advertises
  *     the model, with `max` → `xhigh` (`portable-reasoning.ts`).
  */
-import { UpstreamFailure } from '../upstream.js';
 export declare function isClineReasoningEraModel(modelId: any): boolean;
 export declare function applyClineThinking(payload?: any, model?: any): any;
 export declare function applyClineMaxCompletionTokens(payload?: any): any;
@@ -31,6 +30,6 @@ export declare function unwrapClineEnvelope(payload: any): any;
  * Forwarded as-is the host reads RATE_LIMIT and retries 5 times; the
  * `usage limit reached:` prefix makes it QUOTA_EXCEEDED, which it does not.
  */
-export declare function clineQuotaFailure(status: any, payload: any): UpstreamFailure | undefined;
+export declare function clineQuotaFailure(status: any, payload: any): import("../upstream.js").UpstreamFailure | undefined;
 /** Map vendor cache-read aliases. Absent field stays absent — do not invent 0. */
 export declare function mapClineUsage(usage: any): any;

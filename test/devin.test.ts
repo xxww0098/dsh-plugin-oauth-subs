@@ -566,8 +566,11 @@ test('devinToOpenai maps finish reasons and cache usage', () => {
   assert.equal(mapDevinUsage(undefined), undefined)
 })
 
-test('stream mapper emits role, content, tool arg deltas, finish, DONE', () => {
-  const mapper = createDevinOpenaiStream({ model: 'swe-2', id: 's1' })
+test('stream mapper emits role with the first content, tool arg deltas, finish', () => {
+  const created = createDevinOpenaiStream({ model: 'swe-2', id: 's1' })
+  const json = (chunks) => chunks.map((chunk) => JSON.stringify(chunk))
+  const mapper = { push: (event) => json(created.push(event)), finish: () => json(created.finish()) }
+  assert.deepEqual(mapper.push({ type: 'usage', usage: { inputTokens: 1 } }), [], 'usage alone commits nothing')
   const first = mapper.push({ type: 'thinking', delta: 'think' })
   assert.match(first[0], /"role":"assistant"/)
   assert.match(first[1], /"reasoning_content":"think"/)
@@ -582,7 +585,7 @@ test('stream mapper emits role, content, tool arg deltas, finish, DONE', () => {
   const tail = mapper.finish()
   assert.match(tail[0], /"finish_reason":"tool_calls"/)
   assert.match(tail[0], /"prompt_tokens":5/)
-  assert.equal(tail.at(-1), 'data: [DONE]\n\n')
+  assert.equal(tail.length, 1)
 })
 
 test('proxy serves /devin/v1/models and chat via runFn; responses is 501', async () => {
@@ -1124,6 +1127,22 @@ test('devin: EOF without the Connect end frame (or inside a frame) is a cut stre
   } finally {
     broken.close()
   }
+})
+
+test('runDevinChat releases the upstream body when the stream throws', async () => {
+  let cancelled = false
+  const fetchFn = async (url) => {
+    if (String(url).endsWith(DEVIN_USER_JWT_PATH)) return new Response('nope', { status: 404 })
+    return new Response(new ReadableStream({
+      start(controller) { controller.enqueue(new Uint8Array(trailer('unavailable'))) },
+      cancel() { cancelled = true },
+    }), { status: 200 })
+  }
+  await assert.rejects(
+    runDevinChat(devinSession({ accessToken: 'x' }), openaiToDevin({ model: 'swe-2', messages: [] }, {}), { fetchFn }),
+    (error) => error instanceof UpstreamFailure && error.status === 503,
+  )
+  assert.equal(cancelled, true, 'the socket is not left pinned')
 })
 
 test('devin: a token-only 401 refreshes the login once, then retries', async () => {

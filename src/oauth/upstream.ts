@@ -68,6 +68,11 @@ export interface Attempt {
   committed(): boolean
 }
 
+/** A family's known usage-cap answer: the host reads the prefix as QUOTA_EXCEEDED and does not retry. */
+export function quotaFailure(detail: string) {
+  return new UpstreamFailure(429, `usage limit reached: ${detail}`, { code: 'quota' })
+}
+
 const seconds = (ms) => `${ms / 1000}s`
 const timeout = (message) => new UpstreamFailure(504, message, { code: 'timeout' })
 
@@ -221,4 +226,75 @@ export function answerFailure(response: ServerResponse, error: any): void {
     'retry-after': error?.retryAfter,
     'retry-after-ms': error?.retryAfterMs,
   })
+}
+
+/**
+ * Read an upstream body to EOF. A read that settles after the attempt's timers
+ * fired never reaches the client, every chunk touches the idle clock, and the
+ * reader is always cancelled and released — a throw must not pin the socket.
+ */
+export async function pumpBody(
+  body: ReadableStream<Uint8Array> | null | undefined,
+  { signal, touch }: { signal?: AbortSignal, touch?: () => void },
+  onChunk: (chunk: Uint8Array) => unknown,
+): Promise<void> {
+  const reader = body?.getReader()
+  if (!reader) return
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      signal?.throwIfAborted()
+      if (done) return
+      touch?.()
+      await onChunk(value)
+    }
+  } finally {
+    await reader.cancel().catch(() => {})
+    reader.releaseLock()
+  }
+}
+
+/**
+ * Wait out a full write buffer. A destroyed response emits 'close', never
+ * 'drain', so 'close', 'error' and the attempt signal end the wait too — a
+ * gone client fails fast instead of pinning the upstream reader.
+ */
+export function waitForDrain(response: ServerResponse, signal?: AbortSignal): Promise<void> {
+  if (response.destroyed) return Promise.reject(new Error('client disconnected'))
+  return new Promise((resolve, reject) => {
+    const settle = (error?: unknown) => {
+      response.off('drain', onDrain)
+      response.off('close', onClose)
+      response.off('error', settle)
+      signal?.removeEventListener('abort', onAbort)
+      if (error === undefined) resolve()
+      else reject(error)
+    }
+    const onDrain = () => settle()
+    const onClose = () => settle(new Error('client disconnected before drain'))
+    const onAbort = () => settle(signal!.reason)
+    response.once('drain', onDrain)
+    response.once('close', onClose)
+    response.once('error', settle)
+    if (signal?.aborted) onAbort()
+    else signal?.addEventListener('abort', onAbort, { once: true })
+  })
+}
+
+const SSE_HEAD = {
+  'content-type': 'text/event-stream; charset=utf-8',
+  'cache-control': 'no-store',
+  'x-content-type-options': 'nosniff',
+}
+
+/**
+ * One `data:` frame of a translated OpenAI stream (`chunk` is serialised
+ * unless it is already a string, e.g. `[DONE]`). The SSE head goes out with
+ * the first frame, so everything before it can still answer as JSON.
+ */
+export async function writeSse(response: ServerResponse, chunk: unknown, signal?: AbortSignal): Promise<void> {
+  if (response.destroyed) throw new Error('client disconnected before write')
+  if (!response.headersSent) response.writeHead(200, SSE_HEAD)
+  const data = typeof chunk === 'string' ? chunk : JSON.stringify(chunk)
+  if (!response.write(`data: ${data}\n\n`)) await waitForDrain(response, signal)
 }

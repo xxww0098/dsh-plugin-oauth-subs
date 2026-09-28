@@ -10,7 +10,6 @@ import { kiroSession } from '../lib/oauth/kiro/index.js'
 import { createProxy } from '../lib/oauth/proxy.js'
 import { CODEX_API_URL, CODEX_TOKEN_URL } from '../lib/oauth/codex/index.js'
 import { ANTIGRAVITY_GENERATE_URL } from '../lib/oauth/antigravity/index.js'
-import { isCursorRefreshKnownBad } from '../lib/oauth/cursor/refresh-guard.js'
 import { devinSession } from '../lib/oauth/devin/index.js'
 
 // The host process's event loop is never empty; refresh timeout timers are
@@ -689,7 +688,7 @@ test('every family classifies refresh failures through one predicate: only 401 a
     grok: () => ({ accessToken: 'a', refreshToken: 'rt', expiresAt: expired, tokenEndpoint: 'https://auth.x.ai/oauth2/token' }),
     kiro: () => account('table', true),
     antigravity: () => ({ accessToken: 'a', refreshToken: 'rt', expiresAt: expired, projectId: 'p' }),
-    cursor: (row) => ({ accessToken: 'a', refreshToken: `crt-${row}`, expiresAt: expired, source: 'pkce' }),
+    cursor: () => ({ accessToken: 'a', refreshToken: 'rt', expiresAt: expired, source: 'pkce' }),
     kimi: () => ({ accessToken: 'a', refreshToken: 'rt', expiresAt: expired, source: 'oauth' }),
     copilot: () => ({ accessToken: 'tid=old', refreshToken: 'ghu_table', githubToken: 'ghu_table', expiresAt: expired, source: 'oauth' }),
     devin: () => devinSession({ accessToken: 'table', expiresAt: expired }),
@@ -711,7 +710,6 @@ test('every family classifies refresh failures through one predicate: only 401 a
       const error = await manager.refresh(session(row.name)).then(() => undefined, (failure) => failure)
       assert.ok(error, `${family} / ${row.name} must fail`)
       assert.equal(isPermanentRefreshFailure(error, manager.permanentCodes), row.permanent(family), `${family} / ${row.name}: ${error.message}`)
-      if (family === 'cursor') assert.equal(isCursorRefreshKnownBad(`crt-${row.name}`), row.permanent(family), `cursor known-bad mark / ${row.name}`)
     }
   }
 })

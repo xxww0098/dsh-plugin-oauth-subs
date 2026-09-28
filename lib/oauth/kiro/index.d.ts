@@ -148,6 +148,7 @@ export declare class KiroHttpError extends Error {
     oauthCode: string | undefined;
     constructor(message: any, status: any, { retryAfter, oauthCode }?: any);
 }
+export declare function headerOf(response: any, name: any): any;
 export declare function kiroSession(fields?: any): any;
 export declare function exchangeKiroSocialCode(code: any, verifier: any, redirectUri: any, { fetchFn, callback, machineId: priorMachineId }?: any): Promise<any>;
 export declare function refreshKiroSocial(session: any, { fetchFn }?: {

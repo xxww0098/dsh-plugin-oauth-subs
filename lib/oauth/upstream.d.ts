@@ -53,6 +53,8 @@ export interface Attempt {
     /** True once the client response head is out — nothing can be retried after that. */
     committed(): boolean;
 }
+/** A family's known usage-cap answer: the host reads the prefix as QUOTA_EXCEEDED and does not retry. */
+export declare function quotaFailure(detail: string): UpstreamFailure;
 /**
  * `startedAt` is when the route handler received the request, so the wait for
  * `tokens.session()` counts against the budget. `response` is only read for
@@ -84,3 +86,24 @@ export declare function connectCodeStatus(code: string): number;
  * broken stream — a clean EOF reads as a finished response.
  */
 export declare function answerFailure(response: ServerResponse, error: any): void;
+/**
+ * Read an upstream body to EOF. A read that settles after the attempt's timers
+ * fired never reaches the client, every chunk touches the idle clock, and the
+ * reader is always cancelled and released — a throw must not pin the socket.
+ */
+export declare function pumpBody(body: ReadableStream<Uint8Array> | null | undefined, { signal, touch }: {
+    signal?: AbortSignal;
+    touch?: () => void;
+}, onChunk: (chunk: Uint8Array) => unknown): Promise<void>;
+/**
+ * Wait out a full write buffer. A destroyed response emits 'close', never
+ * 'drain', so 'close', 'error' and the attempt signal end the wait too — a
+ * gone client fails fast instead of pinning the upstream reader.
+ */
+export declare function waitForDrain(response: ServerResponse, signal?: AbortSignal): Promise<void>;
+/**
+ * One `data:` frame of a translated OpenAI stream (`chunk` is serialised
+ * unless it is already a string, e.g. `[DONE]`). The SSE head goes out with
+ * the first frame, so everything before it can still answer as JSON.
+ */
+export declare function writeSse(response: ServerResponse, chunk: unknown, signal?: AbortSignal): Promise<void>;

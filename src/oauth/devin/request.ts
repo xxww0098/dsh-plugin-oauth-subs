@@ -313,7 +313,7 @@ export function devinToOpenai(collected, { model, id }: any = {}) {
 /* ---- OpenAI SSE mapper ---------------------------------------------------- */
 
 /**
- * Translate Devin stream events into OpenAI chat.completion.chunk SSE. Events
+ * Translate Devin stream events into OpenAI chat.completion.chunk objects. Events
  * come from runDevinChat: {type:'text'|'thinking'|'tool'|'usage'|'done', …}.
  */
 export function createDevinOpenaiStream({ model, id }: any = {}) {
@@ -339,7 +339,7 @@ export function createDevinOpenaiStream({ model, id }: any = {}) {
       choices: [choice],
     }
     if (usage) body.usage = usage
-    return `data: ${JSON.stringify(body)}\n\n`
+    return body
   }
 
   function toolIndex(callId) {
@@ -396,7 +396,6 @@ export function createDevinOpenaiStream({ model, id }: any = {}) {
       if (!sentRole) chunks.push(chunk({ role: 'assistant' }))
       const finishReason = devinStopReasonToFinish(stopReason, toolIndexes.size > 0)
       chunks.push(chunk({}, finishReason, latestUsage ? mapDevinUsage(latestUsage) : undefined))
-      chunks.push('data: [DONE]\n\n')
       return chunks
     },
   }

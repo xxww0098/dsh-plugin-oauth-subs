@@ -12,11 +12,6 @@
  * non-fatal — chat works with the session token alone (verified live).
  */
 import { outboundFetch } from '../../utils/outbound.js';
-export declare class DevinTransportError extends Error {
-    status: any;
-    permanent: boolean | undefined;
-    constructor(message: any, { status }?: any);
-}
 /**
  * Best-effort GetUserJwt: mints metadata.user_jwt and may redirect to a
  * deployment-specific api server (custom_api_server_url). Returns undefined
@@ -28,7 +23,8 @@ export declare function devinUserJwt(session: any, { fetchFn, signal }?: any): P
 } | undefined>;
 /**
  * SeatManagementService/GetUserStatus (unary application/proto, raw body) —
- * the quota + identity RPC. Throws on HTTP errors; 401 is permanent.
+ * the quota + identity RPC. An HTTP error throws `OAuthEndpointError` with
+ * its status, so the refresh probe reads 401 as a dead login.
  */
 export declare function devinUserStatus(session: any, { fetchFn, signal }?: any): Promise<{
     userStatus: {

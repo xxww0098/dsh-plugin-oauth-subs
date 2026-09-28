@@ -15,7 +15,6 @@ Cursor 订阅（Composer / Claude / GPT / Grok via Cursor infra）。原生 wire
 | [`catalog.ts`](catalog.ts) | 登录后 GetUsableModels + AvailableModels 活目录；静态 `CURSOR_MODELS` 只做离线 fallback |
 | [`pkce-flow.ts`](pkce-flow.ts) | 打开 `loginDeepControl` + poll 直到 tokens |
 | [`import.ts`](import.ts) | 本机 CLI Keychain / IDE `state.vscdb` / `CURSOR_ACCESS_TOKEN` |
-| [`refresh-guard.ts`](refresh-guard.ts) | 已知坏 refresh 短退避，避免 stale CLI 卡住 snapshot |
 | [`request.ts`](request.ts) | OpenAI Completions ↔ `AgentClientMessage` / `AgentServerMessage` |
 | [`cache.ts`](cache.ts) | `AgentRunRequest.conversation_id` + 稳定 turn id。禁止 `Date.now()` / 每次 `randomUUID()` |
 | [`proto.ts`](proto.ts) | 最小 protobuf + Connect framing（Run / GetUsableModels / AvailableModels） |

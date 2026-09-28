@@ -57,10 +57,10 @@ export declare class OAuthEndpointError extends Error {
 export declare function oauthCodeOf(body: any): string | undefined;
 export declare function oauthError(response: any, label: any): Promise<OAuthEndpointError>;
 /**
- * The only test for "this login is gone": a structured 401 (`status`, or
- * `permanent` set from one) or an OAuth grant code — the shared ones plus the
- * family's `extraCodes`. 403 / 429 / 5xx and digits in message text are
- * transient: deleting a login on them logs the user out over a blip.
+ * The only test for "this login is gone": a structured 401 `status` or an
+ * OAuth grant code — the shared ones plus the family's `extraCodes`. 403 /
+ * 429 / 5xx and digits in message text are transient: deleting a login on
+ * them logs the user out over a blip.
  */
 export declare function isPermanentRefreshFailure(error: any, extraCodes?: readonly string[]): boolean;
 export declare class TokenManager {
@@ -102,8 +102,8 @@ export declare class TokenManager {
     remember(session: any, fields: any): Promise<void>;
 }
 /**
- * The one-shot refresh after an upstream 401 (`run`'s `refresh` hook): the
- * stored login behind `session`, force-refreshed. Undefined when there is none
- * or the refresh fails — the caller then forwards the upstream's own 401.
+ * `run`'s `refresh` hook: after an upstream 401, force-refresh the stored login
+ * behind `get()` once and hand the rotated session to `set`. False when there
+ * is none or the refresh fails — `run` then forwards the upstream's own 401.
  */
-export declare function forcedRefresh(tokens: any, session: any): Promise<any>;
+export declare function forcedRefresh(tokens: any, get: () => any, set: (session: any) => void): () => Promise<boolean>;
