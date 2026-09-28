@@ -29,6 +29,7 @@ import {
   splitConnectFrames,
 } from './proto.js'
 import { consumeCursorFrames } from './request.js'
+import { UpstreamFailure, connectCodeStatus } from '../upstream.js'
 
 function hexOf(buf) {
   return Buffer.isBuffer(buf) ? buf.toString('hex') : ''
@@ -155,12 +156,16 @@ export async function fetchCursorAvailableModels(session, { connectFn, signal, t
  * blob KV get/set, and per-case exec messages so a model turn can complete.
  * Native Cursor tools are rejected with typed results so the model falls back
  * to the MCP tools; MCP calls are handed to DSH, which owns execution.
+ * `touch` runs once per DATA chunk (the attempt's first-byte / idle clock).
+ * A Connect error or a non-200 head rejects with an `UpstreamFailure` carrying
+ * its HTTP status; socket faults and truncation reject with a plain Error.
  */
 export async function runCursorAgent(session, built, {
   signal,
   connectFn = cursorH2Connect,
   url = cursorAgentUrl() || CURSOR_AGENT_URL,
   onEvent,
+  touch,
 }: any = {}) {
   signal?.throwIfAborted()
   const blobStore = built.blobStore ?? new Map()
@@ -209,8 +214,9 @@ export async function runCursorAgent(session, built, {
           const text = describeCursorRunError(msg.message)
           collected.error = text
           events.push(msg)
-          await onEvent?.(msg)
-          finish(new Error(text))
+          // Unknown codes are only logged — never guessed to be quota or permanent.
+          console.error(`[oauth-subs] cursor Connect error ${msg.code ?? '(no code)'}: ${text}`)
+          finish(new UpstreamFailure(connectCodeStatus(msg.code), text, { code: 'http', payload: { error: { message: text, code: msg.code } } }))
           return
         }
         if (msg.kind === 'kv') {
@@ -287,18 +293,31 @@ export async function runCursorAgent(session, built, {
         }
       }
 
+      // Connect streams answer 200 and put errors in the end frame; any other
+      // status is an edge/HTTP answer whose body is not Connect framing.
+      let status = 200
+      stream.once('response', (headers) => { status = Number(headers[':status']) || 200 })
       const consume = async () => {
         try {
           // Pull one chunk at a time: a blocked downstream consumer must stop
           // HTTP/2 reads, not accumulate unobserved callback promises.
           for await (const chunk of stream) {
             if (settled) return
+            touch?.()
+            if (status !== 200) {
+              if (rest.length < 4096) rest = Buffer.concat([rest, chunk])
+              continue
+            }
             const messages: any[] = []
             rest = consumeCursorFrames(chunk, rest, (msg) => messages.push(msg))
             for (const msg of messages) {
               if (settled) return
               await handle(msg)
             }
+          }
+          if (status !== 200) {
+            const text = rest.toString('utf8').trim().slice(0, 300)
+            throw new UpstreamFailure(status, `cursor upstream ${status}${text ? `: ${text}` : ''}`, { code: 'http' })
           }
           if (rest.length) throw new Error('cursor Connect stream truncated at EOF: ' + rest.length + ' buffered bytes')
           finish()

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { once } from 'node:events'
 import http2 from 'node:http2'
 import net from 'node:net'
-import { test } from 'node:test'
+import { mock, test } from 'node:test'
 import { setImmediate as nextTurn } from 'node:timers/promises'
 import { cursorUnaryRpc, runCursorAgent } from '../lib/oauth/cursor/h2-session.js'
 import { cursorH2Connect, dialCursorProxy } from '../lib/oauth/cursor/upstream-proxy.js'
@@ -62,31 +62,156 @@ async function withH2Peer(run) {
   }
 }
 
-test('Cursor proxy reports post-output transport failure as an error, not answer text', async t => {
-  const proxy = createProxy({
-    port: 0,
-    apiKey: 'local-test-key',
+function connectErrorFrame(code: string, message: string) {
+  return frameConnect(Buffer.from(JSON.stringify({ error: { code, message } })), true)
+}
+
+async function withCursorProxy(options, run) {
+  const proxy = createProxy({ port: 0, apiKey: 'local-test-key', ...options })
+  const server = await proxy.listen()
+  try {
+    await run((body = {}) => fetch('http://127.0.0.1:' + server.address().port + '/cursor/v1/chat/completions', {
+      method: 'POST',
+      headers: { authorization: 'Bearer local-test-key' },
+      body: JSON.stringify({ model: 'sonnet-4.5', stream: true, messages: [{ role: 'user', content: 'hello' }], ...body }),
+    }))
+  } finally {
+    await proxy.close()
+  }
+}
+
+test('Cursor proxy drops the stream on a post-output failure: no error block, no [DONE], no retry', async () => {
+  let calls = 0
+  await withCursorProxy({
     tokens: { cursor: { session: async () => session } },
     cursorRpc: async (current, request, { onEvent }) => {
+      calls += 1
       assert.equal(current.accessToken, session.accessToken)
       assert.ok(Buffer.isBuffer(request.requestBytes))
       await onEvent({ kind: 'interaction', text: 'partial answer' })
+      // Let the committed chunk reach the socket before the break.
+      await new Promise((resolve) => setTimeout(resolve, 20))
       throw new Error('cursor Connect stream truncated at EOF')
     },
+  }, async (post) => {
+    const errorLog = mock.method(console, 'error', () => {})
+    try {
+      const response = await post()
+      assert.equal(response.status, 200)
+      await assert.rejects(response.text(), /terminated/)
+    } finally {
+      errorLog.mock.restore()
+    }
   })
-  const server = await proxy.listen()
-  t.after(() => proxy.close())
-  const response = await fetch('http://127.0.0.1:' + server.address().port + '/cursor/v1/chat/completions', {
-    method: 'POST',
-    headers: { authorization: 'Bearer local-test-key' },
-    body: JSON.stringify({ model: 'sonnet-4.5', stream: true, messages: [{ role: 'user', content: 'hello' }] }),
+  assert.equal(calls, 1)
+})
+
+test('Cursor peer that never sends DATA (or never connects) answers 504 before any head', async () => {
+  const errorLog = mock.method(console, 'error', () => {})
+  try {
+    await withH2Peer(async ({ server, url, connectFn }) => {
+      let streams = 0
+      server.on('stream', (peer) => {
+        streams += 1
+        peer.on('error', () => {})
+        peer.respond({ ':status': 200 })
+      })
+      await withCursorProxy({
+        tokens: { cursor: { session: async () => session } },
+        upstreamTimeouts: { firstByteMs: 200, budgetMs: 400 },
+        cursorRpc: (current, request, options) => runCursorAgent(current, request, { ...options, url, connectFn }),
+      }, async (post) => {
+        const response = await post()
+        assert.equal(response.status, 504)
+        assert.match((await response.json()).error, /no first byte within 0\.2s/)
+      })
+      assert.equal(streams, 1)
+    })
+    await withCursorProxy({
+      tokens: { cursor: { session: async () => session } },
+      upstreamTimeouts: { firstByteMs: 200, budgetMs: 400 },
+      cursorRpc: (current, request, options) => runCursorAgent(current, request, { ...options, connectFn: () => new Promise(() => {}) }),
+    }, async (post) => {
+      assert.equal((await post()).status, 504)
+    })
+  } finally {
+    errorLog.mock.restore()
+  }
+})
+
+test('Cursor Connect error before output answers its own status, once; unauthenticated refreshes once', async () => {
+  const errorLog = mock.method(console, 'error', () => {})
+  try {
+    for (const [code, status] of [['resource_exhausted', 429], ['invalid_argument', 400], ['unavailable', 503], ['internal', 502]] as const) {
+      await withH2Peer(async ({ server, url, connectFn }) => {
+        let streams = 0
+        server.on('stream', (peer) => {
+          streams += 1
+          peer.on('error', () => {})
+          peer.respond({ ':status': 200 })
+          // An empty update first must not commit the head either.
+          peer.end(Buffer.concat([frameConnect(encodeMessage(1, Buffer.alloc(0))), connectErrorFrame(code, `offline ${code}`)]))
+        })
+        await withCursorProxy({
+          tokens: { cursor: { session: async () => session } },
+          cursorRpc: (current, request, options) => runCursorAgent(current, request, { ...options, url, connectFn }),
+        }, async (post) => {
+          const response = await post()
+          assert.equal(response.status, status, code)
+          assert.equal((await response.json()).error.message, `offline ${code}`)
+        })
+        assert.equal(streams, 1, code)
+      })
+    }
+
+    const fresh = { accessToken: 'offline-fresh-token' }
+    const refreshed = []
+    await withH2Peer(async ({ server, url, connectFn }) => {
+      server.on('stream', (peer, headers) => {
+        peer.on('error', () => {})
+        peer.respond({ ':status': 200 })
+        if (String(headers.authorization).includes(session.accessToken)) peer.end(connectErrorFrame('unauthenticated', 'offline expired'))
+        else peer.end(Buffer.concat([textFrame('after refresh'), turnEndedFrame()]))
+      })
+      await withCursorProxy({
+        tokens: {
+          cursor: {
+            session: async () => session,
+            sourceOf: (current) => (current === session ? { id: 'acct' } : undefined),
+            refreshNow: async (id, failed) => {
+              refreshed.push([id, failed])
+              return { session: fresh }
+            },
+          },
+        },
+        cursorRpc: (current, request, options) => runCursorAgent(current, request, { ...options, url, connectFn }),
+      }, async (post) => {
+        const response = await post()
+        assert.equal(response.status, 200)
+        const text = await response.text()
+        assert.match(text, /after refresh/)
+        assert.match(text, /\[DONE\]/)
+      })
+    })
+    assert.deepEqual(refreshed, [['acct', session.accessToken]])
+  } finally {
+    errorLog.mock.restore()
+  }
+})
+
+test('Cursor non-200 head is forwarded with its status instead of parsed as Connect frames', async () => {
+  await withH2Peer(async ({ server, url, connectFn }) => {
+    server.on('stream', (peer) => {
+      peer.on('error', () => {})
+      peer.respond({ ':status': 403 })
+      peer.end('{"code":"permission_denied","message":"offline forbidden"}')
+    })
+    await assert.rejects(runCursorAgent(session, built, { url, connectFn }), (error: any) => {
+      assert.equal(error.status, 403)
+      assert.match(error.message, /offline forbidden/)
+      return true
+    })
   })
-  const text = await response.text()
-  const chunks = text.split('\n\n').filter(block => block.startsWith('data: ') && block !== 'data: [DONE]')
-    .map(block => JSON.parse(block.slice(6)))
-  assert.ok(chunks.some(chunk => chunk.choices?.[0]?.delta?.content === 'partial answer'))
-  assert.match(chunks.find(chunk => chunk.error)?.error.message ?? '', /Connect stream truncated/)
-  assert.equal(text.includes('[DONE]'), false)
 })
 
 test('Cursor rejects EOF inside a Connect header or payload instead of completing', async () => {
