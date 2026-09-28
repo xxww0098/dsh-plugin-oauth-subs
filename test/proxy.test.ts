@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { request as httpRequest } from 'node:http'
 import { test } from 'node:test'
+import { zstdDecompressSync } from 'node:zlib'
 import { createProxy, describeError } from '../lib/oauth/proxy.js'
 import { UPSTREAM_ATTEMPTS } from '../lib/oauth/upstream.js'
 import { classifySseFrame, SseFrameScanner } from '../lib/oauth/responses-sse.js'
@@ -10,6 +11,11 @@ import { GLM_ANTHROPIC_URL, GLM_ANTHROPIC_VERSION, GLM_CODING_URL, GLM_USER_AGEN
 import { resetGlmSystemPins } from '../lib/oauth/glm/cache.js'
 import { GROK_STABLE_SESSION, resetGrokSystemPins } from '../lib/oauth/grok/cache.js'
 import { codexCacheSessionId } from '../lib/oauth/codex/cache.js'
+
+/** The upstream body as text: Codex sends it zstd-compressed. */
+const upstreamText = (init) => init.headers?.['content-encoding'] === 'zstd'
+  ? zstdDecompressSync(init.body).toString()
+  : init.body?.toString()
 
 function rawRequest(port, { method = 'GET', path = '/', headers = {}, body } = {}) {
   return new Promise((resolve, reject) => {
@@ -26,7 +32,7 @@ function rawRequest(port, { method = 'GET', path = '/', headers = {}, body } = {
 test('proxy requires the local bearer and forwards Codex Responses', async () => {
   const seen = []
   const fetchFn = async (url, init) => {
-    seen.push({ url: String(url), headers: init.headers, body: init.body?.toString() })
+    seen.push({ url: String(url), headers: init.headers, body: upstreamText(init) })
     return new Response('{"id":"resp"}', { status: 200, headers: { 'content-type': 'application/json' } })
   }
   const proxy = createProxy({
@@ -197,7 +203,7 @@ test('proxy GLM Anthropic hop is ZCode default: /api/anthropic + cache_control',
   resetGlmSystemPins()
   const seen = []
   const fetchFn = async (url, init) => {
-    seen.push({ url: String(url), headers: init.headers, body: JSON.parse(String(init.body)) })
+    seen.push({ url: String(url), headers: init.headers, body: JSON.parse(upstreamText(init)) })
     return new Response('{"id":"msg"}', { status: 200, headers: { 'content-type': 'application/json' } })
   }
   const proxy = createProxy({
@@ -353,7 +359,7 @@ test('proxy asks upstream for SSE when the body streams', async () => {
 test('proxy peels -fast and injects Codex Priority; never sets Grok service_tier', async () => {
   const seen = []
   const fetchFn = async (url, init) => {
-    seen.push({ headers: init.headers, body: JSON.parse(init.body.toString()) })
+    seen.push({ headers: init.headers, body: JSON.parse(upstreamText(init)) })
     return new Response('{"id":"resp"}', { status: 200, headers: { 'content-type': 'application/json' } })
   }
   const proxy = createProxy({
@@ -444,7 +450,7 @@ test('proxy peels -fast and injects Codex Priority; never sets Grok service_tier
 test('proxy GLM chat hop remaps developer; Grok pins leading input as system', async () => {
   const seen = []
   const fetchFn = async (url, init) => {
-    seen.push({ url: String(url), body: JSON.parse(String(init.body)) })
+    seen.push({ url: String(url), body: JSON.parse(upstreamText(init)) })
     return new Response('{"id":"ok"}', { status: 200, headers: { 'content-type': 'application/json' } })
   }
   const proxy = createProxy({
@@ -820,6 +826,47 @@ test('Codex retries replay x-codex-turn-state from the failed attempt', async ()
   })
 })
 
+test('Codex request bodies go upstream zstd-compressed once; retries resend the same Buffer', async () => {
+  const seen = []
+  const fetchFn = async (_url, init) => {
+    seen.push(init)
+    return seen.length === 1
+      ? streamingUpstream([CODEX_PREAMBLE])
+      : streamingUpstream([CODEX_PREAMBLE + sse(DELTA, DONE)])
+  }
+  const instructions = 'You are DSH. '.repeat(10_000) // ~128KB, the size of the real system prompt
+  await withProxy(fetchFn, async (port) => {
+    const response = await post(port, { model: 'gpt-5.6-luna', stream: true, instructions, input: [{ role: 'user', content: 'hi' }] })
+    await response.text()
+    assert.equal(response.status, 200)
+  })
+  assert.equal(seen.length, 2)
+  assert.equal(seen[0].headers['content-encoding'], 'zstd')
+  assert.equal(seen[1].body, seen[0].body, 'a retry must reuse the compressed bytes, not recompress')
+  const plain = zstdDecompressSync(seen[0].body)
+  const payload = JSON.parse(plain.toString())
+  assert.equal(payload.instructions, instructions.trim())
+  assert.ok(plain.equals(Buffer.from(JSON.stringify(payload))), 'decompresses to the exact JSON the proxy serialised')
+  console.log(`codex zstd: ${plain.length} B -> ${seen[0].body.length} B`)
+})
+
+test('non-Codex families still send a plaintext request body', async () => {
+  const seen = []
+  const fetchFn = async (_url, init) => {
+    seen.push(init)
+    return new Response('{"id":"resp"}', { status: 200, headers: { 'content-type': 'application/json' } })
+  }
+  await withProxy(fetchFn, async (port) => {
+    await fetch(`http://127.0.0.1:${port}/grok/v1/responses`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer secret-key', 'content-type': 'application/json' },
+      body: '{"model":"grok-4.6","input":[]}',
+    })
+  })
+  assert.equal(seen[0].headers['content-encoding'], undefined)
+  assert.equal(JSON.parse(seen[0].body.toString()).model, 'grok-4.6')
+})
+
 test('a genuine response.failed is forwarded, never retried away', async () => {
   let calls = 0
   const fetchFn = async () => {
@@ -1077,7 +1124,7 @@ test('codexCacheSessionId sanitizes and clips instead of dropping the key', () =
 async function captureCodex(run) {
   const seen = []
   const fetchFn = async (_url, init) => {
-    seen.push({ headers: init.headers, body: JSON.parse(init.body.toString()) })
+    seen.push({ headers: init.headers, body: JSON.parse(upstreamText(init)) })
     return new Response('{"id":"resp"}', { status: 200, headers: { 'content-type': 'application/json' } })
   }
   const proxy = createProxy({
@@ -1188,7 +1235,7 @@ test('proxy parks extra leading developer and strips prompt_cache_retention on t
 test('GLM hop pins x-session-id from DSH and strips prompt_cache_retention', async () => {
   const seen = []
   const fetchFn = async (_url, init) => {
-    seen.push({ headers: init.headers, body: JSON.parse(String(init.body)) })
+    seen.push({ headers: init.headers, body: JSON.parse(upstreamText(init)) })
     return new Response('{"id":"chat"}', { status: 200, headers: { 'content-type': 'application/json' } })
   }
   const proxy = createProxy({
@@ -1272,7 +1319,7 @@ test('GLM hop parks extra leading system snapshots after the conversation', asyn
   resetGlmSystemPins()
   const seen = []
   const fetchFn = async (_url, init) => {
-    seen.push(JSON.parse(String(init.body)))
+    seen.push(JSON.parse(upstreamText(init)))
     return new Response('{"id":"chat"}', { status: 200, headers: { 'content-type': 'application/json' } })
   }
   const proxy = createProxy({
@@ -1328,7 +1375,7 @@ test('GLM hop parks extra leading system snapshots after the conversation', asyn
 test('Grok 4.7 Fast keeps its real backend id and does not ride Codex Priority', async () => {
   const seen = []
   const fetchFn = async (url, init) => {
-    seen.push({ headers: init.headers, body: JSON.parse(init.body.toString()) })
+    seen.push({ headers: init.headers, body: JSON.parse(upstreamText(init)) })
     return new Response('{"id":"resp"}', { status: 200, headers: { 'content-type': 'application/json' } })
   }
   const proxy = createProxy({

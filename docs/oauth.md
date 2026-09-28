@@ -15,7 +15,7 @@
 
 | 家族 | 一线对照 | 社区 / 文档 | 本 hop 钉住 | 设计源 |
 |---|---|---|---|---|
-| Codex | [openai/codex](https://github.com/openai/codex) `rust-v0.155.1` | Codex CLI `models.json` + 活目录 `GET .../codex/models`（GPT-6 Sol/Luna 需 `client_version` ≥ 0.155.0）；[#37345](https://github.com/openai/codex/issues/37345) routing-hint | UA `codex_cli_rs/0.155.1` | [`codex/README.md`](../src/oauth/codex/README.md) |
+| Codex | [openai/codex](https://github.com/openai/codex) `rust-v0.155.1` | Codex CLI `models.json` + 活目录 `GET .../codex/models`（GPT-6 Sol/Luna 需 `client_version` ≥ 0.155.0）；[#37345](https://github.com/openai/codex/issues/37345) routing-hint | UA `codex_cli_rs/0.155.1`；请求体 `content-encoding: zstd` | [`codex/README.md`](../src/oauth/codex/README.md) |
 | Grok | [xai-org/grok-build](https://github.com/xai-org/grok-build) | [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent)（`~/.hermes/auth.json` 导入） | UA `grok-cli/0.2.93` | [`grok/README.md`](../src/oauth/grok/README.md) |
 | GLM | **[zai-org/ZCode](https://github.com/zai-org/ZCode)** `872ad96`（tree 3.14.0）+ [docs.z.ai](https://docs.z.ai/devpack/quick-start) | ZCode 已开源：`official-coding-plan-gateway.ts`、`config/provider/zcode-builtin.json`、`runner-attribution.ts` | UA `ZCode/3.10.1 ai-sdk/anthropic/3.0.81`；Coding Plan Anthropic 走 `zcode.z.ai/api/v1/ultra[-zai]/anthropic` | [`glm/README.md`](../src/oauth/glm/README.md) |
 | Kiro | Kiro IDE / [kiro.dev/docs/models](https://kiro.dev/docs/models) | [ZyphrZero/kiro.rs](https://github.com/ZyphrZero/kiro.rs)；[mikeyobrien/pi-provider-kiro](https://github.com/mikeyobrien/pi-provider-kiro) `0.10.2` | eventstream `GenerateAssistantResponse` | [`kiro/README.md`](../src/oauth/kiro/README.md) |
@@ -54,6 +54,7 @@ CLIProxyAPI 同时包了 Codex / Grok / Antigravity 等多家。**只**在 Antig
 | `x-client-request-id` = `thread-id` | 同上 | 同 pin |
 | 同 turn 重试回放 `x-codex-turn-state` | `codex-rs/core/src/client.rs` | `proxy.ts` `RetryableUpstream` |
 | Fast → Priority | [#37345](https://github.com/openai/codex/issues/37345) | body `service_tier: priority` + `x-codex-routing-hint` |
+| 请求体 zstd（`content-encoding: zstd`） | 官方客户端同款；宿主自带 openai-codex provider 同样压缩 | `request.ts` `encodeCodexBody`：每个请求压一次，重试复用同一份字节 |
 | 剥 `max_output_tokens` | [#39397](https://github.com/openai/codex/issues/39397) | `request.ts` |
 | `pro` / `prolite` 徽章 | [#29243](https://github.com/openai/codex/issues/29243) | `plan.ts` Pro 20x / Pro 5x |
 | 目录 | CLI `models.json` + `GET .../codex/models` | `CODEX_MODELS`；GPT-6 / 5.6 默认 258K；Sol/Luna 需 `client_version` ≥ 0.155.0；5.4 系列 / Spark 已 400 不收录 |

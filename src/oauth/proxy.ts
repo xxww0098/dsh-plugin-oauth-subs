@@ -44,7 +44,7 @@ import { applyDevinCache } from './devin/cache.js'
 import { forwardDevin } from './devin/transport.js'
 import { RequestError, describeError, sendJson } from '../utils/http.js'
 import { applyFastMode } from '../utils/fast-mode.js'
-import { normalizeCodexResponsesBody } from './codex/request.js'
+import { encodeCodexBody, normalizeCodexResponsesBody } from './codex/request.js'
 import { CLINE_CHAT_URL, clineUpstreamHeaders } from './cline/index.js'
 import { clineCatalogModels } from './cline/catalog.js'
 import { applyClineCache } from './cline/cache.js'
@@ -438,6 +438,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, max
           headersOf: codexUpstreamHeaders,
           fetchFn,
           family: 'codex',
+          encodeBody: encodeCodexBody,
           maxRequestBodyBytes,
           upstreamTimeouts,
           startedAt,
@@ -872,15 +873,18 @@ export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, max
   }
 }
 
-async function forward(request, response, { url, fallbackUrl = undefined, session, tokens, headersOf, fetchFn, family, wire = undefined, maxRequestBodyBytes, upstreamTimeouts, startedAt, signal, classifyFailure = undefined }: any) {
+async function forward(request, response, { url, fallbackUrl = undefined, session, tokens, headersOf, fetchFn, family, wire = undefined, maxRequestBodyBytes, upstreamTimeouts, startedAt, signal, classifyFailure = undefined, encodeBody = undefined }: any) {
   const raw = await readBody(request, maxRequestBodyBytes)
   const { payload, cacheSessionId, stream, routingHint, grokModel, copilotVision, copilotInitiator } = rewriteUpstreamBody(raw, family, wire)
-  const body = Buffer.from(JSON.stringify(payload))
+  // A route's `encodeBody` (Codex zstd) runs once; retries resend the same bytes.
+  const plain = Buffer.from(JSON.stringify(payload))
+  const { body, headers: encodingHeaders = {} } = encodeBody?.(plain) ?? { body: plain }
   const grokReqId = family === 'grok' ? randomUUID() : undefined
   let baseHeaders = {
     ...headersOf(session, cacheSessionId),
     'content-type': request.headers['content-type'] ?? 'application/json',
     ...(stream ? { accept: 'text/event-stream' } : {}),
+    ...encodingHeaders,
     ...(family === 'codex' ? {
       ...codexCacheHeaders(cacheSessionId),
       ...(routingHint ? { 'x-codex-routing-hint': routingHint } : {}),

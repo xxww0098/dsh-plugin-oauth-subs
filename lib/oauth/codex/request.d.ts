@@ -15,3 +15,14 @@ export declare function liftInstructions(input: any): {
     input: any[];
 };
 export declare function normalizeCodexResponsesBody(payload: any): any;
+/**
+ * The Codex backend decodes `content-encoding: zstd` request bodies, as the
+ * official client sends them — `instructions` alone is ~128KB. Called once per
+ * request; every retry reuses the same bytes.
+ */
+export declare function encodeCodexBody(body: Buffer): {
+    body: NonSharedBuffer;
+    headers: {
+        'content-encoding': string;
+    };
+};

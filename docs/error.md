@@ -2,6 +2,12 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-28：Codex 请求体明文上传，长会话每轮几百 KB 到 MB
+
+**现象**：Codex 请求体不压缩，光 `instructions` 就约 128KB，长会话每轮上传几百 KB 到 MB（宿主自带的 openai-codex provider 早已用 zstd）。
+**根因**：`forward()` 只发 `JSON.stringify` 后的明文 Buffer，没有按家族编码请求体的接缝。
+**修复**：`forward()` 新增路由参数 `encodeBody(buffer) → { body, headers }`，只转交；Codex 路由传 `codex/request.ts` 的 `encodeCodexBody`（`zlib.zstdCompressSync` 默认级别 + `content-encoding: zstd`，不设大小门槛），在尝试循环之前压一次，重试复用同一个 Buffer；其他家族不传，仍是明文。后端若回 400 / 415 不回退明文。
+**活测（2026-09-28，宿主 Node v24.21.0，worktree `lib/` 的 `createProxy`，未刷新）**：41307 B → 9722 B（23.5%）。流式 gpt-5.6-luna 200（2.2s，`response.completed`）；流式与非流式各 1 次 gpt-5.4-mini 回 400「model is not supported」——后端已解压并读出 `model`，非编码问题；非流式成功路径未单独验。无 ExperimentalWarning。
 ## 2026-09-28：上游空闲约 4s 就断连，下一轮重新握手
 
 **现象**：两轮之间空闲超过约 4s（codex 14%，其余家族 10–16%），下一个请求要重新 TCP + TLS 握手（chatgpt.com 约 1.7s，ollama.com 约 0.5s）。
