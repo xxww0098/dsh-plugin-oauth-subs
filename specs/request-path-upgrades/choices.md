@@ -112,3 +112,32 @@ spec 没写到、由实施者自己拍板的决定。每条：决定 → 理由 
 - **测试真等 6s，不注入更短的超时**：间隔必须超过 undici 固定的 4s 回落才有意义，缩短就不诚实；因此 `createOutboundSession` 不加超时参数。→ sound。
 - **代理路径用本地 CONNECT 代理 + 非本地主机名测试**（本地地址总是绕过代理）；同一次运行里放一个全局 `fetch` 对照组（得 2 个连接）。→ sound。
 - 活测：Codex `GET /models` 在 0s/30s/55s 共用 1 个连接，后两次快约 0.8s。
+
+## 04
+
+- **`upstreamRequest` 多收一个 `response`**（只读 `headersSent`，作为 `committed()` 的提交点）。→ sound。
+- **`run` 不等传输层自己察觉超时**：忽略中止信号的 hop 也会按时放弃；`attemptUpstream` 每次 read 后检查尝试是否已中止，迟到的 read 不会到达客户端。→ sound。
+- **hop 抛出的未识别错误一律算可重试的传输故障**；刻意抛出的 `RequestError`（含 `LoginRequiredError`）从不重试。→ sound。
+- **`UpstreamFailure.code` 取 `transport | timeout | http | quota`**，另加 `retryAfterMs` 以继续转发 `retry-after-ms`。→ sound。
+- **非流式的「还能否再试」同样预留 120s**，尽管它的首字节窗口是剩余预算。→ sound（保守）。
+- **最终状态码**：最后一次失败是超时 → 504，否则 502 +「failed n times」（预算太短没重试时也会出现「failed 1 times」）。→ sound。
+- **GLM 网关回退在同一次尝试内完成**；401 刷新重试沿用同一尝试序号（Grok `retryAttempt` 头不变）。→ sound。
+- **Cline 额度回复不带 `retry-after`**（宿主不重试额度错误）；只匹配顶层 `payload.code === 'INFERENCE_CAP_ERROR'`。→ sound。
+- **repro 用 2s 首字节 / 5.5s 预算**而非等比缩放（退避不缩放），保持「第二次塞得下、第三次塞不下」的形状。→ sound。
+- **人工检查点「未登录 → 403 在 DSH 里怎么显示」未做**：需要真实宿主，而宿主加载的是 `main`。→ provisional（user）：合入主干后看；显示误导就按 04 改 409。
+
+## 10
+
+- **总量上限从 32 MiB 调到 64 MiB**：活测真实签名 140 / 2516 字符（gemini-3-flash low / high），32 MiB 只够约 128 B/键；一个满会话 ≈ 4096 × 2.6 KB ≈ 10.5 MiB，64 MiB 约容 6 个满会话，当前会话永远最新不会被整体淘汰。spec 的「典型大小 × 4096 × 64」≈ 640 MiB 不是合理上限。→ sound（按 spec「按实测调整」执行）。
+- **字节预算同时计键文本和签名文本**（键是 `name+args` JSON，可能很大）。→ sound。
+- **仅当前会话自身超预算时才淘汰它最旧的键**，其余情况整会话淘汰。→ sound。
+- **已知的存量问题未改**：上游不给 `functionCall.id` 时每个响应的调用都叫 `call_1…`，`id:` 键跨轮碰撞；先查 `name+args` 键，所以只在它缺失时可能挂错签名。→ provisional：不在 F7 范围，留给后续。
+
+## 集成审查（W0–W3 合并树）
+
+- **修复**：`index.ts` 的 `snapshot` 包装丢掉了 `fresh`，14 的「改动后开新一轮」在生产里是死代码；`status` RPC 现在接受 `{ fresh }`，UI 的动作后刷新传 `fresh`；轮询每次刷新最多等 30s，挂死的 RPC 不再永久停掉轮询；未配置时的出站会话改为懒创建，配置时关掉，热重载不再遗留第二个 Agent。
+- **不修，记录**：
+  - 换票挂过 120s 后允许第二次换票，若厂商已轮换，第二次按时的 `invalid_grant` 会删号（spec 接受的残余风险，120s 上限是 spec 定值）。→ provisional：15 观察。
+  - 代理路径上的任何非中止失败都显示为「出站代理不可用」，包括经健康代理访问某个上游时的 DNS/TLS 错误（02a 的设计取舍：宁可多报）。→ sound。
+  - 保活 60s 后，若上游在 60s 内静默关闭空闲连接，非对话 POST（刷新、登录换码、额度）不会被重试，只会一次性失败后进退避。→ provisional：按 11 的规则由 15 看 ECONNRESET 计数。
+  - `assertPersistedProviders` 严格比对 `cacheRetention`：若宿主读回时丢掉/默认化该字段，每次 sync 都会抛错。→ provisional：08 合入主干后的活测验证。
