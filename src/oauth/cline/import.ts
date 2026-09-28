@@ -83,4 +83,5 @@ export const clineImported = {
   cli: 'cline',
   is: (session) => session?.source === 'cli',
   reread: () => resolveClineCliCredentials(),
+  identity: (session) => session?.userId,
 }

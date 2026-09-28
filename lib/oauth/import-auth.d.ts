@@ -56,6 +56,7 @@ export declare const codexImported: {
         expiresAt: any;
         accountId: any;
     } | undefined>;
+    identity: (session: any) => any;
 };
 export declare function importGrokAuth(paths?: string[]): Promise<{
     session: {

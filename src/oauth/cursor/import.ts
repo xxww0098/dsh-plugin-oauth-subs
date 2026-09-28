@@ -21,6 +21,7 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { cursorAccessStillValid, cursorSession } from './index.js'
 import { ImportedLoginStale } from '../tokens.js'
+import { decodeJwtPayload } from '../../utils/jwt.js'
 
 const execFileAsync = promisify(execFile)
 const KEYCHAIN_TIMEOUT_MS = 2000
@@ -219,5 +220,6 @@ export function cursorImported(options: any = {}) {
     cli: CURSOR_CLI,
     is: (session) => session?.source === 'cli_keychain' || session?.source === 'ide_vscdb',
     reread: (session) => rereadCursorImport(session, options),
+    identity: (session) => decodeJwtPayload(session?.accessToken)?.sub,
   }
 }

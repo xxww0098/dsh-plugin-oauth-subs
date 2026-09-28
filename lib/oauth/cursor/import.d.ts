@@ -71,4 +71,5 @@ export declare function cursorImported(options?: any): {
         refreshToken: any;
         expiresAt: number;
     } | undefined>;
+    identity: (session: any) => any;
 };

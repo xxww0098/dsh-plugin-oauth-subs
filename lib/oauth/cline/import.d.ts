@@ -64,4 +64,5 @@ export declare const clineImported: {
         refreshToken: string;
         expiresAt: any;
     } | undefined>;
+    identity: (session: any) => any;
 };

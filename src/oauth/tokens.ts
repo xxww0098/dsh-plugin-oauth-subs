@@ -21,8 +21,8 @@ export class LoginRequiredError extends RequestError {
  * login stays and the next reread picks up whatever the CLI wrote.
  */
 export class ImportedLoginStale extends LoginRequiredError {
-  constructor(displayName: string, cli: string) {
-    super(`${displayName} imported login is stale; run ${cli} or use browser login`)
+  constructor(displayName: string, cli: string, why = 'is stale') {
+    super(`${displayName} imported login ${why}; run ${cli} or use browser login`)
     this.name = 'ImportedLoginStale'
   }
 }
@@ -157,7 +157,10 @@ export class TokenManager {
   /** Family grant codes that are permanent beyond the shared ones. */
   declare permanentCodes: readonly string[]
   declare onRemoved: any
-  /** `{ is(session), reread(session), cli }` — logins owned by a vendor CLI's store. */
+  /**
+   * `{ is(session), reread(session), cli, identity?(session) }` — logins owned
+   * by a vendor CLI's store; `identity` names the account where the store has one.
+   */
   declare imported: any
   /** version → when its imported store was last reread (throttles rereads that find nothing newer). */
   declare rereadAt: Map<any, number>
@@ -307,6 +310,10 @@ export class TokenManager {
   async #reread(session) {
     const fresh = await this.imported.reread(session)
     if (!(fresh?.expiresAt > Date.now() + IMPORTED_MIN_TTL_MS)) throw new ImportedLoginStale(this.displayName, this.imported.cli)
+    // The CLI now holds another account: its tokens must not land on this row.
+    const was = this.imported.identity?.(session)
+    const now = this.imported.identity?.(fresh)
+    if (was && now && was !== now) throw new ImportedLoginStale(this.displayName, this.imported.cli, 'belongs to another account now')
     const next = { ...session }
     for (const key of IMPORTED_TOKEN_FIELDS) if (fresh[key] !== undefined) next[key] = fresh[key]
     return next

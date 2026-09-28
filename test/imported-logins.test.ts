@@ -24,24 +24,26 @@ function jwt(payload) {
 const CURSOR_PREEMPT_MS = 5 * 60_000
 
 /**
- * One row per read-only family: `write(tag, expiresAt)` puts a login into the
- * vendor CLI's own store, `seed` is what the reader needs to find it again,
- * `hook` is the family's real `imported` hook pointed at that store.
+ * One row per read-only family: `write(tag, expiresAt, account?)` puts a login
+ * into the vendor CLI's own store, `seed` is what the reader needs to find it
+ * again, `hook` is the family's real `imported` hook pointed at that store.
+ * `otherAccount` is set where the store names its account.
  */
 const FAMILIES = [
   {
     provider: 'codex',
+    otherAccount: 'acct-codex-other',
     async setup(dir) {
       await mkdir(join(dir, '.codex'), { recursive: true })
       const file = join(dir, '.codex', 'auth.json')
       return {
         hook: codexImported,
         seed: { source: file },
-        write: (tag, expiresAt) => writeFile(file, JSON.stringify({
+        write: (tag, expiresAt, account = 'acct-codex') => writeFile(file, JSON.stringify({
           tokens: {
             access_token: jwt({ exp: Math.floor(expiresAt / 1000), tag }),
             refresh_token: `rt-codex-${tag}`,
-            id_token: jwt({ email: 'codex@example.test', 'https://api.openai.com/auth': { chatgpt_account_id: 'acct-codex' } }),
+            id_token: jwt({ email: 'codex@example.test', 'https://api.openai.com/auth': { chatgpt_account_id: account } }),
           },
           last_refresh: new Date(0).toISOString(),
         })),
@@ -50,6 +52,7 @@ const FAMILIES = [
   },
   {
     provider: 'cursor',
+    otherAccount: 'auth0|cursor-other',
     async setup() {
       const store: any = {}
       return {
@@ -61,8 +64,8 @@ const FAMILIES = [
           },
         }),
         seed: { source: 'cli_keychain' },
-        write: async (tag, expiresAt) => {
-          store.access = jwt({ sub: 'auth0|cursor-user', exp: Math.floor((expiresAt + CURSOR_PREEMPT_MS) / 1000), tag })
+        write: async (tag, expiresAt, account = 'auth0|cursor-user') => {
+          store.access = jwt({ sub: account, exp: Math.floor((expiresAt + CURSOR_PREEMPT_MS) / 1000), tag })
           store.refresh = `rt-cursor-${tag}`
         },
       }
@@ -70,6 +73,7 @@ const FAMILIES = [
   },
   {
     provider: 'cline',
+    otherAccount: 'usr-cline-other',
     async setup(dir, t) {
       const previous = process.env.CLINE_HOME
       process.env.CLINE_HOME = dir
@@ -78,12 +82,12 @@ const FAMILIES = [
       return {
         hook: clineImported,
         seed: {},
-        write: (tag, expiresAt) => writeFile(join(dir, 'data', 'settings', 'providers.json'), JSON.stringify({
+        write: (tag, expiresAt, account = 'usr-cline') => writeFile(join(dir, 'data', 'settings', 'providers.json'), JSON.stringify({
           providers: { cline: { settings: { auth: {
             accessToken: `workos:access-${tag}`,
             refreshToken: `rt-cline-${tag}`,
             expiresAt,
-            accountId: 'usr-cline',
+            accountId: account,
             metadata: { userInfo: { email: 'cline@example.test' } },
           } } } },
         })),
@@ -184,6 +188,18 @@ for (const family of FAMILIES) {
     await assert.rejects(() => manager.refreshNow(id), isStale)
     assert.deepEqual(calls, { refresh: 0, reread: 2, removed: 0 })
     assert.ok(await getStoredSession(family.provider, id, authPath), 'the login is not deleted')
+  })
+}
+
+for (const family of FAMILIES.filter((row) => row.otherAccount)) {
+  test(`${family.provider}: a reread that finds another account is stale and keeps the login`, async (t) => {
+    const { store, manager, calls, authPath, id, saved } = await importedLogin(t, family, { storedExpiresAt: Date.now() + 10_000 })
+    await store.write('switched', Date.now() + 3_600_000, family.otherAccount)
+    const other = (error) => error instanceof ImportedLoginStale && /belongs to another account now; run .+ or use browser login/.test(error.message)
+    await assert.rejects(() => manager.refreshNow(id), other)
+    assert.deepEqual(calls, { refresh: 0, reread: 1, removed: 0 })
+    const stored = (await getStoredSession(family.provider, id, authPath)).session
+    assert.equal(stored.accessToken, saved.session.accessToken, 'the other account\u2019s tokens never land on this row')
   })
 }
 

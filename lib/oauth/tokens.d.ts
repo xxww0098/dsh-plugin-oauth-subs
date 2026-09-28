@@ -14,7 +14,7 @@ export declare class LoginRequiredError extends RequestError {
  * login stays and the next reread picks up whatever the CLI wrote.
  */
 export declare class ImportedLoginStale extends LoginRequiredError {
-    constructor(displayName: string, cli: string);
+    constructor(displayName: string, cli: string, why?: string);
 }
 /**
  * How long a transient refresh failure suppresses another attempt for the same
@@ -74,7 +74,10 @@ export declare class TokenManager {
     /** Family grant codes that are permanent beyond the shared ones. */
     permanentCodes: readonly string[];
     onRemoved: any;
-    /** `{ is(session), reread(session), cli }` — logins owned by a vendor CLI's store. */
+    /**
+     * `{ is(session), reread(session), cli, identity?(session) }` — logins owned
+     * by a vendor CLI's store; `identity` names the account where the store has one.
+     */
     imported: any;
     /** version → when its imported store was last reread (throttles rereads that find nothing newer). */
     rereadAt: Map<any, number>;
