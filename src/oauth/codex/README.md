@@ -10,7 +10,7 @@
 | 文件 | 职责 |
 |---|---|
 | [`index.ts`](index.ts) | 客户端 id、端点、目录、PKCE authorize、换票、刷新、上游头 |
-| [`request.ts`](request.ts) | Responses 体：把 `input` 里的 system/developer 抬到 `instructions`，后缀停放，剥 gpt-5.6 拒收字段 |
+| [`request.ts`](request.ts) | Responses 体：把 `input` 里的 system/developer 抬到 `instructions`，后缀停放，剥 gpt-5.6 拒收字段；`encodeCodexBody` zstd 压缩 |
 | [`cache.ts`](cache.ts) | `prompt_cache_key` + `session-id` / `thread-id` / `x-client-request-id`。禁止给别的家族用 |
 
 调度：[`../proxy.ts`](../proxy.ts) `family === 'codex'` → `normalizeCodexResponsesBody` + `applyCodexCache` + `codexCacheHeaders`。
@@ -46,6 +46,7 @@ DSH  →  本机 Responses 代理  →  POST chatgpt.com/backend-api/codex/respo
 ```
 
 头：`codexUpstreamHeaders`（`Authorization`、`chatgpt-account-id`、`originator`、`openai-beta: responses=experimental`）+ `session-id` / `thread-id` / `x-client-request-id`。同一 DSH 请求重试时回放 `x-codex-turn-state`。
+请求体：`encodeCodexBody` 用 zstd 压缩（`content-encoding: zstd`，默认级别，不设大小门槛），每个请求只压一次，重试复用同一份字节；后端解码失败（400 / 415）时不回退明文。
 Fast：body `service_tier` 从 `fast` 改成 `priority`，并带 `x-codex-routing-hint`（`codexRoutingHint`，见 openai/codex#37345）。
 `store` 必须 `false`。`include` 默认 `reasoning.encrypted_content`。剥掉 `prompt_cache_retention` / `prompt_cache_options` / `safety_identifier` / `max_output_tokens`（gpt-5.6 400，Codex #39397）。
 

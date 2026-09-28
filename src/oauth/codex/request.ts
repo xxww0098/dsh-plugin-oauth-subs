@@ -11,6 +11,8 @@
  * extras are parked at the suffix so the conversation prefix can still hit.
  */
 
+import { zstdCompressSync } from 'node:zlib'
+
 const INSTRUCTION_ROLES = new Set(['system', 'developer'])
 
 function instructionText(item) {
@@ -107,4 +109,13 @@ export function normalizeCodexResponsesBody(payload) {
   }
 
   return next
+}
+
+/**
+ * The Codex backend decodes `content-encoding: zstd` request bodies, as the
+ * official client sends them — `instructions` alone is ~128KB. Called once per
+ * request; every retry reuses the same bytes.
+ */
+export function encodeCodexBody(body: Buffer) {
+  return { body: zstdCompressSync(body), headers: { 'content-encoding': 'zstd' } }
 }
