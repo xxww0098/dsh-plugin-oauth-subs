@@ -28,7 +28,7 @@ export declare function devinUserJwt(session: any, { fetchFn, signal }?: any): P
 } | undefined>;
 /**
  * SeatManagementService/GetUserStatus (unary application/proto, raw body) —
- * the quota + identity RPC. Throws on HTTP errors; 401/403 are permanent.
+ * the quota + identity RPC. Throws on HTTP errors; 401 is permanent.
  */
 export declare function devinUserStatus(session: any, { fetchFn, signal }?: any): Promise<{
     userStatus: {

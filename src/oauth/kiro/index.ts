@@ -9,6 +9,7 @@
 
 import { createHash, randomUUID } from 'node:crypto'
 import { outboundFetch } from '../../utils/outbound.js'
+import { oauthCodeOf } from '../tokens.js'
 
 export const KIRO_PORTAL_URL = 'https://app.kiro.dev'
 export const KIRO_AUTH_HOST = 'prod.us-east-1.auth.desktop.kiro.dev'
@@ -436,11 +437,13 @@ function refreshExpiresAt(body: any = {}) {
 export class KiroHttpError extends Error {
   declare status: any
   declare retryAfter: string | undefined
+  declare oauthCode: string | undefined
 
-  constructor(message, status, { retryAfter }: any = {}) {
+  constructor(message, status, { retryAfter, oauthCode }: any = {}) {
     super(message)
     this.name = 'KiroHttpError'
     this.status = status
+    if (oauthCode) this.oauthCode = oauthCode
     if (retryAfter != null && String(retryAfter).trim()) this.retryAfter = String(retryAfter).trim()
   }
 }
@@ -495,7 +498,7 @@ async function readJson(response, label) {
     throw new KiroHttpError(
       `${label} failed (HTTP ${response.status})${text ? `: ${text.slice(0, 240)}` : ''}`,
       response.status,
-      { retryAfter: headerOf(response, 'retry-after') },
+      { retryAfter: headerOf(response, 'retry-after'), oauthCode: oauthCodeOf(text) },
     )
   }
   return text ? JSON.parse(text) : {}
@@ -620,11 +623,6 @@ export async function refreshKiro(session, { fetchFn = outboundFetch } = {}) {
   if (method === 'external_idp') return refreshKiroExternalIdp(session, { fetchFn })
   if (method === 'idc') return refreshKiroIdc(session, { fetchFn })
   return refreshKiroSocial(session, { fetchFn })
-}
-
-export function isKiroPermanentRefreshError(error) {
-  const text = error instanceof Error ? error.message : String(error)
-  return /invalid_grant|Invalid refresh token/i.test(text)
 }
 
 export function isKiroCredential(raw) {

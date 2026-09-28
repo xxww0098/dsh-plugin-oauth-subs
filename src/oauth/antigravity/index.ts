@@ -18,6 +18,7 @@ import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { outboundFetch } from '../../utils/outbound.js'
+import { oauthError } from '../tokens.js'
 
 // Public Google installed-app client from CLIProxyAPI constants.go (not a private secret).
 export const ANTIGRAVITY_CLIENT_ID = [
@@ -192,8 +193,6 @@ export const ANTIGRAVITY_PLAN_NAMES = Object.freeze({
   legacy_tier: 'Legacy',
   legacytier: 'Legacy',
 })
-
-const PERMANENT_REFRESH = new Set(['invalid_grant', 'invalid_client', 'unauthorized_client'])
 
 export function antigravityPlatform(platform = process.platform, arch = process.arch) {
   const os = platform === 'darwin' ? 'darwin' : platform === 'win32' ? 'windows' : 'linux'
@@ -546,18 +545,6 @@ async function readJson(response, label) {
   return text ? JSON.parse(text) : undefined
 }
 
-async function oauthError(response, label) {
-  const text = await response.text()
-  let code
-  try {
-    code = JSON.parse(text)?.error
-  } catch {
-    code = undefined
-  }
-  const error = new Error(`${label} failed (HTTP ${response.status})${text ? `: ${text.slice(0, 240)}` : ''}`)
-  return typeof code === 'string' ? Object.assign(error, { code }) : error
-}
-
 export async function exchangeAntigravityTokens(body, fetchFn = outboundFetch) {
   const response = await fetchFn(ANTIGRAVITY_TOKEN_URL, {
     method: 'POST',
@@ -713,12 +700,6 @@ export async function probeAntigravityValidation(session, { fetchFn = outboundFe
   } catch {
     return undefined
   }
-}
-
-export function isAntigravityPermanentRefreshError(error) {
-  if (parseAntigravityValidation(error) || error?.code === ANTIGRAVITY_VERIFY_CODE) return false
-  const code = error?.code ?? error?.error
-  return typeof code === 'string' && PERMANENT_REFRESH.has(code)
 }
 
 export function antigravityRequestId() {

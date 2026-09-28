@@ -129,7 +129,7 @@ export declare const CLINE_MODELS: readonly {
     contextWindow: number;
     maxTokens: number;
 }[];
-export declare function clineSourceLabel(source: any): "env" | "key" | "CLI" | "OAuth" | undefined;
+export declare function clineSourceLabel(source: any): "env" | "CLI" | "key" | "OAuth" | undefined;
 /** `formatAccessToken` — idempotent `workos:` prefix on the bearer value. */
 export declare function formatClineAccessToken(value: any): string | undefined;
 /** `normalizeStoredAccessToken` — the bare WorkOS JWT. */
@@ -197,7 +197,6 @@ export declare function refreshCline(session: any, fetchFn?: typeof outboundFetc
     expiresAt: number;
     account: string;
 }>;
-export declare function isClinePermanentRefreshError(error: any): boolean;
 /**
  * `buildClineRequestHeaders` from `request-headers.ts` plus the CLI's own
  * client context (`apps/cli/src/main.ts`: name `cline-cli`, platform `cli`).

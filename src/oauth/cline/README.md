@@ -66,7 +66,7 @@ WorkOS 那一对 token 不是 Cline 会话——`register` 兑换才拿到 `usr-
 `Unauthorized: Please make sure you're using the latest version of Cline…`（2026-09-19 实测）。前缀幂等，刷新后重加一次。
 
 `expiresAt` 是 ISO 字符串，`DEFAULT_REFRESH_BUFFER_MS` = 5min 预刷新。刷新端点对失效凭据回 **200 + `success:false`**，
-也是永久失败（`isClinePermanentRefreshError`）。
+抛成 401 + `invalid_grant`，也是永久失败（`isPermanentRefreshFailure`）；403 / 429 / 5xx 是临时失败。
 
 入口：`clineDeviceSpec` → `DeviceFlowManager.start('cline')` → `completeClineDevice` → `registerClineTokens` → `clineSessionFromAuthData`。
 导入：[`import.ts`](import.ts) `importClineAuth`。空花名册自动导入一次；已存 session **绝不**静默覆盖。

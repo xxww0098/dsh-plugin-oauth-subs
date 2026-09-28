@@ -4,12 +4,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, test } from 'node:test'
 import { AuthController } from '../lib/oauth/controller.js'
-import { TokenManager } from '../lib/oauth/tokens.js'
+import { REFRESH_EXPIRED_RETRY_MS, REFRESH_LATE_CAP_MS, TokenManager, isPermanentRefreshFailure } from '../lib/oauth/tokens.js'
 import { accountIdOf, getSession, listStoredSessions, replaceAccountId, saveSession, updateAccountSession } from '../lib/oauth/store.js'
 import { kiroSession } from '../lib/oauth/kiro/index.js'
 import { createProxy } from '../lib/oauth/proxy.js'
 import { CODEX_API_URL, CODEX_TOKEN_URL } from '../lib/oauth/codex/index.js'
 import { ANTIGRAVITY_GENERATE_URL } from '../lib/oauth/antigravity/index.js'
+import { isCursorRefreshKnownBad } from '../lib/oauth/cursor/refresh-guard.js'
+import { devinSession } from '../lib/oauth/devin/index.js'
 
 // The host process's event loop is never empty; refresh timeout timers are
 // deliberately unref'd (src/oauth/tokens.ts waitFor), so a bare pending await
@@ -418,10 +420,11 @@ test('a transient refresh failure serves the still-valid token and backs off the
 })
 
 async function drained(manager) {
-  await Promise.allSettled([...manager.inflight.values()])
+  await Promise.allSettled([...manager.inflight.values()].map((owner) => owner.promise))
 }
 
-test('an expired token retries the refresh instead of replaying a backed-off failure', { timeout: 5000 }, async (t) => {
+test('an expired token replays a failed refresh for 10s, then retries the endpoint', { timeout: 5000 }, async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() })
   let refreshes = 0
   const { controller, authPath } = await fixture(t, async (url) => {
     if (String(url).endsWith('/refreshToken')) {
@@ -433,7 +436,14 @@ test('an expired token retries the refresh instead of replaying a backed-off fai
     return Response.json({})
   })
   await saveSession('kiro', account('a', true), authPath)
-  await assert.rejects(controller.tokens.kiro.session())
+  const errors = []
+  for (let call = 0; call < 5; call++) {
+    errors.push(await controller.tokens.kiro.session().then(() => undefined, (error) => error))
+    t.mock.timers.tick(REFRESH_EXPIRED_RETRY_MS / 5 - 1)
+  }
+  assert.equal(refreshes, 1, '5 calls inside the window share one exchange')
+  assert.ok(errors.every((error) => error instanceof Error && error === errors[0]), 'the last failure is replayed')
+  t.mock.timers.tick(5)
   const next = await controller.tokens.kiro.session()
   assert.equal(next.accessToken, 'recovered')
   assert.equal(refreshes, 2)
@@ -556,32 +566,87 @@ test('the token sweep refreshes an expired login before any request arrives', { 
 })
 
 
-test('a hung token endpoint cannot pin the refresh inflight', { timeout: 5000 }, async (t) => {
-  const dir = await mkdtemp(join(tmpdir(), 'oauth-refresh-hang-'))
+async function managed(t, session, options) {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-refresh-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const authPath = join(dir, 'auth.json')
-  const expired = account('hang', true)
-  await saveSession('kiro', expired, authPath)
-  const id = accountIdOf('kiro', expired)
-  let calls = 0
+  await saveSession('kiro', session, authPath)
   const manager = new TokenManager({
-    provider: 'kiro',
-    authPath,
-    displayName: 'Kiro',
-    preemptMs: 300_000,
-    refreshWaitMs: 200,
-    exchangeTimeoutMs: 40,
+    provider: 'kiro', authPath, displayName: 'Kiro', preemptMs: 300_000, refreshWaitMs: 200, exchangeTimeoutMs: 40, ...options,
+  })
+  return { manager, authPath, id: accountIdOf('kiro', session) }
+}
+
+test('a hung exchange stays the only redemption until the late cap', { timeout: 5000 }, async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() })
+  let calls = 0
+  const { manager, id } = await managed(t, account('hang', true), {
     refresh: async (current) => {
       calls += 1
       if (calls === 1) return new Promise(() => {})
       return { ...current, accessToken: 'access-hang-2', expiresAt: Date.now() + 3_600_000 }
     },
-    isPermanent: () => false,
   })
   await assert.rejects(manager.account(id), /token exchange timed out after 40ms/)
+  t.mock.timers.tick(REFRESH_EXPIRED_RETRY_MS)
+  await assert.rejects(manager.account(id), /token exchange timed out after 40ms/)
+  t.mock.timers.tick(REFRESH_LATE_CAP_MS - 2 * REFRESH_EXPIRED_RETRY_MS)
+  await assert.rejects(manager.account(id), /token exchange timed out after 40ms/)
+  assert.equal(calls, 1, 'waiters rejoin the pending exchange instead of redeeming the token again')
+  t.mock.timers.tick(REFRESH_EXPIRED_RETRY_MS)
   const second = await manager.account(id)
-  assert.equal(calls, 2, 'the timed-out exchange frees the inflight slot for a fresh attempt')
+  assert.equal(calls, 2, 'past the cap a fresh exchange may start')
   assert.equal(second.session.accessToken, 'access-hang-2')
+})
+
+test('an exchange that succeeds after its waiters timed out is saved, redeemed once, and never logs out', { timeout: 5000 }, async (t) => {
+  const release = deferred()
+  const redeemed = []
+  let removed = 0
+  const original = account('slow', true)
+  const rotated = 'rt_' + 'n'.repeat(200)
+  const { manager, authPath, id } = await managed(t, original, {
+    refresh: async (current) => {
+      redeemed.push(current.refreshToken)
+      await release.promise
+      return { ...current, accessToken: 'late-access', refreshToken: rotated, expiresAt: Date.now() + 3_600_000 }
+    },
+    onRemoved: () => { removed += 1 },
+  })
+  await assert.rejects(manager.account(id), /timed out/)
+  await assert.rejects(manager.account(id), /timed out/)
+  release.resolve()
+  await drained(manager)
+  const rows = await listStoredSessions('kiro', authPath)
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].session.refreshToken, rotated)
+  assert.deepEqual(redeemed, [original.refreshToken])
+  assert.equal(removed, 0)
+  assert.equal((await manager.session(id)).accessToken, 'late-access')
+})
+
+test('a permanent verdict that arrives late keeps the login for the next timely attempt', { timeout: 5000 }, async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() })
+  const release = deferred()
+  let calls = 0
+  let removed = 0
+  const { manager, authPath, id } = await managed(t, account('late-dead', true), {
+    refresh: async () => {
+      calls += 1
+      if (calls === 1) await release.promise
+      throw Object.assign(new Error('invalid_grant'), { status: 400, oauthCode: 'invalid_grant' })
+    },
+    onRemoved: () => { removed += 1 },
+  })
+  await assert.rejects(manager.account(id), /timed out/)
+  release.resolve()
+  await drained(manager)
+  assert.equal(removed, 0)
+  assert.equal((await listStoredSessions('kiro', authPath)).length, 1)
+  t.mock.timers.tick(REFRESH_EXPIRED_RETRY_MS)
+  await assert.rejects(manager.account(id), /login expired/)
+  assert.equal(removed, 1)
+  assert.equal((await listStoredSessions('kiro', authPath)).length, 0)
 })
 
 test('an exchange timeout is transient: a still-valid token keeps serving', { timeout: 5000 }, async (t) => {
@@ -608,9 +673,45 @@ test('an exchange timeout is transient: a still-valid token keeps serving', { ti
       calls += 1
       return new Promise(() => {})
     },
-    isPermanent: () => false,
   })
   const served = await manager.account(accountIdOf('kiro', nearly))
   assert.equal(calls, 1)
   assert.equal(served.session.accessToken, 'access-nearly', 'the expired-soon token still serves while the endpoint stalls')
+})
+
+test('every family classifies refresh failures through one predicate: only 401 and grant codes are permanent', async (t) => {
+  let respond
+  const { controller } = await fixture(t, async () => respond())
+  const expired = Date.now() - 1000
+  // Each family's real refresh callback, fed a session that reaches its token endpoint.
+  const families = {
+    codex: () => ({ accessToken: 'a', refreshToken: 'rt', expiresAt: expired, accountId: 'acct' }),
+    grok: () => ({ accessToken: 'a', refreshToken: 'rt', expiresAt: expired, tokenEndpoint: 'https://auth.x.ai/oauth2/token' }),
+    kiro: () => account('table', true),
+    antigravity: () => ({ accessToken: 'a', refreshToken: 'rt', expiresAt: expired, projectId: 'p' }),
+    cursor: (row) => ({ accessToken: 'a', refreshToken: `crt-${row}`, expiresAt: expired, source: 'pkce' }),
+    kimi: () => ({ accessToken: 'a', refreshToken: 'rt', expiresAt: expired, source: 'oauth' }),
+    copilot: () => ({ accessToken: 'tid=old', refreshToken: 'ghu_table', githubToken: 'ghu_table', expiresAt: expired, source: 'oauth' }),
+    devin: () => devinSession({ accessToken: 'table', expiresAt: expired }),
+    cline: () => ({ accessToken: 'a', refreshToken: 'rt', expiresAt: expired }),
+    anthropic: () => ({ accessToken: 'a', refreshToken: 'rt', expiresAt: expired }),
+  }
+  const rows = [
+    { name: '403 rate limit', permanent: () => false, response: () => Response.json({ message: 'rate limit exceeded' }, { status: 403 }) },
+    { name: '401', permanent: () => true, response: () => Response.json({ error: 'unauthorized' }, { status: 401 }) },
+    // Devin's GetUserStatus is not an OAuth endpoint: it never answers with a grant code.
+    { name: '400 invalid_grant', permanent: (family) => family !== 'devin', response: () => Response.json({ error: 'invalid_grant', error_description: 'Invalid refresh token' }, { status: 400 }) },
+    { name: '5xx mentioning 403', permanent: () => false, response: () => new Response('upstream said 403 Forbidden (401 earlier)', { status: 502 }) },
+    { name: '400 refresh_token_reused', permanent: (family) => family === 'codex', response: () => Response.json({ error: { code: 'refresh_token_reused', message: 'reused' } }, { status: 400 }) },
+  ]
+  for (const [family, session] of Object.entries(families)) {
+    const manager = controller.tokens[family]
+    for (const row of rows) {
+      respond = row.response
+      const error = await manager.refresh(session(row.name)).then(() => undefined, (failure) => failure)
+      assert.ok(error, `${family} / ${row.name} must fail`)
+      assert.equal(isPermanentRefreshFailure(error, manager.permanentCodes), row.permanent(family), `${family} / ${row.name}: ${error.message}`)
+      if (family === 'cursor') assert.equal(isCursorRefreshKnownBad(`crt-${row.name}`), row.permanent(family), `cursor known-bad mark / ${row.name}`)
+    }
+  }
 })

@@ -60,7 +60,7 @@ DSH POST /copilot/v1/chat/completions
 | device | `POST https://github.com/login/device/code` JSON `{client_id,scope}` |
 | token | `POST https://github.com/login/oauth/access_token` JSON device_code grant |
 | 换票 | `GET https://api.github.com/copilot_internal/v2/token` `Authorization: token <ghu_>` |
-| 刷新 | 再换票。GitHub App `refresh_token` 过期才走 GitHub token URL。401 / 403 = 永久，必须重登 |
+| 刷新 | 再换票。GitHub App `refresh_token` 过期才走 GitHub token URL。401 / `invalid_grant` = 永久，必须重登（403 仍先尝试 GitHub 换票，失败按临时处理） |
 | UA / 身份 | `GitHubCopilotChat/0.35.0` + vscode-chat 头。session token 绑定这套头，缺了 Business/预览 403 |
 
 `authorization_pending` = 继续等；`slow_down` = interval +5s；`expired_token` = **重新** device（`DeviceFlowManager.restartOnExpired`）。

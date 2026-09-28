@@ -822,6 +822,3 @@ export async function refreshGlm(session) {
   return session
 }
 
-export function isGlmPermanentRefreshError() {
-  return false
-}

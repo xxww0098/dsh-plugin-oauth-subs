@@ -55,7 +55,7 @@ export declare const KIMI_MODELS: readonly {
     };
 }[];
 export declare function configureKimiIdentity(dataDir: any): void;
-export declare function kimiSourceLabel(source: any): "env" | "key" | "CLI" | "OAuth" | undefined;
+export declare function kimiSourceLabel(source: any): "env" | "CLI" | "key" | "OAuth" | undefined;
 export declare function isKimiKeySource(source: any): boolean;
 export declare function kimiAccountFingerprint(token: any): string;
 export declare function kimiDefaultAccount(token: any): string;
@@ -122,7 +122,6 @@ export declare function completeKimiDevice(tokens: any): Promise<{
     source: any;
 }>;
 export declare function refreshKimi(session: any, fetchFn?: typeof outboundFetch): Promise<any>;
-export declare function isKimiPermanentRefreshError(error: any): boolean;
 export declare function kimiUpstreamHeaders(session: any): {
     'user-agent': string;
     'x-msh-platform': string;

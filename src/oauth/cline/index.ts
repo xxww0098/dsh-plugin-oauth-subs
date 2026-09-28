@@ -24,7 +24,7 @@
 
 import os from 'node:os'
 import { join } from 'node:path'
-import { OAuthEndpointError, oauthError } from '../codex/index.js'
+import { OAuthEndpointError, oauthError } from '../tokens.js'
 import { applyClineCache, clineCacheHeaders, clineCacheSessionId, resetClinePins } from './cache.js'
 import { outboundFetch } from '../../utils/outbound.js'
 
@@ -308,12 +308,6 @@ export async function refreshCline(session, fetchFn = outboundFetch, { signal }:
     throw new OAuthEndpointError('cline refresh: refresh token was rejected', 401, 'invalid_grant')
   }
   return clineSessionFromAuthData(payload.data, session)
-}
-
-export function isClinePermanentRefreshError(error) {
-  if (!(error instanceof OAuthEndpointError)) return false
-  if (error.status === 401 || error.status === 403) return true
-  return error.oauthCode === 'invalid_grant'
 }
 
 /**

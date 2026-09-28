@@ -2,6 +2,13 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-28：换票超时后才成功被丢弃、过期令牌每请求都打端点、403 被当永久失败删号
+
+**现象**：token 端点慢于 20s 时换票结果被丢，下一请求再兑换同一 refresh token（轮换家族回 `invalid_grant` → 登出）；令牌已过期且端点持续失败时每个请求都打一次端点；Copilot / Kimi / Cline / Devin / Cursor 的 403、以及 Cursor / Devin / Kiro 消息里碰巧出现 `401`/`403` 字样的 5xx 都会删登录。
+**根因**：`#refresh` 的 `waitFor` 超时后既不持久化迟到结果、也释放了 inflight；过期令牌故意绕过失败退避；永久失败判定散在 12 个家族谓词里，一半用正则扫消息文本。
+**修复**：`src/oauth/tokens.ts` 单一所有者——`isPermanentRefreshFailure(error, extraCodes)` 只认结构化 401 / `permanent` / `invalid_grant|invalid_client|unauthorized_client` + 家族额外码（仅 Codex 有），家族谓词全部删除；`OAuthEndpointError`/`oauthError` 搬进 `tokens.ts`（`error.code` 对象形也解析），Devin/Cursor/Kiro/Antigravity 抛带 status/`oauthCode` 的错误，Cursor 只在永久失败时记 known-bad。换票自身挂在 inflight 上直到 settle 或 `REFRESH_LATE_CAP_MS`=120s：期间同版本不再发第二次换票，迟到成功照常经版本守卫的 `updateAccountSession` 写回，迟到的永久失败不删号（交给下一次及时的换票判）。过期令牌失败后 `REFRESH_EXPIRED_RETRY_MS`=10s 内直接重放上次失败；有效令牌仍是 5 分钟退避。
+**验证**：`test/token-lifecycle.test.ts`（mock `Date`，保留文件级 keepalive）慢换票迟到成功 / 挂死换票 120s 上限 / 过期+失败端点 10s 内 5 次调用 1 次换票 / 10 个家族 × 5 行的表驱动判定；不做活测（活测进程不许刷新）。
+
 ## 2026-09-28：配了出站代理，Cursor 目录 / h2 对话和未穿线的调用点仍直连
 
 **现象**：设了出站代理（设置页 / `proxyUrl` / `HTTPS_PROXY`）后，Cursor `GetUsableModels` / Run 仍从本机出口发出（区域锁家族照样被拒）；任何没被传 `fetchFn` 的调用点也悄悄直连。

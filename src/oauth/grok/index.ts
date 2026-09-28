@@ -7,7 +7,7 @@
  */
 
 import { decodeJwtPayload } from '../../utils/jwt.js'
-import { OAuthEndpointError, oauthError } from '../codex/index.js'
+import { OAuthEndpointError, oauthError } from '../tokens.js'
 import { outboundFetch } from '../../utils/outbound.js'
 
 export {
@@ -288,10 +288,6 @@ export async function refreshGrok(session, fetchFn = outboundFetch) {
     ...(session.planType === undefined ? {} : { planType: next.planType ?? session.planType }),
     ...(session.clientId === undefined ? {} : { clientId: next.clientId ?? session.clientId }),
   }
-}
-
-export function isGrokPermanentRefreshError(error) {
-  return error instanceof OAuthEndpointError && error.oauthCode === 'invalid_grant'
 }
 
 export function grokCredentialHeaders() {

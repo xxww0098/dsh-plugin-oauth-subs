@@ -59,7 +59,7 @@ CLI 凭据（只读，零网络决定能不能导）：
 
 TOML 字段：`windsurf_api_key`（session token）、`api_server_url`（写进 session.apiServer）、`devin_webapp_host`、`devin_api_url`。token 已带 `devin-session-token$` 前缀，**不要再加一次**（双前缀活测 401）。
 
-session token 无 refresh 端点。`refreshDevin` 到过期边缘时打一次 `GetUserStatus`：活着就把 `expiresAt` 推一年；401/403 = 永久失效（`isDevinPermanentRefreshError`）→ 重新登录。`expiresAt` 优先 JWT `exp` 减 5 分钟，否则一年。
+session token 无 refresh 端点。`refreshDevin` 到过期边缘时打一次 `GetUserStatus`：活着就把 `expiresAt` 推一年；只有 401 = 永久失效（`DevinTransportError.status`，经 `isPermanentRefreshFailure`）→ 重新登录；403 / 5xx 是临时失败。`expiresAt` 优先 JWT `exp` 减 5 分钟，否则一年。
 
 空结果：`devin-import-empty` → zh「未找到 credentials.toml」。
 

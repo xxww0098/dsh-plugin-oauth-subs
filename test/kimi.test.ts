@@ -102,11 +102,11 @@ test('refresh posts refresh_token; 401 invalid_grant is permanent', async () => 
   await assert.rejects(refreshKimi(session, fetchFn), /kimi/)
   assert.equal(calls[0].includes('grant_type=refresh_token'), true)
   assert.equal(calls[0].includes(`client_id=${KIMI_CLIENT_ID}`), true)
-  const { isKimiPermanentRefreshError } = await import('../lib/oauth/kimi/index.js')
+  const { isPermanentRefreshFailure } = await import('../lib/oauth/tokens.js')
   try {
     await refreshKimi(session, fetchFn)
   } catch (error) {
-    assert.equal(isKimiPermanentRefreshError(error), true)
+    assert.equal(isPermanentRefreshFailure(error), true)
   }
 })
 

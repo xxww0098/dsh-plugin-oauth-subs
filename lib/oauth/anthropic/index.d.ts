@@ -84,7 +84,6 @@ export declare function refreshAnthropic(session: any, fetchFn?: typeof outbound
     refreshToken: any;
     expiresAt: number;
 }>;
-export declare function isAnthropicPermanentRefreshError(error: any): boolean;
 export declare function anthropicSession(tokens: any, fallback?: any): {
     planType?: any;
     accountId?: any;

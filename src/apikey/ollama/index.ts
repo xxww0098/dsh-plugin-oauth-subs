@@ -258,10 +258,6 @@ export async function refreshOllama(session) {
   return session
 }
 
-export function isOllamaPermanentRefreshError() {
-  return false
-}
-
 export function ollamaUpstreamHeaders(session) {
   return {
     authorization: `Bearer ${session.accessToken}`,

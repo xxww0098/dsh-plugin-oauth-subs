@@ -50,7 +50,7 @@ DSH POST /kimi/v1/chat/completions
 | `client_id` | `17e5f671-d194-4dfb-9706-5516cb48c098` |
 | device | `POST https://auth.kimi.com/api/oauth/device_authorization` body 只有 `client_id` |
 | token | `POST https://auth.kimi.com/api/oauth/token` `grant_type=urn:ietf:params:oauth:grant-type:device_code` |
-| 刷新 | 同 token URL，`grant_type=refresh_token`。401 / 403 / `invalid_grant` = 永久，必须重登 |
+| 刷新 | 同 token URL，`grant_type=refresh_token`。401 / `invalid_grant` = 永久，必须重登；403 按临时失败 |
 | UA | `dsh-plugin-oauth-subs` + `X-Msh-*`（设备 id 在插件 data dir，不是 `~/.kimi-code`） |
 
 `authorization_pending` = 继续等；`slow_down` = interval +5s；`expired_token` = **重新** device_authorization（`DeviceFlowManager.restartOnExpired`）。

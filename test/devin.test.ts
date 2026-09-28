@@ -3,6 +3,7 @@ import { chmod, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { isPermanentRefreshFailure } from '../lib/oauth/tokens.js'
 import { AuthController } from '../lib/oauth/controller.js'
 import { accountIdOf, listStoredSessions, publicSession, saveSession } from '../lib/oauth/store.js'
 import {
@@ -25,7 +26,6 @@ import {
   devinSourceLabel,
   exchangeDevinCode,
   isDevinOpaqueAccount,
-  isDevinPermanentRefreshError,
   isDevinSessionToken,
   normalizeDevinToken,
   pickDevinHumanAccount,
@@ -69,7 +69,7 @@ import {
   setDevinCatalogModels,
   toDevinPickerModels,
 } from '../lib/oauth/devin/catalog.js'
-import { DevinTransportError, runDevinChat } from '../lib/oauth/devin/transport.js'
+import { DevinTransportError, devinUserStatus, runDevinChat } from '../lib/oauth/devin/transport.js'
 import { parseDevinUserStatus } from '../lib/oauth/quota.js'
 import { formatPlanLabel } from '../lib/oauth/plan.js'
 import { createProxy } from '../lib/oauth/proxy.js'
@@ -221,14 +221,14 @@ test('refreshDevin extends a live token via status probe; 401 is permanent', asy
   const expired = devinSession({ accessToken: 'tok', expiresAt: Date.now() - 1000 })
   const ok = await refreshDevin(expired, { statusFn: async () => ({}) })
   assert.ok(ok.expiresAt > Date.now())
-  try {
-    await refreshDevin(expired, { statusFn: async () => { throw new Error('HTTP 401') } })
-    assert.fail('expected refresh to throw')
-  } catch (error) {
-    assert.equal(isDevinPermanentRefreshError(error), true)
-  }
-  assert.equal(isDevinPermanentRefreshError(new Error('expired; sign in again')), true)
-  assert.equal(isDevinPermanentRefreshError(new Error('socket hangup')), false)
+  const status = (code) => (session) => devinUserStatus(session, { fetchFn: async () => new Response('denied', { status: code }) })
+  const unauthorized = await refreshDevin(expired, { statusFn: status(401) }).catch((error) => error)
+  assert.equal(isPermanentRefreshFailure(unauthorized), true)
+  // Only the typed status counts: 403 and "401" in message text stay transient.
+  const forbidden = await refreshDevin(expired, { statusFn: status(403) }).catch((error) => error)
+  assert.equal(isPermanentRefreshFailure(forbidden), false)
+  assert.equal(isPermanentRefreshFailure(new Error('HTTP 401')), false)
+  assert.equal(isPermanentRefreshFailure(new Error('socket hangup')), false)
 })
 
 test('import reads credentials.toml; token never reaches publicSession', async () => {

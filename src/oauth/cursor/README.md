@@ -66,7 +66,7 @@ Cursor 按请求**出口 IP** 做合规区锁：Anthropic / OpenAI / Gemini 在�
 | 本机导入 | 「导入本机 Cursor」 | 见下。**不是**第二套 OAuth |
 | 空花名册自动导入 | 无按钮 | roster 为空时尝试一次本机复用。**绝不**覆盖已存 PKCE/session |
 
-刷新：`POST https://api2.cursor.sh/auth/exchange_user_api_key`，`Authorization: Bearer <refresh>`，body `{}`。过期用 JWT `exp` 减 5 分钟。
+刷新：`POST https://api2.cursor.sh/auth/exchange_user_api_key`，`Authorization: Bearer <refresh>`，body `{}`。过期用 JWT `exp` 减 5 分钟。只有永久失败（401 / `invalid_grant` 类）才记「已知坏 refresh」，守卫以 401 重放；403 / 429 / 5xx 不记。
 
 **不要**在插件加载时静默扫 Keychain / `state.vscdb` 覆盖已有会话。自动导入只在 cursor 花名册为空时走一次。
 
