@@ -18,6 +18,9 @@
 const SYSTEM_PIN_CAP = 64
 const SYSTEM_PINS = new Map()
 
+/** `x-session-id` when DSH sends no session: one constant, same across restarts and hot reloads. */
+export const GLM_STABLE_SESSION = 'dsh-glm'
+
 export function glmCacheSessionId(key) {
   if (typeof key !== 'string') return undefined
   const cleaned = key.trim().replace(/[^A-Za-z0-9._:-]/g, '-')

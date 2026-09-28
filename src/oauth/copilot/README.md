@@ -111,7 +111,7 @@ Copilot Completions 是 **前缀哈希** + `X-Interaction-Id` 会话粘滞。官
 | 2 | `applyCopilotCache` | 剥 Codex/Grok 字段；首段 system 钉住，后续快照停到 **messages suffix** |
 | 3 | `copilotCacheHeaders` / `copilotUpstreamHeaders` | `X-Interaction-Id`。不写 `session-id` / `x-grok-conv-id` |
 
-命中：上游 `prompt_tokens_details.cached_tokens` / `cache_read_input_tokens` → `mapCopilotUsage`（JSON 和 SSE 都走代理）。流式缺省 `stream_options.include_usage`。没有字段不发明 0。不要 `Date.now()`。缺省 pin `dsh-copilot` **会**写成 `X-Interaction-Id`（官方总是发 session id）。
+命中：上游 `prompt_tokens_details.cached_tokens` / `cache_read_input_tokens` → `mapCopilotUsage`（JSON 和 SSE 都走代理）。流式缺省 `stream_options.include_usage`。没有字段不发明 0。不要 `Date.now()`。缺省 pin `dsh-copilot` **会**写成 `X-Interaction-Id`（官方总是发 session id），但 `isCopilotFallback` 为真时不钉系统提示——回退 id 不是一条对话。
 
 ## 不要
 

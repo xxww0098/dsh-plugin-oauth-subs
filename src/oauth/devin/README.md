@@ -118,7 +118,7 @@ unary GetUserStatus  server.codeium.com  /exa.seat_management_pb.SeatManagementS
 | | |
 |---|---|
 | 后端 | Devin cascade 会话（`cascade_id` field 16）。每次请求 `execution_id`（field 22）是全新 UUID |
-| 粘性 id | DSH `session_id` / `prompt_cache_key` → `devinCacheSessionId` → `deterministicDevinId`（UUIDv5 形）。缺 pin 时 `dsh-devin:<model>`。禁止 `Date.now()` |
+| 粘性 id | `devinConversationId`（[`cache.ts`](cache.ts) 唯一推导）：DSH `prompt_cache_key` / `session_id` → `devinCacheSessionId`，缺 pin 时 `dsh-devin:<model>`（`isDevinFallback`）；传输层只对传进来的 id 取 `deterministicDevinId`（UUIDv5 形）。禁止 `Date.now()` |
 | 历史 turn id | `chatMessagePrompts[].message_id` 用 `deterministicDevinId(cascade\0index\0role)`，禁止每跳 `randomUUID()` |
 | 命中字段 | `ModelUsageStats.cache_read_tokens`（field 5）→ `prompt_tokens_details.cached_tokens`；`cache_write_tokens` → `prompt_cache_write_tokens` |
 

@@ -5,9 +5,12 @@
  * `X-Interaction-Id` session sticky. There is no Codex `prompt_cache_key`
  * and no Grok `x-grok-conv-id`. Extra DSH snapshots park at the messages
  * suffix. Never stamp Date.now(). Fallback `dsh-copilot` is written as
- * X-Interaction-Id (official always sends a session id).
+ * X-Interaction-Id (official always sends a session id) and never pins.
  */
 export declare const COPILOT_STABLE_SESSION = "dsh-copilot";
+/** A fallback id is not a conversation: it never pins a system prompt. */
+export declare function isCopilotFallback(id: any): boolean;
+export declare function copilotConversationId(payload?: any): string;
 export declare function copilotCacheSessionId(key: any): string | undefined;
 export declare function resetCopilotPins(): void;
 export declare function stabilizeCopilotSystemPrefix(messages: any, sessionId: any): any;

@@ -1648,7 +1648,7 @@ test('antigravity tools pin reuses first JSON when names+schemas match; add/remo
   resetAntigravitySystemPins()
 })
 
-test('antigravity thinkingConfig is sticky-first and never adds implicitCacheConfig', () => {
+test('antigravity thinkingConfig is sticky-first, an explicit effort change replaces it, never implicitCacheConfig', () => {
   resetAntigravitySystemPins()
   const sent = openaiToAntigravity({
     model: 'gemini-3.7-flash-high',
@@ -1677,9 +1677,21 @@ test('antigravity thinkingConfig is sticky-first and never adds implicitCacheCon
     messages: [{ role: 'user', content: 'again' }],
   }, { projectId: 'p' })
   assert.equal(firstOmit.request.generationConfig.thinkingConfig, undefined)
-  assert.equal(laterEffort.request.generationConfig.thinkingConfig, undefined)
+  // The user picked an effort mid-session: it takes effect, then sticks.
+  assert.deepEqual(laterEffort.request.generationConfig.thinkingConfig, { thinkingLevel: 'low' })
   assert.equal(firstOmit.request.generationConfig.maxOutputTokens, 65_536)
   assert.equal(laterEffort.request.generationConfig.maxOutputTokens, 65_536)
+
+  const turn = (effort) => openaiToAntigravity({
+    model: 'gemini-3.7-flash-high',
+    session_id: 'session-think-on',
+    ...(effort ? { reasoning_effort: effort } : {}),
+    messages: [{ role: 'user', content: 'next' }],
+  }, { projectId: 'p' }).request.generationConfig.thinkingConfig
+  assert.deepEqual(turn('low'), { thinkingLevel: 'low' })
+  assert.deepEqual(turn(undefined), { thinkingLevel: 'low' })
+  assert.deepEqual(turn('low'), { thinkingLevel: 'low' })
+  assert.deepEqual(turn('high'), { thinkingLevel: 'high' })
   resetAntigravitySystemPins()
 })
 

@@ -1,7 +1,6 @@
 /** Cursor AgentService lifecycle and OpenAI streaming translation. */
 
 import { RequestError, describeError, sendJson } from '../../utils/http.js'
-import { cursorConversationId } from './cache.js'
 import { cursorToOpenai, createCursorOpenaiStream, openaiToCursor } from './request.js'
 import { runCursorAgent } from './h2-session.js'
 
@@ -34,8 +33,7 @@ function waitForDrain(response, signal) {
 }
 
 export async function forwardCursor(response, { payload, cacheSessionId, stream, session, signal, runFn = runCursorAgent }: any) {
-  const conversationId = cacheSessionId ?? cursorConversationId(payload)
-  const built = openaiToCursor(payload, { conversationId })
+  const built = openaiToCursor(payload, { conversationId: cacheSessionId })
   const model = built.pickerModel || built.modelId
   const id = `chatcmpl-${Date.now()}`
 

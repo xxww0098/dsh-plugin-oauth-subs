@@ -14,10 +14,10 @@
  *
  * DSH prepends a runtime-context system snapshot and may reshuffle
  * tool JSON every step. First system / equivalent tools /
- * thinkingConfig per session are pinned.
+ * thinkingConfig per real session are pinned; fallback ids never pin.
  */
 
-/** When DSH sends neither session_id nor prompt_cache_key, still pin a constant. */
+/** When DSH sends neither session_id nor prompt_cache_key, key on a constant (never pinned). */
 export const ANTIGRAVITY_STABLE_SESSION = 'dsh-antigravity'
 
 const SESSION_PINS = new Map()
@@ -34,12 +34,13 @@ export function resetAntigravitySystemPins() {
   SESSION_PINS.clear()
 }
 
-function canPin(sessionId) {
-  return typeof sessionId === 'string' && sessionId !== '' && sessionId !== ANTIGRAVITY_STABLE_SESSION
+/** `dsh-antigravity` or `dsh-antigravity:<model>` is not a conversation: it never pins. */
+export function isAntigravityFallback(id) {
+  return typeof id !== 'string' || id === '' || id === ANTIGRAVITY_STABLE_SESSION || id.startsWith(`${ANTIGRAVITY_STABLE_SESSION}:`)
 }
 
 function pinRecord(sessionId) {
-  if (!canPin(sessionId)) return undefined
+  if (isAntigravityFallback(sessionId)) return undefined
   let record = SESSION_PINS.get(sessionId)
   if (!record) {
     if (SESSION_PINS.size >= PIN_CAP) {
@@ -84,8 +85,8 @@ function toolsFingerprint(tools) {
 
 export function pinAntigravitySystemInstruction(sessionId, parts) {
   const text = systemText(parts)
-  if (!canPin(sessionId) || !text) return { parts, extra: undefined }
   const record = pinRecord(sessionId)
+  if (!record || !text) return { parts, extra: undefined }
   if (record.system === undefined) {
     record.system = text
     return { parts, extra: undefined }
@@ -117,15 +118,17 @@ export function pinAntigravityTools(sessionId, tools) {
 
 /**
  * Sticky-first thinkingConfig. Once a session has sent (or omitted)
- * a thinking object, keep that choice even if a later payload flaps
- * reasoning_effort. Do not invent implicitCacheConfig.
+ * a thinking object, keep that choice while later payloads omit
+ * reasoning_effort; an explicit, different reasoning_effort is the
+ * user changing it and replaces the pin. Do not invent implicitCacheConfig.
  */
-export function pinAntigravityThinking(sessionId, thinking) {
+export function pinAntigravityThinking(sessionId, thinking, effort?) {
   const next = isPlainThinking(thinking) ? thinking : undefined
   const record = pinRecord(sessionId)
   if (!record) return next
-  if (!Object.hasOwn(record, 'thinking')) {
+  if (!Object.hasOwn(record, 'thinking') || (effort && effort !== record.effort)) {
     record.thinking = next ?? null
+    record.effort = effort
     return next
   }
   return record.thinking ?? undefined

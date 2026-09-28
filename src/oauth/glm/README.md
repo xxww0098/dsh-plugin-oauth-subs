@@ -139,7 +139,7 @@ Completions 残留：
 | 2 | 删除 | `prompt_cache_key`、`prompt_cache_retention`、`prompt_cache_options` |
 | 3 | `stabilizeGlmSystemPrefix` | 每个 DSH session 钉住 **第一次** leading system；后来的快照以 `role: system` 挂到 **messages 末尾** |
 | 4 | body `user` | 空则填 session id |
-| 5 | 头 `x-session-id` | `glmDesktopHeaders`（配额/biz hop 没有 DSH pin 时用进程级 `sess_<24hex>`，不是对话缓存 id） |
+| 5 | 头 `x-session-id` | `glmDesktopHeaders`（没有 DSH pin 时用常量 `GLM_STABLE_SESSION`（`dsh-glm`），重启与热重载后不变；绝不用随机数或时间戳） |
 
 Anthropic 默认：
 

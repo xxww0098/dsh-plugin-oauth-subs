@@ -184,7 +184,7 @@ POST /aiserver.v1.AuthService/GetEmail                    {}
 | | |
 |---|---|
 | 后端 | Cursor Agent 会话（`AgentRunRequest.conversation_id`）。prefix 是 conversationState blobs |
-| 粘性 id | DSH `session_id` / `prompt_cache_key` **加上 model**；缺 pin 时 `dsh-cursor:<model>`（裸 `dsh-cursor` 只在没有 model 时）。禁止 `Date.now()`。历史 turn 的 `messageId` / `requestId` 用内容哈希，禁止每跳 `randomUUID()` |
+| 粘性 id | DSH `session_id` / `prompt_cache_key` **加上 model**；缺 pin 时 `dsh-cursor:<model>`（裸 `dsh-cursor` 只在没有 model 时），`isCursorFallback` 为真时不钉系统提示。禁止 `Date.now()`。历史 turn 的 `messageId` / `requestId` 用内容哈希，禁止每跳 `randomUUID()` |
 | HTTP | `x-request-id` = `x-original-request-id`（SDK handshake）。不写 Codex `session-id` / Grok `x-grok-conv-id` |
 | 停额外 snapshot | 第一条 system 钉在 `root_prompt_messages_json`；后续 DSH snapshot 再追加一条 system blob（Cursor 前缀列表，不是 GLM 尾 system，也不是 Gemini 尾 user） |
 | 命中字段 | `TurnEndedUpdate.cache_read_tokens`（field 3）→ OpenAI `prompt_tokens_details.cached_tokens`。`input_tokens` 是整段 prompt（含 cache），与 `@cursor/sdk` `toTokenUsage` 一致 |

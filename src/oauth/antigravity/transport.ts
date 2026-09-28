@@ -11,7 +11,6 @@ import {
   parseAntigravityValidation,
 } from './index.js'
 import { antigravityToOpenai, createAntigravityOpenaiStream, openaiToAntigravity, parseAntigravitySseBlocks } from './request.js'
-import { antigravitySessionIdOf } from './cache.js'
 
 async function rememberAntigravityValidation(session, info, tokens, onValidation) {
   if (!info?.required) return
@@ -30,11 +29,9 @@ export async function forwardAntigravity(response, { payload, cacheSessionId, st
   if (typeof projectId !== 'string' || !projectId.trim()) {
     throw new RequestError(403, 'antigravity session is missing project_id')
   }
-  const sessionId = cacheSessionId ?? antigravitySessionIdOf(payload)
-  const body = Buffer.from(JSON.stringify(openaiToAntigravity(payload, {
-    projectId,
-    sessionId,
-  })))
+  const built = openaiToAntigravity(payload, { projectId, sessionId: cacheSessionId })
+  const sessionId = built.request.sessionId
+  const body = Buffer.from(JSON.stringify(built))
   const url = stream ? ANTIGRAVITY_STREAM_URL : ANTIGRAVITY_GENERATE_URL
   const headers = {
     ...antigravityChatHeaders(session),

@@ -2,6 +2,13 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-28：回退会话 id 仍会 pin，两个无 id 会话串用系统提示；GLM `x-session-id` 每进程随机
+
+**现象**：没带会话 id 的请求落到 `dsh-<id>[:<model>]` 回退常量，第一个会话的系统提示（Antigravity 还有 tools / thinking）被钉给后来的会话；GLM 无 pin 时 `x-session-id` 是每进程随机的 `sess_<24hex>`，重启 / 热重载就换。
+**根因**：kiro / cursor / antigravity 的守卫只比对裸常量，而回退 id 带了 `:<model>` 后缀，永远不命中；kimi / copilot 根本没有守卫。kiro / cursor / antigravity / devin 的传输层又各自二次推导会话 id（Devin 回退只在 transport 里）。
+**修复**：六个家族的 `cache.ts` 各一个解析器（`kimiConversationId` / `copilotConversationId` / `kiroConversationId` / `cursorConversationId` / `antigravitySessionIdOf` / `devinConversationId`）+ `is<Fam>Fallback`（等于常量或以 `<常量>:` 开头）；所有 pin 以谓词为门，回退 id 一律不 pin。传输层直接用传入的 `cacheSessionId`。Antigravity thinking pin：会话内先到先得，但显式换了 `reasoning_effort` 就替换。GLM 改用 `GLM_STABLE_SESSION = 'dsh-glm'`。防火墙测试扫描所有 `cache.ts` 与导出请求头构建函数的模块，会话 id 位置不许出现 `Date.now` / `Math.random` / `randomUUID` / `randomBytes`。
+**活测**：GLM（bigmodel 账号，ZCode 网关）1 次请求带 `x-session-id: dsh-glm` → 200。
+
 ## 2026-09-28：Completions 路由从没收到 DSH 会话 id，系统提示 pin / 签名桶全进程共用
 
 **现象**：kiro / antigravity / cursor / ollama / kimi / copilot / devin / cline 八条回环 Completions 路由的会话键永远是 `dsh-<id>[:<model>]`：第一个会话的系统提示被 pin 给后来的会话，thinking 配置与签名桶跨会话串用。

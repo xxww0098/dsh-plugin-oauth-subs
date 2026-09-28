@@ -559,7 +559,8 @@ export function openaiToAntigravity(payload, { projectId, sessionId }: any = {})
   if (pinned.parts.length) request.systemInstruction = { role: 'user', parts: pinned.parts }
   const tools = pinAntigravityTools(pinnedSession, toolDeclarations(payload?.tools, model))
   if (tools) request.tools = tools
-  const thinking = pinAntigravityThinking(pinnedSession, antigravityThinkingConfig(model, trimmed(payload?.reasoning_effort)))
+  const effort = trimmed(payload?.reasoning_effort)
+  const thinking = pinAntigravityThinking(pinnedSession, antigravityThinkingConfig(model, effort), effort)
   const generationConfig: any = {
     maxOutputTokens: clampMaxOutputTokens(model, payload?.max_tokens),
   }

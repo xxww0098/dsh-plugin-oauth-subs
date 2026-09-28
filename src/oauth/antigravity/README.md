@@ -114,12 +114,12 @@ DSH 每步再插 runtime-context system，工具 JSON 的 key 顺序也会抖。
 | 1 | `antigravitySessionIdOf` | DSH `session_id` / `prompt_cache_key` 原样（官方 `LLM_SESSION_ID` = 一条对话，跨模型共用）。两边都缺时 **`dsh-antigravity:<model>`**（裸 `dsh-antigravity` 只在没有 model 时） |
 | 2 | `pinAntigravitySystemInstruction` | 每个 session 钉住 **第一次** system 文本；增量以 **user** 回合追加（Gemini 没有 GLM 那种 trailing system） |
 | 3 | `pinAntigravityTools` | 每个 session 钉住 **第一次** tools JSON。后来 DSH 只是 key 顺序 / 声明顺序抖、names+schemas 等价 → 复用首份字节。增删工具才换列表（接受 miss） |
-| 4 | `pinAntigravityThinking` | sticky-first：第一次发过 `thinkingLevel` 就一直带同一份；第一次没带就一直不带。不要补 `implicitCacheConfig` |
+| 4 | `pinAntigravityThinking` | sticky-first：后续请求没带 `reasoning_effort` 时沿用首份（带或不带）；显式换了 `reasoning_effort` 就是用户改了推理强度，新值替换 pin。不要补 `implicitCacheConfig` |
 | 5 | `mapAntigravityUsage` / `cachedTokensOf` | `cachedContentTokenCount` / `cacheTokensDetails` / CLI `cache_read_tokens` / `cacheReadTokens` / `cacheReadInputTokens` → OpenAI `prompt_tokens_details.cached_tokens` |
 
 `requestId` 每 HTTP 调用仍是新的 `agent-<uuid>`，它不是缓存键。不要写 `cachedContent` 资源名。
 
-裸常量（`dsh-antigravity`）**不**进 pin map：没有 model、也没有 DSH 会话时不要把所有用户钉成同一段。`dsh-antigravity:<model>` 会进 pin map，换 picker 不会串到别的模型。
+回退 id（裸 `dsh-antigravity` 或 `dsh-antigravity:<model>`，`isAntigravityFallback`）**不**进 pin map：没有 DSH 会话时，system / tools / thinking 都不跨会话钉。
 禁止 `` sessionId: `-${Date.now()}` ``，否则每请求换会话，缓存必 0。
 
 进程内 `SESSION_PINS`（cap 64）只服务 Antigravity。测试用 `resetAntigravitySystemPins()`。不要和 GLM 共用 Map。
