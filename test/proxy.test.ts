@@ -697,9 +697,10 @@ const SSE = { 'content-type': 'text/event-stream' }
 const sse = (...events) => events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join('')
 // Live captures (2026-09-28): every frame before the first output event, with
 // instructions, tool descriptions and ids blanked to same-length placeholders.
-// The capture's instructions were tiny, so they are padded to 200 KiB — DSH's
-// own system prompt is ~128KB, echoed by both preamble frames.
+// The capture's instructions were 20 B; DSH's own system prompt is ~128 KB and
+// both preamble frames echo it, so pad to 200 KiB here — past the old 64 KiB cap.
 const fixture = (name) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
+  .replace(/"instructions":"x*"/g, `"instructions":"${'x'.repeat(200 * 1024)}"`)
 const CODEX_PREAMBLE = fixture('codex-preamble.sse')
 const GROK_PREAMBLE = fixture('grok-preamble.sse')
 const DELTA = { type: 'response.output_text.delta', delta: 'hi' }
