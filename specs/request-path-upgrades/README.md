@@ -19,6 +19,17 @@
    `/Users/xxww/Code/REPO/rpu/<slice>`，从 `rpu/integration` 分支，`npm ci`。
 3. 每轮结束前更新本节与 `choices.md`。
 
+**合入主干后才能做的检查**（宿主加载的是 `main` 的 `lib/`；worktree 里做不了）：
+- [ ] 05d Command Code 迁移 + 08 的 Command Code 会话 id 映射（`session-<uuid>` → 去前缀或 UUIDv5）。
+- [ ] 02a 设置页出站代理错误行：改前/改后截图、并排对比、不带预设的截图评审（`HTTPS_PROXY=http://127.0.0.1:9`）。
+- [ ] 04 人工检查点：DSH 怎么显示「未登录 → 403」；误导就改 409。
+- [ ] 05 输出后改 destroy：宿主重试是否让用户看到重复文本。
+- [ ] 08 活测：`settings.yaml` 里 Completions 路由带 `cacheRetention: long`；`/health` 的 `inboundCacheKeys` 在 ollama + kimi/cline 上「with」增长。
+- [ ] 14：DevTools 确认保留的隐藏主面板上 `checkVisibility()` 返回 false；切走后 status RPC 归零。
+- [ ] 13：Codex 非流式成功 1 次。
+- [ ] 06 / 07 被动观察：宿主自然刷新时无异常登出；PKCE / 设备码登录刷新前后 refresh token sha256 前 8 位（轮换证据）。
+- [ ] 15：以上全部合入主干 ≥7 天后复测。
+
 **工作方式（别踩的坑）**：
 - desktop/web 两个 profile 都是 link 安装，指向本仓库根目录。在主检出里跑
   `npm run build` / `dev-build`，宿主会立刻热重载半成品 `lib/`。所以实现、构建、测试一律在
