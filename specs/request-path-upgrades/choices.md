@@ -35,3 +35,20 @@ spec 没写到、由实施者自己拍板的决定。每条：决定 → 理由 
 - **失败消息额外脱敏**：家目录/tmp 路径 → `<path>`，长字母数字 id → `<t>`（真实消息里有 `/Users/...` 和 `req_…`）。→ sound。
 - **不屏蔽 zstd 的 ExperimentalWarning**：Node 24.21 / 26.8 都不打印。→ sound。
 - **ttfb 检查点未触发**（最大 p99 = oauth-ollama 72.5s），但 oauth-ollama 有 38/7134（0.53%）次成功调用首字节 >120s（最长 297s），04 会把它们切断重试。spec 15 只给 Devin 预设了放宽规则。→ provisional：交给 15，按 Devin 同款规则（>0.5% 且基线成功）评估 Ollama。
+
+## 02b
+
+- **配置后 `outboundFetch` 先等 prefs 加载（`ready` 必然 settle）再路由**；只有从未调用
+  `configureOutbound` 时才直接走直连 Agent。spec 写「加载完成前走直连」，但那会让早期请求
+  绕过设置文件里保存的代理。→ sound（比 spec 更严，守住「绝不悄悄直连」）。
+- **NO_PROXY / 回环只约束 Cursor 的「出站代理回落」**；显式 `cursorProxy` / `PI_CURSOR_PROXY` /
+  `CURSOR_PROXY` 原样使用（保持现状，现有隧道测试经显式代理拨 127.0.0.1）。→ sound。
+- **保留 `createOutboundSession` 作为 `configureOutbound` 背后的工厂**，冻结的 repro 仍能跑。→ sound。
+- **`close()` 后会话仍是 current，直到新实例 `configureOutbound` 替换**：迟到请求失败而不是直连，
+  热重载顺序无关。→ sound。
+- **每个会话自带直连 Agent，`close()` 两个一起释放**。→ sound。
+- **`outboundProxyFor` 是 async（等 prefs）**；`cursorH2Connect` 本来就是 async。→ sound。
+- **Cursor 目录缓存键改用实际出口（`cursorEgressProxy`）**：换出站代理后按区域重拉目录。→ sound。
+- **10s 连接超时也覆盖经代理隧道的会话**（隧道内 TLS 同样会挂）。→ sound。
+- **防火墙额外拦 `?? fetch`、`|| fetch`、`globalThis.fetch`、`require`/`import('undici')`**。→ sound。
+- **Cursor 区域错误提示仍只看 `cursorUpstreamProxy()`**，建议配 `cursorProxy` 依然成立，未改。→ sound。
