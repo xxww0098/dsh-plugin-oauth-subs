@@ -2,6 +2,13 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。新条目只要 **现象** / **根因** / **修复**，各 1–2 行。
 
+## 2026-09-28：Grok 首轮第二步只回会话标题就结束（「会断」）
+
+**现象**：新会话 `grok-4.7` 第一轮跑完一次工具调用，第二步只输出一行标题（如「排查TPS数据异常」）就正常结束；推理里写着 "create a concise title"。
+**根因**：DSH 的会话标题请求和主对话用同一个 `prompt_cache_key`，两个请求同时发出。`pinGrokSystemPrefix` 按 conv id 让第一个到达的 system 钉住。标题请求先到时，钉住的就是标题 prompt，主对话被放到 input 后缀，Grok 就照标题 prompt 回了。
+**修复**：`changedRegion` 发现共享部分不到较短文本一半时返回 `null`，视为另一个 prompt，这时重钉并原样发出，不再放进后缀。前插快照、中段改写照旧只放变化区。回归测试 `test/grok-request.test.ts`「an unrelated system prompt … re-pins」。
+**跟进（同日）**：Completions 路由也有 session id 之后（`cacheRetention: 'long'`），Kiro / Cursor / Copilot / Kimi / GLM（Completions + Anthropic）/ Antigravity 同样把不相关的新头整段放进后缀，旧钉头在前。各家 `cache.ts` 自带一份 `unrelatedPrompt`，门槛和 Grok 相同：未达门槛重钉原样发，达到门槛仍走原停车逻辑。没有照搬 Cline 的「非扩展即重钉」，因为 DSH 每步前插快照，那样每步都会破缓存。回归测试 `test/cache-families.test.ts`「<family>: a session-title prompt pinned first …」。
+
 ## 2026-09-28：Devin / Command Code 在代理内重放上游 5xx（Command Code 还有 429）
 
 **现象**：上游返回 5xx 或 Connect 错误时，代理先自己重放 3 次再回 502，宿主又按 SERVER 重试 5 次，一次故障最多打出 15 次上游请求。Command Code 连 429 和厂商标了 `isRetryable` 的 `error` 事件也重放。

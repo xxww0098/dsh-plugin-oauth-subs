@@ -49,31 +49,26 @@ test('parks extra leading developer text at the input suffix so history can cach
   resetGrokSystemPins()
 })
 
-test('parks a wholly different leading developer so conversation history still leads', () => {
+test('an unrelated system prompt on the same conv id re-pins instead of leading the chat', () => {
+  // DSH's session-title request shares the chat's prompt_cache_key. When it
+  // wins the race, the chat must not be sent the title prompt up front.
   resetGrokSystemPins()
-  normalizeGrokResponsesBody({
-    model: 'grok-4.6',
-    session_id: 'sess-grok',
-    input: [
-      { role: 'system', content: 'You are DSH.' },
-      { role: 'user', content: 'hi' },
-    ],
+  const main = 'You are an AI agent powered by DeepSeek Harness.\n\nYour working directory is /repo.'
+  const titlePrompt = 'Create a concise title for an AI coding-assistant session.'
+  const title = normalizeGrokResponsesBody({
+    model: 'grok-4.7',
+    prompt_cache_key: 'sess-grok',
+    input: [{ role: 'system', content: titlePrompt }, { role: 'user', content: 'tps' }],
   })
-  const out = normalizeGrokResponsesBody({
-    model: 'grok-4.6',
-    session_id: 'sess-grok',
-    input: [
-      { role: 'system', content: 'Session header rebuilt.' },
-      { role: 'user', content: 'hi' },
-      { role: 'assistant', content: 'ok' },
-    ],
-  })
-  assert.equal(out.input[0].role, 'system')
-  assert.equal(out.input[0].content, 'You are DSH.')
-  assert.equal(out.input[1].role, 'user')
-  assert.equal(out.input[2].role, 'assistant')
-  assert.equal(out.input[3].role, 'developer')
-  assert.deepEqual(out.input[3].content, [{ type: 'input_text', text: 'Session header rebuilt.' }])
+  assert.deepEqual(title.input, [{ role: 'system', content: titlePrompt }, { role: 'user', content: 'tps' }])
+  for (let step = 0; step < 2; step += 1) {
+    const out = normalizeGrokResponsesBody({
+      model: 'grok-4.7',
+      prompt_cache_key: 'sess-grok',
+      input: [{ role: 'system', content: main }, { role: 'user', content: 'tps' }],
+    })
+    assert.deepEqual(out.input, [{ role: 'system', content: main }, { role: 'user', content: 'tps' }])
+  }
   resetGrokSystemPins()
 })
 

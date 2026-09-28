@@ -58,6 +58,20 @@ function splitLeadingSystem(messages) {
   return { head, rest: messages.slice(index) }
 }
 
+/** Under half of the shorter text shared as prefix + suffix: a different
+ * prompt, not an edit of the pinned one. DSH's session-title request shares
+ * the chat's session id; parking the chat's prompt behind a pinned title
+ * prompt made the model answer with a title. */
+function unrelatedPrompt(existing, text) {
+  const max = Math.min(existing.length, text.length)
+  let prefix = 0
+  while (prefix < max && existing.charCodeAt(prefix) === text.charCodeAt(prefix)) prefix += 1
+  let suffix = 0
+  while (suffix < max - prefix
+    && existing.charCodeAt(existing.length - 1 - suffix) === text.charCodeAt(text.length - 1 - suffix)) suffix += 1
+  return (prefix + suffix) * 2 < max
+}
+
 export function stabilizeCopilotSystemPrefix(messages, sessionId) {
   if (!Array.isArray(messages) || isCopilotFallback(sessionId)) return messages
   const { head, rest } = splitLeadingSystem(messages)
@@ -69,6 +83,11 @@ export function stabilizeCopilotSystemPrefix(messages, sessionId) {
       const first = SYSTEM_PINS.keys().next().value
       SYSTEM_PINS.delete(first)
     }
+    SYSTEM_PINS.set(sessionId, { head, text })
+    return messages
+  }
+  // A different prompt on the same id is its own request: re-pin, send as-is.
+  if (unrelatedPrompt(existing.text, text)) {
     SYSTEM_PINS.set(sessionId, { head, text })
     return messages
   }

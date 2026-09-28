@@ -342,6 +342,33 @@ test('two id-less sessions each keep their own system prompt (fallback ids never
   resetAllPins()
 })
 
+// DSH's session-title request shares the chat's session id. When it pins
+// first, the chat must still lead with its own prompt, not the title's.
+const TITLE_PROMPT = 'Create a concise title for an AI coding-assistant session.'
+const MAIN_PROMPT = 'You are an AI agent powered by DeepSeek Harness.\n\nYour working directory is /repo.'
+const { devin: _devinPinsNothing, ...PINNING_FAMILIES } = {
+  ...FALLBACK_FAMILIES,
+  glm: (body) => applyGlmCache(body).payload.messages[0].content,
+  'glm-anthropic': (body) => applyGlmAnthropicCache({ ...body, system: body.messages[0].content, messages: body.messages.slice(1) })
+    .payload.system[0].text,
+}
+for (const [family, systemOf] of Object.entries(PINNING_FAMILIES)) {
+  test(`${family}: a session-title prompt pinned first does not lead the chat`, () => {
+    resetAllPins(); resetGlmSystemPins()
+    const body = (system) => ({
+      model: MODELS[family] ?? 'glm-5.3',
+      prompt_cache_key: HOST_ID,
+      messages: [{ role: 'system', content: system }, { role: 'user', content: 'tps' }],
+    })
+    assert.ok(String(systemOf(body(TITLE_PROMPT))).includes(TITLE_PROMPT))
+    for (let step = 0; step < 2; step += 1) {
+      const lead = String(systemOf(body(MAIN_PROMPT)))
+      assert.ok(lead.includes(MAIN_PROMPT) && !lead.includes(TITLE_PROMPT), `${family} step ${step}: ${lead}`)
+    }
+    resetAllPins(); resetGlmSystemPins()
+  })
+}
+
 test('fallback predicates match the bare constant and its model-suffixed form only', () => {
   const cases = {
     kimi: [isKimiFallback, KIMI_STABLE_SESSION],

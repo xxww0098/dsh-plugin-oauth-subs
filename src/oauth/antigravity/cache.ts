@@ -83,6 +83,20 @@ function toolsFingerprint(tools) {
   return decls.sort().join('\n')
 }
 
+/** Under half of the shorter text shared as prefix + suffix: a different
+ * prompt, not an edit of the pinned one. DSH's session-title request shares
+ * the chat's session id; parking the chat's prompt behind a pinned title
+ * prompt made the model answer with a title. */
+function unrelatedPrompt(existing, text) {
+  const max = Math.min(existing.length, text.length)
+  let prefix = 0
+  while (prefix < max && existing.charCodeAt(prefix) === text.charCodeAt(prefix)) prefix += 1
+  let suffix = 0
+  while (suffix < max - prefix
+    && existing.charCodeAt(existing.length - 1 - suffix) === text.charCodeAt(text.length - 1 - suffix)) suffix += 1
+  return (prefix + suffix) * 2 < max
+}
+
 export function pinAntigravitySystemInstruction(sessionId, parts) {
   const text = systemText(parts)
   const record = pinRecord(sessionId)
@@ -92,6 +106,11 @@ export function pinAntigravitySystemInstruction(sessionId, parts) {
     return { parts, extra: undefined }
   }
   if (record.system === text) return { parts, extra: undefined }
+  // A different prompt on the same id is its own request: re-pin, send as-is.
+  if (unrelatedPrompt(record.system, text)) {
+    record.system = text
+    return { parts, extra: undefined }
+  }
   let extra = text
   if (text.startsWith(record.system)) extra = text.slice(record.system.length).replace(/^\n+/, '').trim()
   return { parts: [{ text: record.system }], extra: extra || undefined }

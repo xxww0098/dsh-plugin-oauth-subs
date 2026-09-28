@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp } from 'node:fs/promises'
+import { mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -731,4 +731,12 @@ test('permanent key: refresh is a no-op and never fails permanently', async () =
   assert.equal(headers.authorization, `Bearer ${KEY}`)
   assert.equal(headers['x-command-code-version'], '1.66.0')
   assert.equal(headers['x-cli-environment'], 'production')
+})
+
+test('Command Code UI icon uses official command symbol (⌘), not prompt fallback', async () => {
+  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  assert.match(src, /commandCode: \{ d: 'M6,2A4,4 0 0,1 10,6V8H14V6/)
+  assert.equal(src.includes('M5 4.5l7.5 7.5L5 19.5v-3.3l4.2-4.2L5 7.8V4.5z'), false)
+  // Monochrome official mark, no artificial tint in FAMILY_COLOR
+  assert.equal(src.includes("'command-code': '#22c55e'"), false)
 })
