@@ -141,12 +141,13 @@ function liveRows(models) {
       maxTokens: asPositive(limits.maxOutputTokens ?? limits.max_output_tokens ?? model.maxTokens),
       input: liveInputOf(model),
       reasoningEfforts: liveEffortsOf(model),
+      rate: asPositive(model.rateMultiplier),
     })
   }
   return out
 }
 
-function kiroModelRow(id, name, contextWindow, maxTokens, input, reasoningEfforts) {
+function kiroModelRow(id, name, contextWindow, maxTokens, input, reasoningEfforts, rate = undefined) {
   return {
     id,
     name,
@@ -154,6 +155,8 @@ function kiroModelRow(id, name, contextWindow, maxTokens, input, reasoningEffort
     maxTokens: maxTokens || KIRO_MAX_TOKENS,
     input: input.includes('image') ? [...KIRO_VISION_INPUT] : [...KIRO_TEXT_INPUT],
     reasoningEfforts,
+    // Credits per unit of work relative to the base rate, as the live list states it.
+    ...(rate ? { rate } : {}),
   }
 }
 
@@ -174,6 +177,7 @@ export function toKiroPickerModels(live, fallback = KIRO_MODELS) {
       row.maxTokens || existing?.maxTokens || KIRO_MAX_TOKENS,
       row.input ?? existing?.input ?? inferKiroInput(row.id),
       row.reasoningEfforts ?? existing?.reasoningEfforts ?? inferKiroReasoning(row.id),
+      row.rate,
     ))
   }
   const rank = (id) => known.get(id)?.index ?? known.size

@@ -26,6 +26,7 @@
  */
 
 import { randomUUID } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import {
   CODEX_USAGE_URL,
   CODEX_RESET_CREDITS_URL,
@@ -51,6 +52,7 @@ import {
   kiroUsageUrl,
 } from './kiro/index.js'
 import { accountIdOf } from './store.js'
+import { writePrivateText } from '../utils/private-text.js'
 import {
   ANTIGRAVITY_LOAD_CODE_ASSIST_URL,
   ANTIGRAVITY_MODELS_URL,
@@ -1910,6 +1912,87 @@ function publicQuota(entry?, provider?) {
   }
 }
 
+const SNAPSHOT_VERSION = 1
+/** Past this a saved reading is history, not a stand-in: quota windows have reset. */
+const SNAPSHOT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
+const SNAPSHOT_DEBOUNCE_MS = 2_000
+
+/**
+ * The quota cache, mirrored to a private file so a restart or hot reload shows
+ * the last known numbers at once. A restored entry is old, so `ensure` serves it
+ * and re-reads behind it — nothing else in the store knows the file exists.
+ * Every write path goes through set / delete / clear, which is where it hooks.
+ */
+class PersistedCache extends Map<string, any> {
+  #path: string
+  #timer: NodeJS.Timeout | undefined
+  #chain: Promise<void> = Promise.resolve()
+  #written = ''
+
+  constructor(path: string) {
+    super()
+    this.#path = path
+    try {
+      const saved = JSON.parse(readFileSync(path, 'utf8'))
+      if (saved?.version === SNAPSHOT_VERSION && saved.entries && typeof saved.entries === 'object') {
+        for (const [key, entry] of Object.entries<any>(saved.entries)) {
+          if (Array.isArray(entry?.rows) && entry.rows.length && Date.now() - entry.updatedAt < SNAPSHOT_MAX_AGE_MS) super.set(key, entry)
+        }
+        this.#written = this.#serialize()
+      }
+    } catch { /* first run, or a file we cannot read: start empty */ }
+  }
+
+  set(key: string, value: any) {
+    super.set(key, value)
+    this.#schedule()
+    return this
+  }
+
+  delete(key: string) {
+    const had = super.delete(key)
+    if (had) this.#schedule()
+    return had
+  }
+
+  clear() {
+    if (!this.size) return
+    super.clear()
+    this.#schedule()
+  }
+
+  /** Write now (a reload is about to drop the timer) and wait for it. */
+  flush() {
+    clearTimeout(this.#timer)
+    this.#timer = undefined
+    // Serialized at write time, so a later write can never put older data back.
+    this.#chain = this.#chain.then(async () => {
+      const text = this.#serialize()
+      if (text === this.#written) return
+      await writePrivateText(this.#path, text)
+      this.#written = text
+    }).catch(() => undefined)
+    return this.#chain
+  }
+
+  #schedule() {
+    if (this.#timer) return
+    this.#timer = setTimeout(() => { void this.flush() }, SNAPSHOT_DEBOUNCE_MS)
+    this.#timer.unref?.()
+  }
+
+  /** Only readings that carry numbers; an error entry keeps the rows it had, and comes back as `ready`. */
+  #serialize() {
+    const entries: Record<string, any> = {}
+    for (const [key, entry] of this) {
+      if (!Array.isArray(entry?.rows) || !entry.rows.length) continue
+      const { usedAt, error, ...kept } = entry
+      entries[key] = { ...kept, status: 'ready' }
+    }
+    return JSON.stringify({ version: SNAPSHOT_VERSION, entries })
+  }
+}
+
 export class QuotaStore {
   declare tokens: any
   declare fetchFn: any
@@ -1917,12 +2000,17 @@ export class QuotaStore {
   declare cache: Map<string, any>
   declare inflight: Map<string, any>
 
-  constructor({ tokens, fetchFn = outboundFetch, ttlMs = QUOTA_TTL_MS }: any = {}) {
+  constructor({ tokens, fetchFn = outboundFetch, ttlMs = QUOTA_TTL_MS, snapshotPath = undefined }: any = {}) {
     this.tokens = tokens
     this.fetchFn = fetchFn
     this.ttlMs = ttlMs
-    this.cache = new Map()
+    this.cache = snapshotPath ? new PersistedCache(snapshotPath) : new Map()
     this.inflight = new Map()
+  }
+
+  /** Persist the cache now, when it is persisted at all. */
+  async flush() {
+    await (this.cache as any).flush?.()
   }
 
   peek(provider, accountId?) {

@@ -113,7 +113,7 @@ node --input-type=module -e '
 ```
 
 换成该家族的 `<id>/quota.js`（或 `index.js` 里的 fetch）与对应 vault 文件；link 安装时该路径就是仓库。
-真实凭据在 `~/.dsh/profiles/<profile>/data/dsh-plugin-oauth-subs/`（`auth.json` + 各家族 vault）。
+真实凭据在 `~/.dsh/profiles/<profile>/data/dsh-plugin-oauth-subs/`（`auth.json` + 各家族 vault；同目录的 `quota-snapshot.json` 是额度读数的落盘缓存，可随时删）。
 `node` 不在 PATH 时用 DSH 运行时自带的 node（`~/.dsh/dsh-runtimes/*/dependencies/node/bin/node`）。
 
 ### 发布门禁（维护者）

@@ -78,7 +78,8 @@ export declare function catalogKeys(providers: Record<string, any>): any[];
 export declare function familyOfProvider(provider: any): string;
 export declare function familyOfKey(key: any): string;
 export declare function familyCatalogKeys(catalog: any, family: any): any[];
-export declare function describeCatalog(providers: Record<string, any>, { enabledKeys, loggedIn }?: any): {
+/** `rates` (`<family>/<model id>` → cost multiplier) is display-only: it never rides in a route row. */
+export declare function describeCatalog(providers: Record<string, any>, { enabledKeys, loggedIn, rates }?: any): {
     provider: string;
     displayName: any;
     family: string;

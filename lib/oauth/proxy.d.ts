@@ -9,5 +9,10 @@ export { describeError } from '../utils/http.js';
 export declare function createProxy({ port, apiKey, tokens, fetchFn, maxRequestBodyBytes, upstreamTimeouts, onAntigravityValidation, cursorRpc, devinChat }: any): {
     origin: () => string;
     listen(): Promise<any>;
+    /**
+     * Stops accepting, lets in-flight requests finish, and resolves once the last
+     * connection is gone — the caller closes what the handlers use (the outbound
+     * agent) only after that.
+     */
     close(): Promise<void>;
 };

@@ -406,7 +406,12 @@ export class AuthController {
         onRemoved: () => this.onAuthChanged?.('command-code'),
       }),
     }
-    this.quota = new QuotaStore({ tokens: this.tokens, fetchFn, ttlMs: quotaTtlMs })
+    this.quota = new QuotaStore({
+      tokens: this.tokens,
+      fetchFn,
+      ttlMs: quotaTtlMs,
+      snapshotPath: typeof authPath === 'string' && authPath ? join(dirname(authPath), 'quota-snapshot.json') : undefined,
+    })
     this.fetchFn = fetchFn
     this.opencodeGo = (typeof authPath === 'string' && authPath)
       ? new OpencodeGoStore({ path: opencodeGoFilePath(authPath), fetchFn })
@@ -655,6 +660,7 @@ export class AuthController {
       grokLogin: this.grokLogin,
       catalog: describeCatalog(catalog, {
         enabledKeys,
+        rates: Object.fromEntries(kiroCatalogModels().filter((model: any) => model.rate).map((model: any) => [`kiro/${model.id}`, model.rate])),
         loggedIn: {
           ...loggedIn,
           ...Object.fromEntries(APIKEY_FAMILY_IDS.map((family) => [family, opencodeGoApiKeySet])),

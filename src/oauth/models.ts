@@ -555,7 +555,8 @@ function harnessModelAlias(provider, id) {
   return `${HARNESS_MODEL_AGENT[family] ?? family}/${id}`
 }
 
-export function describeCatalog(providers: Record<string, any>, { enabledKeys, loggedIn }: any = {}) {
+/** `rates` (`<family>/<model id>` → cost multiplier) is display-only: it never rides in a route row. */
+export function describeCatalog(providers: Record<string, any>, { enabledKeys, loggedIn, rates }: any = {}) {
   const enabled = enabledKeys === undefined ? null : new Set(enabledKeys)
   return Object.entries(providers).map(([provider, value]) => {
     const family = familyOfProvider(provider)
@@ -574,6 +575,7 @@ export function describeCatalog(providers: Record<string, any>, { enabledKeys, l
           fast: String(model.id).endsWith('-fast'),
           large: isLargeContextKey(key),
           input: Array.isArray(model.input) ? [...model.input] : ['text', 'image'],
+          ...(rates?.[`${family}/${model.id}`] ? { rate: rates[`${family}/${model.id}`] } : {}),
         }
       }),
     }

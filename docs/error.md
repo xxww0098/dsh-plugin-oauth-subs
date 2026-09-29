@@ -26,6 +26,12 @@
 **根因**：`CODEX_PLAN_NAMES` 没有这个 slug，回落到首字母大写。
 **修复**：`promax` / `pro_max` / `chatgpt_promax` / `chatgpt_pro_max` → `Pro Max`，倍数官方没公布，不写。官方把 `pro` / `prolite` 的显示名改成了 Pro (More) / Pro，我们保留 20x / 5x，没跟。
 
+## 2026-09-29：重启 / 热重载后额度面板要等网络才有数
+
+**现象**：每次重载插件，额度卡片先空白，直到各家族的额度请求回来（慢的上游最多等 10 秒）；内存缓存随实例丢掉。
+**根因**：`QuotaStore` 只有内存 `Map`。
+**修复**：缓存换成 `PersistedCache`（`Map` 子类，`set` / `delete` / `clear` 处挂 2 秒防抖落盘到数据目录的 `quota-snapshot.json`，0600、原子写）。启动时恢复带数字的读数（错误条目按它保留的旧数字恢复为 `ready`，超过 7 天丢弃）；恢复的读数已过期，`ensure` 原样先返回它、后台重读，其余逻辑不知道文件存在。登出走 `clear`，同步清盘；卸载时 `flush`。不传 `snapshotPath` 就是普通 `Map`。回归 `test/quota-snapshot.test.ts`。
+
 ## 2026-09-29：Kiro 上游 500 / 503 被标成 invalid_request_error，宿主不重试，长 turn 被打断
 
 **现象**：分析器里 Kiro 有 2 次终止失败：`500: {"message":"Encountered unexpectedly high load when processing the request, please try again.","type":"invalid_request_error"…}`，宿主判 INVALID_REQUEST，一次发生在第 109 步。`INSUFFICIENT_MODEL_CAPACITY → 503` 同样从没被重试过。
@@ -48,13 +54,13 @@
 
 **现象**：`cache.ts` / README 说「缓存亲和是 conversationId」。
 **根因**：错。活测（Haiku 4.5，`meteringEvent` credit）：追加 2、4 轮文本仍是冷启动的 0.53×；换 conversationId 发同样内容仍是 0.53×；带 tool 往返的 agent 形态每步只多付新增部分；只改一个工具 description，整段缓存作废（1.00×）。
-**修复**：无代码改动（系统提示钉在 history 首对本来就在稳定前缀里）；README / `cache.ts` 改正，并写明「会话内工具列表必须逐字节稳定」。同批实测：tool result 换 `{ text }` 块只省 1.8% token，不改；`List-Available-Models` 还有未展示的 `rateMultiplier`（0.05×–4.4×，见 README 模型节），待 UI 接入。
+**修复**：无代码改动（系统提示钉在 history 首对本来就在稳定前缀里）；README / `cache.ts` 改正，并写明「会话内工具列表必须逐字节稳定」。同批实测：tool result 换 `{ text }` 块只省 1.8% token，不改；`List-Available-Models` 还有未展示的 `rateMultiplier`（0.05×–4.4×，见 README 模型节），已在 Models 页显示（`×倍率` 标签）。
 
-## 2026-09-29：Kiro 41 次「upstream failed 3 times: UND_ERR_CLOSED / DESTROYED」是突发，疑为热重载（未改）
+## 2026-09-29：热重载后 18–40 秒里旧实例持续失败（Kiro 41 次 `UND_ERR_CLOSED` / `DESTROYED`）
 
 **现象**：`npm run analyze` 里 Kiro 41 次重试耗尽，全部落在 9-28 的 12:44 / 14:52 / 15:03 / 15:38 几个 18–40 秒窗口，同一秒多个会话一起失败，随后恢复。
-**根因（推断，未证实）**：`UND_ERR_CLOSED` / `DESTROYED` 是 undici「这个 client 已关闭」，不是网络断开。若重载时 outbound agent 先于代理关闭（`index.ts` 里两个 `ctx.effect` 的清理顺序没在本机验证），旧实例的代理仍在收请求却没有可用的连接池，3 次内部重试立刻同样失败。窗口与当天的开发构建重合；其他家族的类似突发（Codex 9-24 等）报错文案不同。
-**修复**：无。建议：卸载时先等代理排空再 `outbound.close()`。`src/index.ts` 有未提交改动，待其提交后再动。
+**根因**：`UND_ERR_CLOSED` / `DESTROYED` 是 undici「这个 client 已关闭」。cordis 卸载时对所有 `ctx.effect` 清理 `Promise.all` 并行执行（`_unload`），我们的清理不返回 promise，所以 `proxy.close()` 与 `outbound.close()` 同时起跑；而 `server.close()` 只断开此刻空闲的连接——**正在处理请求的那条 keep-alive 连接会留在旧服务器上**，响应结束后的下一个请求仍由旧处理器接手（Node 26 实测 `handled: 2`），此时它的连接池已关，重试走同一条连接，持续到该连接断开。Kiro 一次流十几秒到上百秒，重载时几乎总有会话在途，所以突发里全是它。机制在最小实验里复现了（Node 26 `handled: 2`），但那 4 个窗口是否都是热重载没有逐个核对，第一个（12:44）没有对应的提交。
+**修复**：`proxy.close()` 之后的应答都带 `Connection: close`（旧实例仍能正常应答，但逼客户端换到同端口的新实例），每 250ms 扫掉刚变空闲的连接，等最后一条连接结束才 resolve；`index.ts` 把 outbound 的关闭挂在它之后（不 await，长流不拖住重载），启动中被卸载时不再起代理。回归 `test/proxy-close.test.ts`（旧 `close()` 上失败）。
 
 ## 2026-09-29：Cursor 第二轮起失忆：历史用 protobuf turn 发，服务端不读
 

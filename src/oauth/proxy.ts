@@ -305,6 +305,10 @@ function abortOnDisconnect(request, response) {
 
 export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, maxRequestBodyBytes = MAX_REQUEST_BODY_BYTES, upstreamTimeouts = undefined, onAntigravityValidation = undefined, cursorRpc = undefined, devinChat = undefined }: any) {
   let server
+  // Set once close() starts. A socket that was busy then stays keep-alive and the
+  // old server keeps answering on it, so every answer from here on tells the
+  // client to reconnect (to the new instance on the same port).
+  let closing = false
 
   // llm-pi-ai sends Authorization: Bearer for Completions/Responses but the
   // Anthropic SDK authenticates with x-api-key (authToken is only used for
@@ -321,6 +325,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, max
   const handle = async (request, response) => {
     // The pre-output budget starts here, so the tokens.session() wait counts.
     const startedAt = Date.now()
+    if (closing) response.setHeader('connection', 'close')
     const url = new URL(request.url ?? '/', 'http://127.0.0.1')
     const path = url.pathname.replace(/\/+$/, '') || '/'
 
@@ -881,9 +886,20 @@ export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, max
       })
       return server
     },
+    /**
+     * Stops accepting, lets in-flight requests finish, and resolves once the last
+     * connection is gone — the caller closes what the handlers use (the outbound
+     * agent) only after that.
+     */
     async close() {
       if (server === undefined) return
-      await new Promise<void>((resolve) => server.close(() => resolve()))
+      closing = true
+      const gone = new Promise<void>((resolve) => server.close(() => resolve()))
+      // close() only drops connections idle right now; sweep the ones that go idle later.
+      const sweep = setInterval(() => server.closeIdleConnections(), 250)
+      sweep.unref()
+      await gone
+      clearInterval(sweep)
       server = undefined
     },
   }

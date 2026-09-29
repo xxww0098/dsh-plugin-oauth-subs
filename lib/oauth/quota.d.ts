@@ -280,7 +280,9 @@ export declare class QuotaStore {
     ttlMs: number;
     cache: Map<string, any>;
     inflight: Map<string, any>;
-    constructor({ tokens, fetchFn, ttlMs }?: any);
+    constructor({ tokens, fetchFn, ttlMs, snapshotPath }?: any);
+    /** Persist the cache now, when it is persisted at all. */
+    flush(): Promise<void>;
     peek(provider: any, accountId?: any): {
         status: string;
         planType?: undefined;

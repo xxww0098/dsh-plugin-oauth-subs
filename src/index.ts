@@ -277,8 +277,6 @@ export function apply(ctx, config: any = {}) {
     path: outboundProxyPath(dataDir),
     configUrl: config.proxyUrl,
   })
-  ctx.effect(() => () => { void outbound.close() }, 'dsh-plugin-oauth-subs: outbound proxy agent')
-
   let patchPath: string | undefined
   try {
     if (typeof ctx.baseUrl === 'string' && ctx.baseUrl.startsWith('file:')) {
@@ -350,6 +348,7 @@ export function apply(ctx, config: any = {}) {
         await models.ready
         await effort.ready
         await outbound.ready
+        if (closed) return
         proxy = createProxy({
           port,
           apiKey,
@@ -368,11 +367,16 @@ export function apply(ctx, config: any = {}) {
         if (!closed) ctx.logger?.error?.(`dsh-plugin-oauth-subs: failed to start: ${describeError(error)}`)
       }
     })()
+    // The outbound agent is the proxy's own transport: it closes after the proxy
+    // has drained, not beside it (cordis runs every cleanup at once, and a request
+    // in flight at a reload keeps its socket to this instance). Not awaited, so a
+    // long stream never holds the reload — the new instance takes the port at once.
     return () => {
       closed = true
-      void proxy?.close()
+      void controller.quota?.flush?.()
+      void (proxy?.close() ?? Promise.resolve()).finally(() => outbound.close())
     }
-  }, 'dsh-plugin-oauth-subs: local responses proxy')
+  }, 'dsh-plugin-oauth-subs: local responses proxy + outbound agent')
 
   registerRpc(ctx, controller)
 

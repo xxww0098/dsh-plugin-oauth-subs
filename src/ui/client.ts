@@ -233,6 +233,7 @@ window.__ModuleLoader__.load({
         fastTag: 'Fast',
         largeTag: '900K',
         visionTag: '视觉输入',
+        rateTag: '积分倍率：相对基础档，每次调用消耗的 credit 倍数',
         aboutTitle: '关于',
         repo: '仓库',
         repoOpen: '打开仓库',
@@ -470,6 +471,7 @@ window.__ModuleLoader__.load({
         fastTag: 'Fast',
         largeTag: '900K',
         visionTag: 'Vision input',
+        rateTag: 'Credit multiplier: credits spent per call, relative to the base rate',
         aboutTitle: 'About',
         repo: 'Repository',
         repoOpen: 'Open repo',
@@ -3098,6 +3100,7 @@ window.__ModuleLoader__.load({
           Array.isArray(model.input) && model.input.includes('image')
             && h('span', { className: 'osubs-vision', title: t.visionTag }, h(IconEye)),
           model.large && h('span', { className: 'osubs-tag' }, t.largeTag),
+          model.rate && h('span', { className: 'osubs-tag osubs-tag--plain', title: t.rateTag }, `×${model.rate}`),
           model.fast && h('span', { className: 'osubs-tag osubs-tag--fast' }, t.fastTag),
         ),
         h(Switch, {
