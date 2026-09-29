@@ -589,6 +589,7 @@ function sessionRecords(events) {
         outputTokens: num(usage.outputTokens),
         cacheReadTokens: num(usage.cacheReadTokens),
         cacheWriteTokens: num(usage.cacheWriteTokens),
+        hasCacheField: Object.prototype.hasOwnProperty.call(usage, 'cacheReadTokens'),
       })
     }
   }
@@ -627,6 +628,10 @@ function groupStats({ calls, retries, failures }) {
   const inputTokens = calls.reduce((sum, call) => sum + call.inputTokens, 0)
   const cacheReadTokens = calls.reduce((sum, call) => sum + call.cacheReadTokens, 0)
   const cacheWriteTokens = calls.reduce((sum, call) => sum + call.cacheWriteTokens, 0)
+  // No call carried a cache field (Kiro reports none): the hit rate is
+  // unmeasured, not 0%. A group with no calls has nothing to call unmeasured.
+  const cacheMeasured = calls.length === 0 || calls.some((call) => call.hasCacheField)
+  const measured = (value) => (cacheMeasured ? value : null)
 
   const buckets = Object.fromEntries(CALL_INDEX_BUCKETS.map((name) => [name, { calls: 0, input: 0, read: 0 }]))
   for (const call of calls) {
@@ -662,11 +667,12 @@ function groupStats({ calls, retries, failures }) {
     inputTokens,
     cacheReadTokens,
     cacheWriteTokens,
-    weightedCacheHit: hitRate(cacheReadTokens, inputTokens),
-    uncachedBreakdown: uncachedBreakdown(calls),
+    cacheMeasured,
+    weightedCacheHit: measured(hitRate(cacheReadTokens, inputTokens)),
+    uncachedBreakdown: measured(uncachedBreakdown(calls)),
     hitByCallIndex: Object.fromEntries(Object.entries(buckets).map(([name, bucket]) => [
       name,
-      { calls: bucket.calls, hit: hitRate(bucket.read, bucket.input) },
+      { calls: bucket.calls, hit: measured(hitRate(bucket.read, bucket.input)) },
     ])),
     retries: retryCodes,
     idleTimeout300: matching(IDLE_TIMEOUT_300),
@@ -776,6 +782,7 @@ export function analyzeSessionDir(root: string, { since = null, until = null }: 
 }
 
 const pct = (value) => (value == null ? '—' : `${(value * 100).toFixed(1)}%`)
+const hitCell = (s) => (s.cacheMeasured === false ? 'n/a' : pct(s.weightedCacheHit))
 const secs = (ms) => (ms == null ? '—' : `${(ms / 1000).toFixed(1)}s`)
 
 export function formatAggregate(report) {
@@ -790,7 +797,7 @@ export function formatAggregate(report) {
       name.padEnd(26),
       String(s.calls).padStart(6),
       `${((s.inputTokens + s.cacheReadTokens) / 1e6).toFixed(0)}M`.padStart(7),
-      pct(s.weightedCacheHit).padStart(7),
+      hitCell(s).padStart(7),
       `${secs(s.ttfbMs.p50)}/${secs(s.ttfbMs.p95)}/${secs(s.ttfbMs.p99)}/${secs(s.ttfbMs.max)}`.padStart(26),
       String(s.ttfbMs.over120s).padStart(6),
       `${secs(s.silenceMs.p99)}/${secs(s.silenceMs.max)}`.padStart(16),
@@ -811,12 +818,15 @@ export function formatAggregate(report) {
   for (const [name, s] of Object.entries<any>(report.providers)) {
     lines.push(`  ${name.padEnd(26)} ${CALL_INDEX_BUCKETS.map((bucket) => {
       const b = s.hitByCallIndex[bucket]
-      return b.calls ? `${pct(b.hit)} (${b.calls})` : '—'
+      return b.calls ? `${s.cacheMeasured === false ? 'n/a' : pct(b.hit)} (${b.calls})` : '—'
     }).join(' / ')}`)
   }
   lines.push('', 'models')
   for (const [name, s] of Object.entries<any>(report.models)) {
-    lines.push(`  ${name.padEnd(48)} ${String(s.calls).padStart(6)} ${pct(s.weightedCacheHit).padStart(7)}  ttfb p50 ${secs(s.ttfbMs.p50)}`)
+    lines.push(`  ${name.padEnd(48)} ${String(s.calls).padStart(6)} ${hitCell(s).padStart(7)}  ttfb p50 ${secs(s.ttfbMs.p50)}`)
+  }
+  if (Object.values<any>(report.providers).some((s) => s.cacheMeasured === false)) {
+    lines.push('', 'n/a = upstream reports no cache field (Kiro caches server-side, invisible here), not a 0% hit')
   }
   return lines.join('\n')
 }

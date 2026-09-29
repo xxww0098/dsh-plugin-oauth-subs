@@ -513,3 +513,28 @@ test('terminal failures are normalized and scrubbed before aggregation', () => {
   assert.equal(s.proxyExhausted, 2)
   assert.deepEqual(s.failures, [{ code: 'SERVER', message: 'N "codex upstream failed 3 times: fetch failed: ECONNRESET"', n: 2 }])
 })
+
+test('a provider that never reports a cache field is n/a, not a 0% hit', () => {
+  const root = sessionDir({
+    'a/session-1/session.v4.jsonl.zstd': [
+      { type: 'session', version: 4, id: 'session-1' },
+      call(1, 1, 10, 'oauth-kiro', { inputTokens: 100 }),
+      call(1, 2, 20, 'oauth-kiro', { inputTokens: 100 }),
+      call(2, 1, 30, 'oauth-codex'),
+    ],
+  })
+  const report = analyzeSessionDir(root)
+  const kiro = report.providers['oauth-kiro']
+  assert.equal(kiro.cacheMeasured, false)
+  assert.equal(kiro.weightedCacheHit, null)
+  assert.equal(kiro.hitByCallIndex['0-39'].hit, null)
+  assert.equal(report.models['oauth-kiro/m'].weightedCacheHit, null)
+  assert.equal(report.providers['oauth-codex'].cacheMeasured, true)
+  assert.equal(report.providers['oauth-codex'].weightedCacheHit, 0.9)
+  const text = formatAggregate(report)
+  assert.match(text, /oauth-kiro\s+2\s+\S+\s+n\/a/)
+  assert.match(text, /n\/a = upstream reports no cache field/)
+  assert.doesNotMatch(formatAggregate(analyzeSessionDir(sessionDir({
+    'b/session-2/session.v4.jsonl.zstd': [{ type: 'session', version: 4, id: 'session-2' }, call(1, 1, 10, 'oauth-codex')],
+  }))), /n\/a/)
+})

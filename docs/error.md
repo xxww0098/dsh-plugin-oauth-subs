@@ -48,7 +48,7 @@
 
 **现象**：分析器显示 Kiro 7 天 618 次调用、83M prompt token，命中 0.0%。
 **根因**：Kiro 的流里没有 `metadataEvent`（没有 `cacheReadInputTokens`），用量靠估算；服务端其实缓存相同前缀。活测：同一约 15K token 前缀连发三次，Haiku 0.0364 → 0.0193 credit、Sonnet 0.118 → 0.063（省约一半）。
-**修复**：没有代码改动，结论记进 `kiro/README.md`；看 Kiro 的缓存效果别看分析器的命中率。
+**修复**：目录模式按「该家族的调用里有没有出现过 `cacheReadTokens` 字段」判断可测性（Kiro 618 次调用一次都没有，其余家族都有），不可测的显示 `n/a` 并附一行说明，JSON 里 `cacheMeasured: false`、命中率为 null，`--compare` 对应格是 `—`；单会话模式早就有同样的 `UNMEASURED`。结论也记在 `kiro/README.md`。回归 `test/analyze-session.test.ts`。
 
 ## 2026-09-29：对照 magpie（yetone/magpie）审网关 / 账号 / 额度 / hop——采纳一批小改，多账号故障转移与冷却维持不学
 
