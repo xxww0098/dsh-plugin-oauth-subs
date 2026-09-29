@@ -13,6 +13,7 @@ import {
   encodeKiroEventStream,
   kiroChatHeaders,
   kiroChatUrl,
+  kiroClientErrorBody,
   kiroClientErrorStatus,
   kiroConversationId,
   kiroToOpenai,
@@ -24,6 +25,9 @@ import {
 } from '../lib/oauth/kiro/request.js'
 
 const RT = `rt_${'x'.repeat(120)}`
+
+/** Real tool turns always offer tools; without them the wire carries the calls as text (`toolHistoryAsText`). */
+const STUB_TOOLS = [{ type: 'function', function: { name: 'stub', description: 'stub', parameters: { type: 'object', properties: {} } } }]
 
 function session(fields = {}) {
   return kiroSession({
@@ -286,6 +290,7 @@ test('two tool rounds keep tool_use before matching tool_result (live 0.0.58 wal
   const session_id = 'session-34f2f661-be56-4464-8b29-f20217fd0711'
   const model = 'claude-opus-5'
   openaiToKiro({
+    tools: STUB_TOOLS,
     model,
     session_id,
     messages: [
@@ -295,6 +300,7 @@ test('two tool rounds keep tool_use before matching tool_result (live 0.0.58 wal
   })
   const extraSystem = 'You are DSH.\nThis snapshot supersedes the previous context.'
   const first = openaiToKiro({
+    tools: STUB_TOOLS,
     model,
     session_id,
     messages: [
@@ -313,6 +319,7 @@ test('two tool rounds keep tool_use before matching tool_result (live 0.0.58 wal
   assert.deepEqual(toolUseIds(firstHist.at(-1)), [EZ5_WIRE])
 
   const second = openaiToKiro({
+    tools: STUB_TOOLS,
     model,
     session_id,
     messages: [
@@ -339,6 +346,7 @@ test('two tool rounds keep tool_use before matching tool_result (live 0.0.58 wal
   assert.equal(isKiroSystemAck(hist[kgIdx]), false)
 
   const follow = openaiToKiro({
+    tools: STUB_TOOLS,
     model,
     session_id,
     messages: [
@@ -363,6 +371,7 @@ test('two tool rounds keep tool_use before matching tool_result (live 0.0.58 wal
 test('extra system snapshot does not sit between last tool_use and current toolResults', () => {
   resetKiroSystemPins()
   openaiToKiro({
+    tools: STUB_TOOLS,
     model: 'claude-sonnet-5',
     session_id: 'session-dsh-tool-extra',
     messages: [
@@ -372,6 +381,7 @@ test('extra system snapshot does not sit between last tool_use and current toolR
   })
   const extra = 'This snapshot supersedes the previous context.'
   const body = openaiToKiro({
+    tools: STUB_TOOLS,
     model: 'claude-sonnet-5',
     session_id: 'session-dsh-tool-extra',
     messages: [
@@ -392,6 +402,7 @@ test('extra system snapshot does not sit between last tool_use and current toolR
   assert.equal(isKiroSystemAck(history.at(-1)), false)
 
   const withEmptyUser = openaiToKiro({
+    tools: STUB_TOOLS,
     model: 'claude-sonnet-5',
     session_id: 'session-dsh-tool-extra',
     messages: [
@@ -410,6 +421,7 @@ test('extra system snapshot does not sit between last tool_use and current toolR
 test('multiple tool_calls on one assistant all pair with their toolResults', () => {
   resetKiroSystemPins()
   const body = openaiToKiro({
+    tools: STUB_TOOLS,
     model: 'claude-opus-5',
     session_id: 'session-dsh-multi-tool',
     messages: [
@@ -786,4 +798,72 @@ test('proxy remaps Kiro 403 to a non-AUTH 400', async () => {
   } finally {
     await proxy.close()
   }
+})
+
+// ── live findings 2026-09-29 ──────────────────────────────────────────────
+
+test('a vendor 5xx is not typed invalid_request_error: the host reads that text before any 5xx and never retries it', () => {
+  // The host sees `<status> <error JSON>` and matches /invalid.?request/ ahead of /\b5\d\d\b/.
+  const hostText = (status, parsed) => `${status} ${JSON.stringify(kiroClientErrorBody(status, parsed, '').error)}`
+  const highLoad = { message: 'Encountered unexpectedly high load when processing the request, please try again.' }
+  assert.doesNotMatch(hostText(500, highLoad), /invalid.?request/i)
+  assert.equal(kiroClientErrorBody(500, highLoad, '').error.type, 'api_error')
+  const capacity = { reason: 'INSUFFICIENT_MODEL_CAPACITY', message: 'busy' }
+  assert.equal(kiroClientErrorBody(400, capacity, '').error.type, 'api_error', 'capacity answers 503, so it is a server error')
+  assert.doesNotMatch(hostText(400, capacity), /invalid.?request/i)
+  // Client errors and rate limits keep their own types.
+  assert.equal(kiroClientErrorBody(400, { message: 'bad' }, '').error.type, 'invalid_request_error')
+  assert.equal(kiroClientErrorBody(429, { reason: 'USER_REQUEST_RATE_EXCEEDED' }, '').error.type, 'rate_limit_error')
+})
+
+test('text chunks are deltas: a chunk that starts with everything so far is still new text', () => {
+  // Live: a run of `-` arrives as `-`×12 then `-`×48; treating the second as a cumulative snapshot kept 48 of 60.
+  const events = [
+    { type: 'assistantResponseEvent', payload: { content: '-'.repeat(12) } },
+    { type: 'assistantResponseEvent', payload: { content: '-'.repeat(48) } },
+    { type: 'reasoningContentEvent', payload: { text: 'ab' } },
+    { type: 'reasoningContentEvent', payload: { text: 'abab' } },
+  ]
+  const message = kiroToOpenai(events, { model: 'deepseek-3.2' }).choices[0].message
+  assert.equal(message.content, '-'.repeat(60))
+  assert.equal(message.reasoning_content, 'ababab')
+})
+
+test('prompt tokens use the live catalog window when the caller has one', () => {
+  const events = [
+    { type: 'assistantResponseEvent', payload: { content: 'ok' } },
+    { type: 'contextUsageEvent', payload: { contextUsagePercentage: 10 } },
+  ]
+  assert.equal(kiroToOpenai(events, { model: 'claude-haiku-4.5', window: 100_000 }).usage.prompt_tokens, 10_000)
+  assert.equal(kiroToOpenai(events, { model: 'claude-haiku-4.5' }).usage.prompt_tokens, 20_000, 'static table when there is no live row')
+})
+
+test('tool history with no tools offered rides as text: Kiro 400s toolUse blocks without a toolConfig', () => {
+  resetKiroSystemPins()
+  const messages = [
+    { role: 'user', content: 'read both files, then summarise' },
+    { role: 'assistant', content: 'reading', tool_calls: [
+      { id: 'call_1', type: 'function', function: { name: 'read_file', arguments: '{"path":"a.ts"}' } },
+      { id: 'call_2', type: 'function', function: { name: 'read_file', arguments: '{"path":"b.ts"}' } },
+    ] },
+    { role: 'tool', tool_call_id: 'call_1', content: 'const a = 1' },
+    { role: 'tool', tool_call_id: 'call_2', content: 'const b = 2' },
+    { role: 'user', content: 'Summarise the conversation.' },
+  ]
+  const body = openaiToKiro({ model: 'claude-haiku-4.5', messages }, { conversationId: 's1' })
+  const wire = JSON.stringify(body)
+  assert.doesNotMatch(wire, /toolUses|toolResults/)
+  const history = body.conversationState.history
+  const texts = history.map((row) => row.userInputMessage?.content ?? row.assistantResponseMessage.content)
+  assert.match(texts.join('\n'), /\[tool call\] read_file\(\{"path":"a\.ts"\}\)/)
+  assert.match(texts.join('\n'), /\[tool result call_2\]\nconst b = 2/)
+  assert.equal(history.filter((row) => row.userInputMessage?.content.startsWith('[tool result')).length, 1, 'both results are one user turn')
+  assert.equal(body.conversationState.currentMessage.userInputMessage.content, 'Summarise the conversation.')
+
+  // With tools offered the wire is untouched.
+  resetKiroSystemPins()
+  const tools = [{ type: 'function', function: { name: 'read_file', description: 'r', parameters: { type: 'object', properties: {} } } }]
+  const withTools = JSON.stringify(openaiToKiro({ model: 'claude-haiku-4.5', messages, tools }, { conversationId: 's1' }))
+  assert.match(withTools, /toolUses/)
+  assert.match(withTools, /toolResults/)
 })

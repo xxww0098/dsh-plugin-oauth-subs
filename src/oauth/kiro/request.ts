@@ -219,6 +219,31 @@ export function relocateDisplacedToolResults(messages) {
   return out
 }
 
+/**
+ * Kiro (Bedrock) 400s tool_use / tool_result blocks in a request that offers
+ * no tools — "The toolConfig field must be defined when using toolUse and
+ * toolResult content blocks" (live 2026-09-29). That is the shape of a
+ * compaction or summary request, which must not be handed tools to call, so
+ * the calls and results ride as text. Consecutive results become one user turn.
+ */
+export function toolHistoryAsText(messages) {
+  const out: any[] = []
+  for (const message of messages) {
+    if (message?.role === 'tool') {
+      const text = `[tool result ${trimmed(message.tool_call_id) ?? ''}]\n${flattenContent(message.content)}`
+      const last = out.at(-1)
+      if (last?.role === 'user' && last.fromToolResults) last.content += `\n${text}`
+      else out.push({ role: 'user', content: text, fromToolResults: true })
+    } else if (message?.role === 'assistant' && Array.isArray(message.tool_calls) && message.tool_calls.length) {
+      const calls = message.tool_calls.map((call) => `[tool call] ${call?.function?.name ?? call?.name ?? ''}(${call?.function?.arguments ?? ''})`)
+      out.push({ role: 'assistant', content: [flattenContent(message.content), ...calls].filter(Boolean).join('\n') })
+    } else {
+      out.push(message)
+    }
+  }
+  return out.map(({ fromToolResults, ...message }) => message)
+}
+
 function assistantHistoryMessage(message) {
   const content = flattenContent(message?.content)
   const row: any = { content }
@@ -291,7 +316,11 @@ function parkKiroSystemExtra(history, extra, { modelId, origin, currentHasToolRe
 export function openaiToKiro(payload, { conversationId, profileArn, origin = KIRO_CHAT_ORIGIN, efforts }: any = {}) {
   const modelId = trimmed(payload?.model)
   if (!modelId) throw new Error('kiro generateAssistantResponse requires a model')
-  const messages = relocateDisplacedToolResults(Array.isArray(payload?.messages) ? payload.messages : [])
+  let messages = relocateDisplacedToolResults(Array.isArray(payload?.messages) ? payload.messages : [])
+  const tools = openaiToolsToKiro(payload?.tools)
+  if (!tools && messages.some((message) => message?.role === 'tool' || message?.tool_calls?.length)) {
+    messages = toolHistoryAsText(messages)
+  }
   const history: any[] = []
   const systemParts: any[] = []
   let pendingUser
@@ -367,7 +396,6 @@ export function openaiToKiro(payload, { conversationId, profileArn, origin = KIR
   })
 
   const userContext: any = { envState: { operatingSystem: kiroOsName() } }
-  const tools = openaiToolsToKiro(payload?.tools)
   if (tools) userContext.tools = tools
   if (pendingToolResults.length) userContext.toolResults = pendingToolResults
 
@@ -531,12 +559,6 @@ export function parseKiroEventStream(buffer) {
   return events
 }
 
-export function mergeKiroText(previous, chunk) {
-  if (!chunk) return { text: previous, delta: '' }
-  if (chunk.startsWith(previous)) return { text: chunk, delta: chunk.slice(previous.length) }
-  return { text: previous + chunk, delta: chunk }
-}
-
 export function thinkingTextFromPayload(type, data) {
   if (!isPlainObject(data)) return undefined
   const typed = typeof type === 'string' && /thinking|reasoning/i.test(type)
@@ -576,12 +598,12 @@ export function collectKiroEvents(events) {
     const data = unwrapKiroEventPayload(event?.payload, type)
     const thought = thinkingTextFromPayload(type, data)
     if (thought) {
-      thinking = mergeKiroText(thinking, thought).text
+      thinking += thought
       continue
     }
     if (type === 'assistantResponseEvent' || typeof data.content === 'string') {
       const chunk = typeof data.content === 'string' ? data.content : ''
-      if (chunk) text = mergeKiroText(text, chunk).text
+      if (chunk) text += chunk
     }
     if (type === 'toolUseEvent') {
       const id = trimmed(data.toolUseId ?? data.tool_use_id)
@@ -617,7 +639,7 @@ export function collectKiroEvents(events) {
   }
 }
 
-export function kiroToOpenai(eventsOrBody, { model, id = `chatcmpl-${Date.now()}` }: any = {}) {
+export function kiroToOpenai(eventsOrBody, { model, id = `chatcmpl-${Date.now()}`, window }: any = {}) {
   const events = Array.isArray(eventsOrBody) ? eventsOrBody : parseKiroEventStream(eventsOrBody)
   const collected = collectKiroEvents(events)
   const message: any = { role: 'assistant', content: collected.text || null }
@@ -632,7 +654,7 @@ export function kiroToOpenai(eventsOrBody, { model, id = `chatcmpl-${Date.now()}
       message,
       finish_reason: collected.capped ? 'length' : collected.toolCalls.length ? 'tool_calls' : 'stop',
     }],
-    usage: resolveKiroUsage(collected, model),
+    usage: resolveKiroUsage(collected, model, window),
     ...(collected.error ? { error: { message: collected.error } } : {}),
   }
 }
@@ -696,11 +718,17 @@ function hasRealKiroUsage(usage) {
     || usage.prompt_tokens_details?.cached_tokens > 0
 }
 
-/** Live CodeWhisperer rarely sends metadataEvent. Fall back to contextUsageEvent % × window. */
-export function kiroUsageFromContext(percent, model, text = '') {
+/**
+ * Live CodeWhisperer rarely sends metadataEvent. Fall back to contextUsageEvent
+ * % × window. The percentage is of the model's own window, so `window` is the
+ * live catalog row's — the number the host compacts against — and the static
+ * table only answers when there is no live row.
+ */
+export function kiroUsageFromContext(percent, model, text = '', window = undefined) {
   const pct = typeof percent === 'number' ? percent : Number(percent)
   if (!Number.isFinite(pct) || pct <= 0) return undefined
-  const prompt = Math.max(0, Math.round(kiroContextWindowOf(model) * pct / 100))
+  const size = typeof window === 'number' && window > 0 ? window : kiroContextWindowOf(model)
+  const prompt = Math.max(0, Math.round(size * pct / 100))
   if (prompt <= 0) return undefined
   const completion = text ? Math.max(1, Math.ceil(String(text).length / 4)) : 0
   return {
@@ -719,9 +747,9 @@ export function kiroOutputText(collected) {
   return `${collected?.text ?? ''}${collected?.thinking ?? ''}${collected?.toolText ?? ''}${tools}`
 }
 
-export function resolveKiroUsage(collected, model) {
+export function resolveKiroUsage(collected, model, window = undefined) {
   if (hasRealKiroUsage(collected?.usage)) return collected.usage
-  return kiroUsageFromContext(collected?.contextPercentage, model, kiroOutputText(collected))
+  return kiroUsageFromContext(collected?.contextPercentage, model, kiroOutputText(collected), window)
     ?? { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
 }
 
@@ -798,7 +826,10 @@ export function kiroClientErrorBody(status, parsed, text) {
       // which its pi-ai adapter reads off wording like this; Kiro's own
       // "Input is too long." matches none of it.
       message: classified.code === 'kiro_too_big' ? `input is too long for the model's context window: ${message}` : message,
-      type: classified.status === 429 ? 'rate_limit_error' : 'invalid_request_error',
+      // The host classifies by this text and reads `invalid.?request` before
+      // any 5xx: a 500 / 503 typed invalid_request_error is INVALID_REQUEST and
+      // never retried (live: a 500 "unexpectedly high load" ended a 109-step turn).
+      type: classified.status === 429 ? 'rate_limit_error' : classified.status >= 500 ? 'api_error' : 'invalid_request_error',
       code: classified.code,
     },
   }

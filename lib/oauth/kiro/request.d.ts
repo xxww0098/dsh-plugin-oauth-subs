@@ -76,6 +76,14 @@ export declare function normalizeToolUseId(id: any): string | undefined;
  */
 export declare function relocateDisplacedToolResults(messages: any): any;
 /**
+ * Kiro (Bedrock) 400s tool_use / tool_result blocks in a request that offers
+ * no tools — "The toolConfig field must be defined when using toolUse and
+ * toolResult content blocks" (live 2026-09-29). That is the shape of a
+ * compaction or summary request, which must not be handed tools to call, so
+ * the calls and results ride as text. Consecutive results become one user turn.
+ */
+export declare function toolHistoryAsText(messages: any): any[];
+/**
  * DSH `developer` (and any other unknown role) → system, same as GLM.
  * Official wire has no system field (kiro.rs / kiro-proxy PROTOCOL.md):
  * park system as the first history user + canned assistant pair so the
@@ -90,10 +98,6 @@ export declare class KiroEventStreamParser {
     finish(): void;
 }
 export declare function parseKiroEventStream(buffer: any): any[];
-export declare function mergeKiroText(previous: any, chunk: any): {
-    text: any;
-    delta: any;
-};
 export declare function thinkingTextFromPayload(type: any, data: any): any;
 /**
  * The stream's own "this reply hit its output limit" (kiro.rs reads it as
@@ -117,7 +121,7 @@ export declare function collectKiroEvents(events: any): {
     error: any;
     capped: boolean;
 };
-export declare function kiroToOpenai(eventsOrBody: any, { model, id }?: any): {
+export declare function kiroToOpenai(eventsOrBody: any, { model, id, window }?: any): {
     error?: {
         message: any;
     } | undefined;
@@ -132,8 +136,13 @@ export declare function kiroToOpenai(eventsOrBody: any, { model, id }?: any): {
     usage: any;
 };
 export declare function mapKiroUsage(tokens: any): any;
-/** Live CodeWhisperer rarely sends metadataEvent. Fall back to contextUsageEvent % × window. */
-export declare function kiroUsageFromContext(percent: any, model: any, text?: string): {
+/**
+ * Live CodeWhisperer rarely sends metadataEvent. Fall back to contextUsageEvent
+ * % × window. The percentage is of the model's own window, so `window` is the
+ * live catalog row's — the number the host compacts against — and the static
+ * table only answers when there is no live row.
+ */
+export declare function kiroUsageFromContext(percent: any, model: any, text?: string, window?: undefined): {
     prompt_tokens: number;
     completion_tokens: number;
     total_tokens: number;
@@ -141,7 +150,7 @@ export declare function kiroUsageFromContext(percent: any, model: any, text?: st
 /** Everything the model generated: reply, thinking, and tool-call arguments.
  * Counting only `text` made thinking + tool steps report 0 output tokens. */
 export declare function kiroOutputText(collected: any): string;
-export declare function resolveKiroUsage(collected: any, model: any): any;
+export declare function resolveKiroUsage(collected: any, model: any, window?: undefined): any;
 export declare function kiroToOpenaiChunk(delta: any, { model, id, done, finishReason, usage }?: any): any;
 /**
  * Classify hop errors so DSH does not treat size / capacity as AUTH. The hard

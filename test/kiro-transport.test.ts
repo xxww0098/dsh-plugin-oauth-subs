@@ -221,3 +221,46 @@ test('Kiro streaming tools keep distinct indexes and string argument fragments',
   ])
   assert.equal(chunks.at(-1).choices[0].finish_reason, 'tool_calls')
 })
+
+// ── live findings 2026-09-29 ──────────────────────────────────────────────
+
+test('Kiro 500 reaches the host as a server error, not an invalid request it would never retry', async t => {
+  const { fetchFn, calls } = upstreamSequence(() => new Response(JSON.stringify({ message: 'Encountered unexpectedly high load when processing the request, please try again.' }), { status: 500 }))
+  const response = await post(t, fetchFn)
+  assert.equal(response.status, 500)
+  const body = await response.json()
+  assert.equal(body.error.type, 'api_error')
+  assert.doesNotMatch(JSON.stringify(body.error), /invalid.?request/i)
+  assert.equal(calls.length, 1, 'forwarded once; the host does the retrying')
+})
+
+test('Kiro exception inside a non-streaming reply is a retryable 502, like the streamed one', async t => {
+  const { fetchFn } = upstreamSequence(() => new Response(encodeKiroEventStream([
+    { type: 'exception', payload: { message: 'upstream failed' } },
+  ])))
+  const response = await post(t, fetchFn, { stream: false })
+  assert.equal(response.status, 502)
+  assert.equal((await response.json()).error.type, 'api_error')
+})
+
+test('Kiro text deltas stream through whole, even when a chunk repeats everything so far', async t => {
+  const { fetchFn } = upstreamSequence(() => new Response(encodeKiroEventStream([
+    { type: 'assistantResponseEvent', payload: { content: '-'.repeat(12) } },
+    { type: 'assistantResponseEvent', payload: { content: '-'.repeat(48) } },
+  ])))
+  const events = eventsOf(await (await post(t, fetchFn)).text())
+  assert.equal(events.map(event => event.choices[0].delta?.content).filter(Boolean).join(''), '-'.repeat(60))
+})
+
+test('Kiro tool with no parameters ends the stream with `{}` arguments, as the buffered reply does', async t => {
+  const frames = () => encodeKiroEventStream([
+    { type: 'toolUseEvent', payload: { toolUseId: 'tooluse_a', name: 'git_status', input: '' } },
+    { type: 'toolUseEvent', payload: { toolUseId: 'tooluse_a', name: 'git_status', stop: true } },
+    { type: 'toolUseEvent', payload: { toolUseId: 'tooluse_b', name: 'read_file', input: '{"path":"a.ts"}' } },
+  ])
+  const { fetchFn } = upstreamSequence(() => new Response(frames()))
+  const deltas = eventsOf(await (await post(t, fetchFn)).text()).flatMap(event => event.choices[0].delta?.tool_calls ?? [])
+  const argsOf = (index: number) => deltas.filter(call => call.index === index).map(call => call.function.arguments).join('')
+  assert.equal(argsOf(0), '{}')
+  assert.equal(argsOf(1), '{"path":"a.ts"}', 'a tool that streamed arguments gets no extra `{}`')
+})

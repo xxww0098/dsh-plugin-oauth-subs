@@ -828,6 +828,9 @@ test('Kiro vault can hold one card per credential method', async () => {
   }
 })
 
+/** Real tool turns always offer tools; without them the wire carries the calls as text (`toolHistoryAsText`). */
+const STUB_TOOLS = [{ type: 'function', function: { name: 'stub', description: 'stub', parameters: { type: 'object', properties: {} } } }]
+
 const PIPED_TOOL_ID = 'call_abc123|fc_this_is_an_openai_responses_compound_id_over_sixty_four_chars_xx'
 
 function toolCall(id, name = 'run_code', args = '{}') {
@@ -857,6 +860,7 @@ test('piped OpenAI tool ids remap stably on use and result', () => {
   assert.equal(normalizeToolUseId('toolu_bdrk_01Ez5MSML7fNdsjMvkPUTeCd'), 'tooluse_bdrk_01Ez5MSML7fNdsjMvkPUTeCd')
 
   const body = openaiToKiro({
+    tools: STUB_TOOLS,
     model: 'claude-opus-5',
     messages: [
       { role: 'user', content: 'run it' },
@@ -870,6 +874,7 @@ test('piped OpenAI tool ids remap stably on use and result', () => {
   assert.equal(useId, first)
   assert.deepEqual(toolResultIdsOf(current), [first])
   const again = openaiToKiro({
+    tools: STUB_TOOLS,
     model: 'claude-opus-5',
     messages: [
       { role: 'user', content: 'run it' },
@@ -886,6 +891,7 @@ test('piped OpenAI tool ids remap stably on use and result', () => {
 
 test('interleaved A/B tool results relocate before positional flush', () => {
   const body = openaiToKiro({
+    tools: STUB_TOOLS,
     model: 'claude-sonnet-5',
     messages: [
       { role: 'user', content: 'start' },

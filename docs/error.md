@@ -26,6 +26,36 @@
 **根因**：`CODEX_PLAN_NAMES` 没有这个 slug，回落到首字母大写。
 **修复**：`promax` / `pro_max` / `chatgpt_promax` / `chatgpt_pro_max` → `Pro Max`，倍数官方没公布，不写。官方把 `pro` / `prolite` 的显示名改成了 Pro (More) / Pro，我们保留 20x / 5x，没跟。
 
+## 2026-09-29：Kiro 上游 500 / 503 被标成 invalid_request_error，宿主不重试，长 turn 被打断
+
+**现象**：分析器里 Kiro 有 2 次终止失败：`500: {"message":"Encountered unexpectedly high load when processing the request, please try again.","type":"invalid_request_error"…}`，宿主判 INVALID_REQUEST，一次发生在第 109 步。`INSUFFICIENT_MODEL_CAPACITY → 503` 同样从没被重试过。
+**根因**：宿主按 `<status> <error JSON>` 文本分类，`invalid.?request` 排在 `\b5\d\d\b` 之前；`kiroClientErrorBody` 除 429 外一律写 `type: invalid_request_error`。
+**修复**：5xx 写 `api_error`（4xx 保持、429 是 `rate_limit_error`）；非流式的流内异常也从 400 改 502，与流式一致（分类器仍把额度 / 容量 / 超长分流）。回归 `test/kiro-request.test.ts`、`test/kiro-transport.test.ts`（旧代码上失败）。
+
+## 2026-09-29：Kiro 文本块被当累计快照合并，重复开头的内容被吞
+
+**现象**：让模型输出 60 个 `-`，收到 48 个；`ab`×20 收到 22 个字符；`0`×50 收到 42 个。
+**根因**：`mergeKiroText` 把「以已有文本开头」的块当累计快照只发新后缀。活流是增量：`-`×12 之后是 `-`×48，第二块以第一块开头，前 12 个被吞。最初的翻译器带来的启发式，没有任何测试或故障记录支持。
+**修复**：删掉 `mergeKiroText`，文本与 thinking 直接拼接。只有响应开头的短累计文本会触发，所以是罕见的静默错字，不是常发故障。回归两个测试（含 12 / 48 两块的真实形状）。
+
+## 2026-09-29：Kiro 对没有 tools 的工具历史 400；无参工具流式参数为空串
+
+**现象**：活测：历史里有 tool_use / tool_result、请求没带 `tools`，Bedrock 400 `The toolConfig field must be defined when using toolUse and toolResult content blocks`。无参工具流式 `arguments` 是空串，非流式是 `{}`。
+**根因**：压缩 / 摘要请求就是「带工具历史、不带 tools」的形状；Kiro 对无参工具不发参数文本。本机 60 天 54 个 Kiro 会话没有一次压缩，这条路径没被实战踩到（Codex 有 632 次）。
+**修复**：`toolHistoryAsText`：没有 tools 时调用与结果改成文本（不给摘要请求可调用的工具）；流式收尾给无参工具补 `{}`。同批：`prompt_tokens` 用活目录行的窗口（宿主压缩用的数），静态表只兜底。既有的 5 个工具配对测试补了 `tools`。`npm run live -- kiro` 两项活测通过。
+
+## 2026-09-29：Kiro 缓存按请求前缀内容命中，不按 conversationId；工具定义在前缀里
+
+**现象**：`cache.ts` / README 说「缓存亲和是 conversationId」。
+**根因**：错。活测（Haiku 4.5，`meteringEvent` credit）：追加 2、4 轮文本仍是冷启动的 0.53×；换 conversationId 发同样内容仍是 0.53×；带 tool 往返的 agent 形态每步只多付新增部分；只改一个工具 description，整段缓存作废（1.00×）。
+**修复**：无代码改动（系统提示钉在 history 首对本来就在稳定前缀里）；README / `cache.ts` 改正，并写明「会话内工具列表必须逐字节稳定」。同批实测：tool result 换 `{ text }` 块只省 1.8% token，不改；`List-Available-Models` 还有未展示的 `rateMultiplier`（0.05×–4.4×，见 README 模型节），待 UI 接入。
+
+## 2026-09-29：Kiro 41 次「upstream failed 3 times: UND_ERR_CLOSED / DESTROYED」是突发，疑为热重载（未改）
+
+**现象**：`npm run analyze` 里 Kiro 41 次重试耗尽，全部落在 9-28 的 12:44 / 14:52 / 15:03 / 15:38 几个 18–40 秒窗口，同一秒多个会话一起失败，随后恢复。
+**根因（推断，未证实）**：`UND_ERR_CLOSED` / `DESTROYED` 是 undici「这个 client 已关闭」，不是网络断开。若重载时 outbound agent 先于代理关闭（`index.ts` 里两个 `ctx.effect` 的清理顺序没在本机验证），旧实例的代理仍在收请求却没有可用的连接池，3 次内部重试立刻同样失败。窗口与当天的开发构建重合；其他家族的类似突发（Codex 9-24 等）报错文案不同。
+**修复**：无。建议：卸载时先等代理排空再 `outbound.close()`。`src/index.ts` 有未提交改动，待其提交后再动。
+
 ## 2026-09-29：Cursor 第二轮起失忆：历史用 protobuf turn 发，服务端不读
 
 **现象**：Cursor 家族第二轮问「刚才的口令是什么」答「对话里没有口令」；工具调用后接着问，模型说「你没提问」或重新调用工具。

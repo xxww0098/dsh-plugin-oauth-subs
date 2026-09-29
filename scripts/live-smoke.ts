@@ -151,6 +151,44 @@ const kiro = {
   },
 }
 
+const haiku = (ctx) => ctx.models.find((m) => /haiku/i.test(m.id))?.id ?? ctx.models.find((m) => /^claude-/.test(m.id))?.id
+
+Object.assign(kiro, {
+  // A request that carries tool_use / tool_result history but offers no tools
+  // (a compaction or summary call) is a Bedrock 400 unless the history rides as text.
+  async toolHistoryWithoutTools(chat, ctx) {
+    const model = haiku(ctx)
+    if (!model) return fail('no Claude model in the live catalog')
+    const messages = [
+      { role: 'user', content: 'Call read_file for a.ts, then reply DONE.' },
+      { role: 'assistant', content: '', tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'read_file', arguments: '{"path":"a.ts"}' } }] },
+      { role: 'tool', tool_call_id: 'call_1', content: 'const a = 1' },
+      { role: 'user', content: 'Summarise what happened in one sentence.' },
+    ]
+    const r = await chat({ model, messages })
+    return r.status === 200 && r.text ? pass(`${model}: ${JSON.stringify(r.text.slice(0, 60))} (${ms(r)})`) : fail(`HTTP ${r.status} ${JSON.stringify(r.raw).slice(0, 200)}`)
+  },
+  // A tool with no parameters streams no argument text; the host needs a JSON object.
+  async noArgTool(chat, ctx) {
+    const model = haiku(ctx)
+    if (!model) return fail('no Claude model in the live catalog')
+    const tools = [{ type: 'function', function: { name: 'git_status', description: 'Show git status', parameters: { type: 'object', properties: {} } } }]
+    const res = await fetch(`${ctx.base}/kiro/v1/chat/completions`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${KEY}`, 'content-type': 'application/json' },
+      signal: AbortSignal.timeout(args.timeoutMs),
+      body: JSON.stringify({ model, stream: true, tools, messages: [{ role: 'user', content: 'Call git_status now.' }] }),
+    })
+    const deltas = (await res.text()).split('\n').filter((line) => line.startsWith('data: {')).flatMap((line) => JSON.parse(line.slice(6)).choices?.[0]?.delta?.tool_calls ?? [])
+    const text = deltas.map((call) => call.function?.arguments ?? '').join('')
+    try {
+      return deltas.length && typeof JSON.parse(text) === 'object' ? pass(`arguments ${JSON.stringify(text)}`) : fail(`no tool call: ${res.status}`)
+    } catch {
+      return fail(`arguments are not JSON: ${JSON.stringify(text)}`)
+    }
+  },
+})
+
 const CHECKS = {
   cursor: { checks: cursor },
   kiro: {
@@ -177,7 +215,9 @@ for (const family of args.families) {
     const ctx = setup ? await setup(session) : {}
     proxy = createProxy({ port: 0, apiKey: KEY, tokens: { [family]: { session: async () => session } } })
     const server = await proxy.listen()
-    const chat = chatClient(`http://127.0.0.1:${server.address().port}`, family)
+    const base = `http://127.0.0.1:${server.address().port}`
+    const chat = chatClient(base, family)
+    ctx.base = base
     for (const [name, run] of Object.entries<any>(checks)) {
       const result = await run(chat, ctx).catch((error) => fail(`threw ${error?.name ?? 'Error'}: ${error?.message ?? error}`))
       if (!result.ok) failed += 1

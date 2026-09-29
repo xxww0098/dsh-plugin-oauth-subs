@@ -15,7 +15,6 @@ import {
   KiroEventStreamParser,
   isKiroOutputCap,
   mapKiroUsage,
-  mergeKiroText,
   openaiToKiro,
   resolveKiroUsage,
   thinkingTextFromPayload,
@@ -61,10 +60,11 @@ export async function forwardKiro(response, { payload, cacheSessionId, stream, s
 
 async function attemptKiro(response, { payload, cacheSessionId, stream, session, fetchFn, attempt }) {
   const { signal } = attempt
+  const row = kiroCatalogModels().find((model) => model.id === payload.model)
   const body = Buffer.from(JSON.stringify(openaiToKiro(payload, {
     conversationId: cacheSessionId,
     profileArn: kiroProfileArn(session),
-    efforts: kiroCatalogModels().find((model) => model.id === payload.model)?.reasoningEfforts,
+    efforts: row?.reasoningEfforts,
   })))
   const upstream = await fetchFn(kiroChatUrl(session), { method: 'POST', headers: kiroChatHeaders(session), body, signal })
   if (upstream.status >= 400) {
@@ -79,8 +79,10 @@ async function attemptKiro(response, { payload, cacheSessionId, stream, session,
 
   if (!stream) {
     // A truncated or malformed body is a transport fault: `run` retries it.
-    const openai = kiroToOpenai(Buffer.from(await upstream.arrayBuffer()), { model, id })
-    if (openai.error) throw kiroHopFailure(400, openai.error, openai.error.message)
+    const openai = kiroToOpenai(Buffer.from(await upstream.arrayBuffer()), { model, id, window: row?.contextWindow })
+    // Same answer as a streamed exception: a vendor fault is retryable (502), the
+    // classifier still turns quota / capacity / too-big into their own codes.
+    if (openai.error) throw kiroHopFailure(502, openai.error, openai.error.message)
     sendJson(response, 200, openai)
     return
   }
@@ -90,6 +92,7 @@ async function attemptKiro(response, { payload, cacheSessionId, stream, session,
   let accThinking = ''
   let accToolText = ''
   const toolIndexes = new Map<string, number>()
+  const toolWithArgs = new Set<string>()
   let usage
   let contextPercentage
   let capped = false
@@ -108,25 +111,21 @@ async function attemptKiro(response, { payload, cacheSessionId, stream, session,
       }
       const thought = thinkingTextFromPayload(type, data)
       if (thought) {
-        const merged = mergeKiroText(accThinking, thought)
-        accThinking = merged.text
-        if (merged.delta) {
-          await writeSse(response, kiroToOpenaiChunk({ reasoning_content: merged.delta }, { model, id }), signal)
-        }
+        accThinking += thought
+        await writeSse(response, kiroToOpenaiChunk({ reasoning_content: thought }, { model, id }), signal)
         continue
       }
       if ((type === 'assistantResponseEvent' || typeof data.content === 'string') && typeof data.content === 'string' && data.content) {
-        const merged = mergeKiroText(accText, data.content)
-        accText = merged.text
-        if (merged.delta) {
-          await writeSse(response, kiroToOpenaiChunk({ content: merged.delta }, { model, id }), signal)
-        }
+        // Chunks are deltas (live: a run of `-` arrives as `-`×12 then `-`×48).
+        accText += data.content
+        await writeSse(response, kiroToOpenaiChunk({ content: data.content }, { model, id }), signal)
       } else if (type === 'toolUseEvent') {
         const toolUseId = data.toolUseId ?? data.tool_use_id
         if (!toolUseId || data.stop) continue
         if (!toolIndexes.has(toolUseId)) toolIndexes.set(toolUseId, toolIndexes.size)
         const args = typeof data.input === 'string' ? data.input : (data.input != null ? JSON.stringify(data.input) : '')
         accToolText += `${data.name ?? ''}${args}`
+        if (args) toolWithArgs.add(toolUseId)
         const delta = { tool_calls: [{
           index: toolIndexes.get(toolUseId),
           id: toolUseId,
@@ -145,12 +144,18 @@ async function attemptKiro(response, { payload, cacheSessionId, stream, session,
     }
   })
   parser.finish()
+  // A tool with no parameters streams no argument text; the buffered path
+  // answers `{}` for it, so the stream does too rather than an empty string.
+  for (const [toolUseId, index] of toolIndexes) {
+    if (toolWithArgs.has(toolUseId)) continue
+    await writeSse(response, kiroToOpenaiChunk({ tool_calls: [{ index, function: { arguments: '{}' } }] }, { model, id }), signal)
+  }
   await writeSse(response, kiroToOpenaiChunk({}, {
     model,
     id,
     done: true,
     finishReason: capped ? 'length' : toolIndexes.size ? 'tool_calls' : 'stop',
-    usage: resolveKiroUsage({ usage, contextPercentage, text: accText, thinking: accThinking, toolText: accToolText }, model),
+    usage: resolveKiroUsage({ usage, contextPercentage, text: accText, thinking: accThinking, toolText: accToolText }, model, row?.contextWindow),
   }), signal)
   await writeSse(response, '[DONE]', signal)
   if (!response.writableEnded && !response.destroyed) response.end()
