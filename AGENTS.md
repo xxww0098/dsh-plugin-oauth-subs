@@ -94,6 +94,14 @@ node -p "require('./node_modules/dsh-plugin-oauth-subs/package.json').version"  
 
 单测绿不等于装对了：从**实际在跑的那份**导入该家族模块，用真实凭据跑一遍。
 
+已有现成脚本的家族直接跑（只读：不刷新令牌、不写 store，请求极小但真实，会花一点额度）：
+
+```sh
+npm run build && npm run live -- cursor,kiro   # 可加 --profile / --account N / --timeout 90
+```
+
+它经真实代理走完 Cursor 记忆 / 并行 tool call / 图片与 Kiro 图片 / effort 档位；新增家族的检查往 `scripts/live-smoke.ts` 的 `CHECKS` 加一项。下面是没有脚本时的手写做法。
+
 ```sh
 node --input-type=module -e '
   const fs = await import("node:fs")
