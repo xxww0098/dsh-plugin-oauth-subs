@@ -222,12 +222,12 @@ async function requestManagement(session, { region, path, method, query, fetchFn
   return fetchFn(url.toString(), init)
 }
 
-async function listAvailableModels(session, { region, profileArn, fetchFn }) {
+async function listAvailableModels(session, { region, profileArn, fetchFn, origin = KIRO_CHAT_ORIGIN }) {
   const response = await requestManagement(session, {
     region,
     path: KIRO_LIST_MODELS_PATH,
     method: 'GET',
-    query: { origin: KIRO_CHAT_ORIGIN, profileArn },
+    query: { origin, profileArn },
     fetchFn,
   })
   return { status: response.status, body: await readManagementJson(response) }
@@ -262,9 +262,12 @@ function modelsFrom(body) {
 /**
  * Probe both canonical regions. A regional 403 is "no profile here", not
  * a hard stop — keep going. Empty / failed discovery returns [].
+ * `options.origin` defaults to the chat origin (the picker); `scripts/models.ts`
+ * asks `KIRO_CONSOLE` for the governance list the static snapshot mirrors.
  */
 export async function fetchKiroLiveModels(session, options: any = {}) {
   const fetchFn = options.fetchFn ?? outboundFetch
+  const origin = options.origin ?? KIRO_CHAT_ORIGIN
   const regions = [...new Set([
     ...(options.regions ?? kiroUsageRegions(session)),
     ...KIRO_USAGE_REGIONS,
@@ -273,7 +276,7 @@ export async function fetchKiroLiveModels(session, options: any = {}) {
   for (const region of regions) {
     try {
       if (profileArn) {
-        const listed = await listAvailableModels(session, { region, profileArn, fetchFn })
+        const listed = await listAvailableModels(session, { region, profileArn, fetchFn, origin })
         const models = modelsFrom(listed.body)
         if (listed.status === 403 || (listed.status < 400 && models.length === 0)) {
           // fall through to profiles / next region
@@ -286,7 +289,7 @@ export async function fetchKiroLiveModels(session, options: any = {}) {
       const discovered = profileArnFrom(profiles.body)
       if (discovered) profileArn = discovered
       if (!profileArn) continue
-      const listed = await listAvailableModels(session, { region, profileArn, fetchFn })
+      const listed = await listAvailableModels(session, { region, profileArn, fetchFn, origin })
       if (listed.status === 403) continue
       const models = modelsFrom(listed.body)
       if (models.length) return models

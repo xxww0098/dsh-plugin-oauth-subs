@@ -64,16 +64,10 @@ export declare const KIRO_REASONING_GPT: Readonly<{
  * Offline fallback only — a non-empty live ListAvailableModels replaces it.
  * Snapshot of ListAvailableModels origin=KIRO_CONSOLE (2026-09-28, the full
  * governance catalog) minus Auto; `claude-fable-5` is retained for
- * pi-provider-kiro bootstrap compatibility.
+ * pi-provider-kiro bootstrap compatibility. Rows live in
+ * `src/catalog/models.json` under `"kiro"`.
  */
-export declare const KIRO_MODELS: readonly {
-    id: any;
-    name: any;
-    contextWindow: any;
-    maxTokens: number;
-    input: readonly string[];
-    reasoningEfforts: any;
-}[];
+export declare const KIRO_MODELS: readonly any[];
 export declare const KIRO_PLAN_NAMES: Readonly<{
     kiro_free: "Free";
     kirofree: "Free";

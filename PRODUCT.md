@@ -51,7 +51,7 @@ The plugin connects these accounts inside DSH Settings. Subscription chat uses a
 
 - Shipped Settings UI: `src/ui/client.ts`.
 - Visual contract notes: `design-system/MASTER.md`, `design-system/pages/settings-workbench.md`.
-- Binding product/UI rules: `AGENTS.md`.
+- Binding rules: `AGENTS.md` (index) → `docs/rules.md`, `docs/development.md`.
 - Provider hops and direct routes: `docs/oauth.md`, `src/oauth/<id>/README.md`, and `src/apikey/<id>/README.md`.
 - Fault log: `docs/error.md`.
 - Do not fabricate testimonials, customers, benchmarks, or pricing.

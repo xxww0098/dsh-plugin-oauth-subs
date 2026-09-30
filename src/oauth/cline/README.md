@@ -1,7 +1,7 @@
 # Cline (cline.bot) OAuth
 
 本文件是 `src/oauth/cline/` 的设计源。改登录、额度、对话或缓存先改这里再改代码。
-跨家族硬约定在仓库根 [`AGENTS.md`](../../../AGENTS.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)；对照仓库在 [`docs/oauth.md`](../../../docs/oauth.md)。
+跨家族硬规则在 [`docs/rules.md`](../../../docs/rules.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)；对照仓库在 [`docs/oauth.md`](../../../docs/oauth.md)。
 
 **不是** ChatGPT Codex / xAI Grok / OpenCode Zen。上游是 Cline 订阅后端
 `https://api.cline.bot/api/v1/chat/completions`（OpenAI Completions 方言，OpenRouter 在后）。
@@ -82,26 +82,18 @@ WorkOS 那一对 token 不是 Cline 会话——`register` 兑换才拿到 `usr-
 
 ## 模型
 
-登录 / 导入 / 额度刷新后 `refreshClineCatalog`：
+行在 [`src/catalog/models.json`](../../catalog/models.json) 的 `"cline"` 键；行格式、来源与 `npm run models` 更新流程见 [`docs/models.md`](../../../docs/models.md)。本节只记本家的取舍与出处。
 
-```text
-GET https://api.cline.bot/api/v1/ai/cline/recommended-models     （公开）
-```
+登录 / 导入 / 额度刷新后 `refreshClineCatalog` 打公开 feed `GET https://api.cline.bot/api/v1/ai/cline/recommended-models`，活目录非空即替换静态行。
 
-取 `recommended` + `free` 两个桶（`free` 名后补 ` (free)`），`clinePass` / `clineCloud` **不进**本目录：
-那是 ClinePass 产品的模型，credit 账号用不了，列进 picker 只会 402。
+- 只收 `recommended` + `free` 两个桶（`free` 名后补 ` (free)`）。`clinePass` / `clineCloud` 是 ClinePass 产品的模型，credit 账号用不了，列进 picker 只会 402。
+- CLI 的 `cline` provider 目录其实是整棵 OpenRouter（数百行）。本 hop 有意收窄成 feed：全量会把几百行默认开启写进 settings.yaml，且都不是 Cline 面向前台的模型。要放开需同时改这里与 [`catalog.ts`](catalog.ts)。
+- feed 只给 id。`contextWindow` / `maxTokens` / `input` 取 `https://models.dev/api.json` 的 `openrouter` 桶，与 CLI `buildClineModels` 同源；`cline-free/*`、`xiaomi/*` 这类前缀在桶里没有，按 id 末段回退匹配（`cline-free/deepseek-v4.1-flash` → `deepseek/deepseek-v4.1-flash`）。末段匹配可能命中别家同名行，刷新时要核对。video / audio 剥掉。
+- 两边都没有元数据的新 id 用 CLI 自己的 `CLINE_PASS_MODEL_DEFAULTS`（128k / 8k / text+image），不编数字。
+- 免费档可用、不扣余额，个别模型按出口 IP 403 区域门（非本 hop 问题）；见 docs/error.md 2026-09-19 Cline 免费档活测。推理模型别把 `max_tokens` 设太小，reasoning token 吃满预算会得到空 `content`。
+- 上限槽：`maxContextWindow`（自定义输入窗上限）对 cline 行生效（`familyMaxContextWindow` 查静态楼）；`pickerRow` 会把 fact 上的同名字段带进活目录（运行时 fact 就是传进来的静态楼）。feed 与 models.dev `openrouter` 都只给一档 `limit.context`，没有第二档可挂，行上目前不写。
 
-静态 `CLINE_MODELS` 是 2026-09-23 两个桶的快照，元数据（`contextWindow` / `maxTokens` / `input`）来自
-`https://models.dev/api.json` 的 `openrouter` 桶 —— 与 CLI `buildClineModels` 同源；`cline-free/*`、`xiaomi/*`
-按 id 末段回退解析（`deepseek/…`、`mimo-v2.6-flash`、`upstage/…`）。2026-09-23 实测 feed 轮换：recommended 新增 `spacexai/grok-4.7`（openrouter 桶 `x-ai/grok-4.7`，500k / 450k / text+image），free 新增 `cline-free/mimo-v2.6-flash`（openrouter 桶 `xiaomi/mimo-v2.6-flash`，1M / 131k / text+image）；`x-ai/grok-4.5`、`z-ai/glm-5.3-flash` 两个桶都不再下发，已从快照删除。**免费档实测（2026-09-19，本机 credit 账号）**：`free` 桶里 `cline-free/deepseek-v4.1-flash`、`z-ai/glm-5.3-flash`、`cline-free/solar-pro4`、`poolside/laguna-s-2.1:free` 四条全部 200（流式出字、`reasoning_effort` 可用、`tool_calls` 正常），台账 `creditsUsed = 0` 不扣余额；`cline-free/muse-spark-1.3-contributor` 对本机出口 **403 区域门**（上游按 IP 判，非本 hop 问题，换出口才可能通）。推理模型别把 `max_tokens` 设太小，reasoning token 吃满预算会得到空 `content`。
-
-2026-09-26 复抓公开 feed：`recommended` 4 行未变，`free` 改为 `stealth/pixel-canary`、`stealth/space-bunny-alpha`、MiMo-V2.6-Flash、DeepSeek V4.1 Flash、`cline-free/gemini-3.8-flash`、Muse Spark 1.3；Solar Pro 4 与 Laguna S 2.1 已不在 feed。Space Bunny Alpha 的 1M / 524,288 / text+image 和 Gemini 3.8 Flash 的 1,048,576 / 65,536 / text+image 取同日 models.dev `openrouter` 桶（video/audio 按 DSH 闭集剥掉）；Pixel Canary 在该桶无参数，使用 CLI 默认 128k / 8k / text+image。静态 fallback 更新为这 10 行；登录后的活目录仍覆盖。
-
-feed 出现新 id 而本地没有元数据时，用 CLI 自己的
-`CLINE_PASS_MODEL_DEFAULTS`（128k / 8k / text+image），不编数字。
-
-CLI 的 `cline` provider 目录其实是整棵 OpenRouter（370+ 行）。本 hop 有意收窄成 feed 里的推荐 + 免费档：
-370 行默认开启会写进 settings.yaml，且都不是 Cline 面向前台的模型。要放开需同时改这里与 [`catalog.ts`](catalog.ts)。
+最近核对：2026-09-30，公开 feed + models.dev `openrouter`；本次收 feed recommended 新行 `openai/gpt-6.1-sol`（参数同桶），`cline-free/deepseek-v4.1-flash` 的 `maxTokens` 随桶 384000 → 943718（桶的推导值，输出上限只作单次预算）。
 
 ## 额度
 
@@ -161,32 +153,25 @@ Cline 背后是 OpenRouter，缓存是**隐式前缀哈希**；客户端不发 `
 
 ## 归因
 
-一线：**Cline CLI 3.0.62**（npm `cline`，本机 `~/.local/lib/node_modules/cline`）on `@cline/core 0.0.83`，
-源码 tag [`cli-v3.0.62`](https://github.com/cline/cline/tree/cli-v3.0.62)（Apache-2.0）：
+一线：**Cline CLI 3.0.62**（npm `cline`，本机 `~/.local/lib/node_modules/cline`），跑在 `@cline/core 0.0.83` 上；源码 tag [`cli-v3.0.62`](https://github.com/cline/cline/tree/cli-v3.0.62)（Apache-2.0）。闭源的只有 WorkOS 身份：登录是 `api.workos.com` 的 RFC 8628 设备码，换票走 Cline 自己的 `/api/v1/auth/register`。ClinePass 窗口不在 CLI 源码里，对照 MIT [`pi-clinepass`](https://www.npmjs.com/package/pi-clinepass) `0.1.5`。
 
-| 抄 | 路径 | 本 hop |
+| 抄 | 出处 | 本 hop |
 |---|---|---|
 | WorkOS 设备码 + poll | `sdk/packages/core/src/auth/cline.ts` `requestWorkOSDeviceAuthorization` / `pollWorkOSTokens` | `clineDeviceSpec` + 共用 `DeviceFlowManager` |
+| 模型页价格徽标（USD / 1M） | recommended-models feed `free` 组 → $0；其余 models.dev `openrouter`（`spacexai/` → `x-ai/`） | `src/catalog/rates.json`，`npm run rates` 写入（见 [docs/models.md](../../../docs/models.md) 费率表） |
 | register 兑换 / 刷新 | 同文件 `registerWorkOSTokens` / `refreshClineToken` | `registerClineTokens` / `refreshCline` |
-| `workos:` 前缀 + 会话形状 | `sdk/packages/core/src/auth/provider-auth-registry.ts` `formatAccessToken` / `getApiKey` | `formatClineAccessToken`；`expiresAt` ISO→ms |
-| 聊天头（含 `X-Task-ID`） | `sdk/packages/llms/src/providers/request-headers.ts` `buildClineRequestHeaders` | `clineCredentialHeaders` + `clineCacheHeaders` |
+| `workos:` 前缀 + 会话形状 | `sdk/packages/core/src/auth/provider-auth-registry.ts` `formatAccessToken` / `getApiKey` | `formatClineAccessToken`（幂等）；`expiresAt` ISO→ms |
+| 聊天头（`X-CLIENT-TYPE`、`X-Task-ID` …） | `sdk/packages/llms/src/providers/request-headers.ts` `buildClineRequestHeaders` | `clineCredentialHeaders` + `clineCacheHeaders` |
 | 客户端身份 `cline-cli` / `cli` | `apps/cli/src/main.ts` `extensionContext.client` | `CLINE_CLIENT_TYPE` / `CLINE_PLATFORM` |
 | OpenAI 兼容 hop | `sdk/packages/llms/src/providers/vendors/cline.ts` | `CLINE_CHAT_URL` + `api: openai-completions` |
 | `max_tokens`→`max_completion_tokens` | 同目录 `openai-compatible.ts` `withMaxCompletionTokensForReasoningModels` + `model-facts.ts` | `applyClineMaxCompletionTokens` |
-| `reasoning_effort` 语义 | `sdk/packages/llms/src/providers/routing/portable-reasoning.ts` | `CLINE_REASONING`（`max`→`xhigh`，禁用不发字段 → 无 `off` 键） |
-| 推荐模型 feed / 元数据 | `sdk/packages/llms/src/catalog/catalog-cline-recommended.ts` + `builtins.ts` `buildClineModels` | `refreshClineCatalog` + `CLINE_MODELS`（models.dev `openrouter`） |
+| `reasoning_effort` 语义（`max`→`xhigh`，禁用不发字段） | `sdk/packages/llms/src/providers/routing/portable-reasoning.ts` | `CLINE_REASONING`（无 `off` 键） |
+| 推荐模型 feed + OpenRouter 元数据 | `sdk/packages/llms/src/catalog/catalog-cline-recommended.ts` + `builtins.ts` `buildClineModels` | `refreshClineCatalog` + `CLINE_MODELS`（models.dev `openrouter`） |
 | 额度三读 | `sdk/packages/core/src/account/cline-account-service.ts` | [`quota.ts`](quota.ts) |
-| ClinePass 窗口 + cap | CLI 源码里没有（它只在 429/402 文案里认 "5-hour / weekly Clinepass limit"，见 `sdk/packages/llms/src/providers/errors.ts`）；形状取自 MIT [`pi-clinepass`](https://www.npmjs.com/package/pi-clinepass) `0.1.5` `src/usage.ts` `fetchPlanLimits`，路由用生产 404 body 自证 | `CLINE_PLAN_LIMITS_URL` / `CLINE_CAP_FIELDS` / `CLINE_COST_SCALE` |
 | 余额微美元 | `apps/cli/src/utils/output.ts` `normalizeCreditBalance` | `CLINE_CREDIT_SCALE` |
-| 本地凭据文件 | `ProviderSettingsManager`（`~/.cline/data/settings/providers.json`） | [`import.ts`](import.ts) |
+| ClinePass 三条窗口（5 小时 / 每周 / 每月）+ cap（1e-8 USD） | CLI 只在 429/402 文案里认 "5-hour / weekly Clinepass limit"（`sdk/packages/llms/src/providers/errors.ts`）；形状取自 `pi-clinepass` `src/usage.ts` `fetchPlanLimits`，路由用生产 404 body 自证 | `CLINE_PLAN_LIMITS_URL` / `CLINE_CAP_FIELDS` / `CLINE_COST_SCALE` |
+| 本机凭据文件 | `ProviderSettingsManager`（`~/.cline/data/settings/providers.json`） | [`import.ts`](import.ts) |
 
-## 追溯
+**不要发明：** 这份对照得出的禁令（credit 账号进度条、cap 缺失补默认、自累加 `/usages`、裸 JWT、PKCE / 回环、`cache_control` 断点、别家缓存头、ClinePass 模型进 credit 目录、第四个 `api`）都在「不要」节，这里不重复。
 
-| 问题 | 记录 |
-|---|---|
-| 非流式回包是 `{success,data}` 信封，DSH 读不到 `choices` | [`docs/error.md`](../../../docs/error.md) 2026-09-19 Cline hop 活测 |
-| 免费档区域门（`cline-free/muse-spark-1.3-contributor` 403）、免费不扣 `creditsUsed` | [`docs/error.md`](../../../docs/error.md) 2026-09-19 Cline 免费档活测 |
-| 裸 JWT 401、Anthropic 无隐式缓存、`max`/off 的 effort 语义 | 同条 |
-| `controller.sync()` 漏传 `clineModels` → settings.yaml 只写静态底表 | 本地安装活测发现；同 Cursor「活目录没接到 picker / yaml」那一类，`test/cline.test.ts` 已加回归 |
-
-测试：`test/cline.test.ts`。
+跨家族对照总表见 [`docs/oauth.md`](../../../docs/oauth.md)。

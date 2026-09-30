@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
-import { mkdtemp } from 'node:fs/promises'
+import { mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { mock, test } from 'node:test'
@@ -11,6 +11,7 @@ import {
   answerFailure,
   connectCodeStatus,
   retryDelayMs,
+  setUpstreamLog,
   upstreamRequest,
 } from '../lib/oauth/upstream.js'
 import { LoginRequiredError, TokenManager } from '../lib/oauth/tokens.js'
@@ -133,6 +134,45 @@ test('after the head is out the budget no longer applies; 270s of silence fails 
   assert.equal(idle.at - started, 270_000)
   assert.equal(idle.error.code, 'timeout')
   assert.match(errorLog.mock.calls.at(-1).arguments[0], /ollama upstream failed mid-response: upstream sent no data for 270s/)
+}))
+
+test('a first-output window drops a first try that streams no output; the retry keeps the rest of the budget', withClock(async () => {
+  let calls = 0
+  const response = { headersSent: false }
+  const { value, at } = await settle(request({ response, timeouts: { firstOutputMs: 90_000 } }).run(async (attempt) => {
+    calls += 1
+    attempt.touch() // a preamble frame is not output
+    if (calls === 1) return hang()
+    await new Promise((resolve) => setTimeout(resolve, 150_000)) // slow but healthy: not cut again
+    response.headersSent = true
+    return 'ok'
+  }))
+  assert.equal(calls, 2)
+  assert.equal(value, 'ok')
+  assert.equal(at, 241_000, '90s + 1s backoff + 150s')
+}))
+
+test('retries and mid-response failures are also appended to the upstream log, with their timing', withClock(async () => {
+  const path = join(await mkdtemp(join(tmpdir(), 'upstream-log-')), 'upstream.log')
+  setUpstreamLog(path)
+  try {
+    const response = { headersSent: false }
+    let calls = 0
+    await settle(request({ response }).run(async (attempt) => {
+      calls += 1
+      if (calls === 1) throw transport()
+      attempt.touch()
+      response.headersSent = true
+      await new Promise((resolve) => setTimeout(resolve, 5_000))
+      throw new TypeError('terminated', { cause: { code: 'UND_ERR_SOCKET' } })
+    }))
+    let text = ''
+    for (let i = 0; i < 500 && !text.includes('mid-response'); i++) text = await readFile(path, 'utf8').catch(() => '')
+    assert.match(text, /ollama retrying upstream \(attempt 2\/3\) in 1000ms: fetch failed: ECONNRESET/)
+    assert.match(text, /ollama upstream failed mid-response: terminated: UND_ERR_SOCKET \(6s in, 5s since its last data\)/)
+  } finally {
+    setUpstreamLog(undefined)
+  }
 }))
 
 test('transport faults retry on the backoff schedule; three of them answer 502 with the proxyExhausted wording', withClock(async () => {
@@ -285,7 +325,7 @@ test('TokenManager login-required errors are LoginRequiredError with status 403'
 })
 
 // --- host classification contract -------------------------------------------
-// Verbatim from DSH (specs/request-path-upgrades/assets/baseline-2026-09-28.md),
+// Verbatim from the DSH host classifier (llm-pi-ai `classifyPiAiError`, 2026-09-28),
 // in the host's order. Failures reach it as `<status> <JSON error>` text.
 
 const QUOTA_EXCEEDED_CODE = 'QUOTA_EXCEEDED'

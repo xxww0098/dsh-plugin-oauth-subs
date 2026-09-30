@@ -11,12 +11,21 @@ import { RequestError } from '../utils/http.js';
  * Per attempt the first byte (response head included) must arrive within
  * `firstByteMs`; everything before output — `tokens.session()` included —
  * shares `budgetMs`; once output flows, `idleMs` of silence destroys it.
+ * `firstOutputMs` (0 = off; a family opts in) bounds how long the first try
+ * may stream without client output — preamble frames do not count.
  */
 export declare const UPSTREAM_TIMEOUTS: {
     firstByteMs: number;
     budgetMs: number;
     idleMs: number;
+    firstOutputMs: number;
 };
+/**
+ * Retries and mid-response failures are also appended here: the host only
+ * records "terminated", and stderr is not kept. ponytail: one global sink,
+ * set once by the plugin; one rotation to `.1` past 1 MB.
+ */
+export declare function setUpstreamLog(path: string | undefined): void;
 /** Upstream attempts before the client is told the request failed. */
 export declare const UPSTREAM_ATTEMPTS = 3;
 export declare const RETRY_BACKOFF_MS: number[];

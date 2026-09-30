@@ -71,7 +71,7 @@ import {
   toDevinPickerModels,
 } from '../lib/oauth/devin/catalog.js'
 import { devinUserStatus, runDevinChat } from '../lib/oauth/devin/transport.js'
-import { parseDevinUserStatus } from '../lib/oauth/quota.js'
+import { parseDevinUserStatus } from '../lib/oauth/devin/quota.js'
 import { formatPlanLabel } from '../lib/oauth/plan.js'
 import { createProxy } from '../lib/oauth/proxy.js'
 import { UpstreamFailure } from '../lib/oauth/upstream.js'
@@ -382,17 +382,26 @@ test('picker collapse keeps variants, defaults, and modifier buckets', () => {
   }
 })
 
+test('a static-floor ceiling survives the Devin projection', () => {
+  const rows = toDevinPickerModels(
+    [{ label: 'SWE-2 High', modelUid: 'swe-2-high', familyLabel: 'SWE-2' }],
+    { floor: [{ id: 'swe-2', maxContextWindow: 1_000_000 }, { id: 'swe-9' }] },
+  )
+  assert.equal(rows.find((row) => row.id === 'swe-2')?.maxContextWindow, 1_000_000)
+})
+
 test('static Devin floor mirrors the live GetCliModelConfigs picker rows', () => {
   resetDevinCatalog()
   try {
-    // 2026-09-23 live probe: 598 configs -> 580 family-bearing -> 81 picker rows.
-    assert.equal(DEVIN_MODELS.length, 81)
+    // 2026-09-30 live probe: 662 configs -> 643 family-bearing -> 85 picker rows,
+    // minus the 4 blocked Fusion rows (devin/README.md 模型) -> 80.
+    assert.equal(DEVIN_MODELS.length, 80)
     const ids = new Set(DEVIN_MODELS.map((row) => row.id))
-    assert.equal(ids.size, 81)
+    assert.equal(ids.size, 80)
     // Families the previous 17-row floor did not cover.
     for (const id of [
       'claude-opus-4.5', 'claude-opus-4.6-1m', 'claude-opus-4.8-fast', 'claude-opus-5-5',
-      'claude-sonnet-4.6-thinking', 'deepseek-v4-pro', 'fusion', 'gemini-3.1-pro',
+      'claude-sonnet-4.6-thinking', 'claude-sonnet-5-5', 'deepseek-v4-pro', 'gemini-3.1-pro',
       'glm-5.2-1m', 'gpt-5.3-codex', 'gpt-5.4', 'gpt-5.5-thinking-fast', 'gpt-5.6-terra',
       'grok-4-7', 'kimi-k2.6', 'nemotron-3-ultra', 'swe-1.6-fast',
     ]) {
@@ -406,8 +415,8 @@ test('static Devin floor mirrors the live GetCliModelConfigs picker rows', () =>
     assert.equal(devinModelById('kimi-k2.6').defaultUid, 'kimi-k2-6')
     assert.equal(devinModelById('swe-1.6-fast').defaultUid, 'swe-1-6-fast')
     assert.equal(devinModelById('gpt-5.4-thinking-fast').defaultUid, 'gpt-5-4-none-priority')
-    // Fusion configs carry no maxOutputTokens upstream; the floor must not invent one.
-    assert.equal(devinModelById('fusion').maxTokens, undefined)
+    // The Fusion family is blocked (devin/README.md 模型): no row, no uid resolution.
+    assert.equal(devinModelById('fusion'), undefined)
     // Every key/value stays in the DSH closed sets; values are backend uids.
     for (const row of DEVIN_MODELS) {
       assert.ok(row.contextWindow > 0)
@@ -417,6 +426,24 @@ test('static Devin floor mirrors the live GetCliModelConfigs picker rows', () =>
       }
     }
     assert.equal(devinModelById('gpt-5-3-codex-medium-priority').id, 'gpt-5.3-codex-fast')
+  } finally {
+    resetDevinCatalog()
+  }
+})
+
+test('the Fusion family is blocked from the picker and the floor', () => {
+  resetDevinCatalog()
+  try {
+    const rows = toDevinPickerModels([
+      { label: 'Fusion', modelUid: 'fusion-claude-fable-5-1-medium-sidekick-swe-2-medium', familyLabel: 'Fusion' },
+      { label: 'Fusion Thinking Fast', modelUid: 'fusion-gpt-5-6-sol-high-fast-sidekick-swe-2-medium', familyLabel: 'Fusion' },
+      { label: 'SWE-2 Medium', modelUid: 'swe-2-medium', familyLabel: 'SWE-2', isDefaultInFamily: true },
+    ])
+    assert.equal(rows.some((row) => row.id.startsWith('fusion')), false)
+    assert.ok(rows.find((row) => row.id === 'swe-2'))
+    // The floor no longer carries the family; nothing resolves by id or by uid.
+    assert.equal(devinModelById('fusion'), undefined)
+    assert.equal(DEVIN_MODELS.some((row) => row.id.startsWith('fusion')), false)
   } finally {
     resetDevinCatalog()
   }
@@ -558,12 +585,27 @@ test('devinToOpenai maps finish reasons and cache usage', () => {
   assert.equal(body.choices[0].finish_reason, 'stop')
   assert.equal(body.choices[0].message.content, 'done')
   assert.equal(body.choices[0].message.reasoning_content, 'hmm')
+  assert.equal(body.usage.prompt_tokens, 17)
+  assert.equal(body.usage.total_tokens, 19)
   assert.equal(body.usage.prompt_tokens_details.cached_tokens, 4)
-  assert.equal(body.usage.prompt_cache_write_tokens, 3)
+  assert.equal(body.usage.prompt_tokens_details.cache_write_tokens, 3)
+  assert.equal('prompt_cache_write_tokens' in body.usage, false)
   const tools = devinToOpenai({ text: '', toolCalls: [{ id: 'c1', name: 'fs.read', argumentsJson: '{}' }] }, {})
   assert.equal(tools.choices[0].finish_reason, 'tool_calls')
   assert.equal(tools.choices[0].message.tool_calls[0].function.name, 'fs.read')
   assert.equal(mapDevinUsage(undefined), undefined)
+})
+
+test('mapDevinUsage reports the whole prompt so the host keeps the uncached input', () => {
+  // The host (pi-ai parseChunkUsage) recovers the uncached input as
+  // prompt_tokens - cached_tokens - cache_write_tokens. The old mapping sent
+  // the bare exclusive inputTokens there, clamping warm calls to 0 input
+  // (2026-09-30: 99% of cached Devin calls in 30d of sessions read 0).
+  const usage = mapDevinUsage({ inputTokens: 812, cacheReadTokens: 30720, outputTokens: 268 })
+  const cached = usage.prompt_tokens_details.cached_tokens
+  const write = usage.prompt_tokens_details.cache_write_tokens ?? 0
+  assert.equal(usage.prompt_tokens, 31532)
+  assert.equal(usage.prompt_tokens - cached - write, 812)
 })
 
 test('stream mapper emits role with the first content, tool arg deltas, finish', () => {
@@ -683,7 +725,7 @@ test('controller snapshot exposes devin; refreshQuota wires GetUserStatus', asyn
   const snap = await controller.snapshot()
   const group = snap.catalog.find((row) => row.family === 'devin')
   assert.equal(group.loggedIn, true)
-  assert.equal(group.displayName, 'OAuth · Devin')
+  assert.equal(group.displayName, 'Subs · Devin · Chat')
   const account = snap.accounts.devin.accounts[0]
   assert.equal(account.account, 'ada@example.com')
   assert.equal(account.methodLabel, 'CLI')
@@ -706,7 +748,7 @@ test('buildProviders exposes oauth-devin as completions at /devin', () => {
   const route = providers['oauth-devin']
   assert.equal(route.api, HARNESS_COMPLETIONS_API)
   assert.equal(route.baseURL, 'http://127.0.0.1:8318/devin')
-  assert.equal(route.displayName, 'OAuth · Devin')
+  assert.equal(route.displayName, 'Subs · Devin · Chat')
   assert.equal(route.compat.supportsReasoningEffort, true)
   for (const model of route.models) {
     for (const key of Object.keys(model.reasoningEfforts ?? {})) {

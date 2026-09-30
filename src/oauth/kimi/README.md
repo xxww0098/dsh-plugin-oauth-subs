@@ -1,7 +1,7 @@
 # Kimi Code Plan OAuth
 
 本文件是 `src/oauth/kimi/` 的设计源。改登录、额度、对话或缓存先改这里再改代码。
-跨家族硬约定在仓库根 [`AGENTS.md`](../../../AGENTS.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)；对照仓库在 [`docs/oauth.md`](../../../docs/oauth.md)。
+跨家族硬规则在 [`docs/rules.md`](../../../docs/rules.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)；对照仓库在 [`docs/oauth.md`](../../../docs/oauth.md)。
 
 **不是** ChatGPT Codex / xAI Grok。上游是 Moonshot Kimi Code Plan
 `https://api.kimi.com/coding/v1/chat/completions`（OpenAI Completions 方言）。
@@ -20,7 +20,7 @@
 | [`cache.ts`](cache.ts) | 剥 Codex / Grok 字段；前缀哈希停车。禁止抄 `session-id` / `x-grok-conv-id` |
 
 调度：[`../proxy.ts`](../proxy.ts) `family === 'kimi'` → `applyKimiCache` + `applyKimiThinking`，`forward()` 到 `KIMI_CHAT_URL`。
-额度：[`../quota.ts`](../quota.ts) `fetchKimiQuota`（`/usages` + `/me`）。
+额度：[`quota.ts`](quota.ts) `fetchKimiQuota`（`/usages` + `/me`）。
 套餐：`/me` 的 `user_level_name`，走 [`../plan.ts`](../plan.ts) 原样美化，不发明档位。
 
 ## 协议
@@ -68,16 +68,16 @@ DSH POST /kimi/v1/chat/completions
 
 ## 模型
 
-登录 / 导入 / 额度刷新后 `refreshKimiCatalog`：
+行在 [`src/catalog/models.json`](../../catalog/models.json) 的 `"kimi"` 键；行格式、来源与 `npm run models` 更新流程见 [`docs/models.md`](../../../docs/models.md)。本节只记本家的取舍与出处。
 
-```text
-GET https://api.kimi.com/coding/v1/models
-Authorization: Bearer <access>
-```
+登录 / 导入 / 额度刷新后 `refreshKimiCatalog` 打 `GET https://api.kimi.com/coding/v1/models`（Bearer access token），活目录非空即替换静态行；失败或空列表回落静态行。
 
-失败或空列表回落静态四行：`kimi-for-coding`、`kimi-for-coding-highspeed`、`k3`、`k3-256k`（text+image，256k / 32k）。
+- 静态行按[官方模型表](https://www.kimi.com/code/docs/en/kimi-code/models.html)的模型 ID 收录。
+- `k3` 静态窗口取 1M（官方表 `1048576`，Pro / Allegretto 及以上）；Plus / Moderato 账号上 `k3` 最多 256K，要么在模型页把窗口改小，要么用固定 256K 的 `k3-256k`。其余行静态窗口保守取 256K（`kimi-for-coding` 的 1M 同样只在较高档位开放）。登录后活目录的 `context_length` 覆盖静态值。
+- 思考档官方为 low / high / max，走 `KIMI_REASONING` 映射；活目录按行声明的档位收窄。
+- 本机无 Kimi 凭据，活端点未实测（无 token 401）。
 
-来源（2026-09-23）：[官方模型表](https://www.kimi.com/code/docs/en/kimi-code/models.html) —— 官方四个模型 ID（K3 / K3-256K / K2.8 Preview / K2.7 Code HighSpeed），静态此前缺 `k3-256k`（K3 的 256K 版本，官方 ctx 262144）。官方把 `k3` 与原地升级成 K2.8 Preview 的 `kimi-for-coding` 标 1M 上下文（较高档位才给），本 hop 静态仍保守取 256K，登录后由活目录覆盖；本机无 Kimi 凭据，`GET /coding/v1/models` 未实测（无 token 401）。思考档官方为 low/high/max，走 `KIMI_REASONING` 映射。
+最近核对：2026-09-23，官方模型表；`k3` 默认窗改为 1M 按同一张表。
 
 ## 额度
 
@@ -107,13 +107,16 @@ Kimi 是 **前缀哈希**，没有分片键。
 
 ## 归因
 
-设备码对照 MIT [Leechael/pi-provider-kimi-code](https://github.com/Leechael/pi-provider-kimi-code)；`client_id` 与官方 Kimi Code CLI 相同。目录对照[官方模型表](https://www.kimi.com/code/docs/en/kimi-code/models.html) 2026-09-23。不要扮成 Pi。总表见 [`docs/oauth.md`](../../../docs/oauth.md)。
+一线：官方 Kimi Code CLI。设备码对照 MIT [Leechael/pi-provider-kimi-code](https://github.com/Leechael/pi-provider-kimi-code)；模型目录对照[官方模型表](https://www.kimi.com/code/docs/en/kimi-code/models.html)。
 
-## 追溯
+| 抄 | 出处 | 本 hop |
+|---|---|---|
+| 设备码流程（无 PKCE） | pi-provider-kimi-code | `kimiDeviceSpec` |
+| 模型页价格徽标（USD / 1M） | models.dev `moonshotai`（platform.kimi.ai 定价）；按官方模型表 `k3`/`k3-256k` → K3、`kimi-for-coding-highspeed` → K2.7 Code HighSpeed；`kimi-for-coding`（K2.8 Preview）无公开价，不出徽标 | `src/catalog/rates.json`，`npm run rates` 写入（见 [docs/models.md](../../../docs/models.md) 费率表） |
+| `client_id` `17e5f671-d194-4dfb-9706-5516cb48c098` | 官方 Kimi Code CLI | `KIMI_CLIENT_ID` |
+| 凭据导入 `~/.kimi-code/credentials/kimi-code.json` | 官方 Kimi Code CLI | `importKimiAuth` |
+| 模型 id 与思考档 | 官方模型表 | 见「模型」 |
 
-| 问题 | 记录 |
-|---|---|
-| 自定义 api 字符串整段 settings 被丢 | [`docs/error.md`](../../../docs/error.md) 2026-09-03 Kimi api 闭集 |
-| `@lobehub/icons` 在经典脚本里是空的 | 同文件 Settings 图标 |
+**不要发明：** 与上游对照相关的每一条都已在上面「不要」节，这里不重复。
 
-测试：`test/kimi.test.ts`、`test/cache-families.test.ts`、`test/device-flow.test.ts`。
+跨家族对照总表见 [`docs/oauth.md`](../../../docs/oauth.md)。

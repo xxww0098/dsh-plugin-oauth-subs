@@ -35,6 +35,18 @@ export function resetGrokSystemPins() {
 }
 
 /**
+ * Read a pin and mark it most recently used. Map order is recency, so the
+ * cap drops the idlest conversation, never one that is still sending steps.
+ */
+function usePin(key) {
+  const pin = SYSTEM_PINS.get(key)
+  if (pin === undefined) return undefined
+  SYSTEM_PINS.delete(key)
+  SYSTEM_PINS.set(key, pin)
+  return pin
+}
+
+/**
  * Pin the first leading system/developer blob per conversation. Later text
  * that DSH rewrites is `extra` so request.ts can park it after the
  * conversation, not at the front. Only the changed region is parked: a
@@ -47,7 +59,7 @@ export function pinGrokSystemPrefix(conversationId, systemText) {
   if (!conversationId || conversationId === GROK_STABLE_SESSION) {
     return { pinned: text, extra: '' }
   }
-  const existing = SYSTEM_PINS.get(conversationId)
+  const existing = usePin(conversationId)
   if (existing === undefined) {
     if (SYSTEM_PINS.size >= SYSTEM_PIN_CAP) {
       const first = SYSTEM_PINS.keys().next().value

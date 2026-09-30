@@ -27,6 +27,7 @@ import { join } from 'node:path'
 import { OAuthEndpointError, oauthError } from '../tokens.js'
 import { applyClineCache, clineCacheHeaders, clineCacheSessionId, resetClinePins } from './cache.js'
 import { outboundFetch } from '../../utils/outbound.js'
+import { catalogRows } from '../../catalog/index.js'
 
 export const CLINE_API_ORIGIN = 'https://api.cline.bot'
 export const CLINE_API_BASE = `${CLINE_API_ORIGIN}/api/v1`
@@ -110,25 +111,21 @@ export const CLINE_INPUT = Object.freeze(['text', 'image'])
 
 /**
  * Offline picker seed: the `recommended` + `free` buckets of
- * `GET {apiBase}/ai/cline/recommended-models` refreshed 2026-09-26, crossed with
+ * `GET {apiBase}/ai/cline/recommended-models` refreshed 2026-09-29, crossed with
  * `https://models.dev/api.json` → `openrouter` — the CLI's own metadata source
  * (`buildClineModels` in `sdk/packages/llms/src/providers/builtins.ts`), which
  * also resolves an id by its last path segment (that is how the `cline-free/*`
  * rows map onto `deepseek/…`, `xiaomi/…`, `upstage/…`). `refreshClineCatalog`
- * replaces this list after login; it never drops it.
+ * replaces this list after login; it never drops it. Rows live in
+ * `src/catalog/models.json` under `"cline"` (all rows carry the family
+ * `CLINE_REASONING` ladder).
  */
-export const CLINE_MODELS = Object.freeze([
-  { id: 'spacexai/grok-4.7', name: 'Grok 4.7', contextWindow: 500_000, maxTokens: 450_000, input: ['text', 'image'] },
-  { id: 'openai/gpt-6-astra', name: 'GPT-6 Astra', contextWindow: 1_050_000, maxTokens: 128_000, input: ['text', 'image'] },
-  { id: 'moonshotai/kimi-k3', name: 'Kimi K3', contextWindow: 1_048_576, maxTokens: 943_718, input: ['text', 'image'] },
-  { id: 'anthropic/claude-opus-5', name: 'Claude Opus 5', contextWindow: 1_000_000, maxTokens: 128_000, input: ['text', 'image'] },
-  { id: 'stealth/pixel-canary', name: 'Pixel Canary (free)', contextWindow: CLINE_DEFAULT_CONTEXT, maxTokens: CLINE_DEFAULT_MAX_TOKENS, input: ['text', 'image'] },
-  { id: 'stealth/space-bunny-alpha', name: 'Space Bunny Alpha (free)', contextWindow: 1_000_000, maxTokens: 524_288, input: ['text', 'image'] },
-  { id: 'cline-free/mimo-v2.6-flash', name: 'MiMo-V2.6-Flash (free)', contextWindow: 1_048_576, maxTokens: 131_072, input: ['text', 'image'] },
-  { id: 'cline-free/deepseek-v4.1-flash', name: 'DeepSeek V4.1 Flash (free)', contextWindow: 1_048_576, maxTokens: 384_000, input: ['text', 'image'] },
-  { id: 'cline-free/gemini-3.8-flash', name: 'Gemini 3.8 Flash (free)', contextWindow: 1_048_576, maxTokens: 65_536, input: ['text', 'image'] },
-  { id: 'cline-free/muse-spark-1.3-contributor', name: 'Muse Spark 1.3 Contributor (free)', contextWindow: 1_048_576, maxTokens: 943_718, input: ['text', 'image'] },
-].map((model) => ({ ...model, input: [...model.input], reasoningEfforts: { ...CLINE_REASONING } })))
+export const CLINE_MODELS = catalogRows('cline')
+
+/** Catalog lookup for the custom-context ceiling (`familyMaxContextWindow`). */
+export function clineModel(modelId) {
+  return CLINE_MODELS.find((model) => model.id === modelId)
+}
 
 export function clineSourceLabel(source) {
   if (source === 'env') return 'env'

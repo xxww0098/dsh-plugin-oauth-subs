@@ -4,7 +4,7 @@
  */
 
 import { constants } from 'node:fs'
-import { chmod, mkdir, open, rename, rm, writeFile } from 'node:fs/promises'
+import { appendFile, chmod, mkdir, open, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { errorCode } from './http.js'
 
@@ -44,4 +44,15 @@ export async function writePrivateText(path, text) {
     await rm(tmp, { force: true })
     throw error
   }
+}
+
+/**
+ * Append one line to a private (0600) diagnostic log, rotating it to `.1`
+ * past `maxBytes` (one generation kept). Not state: a torn line loses only
+ * itself, so no temp file + rename.
+ */
+export async function appendPrivateLine(path, line, maxBytes = 1_000_000) {
+  const size = (await stat(path).catch(() => undefined))?.size ?? 0
+  if (size > maxBytes) await rename(path, `${path}.1`)
+  await appendFile(path, `${line}\n`, { mode: 0o600 })
 }

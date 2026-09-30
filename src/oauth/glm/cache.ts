@@ -32,6 +32,18 @@ export function resetGlmSystemPins() {
   SYSTEM_PINS.clear()
 }
 
+/**
+ * Read a pin and mark it most recently used. Map order is recency, so the
+ * cap drops the idlest conversation, never one that is still sending steps.
+ */
+function usePin(key) {
+  const pin = SYSTEM_PINS.get(key)
+  if (pin === undefined) return undefined
+  SYSTEM_PINS.delete(key)
+  SYSTEM_PINS.set(key, pin)
+  return pin
+}
+
 function systemText(message) {
   const content = message?.content
   if (typeof content === 'string') return content
@@ -79,7 +91,7 @@ export function stabilizeGlmSystemPrefix(messages, sessionId) {
   const { head, rest } = splitLeadingSystem(messages)
   if (head.length === 0) return messages
   const text = head.map(systemText).join('\n\n')
-  const existing = SYSTEM_PINS.get(sessionId)
+  const existing = usePin(sessionId)
   if (existing === undefined) {
     if (SYSTEM_PINS.size >= SYSTEM_PIN_CAP) {
       const first = SYSTEM_PINS.keys().next().value
@@ -115,7 +127,7 @@ export function stabilizeGlmAnthropicSystem(system, sessionId) {
   if (blocks.length === 0) return system
   const text = blocks.map((block) => block.text).filter(Boolean).join('\n\n')
   if (!text) return system
-  const existing = SYSTEM_PINS.get(pinId)
+  const existing = usePin(pinId)
   if (existing === undefined) {
     if (SYSTEM_PINS.size >= SYSTEM_PIN_CAP) {
       const first = SYSTEM_PINS.keys().next().value

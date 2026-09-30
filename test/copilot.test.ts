@@ -10,6 +10,7 @@ import {
   HARNESS_COMPLETIONS_API,
   buildProviders,
   catalogProviders,
+  describeCatalog,
   ownedProviderIds,
 } from '../lib/oauth/models.js'
 import {
@@ -47,7 +48,7 @@ import {
 import { applyCopilotStreamUsage, applyCopilotThinking, mapCopilotUsage } from '../lib/oauth/copilot/request.js'
 import { toCopilotPickerModels, resetCopilotCatalogCache } from '../lib/oauth/copilot/catalog.js'
 import { DeviceFlowManager } from '../lib/oauth/grok/device-flow.js'
-import { parseCopilotUsage } from '../lib/oauth/quota.js'
+import { parseCopilotUsage } from '../lib/oauth/copilot/quota.js'
 import { formatPlanLabel } from '../lib/oauth/plan.js'
 import { createProxy } from '../lib/oauth/proxy.js'
 
@@ -211,14 +212,26 @@ test('catalog is Completions at /copilot, not a custom api string', () => {
   assert.equal(route.api, 'openai-completions')
   assert.equal(route.baseURL, 'http://127.0.0.1:8318/copilot')
   assert.equal(route.baseURL.endsWith('/copilot/v1'), false)
-  assert.equal(route.displayName, 'OAuth · GitHub Copilot')
+  assert.equal(route.displayName, 'Subs · GitHub Copilot · Chat')
   for (const model of route.models) {
     for (const key of Object.keys(model.reasoningEfforts ?? {})) {
       assert.match(key, /^(off|minimal|low|medium|high|xhigh|max)$/)
     }
   }
   assert.deepEqual(route.models.find((model) => model.id === 'gpt-5.5').reasoningEfforts, { off: 'none', low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh' })
+  assert.equal(route.models.find((model) => model.id === 'gpt-5.5').contextWindow, 256_000)
   assert.equal(catalogProviders({ prefix: 'oauth', origin: 'http://x' })['oauth-copilot'].models.length, COPILOT_MODELS.length)
+  // GPT rows pin the 256K default input window; the vendor's larger window
+  // stays reachable as the custom-context ceiling (family-scoped lookup).
+  const described = describeCatalog(catalogProviders({ prefix: 'oauth', origin: 'http://x' }))
+  const copilotGroup = described.find((row) => row.family === 'copilot')
+  const gpt55 = copilotGroup.models.find((model) => model.id === 'gpt-5.5')
+  assert.equal(gpt55.windowDefault, '256K')
+  assert.equal(gpt55.windowMax, '1050K')
+  assert.equal(gpt55.contextMax, 1_050_000)
+  const claude = copilotGroup.models.find((model) => model.id === 'claude-sonnet-5')
+  assert.equal(claude.windowDefault, '1M')
+  assert.equal(claude.contextMax, 1_000_000)
 })
 
 test('static Copilot floor mirrors the GitHub official model tables', () => {
@@ -229,7 +242,7 @@ test('static Copilot floor mirrors the GitHub official model tables', () => {
     'gpt-5.3-codex', 'gpt-5.4-mini', 'gpt-5.4-nano', 'gpt-5.6-sol', 'gpt-5.6-terra',
     'gpt-5.6-luna', 'gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna', 'claude-fable-5',
     'claude-fable-5.1', 'claude-opus-4.7', 'claude-opus-4.8', 'claude-opus-5',
-    'claude-opus-5.5', 'claude-sonnet-5', 'gemini-3.5-flash', 'gemini-3.8-flash',
+    'claude-opus-5.5', 'claude-sonnet-5', 'claude-sonnet-5.5', 'gemini-3.5-flash', 'gemini-3.8-flash',
     'mai-code-1.1-flash', 'kimi-k2.7-code', 'kimi-k3', 'grok-4.5', 'grok-4.6', 'grok-4.7',
   ]) {
     assert.ok(ids.has(id), 'missing official Copilot id ' + id)
@@ -243,6 +256,18 @@ test('static Copilot floor mirrors the GitHub official model tables', () => {
     for (const key of Object.keys(model.reasoningEfforts ?? {})) {
       assert.match(key, /^(off|minimal|low|medium|high|xhigh|max)$/)
     }
+  }
+  // The Copilot GPT line runs a 256K default input window; vendor-registered
+  // larger windows stay as the custom ceiling, smaller ones are lifted to it.
+  for (const model of COPILOT_MODELS.filter((row) => row.id.startsWith('gpt-'))) {
+    assert.equal(model.contextWindow, 256_000, `${model.id} default window`)
+  }
+  assert.equal(COPILOT_MODELS.find((model) => model.id === 'gpt-5.5').maxContextWindow, 1_050_000)
+  assert.equal(COPILOT_MODELS.find((model) => model.id === 'gpt-4.1').maxContextWindow, undefined)
+  for (const model of COPILOT_MODELS.filter((row) => !row.id.startsWith('gpt-'))) {
+    assert.notEqual(model.contextWindow, undefined)
+    // Non-GPT rows keep their vendor window outright — no ceiling split.
+    assert.equal(model.maxContextWindow, undefined, `${model.id} is not a GPT row`)
   }
 })
 
@@ -260,7 +285,7 @@ test('logged-out catalog still lists Copilot; sync writes oauth-copilot after lo
   const empty = await controller.snapshot()
   const group = empty.catalog.find((row) => row.family === 'copilot')
   assert.equal(group.loggedIn, false)
-  assert.equal(group.displayName, 'OAuth · GitHub Copilot')
+  assert.equal(group.displayName, 'Subs · GitHub Copilot · Chat')
   assert.ok(group.models.some((model) => model.id === 'gpt-4.1'))
   assert.equal(empty.providers.some((row) => row.provider === 'oauth-copilot'), false)
 
@@ -294,14 +319,29 @@ test('live picker drops disabled rows and keeps vision / effort', () => {
           supports: { tool_calls: true, vision: true, reasoning_effort: ['low', 'medium', 'high'] },
         },
       },
+      {
+        id: 'claude-opus-4.7',
+        model_picker_enabled: true,
+        capabilities: {
+          limits: { max_context_window_tokens: 1_000_000, max_output_tokens: 64000 },
+          supports: { tool_calls: true },
+        },
+      },
       { id: 'hidden', model_picker_enabled: false, capabilities: { supports: { tool_calls: true } } },
       { id: 'blocked', policy: { state: 'disabled' }, capabilities: { supports: { tool_calls: true } } },
       { id: 'no-tools', model_picker_enabled: true, capabilities: { supports: { tool_calls: false } } },
     ],
   })
-  assert.deepEqual(models.map((model) => model.id), ['gpt-5.5'])
+  assert.deepEqual(models.map((model) => model.id), ['gpt-5.5', 'claude-opus-4.7'])
   assert.deepEqual(models[0].input, ['text', 'image'])
   assert.deepEqual(models[0].reasoningEfforts, COPILOT_REASONING)
+  // GPT rows pin 256K as the default window; the vendor's window is the
+  // custom-context ceiling. Non-GPT rows keep the vendor window outright.
+  assert.equal(models[0].contextWindow, 256_000)
+  assert.equal(models[0].maxContextWindow, 272_000)
+  assert.equal(models[0].maxTokens, 128_000)
+  assert.equal(models[1].contextWindow, 1_000_000)
+  assert.equal(models[1].maxContextWindow, undefined)
 })
 
 test('live picker skips rows Copilot serves off /chat/completions (the only endpoint the hop speaks)', () => {

@@ -1,6 +1,6 @@
 # Settings workbench — page override
 
-Applies only to the OAuth workbench (`src/ui/client.ts`). The shell
+Applies only to the OAuth workbench (`src/ui/client.ts` + `src/ui/parts/`). The shell
 geometry and theme rules live in [`../MASTER.md`](../MASTER.md); this
 file owns *what each region renders and how views behave*.
 
@@ -10,9 +10,9 @@ No hero, no feature grid, no glass CTA slab.
 
 ## Regions → views
 
-- **Tabs**: 额度 / 模型 / 版本 — switching swaps the pane content; the
+- **Tabs**: 额度 / 模型 / 用量 / 设置 — switching swaps the pane content; the
   topbar and rail stay put.
-- **Family rail** (Quota + Models only): selects one family or 全部.
+- **Family rail** (Quota + Models + Usage): selects one family or 全部.
   Quota view renders the matching `ProviderCard`(s) in `FAMILY_ORDER`;
   Models view scopes `ModelsPanel` to that family. Absent on Version.
 - **Models view**: one searchable table — model name + tag chips left,
@@ -21,7 +21,80 @@ No hero, no feature grid, no glass CTA slab.
   clamps the card to pane height; the column head is sticky) — the
   toolbar, hint and pane stay fixed. Logged-out groups stay listed with
   locked switches, `登录后同步` note, and a 登录 jump to that family's
-  Quota card.
+  Quota card. Every row carries its input-context window as a tag
+  button (`osubs-tag--ctx`; customized rows use the accent
+  `--custom` tint) — one default-window row per model, no context
+  variant rows. Clicking opens the centered input-context Dialog —
+  family mark + model name in the head, a stat strip (当前 only when
+  customized / 目录默认 / 上限), a mono k/m shorthand input, and a
+  0…ceiling slider (`role="slider"`) whose fill follows the draft
+  (accent when editing, bad when out of range) — dragging the track or
+  arrow-keying it writes the draft back as k/m shorthand at a 1K step,
+  and the round-size preset nodes that fit inside the range (dot on the
+  track, label in the ends row) are buttons that fill the draft
+  directly; the catalog default stays a tick, not a node;
+  保存 disables on a no-change value and typing the default folds
+  into 恢复默认 (the reset is an outline icon+label button at the
+  footer's left edge — it stages the default into the draft whenever
+  the draft isn't already the default, and applying folds into the
+  same reset; its tooltip names the value it restores). When
+  any row is customized, the toolbar grows a global 恢复默认窗口
+  button. Locked families and switched-off rows keep editable windows:
+  the override persists to models.json and only lands in the route when
+  the row is enabled — a dormant edit never triggers a settings rewrite.
+  Rows from a family with a rates.json table (command-code) carry a coin
+  tag (`osubs-ptag`, focusable like the ctx tag button) that hover/focus-
+  opens an `osubs-rtip` listing USD-per-1M-token rows — uncached input /
+  output / cache-hit read, cache-write lines only when priced, peak-band
+  lines under a separator when the row has a `tod` (footnoted with the
+  shared effectiveFrom + UTC peak windows), and over-threshold tier rows
+  when `tierThreshold` is set.
+  The toolbar also carries 默认档位: a native `select` (不设置 + the
+  DSH level names Off…Max) styled like the search field. It edits the
+  families in the rail scope — 全部 writes (and unifies) every family,
+  a family writes only itself, and differing values read 混合. The pick
+  shows at once (optimistic, like the switches) while the route rewrite
+  waits on the host reconcile; rules in `docs/models.md` 默认档位.
+- **Usage view**: one card — head carries 更新于 HH:MM, a 刷新 button and
+  the 今天 / 7 天 / 30 天 segmented range (今天 = 24 hourly bars). A stat
+  strip: Token (= 输入 + 输出, 输入 being the whole prompt — uncached +
+  缓存读 + 缓存写, the host session totalTokens the user reconciles
+  against; 输入/输出 below), 缓存读 (a subset of 输入) with 命中率 —
+  the rate counts only calls whose usage carries a cache field, so a family
+  that reports none (Kiro) reads 「—」 / 上游未报告缓存, never 0% — 调用
+  (with 次失败: attempts that failed and were not retried), and 首字延迟
+  (mean step-start → first frame, with output tok/s over calls that
+  streamed ≥ 1 s; burst replies say nothing about speed). The bar chart
+  stacks output on input in two tones of the accent (legend top-right,
+  never vendor tints); hover/focus a bar for the breakdown in an
+  `osubs-rtip`. Per-model rows: mark + model, a sub line (family · calls ·
+  failures · TTFT · tok/s), a share bar, tokens with in/out/hit below.
+  Data is the host's own session files, read on demand — the proxy records
+  nothing. The host scans in a worker thread, caches each file's hourly rows
+  by mtime+size (`usage-cache.json`), and memoizes the answer for 5 min;
+  the page keeps the last answer in localStorage and shows it at once on
+  every open, asking again only past 5 min or on 刷新. The first scan shows
+  a skeleton, not 加载中. This plugin's routes count, plus the host's own
+  DeepSeek providers (`deepseek-official` / `deepseek-account`) as a
+  usage-only rail entry **DeepSeek** after the families (LobeHub
+  `deepseek-color`; no quota card or model rows, so leaving the Usage view
+  resets that scope to 全部). Other host providers are not reported.
+  分享 renders the whole card (not just the visible part) as a long PNG —
+  cloned with computed styles inlined, drawn via SVG foreignObject onto a
+  canvas, no library — with a footer under a rule: plugin + version and
+  repo on the left, 分析日期 (the scan time) and scope · range on the
+  right. The head controls (更新于 / 刷新 / 分享, `.osubs-noshot`) stay out
+  of the image. The PNG goes straight to the clipboard (the write starts
+  inside the click so its user activation holds; a write that never
+  settles counts as failed after 4 s). The motion is the macOS screenshot:
+  a white flash over the card's on-screen rect, then `ShotThumb` flies from
+  that rect into the window's bottom-right corner (180×120, image
+  top-anchored, 已复制 badge), stays 5 s — paused while hovered or
+  focused — and slides out; clicking it opens the preview Dialog
+  (再次复制 / 保存图片). A failed copy skips the thumbnail and opens the
+  Dialog so the image can be saved. Reduced motion: no flash or flight,
+  the thumbnail only fades. PNG, not JPG: the clipboard only takes image/png and
+  flat UI text stays sharp in it.
 - **Version view**: the single plugin update card, full-width.
 - One primary CTA → centered Dialog.
 
@@ -32,34 +105,67 @@ tokens. Still 13px UI / 12.5px emails.
 
 ## Version card
 
-- Header: plugin title, status pill, check button. Checking and
-  installing are separate actions — the install button appears in the
-  version band only when a newer GitHub release exists.
-- Version band compares running vs latest release. If the profile copy
-  is newer than the running process, show the disk version + restart
-  hint; installing never restarts the host.
-- Key/value list: repo + runtime details; final row holds the 15-minute
-  auto-update switch and last check result from `update-state.json`.
-- A 「本地插件目录」 link keeps that switch — only its note forks
-  (`autoUpdateLinked`: `npm run build` hot-reloads, needs an `hmr`
-  root, and no release-tag outcome) because a link has no installed copy
-  to swap and would otherwise always read 「已是最新」.
+- Header: plugin title + check button only — status never lives in the
+  head (no pill row).
+- One status banner (`osubs-vstat`): icon tile + one-line conclusion +
+  subcopy, with the apply CTA or latest tag docked on the right. Tint
+  encodes actionability — warn when an installable release exists, bad
+  on a failed check, neutral otherwise; 「已是最新」 gets only an
+  ok-tinted icon tile, a quiet state must not glow.
+- Only two version slots exist: 当前版本 (a linked tree shows its
+  derived `-dev` build there) and 最新版本 (the release tag, shown as
+  the banner's side number or inside its conclusion). 磁盘 / 本地路径
+  / 加载自 are not version concepts and never render as rows — a
+  disk≠running divergence is a diagnostic hint (`updateStaleProcess`),
+  and installing never restarts the host.
+- A 「本地插件目录」 link keeps the banner neutral: the conclusion names
+  the link + running dev build, the subcopy is `autoUpdateLinked`
+  (`npm run build` hot-reloads, needs an `hmr` root), and a newer
+  release only tints the side tag — never an update CTA.
+- Key/value list: repo + the auto-update switch. The switch note carries
+  the 15-minute cadence + last run from `update-state.json`; on a linked
+  tree it reports only the last check (the hot-reload semantics are on
+  the banner, and a link's release-tag outcome would always read
+  「已是最新」).
 - Errors and install results sit below the list — keep them actionable,
   including the manual-install fallback when the profile's plugin dir
-  cannot be resolved.
+  cannot be resolved; on a linked tree a failed check drops to a bad
+  hint line so the banner keeps its link identity.
 
 ## Quota
 
 `QuotaRow` is remaining-only; Cursor `kind === 'product'` is not a
 used-bar exception. Each window's reset sits inside that row's
 `QuotaMeter` — a missing `resetAt` draws nothing, never a shared line
-between meters. Codex reset credits stay in the card and open
-`WarnDialog`, not the add-account Dialog.
+between meters. Codex reset credits and GLM reset cards share one
+`ResetBank` in the card and open `WarnDialog`, not the add-account
+Dialog. One row per window (Codex: weekly; GLM: 5-hour + weekly), led
+by an ink count card (`currentColor` fill, digits knocked out to the
+host surface; dashed outline at 0) whose lips show depth, inside a
+dashed frame with dashed row dividers — no nested fills. Hover or
+focus on the count card opens a tooltip with one expiry line per card,
+earliest first (Esc closes); the row names only the window and
+the earliest expiry, and its button spends that earliest card. A count
+drop flies the old top card off the stack and rolls the new number in
+(reduced motion: fade only).
 
 Structured `noteItems` (Ollama weekly model usage) render as
 `.osubs-qnote` — faint label over `osubs-tag--plain` chips, each
 `name` + mono `×count`. Free-text `note` is the fallback for families
 without structured items.
+
+### 分享 on 额度
+
+A right-aligned 分享 above the cards shares the cards in rail scope with
+the same flow as 用量 (`useShot`: flash, corner thumbnail, clipboard,
+preview; footer scope reads `<scope> · 额度`). The image is a public
+artifact, so it differs from the page: each account identity
+(`[data-shot-mask]`) is masked — `a***@e***.com`, a bare username
+`a***` — and `[data-noshot]` parts drop out: the 添加账号 row, the
+account action buttons, and whole families with no account. They are
+removed from the live layout only while `renderLongShot` measures and
+clones (`.osubs-shooting`, synchronous, never painted), so the image
+closes up around them. The page itself never masks or hides anything.
 
 ## Rail icons
 
@@ -101,9 +207,12 @@ mono/color filename sets are pinned in `test/ui-client.test.ts`; add a
 
 ## Dialog vs card
 
-The card owns identity and state: title + status pill, account cards +
-quota rows, mid-auth pairing code + authorize URL, one CTA
-(登录 / 添加账号 / 继续授权), Cancel while busy.
+The card owns identity and state: title on the top border (legend
+style, no head row), account cards + quota rows, mid-auth pairing code
++ authorize URL. The add/login entry is one dashed tail row
+(`.osubs-acct-add` → `setAddOpen(true)`) — last line of the account
+list, or the card's only row when logged out; while busy it yields to
+a 继续授权 + Cancel row.
 
 The Dialog owns methods: every family's login / import / paste / key /
 manual flows live inside it. Header = family mark + 添加账号 + family

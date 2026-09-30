@@ -1,8 +1,11 @@
 import { readFile } from 'node:fs/promises'
 
 const DONATE_FILES = {
-  wechat: 'wechat.jpg',
-  alipay: 'alipay.jpg',
+  wechat: ['wechat.jpg', 'image/jpeg'],
+  alipay: ['alipay.jpg', 'image/jpeg'],
+  // The bunny-heart sticker is hand-composed SVG: traced silhouette +
+  // redrawn face and pink heart, so it stays sharp at workbench sizes.
+  bunny: ['bunny-heart.svg', 'image/svg+xml'],
 } as const
 
 let cached: Promise<Record<string, string>> | undefined
@@ -16,10 +19,10 @@ let cached: Promise<Record<string, string>> | undefined
 export function donateQr(): Promise<Record<string, string>> {
   cached ??= (async () => {
     const out: Record<string, string> = {}
-    await Promise.all(Object.entries(DONATE_FILES).map(async ([key, file]) => {
+    await Promise.all(Object.entries(DONATE_FILES).map(async ([key, [file, mime]]) => {
       try {
         const body = await readFile(new URL(`../../assets/donate/${file}`, import.meta.url))
-        out[key] = `data:image/jpeg;base64,${body.toString('base64')}`
+        out[key] = `data:${mime};base64,${body.toString('base64')}`
       } catch { /* asset not shipped in this install */ }
     }))
     return out

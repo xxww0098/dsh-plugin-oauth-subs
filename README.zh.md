@@ -38,6 +38,7 @@ dsh web
 | 提供商 | 登录 | DSH api | 上游 hop |
 |---|---|---|---|
 | ChatGPT Codex | PKCE `localhost:1455`（占用则 `1457`）；可粘贴回调；`app_EMoamEEZ73f0CkXaXp7hrann` | `openai-responses` | `chatgpt.com/backend-api/codex/responses` |
+| ChatGPT（Sign in with ChatGPT） | 官方开源客户端流程：`dynamic_agent_client` 注册 → 颁发 `oaiapp_` client；`127.0.0.1` 回环；ID token 按 JWKS 验签 | `openai-responses` | `api.openai.com/v1/responses` |
 | xAI Grok | 设备码（默认）；PKCE `127.0.0.1:56121`；`b1a00492-073a-47ea-816f-4c329264a828` | `openai-responses` | `api.x.ai/v1/responses` |
 | GLM · Z.ai（全球） | ZCode CLI 轮询 `provider: zai`；再换发 `id.secret`；`client_P8X5CMWmlaRO9gyO-KSqtg` | `anthropic-messages` | `api.z.ai/api/anthropic`（Completions 残留 `…/coding/paas/v4`） |
 | GLM · BigModel（中国） | 同一 CLI 轮询，`provider: bigmodel`；poll JWT 即密钥；client `zcode` | `anthropic-messages` | `open.bigmodel.cn/api/anthropic`（Completions 残留 `…/coding/paas/v4`） |
@@ -80,7 +81,7 @@ dsh web
 | 回环 | `http://127.0.0.1:8318/{codex,grok}/v1/responses`、`/glm/v1/messages`（Completions 残留 `/glm/v1/chat/completions` 留到下次 sync）、`/{kiro,antigravity,cursor,ollama,kimi,copilot,devin,cline}/v1/chat/completions` |
 | 上游 | 使用刷新后的订阅令牌或活动 OpenCode Go API key |
 
-面板关闭后，DSH 继续使用已配置的路由。代理只监听回环地址，并用本地凭证 `DSH_OAUTH_SUBS_API_KEY` 鉴权；OpenCode Go 不经过它。技术栈与模块树：[AGENTS.md](AGENTS.md)。上游对照：[docs/oauth.md](docs/oauth.md)。
+面板关闭后，DSH 继续使用已配置的路由。代理只监听回环地址，并用本地凭证 `DSH_OAUTH_SUBS_API_KEY` 鉴权；OpenCode Go 不经过它。开发、安装与发布：[docs/development.md](docs/development.md)。上游对照：[docs/oauth.md](docs/oauth.md)。
 
 ## 缓存
 
@@ -114,23 +115,23 @@ npm run analyze -- --dir ~/.dsh/sessions --since 30d [--until ISO] [--json] [--c
 
 ## Fast / 模型 / 推理
 
-登录和对话走官方客户端身份；UA / 指纹见各 `src/oauth/<id>/README.md`。对照仓库见 [docs/oauth.md](docs/oauth.md)。面板 **模型** 页签：按系列勾选（默认全开，**900K 除外**）。推理等级在 Harness **会话**模型菜单里设，不在「模型」页签。Fast 和 900K 都更耗额度。
+登录和对话走官方客户端身份；UA / 指纹见各 `src/oauth/<id>/README.md`。对照仓库见 [docs/oauth.md](docs/oauth.md)。面板 **模型** 页签：按系列开关（默认全开）；每行的窗口徽标可点开，在该行上限内自定义输入窗口。推理等级在 Harness **会话**模型菜单里设，不在「模型」页签。Fast 和更大的窗口都更耗额度。目录如何对照各家接口更新见 [docs/models.md](docs/models.md)。
 
 | 系列 | Fast | 窗口 | 思考 |
 |---|---|---|---|
-| Codex GPT-6 Astra / Sol / Luna 和 GPT-5.6 Sol / Terra / Luna | 可以。`-fast` → Priority（`service_tier: "priority"` + `x-codex-routing-hint`；`store: false`） | **258K** 默认；`-900k`（872K） | low / medium / high / xhigh / **max** |
-| 其余 Codex | 只剩 GPT-5.5：可以，`-fast` → Priority。GPT-5.4 / 5.4-mini / Spark 已下线（订阅账号 400 “not supported when using Codex with a ChatGPT account”） | 258K（无 `-900k`） | low–xhigh（无 `minimal`） |
+| Codex GPT-6 Astra / Sol / Luna 和 GPT-5.6 Sol / Terra / Luna | 可以。`-fast` → Priority（`service_tier: "priority"` + `x-codex-routing-hint`；`store: false`） | **258K** 默认；可自定义到 872K | low / medium / high / xhigh / **max** |
+| 其余 Codex | 只剩 GPT-5.5：可以，`-fast` → Priority。GPT-5.4 / 5.4-mini / Spark 已下线（订阅账号 400 “not supported when using Codex with a ChatGPT account”） | 258K（无更大窗口） | low–xhigh（无 `minimal`） |
 | Grok | 不行。2026-08-30：83.34 对 82.80 tok/s（0.994）。更早的 id 拒绝该字段 | — | 4.6：low / medium / high / xhigh（不选 = **high**）；4.5：无 xhigh |
-| GLM | — | — | 5.3 / Flash：low / high / **max**（默认 max；无 `medium`；`disabled` 会 400）。Turbo：开着，无深度。只有 Flash 是 GLM 图文行 |
+| GLM | — | 5.3 / Flash：**400K** 套餐输入上限；可自定义到官方 1M | 5.3 / Flash：low / high / **max**（默认 max；无 `medium`；`disabled` 会 400）。Turbo：开着，无深度。只有 Flash 是 GLM 图文行 |
 | Kiro | — | — | GPT-5.6：off / low / medium / high / xhigh / max（`off` → 线上 `none`）。Opus 5 / 4.8 / 4.7 和 Sonnet 5 另有 **xhigh**；4.6 家族到 max；Haiku / 开源权重：无。目录：[kiro.dev/docs/models](https://kiro.dev/docs/models/)（不含 Auto） |
 | Antigravity | 不行 | Cloud Code 目录；见[家族模型说明](src/oauth/antigravity/README.md) | 取决于上游模型 |
-| Cursor | 按模型提供 `-fast` 变体 | 登录后 `GetUsableModels` + `AvailableModels`；离线回落 15 行 | 按家族发送注册表参数；见[家族模型说明](src/oauth/cursor/README.md) |
-| Ollama Cloud | 不行 | 登录后 live `GET /api/tags`（静态 17 行 Cloud 快照作回落）。窗口来自 `POST /api/show` 的 `model_info.<family>.context_length`。无额度条 | off / low / medium / high / max（`off` → 线上 `none`） |
+| Cursor | 按模型提供 `-fast` 变体 | 登录后 `GetUsableModels` + `AvailableModels`；离线回落静态目录 | 按家族发送注册表参数；见[家族模型说明](src/oauth/cursor/README.md) |
+| Ollama Cloud | 不行 | 登录后 live `GET /api/tags`（静态 Cloud 快照作回落）。窗口来自 `POST /api/show` 的 `model_info.<family>.context_length`。无额度条 | off / low / medium / high / max（`off` → 线上 `none`） |
 | Kimi | 不行 | 登录后 live `GET /coding/v1/models`（静态 `kimi-for-coding` / highspeed / `k3` / `k3-256k`，256k/32k）。前缀哈希缓存 | off / minimal / low / medium / high / xhigh / max → `thinking.effort` |
 | Copilot | 不行 | 登录后 live `GET {api}/models`（静态楼 2026-09-23 按 GitHub 官方 docs 数据表 + models.dev `github-copilot` 重刷）。前缀哈希 + `X-Interaction-Id` | 目录声明才保留 `reasoning_effort` |
-| Devin | 可以。`-fast` 是真后端变体（不是 Codex Priority），不过 `applyFastMode` | 登录后 live `GetCliModelConfigs`（2026-09-23：49 家族 / 81 个 picker 行；静态回落同镜像） | 按家族映射到后端 `chat_model_uid`（`defaultUid`）；`thinking` / `fast` / `1m` 收成独立 picker 行 |
+| Devin | 可以。`-fast` 是真后端变体（不是 Codex Priority），不过 `applyFastMode` | 登录后 live `GetCliModelConfigs`（静态回落同镜像） | 按家族映射到后端 `chat_model_uid`（`defaultUid`）；`thinking` / `fast` / `1m` 收成独立 picker 行 |
 | Cline | 不行 | 登录后 live `GET /ai/cline/recommended-models`（静态 feed 快照回落） | minimal / low / medium / high / xhigh / max → `reasoning_effort`（`max`→`xhigh`） |
-| OpenCode Go | 不行 | Completions 28 行 + Responses 6 行；见[模型审查](docs/model-audit-2026-09-26.md) | 依具体模型；推理等级键遵循 DSH 闭集 |
+| OpenCode Go | 不行 | Completions + Responses 两条路由 | 依具体模型；推理等级键遵循 DSH 闭集 |
 
 Codex Priority 回显 `created=auto` / `completed=default` 不能当确认（openai/codex#14204）。2026-08-26 Luna：88.3 对 57.5 tok/s（1.54 倍）；2026-08-30 交错均值 1.33 倍（1.90 再 0.93）。只影响生成吞吐；首 token 时间和缓存不变。
 

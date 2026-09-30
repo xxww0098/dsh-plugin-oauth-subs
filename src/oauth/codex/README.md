@@ -1,7 +1,7 @@
 # Codex OAuth
 
 本文件是 `src/oauth/codex/` 的设计源。改登录、额度、对话或缓存先改这里再改代码。
-跨家族硬约定在仓库根 [`AGENTS.md`](../../../AGENTS.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)；对照仓库在 [`docs/oauth.md`](../../../docs/oauth.md)。
+跨家族硬规则在 [`docs/rules.md`](../../../docs/rules.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)；对照仓库在 [`docs/oauth.md`](../../../docs/oauth.md)。
 
 **不是** `api.openai.com` 付费 key。走的是 ChatGPT 订阅后端 `chatgpt.com/backend-api/codex`。
 
@@ -14,7 +14,7 @@
 | [`cache.ts`](cache.ts) | `prompt_cache_key` + `session-id` / `thread-id` / `x-client-request-id`。禁止给别的家族用 |
 
 调度：[`../proxy.ts`](../proxy.ts) `family === 'codex'` → `normalizeCodexResponsesBody` + `applyCodexCache` + `codexCacheHeaders`。
-额度：[`../quota.ts`](../quota.ts) `fetchCodexQuota` / `parseCodexUsage` / `consumeCodexReset`。
+额度：[`quota.ts`](quota.ts) `fetchCodexQuota` / `parseCodexUsage` / `consumeCodexReset`。
 套餐显示：[`../plan.ts`](../plan.ts) `CODEX_PLAN_NAMES`（`pro` → **Pro 20x**，`prolite` → **Pro 5x**）。
 
 ## 登录
@@ -26,7 +26,7 @@
 | `client_id` | `app_EMoamEEZ73f0CkXaXp7hrann` |
 | authorize | `https://auth.openai.com/oauth/authorize` |
 | token | `https://auth.openai.com/oauth/token` |
-| originator / UA | `codex_cli_rs` / `codex_cli_rs/0.155.1` |
+| originator / UA | `codex_cli_rs` / `codex_cli_rs/0.159.2` |
 | loopback | `localhost:1455`，失败再 `1457`；path `/auth/callback` |
 | 换票 | `application/x-www-form-urlencoded` + PKCE |
 | 刷新 | JSON `{ client_id, grant_type, refresh_token }` |
@@ -56,10 +56,18 @@ Fast：body `service_tier` 从 `fast` 改成 `priority`，并带 `x-codex-routin
 
 ## 模型
 
-`CODEX_MODELS` 是唯一目录源（对照 Codex CLI `models.json` + 活目录 `GET .../codex/models` @ `client_version` 0.155.1，2026-09-23 实测）。
-GPT-6 三行排最前（默认 258K input，Fast + 872K `-900k` + `max`）：`gpt-6-astra` / `gpt-6-sol` / `gpt-6-luna`。Sol / Luna 只有 `client_version` ≥ 0.155.0 才在活目录下发（0.153.4 实测只回 7 行，无这两行），故 identity 升到 0.155.1。
-不收录：`gpt-5.3-codex` / `gpt-5.4` / `gpt-5.4-mini` / `gpt-5.3-codex-spark`（Responses 400 “not supported when using Codex with a ChatGPT account”）；`gpt-reserve` / Daybreak / auto-review（`visibility: hide`，CLI 内部）。
-思考深度：GPT-5.5 → `low`–`xhigh`（无 `minimal` / `ultra`）；GPT-6 和 5.6 Sol/Terra/Luna 加 `max`。
+行在 [`src/catalog/models.json`](../../catalog/models.json) 的 `"codex"` 键；行格式、来源与 `npm run models` 更新流程见 [`docs/models.md`](../../../docs/models.md)。本节只记本家的取舍与出处。
+
+`CODEX_MODELS` 是唯一目录源，对照 Codex CLI `models.json` 与活目录 `GET .../codex/models?client_version=<CODEX_CLIENT_VERSION>`；运行时不替换静态行。**后端按 `client_version` 门控下发**：`gpt-6-sol`/`gpt-6-luna` 要 ≥ 0.155.0，`gpt-6.1-sol` 要 ≥ 0.159.0——钉的版本落后会让新模型从活目录消失（2026-09-30 实测，0.155.1 下 9 行无 6.1，0.159.0 下出现），所以 `CODEX_CLIENT_VERSION` 跟 npm `@openai/codex` latest 走。
+
+- 只收 `visibility: list` 的行；`gpt-reserve` / auto-review 这类 `hide` 行是 CLI 内部用的。
+- 活目录按 `client_version` 过滤：新模型只对足够新的版本下发，identity 版本落后就看不到新模型（见 docs/error.md 2026-09-23 Codex 目录轮换）。
+- 不收订阅后端 400（"not supported when using Codex with a ChatGPT account"）的模型，`gpt-5.3-codex` 是先例。
+- `contextWindow` 取 CLI 的可用输入 258K（`CODEX_CONTEXT_WINDOW`），不是端点的原始 `context_window` 272K。端点的 `max_context_window` 写进行的 `maxContextWindow`，作为自定义窗口上限，不派生变体行。
+- `fastTier` = `service_tiers` 里有 `priority`。
+- `reasoningEfforts` 取 `supported_reasoning_levels`，但 `minimal` 与 `ultra` 会 400（`ultra` 是 CLI 的多 agent 模式，不是 API effort）；`off` 的 wire 值是 `null`。
+
+最近核对：2026-09-30，活目录 @ `client_version` 0.159.0（+ `gpt-6.1-sol`）；同日钉跟 npm latest 升 0.159.2（探查无新行，纯跟版）。
 
 ## 额度
 
@@ -96,17 +104,19 @@ GPT-6 三行排最前（默认 258K input，Fast + 872K `-900k` + `max`）：`gp
 
 ## 归因
 
-一线：[openai/codex](https://github.com/openai/codex) tag `rust-v0.155.1`（本机 updater `version.json` 2026-09-19 报到的最新版；缓存头源码蒸馏自 0.153.4）。
-`build_session_headers`（`session-id` / `thread-id` / `x-client-request-id`）、`x-codex-turn-state` 回放、`models.json` + 活目录 `GET .../codex/models`、[#37345](https://github.com/openai/codex/issues/37345) routing-hint。总表见 [`docs/oauth.md`](../../../docs/oauth.md)。
+一线：[openai/codex](https://github.com/openai/codex) tag `rust-v0.159.0`（升钉核对时 npm latest 0.159.0；缓存头源码蒸馏自 0.153.4）。
 
-## 追溯
+| 抄 | 出处 | 本 hop |
+|---|---|---|
+| `session-id` + `thread-id` + `x-client-request-id`（三者同值） | `codex-rs/codex-api/src/requests/headers.rs` `build_session_headers` | `codexCacheHeaders`：三值都等于 DSH pin（一轮对话一条 thread） |
+| 模型页价格徽标（USD / 1M） | models.dev `openai`；`-fast` 孪生行取 models.dev `vercel` `openai/<id>-fast`（priority 档） | `src/catalog/rates.json`，`npm run rates` 写入（见 [docs/models.md](../../../docs/models.md) 费率表） |
+| 同 turn 重试回放 `x-codex-turn-state` | `codex-rs/core/src/client.rs` | `proxy.ts` 重试路径（仅 `family === 'codex'`） |
+| Fast → Priority | [#37345](https://github.com/openai/codex/issues/37345) | body `service_tier: priority` + `x-codex-routing-hint` |
+| 请求体 zstd（`content-encoding: zstd`） | 官方客户端同款；宿主自带 openai-codex provider 同样压缩 | `request.ts` `encodeCodexBody` |
+| 剥 `max_output_tokens` | [#39397](https://github.com/openai/codex/issues/39397) | `request.ts` |
+| `pro` / `prolite` 徽章 | [#29243](https://github.com/openai/codex/issues/29243) | `plan.ts` Pro 20x / Pro 5x |
+| 目录 | CLI `models.json` + `GET .../codex/models` | `CODEX_MODELS`（取舍见「模型」） |
 
-| 问题 | 记录 |
-|---|---|
-| DSH `session_id` 送上 chatgpt.com 400 | [`docs/error.md`](../../../docs/error.md) 2026-09-01 session_id |
-| Codex Pro 徽章没分 5x / 20x | [`docs/error.md`](../../../docs/error.md) 2026-08-30 Pro 徽章 |
-| Fast 只靠 body，回显 default | 同文件 2026-08-30 Grok/Codex Fast |
-| 各家缓存被混成 Codex 一套 | 同文件 2026-08-31 缓存混用 |
-| GPT-6 Sol / Luna 不见、5.4 系列仍可选中 | 同文件 2026-09-23 Codex 目录轮换 |
+**不要发明：** 官方 CLI 发、本 hop 不发的头，以及 DSH `session_id` 的去向，见「不要」。
 
-测试：`test/proxy.test.ts`、`test/cache-families.test.ts`。
+跨家族对照总表见 [`docs/oauth.md`](../../../docs/oauth.md)。

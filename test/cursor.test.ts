@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { AuthController } from '../lib/oauth/controller.js'
-import { parseCursorPeriodUsage } from '../lib/oauth/quota.js'
+import { parseCursorPeriodUsage } from '../lib/oauth/cursor/quota.js'
 import { formatPlanLabel } from '../lib/oauth/plan.js'
 import { accountIdOf, listAccounts, listStoredSessions, publicSession, saveSession } from '../lib/oauth/store.js'
 import {
@@ -13,8 +13,8 @@ import {
   catalogProviders,
   describeCatalog,
   ownedProviderIds,
-  syncHarnessModels,
 } from '../lib/oauth/models.js'
+import { syncHarnessModels } from '../lib/oauth/harness-sync.js'
 import {
   cursorCatalogModels,
   cursorPickerFamilyId,
@@ -1046,6 +1046,7 @@ test('cursor static catalog matches the live Cursor model set and has no Fast ro
     'claude-fable-5-1',
     'claude-opus-5-5',
     'claude-opus-5',
+    'claude-sonnet-5-5',
     'claude-sonnet-5',
     'gemini-3.1-pro',
     'gemini-3.8-flash',

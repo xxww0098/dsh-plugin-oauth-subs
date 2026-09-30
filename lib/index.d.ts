@@ -10,7 +10,7 @@
  *   3. syncs logged-in catalogs into llm-pi-ai
  *
  * The client half (左侧栏面板：插件按钮下方的订阅入口 →
- * 额度/模型/版本工作台) is discovered from package.json `dsh.client` —
+ * 额度/模型/设置工作台) is discovered from package.json `dsh.client` —
  * this module only owns the node process.
  */
 import z from '@deepseek-ai/schemastery';
@@ -35,7 +35,7 @@ export declare const Config: z<Schemastery.ObjectS<{
 export declare function registerRpc(ctx: any, controller: any): void;
 export declare function apply(ctx: any, config?: any): void;
 export { CODEX_CLIENT_ID, CODEX_AUTHORIZE_URL, CODEX_TOKEN_URL, CODEX_API_URL, CODEX_ORIGINATOR, CODEX_USER_AGENT, codexCredentialHeaders, } from './oauth/codex/index.js';
-export { GROK_CLIENT_ID, GROK_DISCOVERY_URL, GROK_API_URL, GROK_USER_AGENT, GROK_LARGE_CONTEXT, GROK_REASONING_45, GROK_REASONING_46, GROK_REASONING_47, GROK_FAST_MODEL_IDS, grokCredentialHeaders, } from './oauth/grok/index.js';
+export { GROK_CLIENT_ID, GROK_DISCOVERY_URL, GROK_API_URL, GROK_USER_AGENT, GROK_LARGE_CONTEXT, GROK_47_CONTEXT, GROK_REASONING_45, GROK_REASONING_46, GROK_REASONING_47, GROK_FAST_MODEL_IDS, grokCredentialHeaders, } from './oauth/grok/index.js';
 export { GLM_CLIENT_ID, GLM_CODING_URL, GLM_AUTHORIZE_URL, GLM_APP_VERSION, GLM_USER_AGENT, glmDesktopHeaders, glmUpstreamHeaders, } from './oauth/glm/index.js';
 export { KIRO_PORTAL_URL, KIRO_MODELS, kiroUsageHeaders, kiroSession, } from './oauth/kiro/index.js';
 export { ANTIGRAVITY_CLIENT_ID, ANTIGRAVITY_API_URL, ANTIGRAVITY_STREAM_URL, antigravityRequestUserAgent, antigravityChatHeaders, } from './oauth/antigravity/index.js';
@@ -45,12 +45,21 @@ export { KIMI_CLIENT_ID, KIMI_MODELS, KIMI_CHAT_URL, kimiSession, kimiUpstreamHe
 export { COPILOT_CLIENT_ID, COPILOT_MODELS, copilotChatUrl, copilotSession, copilotUpstreamHeaders, } from './oauth/copilot/index.js';
 export { DEVIN_MODELS, DEVIN_AUTHORIZE_URL, DEVIN_TOKEN_URL, devinSession, normalizeDevinToken, } from './oauth/devin/index.js';
 export { CLINE_MODELS, CLINE_API_BASE, CLINE_CHAT_URL, CLINE_WORKOS_CLIENT_ID, clineDeviceSpec, clineSessionFromAuthData, clineUpstreamHeaders, refreshCline, } from './oauth/cline/index.js';
-export { OAUTH_CREDENTIAL_REF, ModelSwitch } from './oauth/models.js';
+export { OAUTH_CREDENTIAL_REF } from './oauth/models.js';
+export { ModelSwitch } from './oauth/model-switch.js';
 export { defaultDataDir } from './oauth/store.js';
 export { AuthController } from './oauth/controller.js';
 export { applyFastMode, modelSupportsFastMode } from './utils/fast-mode.js';
-export { CONTEXT_VARIANT_SUFFIX, codexLargeContext, applyContextMode, isCodex900kBase, peelContextSuffix, } from './utils/context-mode.js';
-export { parseCodexUsage, parseGrokBilling, parseGlmQuota, parseKiroUsage, parseCursorPeriodUsage, parseKimiUsage, parseCopilotUsage, parseDevinUserStatus, parseResetCredits, QuotaStore } from './oauth/quota.js';
+export { CONTEXT_VARIANT_SUFFIX, codexMaxContextWindow, applyContextMode, isCodex900kBase, peelContextSuffix, } from './utils/context-mode.js';
+export { parseCodexUsage, parseResetCredits } from './oauth/codex/quota.js';
+export { parseGrokBilling } from './oauth/grok/quota.js';
+export { parseGlmQuota, parseGlmResetCards } from './oauth/glm/quota.js';
+export { parseKiroUsage } from './oauth/kiro/quota.js';
+export { parseCursorPeriodUsage } from './oauth/cursor/quota.js';
+export { parseKimiUsage } from './oauth/kimi/quota.js';
+export { parseCopilotUsage } from './oauth/copilot/quota.js';
+export { parseDevinUserStatus } from './oauth/devin/quota.js';
+export { QuotaStore } from './oauth/quota.js';
 export { fetchClineQuota, parseClineBalance, parseClinePlan, parseClineUsage } from './oauth/cline/quota.js';
 export { formatPlanLabel, CODEX_PLAN_NAMES } from './oauth/plan.js';
 export { REPO_URL, REPO_SLUG, installedVersion, fresherVersion, fetchLatest, localUpdateInfo, profileFromBaseUrl, isElectronManagedProfile, pluginUpdateCommand, } from './utils/update.js';

@@ -1,23 +1,17 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import { QUOTA_TTL_MS, QUOTA_USED_TTL_MS, QuotaStore } from '../lib/oauth/quota.js'
+import { applyGrokCreditsSnapshot, parseGrokBilling } from '../lib/oauth/grok/quota.js'
+import { asNumber, creditBagAmounts, isAvailableResetCredit } from '../lib/oauth/quota-shared.js'
+import { consumeResetBody, parseCodexUsage, parseResetCredits } from '../lib/oauth/codex/quota.js'
 import {
-  QUOTA_TTL_MS,
-  QuotaStore,
-  applyGrokCreditsSnapshot,
-  asNumber,
-  consumeResetBody,
-  creditBagAmounts,
-  isAvailableResetCredit,
   parseAntigravityModelQuota,
   parseAntigravityPaidCredits,
   parseAntigravityQuotaSummary,
-  parseCodexUsage,
-  parseGrokBilling,
-  parseResetCredits,
-} from '../lib/oauth/quota.js'
+} from '../lib/oauth/antigravity/quota.js'
 import { CODEX_RESET_CONSUME_URL, CODEX_RESET_CREDITS_URL, CODEX_USAGE_URL } from '../lib/oauth/codex/index.js'
 import { GROK_BILLING_URL, GROK_CREDITS_URL } from '../lib/oauth/grok/index.js'
-import { GLM_QUOTA_URL, GLM_TOOL_USAGE_URL, GLM_USER_AGENT } from '../lib/oauth/glm/index.js'
+import { GLM_QUOTA_URL, GLM_TOOL_USAGE_URL, GLM_USER_AGENT, glmResetCardUrl } from '../lib/oauth/glm/index.js'
 import { GROK_WEB_EMPTY_FRAME, decodeGrokCreditsFrame } from '../lib/oauth/grok/credits-frame.js'
 import {
   ANTIGRAVITY_DAILY_API_URL,
@@ -234,7 +228,7 @@ test('QuotaStore fetches Codex usage + reset credits and caches', async () => {
   assert.equal(seen.some((row) => row.url === CODEX_RESET_CREDITS_URL), true)
   assert.equal(seen[0].headers['chatgpt-account-id'], 'acct-1')
   assert.equal(seen[0].headers.originator, 'codex_cli_rs')
-  assert.equal(seen[0].headers['user-agent'], 'codex_cli_rs/0.155.1')
+  assert.equal(seen[0].headers['user-agent'], 'codex_cli_rs/0.159.2')
   assert.equal(first.planType, 'pro')
   assert.equal(first.planLabel, 'Pro 20x')
   assert.equal(first.rows[0].remainingPercent, 90)
@@ -273,6 +267,87 @@ test('passive quota stays fresh for 60s; the TTL boundary revalidates', async (t
   await store.inflight.get('codex\0acct-1')
   assert.equal(usage, 2)
   assert.equal(store.peek('codex', 'acct-1').rows[0].remainingPercent, 98)
+})
+
+test('chat traffic shortens quota freshness to 15s without fetching', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: 1_000_000 })
+  let usage = 0
+  const fetchFn = async (url) => {
+    if (String(url) === CODEX_USAGE_URL) usage += 1
+    return new Response(JSON.stringify({
+      plan_type: 'plus',
+      rate_limit: { primary_window: { used_percent: usage, limit_window_seconds: 18_000 } },
+    }), { status: 200 })
+  }
+  const store = new QuotaStore({
+    fetchFn,
+    tokens: { codex: { session: async () => ({ accessToken: 'tok', accountId: 'acct-1' }) } },
+  })
+  await store.ensure('codex', 'acct-1')
+  await store.touch('codex')
+  assert.equal(usage, 1, 'touch never calls upstream')
+  t.mock.timers.tick(QUOTA_USED_TTL_MS - 1)
+  await store.ensure('codex', 'acct-1')
+  assert.equal(usage, 1)
+  t.mock.timers.tick(1)
+  await store.ensure('codex', 'acct-1')
+  await store.inflight.get('codex\0acct-1')
+  assert.equal(usage, 2)
+  // The refresh consumed the mark: idle again → back to the 60s window.
+  t.mock.timers.tick(QUOTA_USED_TTL_MS)
+  await store.ensure('codex', 'acct-1')
+  assert.equal(usage, 2)
+})
+
+test('a touch during an in-flight read survives that read', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: 1_000_000 })
+  let release
+  let usage = 0
+  const fetchFn = async (url) => {
+    if (String(url) === CODEX_USAGE_URL) {
+      usage += 1
+      if (usage === 2) await new Promise((resolve) => { release = resolve })
+    }
+    return new Response(JSON.stringify({ plan_type: 'plus', rate_limit: {} }), { status: 200 })
+  }
+  const store = new QuotaStore({
+    fetchFn,
+    tokens: { codex: { session: async () => ({ accessToken: 'tok', accountId: 'acct-1' }) } },
+  })
+  await store.ensure('codex', 'acct-1')
+  t.mock.timers.tick(QUOTA_TTL_MS)
+  await store.ensure('codex', 'acct-1')
+  while (!release) await new Promise((resolve) => setImmediate(resolve))
+  await store.touch('codex')
+  release()
+  await store.inflight.get('codex\0acct-1')
+  assert.ok(store.cache.get('codex\0acct-1').usedAt !== undefined)
+})
+
+test('an expired error entry revalidates in the background', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: 1_000_000 })
+  let hang = false
+  const blocked = []
+  const release = () => { for (const resolve of blocked.splice(0)) resolve() }
+  const fetchFn = async () => {
+    if (hang) await new Promise((resolve) => { blocked.push(resolve) })
+    return new Response('down', { status: 503 })
+  }
+  const store = new QuotaStore({
+    fetchFn,
+    tokens: { codex: { session: async () => ({ accessToken: 'tok', accountId: 'acct-1' }) } },
+  })
+  const first = await store.ensure('codex', 'acct-1')
+  assert.equal(first.status, 'error')
+  hang = true
+  t.mock.timers.tick(QUOTA_TTL_MS)
+  // Returns the cached error at once instead of waiting on the hung upstream.
+  const again = await store.ensure('codex', 'acct-1')
+  assert.equal(again.status, 'error')
+  assert.ok(store.inflight.has('codex\0acct-1'))
+  while (blocked.length === 0) await new Promise((resolve) => setImmediate(resolve))
+  release()
+  await store.inflight.get('codex\0acct-1')
 })
 
 test('QuotaStore keeps Codex usage if reset-credits 404s', async () => {
@@ -374,12 +449,14 @@ test('QuotaStore GLM quota hop uses ZCode Desktop 3.10.1 fingerprint', async () 
   const second = await store.refresh('glm')
   assert.equal(first.status, 'ready')
   assert.equal(first.planType, 'Pro')
-  // Card parse also GETs tool-usage when the quota payload has no MCP row.
-  assert.equal(seen.length, 4)
-  assert.equal(seen[0].url, GLM_QUOTA_URL)
-  assert.equal(seen[1].url, GLM_TOOL_USAGE_URL)
-  assert.equal(seen[2].url, GLM_QUOTA_URL)
-  assert.equal(seen[3].url, GLM_TOOL_USAGE_URL)
+  // Card parse also GETs tool-usage when the quota payload has no MCP row, and
+  // the reset-card list runs alongside — same fingerprint on every hop.
+  const hits = (url) => seen.filter((row) => row.url === url)
+  const quota = hits(GLM_QUOTA_URL)
+  assert.equal(seen.length, 6)
+  assert.equal(quota.length, 2)
+  assert.equal(hits(GLM_TOOL_USAGE_URL).length, 2)
+  assert.equal(hits(glmResetCardUrl('zai', 'list')).length, 2)
   for (const row of seen) {
     const headers = row.headers
     assert.equal(headers.authorization, 'Bearer id.secret')
@@ -393,10 +470,9 @@ test('QuotaStore GLM quota hop uses ZCode Desktop 3.10.1 fingerprint', async () 
     assert.equal(headers['x-session-id'], 'dsh-glm')
     assert.equal(JSON.stringify(headers).includes('dsh-plugin-oauth-subs'), false)
   }
-  assert.equal(seen[0].headers['x-session-id'], seen[1].headers['x-session-id'])
-  assert.equal(seen[0].headers['x-session-id'], seen[2].headers['x-session-id'])
-  assert.notEqual(seen[0].headers['x-zcode-trace-id'], seen[2].headers['x-zcode-trace-id'])
-  assert.notEqual(seen[0].headers['x-request-id'], seen[2].headers['x-request-id'])
+  assert.equal(new Set(seen.map((row) => row.headers['x-session-id'])).size, 1)
+  assert.notEqual(quota[0].headers['x-zcode-trace-id'], quota[1].headers['x-zcode-trace-id'])
+  assert.notEqual(quota[0].headers['x-request-id'], quota[1].headers['x-request-id'])
 })
 
 test('parseGrokBilling maps SuperGrokPro user enum to SuperGrok Heavy', () => {
@@ -906,4 +982,35 @@ test('QuotaStore Antigravity fetch failure is error, not idle empty', async () =
   assert.notEqual(quota.status, 'idle')
   assert.equal(quota.rows.length, 0)
   assert.match(quota.error, /loadCodeAssist|HTTP 500/)
+})
+
+test('entering the page revalidates a reading the poll TTL would still serve', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: 1_000_000 })
+  let usage = 0
+  const fetchFn = async (url) => {
+    if (String(url) === CODEX_USAGE_URL) usage += 1
+    return new Response(JSON.stringify({
+      plan_type: 'plus',
+      rate_limit: { primary_window: { used_percent: usage, limit_window_seconds: 18_000 } },
+    }), { status: 200 })
+  }
+  const store = new QuotaStore({
+    fetchFn,
+    tokens: { codex: { session: async () => ({ accessToken: 'tok', accountId: 'acct-1' }) } },
+  })
+  await store.ensure('codex', 'acct-1')
+  t.mock.timers.tick(30_000)
+  // 30s old: inside the 60s poll TTL, but (re)entering the page passes the
+  // 15s floor — the cached rows answer at once while the re-read runs behind.
+  const served = await store.ensure('codex', 'acct-1', undefined, QUOTA_USED_TTL_MS)
+  assert.equal(usage, 2, 'the entry re-read fired')
+  assert.equal(served.rows[0].remainingPercent, 99, 'the cached answer still serves')
+  await store.inflight.get('codex\0acct-1')
+  assert.equal(store.peek('codex', 'acct-1').rows[0].remainingPercent, 98)
+  // A reading younger than the floor serves without another re-read.
+  await store.ensure('codex', 'acct-1', undefined, QUOTA_USED_TTL_MS)
+  assert.equal(usage, 2)
+  // Without the entry flag the poll keeps its own 60s window.
+  await store.ensure('codex', 'acct-1')
+  assert.equal(usage, 2)
 })

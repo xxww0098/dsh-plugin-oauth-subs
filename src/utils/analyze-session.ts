@@ -14,6 +14,7 @@
  */
 
 import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { zstdDecompressSync } from 'node:zlib'
 import { describeError } from './http.js'
@@ -74,7 +75,7 @@ export function parseSessionEvents(text) {
   return events
 }
 
-function usageOf(event) {
+export function usageOf(event) {
   if (event?.type === 'assistant/message') {
     return event.data?.usage ?? event.data?.message?.usage ?? null
   }
@@ -342,10 +343,58 @@ export function callHitRate(call) {
 }
 
 /**
+ * The proxy's cacheable-prefix estimates (`prefix-estimate.jsonl`, plus its
+ * `.1` generation) from every DSH profile's plugin data dir. Kiro reports no
+ * cached tokens, so these stand in for its hit rate as an upper bound.
+ */
+export function readPrefixEstimates(profilesRoot = join(homedir(), '.dsh', 'profiles')) {
+  let profiles: string[] = []
+  try {
+    profiles = readdirSync(profilesRoot)
+  } catch {
+    return []
+  }
+  return profiles.flatMap((profile) => ['prefix-estimate.jsonl.1', 'prefix-estimate.jsonl'].flatMap((name) => {
+    let text = ''
+    try {
+      text = readFileSync(join(profilesRoot, profile, 'data', 'dsh-plugin-oauth-subs', name), 'utf8')
+    } catch {
+      return []
+    }
+    return text.split('\n').flatMap((line) => {
+      try {
+        const entry = JSON.parse(line)
+        return typeof entry?.ts === 'number' && typeof entry.bytes === 'number' ? [entry] : []
+      } catch {
+        return []
+      }
+    })
+  }))
+}
+
+/**
+ * Byte-weighted cacheable prefix over the estimates that had a baseline; an
+ * upper bound on the hit rate (it assumes the server cache was still warm —
+ * `staleGap` counts baselines over 5 minutes old). Null when none had one.
+ */
+export function prefixEstimateOf(entries) {
+  const based = entries.filter((entry) => typeof entry.matched === 'number' && entry.bytes > 0)
+  const bytes = based.reduce((sum, entry) => sum + entry.bytes, 0)
+  if (!bytes) return null
+  return {
+    ratio: based.reduce((sum, entry) => sum + entry.matched, 0) / bytes,
+    requests: entries.length,
+    baseline: based.length,
+    staleGap: based.filter((entry) => entry.gapMs > 5 * 60_000).length,
+  }
+}
+
+/**
  * @param {string} text
+ * @param {{ prefixEstimates?: object[] }} [options] — see `readPrefixEstimates`
  * @returns {object}
  */
-export function analyzeSession(text) {
+export function analyzeSession(text, { prefixEstimates = [] as any[] } = {}) {
   const events = parseSessionEvents(text)
   const session = events.find((event) => event.type === 'session') ?? {}
   const config = headerConfig(events)
@@ -400,6 +449,7 @@ export function analyzeSession(text) {
     zeroCacheAfterWarmup: zeroAfterWarmup.length,
     affinityMissCount: cacheMeasured ? affinityMisses.length : 0,
     cacheMeasured,
+    prefixEstimate: cacheMeasured ? null : prefixEstimateOf(prefixEstimates.filter((entry) => entry.session === session.id)),
     compactionCallCount: compactionCalls.length,
     rebuildCallCount: rebuildCalls.length,
     uncachedBreakdown: uncachedBreakdown(calls),
@@ -437,6 +487,9 @@ export function formatReport(report) {
     report.cacheMeasured === false
       ? `hit         unmeasured (no cache field from upstream)`
       : `hit         ${pct}%  prefix-reuse median ${reuse}`,
+    ...(report.prefixEstimate ? [
+      `prefix est  ≤${(report.prefixEstimate.ratio * 100).toFixed(1)}% cacheable (plugin estimate, upper bound)  baseline ${report.prefixEstimate.baseline}/${report.prefixEstimate.requests}  gap>5m ${report.prefixEstimate.staleGap}`,
+    ] : []),
     `zero-cache  ${report.zeroCacheCount} (after warmup ${report.zeroCacheAfterWarmup})  affinity-miss ${report.affinityMissCount ?? 0}`,
     `rewrite     compaction ${report.compactionCallCount ?? 0}  rebuild ${report.rebuildCallCount ?? 0}`,
     `uncached as cold ${breakdown.cold_start ?? 0}  rebuild ${breakdown.rebuild ?? 0}  compaction ${breakdown.compaction ?? 0}  delta ${breakdown.delta ?? 0}  affinity ${breakdown.affinity_miss ?? 0}`,
@@ -488,7 +541,7 @@ export function readSessionText(path: string) {
   return decodeSessionBuffer(readFileSync(path))
 }
 
-function sessionFiles(dir: string, since: number | null, out: string[] = []) {
+export function sessionFiles(dir: string, since: number | null, out: string[] = []) {
   for (const name of readdirSync(dir)) {
     const path = join(dir, name)
     const stat = statSync(path)
@@ -500,7 +553,7 @@ function sessionFiles(dir: string, since: number | null, out: string[] = []) {
 }
 
 /** Absolute frame times: `{ time }` chunks and `{ time0, dt[] }` chunk runs. */
-function frameTimes(frames) {
+export function frameTimes(frames) {
   const out: number[] = []
   for (const frame of frames) {
     if (typeof frame?.time === 'number') {
@@ -516,7 +569,7 @@ function frameTimes(frames) {
 
 /** Terminal `finish` failure of an attempt: nested in assistant/attempt, or a
  * top-level assistant/chunk in older sessions. */
-function attemptFailure(event) {
+export function attemptFailure(event) {
   const frames = event.type === 'assistant/attempt' ? event.data?.stream : [event.data]
   for (const frame of Array.isArray(frames) ? frames : []) {
     const failure = frame?.chunk?.type === 'finish' ? frame.chunk.reason?.failure : null
@@ -731,7 +784,7 @@ function toIso(ms) {
  * The same session may exist as session.jsonl.zstd and session.v3/v4.jsonl.zstd;
  * only the highest `session.version` copy of each `session.id` counts.
  */
-export function analyzeSessionDir(root: string, { since = null, until = null }: { since?: number | null, until?: number | null } = {}) {
+export function analyzeSessionDir(root: string, { since = null, until = null, prefixEstimates = [] }: { since?: number | null, until?: number | null, prefixEstimates?: any[] } = {}) {
   const inWindow = (time) => typeof time === 'number' && (since == null || time >= since) && (until == null || time < until)
   const sessions = new Map()
   let files = 0
@@ -767,8 +820,14 @@ export function analyzeSessionDir(root: string, { since = null, until = null }: 
   }
   for (const group of providers.values()) annotatePoolIdle(group.calls)
 
-  const byCalls = (map) => Object.fromEntries([...map.entries()]
-    .map(([name, group]) => [name, groupStats(group)])
+  // A row with no cache field gets the proxy's estimate for its family (and model).
+  const estimates = prefixEstimates.filter((entry) => inWindow(entry.ts))
+  const byCalls = (map, owns) => Object.fromEntries([...map.entries()]
+    .map(([name, group]) => {
+      const stats = groupStats(group)
+      if (stats.cacheMeasured !== false) return [name, stats]
+      return [name, { ...stats, prefixEstimate: prefixEstimateOf(estimates.filter((entry) => owns(name, entry))) }]
+    })
     .sort((a, b) => (b[1].inputTokens + b[1].cacheReadTokens) - (a[1].inputTokens + a[1].cacheReadTokens)))
   return {
     window: { since: toIso(since), until: toIso(until) },
@@ -776,13 +835,13 @@ export function analyzeSessionDir(root: string, { since = null, until = null }: 
     sessions: sessions.size,
     duplicateFiles: files - unreadable - sessions.size,
     unreadableFiles: unreadable,
-    providers: byCalls(providers),
-    models: byCalls(models),
+    providers: byCalls(providers, (name, entry) => name.endsWith(`-${entry.family}`)),
+    models: byCalls(models, (name, entry) => name.endsWith(`-${entry.family}/${entry.model}`)),
   }
 }
 
 const pct = (value) => (value == null ? '—' : `${(value * 100).toFixed(1)}%`)
-const hitCell = (s) => (s.cacheMeasured === false ? 'n/a' : pct(s.weightedCacheHit))
+const hitCell = (s) => (s.cacheMeasured !== false ? pct(s.weightedCacheHit) : s.prefixEstimate ? `≤${pct(s.prefixEstimate.ratio)}` : 'n/a')
 const secs = (ms) => (ms == null ? '—' : `${(ms / 1000).toFixed(1)}s`)
 
 export function formatAggregate(report) {
@@ -827,6 +886,9 @@ export function formatAggregate(report) {
   }
   if (Object.values<any>(report.providers).some((s) => s.cacheMeasured === false)) {
     lines.push('', 'n/a = upstream reports no cache field (Kiro caches server-side, invisible here), not a 0% hit')
+    if (Object.values<any>(report.providers).some((s) => s.prefixEstimate)) {
+      lines.push('≤x% = the plugin\'s cacheable-prefix estimate from prefix-estimate.jsonl: an upper bound, it assumes the server cache was still warm')
+    }
   }
   return lines.join('\n')
 }

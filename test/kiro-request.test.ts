@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { createProxy } from '../lib/oauth/proxy.js'
+import { estimateKiroPrefix, resetKiroPrefixBaselines } from '../lib/oauth/kiro/cache.js'
 import { KIRO_CONTEXT_WINDOW, KIRO_DEEPSEEK_CONTEXT, KIRO_MODELS, SOCIAL_PROFILE_ARN, kiroSession, kiroUsageHeaders } from '../lib/oauth/kiro/index.js'
 import {
   KIRO_AMZ_TARGET,
@@ -836,6 +837,47 @@ test('prompt tokens use the live catalog window when the caller has one', () => 
   ]
   assert.equal(kiroToOpenai(events, { model: 'claude-haiku-4.5', window: 100_000 }).usage.prompt_tokens, 10_000)
   assert.equal(kiroToOpenai(events, { model: 'claude-haiku-4.5' }).usage.prompt_tokens, 20_000, 'static table when there is no live row')
+})
+
+test('cacheable-prefix estimate: a growing loop shares all but the new turn; one changed tool shares nothing', () => {
+  resetKiroSystemPins()
+  resetKiroPrefixBaselines()
+  const id = 'session-a:claude-opus-5.5'
+  const read = { type: 'function', function: { name: 'read', description: 'read a file', parameters: { type: 'object', properties: {} } } }
+  const body = (messages, tools = [read]) => openaiToKiro({ model: 'claude-opus-5.5', messages, tools }, { conversationId: id })
+  const turn1 = [{ role: 'system', content: 'be brief' }, { role: 'user', content: 'read a.ts' }]
+  const turn2 = [...turn1,
+    { role: 'assistant', content: '', tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'read', arguments: '{}' } }] },
+    { role: 'tool', tool_call_id: 'call_1', content: 'const a = 1' }]
+  assert.equal(estimateKiroPrefix(id, body(turn1), 0).matched, null, 'no baseline yet')
+  const grown = estimateKiroPrefix(id, body(turn2), 1_000)
+  assert.ok(grown.matched > 0 && grown.matched < grown.bytes, 'last turn\'s current message is this turn\'s history entry')
+  assert.equal(grown.gapMs, 1_000)
+  // DSH's title request shares the session id; the next chat request still finds its baseline.
+  estimateKiroPrefix(id, body([{ role: 'system', content: 'write a title' }, { role: 'user', content: 'title?' }]), 2_000)
+  const again = estimateKiroPrefix(id, body(turn2), 3_000)
+  assert.equal(again.matched, again.bytes)
+  // Live 2026-09-29: one changed tool description cost 1.00x of cold.
+  const retooled = { ...read, function: { ...read.function, description: 'read a file from disk' } }
+  assert.equal(estimateKiroPrefix(id, body(turn2, [retooled]), 4_000).matched, 0)
+  assert.equal(estimateKiroPrefix('dsh-kiro:claude-opus-5.5', body(turn2), 5_000).matched, null, 'no DSH session, no baseline')
+})
+
+test('cacheable-prefix estimate: a conversation still sending requests keeps its baseline while 64 newer ones start', () => {
+  resetKiroSystemPins()
+  resetKiroPrefixBaselines()
+  const body = (id, text) => openaiToKiro({ model: 'claude-opus-5.5', messages: [{ role: 'user', content: text }] }, { conversationId: id })
+  const lead = 'session-lead:claude-opus-5.5'
+  estimateKiroPrefix(lead, body(lead, 'step 0'), 0)
+  for (let i = 1; i <= 64; i += 1) {
+    const other = `session-${i}:claude-opus-5.5`
+    estimateKiroPrefix(other, body(other, 'hi'), i)
+    assert.notEqual(estimateKiroPrefix(lead, body(lead, `step ${i}`), i).matched, null, `lead request ${i}`)
+  }
+  // Still bounded: the baseline that went is session-1's, idle since its only request.
+  assert.equal(estimateKiroPrefix('session-1:claude-opus-5.5', body('session-1:claude-opus-5.5', 'hi'), 65).matched, null)
+  resetKiroSystemPins()
+  resetKiroPrefixBaselines()
 })
 
 test('tool history with no tools offered rides as text: Kiro 400s toolUse blocks without a toolConfig', () => {

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { test } from 'node:test'
 import { donateQr } from '../lib/utils/donate.js'
+import { assembleUi } from '../scripts/ui-bundle.ts'
 
 // The 感谢 tab pastes the maintainer's payment codes. They ship as real files
 // in the package (assets/donate/ is a `files` entry) and reach the workbench
@@ -14,6 +15,9 @@ test('donateQr serves the packaged payment codes as data URIs', async () => {
     assert.match(codes[key] ?? '', /^data:image\/jpeg;base64,/, `${key} QR missing from assets/donate/`)
     assert.ok((codes[key] ?? '').length > 10000, `${key} QR looks truncated`)
   }
+  // The middle sticker ships as inline SVG — small but still a data URI.
+  assert.match(codes.bunny ?? '', /^data:image\/svg\+xml;base64,/, 'bunny sticker missing from assets/donate/')
+  assert.ok((codes.bunny ?? '').length > 1000, 'bunny sticker looks truncated')
   // The images are read once and memoized.
   assert.equal(await donateQr(), codes)
 })
@@ -22,14 +26,14 @@ test('the donate tab is wired: RPC method, PageTab, and lazy fetch on open', asy
   const index = await readFile(new URL('../src/index.ts', import.meta.url), 'utf8')
   assert.match(index, /donate: \(\) => donateQr\(\)/)
 
-  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
-  assert.match(src, /tabDonate: '感谢'/)
+  const src = assembleUi()
+  assert.match(src, /tabDonate: '打赏'/)
   assert.match(src, /tabDonate: 'Thanks'/)
   assert.match(src, /id: 'donate', label: t\.tabDonate/)
   assert.match(src, /panel\('donate', h\(DonatePanel/)
   assert.match(src, /active: view === 'donate'/)
-  // Family rail is quota/models only; donate renders without it.
-  assert.match(src, /\(view === 'quota' \|\| view === 'models'\) && h\('div', \{ className: 'osubs-rail' \}/)
+  // Family rail is quota/models/usage only; donate renders without it.
+  assert.match(src, /\(view === 'quota' \|\| view === 'models' \|\| view === 'usage'\) && h\('div', \{ className: 'osubs-rail' \}/)
   // Stale host (no donate method) maps to the hostStale copy, not a raw error.
   assert.match(src, /isUnknownOauthMethod\(message\) \? t\.hostStale : message/)
   // React DOM throws on a string `style` prop — a crash that whites out the

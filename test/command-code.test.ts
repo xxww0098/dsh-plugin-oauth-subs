@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile } from 'node:fs/promises'
+import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -38,6 +38,7 @@ import { runCommandCodeChat } from '../lib/apikey/command-code/transport.js'
 import { commandCodePlanInfo, commandCodePlanLabel, parseCommandCodeUsage } from '../lib/apikey/command-code/quota.js'
 import { formatPlanLabel } from '../lib/oauth/plan.js'
 import { createProxy } from '../lib/oauth/proxy.js'
+import { assembleUi } from '../scripts/ui-bundle.ts'
 
 const KEY = 'user_test_3snjwc45CAe2b56LYBoLnXVuoJcQCP6d3rVZHUHqkVw'
 const USER_UUID = 'e97a02d4-b06f-4c0c-9b87-a5aeebb363d9'
@@ -169,7 +170,7 @@ test('catalog is Completions at /command-code; efforts stay in the closed set', 
   assert.equal(route.baseURL, 'http://127.0.0.1:8318/command-code')
   assert.equal(route.baseURL.endsWith('/command-code'), true)
   assert.equal(route.models.length, COMMAND_CODE_MODELS.length)
-  assert.equal(COMMAND_CODE_MODELS.length, 82)
+  assert.equal(COMMAND_CODE_MODELS.length, 86)
   for (const model of route.models) {
     for (const key of Object.keys(model.reasoningEfforts ?? {})) {
       assert.match(key, /^(off|minimal|low|medium|high|xhigh|max)$/)
@@ -179,8 +180,8 @@ test('catalog is Completions at /command-code; efforts stay in the closed set', 
     assert.equal(model.contextWindow > 0, true)
   }
   const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
-  assert.equal(catalog['oauth-command-code'].models.length, 82)
-  assert.equal(commandCodeCatalogModels().length, 82)
+  assert.equal(catalog['oauth-command-code'].models.length, 86)
+  assert.equal(commandCodeCatalogModels().length, 86)
   assert.equal(catalog['oauth-command-code'].models.some((row) => row.id === 'claude-sonnet-5'), true)
 })
 
@@ -346,7 +347,7 @@ test('JSONL events collect into a chat.completion with usage + tool calls', asyn
     fetchFn: async (url, init) => {
       assert.equal(url, COMMAND_CODE_GENERATE_URL)
       assert.equal(init.headers.authorization, `Bearer ${KEY}`)
-      assert.equal(init.headers['x-command-code-version'], '1.66.0')
+      assert.equal(init.headers['x-command-code-version'], '1.72.2')
       assert.equal(init.headers['x-cli-environment'], 'production')
       return jsonl(events)
     },
@@ -371,7 +372,7 @@ test('JSONL events collect into a chat.completion with usage + tool calls', asyn
   assert.equal(completion.usage.completion_tokens, 42)
   assert.equal(completion.usage.total_tokens, 142)
   assert.equal(completion.usage.prompt_tokens_details.cached_tokens, 64)
-  assert.equal(completion.usage.prompt_cache_write_tokens, 8)
+  assert.equal(completion.usage.prompt_tokens_details.cache_write_tokens, 8)
 })
 
 test('stream mapper emits role/content/tool_calls chunks then finish + DONE', () => {
@@ -687,7 +688,7 @@ test('proxy: models list, completions hop to /alpha/generate, SSE stream, /respo
     const models = await fetch(`http://127.0.0.1:${port}/command-code/v1/models`, { headers: auth })
     assert.equal(models.status, 200)
     const listing = await models.json()
-    assert.equal(listing.data.length, 82)
+    assert.equal(listing.data.length, 86)
     assert.equal(listing.data[0].owned_by, 'command-code')
 
     const ok = await fetch(`http://127.0.0.1:${port}/command-code/v1/chat/completions`, {
@@ -707,7 +708,7 @@ test('proxy: models list, completions hop to /alpha/generate, SSE stream, /respo
     assert.equal(completion.usage.total_tokens, 7)
     assert.equal(seen[0].url, COMMAND_CODE_GENERATE_URL)
     assert.equal(seen[0].headers.authorization, `Bearer ${KEY}`)
-    assert.equal(seen[0].headers['x-command-code-version'], '1.66.0')
+    assert.equal(seen[0].headers['x-command-code-version'], '1.72.2')
     const wire = JSON.parse(seen[0].body)
     assert.equal(wire.params.model, 'claude-sonnet-5')
     assert.equal(wire.params.stream, true)
@@ -750,12 +751,12 @@ test('permanent key: refresh is a no-op and never fails permanently', async () =
   await assert.rejects(() => refreshCommandCode({ accessToken: '' }), /API key/)
   const headers = commandCodeUpstreamHeaders(session)
   assert.equal(headers.authorization, `Bearer ${KEY}`)
-  assert.equal(headers['x-command-code-version'], '1.66.0')
+  assert.equal(headers['x-command-code-version'], '1.72.2')
   assert.equal(headers['x-cli-environment'], 'production')
 })
 
 test('Command Code UI icon uses official command symbol (⌘), not prompt fallback', async () => {
-  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  const src = assembleUi()
   assert.match(src, /commandCode: \{ d: 'M6,2A4,4 0 0,1 10,6V8H14V6/)
   assert.equal(src.includes('M5 4.5l7.5 7.5L5 19.5v-3.3l4.2-4.2L5 7.8V4.5z'), false)
   // Monochrome official mark, no artificial tint in FAMILY_COLOR

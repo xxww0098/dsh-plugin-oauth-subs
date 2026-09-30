@@ -1,287 +1,50 @@
 /**
- * Subscription quota:
- *   Codex  GET chatgpt.com/backend-api/wham/usage
- *          GET chatgpt.com/backend-api/wham/rate-limit-reset-credits
- *          POST …/rate-limit-reset-credits/consume
- *   Grok   GET cli-chat-proxy.grok.com/v1/billing?format=credits
- *          GET cli-chat-proxy.grok.com/v1/user?include=subscription
- *          POST grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig
- *   Antigravity  POST daily-cloudcode-pa …/v1internal:loadCodeAssist
- *                POST daily-cloudcode-pa …/v1internal:retrieveUserQuotaSummary
- *                POST daily-cloudcode-pa …/v1internal:fetchAvailableModels (5h fallback)
- *                Official Model Quota UI is two groups × (weekly + 5-hour).
- *   Ollama  GET ollama.com/api/usage  (limits.session/weekly.usage = 0..1)
- *           POST ollama.com/api/me    (Email / Name / Plan; GET is 405)
- *   Copilot GET api.github.com/copilot_internal/user (premium_interactions remaining %)
- *   Devin  POST server.codeium.com SeatManagementService/GetUserStatus
- *   Cline  GET api.cline.bot/api/v1/users/me
- *          GET api.cline.bot/api/v1/users/{id}/balance (micro-USD credits)
- *          GET api.cline.bot/api/v1/users/me/plan (404 when no subscription)
- *          (plan_status daily/weekly quota remaining % + reset unix)
- *
- * Codex windows report used_percent; remaining is 100 − used.
- * Grok creditUsagePercent is also used-percent. Display remaining in the UI.
- * Unified-billing SuperGrok / X Premium+ payloads often omit that percent
- * on the CLI JSON; the grok.com gRPC-web path still has the weekly pool.
+ * Quota store: the per-account cache (mirrored to quota-snapshot.json), the
+ * stale-while-revalidate read, reset-card spending, and the family dispatch.
+ * Each family's endpoints and parsing live in its own `quota.ts`
+ * (`src/oauth/<id>/quota.ts`, `src/apikey/<id>/quota.ts`); shared coercion
+ * and fetch helpers are in `quota-shared.ts`.
  */
 
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
-import {
-  CODEX_USAGE_URL,
-  CODEX_RESET_CREDITS_URL,
-  CODEX_RESET_CONSUME_URL,
-  codexUpstreamHeaders,
-} from './codex/index.js'
-import {
-  GROK_BILLING_URL,
-  GROK_CLI_USER_URL,
-  GROK_CREDITS_URL,
-  GROK_CLIENT_VERSION,
-  grokCreditsHeaders,
-  grokTierFromValue,
-  grokUpstreamHeaders,
-} from './grok/index.js'
-import { GROK_WEB_EMPTY_FRAME, decodeGrokCreditsFrame } from './grok/credits-frame.js'
-import { formatPlanLabel, pickPlanRaw } from './plan.js'
-import { glmMcpUsageHeaders, glmMcpUsageUrl, glmQuotaUrl, glmToolUsageUrl, glmUpstreamHeaders } from './glm/index.js'
-import {
-  kiroProfileArn,
-  kiroUsageHeaders,
-  kiroUsageRegions,
-  kiroUsageUrl,
-} from './kiro/index.js'
+import { grokResetCardId } from './grok/reset-frame.js'
+import { formatPlanLabel } from './plan.js'
 import { accountIdOf } from './store.js'
 import { writePrivateText } from '../utils/private-text.js'
-import {
-  ANTIGRAVITY_LOAD_CODE_ASSIST_URL,
-  ANTIGRAVITY_MODELS_URL,
-  ANTIGRAVITY_QUOTA_SUMMARY_URL,
-  ANTIGRAVITY_QUOTA_GROUPS,
-  antigravityLoadCodeAssistBody,
-  antigravityLoadCodeAssistHeaders,
-  antigravityPlanType,
-  extractCloudaicompanionProject,
-  fetchAntigravityCloudCode,
-  isCodeAssistOnlyPlan,
-} from './antigravity/index.js'
-import {
-  CURSOR_GET_EMAIL_URL,
-  CURSOR_GET_ME_URL,
-  CURSOR_STRIPE_PROFILE_URL,
-  CURSOR_USAGE_URL,
-  cursorMembershipFromStripe,
-  cursorNameFromProfile,
-  cursorUsageHeaders,
-  pickCursorHumanAccount,
-} from './cursor/index.js'
-import {
-  OLLAMA_ME_URL,
-  OLLAMA_USAGE_URL,
-  ollamaUpstreamHeaders,
-  parseOllamaMe,
-} from '../apikey/ollama/index.js'
-import { KIMI_ME_URL, KIMI_USAGE_URL, kimiUpstreamHeaders, parseKimiUserInfo } from './kimi/index.js'
-import { COPILOT_QUOTA_URL, copilotIdentityHeaders, isGithubUserToken, parseCopilotUser } from './copilot/index.js'
-import { DEVIN_TIER_NAMES, pickDevinHumanAccount } from './devin/index.js'
 import { fetchClineQuota } from './cline/quota.js'
 import { fetchCommandCodeQuota } from '../apikey/command-code/quota.js'
-import { devinUserStatus } from './devin/transport.js'
 import { outboundFetch } from '../utils/outbound.js'
+import { fetchOllamaQuota } from '../apikey/ollama/quota.js'
+import { fetchAntigravityQuota } from './antigravity/quota.js'
+import { consumeCodexReset, fetchCodexQuota } from './codex/quota.js'
+import { fetchCopilotQuota } from './copilot/quota.js'
+import { fetchCursorQuota } from './cursor/quota.js'
+import { fetchDevinQuota } from './devin/quota.js'
+import { consumeGlmResetCard, fetchGlmQuota, GlmResetRejected } from './glm/quota.js'
+import { consumeGrokResetToken, fetchGrokQuota, fetchGrokResetTokens } from './grok/quota.js'
+import { fetchKimiQuota } from './kimi/quota.js'
+import { fetchKiroQuota } from './kiro/quota.js'
+import { chatgptQuota } from './chatgpt/index.js'
+import { isAvailableResetCredit } from './quota-shared.js'
+
 
 export const QUOTA_TTL_MS = 60_000
-export const QUOTA_TIMEOUT_MS = 10_000
-const USED_RESET_STATUS = new Set(['redeemed', 'used', 'consumed', 'expired'])
 
-export function asNumber(value) {
-  if (typeof value === 'number' && Number.isFinite(value)) return value
-  if (typeof value === 'string' && value.trim() !== '') {
-    const next = Number(value)
-    if (Number.isFinite(next)) return next
-  }
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
-    if ('val' in value) return asNumber(value.val)
-    if ('value' in value) return asNumber(value.value)
-  }
-  return undefined
-}
-
-function clampPct(value) {
-  const n = asNumber(value)
-  if (n === undefined) return undefined
-  return Math.max(0, Math.min(100, Math.round(n)))
-}
-
-export function creditBagAmounts(value) {
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const bag = creditBagAmounts(item)
-      if (bag) return bag
-    }
-    return undefined
-  }
-  if (!value || typeof value !== 'object') return undefined
-  const total = asNumber(value.total ?? value.limit ?? value.cap ?? value.allocation ?? value.amount)
-  const used = asNumber(value.used ?? value.spent ?? value.consumed ?? value.usage)
-  const remaining = asNumber(value.remaining ?? value.balance ?? value.left)
-  if (total === undefined && used === undefined && remaining === undefined) {
-    return creditBagAmounts(value.bags ?? value.items)
-  }
-  const resolvedUsed = used ?? (total !== undefined && remaining !== undefined ? Math.max(0, total - remaining) : undefined)
-  const resolvedRemaining = remaining ?? (total !== undefined && resolvedUsed !== undefined ? Math.max(0, total - resolvedUsed) : undefined)
-  return { used: resolvedUsed, total, remaining: resolvedRemaining }
-}
-
-function creditBagUsedPercent(value) {
-  const bag = creditBagAmounts(value)
-  if (!bag || bag.total === undefined || bag.total <= 0 || bag.used === undefined) return undefined
-  return clampPct((bag.used / bag.total) * 100)
-}
-
-export function stampOf(value) {
-  const n = asNumber(value)
-  if (n !== undefined && n > 0) return n > 1e12 ? Math.round(n) : Math.round(n * 1000)
-  if (typeof value === 'string' && value.trim()) {
-    const parsed = Date.parse(value)
-    if (Number.isFinite(parsed)) return parsed
-  }
-  return undefined
-}
-
-function resetAtOf(window) {
-  const stamp = stampOf(
-    window?.reset_at
-    ?? window?.resetAt
-    ?? window?.resets_at
-    ?? window?.resetsAt
-    ?? window?.reset_time
-    ?? window?.resetTime,
-  )
-  if (stamp !== undefined) return stamp
-  const after = asNumber(
-    window?.reset_after_seconds
-    ?? window?.resetAfterSeconds
-    ?? window?.seconds_until_reset
-    ?? window?.secondsUntilReset
-    ?? window?.reset_after
-    ?? window?.resetAfter,
-  )
-  if (after !== undefined && after >= 0) return Date.now() + after * 1000
-  return undefined
-}
-
-function parseCodexWindow(window) {
-  if (!window || typeof window !== 'object') return undefined
-  const usedPercent = clampPct(window.used_percent ?? window.usedPercent ?? 0) ?? 0
-  const seconds = asNumber(window.limit_window_seconds ?? window.limitWindowSeconds)
-  return {
-    usedPercent,
-    remainingPercent: 100 - usedPercent,
-    windowMinutes: seconds !== undefined && seconds > 0 ? Math.floor((seconds + 59) / 60) : undefined,
-    resetAt: resetAtOf(window),
-  }
-}
-
-export function parseCodexUsage(payload) {
-  if (!payload || typeof payload !== 'object') return { rows: [] }
-  const rate = payload.rate_limit ?? payload.rateLimit
-  const primary = parseCodexWindow(rate?.primary_window ?? rate?.primaryWindow)
-  const secondary = parseCodexWindow(rate?.secondary_window ?? rate?.secondaryWindow)
-  const rows: any[] = []
-  if (primary) {
-    rows.push({
-      key: 'primary',
-      kind: 'primary',
-      usedPercent: primary.usedPercent,
-      remainingPercent: primary.remainingPercent,
-      windowMinutes: primary.windowMinutes,
-      resetAt: primary.resetAt,
-    })
-  }
-  if (secondary) {
-    rows.push({
-      key: 'weekly',
-      kind: 'weekly',
-      usedPercent: secondary.usedPercent,
-      remainingPercent: secondary.remainingPercent,
-      windowMinutes: secondary.windowMinutes,
-      resetAt: secondary.resetAt,
-    })
-  }
-  const planType = typeof payload.plan_type === 'string' && payload.plan_type
-    ? payload.plan_type
-    : typeof payload.planType === 'string' ? payload.planType : undefined
-  return { planType, rows }
-}
-
-function parseResetCredit(item) {
-  if (!item || typeof item !== 'object') return undefined
-  const rawStatus = typeof item.status === 'string'
-    ? item.status
-    : typeof item.state === 'string' ? item.state : undefined
-  const expiresAt = stampOf(item.expires_at ?? item.expire_at ?? item.expiresAt)
-  let status = rawStatus ? rawStatus.trim().toLowerCase() : undefined
-  if (!status && expiresAt !== undefined && expiresAt <= Date.now()) status = 'expired'
-  const id = item.id ?? item.credit_id ?? item.creditId
-  return {
-    id: typeof id === 'string' && id.length > 0 ? id : undefined,
-    status,
-    expiresAt,
-  }
-}
-
-export function isAvailableResetCredit(credit) {
-  if (!credit) return false
-  const status = (credit.status ?? 'available').trim().toLowerCase()
-  if (USED_RESET_STATUS.has(status)) return false
-  if (credit.expiresAt !== undefined) return credit.expiresAt > Date.now()
-  return true
-}
-
-export function parseResetCredits(payload) {
-  if (!payload || typeof payload !== 'object') {
-    return { availableCount: 0, credits: [] }
-  }
-  const nested = payload.data && typeof payload.data === 'object' ? payload.data : undefined
-  const rawCredits = payload.credits ?? nested?.credits
-  const credits = Array.isArray(rawCredits)
-    ? rawCredits.map(parseResetCredit).filter(Boolean)
-    : []
-  const listed = asNumber(
-    payload.available_count
-    ?? payload.availableCount
-    ?? nested?.available_count
-    ?? nested?.availableCount,
-  )
-  const availableCount = listed !== undefined
-    ? Math.max(0, Math.round(listed))
-    : credits.filter(isAvailableResetCredit).length
-  const listedExpiry = stampOf(
-    payload.expires_at
-    ?? payload.expire_at
-    ?? payload.next_expire_at
-    ?? payload.nextExpiresAt
-    ?? nested?.expires_at
-    ?? nested?.next_expire_at,
-  )
-  const fromCredits = credits
-    .filter(isAvailableResetCredit)
-    .map((credit) => credit?.expiresAt)
-    .filter((stamp) => typeof stamp === 'number')
-    .sort((a, b) => a - b)[0]
-  const nextExpiresAt = fromCredits ?? listedExpiry
-  return {
-    availableCount,
-    credits,
-    ...(nextExpiresAt === undefined ? {} : { nextExpiresAt }),
-  }
-}
+/**
+ * Freshness window once a proxied chat request has spent this account's quota
+ * (`QuotaStore.touch`). A floor, not a trigger: an agent loop firing dozens of
+ * requests a minute still costs at most one quota read per account per 15s,
+ * and only while the panel polls `snapshot()`.
+ */
+export const QUOTA_USED_TTL_MS = 15_000
 
 function publicResetCredits(value) {
   if (!value) return { availableCount: 0, credits: [] }
   const available = (value.credits ?? []).filter(isAvailableResetCredit).map((credit) => ({
     id: credit.id,
     expiresAt: credit.expiresAt,
+    ...(credit.resetType ? { resetType: credit.resetType } : {}),
   }))
   const nextExpiresAt = value.nextExpiresAt
   let credits = available
@@ -296,1599 +59,6 @@ function publicResetCredits(value) {
     availableCount: value.availableCount ?? credits.length,
     credits,
     ...(nextExpiresAt === undefined ? {} : { nextExpiresAt }),
-  }
-}
-
-function creditUsageSources(billing, config) {
-  return [
-    billing?.credits,
-    billing?.creditBalance,
-    billing?.usage,
-    config?.credits,
-    config?.includedCredits,
-    config?.subscriptionCredits,
-    config?.weeklyCredits,
-    config?.sharedPool,
-  ]
-}
-
-/**
- * Grok money fields arrive as `{ val: <cents> }` (the `x.ai/billing` money
- * shape CodexBar documents). A `{ val }` object is cents → usd; a bare number
- * is a legacy/unitless credit figure and keeps that unit so old payloads
- * don't silently acquire a `$`.
- */
-function grokMoneyAmount(value) {
-  if (value && typeof value === 'object' && !Array.isArray(value) && 'val' in value) {
-    const cents = asNumber(value.val)
-    return cents === undefined ? undefined : { amount: cents / 100, usd: true }
-  }
-  const raw = asNumber(value)
-  return raw === undefined ? undefined : { amount: raw, usd: false }
-}
-
-function grokOnDemandBag(billing, config) {
-  const used = grokMoneyAmount(
-    config.onDemandUsed
-    ?? config.on_demand_used
-    ?? billing.onDemandUsed
-    ?? billing.on_demand_used,
-  )
-  const total = grokMoneyAmount(
-    config.onDemandCap
-    ?? config.on_demand_cap
-    ?? billing.onDemandCap
-    ?? billing.on_demand_cap,
-  )
-  if (total === undefined || total.amount <= 0) return undefined
-  const remaining = used !== undefined ? Math.max(0, total.amount - used.amount) : undefined
-  return { used: used?.amount, total: total.amount, remaining, usd: (used ?? total).usd }
-}
-
-function grokMonthlyBag(billing, config) {
-  const used = grokMoneyAmount(
-    config.used
-    ?? config.usage?.includedUsed
-    ?? config.usage?.totalUsed
-    ?? billing.usage?.includedUsed
-    ?? billing.usage?.totalUsed
-    ?? billing.includedUsed,
-  )
-  const total = grokMoneyAmount(
-    config.monthlyLimit
-    ?? config.monthly_limit
-    ?? billing.monthlyLimit
-    ?? billing.monthly_limit,
-  )
-  if (total === undefined || total.amount <= 0) return undefined
-  const remaining = used !== undefined ? Math.max(0, total.amount - used.amount) : undefined
-  return { used: used?.amount, total: total.amount, remaining, usd: (used ?? total).usd }
-}
-
-function grokWindow(periodType) {
-  const text = String(periodType ?? '')
-  if (/month/i.test(text)) return { kind: 'cycle' }
-  if (/day|daily/i.test(text)) return { kind: 'primary', windowMinutes: 24 * 60 }
-  if (/hour/i.test(text)) {
-    const hours = Number(text.replace(/\D+/g, ''))
-    return { kind: 'primary', ...(hours > 0 ? { windowMinutes: hours * 60 } : {}) }
-  }
-  return { kind: 'weekly' }
-}
-
-function productRow(item) {
-  if (!item || typeof item !== 'object') return undefined
-  const product = item.product ?? item.name ?? item.productName
-  if (typeof product !== 'string' || product.length === 0) return undefined
-  const bag = creditBagAmounts(item) ?? {}
-  const usedPercent = clampPct(item.usagePercent ?? item.usedPercent ?? item.usage_percent)
-    ?? (bag.total > 0 && bag.used !== undefined ? clampPct((bag.used / bag.total) * 100) : undefined)
-  if (usedPercent === undefined && bag.used === undefined && bag.total === undefined) return undefined
-  const remainingPercent = usedPercent === undefined ? undefined : 100 - usedPercent
-  return {
-    key: `product:${product}`,
-    kind: 'product',
-    product,
-    usedPercent,
-    remainingPercent,
-    used: bag.used,
-    total: bag.total,
-    remaining: bag.remaining,
-  }
-}
-
-function userPayload(cliUser) {
-  if (!cliUser || typeof cliUser !== 'object') return {}
-  return cliUser.user ?? cliUser.profile ?? cliUser
-}
-
-function periodResetAt(end) {
-  if (typeof end !== 'string' || end.length === 0) return undefined
-  const stamp = Date.parse(end)
-  return Number.isFinite(stamp) ? stamp : undefined
-}
-
-export function parseGrokBilling(billing, { cliUser }: any = {}) {
-  if (!billing || typeof billing !== 'object') return { rows: [] }
-  const config = billing.config && typeof billing.config === 'object' ? billing.config : billing
-  const period = config.currentPeriod && typeof config.currentPeriod === 'object'
-    ? config.currentPeriod
-    : config.current_period && typeof config.current_period === 'object'
-      ? config.current_period
-      : {}
-  const user = userPayload(cliUser)
-  const subscription = user.subscription ?? cliUser?.subscription ?? config.subscription
-  const subscriptionTier = formatPlanLabel(grokTierFromValue(pickPlanRaw(
-    config.subscription_tier,
-    config.subscriptionTier,
-    billing.subscription_tier,
-    billing.subscriptionTier,
-    subscription?.tier,
-    user.subscriptionTier,
-    user.subscription_tier,
-  )))
-  const subscriptionStatus = typeof subscription?.status === 'string' ? subscription.status : undefined
-  const hasGrokCodeAccess = user.hasGrokCodeAccess ?? user.has_grok_code_access ?? cliUser?.hasGrokCodeAccess
-
-  let usedPercent = clampPct(config.creditUsagePercent ?? config.credit_usage_percent)
-  const onDemand = grokOnDemandBag(billing, config)
-  const monthly = grokMonthlyBag(billing, config)
-  const generic = creditUsageSources(billing, config)
-    .map((source) => (source === undefined ? undefined : creditBagAmounts(source)))
-    .find((bag) => bag && (bag.used !== undefined || bag.total !== undefined))
-  // The included pool (monthlyLimit + usage.*Used) is the canonical main bag;
-  // generic credit buckets come next, pay-as-you-go last.
-  const amounts = monthly ?? generic ?? onDemand
-  if (usedPercent === undefined && amounts) usedPercent = creditBagUsedPercent(amounts) ?? undefined
-  const remainingPercent = usedPercent === undefined ? undefined : 100 - usedPercent
-  const periodType = typeof period.type === 'string'
-    ? period.type
-    : typeof period.periodType === 'string'
-      ? period.periodType
-      : undefined
-  const resetAt = periodResetAt(period.end ?? config.billingPeriodEnd ?? config.billing_period_end ?? config.billingCycle?.billingPeriodEnd)
-
-  const rows: any[] = []
-  const window = grokWindow(periodType)
-  if (usedPercent !== undefined || amounts?.used !== undefined || amounts?.total !== undefined) {
-    rows.push({
-      key: window.kind === 'weekly' ? 'weekly' : window.kind === 'primary' ? 'daily' : 'cycle',
-      kind: window.kind,
-      ...(window.windowMinutes !== undefined ? { windowMinutes: window.windowMinutes } : {}),
-      usedPercent,
-      remainingPercent,
-      used: amounts?.used,
-      total: amounts?.total,
-      remaining: amounts?.remaining,
-      ...(amounts?.usd === true ? { unit: 'usd' } : {}),
-      resetAt,
-      periodType,
-      periodStart: typeof period.start === 'string' ? period.start : config.billingPeriodStart,
-      periodEnd: typeof period.end === 'string' ? period.end : config.billingPeriodEnd,
-    })
-  }
-  if (monthly && amounts !== monthly) {
-    rows.push({
-      key: 'cycle:monthly',
-      kind: 'cycle',
-      product: 'monthly',
-      used: monthly.used,
-      total: monthly.total,
-      remaining: monthly.remaining,
-      ...(monthly.usd === true ? { unit: 'usd' } : {}),
-      resetAt,
-    })
-  }
-  if (onDemand && amounts !== onDemand) {
-    const onDemandUsed = onDemand.total > 0 ? clampPct(((onDemand.used ?? 0) / onDemand.total) * 100) : undefined
-    rows.push({
-      key: 'product:on-demand',
-      kind: 'product',
-      product: 'on-demand',
-      usedPercent: onDemandUsed,
-      remainingPercent: onDemandUsed === undefined ? undefined : 100 - onDemandUsed,
-      used: onDemand.used,
-      total: onDemand.total,
-      remaining: onDemand.remaining,
-      ...(onDemand.usd === true ? { unit: 'usd' } : {}),
-      resetAt,
-    })
-  }
-  const prepaid = grokMoneyAmount(
-    config.prepaidBalance
-    ?? config.prepaid_balance
-    ?? billing.prepaidBalance
-    ?? billing.prepaid_balance,
-  )
-  if (prepaid !== undefined && prepaid.amount > 0) {
-    rows.push({ key: 'prepaid', kind: 'prepaid', remaining: prepaid.amount, ...(prepaid.usd ? { unit: 'usd' } : {}) })
-  }
-  const products = Array.isArray(config.productUsage)
-    ? config.productUsage
-    : Array.isArray(config.product_usage)
-      ? config.product_usage
-      : []
-  for (const item of products.slice(0, 4)) {
-    const row = productRow(item)
-    if (row) rows.push(row)
-  }
-
-  return {
-    planType: subscriptionTier,
-    subscriptionStatus,
-    hasGrokCodeAccess: typeof hasGrokCodeAccess === 'boolean' ? hasGrokCodeAccess : undefined,
-    rows,
-  }
-}
-
-export function applyGrokCreditsSnapshot(parsed, snapshot) {
-  const base = parsed && typeof parsed === 'object' ? parsed : { rows: [] }
-  const rows = Array.isArray(base.rows) ? [...base.rows] : []
-  if (!snapshot || typeof snapshot !== 'object') return { ...base, rows }
-  const idx = rows.findIndex((row) => row.kind === 'cycle' || row.kind === 'weekly')
-  const current = idx >= 0 ? rows[idx] : undefined
-  if (current?.usedPercent !== undefined) {
-    if (current.resetAt === undefined && snapshot.resetAt !== undefined) {
-      rows[idx] = { ...current, resetAt: snapshot.resetAt }
-    }
-    return { ...base, rows }
-  }
-  if (snapshot.usedPercent === undefined && snapshot.resetAt === undefined) return { ...base, rows }
-  const usedPercent = snapshot.usedPercent
-  const next = {
-    key: 'weekly',
-    kind: 'weekly',
-    usedPercent,
-    remainingPercent: usedPercent === undefined ? undefined : 100 - usedPercent,
-    resetAt: snapshot.resetAt ?? current?.resetAt,
-    periodType: current?.periodType ?? 'USAGE_PERIOD_TYPE_WEEKLY',
-    periodStart: current?.periodStart ?? snapshot.periodStart,
-    periodEnd: current?.periodEnd,
-    used: current?.used,
-    total: current?.total,
-    remaining: current?.remaining,
-    ...(current?.unit !== undefined ? { unit: current.unit } : {}),
-  }
-  if (idx >= 0) rows[idx] = { ...current, ...next }
-  else rows.unshift(next)
-  return { ...base, rows }
-}
-
-function glmKindBlob(item) {
-  return [
-    item?.type,
-    item?.limitType,
-    item?.name,
-    item?.showName,
-    item?.show_name,
-    item?.duration,
-    item?.window,
-    item?.timeUnit,
-    item?.period,
-    item?.product,
-    item?.kind,
-    item?.category,
-    item?.quotaType,
-  ].filter((part) => part != null && String(part).trim()).join(' ')
-}
-
-function glmDetailsLookLikeMcp(item) {
-  const details = item?.usageDetails ?? item?.usage_details ?? item?.tools
-  if (!Array.isArray(details)) return false
-  return details.some((row) => /search-prime|web-reader|zread|mcp|web.?search/i.test(String(row?.modelCode ?? row?.name ?? row?.product ?? '')))
-}
-
-export function glmWindowKind(item) {
-  if (!item || typeof item !== 'object') return 'cycle'
-  const text = glmKindBlob(item)
-  const unit = asNumber(item.unit)
-  const number = asNumber(item.number)
-  if (/mcp|zread|web.?search|web.?reader|search-prime|time_limit|\btools?\b/i.test(text) || glmDetailsLookLikeMcp(item)) {
-    return 'mcp'
-  }
-  if (unit === 5) return 'mcp'
-  if (/week|7d|weekly/i.test(text)) return 'weekly'
-  if (unit === 6 && (number === 1 || number === 7)) return 'weekly'
-  if (/5h|5\s*hour|five.?hour|primary/i.test(text)) return 'primary'
-  if (unit === 3 && number === 5) return 'primary'
-  if (/credit_limit|tokens_limit|credit/i.test(text)) {
-    const total = asNumber(item.usage ?? item.total ?? item.limit ?? item.amount)
-    if (total === 10_000 || total === 60_000 || total === 140_000) return 'weekly'
-    return 'primary'
-  }
-  return 'cycle'
-}
-
-function glmWindowKey(kind, type, window) {
-  if (kind === 'primary' || kind === 'weekly' || kind === 'mcp') return kind
-  const slug = String(window ?? type ?? 'limit').toLowerCase().replace(/[^a-z0-9]+/g, '-')
-  return `glm:${slug}`
-}
-
-function glmItemBag(item) {
-  const total = asNumber(item.usage ?? item.total ?? item.limit ?? item.amount)
-  const used = asNumber(item.currentValue ?? item.used ?? item.spend ?? item.consumed)
-  const remaining = asNumber(item.remaining)
-    ?? (total !== undefined && used !== undefined ? Math.max(0, total - used) : undefined)
-  if (total !== undefined || used !== undefined || remaining !== undefined) {
-    return { used, total, remaining }
-  }
-  const details = item.usageDetails ?? item.usage_details
-  if (Array.isArray(details) && details.length > 0) {
-    let detailUsed = 0
-    let saw = false
-    for (const row of details) {
-      const amount = asNumber(row?.usage ?? row?.used ?? row?.currentValue)
-      if (amount !== undefined) {
-        detailUsed += amount
-        saw = true
-      }
-    }
-    if (saw) return { used: detailUsed, total: undefined, remaining: undefined }
-  }
-  return undefined
-}
-
-function preferGlmRow(previous, next) {
-  if (!previous) return next
-  const prevUsed = previous.used ?? 0
-  const nextUsed = next.used ?? 0
-  if (nextUsed > prevUsed) return next
-  if (previous.total === undefined && next.total !== undefined) return next
-  return previous
-}
-
-function finalizeGlmRows(rows) {
-  const byKind = new Map()
-  for (const row of rows) {
-    const kind = row.kind === 'product' && /mcp|zread|web.?search/i.test(row.product ?? '')
-      ? 'mcp'
-      : row.kind
-    const next = kind === row.kind ? row : { ...row, kind, key: 'mcp', product: row.product ?? 'ZCode MCP' }
-    byKind.set(kind, preferGlmRow(byKind.get(kind), next))
-  }
-  const ordered: any[] = []
-  for (const kind of ['primary', 'weekly', 'mcp']) {
-    const row = byKind.get(kind)
-    if (row) ordered.push({ ...row, key: kind, kind })
-  }
-  return ordered
-}
-
-function glmRowFromItem(item) {
-  const bag = glmItemBag(item)
-  if (!bag) {
-    const usedPercent = clampPct(item.percentage ?? item.usedPercent ?? item.used_percent)
-    if (usedPercent === undefined) return undefined
-    const kind = glmWindowKind(item)
-    return {
-      key: glmWindowKey(kind, item.type, item.duration ?? item.window),
-      kind,
-      usedPercent,
-      remainingPercent: 100 - usedPercent,
-      resetAt: stampOf(item.resetAt ?? item.reset_at ?? item.nextResetAt ?? item.nextResetTime ?? item.expireAt),
-    }
-  }
-  const bagTotal = bag.total
-  const bagUsed = bag.used
-  const usedPercent = clampPct(item.percentage ?? item.usedPercent ?? item.used_percent)
-    ?? (typeof bagTotal === 'number' && bagTotal > 0 && bagUsed !== undefined ? clampPct((bagUsed / bagTotal) * 100) : undefined)
-  const remainingPercent = usedPercent === undefined ? undefined : 100 - usedPercent
-  const kind = glmWindowKind(item)
-  return {
-    key: glmWindowKey(kind, item.type, item.duration ?? item.window),
-    kind,
-    usedPercent,
-    remainingPercent,
-    used: bag.used,
-    total: bag.total,
-    remaining: bag.remaining,
-    resetAt: stampOf(item.resetAt ?? item.reset_at ?? item.nextResetAt ?? item.nextResetTime ?? item.expireAt),
-    ...(kind === 'mcp' ? { product: 'ZCode MCP' } : {}),
-  }
-}
-
-function collectGlmItems(root) {
-  const primary = root.list ?? root.limits ?? root.items ?? root.quotaLimits ?? root.quota_limits ?? root.balances
-  const items = Array.isArray(primary) ? [...primary] : []
-  const mcpBag = root.mcp ?? root.mcpQuota ?? root.monthlyMCP ?? root.monthlyMCPUsage ?? root.toolUsage ?? root.tools
-  if (mcpBag && typeof mcpBag === 'object' && !Array.isArray(mcpBag)) {
-    items.push({ type: 'TIME_LIMIT', ...mcpBag })
-  }
-  return items
-}
-
-export function parseGlmQuota(payload) {
-  const root = payload?.data && typeof payload.data === 'object' ? payload.data : payload
-  if (!root || typeof root !== 'object') return { rows: [] }
-  const planType = formatPlanLabel(pickPlanRaw(root.level, root.planType, root.plan, root.subscriptionLevel), 'glm')
-  const rows: any[] = []
-  for (const item of collectGlmItems(root)) {
-    if (!item || typeof item !== 'object') continue
-    const row = glmRowFromItem(item)
-    if (row) rows.push(row)
-  }
-  if (rows.length === 0) {
-    const bag = creditBagAmounts(root.credits ?? root)
-    if (bag && (bag.used !== undefined || bag.total !== undefined || bag.remaining !== undefined)) {
-      const usedPercent = creditBagUsedPercent(bag)
-      rows.push({
-        key: 'primary',
-        kind: 'primary',
-        usedPercent,
-        remainingPercent: usedPercent === undefined ? undefined : 100 - usedPercent,
-        used: bag.used,
-        total: bag.total,
-        remaining: bag.remaining,
-      })
-    }
-  }
-  return { planType, rows: finalizeGlmRows(rows) }
-}
-
-/**
- * Official MCP quota payload — `GET zcode.z.ai/api/v1/mcp/usage` answers
- * `{data:{level, total_usage:{used,limit,remaining}, next_refresh_at}}`
- * (usage-stats.ts fetchMcpQuotaSnapshot). Maps to the single `mcp` row.
- */
-export function parseGlmMcpUsage(payload) {
-  const root = payload?.data && typeof payload.data === 'object' ? payload.data : payload
-  const bag = root?.total_usage ?? root?.totalUsage ?? root
-  const total = asNumber(bag?.limit ?? bag?.total ?? bag?.usage)
-  const used = asNumber(bag?.used ?? bag?.currentValue)
-  const remaining = asNumber(bag?.remaining)
-    ?? (total !== undefined && used !== undefined ? Math.max(0, total - used) : undefined)
-  if (total === undefined && used === undefined && remaining === undefined) return undefined
-  const usedPercent = total !== undefined && total > 0 && used !== undefined
-    ? clampPct((used / total) * 100)
-    : undefined
-  return {
-    key: 'mcp',
-    kind: 'mcp',
-    product: 'ZCode MCP',
-    usedPercent,
-    remainingPercent: usedPercent === undefined ? undefined : 100 - usedPercent,
-    used,
-    total,
-    remaining,
-    resetAt: stampOf(root?.next_refresh_at ?? root?.nextRefreshAt ?? root?.nextResetTime),
-  }
-}
-
-export function mergeGlmToolUsage(parsed, toolPayload) {
-  const base = parsed && typeof parsed === 'object' ? parsed : { rows: [] }
-  const rows = Array.isArray(base.rows) ? [...base.rows] : []
-  if (rows.some((row) => row.kind === 'mcp')) return { ...base, rows: finalizeGlmRows(rows) }
-  const extra = parseGlmQuota(toolPayload)
-  const mcp = extra.rows.find((row) => row.kind === 'mcp')
-  if (!mcp) return { ...base, rows: finalizeGlmRows(rows) }
-  return { ...base, rows: finalizeGlmRows([...rows, mcp]) }
-}
-
-export function parseKiroUsage(payload) {
-  if (!payload || typeof payload !== 'object') return { rows: [] }
-  const info = payload.subscriptionInfo ?? payload.subscription_info ?? {}
-  const user = payload.userInfo ?? payload.user_info ?? {}
-  const list = payload.usageBreakdownList ?? payload.usage_breakdown_list ?? []
-  const planType = pickPlanRaw(info.subscriptionTitle, info.subscription_title, payload.planType)
-  const email = typeof user.email === 'string' && user.email.trim() ? user.email.trim() : undefined
-  const breakdown = Array.isArray(list) ? list[0] : undefined
-  if (!breakdown || typeof breakdown !== 'object') {
-    return { planType, account: email, rows: [] }
-  }
-  let used = asNumber(
-    breakdown.currentUsageWithPrecision
-    ?? breakdown.current_usage_with_precision
-    ?? breakdown.currentUsage
-    ?? breakdown.current_usage,
-  ) ?? 0
-  let total = asNumber(
-    breakdown.usageLimitWithPrecision
-    ?? breakdown.usage_limit_with_precision
-    ?? breakdown.usageLimit
-    ?? breakdown.usage_limit,
-  ) ?? 0
-  const trial = breakdown.freeTrialInfo ?? breakdown.free_trial_info
-  const trialStatus = String(trial?.freeTrialStatus ?? trial?.free_trial_status ?? '').toUpperCase()
-  if (trial && trialStatus === 'ACTIVE') {
-    used += asNumber(trial.currentUsageWithPrecision ?? trial.current_usage_with_precision ?? trial.currentUsage) ?? 0
-    total += asNumber(trial.usageLimitWithPrecision ?? trial.usage_limit_with_precision ?? trial.usageLimit) ?? 0
-  }
-  for (const bonus of Array.isArray(breakdown.bonuses) ? breakdown.bonuses : []) {
-    if (String(bonus?.status ?? '').toUpperCase() !== 'ACTIVE') continue
-    used += asNumber(bonus.currentUsage ?? bonus.current_usage) ?? 0
-    total += asNumber(bonus.usageLimit ?? bonus.usage_limit) ?? 0
-  }
-  const usedPercent = total > 0 ? clampPct((used / total) * 100) : undefined
-  const resetAt = stampOf(
-    breakdown.nextDateReset
-    ?? breakdown.next_date_reset
-    ?? payload.nextDateReset
-    ?? payload.next_date_reset,
-  )
-  return {
-    planType,
-    account: email,
-    rows: [{
-      key: 'cycle',
-      kind: 'cycle',
-      usedPercent,
-      remainingPercent: usedPercent === undefined ? undefined : 100 - usedPercent,
-      used,
-      total,
-      remaining: total > 0 ? Math.max(0, total - used) : undefined,
-      resetAt,
-    }],
-  }
-}
-
-function clampUsedPct(value) {
-  const n = asNumber(value)
-  if (n === undefined) return undefined
-  const clamped = Math.max(0, Math.min(100, n))
-  const rounded = Math.round(clamped)
-  if (clamped > 0 && rounded === 0) return 1
-  return rounded
-}
-
-function cursorProductRow(key, usedPercent, resetAt) {
-  const used = clampUsedPct(usedPercent) ?? 0
-  return {
-    key: `product:${key}`,
-    kind: 'product',
-    product: key,
-    usedPercent: used,
-    remainingPercent: 100 - used,
-    ...(resetAt === undefined ? {} : { resetAt }),
-  }
-}
-
-/**
- * planUsage.includedSpend / limit are cents (the same ratio Cursor's own
- * displayMessage uses for "You've used N% of your included usage"). Emitted as
- * a usd cycle row so the card shows real dollars alongside the percent bars.
- */
-function cursorIncludedRow(planUsage, resetAt) {
-  const limitCents = asNumber(planUsage?.limit)
-  const includedCents = asNumber(planUsage?.includedSpend)
-  if (limitCents === undefined || limitCents <= 0 || includedCents === undefined) return undefined
-  const usedPercent = clampPct((includedCents / limitCents) * 100)
-  return {
-    key: 'cycle:included',
-    kind: 'cycle',
-    product: 'included',
-    unit: 'usd',
-    used: includedCents / 100,
-    total: limitCents / 100,
-    ...(usedPercent === undefined ? {} : { remainingPercent: 100 - usedPercent }),
-    ...(resetAt === undefined ? {} : { resetAt }),
-  }
-}
-
-export function parseCursorPeriodUsage(payload, extras: any = {}) {
-  if (!payload || typeof payload !== 'object') return { rows: [] }
-  const planUsage = payload.planUsage && typeof payload.planUsage === 'object' ? payload.planUsage : {}
-  const spend = payload.spendLimitUsage && typeof payload.spendLimitUsage === 'object' ? payload.spendLimitUsage : {}
-  const stripe = extras.stripe && typeof extras.stripe === 'object' ? extras.stripe : {}
-  const limitType = typeof spend.limitType === 'string' ? spend.limitType : undefined
-  const membership = pickPlanRaw(
-    cursorMembershipFromStripe(stripe),
-    extras.planType,
-    payload.individualMembershipType,
-    payload.membershipType,
-    limitType === 'team' ? 'Team' : undefined,
-    'Pro',
-  )
-  const resetAt = stampOf(payload.billingCycleEnd)
-  return {
-    planType: membership,
-    account: pickCursorHumanAccount(extras.account, extras.email, payload.email),
-    rows: [
-      ...[cursorIncludedRow(planUsage, resetAt)].filter(Boolean),
-      cursorProductRow('auto', planUsage.autoPercentUsed, resetAt),
-      cursorProductRow('api', planUsage.apiPercentUsed, resetAt),
-    ],
-  }
-}
-
-async function fetchCursorJson(fetchFn, url, init, label) {
-  try {
-    const response = await fetchFn(url, init)
-    if (!response?.ok) return undefined
-    return await readJson(response, label)
-  } catch {
-    return undefined
-  }
-}
-
-export async function fetchCursorQuota(session, fetchFn = outboundFetch) {
-  const wait = timeoutSignal(QUOTA_TIMEOUT_MS)
-  const headers = cursorUsageHeaders(session)
-  try {
-    const [usageRes, stripe, emailProfile] = await Promise.all([
-      fetchFn(CURSOR_USAGE_URL, {
-        method: 'POST',
-        headers,
-        body: '{}',
-        signal: wait.signal,
-      }),
-      fetchCursorJson(fetchFn, CURSOR_STRIPE_PROFILE_URL, {
-        method: 'GET',
-        headers,
-        signal: wait.signal,
-      }, 'cursor stripe profile'),
-      fetchCursorJson(fetchFn, CURSOR_GET_EMAIL_URL, {
-        method: 'POST',
-        headers,
-        body: '{}',
-        signal: wait.signal,
-      }, 'cursor email'),
-    ])
-    if (!usageRes.ok) throw new Error(`cursor quota failed (HTTP ${usageRes.status})`)
-    let account = cursorNameFromProfile(emailProfile)
-    if (!account) {
-      const me = await fetchCursorJson(fetchFn, CURSOR_GET_ME_URL, {
-        method: 'POST',
-        headers,
-        body: '{}',
-        signal: wait.signal,
-      }, 'cursor me')
-      account = cursorNameFromProfile(me)
-    }
-    return parseCursorPeriodUsage(await readJson(usageRes, 'cursor period usage'), { stripe, account })
-  } finally {
-    wait.cancel()
-  }
-}
-
-/** ollama.com /api/usage `limits.*.usage` is a 0..1 fraction, not 0–100. */
-function ollamaUsedPercent(value) {
-  const n = asNumber(value)
-  if (n === undefined) return undefined
-  const used = n <= 1 ? n * 100 : n
-  return Math.max(0, Math.min(100, Math.round(used * 10) / 10))
-}
-
-function ollamaModelItems(models) {
-  if (!Array.isArray(models) || models.length === 0) return undefined
-  const items: any[] = []
-  for (const item of models) {
-    if (!item || typeof item !== 'object') continue
-    const name = typeof item.name === 'string' && item.name.trim() ? item.name.trim() : undefined
-    if (!name) continue
-    const count = asNumber(item.request_count ?? item.requestCount) ?? 0
-    items.push({ name, count })
-  }
-  return items.length > 0 ? items : undefined
-}
-
-function ollamaModelsNote(models) {
-  const items = ollamaModelItems(models)
-  return items ? items.map((item) => `${item.name} × ${item.count}`).join('\n') : undefined
-}
-
-/** Global 5h unix buckets. ollama/ollama#12532: `18000 - (epoch % 18000)`. */
-export const OLLAMA_SESSION_WINDOW_S = 18_000
-/** Global 7d unix buckets, −4d from epoch (Mon 00:00 UTC). ollama/ollama#12532. */
-export const OLLAMA_WEEKLY_WINDOW_S = 604_800
-const OLLAMA_WEEKLY_SHIFT_S = 4 * 86_400
-
-export function ollamaSessionResetAt(now = Date.now()) {
-  const epoch = Math.floor(now / 1000)
-  return (Math.floor(epoch / OLLAMA_SESSION_WINDOW_S) + 1) * OLLAMA_SESSION_WINDOW_S * 1000
-}
-
-export function ollamaWeeklyResetAt(now = Date.now()) {
-  const epoch = Math.floor(now / 1000)
-  const shifted = epoch - OLLAMA_WEEKLY_SHIFT_S
-  return ((Math.floor(shifted / OLLAMA_WEEKLY_WINDOW_S) + 1) * OLLAMA_WEEKLY_WINDOW_S + OLLAMA_WEEKLY_SHIFT_S) * 1000
-}
-
-function ollamaWindowResetAt(window, kind, now = Date.now()) {
-  const stamp = resetAtOf(window) ?? stampOf(window?.next_reset ?? window?.nextReset)
-  if (stamp !== undefined) return stamp
-  if (kind === 'primary') return ollamaSessionResetAt(now)
-  if (kind === 'weekly') return ollamaWeeklyResetAt(now)
-  return undefined
-}
-
-function parseOllamaLimitWindow(window, kind, now = Date.now()) {
-  if (!window || typeof window !== 'object') return undefined
-  const usedPercent = ollamaUsedPercent(window.usage)
-  if (usedPercent === undefined) return undefined
-  const remainingPercent = Math.max(0, Math.min(100, Math.round((100 - usedPercent) * 10) / 10))
-  const note = kind === 'weekly' ? ollamaModelsNote(window.models) : undefined
-  const noteItems = kind === 'weekly' ? ollamaModelItems(window.models) : undefined
-  const resetAt = ollamaWindowResetAt(window, kind, now)
-  return {
-    key: kind,
-    kind,
-    usedPercent,
-    remainingPercent,
-    ...(kind === 'primary' ? { windowMinutes: 300 } : {}),
-    ...(resetAt !== undefined ? { resetAt } : {}),
-    ...(note ? { note } : {}),
-    ...(noteItems ? { noteItems } : {}),
-  }
-}
-
-export function parseOllamaUsage(payload, me, now = Date.now()) {
-  const root = payload && typeof payload === 'object' ? payload : {}
-  const limits = root.limits && typeof root.limits === 'object' ? root.limits : root
-  const identity = parseOllamaMe(me && typeof me === 'object' ? me : root)
-  const rows: any[] = []
-  const session = parseOllamaLimitWindow(limits.session, 'primary', now)
-  const weekly = parseOllamaLimitWindow(limits.weekly, 'weekly', now)
-  if (session) rows.push(session)
-  if (weekly) rows.push(weekly)
-  return {
-    planType: identity.planType,
-    account: identity.account,
-    rows,
-  }
-}
-
-export async function fetchOllamaQuota(session, fetchFn = outboundFetch) {
-  const headers = ollamaUpstreamHeaders(session)
-  const usageWait = timeoutSignal(QUOTA_TIMEOUT_MS)
-  const meWait = timeoutSignal(QUOTA_TIMEOUT_MS)
-  try {
-    const [usageResult, meResult] = await Promise.allSettled([
-      fetchFn(OLLAMA_USAGE_URL, { method: 'GET', headers, signal: usageWait.signal })
-        .then((response) => readJson(response, 'ollama usage')),
-      fetchFn(OLLAMA_ME_URL, {
-        method: 'POST',
-        headers: { ...headers, 'content-type': 'application/json' },
-        body: '{}',
-        signal: meWait.signal,
-      }).then((response) => readJson(response, 'ollama me')),
-    ])
-    if (usageResult.status === 'rejected' && meResult.status === 'rejected') {
-      throw usageResult.reason
-    }
-    const usage = usageResult.status === 'fulfilled' ? usageResult.value : {}
-    const me = meResult.status === 'fulfilled' ? meResult.value : undefined
-    return parseOllamaUsage(usage, me)
-  } finally {
-    usageWait.cancel()
-    meWait.cancel()
-  }
-}
-
-function parseKimiUsageRow(value, fallbackKind, fallbackLabel) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
-  const bag = creditBagAmounts(value)
-  if (!bag || (bag.total === undefined && bag.used === undefined && bag.remaining === undefined)) return undefined
-  const total = bag.total
-  const used = bag.used ?? 0
-  const remaining = bag.remaining
-  const remainingPercent = total && total > 0
-    ? clampPct(((remaining ?? Math.max(0, total - used)) / total) * 100)
-    : undefined
-  const usedPercent = remainingPercent === undefined ? undefined : 100 - remainingPercent
-  const resetAt = resetAtOf(value)
-  const label = typeof value.name === 'string' && value.name.trim()
-    ? value.name.trim()
-    : typeof value.title === 'string' && value.title.trim()
-      ? value.title.trim()
-      : fallbackLabel
-  return {
-    key: fallbackKind,
-    kind: fallbackKind,
-    product: label,
-    usedPercent,
-    remainingPercent,
-    ...(used !== undefined && total !== undefined ? { used, total } : {}),
-    ...(resetAt !== undefined ? { resetAt } : {}),
-  }
-}
-
-function kimiWindowKind(window, index) {
-  if (!window || typeof window !== 'object') {
-    return index === 0 ? 'primary' : index === 1 ? 'weekly' : 'product'
-  }
-  const duration = asNumber(window.duration)
-  const unit = String(window.timeUnit ?? window.time_unit ?? '').toUpperCase()
-  if (unit.includes('WEEK')) return 'weekly'
-  if (unit.includes('DAY')) return 'cycle'
-  if (unit.includes('HOUR') && duration === 5) return 'primary'
-  if (unit.includes('HOUR') || unit.includes('MINUTE')) return 'primary'
-  return index === 0 ? 'primary' : 'product'
-}
-
-export function parseKimiUsage(payload, me) {
-  const root = payload && typeof payload === 'object' ? payload : {}
-  const identity = parseKimiUserInfo(me && typeof me === 'object' ? me : root) ?? {}
-  const rows: any[] = []
-  const summary = parseKimiUsageRow(root.usage, 'cycle', 'Current week')
-  if (summary) rows.push(summary)
-  if (Array.isArray(root.limits)) {
-    for (const [index, item] of root.limits.entries()) {
-      const record = item && typeof item === 'object' && !Array.isArray(item) ? item : undefined
-      const detail = record ? (record.detail ?? record) : item
-      const kind = kimiWindowKind(record?.window, index)
-      const row = parseKimiUsageRow(detail, kind, kind === 'primary' ? '5h' : kind === 'weekly' ? 'week' : `limit ${index + 1}`)
-      if (row) rows.push(row)
-    }
-  }
-  return {
-    planType: identity.planType,
-    account: identity.account,
-    rows,
-  }
-}
-
-export async function fetchKimiQuota(session, fetchFn = outboundFetch) {
-  const headers = kimiUpstreamHeaders(session)
-  const usageWait = timeoutSignal(QUOTA_TIMEOUT_MS)
-  const meWait = timeoutSignal(QUOTA_TIMEOUT_MS)
-  try {
-    const [usageResult, meResult] = await Promise.allSettled([
-      fetchFn(KIMI_USAGE_URL, { method: 'GET', headers, signal: usageWait.signal })
-        .then((response) => readJson(response, 'kimi usage')),
-      fetchFn(KIMI_ME_URL, { method: 'GET', headers, signal: meWait.signal })
-        .then((response) => readJson(response, 'kimi me')),
-    ])
-    if (usageResult.status === 'rejected' && meResult.status === 'rejected') {
-      throw usageResult.reason
-    }
-    const usage = usageResult.status === 'fulfilled' ? usageResult.value : {}
-    const me = meResult.status === 'fulfilled' ? meResult.value : undefined
-    return parseKimiUsage(usage, me)
-  } finally {
-    usageWait.cancel()
-    meWait.cancel()
-  }
-}
-
-function copilotResetAt(value) {
-  if (typeof value !== 'string' || !value.trim()) return undefined
-  const stamp = Date.parse(value.trim())
-  if (!Number.isFinite(stamp)) return undefined
-  return stamp
-}
-
-function parseCopilotQuotaSnapshot(snap, kind, label, resetAt) {
-  if (!snap || typeof snap !== 'object') return undefined
-  if (snap.unlimited === true) {
-    return {
-      key: kind,
-      kind,
-      label,
-      unlimited: true,
-      remainingPercent: 100,
-      usedPercent: 0,
-      ...(resetAt !== undefined ? { resetAt } : {}),
-    }
-  }
-  const remaining = typeof snap.percent_remaining === 'number' && Number.isFinite(snap.percent_remaining)
-    ? snap.percent_remaining
-    : undefined
-  if (remaining === undefined) return undefined
-  const remainingPercent = Math.max(0, Math.min(100, Math.round(remaining * 10) / 10))
-  return {
-    key: kind,
-    kind,
-    label,
-    remainingPercent,
-    usedPercent: Math.max(0, Math.min(100, 100 - remainingPercent)),
-    ...(resetAt !== undefined ? { resetAt } : {}),
-  }
-}
-
-export function parseCopilotUsage(payload, user?) {
-  const root = payload && typeof payload === 'object' ? payload : {}
-  const snapshots = root.quota_snapshots && typeof root.quota_snapshots === 'object' ? root.quota_snapshots : {}
-  const resetAt = copilotResetAt(root.quota_reset_date)
-  const identity: any = parseCopilotUser(user) ?? parseCopilotUser(root) ?? {}
-  const planType = typeof root.copilot_plan === 'string' && root.copilot_plan.trim()
-    ? root.copilot_plan.trim()
-    : undefined
-  const rows: any[] = []
-  const premium = parseCopilotQuotaSnapshot(snapshots.premium_interactions, 'primary', 'Premium', resetAt)
-  if (premium) rows.push(premium)
-  const chat = parseCopilotQuotaSnapshot(snapshots.chat, 'chat', 'Chat', resetAt)
-  if (chat) rows.push(chat)
-  const completions = parseCopilotQuotaSnapshot(snapshots.completions, 'completions', 'Completions', resetAt)
-  if (completions) rows.push(completions)
-  return {
-    planType,
-    account: identity.account,
-    rows,
-  }
-}
-
-function copilotQuotaToken(session) {
-  const github = typeof session?.githubToken === 'string' && session.githubToken.trim()
-    ? session.githubToken.trim()
-    : undefined
-  if (github) return { authorization: `token ${github}` }
-  if (isGithubUserToken(session?.refreshToken)) return { authorization: `token ${session.refreshToken.trim()}` }
-  if (isGithubUserToken(session?.accessToken)) return { authorization: `token ${session.accessToken.trim()}` }
-  const access = typeof session?.accessToken === 'string' && session.accessToken.trim()
-    ? session.accessToken.trim()
-    : undefined
-  if (access) return { authorization: `Bearer ${access}` }
-  throw new Error('copilot session needs a GitHub token')
-}
-
-export async function fetchCopilotQuota(session, fetchFn = outboundFetch) {
-  const wait = timeoutSignal(QUOTA_TIMEOUT_MS)
-  try {
-    const response = await fetchFn(COPILOT_QUOTA_URL, {
-      method: 'GET',
-      headers: {
-        accept: 'application/json',
-        ...copilotQuotaToken(session),
-        ...copilotIdentityHeaders(),
-      },
-      signal: wait.signal,
-    })
-    const parsed = parseCopilotUsage(await readJson(response, 'copilot quota'))
-    return {
-      ...parsed,
-      account: parsed.account || session.account,
-      planType: parsed.planType || session.planType,
-    }
-  } finally {
-    wait.cancel()
-  }
-}
-
-function devinQuotaRow({ key, kind, label, windowMinutes = undefined, remainingPercent, resetAt }: any) {
-  const remaining = clampPct(remainingPercent)
-  if (remaining === undefined) return undefined
-  return {
-    key,
-    kind,
-    label,
-    ...(windowMinutes !== undefined ? { windowMinutes } : {}),
-    remainingPercent: remaining,
-    usedPercent: Math.max(0, Math.min(100, 100 - remaining)),
-    ...(resetAt !== undefined ? { resetAt } : {}),
-  }
-}
-
-/**
- * Credit buckets from seat_management.proto: the monthly grant lives in
- * planInfo.monthly*Credits, consumption in planStatus.used*Credits, and
- * `available*Credits` is the server-reported *remaining* balance (top-ups
- * make it diverge from limit−used). Max-tier sends available = -1
- * (unlimited) — clamped to 0 so an all-empty bucket simply emits no row.
- */
-const DEVIN_CREDIT_BUCKETS = [
-  { product: 'prompt', limit: 'monthlyPromptCredits', used: 'usedPromptCredits', available: 'availablePromptCredits' },
-  { product: 'flow', limit: 'monthlyFlowCredits', used: 'usedFlowCredits', available: 'availableFlowCredits' },
-  { product: 'flex', limit: 'monthlyFlexCreditPurchaseAmount', used: 'usedFlexCredits', available: 'availableFlexCredits' },
-]
-
-function devinCreditRow(bucket, plan, status, resetAt) {
-  const rawLimit = asNumber(plan[bucket.limit])
-  const rawAvailable = asNumber(status[bucket.available])
-  const reset = resetAt !== undefined ? { resetAt } : {}
-  // Pro/Max tiers send -1 for an uncapped bucket — surface 「不限量」 rather
-  // than clamping to 0 and dropping the row.
-  if (rawLimit === -1 || rawAvailable === -1) {
-    return { key: `credits:${bucket.product}`, kind: 'prepaid', product: bucket.product, unlimited: true, ...reset }
-  }
-  const used = Math.max(0, asNumber(status[bucket.used]) ?? 0)
-  const available = Math.max(0, rawAvailable ?? 0)
-  const limit = rawLimit
-  const hasLimit = limit !== undefined && limit > 0
-  if (!hasLimit && used === 0 && available === 0) return undefined
-  if (!hasLimit) {
-    return { key: `credits:${bucket.product}`, kind: 'prepaid', product: bucket.product, remaining: available, ...reset }
-  }
-  return {
-    key: `credits:${bucket.product}`,
-    kind: 'cycle',
-    product: bucket.product,
-    used,
-    total: limit,
-    remaining: available,
-    remainingPercent: clampPct((available / limit) * 100) ?? 0,
-    ...reset,
-  }
-}
-
-/**
- * GetUserStatusResponse → public quota. `plan_status` carries the daily /
- * weekly quota percents (already *remaining*) and unix-second resets; the
- * plan label is `plan_name` or the `teams_tier` enum (16 = Devin Pro).
- * Credit buckets (prompt / flow / flex) and the accrued overage balance
- * (micro-USD) come first; plan_end is the billing-cycle reset.
- */
-export function parseDevinUserStatus(payload) {
-  const root = payload && typeof payload === 'object' ? payload : {}
-  const user = root.userStatus && typeof root.userStatus === 'object' ? root.userStatus : {}
-  const status = user.planStatus && typeof user.planStatus === 'object' ? user.planStatus : {}
-  const plan = (status.planInfo && typeof status.planInfo === 'object' ? status.planInfo : undefined)
-    ?? (root.planInfo && typeof root.planInfo === 'object' ? root.planInfo : undefined)
-    ?? {}
-  const tier = user.teamsTier ?? plan.teamsTier
-  const planType = (typeof plan.planName === 'string' && plan.planName.trim())
-    ? plan.planName.trim()
-    : (typeof tier === 'number' ? DEVIN_TIER_NAMES[tier] : undefined)
-  const rows: any[] = []
-  const planEnd = status.planEnd
-  for (const bucket of DEVIN_CREDIT_BUCKETS) {
-    const row = devinCreditRow(bucket, plan, status, planEnd)
-    if (row) rows.push(row)
-  }
-  const overageMicros = asNumber(status.overageBalanceMicros)
-  if (overageMicros !== undefined && overageMicros !== 0) {
-    rows.push({ key: 'credits:overage', kind: 'prepaid', product: 'overage', unit: 'usd', remaining: overageMicros / 1e6 })
-  }
-  if (plan.hideDailyQuota !== true) {
-    const daily = devinQuotaRow({
-      key: 'daily',
-      kind: 'primary',
-      label: 'Daily',
-      windowMinutes: 24 * 60,
-      remainingPercent: status.dailyQuotaRemainingPercent,
-      resetAt: status.dailyQuotaResetAt,
-    })
-    if (daily) rows.push(daily)
-  }
-  if (plan.hideWeeklyQuota !== true) {
-    const weekly = devinQuotaRow({
-      key: 'weekly',
-      kind: 'weekly',
-      label: 'Weekly',
-      remainingPercent: status.weeklyQuotaRemainingPercent,
-      resetAt: status.weeklyQuotaResetAt,
-    })
-    if (weekly) rows.push(weekly)
-  }
-  return {
-    planType,
-    account: pickDevinHumanAccount(user.email, user.name, plan.devinInfo?.accountDisplayName),
-    rows,
-  }
-}
-
-export async function fetchDevinQuota(session, fetchFn = outboundFetch) {
-  const wait = timeoutSignal(QUOTA_TIMEOUT_MS)
-  try {
-    const parsed = parseDevinUserStatus(await devinUserStatus(session, { fetchFn, signal: wait.signal }))
-    return {
-      ...parsed,
-      account: parsed.account || session.account,
-      planType: parsed.planType || session.planType,
-    }
-  } finally {
-    wait.cancel()
-  }
-}
-
-export async function fetchGlmQuota(session, fetchFn = outboundFetch) {
-  const wait = timeoutSignal(QUOTA_TIMEOUT_MS)
-  try {
-    const response = await fetchFn(glmQuotaUrl(session.region), {
-      method: 'GET',
-      headers: glmUpstreamHeaders(session),
-      signal: wait.signal,
-    })
-    const body = await readJson(response, 'glm quota')
-    // The monitor endpoints answer HTTP 200 with a business envelope. A
-    // plan-less account returns { code: 500, msg: "当前用户不存在coding plan" };
-    // without this the card reads "quota ready, no rows" and the UI shows the
-    // vague 「周额度未返回」 instead of the vendor's reason.
-    if (body && typeof body === 'object' && !Array.isArray(body)) {
-      const code = asNumber(body.code)
-      if (body.success === false || (code !== undefined && code !== 0 && code !== 200)) {
-        throw new Error(`glm quota failed: ${trimmedQuotaMsg(body.msg) ?? `code ${String(body.code)}`}`)
-      }
-    }
-    const parsed = parseGlmQuota(body)
-    if (parsed.rows.some((row) => row.kind === 'mcp')) return parsed
-    // Official MCP quota is a separate endpoint (usage-stats.ts
-    // fetchMcpQuotaSnapshot): GET zcode.z.ai/api/v1/mcp/usage with the zcode
-    // JWT on authorization + the provisioned api-key on X-Bigmodel-Authorization.
-    // The legacy monitor tool-usage endpoint answers an empty body for this
-    // account, so it stays only as a fallback.
-    const mcpHeaders = glmMcpUsageHeaders(session)
-    if (mcpHeaders) {
-      const mcpWait = timeoutSignal(QUOTA_TIMEOUT_MS)
-      try {
-        const mcpRes = await fetchFn(glmMcpUsageUrl(), {
-          method: 'GET',
-          headers: mcpHeaders,
-          signal: mcpWait.signal,
-        })
-        const mcpRow = parseGlmMcpUsage(await readJson(mcpRes, 'glm mcp usage'))
-        if (mcpRow) return { ...parsed, rows: finalizeGlmRows([...parsed.rows, mcpRow]) }
-      } catch {
-        // fall through to the legacy tool-usage probe
-      } finally {
-        mcpWait.cancel()
-      }
-    }
-    const toolsWait = timeoutSignal(QUOTA_TIMEOUT_MS)
-    try {
-      const tools = await fetchFn(glmToolUsageUrl(session.region), {
-        method: 'GET',
-        headers: glmUpstreamHeaders(session),
-        signal: toolsWait.signal,
-      })
-      return mergeGlmToolUsage(parsed, await readJson(tools, 'glm tool usage'))
-    } catch {
-      return parsed
-    } finally {
-      toolsWait.cancel()
-    }
-  } finally {
-    wait.cancel()
-  }
-}
-
-function antigravityModelsMap(payload) {
-  if (!payload || typeof payload !== 'object') return undefined
-  const models = payload.models
-  if (models && typeof models === 'object' && !Array.isArray(models)) return models
-  if (!Array.isArray(payload)) return payload
-  return undefined
-}
-
-function findAntigravityModel(models: Record<string, any>, identifier) {
-  if (Object.prototype.hasOwnProperty.call(models, identifier)) {
-    return { id: identifier, entry: models[identifier] }
-  }
-  for (const [id, entry] of Object.entries(models)) {
-    const display = entry && typeof entry === 'object' ? entry.displayName : undefined
-    if (typeof display === 'string' && display.toLowerCase() === identifier.toLowerCase()) {
-      return { id, entry }
-    }
-  }
-  return undefined
-}
-
-function normalizeQuotaFraction(value) {
-  if (typeof value === 'number' && Number.isFinite(value)) return value
-  if (typeof value !== 'string') return undefined
-  const raw = value.trim()
-  if (!raw) return undefined
-  if (raw.endsWith('%')) {
-    const parsed = Number(raw.slice(0, -1).trim())
-    return Number.isFinite(parsed) ? parsed / 100 : undefined
-  }
-  const parsed = Number(raw)
-  return Number.isFinite(parsed) ? parsed : undefined
-}
-
-function antigravityQuotaInfo(entry) {
-  if (!entry || typeof entry !== 'object') return undefined
-  const info = entry.quotaInfo ?? entry.quota_info
-  return info && typeof info === 'object' ? info : undefined
-}
-
-function buildAntigravityQuotaRow(models, group) {
-  const samples: any[] = []
-  let displayName
-  for (const identifier of group.identifiers) {
-    const found = findAntigravityModel(models, identifier)
-    if (!found) continue
-    const info = antigravityQuotaInfo(found.entry)
-    const remaining = normalizeQuotaFraction(
-      info?.remainingFraction ?? info?.remaining_fraction ?? info?.remaining,
-    )
-    const stamp = resetAtOf(info)
-    const hasReset = stamp !== undefined
-    const fraction = remaining ?? (hasReset ? 0 : undefined)
-    if (fraction === undefined) return undefined
-    samples.push({ fraction, stamp })
-    if (displayName === undefined) {
-      const name = found.entry?.displayName
-      if (typeof name === 'string' && name.trim()) displayName = name.trim()
-    }
-  }
-  if (samples.length === 0) return undefined
-  const remaining = samples.reduce((lowest, next) => Math.min(lowest, next.fraction), 1)
-  const remainingPercent = clampPct(remaining * 100) ?? 0
-  const usedPercent = Math.max(0, Math.min(100, 100 - remainingPercent))
-  const product = group.labelFromModel ? (displayName ?? group.label) : group.label
-  const atFloor = samples.filter((sample) => sample.fraction === remaining)
-  const resetAt = soonestReset(atFloor) ?? soonestReset(samples)
-  return {
-    key: `product:${product}`,
-    kind: 'product',
-    product,
-    usedPercent,
-    remainingPercent,
-    ...(resetAt === undefined ? {} : { resetAt }),
-  }
-}
-
-function soonestReset(samples) {
-  const stamps = samples.map((sample) => sample.stamp).filter((stamp) => typeof stamp === 'number')
-  return stamps.length > 0 ? Math.min(...stamps) : undefined
-}
-
-/** SkillStar `parse_model_windows` — group fetchAvailableModels into product bars. */
-export function parseAntigravityModelQuota(payload) {
-  const models = antigravityModelsMap(payload)
-  if (!models) return { rows: [] }
-  const rows: any[] = []
-  for (const group of ANTIGRAVITY_QUOTA_GROUPS) {
-    const row = buildAntigravityQuotaRow(models, group)
-    if (row) rows.push(row)
-  }
-  return { rows }
-}
-
-function remainingOfBucket(bucket) {
-  if (!bucket || typeof bucket !== 'object') return undefined
-  const nested = bucket.remaining && typeof bucket.remaining === 'object' ? bucket.remaining : undefined
-  return normalizeQuotaFraction(
-    bucket.remainingFraction
-    ?? bucket.remaining_fraction
-    ?? nested?.remainingFraction
-    ?? nested?.remaining_fraction
-    ?? nested?.remaining
-    ?? bucket.remaining,
-  )
-}
-
-function classifyQuotaWindow(bucket) {
-  const window = String(bucket?.window ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '')
-  if (window === 'weekly' || window === 'week') return 'weekly'
-  if (window === 'fivehour' || window === '5h' || window === '5hour' || window === 'session') return 'primary'
-  const text = [
-    bucket?.window,
-    bucket?.bucketId,
-    bucket?.bucket_id,
-    bucket?.displayName,
-    bucket?.display_name,
-    bucket?.description,
-  ].filter((value) => typeof value === 'string').join(' ')
-  if (/week/i.test(text)) return 'weekly'
-  if (/5\s*-?h|five.?hour|session|rolling/i.test(text)) return 'primary'
-  return undefined
-}
-
-function antigravityGroupSlug(title) {
-  return String(title).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'group'
-}
-
-/** Official Model Quota panel: Gemini Models / Claude and GPT models × weekly + 5-hour. */
-export function parseAntigravityQuotaSummary(payload) {
-  const root = payload?.response && typeof payload.response === 'object' ? payload.response : payload
-  const groups = Array.isArray(root?.groups) ? root.groups : []
-  const rows: any[] = []
-  for (const group of groups) {
-    const title = typeof group?.displayName === 'string' && group.displayName.trim()
-      ? group.displayName.trim()
-      : (typeof group?.display_name === 'string' && group.display_name.trim() ? group.display_name.trim() : undefined)
-    if (!title) continue
-    const buckets = Array.isArray(group.buckets) ? group.buckets : []
-    const windows: any[] = []
-    const pending: any[] = []
-    for (const bucket of buckets) {
-      const remaining = remainingOfBucket(bucket)
-      if (remaining === undefined) continue
-      const nested = bucket?.remaining && typeof bucket.remaining === 'object' ? bucket.remaining : undefined
-      const item = {
-        kind: classifyQuotaWindow(bucket),
-        remaining,
-        resetAt: resetAtOf(bucket) ?? resetAtOf(nested),
-      }
-      if (item.kind) windows.push(item)
-      else pending.push(item)
-    }
-    if (windows.length === 0 && pending.length > 0) {
-      pending.forEach((item, index) => {
-        item.kind = index === 0 ? 'weekly' : 'primary'
-      })
-      windows.push(...pending)
-    } else if (pending.length > 0 && windows.length === 1) {
-      pending[0].kind = windows[0].kind === 'weekly' ? 'primary' : 'weekly'
-      windows.push(pending[0])
-    }
-    if (windows.length === 0) continue
-    const slug = antigravityGroupSlug(title)
-    rows.push({ key: `heading:${slug}`, kind: 'heading', product: title })
-    const order = ['primary', 'weekly']
-    windows.sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind))
-    for (const win of windows) {
-      const remainingPercent = clampPct(win.remaining * 100) ?? 0
-      rows.push({
-        key: `${slug}:${win.kind}`,
-        kind: win.kind,
-        product: title,
-        remainingPercent,
-        usedPercent: Math.max(0, Math.min(100, 100 - remainingPercent)),
-        ...(win.resetAt === undefined ? {} : { resetAt: win.resetAt }),
-        ...(win.kind === 'primary' ? { windowMinutes: 300 } : {}),
-      })
-    }
-  }
-  return { rows, planType: antigravityPlanType(root) ?? antigravityPlanType(payload) }
-}
-
-export function parseAntigravityPaidCredits(payload) {
-  const credits = payload?.paidTier?.availableCredits ?? payload?.paid_tier?.availableCredits
-  if (!Array.isArray(credits)) return []
-  const rows: any[] = []
-  for (const entry of credits) {
-    if (!entry || typeof entry !== 'object') continue
-    const creditType = entry.creditType ?? entry.credit_type
-    if (typeof creditType !== 'string' || !creditType.trim()) continue
-    const remaining = asNumber(entry.creditAmount ?? entry.credit_amount)
-    if (remaining === undefined) continue
-    rows.push({
-      key: `prepaid:${creditType.trim()}`,
-      kind: 'prepaid',
-      remaining,
-    })
-  }
-  return rows
-}
-
-export function pickAntigravityPlanName(payload) {
-  if (!payload || typeof payload !== 'object') return undefined
-  const fromTiers = antigravityPlanType(payload)
-  if (fromTiers) return fromTiers
-  const tiers = Array.isArray(payload.allowedTiers) ? payload.allowedTiers : []
-  const fallback = tiers.find((entry) => entry?.isDefault) ?? tiers[0]
-  const id = fallback?.id
-  return typeof id === 'string' && id.trim() ? id.trim() : undefined
-}
-
-function isQuotaHttpStatus(error, status) {
-  const message = error instanceof Error ? error.message : String(error)
-  return message.includes(`HTTP ${status}`) || (status === 400 && /bad request/i.test(message))
-}
-
-async function loadAntigravityCodeAssistForQuota(session, fetchFn) {
-  const cached = typeof session.projectId === 'string' ? session.projectId : undefined
-  const post = async (projectId) => {
-    const wait = timeoutSignal(QUOTA_TIMEOUT_MS)
-    try {
-      const response = await fetchAntigravityCloudCode(ANTIGRAVITY_LOAD_CODE_ASSIST_URL, {
-        method: 'POST',
-        headers: antigravityLoadCodeAssistHeaders(session.accessToken),
-        body: JSON.stringify(antigravityLoadCodeAssistBody(projectId)),
-        signal: wait.signal,
-      }, fetchFn)
-      return await readJson(response, 'antigravity loadCodeAssist')
-    } finally {
-      wait.cancel()
-    }
-  }
-  try {
-    return await post(cached)
-  } catch (error) {
-    if (isQuotaHttpStatus(error, 401)) throw error
-    if (cached && isQuotaHttpStatus(error, 400)) return post(undefined)
-    throw error
-  }
-}
-
-async function fetchAntigravityModelWindows(accessToken, projectId, fetchFn) {
-  const payload = projectId ? { project: projectId } : {}
-  const wait = timeoutSignal(QUOTA_TIMEOUT_MS)
-  try {
-    const response = await fetchAntigravityCloudCode(ANTIGRAVITY_MODELS_URL, {
-      method: 'POST',
-      headers: antigravityLoadCodeAssistHeaders(accessToken),
-      body: JSON.stringify(payload),
-      signal: wait.signal,
-    }, fetchFn)
-    if (response.status === 401) {
-      const text = await response.text()
-      throw new Error(`antigravity fetchAvailableModels failed (HTTP 401)${text ? `: ${text.slice(0, 180)}` : ''}`)
-    }
-    if (!response.ok) {
-      throw new Error(`antigravity fetchAvailableModels failed (HTTP ${response.status})`)
-    }
-    return parseAntigravityModelQuota(await readJson(response, 'antigravity fetchAvailableModels')).rows
-  } finally {
-    wait.cancel()
-  }
-}
-
-async function fetchAntigravityQuotaSummary(accessToken, projectId, fetchFn) {
-  const payload = projectId ? { project: projectId } : {}
-  const wait = timeoutSignal(QUOTA_TIMEOUT_MS)
-  try {
-    const response = await fetchAntigravityCloudCode(ANTIGRAVITY_QUOTA_SUMMARY_URL, {
-      method: 'POST',
-      headers: antigravityLoadCodeAssistHeaders(accessToken),
-      body: JSON.stringify(payload),
-      signal: wait.signal,
-    }, fetchFn)
-    if (response.status === 401) {
-      const text = await response.text()
-      throw new Error(`antigravity retrieveUserQuotaSummary failed (HTTP 401)${text ? `: ${text.slice(0, 180)}` : ''}`)
-    }
-    if (!response.ok) return { rows: [] }
-    return parseAntigravityQuotaSummary(await readJson(response, 'antigravity retrieveUserQuotaSummary'))
-  } finally {
-    wait.cancel()
-  }
-}
-
-function pickGoogleAiPlan(...values) {
-  for (const value of values) {
-    if (typeof value !== 'string' || !value.trim()) continue
-    if (isCodeAssistOnlyPlan(value)) continue
-    return value.trim()
-  }
-  return undefined
-}
-
-export async function fetchAntigravityQuota(session, fetchFn = outboundFetch) {
-  const load = await loadAntigravityCodeAssistForQuota(session, fetchFn)
-  const projectId = extractCloudaicompanionProject(load)
-    ?? (typeof session.projectId === 'string' && session.projectId.trim() ? session.projectId.trim() : undefined)
-  let summary
-  try {
-    summary = await fetchAntigravityQuotaSummary(session.accessToken, projectId, fetchFn)
-  } catch (error) {
-    if (isQuotaHttpStatus(error, 401)) throw error
-    summary = { rows: [] }
-  }
-  const rows = summary.rows.length
-    ? summary.rows
-    : await fetchAntigravityModelWindows(session.accessToken, projectId, fetchFn)
-  const credits = parseAntigravityPaidCredits(load)
-  const planType = pickGoogleAiPlan(
-    summary.planType,
-    antigravityPlanType(load),
-    typeof session.planType === 'string' ? session.planType : undefined,
-  )
-  return { planType, rows: [...rows, ...credits] }
-}
-
-// getUsageLimits 400s "Invalid profileArn." without an ARN (Builder ID) —
-// send the ARN chat uses; a regional 403 moves on to the next region.
-export async function fetchKiroQuota(session, fetchFn = outboundFetch) {
-  const profileArn = kiroProfileArn(session)
-  let lastError
-  for (const region of kiroUsageRegions(session)) {
-    const wait = timeoutSignal(QUOTA_TIMEOUT_MS)
-    try {
-      const response = await fetchFn(kiroUsageUrl(region, profileArn), {
-        method: 'GET',
-        headers: kiroUsageHeaders(session),
-        signal: wait.signal,
-      })
-      if (response.ok) {
-        return parseKiroUsage(await readJson(response, 'kiro usage'))
-      }
-      const text = await response.text()
-      lastError = new Error(`kiro usage failed (HTTP ${response.status})${text ? `: ${text.slice(0, 180)}` : ''}`)
-      if (response.status !== 403) throw lastError
-    } finally {
-      wait.cancel()
-    }
-  }
-  throw lastError
-}
-
-function grokQuotaHeaders(session) {
-  return {
-    ...grokUpstreamHeaders(session),
-    'x-grok-client-version': GROK_CLIENT_VERSION,
-    'x-grok-cli-version': GROK_CLIENT_VERSION,
-    'x-grok-client-surface': 'grok-cli',
-    'x-grok-client-identifier': 'dsh-plugin-oauth-subs',
-  }
-}
-
-function timeoutSignal(ms) {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), ms)
-  if (typeof timer.unref === 'function') timer.unref()
-  return { signal: controller.signal, cancel: () => clearTimeout(timer) }
-}
-
-function trimmedQuotaMsg(value) {
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined
-}
-
-async function readJson(response, label) {
-  const text = await response.text()
-  if (!response.ok) {
-    throw new Error(`${label} failed (HTTP ${response.status})${text ? `: ${text.slice(0, 180)}` : ''}`)
-  }
-  if (!text) return {}
-  try {
-    return JSON.parse(text)
-  } catch {
-    throw new Error(`${label} returned non-JSON`)
-  }
-}
-
-export async function fetchCodexQuota(session, fetchFn = outboundFetch) {
-  const headers = codexUpstreamHeaders(session)
-  const usageWait = timeoutSignal(QUOTA_TIMEOUT_MS)
-  const resetWait = timeoutSignal(QUOTA_TIMEOUT_MS)
-  try {
-    const [usageResult, resetResult] = await Promise.allSettled([
-      fetchFn(CODEX_USAGE_URL, { method: 'GET', headers, signal: usageWait.signal })
-        .then((response) => readJson(response, 'codex usage')),
-      fetchFn(CODEX_RESET_CREDITS_URL, { method: 'GET', headers, signal: resetWait.signal })
-        .then((response) => readJson(response, 'codex reset credits')),
-    ])
-    if (usageResult.status === 'rejected') throw usageResult.reason
-    const parsed = parseCodexUsage(usageResult.value)
-    const embedded = usageResult.value?.rate_limit_reset_credits ?? usageResult.value?.rateLimitResetCredits
-    const resetCredits = resetResult.status === 'fulfilled'
-      ? parseResetCredits(resetResult.value)
-      : embedded
-        ? parseResetCredits(embedded)
-        : { availableCount: 0, credits: [] }
-    return { ...parsed, resetCredits }
-  } finally {
-    usageWait.cancel()
-    resetWait.cancel()
-  }
-}
-
-export function consumeResetBody(redeemRequestId) {
-  return {
-    redeem_request_id: redeemRequestId,
-    idempotencyKey: redeemRequestId,
-  }
-}
-
-export async function consumeCodexReset(session, fetchFn = outboundFetch) {
-  const wait = timeoutSignal(QUOTA_TIMEOUT_MS)
-  const redeemRequestId = randomUUID()
-  try {
-    const response = await fetchFn(CODEX_RESET_CONSUME_URL, {
-      method: 'POST',
-      headers: {
-        ...codexUpstreamHeaders(session),
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify(consumeResetBody(redeemRequestId)),
-      signal: wait.signal,
-    })
-    await readJson(response, 'codex reset consume')
-    return { ok: true, redeemRequestId }
-  } finally {
-    wait.cancel()
-  }
-}
-
-export async function fetchGrokQuota(session, fetchFn = outboundFetch) {
-  const headers = grokQuotaHeaders(session)
-  const billingWait = timeoutSignal(QUOTA_TIMEOUT_MS)
-  const userWait = timeoutSignal(QUOTA_TIMEOUT_MS)
-  const creditsWait = timeoutSignal(QUOTA_TIMEOUT_MS)
-  try {
-    const [billingResult, userResult, creditsResult] = await Promise.allSettled([
-      fetchFn(GROK_BILLING_URL, { method: 'GET', headers, signal: billingWait.signal })
-        .then((response) => readJson(response, 'grok billing')),
-      fetchFn(GROK_CLI_USER_URL, { method: 'GET', headers, signal: userWait.signal })
-        .then((response) => readJson(response, 'grok user')),
-      fetchFn(GROK_CREDITS_URL, {
-        method: 'POST',
-        headers: grokCreditsHeaders(session),
-        body: GROK_WEB_EMPTY_FRAME,
-        signal: creditsWait.signal,
-      }).then(async (response) => {
-        if (!response.ok) {
-          throw new Error(`grok credits failed (HTTP ${response.status})`)
-        }
-        const decoded = decodeGrokCreditsFrame(Buffer.from(await response.arrayBuffer()))
-        if (!decoded) throw new Error('grok credits returned no usage')
-        return decoded
-      }),
-    ])
-    if (billingResult.status === 'rejected' && creditsResult.status === 'rejected') {
-      throw billingResult.reason
-    }
-    const billing = billingResult.status === 'fulfilled' ? billingResult.value : {}
-    const cliUser = userResult.status === 'fulfilled' ? userResult.value : undefined
-    const snapshot = creditsResult.status === 'fulfilled' ? creditsResult.value : undefined
-    return applyGrokCreditsSnapshot(parseGrokBilling(billing, { cliUser }), snapshot)
-  } finally {
-    billingWait.cancel()
-    userWait.cancel()
-    creditsWait.cancel()
   }
 }
 
@@ -1913,8 +83,10 @@ function publicQuota(entry?, provider?) {
 }
 
 const SNAPSHOT_VERSION = 1
+
 /** Past this a saved reading is history, not a stand-in: quota windows have reset. */
 const SNAPSHOT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
+
 const SNAPSHOT_DEBOUNCE_MS = 2_000
 
 /**
@@ -1999,6 +171,7 @@ export class QuotaStore {
   declare ttlMs: number
   declare cache: Map<string, any>
   declare inflight: Map<string, any>
+  declare glmResetRequests: Map<string, string>
 
   constructor({ tokens, fetchFn = outboundFetch, ttlMs = QUOTA_TTL_MS, snapshotPath = undefined }: any = {}) {
     this.tokens = tokens
@@ -2006,6 +179,7 @@ export class QuotaStore {
     this.ttlMs = ttlMs
     this.cache = snapshotPath ? new PersistedCache(snapshotPath) : new Map()
     this.inflight = new Map()
+    this.glmResetRequests = new Map()
   }
 
   /** Persist the cache now, when it is persisted at all. */
@@ -2039,19 +213,56 @@ export class QuotaStore {
     }
   }
 
-  async ensure(provider, accountId?, session?) {
+  /** Record a known failure without calling upstream (e.g. a stale imported login). */
+  fail(provider, accountId, message) {
+    const key = quotaCacheKey(provider, accountId)
+    const previous = this.cache.get(key)
+    const entry = {
+      status: 'error',
+      planType: previous?.planType,
+      subscriptionStatus: previous?.subscriptionStatus,
+      hasGrokCodeAccess: previous?.hasGrokCodeAccess,
+      updatedAt: Date.now(),
+      error: message,
+      rows: previous?.rows ?? [],
+      resetCredits: previous?.resetCredits ?? { availableCount: 0 },
+    }
+    this.cache.set(key, entry)
+    return publicQuota(entry, provider)
+  }
+
+  /**
+   * `maxAgeMs` tightens the freshness window for one call — the panel sends it
+   * when the user (re)enters the quota page, so a reading older than the 15s
+   * floor is re-read behind the cached answer instead of waiting out the TTL.
+   */
+  async ensure(provider, accountId?, session?, maxAgeMs = this.ttlMs) {
     const live = session ?? await this.#activeSession(provider)
     const id = accountId ?? (live ? accountIdOf(provider, live) : undefined)
     const key = quotaCacheKey(provider, id)
     const cached = this.cache.get(key)
-    if (cached && Date.now() - cached.updatedAt < this.ttlMs) {
+    const ttl = cached?.usedAt !== undefined ? Math.min(maxAgeMs, QUOTA_USED_TTL_MS) : maxAgeMs
+    if (cached && Date.now() - cached.updatedAt < ttl) {
       return publicQuota(cached, provider)
     }
-    if (cached && cached.status === 'ready') {
+    // Stale-while-revalidate for errors too: the snapshot awaits families in
+    // series, so a blocking re-read of a down upstream stalls the whole panel.
+    if (cached && (cached.status === 'ready' || cached.status === 'error')) {
       void this.refresh(provider, id, live)
       return publicQuota(cached, provider)
     }
     return this.refresh(provider, id, live)
+  }
+
+  /**
+   * A proxied chat request for this account finished: its quota moved. Only
+   * shortens the cached entry's freshness window — no upstream call here.
+   */
+  async touch(provider, session?) {
+    const live = session ?? await this.#activeSession(provider)
+    const id = live ? accountIdOf(provider, live) : undefined
+    const entry = this.cache.get(quotaCacheKey(provider, id))
+    if (entry) entry.usedAt = Date.now()
   }
 
   async refresh(provider, accountId?, session?) {
@@ -2065,8 +276,10 @@ export class QuotaStore {
     return run
   }
 
-  async consume(provider, accountId?, session?) {
-    if (provider !== 'codex') throw new Error('only ChatGPT Codex can reset quota')
+  async consume(provider, accountId?, session?, creditId?) {
+    if (provider === 'glm') return this.#consumeGlm(accountId, session, creditId)
+    if (provider === 'grok') return this.#consumeGrok(accountId, session, creditId)
+    if (provider !== 'codex') throw new Error('only ChatGPT Codex, Grok and GLM can reset quota')
     const live = session ?? await this.#activeSession(provider)
     if (!live) throw new Error('ChatGPT Codex is not signed in')
     const id = accountId ?? accountIdOf('codex', live)
@@ -2075,6 +288,56 @@ export class QuotaStore {
     await consumeCodexReset(live, this.fetchFn)
     this.cache.delete(quotaCacheKey('codex', id))
     return this.refresh('codex', id, live)
+  }
+
+  /**
+   * One GLM reset card. The card must be in the cached bank (the UI only
+   * offers listed cards). `requestId` is kept per card until the vendor
+   * answers, so a retry after a lost response cannot spend a second card;
+   * in-memory only — a restart mints a fresh one.
+   */
+  async #consumeGlm(accountId, session, creditId) {
+    const live = session ?? await this.#activeSession('glm')
+    if (!live) throw new Error('GLM is not signed in')
+    const id = accountId ?? accountIdOf('glm', live)
+    const key = quotaCacheKey('glm', id)
+    const pending = this.inflight.get(key)
+    if (pending) await pending.catch(() => undefined)
+    const bank = this.cache.get(key)?.resetCredits
+    const credit = (bank?.credits ?? []).find((row) => row.id === String(creditId ?? '') && isAvailableResetCredit(row))
+    if (!credit || !credit.resetType) throw new Error('GLM reset card is not available — refresh quota and retry')
+    const retryKey = `${key}\0${credit.id}`
+    const requestId = this.glmResetRequests.get(retryKey) ?? randomUUID()
+    this.glmResetRequests.set(retryKey, requestId)
+    try {
+      await consumeGlmResetCard(live, credit, requestId, this.fetchFn)
+      this.glmResetRequests.delete(retryKey)
+    } catch (error) {
+      if (error instanceof GlmResetRejected) this.glmResetRequests.delete(retryKey)
+      throw error
+    }
+    this.cache.delete(key)
+    return this.refresh('glm', id, live)
+  }
+
+  /**
+   * One Grok reset card. The public id is a hash, so the token is resolved by
+   * a fresh list read — a card spent or expired since the panel rendered is
+   * refused instead of silently spending another.
+   */
+  async #consumeGrok(accountId, session, creditId) {
+    const live = session ?? await this.#activeSession('grok')
+    if (!live) throw new Error('Grok is not signed in')
+    const id = accountId ?? accountIdOf('grok', live)
+    const key = quotaCacheKey('grok', id)
+    const pending = this.inflight.get(key)
+    if (pending) await pending.catch(() => undefined)
+    const tokens = await fetchGrokResetTokens(live, this.fetchFn)
+    const token = tokens.find((row) => grokResetCardId(row.tokenId) === String(creditId ?? ''))
+    if (!token) throw new Error('Grok reset card is not available — refresh quota and retry')
+    await consumeGrokResetToken(live, token.tokenId, this.fetchFn)
+    this.cache.delete(key)
+    return this.refresh('grok', id, live)
   }
 
   async #activeSession(provider) {
@@ -2094,6 +357,12 @@ export class QuotaStore {
       return publicQuota()
     }
     const previous = this.cache.get(key)
+    const startedAt = Date.now()
+    // A touch() that lands while this read is in flight is not reflected in it.
+    const usedSince = () => {
+      const usedAt = this.cache.get(key)?.usedAt
+      return usedAt !== undefined && usedAt >= startedAt ? usedAt : undefined
+    }
     this.cache.set(key, {
       ...(previous ?? {}),
       status: previous?.status === 'ready' ? 'ready' : 'loading',
@@ -2104,6 +373,8 @@ export class QuotaStore {
     try {
       const parsed = provider === 'codex'
         ? await fetchCodexQuota(session, this.fetchFn)
+        : provider === 'chatgpt'
+          ? chatgptQuota(session)
         : provider === 'glm'
           ? await fetchGlmQuota(session, this.fetchFn)
           : provider === 'kiro'
@@ -2132,8 +403,10 @@ export class QuotaStore {
         subscriptionStatus: parsed.subscriptionStatus,
         hasGrokCodeAccess: parsed.hasGrokCodeAccess,
         updatedAt: Date.now(),
+        usedAt: usedSince(),
         rows: parsed.rows ?? [],
-        resetCredits: parsed.resetCredits ?? { availableCount: 0 },
+        // A family whose side-read failed leaves resetCredits off: keep the last bank.
+        resetCredits: parsed.resetCredits ?? previous?.resetCredits ?? { availableCount: 0 },
       }
       this.cache.set(key, entry)
       return publicQuota(entry, provider)
@@ -2145,6 +418,7 @@ export class QuotaStore {
         subscriptionStatus: previous?.subscriptionStatus,
         hasGrokCodeAccess: previous?.hasGrokCodeAccess,
         updatedAt: Date.now(),
+        usedAt: usedSince(),
         error: message,
         rows: previous?.rows ?? [],
         resetCredits: previous?.resetCredits ?? { availableCount: 0 },

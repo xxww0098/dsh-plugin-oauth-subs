@@ -32,7 +32,7 @@ import {
   validateKiroRefreshToken,
 } from '../lib/oauth/kiro/index.js'
 import { registerKiroOidcClient, kiroIdcSession } from '../lib/oauth/kiro/idc-flow.js'
-import { fetchKiroQuota, parseKiroUsage } from '../lib/oauth/quota.js'
+import { fetchKiroQuota, parseKiroUsage } from '../lib/oauth/kiro/quota.js'
 import { formatPlanLabel } from '../lib/oauth/plan.js'
 import { OAuthFlowManager } from '../lib/oauth/flow.js'
 import { AuthController } from '../lib/oauth/controller.js'
@@ -57,6 +57,7 @@ import {
 import {
   refreshKiroCatalog,
   resetKiroCatalogCache,
+  toKiroPickerModels,
 } from '../lib/oauth/kiro/catalog.js'
 
 const RT = `rt_${'x'.repeat(120)}`
@@ -552,7 +553,7 @@ test('controller snapshot lists Kiro catalog and quota on every account', async 
     },
   })
   const snap = await controller.snapshot()
-  assert.equal(snap.catalog.length, 14)
+  assert.equal(snap.catalog.length, 15)
   assert.equal(snap.catalog.some((row) => row.family === 'kiro'), true)
   const roster = snap.accounts.kiro.accounts
   assert.equal(roster.length, 2)
@@ -954,6 +955,14 @@ test('live catalog replaces the fallback, asks with the chat origin, drops auto,
   assert.equal(row('deepseek-3.2').reasoningEfforts, false)
   assert.deepEqual(row('deepseek-3.2').input, ['text', 'image'])
   resetKiroCatalogCache()
+})
+
+test('an unlisted Claude 5.5 id still infers the adaptive ladder and 1M window', () => {
+  const models = toKiroPickerModels([{ modelId: 'claude-sonnet-5.5', modelName: 'Claude Sonnet 5.5' }])
+  assert.equal(models.length, 1)
+  assert.equal(models[0].contextWindow, 1_000_000)
+  assert.deepEqual(models[0].reasoningEfforts, { low: 'low', medium: 'medium', high: 'high', max: 'max', xhigh: 'xhigh' })
+  assert.deepEqual(models[0].input, ['text', 'image'])
 })
 
 test('empty ListAvailableModels keeps the static fallback', async () => {

@@ -19,6 +19,7 @@ import { arch as osArch, release as osRelease } from 'node:os'
 import { decodeJwtPayload } from '../../utils/jwt.js'
 import { GLM_STABLE_SESSION, glmCacheSessionId } from './cache.js'
 import { outboundFetch } from '../../utils/outbound.js'
+import { catalogRows } from '../../catalog/index.js'
 
 export const GLM_CLIENT_ID = 'client_P8X5CMWmlaRO9gyO-KSqtg'
 export const GLM_BIGMODEL_APP_ID = 'zcode'
@@ -73,6 +74,15 @@ export const GLM_NEVER_EXPIRES = 8.64e15
 export const GLM_CONTEXT_WINDOW = 128_000
 export const GLM_LARGE_CONTEXT = 1_000_000
 export const GLM_TURBO_CONTEXT = 200_000
+/**
+ * Coding Plan input cap (2026-09-29): the plan gateway accepts at most 400K
+ * input tokens per request even though the official GLM-5.3 window is 1M
+ * (docs.z.ai/guides/llm/glm-5.3 still says 1M / 128K output). The picker
+ * default targets the cap so DSH compacts before the gateway rejects; the
+ * official 1M stays reachable as the row's custom-context ceiling
+ * (`maxContextWindow`, `maxContextOfRow`) — no `-1m` variant row any more.
+ */
+export const GLM_INPUT_CONTEXT = 400_000
 /** Text-only GLM rows. Flash is the one multimodal Coding Plan model. */
 export const GLM_TEXT_INPUT = Object.freeze(['text'])
 export const GLM_VISION_INPUT = Object.freeze(['text', 'image'])
@@ -118,14 +128,18 @@ export const GLM_CLI_PROVIDERS = Object.freeze({
  * Thinking depth is declared here so the Harness session picker can
  * offer it. `false` means no depth control (Turbo); omitting `off`
  * means thinking cannot be disabled (5.3 / Flash).
+ *
+ * 5.3 rows sit at the plan's 400K input cap with the official 1M window as
+ * `maxContextWindow` — the row's custom-context ceiling (`maxContextOfRow`);
+ * see `src/utils/context-mode.ts`.
  */
-export const GLM_MODELS = Object.freeze([
-  { id: 'glm-5.3', name: 'GLM-5.3', contextWindow: GLM_LARGE_CONTEXT, maxTokens: 128_000, reasoningEfforts: GLM_REASONING, input: GLM_TEXT_INPUT },
-  { id: 'glm-5.3-flash', name: 'GLM-5.3-Flash', contextWindow: GLM_LARGE_CONTEXT, maxTokens: 128_000, reasoningEfforts: GLM_REASONING, input: GLM_VISION_INPUT },
-  { id: 'glm-5-turbo', name: 'GLM-5-Turbo', contextWindow: GLM_TURBO_CONTEXT, maxTokens: 64_000, reasoningEfforts: false, input: GLM_TEXT_INPUT },
-])
+export const GLM_MODELS = catalogRows('glm')
 
-export { GLM_BOOST_LABEL, glmCardBoost } from './boost.js'
+/** Catalog lookup for the custom-context ceiling (`maxContextWindowOf`). */
+export function glmModel(modelId) {
+  return GLM_MODELS.find((model) => model.id === modelId)
+}
+
 
 export const GLM_PLAN_NAMES = Object.freeze({
   lite: 'Lite',
@@ -196,6 +210,30 @@ export function glmToolUsageUrl(region = 'zai') {
 export const GLM_MCP_USAGE_URL = 'https://zcode.z.ai/api/v1/mcp/usage'
 export function glmMcpUsageUrl() {
   return GLM_MCP_USAGE_URL
+}
+
+/**
+ * Coding Plan Reset Cards (「重置卡」): `GET …/list?targetType=PERSONAL`
+ * reports banked cards in two buckets (`fiveHourResets` / `weekResets`);
+ * `POST …/use` redeems one. Same biz host as userinfo, same provisioned
+ * api-key bearer as the monitor quota. Not in the ZCode open-source tree —
+ * reference is OmniRoute `open-sse/services/usage/glmResetCards.ts`
+ * (241e63b), list live-checked on a BigModel Max account.
+ */
+export const GLM_RESET_CARD_TARGET_TYPE = 'PERSONAL'
+export function glmResetCardUrl(region = 'zai', action: 'list' | 'use' = 'list') {
+  const base = `${glmBizBase(region)}/api/biz/customer-package-reset`
+  return action === 'use' ? `${base}/use` : `${base}/list?targetType=${GLM_RESET_CARD_TARGET_TYPE}`
+}
+
+/**
+ * The card stamps (`expireTime` / `last*ResetTime`) carry no zone.
+ * BigModel's are Asia/Shanghai: `lastWeekResetTime` equals the weekly
+ * window's `nextResetTime` − 7d only at +08:00. Z.ai is read as UTC
+ * (OmniRoute's reading, not live-checked here).
+ */
+export function glmResetStampOffsetMinutes(region = 'zai') {
+  return normalizeGlmRegion(region) === 'bigmodel' ? 8 * 60 : 0
 }
 
 export function glmUserinfoUrl(region = 'zai') {

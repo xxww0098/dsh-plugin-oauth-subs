@@ -21,7 +21,7 @@ export declare function glmForcedThinkingModel(model: any): boolean;
  * its map — so the request shape stays source-correct here; the backend
  * decides the routing.
  */
-export declare function glmAnthropicFamily(model: any): "glm-5.3" | "glm-5-turbo" | "glm-5.2" | undefined;
+export declare function glmAnthropicFamily(model: any): "glm-5.3" | "glm-5.2" | "glm-5-turbo" | undefined;
 /**
  * Picker level carried to the hop. pi-ai's adaptive path writes
  * `output_config.effort`; other clients may use `thinking.effort` or a bare

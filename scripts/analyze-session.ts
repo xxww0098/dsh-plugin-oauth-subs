@@ -19,6 +19,7 @@ import {
   formatAggregate,
   formatComparison,
   formatReport,
+  readPrefixEstimates,
   readSessionText,
 } from '../lib/utils/analyze-session.js'
 
@@ -54,7 +55,7 @@ function parseArgs(argv) {
 async function main() {
   const args = parseArgs(process.argv.slice(2))
   if (args.dir) {
-    const report = analyzeSessionDir(args.dir, { since: args.since, until: args.until })
+    const report = analyzeSessionDir(args.dir, { since: args.since, until: args.until, prefixEstimates: readPrefixEstimates() })
     const output = args.compare ? compareReports(JSON.parse(readFileSync(args.compare, 'utf8')), report) : report
     const text = args.json ? JSON.stringify(output, null, 2) : args.compare ? formatComparison(output) : formatAggregate(output)
     process.stdout.write(`${text}\n`)
@@ -65,7 +66,7 @@ async function main() {
     console.error('       node --experimental-strip-types scripts/analyze-session.ts --dir <path> [--since ISO|Nd] [--until ISO] [--json] [--compare base.json]')
     process.exit(2)
   }
-  const report = analyzeSession(readSessionText(args.path))
+  const report = analyzeSession(readSessionText(args.path), { prefixEstimates: readPrefixEstimates() })
   if (args.json) {
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`)
   } else {

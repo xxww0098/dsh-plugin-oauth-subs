@@ -24,7 +24,7 @@ export declare function devinLabelVariant(label: any, familyLabel: any): {
  * Collapse ClientModelConfig[] into picker rows. Internal rows carry
  * `variants` + `defaultUid`; `toHarnessModel` projects only the public fields.
  */
-export declare function toDevinPickerModels(configs: any): any[];
+export declare function toDevinPickerModels(configs: any, { floor }?: any): any[];
 export declare function devinCatalogModels(): any;
 export declare function devinModelById(id: any): any;
 /** Some Devin rows declare efforts; the provider compat key must not 400 them. */

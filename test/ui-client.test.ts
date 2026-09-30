@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { test } from 'node:test'
-import { GLM_BOOST_LABEL, glmCardBoost } from '../lib/oauth/glm/boost.js'
+import { assembleUi } from '../scripts/ui-bundle.ts'
 
 test('settings language follows the host page before the OS browser language', async () => {
   const src = await readFile(new URL('../lib/ui/client.js', import.meta.url), 'utf8')
@@ -35,18 +35,30 @@ test('panelVisible needs a visible window and a rendered panel', async () => {
   assert.equal(panelVisible(null, { hidden: true }), false)
 })
 
-function accountCardPills(family, locale, { plan, active, region } = {}) {
-  const tags = []
-  if (plan) tags.push(plan)
-  if (active) tags.push(locale === 'en' ? 'In use' : '使用中')
-  if (family === 'glm' && region) tags.push(region)
-  const boost = glmCardBoost(family, locale)
-  if (boost) tags.push(boost.label)
-  return tags
-}
+test('parseContextInput accepts plain tokens and k/m shorthand only', async () => {
+  const src = await readFile(new URL('../lib/ui/client.js', import.meta.url), 'utf8')
+  const body = src.match(/function parseContextInput\(text\) \{[\s\S]*?\n        \}/)?.[0]
+  assert.ok(body)
+  const parseContextInput = new Function(`${body}; return parseContextInput`)() as (text: string) => number | undefined
+  assert.equal(parseContextInput('400000'), 400_000)
+  assert.equal(parseContextInput(' 400000 '), 400_000)
+  assert.equal(parseContextInput('400k'), 400_000)
+  assert.equal(parseContextInput('400K'), 400_000)
+  assert.equal(parseContextInput('1m'), 1_000_000)
+  assert.equal(parseContextInput('1.5m'), 1_500_000)
+  assert.equal(parseContextInput('1.5M'), 1_500_000)
+  assert.equal(parseContextInput('4096'), 4_096)
+  assert.equal(parseContextInput(''), undefined)
+  assert.equal(parseContextInput('400 k'), undefined)
+  assert.equal(parseContextInput('k400'), undefined)
+  assert.equal(parseContextInput('-400k'), undefined)
+  assert.equal(parseContextInput('400k '), 400_000)
+  assert.equal(parseContextInput('1e6'), undefined)
+  assert.equal(parseContextInput('9'.repeat(20)), undefined)
+})
 
 test('Settings workbench enters as a sidebar panel below 插件', async () => {
-  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  const src = assembleUi()
   assert.match(src, /ctx\.slots\.inject\('main'/)
   assert.match(src, /name: 'main',\s*key: 'oauth-subs'/)
   assert.match(src, /ctx\.slots\.inject\('sidebar\.panellist'/)
@@ -55,13 +67,19 @@ test('Settings workbench enters as a sidebar panel below 插件', async () => {
   assert.equal(src.includes("ctx.slots.inject('settings.section'"), false)
   assert.equal(src.includes('plugins.detail.section'), false)
   // Retained main panels stay mounted — the poll gates on real visibility,
-  // re-arms only after the previous refresh settles, and wakes on
-  // visibilitychange.
-  assert.match(src, /if \(panelVisible\(root\.current, document\)\) \{\s*await Promise\.race\(\[refresh\(\), new Promise\(\(resolve\) => setTimeout\(resolve, 30_000\)\)\]\)/)
+  // re-arms only after the previous refresh settles, wakes on
+  // visibilitychange, and treats first-show plus every hidden→shown
+  // transition as entering the page (quota revalidated behind the answer).
+  assert.match(src, /const entered = shown && !wasShown/)
+  assert.match(src, /if \(shown\) \{\s*await Promise\.race\(\[refresh\(false, entered\), new Promise\(\(resolve\) => setTimeout\(resolve, 30_000\)\)\]\)/)
+  // Returning to the quota view counts as entering the page too.
+  assert.match(src, /if \(view === 'quota' && before !== 'quota'\) void refresh\(false, true\)/)
   // After the user's own action the status read must not join a stale poll build.
-  assert.match(src, /callRpc\(rpc, 'status', fresh \? \{ fresh: true \} : undefined\)/)
-  assert.match(src, /return result\s*\}\s*await refresh\(true\)/)
-  assert.match(src, /if \(live\) timer = setTimeout\(tick, 1500\)/)
+  assert.match(src, /callRpc\(rpc, 'status', payload\)/)
+  // models already returns a fresh snapshot — adopt it; everything else
+  // still forces a fresh status read.
+  assert.match(src, /return result\s*\}\s*if \(method === 'models' && result && typeof result === 'object'\) \{\s*\/\/ setModels already returns a fresh snapshot[^\n]*\n[^\n]*\n\s*setSnap\(result\)\s*writeStoredSnap\(result\)\s*\} else \{\s*await refresh\(true\)\s*\}/)
+  assert.match(src, /if \(live\) timer = setTimeout\(tick, loginPending\.current \? 1500 : 3000\)/)
   assert.match(src, /document\.addEventListener\('visibilitychange', onVisibility\)/)
   assert.match(src, /className: 'osubs', ref: root/)
   assert.equal(src.includes('setInterval'), false)
@@ -83,37 +101,8 @@ test('settings bundle ships self-update but no host-lifecycle surface', async ()
   assert.match(text, /Auto-update/)
 })
 
-test('GLM card boost wording is exactly 150%配额 / 150% quota', () => {
-  assert.equal(GLM_BOOST_LABEL.zh, '150%配额')
-  assert.equal(GLM_BOOST_LABEL.en, '150% quota')
-  assert.deepEqual(glmCardBoost('glm', 'zh'), {
-    label: '150%配额',
-  })
-  assert.deepEqual(glmCardBoost('glm', 'en'), {
-    label: '150% quota',
-  })
-})
-
-test('GLM logged-in card render includes the 150% boost pill; other families do not', () => {
-  const glmZh = accountCardPills('glm', 'zh', { plan: 'LITE', active: true, region: '中国' })
-  const glmEn = accountCardPills('glm', 'en', { plan: 'LITE', active: true, region: 'China' })
-  assert.deepEqual(glmZh, ['LITE', '使用中', '中国', '150%配额'])
-  assert.deepEqual(glmEn, ['LITE', 'In use', 'China', '150% quota'])
-  assert.equal(glmZh.includes('150%配额'), true)
-  assert.equal(glmEn.includes('150% quota'), true)
-
-  for (const family of ['codex', 'grok', 'antigravity']) {
-    const zh = accountCardPills(family, 'zh', { plan: 'Pro', active: true })
-    const en = accountCardPills(family, 'en', { plan: 'Pro', active: true })
-    assert.equal(zh.includes('150%配额'), false)
-    assert.equal(en.includes('150% quota'), false)
-    assert.equal(glmCardBoost(family, 'zh'), undefined)
-    assert.equal(glmCardBoost(family, 'en'), undefined)
-  }
-})
-
 test('Settings GLM card hides opaque ZCode user.id in identityOf', async () => {
-  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  const src = assembleUi()
   assert.match(src, /function isGlmOpaqueIdentity/)
   assert.match(src, /family === 'glm'\) return account && !isGlmOpaqueIdentity\(account\) \? account : ''/)
   // Unambiguous ids are hidden (digits / UUID / long hex); a letters+digits
@@ -123,19 +112,16 @@ test('Settings GLM card hides opaque ZCode user.id in identityOf', async () => {
   assert.equal(/\[A-Za-z0-9\]\{2,24\}/.test(src), false)
 })
 
-test('Settings client paints the GLM boost pill only on the GLM card', async () => {
-  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
-  assert.match(src, /glmBoost:\s*'150%配额'/)
-  assert.match(src, /glmBoost:\s*'150% quota'/)
-  assert.equal(src.includes('glmBoostHint'), false)
-  assert.equal(src.includes('ZCode 登录使用享 150%配额'), false)
-  assert.equal(src.includes('ZCode session: 150% quota'), false)
-  assert.match(src, /id === 'glm' && h\('span', \{ className: 'osubs-tag osubs-tag--plain' \}, t\.glmBoost\)/)
-  assert.equal((src.match(/t\.glmBoost\b/g) || []).length, 1)
+test('GLM card carries no 150% quota claim', async () => {
+  // The 1.5x is granted server-side and never slope-tested; the card must not
+  // advertise it (docs/error.md 2026-09-29 GLM 150%).
+  const src = assembleUi()
+  assert.equal(src.includes('glmBoost'), false)
+  assert.equal(src.includes('150%'), false)
 })
 
 test('Settings Ollama card hides ollama-hex title and uses remaining row labels', async () => {
-  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  const src = assembleUi()
   assert.match(src, /function isOllamaOpaqueIdentity/)
   assert.match(src, /family === 'ollama'\) return account && !isOllamaOpaqueIdentity\(account\) \? account : ''/)
   assert.match(src, /family === 'ollama'/)
@@ -149,7 +135,7 @@ test('Settings Ollama card hides ollama-hex title and uses remaining row labels'
 })
 
 test('Settings Cursor tab uses Import local Cursor copy and shows source, never tokens', async () => {
-  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  const src = assembleUi()
   assert.match(src, /cursorImport:\s*'导入本机 Cursor'/)
   assert.match(src, /cursorImport:\s*'Import local Cursor'/)
   assert.match(src, /cursorImportEmpty:\s*'本机没有 Cursor CLI 或 IDE 登录'/)
@@ -157,8 +143,11 @@ test('Settings Cursor tab uses Import local Cursor copy and shows source, never 
   assert.match(src, /\(id === 'cursor' \|\| id === 'ollama' \|\| id === 'kimi' \|\| id === 'copilot' \|\| id === 'devin' \|\| id === 'cline' \|\| id === 'command-code'\) && row\.methodLabel/)
   assert.match(src, /message === 'cursor-import-empty' \? t\.cursorImportEmpty/)
   assert.match(src, /quotaPanel\('cursor'\)/)
-  assert.match(src, /icons\/\{grok,zai,cursor,ollama,cline,github,opencode\}\.svg/)
-  assert.match(src, /icons\/\{codex,kiro,antigravity,kimi,copilot,devin\}-color\.svg/)
+  assert.match(src, /icons\/\{grok,zai,cursor,ollama,cline,github,opencode,openai\}\.svg/)
+  assert.match(src, /icons\/\{codex,kiro,antigravity,kimi,copilot,devin,deepseek\}-color\.svg/)
+  // Usage-only: DSH's own DeepSeek providers, brand color from deepseek-color.svg
+  assert.match(src, /deepseek: \{ raw: '<path d="M23\.748 4\.482[^']*fill="#4D6BFE"\/>' \}/)
+  assert.match(src, /const USAGE_ONLY_FAMILIES = \['deepseek'\]/)
   assert.match(src, /cursor: \{ d: 'M22\.106 5\.68L12\.5\.135a\.998\.998 0 00-\.998 0L1\.893 5\.68/)
   assert.match(src, /cursor: \{ d: '[^']+', clip: true \}/)
   assert.equal(src.includes('M11.925 24l10.425-6'), false)
@@ -166,11 +155,11 @@ test('Settings Cursor tab uses Import local Cursor copy and shows source, never 
   assert.equal(/cursor[\s\S]{0,200}accessToken/.test(src), false)
   const panelOrder = src.match(/quotaPanel\('([\w-]+)'/g) ?? []
   const ids = panelOrder.map((row) => /quotaPanel\('([\w-]+)'/.exec(row)?.[1])
-  assert.deepEqual(ids, ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline', 'opencode-go', 'command-code'])
+  assert.deepEqual(ids, ['codex', 'chatgpt', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline', 'opencode-go', 'command-code'])
 })
 
 test('Settings Ollama tab is Cloud key paste after Cursor, never localhost', async () => {
-  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  const src = assembleUi()
   assert.match(src, /ollama: 'Ollama'/)
   assert.match(src, /ollamaLoginApiKey:\s*'粘贴 API Key'/)
   assert.match(src, /ollamaLoginApiKey:\s*'Paste API key'/)
@@ -189,11 +178,11 @@ test('Settings Ollama tab is Cloud key paste after Cursor, never localhost', asy
 })
 
 test('Settings entry is horizontal page tabs over a family rail, page padded', async () => {
-  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  const src = assembleUi()
   assert.match(src, /className: 'osubs-ptabs', role: 'tablist'/)
   const pageTabs = src.match(/h\(PageTab, \{ id: '(\w+)'/g) ?? []
   const pageIds = pageTabs.map((row) => /id: '(\w+)'/.exec(row)?.[1])
-  assert.deepEqual(pageIds, ['quota', 'models', 'version', 'donate'])
+  assert.deepEqual(pageIds, ['quota', 'models', 'usage', 'version', 'donate'])
 
   // No family tabs in the top bar; families live in the rail below.
   assert.equal(/id: 'codex'/.test(pageTabs.join(' ')), false)
@@ -232,15 +221,15 @@ test('Settings entry is horizontal page tabs over a family rail, page padded', a
 
   // Rail lists every family; 'all' entry first, opencode-go bucket last.
   assert.match(src, /\{ id: 'all', name: t\.allFamilies/)
-  assert.match(src, /'codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama',/)
+  assert.match(src, /'codex', 'chatgpt', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama',/)
   assert.match(src, /'kimi', 'copilot', 'devin', 'cline', 'opencode-go',/)
   const panelOrder = src.match(/quotaPanel\('([\w-]+)'/g) ?? []
   const ids = panelOrder.map((row) => /quotaPanel\('([\w-]+)'/.exec(row)?.[1])
-  assert.deepEqual(ids, ['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline', 'opencode-go', 'command-code'])
+  assert.deepEqual(ids, ['codex', 'chatgpt', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline', 'opencode-go', 'command-code'])
 })
 
 test('OpenCode Go renders through the shared account cards and add-account dialog', async () => {
-  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  const src = assembleUi()
   assert.match(src, /opencodeGoKey:\s*'API Key'/)
   assert.match(src, /opencodeGoKey:\s*'API key'/)
   assert.match(src, /opencodeGoHostStale/)
@@ -256,7 +245,7 @@ test('OpenCode Go renders through the shared account cards and add-account dialo
 })
 
 test('OpenCode Go rows carry tokens, status, workspace name, and balance fallback', async () => {
-  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  const src = assembleUi()
   assert.match(src, /function formatTokenAmount/)
   assert.match(src, /formatTokenAmount\(row\.used\)/)
   assert.match(src, /row\.status !== 'ok' && h\('span', \{ className: 'osubs-tag osubs-tag--warn' \}, row\.status\)/)
@@ -271,7 +260,7 @@ test('OpenCode Go rows carry tokens, status, workspace name, and balance fallbac
 })
 
 test('Settings Kimi tab uses LobeHub Kimi path, device login, and never @lobehub/icons', async () => {
-  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  const src = assembleUi()
   assert.match(src, /kimi: 'Kimi'/)
   assert.match(src, /kimiImport:\s*'导入本机 Kimi Code'/)
   assert.match(src, /kimiImport:\s*'Import local Kimi Code'/)
@@ -286,7 +275,7 @@ test('Settings Kimi tab uses LobeHub Kimi path, device login, and never @lobehub
 })
 
 test('Settings Antigravity card shows a verify banner, not API-key-invalid', async () => {
-  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  const src = assembleUi()
   assert.match(src, /antigravityVerify:\s*'Google 需要验证此账号才能对话'/)
   assert.match(src, /antigravityVerifyGo:\s*'去验证'/)
   assert.match(src, /id === 'antigravity' && row\.needsValidation/)
@@ -295,7 +284,7 @@ test('Settings Antigravity card shows a verify banner, not API-key-invalid', asy
 })
 
 test('authorize URL and user code hide when the provider is no longer busy', async () => {
-  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  const src = assembleUi()
   assert.match(src, /pending\?\.userCode && busy &&/)
   assert.match(src, /pending\?\.authorizeUrl && busy &&/)
   assert.match(src, /snap\.accounts\[id\]\?\.busy/)
@@ -310,7 +299,7 @@ function loadFormatQuotaError(src) {
 }
 
 test('Settings quota error wraps and does not dump upstream JSON', async () => {
-  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  const src = assembleUi()
   const hintCss = src.match(/^\.osubs-hint \{[^}]*\}/m)?.[0] ?? ''
   const hintBadCss = src.match(/^\.osubs-hint\.osubs-bad \{[^}]*\}/m)?.[0] ?? ''
   const badCss = src.match(/^\.osubs-bad \{[^}]*\}/m)?.[0] ?? ''
@@ -354,7 +343,7 @@ test('Settings quota error wraps and does not dump upstream JSON', async () => {
 })
 
 test('QuotaRow is a remaining bar for Codex remainingPercent and Cursor usedPercent', async () => {
-  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  const src = assembleUi()
   assert.match(src, /function remainingPercentOf\(row\)/)
   assert.match(src, /function RemainingBar/)
   assert.match(src, /function QuotaMeter/)
@@ -364,7 +353,13 @@ test('QuotaRow is a remaining bar for Codex remainingPercent and Cursor usedPerc
   assert.match(src, /h\(QuotaMeter,/)
   assert.match(src, /function QuotaMeter\(\{ t, remainingPercent, amount, label, reset, period, onToggleAmount \}\)/)
   assert.match(src, /reset && h\('span', \{ className: 'osubs-qreset' \}, period \? `\$\{period\} · ` : '', reset\)/)
-  assert.match(src, /h\(RemainingBar, \{ remainingPercent, tone \}\)/)
+  assert.match(src, /h\(RemainingBar, \{ remainingPercent \}\)/)
+  // Bar fill is a green→red ramp on remaining: full = --osubs-ok, half =
+  // --osubs-warn, empty = --osubs-bad (hsl keeps the midpoint clean amber).
+  assert.match(src, /function quotaFillColor\(remaining\)/)
+  assert.match(src, /color-mix\(in hsl, var\(--osubs-ok\) \$\{Math\.round\(\(pct - 50\) \* 2\)\}%, var\(--osubs-warn\)\)/)
+  assert.match(src, /color-mix\(in hsl, var\(--osubs-warn\) \$\{Math\.round\(pct \* 2\)\}%, var\(--osubs-bad\)\)/)
+  assert.match(src, /if \(remaining <= 40\) return 'warn'\s*\/\/[^\n]*\n\s*return null/)
   assert.match(src, /fill\(t\.leftPercent, remainingPercent\)/)
   assert.match(src, /scaleX\(\$\{Math\.max\(0, Math\.min\(100, remainingPercent\)\) \/ 100\}\)/)
   assert.match(src, /leftPercent:\s*'剩余 \{n\}%'/)
@@ -391,7 +386,7 @@ test('QuotaRow is a remaining bar for Codex remainingPercent and Cursor usedPerc
 })
 
 test('QuotaMeter owns each window reset; nothing floats between bars', async () => {
-  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  const src = assembleUi()
   const meter = src.match(/function QuotaMeter\([\s\S]*?\n    \}/)?.[0] ?? ''
   const row = src.match(/function QuotaRow\([\s\S]*?\n    \}/)?.[0] ?? ''
   const qmeterCss = src.match(/\.osubs-qmeter \{[^}]*\}/)?.[0] ?? ''
@@ -408,7 +403,7 @@ test('QuotaMeter owns each window reset; nothing floats between bars', async () 
 })
 
 test('Add account opens a centered dialog, not a sheet', async () => {
-  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  const src = assembleUi()
   assert.match(src, /addAccountTitle:\s*'添加账号'/)
   assert.match(src, /addAccountTitle:\s*'Add account'/)
   assert.match(src, /continueAuth:\s*'继续授权'/)
@@ -417,8 +412,13 @@ test('Add account opens a centered dialog, not a sheet', async () => {
   assert.match(src, /className: 'osubs-dsw'/)
   assert.match(src, /setAddOpen\(true\)/)
   assert.match(src, /onClick: \(\) => setAddOpen\(true\)/)
-  assert.match(src, /label: busy \? t\.continueAuth : t\.login/)
-  assert.match(src, /loggedIn && !busy && h\(Button, \{\s*size: 'sm',\s*onClick: \(\) => setAddOpen\(true\),\s*label: t\.addAccount,/)
+  assert.match(src, /label: t\.continueAuth/)
+  // Plan D: the dashed tail row is the only add/login entry — appended to
+  // the account list, or the logged-out card's only row; no head row.
+  assert.match(src, /const addRow = !busy && h\('button', \{\s*type: 'button',\s*className: 'osubs-acct-add',\s*'data-noshot': '',\s*onClick: \(\) => setAddOpen\(true\),\s*\},\s*h\(IconPlus\),\s*t\.addAccount,/)
+  assert.match(src, /h\('section', \{ className: 'osubs-card osubs-card--legend', 'data-noshot': roster\.length === 0 \? '' : undefined \},\s*h\('h3', \{ className: 'osubs-card-title' \}, title\)/)
+  assert.match(src, /roster\.length === 0 && addRow/)
+  assert.match(src, /\.osubs-acct-add \{[^}]*border: 1px dashed/)
   assert.match(src, /id === 'glm' && !busy && h\('div', \{ className: 'osubs-glm-logins' \}/)
   assert.match(src, /id === 'kiro' && !busy && h\('div', \{ className: 'osubs-logins' \}/)
   assert.match(src, /id === 'ollama' && !busy && h\('div', \{ className: 'osubs-logins' \}/)
@@ -428,7 +428,7 @@ test('Add account opens a centered dialog, not a sheet', async () => {
 })
 
 test('Add-account dialog guides mid-auth, traps focus, and guards double starts', async () => {
-  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  const src = assembleUi()
   // Header names the family with its mark; focus moves in, is trapped, and returns.
   assert.match(src, /subtitle: title,/)
   assert.match(src, /const trap = \(event\) =>/)
@@ -453,7 +453,7 @@ test('Add-account dialog guides mid-auth, traps focus, and guards double starts'
 })
 
 test('Reset-credit confirm stays a centered alertdialog', async () => {
-  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  const src = assembleUi()
   assert.match(src, /function WarnDialog/)
   assert.match(src, /role: 'alertdialog'/)
   assert.match(src, /quotaResetAck/)
@@ -463,7 +463,7 @@ test('Reset-credit confirm stays a centered alertdialog', async () => {
 })
 
 test('Settings has no OpenCode Go Free tab or harness family', async () => {
-  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  const src = assembleUi()
   assert.equal(src.includes("id: 'opencode'"), false)
   assert.equal(src.includes('opencodeTitle'), false)
   assert.equal(src.includes('OpenCode Go Free'), false)
@@ -474,7 +474,7 @@ test('Settings has no OpenCode Go Free tab or harness family', async () => {
 })
 
 test('Settings Models is a searchable switch table; locked groups still offer sign-in', async () => {
-  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  const src = assembleUi()
   const panel = src.match(/function ModelsPanel\([\s\S]*?\n    \}/)?.[0] ?? ''
   const row = src.match(/function ModelRow\([\s\S]*?\n    \}/)?.[0] ?? ''
   const switchCss = src.match(/\.osubs-switch \{[^}]*\}/)?.[0] ?? ''
@@ -484,13 +484,27 @@ test('Settings Models is a searchable switch table; locked groups still offer si
   assert.match(panel, /label: t\.login/)
   assert.match(panel, /className: 'osubs-mtable'/)
   assert.match(panel, /placeholder: t\.modelsSearch/)
+  // 默认档位: a native select editing the families in scope (全部 = every family,
+  // mixed values read 混合); the pick shows at once and the RPC omits families for 全部.
+  assert.match(panel, /scope === 'all' \|\| railIdOf\(group\.family\) === scope/)
+  assert.match(panel, /onChange: \(event\) => onEffort\?\.\(event\.target\.value \|\| null, effortFamilies, scope === 'all'\)/)
+  assert.match(panel, /effort === 'mixed' && h\('option', \{ value: 'mixed', disabled: true \}, t\.modelsEffortMixed\)/)
+  assert.match(src, /run\('models', \{ effort: level, \.\.\.\(all \? \{\} : \{ families \}\) \}\)/)
+  assert.match(src, /efforts: \{ \.\.\.snap\?\.efforts, \.\.\.effortOverrides \}/)
   assert.match(panel, /onFamily\(group\.family, true\)/)
   assert.match(panel, /onFamily\(group\.family, false\)/)
   assert.equal(panel.includes('style: { opacity: locked'), false)
-  assert.match(row, /const enabled = Boolean\(model\.enabled\) && !locked/)
+  assert.match(row, /const enabled = Boolean\(overrides\?\.\[model\.key\] \?\? model\.enabled\) && !locked/)
   assert.match(row, /h\(Switch, \{/)
   assert.match(row, /onToggle\(model\.key, on\)/)
   assert.match(switchCss, /cursor: pointer/)
+  // Toggles flip on click and converge on the next snapshot; a failed models
+  // RPC reverts the override (the host settings reconcile takes seconds).
+  assert.match(src, /onToggle: \(key, on\) => toggleModels\(\{ key, on \}, \[key\], on\)/)
+  assert.match(src, /onFamily: \(fam, on\) => toggleModels\(\{ family: fam, on \}, catalogKeysOf\(fam\), on\)/)
+  assert.match(src, /onAll: \(on\) => toggleModels\(\{ all: on \}, catalogKeysOf\(\), on\)/)
+  assert.match(src, /setModelOverrides/)
+  assert.match(src, /overrides: modelOverrides/)
   assert.match(src, /onOpenFamily: \(fam\) => \{ setFamily\(railIdOf\(fam\)\); setView\('quota'\) \}/)
   assert.match(src, /hidden: !show/)
   // Models pane never scrolls — the fill chain clamps the card so only
@@ -507,7 +521,7 @@ test('Settings Models is a searchable switch table; locked groups still offer si
 })
 
 test('Settings Copilot tab is device-code after Kimi, never @lobehub/icons', async () => {
-  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  const src = assembleUi()
   assert.match(src, /copilot: 'Copilot'/)
   assert.match(src, /copilotLoginApiKey:\s*'粘贴 GitHub Token'/)
   assert.match(src, /copilotLoginApiKey:\s*'Paste GitHub token'/)
@@ -520,51 +534,138 @@ test('Settings Copilot tab is device-code after Kimi, never @lobehub/icons', asy
   assert.equal(src.includes("from '@lobehub/icons'"), false)
 })
 
+test('usage totals count the whole prompt — cache reads fold into 输入', async () => {
+  const src = await readFile(new URL('../lib/ui/client.js', import.meta.url), 'utf8')
+  const empty = src.match(/const emptyUsage = \(\) => \(\{[^\n]*\}\)/)?.[0]
+  const body = src.match(/function addUsage\(sum, row\) \{[\s\S]*?\n        \}/)?.[0]
+  const tokens = src.match(/const usageTokens = \(sum\) => sum\.input \+ sum\.output/)?.[0]
+  assert.ok(empty && body && tokens, 'usage helpers not found in the assembled client')
+  const { emptyUsage, addUsage, usageTokens } = new Function(`${empty}\n${body}\n${tokens}\nreturn { emptyUsage, addUsage, usageTokens }`)() as any
+  const sum = emptyUsage()
+  // The 2026-09-30 swe-2 session: uncached 32876 · output 48439 · cacheRead
+  // 9503232. Token must reconcile with the host's 9.58M session total, not
+  // the 81K an uncached-only count reported.
+  addUsage(sum, [0, 'oauth-devin', 'swe-2', 104, 32876, 48439, 9503232, 0, 0, 0, 0, 0, 0, 0])
+  assert.equal(usageTokens(sum), 32876 + 48439 + 9503232)
+  assert.equal(sum.cacheRead, 9503232)
+})
+
 test('About Installed prefers the fresher of checkUpdate and snapshot', async () => {
-  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  const src = assembleUi()
   assert.match(src, /function fresherAboutVersion/)
-  assert.match(src, /const version = \(linked && devVersion\) \|\| fresherAboutVersion\(update\?\.version, local\?\.version\) \|\| '—'/)
+  // One helper for About and the usage share footer, so they never disagree.
+  assert.match(src, /return \(linked && devVersion\) \|\| fresherAboutVersion\(update\?\.version, local\?\.version\) \|\| '—'/)
+  assert.match(src, /const version = aboutVersionOf\(local, update\)/)
+  assert.match(src, /version: aboutVersionOf\(snap\?\.update, update\)/)
   assert.equal(src.includes('const version = local?.version || update?.version'), false)
   assert.match(src, /setSnap\(\(current\) => current \? \{ \.\.\.current, update: \{ \.\.\.current\.update, \.\.\.result \} \}/)
 })
 
 test('About shows the derived -dev version for a linked working tree', async () => {
-  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  const src = assembleUi()
   assert.match(src, /const devVersion = update\?\.devVersion \|\| local\?\.devVersion/)
   assert.match(src, /const linkedPath = update\?\.linkedPath \|\| local\?\.linkedPath/)
-  assert.match(src, /linked && linkedPath && h\('div', \{ className: 'osubs-kv-row' \}/)
-  // The dev marker lives in the version string; no hint copy or chip in the card.
+  // A linked tree fills the 当前版本 slot with the -dev build and keeps the
+  // link identity + hot-reload note on the status banner.
+  assert.match(src, /title: fill\(t\.verLinkedRun, version\), sub: t\.autoUpdateLinked/)
+  // Only 当前版本 / 最新版本 exist as version slots: no 磁盘 / 本地路径 /
+  // 加载自 / 发布于 rows, and no status pill in the card head.
+  assert.equal(src.includes('t.onDisk'), false)
+  assert.equal(src.includes('t.linkedPath'), false)
+  assert.equal(src.includes('t.loadedFrom'), false)
+  assert.equal(src.includes('null, t.publishedAt'), false)
+  assert.equal(src.includes('osubs-pill'), false)
   assert.equal(src.includes('updateLinkedHint'), false)
   assert.equal(src.includes('currentChips: linked'), false)
 })
 
 test('About keeps the auto-update switch but states hot reload for a linked tree', async () => {
-  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
-  // The switch stays for every install; only its note forks. A link hot-reloads
-  // from the working tree, so it must not promise "install, then restart the
-  // host" — and its release-tag outcome would always read as 「已是最新」.
+  const src = assembleUi()
+  // The switch stays for every install. A link hot-reloads from the working
+  // tree, so the hot-reload note moves to the banner subcopy and the row only
+  // reports the last run — a link's release-tag outcome would always read as
+  // 「已是最新」.
   assert.match(src, /h\(AutoUpdateRow, \{/)
-  assert.match(src, /const bits = \[linked \? t\.autoUpdateLinked : t\.autoUpdateHourly\]/)
+  assert.match(src, /const bits = linked \? \[\] : \[t\.autoUpdateHourly\]/)
   assert.match(src, /const outcome = linked \? '' : autoRunText\(t, autoState\)/)
   assert.match(src, /autoUpdateLinked: '本地链接：npm run build 后热重载生效，无需重启宿主（需 profile 配 hmr root）'/)
   assert.match(src, /autoUpdateLinked: 'Local link: npm run build hot-reloads the plugin/)
   assert.equal(src.includes("autoUpdateLinked: '每小时检查一次"), false)
 })
 
+test('About status banner: tint encodes actionability, CTA only on an installable update', async () => {
+  const src = assembleUi()
+  assert.match(src, /function VersionStat\(/)
+  // Warn only when a release install can apply — a linked tree keeps its
+  // identity and never gets the update CTA.
+  assert.match(src, /!linked && update\?\.status === 'update' && latestTag/)
+  assert.match(src, /tone: 'warn', icon: h\(IconArrowUp\)/)
+  assert.match(src, /tone: 'bad', icon: h\(IconWarning/)
+  // 「已是最新」 stays neutral — the ok tint is only the icon tile.
+  assert.match(src, /iconTone: 'ok'/)
+  assert.equal(src.includes("tone: 'ok'"), false)
+})
+
 test('About panel carries no DSH-cli version rows', async () => {
-  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  const src = assembleUi()
   assert.equal(src.includes('dshLatestTag'), false)
   assert.equal(src.includes('dshStableVersion'), false)
   assert.equal(src.includes('dshTag'), false)
 })
 
-test('QuotaResetBox enables only the earliest expiring credit button and disables the rest', async () => {
-  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
-  assert.match(src, /let closestIndex = credits\.length > 0 \? 0 : -1/)
-  assert.match(src, /let minExpiresAt = Infinity/)
-  assert.match(src, /if \(exp < minExpiresAt\) \{\s*minExpiresAt = exp\s*closestIndex = i\s*\}/)
-  assert.match(src, /const isClosest = index === closestIndex/)
-  assert.match(src, /const disabled = busy \|\| !isClosest/)
-  assert.match(src, /disabled,/)
-  assert.match(src, /onClick: isClosest \? \(\) => ask\(credit\) : undefined/)
+test('ResetBank serves Codex, Grok and GLM: one row per window, spends the earliest-expiring card', async () => {
+  const src = assembleUi()
+  // One shared bank; no per-family boxes.
+  assert.match(src, /h\(ResetBank, \{ t, quota, family, onReset \}\)/)
+  assert.equal(src.includes('GlmResetBox'), false)
+  assert.equal(src.includes('QuotaResetBox'), false)
+  // GLM splits by card type, Codex is one weekly row.
+  assert.match(src, /\[\{ key: 'FIVE_HOUR', window: 'resetWinFive' \}, \{ key: 'WEEK', window: 'resetWinWeek' \}\]/)
+  assert.match(src, /: \[\{ key: 'all', window: 'resetWinWeek' \}\]/)
+  // Grok cards go through the same bank and carry the picked card id.
+  assert.match(src, /onReset: \(id === 'codex' \|\| id === 'glm' \|\| id === 'grok'\) && onResetQuota/)
+  assert.match(src, /provider === 'glm' \|\| provider === 'grok' \? \{ credit \}/)
+  assert.match(src, /\.sort\(\(a, b\) => expiryOf\(a\) - expiryOf\(b\)\)/)
+  assert.match(src, /const next = group\.cards\[0\]/)
+  assert.match(src, /disabled: busyKey !== null \|\| count === 0/)
+  // A drop in count plays the spend animation; reduced motion keeps a fade.
+  assert.match(src, /group\.cards\.length < was/)
+  assert.match(src, /@keyframes osubs-card-spend/)
+  assert.match(src, /\.osubs-rcard--ghost \{ animation: osubs-fade-out/)
+  // Hover / focus on the count card lists one expiry line per banked card.
+  assert.match(src, /h\(ResetStack, \{ t, count, cards: group\.cards,/)
+  assert.match(src, /hasTip && tipOpen && h\('span', \{ id: tipId, role: 'tooltip', className: 'osubs-rtip' \},\s*cards\.map\(/)
+  assert.match(src, /onMouseEnter: open,\s*onMouseLeave: shut,\s*onFocus: open,\s*onBlur: shut,/)
+})
+
+test('resetGroups drops a lapsed card at render time, before the next quota read', async () => {
+  const src = await readFile(new URL('../lib/ui/client.js', import.meta.url), 'utf8')
+  const pick = (name: string) => src.match(new RegExp(`function ${name}\\(.*\\) \\{[\\s\\S]*?\\n        \\}`))?.[0]
+  const bodies = ['expiryOf', 'resetCreditRows', 'resetGroups'].map(pick)
+  assert.ok(bodies.every(Boolean))
+  const resetGroups = new Function(`${bodies.join('\n')}; return resetGroups`)() as
+    (quota: any, family: string, now?: number) => Array<{ key: string, cards: Array<{ id: string }> }>
+  const now = 1_000_000
+  const quota = { resetCredits: { credits: [
+    { id: 'lapsed', expiresAt: now - 1 },
+    { id: 'edge', expiresAt: now },
+    { id: 'later', expiresAt: now + 60_000 },
+    { id: 'open' },
+  ] } }
+  // Expiry at or before now is gone; a card with no expiry stays last.
+  assert.deepEqual(resetGroups(quota, 'codex', now)[0].cards.map((card) => card.id), ['later', 'open'])
+  // A minute later the next card lapses too.
+  assert.deepEqual(resetGroups(quota, 'codex', now + 60_000)[0].cards.map((card) => card.id), ['open'])
+})
+
+test('分享 on 额度: identities masked in the image, add-account row and account actions left out', async () => {
+  const src = assembleUi()
+  assert.match(src, /h\('span', \{ className: 'osubs-mono', 'data-shot-mask': '' \}, identityOf\(row, id\)\)/)
+  assert.match(src, /className: 'osubs-acct-add',\n\s*'data-noshot': '',/)
+  assert.match(src, /className: 'osubs-actions', 'data-noshot': ''/)
+  // A family with no account drops out of the image, wrapper included.
+  assert.match(src, /'data-noshot': roster\.length === 0 \? '' : undefined/)
+  assert.match(src, /\.osubs-shooting \.osubs-pane-panel:has\(> \[data-noshot\]\)/)
+  // Masking lives in the clone only; the page keeps the full identity.
+  assert.match(src, /if \(source\.hasAttribute\('data-shot-mask'\)\) \{\n\s*copy\.textContent = maskIdentity\(source\.textContent\)/)
 })

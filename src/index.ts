@@ -10,7 +10,7 @@
  *   3. syncs logged-in catalogs into llm-pi-ai
  *
  * The client half (左侧栏面板：插件按钮下方的订阅入口 →
- * 额度/模型/版本工作台) is discovered from package.json `dsh.client` —
+ * 额度/模型/设置工作台) is discovered from package.json `dsh.client` —
  * this module only owns the node process.
  */
 
@@ -23,21 +23,19 @@ import { describeError } from './utils/http.js'
 import { AuthController } from './oauth/controller.js'
 import { authFilePath, defaultDataDir, readPrivateText, writePrivateText } from './oauth/store.js'
 import { createProxy } from './oauth/proxy.js'
-import { catalogProviders, OAUTH_CREDENTIAL_REF, ModelSwitch } from './oauth/models.js'
-import { cursorCatalogModels } from './oauth/cursor/catalog.js'
+import { OAUTH_CREDENTIAL_REF, familyOfProvider } from './oauth/models.js'
+import { ModelSwitch } from './oauth/model-switch.js'
 import { configureCursorUpstreamProxy } from './oauth/cursor/index.js'
 import { clearCursorH2Pool } from './oauth/cursor/upstream-proxy.js'
-import { ollamaCatalogModels } from './apikey/ollama/catalog.js'
-import { kiroCatalogModels } from './oauth/kiro/catalog.js'
-import { kimiCatalogModels } from './oauth/kimi/catalog.js'
-import { copilotCatalogModels } from './oauth/copilot/catalog.js'
-import { devinCatalogModels } from './oauth/devin/catalog.js'
-import { clineCatalogModels } from './oauth/cline/catalog.js'
-import { commandCodeCatalogModels } from './apikey/command-code/catalog.js'
-import { EffortMemory, LAST_EFFORT_FILE, startEffortRestore } from './oauth/reasoning-effort.js'
-import { profileFromBaseUrl } from './utils/update.js'
+import { setUpstreamLog } from './oauth/upstream.js'
+import { setPrefixEstimateLog } from './oauth/kiro/cache.js'
+import { dshHome, profileFromBaseUrl } from './utils/update.js'
 import { configureOutbound, outboundProxyPath } from './utils/outbound.js'
 import { donateQr } from './utils/donate.js'
+import { readUsage } from './utils/usage.js'
+
+const USAGE_MEMO_MS = 5 * 60_000
+const HOST_DEEPSEEK = new Set(['deepseek-official', 'deepseek-account'])
 
 export const name = 'dsh-plugin-oauth-subs'
 export const inject = ['settings', 'credentials']
@@ -110,7 +108,7 @@ function rpcFrom(scope) {
 
 export function registerRpc(ctx, controller) {
   const methods = {
-    status: (payload) => controller.snapshot(payload?.fresh === true),
+    status: (payload) => controller.snapshot(payload?.fresh === true, { revalidateQuota: payload?.revalidateQuota === true }),
     login: (payload) => controller.login(payload?.provider, payload),
     key: (payload) => controller.useKey(payload?.provider, payload?.key, payload),
     manual: (payload) => controller.manual(payload?.provider, payload?.input),
@@ -123,12 +121,13 @@ export function registerRpc(ctx, controller) {
     quota: (payload) => controller.refreshQuota(payload?.provider, payload?.id),
     goSave: (payload) => controller.saveOpencodeGo(payload ?? {}),
     goClear: (payload) => controller.clearOpencodeGo(payload?.field, payload?.id),
-    reset: (payload) => controller.consumeReset(payload?.provider, payload?.id),
+    reset: (payload) => controller.consumeReset(payload?.provider, payload?.id, payload?.credit),
     update: (payload) => controller.checkUpdate(payload),
     autoUpdate: (payload) => controller.setAutoUpdate(payload),
     proxyGet: () => controller.outboundProxy(),
     proxySet: (payload) => controller.setOutboundProxy(payload),
     donate: () => donateQr(),
+    usage: (payload) => controller.usage(payload),
   }
 
   const dispatch = async (endpoint, payload) => {
@@ -269,9 +268,8 @@ export function apply(ctx, config: any = {}) {
   const models = new ModelSwitch({
     path: join(dataDir, 'models.json'),
   })
-  const effort = new EffortMemory({
-    path: join(dataDir, LAST_EFFORT_FILE),
-  })
+  setUpstreamLog(join(dataDir, 'upstream.log'))
+  setPrefixEstimateLog(join(dataDir, 'prefix-estimate.jsonl'))
 
   const outbound = configureOutbound({
     path: outboundProxyPath(dataDir),
@@ -309,34 +307,32 @@ export function apply(ctx, config: any = {}) {
     if (outbound.ready) await outbound.ready
     return outbound.setUrl(payload?.url)
   }
+  // This plugin's routes, keyed by family, plus the host's own DeepSeek
+  // providers (`deepseek-official` / `deepseek-account`, built into DSH's
+  // llm-deepseek) as `deepseek`; other providers are not ours to report.
+  // Memoized as long as the page keeps its copy: re-entering the tab never
+  // starts a scan; `fresh` (the page's 刷新) always does.
+  let usageMemo: { at: number, rows: any[] } | undefined
+  controller.usage = async (payload: any = {}) => {
+    if (payload?.fresh !== true && usageMemo && Date.now() - usageMemo.at < USAGE_MEMO_MS) return usageMemo
+    const rows = await readUsage({ root: join(dshHome(), 'sessions'), cachePath: join(dataDir, 'usage-cache.json') })
+    usageMemo = {
+      at: Date.now(),
+      rows: rows.flatMap(([hour, provider, ...rest]) => {
+        const family = HOST_DEEPSEEK.has(provider) ? 'deepseek'
+          : provider.startsWith('opencode-go') ? 'opencode-go'
+            : provider.startsWith(`${prefix}-`) ? familyOfProvider(provider) : provider
+        return family === provider ? [] : [[hour, family, ...rest]]
+      }),
+    }
+    return usageMemo
+  }
   const snapshot = controller.snapshot.bind(controller)
   controller.snapshot = async (fresh = false) => {
     const view = await snapshot(fresh)
     if (outbound.ready) await outbound.ready
     return { ...view, proxy: outbound.snapshot() }
   }
-
-  ctx.effect(() => startEffortRestore({
-    ctx,
-    settings: ctx.settings,
-    memory: effort,
-    prefix,
-    effortsFor: (provider, modelId) => {
-      const catalog = catalogProviders({
-        prefix,
-        origin: `http://127.0.0.1:${port}`,
-        cursorModels: cursorCatalogModels(),
-        ollamaModels: ollamaCatalogModels(),
-        kiroModels: kiroCatalogModels(),
-        kimiModels: kimiCatalogModels(),
-        copilotModels: copilotCatalogModels(),
-        devinModels: devinCatalogModels(),
-        clineModels: clineCatalogModels(),
-        commandCodeModels: commandCodeCatalogModels(),
-      })
-      return catalog[provider]?.models.find((model) => model.id === modelId)?.reasoningEfforts
-    },
-  }), 'dsh-plugin-oauth-subs: remember reasoning effort')
 
   let proxy
   ctx.effect(() => {
@@ -346,13 +342,14 @@ export function apply(ctx, config: any = {}) {
         const apiKey = await ensureApiKey(dataDir)
         await rememberCredential(ctx, apiKey)
         await models.ready
-        await effort.ready
         await outbound.ready
         if (closed) return
         proxy = createProxy({
           port,
           apiKey,
           tokens: controller.tokens,
+          // Chat traffic shortens that account's quota freshness (no fetch here).
+          onQuotaUsed: (family) => { void controller.quota?.touch?.(family).catch(() => undefined) },
         })
         await proxy.listen()
         ctx.logger?.info?.(`dsh-plugin-oauth-subs: proxy on ${proxy.origin()}`)
@@ -406,6 +403,7 @@ export {
   GROK_API_URL,
   GROK_USER_AGENT,
   GROK_LARGE_CONTEXT,
+  GROK_47_CONTEXT,
   GROK_REASONING_45,
   GROK_REASONING_46,
   GROK_REASONING_47,
@@ -477,18 +475,27 @@ export {
   clineUpstreamHeaders,
   refreshCline,
 } from './oauth/cline/index.js'
-export { OAUTH_CREDENTIAL_REF, ModelSwitch } from './oauth/models.js'
+export { OAUTH_CREDENTIAL_REF } from './oauth/models.js'
+export { ModelSwitch } from './oauth/model-switch.js'
 export { defaultDataDir } from './oauth/store.js'
 export { AuthController } from './oauth/controller.js'
 export { applyFastMode, modelSupportsFastMode } from './utils/fast-mode.js'
 export {
   CONTEXT_VARIANT_SUFFIX,
-  codexLargeContext,
+  codexMaxContextWindow,
   applyContextMode,
   isCodex900kBase,
   peelContextSuffix,
 } from './utils/context-mode.js'
-export { parseCodexUsage, parseGrokBilling, parseGlmQuota, parseKiroUsage, parseCursorPeriodUsage, parseKimiUsage, parseCopilotUsage, parseDevinUserStatus, parseResetCredits, QuotaStore } from './oauth/quota.js'
+export { parseCodexUsage, parseResetCredits } from './oauth/codex/quota.js'
+export { parseGrokBilling } from './oauth/grok/quota.js'
+export { parseGlmQuota, parseGlmResetCards } from './oauth/glm/quota.js'
+export { parseKiroUsage } from './oauth/kiro/quota.js'
+export { parseCursorPeriodUsage } from './oauth/cursor/quota.js'
+export { parseKimiUsage } from './oauth/kimi/quota.js'
+export { parseCopilotUsage } from './oauth/copilot/quota.js'
+export { parseDevinUserStatus } from './oauth/devin/quota.js'
+export { QuotaStore } from './oauth/quota.js'
 export { fetchClineQuota, parseClineBalance, parseClinePlan, parseClineUsage } from './oauth/cline/quota.js'
 export { formatPlanLabel, CODEX_PLAN_NAMES } from './oauth/plan.js'
 export {

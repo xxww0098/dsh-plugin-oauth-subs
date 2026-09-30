@@ -60,6 +60,16 @@ export declare function openaiToDevin(payload: any, { cascadeId, executionId }?:
 export declare function devinBasicAuth(session: any): string | undefined;
 /** Wire Metadata message for every Devin RPC (chat, catalog, status, jwt). */
 export declare function devinMetadataBytes(session: any, { userJwt, modelDisplays }?: any): Buffer<ArrayBuffer>;
+/**
+ * ModelUsageStats' buckets are disjoint (Anthropic-style): input_tokens is
+ * the uncached remainder, cache read/write their own fields, their sum the
+ * whole prompt (oh-my-pi usage/devin.ts totalTokens). OpenAI prompt_tokens
+ * must be that whole prompt — the host recovers the uncached input as
+ * prompt_tokens − cached_tokens − cache_write_tokens (pi-ai
+ * parseChunkUsage), so a bare inputTokens clamps every cache-hit call's
+ * input to 0. Cache write rides prompt_tokens_details: that is the only
+ * cache-write field the host reads.
+ */
 export declare function mapDevinUsage(usage: any): any;
 export declare function devinStopReasonToFinish(reason: any, hasToolCalls: any): "tool_calls" | "stop" | "length";
 /**

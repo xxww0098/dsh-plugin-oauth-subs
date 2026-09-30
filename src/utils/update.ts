@@ -700,7 +700,7 @@ export function installRelease(options: any = {}) {
   return pending
 }
 
-function dshHome(env = process.env) {
+export function dshHome(env = process.env) {
   const home = env.DSH_HOME
   if (typeof home === 'string' && home.trim()) return home.trim()
   return join(homedir(), '.dsh')

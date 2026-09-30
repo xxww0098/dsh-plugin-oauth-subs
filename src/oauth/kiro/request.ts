@@ -559,17 +559,22 @@ export function parseKiroEventStream(buffer) {
   return events
 }
 
+/** First field with visible text, as sent: chunks are deltas, so edge whitespace is text. */
+function reasoningDelta(...values) {
+  return values.find((value) => typeof value === 'string' && value.trim())
+}
+
 export function thinkingTextFromPayload(type, data) {
   if (!isPlainObject(data)) return undefined
   const typed = typeof type === 'string' && /thinking|reasoning/i.test(type)
-    ? (trimmed(data.text) || trimmed(data.thinking) || trimmed(data.content) || trimmed(data.reasoningContent))
+    ? reasoningDelta(data.text, data.thinking, data.content, data.reasoningContent)
     : undefined
   if (typed) return typed
   // Native thinking events carry `text` / `signature`, not assistant `content`.
   if (typeof data.text === 'string' && data.content === undefined && !data.toolUseId && !data.name) {
     return data.text
   }
-  return trimmed(data.thinking) || trimmed(data.reasoningContent)
+  return reasoningDelta(data.thinking, data.reasoningContent)
 }
 
 /**

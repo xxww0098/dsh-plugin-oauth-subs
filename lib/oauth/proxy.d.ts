@@ -1,12 +1,13 @@
 /**
- * Loopback LLM proxy: authenticates DSH calls, dispatches family transports,
- * and gates passthrough streams before output (timing, retries and failure
- * answers live in upstream.ts). Settings operations
- * stay on the host-owned RPC channel; vendor translation lives in each family.
+ * Loopback LLM proxy: authenticates DSH calls and dispatches each route to its
+ * family transport or to the passthrough hop (passthrough.ts; body read and
+ * cache rewrite in proxy-body.ts; timing, retries and failure answers in
+ * upstream.ts). Settings operations stay on the host-owned RPC channel;
+ * vendor translation lives in each family.
  */
-export declare const MAX_REQUEST_BODY_BYTES: number;
 export { describeError } from '../utils/http.js';
-export declare function createProxy({ port, apiKey, tokens, fetchFn, maxRequestBodyBytes, upstreamTimeouts, onAntigravityValidation, cursorRpc, devinChat }: any): {
+export { MAX_REQUEST_BODY_BYTES } from './proxy-body.js';
+export declare function createProxy({ port, apiKey, tokens, fetchFn, maxRequestBodyBytes, upstreamTimeouts, onAntigravityValidation, cursorRpc, devinChat, onQuotaUsed }: any): {
     origin: () => string;
     listen(): Promise<any>;
     /**
@@ -16,3 +17,5 @@ export declare function createProxy({ port, apiKey, tokens, fetchFn, maxRequestB
      */
     close(): Promise<void>;
 };
+/** Family whose quota a POST chat request spends; undefined for anything else. */
+export declare function quotaFamilyOf(request: any): string | undefined;

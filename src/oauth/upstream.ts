@@ -8,13 +8,32 @@
 
 import type { ServerResponse } from 'node:http'
 import { RequestError, describeError, sendJson } from '../utils/http.js'
+import { appendPrivateLine } from '../utils/private-text.js'
 
 /**
  * Per attempt the first byte (response head included) must arrive within
  * `firstByteMs`; everything before output — `tokens.session()` included —
  * shares `budgetMs`; once output flows, `idleMs` of silence destroys it.
+ * `firstOutputMs` (0 = off; a family opts in) bounds how long the first try
+ * may stream without client output — preamble frames do not count.
  */
-export const UPSTREAM_TIMEOUTS = { firstByteMs: 120_000, budgetMs: 270_000, idleMs: 270_000 }
+export const UPSTREAM_TIMEOUTS = { firstByteMs: 120_000, budgetMs: 270_000, idleMs: 270_000, firstOutputMs: 0 }
+
+let logPath: string | undefined
+
+/**
+ * Retries and mid-response failures are also appended here: the host only
+ * records "terminated", and stderr is not kept. ponytail: one global sink,
+ * set once by the plugin; one rotation to `.1` past 1 MB.
+ */
+export function setUpstreamLog(path: string | undefined) {
+  logPath = path
+}
+
+function logUpstream(line: string) {
+  console.error(`[oauth-subs] ${line}`)
+  if (logPath) void appendPrivateLine(logPath, `${new Date().toISOString()} ${line}`).catch(() => {})
+}
 /** Upstream attempts before the client is told the request failed. */
 export const UPSTREAM_ATTEMPTS = 3
 export const RETRY_BACKOFF_MS = [1000, 4000]
@@ -101,7 +120,7 @@ export function upstreamRequest({ family, signal, startedAt = Date.now(), stream
   response?: Pick<ServerResponse, 'headersSent'>
   timeouts?: Partial<typeof UPSTREAM_TIMEOUTS>
 }) {
-  const { firstByteMs, budgetMs, idleMs } = { ...UPSTREAM_TIMEOUTS, ...timeouts }
+  const { firstByteMs, budgetMs, idleMs, firstOutputMs } = { ...UPSTREAM_TIMEOUTS, ...timeouts }
   const committed = () => response?.headersSent === true
 
   const open = (index: number) => {
@@ -117,6 +136,12 @@ export function upstreamRequest({ family, signal, startedAt = Date.now(), stream
       if (!committed()) fail(timeout(`no output within ${seconds(budgetMs)}`))
     }, startedAt + budgetMs - Date.now())
     let firstByte = stream ? setTimeout(() => fail(timeout(`no first byte within ${seconds(firstByteMs)}`)), firstByteMs) : undefined
+    // First try only: a sick attempt is dropped before it commits, while the
+    // retry keeps the rest of the budget for a prompt that is merely slow.
+    const firstOutput = stream && index === 0 && firstOutputMs > 0
+      ? setTimeout(() => { if (!committed()) fail(timeout(`no output within ${seconds(firstOutputMs)}`)) }, firstOutputMs)
+      : undefined
+    let lastData = Date.now()
     let idle
     let onAbort
     const aborted = new Promise<never>((_, reject) => {
@@ -128,6 +153,7 @@ export function upstreamRequest({ family, signal, startedAt = Date.now(), stream
       index,
       signal: attemptSignal,
       touch() {
+        lastData = Date.now()
         clearTimeout(firstByte)
         firstByte = undefined
         clearTimeout(idle)
@@ -139,9 +165,11 @@ export function upstreamRequest({ family, signal, startedAt = Date.now(), stream
       attempt,
       aborted,
       reason: () => reason,
+      silentMs: () => Date.now() - lastData,
       close() {
         clearTimeout(budget)
         clearTimeout(firstByte)
+        clearTimeout(firstOutput)
         clearTimeout(idle)
         attemptSignal.removeEventListener('abort', onAbort)
       },
@@ -172,7 +200,7 @@ export function upstreamRequest({ family, signal, startedAt = Date.now(), stream
         }
         if (signal?.aborted) throw failure
         if (committed()) {
-          console.error(`[oauth-subs] ${family} upstream failed mid-response: ${describeError(failure)}`)
+          logUpstream(`${family} upstream failed mid-response: ${describeError(failure)} (${seconds(Date.now() - startedAt)} in, ${seconds(current.silentMs())} since its last data)`)
           throw failure
         }
         if (failure instanceof UpstreamFailure && failure.code === 'http' && failure.status === 401 && refresh && !refreshed) {
@@ -184,7 +212,7 @@ export function upstreamRequest({ family, signal, startedAt = Date.now(), stream
         failures += 1
         const wait = retryDelayMs(failures - 1)
         if (failures < UPSTREAM_ATTEMPTS && Date.now() - startedAt + wait + firstByteMs <= budgetMs) {
-          console.error(`[oauth-subs] ${family} retrying upstream (attempt ${failures + 1}/${UPSTREAM_ATTEMPTS}) in ${wait}ms: ${last.message}`)
+          logUpstream(`${family} retrying upstream (attempt ${failures + 1}/${UPSTREAM_ATTEMPTS}) in ${wait}ms: ${last.message}`)
           await sleep(wait, signal)
           continue
         }

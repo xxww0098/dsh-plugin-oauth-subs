@@ -5,7 +5,8 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { AuthController } from '../lib/oauth/controller.js'
 import { glmSession } from '../lib/oauth/glm/index.js'
-import { ModelSwitch, catalogProviders } from '../lib/oauth/models.js'
+import { ModelSwitch } from '../lib/oauth/model-switch.js'
+import { catalogProviders } from '../lib/oauth/models.js'
 import { saveSession } from '../lib/oauth/store.js'
 
 async function selectionFixture(t) {
@@ -90,7 +91,10 @@ test('unmarked legacy settings still recover logged-in families without reviving
 
   const controller = fixture.controller()
   await controller.sync()
-  assert.deepEqual(fixture.section.providers['oauth-glm'].models.map((row) => row.id), ids)
+  // Recovery enables the family's ordinary rows; opt-in `-1m` variants stay
+  // off, so the written route carries only the base rows.
+  assert.deepEqual(fixture.section.providers['oauth-glm'].models.map((row) => row.id),
+    ids.filter((id) => !id.endsWith('-1m')))
   const saved = JSON.parse(await readFile(fixture.modelsPath, 'utf8'))
   assert.deepEqual(saved.disabled, [retiredKey])
 
@@ -100,7 +104,7 @@ test('unmarked legacy settings still recover logged-in families without reviving
   assert.equal(fixture.section.providers['oauth-glm'], undefined)
 })
 
-test('explicit selection keeps new ordinary models on and new large-context aliases opt-in', async (t) => {
+test('explicit selection keeps new catalog ids on; nothing is opt-in by suffix', async (t) => {
   const fixture = await selectionFixture(t)
   const original = { 'oauth-codex': { models: [{ id: 'existing' }] } }
   const models = new ModelSwitch({ path: fixture.modelsPath })
@@ -108,10 +112,13 @@ test('explicit selection keeps new ordinary models on and new large-context alia
   await models.setFamily('codex', false, original)
 
   const expanded = {
-    'oauth-codex': { models: [{ id: 'existing' }, { id: 'new-model' }, { id: 'new-model-900k' }] },
+    'oauth-codex': { models: [{ id: 'existing' }, { id: 'new-model' }, { id: 'new-model-1m' }] },
   }
   const restarted = new ModelSwitch({ path: fixture.modelsPath })
   await restarted.ready
-  assert.deepEqual(restarted.status(expanded).selected, ['oauth-codex/new-model'])
-  assert.deepEqual(restarted.status(expanded).disabled, ['oauth-codex/existing', 'oauth-codex/new-model-900k'])
+  // New catalog ids stay on after restart — including ids that merely end in
+  // a former context suffix (Devin's real `-1m` backend variants): context
+  // aliases are no longer generated, so nothing is opt-in any more.
+  assert.deepEqual(restarted.status(expanded).selected, ['oauth-codex/new-model', 'oauth-codex/new-model-1m'])
+  assert.deepEqual(restarted.status(expanded).disabled, ['oauth-codex/existing'])
 })

@@ -47,7 +47,15 @@ import {
 } from '../lib/oauth/glm/request.js'
 import { stabilizeGlmAnthropicMessageCache } from '../lib/oauth/glm/cache.js'
 import { GlmCliFlowManager, glmLoginFailureMessage } from '../lib/oauth/glm/cli-flow.js'
-import { fetchGlmQuota, mergeGlmToolUsage, parseGlmQuota } from '../lib/oauth/quota.js'
+import { QuotaStore } from '../lib/oauth/quota.js'
+import {
+  fetchGlmQuota,
+  glmCardStamp,
+  mergeGlmToolUsage,
+  parseGlmQuota,
+  parseGlmResetCards,
+} from '../lib/oauth/glm/quota.js'
+import { glmResetCardUrl } from '../lib/oauth/glm/index.js'
 import { buildProviders } from '../lib/oauth/models.js'
 import { AuthController } from '../lib/oauth/controller.js'
 import { accountIdOf, listAccounts, publicSession, replaceAccountId, saveSession } from '../lib/oauth/store.js'
@@ -1087,6 +1095,160 @@ test('fetchGlmQuota asks tool-usage when MCP is missing from quota/limit', async
   assert.deepEqual(parsed.rows.map((row) => row.kind), ['primary', 'weekly', 'mcp'])
 })
 
+// Shape of a live BigModel Max list (2026-09-29), ids / stamps shifted.
+function resetCardList({ five = [], week = [] } = {}) {
+  return {
+    code: 200,
+    msg: '操作成功',
+    success: true,
+    data: {
+      targetType: 'PERSONAL',
+      lastFiveHourResetTime: '2026-09-25 23:12:00',
+      lastWeekResetTime: '2026-09-26 13:45:55',
+      fiveHourResets: five,
+      weekResets: week,
+    },
+  }
+}
+
+const GLM_WINDOWS = {
+  code: 200,
+  success: true,
+  data: {
+    level: 'max',
+    limits: [
+      { type: 'CREDIT_LIMIT', unit: 3, number: 5, usage: 28000, currentValue: 2550, remaining: 25449, percentage: 9 },
+      { type: 'CREDIT_LIMIT', unit: 6, number: 1, usage: 140000, currentValue: 40421, remaining: 99578, percentage: 28 },
+    ],
+  },
+}
+
+test('glmCardStamp reads BigModel zone-less stamps as +08:00', () => {
+  // lastWeekResetTime 13:45:55 lines up with weekly nextResetTime − 7d at 05:45:55Z.
+  assert.equal(glmCardStamp('2026-09-26 13:45:55', 480), Date.UTC(2026, 8, 26, 5, 45, 55))
+  assert.equal(glmCardStamp('2026-09-26 13:45:55', 0), Date.UTC(2026, 8, 26, 13, 45, 55))
+})
+
+test('parseGlmResetCards keeps only live cards, typed by bucket, earliest first', () => {
+  const soon = '2099-01-01 00:00:00'
+  const later = '2099-06-01 00:00:00'
+  const bank = parseGlmResetCards(resetCardList({
+    five: [
+      { recordId: 2, grantType: 'DIRECT', expireTime: later, available: true },
+      { recordId: 3, grantType: 'DIRECT', expireTime: '2020-01-01 00:00:00', available: true },
+      { recordId: 4, grantType: 'DIRECT', expireTime: later, available: false },
+    ],
+    week: [{ recordId: 1, grantType: 'DIRECT', expireTime: soon, available: true }],
+  }), 'bigmodel')
+  assert.equal(bank.availableCount, 2)
+  assert.deepEqual(bank.credits.map((c) => [c.id, c.resetType]), [['1', 'WEEK'], ['2', 'FIVE_HOUR']])
+  assert.equal(bank.nextExpiresAt, glmCardStamp(soon, 480))
+})
+
+test('parseGlmResetCards refuses an incomplete list instead of reading zero cards', () => {
+  assert.equal(parseGlmResetCards({ code: 200, success: true, data: {} }), undefined)
+  assert.equal(parseGlmResetCards({ code: 500, success: false, msg: 'busy' }), undefined)
+  assert.deepEqual(parseGlmResetCards(resetCardList()).credits, [])
+})
+
+test('fetchGlmQuota reads the reset-card bank from the region biz host', async () => {
+  const calls = []
+  const parsed = await fetchGlmQuota({ accessToken: 'key', region: 'bigmodel' }, async (url, init) => {
+    const href = String(url)
+    calls.push({ href, auth: init.headers.authorization })
+    if (href.includes('/quota/limit')) return json(GLM_WINDOWS)
+    if (href.includes('/customer-package-reset/list')) {
+      return json(resetCardList({ week: [{ recordId: 9, expireTime: '2099-01-01 00:00:00', available: true }] }))
+    }
+    return json({})
+  })
+  const list = calls.find((call) => call.href.includes('customer-package-reset'))
+  assert.equal(list.href, 'https://open.bigmodel.cn/api/biz/customer-package-reset/list?targetType=PERSONAL')
+  assert.equal(list.auth, 'Bearer key')
+  assert.equal(parsed.resetCredits.availableCount, 1)
+  assert.equal(parsed.resetCredits.credits[0].resetType, 'WEEK')
+})
+
+test('QuotaStore keeps the last GLM card bank when the list read fails', async () => {
+  let listOk = true
+  const store = new QuotaStore({
+    tokens: { glm: { session: async () => ({ accessToken: 'key', region: 'bigmodel', account: 'a@x' }) } },
+    fetchFn: async (url) => {
+      const href = String(url)
+      if (href.includes('/quota/limit')) return json(GLM_WINDOWS)
+      if (href.includes('/customer-package-reset/list')) {
+        return listOk
+          ? json(resetCardList({ five: [{ recordId: 5, expireTime: '2099-01-01 00:00:00', available: true }] }))
+          : new Response('upstream down', { status: 502 })
+      }
+      return json({})
+    },
+  })
+  assert.equal((await store.refresh('glm')).resetCredits.availableCount, 1)
+  listOk = false
+  const after = await store.refresh('glm')
+  assert.equal(after.status, 'ready')
+  assert.equal(after.resetCredits.availableCount, 1)
+  assert.equal(after.resetCredits.credits[0].resetType, 'FIVE_HOUR')
+})
+
+test('QuotaStore GLM reset posts the card and reuses requestId after a lost response', async () => {
+  const posts = []
+  let available = true
+  let dropNext = true
+  const store = new QuotaStore({
+    tokens: { glm: { session: async () => ({ accessToken: 'key', region: 'bigmodel', account: 'a@x' }) } },
+    fetchFn: async (url, init) => {
+      const href = String(url)
+      if (href === glmResetCardUrl('bigmodel', 'use')) {
+        posts.push(JSON.parse(init.body))
+        if (dropNext) {
+          dropNext = false
+          throw new TypeError('fetch failed')
+        }
+        available = false
+        return json({ code: 200, success: true, msg: '操作成功' })
+      }
+      if (href.includes('/quota/limit')) return json(GLM_WINDOWS)
+      if (href.includes('/customer-package-reset/list')) {
+        return json(resetCardList({ week: [{ recordId: 7, expireTime: '2099-01-01 00:00:00', available }] }))
+      }
+      return json({})
+    },
+  })
+  await store.refresh('glm')
+  await assert.rejects(store.consume('glm', undefined, undefined, '7'), /fetch failed/)
+  const after = await store.consume('glm', undefined, undefined, '7')
+  assert.equal(posts.length, 2)
+  assert.deepEqual({ ...posts[0], requestId: undefined }, { targetType: 'PERSONAL', resetType: 'WEEK', recordId: 7, requestId: undefined })
+  assert.equal(posts[1].requestId, posts[0].requestId)
+  assert.equal(after.resetCredits.availableCount, 0)
+  await assert.rejects(store.consume('glm', undefined, undefined, '7'), /not available/)
+})
+
+test('QuotaStore GLM reset surfaces a business rejection and mints a fresh requestId next time', async () => {
+  const posts = []
+  const store = new QuotaStore({
+    tokens: { glm: { session: async () => ({ accessToken: 'key', region: 'bigmodel', account: 'a@x' }) } },
+    fetchFn: async (url, init) => {
+      const href = String(url)
+      if (href.endsWith('/customer-package-reset/use')) {
+        posts.push(JSON.parse(init.body))
+        return json({ code: 500, success: false, msg: '窗口未消耗，无需重置' })
+      }
+      if (href.includes('/quota/limit')) return json(GLM_WINDOWS)
+      if (href.includes('/customer-package-reset/list')) {
+        return json(resetCardList({ five: [{ recordId: 8, expireTime: '2099-01-01 00:00:00', available: true }] }))
+      }
+      return json({})
+    },
+  })
+  await store.refresh('glm')
+  await assert.rejects(store.consume('glm', undefined, undefined, '8'), /glm reset card failed: 窗口未消耗/)
+  await assert.rejects(store.consume('glm', undefined, undefined, '8'), /glm reset card failed/)
+  assert.notEqual(posts[0].requestId, posts[1].requestId)
+})
+
 test('catalog includes GLM as Anthropic Messages (ZCode default)', () => {
   const providers = buildProviders({
     prefix: 'oauth',
@@ -1097,6 +1259,12 @@ test('catalog includes GLM as Anthropic Messages (ZCode default)', () => {
   assert.equal(providers['oauth-glm'].baseURL, 'http://127.0.0.1:8318/glm')
   const ids = providers['oauth-glm'].models.map((model) => model.id)
   assert.deepEqual(ids, ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
+  // Base rows sit at the plan's 400K input cap; the official 1M window is the
+  // row's custom-context ceiling, no longer an opt-in `-1m` sibling row.
+  assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.3').contextWindow, 400_000)
+  assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.3-flash').contextWindow, 400_000)
+  assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.3-1m'), undefined)
+  assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.3-flash-1m'), undefined)
   assert.deepEqual(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.3').input, ['text'])
   assert.deepEqual(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.3-flash').input, ['text', 'image'])
   assert.deepEqual(providers['oauth-glm'].models.find((model) => model.id === 'glm-5-turbo').input, ['text'])

@@ -1,7 +1,7 @@
 /**
  * DSH OpenAI-Completions body ↔ Command Code `POST /alpha/generate` wire.
  *
- * Wire shape (decoded from the command-code 1.66.0 CLI bundle):
+ * Wire shape (decoded from the command-code CLI bundle; re-verified identical at 1.72.2):
  *   request : { config, memory:null, taste:null, skills:null, mode:'chat',
  *               permissionMode, threadId?, params:{ model, messages, tools,
  *               system, max_tokens, stream:true, temperature?,
@@ -224,8 +224,16 @@ export function mapCommandCodeUsage(usage) {
     completion_tokens: completion,
     total_tokens: prompt + completion,
   }
-  if (cached > 0) out.prompt_tokens_details = { cached_tokens: cached }
-  if (cacheWrite > 0) out.prompt_cache_write_tokens = cacheWrite
+  // inputTokens is the AI SDK's whole input (details are subsets), so
+  // prompt_tokens already carries the cached share; the host splits it back
+  // out. cache write goes into prompt_tokens_details — the top-level
+  // prompt_cache_write_tokens alias is read by nothing in the host.
+  if (cached > 0 || cacheWrite > 0) {
+    out.prompt_tokens_details = {
+      ...(cached > 0 ? { cached_tokens: cached } : {}),
+      ...(cacheWrite > 0 ? { cache_write_tokens: cacheWrite } : {}),
+    }
+  }
   return out
 }
 

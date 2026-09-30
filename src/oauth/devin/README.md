@@ -1,7 +1,7 @@
 # Devin Agent OAuth
 
 本文件是 `src/oauth/devin/` 的设计源。改登录、额度、对话或缓存先改这里再改代码。
-跨家族硬约定在仓库根 [`AGENTS.md`](../../../AGENTS.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)；对照仓库在 [`docs/oauth.md`](../../../docs/oauth.md)。
+跨家族硬规则在 [`docs/rules.md`](../../../docs/rules.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)；对照仓库在 [`docs/oauth.md`](../../../docs/oauth.md)。
 
 Devin 订阅（SWE / Claude / GPT / Gemini / Grok / GLM / Kimi 经 Devin infra）。原生 wire 是 **Connect RPC v1 protobuf over HTTP/1.1** 到 `server.codeium.com`（Codeium/Cascade 服务端），不是 OpenAI REST，也不是 api.devin.ai。协议对照 MIT [`can1357/oh-my-pi`](https://github.com/can1357/oh-my-pi) 的 `pi-catalog` devin provider + vendored `exa.*` protos，全部字段号已用**本机 Devin CLI 3000.10.31 凭据对生产活测**：`GetCliModelConfigs` 回 598 条（2026-09-23）、`GetUserStatus` 回 `teams_tier=16`（Devin Pro）、`GetChatMessage`（`swe-2-medium`）真实流式回 "PONG"。本目录只抽用到的字段，不 vendor 整棵树，不引入 `@connectrpc/*`。
 
@@ -20,7 +20,7 @@ Devin 订阅（SWE / Claude / GPT / Gemini / Grok / GLM / Kimi 经 Devin infra�
 | [`transport.ts`](transport.ts) | Connect HTTP/1.1 POST + `GetUserJwt` / `GetUserStatus` + SSE/JSON 输出 |
 
 调度：[`../proxy.ts`](../proxy.ts) `family === 'devin'` 走 `applyDevinCache`（**不调** `applyFastMode` —— Devin `-fast` 是真后端变体，不是 Codex Priority）。
-额度：[`../quota.ts`](../quota.ts) `fetchDevinQuota` / `parseDevinUserStatus`。
+额度：[`quota.ts`](quota.ts) `fetchDevinQuota` / `parseDevinUserStatus`。
 套餐：`DEVIN_PLAN_NAMES` / `DEVIN_TIER_NAMES`（`teams_tier` 16=Pro、17=Max、14/15=Teams、12=Enterprise、19=Free、20=Trial）。
 
 ## 协议
@@ -92,7 +92,13 @@ HTTP 头：`content-type: application/connect+proto`（chat）/ `application/pro
 
 ## 模型
 
-静态 fallback（`DEVIN_MODELS`，离线 / RPC 空）是 2026-09-23 生产活测 `GetCliModelConfigs` 的完整镜像：598 条 config → 580 条带家族 → 81 个 picker 行 / 49 个家族；`variants` 把 DSH effort 键映射到后端 `chat_model_uid`，`defaultUid` 取 `is_default_model_in_family`（无 effort 的行显式写死）。登录 / 导入 / 刷新额度后走活发现：
+行在 [`src/catalog/models.json`](../../catalog/models.json) 的 `"devin"` 键；行格式、来源与 `npm run models` 更新流程见 [`docs/models.md`](../../../docs/models.md)。本节只记本家的取舍与出处。
+
+最近核对：2026-09-30（第二次），生产 `GetCliModelConfigs`：`gpt-6-1-sol` / `-fast` 仍在（1M 窗、128K 输出、image、low–max → `*-low…-max` / `*-priority` uid）；同日早些时候探到的 `off`（`*-none` uid）档与 `-thinking-fast` 行**当天就被上游撤下**，目录随源收掉（先例：上游几小时内就能增删档位/变体，收行当天的快照不代表稳定态）。
+
+屏蔽（2026-09-30）：Fusion 家族不进目录与 picker。静态楼删行；`toDevinPickerModels` 按家族 uid 挡（活目录与静态快照共用此闸）；devin 适配器 `skip` 规则防 `npm run models` 回灌。裸 uid 直连不经此闸（`devinWireModelId` 仍透传）。
+
+静态 fallback（`DEVIN_MODELS`，离线 / RPC 空）是 `GetCliModelConfigs` 活测结果的完整镜像，与活目录走同一个 `toDevinPickerModels`。登录 / 导入 / 刷新额度后走活发现：
 
 ```text
 unary GetCliModelConfigs  server.codeium.com  /exa.api_server_pb.ApiServerService/GetCliModelConfigs
@@ -101,9 +107,13 @@ unary GetCliModelConfigs  server.codeium.com  /exa.api_server_pb.ApiServerServic
     权威全量目录，活行整表替换静态楼；RPC 失败或空时回落 DEVIN_MODELS）
 ```
 
-DSH `reasoningEfforts` 的**值**是后端 uid（不是拼写）。hop 里 `devinWireModelId`：picker id + `reasoning_effort` → `variants[effort]` → `defaultUid`；裸 `swe-2-medium` 之类的 uid 原样透传。
+字段来源：窗口 / 输出取家族内各 config 的 `modelInfo.maxTokens` / `maxOutputTokens` 最大值；有一条 `supportsImages` 即 text+image；没有家族的旧 `MODEL_PRIVATE_*` config 不进目录。
 
-modifier 桶：label 里带 `thinking` → 独立 picker 行 `{family}-thinking`；带 `fast` / `priority` / `1m` → 同规则。`-fast` **不**走全局 `applyFastMode`（那会把 model 拼成 `<id>-fast` 再剥，Devin 的 `-fast` 是真后端行）。任何 RPC 失败或空列表不挡对话，回落静态楼；活行非空时整表替换静态楼（catalog.ts）。
+上限槽：`maxContextWindow`（模型页自定义输入窗的上限）对 Devin 行生效——`familyMaxContextWindow` 查静态楼，`toDevinPickerModels` 按 row id 把静态楼的上限复制进活行。但 `GetCliModelConfigs` 每个 config 只给一档 `modelInfo.maxTokens`，本家没有第二档窗可挂，所以行上目前不写这个字段。1M 窗在本家是**独立行**（`{family}-1m`，各自有 uid），不是上限。
+
+DSH `reasoningEfforts` 的**值**是后端 uid（不是拼写）：`variants` 把 DSH effort 键映射到后端 `chat_model_uid`，`defaultUid` 取 `is_default_model_in_family`（无 effort 的行显式写死）。hop 里 `devinWireModelId`：picker id + `reasoning_effort` → `variants[effort]` → `defaultUid`；裸 `swe-2-medium` 之类的 uid 原样透传。
+
+modifier 桶：label 里带 `thinking` → 独立 picker 行 `{family}-thinking`；带 `fast` / `priority` / `1m` → 同规则。`-fast` **不**走全局 `applyFastMode`（那会把 model 拼成 `<id>-fast` 再剥，Devin 的 `-fast` 是真后端行）。任何 RPC 失败或空列表不挡对话，回落静态楼。
 
 ## 额度
 
@@ -122,9 +132,11 @@ unary GetUserStatus  server.codeium.com  /exa.seat_management_pb.SeatManagementS
 | 后端 | Devin cascade 会话（`cascade_id` field 16）。每次请求 `execution_id`（field 22）是全新 UUID |
 | 粘性 id | `devinConversationId`（[`cache.ts`](cache.ts) 唯一推导）：DSH `prompt_cache_key` / `session_id` → `devinCacheSessionId`，缺 pin 时 `dsh-devin:<model>`（`isDevinFallback`）；传输层只对传进来的 id 取 `deterministicDevinId`（UUIDv5 形）。禁止 `Date.now()` |
 | 历史 turn id | `chatMessagePrompts[].message_id` 用 `deterministicDevinId(cascade\0index\0role)`，禁止每跳 `randomUUID()` |
-| 命中字段 | `ModelUsageStats.cache_read_tokens`（field 5）→ `prompt_tokens_details.cached_tokens`；`cache_write_tokens` → `prompt_cache_write_tokens` |
+| 命中字段 | `ModelUsageStats` 四桶不相交：`input_tokens`（2）只是未命中部分，`cache_read_tokens`（5）/`cache_write_tokens`（4）各自独立，和才是整段 prompt（oh-my-pi `usage/devin.ts` totalTokens）；hop 求和成 OpenAI `prompt_tokens`（= input+read+write），读/写都走 `prompt_tokens_details`（`cached_tokens` / `cache_write_tokens`，宿主只读后者的位置） |
 
 不写 Codex `session-id` / `prompt_cache_key`，不写 Grok `x-grok-conv-id`，不写 `x-request-id`。
+
+不要把 `input_tokens` 直填 `prompt_tokens`：宿主按 OpenAI 语义回推未命中 = `prompt_tokens − cached − write`，独占桶被再减一次，热调用 uncached 全被 `max(0,…)` clamp 成 0（2026-09-30 会话实证：30 天 3863 次有缓存读的调用里 99% input=0）；缓存写也别写顶层 `prompt_cache_write_tokens`——宿主没人读它。
 
 ## 不要
 
@@ -143,12 +155,20 @@ unary GetUserStatus  server.codeium.com  /exa.seat_management_pb.SeatManagementS
 
 ## 归因
 
-Wire / PKCE / catalog / quota 字段号对照 MIT：
+一线：**Devin CLI 3000.10.31**（`~/.local/share/devin/credentials.toml` + 二进制内嵌 `exa.*` protos），字段号以本机 MITM 与生产活测为准。协议对照 MIT [can1357/oh-my-pi](https://github.com/can1357/oh-my-pi) 的 `pi-catalog` devin provider（`oauth/devin.ts` PKCE 回环 + `providers/devin.ts` Connect/proto + vendored `exa.*` protos）；额度点数桶语义对照同仓 `usage/devin.ts`。
 
-- [can1357/oh-my-pi](https://github.com/can1357/oh-my-pi)（`pi-catalog` devin provider + vendored `exa.*` protos）
+| 抄 | 出处 | 本 hop |
+|---|---|---|
+| `app.devin.ai/auth/cli/continue?…&cli_pkce_marker=1` → `api.devin.ai/auth/cli/token` `{code, code_verifier, cli_pkce_marker:1}` | oh-my-pi `oauth/devin.ts` | `devinFlow` / `exchangeDevinCode` |
+| 模型页价格徽标（USD / 1M） | [docs.devin.ai/desktop/models.md](https://docs.devin.ai/desktop/models.md) `modelCostData`（`TEAMS_TIER_PRO`），按行 `defaultUid` 取；表里没有的 uid 回落厂商标价 | `src/catalog/rates.json`，`npm run rates` 写入（见 [docs/models.md](../../../docs/models.md) 费率表） |
+| Connect framing（1B flags + 4B BE len，`0x01` gzip / `0x02` end-trailer JSON） | oh-my-pi `providers/devin.ts` | `proto.ts` `frameConnect` / `splitConnectFrames` |
+| `Metadata` 字段号、`GetChatMessageRequest` 字段号 | CLI 二进制 + 生产活测 | `encodeDevinMetadata` / `openaiToDevin` |
+| `Metadata.api_key` = session token（已带 `devin-session-token$`） | CLI `credentials.toml` | `devinMetadataBytes`；`normalizeDevinToken` 前缀只加一次 |
+| 指纹：`ide_name: chisel` + `ide_version` / `extension_version` = CLI 版本 + `os` + `Authorization: Basic <token>-<token>` | 本机 MITM | `DEVIN_IDE_NAME` / `devinBasicAuth` / `encodeDevinMetadata` |
+| `cascade_id` + 每请求 `execution_id`；历史 `message_id` 内容哈希 | oh-my-pi + 活测 | [`cache.ts`](cache.ts) / `openaiToDevin` |
+| `GetCliModelConfigs` → 家族 + effort / modifier 收成一行；静态 floor 是解码结果的镜像，`id` / `name` / `contextWindow` / `maxTokens` / `input` / `variants` / `defaultUid` 不手改 | CLI 二进制 `ClientModelConfig` + 生产活测 | `toDevinPickerModels`（`variants` 值是后端 uid） |
+| `GetUserStatus`：`teams_tier`、daily / weekly quota、unix 秒 reset、点数桶 | CLI 二进制 + oh-my-pi `usage/devin.ts` | `fetchDevinQuota` / `parseDevinUserStatus`（proto.ts 已转毫秒） |
 
-`Metadata` 字段号、`GetChatMessageRequest` 字段号、`ClientModelConfig`/`GetUserStatus` 解码对照 Devin CLI 3000.10.31 二进制 + 生产活测。
+**不要发明：** CLI 不发的 `Metadata` 字段（`session_id`、`user_agent`；`f` 的处理见「指纹」表）。其余出自这份对照的禁令都在「不要」与「缓存」两节。
 
-`DEVIN_MODELS` 楼层逐字段来自 2026-09-23 生产活测的 `GetCliModelConfigs` 解码：598 条 config（18 条无 `modelFamilyUid`/`familyLabel` 的 router/internal 行被 `toDevinPickerModels` 丢弃）→ 580 条带家族 → 81 个 picker 行 / 49 个家族；`id`/`name`/`contextWindow`/`maxTokens`/`input`/`variants`/`defaultUid` 无手改。
-
-总表见 [`docs/oauth.md`](../../../docs/oauth.md)。
+跨家族对照总表见 [`docs/oauth.md`](../../../docs/oauth.md)。

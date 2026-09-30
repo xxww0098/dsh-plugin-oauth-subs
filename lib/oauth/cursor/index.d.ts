@@ -149,6 +149,18 @@ export declare const CURSOR_PARAM_STYLES: Readonly<{
         contexts: string[];
         fast: boolean;
     };
+    'claude-sonnet-5-5': {
+        effortParam: string;
+        efforts: {
+            low: string;
+            medium: string;
+            high: string;
+            xhigh: string;
+            max: string;
+        };
+        contexts: never[];
+        fast: boolean;
+    };
     'gemini-3.8-flash': {
         effortParam: string;
         efforts: {
@@ -245,15 +257,8 @@ export declare const CURSOR_PARAM_STYLES: Readonly<{
 }>;
 /** Picker reasoningEfforts for one family style: vendor values keyed back to DSH levels. */
 export declare function cursorStyleReasoningEfforts(style: any): {};
-/** Static fallback aligned to cursor.com/docs/models-and-pricing and 2026-09-26 AvailableModels. Live GetUsableModels may add Fast / extra families (Auto is kept out). reasoningEfforts come from the family's CURSOR_PARAM_STYLES entry — the wire values the registry actually takes. */
-export declare const CURSOR_MODELS: readonly {
-    id: any;
-    name: any;
-    contextWindow: any;
-    maxTokens: any;
-    input: readonly string[];
-    reasoningEfforts: any;
-}[];
+/** Static fallback aligned to cursor.com/docs/models-and-pricing and 2026-09-26 AvailableModels. Live GetUsableModels may add Fast / extra families (Auto is kept out). reasoningEfforts come from the family's CURSOR_PARAM_STYLES entry — the wire values the registry actually takes. Rows live in `src/catalog/models.json` under `"cursor"` (values snapshotted from those styles). */
+export declare const CURSOR_MODELS: readonly any[];
 export declare const CURSOR_SOURCES: readonly string[];
 export declare function cursorSourceLabel(source: any, locale?: string): "env" | "CLI" | "IDE" | "PKCE" | undefined;
 export declare function cursorClientVersion(): string;

@@ -1,7 +1,7 @@
 /**
  * DSH OpenAI-Completions body ↔ Command Code `POST /alpha/generate` wire.
  *
- * Wire shape (decoded from the command-code 1.66.0 CLI bundle):
+ * Wire shape (decoded from the command-code CLI bundle; re-verified identical at 1.72.2):
  *   request : { config, memory:null, taste:null, skills:null, mode:'chat',
  *               permissionMode, threadId?, params:{ model, messages, tools,
  *               system, max_tokens, stream:true, temperature?,

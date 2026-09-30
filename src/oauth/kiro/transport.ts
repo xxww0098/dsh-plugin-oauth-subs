@@ -3,6 +3,7 @@
 import { sendJson } from '../../utils/http.js'
 import { UpstreamFailure, pumpBody, quotaFailure, upstreamRequest, writeSse } from '../upstream.js'
 import { forcedRefresh } from '../tokens.js'
+import { recordKiroPrefix } from './cache.js'
 import { kiroCatalogModels } from './catalog.js'
 import { headerOf, kiroProfileArn } from './index.js'
 import {
@@ -38,14 +39,31 @@ function kiroHopFailure(status, parsed, text, retryAfter = undefined) {
 }
 
 /**
+ * The first try must show real output within 90s. Live (2026-09-29), twice:
+ * first chunk at ~105s, then 242s of silence until the stream was cut; the
+ * host's retry answered in 6s. Slow but healthy starts measured up to 61s
+ * (upstream overload) and 12–23s (cold 288K-token prefix). ponytail: fixed
+ * window; a cold near-1M prompt under load may need more — its retry still
+ * has the rest of the 270s budget.
+ */
+const KIRO_FIRST_OUTPUT_MS = 90_000
+
+/**
  * One Kiro hop inside the attempt primitive: timers, transport retries and a
  * single refresh on 401/403. Nothing reaches the client before the first
  * mapped output chunk; a failure after it destroys the response.
  */
 export async function forwardKiro(response, { payload, cacheSessionId, stream, session, tokens, fetchFn, signal, startedAt, timeouts }) {
+  // One cacheable-prefix estimate per request, not per retry of it.
+  let recorded = false
+  const onBody = (body) => {
+    if (recorded) return
+    recorded = true
+    recordKiroPrefix({ conversationId: cacheSessionId, session: payload.prompt_cache_key ?? payload.session_id, model: payload.model, body })
+  }
   try {
-    await upstreamRequest({ family: 'kiro', signal, startedAt, stream, response, timeouts }).run(
-      (attempt) => attemptKiro(response, { payload, cacheSessionId, stream, session, fetchFn, attempt }),
+    await upstreamRequest({ family: 'kiro', signal, startedAt, stream, response, timeouts: { firstOutputMs: KIRO_FIRST_OUTPUT_MS, ...timeouts } }).run(
+      (attempt) => attemptKiro(response, { payload, cacheSessionId, stream, session, fetchFn, attempt, onBody }),
       { refresh: forcedRefresh(tokens, () => session, (next) => { session = next }) },
     )
   } catch (error) {
@@ -58,14 +76,16 @@ export async function forwardKiro(response, { payload, cacheSessionId, stream, s
   }
 }
 
-async function attemptKiro(response, { payload, cacheSessionId, stream, session, fetchFn, attempt }) {
+async function attemptKiro(response, { payload, cacheSessionId, stream, session, fetchFn, attempt, onBody }) {
   const { signal } = attempt
   const row = kiroCatalogModels().find((model) => model.id === payload.model)
-  const body = Buffer.from(JSON.stringify(openaiToKiro(payload, {
+  const kiroBody = openaiToKiro(payload, {
     conversationId: cacheSessionId,
     profileArn: kiroProfileArn(session),
     efforts: row?.reasoningEfforts,
-  })))
+  })
+  onBody(kiroBody)
+  const body = Buffer.from(JSON.stringify(kiroBody))
   const upstream = await fetchFn(kiroChatUrl(session), { method: 'POST', headers: kiroChatHeaders(session), body, signal })
   if (upstream.status >= 400) {
     const text = await upstream.text()

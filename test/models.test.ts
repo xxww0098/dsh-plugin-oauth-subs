@@ -9,21 +9,24 @@ import {
   HARNESS_COMPLETIONS_API,
   HARNESS_RESPONSES_API,
   assertDshServiceableProvider,
-  ModelSwitch,
   buildProviders,
   catalogKeys,
   catalogProviders,
   describeCatalog,
-  filterProviders,
   modelKey,
   FAMILY_IDS,
   RETIRED_FAMILY_IDS,
   ownedProviderIds,
+  OPENCODE_GO_API_KEY_ENV,
+  withDefaultEffort,
+} from '../lib/oauth/models.js'
+import { ModelSwitch } from '../lib/oauth/model-switch.js'
+import {
+  filterProviders,
   peekPiAiProviders,
   ensureOpencodeGoRoute,
-  OPENCODE_GO_API_KEY_ENV,
   syncHarnessModels,
-} from '../lib/oauth/models.js'
+} from '../lib/oauth/harness-sync.js'
 import { OPENCODE_GO_BUILTIN_ROUTE_ID, OPENCODE_GO_EXTRA_MODELS, OPENCODE_GO_EXTRA_ROUTE, OPENCODE_GO_ROUTES } from '../lib/apikey/opencode-go/models.js'
 import { KIRO_MODELS, KIRO_REASONING_GPT } from '../lib/oauth/kiro/index.js'
 
@@ -64,6 +67,7 @@ function createPiAiSettings(initialProviders = {}) {
 }
 
 const GLM_CURRENT = ['oauth-glm/glm-5.3', 'oauth-glm/glm-5.3-flash', 'oauth-glm/glm-5-turbo']
+const GLM_VARIANT_KEYS = ['oauth-glm/glm-5.3-1m', 'oauth-glm/glm-5.3-flash-1m']
 const GLM_STALE = ['oauth-glm/glm-4.7', 'oauth-glm/glm-5', 'oauth-glm/glm-5.1', 'oauth-glm/glm-5.2']
 
 test('buildProviders only emits logged-in families with DSH api ids', () => {
@@ -73,19 +77,20 @@ test('buildProviders only emits logged-in families with DSH api ids', () => {
   assert.equal(both['oauth-codex'].apiKeyEnv, OAUTH_CREDENTIAL_REF)
   assert.equal(both['oauth-codex'].baseURL, 'http://127.0.0.1:8318/codex/v1')
   assert.equal(both['oauth-grok'].displayName.includes('Grok'), true)
-  assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4.6').contextWindow, 500_000)
+  assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4.6').contextWindow, 256_000)
   assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4.6-fast'), undefined)
-  assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4.7').contextWindow, 500_000)
+  assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4.7').contextWindow, 256_000)
   assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4.7').maxTokens, 32_768)
   assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4.7-fast'), undefined)
   assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4.7-build-fast').name, 'Grok 4.7 Fast')
+  assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4.7-build-fast').contextWindow, 256_000)
   assert.deepEqual(both['oauth-grok'].models.find((model) => model.id === 'grok-4.7').reasoningEfforts, {
     low: 'low',
     medium: 'medium',
     high: 'high',
     xhigh: 'xhigh',
   })
-  assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4.5').contextWindow, 500_000)
+  assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4.5').contextWindow, 256_000)
   assert.equal(both['oauth-grok'].models.find((model) => model.id === 'grok-4'), undefined)
   assert.deepEqual(both['oauth-grok'].models.find((model) => model.id === 'grok-4.6').reasoningEfforts, {
     low: 'low',
@@ -110,11 +115,12 @@ test('buildProviders only emits logged-in families with DSH api ids', () => {
     max: 'max',
   })
   assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-6-astra-fast').reasoningEfforts.max, 'max')
-  assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-6-astra-900k').reasoningEfforts.max, 'max')
+  // One default-window row per model: the 872K ceiling is reached by editing
+  // the base row's custom context, not by a `-900k` sibling row.
+  assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-6-astra-900k'), undefined)
   assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-6-astra-ultra'), undefined)
   assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-6-astra').contextWindow, 258_000)
   assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-6-astra-fast').contextWindow, 258_000)
-  assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-6-astra-900k').contextWindow, 872_000)
   assert.deepEqual(both['oauth-codex'].models.find((model) => model.id === 'gpt-6-sol').reasoningEfforts, {
     off: null,
     low: 'low',
@@ -124,7 +130,7 @@ test('buildProviders only emits logged-in families with DSH api ids', () => {
     max: 'max',
   })
   assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-6-sol-fast').reasoningEfforts.max, 'max')
-  assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-6-sol-900k').contextWindow, 872_000)
+  assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-6-sol-900k'), undefined)
   assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-6-sol-ultra'), undefined)
   assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-6-luna').contextWindow, 258_000)
   assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-6-luna-fast').reasoningEfforts.max, 'max')
@@ -137,7 +143,7 @@ test('buildProviders only emits logged-in families with DSH api ids', () => {
     max: 'max',
   })
   assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-5.6-sol-fast').reasoningEfforts.max, 'max')
-  assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-5.6-sol-900k').reasoningEfforts.max, 'max')
+  assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-5.6-sol-900k'), undefined)
   assert.equal(both['oauth-codex'].models.find((model) => model.id === 'gpt-5.6-sol-ultra'), undefined)
   const none = buildProviders({ prefix: 'oauth', origin: 'http://127.0.0.1:8318', loggedIn: { codex: false, grok: false } })
   assert.deepEqual(Object.keys(none), [])
@@ -185,7 +191,7 @@ test('buildProviders only emits logged-in families with DSH api ids', () => {
   assert.equal(chat['oauth-copilot'].baseURL.endsWith('/copilot/v1'), false)
   assert.equal(chat['oauth-copilot'].compat.supportsReasoningEffort, true)
   assert.equal(chat['oauth-copilot'].compat.thinkingFormat, 'openai')
-  assert.equal(chat['oauth-copilot'].displayName, 'OAuth · GitHub Copilot')
+  assert.equal(chat['oauth-copilot'].displayName, 'Subs · GitHub Copilot · Chat')
   assert.equal(chat['oauth-copilot'].models.some((model) => model.id === 'gpt-4.1'), true)
   assert.deepEqual(chat['oauth-copilot'].models.find((model) => model.id === 'gpt-5.5').reasoningEfforts, {
     off: 'none',
@@ -225,16 +231,16 @@ test('syncHarnessModels unsets owned routes then sets the live catalog', async (
   // settings.yaml `name` is the picker label: "<agent>/<model id>" alias,
   // while the catalog/describeCatalog names stay pretty for the Models page.
   assert.equal(set[0].value.models.find((model) => model.id === 'gpt-6-sol').name, 'Codex/gpt-6-sol')
-  assert.equal(set[0].value.models.find((model) => model.id === 'gpt-6-sol-900k').name, 'Codex/gpt-6-sol-900k')
   assert.equal(result.routes[0].models.includes('gpt-6-astra'), true)
   assert.equal(result.routes[0].models.includes('gpt-6-astra-fast'), true)
-  assert.equal(result.routes[0].models.includes('gpt-6-astra-900k'), true)
+  // No `-900k` route rows: the 872K ceiling is a per-row custom context.
+  assert.equal(result.routes[0].models.includes('gpt-6-astra-900k'), false)
   assert.equal(result.routes[0].models.includes('gpt-6-astra-ultra'), false)
   assert.equal(result.routes[0].models.includes('gpt-6-sol'), true)
   assert.equal(result.routes[0].models.includes('gpt-6-sol-fast'), true)
-  assert.equal(result.routes[0].models.includes('gpt-6-sol-900k'), true)
+  assert.equal(result.routes[0].models.includes('gpt-6-sol-900k'), false)
   assert.equal(result.routes[0].models.includes('gpt-6-sol-ultra'), false)
-  assert.equal(result.routes[0].models.includes('gpt-6-luna-900k'), true)
+  assert.equal(result.routes[0].models.includes('gpt-6-luna-900k'), false)
   assert.equal(result.routes[0].models.includes('gpt-5.3-codex'), false)
   assert.equal(result.routes[0].models.includes('gpt-5.3-codex-spark'), false)
   assert.equal(result.routes[0].models.includes('gpt-5.4'), false)
@@ -242,7 +248,7 @@ test('syncHarnessModels unsets owned routes then sets the live catalog', async (
   assert.deepEqual(result.routes[0].models.includes('gpt-5.5'), true)
   assert.deepEqual(result.routes[0].models.includes('gpt-5.5-fast'), true)
   assert.equal(result.routes[0].models.includes('gpt-5.3-codex-fast'), false)
-  assert.equal(result.routes[0].models.includes('gpt-5.6-sol-900k'), true)
+  assert.equal(result.routes[0].models.includes('gpt-5.6-sol-900k'), false)
   assert.equal(result.routes[0].models.includes('gpt-5.6-sol-ultra'), false)
   assert.equal(result.routes[0].models.includes('gpt-5.5-900k'), false)
 })
@@ -267,9 +273,9 @@ test('ensureOpencodeGoRoute writes only the supplemental route and takes the old
   assert.equal(extra.baseURL, 'https://opencode.ai/zen/go/v1')
   assert.deepEqual(extra.headers, GO_SESSION)
   assert.deepEqual(extra.models.map((model) => model.id), OPENCODE_GO_EXTRA_MODELS.map((model) => model.id))
-  assert.equal(extra.models[0].name, 'OpenCode Go/deepseek-v4.1-flash')
+  assert.equal(extra.models[0].name, 'OpenCode Go/longcat-2.5-preview-free')
   assert.deepEqual(extra.models[0].input, ['text', 'image'])
-  assert.deepEqual(extra.models[0].reasoningEfforts, { low: 'low', high: 'high', max: 'max' })
+  assert.equal(extra.models[0].reasoningEfforts, false)
   assert.deepEqual(extra.models[0].compat, {
     supportsStore: false,
     supportsDeveloperRole: false,
@@ -371,9 +377,9 @@ test('catalogProviders lists only the supplemental Go route; the picker locks it
   const locked = describeCatalog(catalog, { loggedIn: { codex: true } })
   const go = locked.find((row) => row.family === 'opencode-go-flash')
   assert.equal(go.loggedIn, false)
-  assert.equal(go.displayName, 'OpenCode Go')
+  assert.equal(go.displayName, 'Subs · OpenCode Go · Chat')
   assert.equal(go.models.length, OPENCODE_GO_EXTRA_MODELS.length)
-  assert.equal(go.models.length, 28)
+  assert.equal(go.models.length, 23)
   assert.deepEqual(catalog['opencode-go-flash'].models.find((model) => model.id === 'space-bunny-free').reasoningEfforts.max, 'max')
   assert.equal(catalog['opencode-go-responses'].models.length, 6)
   assert.equal(catalog['opencode-go-responses'].models.find((model) => model.id === 'gpt-6-luna').reasoningEfforts.off, 'none')
@@ -393,25 +399,27 @@ test('setFamily toggles the supplemental OpenCode Go route like any picker famil
   assert.equal(models.status(catalog).selected.includes(key), true)
 })
 
-test('catalogProviders always lists both families with Fast and 900K siblings', () => {
+test('catalogProviders always lists both families; Fast siblings only, large windows are ceilings', () => {
   const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
   const keys = catalogKeys(catalog)
   assert.equal(keys.includes('oauth-codex/gpt-6-astra'), true)
   assert.equal(keys.includes('oauth-codex/gpt-6-astra-fast'), true)
-  assert.equal(keys.includes('oauth-codex/gpt-6-astra-900k'), true)
+  assert.equal(keys.includes('oauth-codex/gpt-6-astra-900k'), false)
   assert.equal(keys.includes('oauth-codex/gpt-6-astra-ultra'), false)
   assert.equal(keys.includes('oauth-codex/gpt-6-sol'), true)
   assert.equal(keys.includes('oauth-codex/gpt-6-sol-fast'), true)
-  assert.equal(keys.includes('oauth-codex/gpt-6-sol-900k'), true)
+  assert.equal(keys.includes('oauth-codex/gpt-6-sol-900k'), false)
   assert.equal(keys.includes('oauth-codex/gpt-6-sol-ultra'), false)
-  assert.equal(keys.includes('oauth-codex/gpt-6-luna-900k'), true)
+  assert.equal(keys.includes('oauth-codex/gpt-6-luna-900k'), false)
   assert.equal(keys.includes('oauth-codex/gpt-5.5'), true)
   assert.equal(keys.includes('oauth-codex/gpt-5.5-fast'), true)
-  assert.equal(keys.includes('oauth-codex/gpt-5.6-sol-900k'), true)
+  assert.equal(keys.includes('oauth-codex/gpt-5.6-sol-900k'), false)
   assert.equal(keys.includes('oauth-codex/gpt-5.6-sol-ultra'), false)
   assert.equal(keys.includes('oauth-codex/gpt-5.4-900k'), false)
   assert.equal(keys.includes('oauth-codex/gpt-5.5-900k'), false)
   assert.equal(keys.includes('oauth-codex/gpt-5.4-mini-900k'), false)
+  assert.equal(keys.includes('oauth-glm/glm-5.3-1m'), false)
+  assert.equal(keys.includes('oauth-glm/glm-5.3-flash-1m'), false)
   assert.equal(keys.includes('oauth-grok/grok-4.6'), true)
   assert.equal(keys.includes('oauth-grok/grok-4'), false)
   assert.equal(keys.includes('oauth-grok/grok-4.6-fast'), false)
@@ -423,11 +431,18 @@ test('catalogProviders always lists both families with Fast and 900K siblings', 
     loggedIn: { codex: true, grok: false },
   })
   const gpt = described.find((row) => row.family === 'codex').models.find((m) => m.id === 'gpt-5.5')
-  const large = described.find((row) => row.family === 'codex').models.find((m) => m.id === 'gpt-5.6-sol-900k')
+  const astra = described.find((row) => row.family === 'codex').models.find((m) => m.id === 'gpt-6-astra')
   const grok = described.find((row) => row.family === 'grok')
   assert.equal(gpt.enabled, true)
-  assert.equal(large.large, true)
-  assert.equal(large.enabled, false)
+  // Rows without a large sibling carry their own window as the ceiling.
+  assert.equal(gpt.window, '258K')
+  assert.equal(gpt.windowMax, '258K')
+  assert.equal(gpt.contextMax, 258_000)
+  // Rows with `maxContextWindow` keep the default window while the vendor's
+  // large window becomes the custom-context ceiling.
+  assert.equal(astra.window, '258K')
+  assert.equal(astra.windowMax, '872K')
+  assert.equal(astra.contextMax, 872_000)
   assert.equal(grok.loggedIn, false)
   assert.equal(grok.models.find((m) => m.id === 'grok-4.5').enabled, false)
   assert.equal(grok.models.find((m) => m.id === 'grok-4.7-build-fast').fast, true)
@@ -435,33 +450,40 @@ test('catalogProviders always lists both families with Fast and 900K siblings', 
   assert.equal(grok.models.find((m) => m.id === 'grok-4'), undefined)
 })
 
-test('ModelSwitch persists disabled keys and defaults 900K off', async () => {
+test('ModelSwitch persists disabled keys; stale variant keys stay unknown', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-models-'))
   const path = join(dir, 'models.json')
   const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
   const first = new ModelSwitch({ path })
   await first.ready
-  const initial = first.selectedForSync(catalog)
+  // With no opt-in rows left, everything defaults on and selectedForSync
+  // collapses to undefined (no filter); status() spells the full list out.
+  assert.equal(first.selectedForSync(catalog), undefined)
+  const initial = first.status(catalog).selected
   assert.equal(initial.includes('oauth-codex/gpt-5.5'), true)
+  // `-900k` / `-1m` rows no longer exist: the keys are unknown, not opt-in.
   assert.equal(initial.includes('oauth-codex/gpt-5.6-sol-900k'), false)
+  assert.equal(initial.includes('oauth-glm/glm-5.3-1m'), false)
+  assert.equal(initial.includes('oauth-glm/glm-5.3'), true)
   await first.toggle('oauth-codex/gpt-5.5-fast', false, catalog)
   assert.equal(first.status(catalog).selected.includes('oauth-codex/gpt-5.5-fast'), false)
   assert.equal(first.status(catalog).selected.includes('oauth-codex/gpt-5.5'), true)
-  await first.toggle('oauth-codex/gpt-5.6-sol-900k', true, catalog)
-  assert.equal(first.status(catalog).selected.includes('oauth-codex/gpt-5.6-sol-900k'), true)
+  await assert.rejects(first.toggle('oauth-codex/gpt-5.6-sol-900k', true, catalog), /unknown model/)
   const raw = JSON.parse(await readFile(path, 'utf8'))
   assert.equal((await stat(path)).mode & 0o777, 0o600)
   assert.equal(raw.disabled.includes('oauth-codex/gpt-5.5-fast'), true)
-  assert.equal(raw.enabled.includes('oauth-codex/gpt-5.6-sol-900k'), true)
+  // A stale enabled entry for a removed variant key (older versions wrote
+  // these) never resurrects the row: the catalog does not know the key.
+  await writeFile(path, `${JSON.stringify({ disabled: [], enabled: ['oauth-codex/gpt-6-sol-900k'] })}\n`, { mode: 0o600 })
   const second = new ModelSwitch({ path })
   await second.ready
-  assert.equal(second.selectedForSync(catalog).includes('oauth-codex/gpt-5.5-fast'), false)
-  assert.equal(second.selectedForSync(catalog).includes('oauth-codex/gpt-5.6-sol-900k'), true)
+  const secondSelected = second.status(catalog).selected
+  assert.equal(secondSelected.includes('oauth-codex/gpt-6-sol-900k'), false)
+  assert.equal(secondSelected.includes('oauth-codex/gpt-6-sol'), true)
   await second.setFamily('grok', false, catalog)
   assert.equal(second.status(catalog).disabled.some((key) => key.startsWith('oauth-grok/')), true)
   await second.setAll(true, catalog)
   assert.equal(second.selectedForSync(catalog), undefined)
-  assert.equal(second.status(catalog).selected.includes('oauth-codex/gpt-6-sol-900k'), true)
 })
 
 test('ModelSwitch rejects a symbolic-link settings path', { skip: process.platform === 'win32' }, async () => {
@@ -482,6 +504,136 @@ test('ModelSwitch still accepts a readable legacy 0644 settings file', { skip: p
   const models = new ModelSwitch({ path })
   await models.ready
   assert.equal(models.disabled.has('oauth-codex/gpt-5.5'), true)
+})
+
+test('ModelSwitch setContext persists custom windows and caps at the row maximum', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-models-'))
+  const path = join(dir, 'models.json')
+  const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
+  const first = new ModelSwitch({ path })
+  await first.ready
+  // gpt-6-astra: 258K default, 872K ceiling; glm-5.3: 400K default, 1M ceiling.
+  await first.setContext('oauth-codex/gpt-6-astra', 400_000, catalog)
+  await first.setContext('oauth-glm/glm-5.3', 900_000, catalog)
+  assert.equal(first.contextOf('oauth-codex/gpt-6-astra'), 400_000)
+  assert.equal(first.contextOf('oauth-glm/glm-5.3-flash'), undefined)
+  const raw = JSON.parse(await readFile(path, 'utf8'))
+  assert.deepEqual(raw.contexts, { 'oauth-codex/gpt-6-astra': 400_000, 'oauth-glm/glm-5.3': 900_000 })
+  const second = new ModelSwitch({ path })
+  await second.ready
+  assert.equal(second.contextOf('oauth-codex/gpt-6-astra'), 400_000)
+  // The vendor ceiling itself is a legal value; one token above is not.
+  await second.setContext('oauth-codex/gpt-6-astra', 872_000, catalog)
+  await assert.rejects(second.setContext('oauth-codex/gpt-6-astra', 872_001, catalog), /between 4096 and 872000/)
+  await assert.rejects(second.setContext('oauth-glm/glm-5.3', 1_000_001, catalog), /between 4096 and 1000000/)
+  // Rows without a large window cap at their own catalog window.
+  await assert.rejects(second.setContext('oauth-codex/gpt-5.5', 400_000, catalog), /between 4096 and 258000/)
+  // Same value is a no-op; reset removes exactly that entry.
+  await second.setContext('oauth-codex/gpt-6-astra', 872_000, catalog)
+  await second.setContext('oauth-codex/gpt-6-astra', null, catalog)
+  assert.equal(second.contextOf('oauth-codex/gpt-6-astra'), undefined)
+  assert.equal(second.contextOf('oauth-glm/glm-5.3'), 900_000)
+  // Validation errors surface through the RPC.
+  await assert.rejects(second.setContext('oauth-codex/unknown-id', 400_000, catalog), /unknown model/)
+  await assert.rejects(second.setContext('oauth-codex/gpt-5.5', 4_095, catalog), /between/)
+  await assert.rejects(second.setContext('oauth-codex/gpt-5.5', 1.5, catalog), /between/)
+  await assert.rejects(second.setContext('oauth-codex/gpt-5.5', Number.NaN, catalog), /between/)
+  // 恢复默认窗口 clears every override at once.
+  await second.resetContexts()
+  assert.deepEqual(second.contexts, {})
+  const third = new ModelSwitch({ path })
+  await third.ready
+  assert.deepEqual(third.contexts, {})
+  // A context choice is not an enable choice: leftover 全关 recovery keeps working.
+  const models = new ModelSwitch()
+  await models.ready
+  models.disabled = new Set(catalog['oauth-glm'].models.map((m) => `oauth-glm/${m.id}`))
+  await models.setContext('oauth-glm/glm-5.3', 300_000, catalog)
+  const changed = await models.recoverEmptyLoggedInFamilies(catalog, { glm: true, codex: false, grok: false })
+  assert.equal(changed, true)
+  assert.equal(models.isEnabled('oauth-glm/glm-5.3'), true)
+  assert.equal(models.contextOf('oauth-glm/glm-5.3'), 300_000)
+})
+
+test('ModelSwitch drops invalid persisted context entries on load', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-models-'))
+  const path = join(dir, 'models.json')
+  await writeFile(path, `${JSON.stringify({
+    disabled: [],
+    enabled: [],
+    contexts: {
+      'oauth-codex/gpt-5.5': 400_000,
+      'oauth-codex/gpt-5.5-tiny': 1_000,
+      'oauth-codex/gpt-5.5-huge': 99_999_999,
+      'oauth-codex/gpt-5.5-frac': 400_000.5,
+      'no-slash': 400_000,
+    },
+  })}\n`, { mode: 0o600 })
+  const models = new ModelSwitch({ path })
+  await models.ready
+  assert.deepEqual(models.contexts, { 'oauth-codex/gpt-5.5': 400_000 })
+})
+
+test('custom input contexts override windows per model key', () => {
+  const contexts = {
+    'oauth-codex/gpt-6-astra': 400_000,
+    'oauth-codex/gpt-6-astra-fast': 300_000,
+    'oauth-glm/glm-5.3': 300_000,
+    'oauth-codex/not-in-catalog': 400_000,
+  }
+  const providers = buildProviders({ prefix: 'oauth', origin: 'http://x', loggedIn: { codex: true, glm: true }, contexts })
+  const codex = providers['oauth-codex'].models
+  assert.equal(codex.find((m) => m.id === 'gpt-6-astra').contextWindow, 400_000)
+  // Key-exact: the `-fast` twin is its own key and keeps its catalog window
+  // unless overridden itself.
+  assert.equal(codex.find((m) => m.id === 'gpt-6-astra-fast').contextWindow, 300_000)
+  assert.equal(codex.find((m) => m.id === 'gpt-6-sol').contextWindow, 258_000)
+  assert.equal(providers['oauth-glm'].models.find((m) => m.id === 'glm-5.3').contextWindow, 300_000)
+  assert.equal(providers['oauth-glm'].models.find((m) => m.id === 'glm-5.3-flash').contextWindow, 400_000)
+
+  // describeCatalog takes the un-overridden catalog and applies `contexts`
+  // itself, so the catalog default and ceiling stay visible next to the
+  // effective window.
+  const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
+  const described = describeCatalog(catalog, { contexts })
+  const glm = described.find((row) => row.family === 'glm').models
+  assert.equal(glm.find((m) => m.id === 'glm-5.3').window, '300K')
+  assert.equal(glm.find((m) => m.id === 'glm-5.3').custom, true)
+  assert.equal(glm.find((m) => m.id === 'glm-5.3').windowMax, '1M')
+  assert.equal(glm.find((m) => m.id === 'glm-5.3-flash').custom, false)
+  assert.equal(glm.find((m) => m.id === 'glm-5.3-flash').window, '400K')
+  const describedCodex = described.find((row) => row.family === 'codex').models
+  assert.equal(describedCodex.find((m) => m.id === 'gpt-6-astra').window, '400K')
+  assert.equal(describedCodex.find((m) => m.id === 'gpt-6-astra-fast').window, '300K')
+  assert.equal(describedCodex.find((m) => m.id === 'gpt-6-astra-fast').custom, true)
+})
+
+test('syncHarnessModels writes custom windows and compaction headroom follows', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-patch-'))
+  const patchPath = join(dir, 'cordis.patch.yml')
+  const ops = []
+  await syncHarnessModels({
+    settings: { mutate: async (target, mutations) => { ops.push({ target, mutations }) } },
+    patchPath,
+    prefix: 'oauth',
+    origin: 'http://127.0.0.1:8318',
+    loggedIn: { codex: true },
+    contexts: { 'oauth-codex/gpt-6-astra': 400_000 },
+  })
+  const set = ops[0].mutations.find((row) => row.op === 'set' && row.path[1] === 'oauth-codex')
+  assert.equal(set.value.models.find((m) => m.id === 'gpt-6-astra').contextWindow, 400_000)
+  // 400K sits under the ~640K policy threshold: headroom scales to 10% of
+  // the custom window, not the catalog one.
+  const patch = await readFile(patchPath, 'utf8')
+  assert.match(patch, /provider: "oauth-codex", model: "gpt-6-astra", headroomTokens: 40000/)
+})
+
+test('ensureOpencodeGoRoute applies custom contexts to the supplemental route', async () => {
+  const settings = createPiAiSettings()
+  const key = `${OPENCODE_GO_EXTRA_ROUTE.id}/${OPENCODE_GO_EXTRA_MODELS[0].id}`
+  await ensureOpencodeGoRoute(settings, { contexts: { [key]: 300_000 } })
+  assert.equal(settings.section.providers[OPENCODE_GO_EXTRA_ROUTE.id].models[0].contextWindow, 300_000)
+  assert.equal(settings.section.providers[OPENCODE_GO_EXTRA_ROUTE.id].models[1].contextWindow, OPENCODE_GO_EXTRA_MODELS[1].contextWindow)
 })
 
 test('syncHarnessModels honors a persisted selected subset', async () => {
@@ -515,6 +667,9 @@ test('setFamily enables current GLM catalog keys and leaves retired ids in disab
   assert.equal(models.status(catalog).selected.includes('oauth-glm/glm-5.3'), true)
   assert.equal(models.status(catalog).selected.includes('oauth-glm/glm-5.3-flash'), true)
   assert.equal(models.status(catalog).selected.includes('oauth-glm/glm-5-turbo'), true)
+  // 全选 turns every current GLM key on; `-1m` variant keys no longer exist
+  // in the catalog, so they never appear in a selection.
+  for (const key of GLM_VARIANT_KEYS) assert.equal(models.status(catalog).selected.includes(key), false)
 })
 
 test('recoverEmptyLoggedInFamilies enables current GLM keys after leftover 全关', async () => {
@@ -526,6 +681,8 @@ test('recoverEmptyLoggedInFamilies enables current GLM keys after leftover 全�
   assert.equal(changed, true)
   for (const key of GLM_CURRENT) assert.equal(models.isEnabled(key), true)
   for (const key of GLM_STALE) assert.equal(models.disabled.has(key), true)
+  // Recovery never surfaces removed variant keys: unknown to the catalog.
+  for (const key of GLM_VARIANT_KEYS) assert.equal(models.status(catalog).selected.includes(key), false)
   const loggedOut = await models.recoverEmptyLoggedInFamilies(catalog, { glm: false, codex: false, grok: false })
   assert.equal(loggedOut, false)
 })
@@ -534,6 +691,11 @@ test('GLM catalog is the plan trio; Codex stays image-capable', () => {
   const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
   const glm = catalog['oauth-glm'].models
   assert.deepEqual(glm.map((model) => model.id), ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
+  // Base rows sit at the plan's 400K input cap; the official 1M window is
+  // the row's custom-context ceiling, no longer a `-1m` sibling row.
+  assert.equal(glm.find((model) => model.id === 'glm-5.3').contextWindow, 400_000)
+  assert.equal(glm.find((model) => model.id === 'glm-5.3-1m'), undefined)
+  assert.equal(glm.find((model) => model.id === 'glm-5.3-flash-1m'), undefined)
   assert.deepEqual(glm.find((model) => model.id === 'glm-5.3').input, ['text'])
   assert.deepEqual(glm.find((model) => model.id === 'glm-5.3-flash').input, ['text', 'image'])
   assert.deepEqual(glm.find((model) => model.id === 'glm-5-turbo').input, ['text'])
@@ -557,6 +719,20 @@ test('GLM catalog is the plan trio; Codex stays image-capable', () => {
   const described = describeCatalog(catalog).find((row) => row.family === 'glm')
   assert.deepEqual(described.models.find((model) => model.id === 'glm-5.3-flash').input, ['text', 'image'])
   assert.deepEqual(described.models.find((model) => model.id === 'glm-5.3').input, ['text'])
+  // Every row carries its effective window as the display tag — the click
+  // target for the custom input-context editor — plus its ceiling.
+  assert.equal(described.models.find((model) => model.id === 'glm-5.3').window, '400K')
+  assert.equal(described.models.find((model) => model.id === 'glm-5.3').windowMax, '1M')
+  assert.equal(described.models.find((model) => model.id === 'glm-5.3').contextMax, 1_000_000)
+  assert.equal(described.models.find((model) => model.id === 'glm-5-turbo').window, '200K')
+  assert.equal(described.models.find((model) => model.id === 'glm-5-turbo').windowMax, '200K')
+  assert.equal(described.models.find((model) => model.id === 'glm-5.3').custom, false)
+  // Codex rows without a large sibling are tagged too (edit entry per row).
+  const describedCodex = describeCatalog(catalog).find((row) => row.family === 'codex')
+  assert.equal(describedCodex.models.find((model) => model.id === 'gpt-5.5').window, '258K')
+  assert.equal(describedCodex.models.find((model) => model.id === 'gpt-5.5').windowMax, '258K')
+  assert.equal(describedCodex.models.find((model) => model.id === 'gpt-6-astra').window, '258K')
+  assert.equal(describedCodex.models.find((model) => model.id === 'gpt-6-astra').windowMax, '872K')
 })
 
 test('glmModels override replaces the GLM catalog', () => {
@@ -597,7 +773,11 @@ test('logged-in GLM 3/3 persist writes oauth-glm and a subsequent get shows it',
   const settings = createPiAiSettings({ 'oauth-codex': { api: 'openai-responses', models: [{ id: 'gpt-5.5' }] } })
   const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://127.0.0.1:8318' })
   const selected = catalogKeys(catalog).filter((key) => key.startsWith('oauth-glm/'))
-  assert.deepEqual(selected, GLM_CURRENT)
+  assert.deepEqual(selected, [
+    'oauth-glm/glm-5.3',
+    'oauth-glm/glm-5.3-flash',
+    'oauth-glm/glm-5-turbo',
+  ])
   const result = await syncHarnessModels({
     settings,
     prefix: 'oauth',
@@ -845,8 +1025,6 @@ test('route maxTokens is a capped request budget, not the vendor ceiling', async
   assert.equal(stored['oauth-grok'].models.find((m) => m.id === 'grok-4.7').maxTokens, 32_768)
   // Rows smaller than the budget keep their real value.
   assert.equal(stored['oauth-devin'].models.find((m) => m.id === 'swe-2').maxTokens, 32_768)
-  // Devin rows with no upstream cap (fusion) carry no route maxTokens.
-  assert.equal(stored['oauth-devin'].models.find((m) => m.id === 'fusion').maxTokens, undefined)
 })
 
 async function patchFile(content = '[]\n') {
@@ -907,9 +1085,11 @@ test('syncHarnessModels manages a marked compaction policy block in the profile 
   assert.ok(text.startsWith(foreign), 'existing entries are preserved byte-for-byte')
   const policies = parsePolicyRows(text)
   assert.equal(policies.some((row) => row.provider === 'oauth-codex' && row.model === 'gpt-6-luna' && row.headroomTokens === 25_800), true)
-  // 200K-window glm-5-turbo gets a scaled headroom; 1M rows keep the 65536 default.
+  // 200K-window glm-5-turbo and 400K-window glm-5.3 rows get a scaled
+  // headroom; the 1M `-1m` variants keep the 65536 default.
   assert.equal(policies.some((row) => row.provider === 'oauth-glm' && row.model === 'glm-5-turbo' && row.headroomTokens === 20_000), true)
-  assert.equal(policies.some((row) => row.model === 'glm-5.3'), false)
+  assert.equal(policies.some((row) => row.provider === 'oauth-glm' && row.model === 'glm-5.3' && row.headroomTokens === 40_000), true)
+  assert.equal(policies.some((row) => row.model === 'glm-5.3-1m'), false)
   // Second sync is a no-op.
   const again = await syncHarnessModels({
     settings,
@@ -931,6 +1111,82 @@ test('syncHarnessModels manages a marked compaction policy block in the profile 
   const cleared = await readFile(patchPath, 'utf8')
   assert.equal(cleared.includes('compaction-basic'), false)
   assert.ok(cleared.includes('ui-settings'))
+})
+
+test('an entry DSH appended inside the compaction markers survives the next sync, moved above the block', async () => {
+  const settings = createPiAiSettings()
+  const patchPath = await patchFile('- id: ui-settings\n  config:\n    enabled: true\n')
+  const sync = () => syncHarnessModels({ settings, patchPath, prefix: 'oauth', origin: 'http://127.0.0.1:8318', loggedIn: { codex: true } })
+  await sync()
+  // Live: saving a default model appends after our entry, before our closing comment.
+  const saved = '- id: agent-default-model\n  name: "@deepseek-ai/dsh-agent-default-model"\n  config:\n    provider: oauth-kiro\n    model: claude-opus-5.5\n    reasoningEffort: medium\n'
+  const written = await readFile(patchPath, 'utf8')
+  const end = written.indexOf('# <<< dsh-plugin-oauth-subs')
+  await writeFile(patchPath, written.slice(0, end) + saved + '\n' + written.slice(end))
+  await sync()
+  const text = await readFile(patchPath, 'utf8')
+  assert.ok(text.includes(saved), 'the default model is kept')
+  assert.ok(text.indexOf(saved) < text.indexOf('# >>> dsh-plugin-oauth-subs'), 'and moved out of the managed block')
+  assert.equal((await sync()).compaction.status, 'unchanged')
+})
+
+test('a default effort maps each model to its own nearest level; a route with a non-reasoning model gets none', () => {
+  const route = (models) => ({ api: HARNESS_COMPLETIONS_API, models })
+  const top = { id: 'top', reasoningEfforts: { low: 'low', high: 'high', max: 'max' } }
+  const upToHigh = { id: 'mid', reasoningEfforts: { off: 'none', low: 'low', medium: 'medium', high: 'high' } }
+  const maxed = withDefaultEffort(route([top, upToHigh]), 'max')
+  assert.equal(maxed.reasoning, 'max')
+  assert.equal(maxed.models[0], top, 'a model that declares the level is untouched')
+  assert.equal(maxed.models[1].reasoningEfforts.max, 'high', 'max falls back to the highest level below')
+  // Downward first and never onto off; upward only when nothing lies below.
+  assert.equal(withDefaultEffort(route([top]), 'medium').models[0].reasoningEfforts.medium, 'low')
+  assert.equal(withDefaultEffort(route([top]), 'off').models[0].reasoningEfforts.off, 'low')
+  assert.equal(withDefaultEffort(route([upToHigh]), 'off').models[0], upToHigh)
+  // DSH fails a non-reasoning model's no-effort requests once its route has a default.
+  const mixed = route([top, { id: 'plain', reasoningEfforts: false }])
+  assert.equal(withDefaultEffort(mixed, 'max'), mixed)
+  assert.equal(withDefaultEffort(route([top]), undefined).reasoning, undefined)
+})
+
+test('default efforts persist per family in models.json; 全部 unifies them', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-effort-'))
+  const switches = new ModelSwitch({ path: join(dir, 'models.json') })
+  await switches.setEffort('max')
+  await switches.setEffort('medium', ['kiro'])
+  await assert.rejects(switches.setEffort('minimal'), /effort must be one of/)
+  await assert.rejects(switches.setEffort('max', ['nope']), /model family ids/)
+  const reloaded = new ModelSwitch({ path: join(dir, 'models.json') })
+  await reloaded.ready
+  assert.equal(reloaded.efforts.kiro, 'medium')
+  assert.equal(reloaded.efforts.codex, 'max')
+  await reloaded.setEffort('low')
+  assert.equal(new Set(Object.values(reloaded.efforts)).size, 1, 'setting every family overrides single-family picks')
+  await reloaded.setEffort(null, ['kiro'])
+  assert.equal(reloaded.efforts.kiro, undefined)
+})
+
+test('each route takes its own family default effort, OpenCode Go included', async () => {
+  const settings = createPiAiSettings()
+  await syncHarnessModels({ settings, prefix: 'oauth', origin: 'http://127.0.0.1:8318', loggedIn: { grok: true, codex: true }, efforts: { grok: 'max' } })
+  const grok = settings.section.providers['oauth-grok']
+  assert.equal(grok.reasoning, 'max')
+  assert.equal(grok.models.find((m) => m.id === 'grok-4.7').reasoningEfforts.max, 'xhigh')
+  assert.equal(grok.models.find((m) => m.id === 'grok-4.5').reasoningEfforts.max, 'high')
+  assert.equal(settings.section.providers['oauth-codex'].reasoning, undefined, 'a family without a pick keeps the provider default')
+
+  // An effort-only change still rewrites an owned OpenCode Go route.
+  const go = createPiAiSettings()
+  await ensureOpencodeGoRoute(go, {})
+  const reasoningOnly = OPENCODE_GO_ROUTES
+    .filter((route) => route.models.every((m) => m.reasoningEfforts && typeof m.reasoningEfforts === 'object'))
+    .map((route) => route.id)
+  const efforts = Object.fromEntries(OPENCODE_GO_ROUTES.map((route) => [route.id, 'high']))
+  const result = await ensureOpencodeGoRoute(go, { efforts })
+  assert.deepEqual(result.routes ?? [], reasoningOnly)
+  for (const route of OPENCODE_GO_ROUTES) {
+    assert.equal(go.section.providers[route.id].reasoning, reasoningOnly.includes(route.id) ? 'high' : undefined)
+  }
+  assert.equal((await ensureOpencodeGoRoute(go, { efforts })).status, 'present')
 })
 
 test('syncHarnessModels does not touch a hand-maintained compaction override', async () => {

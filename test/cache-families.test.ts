@@ -21,6 +21,8 @@ import { isKiroFallback } from '../lib/oauth/kiro/cache.js'
 import { isCursorFallback, resetCursorSystemPins } from '../lib/oauth/cursor/cache.js'
 import { isAntigravityFallback, resetAntigravitySystemPins } from '../lib/oauth/antigravity/cache.js'
 import { devinConversationId, isDevinFallback } from '../lib/oauth/devin/cache.js'
+import { decodeAgentClientMessage } from '../lib/oauth/cursor/proto.js'
+import { normalizeGrokResponsesBody } from '../lib/oauth/grok/request.js'
 import { readdirSync, readFileSync } from 'node:fs'
 
 const dirty = 'session 772f7f3a/foo'
@@ -366,6 +368,53 @@ for (const [family, systemOf] of Object.entries(PINNING_FAMILIES)) {
       assert.ok(lead.includes(MAIN_PROMPT) && !lead.includes(TITLE_PROMPT), `${family} step ${step}: ${lead}`)
     }
     resetAllPins(); resetGlmSystemPins()
+  })
+}
+
+// The leading system text each pinning family puts on the wire: the pinned
+// front alone. Cursor parks a snapshot as its own root blob, so read the
+// first blob, not the joined `systemPrompt`.
+const PINNED_FRONTS = {
+  ...PINNING_FAMILIES,
+  cursor: (body) => {
+    const built = openaiToCursor(body, { conversationId: applyCursorCache(body).cacheSessionId })
+    const [first] = decodeAgentClientMessage(built.requestBytes).rootBlobIds
+    return JSON.parse(built.blobStore.get(first).toString('utf8')).content
+  },
+  grok: (body) => normalizeGrokResponsesBody({
+    model: 'grok-4.7',
+    prompt_cache_key: body.prompt_cache_key,
+    input: [
+      { role: 'developer', content: body.messages[0].content },
+      { role: 'user', content: [{ type: 'input_text', text: 'tps' }] },
+    ],
+  }).input[0].content,
+}
+
+// Pins are capped at 64 conversations. A session still sending steps keeps
+// its pin however many sessions start after it: when FIFO dropped it anyway,
+// its next step re-pinned the prompt with that step's runtime snapshot
+// folded in — a new front, so the whole cached prefix missed.
+const LEAD_PROMPT = 'You are the lead session.\n\nYour working directory is /repo.'
+for (const [family, frontOf] of Object.entries(PINNED_FRONTS)) {
+  test(`${family}: a session still stepping keeps its pin while 64 newer sessions start`, () => {
+    resetAllPins(); resetGlmSystemPins(); resetGrokSystemPins()
+    const body = (session, system) => ({
+      model: MODELS[family] ?? 'glm-5.3',
+      prompt_cache_key: session,
+      messages: [{ role: 'system', content: system }, { role: 'user', content: 'tps' }],
+    })
+    assert.equal(frontOf(body('session-lead', LEAD_PROMPT)), LEAD_PROMPT)
+    for (let i = 1; i <= 64; i += 1) {
+      frontOf(body(`session-${i}`, `You are session ${i}.`))
+      // Every lead step brings a new runtime snapshot; the front stays pinned.
+      const step = `${LEAD_PROMPT}\n\nRuntime context, step ${i}.`
+      assert.equal(frontOf(body('session-lead', step)), LEAD_PROMPT, `lead step ${i}`)
+    }
+    // Still bounded: the pin that went is session-1's, idle since its only request.
+    const resumed = 'You are session 1.\n\nRuntime context.'
+    assert.equal(frontOf(body('session-1', resumed)), resumed)
+    resetAllPins(); resetGlmSystemPins(); resetGrokSystemPins()
   })
 }
 

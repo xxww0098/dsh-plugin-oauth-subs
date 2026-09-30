@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
 import { test } from 'node:test'
 import { kiroSession } from '../lib/oauth/kiro/index.js'
 import { refreshKiroCatalog, resetKiroCatalogCache } from '../lib/oauth/kiro/catalog.js'
 import { buildProviders, catalogProviders, describeCatalog } from '../lib/oauth/models.js'
+import { assembleUi } from '../scripts/ui-bundle.ts'
 
 const json = (body) => new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
 
@@ -42,7 +42,7 @@ test('the Models page gets the rate; the route rows written to settings never do
 })
 
 test('the model row shows the multiplier with its own tooltip, in both languages', async () => {
-  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  const src = assembleUi()
   assert.match(src, /model\.rate && h\('span', \{ className: 'osubs-tag osubs-tag--plain', title: t\.rateTag \}, `×\$\{model\.rate\}`\)/)
   assert.equal(src.match(/rateTag: /g)?.length, 2)
 })

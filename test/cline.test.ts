@@ -196,17 +196,18 @@ test('catalog is Completions at /cline with declared effort keys only', () => {
 test('live catalog merges the recommended + free buckets and falls back to the seed', async () => {
   resetClineCatalogCache()
   assert.deepEqual(CLINE_MODELS.map((model) => model.id), [
-    'spacexai/grok-4.7', 'openai/gpt-6-astra', 'moonshotai/kimi-k3', 'anthropic/claude-opus-5',
+    'openai/gpt-6.1-sol', 'anthropic/claude-sonnet-5.5', 'anthropic/claude-opus-5.5',
+    'spacexai/grok-4.7', 'openai/gpt-6-astra', 'moonshotai/kimi-k3',
     'stealth/pixel-canary', 'stealth/space-bunny-alpha', 'cline-free/mimo-v2.6-flash',
-    'cline-free/deepseek-v4.1-flash', 'cline-free/gemini-3.8-flash', 'cline-free/muse-spark-1.3-contributor',
+    'cline-free/deepseek-v4.1-flash', 'cline-free/muse-spark-1.3-contributor',
   ])
   const feed = {
-    recommended: [{ id: 'anthropic/claude-opus-5', name: 'claude-opus-5' }, { id: 'new/lab-model', name: 'lab-model' }],
+    recommended: [{ id: 'anthropic/claude-opus-5.5', name: 'claude-opus-5.5' }, { id: 'new/lab-model', name: 'lab-model' }],
     free: [{ id: 'cline-free/deepseek-v4.1-flash', name: 'Deepseek-v4.1-Flash' }],
     clinePass: [{ id: 'cline-pass/glm-5.3', name: 'cline-pass/glm-5.3' }],
   }
   const merged = toClinePickerModels(feed)
-  assert.deepEqual(merged.map((model) => model.id), ['anthropic/claude-opus-5', 'new/lab-model', 'cline-free/deepseek-v4.1-flash'])
+  assert.deepEqual(merged.map((model) => model.id), ['anthropic/claude-opus-5.5', 'new/lab-model', 'cline-free/deepseek-v4.1-flash'])
   assert.equal(merged[0].contextWindow, 1_000_000)
   assert.equal(merged[1].contextWindow, 128_000)
   assert.equal(merged[1].maxTokens, 8_192)
@@ -219,10 +220,19 @@ test('live catalog merges the recommended + free buckets and falls back to the s
   assert.equal(CLINE_CATALOG_TTL_MS > 0, true)
 })
 
+test('a fact ceiling survives the Cline projection', () => {
+  const rows = toClinePickerModels(
+    { recommended: [{ id: 'anthropic/claude-opus-5.5', name: 'claude-opus-5.5' }] },
+    { models: [{ id: 'anthropic/claude-opus-5.5', contextWindow: 200_000, maxContextWindow: 1_000_000 }] },
+  )
+  assert.equal(rows[0].contextWindow, 200_000)
+  assert.equal(rows[0].maxContextWindow, 1_000_000)
+})
+
 test('cache strips Codex/Grok fields and pins X-Task-ID, never Date.now', () => {
   resetClinePins()
   const { payload, cacheSessionId } = applyClineCache({
-    model: 'anthropic/claude-opus-5',
+    model: 'anthropic/claude-opus-5.5',
     messages: [{ role: 'system', content: 'sys v1' }, { role: 'user', content: 'hi' }],
     session_id: 'dsh/session 1',
     prompt_cache_key: 'codex-style',
@@ -288,10 +298,10 @@ test('completions hop renames max_tokens for reasoning-era ids, asks for usage, 
   assert.deepEqual(applyClineStreamUsage({ stream: true }), { stream: true, stream_options: { include_usage: true } })
   assert.deepEqual(applyClineStreamUsage({ stream: false }), { stream: false })
   assert.deepEqual(
-    applyClineThinking({ model: 'anthropic/claude-opus-5', reasoning_effort: 'high' }),
-    { model: 'anthropic/claude-opus-5', reasoning_effort: 'high' },
+    applyClineThinking({ model: 'anthropic/claude-opus-5.5', reasoning_effort: 'high' }),
+    { model: 'anthropic/claude-opus-5.5', reasoning_effort: 'high' },
   )
-  assert.deepEqual(applyClineThinking({ model: 'anthropic/claude-opus-5', reasoning_effort: 'max' }), { model: 'anthropic/claude-opus-5', reasoning_effort: 'xhigh' })
+  assert.deepEqual(applyClineThinking({ model: 'anthropic/claude-opus-5.5', reasoning_effort: 'max' }), { model: 'anthropic/claude-opus-5.5', reasoning_effort: 'xhigh' })
   assert.deepEqual(applyClineThinking({ model: 'unknown/model', reasoning_effort: 'high' }), { model: 'unknown/model' })
   const mapped = mapClineUsage({ prompt_tokens: 10, cache_read_input_tokens: 4 })
   assert.equal(mapped.prompt_tokens_details.cached_tokens, 4)
@@ -584,6 +594,50 @@ test('sync writes the live cline catalog, not the offline seed', async () => {
   assert.equal(operations.some((row) => row.op === 'set' && row.path?.[1] === 'oauth-cline'), true)
 })
 
+test('an expired cli-imported cline login shows the rerun hint, never the upstream 401', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'cline-stale-'))
+  const authPath = join(dir, 'auth.json')
+  const home = join(dir, 'cline-home')
+  await mkdir(join(home, 'data', 'settings'), { recursive: true })
+  const expired = Date.now() - 3600_000
+  await writeFile(join(home, 'data', 'settings', 'providers.json'), JSON.stringify({
+    providers: { cline: { settings: { auth: { accessToken: 'workos:jwt-old', refreshToken: 'ref-old', expiresAt: expired, accountId: 'usr-01OLD' } } } },
+  }))
+  const session = clineSessionFromAuthData({
+    accessToken: 'jwt-old',
+    refreshToken: 'ref-old',
+    expiresAt: new Date(expired).toISOString(),
+    userInfo: { email: 'old@example.com', clineUserId: 'usr-01OLD' },
+  }, { source: 'cli' })
+  await saveSession('cline', session, authPath)
+  const previous = process.env.CLINE_HOME
+  process.env.CLINE_HOME = home
+  const calls = []
+  try {
+    const controller = new AuthController({
+      authPath,
+      prefix: 'oauth',
+      origin: () => 'http://127.0.0.1:8318',
+      clineAutoImport: false,
+      clineDiscover: async () => CLINE_MODELS,
+      fetchFn: async (url) => {
+        calls.push(String(url))
+        return json({ error: "Unauthorized: Please make sure you're using the latest version of Cline" }, 401)
+      },
+    })
+    await controller.refreshQuota('cline')
+    const snap = await controller.snapshot()
+    const [row] = snap.accounts.cline.accounts
+    assert.ok(row, 'the stale login stays listed')
+    assert.equal(row.quota.status, 'error')
+    assert.match(row.quota.error, /imported login is stale; run cline/)
+    assert.equal(calls.some((href) => href.includes('/users/')), false)
+  } finally {
+    if (previous === undefined) delete process.env.CLINE_HOME
+    else process.env.CLINE_HOME = previous
+  }
+})
+
 test('controller snapshot shows quota on every cline account; hop is Completions', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'cline-ctrl-'))
   const authPath = join(dir, 'auth.json')
@@ -646,7 +700,7 @@ test('controller snapshot shows quota on every cline account; hop is Completions
       method: 'POST',
       headers: { authorization: 'Bearer proxy-key-cline-test-xx', 'content-type': 'application/json' },
       body: JSON.stringify({
-        model: 'anthropic/claude-opus-5',
+        model: 'anthropic/claude-opus-5.5',
         messages: [{ role: 'user', content: 'hi' }],
         session_id: 'dsh-session-9',
         prompt_cache_key: 'codex-style',
@@ -668,7 +722,7 @@ test('controller snapshot shows quota on every cline account; hop is Completions
     const responses = await fetch(`http://127.0.0.1:${port}/cline/v1/responses`, {
       method: 'POST',
       headers: { authorization: 'Bearer proxy-key-cline-test-xx', 'content-type': 'application/json' },
-      body: JSON.stringify({ model: 'anthropic/claude-opus-5', input: [] }),
+      body: JSON.stringify({ model: 'anthropic/claude-opus-5.5', input: [] }),
     })
     assert.equal(responses.status, 501)
   } finally {

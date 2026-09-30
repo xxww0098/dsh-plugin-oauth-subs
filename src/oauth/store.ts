@@ -28,7 +28,7 @@ export { readPrivateText, writePrivateText }
 /** Dropped families: their vault is never read and leaves the file with its next write. */
 const RETIRED_PROVIDER_IDS = Object.freeze(['anthropic'])
 
-export const PROVIDER_IDS = Object.freeze(['codex', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline', 'command-code'])
+export const PROVIDER_IDS = Object.freeze(['codex', 'chatgpt', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline', 'command-code'])
 
 export function defaultDataDir() {
   return join(homedir(), '.dsh', 'plugins', 'oauth-subs')
@@ -58,6 +58,10 @@ export function accountIdOf(provider, session) {
   if (provider === 'codex') {
     const id = session.emailAddress || session.accountId
     if (typeof id === 'string' && id.trim()) return id.trim()
+  } else if (provider === 'chatgpt') {
+    // One vault row per issued client (user + workspace): the same email can
+    // hold several registrations, so the key carries a hash of the client.
+    if (typeof session.accountKey === 'string' && session.accountKey.trim()) return session.accountKey.trim()
   } else if (provider === 'glm') {
     const account = typeof session.account === 'string' && session.account.trim()
       ? session.account.trim()
@@ -337,6 +341,15 @@ export function publicSession(provider, session) {
   if (provider === 'codex') {
     return {
       account: session.emailAddress ?? session.accountId,
+      planType,
+      planLabel,
+      expiresAt: session.expiresAt,
+    }
+  }
+  if (provider === 'chatgpt') {
+    // No client id, subject, scopes or tokens: only what the card shows.
+    return {
+      account: session.emailAddress,
       planType,
       planLabel,
       expiresAt: session.expiresAt,

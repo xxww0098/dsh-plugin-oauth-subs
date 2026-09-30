@@ -27,6 +27,8 @@ export declare const COPILOT_API_VERSION = "2026-06-01";
 export declare const COPILOT_PREEMPT_MS: number;
 export declare const COPILOT_NEVER_EXPIRES = 8640000000000000;
 export declare const COPILOT_DEFAULT_CONTEXT = 128000;
+/** GPT rows run the Copilot GPT line's 256K default input window (2026-09). */
+export declare const COPILOT_GPT_CONTEXT_WINDOW = 256000;
 export declare const COPILOT_DEFAULT_MAX_TOKENS = 16384;
 export declare const COPILOT_INPUT: readonly string[];
 export declare const COPILOT_VISION_INPUT: readonly string[];
@@ -46,14 +48,25 @@ export declare const COPILOT_REASONING: Readonly<{
     medium: "medium";
     high: "high";
 }>;
-export declare const COPILOT_MODELS: readonly {
-    reasoningEfforts?: any;
-    id: any;
-    name: any;
-    contextWindow: any;
-    maxTokens: any;
-    input: any[];
-}[];
+/**
+ * Offline floor. Live `GET /models` replaces this after login.
+ *
+ * 2026-09-23 refresh: model names / availability from GitHub's official docs
+ * tables (`model-release-status.yml` GA + `auto-model-selection.yml`), and
+ * id / context / max output / vision / effort ladders from models.dev
+ * `github-copilot` (the Copilot API registry). `gpt-4.1` stays as the plugin
+ * utility default although it is no longer GA-listed.
+ *
+ * `gpt-6-luna` / `gpt-6-sol` use the vendor ids shared by Codex / Cursor /
+ * Devin; `claude-opus-5.5` / `claude-sonnet-5.5` follow Copilot's dotted
+ * `claude-opus-4.7` convention. Those four await live confirmation.
+ * `Claude Opus 4.8 (fast mode)` is a mode, not a picker row, so it stays out.
+ * Rows live in `src/catalog/models.json` under `"copilot"` (effort ladders
+ * snapshotted from models.dev `github-copilot`).
+ */
+export declare const COPILOT_MODELS: readonly any[];
+/** Catalog lookup for the custom-context ceiling (`maxContextWindowOf`). */
+export declare function copilotModel(modelId: any): any;
 export declare function copilotSourceLabel(source: any): "env" | "CLI" | "key" | "OAuth" | undefined;
 export declare function isCopilotKeySource(source: any): boolean;
 export declare function copilotAccountFingerprint(token: any): string;

@@ -36,6 +36,18 @@ export function resetClinePins() {
   SYSTEM_PINS.clear()
 }
 
+/**
+ * Read a pin and mark it most recently used. Map order is recency, so the
+ * cap drops the idlest conversation, never one that is still sending steps.
+ */
+function usePin(key) {
+  const pin = SYSTEM_PINS.get(key)
+  if (pin === undefined) return undefined
+  SYSTEM_PINS.delete(key)
+  SYSTEM_PINS.set(key, pin)
+  return pin
+}
+
 function systemText(message) {
   const content = message?.content
   if (typeof content === 'string') return content
@@ -64,7 +76,7 @@ export function stabilizeClineSystemPrefix(messages, sessionId) {
   const { head, rest } = splitLeadingSystem(messages)
   if (head.length === 0) return messages
   const text = head.map(systemText).join('\n\n')
-  const existing = SYSTEM_PINS.get(sessionId)
+  const existing = usePin(sessionId)
   // Re-pin when there is no pin yet or the head changed incompatibly (not a
   // pure extension): the cached prefix is already broken, so keeping the old
   // head would only serve a stale system prompt.

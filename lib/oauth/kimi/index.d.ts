@@ -38,22 +38,8 @@ export declare const KIMI_REASONING: Readonly<{
     xhigh: "max";
     max: "max";
 }>;
-export declare const KIMI_MODELS: readonly {
-    id: string;
-    name: string;
-    contextWindow: number;
-    maxTokens: number;
-    input: string[];
-    reasoningEfforts: {
-        off: "off";
-        minimal: "low";
-        low: "low";
-        medium: "high";
-        high: "high";
-        xhigh: "max";
-        max: "max";
-    };
-}[];
+/** Offline floor; live `GET /coding/v1/models` replaces it after login. Rows live in `src/catalog/models.json` under `"kimi"`. */
+export declare const KIMI_MODELS: readonly any[];
 export declare function configureKimiIdentity(dataDir: any): void;
 export declare function kimiSourceLabel(source: any): "env" | "CLI" | "key" | "OAuth" | undefined;
 export declare function isKimiKeySource(source: any): boolean;

@@ -149,7 +149,7 @@ export function formatPlanLabel(raw, family?) {
     if (CODEX_PLAN_NAMES[slug]) return CODEX_PLAN_NAMES[slug]
     if (CODEX_PLAN_NAMES[compact]) return CODEX_PLAN_NAMES[compact]
   }
-  if (GLM_PLAN_NAMES[slug] && family !== 'codex') return GLM_PLAN_NAMES[slug]
+  if (GLM_PLAN_NAMES[slug] && family !== 'codex' && family !== 'chatgpt') return GLM_PLAN_NAMES[slug]
   if (GROK_PLAN_ALIASES[slug]) return GROK_PLAN_ALIASES[slug]
   if (GROK_PLAN_ALIASES[compact]) return GROK_PLAN_ALIASES[compact]
   const known = Object.values(GROK_TIER_NAMES)

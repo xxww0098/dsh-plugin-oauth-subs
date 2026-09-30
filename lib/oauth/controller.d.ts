@@ -1,13 +1,17 @@
 /**
- * Auth controller behind the Settings page RPC.
- * Codex PKCE (+ paste callback + import), Grok device-code (primary) + PKCE fallback.
+ * Auth controller behind the Settings page RPC: owns the per-family token
+ * managers, quota store and flow managers, builds the Settings snapshot, and
+ * syncs routes to the host. The work behind each entry point lives in plain
+ * functions that take the controller: login.ts (flows, keys, imports),
+ * account-quota.ts, self-update.ts, account-marks.ts, and each family's
+ * accounts.ts (auto-import, identity, catalog discovery, login completion).
  */
 import { OAuthFlowManager } from './flow.js';
 import { DeviceFlowManager } from './grok/device-flow.js';
 import { GlmCliFlowManager } from './glm/cli-flow.js';
 import { KiroIdcFlowManager } from './kiro/idc-flow.js';
 import { CursorPollFlowManager } from './cursor/pkce-flow.js';
-import { ModelSwitch } from './models.js';
+import { ModelSwitch } from './model-switch.js';
 import { TokenManager } from './tokens.js';
 import { QuotaStore } from './quota.js';
 /** How often the background sweep re-checks stored credential expiry. */
@@ -50,6 +54,7 @@ export declare class AuthController {
     devinAutoImportTried: boolean;
     devinDiscover: any;
     clineDiscover: any;
+    chatgptDiscover: any;
     clineAutoImport: boolean;
     clineAutoImportTried: boolean;
     commandCodeAutoImport: boolean;
@@ -60,12 +65,14 @@ export declare class AuthController {
     claims: Map<string, number>;
     tokens: Record<string, TokenManager>;
     quota: QuotaStore;
+    identityTried: Map<string, number>;
     fetchFn: any;
     opencodeGo: any;
     opencodeGoAdopted: boolean;
     tokenSweepTimer: any;
     outboundProxy: any;
     setOutboundProxy: any;
+    usage: any;
     installReleaseFn: any;
     autoUpdate: boolean;
     updateState: any;
@@ -73,10 +80,11 @@ export declare class AuthController {
     autoUpdateTimer: any;
     prefsFile: string;
     stateFile: string;
-    constructor({ authPath, prefix, origin, settings, patchPath, credentials, grokLogin, onAuthChanged, models, fetchFn, quotaTtlMs, profile, readFileFn, updateEnv, installReleaseFn, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover, devinAutoImport, devinImport, devinDiscover, clineDiscover, clineAutoImport, commandCodeAutoImport, commandCodeImport }: any);
+    constructor({ authPath, prefix, origin, settings, patchPath, credentials, grokLogin, onAuthChanged, models, fetchFn, quotaTtlMs, profile, readFileFn, updateEnv, installReleaseFn, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover, devinAutoImport, devinImport, devinDiscover, clineDiscover, clineAutoImport, commandCodeAutoImport, commandCodeImport, chatgptDiscover }: any);
     claim(provider: any): number;
     loggedIn(): Promise<{
         codex: boolean;
+        chatgpt: boolean;
         grok: boolean;
         glm: boolean;
         kiro: boolean;
@@ -373,7 +381,7 @@ export declare class AuthController {
         loggedIn: boolean;
         busy: boolean;
     }>;
-    catalog(): Promise<{}>;
+    catalog(): Promise<Record<string, any>>;
     /**
      * Startup discovery for every signed-in family with a live catalog. The
      * picker otherwise keeps the static floor until someone logs in or hits
@@ -389,7 +397,9 @@ export declare class AuthController {
      * `lib/`. The callers are untyped on purpose — do not "restore" the inferred
      * type without re-checking `lib/` size.
      */
-    snapshot(fresh?: boolean): Promise<Record<string, any>>;
+    snapshot(fresh?: boolean, opts?: {
+        revalidateQuota?: boolean;
+    }): Promise<Record<string, any>>;
     opencodeGoSnapshot(options?: any): Promise<{
         id: string;
         loggedIn: boolean;
@@ -463,14 +473,7 @@ export declare class AuthController {
         quota: any;
     }>;
     refreshQuota(provider: any, accountId?: any): any;
-    consumeReset(provider: any, accountId: any): Promise<any>;
-    /**
-     * Version check + self-install. `apply` downloads the latest tag tarball and
-     * swaps the installed package dirs in place — the profile layout is the same
-     * on desktop and web, so this never needs `dsh`/`npm`. The new copy loads on
-     * the next host start (`apply.restart` says which restart to ask for). If no
-     * installed dir exists the apply degrades to a `manual` command hint.
-     */
+    consumeReset(provider: any, accountId: any, creditId?: any): Promise<any>;
     checkUpdate(payload?: any): Promise<{
         apply: any;
         version: any;
@@ -534,19 +537,11 @@ export declare class AuthController {
         repo: string;
         repoSlug: string;
     }>;
-    /** Persist the auto-update switch; turning it on runs one pass now. */
     setAutoUpdate(payload?: any): Promise<{
         autoUpdate: boolean;
     }>;
-    /**
-     * One auto-update pass: check the latest tag and self-install it when newer.
-     * The outcome lands in update-state.json so About can show what the
-     * background loop last did.
-     */
     runAutoUpdate(): Promise<any>;
-    startAutoUpdateWatch({ intervalMs }?: {
-        intervalMs?: number | undefined;
-    }): void;
+    startAutoUpdateWatch(options?: any): void;
     stopAutoUpdateWatch(): void;
     /**
      * Background credential sweep — CLIProxyAPI's authAutoRefreshLoop shape.
@@ -561,6 +556,11 @@ export declare class AuthController {
     stopTokenSweep(): void;
     sweepTokensOnce(): Promise<void>;
     login(provider: any, options: any): Promise<{
+        authorizeUrl: any;
+        redirectUri: any;
+        mode: string;
+        registering: any;
+    } | {
         authorizeUrl: any;
         verificationUri: any;
         userCode: any;
@@ -609,23 +609,12 @@ export declare class AuthController {
     }>;
     completePkce(provider: any, attempt: any, claim: any): Promise<void>;
     completeKimiDevice(attempt: any): Promise<void>;
-    /**
-     * Cline login is two hops: the WorkOS device poll yields a WorkOS token
-     * pair, and `/api/v1/auth/register` exchanges it for the Cline session
-     * (`usr-…` account id + refresh token). Only the second hop produces
-     * something this plugin can use.
-     */
     completeClineDevice(attempt: any): Promise<void>;
     completeCopilotDevice(attempt: any): Promise<void>;
     completeDevice(provider: any, attempt: any): Promise<void>;
     completeGlm(attempt: any): Promise<void>;
     completeCursor(attempt: any): Promise<void>;
     completeKiroIdc(attempt: any): Promise<void>;
-    /**
-     * Command Code's waitCode resolves with the callback credentials
-     * {apiKey,userId,userName,keyName} — the session builds directly, there is
-     * no token exchange (flow.ts collect() already state-checked the callback).
-     */
     completeCommandCode(attempt: any, claim: any): Promise<void>;
     useKey(provider: any, key: any, extra: any): Promise<{
         method: any;
@@ -878,16 +867,16 @@ export declare class AuthController {
     sync(selected?: any, options?: any): Promise<{
         opencodeGoRoute: {
             status: string;
+            routes?: undefined;
             error?: undefined;
-            routes?: undefined;
-        } | {
-            status: string;
-            error: string;
-            routes?: undefined;
         } | {
             status: string;
             routes: any[];
             error?: undefined;
+        } | {
+            status: string;
+            error: string;
+            routes?: undefined;
         };
         routes: {
             provider: string;

@@ -16,20 +16,6 @@ export declare function clineCatalogModels(): any[];
  * `recommended` + `free`, de-duplicated by id, declared order preserved.
  */
 export declare function toClinePickerModels(payload: any, { models }?: {
-    models?: readonly {
-        input: string[];
-        reasoningEfforts: {
-            minimal: "minimal";
-            low: "low";
-            medium: "medium";
-            high: "high";
-            xhigh: "xhigh";
-            max: "xhigh";
-        };
-        id: string;
-        name: string;
-        contextWindow: number;
-        maxTokens: number;
-    }[] | undefined;
+    models?: readonly any[] | undefined;
 }): any[];
 export declare function refreshClineCatalog(session: any, options?: any): Promise<any[]>;

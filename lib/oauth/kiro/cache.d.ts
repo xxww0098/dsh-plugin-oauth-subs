@@ -32,3 +32,24 @@ export declare function pinKiroSystemPrefix(conversationId: any, systemText: any
     extra: string;
 };
 export declare function kiroConversationId(payload?: any, explicit?: any): any;
+/** Where each request's estimate is appended; `npm run analyze` reads it. */
+export declare function setPrefixEstimateLog(path: string | undefined): void;
+export declare function resetKiroPrefixBaselines(): void;
+/**
+ * Upper bound on this request's cache hit: the bytes it shares, segment by
+ * segment from the front, with the best of this conversation's last few
+ * requests. It assumes the server cache is still warm (`gapMs` says how old
+ * that baseline is). `matched` is null without a baseline or a DSH session.
+ */
+export declare function estimateKiroPrefix(conversationId: any, body: any, now: number): {
+    bytes: any;
+    matched: number | null;
+    gapMs: number | null;
+};
+/** Estimate one outgoing body and append it to the log; never throws into the request. */
+export declare function recordKiroPrefix({ conversationId, session, model, body }: {
+    conversationId: any;
+    session: any;
+    model: any;
+    body: any;
+}): void;

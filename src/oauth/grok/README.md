@@ -1,7 +1,7 @@
 # Grok OAuth
 
 本文件是 `src/oauth/grok/` 的设计源。改登录、额度、对话或缓存先改这里再改代码。
-跨家族硬约定在仓库根 [`AGENTS.md`](../../../AGENTS.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)；对照仓库在 [`docs/oauth.md`](../../../docs/oauth.md)。
+跨家族硬规则在 [`docs/rules.md`](../../../docs/rules.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)；对照仓库在 [`docs/oauth.md`](../../../docs/oauth.md)。
 
 **不是** OpenAI Responses。上游是 xAI `api.x.ai/v1/responses`，登录对齐 Grok CLI。
 
@@ -12,11 +12,12 @@
 | [`index.ts`](index.ts) | OIDC 发现、device/PKCE、换票、刷新、Responses 头、套餐档位 |
 | [`device-flow.ts`](device-flow.ts) | RFC 8628 设备码（默认登录，无 loopback） |
 | [`credits-frame.ts`](credits-frame.ts) | grok.com `GetGrokCreditsConfig` 的 gRPC-web 帧解码 |
+| [`reset-frame.ts`](reset-frame.ts) | grok.com 重置卡 `GetRemainingResets` / `RedeemReset` 的 gRPC-web 编解码 + 公开卡 id 哈希 |
 | [`request.ts`](request.ts) | DSH Responses body：钉 leading system，多余 snapshot 挂 **input 后缀**；真 Fast id（`grok-4.7-build-fast`）原样透传、残留 `-fast` 别名剥掉、`service_tier` 永不发。不抬顶层 `instructions` |
 | [`cache.ts`](cache.ts) | `prompt_cache_key` + grok-build 头（`x-grok-conv-id` / `session-id` / `req-id` / `model-override`）。禁止带 Codex `session-id` |
 
 调度：[`../proxy.ts`](../proxy.ts) `family === 'grok'` → `normalizeGrokResponsesBody` + `applyGrokCache` + `grokAffinityHeaders`。
-额度：[`../quota.ts`](../quota.ts) `fetchGrokQuota` / `parseGrokBilling` / `applyGrokCreditsSnapshot`。
+额度：[`quota.ts`](quota.ts) `fetchGrokQuota` / `parseGrokBilling` / `applyGrokCreditsSnapshot`；重置卡 `fetchGrokResetTokens` / `consumeGrokResetToken`。
 套餐：[`../plan.ts`](../plan.ts) + `GROK_TIER_NAMES`（JWT 数字档 0–7）。
 
 ## 登录
@@ -43,18 +44,26 @@ DSH  →  本机 Responses 代理  →  POST https://api.x.ai/v1/responses
 
 头：`grokUpstreamHeaders` + grok-build `GrokRequestHeaders`（`x-grok-conv-id`、`x-grok-session-id`、`x-grok-req-id`、`x-grok-model-override`；重试再加 `x-grok-transient-retry`）。**不要**抄 Codex 的 `session-id` / `x-client-request-id`：xAI 忽略它们，缓存会打到错误分片。
 
-模型：`GROK_MODELS` 有 **Grok 4.7**（`grok-4.7`）、**Grok 4.7 Fast**（`grok-4.7-build-fast`，真后端变体，2× 价）、**Grok 4.6**、**Grok 4.5**；4.5 只到 `high`，4.6/4.7 是 `low`–`xhigh`。Grok 4 已下架。思考关不掉。
+行在 [`src/catalog/models.json`](../../catalog/models.json) 的 `"grok"` 键；行格式、来源与 `npm run models` 更新流程见 [`docs/models.md`](../../../docs/models.md)。本节只记本家的取舍与出处。
 
-4.7 参数出处：grok CLI `1.0.40` 的 `~/.grok/models_cache.json` / `GET cli-chat-proxy.grok.com/v1/models`（`context_window: 500000`、`max_completion_tokens: 1000000`、efforts `low|medium|high|xhigh`）与 `GET api.x.ai/v1/models`（`context_length: 500000`、`capabilities.reasoning_effort` 同四档）。`max_completion_tokens` 1M 高于 500k 窗口，行沿用窗口值（同 4.5/4.6 的 `GROK_LARGE_CONTEXT` 约定）。活测 2026-09-22（X Premium+，直打 `api.x.ai/v1/responses`）：`grok-4.7` 200、`grok-4.7-build-fast` 200、`grok-4.7-fast` 404。
+最近核对：2026-09-30，`GET cli-chat-proxy.grok.com/v1/models`（grok CLI 自己的列表，`~/.grok/models_cache.json` 同源）；本次 4.5 / 4.6 的 `context_window` 也降到 256K，与 4.7 同口径（2026-09-29 只改了 4.7，4.5 / 4.6 当时源里还报 500K）。
+
+来源字段：`context_window` → `contextWindow`，`reasoning_efforts[].value` → `reasoningEfforts`（思考关不掉，没有 `off`）。`GET api.x.ai/v1/models` 是 API 目录，不是订阅 picker，只作对照。输入窗取**非 Max Mode 基础窗**，不取缓存里的 Max Mode 变体窗口（与 Cursor 家族同一归因，见 `src/oauth/cursor/README.md`；经过见 [`docs/error.md`](../../../docs/error.md) 2026-09-29 Grok 4.7 输入窗口）。列表不带输出上限，`maxTokens` 沿用行值。`grok-4.7-build-fast` 是真后端变体（2× 价），不是 `-fast` 后缀；`grok-4.7-fast` 上游 404。Grok 4 已下架。
 
 ## 额度
 
 两条源，缺一不可：
 
 1. `GET https://cli-chat-proxy.grok.com/v1/billing?format=credits` + `/v1/user?include=subscription` → `parseGrokBilling`（周期用量、预付、产品行、档位）。
-2. `POST https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig`（gRPC-web）→ `decodeGrokCreditsFrame`。统一计费的 SuperGrok / X Premium+ 在 JSON billing 里经常没有 `creditUsagePercent`，这个帧才有周池。2026-09 schema：nested field 1 不再带 usage float，周期挪到 nested field 8 `{type, start, end}`；proto3 省略零值 = 0% 已用（与 grok.com 网页一致）。
+2. `POST https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig`（gRPC-web）→ `decodeGrokCreditsFrame`。统一计费的 SuperGrok / X Premium+ 在 JSON billing 里经常没有 `creditUsagePercent`，这个帧才有周池。周期在 nested field 8 `{type, start, end}`（field 1 不带 usage）；proto3 省略零值 = 0% 已用（与 grok.com 网页一致）。
 
-没有 Codex 那种重置卷 API。卡片不显示「重置额度」。
+重置卡（「重置卡」，类 Codex reset credits / GLM 重置卡）：grok CLI 里没有（1.0.44 二进制搜不到这组 RPC），挂在 grok.com 网页计费服务，同一把 CLI bearer + gRPC-web 头（`grokResetHeaders`）即可。
+
+- 列表：`POST grok.com/prod_mc_billing.ConsumerUiSvc/GetRemainingResets`，空请求帧。回 repeated field 10 = token；token 内 10 = id（`restok_…`）、20 = 发放、30 = 过期（Timestamp）——出处 stablyai/orca #18116 的真实抓包 hex；OmniRoute dd263fe 注释写 1/2/3 裸秒，两种形都解。空 DATA 帧 + `grpc-status 0` = 真 0 张；非 0 状态 / HTTP 失败 = 读失败，`resetCredits` 不写，保留上次卡数。
+- 兑换：`POST …/RedeemReset`，`ConsumerRedeemResetReq.token_id` = field 10。`0` 成功；`9` 且含 "already" = 这张已兑（丢响应后的重试，按成功算）；其余 `9` 或 `3` "token_id" = 没这张卡（`GrokResetRejected`）。
+- 一张卡清周池（和 Codex 一样只有「每周窗口」一行）。
+- token id 持有即可兑换，**不出宿主**：公开卡 id 是 `grokResetCardId`（sha256 前 16 位），兑换时重读列表按哈希找回 token，列表里没有就拒绝，不会换一张别的卡花掉。
+- 活测 2026-09-29（desktop 两个 SuperGrok 账号）：列表 200 + `grpc-status 0` + 空帧 = 0 张；过期 token 回 header `grpc-status 7`（凭据无效）。兑换未活测（无卡）。
 
 金额字段全部是 `{ val: <cents> }`（CodexBar `x.ai/billing` 文档口径）：`monthlyLimit` + `usage.includedUsed/totalUsed` = 月度包含池，`onDemandCap`/`onDemandUsed` = 按需消费封顶，`prepaidBalance` = 预付余额 —— 统一计费账号（SuperGrok / X Premium+）这些字段全是 `{val:0}` 或不发，**只有裸百分比**；非统一计费账号才有美元数。`{val}` 形才按美分转 USD（`unit:'usd'`），裸数字照旧当无单位 credits。周期 type 映射：MONTHLY→cycle、DAILY→primary(24h)、其余→weekly。`hasGrokCodeAccess` 渲染成卡片上的 `Grok Code` 标。`x.ai/billing` JSON-RPC 只接在 TUI 里（agent stdio 1.0.41 仍 -32601），别当数据源加。gRPC 帧 nested field 7 = `{type, f32}` 语义未考（疑产品/周期子项），fields 11/13 是 flag —— 不解不画。
 
@@ -87,15 +96,17 @@ DSH  →  本机 Responses 代理  →  POST https://api.x.ai/v1/responses
 
 ## 归因
 
-一线：[xai-org/grok-build](https://github.com/xai-org/grok-build) Responses（`GrokRequestHeaders` + 前缀 byte-for-byte）。导入旁路：[NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) `~/.hermes/auth.json`。总表见 [`docs/oauth.md`](../../../docs/oauth.md)。
+一线：[xai-org/grok-build](https://github.com/xai-org/grok-build) 的 Responses 路径；UA 钉 `grok-cli/0.2.93`。导入旁路：[NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) 的 `~/.hermes/auth.json`。
 
-## 追溯
+| 抄 | 出处 | 本 hop |
+|---|---|---|
+| `x-grok-conv-id` / `x-grok-session-id` / `x-grok-req-id` / `x-grok-model-override`，重试加 `x-grok-transient-retry` | grok-build `GrokRequestHeaders` | `grokAffinityHeaders` |
+| 模型页价格徽标（USD / 1M） | models.dev `xai`（xAI API 标价）；`grok-4.7-build-fast` 源里没有，按基础行 × 2 派生（乘数出处：上游 picker 对 Fast 的自述 "Fast variant. 2x the price."，见 [`docs/error.md`](../../../docs/error.md) 2026-09-22） | `src/catalog/rates.json`，`npm run rates` 写入（见 [docs/models.md](../../../docs/models.md) 费率表） |
+| `instructions: null`，前缀 byte-for-byte 重放 | grok-build | `normalizeGrokResponsesBody` 不抬顶层 `instructions` |
+| 设备码默认 | grok-build | [`device-flow.ts`](device-flow.ts) |
+| 目录（窗口、efforts、真 Fast id） | `GET cli-chat-proxy.grok.com/v1/models` | `GROK_MODELS`；真 Fast id 由 `normalizeGrokResponsesBody` 原样透传 |
+| 重置卡 `ConsumerUiSvc/GetRemainingResets` / `RedeemReset`（grok.com 网页，CLI 没有） | [stablyai/orca#18116](https://github.com/stablyai/orca/pull/18116) 抓包 + [OmniRoute dd263fe](https://github.com/diegosouzapw/OmniRoute/commit/dd263fed66da50e50e706195f1734e665d61e268) 状态映射 | [`reset-frame.ts`](reset-frame.ts) + `quota.ts` `fetchGrokResetTokens` / `consumeGrokResetToken` |
 
-| 问题 | 记录 |
-|---|---|
-| Grok 缓存命中率低 / 错分片 | [`docs/error.md`](../../../docs/error.md) 2026-08-30 Grok 缓存；2026-08-31 缓存混用 |
-| xAI 额度拿不到 | 同文件 xAI 额度 |
-| Fast 无加速 | 同文件 2026-08-30 Grok/Codex Fast |
-| Grok 4.7 Fast id 被 Codex Fast 规则剥掉 | 同文件 2026-09-22 Grok 4.7 Fast |
+**不要发明：** 自造的 grok-shell UA——保持 `grok-cli/0.2.93`。Codex 头与 Fast id 的禁令见「不要」。
 
-测试：`test/proxy.test.ts`（Grok hop 必须带 grok-build 头、禁止 Codex session 头）、`test/cache-families.test.ts`、`test/grok-request.test.ts`。
+跨家族对照总表见 [`docs/oauth.md`](../../../docs/oauth.md)。

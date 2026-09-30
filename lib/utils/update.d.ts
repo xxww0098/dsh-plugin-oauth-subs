@@ -166,3 +166,4 @@ export declare function installRelease(options?: any): Promise<{
     error?: undefined;
     command?: undefined;
 }>;
+export declare function dshHome(env?: NodeJS.ProcessEnv): string;

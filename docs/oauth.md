@@ -1,34 +1,28 @@
-# OAuth 参考仓库
+# 上游对照
 
-本文件是跨家族 hop 的**参考仓索引**。改某家登录 / 对话 / 缓存先对照这里钉住的官方 CLI 或社区逆向，再改 `src/oauth/<id>/`。
+每个家族照着哪个官方客户端或社区逆向实现、钉在哪个版本。改某家的登录、对话或缓存前，先按这里找到对照源；该家具体「抄什么 / 不要发明什么」写在它 README 的「归因」节。
 
-| 文件 | 职责 |
-|---|---|
-| 本文件 | 官方 / 社区仓库、钉住的版本、抄什么、不发明什么 |
-| [`src/oauth/<id>/README.md`](../src/oauth/codex/README.md) | 那一家的设计源（端点、函数、wire 字段） |
-| [`AGENTS.md`](../AGENTS.md) | 跨家族硬约定（缓存不混用、`api` 闭集） |
-| [`docs/error.md`](error.md) | 故障与验收 |
-
-**不是**第二套 LLM 适配器文档。本插件只把 DSH 接到各家订阅后端。社区仓用来对照 wire，不 vendor 整棵树，不引入 Bun / 对方 SDK。
+本插件只把 DSH 接到各家订阅后端，不是第二套 LLM 适配器。社区仓只拿来对照 wire，不 vendor 整棵树，也不引入 Bun 或对方的 SDK。
 
 ## 总表
 
 | 家族 | 一线对照 | 社区 / 文档 | 本 hop 钉住 | 设计源 |
 |---|---|---|---|---|
-| Codex | [openai/codex](https://github.com/openai/codex) `rust-v0.155.1` | Codex CLI `models.json` + 活目录 `GET .../codex/models`（GPT-6 Sol/Luna 需 `client_version` ≥ 0.155.0）；[#37345](https://github.com/openai/codex/issues/37345) routing-hint | UA `codex_cli_rs/0.155.1`；请求体 `content-encoding: zstd` | [`codex/README.md`](../src/oauth/codex/README.md) |
+| Codex | [openai/codex](https://github.com/openai/codex) `rust-v0.159.0`（钉 0.159.2） | Codex CLI `models.json` + 活目录 `GET .../codex/models`（**按 `client_version` 门控**：GPT-6 Sol/Luna ≥ 0.155.0，GPT-6.1 Sol ≥ 0.159.0）；[#37345](https://github.com/openai/codex/issues/37345) routing-hint | UA `codex_cli_rs/0.159.2`；请求体 `content-encoding: zstd` | [`codex/README.md`](../src/oauth/codex/README.md) |
+| ChatGPT（Sign in with ChatGPT） | [OpenAI 官方 siwc 开源客户端文档](https://developers.openai.com/siwc/token-sharing-open-source) | [earendil-works/pi](https://github.com/earendil-works/pi) `openai-chatgpt.ts`；[openclaw/openclaw](https://github.com/openclaw/openclaw) `token-sharing-oauth.runtime.ts`；[pingdotgg/t3code](https://github.com/pingdotgg/t3code) `CodexChatGptAuth.ts` | `dynamic_agent_client` 注册 → 颁发 `oaiapp_`；`ext_agent_host_id`；Bearer → `api.openai.com/v1/responses` | [`chatgpt/README.md`](../src/oauth/chatgpt/README.md) |
 | Grok | [xai-org/grok-build](https://github.com/xai-org/grok-build) | [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent)（`~/.hermes/auth.json` 导入） | UA `grok-cli/0.2.93` | [`grok/README.md`](../src/oauth/grok/README.md) |
 | GLM | **[zai-org/ZCode](https://github.com/zai-org/ZCode)** `872ad96`（tree 3.14.0）+ [docs.z.ai](https://docs.z.ai/devpack/quick-start) | ZCode 已开源：`official-coding-plan-gateway.ts`、`config/provider/zcode-builtin.json`、`runner-attribution.ts` | UA `ZCode/3.10.1 ai-sdk/anthropic/3.0.81`；Coding Plan Anthropic 走 `zcode.z.ai/api/v1/ultra[-zai]/anthropic` | [`glm/README.md`](../src/oauth/glm/README.md) |
 | Kiro | Kiro IDE / `List-Available-Models`（origin = chat 的 `AI_EDITOR`）；[kiro.dev/docs/models](https://kiro.dev/docs/models) 仅作离线参考 | [ZyphrZero/kiro.rs](https://github.com/ZyphrZero/kiro.rs)；[mikeyobrien/pi-provider-kiro](https://github.com/mikeyobrien/pi-provider-kiro) `0.10.2` | eventstream `GenerateAssistantResponse` | [`kiro/README.md`](../src/oauth/kiro/README.md) |
-| Antigravity | Antigravity.app hub 2.11.0 | [router-for-me/CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)（registry `models.json` 12 行 / 2026-09-23，sha256 `f95bd4b0…`）；[Rahularya01/pi-antigravity](https://github.com/Rahularya01/pi-antigravity) | UA `antigravity/hub/2.11.0`；daily-cloudcode-pa | [`antigravity/README.md`](../src/oauth/antigravity/README.md) |
-| Cursor | Cursor CLI `loginDeepControl` | [Rahularya01/pi-cursor](https://github.com/Rahularya01/pi-cursor)；[fitchmultz/pi-cursor-sdk](https://github.com/fitchmultz/pi-cursor-sdk)（`@cursor/sdk@1.0.27`）；[docs models-and-pricing](https://cursor.com/docs/models-and-pricing)（2026-09-23 静态楼：+`claude-opus-5-5` / `muse-spark-1.3`） | 指纹 `cli-2026.07.23-e383d2b`；`x-cursor-client-type: cli` | [`cursor/README.md`](../src/oauth/cursor/README.md) |
+| Antigravity | Antigravity.app hub 2.11.0 | [router-for-me/CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)（registry `models.json` 的 `antigravity` 键）；[Rahularya01/pi-antigravity](https://github.com/Rahularya01/pi-antigravity) | UA `antigravity/hub/2.11.0`；daily-cloudcode-pa | [`antigravity/README.md`](../src/oauth/antigravity/README.md) |
+| Cursor | Cursor CLI `loginDeepControl` | [Rahularya01/pi-cursor](https://github.com/Rahularya01/pi-cursor)；[fitchmultz/pi-cursor-sdk](https://github.com/fitchmultz/pi-cursor-sdk)（`@cursor/sdk@1.0.27`）；[docs models-and-pricing](https://cursor.com/docs/models-and-pricing)（静态底表） | 指纹 `cli-2026.07.23-e383d2b`；`x-cursor-client-type: cli` | [`cursor/README.md`](../src/oauth/cursor/README.md) |
 | Ollama Cloud | [docs.ollama.com/cloud](https://docs.ollama.com/cloud) | [ollama/ollama#12532](https://github.com/ollama/ollama/issues/12532)、[#16598](https://github.com/ollama/ollama/issues/16598) | Bearer `OLLAMA_API_KEY` → `ollama.com/v1` | [`ollama/README.md`](../src/apikey/ollama/README.md) |
-| Kimi | 官方 Kimi Code CLI | [Leechael/pi-provider-kimi-code](https://github.com/Leechael/pi-provider-kimi-code)；[官方模型表](https://www.kimi.com/code/docs/en/kimi-code/models.html)（4 个 ID，2026-09-23） | 设备码、无 PKCE | [`kimi/README.md`](../src/oauth/kimi/README.md) |
-| GitHub Copilot | [anomalyco/opencode](https://github.com/anomalyco/opencode) `plugin/github-copilot` | [github/docs copilot 数据表](https://github.com/github/docs/tree/main/data/tables/copilot)（GA / 可用性，2026-09-23）+ [models.dev](https://models.dev/api.json) `github-copilot`（id / 窗口）；[goose githubcopilot.rs](https://github.com/aaif-goose/goose)；[Cherry Studio CopilotService.ts](https://github.com/CherryHQ/cherry-studio)；[hermes-agent copilot_auth.py](https://github.com/NousResearch/hermes-agent/blob/main/hermes_cli/copilot_auth.py) | UA `GitHubCopilotChat/0.35.0`；client `Iv1.b507a08c87ecfe98` | [`copilot/README.md`](../src/oauth/copilot/README.md) |
+| Kimi | 官方 Kimi Code CLI | [Leechael/pi-provider-kimi-code](https://github.com/Leechael/pi-provider-kimi-code)；[官方模型表](https://www.kimi.com/code/docs/en/kimi-code/models.html) | 设备码、无 PKCE | [`kimi/README.md`](../src/oauth/kimi/README.md) |
+| GitHub Copilot | [anomalyco/opencode](https://github.com/anomalyco/opencode) `plugin/github-copilot` | [github/docs copilot 数据表](https://github.com/github/docs/tree/main/data/tables/copilot)（GA / 可用性）+ [models.dev](https://models.dev/api.json) `github-copilot`（id / 窗口）；[goose githubcopilot.rs](https://github.com/aaif-goose/goose)；[Cherry Studio CopilotService.ts](https://github.com/CherryHQ/cherry-studio)；[hermes-agent copilot_auth.py](https://github.com/NousResearch/hermes-agent/blob/main/hermes_cli/copilot_auth.py) | UA `GitHubCopilotChat/0.35.0`；client `Iv1.b507a08c87ecfe98` | [`copilot/README.md`](../src/oauth/copilot/README.md) |
 | Devin | Devin CLI `3000.10.31`（app.devin.ai PKCE + server.codeium.com Connect/proto） | [can1357/oh-my-pi](https://github.com/can1357/oh-my-pi) `pi-catalog` devin + vendored `exa.*` protos | MITM 实测指纹 `ide_name: chisel` / `3000.10.31` / `Basic <tok>-<tok>`；`devin-session-token$` 前缀只加一次 | [`devin/README.md`](../src/oauth/devin/README.md) |
-| Cline | Cline CLI `3.0.62`（npm `cline` + `@cline/core 0.0.83`） | [cline/cline](https://github.com/cline/cline) tag `cli-v3.0.62`（Apache-2.0）；[models.dev](https://models.dev/api.json) `openrouter` 桶做模型元数据（静态快照 2026-09-23） | WorkOS 设备码 + `POST /api/v1/auth/register` 兑换；Bearer `workos:<jwt>`；`X-Task-ID` 会话钉 | [`cline/README.md`](../src/oauth/cline/README.md) |
+| Cline | Cline CLI `3.0.62`（npm `cline` + `@cline/core 0.0.83`） | [cline/cline](https://github.com/cline/cline) tag `cli-v3.0.62`（Apache-2.0）；[models.dev](https://models.dev/api.json) `openrouter` 桶做模型元数据 | WorkOS 设备码 + `POST /api/v1/auth/register` 兑换；Bearer `workos:<jwt>`；`X-Task-ID` 会话钉 | [`cline/README.md`](../src/oauth/cline/README.md) |
 | 宿主 | [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) | DSH `llm-pi-ai` `api` 闭集 | 本机回环代理 | [`README.md`](../README.md) |
-| OpenCode Go（API key） | [opencode.ai/docs/go](https://opencode.ai/docs/go/) | [stablyai/orca](https://github.com/stablyai/orca)；[steipete/CodexBar](https://github.com/steipete/CodexBar) | 宿主内置 pi-ai `opencode-go`（27 模型）由用户在 DSH 模型页自行开启；插件不写该 profile。插件自有目录：`OpenCode Go`（openai-completions 28 行）+ `OpenCode Go · Responses`（6 行），通过 `OPENCODE_API_KEY` 直连；不服务的公开 ID 不进目录。插件路由带必需的 `x-opencode-session`（pi-ai 0.85.1 不发会话头）。额度走 Console `/console/api/{orgs,go/status,billing/status,user}` + `x-org-id`，未迁移账号兜底旧 `/workspace/{id}/go` | [`opencode-go/README.md`](../src/apikey/opencode-go/README.md) |
-| Command Code | npm `command-code@1.66.0`（bin `cmd`/`command-code`） | 无公开源码仓；全部归因自安装 bundle `dist/{index,cli}.mjs` | 私有 JSONL 协议 `POST api.commandcode.ai/alpha/generate`（**非** OpenAI 兼容）；studio loopback 登录回调直接带 apiKey；`COMMAND_CODE_API_KEY` → `~/.commandcode/auth.json`；`threadId` uuid 亲和；静态目录 82 行 | [`command-code/README.md`](../src/apikey/command-code/README.md) |
+| OpenCode Go（API key） | [opencode.ai/docs/go](https://opencode.ai/docs/go/) | [stablyai/orca](https://github.com/stablyai/orca)；[steipete/CodexBar](https://github.com/steipete/CodexBar) | 宿主内置 pi-ai `opencode-go`（27 模型）由用户在 DSH 模型页自行开启；插件不写该 profile。插件自有目录：`Subs · OpenCode Go · Chat`（openai-completions）+ `Subs · OpenCode Go · Responses`（组名沿用统一的 `Subs · <家族> · <协议>` 前缀，仍为 API key 直连），通过 `OPENCODE_API_KEY` 直连；不服务的公开 ID 不进目录。插件路由带必需的 `x-opencode-session`（pi-ai 0.85.1 不发会话头）。额度走 Console `/console/api/{orgs,go/status,billing/status,user}` + `x-org-id`，未迁移账号兜底旧 `/workspace/{id}/go` | [`opencode-go/README.md`](../src/apikey/opencode-go/README.md) |
+| Command Code | npm `command-code@1.72.2`（bin `cmd`/`command-code`） | 无公开源码仓；全部归因自安装 bundle `dist/{index,cli}.mjs` | 私有 JSONL 协议 `POST api.commandcode.ai/alpha/generate`（**非** OpenAI 兼容）；studio loopback 登录回调直接带 apiKey；`COMMAND_CODE_API_KEY` → `~/.commandcode/auth.json`；`threadId` uuid 亲和；静态目录 | [`command-code/README.md`](../src/apikey/command-code/README.md) |
 
 CLIProxyAPI 同时包了 Codex / Grok / Antigravity 等多家。**只**在 Antigravity 上抄它的公开 client / UA / `models.json` 形状。不要把它的多家族共用层抄进本仓库的 `cache.ts`。
 
@@ -40,201 +34,8 @@ CLIProxyAPI 同时包了 Codex / Grok / Antigravity 等多家。**只**在 Antig
 2. 官方只有闭源客户端 → 对照社区 MIT 逆向，本目录只抽 hop 用到的字段。
 3. 对方有、本 hop 用不到的字段（installation-id、parent-thread、SDK client-type）**不要发明发出去**。
 4. AGPL 仓只蒸馏**数据格式**（卡密 / JSON 形状），解析器自己写，源码不进树。
-5. 缓存按家族隔离。对照仓 A 的头不能写到家族 B。见 [`AGENTS.md`](../AGENTS.md) Prompt cache。
+5. 缓存按家族隔离。对照仓 A 的头不能写到家族 B。见 [`docs/rules.md`](rules.md)。
 
-升级一线对照（例如 Codex `0.153.4` → 更新 tag）时：改 `src/oauth/<id>/` **同一 PR** 更新本表的钉住版本和那一家 README。
+升级一线对照（换 tag / 版本）时，同一 PR 更新本表的钉住版本和那一家 README 的「归因」节；目录端点变了，同时改 `scripts/models.ts` 里该键的适配器（[`docs/models.md`](models.md)）。
 
-## Codex
-
-一线：[openai/codex](https://github.com/openai/codex) tag **`rust-v0.155.1`**（本机 updater `version.json` 2026-09-19；缓存头源码蒸馏自 0.153.4）。
-
-| 抄 | 路径 / issue | 本 hop |
-|---|---|---|
-| `session-id` + `thread-id` | `codex-rs/codex-api/src/requests/headers.rs` `build_session_headers` | `codexCacheHeaders`：三值都等于 DSH pin（一轮对话一条 thread） |
-| `x-client-request-id` = `thread-id` | 同上 | 同 pin |
-| 同 turn 重试回放 `x-codex-turn-state` | `codex-rs/core/src/client.rs` | `proxy.ts` `RetryableUpstream` |
-| Fast → Priority | [#37345](https://github.com/openai/codex/issues/37345) | body `service_tier: priority` + `x-codex-routing-hint` |
-| 请求体 zstd（`content-encoding: zstd`） | 官方客户端同款；宿主自带 openai-codex provider 同样压缩 | `request.ts` `encodeCodexBody`：每个请求压一次，重试复用同一份字节 |
-| 剥 `max_output_tokens` | [#39397](https://github.com/openai/codex/issues/39397) | `request.ts` |
-| `pro` / `prolite` 徽章 | [#29243](https://github.com/openai/codex/issues/29243) | `plan.ts` Pro 20x / Pro 5x |
-| 目录 | CLI `models.json` + `GET .../codex/models` | `CODEX_MODELS`；GPT-6 / 5.6 默认 258K；Sol/Luna 需 `client_version` ≥ 0.155.0；5.4 系列 / Spark 已 400 不收录 |
-
-**不要发明：** `x-codex-installation-id`、`x-codex-turn-metadata`、`parent-thread-id`（官方 CLI 有，本 hop 不发）。不要把 DSH `session_id` 送上 chatgpt.com。
-
-## Grok
-
-一线：[xai-org/grok-build](https://github.com/xai-org/grok-build) Responses 路径。导入旁路：[NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) 的 `~/.hermes/auth.json`。
-
-| 抄 | 本 hop |
-|---|---|
-| `GrokRequestHeaders`：`x-grok-conv-id` / `x-grok-session-id` / `x-grok-req-id` / `x-grok-model-override` | `grokAffinityHeaders` |
-| 重试 `x-grok-transient-retry` | 同函数 |
-| `instructions: null`，前缀 byte-for-byte 重放 | `normalizeGrokResponsesBody` 不抬顶层 `instructions` |
-| 设备码默认 | `device-flow.ts` |
-| 目录 `GET cli-chat-proxy.grok.com/v1/models`（`grok-4.7` / `grok-4.7-build-fast` / 4.6 / 4.5、efforts、窗口） | `GROK_MODELS`；真 Fast id 由 `normalizeGrokResponsesBody` 原样透传 |
-
-**不要发明：** Codex `session-id` / `x-client-request-id`（xAI 忽略，会打错分片）。不要自造 grok-shell UA；保持 `grok-cli/0.2.93`。不要把真 Fast id（`grok-4.7-build-fast`）当 Codex `-fast` 剥（`grok-4.7-build` 不存在），也不要发明 `grok-4.7-fast`（404）。
-
-## GLM
-
-一线是 **[zai-org/ZCode](https://github.com/zai-org/ZCode)**（`872ad96 feat: open source`，tree `3.14.0`；[changelog](https://zcode.z.ai/en/changelog) 当前稳定版 `3.14.1`）+ 官方文档。指纹仍钉 Desktop 3.10.1（`zcode.cjs` `eao` / `rao`），版本没跟开源 tree 走。
-
-| 源码 | 本 hop 抄什么 |
-|---|---|
-| `apps/zcode-cli/packages/adapters/src/model/official-coding-plan-gateway.ts` | Coding Plan Anthropic 端点改发 `zcode.z.ai/api/v1/ultra-zai/anthropic`（BigModel `/ultra/anthropic`），除 `host` 外原样透传；NOTICE.md「官方 Coding Plan 模型网关转发」同述 |
-| `apps/zcode-cli/packages/bootstrap/src/model-config.ts` + `runtime-platform-headers.ts` | 身份/环境头：`X-ZCode-Agent: glm`、`X-Release-Channel`、`X-Client-Language/Timezone`、`X-Platform`、`X-Os-Category`、`X-Os-Version`、`X-Title: Z Code@cli\|electron` |
-| `adapters/src/model/runner-attribution.ts` | `x-session-id` / `x-request-id` / `x-zcode-trace-id` / `x-query-id` / `x-zcode-session-type` |
-| `core/src/runtime/helpers/provider-request-messages.ts` | `finalizeLatestNonSystemMessageCacheControl`：非 system 消息只留一个滚动 `cache_control` |
-| `config/provider/zcode-builtin.json` `modelApiRules` / `modelRules` | Anthropic 思考 map（`thinking` + `output_config.effort`）；ctx / 输出上限（Turbo 64k） |
-| `adapters/src/model/anthropic-reasoning-metadata.ts` | 无 signature 的 thinking 块按 `signature: ""` 回放，不降级成 text |
-| `~/.zcode/v2/credentials.json` + `isProviderProvisioningAccountCredentialKey` | 对话+额度的 bearer 是 provisioned `account-provider:…:api-key`；`oauth:<region>:access_token` 业务 JWT 只打 monitor/userinfo（对话 500），降为 `oauthAccess`；`zcodejwttoken` 仅身份 |
-
-官方文档：[Coding Plan 快开始](https://docs.z.ai/devpack/quick-start)（Anthropic 默认协议）、[缓存](https://docs.z.ai/guides/capabilities/cache)（隐式前缀 + `cache_control`）、[思考](https://docs.z.ai/guides/capabilities/thinking-mode)（Completions 形；Coding Plan 端点默认 Preserved Thinking，`clear_thinking: false` 是标准 API 的 opt-in）。
-
-套餐模型以 [devpack overview](https://docs.z.ai/devpack/overview) 为准：**只支持 GLM-5.3 / GLM-5.3-Flash**，GLM-5.2 / 5.1 自动改道 5.3、GLM-4.7 改道 5.3-Flash；`glm-5.3-flashx`（200 tok/s）官方写明**还没上套餐**，不进 picker。catalog 的 `builtinProviderModelRules` 仍启用 5.2 / Turbo 是给老 session 的向后兼容，不等于现售菜单。
-
-CLI poll 走 `zcode.z.ai`，provider 只能是 `zai` / `bigmodel`。
-
-**不要发明：** Codex `prompt_cache_key`、Grok 分片头、第四种 DSH `api`。不要把 Coding Plan 对话默认打回直连（网关才是官方路径，直连只作 401/403/404 回退）。不要在 Anthropic hop 发 `budget_tokens` / `display` / `reasoning_effort`。不要伪造 `x-aliyun-captcha-verify-param`（Desktop 3.11.2 `zcode.cjs` `isZcodePlanOpenAiCompatibleBaseUrl` 才注入；本 hop 不解 captcha）。不要宣称已经吃上 150%——网关路径已在，倍数仍由上游服务端决定，未做用量斜率活测。
-
-## Kiro
-
-一线：Kiro IDE。模型目录以 `List-Available-Models`（origin 与 chat 相同，`AI_EDITOR`）为准，[kiro.dev/docs/models](https://kiro.dev/docs/models) 只作离线参考。协议对齐 MIT [ZyphrZero/kiro.rs](https://github.com/ZyphrZero/kiro.rs)（`build_history`、eventstream）。官方模型表新增 `claude-fable-5.1`，GPT-5.6 Sol/Terra/Luna 升级至 1M 上下文；兼容目录保留 [mikeyobrien/pi-provider-kiro](https://github.com/mikeyobrien/pi-provider-kiro) `0.10.2` bootstrap 的 `claude-fable-5`。
-
-导入格式蒸馏自 AGPL [lucks-cloud/kiro-manager-lite](https://github.com/lucks-cloud/kiro-manager-lite)：**只记卡密 / JSON / CSV 形状，不抄源码**。解析器是 `kiro/import.ts` 自己的。
-
-**不要发明：** `conversationId: Date.now()`；把 system 每轮拼进 `currentMessage.content`；把 `meteringEvent.usage` 当 token；把 AGPL 解析器贴进树。
-
-## Antigravity
-
-一线：本机 **Antigravity.app 2.11.0** hub（`--subclient_type hub`，daily-cloudcode-pa）。公开 installed-app 客户端、短 UA、onboard UA、`models.json` 的 `antigravity` 行对照 [router-for-me/CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) `constants.go`。`maxOutputTokens` 钳位对照 [Rahularya01/pi-antigravity](https://github.com/Rahularya01/pi-antigravity) `getMaxOutputTokens`。thought 签名：[Google thought signatures](https://ai.google.dev/gemini-api/docs/thought-signatures)。
-
-**不要发明：** IDE.app / prod `cloudcode-pa` 当默认；chat 上的 `Client-Metadata` / `x-goog-api-client`；`implicitCacheConfig`；假 `thoughtSignature`；Pi 的 2.8.0 UA / `vscode_cloudshelleditor`。
-
-## Cursor
-
-非正式集成。Wire / PKCE / HTTP/2 改编自 MIT：
-
-- [Rahularya01/pi-cursor](https://github.com/Rahularya01/pi-cursor)（`src/auth/oauth.ts`、`docs/protocol.md`、`src/client/h2-session.ts`、`proto/agent.proto`）。`DEFAULT_CURSOR_CLIENT_VERSION` = `cli-2026.07.23-e383d2b`
-- [ephraimduncan/opencode-cursor](https://github.com/ephraimduncan/opencode-cursor)
-
-缓存命中字段对照 [fitchmultz/pi-cursor-sdk](https://github.com/fitchmultz/pi-cursor-sdk) 钉的 **`@cursor/sdk@1.0.27`**：`TurnEndedUpdate.cache_read_tokens`（proto field 3）、Run handshake `x-original-request-id`。
-
-pi-cursor-sdk 自己走 **API key + `Agent.create`**，不是 OAuth。本 hop 是 `loginDeepControl`，所以 **`x-cursor-client-type` 保持 `cli`**，不要改成 `sdk`。不 npm `@cursor/sdk`，不 vendor 整棵 proto。
-
-**不要发明：** `x-parent-request-id` / `x-root-parent-request-id`；历史 turn 的 `randomUUID()`（必须内容哈希）；`Date.now()` conversation id。
-
-## Ollama Cloud
-
-一线是官方文档，不是 localhost daemon。
-
-| 文档 / issue | 本 hop |
-|---|---|
-| [Authentication](https://docs.ollama.com/api/authentication) | `OLLAMA_API_KEY` Bearer |
-| [Cloud](https://docs.ollama.com/cloud) | `https://ollama.com/api/chat` + `GET /api/tags` |
-| Factory 集成 `https://ollama.com/v1/` | Completions 透传 |
-| [ollama#12532](https://github.com/ollama/ollama/issues/12532) | session = UTC 5h unix 桶；weekly = UTC 7d 桶偏移 −4d（周一 00:00 UTC） |
-| [ollama#16598](https://github.com/ollama/ollama/issues/16598) | Cloud 忽略 `num_ctx`；窗口来自 `/api/show` |
-
-**不要发明：** `cached_tokens`、sticky conversation id、把 `id_ed25519.pub` 当 API key、包一层 `localhost:11434`。
-
-## Kimi
-
-一线：官方 Kimi Code CLI。设备码（无 PKCE）对照 MIT [Leechael/pi-provider-kimi-code](https://github.com/Leechael/pi-provider-kimi-code)。`client_id` `17e5f671-d194-4dfb-9706-5516cb48c098`。导入 `~/.kimi-code/credentials/kimi-code.json`。
-
-**不要发明：** PKCE；第四种 DSH `api` 字符串；Codex / Grok 缓存头；把 UA 扮成 `pi-provider-kimi-code`。不要 vendoring `moonshot_search` / `moonshot_fetch`。
-
-## GitHub Copilot
-
-一线设备流形状：[anomalyco/opencode](https://github.com/anomalyco/opencode) `packages/opencode/src/plugin/github-copilot/copilot.ts`（JSON 设备码、`X-Interaction-Id`、`x-initiator`、`Copilot-Vision-Request`）。
-
-**client_id 不抄 OpenCode `Ov23li8tweQw6odWQebz`**（发 `gho_`，`/copilot_internal/v2/token` 404）。本 hop 用 VS Code GitHub App 公开 `Iv1.b507a08c87ecfe98`（`ghu_` → `tid=`），对照 goose / Cherry Studio / hermes-agent。
-
-| 抄 | 本 hop |
-|---|---|
-| 设备码 RFC 8628 JSON `{client_id,scope:read:user}` | `copilotDeviceSpec` `jsonBody: true` |
-| `GET copilot_internal/v2/token` | `exchangeCopilotToken`；401 永久，403 临时 |
-| vscode-chat 身份头 | `Copilot-Integration-Id: vscode-chat`；UA `GitHubCopilotChat/0.35.0` |
-| `X-Interaction-Id` = session | `copilotCacheHeaders` / `copilotUpstreamHeaders` |
-| GPT 不发 `maxOutputTokens` | `applyCopilotThinking` 剥 `max_tokens` |
-| `GET copilot_internal/user` | `fetchCopilotQuota`（`token ghu_`，不是 `tid=`） |
-
-**不要发明：** OpenCode `Ov23li8` client_id；PKCE / GHES；`X-Interaction-Type: agent-session-name-generation`；把 Copilot `pro` 显示成 Codex Pro 20x；第四种 DSH `api`；把 Claude 改打 `/v1/messages`。
-
-## Devin
-
-一线：**Devin CLI 3000.10.31**（`~/.local/share/devin/credentials.toml` + 二进制内嵌 `exa.*` protos）。协议对照 MIT [can1357/oh-my-pi](https://github.com/can1357/oh-my-pi) 的 `pi-catalog` devin provider（`oauth/devin.ts` PKCE 回环 + `providers/devin.ts` Connect/proto + vendored `.proto`）。
-
-| 抄 | 本 hop |
-|---|---|
-| `app.devin.ai/auth/cli/continue?…&cli_pkce_marker=1` → `api.devin.ai/auth/cli/token` `{code, code_verifier, cli_pkce_marker:1}` | `devinFlow` / `exchangeDevinCode` |
-| Connect framing（1B flags + 4B BE len，0x01 gzip / 0x02 end-trailer JSON） | `proto.ts` `frameConnect` / `splitConnectFrames` |
-| `Metadata.api_key` = session token（已带 `devin-session-token$`） | `devinMetadataBytes`；`normalizeDevinToken` 前缀只加一次 |
-| MITM 指纹：`ide_name: chisel` + `ide_version/extension_version: <cli 版本>` + `os` + `Authorization: Basic <token>-<token>`（`ide_name: devin` 只回 1 条 stub config） | `DEVIN_IDE_NAME` / `devinBasicAuth` / `encodeDevinMetadata` |
-| `cascade_id` + 每请求 `execution_id`；历史 `message_id` 内容哈希 | `devin/cache.ts` / `openaiToDevin` |
-| `GetCliModelConfigs` → 家族 + effort/modifier 收成一行（2026-09-23：598 configs → 81 行 / 49 家族；静态 floor 同镜像） | `toDevinPickerModels`（variants 值是后端 uid） |
-| `GetUserStatus`：`teams_tier`、daily/weekly quota、unix 秒 reset | `fetchDevinQuota` / `parseDevinUserStatus`（proto.ts 已转毫秒） |
-
-**不要发明：** 双前缀 token（活测 401）；`ide_name: devin`/`Devin`/`devin-cli`（stub-gated）；Metadata `f`/`session_id`/`user_agent` 字段（CLI 不发）；用 `api.devin.ai` 当 chat host；把 `-fast` 走 `applyFastMode`（真后端变体）；Response API；`Date.now()` cascade id。
-
-## Cline
-
-一线是 **Cline CLI 3.0.62**（npm `cline`，本机装在
-`~/.local/lib/node_modules/cline`），源码 tag
-[`cli-v3.0.62`](https://github.com/cline/cline/tree/cli-v3.0.62)（Apache-2.0）。
-闭源侧只剩 WorkOS 身份：登录是 `api.workos.com` 的 RFC 8628 设备码，
-换票走 Cline 自己的 `/api/v1/auth/register`。
-
-| 抄 | 路径 | 本 hop |
-|---|---|---|
-| 设备码 / poll / refresh | `sdk/packages/core/src/auth/cline.ts` | `clineDeviceSpec`、`refreshCline` |
-| `workos:` 前缀与 API key | `sdk/packages/core/src/auth/provider-auth-registry.ts` | `formatClineAccessToken`（幂等） |
-| 聊天头 `X-CLIENT-TYPE` / `X-Task-ID` … | `sdk/packages/llms/src/providers/request-headers.ts` `buildClineRequestHeaders` | `clineCredentialHeaders` / `clineCacheHeaders` |
-| `max_tokens`→`max_completion_tokens` | `vendors/openai-compatible.ts` + `model-facts.ts` | `applyClineMaxCompletionTokens` |
-| effort 语义（`max`→`xhigh`，禁用不发字段） | `providers/routing/portable-reasoning.ts` | `CLINE_REASONING`（无 `off` 键） |
-| 推荐模型 feed + OpenRouter 元数据 | `catalog/catalog-cline-recommended.ts`、`builtins.ts` `buildClineModels` | `refreshClineCatalog` + `CLINE_MODELS` |
-| 额度三读 / 微美元余额 | `account/cline-account-service.ts`、`apps/cli/src/utils/output.ts` | [`cline/quota.ts`](../src/oauth/cline/quota.ts) |
-| ClinePass 三条窗口（5 小时 / 每周 / 每月） | 不在 CLI 源码里（CLI 只在 429/402 文案认 "5-hour / weekly Clinepass limit"）；形状取自 MIT [`pi-clinepass`](https://www.npmjs.com/package/pi-clinepass) `0.1.5` `src/usage.ts` | `GET /users/me/plan/usage-limits` + `plan.entitlements.cline_pass.inferenceCapThreshold`（1e-8 USD） |
-| 本机凭据文件 | `~/.cline/data/settings/providers.json` | [`cline/import.ts`](../src/oauth/cline/import.ts) |
-
-**不要发明：** credit 账号的进度条（它没有窗口分母，官方 CLI 也只打 `Credits: $x.xx`）；cap 缺失时补默认限额；自己累加 `/usages` 当窗口用量；裸 JWT bearer（必须 `workos:` 前缀）；PKCE / 回环回调（CLI 默认
-设备码，浏览器分支只服务旧 VS Code 扩展）；`cache_control` 断点（CLI 不加，
-Anthropic 走 OpenRouter 因此吃不到隐式缓存）；Codex / Grok / Copilot 的缓存头；
-把 `clinePass` / `clineCloud` 模型列进 credit 账号目录；第四个 DSH `api` 字符串。
-
-## Command Code
-
-一线：npm `command-code` **1.66.0**（bin `command-code` / `cmd` / `cmdc` / `commandcode`；本机 `brew --prefix` 下 `lib/node_modules/command-code/dist/{index,cli}.mjs`）。无公开源码仓——端点、wire、登录流、目录、套餐表全部读该 bundle。
-
-|| 抄 | 本 hop |
-|---|---|---|
-| `buildCommandApiHeaders`：`Bearer` + `x-command-code-version: 1.66.0` + `x-cli-environment: production` | `commandCodeUpstreamHeaders` |
-| `POST /alpha/generate`：`{config, memory, taste, skills, mode:'chat', permissionMode, threadId?, params:{model,messages,tools?,system?,max_tokens,stream,temperature?,reasoning_effort?}}` → JSONL 事件 | `openaiToCommandCode` / `forwardCommandCode` |
-| 流事件 `reasoning-*` / `text-delta` / `tool-call` / `finish` / `error` / `abort`；`finish.totalUsage.inputTokenDetails` | `commandCodeToOpenai` / SSE 映射 |
-| `toWireThreadId`：非 uuid 丢 | `applyCommandCodeCache`：uuid 直通、非 uuid sha256→v5、缺省 `dsh-command-code:<model>` 常量种子 |
-| `createAuthServer`/`buildCommandAuthUrl`：`/studio/auth/cli?callback&state&mode=redirect` → loopback `:5959-5968/callback?apiKey&userId&userName&keyName&state` | `commandCodeFlow` + `flow.ts` `spec.collect`（回调即凭据，无 code 交换） |
-| `getCommandAuthKey`：`COMMAND_CODE_API_KEY` → `~/.commandcode/auth.json` | `importCommandCodeAuth` 同序 |
-| 模型注册表 `uD`（88→82 剔 hidden/别名）+ `kr` effort 表；`max_tokens ?? 64000`；ctx 默认 `2e5` | `COMMAND_CODE_MODELS`；无条目不发明 effort |
-| `fetchUsageData`：whoami→credits+subscriptions→summary(`since=currentPeriodStart`)；`rr` 套餐价目 `individual-*`/`teams-pro` | `fetchCommandCodeQuota` / `COMMAND_CODE_PLAN_*` |
-
-**不要发明：** OpenAI 兼容透传（该端点是私有 JSONL）；浏览器流的 `exchange*Code`（回调直接带 apiKey）；`/alpha/models`（不存在）；`promptCache` / 真实 `config.workingDir`（DSH 无 cwd）；per-model `maxTokens`（全局 64000）；uuid 之外的 `threadId`；把 `user_…` key / `command-code-<hex>` / uuid 当账号名。
-
-## 新家族
-
-执行顺序、门禁与「先缓存还是先 OAuth / 模型参数怎么进模型页」的论证见
-[`AGENTS.md`](../AGENTS.md) 新家族接入顺序。加 `src/oauth/<id>/` 的同
-一 PR，文件清单全部一次到位：
-
-1. 家族 README（`src/oauth/<id>/README.md`）写 login / session / hop / models / quota / cache / do-not / **归因**（官方 CLI + 社区仓 + 钉住版本）。
-2. 本文件总表加一行，并补「抄 / 不要发明」。
-3. `index.ts`：catalog（`id`/`name`/`contextWindow`/`maxTokens`/`input`/`reasoningEfforts`）、OAuth 端点、session builder、UA、refresh。
-4. `controller.ts`：login / cancel / logout / switch / import / quota / snapshot 分支对齐 Codex/Grok 既有写法；snapshot 返回 `accounts.<id> = {…status, activeId, accounts}`。
-5. `quota.ts`：cache key `provider\0accountId`；snapshot hydrate 每个已存账号，不只 active。
-6. `models.ts`：`ownedProviderIds` / `buildProviders` / `catalogProviders` / `describeCatalog` 加 `${prefix}-<id>`；`HARNESS_MODEL_AGENT` 加 agent 名（settings.yaml `name` = `<agent>/<id>`，规范见 AGENTS.md Rules）；`api` 取闭集三值；`baseURL` 对齐该 SDK 的真实 post 路径。
-7. `plan.ts`：wire slug → 用户可见 plan 名。
-8. `proxy.ts`：显式 `family === '<id>'` 分支；prompt cache 进 `src/oauth/<id>/cache.ts`（禁抄别家、禁 `src/utils/`、禁 `Date.now()` id）。
-9. `reasoning-effort.ts` FAMILIES + `store.ts` PROVIDER_IDS/`accountIdOf`/`publicSession`（opaque id 不外露）。
-10. `src/index.ts` re-export 公共件 + `ui/client.ts` tab/图标/copy（zh+en）。
-11. `test/<id>.test.ts`：login parse、session round-trip、catalog、cache 隔离、proxy 路由、`snapshot shows quota on every <id> account`。
-12. `docs/error.md` 记录 hop 活测结论。
-13. 不要把对照仓的多家族共用层引进 `src/utils/`；不要发明钉住客户端不发的 header。
+新家族的接入顺序与清单见 [`docs/new-family.md`](new-family.md)。

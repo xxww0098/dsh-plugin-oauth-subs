@@ -1,7 +1,7 @@
 # GitHub Copilot OAuth
 
 本文件是 `src/oauth/copilot/` 的设计源。改登录、额度、对话或缓存先改这里再改代码。
-跨家族硬约定在仓库根 [`AGENTS.md`](../../../AGENTS.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)；对照仓库在 [`docs/oauth.md`](../../../docs/oauth.md)。
+跨家族硬规则在 [`docs/rules.md`](../../../docs/rules.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)；对照仓库在 [`docs/oauth.md`](../../../docs/oauth.md)。
 
 **不是** ChatGPT Codex / OpenCode Zen / GitHub Copilot CLI 的 `copilot.com`。
 上游是 Copilot Chat API `https://api.githubcopilot.com`（OpenAI Completions 方言）。
@@ -22,7 +22,7 @@
 | [`cache.ts`](cache.ts) | 剥 Codex / Grok 字段。`X-Interaction-Id` = DSH pin。禁止抄 `session-id` / `x-grok-conv-id` |
 
 调度：[`../proxy.ts`](../proxy.ts) `family === 'copilot'` → `applyCopilotCache` + `applyCopilotThinking` + `copilotUpstreamHeaders`，`forward()` 到 `{endpoints.api}/chat/completions`。
-额度：[`../quota.ts`](../quota.ts) `fetchCopilotQuota`（`GET api.github.com/copilot_internal/user`，`Authorization: token <ghu_>`）。
+额度：[`quota.ts`](quota.ts) `fetchCopilotQuota`（`GET api.github.com/copilot_internal/user`，`Authorization: token <ghu_>`）。
 套餐：`copilot_plan`（free / pro / pro+ / business / enterprise），走 [`../plan.ts`](../plan.ts)。**禁止**落到 Codex `pro` → Pro 20x。
 
 ## 协议
@@ -76,9 +76,13 @@ DSH POST /copilot/v1/chat/completions
 
 ## 模型
 
-Settings → 模型始终列出 `OAuth · GitHub Copilot`（未登录锁定 +「登录后同步」）。Harness picker 的 `oauth-copilot/...` **只在有 session 之后** `sync()` 才写入。
+行在 [`src/catalog/models.json`](../../catalog/models.json) 的 `"copilot"` 键；行格式、来源与 `npm run models` 更新流程见 [`docs/models.md`](../../../docs/models.md)。本节只记本家的取舍与出处。
 
-登录 / 导入 / 额度刷新后 `refreshCopilotCatalog`：
+最近核对：2026-09-28，GitHub docs 数据表 + models.dev `github-copilot`（本机无 Copilot 凭据，活 `GET {api}/models` 未实测）。
+
+Settings → 模型始终列出 `Subs · GitHub Copilot · Chat`（未登录锁定 +「登录后同步」）。Harness picker 的 `oauth-copilot/...` **只在有 session 之后** `sync()` 才写入。
+
+登录 / 导入 / 额度刷新后 `refreshCopilotCatalog`，活列表非空即替换静态楼，失败或空列表回落静态楼：
 
 ```text
 GET {endpoints.api}/models
@@ -86,11 +90,16 @@ Authorization: Bearer <tid=>
 Copilot-Integration-Id: vscode-chat
 ```
 
-只收 `model_picker_enabled` 且 `policy.state !== disabled` 且声明 `tool_calls` 的行；`supported_endpoints` 非空却不含 `/chat/completions` 的行不收（hop 只有这一个端点，`/responses` 回 501；opencode `plugin/github-copilot/models.ts` 同样按该字段选端点，本机无 Copilot 凭据、未活测）。失败或空列表回落静态楼。不要把 `/v1/messages`-only 行改打 Anthropic。
+- 只收 `model_picker_enabled` 且 `policy.state !== disabled` 且声明 `tool_calls` 的行。
+- `supported_endpoints` 非空却不含 `/chat/completions` 的行不收：hop 只有这一个端点，`/responses` 回 501（opencode `plugin/github-copilot/models.ts` 同样按该字段选端点；见 docs/error.md 2026-09-29 Copilot 选择器列出只在 `/responses` 上服务的模型）。不要把 `/v1/messages`-only 行改打 Anthropic。
+- `capabilities.supports.reasoning_effort` → DSH `reasoningEfforts`（键是 picker 档，值是 vendor 拼写）。没有 effort 图就省略字段。
 
-`capabilities.supports.reasoning_effort` → DSH `reasoningEfforts`（键是 picker 档，值是 vendor 拼写）。没有 effort 图就省略字段。
+静态楼（`COPILOT_MODELS`，离线回落）：模型名 / 可用性取自 GitHub docs 数据表 [`model-release-status.yml`](https://github.com/github/docs/blob/main/data/tables/copilot/model-release-status.yml)（GA）与 [`auto-model-selection.yml`](https://github.com/github/docs/blob/main/data/tables/copilot/auto-model-selection.yml)；id / 窗口 / 输出 / 图文 / effort 阶梯取自 models.dev `github-copilot`（Copilot API 登记）。
 
-静态楼（`COPILOT_MODELS`，离线回落）2026-09-23 对齐官方：模型名 / 可用性取自 GitHub docs 数据表 [`model-release-status.yml`](https://github.com/github/docs/blob/main/data/tables/copilot/model-release-status.yml)（GA）与 [`auto-model-selection.yml`](https://github.com/github/docs/blob/main/data/tables/copilot/auto-model-selection.yml)；id / 窗口 / 输出 / 图文 / effort 阶梯取自 models.dev `github-copilot`（Copilot API 登记）。`gpt-4.1` 作为插件 utility 默认保留（官方 GA 表已不含）；`gpt-6-luna` / `gpt-6-sol` 用 Codex / Cursor / Devin 同款 vendor id，`claude-opus-5.5` 按 Copilot 点号约定（`claude-opus-4.7`），这两个 id 待活目录确认。`Claude Opus 4.8 (fast mode) (preview)` 是模式不是 picker 行，不进静态楼。本机无 Copilot 凭据（gh `gho_` 换 token 403），活 `GET {api}/models` 未实测。
+- **GPT 行的默认输入窗钉 `COPILOT_GPT_CONTEXT_WINDOW` = 256K**（Copilot GPT 线的默认上下文；活目录同样收敛到 256K）。厂商登记的更大窗不丢，挂 `maxContextWindow` 当模型页自定义输入窗的上限（`maxContextOfRow`，Codex / GLM 同型；天花板按家族查，别家同名 `gpt-*` id 不串天花板）。非 GPT 行仍按厂商窗口。
+- `gpt-4.1` 作为插件 utility 默认保留（官方 GA 表已不含）。
+- 表里没有线上 id 的新模型按 Copilot 点号约定取 id（`claude-opus-4.7` 形），GPT 用 Codex / Cursor / Devin 同款 vendor id；这类 id 待活目录确认。
+- 「fast mode」类条目是模式不是 picker 行，不进静态楼。
 
 默认辅助模型：`gpt-4.1`（官方 utility / 静态楼都有）。
 
@@ -126,15 +135,19 @@ Copilot Completions 是 **前缀哈希** + `X-Interaction-Id` 会话粘滞。官
 
 ## 归因
 
-设备流形状：[anomalyco/opencode](https://github.com/anomalyco/opencode) `plugin/github-copilot`（`X-Interaction-Id` / 设备码 JSON）。
-client_id + 换票：VS Code Copilot GitHub App `Iv1.b507a08c87ecfe98`；对照 [goose `githubcopilot.rs`](https://github.com/aaif-goose/goose)、[Cherry Studio `CopilotService.ts`](https://github.com/CherryHQ/cherry-studio)、[hermes-agent `copilot_auth.py`](https://github.com/NousResearch/hermes-agent/blob/main/hermes_cli/copilot_auth.py)（OpenCode `Ov23li8` 发 `gho_`，换票 404）。
-身份头 / 额度：`Copilot-Integration-Id: vscode-chat`；额度 `Authorization: token <ghu_>` 打 `GET copilot_internal/user`。
-总表见 [`docs/oauth.md`](../../../docs/oauth.md)。
+一线设备流形状：[anomalyco/opencode](https://github.com/anomalyco/opencode) `packages/opencode/src/plugin/github-copilot/copilot.ts`。`client_id` 与换票对照 VS Code Copilot GitHub App 的公开客户端，参照 [goose `githubcopilot.rs`](https://github.com/aaif-goose/goose)、[Cherry Studio `CopilotService.ts`](https://github.com/CherryHQ/cherry-studio)、[hermes-agent `copilot_auth.py`](https://github.com/NousResearch/hermes-agent/blob/main/hermes_cli/copilot_auth.py)。OpenCode 自家的 `Ov23li8…` 发 `gho_`，`/copilot_internal/v2/token` 404，所以只抄它的流程形状、不抄它的 client_id。
 
-## 追溯
+| 抄 | 出处 | 本 hop |
+|---|---|---|
+| 设备码 RFC 8628 JSON `{client_id, scope: read:user}` | opencode `copilot.ts` | `copilotDeviceSpec` `jsonBody: true` |
+| 模型页价格徽标（USD / 1M） | models.dev `github-copilot`（`gpt-4.1` 回落 `openai` 标价） | `src/catalog/rates.json`，`npm run rates` 写入（见 [docs/models.md](../../../docs/models.md) 费率表） |
+| `client_id` `Iv1.b507a08c87ecfe98`（`ghu_` → `tid=`） | goose / Cherry Studio / hermes-agent | `copilotDeviceSpec` |
+| `GET copilot_internal/v2/token` 换 session token | goose / Cherry Studio / hermes-agent | `exchangeCopilotToken`；401 永久，403 临时 |
+| vscode-chat 身份头 | opencode `copilot.ts` | `Copilot-Integration-Id: vscode-chat`；UA `GitHubCopilotChat/0.35.0` |
+| `X-Interaction-Id` = 会话；`x-initiator`；`Copilot-Vision-Request` | opencode `copilot.ts` | `copilotCacheHeaders` / `copilotUpstreamHeaders` |
+| GPT 不发 `maxOutputTokens` | opencode `copilot.ts` | `applyCopilotThinking` 剥 `max_tokens` |
+| `GET copilot_internal/user` 额度（`Authorization: token <ghu_>`，不是 `tid=`） | goose / Cherry Studio / hermes-agent | `fetchCopilotQuota` |
 
-| 问题 | 记录 |
-|---|---|
-| OpenCode `Ov23li8` 换不出 session token | [`docs/error.md`](../../../docs/error.md) 2026-09-05 Copilot Iv1 + tid |
+**不要发明：** 与上游对照相关的每一条都已在上面「不要」节（Claude 不改打 `/v1/messages` 在「协议」与「模型」节），这里不重复。
 
-测试：`test/copilot.test.ts`、`test/cache-families.test.ts`、`test/device-flow.test.ts`。
+跨家族对照总表见 [`docs/oauth.md`](../../../docs/oauth.md)。

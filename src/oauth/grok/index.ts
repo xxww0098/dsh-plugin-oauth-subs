@@ -9,6 +9,7 @@
 import { decodeJwtPayload } from '../../utils/jwt.js'
 import { OAuthEndpointError, oauthError } from '../tokens.js'
 import { outboundFetch } from '../../utils/outbound.js'
+import { catalogRows } from '../../catalog/index.js'
 
 export {
   grokAffinityHeaders,
@@ -24,13 +25,24 @@ export const GROK_DISCOVERY_URL = 'https://auth.x.ai/.well-known/openid-configur
 export const GROK_API_URL = 'https://api.x.ai/v1/responses'
 export const GROK_BILLING_URL = 'https://cli-chat-proxy.grok.com/v1/billing?format=credits'
 export const GROK_CLI_USER_URL = 'https://cli-chat-proxy.grok.com/v1/user?include=subscription'
+/** grok CLI's own model list (`~/.grok/models_cache.json` source); read by `scripts/models.ts`. */
+export const GROK_MODELS_URL = 'https://cli-chat-proxy.grok.com/v1/models'
 export const GROK_CREDITS_URL = 'https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig'
+/** Reset cards (「重置卡」): grok.com web billing, not in the grok CLI. See `reset-frame.ts`. */
+export const GROK_RESET_LIST_URL = 'https://grok.com/prod_mc_billing.ConsumerUiSvc/GetRemainingResets'
+export const GROK_RESET_REDEEM_URL = 'https://grok.com/prod_mc_billing.ConsumerUiSvc/RedeemReset'
 export const GROK_CLIENT_VERSION = '0.2.93'
 export const GROK_USER_AGENT = `grok-cli/${GROK_CLIENT_VERSION}`
 export const GROK_SCOPE = 'openid profile email offline_access grok-cli:access api:access'
 export const GROK_CALLBACK_PATH = '/callback'
 export const GROK_PREEMPT_MS = 2 * 60_000
 export const GROK_LARGE_CONTEXT = 500_000
+/**
+ * grok-4.7 base input window is 256k; the CLI cache / api.x.ai reading of
+ * 500000 is the Max Mode variant window (same attribution the Cursor family
+ * records from the official docs). 4.5/4.6 keep GROK_LARGE_CONTEXT.
+ */
+export const GROK_47_CONTEXT = 256_000
 
 /** grok-4.5: low / medium / high. Reasoning cannot be turned off. */
 export const GROK_REASONING_45 = Object.freeze({
@@ -63,36 +75,7 @@ export const GROK_REASONING_47 = Object.freeze({
  */
 export const GROK_FAST_MODEL_IDS = Object.freeze(['grok-4.7-build-fast'])
 
-export const GROK_MODELS = Object.freeze([
-  {
-    id: 'grok-4.7',
-    name: 'Grok 4.7',
-    contextWindow: GROK_LARGE_CONTEXT,
-    maxTokens: GROK_LARGE_CONTEXT,
-    reasoningEfforts: GROK_REASONING_47,
-  },
-  {
-    id: 'grok-4.7-build-fast',
-    name: 'Grok 4.7 Fast',
-    contextWindow: GROK_LARGE_CONTEXT,
-    maxTokens: GROK_LARGE_CONTEXT,
-    reasoningEfforts: GROK_REASONING_47,
-  },
-  {
-    id: 'grok-4.6',
-    name: 'Grok 4.6',
-    contextWindow: GROK_LARGE_CONTEXT,
-    maxTokens: GROK_LARGE_CONTEXT,
-    reasoningEfforts: GROK_REASONING_46,
-  },
-  {
-    id: 'grok-4.5',
-    name: 'Grok 4.5',
-    contextWindow: GROK_LARGE_CONTEXT,
-    maxTokens: GROK_LARGE_CONTEXT,
-    reasoningEfforts: GROK_REASONING_45,
-  },
-])
+export const GROK_MODELS = catalogRows('grok')
 
 export const GROK_TIER_NAMES = Object.freeze({
   0: 'Free',
@@ -312,6 +295,17 @@ export function grokUpstreamHeaders(session) {
   const userId = grokUserId(session)
   if (userId) headers['x-userid'] = userId
   return headers
+}
+
+/** Reset-card RPCs take the CLI bearer with gRPC-web framing (orca #18116). */
+export function grokResetHeaders(session) {
+  return {
+    authorization: `Bearer ${session.accessToken}`,
+    'x-xai-token-auth': 'xai-grok-cli',
+    'content-type': 'application/grpc-web+proto',
+    'x-grpc-web': '1',
+    ...grokCredentialHeaders(),
+  }
 }
 
 export function grokCreditsHeaders(session) {

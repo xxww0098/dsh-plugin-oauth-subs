@@ -1,7 +1,7 @@
 # GLM OAuth（Z.ai / BigModel）
 
 本文件是 `src/oauth/glm/` 的设计源。改登录、额度、对话或缓存先改这里再改代码。
-跨家族硬约定在仓库根 [`AGENTS.md`](../../../AGENTS.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)；对照仓库在 [`docs/oauth.md`](../../../docs/oauth.md)。
+跨家族硬规则在 [`docs/rules.md`](../../../docs/rules.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)；对照仓库在 [`docs/oauth.md`](../../../docs/oauth.md)。
 
 Zhipu **Coding Plan**（付费 Lite/Pro/Max）。两个站点、同一套 ZCode CLI poll。默认对话走 **Anthropic Messages**（ZCode Desktop 默认协议），**不**走 chatgpt.com。
 
@@ -19,10 +19,9 @@ Zhipu **Coding Plan**（付费 Lite/Pro/Max）。两个站点、同一套 ZCode 
 | [`cli-flow.ts`](cli-flow.ts) | 浏览器打开 `authorize_url`，轮询 `/oauth/cli/poll/{flow_id}`。无 loopback、无 PKCE |
 | [`request.ts`](request.ts) | Anthropic 官方思考 map（`thinking` + `output_config.effort`）+ Completions 残留；再调 cache |
 | [`cache.ts`](cache.ts) | 隐式前缀哈希。Completions：钉首段 system，多余停 **messages 末尾**。Anthropic：钉 system 首块 `cache_control` + **最新非 system 消息滚动 breakpoint**。剥掉 Codex `prompt_cache_key` |
-| [`boost.ts`](boost.ts) | 卡片「150%配额」文案（ZCode 网关/身份路径，发放仍在上游服务端） |
 
 调度：[`../proxy.ts`](../proxy.ts) `family === 'glm'` + `wire === 'anthropic'` → `normalizeGlmAnthropicBody`；Completions 残留 → `normalizeGlmChatBody`。`x-session-id` 在 `glmDesktopHeaders`；Anthropic 另加 `anthropic-version`。
-额度：[`../quota.ts`](../quota.ts) `fetchGlmQuota` / `parseGlmQuota` / `mergeGlmToolUsage`。
+额度：[`quota.ts`](quota.ts) `fetchGlmQuota` / `parseGlmQuota` / `mergeGlmToolUsage`；重置卡 `parseGlmResetCards` / `consumeGlmResetCard`。
 套餐：`GLM_PLAN_NAMES`（`coding_pro` → **Pro**，不要和 Codex `pro` → Pro 20x 搞混）。
 协议：[`../models.ts`](../models.ts) `api: anthropic-messages`，`baseURL: ${origin}/glm`（Anthropic SDK 打 `{baseURL}/v1/messages`）。
 **体验套餐（Start Plan）不支持：** ZCode Desktop 对 zcode-plan hop 强制注入阿里云 captcha 头，插件不伪造、不接 captcha SDK，没这颗头网关 `400 code 3007 captcha verify failed`。目录 / 路由只留 Coding Plan；导入跳过 start-plan JWT。试用对话请在 ZCode.app。
@@ -47,7 +46,7 @@ BigModel： data.bigmodel.access_token 就是 Coding Plan bearer（业务 token�
 **上游事故（先查再当 bug）**：浏览器落地页的「Authorization Failed / 授权失败」是 `zcode.z.ai/api/v1/oauth/cli/callback/{provider}` 兑换授权码失败后自己渲染的页；失败会把 flow 判死，poll 拿 `3004 invalid_flow`。官方 tracker 已挂：zai-org/feedback #718（BigModel authCode 兑换必现失败，30+ 次 0 成功）、#705（3.12.3 网桥 / deep-link 双重核销 → 500 `2007`）、#523（Linux token 端点 500 `2007`）、#116（zai 侧 business token `zai_oauth_required`）。客户端 init/poll 参数与官方 CLI `auth-login-polling.ts` 逐字一致，改 flow 形状修不了服务端。
 `glmLoginFailureMessage` 把 `invalid_flow` / `2007 http error` 译成带 tracker 与替代路径的卡片报错。**绕行**：换另一区域按钮；或在厂商控制台建 Coding Plan API key，用 GLM 页的 **API key** 框粘贴（`AuthController.useKey`：`id.secret` / Coding Plan 密钥 + 区域，存成 `account: api-key`）。ZCode Desktop 那条 `redirect_uri→/app/oauth/login` 改写只服务 `zcode://` 深链，落地页的网桥 GET 同一个失败接口，不要抄。
 刷新：Coding Plan key 不过期（`GLM_NEVER_EXPIRES`），`refreshGlm` 是空操作。
-导入：`importGlmAuth` 读本机 ZCode 配置，**先 `credentials.json` 后 `config.json`**。`glmKeyFromZcodeCredentials` 解 `enc:v1` AES-256-GCM（SHA-256 over `ZCODE_CREDENTIAL_SECRET` 或机器派生 fallback）。**对话+额度的真 bearer 是 provisioned `account-provider:coding-plan:account:<region>-…-coding-plan:account:<id>:api-key`**（ZCode OAuth 后 provision 进 provider 条目的 key）；`oauth:<region>:access_token` 业务 JWT 只能打 monitor/userinfo，**不是 chat key**（打 Coding Plan 对话稳定 500），降为 `oauthAccess` 供身份回填；`zcodejwttoken` 仅身份。没有 provisioned key 才退回 OAuth token。config.json 的 `options.apiKey` 可能是已被标 `coding_plan_not_entitled` 的旧死 key（error.md 2026-09-21 抓错登录）。`glmKeyFromZcodeConfig` 认 `builtin:*-coding-plan`（含 `options.baseURL` 含 `zcode-plan` 的 JWT key——那是 start-plan，直接跳过）。可用 key 优先；**只剩系统禁用的 coding-plan key 也导入**（`glmKeyFromZcodeConfig` 返回 `usable` + `systemDisabledReason`，`importGlmAuth` 把原因写进结果 `note`）。理由：那个 flag 来自 ZCode 的缓存权益检查，会过期也会错（平台 `coding_plan_system_busy` 时一样标 `coding_plan_not_entitled`），而 key 就是 ZCode provider 条目里那把；拒绝它等于用户本机没有任何可导入的凭据，真假交给额度 / 对话回答。**唯一硬跳过的是 start-plan JWT**（zcode-plan hop 是 captcha 墙）。不读 `coding-plan-cache.json`（`enabled` 已够）。卡片身份只走 `pickGlmHumanAccount`：邮箱，其次电话，再次 `customerName` / nickname。**禁止**显示 `zcode` / `zai` / `bigmodel` / `glm`、poll `user.id`、JWT `sub` / `user_id`、数字 uid。userinfo 失败就空着抬头，不要回落到 uid。已存的 opaque `account` 在 snapshot 时打 userinfo 回填（`#resolveGlmIdentities`），每账号每 60s 最多一次、登录态变化重置；`getJson` / `postJson` 10s 超时，挂住的 userinfo 不会卡住合并后的 snapshot。
+导入：`importGlmAuth` 读本机 ZCode 配置，**先 `credentials.json` 后 `config.json`**。`glmKeyFromZcodeCredentials` 解 `enc:v1` AES-256-GCM（SHA-256 over `ZCODE_CREDENTIAL_SECRET` 或机器派生 fallback）。**对话+额度的真 bearer 是 provisioned `account-provider:coding-plan:account:<region>-…-coding-plan:account:<id>:api-key`**（ZCode OAuth 后 provision 进 provider 条目的 key）；`oauth:<region>:access_token` 业务 JWT 只能打 monitor/userinfo，**不是 chat key**（打 Coding Plan 对话稳定 500），降为 `oauthAccess` 供身份回填；`zcodejwttoken` 仅身份。没有 provisioned key 才退回 OAuth token。config.json 的 `options.apiKey` 可能是已被标 `coding_plan_not_entitled` 的旧死 key（error.md 2026-09-21 GLM「不存在coding plan」）。`glmKeyFromZcodeConfig` 认 `builtin:*-coding-plan`（含 `options.baseURL` 含 `zcode-plan` 的 JWT key——那是 start-plan，直接跳过）。可用 key 优先；**只剩系统禁用的 coding-plan key 也导入**（`glmKeyFromZcodeConfig` 返回 `usable` + `systemDisabledReason`，`importGlmAuth` 把原因写进结果 `note`）。理由：那个 flag 来自 ZCode 的缓存权益检查，会过期也会错（平台 `coding_plan_system_busy` 时一样标 `coding_plan_not_entitled`），而 key 就是 ZCode provider 条目里那把；拒绝它等于用户本机没有任何可导入的凭据，真假交给额度 / 对话回答。**唯一硬跳过的是 start-plan JWT**（zcode-plan hop 是 captcha 墙）。不读 `coding-plan-cache.json`（`enabled` 已够）。卡片身份只走 `pickGlmHumanAccount`：邮箱，其次电话，再次 `customerName` / nickname。**禁止**显示 `zcode` / `zai` / `bigmodel` / `glm`、poll `user.id`、JWT `sub` / `user_id`、数字 uid。userinfo 失败就空着抬头，不要回落到 uid。已存的 opaque `account` 在 snapshot 时打 userinfo 回填（`#resolveGlmIdentities`），每账号每 60s 最多一次、登录态变化重置；`getJson` / `postJson` 10s 超时，挂住的 userinfo 不会卡住合并后的 snapshot。
 
 Settings：两颗堆叠登录按钮（只这一家）。Tab 图标用 **Z.ai**（`zai`），不是智谱字母。
 
@@ -100,22 +99,52 @@ DSH openai-completions  →  POST /glm/v1/chat/completions  →
 
 ## 模型
 
-订阅套餐的**实际模型是两行**——官方 devpack overview：「所有套餐均支持 **GLM-5.3**、**GLM-5.3-Flash**」，历史 id 自动改道（GLM-5.2 / 5.1 → 5.3，GLM-4.7 → 5.3-Flash）。`GLM_MODELS` 保留三行（ZCode `builtinProviderModelRules` 仍启用的那组 + maintainer 既有取舍）：
+行在 [`src/catalog/models.json`](../../catalog/models.json) 的 `"glm"` 键；行格式、来源与 `npm run models` 更新流程见 [`docs/models.md`](../../../docs/models.md)。本节只记本家的取舍与出处。
 
-| id | 名称 | ctx / 输出 | 输入 | 思考深度（DSH 键 → 值） |
-|---|---|---|---|---|
-| `glm-5.3` | GLM-5.3 | 1M / 128k | text | `low` / `high` / `max`（默认 max，关不掉，无 `medium`） |
-| `glm-5.3-flash` | GLM-5.3-Flash | 1M / 128k | text + image | 同上（catalog 另有 video / pdf，DSH 只接 text / image） |
-| `glm-5-turbo` | GLM-5-Turbo | 200k / **64k** | text | `false`（catalog 值是 disabled / enabled，插件不开档位） |
+最近核对：2026-09-29，官方 devpack overview + [glm-5.3 模型页](https://docs.z.ai/guides/llm/glm-5.3) + ZCode catalog。
 
-**不进目录的两个 id：**
-
-- `glm-5.3-flashx`（200 tok/s、1M ctx）——官方 Flash 文档写明「GLM-5.3-FlashX is **not yet available on the plan**」；订阅后端不服务的模型不进目录（`gpt-5.3-codex` 先例）。官方上线再补。
-- `glm-5.2`——套餐已把它自动改道到 5.3（官方 overview）。留着它会显示 `off` 档位，而后端把 5.2 请求按 5.3 处理，`thinking.type: disabled` 会 400（5.3 强制思考）。proxy 仍保留 5.2 的线上形状（ZCode catalog 有这条 map），给旧 session / 手写路由兜底，但 picker 不复活它（`GLM_STALE`）。
+- 收哪些 id：官方 devpack overview 只保证 GLM-5.3 / GLM-5.3-Flash，历史 id 由套餐自动改道。目录收 ZCode `builtinProviderModelRules` 仍启用的那组，外加 maintainer 既有取舍（Turbo）。Coding Plan `/models` 端点只给 id，参数取 ZCode catalog 与官方模型页。
+- 窗口：基线 `contextWindow` 是**套餐网关实际收的输入上限**，不是官方模型页的最大窗（例：5.3 官方写 1M，套餐只收 400K）。基线定在套餐上限，宿主压缩才会先于网关拒绝；官方最大窗挂在行的 `maxContextWindow`，作为模型页自定义输入窗的上限（见 [`docs/models.md`](../../../docs/models.md) 自定义窗口）。不派生 `-1m` 变体行；hop 剥后缀逻辑只为兼容旧路由。
+- 输入：catalog 里的 video / pdf 剥掉，只留 text / image。
+- 不进目录（取舍经过见 [`docs/error.md`](../../../docs/error.md) 2026-09-21 GLM 目录取舍）：
+  - `glm-5.3-flashx`：官方 Flash 文档写明「not yet available on the plan」；订阅后端不服务的模型不进目录。官方上线再补。
+  - `glm-5.2` 等改道 id：后端按 5.3 处理，5.2 的 `off` 档（`thinking.type: disabled`）会 400（5.3 强制思考）。proxy 仍保留 5.2 的线上形状，给旧 session / 手写路由兜底，但 picker 不复活它（`GLM_STALE`）。
 
 思考的线上形状来自 catalog `modelApiRules`（`apiTypeMatch: anthropic-messages`）：5.3 / Flash `{"thinking":{"type":"enabled"},"output_config":{"effort":<level>}}`；5.2 `disabled` → `{"thinking":{"type":"disabled"}}`，否则同上；Turbo 只有 `thinking.type`。`reasoningEfforts` 的值就是 `output_config.effort` 的拼写，路由 compat 写 `forceAdaptiveThinking` 让 pi-ai 把 picker 档位派发成 `output_config.effort`；`allowEmptySignature` 让没有 signature 的 thinking block 按 `signature: ""` 回放（`anthropic-reasoning-metadata.ts` 同款），不被降级成 text。
 
 Anthropic 路由**不要**写任何 Completions-only `compat`（`supportsReasoningEffort`、`thinkingFormat`）。`forceAdaptiveThinking` / `allowEmptySignature` 是 `anthropic-messages` 自己的 compat 字段（DSH `COMPAT_GATES`）。DSH `assertServiceable` 会拒掉 Anthropic 路由上的 Completions compat，整段原子 mutate 失败，`oauth-kiro` 也写不进 settings.yaml。Kiro / Antigravity 仍是 `openai-completions`，可以保留 `supportsReasoningEffort`。
+
+### 上下文与压缩
+
+压缩阈值由宿主 `@deepseek-ai/dsh-compaction-basic`（`resolveCompactSpec`）决定，不是本插件发明的算法：
+
+```text
+thresholdTokens = floor(min(W × thresholdRatio, W − O − headroomTokens))
+retainTokens    = floor((W − O) × retainRatio)        # 逐字保留的近期历史
+触发：最新一次路由请求 envelope 的估算 token ≥ thresholdTokens
+```
+
+默认 `thresholdRatio 0.8` / `retainRatio 0.16` / `headroomTokens 65536`。`O` = 该请求预留的输出（生效 `maxTokens`；本 hop 路由写的是 `min(厂商上限, 32768)`，见 [`../models.ts`](../models.ts) `HARNESS_REQUEST_MAX_TOKENS`）；`B` = 本插件按行写进 profile patch 的 `headroomTokens`，窗口 < ~640K 的行取 `floor(W × 10%)`，更大的窗口留默认 65536（`compactionHeadroomOf`）。
+
+| 行 | W | O | B | 触发压缩 | 逐字保留 |
+|---|---|---|---|---|---|
+| `glm-5.3` | 400000 | 32768 | 40000 | **320000**（80%） | 58757 |
+| `glm-5.3-flash` | 400000 | 32768 | 40000 | **320000**（80%） | 58757 |
+| `glm-5-turbo` | 200000 | 32768 | 20000 | **147232**（73.6%） | 26757 |
+
+表里的阈值 / 保留是公式代入值（W ≥ ~328K 时阈值恒为 `0.8W`），不是官方数字；`headroomTokens` 被 [`test/models.test.ts`](../../../test/models.test.ts) 钉住，窗口被 [`test/glm.test.ts`](../../../test/glm.test.ts) 钉住。Turbo 的阈值随 O 变（O=0 时 160000），5.3 / Flash 的 320000 对任何 O ≤ 47232 都成立。
+
+**不要在 Coding Plan 上把 5.3 / Flash 的窗口改到 400K 以上**：400K 是套餐网关的单请求输入上限（2026-09-29 活测记录，见 [`docs/error.md`](../../../docs/error.md)），不是可配置项。填 500K 时阈值正好 = 400000，压缩余量为 0——估算误差或一轮工具输出就能把请求顶过网关被拒；填 1M 则要到 ~800K 才压缩，400K–800K 整段会话必被拒。要更长输入只能换按量 API key（官方 1M 窗）。
+
+官方计价档位（2026-09-30 核对 [智谱 API 定价](https://docs.bigmodel.cn/cn/guide/start/pricing) / [Z.AI Pricing](https://docs.z.ai/guides/overview/pricing)；只有按量计费才有单价，Coding Plan 走 5h / 周 credits）：
+
+| 行 | 官方档位 |
+|---|---|
+| GLM-5.3 | 1M 单一价，无长度档（BigModel ¥8 输入 / ¥28 输出） |
+| GLM-5.3-Flash | 1M 单一价（¥0.8 / ¥2.8） |
+| GLM-5-Turbo | 输入 `[0, 32K)` ¥5 / ¥22 → `≥32K` ¥7 / ¥26（缓存命中 ¥1.2 → ¥1.8） |
+
+同代的 GLM-5.1 / GLM-5 也是 32K 分界，GLM-4.7 另有 200K 档。价格随官方调整，`npm run models` 只搬目录参数、不搬价格。
 
 ## 额度
 
@@ -123,7 +152,9 @@ Anthropic 路由**不要**写任何 Completions-only `compat`（`supportsReasoni
 
 条必须按窗口拆：5 小时 / 每周 / ZCode MCP，不要两条都叫「本周期」。`glmWindowKind` 认 `five_hour` / `weekly` / `mcp`。
 monitor 接口是 **HTTP 200 + 业务信封**：`success === false` 或 `code ∉ {0,200}` 时 `fetchGlmQuota` 直接抛 `glm quota failed: <msg>`（如「当前用户不存在coding plan」），store 记 error，卡片显示具体原因；**不要**把它当「ready 但 0 行」，那只会显示「周额度未返回」让人以为 hop 坏了。
-卡片加成：`glmCardBoost` 显示「150%配额」。现在能说清的部分：官方 ZCode 的 Coding Plan 对话**只走** `zcode.z.ai` 平台网关（`official-coding-plan-gateway.ts` + NOTICE.md），网关做套餐权益校验；本 hop 已改成同一条网关路径 + 同套身份头。发放倍数与「用桌面版斜率」仍在上游服务端，源码看不到，**没有**活测对比过用量斜率——所以不宣称「已经吃上 150%」。
+重置卡（「重置卡」，类 Codex reset credits）：`GET glmResetCardUrl(region, 'list')` = `{biz}/api/biz/customer-package-reset/list?targetType=PERSONAL`，同一把 provisioned api-key bearer + 桌面指纹，与 monitor 并行。回 `data.fiveHourResets[]` / `data.weekResets[]`，每项 `{recordId, grantType, expireTime, available}`；桶名即 `resetType`（`FIVE_HOUR` / `WEEK`），5h 卡只清 5h 窗、周卡只清周窗。`parseGlmResetCards` 只留 `available` 且未过期的卡，按过期升序；**两个桶数组缺一 / 业务信封非成功 → undefined**，store 保留上次的卡数，不当成 0 张。套餐没有 5h / 周窗口时直接清空，不调。`expireTime` 没有时区：BigModel 是 +08:00（`lastWeekResetTime` = 周窗 `nextResetTime` − 7d 只在 +08:00 成立，2026-09-29 活测），Z.ai 按 UTC 读（未活测）。兑换 `POST …/use` body `{targetType:'PERSONAL', resetType, recordId, requestId}`，HTTP 200 不算成功、要看信封；传输失败时同一张卡复用 `requestId`（进程内），业务拒绝才换新 id。UI 按类型各一行「剩 N 张」，按钮消耗该类最早过期的一张，先过 `WarnDialog`。出处：ZCode 开源树里没有这个端点，参照 OmniRoute `open-sse/services/usage/glmResetCards.ts`（`241e63b`）；list 已活测，`use` 未活测（会真扣卡）。
+
+卡片**不显示**「150%配额」标识。能说清的部分：官方 ZCode 的 Coding Plan 对话**只走** `zcode.z.ai` 平台网关（`official-coding-plan-gateway.ts` + NOTICE.md），网关做套餐权益校验；本 hop 走同一条网关路径 + 同套身份头。发放倍数与「用桌面版斜率」仍在上游服务端，源码看不到，**没有**活测对比过用量斜率——所以不宣称「已经吃上 150%」。
 
 ## 缓存
 
@@ -158,7 +189,7 @@ Pin map 的 Anthropic 键是 `${sessionId}\0anthropic`，和 Completions 的 `se
 
 判定：前缀被切开后剩 **576 token** 残骸 = **prefix break**，不是 Grok affinity miss。思考模型必须回放上一轮思考；Completions 残留靠 `clear_thinking: false` + 保留 `reasoning_content`；Anthropic 的 Preserved Thinking 在 Coding Plan 端点默认开，插件仍带 `clear_thinking: false`（标准 API 的 opt-in）作保险，ZCode 客户端本身不发这个字段。
 
-进程内 `SYSTEM_PINS`（cap 64）只服务 GLM。测试用 `resetGlmSystemPins()`。不要 import Antigravity 的 pin map。
+进程内 `SYSTEM_PINS`（cap 64，淘汰最久没有请求的会话）只服务 GLM。测试用 `resetGlmSystemPins()`。不要 import Antigravity 的 pin map。
 
 ## 不要
 
@@ -172,6 +203,7 @@ Pin map 的 Anthropic 键是 `${sessionId}\0anthropic`，和 Completions 的 `se
 - 不要在 Anthropic 路由写 Completions-only `compat`（`supportsReasoningEffort` / `thinkingFormat: openai`）；`forceAdaptiveThinking` / `allowEmptySignature` 才是这一协议的字段。
 - 不要在 Anthropic hop 发 `thinking.budget_tokens` / `thinking.display` / `reasoning_effort`，官方 catalog 只发 `thinking.type` + `output_config.effort`（代理会删掉前三个）。
 - 不要复活 `glm-5.2`（套餐自动改道 5.3，`off` 档会 400），也不要把 `glm-5.3-flashx` 塞进 picker（官方写明还没上套餐）。Turbo 不要编思考档位 / 128k 输出（catalog 是 64k，无档位）。
+- 不要把 GLM-5.3 / Flash 的自定义窗口设到 400K 以上（500K、1M 都不行）：400K 是套餐网关的单请求输入上限，不是可配置项；窗口越大压缩越晚，只会更早撞网关。算法与每行阈值见「模型 · 上下文与压缩」。
 - 不要在下次 `sync()` 改写残留设置之前拆掉 Completions hop。
 - 不要导入 start-plan JWT（体验套餐不支持，zcode-plan hop 是 captcha 墙）；系统禁用的 coding-plan key 要导入并带原因。
 - 不要把 `data.token`（zcode JWT）写进 BigModel 的 bearer 位——`bigmodel.cn` 会稳定回「令牌已过期或验证不正确」；bearer 只能是 `data.bigmodel.access_token`。
@@ -179,31 +211,22 @@ Pin map 的 Anthropic 键是 `${sessionId}\0anthropic`，和 Completions 的 `se
 
 ## 归因
 
-一线是 **[zai-org/ZCode](https://github.com/zai-org/ZCode)**（`872ad96 feat: open source`，tree `3.14.0`）+ [ZCode changelog](https://zcode.z.ai/en/changelog)（当前稳定版 `3.14.1`）+ [docs.z.ai](https://docs.z.ai/devpack/quick-start)。家族头有缓存 / 思考文档。总表见 [`docs/oauth.md`](../../../docs/oauth.md)。
+一线：**[zai-org/ZCode](https://github.com/zai-org/ZCode)**（`872ad96 feat: open source`，tree `3.14.0`；[changelog](https://zcode.z.ai/en/changelog) 当前稳定版 `3.14.1`）+ 官方文档。指纹仍钉 Desktop 3.10.1（`zcode.cjs` `eao` / `rao`），版本没跟开源 tree 走。
 
-## 追溯
+| 抄 | 出处 | 本 hop |
+|---|---|---|
+| Coding Plan Anthropic 端点改发 `zcode.z.ai/api/v1/ultra-zai/anthropic`（BigModel `/ultra/anthropic`），除 `host` 外原样透传 | `apps/zcode-cli/packages/adapters/src/model/official-coding-plan-gateway.ts`；NOTICE.md「官方 Coding Plan 模型网关转发」 | `glmAnthropicGatewayUrl` |
+| 模型页价格徽标（USD / 1M） | models.dev `zai`（Z.AI 美元标价；Coding Plan 本身按 credits 计） | `src/catalog/rates.json`，`npm run rates` 写入（见 [docs/models.md](../../../docs/models.md) 费率表） |
+| 身份 / 环境头：`X-ZCode-Agent: glm`、`X-Release-Channel`、`X-Client-Language/Timezone`、`X-Platform`、`X-Os-Category`、`X-Os-Version`、`X-Title: Z Code@cli\|electron` | `apps/zcode-cli/packages/bootstrap/src/model-config.ts` + `runtime-platform-headers.ts` | `glmDesktopHeaders` |
+| `x-session-id` / `x-request-id` / `x-zcode-trace-id` / `x-query-id` / `x-zcode-session-type` | `adapters/src/model/runner-attribution.ts` | `glmDesktopHeaders` |
+| 非 system 消息只留一个滚动 `cache_control` | `core/src/runtime/helpers/provider-request-messages.ts` `finalizeLatestNonSystemMessageCacheControl` | [`cache.ts`](cache.ts) |
+| Anthropic 思考 map（`thinking` + `output_config.effort`）；ctx / 输出上限 | `config/provider/zcode-builtin.json` `modelApiRules` / `modelRules` | `applyGlmAnthropicThinking`；目录取舍见「模型」 |
+| 无 signature 的 thinking 块按 `signature: ""` 回放，不降级成 text | `adapters/src/model/anthropic-reasoning-metadata.ts` | 路由 compat `allowEmptySignature` |
+| 对话 + 额度的 bearer 是 provisioned `account-provider:…:api-key`；`oauth:<region>:access_token` 只打 monitor / userinfo，降为 `oauthAccess`；`zcodejwttoken` 仅身份 | `~/.zcode/v2/credentials.json` + `isProviderProvisioningAccountCredentialKey` | [`../import-auth.ts`](../import-auth.ts) `glmKeyFromZcodeConfig` |
+| 重置卡 `{biz}/api/biz/customer-package-reset/list?targetType=PERSONAL` / `…/use`（ZCode 开源树里没有） | 社区 [OmniRoute](https://github.com/diegosouzapw/OmniRoute) `open-sse/services/usage/glmResetCards.ts`（`241e63b`） | `glmResetCardUrl`；stamp 时区 BigModel +08:00 是本仓活测结论，不是 OmniRoute 的 UTC |
 
-| 问题 | 记录 |
-|---|---|
-| Completions + `ai-sdk/anthropic` UA 对不齐 ZCode 默认协议 | [`docs/error.md`](../../../docs/error.md) 2026-08-31 GLM Anthropic |
-| Anthropic 路由写 `supportsReasoningEffort` 卡死整段 sync，Kiro 进不了 yaml | 同文件 2026-08-31 GLM Anthropic compat / Kiro yaml |
-| 150% 是身份不是协议，未对照 Desktop 用量 | 同文件 2026-08-31 GLM Anthropic；2026-08-30 GLM UA |
-| 首轮 400 `1214 角色信息不正确` | 同文件 2026-08-30 GLM 1214 |
-| 思考链被清 / 前缀 miss | 同文件 2026-08-30 GLM 思考链 |
-| 直连不是官方 Coding Plan 路径；150% 走网关 | 同文件 2026-09-21 GLM 网关 |
-| Anthropic 思考形不对（budget/display 不是官方 map） | 同文件 2026-09-21 GLM 思考 map |
-| 缓存缺最新非 system 消息 breakpoint | 同文件 2026-09-21 GLM 网关（缓存段） |
-| 目录取舍：5.2 已是自动改道别名、FlashX 未上套餐、Turbo 64k | 同文件 2026-09-21 GLM 目录 |
-| BigModel 登录后额度/身份全 401：把 zcode JWT 当 bearer | 同文件 2026-09-21 GLM BigModel bearer |
-| 已登录却「不存在coding plan」：存了 config.json 旧 key，非 credentials.json provisioned key | 同文件 2026-09-21 GLM 抓错登录 |
-| 「周额度未返回」其实是 monitor 的 200 业务错误被吞 | 同文件 2026-09-21 GLM 额度业务错误 |
-| 导入拒绝系统禁用的 coding-plan key | 同文件 2026-09-21 GLM 导入 |
-| 第三方 UA 丢掉 1.5 倍额度 | 同文件 2026-08-30 GLM UA |
-| 额度两条「本周期」 | 同文件 2026-08-30 GLM 额度窗口 |
-| 账号显示 zcode | 同文件 2026-08-30 GLM 身份 |
-| 账号显示 poll `user.id` | 同文件 2026-09-03 GLM 身份 user.id |
-| 体验套餐（Start Plan）3007 captcha 墙，决定不支持 | 同文件 2026-09-05 GLM 体验套餐 |
-| BigModel init 500 | 同文件 2026-08-30 BigModel OAuth |
-| 缓存和 Codex 混用 | 同文件 2026-08-31 缓存混用 |
+官方文档：[Coding Plan 快开始](https://docs.z.ai/devpack/quick-start)（Anthropic 默认协议）、[缓存](https://docs.z.ai/guides/capabilities/cache)（隐式前缀 + `cache_control`）、[思考](https://docs.z.ai/guides/capabilities/thinking-mode)（Completions 形；Coding Plan 端点默认 Preserved Thinking，`clear_thinking: false` 是标准 API 的 opt-in）、[devpack overview](https://docs.z.ai/devpack/overview)（套餐模型）、[API 定价](https://docs.bigmodel.cn/cn/guide/start/pricing) / [Z.AI Pricing](https://docs.z.ai/guides/overview/pricing)（计价档位，见「模型 · 上下文与压缩」）。catalog 的 `builtinProviderModelRules` 仍启用 5.2 / Turbo 是给老 session 的向后兼容，不等于现售菜单。
 
-测试：`test/glm.test.ts`、`test/proxy.test.ts`（Anthropic hop 必须打 `zcode.z.ai/api/v1/ultra-zai/anthropic/v1/messages`，带 `anthropic-version` / `cache_control` / `output_config.effort` / `metadata.user_id`，网关 403 时回退 `https://api.z.ai/api/anthropic/v1/messages`；**不得**带 Codex 头或 `prompt_cache_key`；Completions 残留仍走 `paas/v4`）、`test/cache-families.test.ts`。
+**不要发明：** 第四种 DSH `api`。`x-aliyun-captcha-verify-param` 只有 Desktop 3.11.2 `zcode.cjs` `isZcodePlanOpenAiCompatibleBaseUrl` 才注入，不抄。缓存头混用、直连默认、Anthropic 字段与 150% 的禁令见「不要」。
+
+跨家族对照总表见 [`docs/oauth.md`](../../../docs/oauth.md)。

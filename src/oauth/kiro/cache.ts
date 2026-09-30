@@ -17,6 +17,9 @@
  * not reuse another model's AWS conversation.
  */
 
+import { createHash } from 'node:crypto'
+import { appendPrivateLine } from '../../utils/private-text.js'
+
 /** When DSH sends neither session_id nor prompt_cache_key, key on a constant (never pinned). */
 export const KIRO_STABLE_SESSION = 'dsh-kiro'
 
@@ -39,6 +42,18 @@ export function resetKiroSystemPins() {
   SYSTEM_PINS.clear()
 }
 
+/**
+ * Read a pin and mark it most recently used. Map order is recency, so the
+ * cap drops the idlest conversation, never one that is still sending steps.
+ */
+function usePin(key) {
+  const pin = SYSTEM_PINS.get(key)
+  if (pin === undefined) return undefined
+  SYSTEM_PINS.delete(key)
+  SYSTEM_PINS.set(key, pin)
+  return pin
+}
+
 function appendKiroModel(base, modelId) {
   const model = kiroCacheSessionId(modelId)
   if (!model) return base
@@ -59,7 +74,7 @@ export function pinKiroSystemPrefix(conversationId, systemText) {
   if (isKiroFallback(conversationId)) {
     return { pinned: text, extra: '' }
   }
-  const existing = SYSTEM_PINS.get(conversationId)
+  const existing = usePin(conversationId)
   if (existing === undefined) {
     if (SYSTEM_PINS.size >= SYSTEM_PIN_CAP) {
       const first = SYSTEM_PINS.keys().next().value
@@ -100,4 +115,75 @@ export function kiroConversationId(payload: any = {}, explicit?) {
     ?? kiroCacheSessionId(payload.prompt_cache_key)
     ?? KIRO_STABLE_SESSION
   return appendKiroModel(base, payload.model)
+}
+
+// ── Cacheable-prefix estimate (Kiro reports no cached tokens) ─────────────
+
+const PREFIX_BASELINES = new Map()
+/** Recent requests kept per conversation: DSH's title request shares the session id. */
+const PREFIX_BASELINE_KEEP = 4
+let prefixLog: string | undefined
+
+/** Where each request's estimate is appended; `npm run analyze` reads it. */
+export function setPrefixEstimateLog(path: string | undefined) {
+  prefixLog = path
+}
+
+export function resetKiroPrefixBaselines() {
+  PREFIX_BASELINES.clear()
+}
+
+/**
+ * One Kiro body in the model's prompt order: tools first (they sit in the
+ * cache prefix although the wire carries them on the current message), then
+ * each history turn and the current turn by content only, so this turn's
+ * current message matches next turn's history entry.
+ */
+function prefixSegments(body) {
+  const state = body?.conversationState ?? {}
+  const current = state.currentMessage?.userInputMessage ?? {}
+  const turn = (entry) => (entry?.assistantResponseMessage
+    ? [entry.assistantResponseMessage.content, entry.assistantResponseMessage.toolUses ?? null]
+    : [entry?.userInputMessage?.content, entry?.userInputMessage?.userInputMessageContext?.toolResults ?? null, entry?.userInputMessage?.images ?? null])
+  return [
+    JSON.stringify(current.userInputMessageContext?.tools ?? null),
+    ...(state.history ?? []).map((entry) => JSON.stringify(turn(entry))),
+    JSON.stringify(turn({ userInputMessage: current })),
+  ]
+}
+
+/**
+ * Upper bound on this request's cache hit: the bytes it shares, segment by
+ * segment from the front, with the best of this conversation's last few
+ * requests. It assumes the server cache is still warm (`gapMs` says how old
+ * that baseline is). `matched` is null without a baseline or a DSH session.
+ */
+export function estimateKiroPrefix(conversationId, body, now: number) {
+  const segments = prefixSegments(body)
+  const lengths = segments.map((segment) => segment.length)
+  const hashes = segments.map((segment) => createHash('sha1').update(segment).digest('base64'))
+  const bytes = lengths.reduce((sum, n) => sum + n, 0)
+  if (isKiroFallback(conversationId)) return { bytes, matched: null, gapMs: null }
+  const baselines = PREFIX_BASELINES.get(conversationId) ?? []
+  let best: { matched: number, gapMs: number } | undefined
+  for (const baseline of baselines) {
+    let matched = 0
+    for (let i = 0; i < hashes.length && baseline.hashes[i] === hashes[i]; i++) matched += lengths[i]
+    if (!best || matched > best.matched) best = { matched, gapMs: now - baseline.at }
+  }
+  // Same bound and recency order as the system pins: re-insert this
+  // conversation, then drop the idlest one if the map is full.
+  PREFIX_BASELINES.delete(conversationId)
+  if (PREFIX_BASELINES.size >= SYSTEM_PIN_CAP) PREFIX_BASELINES.delete(PREFIX_BASELINES.keys().next().value)
+  PREFIX_BASELINES.set(conversationId, [...baselines, { hashes, at: now }].slice(-PREFIX_BASELINE_KEEP))
+  return { bytes, matched: best?.matched ?? null, gapMs: best?.gapMs ?? null }
+}
+
+/** Estimate one outgoing body and append it to the log; never throws into the request. */
+export function recordKiroPrefix({ conversationId, session, model, body }) {
+  if (!prefixLog) return
+  // A timestamp for the log line and the baseline age — never an id.
+  const ts = Date.now()
+  const estimate = estimateKiroPrefix(conversationId, body, ts)
+  void appendPrivateLine(prefixLog, JSON.stringify({ ts, family: 'kiro', session: session ?? null, model: model ?? null, ...estimate }), 4_000_000).catch(() => {})
 }

@@ -14,17 +14,12 @@ export declare function kiroCatalogModels(): any[];
  * (they would 400 INVALID_MODEL_ID). Fallback only lends order, pretty names,
  * and anything the live row lacks. Empty live → [].
  */
-export declare function toKiroPickerModels(live: any, fallback?: readonly {
-    id: any;
-    name: any;
-    contextWindow: any;
-    maxTokens: number;
-    input: readonly string[];
-    reasoningEfforts: any;
-}[]): any[];
+export declare function toKiroPickerModels(live: any, fallback?: readonly any[]): any[];
 /**
  * Probe both canonical regions. A regional 403 is "no profile here", not
  * a hard stop — keep going. Empty / failed discovery returns [].
+ * `options.origin` defaults to the chat origin (the picker); `scripts/models.ts`
+ * asks `KIRO_CONSOLE` for the governance list the static snapshot mirrors.
  */
 export declare function fetchKiroLiveModels(session: any, options?: any): Promise<any>;
 export declare function refreshKiroCatalog(session: any, options?: any): Promise<any[]>;

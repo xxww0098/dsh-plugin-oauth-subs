@@ -1,7 +1,7 @@
 /**
  * Command Code（api.commandcode.ai）— 常量 + API key session + 模型目录。
  *
- * Command Code CLI `command-code@1.66.0`（npm 包 `command-code`，bin 别名
+ * Command Code CLI `command-code@1.72.2`（npm 包 `command-code`，bin 别名
  * `cmd`/`cmdc`/`commandcode`）发：
  *
  *   GET  /alpha/whoami?limits=1
@@ -33,192 +33,13 @@ export declare const COMMAND_CODE_CREDITS_URL = "https://api.commandcode.ai/alph
 export declare const COMMAND_CODE_SUBSCRIPTIONS_URL = "https://api.commandcode.ai/alpha/billing/subscriptions";
 export declare const COMMAND_CODE_USAGE_URL = "https://api.commandcode.ai/alpha/usage/summary";
 /** CLI 发 `x-command-code-version` 的值；无 header 时上游照跑（401/计费门正常）。 */
-export declare const COMMAND_CODE_CLI_VERSION = "1.66.0";
+export declare const COMMAND_CODE_CLI_VERSION = "1.72.2";
 export declare const COMMAND_CODE_DEFAULT_CONTEXT = 200000;
 /** CLI `max_tokens ?? 64000` 上限；无 per-model output cap。 */
 export declare const COMMAND_CODE_MAX_TOKENS = 64000;
-export declare const COMMAND_CODE_MODELS: readonly ({
-    id: string;
-    name: string;
-    contextWindow: number;
-    input: string[];
-    reasoningEfforts: {
-        low: string;
-        medium: string;
-        high: string;
-        xhigh: string;
-        max: string;
-    };
-} | {
-    id: string;
-    name: string;
-    contextWindow: number;
-    input: string[];
-    reasoningEfforts?: undefined;
-} | {
-    id: string;
-    name: string;
-    contextWindow: number;
-    input: string[];
-    reasoningEfforts: {
-        low: string;
-        medium: string;
-        high: string;
-        xhigh: string;
-        max?: undefined;
-    };
-} | {
-    id: string;
-    name: string;
-    contextWindow: number;
-    input: string[];
-    reasoningEfforts: {
-        low: string;
-        medium: string;
-        high: string;
-        xhigh?: undefined;
-        max?: undefined;
-    };
-} | {
-    id: string;
-    name: string;
-    contextWindow: number;
-    input: string[];
-    reasoningEfforts: {
-        high: string;
-        max: string;
-        low?: undefined;
-        medium?: undefined;
-        xhigh?: undefined;
-    };
-} | {
-    id: string;
-    name: string;
-    contextWindow: number;
-    input: string[];
-    reasoningEfforts: {
-        low: string;
-        high: string;
-        max: string;
-        medium?: undefined;
-        xhigh?: undefined;
-    };
-} | {
-    id: string;
-    name: string;
-    contextWindow: number;
-    input: string[];
-    reasoningEfforts: {
-        low: string;
-        medium: string;
-        xhigh: string;
-        high?: undefined;
-        max?: undefined;
-    };
-} | {
-    id: string;
-    name: string;
-    contextWindow: number;
-    input: string[];
-    reasoningEfforts: {
-        high: string;
-        xhigh: string;
-        low?: undefined;
-        medium?: undefined;
-        max?: undefined;
-    };
-})[];
-export declare function commandCodeModelById(id: any): {
-    id: string;
-    name: string;
-    contextWindow: number;
-    input: string[];
-    reasoningEfforts: {
-        low: string;
-        medium: string;
-        high: string;
-        xhigh: string;
-        max: string;
-    };
-} | {
-    id: string;
-    name: string;
-    contextWindow: number;
-    input: string[];
-    reasoningEfforts?: undefined;
-} | {
-    id: string;
-    name: string;
-    contextWindow: number;
-    input: string[];
-    reasoningEfforts: {
-        low: string;
-        medium: string;
-        high: string;
-        xhigh: string;
-        max?: undefined;
-    };
-} | {
-    id: string;
-    name: string;
-    contextWindow: number;
-    input: string[];
-    reasoningEfforts: {
-        low: string;
-        medium: string;
-        high: string;
-        xhigh?: undefined;
-        max?: undefined;
-    };
-} | {
-    id: string;
-    name: string;
-    contextWindow: number;
-    input: string[];
-    reasoningEfforts: {
-        high: string;
-        max: string;
-        low?: undefined;
-        medium?: undefined;
-        xhigh?: undefined;
-    };
-} | {
-    id: string;
-    name: string;
-    contextWindow: number;
-    input: string[];
-    reasoningEfforts: {
-        low: string;
-        high: string;
-        max: string;
-        medium?: undefined;
-        xhigh?: undefined;
-    };
-} | {
-    id: string;
-    name: string;
-    contextWindow: number;
-    input: string[];
-    reasoningEfforts: {
-        low: string;
-        medium: string;
-        xhigh: string;
-        high?: undefined;
-        max?: undefined;
-    };
-} | {
-    id: string;
-    name: string;
-    contextWindow: number;
-    input: string[];
-    reasoningEfforts: {
-        high: string;
-        xhigh: string;
-        low?: undefined;
-        medium?: undefined;
-        max?: undefined;
-    };
-} | undefined;
+/** Static catalog. Rows live in `src/catalog/models.json` under `"command-code"`; per-model output cap comes from `COMMAND_CODE_MAX_TOKENS` at the harness seam. */
+export declare const COMMAND_CODE_MODELS: readonly any[];
+export declare function commandCodeModelById(id: any): any;
 /**
  * API key 校验：`user_…` 前缀是 CLI 写入 auth.json 的形态，但只做长度
  * 兜底不硬绑前缀（env 里可能是派生 key）。拒绝换行 / 控制符，防止

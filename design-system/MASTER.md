@@ -4,7 +4,7 @@ The **dsh-plugin-oauth-subs** workbench is a keyed `main` panel behind a
 `sidebar.panellist` glyph (「订阅」, gauge icon) under the 插件 button in
 the host rail — not a Settings section, not a landing. Page composition
 and per-view behavior: [`pages/settings-workbench.md`](pages/settings-workbench.md).
-Cross-family rules: [`AGENTS.md`](../AGENTS.md).
+Cross-family rules: [`docs/rules.md`](../docs/rules.md).
 
 ## Compose
 
@@ -22,12 +22,12 @@ Cross-family rules: [`AGENTS.md`](../AGENTS.md).
 Fixed three-region layout; the page itself never scrolls
 (`overflow: hidden`) so the scrollbar can never overlap the tab strip:
 
-- **Top** — `.osubs-ptabs`: horizontal text tabs 额度 / 模型 / 版本,
+- **Top** — `.osubs-ptabs`: horizontal text tabs 额度 / 模型 / 用量 / 设置,
   bottom-aligned in a tall bar so headroom stays above them, edge-to-edge
   1px seam, active = accent + inset underline. Blank area is
   `-webkit-app-region: drag` for window drag; tab buttons are `no-drag`.
 - **Left** — `.osubs-rail`: fixed provider column under the tabs, shown
-  on Quota and Models only (Version is full-width). 全部 + every family
+  on Quota, Models and Usage (Version is full-width). 全部 + every family
   in `FAMILY_ORDER`, each with brand mark + name + count.
 - **Right** — `.osubs-pane`: the only scroller, except the Models view
   where the panel fills the pane (`osubs-pane-panel--fill`) so the pane,
@@ -62,8 +62,13 @@ No family-level identity row; no shared quota block under a heading.
 Every quota bar is a **remaining** bar: fill and caption come from
 `remainingPercent` (`100 - usedPercent` fallback). Copy is
 `剩余 {n}%` / `{n}% left` — never `已用` / `% used`. `used / total` may
-sit as secondary text in real units only. Color encodes remaining via
-`quotaTone` (ok → warn → bad), never vendor, never used%.
+sit as secondary text in real units only. The fill is a continuous
+green→red ramp on remaining (`quotaFillColor`): 100% = `--osubs-ok`,
+50% = `--osubs-warn`, 0% = `--osubs-bad`, mixed in hsl so the midpoint
+stays amber — never vendor, never used%. Caption text still reserves
+color for a warning via `quotaTone`: ink above 40%, warn ≤ 40%,
+bad ≤ 15%. The active card and 「使用中」 tag are monochrome too
+(ink border / outlined tag), not green.
 
 ## Dialog
 
@@ -78,7 +83,7 @@ sit as secondary text in real units only. Color encodes remaining via
 
 ## Stack
 
-Classic-script factory in `src/ui/client.ts`: `h()` hyperscript + React
+Classic-script factory in `src/ui/client.ts` (views in `src/ui/parts/`): `h()` hyperscript + React
 hooks via `require('react')`. No Vue / Svelte / raw DOM helpers / npm
 icon packages. `lib/` is generated — never hand-edit.
 

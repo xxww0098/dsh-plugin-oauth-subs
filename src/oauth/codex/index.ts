@@ -6,6 +6,7 @@
  * `codex_cli_rs`). Token exchange is form-encoded; refresh is JSON.
  */
 
+import { catalogRows } from '../../catalog/index.js'
 import { decodeJwtPayload } from '../../utils/jwt.js'
 import { outboundFetch } from '../../utils/outbound.js'
 import { oauthError } from '../tokens.js'
@@ -18,7 +19,7 @@ export const CODEX_USAGE_URL = 'https://chatgpt.com/backend-api/wham/usage'
 export const CODEX_RESET_CREDITS_URL = 'https://chatgpt.com/backend-api/wham/rate-limit-reset-credits'
 export const CODEX_RESET_CONSUME_URL = 'https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume'
 export const CODEX_MODELS_URL = 'https://chatgpt.com/backend-api/codex/models'
-export const CODEX_CLIENT_VERSION = '0.155.1'
+export const CODEX_CLIENT_VERSION = '0.159.2'
 export const CODEX_ORIGINATOR = 'codex_cli_rs'
 export const CODEX_USER_AGENT = `${CODEX_ORIGINATOR}/${CODEX_CLIENT_VERSION}`
 export const CODEX_SCOPE = 'openid profile email offline_access api.connectors.read api.connectors.invoke'
@@ -64,27 +65,24 @@ export const CODEX_REASONING_EFFORTS_56 = Object.freeze({
 
 /**
  * Mirrors Codex CLI `models.json` plus GET
- * chatgpt.com/backend-api/codex/models (probed 2026-09-23 at `client_version`
- * 0.155.1) — the one place model facts live, so the picker, the context
- * aliases and the Fast tier cannot drift apart. `gpt-6-sol` / `gpt-6-luna`
- * only appear at `client_version` >= 0.155.0, hence CODEX_CLIENT_VERSION.
+ * chatgpt.com/backend-api/codex/models (probed 2026-09-30 at `client_version`
+ * 0.159.0) — the one place model facts live, so the picker, the context
+ * aliases and the Fast tier cannot drift apart. The backend gates rows on
+ * `client_version`: `gpt-6-sol` / `gpt-6-luna` appear at >= 0.155.0,
+ * `gpt-6.1-sol` at >= 0.159.0 — a stale pin hides new models, hence
+ * CODEX_CLIENT_VERSION tracks npm latest.
  *
- * `largeContext` is the row's `max_context_window` and `fastTier` whether its
+ * `maxContextWindow` is the row's `max_context_window` and `fastTier` whether its
  * `service_tiers` offers Fast. Models the subscription backend does not serve
  * stay out entirely — `gpt-5.3-codex`, `gpt-5.4`, `gpt-5.4-mini` and
  * `gpt-5.3-codex-spark` all answer 400 "not supported when using Codex with a
  * ChatGPT account", and `gpt-reserve` / Daybreak / auto-review are
  * `visibility: hide` (CLI-internal).
+ *
+ * Rows live in `src/catalog/models.json` under `"codex"`, validated and
+ * frozen by the catalog loader.
  */
-export const CODEX_MODELS = Object.freeze([
-  { id: 'gpt-6-astra', name: 'GPT-6 Astra', contextWindow: CODEX_CONTEXT_WINDOW, maxTokens: CODEX_DEFAULT_MAX_TOKENS, reasoningEfforts: CODEX_REASONING_EFFORTS_56, largeContext: 872_000, fastTier: true },
-  { id: 'gpt-6-sol', name: 'GPT-6 Sol', contextWindow: CODEX_CONTEXT_WINDOW, maxTokens: CODEX_DEFAULT_MAX_TOKENS, reasoningEfforts: CODEX_REASONING_EFFORTS_56, largeContext: 872_000, fastTier: true },
-  { id: 'gpt-6-luna', name: 'GPT-6 Luna', contextWindow: CODEX_CONTEXT_WINDOW, maxTokens: CODEX_DEFAULT_MAX_TOKENS, reasoningEfforts: CODEX_REASONING_EFFORTS_56, largeContext: 872_000, fastTier: true },
-  { id: 'gpt-5.6-sol', name: 'GPT-5.6 Sol', contextWindow: CODEX_CONTEXT_WINDOW, maxTokens: CODEX_DEFAULT_MAX_TOKENS, reasoningEfforts: CODEX_REASONING_EFFORTS_56, largeContext: 872_000, fastTier: true },
-  { id: 'gpt-5.6-terra', name: 'GPT-5.6 Terra', contextWindow: CODEX_CONTEXT_WINDOW, maxTokens: CODEX_DEFAULT_MAX_TOKENS, reasoningEfforts: CODEX_REASONING_EFFORTS_56, largeContext: 872_000, fastTier: true },
-  { id: 'gpt-5.6-luna', name: 'GPT-5.6 Luna', contextWindow: CODEX_CONTEXT_WINDOW, maxTokens: CODEX_DEFAULT_MAX_TOKENS, reasoningEfforts: CODEX_REASONING_EFFORTS_56, largeContext: 872_000, fastTier: true },
-  { id: 'gpt-5.5', name: 'GPT-5.5', contextWindow: CODEX_CONTEXT_WINDOW, maxTokens: CODEX_DEFAULT_MAX_TOKENS, reasoningEfforts: CODEX_REASONING_EFFORTS, fastTier: true },
-])
+export const CODEX_MODELS = catalogRows('codex')
 
 const CODEX_BY_ID = new Map(CODEX_MODELS.map((model) => [model.id, model]))
 const SNAPSHOT_SUFFIX = /-\d{4}-\d{2}-\d{2}$/

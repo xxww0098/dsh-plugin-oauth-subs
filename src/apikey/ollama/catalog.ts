@@ -41,9 +41,16 @@ export function ollamaCatalogModels() {
   return cached.models?.length ? [...cached.models] : [...OLLAMA_MODELS]
 }
 
-export function toOllamaPickerModels(tags) {
+export function toOllamaPickerModels(tags, { floor = OLLAMA_MODELS }: any = {}) {
   const rows = Array.isArray(tags?.models) ? tags.models : Array.isArray(tags) ? tags : []
   const seen = new Set()
+  // `/api/tags` + `/api/show` carry one window each; a maintainer ceiling on
+  // the static floor is copied forward by id (`applyOllamaShowWindows` spreads
+  // the row, so the field survives the show pass).
+  const ceilings = new Map()
+  for (const row of floor) {
+    if (row?.maxContextWindow !== undefined) ceilings.set(row.id, row.maxContextWindow)
+  }
   const models: any[] = []
   for (const row of rows) {
     const id = typeof row?.name === 'string' && row.name.trim()
@@ -58,6 +65,7 @@ export function toOllamaPickerModels(tags) {
       maxTokens: OLLAMA_DEFAULT_MAX_TOKENS,
       input: ollamaInput(id, row),
       reasoningEfforts: { ...OLLAMA_REASONING },
+      ...(ceilings.has(id) ? { maxContextWindow: ceilings.get(id) } : {}),
     })
   }
   models.sort((left, right) => left.id.localeCompare(right.id))
@@ -69,7 +77,8 @@ async function showModel(id, { fetchFn, token, signal }) {
     const response = await fetchFn(OLLAMA_SHOW_URL, {
       method: 'POST',
       headers: {
-        authorization: `Bearer ${token}`,
+        // /api/show is public; `scripts/models.ts` calls it without a key.
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
         'content-type': 'application/json',
       },
       body: JSON.stringify({ model: id }),
@@ -85,7 +94,7 @@ async function showModel(id, { fetchFn, token, signal }) {
 /** Cap the /api/show fan-out: an uncapped burst trips upstream rate limiting. */
 const OLLAMA_SHOW_CONCURRENCY = 4
 
-async function applyOllamaShowWindows(models, options) {
+export async function applyOllamaShowWindows(models, options) {
   if (!models.length) return models
   const shows: any[] = []
   for (let i = 0; i < models.length; i += OLLAMA_SHOW_CONCURRENCY) {

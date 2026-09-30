@@ -67,6 +67,15 @@ export declare const GLM_NEVER_EXPIRES = 8640000000000000;
 export declare const GLM_CONTEXT_WINDOW = 128000;
 export declare const GLM_LARGE_CONTEXT = 1000000;
 export declare const GLM_TURBO_CONTEXT = 200000;
+/**
+ * Coding Plan input cap (2026-09-29): the plan gateway accepts at most 400K
+ * input tokens per request even though the official GLM-5.3 window is 1M
+ * (docs.z.ai/guides/llm/glm-5.3 still says 1M / 128K output). The picker
+ * default targets the cap so DSH compacts before the gateway rejects; the
+ * official 1M stays reachable as the row's custom-context ceiling
+ * (`maxContextWindow`, `maxContextOfRow`) — no `-1m` variant row any more.
+ */
+export declare const GLM_INPUT_CONTEXT = 400000;
 /** Text-only GLM rows. Flash is the one multimodal Coding Plan model. */
 export declare const GLM_TEXT_INPUT: readonly string[];
 export declare const GLM_VISION_INPUT: readonly string[];
@@ -109,27 +118,14 @@ export declare const GLM_CLI_PROVIDERS: Readonly<{
  * Thinking depth is declared here so the Harness session picker can
  * offer it. `false` means no depth control (Turbo); omitting `off`
  * means thinking cannot be disabled (5.3 / Flash).
+ *
+ * 5.3 rows sit at the plan's 400K input cap with the official 1M window as
+ * `maxContextWindow` — the row's custom-context ceiling (`maxContextOfRow`);
+ * see `src/utils/context-mode.ts`.
  */
-export declare const GLM_MODELS: readonly ({
-    id: string;
-    name: string;
-    contextWindow: number;
-    maxTokens: number;
-    reasoningEfforts: Readonly<{
-        low: "low";
-        high: "high";
-        max: "max";
-    }>;
-    input: readonly string[];
-} | {
-    id: string;
-    name: string;
-    contextWindow: number;
-    maxTokens: number;
-    reasoningEfforts: boolean;
-    input: readonly string[];
-})[];
-export { GLM_BOOST_LABEL, glmCardBoost } from './boost.js';
+export declare const GLM_MODELS: readonly any[];
+/** Catalog lookup for the custom-context ceiling (`maxContextWindowOf`). */
+export declare function glmModel(modelId: any): any;
 export declare const GLM_PLAN_NAMES: Readonly<{
     lite: "Lite";
     pro: "Pro";
@@ -160,6 +156,23 @@ export declare function glmToolUsageUrl(region?: string): "https://api.z.ai/api/
  */
 export declare const GLM_MCP_USAGE_URL = "https://zcode.z.ai/api/v1/mcp/usage";
 export declare function glmMcpUsageUrl(): string;
+/**
+ * Coding Plan Reset Cards (「重置卡」): `GET …/list?targetType=PERSONAL`
+ * reports banked cards in two buckets (`fiveHourResets` / `weekResets`);
+ * `POST …/use` redeems one. Same biz host as userinfo, same provisioned
+ * api-key bearer as the monitor quota. Not in the ZCode open-source tree —
+ * reference is OmniRoute `open-sse/services/usage/glmResetCards.ts`
+ * (241e63b), list live-checked on a BigModel Max account.
+ */
+export declare const GLM_RESET_CARD_TARGET_TYPE = "PERSONAL";
+export declare function glmResetCardUrl(region?: string, action?: 'list' | 'use'): string;
+/**
+ * The card stamps (`expireTime` / `last*ResetTime`) carry no zone.
+ * BigModel's are Asia/Shanghai: `lastWeekResetTime` equals the weekly
+ * window's `nextResetTime` − 7d only at +08:00. Z.ai is read as UTC
+ * (OmniRoute's reading, not live-checked here).
+ */
+export declare function glmResetStampOffsetMinutes(region?: string): number;
 export declare function glmUserinfoUrl(region?: string): "https://chat.z.ai/api/oauth/userinfo" | "https://open.bigmodel.cn/api/biz/customer/getCustomerInfo";
 export declare function isGlmAppAccount(value: any): boolean;
 /**

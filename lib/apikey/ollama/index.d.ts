@@ -49,8 +49,9 @@ export declare const OLLAMA_SOURCES: readonly string[];
 /**
  * Official Cloud retirement table (docs.ollama.com/cloud). Upcoming
  * 2026-07-31 rows are already past as of this family. Do not list them.
+ * Ids live in `src/catalog/models.json` under `"ollamaRetired"`.
  */
-export declare const OLLAMA_RETIRED_MODELS: Readonly<Set<string>>;
+export declare const OLLAMA_RETIRED_MODELS: Readonly<Set<any>>;
 /** Last-resort name regex when POST /api/show has no `capabilities`. */
 export declare function inferOllamaInput(id: any): string[];
 /**
@@ -72,22 +73,13 @@ export declare function ollamaContextWindow(id: any, show: any): any;
 /**
  * 17-row Cloud `/api/tags` snapshot (2026-09-26). Windows are POST /api/show
  * `model_info.*.context_length`. `input` is that show's `capabilities` (`vision` →
- * text+image). Live tags+show replace this after login.
+ * text+image). Live tags+show replace this after login. Rows live in
+ * `src/catalog/models.json` under `"ollama"` (every row carries the family
+ * `OLLAMA_REASONING` ladder and `OLLAMA_DEFAULT_MAX_TOKENS`).
  */
-export declare const OLLAMA_MODELS: readonly {
-    id: any;
-    name: any;
-    contextWindow: any;
-    maxTokens: number;
-    input: string[];
-    reasoningEfforts: Readonly<{
-        off: "none";
-        low: "low";
-        medium: "medium";
-        high: "high";
-        max: "max";
-    }>;
-}[];
+export declare const OLLAMA_MODELS: readonly any[];
+/** Catalog lookup for the custom-context ceiling (`familyMaxContextWindow`). */
+export declare function ollamaModel(modelId: any): any;
 export declare function ollamaSourceLabel(source: any): "env" | "key" | undefined;
 export declare function parseOllamaApiKey(value: any): string;
 /** Stable vault id that is not the raw key. */

@@ -7,8 +7,8 @@
  * wire protocol. OpenCode Go speaks three protocols, so this plugin owns the
  * complete list on two routes of its own:
  *
- *   `opencode-go-flash`     openai-completions  — 28 models (display "OpenCode Go")
- *   `opencode-go-responses` openai-responses    —  6 models
+ *   `opencode-go-flash`     openai-completions  — 28 models (display "Subs · OpenCode Go · Chat")
+ *   `opencode-go-responses` openai-responses    —  6 models (display "Subs · OpenCode Go · Responses")
  *
  * Sources (2026-09-23, refreshed 2026-09-26):
  *   - `GET https://opencode.ai/zen/go/v1/models` (this key 35)
@@ -26,6 +26,9 @@
  *     duplicates in the picker. 2026-09-26: `space-bunny-free` and
  *     `gpt-6-luna` each answered 200 on their respective endpoints, including
  *     high / none / max effort probes; model limits come from models.dev.
+ *   - 2026-09-29: the two `/responses` Luna rows advertise the 258K default
+ *     input tier instead of models.dev's 1,050,000 total window — see the
+ *     Luna note below.
  */
 export declare const OPENCODE_GO_BUILTIN_ROUTE_ID = "opencode-go";
 export declare const OPENCODE_GO_EXTRA_ROUTE_ID = "opencode-go-flash";
@@ -47,13 +50,30 @@ export declare const OPENCODE_GO_SESSION_ID = "dsh-opencode-go";
 export declare function opencodeGoSessionHeaders(): {
     "x-opencode-session": string;
 };
-/** Every official Go model that answers on /chat/completions. */
+/**
+ * Static catalog rows live in `src/catalog/models.json`:
+ *   `"opencode-go-flash"`     — every official Go model answering on /chat/completions
+ *   `"opencode-go-responses"` — official Go models answering on /responses only
+ * Rows keep the pi-ai effort ladders (DSH picker keys -> wire spellings) and,
+ * on the completions route, the per-model `compat` dialect (plain OpenAI-compat
+ * vs DeepSeek's: `requiresReasoningContentOnAssistantMessages` /
+ * `thinkingFormat: deepseek`).
+ */
+/**
+ * The two Luna rows advertise the vendor's **default** input tier, not the
+ * official total window. models.dev lists 1,050,000 for both (922,000 input +
+ * 128,000 output), but that total includes the large-window tier: Codex CLI
+ * pins the same GPT-6 / 5.6 rows at 258,000 by default and hangs 872,000 on an
+ * opt-in sibling. DSH compacts against `contextWindow`, so advertising the
+ * total lets a long session grow until the Go Responses gateway rejects it
+ * (same shape as the GLM 400K plan cap). Maintainer override 2026-09-29 —
+ * pinned in the `"opencode-go-responses"` rows (258,000).
+ */
 export declare const OPENCODE_GO_EXTRA_MODELS: readonly any[];
-/** Official Go models that only answer on /responses. */
 export declare const OPENCODE_GO_RESPONSES_MODELS: readonly any[];
 export declare const OPENCODE_GO_EXTRA_ROUTE: Readonly<{
     id: "opencode-go-flash";
-    displayName: "OpenCode Go";
+    displayName: "Subs · OpenCode Go · Chat";
     api: "openai-completions";
     baseURL: "https://opencode.ai/zen/go/v1";
     headers: Readonly<{
@@ -63,7 +83,7 @@ export declare const OPENCODE_GO_EXTRA_ROUTE: Readonly<{
 }>;
 export declare const OPENCODE_GO_RESPONSES_ROUTE: Readonly<{
     id: "opencode-go-responses";
-    displayName: "OpenCode Go · Responses";
+    displayName: "Subs · OpenCode Go · Responses";
     api: "openai-responses";
     baseURL: "https://opencode.ai/zen/go/v1";
     headers: Readonly<{
@@ -73,7 +93,7 @@ export declare const OPENCODE_GO_RESPONSES_ROUTE: Readonly<{
 }>;
 export declare const OPENCODE_GO_ROUTES: readonly (Readonly<{
     id: "opencode-go-flash";
-    displayName: "OpenCode Go";
+    displayName: "Subs · OpenCode Go · Chat";
     api: "openai-completions";
     baseURL: "https://opencode.ai/zen/go/v1";
     headers: Readonly<{
@@ -82,7 +102,7 @@ export declare const OPENCODE_GO_ROUTES: readonly (Readonly<{
     models: readonly any[];
 }> | Readonly<{
     id: "opencode-go-responses";
-    displayName: "OpenCode Go · Responses";
+    displayName: "Subs · OpenCode Go · Responses";
     api: "openai-responses";
     baseURL: "https://opencode.ai/zen/go/v1";
     headers: Readonly<{

@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
+import { mkdtemp, readFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { test, type TestContext } from 'node:test'
 import { createProxy } from '../lib/oauth/proxy.js'
+import { resetKiroPrefixBaselines, setPrefixEstimateLog } from '../lib/oauth/kiro/cache.js'
 import { encodeKiroEventStream } from '../lib/oauth/kiro/request.js'
 
 const kiroSession = (accessToken = 'test-token') => ({ accessToken, region: 'us-east-1', authMethod: 'social' })
@@ -252,6 +256,15 @@ test('Kiro text deltas stream through whole, even when a chunk repeats everythin
   assert.equal(events.map(event => event.choices[0].delta?.content).filter(Boolean).join(''), '-'.repeat(60))
 })
 
+test('Kiro reasoning deltas stream through untrimmed: whitespace at a chunk edge is text', async t => {
+  // Live (Opus 5.5): trimming each chunk read the reasoning as "modelfetching approach byfinding".
+  const { fetchFn } = upstreamSequence(() => new Response(encodeKiroEventStream(
+    ['I need to un', 'ify the model', ' fetching approach by ', 'finding'].map(text => ({ type: 'reasoningContentEvent', payload: { text } })),
+  )))
+  const events = eventsOf(await (await post(t, fetchFn)).text())
+  assert.equal(events.map(event => event.choices[0].delta?.reasoning_content).filter(Boolean).join(''), 'I need to unify the model fetching approach by finding')
+})
+
 test('Kiro tool with no parameters ends the stream with `{}` arguments, as the buffered reply does', async t => {
   const frames = () => encodeKiroEventStream([
     { type: 'toolUseEvent', payload: { toolUseId: 'tooluse_a', name: 'git_status', input: '' } },
@@ -263,4 +276,22 @@ test('Kiro tool with no parameters ends the stream with `{}` arguments, as the b
   const argsOf = (index: number) => deltas.filter(call => call.index === index).map(call => call.function.arguments).join('')
   assert.equal(argsOf(0), '{}')
   assert.equal(argsOf(1), '{"path":"a.ts"}', 'a tool that streamed arguments gets no extra `{}`')
+})
+
+test('Kiro logs one cacheable-prefix estimate per request, keyed by the DSH session id', async t => {
+  const path = join(await mkdtemp(join(tmpdir(), 'prefix-log-')), 'prefix-estimate.jsonl')
+  setPrefixEstimateLog(path)
+  t.after(() => setPrefixEstimateLog(undefined))
+  resetKiroPrefixBaselines()
+  const { fetchFn } = upstreamSequence(() => new Response(hello('ok')))
+  const body = { prompt_cache_key: 'session-log', messages: [{ role: 'user', content: 'read files' }] }
+  await (await post(t, fetchFn, { body })).text()
+  await (await post(t, fetchFn, { body })).text()
+  let lines: string[] = []
+  for (let i = 0; i < 500 && lines.length < 2; i++) lines = (await readFile(path, 'utf8').catch(() => '')).split('\n').filter(Boolean)
+  const [first, second] = lines.map((line) => JSON.parse(line))
+  assert.equal(first.session, 'session-log')
+  assert.equal(first.model, 'deepseek-3.2')
+  assert.equal(first.matched, null)
+  assert.equal(second.matched, second.bytes, 'the same request again shares its whole prefix')
 })

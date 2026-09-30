@@ -6,7 +6,15 @@ import { test } from 'node:test'
 import { AuthController } from '../lib/oauth/controller.js'
 import { saveSession } from '../lib/oauth/store.js'
 import { installedVersion } from '../lib/utils/update.js'
-import { HARNESS_ANTHROPIC_API, HARNESS_COMPLETIONS_API, assertDshServiceableProvider, ModelSwitch, catalogKeys, catalogProviders } from '../lib/oauth/models.js'
+import { CODEX_USAGE_URL } from '../lib/oauth/codex/index.js'
+import {
+  HARNESS_ANTHROPIC_API,
+  HARNESS_COMPLETIONS_API,
+  assertDshServiceableProvider,
+  catalogKeys,
+  catalogProviders,
+} from '../lib/oauth/models.js'
+import { ModelSwitch } from '../lib/oauth/model-switch.js'
 import { glmSession } from '../lib/oauth/glm/index.js'
 import { OPENCODE_GO_BUILTIN_ROUTE_ID, OPENCODE_GO_EXTRA_MODELS, OPENCODE_GO_EXTRA_ROUTE, OPENCODE_GO_ROUTES } from '../lib/apikey/opencode-go/models.js'
 import { kiroSession, KIRO_MODELS } from '../lib/oauth/kiro/index.js'
@@ -92,7 +100,7 @@ test('snapshot reports logged-out accounts and empty providers', async () => {
   assert.equal(snap.opencodeGo.apiKeySet, false)
   assert.equal(snap.opencodeGo.quota.status, 'idle')
   assert.deepEqual(snap.providers, [])
-  assert.equal(snap.catalog.length, 14)
+  assert.equal(snap.catalog.length, 15)
   assert.equal(snap.accounts.anthropic, undefined)
   assert.equal(snap.catalog.some((row) => row.family === 'anthropic'), false)
   assert.equal(snap.catalog.some((row) => row.family === 'kimi'), true)
@@ -106,10 +114,12 @@ test('snapshot reports logged-out accounts and empty providers', async () => {
   assert.equal(snap.catalog.filter((row) => row.family.startsWith('opencode-go')).length, OPENCODE_GO_ROUTES.length)
   const copilot = snap.catalog.find((row) => row.family === 'copilot')
   assert.equal(copilot.loggedIn, false)
-  assert.equal(copilot.displayName, 'OAuth · GitHub Copilot')
+  assert.equal(copilot.displayName, 'Subs · GitHub Copilot · Chat')
   assert.ok(copilot.models.length > 0)
   assert.equal(copilot.models.some((model) => model.id === 'gpt-4.1'), true)
-  assert.equal(snap.catalog.every((row) => row.models.every((model) => model.enabled === !model.large)), true)
+  // No opt-in rows exist any more: every listed model defaults on, and the
+  // removed `-900k` key never appears in the selection.
+  assert.equal(snap.catalog.every((row) => row.models.every((model) => model.enabled)), true)
   assert.equal(snap.selected.includes('oauth-codex/gpt-5.5'), true)
   assert.equal(snap.selected.includes('oauth-codex/gpt-5.6-sol-900k'), false)
   assert.equal(typeof snap.update.version, 'string')
@@ -281,8 +291,11 @@ test('OpenCode Go unlock needs a key; picker selection filters the supplemental 
   // catalog route is never registered by the plugin.
   assert.equal(store.section.providers[OPENCODE_GO_BUILTIN_ROUTE_ID], undefined)
   assert.deepEqual(store.section.providers[OPENCODE_GO_EXTRA_ROUTE.id].models.map((model) => model.id), OPENCODE_GO_EXTRA_MODELS.map((model) => model.id))
+  // Go and family routes land in one llm-pi-ai mutate: one host reconcile per sync.
+  assert.equal(store.ops.length, 1)
 
   await controller.setModels({ family: OPENCODE_GO_EXTRA_ROUTE.id, on: false })
+  assert.equal(store.ops.length, 2)
   assert.equal(store.section.providers[OPENCODE_GO_EXTRA_ROUTE.id], undefined)
   assert.equal(store.section.providers[OPENCODE_GO_BUILTIN_ROUTE_ID], undefined)
 
@@ -369,6 +382,96 @@ test('sync after a stored session writes llm-pi-ai providers', async () => {
   assert.equal(status.accounts.grok.quota.rows[0].remainingPercent, 90)
 })
 
+test('setModels contextKey customizes a route window and resets to catalog', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const settings = createPiAiSettings()
+  const { controller } = await glmController({ dir, settings, models: new ModelSwitch({ path: join(dir, 'models.json') }) })
+  await controller.sync()
+  const glmRows = () => settings.section.providers['oauth-glm'].models
+  assert.equal(glmRows().find((m) => m.id === 'glm-5.3').contextWindow, 400_000)
+
+  const snap = await controller.setModels({ contextKey: 'oauth-glm/glm-5.3', context: 300_000 })
+  assert.equal(glmRows().find((m) => m.id === 'glm-5.3').contextWindow, 300_000)
+  // `-1m` rows no longer exist; a base override is the only large window.
+  assert.equal(glmRows().find((m) => m.id === 'glm-5.3-1m'), undefined)
+  const described = snap.catalog.find((row) => row.family === 'glm').models
+  assert.equal(described.find((m) => m.id === 'glm-5.3').window, '300K')
+  assert.equal(described.find((m) => m.id === 'glm-5.3').custom, true)
+  assert.equal(described.find((m) => m.id === 'glm-5.3').windowMax, '1M')
+  assert.equal(described.find((m) => m.id === 'glm-5.3-flash').custom, false)
+
+  // Reset restores the catalog window everywhere.
+  const reset = await controller.setModels({ contextKey: 'oauth-glm/glm-5.3', context: null })
+  assert.equal(glmRows().find((m) => m.id === 'glm-5.3').contextWindow, 400_000)
+  const resetDescribed = reset.catalog.find((row) => row.family === 'glm').models
+  assert.equal(resetDescribed.find((m) => m.id === 'glm-5.3').window, '400K')
+  assert.equal(resetDescribed.find((m) => m.id === 'glm-5.3').custom, false)
+
+  // The vendor ceiling caps edits: GLM-5.3 tops out at the official 1M.
+  await assert.rejects(controller.setModels({ contextKey: 'oauth-glm/glm-5.3', context: 1_000_001 }), /between 4096 and 1000000/)
+  await controller.setModels({ contextKey: 'oauth-glm/glm-5.3', context: 1_000_000 })
+  assert.equal(glmRows().find((m) => m.id === 'glm-5.3').contextWindow, 1_000_000)
+  await assert.rejects(controller.setModels({ contextKey: 'oauth-glm/unknown-id', context: 300_000 }), /unknown model/)
+
+  // 恢复默认窗口 clears every override at once and rewrites the routes.
+  const all = await controller.setModels({ resetContexts: true })
+  assert.equal(glmRows().find((m) => m.id === 'glm-5.3').contextWindow, 400_000)
+  assert.equal(all.catalog.find((row) => row.family === 'glm').models.every((m) => m.custom === false), true)
+})
+
+test('setModels effort: 全部 sets every family, a family pick sets only it, 全部 again unifies', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const settings = createPiAiSettings()
+  const { controller } = await glmController({ dir, settings, models: new ModelSwitch({ path: join(dir, 'models.json') }) })
+  await controller.sync()
+  const glm = () => settings.section.providers['oauth-glm']
+  const effortOf = (id, level) => glm().models.find((m) => m.id === id).reasoningEfforts[level]
+  let snap = await controller.setModels({ effort: 'medium' })
+  assert.equal(snap.efforts.glm, 'medium')
+  assert.equal(snap.efforts.kiro, 'medium')
+  // glm-5-turbo is non-reasoning: the route takes no default while it is synced.
+  assert.equal(glm().models.find((m) => m.id === 'glm-5-turbo').reasoningEfforts, false)
+  assert.equal(glm().reasoning, undefined)
+  await controller.setModels({ key: 'oauth-glm/glm-5-turbo', on: false })
+  assert.equal(glm().reasoning, 'medium')
+  assert.equal(effortOf('glm-5.3', 'medium'), effortOf('glm-5.3', 'low'), 'GLM has no medium: it falls back to low')
+
+  snap = await controller.setModels({ effort: 'max', families: ['glm'] })
+  assert.equal(glm().reasoning, 'max')
+  assert.equal(snap.efforts.kiro, 'medium', 'a family pick leaves the others alone')
+  snap = await controller.setModels({ effort: 'high' })
+  assert.equal(glm().reasoning, 'high', '全部 overrides the family pick')
+  assert.deepEqual(new Set(Object.values(snap.efforts)), new Set(['high']))
+  snap = await controller.setModels({ effort: null })
+  assert.deepEqual(snap.efforts, {})
+  assert.equal(glm().reasoning, undefined)
+  await assert.rejects(controller.setModels({ effort: 'turbo' }), /effort must be one of/)
+})
+
+test('setModels contextKey on a disabled row only persists; enabling writes it', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const settings = createPiAiSettings()
+  const { controller } = await glmController({ dir, settings, models: new ModelSwitch({ path: join(dir, 'models.json') }) })
+  await controller.sync()
+  const glmRows = () => settings.section.providers['oauth-glm']?.models ?? []
+
+  // Turn glm-5-turbo off: its row leaves the synced route.
+  await controller.setModels({ key: 'oauth-glm/glm-5-turbo', on: false })
+  assert.equal(glmRows().some((m) => m.id === 'glm-5-turbo'), false)
+
+  // A dormant context edit persists to models.json but skips the route write
+  // (and with it the host reconcile).
+  const mutates = settings.ops.length
+  const snap = await controller.setModels({ contextKey: 'oauth-glm/glm-5-turbo', context: 100_000 })
+  assert.equal(settings.ops.length, mutates)
+  assert.equal(snap.catalog.find((row) => row.family === 'glm').models.find((m) => m.id === 'glm-5-turbo').custom, true)
+  assert.equal(glmRows().some((m) => m.id === 'glm-5-turbo'), false)
+
+  // Enabling the row syncs the stored override into the route.
+  await controller.setModels({ key: 'oauth-glm/glm-5-turbo', on: true })
+  assert.equal(glmRows().find((m) => m.id === 'glm-5-turbo').contextWindow, 100_000)
+})
+
 test('controller refreshes quota', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
   const authPath = join(dir, 'auth.json')
@@ -440,14 +543,69 @@ test('controller consumes Codex reset', async () => {
   assert.equal(typeof posts[0].redeem_request_id, 'string')
 })
 
-test('controller rejects Grok quota reset', async () => {
+test('controller rejects quota reset for a family without reset cards', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
   const controller = new AuthController({
     authPath: join(dir, 'auth.json'),
     prefix: 'oauth',
     origin: () => 'http://127.0.0.1:8318',
   })
-  await assert.rejects(controller.consumeReset('grok'), /Codex/)
+  await assert.rejects(controller.consumeReset('kiro'), /Codex, Grok and GLM/)
+})
+
+test('entering the quota page revalidates stale readings without blocking the snapshot', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: 1_000_000 })
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const authPath = join(dir, 'auth.json')
+  await saveSession('codex', {
+    accessToken: 'a',
+    refreshToken: 'r',
+    expiresAt: Date.now() + 60 * 60_000,
+    accountId: 'acct',
+  }, authPath)
+  let reads = 0
+  let release
+  const usageBody = (usedPercent) => JSON.stringify({
+    plan_type: 'plus',
+    rate_limit: {
+      primary_window: { used_percent: usedPercent, limit_window_seconds: 18_000, reset_after_seconds: 60 },
+    },
+  })
+  const controller = new AuthController({
+    authPath,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    fetchFn: async (url) => {
+      if (String(url) === CODEX_USAGE_URL) {
+        reads += 1
+        // The second read is the entry revalidation: hang it so the test can
+        // prove the snapshot does not wait for it.
+        if (reads === 2) await new Promise((resolve) => { release = resolve })
+        return new Response(usageBody(reads === 1 ? 40 : 90), { status: 200 })
+      }
+      if (String(url).includes('rate-limit-reset-credits')) {
+        return new Response(JSON.stringify({ available_count: 0 }), { status: 200 })
+      }
+      throw new Error(`unexpected ${url}`)
+    },
+  })
+  await controller.snapshot()
+  assert.equal(reads, 1, 'cold build reads upstream once')
+  await controller.snapshot()
+  assert.equal(reads, 1, 'inside the 60s poll TTL the cache serves')
+  // Age the reading past the 15s floor, then enter the page: the re-read
+  // fires behind the build and the cached answer still comes back at once.
+  t.mock.timers.tick(30_000)
+  const entered = await controller.snapshot(false, { revalidateQuota: true })
+  assert.equal(reads, 2, 'the entry re-read fired')
+  assert.equal(entered.accounts.codex.accounts[0].quota.rows[0].remainingPercent, 60, 'the cached answer still serves')
+  release()
+  await controller.quota.inflight.get('codex\0acct')
+  const poll = await controller.snapshot()
+  assert.equal(poll.accounts.codex.accounts[0].quota.rows[0].remainingPercent, 10, 'the next poll picks the re-read up')
+  // A reading just re-read is younger than the 15s floor: the next entry is free.
+  await controller.snapshot(false, { revalidateQuota: true })
+  assert.equal(reads, 2)
 })
 
 test('snapshot marks GLM catalog loggedIn for a vault account', async () => {
@@ -462,6 +620,9 @@ test('snapshot marks GLM catalog loggedIn for a vault account', async () => {
   assert.equal(glm.models.length, 3)
   assert.deepEqual(glm.models.map((model) => model.id), ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
   assert.equal(glm.models.find((model) => model.id === 'glm-5.3-flash').name, 'GLM-5.3-Flash')
+  // The 1M window is the row's custom-context ceiling, not an opt-in row.
+  assert.equal(glm.models.find((model) => model.id === 'glm-5.3').windowMax, '1M')
+  assert.equal(glm.models.find((model) => model.id === 'glm-5.3').enabled, true)
 })
 
 test('toggle glm-5.3 on writes oauth-glm when all current GLM keys were disabled', async () => {

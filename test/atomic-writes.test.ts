@@ -12,7 +12,7 @@ import { test } from 'node:test'
 const ROOT = new URL('..', import.meta.url).pathname
 const OWNERS = new Set([
   'src/utils/private-text.ts',
-  'src/oauth/models.ts', // temp file + rename of the user's own cordis.patch.yml, which must keep its mode
+  'src/oauth/harness-sync.ts', // temp file + rename of the user's own cordis.patch.yml, which must keep its mode
 ])
 
 function sources(dir: string): string[] {

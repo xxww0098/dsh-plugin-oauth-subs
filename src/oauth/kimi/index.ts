@@ -13,6 +13,7 @@ import { dirname, join } from 'node:path'
 import os from 'node:os'
 import { oauthError } from '../tokens.js'
 import { outboundFetch } from '../../utils/outbound.js'
+import { catalogRows } from '../../catalog/index.js'
 
 export { applyKimiCache, kimiCacheHeaders, kimiCacheSessionId, resetKimiPins } from './cache.js'
 
@@ -49,40 +50,8 @@ export const KIMI_REASONING = Object.freeze({
   max: 'max',
 })
 
-export const KIMI_MODELS = Object.freeze([
-  {
-    id: 'kimi-for-coding',
-    name: 'Kimi for Coding',
-    contextWindow: KIMI_CONTEXT_WINDOW,
-    maxTokens: KIMI_MAX_TOKENS,
-    input: [...KIMI_INPUT],
-    reasoningEfforts: { ...KIMI_REASONING },
-  },
-  {
-    id: 'kimi-for-coding-highspeed',
-    name: 'Kimi for Coding High Speed',
-    contextWindow: KIMI_CONTEXT_WINDOW,
-    maxTokens: KIMI_MAX_TOKENS,
-    input: [...KIMI_INPUT],
-    reasoningEfforts: { ...KIMI_REASONING },
-  },
-  {
-    id: 'k3',
-    name: 'Kimi K3',
-    contextWindow: KIMI_CONTEXT_WINDOW,
-    maxTokens: KIMI_MAX_TOKENS,
-    input: [...KIMI_INPUT],
-    reasoningEfforts: { ...KIMI_REASONING },
-  },
-  {
-    id: 'k3-256k',
-    name: 'Kimi K3 256K',
-    contextWindow: KIMI_CONTEXT_WINDOW,
-    maxTokens: KIMI_MAX_TOKENS,
-    input: [...KIMI_INPUT],
-    reasoningEfforts: { ...KIMI_REASONING },
-  },
-])
+/** Offline floor; live `GET /coding/v1/models` replaces it after login. Rows live in `src/catalog/models.json` under `"kimi"`. */
+export const KIMI_MODELS = catalogRows('kimi')
 
 let identityDir
 

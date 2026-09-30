@@ -1,7 +1,7 @@
 # Ollama Cloud
 
 本文件是 `src/apikey/ollama/` 的设计源。改登录、目录、对话或缓存先改这里再改代码。
-跨家族硬约定在仓库根 [`AGENTS.md`](../../../AGENTS.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)；对照仓库在 [`docs/oauth.md`](../../../docs/oauth.md)。
+跨家族硬规则在 [`docs/rules.md`](../../../docs/rules.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)；对照仓库在 [`docs/oauth.md`](../../../docs/oauth.md)。
 
 Ollama **Cloud** 订阅（[ollama.com](https://ollama.com)）。**不是**本机 `127.0.0.1:11434` daemon，也不是 `ollama launch dsh`。那个本地宿主已经在 DSH 里，这个 tab 不包一层 localhost。
 
@@ -17,7 +17,7 @@ Ollama **Cloud** 订阅（[ollama.com](https://ollama.com)）。**不是**本机
 | [`cache.ts`](cache.ts) | 剥 Codex / Grok 字段。没有文档化的 sticky id；cache-read 由上游 `usage` 自带 |
 
 调度：[`../../oauth/proxy.ts`](../../oauth/proxy.ts) `family === 'ollama'` 剥 cache 字段，`forward()` 到 `https://ollama.com/v1/chat/completions`。
-额度：[`../../oauth/quota.ts`](../../oauth/quota.ts) `fetchOllamaQuota` 并行 `GET /api/usage` + `POST /api/me`。`limits.*.usage` 是 0..1 分数。有 `resets_at` / `reset_at` / `resetAt` / `next_reset` 就用。Session 缺 stamp 时用下一 UTC 5h unix 桶（`18000 - (epoch % 18000)`，[ollama#12532](https://github.com/ollama/ollama/issues/12532)），不是从上次点击起算 5h。Weekly 缺 stamp 时用下一 UTC 7d 桶、偏移 −4d（`604800 - ((epoch - 4d) % 604800)`，周一 00:00 UTC），不编 `now+7d`。
+额度：[`quota.ts`](quota.ts) `fetchOllamaQuota` 并行 `GET /api/usage` + `POST /api/me`。`limits.*.usage` 是 0..1 分数。有 `resets_at` / `reset_at` / `resetAt` / `next_reset` 就用。Session 缺 stamp 时用下一 UTC 5h unix 桶（`18000 - (epoch % 18000)`，[ollama#12532](https://github.com/ollama/ollama/issues/12532)），不是从上次点击起算 5h。Weekly 缺 stamp 时用下一 UTC 7d 桶、偏移 −4d（`604800 - ((epoch - 4d) % 604800)`，周一 00:00 UTC），不编 `now+7d`。
 套餐：`me.Plan`（`pro` → Pro），不走 Codex `pro` → Pro 20x。
 
 ## 协议
@@ -68,6 +68,8 @@ Key 不写 log。
 
 ## 模型
 
+行在 [`src/catalog/models.json`](../../catalog/models.json) 的 `"ollama"` 键；行格式、来源与 `npm run models` 更新流程见 [`docs/models.md`](../../../docs/models.md)。本节只记本家的取舍与出处。
+
 登录 / 导入 / 额度刷新后 `refreshOllamaCatalog`：
 
 ```text
@@ -76,13 +78,14 @@ POST https://ollama.com/api/show  { "model": "<id>" }
 Authorization: Bearer <key>
 ```
 
-`{ models: [{ name, model, … }] }` → picker 一行 / name。`OLLAMA_RETIRED_MODELS` 来自 Cloud retirements 表（含已过期的 2026-07-31 upcoming）。静态 `OLLAMA_MODELS` 是 2026-09-26 公开 `/api/tags` 的 17 行快照：`deepseek-v4-flash:0731`、`glm-5.1`、`qwen3.5:397b` 已从接口消失，故从离线楼删除；登录后仍被 live `/api/tags` 替换，失败或空列表回落 17 行，不挡对话。不列本机-only 模型。
+`/api/tags` 给 id（一行一个 `name`），活目录非空即替换静态行；失败或空列表回落静态行，不挡对话。不列本机-only 模型。两个端点无 key 也 200（公共 Cloud 目录），登录后仍带 Bearer，与文档一致。
 
-DSH `contextWindow` 是 Cloud `POST /api/show` 的 `model_info.<family>.context_length`（钉在静态快照上；登录后 live show 覆盖），不是猜的家族默认，也不是 `cmd/launch/models.go` extraCloudModelLimits。`/api/tags` 的 `details` 是空的；Cloud 忽略 `options.num_ctx`（[ollama#16598](https://github.com/ollama/ollama/issues/16598)；[docs/context-length](https://docs.ollama.com/context-length)）。
+- `contextWindow` = `/api/show` 的 `model_info.<family>.context_length`。不猜家族默认，也不抄 `cmd/launch/models.go` extraCloudModelLimits：`/api/tags` 的 `details` 是空的，Cloud 又忽略 `options.num_ctx`（[ollama#16598](https://github.com/ollama/ollama/issues/16598)；[docs/context-length](https://docs.ollama.com/context-length)）。见 docs/error.md 2026-09-03 Ollama contextWindow 不能猜家族默认。
+- `input` 来自同一份 show：`capabilities` 含 `vision`（大小写不敏感）→ text+image，否则 text。名字 regex（`gemma|vision|vl`）只在 show 没有 `capabilities` 时兜底。不要发明 `audio`。
+- 退役 id（`ollamaRetired` 键）来自 Cloud retirements 表，已过期的 upcoming 也算退役；活列表里出现也不进 picker。
+- 上限槽：`maxContextWindow`（自定义输入窗上限）对 ollama 行生效；`toOllamaPickerModels` 按 id 把静态楼的上限带进活行（`applyOllamaShowWindows` 用 spread，字段保留）。`/api/show` 只给一个 `context_length`，Cloud 又不吃 `num_ctx`，没有第二档可挂，行上目前不写。
 
-DSH `input` 也来自同一份 show JSON：`capabilities` 含 `vision`（大小写不敏感）→ `['text','image']`，否则 `['text']`。`/api/tags` 没有 capabilities。名字 regex（`gemma|vision|vl`）只在 show 没有 `capabilities` 时兜底。不要发明 `audio`。2026-09-03 快照：`glm-5.3-flash` / `kimi-k3` / `qwen3.5:397b` / `mistral-large-3:675b` 等 8 行图文；`glm-5.3` / `gpt-oss:*` 等 11 行纯文本。2026-09-11 补的 `deepseek-v4.1-flash`（show `capabilities` 含 `vision`、`deepseek_v41.context_length` 1048576）是第 9 行图文。
-
-`/api/tags` 无 key 也 200（公共 Cloud 目录）。登录后仍带 Bearer，和文档一致。
+最近核对：2026-09-26，公开 `/api/tags` + `/api/show`。
 
 ## 额度
 
@@ -135,10 +138,18 @@ DSH 每步前置的 runtime snapshot 因此无法在 Ollama Cloud 上做 prefix 
 
 ## 归因
 
-- Auth：https://docs.ollama.com/api/authentication
-- Cloud：https://docs.ollama.com/cloud（`https://ollama.com/api/chat` + Bearer；`GET /api/tags`；retirements）
-- OpenAI compat（localhost only in that page）：https://docs.ollama.com/api/openai-compatibility
-- 模型行 `deepseek-v4.1-flash`：https://ollama.com/library/deepseek-v4.1-flash（2026-09-11 `POST /api/show` → `deepseek_v41.context_length` 1048576，`capabilities` 含 `vision`）
-- Cloud `/v1`：docs.ollama.com Factory 集成 `https://ollama.com/v1/` + `OLLAMA_API_KEY`；本仓库 2026-09-03 探活 401≠404
+一线是 Ollama 官方文档，不是 localhost daemon；社区观察只补文档没写的额度重置规则。
 
-总表见 [`docs/oauth.md`](../../../docs/oauth.md)。
+| 抄 | 出处 | 本 hop |
+|---|---|---|
+| Cloud 认证：`Authorization: Bearer $OLLAMA_API_KEY` | [Authentication](https://docs.ollama.com/api/authentication) | `OLLAMA_API_KEY` Bearer |
+| 模型页价格徽标（USD / 1M） | models.dev `ollama-cloud` | `src/catalog/rates.json`，`npm run rates` 写入（见 [docs/models.md](../../../docs/models.md) 费率表） |
+| 原生 wire `https://ollama.com/api/chat` + `GET /api/tags`；退役表 | [Cloud](https://docs.ollama.com/cloud) | 目录 + `ollamaRetired` |
+| Cloud `/v1` 入口 `https://ollama.com/v1/` + `OLLAMA_API_KEY`（官方 [OpenAI compatibility](https://docs.ollama.com/api/openai-compatibility) 页只写 localhost） | [Factory 集成](https://docs.ollama.com/integrations)；本仓库 2026-09-03 探活无 key 回 401 而非 404 | Completions 透传 |
+| `/api/show` 的 `model_info.<family>.context_length` + `capabilities` | Cloud 实测（例：[`deepseek-v4.1-flash`](https://ollama.com/library/deepseek-v4.1-flash) 2026-09-11 → `deepseek_v41.context_length` 1048576，`capabilities` 含 `vision`） | `contextWindow` / `input` |
+| Cloud 忽略 `num_ctx`，窗口只能读 `/api/show` | [ollama#16598](https://github.com/ollama/ollama/issues/16598) | 同上 |
+| session = UTC 5h unix 桶；weekly = UTC 7d 桶偏移 −4d（周一 00:00 UTC） | [ollama#12532](https://github.com/ollama/ollama/issues/12532) | `ollamaSessionResetAt` / `ollamaWeeklyResetAt` |
+
+**不要发明：** sticky conversation id（Cloud 没有文档化的会话亲和字段）。其余禁令（`cached_tokens`、`id_ed25519.pub` 当 key、包一层 localhost）在「不要」节。
+
+跨家族对照总表见 [`docs/oauth.md`](../../../docs/oauth.md)。

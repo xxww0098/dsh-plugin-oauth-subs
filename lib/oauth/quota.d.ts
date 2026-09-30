@@ -1,278 +1,18 @@
 /**
- * Subscription quota:
- *   Codex  GET chatgpt.com/backend-api/wham/usage
- *          GET chatgpt.com/backend-api/wham/rate-limit-reset-credits
- *          POST …/rate-limit-reset-credits/consume
- *   Grok   GET cli-chat-proxy.grok.com/v1/billing?format=credits
- *          GET cli-chat-proxy.grok.com/v1/user?include=subscription
- *          POST grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig
- *   Antigravity  POST daily-cloudcode-pa …/v1internal:loadCodeAssist
- *                POST daily-cloudcode-pa …/v1internal:retrieveUserQuotaSummary
- *                POST daily-cloudcode-pa …/v1internal:fetchAvailableModels (5h fallback)
- *                Official Model Quota UI is two groups × (weekly + 5-hour).
- *   Ollama  GET ollama.com/api/usage  (limits.session/weekly.usage = 0..1)
- *           POST ollama.com/api/me    (Email / Name / Plan; GET is 405)
- *   Copilot GET api.github.com/copilot_internal/user (premium_interactions remaining %)
- *   Devin  POST server.codeium.com SeatManagementService/GetUserStatus
- *   Cline  GET api.cline.bot/api/v1/users/me
- *          GET api.cline.bot/api/v1/users/{id}/balance (micro-USD credits)
- *          GET api.cline.bot/api/v1/users/me/plan (404 when no subscription)
- *          (plan_status daily/weekly quota remaining % + reset unix)
- *
- * Codex windows report used_percent; remaining is 100 − used.
- * Grok creditUsagePercent is also used-percent. Display remaining in the UI.
- * Unified-billing SuperGrok / X Premium+ payloads often omit that percent
- * on the CLI JSON; the grok.com gRPC-web path still has the weekly pool.
+ * Quota store: the per-account cache (mirrored to quota-snapshot.json), the
+ * stale-while-revalidate read, reset-card spending, and the family dispatch.
+ * Each family's endpoints and parsing live in its own `quota.ts`
+ * (`src/oauth/<id>/quota.ts`, `src/apikey/<id>/quota.ts`); shared coercion
+ * and fetch helpers are in `quota-shared.ts`.
  */
-import { outboundFetch } from '../utils/outbound.js';
 export declare const QUOTA_TTL_MS = 60000;
-export declare const QUOTA_TIMEOUT_MS = 10000;
-export declare function asNumber(value: any): number | undefined;
-export declare function creditBagAmounts(value: any): any;
-export declare function stampOf(value: any): number | undefined;
-export declare function parseCodexUsage(payload: any): {
-    rows: never[];
-    planType?: undefined;
-} | {
-    planType: any;
-    rows: any[];
-};
-export declare function isAvailableResetCredit(credit: any): boolean;
-export declare function parseResetCredits(payload: any): {
-    nextExpiresAt?: number | undefined;
-    availableCount: number;
-    credits: ({
-        id: string | undefined;
-        status: any;
-        expiresAt: number | undefined;
-    } | undefined)[];
-};
-export declare function parseGrokBilling(billing: any, { cliUser }?: any): {
-    rows: never[];
-    planType?: undefined;
-    subscriptionStatus?: undefined;
-    hasGrokCodeAccess?: undefined;
-} | {
-    planType: any;
-    subscriptionStatus: any;
-    hasGrokCodeAccess: boolean | undefined;
-    rows: any[];
-};
-export declare function applyGrokCreditsSnapshot(parsed: any, snapshot: any): any;
-export declare function glmWindowKind(item: any): "primary" | "weekly" | "cycle" | "mcp";
-export declare function parseGlmQuota(payload: any): {
-    rows: never[];
-    planType?: undefined;
-} | {
-    planType: any;
-    rows: any[];
-};
 /**
- * Official MCP quota payload — `GET zcode.z.ai/api/v1/mcp/usage` answers
- * `{data:{level, total_usage:{used,limit,remaining}, next_refresh_at}}`
- * (usage-stats.ts fetchMcpQuotaSnapshot). Maps to the single `mcp` row.
+ * Freshness window once a proxied chat request has spent this account's quota
+ * (`QuotaStore.touch`). A floor, not a trigger: an agent loop firing dozens of
+ * requests a minute still costs at most one quota read per account per 15s,
+ * and only while the panel polls `snapshot()`.
  */
-export declare function parseGlmMcpUsage(payload: any): {
-    key: string;
-    kind: string;
-    product: string;
-    usedPercent: number | undefined;
-    remainingPercent: number | undefined;
-    used: number | undefined;
-    total: number | undefined;
-    remaining: number | undefined;
-    resetAt: number | undefined;
-} | undefined;
-export declare function mergeGlmToolUsage(parsed: any, toolPayload: any): any;
-export declare function parseKiroUsage(payload: any): {
-    rows: never[];
-    planType?: undefined;
-    account?: undefined;
-} | {
-    planType: string | number | undefined;
-    account: any;
-    rows: {
-        key: string;
-        kind: string;
-        usedPercent: number | undefined;
-        remainingPercent: number | undefined;
-        used: number;
-        total: number;
-        remaining: number | undefined;
-        resetAt: number | undefined;
-    }[];
-};
-export declare function parseCursorPeriodUsage(payload: any, extras?: any): {
-    rows: never[];
-    planType?: undefined;
-    account?: undefined;
-} | {
-    planType: string | number | undefined;
-    account: string | undefined;
-    rows: ({
-        resetAt?: any;
-        key: string;
-        kind: string;
-        product: any;
-        usedPercent: number;
-        remainingPercent: number;
-    } | {
-        resetAt?: any;
-        remainingPercent?: number | undefined;
-        key: string;
-        kind: string;
-        product: string;
-        unit: string;
-        used: number;
-        total: number;
-    } | undefined)[];
-};
-export declare function fetchCursorQuota(session: any, fetchFn?: typeof outboundFetch): Promise<{
-    rows: never[];
-    planType?: undefined;
-    account?: undefined;
-} | {
-    planType: string | number | undefined;
-    account: string | undefined;
-    rows: ({
-        resetAt?: any;
-        key: string;
-        kind: string;
-        product: any;
-        usedPercent: number;
-        remainingPercent: number;
-    } | {
-        resetAt?: any;
-        remainingPercent?: number | undefined;
-        key: string;
-        kind: string;
-        product: string;
-        unit: string;
-        used: number;
-        total: number;
-    } | undefined)[];
-}>;
-/** Global 5h unix buckets. ollama/ollama#12532: `18000 - (epoch % 18000)`. */
-export declare const OLLAMA_SESSION_WINDOW_S = 18000;
-/** Global 7d unix buckets, −4d from epoch (Mon 00:00 UTC). ollama/ollama#12532. */
-export declare const OLLAMA_WEEKLY_WINDOW_S = 604800;
-export declare function ollamaSessionResetAt(now?: number): number;
-export declare function ollamaWeeklyResetAt(now?: number): number;
-export declare function parseOllamaUsage(payload: any, me: any, now?: number): {
-    planType: string | undefined;
-    account: string | undefined;
-    rows: any[];
-};
-export declare function fetchOllamaQuota(session: any, fetchFn?: typeof outboundFetch): Promise<{
-    planType: string | undefined;
-    account: string | undefined;
-    rows: any[];
-}>;
-export declare function parseKimiUsage(payload: any, me: any): {
-    planType: string | undefined;
-    account: string | undefined;
-    rows: any[];
-};
-export declare function fetchKimiQuota(session: any, fetchFn?: typeof outboundFetch): Promise<{
-    planType: string | undefined;
-    account: string | undefined;
-    rows: any[];
-}>;
-export declare function parseCopilotUsage(payload: any, user?: any): {
-    planType: any;
-    account: any;
-    rows: any[];
-};
-export declare function fetchCopilotQuota(session: any, fetchFn?: typeof outboundFetch): Promise<{
-    account: any;
-    planType: any;
-    rows: any[];
-}>;
-/**
- * GetUserStatusResponse → public quota. `plan_status` carries the daily /
- * weekly quota percents (already *remaining*) and unix-second resets; the
- * plan label is `plan_name` or the `teams_tier` enum (16 = Devin Pro).
- * Credit buckets (prompt / flow / flex) and the accrued overage balance
- * (micro-USD) come first; plan_end is the billing-cycle reset.
- */
-export declare function parseDevinUserStatus(payload: any): {
-    planType: any;
-    account: string | undefined;
-    rows: any[];
-};
-export declare function fetchDevinQuota(session: any, fetchFn?: typeof outboundFetch): Promise<{
-    account: any;
-    planType: any;
-    rows: any[];
-}>;
-export declare function fetchGlmQuota(session: any, fetchFn?: typeof outboundFetch): Promise<any>;
-/** SkillStar `parse_model_windows` — group fetchAvailableModels into product bars. */
-export declare function parseAntigravityModelQuota(payload: any): {
-    rows: any[];
-};
-/** Official Model Quota panel: Gemini Models / Claude and GPT models × weekly + 5-hour. */
-export declare function parseAntigravityQuotaSummary(payload: any): {
-    rows: any[];
-    planType: string | undefined;
-};
-export declare function parseAntigravityPaidCredits(payload: any): any[];
-export declare function pickAntigravityPlanName(payload: any): string | undefined;
-export declare function fetchAntigravityQuota(session: any, fetchFn?: typeof outboundFetch): Promise<{
-    planType: string | undefined;
-    rows: any[];
-}>;
-export declare function fetchKiroQuota(session: any, fetchFn?: typeof outboundFetch): Promise<{
-    rows: never[];
-    planType?: undefined;
-    account?: undefined;
-} | {
-    planType: string | number | undefined;
-    account: any;
-    rows: {
-        key: string;
-        kind: string;
-        usedPercent: number | undefined;
-        remainingPercent: number | undefined;
-        used: number;
-        total: number;
-        remaining: number | undefined;
-        resetAt: number | undefined;
-    }[];
-}>;
-export declare function fetchCodexQuota(session: any, fetchFn?: typeof outboundFetch): Promise<{
-    resetCredits: {
-        nextExpiresAt?: number | undefined;
-        availableCount: number;
-        credits: ({
-            id: string | undefined;
-            status: any;
-            expiresAt: number | undefined;
-        } | undefined)[];
-    };
-    rows: never[];
-    planType?: undefined;
-} | {
-    resetCredits: {
-        nextExpiresAt?: number | undefined;
-        availableCount: number;
-        credits: ({
-            id: string | undefined;
-            status: any;
-            expiresAt: number | undefined;
-        } | undefined)[];
-    };
-    planType: any;
-    rows: any[];
-}>;
-export declare function consumeResetBody(redeemRequestId: any): {
-    redeem_request_id: any;
-    idempotencyKey: any;
-};
-export declare function consumeCodexReset(session: any, fetchFn?: typeof outboundFetch): Promise<{
-    ok: boolean;
-    redeemRequestId: `${string}-${string}-${string}-${string}-${string}`;
-}>;
-export declare function fetchGrokQuota(session: any, fetchFn?: typeof outboundFetch): Promise<any>;
+export declare const QUOTA_USED_TTL_MS = 15000;
 export declare class QuotaStore {
     #private;
     tokens: any;
@@ -280,6 +20,7 @@ export declare class QuotaStore {
     ttlMs: number;
     cache: Map<string, any>;
     inflight: Map<string, any>;
+    glmResetRequests: Map<string, string>;
     constructor({ tokens, fetchFn, ttlMs, snapshotPath }?: any);
     /** Persist the cache now, when it is persisted at all. */
     flush(): Promise<void>;
@@ -311,7 +52,45 @@ export declare class QuotaStore {
         };
     };
     clear(provider: any, accountId?: any): void;
-    ensure(provider: any, accountId?: any, session?: any): Promise<any>;
+    /** Record a known failure without calling upstream (e.g. a stale imported login). */
+    fail(provider: any, accountId: any, message: any): {
+        status: string;
+        planType?: undefined;
+        planLabel?: undefined;
+        account?: undefined;
+        subscriptionStatus?: undefined;
+        hasGrokCodeAccess?: undefined;
+        updatedAt?: undefined;
+        error?: undefined;
+        rows?: undefined;
+        resetCredits?: undefined;
+    } | {
+        status: any;
+        planType: any;
+        planLabel: any;
+        account: any;
+        subscriptionStatus: any;
+        hasGrokCodeAccess: any;
+        updatedAt: any;
+        error: any;
+        rows: any;
+        resetCredits: {
+            nextExpiresAt?: any;
+            availableCount: any;
+            credits: any;
+        };
+    };
+    /**
+     * `maxAgeMs` tightens the freshness window for one call — the panel sends it
+     * when the user (re)enters the quota page, so a reading older than the 15s
+     * floor is re-read behind the cached answer instead of waiting out the TTL.
+     */
+    ensure(provider: any, accountId?: any, session?: any, maxAgeMs?: number): Promise<any>;
+    /**
+     * A proxied chat request for this account finished: its quota moved. Only
+     * shortens the cached entry's freshness window — no upstream call here.
+     */
+    touch(provider: any, session?: any): Promise<void>;
     refresh(provider: any, accountId?: any, session?: any): Promise<any>;
-    consume(provider: any, accountId?: any, session?: any): Promise<any>;
+    consume(provider: any, accountId?: any, session?: any, creditId?: any): Promise<any>;
 }

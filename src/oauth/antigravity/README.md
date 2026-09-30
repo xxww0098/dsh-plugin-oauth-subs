@@ -1,7 +1,7 @@
 # Antigravity OAuth
 
 本文件是 `src/oauth/antigravity/` 的设计源。改登录、额度、对话或缓存先改这里再改代码。
-跨家族硬约定在仓库根 [`AGENTS.md`](../../../AGENTS.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)；对照仓库在 [`docs/oauth.md`](../../../docs/oauth.md)。
+跨家族硬规则在 [`docs/rules.md`](../../../docs/rules.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)；对照仓库在 [`docs/oauth.md`](../../../docs/oauth.md)。
 
 Google **Antigravity hub**（`Antigravity.app`），Cloud Code `daily-cloudcode-pa`。不要模仿 **Antigravity IDE.app** / prod `cloudcode-pa`（除非 daily 5xx 才回落）。
 
@@ -15,7 +15,7 @@ Google **Antigravity hub**（`Antigravity.app`），Cloud Code `daily-cloudcode-
 | [`cache.ts`](cache.ts) | `request.sessionId` + 钉住首段 `systemInstruction` / 等价 tools / `thinkingConfig`。多余快照变 **trailing user** |
 
 调度：[`../proxy.ts`](../proxy.ts) `family === 'antigravity'` 剥 retention，取出 `antigravitySessionIdOf`；真正 pin 在 `openaiToAntigravity`。
-额度：[`../quota.ts`](../quota.ts) `fetchAntigravityQuota` / `parseAntigravityModelQuota` / `antigravityPlanType`。
+额度：[`quota.ts`](quota.ts) `fetchAntigravityQuota` / `parseAntigravityModelQuota` / `antigravityPlanType`。
 套餐：`ANTIGRAVITY_PLAN_NAMES`（`g1-pro-tier` → **Pro**，不要显示 `STANDARD TIER`）。
 
 ## 登录
@@ -68,32 +68,16 @@ DSH chat/completions  →  POST daily-cloudcode-pa.googleapis.com/v1internal:gen
 
 ## 模型
 
-`ANTIGRAVITY_MODELS` 对齐 CLIProxyAPI `models.json` 的 `antigravity` 行（Cloud Code 线 id，不是 Gemini API 裸 id）。
+行在 [`src/catalog/models.json`](../../catalog/models.json) 的 `"antigravity"` 键；行格式、来源与 `npm run models` 更新流程见 [`docs/models.md`](../../../docs/models.md)。本节只记本家的取舍与出处。
 
-**出处 / 日期（2026-09-23）：** [router-for-me/CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) `main` 的 `internal/registry/models/models.json`，`antigravity` 数组 **12 行**。当天重下载的 `main` 与本地快照逐字节一致（sha256 `f95bd4b06ebd6c1e3b66e04d85194d93ee327ba06642373c3a8f9bc1be3d46d8`）。逐行映射：`display_name` → `name`（去掉档位括号，如 `Gemini 3.1 Pro (High)` → Gemini 3.1 Pro、`GPT-OSS 120B (Medium)` → GPT-OSS 120B）；`context_length` → `contextWindow`；`max_completion_tokens` → `maxTokens`；`thinking.levels` → `reasoningEfforts`（Gemini `low/medium/high`，Claude `low/high`，无 `thinking` 的 GPT-OSS `false`）；`supportedInputModalities` 只取 `text`/`image`（llm-pi-ai 只接这两种，audio/video 行仍标 vision）。
+最近核对：2026-09-23，[router-for-me/CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) `main` 的 `internal/registry/models/models.json`。
 
-| registry id | `name` | contextWindow | maxTokens | input | reasoningEfforts |
-|---|---|---|---|---|---|
-| `claude-opus-4-6-thinking` | Claude Opus 4.6 | 200_000 | 64_000 | text/image | low/high |
-| `claude-sonnet-4-6` | Claude Sonnet 4.6 | 200_000 | 64_000 | text/image | low/high |
-| `gemini-pro-agent` | Gemini 3.1 Pro | 1_048_576 | 65_535 | text/image | low/medium/high |
-| `gemini-3.1-pro-low` | Gemini 3.1 Pro Low | 1_048_576 | 65_535 | text/image | low/medium/high |
-| `gemini-3-flash` | Gemini 3 Flash | 1_048_576 | 65_536 | text/image | low/medium/high |
-| `gemini-3.6-flash-high` | Gemini 3.6 Flash | 1_048_576 | 65_536 | text/image | low/medium/high |
-| `gemini-3.7-flash-high` | Gemini 3.7 Flash | 1_048_576 | 65_536 | text/image | low/medium/high |
-| `gemini-3.8-flash-high` | Gemini 3.8 Flash | 1_048_576 | 65_536 | text/image | low/medium/high |
-| `gemini-3.1-flash-lite` | Gemini 3.1 Flash Lite | 1_048_576 | 65_535 | text/image | low/medium/high |
-| `gemini-3.5-flash-lite` | Gemini 3.5 Flash Lite | 1_048_576 | 65_535 | text/image | low/medium/high |
-| `gemini-3.1-flash-image` | Gemini 3.1 Flash Image | 1_048_576 | 32_768 | text/image | low/medium/high |
-| `gpt-oss-120b-medium` | GPT-OSS 120B | 114_000 | 32_768 | text | false |
-
-新行 `gemini-3.5-flash-lite`（上游 2026-09-14 `d48590a47d` 登记）：`display_name` Gemini 3.5 Flash Lite、`context_length` 1048576、`max_completion_tokens` 65535、`thinking.levels` [minimal, low, medium, high]、`supportedInputModalities` [text, image, audio, video]。映射与 `gemini-3.1-flash-lite` 完全一致（同 max 65535、同 Gemini 三档）；线 id 命中 `usesThinkingBudgetWire` 的 `gemini-3.5-flash*` 分支（Pi `thinkingBudget`）。注意 `minimal` 折进三档 picker（与既有 lite / 3.6 行同法），没有拆成独立行。
-
-**移除（有据）：** 上游 2026-09-01 `35e3d97dac` "fix(registry): remove defunct gemini-3-flash-agent model from antigravity provider" 在同一个 commit 删掉 `gemini-3-flash-agent`、`gemini-3.5-flash-low`、`gemini-3.5-flash-extra-low` 三行，正文写明 "as upstream Google Cloud Code / Antigravity endpoints return 500 UNKNOWN for these model IDs"。本机 `~/.gemini/antigravity-cli`（hub 2.11.0，log/cache/conversations 至 2026-09-23 07:45）也从未出现这三个 id。故 catalog 不再保留；`request.ts` 钳位表 / `usesThinkingBudgetWire` 里的历史 id 只是旧请求兜底，不进 picker。
-
-思考：Gemini `low/medium/high`；Claude `low/high`；GPT-OSS `false`。
-
-Gemini 3.6 / 3.7 / 3.8 Flash 各一行 picker：`gemini-3.X-flash-high` + `reasoningEfforts` low/medium/high。不要发 Gemini API 的 `gemini-3.8-flash`（无 `-high`）。不要拆 `-low` / `-medium` 成独立行（3.7 也没拆）。3.8 Flash Cyber 不在 Antigravity 选择器，不要加。`ANTIGRAVITY_QUOTA_GROUPS` 仍是冻结 SkillStar 条；3.7 也不在里面，3.8 同样不加。
+- 来源：CLIProxyAPI registry 的 `antigravity` 数组。id 是 Cloud Code 线 id，不是 Gemini API 裸 id；线 id 就是 picker id。
+- 字段映射：`display_name` → `name`（去掉档位括号，例：`Gemini 3.1 Pro (High)` → Gemini 3.1 Pro）；`context_length` → `contextWindow`；`max_completion_tokens` → `maxTokens`；`supportedInputModalities` 只取 `text` / `image`。
+- 思考：registry 有 `thinking.levels` 的 Gemini 行统一折成 `low` / `medium` / `high` 三档（`minimal` 折进去，不拆独立行）；Claude 行只有 `low` / `high`；没有 `thinking` 的行（GPT-OSS）为 `false`。
+- 每个 Gemini Flash 版本只收一行 `-high` 线 id，effort 走 `reasoningEfforts`；不要把 `-low` / `-medium` 拆成独立行，也不要发 Gemini API 的裸 id（无 `-high`）。
+- 不收：registry 已删、上游 Cloud Code 回 500 UNKNOWN 的 id（上游 `35e3d97dac`，本机 hub 日志也从未出现）；Antigravity 选择器里没有的变体（例：3.8 Flash Cyber）。`request.ts` 钳位表 / `usesThinkingBudgetWire` 里的历史 id 只给旧请求兜底，不进 picker。
+- `ANTIGRAVITY_QUOTA_GROUPS` 是冻结的 SkillStar 分组，新增的 Flash 版本不往里加。
 
 ## 额度
 
@@ -123,7 +107,7 @@ DSH 每步再插 runtime-context system，工具 JSON 的 key 顺序也会抖。
 回退 id（裸 `dsh-antigravity` 或 `dsh-antigravity:<model>`，`isAntigravityFallback`）**不**进 pin map：没有 DSH 会话时，system / tools / thinking 都不跨会话钉。
 禁止 `` sessionId: `-${Date.now()}` ``，否则每请求换会话，缓存必 0。
 
-进程内 `SESSION_PINS`（cap 64）只服务 Antigravity。测试用 `resetAntigravitySystemPins()`。不要和 GLM 共用 Map。
+进程内 `SESSION_PINS`（cap 64，淘汰最久没有请求的会话）只服务 Antigravity。测试用 `resetAntigravitySystemPins()`。不要和 GLM 共用 Map。
 
 ## 不要
 
@@ -144,24 +128,17 @@ DSH 每步再插 runtime-context system，工具 JSON 的 key 顺序也会抖。
 
 ## 归因
 
-公开 client / UA / `models.json`：[router-for-me/CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)。`maxOutputTokens` 钳位：[Rahularya01/pi-antigravity](https://github.com/Rahularya01/pi-antigravity)。指纹仍是本机 Antigravity.app hub 2.11.0。总表见 [`docs/oauth.md`](../../../docs/oauth.md)。
+一线：本机 **Antigravity.app 2.11.0** hub（`--subclient_type hub`，daily-cloudcode-pa）。社区对照：[router-for-me/CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)、[Rahularya01/pi-antigravity](https://github.com/Rahularya01/pi-antigravity)；thought 签名语义：[Google thought signatures](https://ai.google.dev/gemini-api/docs/thought-signatures)。
 
-## 追溯
+| 抄 | 出处 | 本 hop |
+|---|---|---|
+| hub 指纹、daily-cloudcode-pa 端点 | 本机 Antigravity.app hub 2.11.0 | `ANTIGRAVITY_DAILY_API_URL` / `antigravityChatHeaders` |
+| 模型页价格徽标（USD / 1M） | models.dev `google` / `anthropic`；`gemini-pro-agent`、`-low`、`gemini-3-flash`、`gpt-oss-120b-medium` 的映射写在 `scripts/rates.ts` | `src/catalog/rates.json`，`npm run rates` 写入（见 [docs/models.md](../../../docs/models.md) 费率表） |
+| 公开 installed-app 客户端、短 UA、onboard UA | CLIProxyAPI `constants.go` | `ANTIGRAVITY_CLIENT_ID` / `antigravityOnboardUserHeaders` |
+| 模型行 | CLIProxyAPI `internal/registry/models/models.json` 的 `antigravity` 行 | 目录 `antigravity` 键（见「模型」） |
+| `maxOutputTokens` 钳位 | pi-antigravity `getMaxOutputTokens` | `antigravityMaxOutputTokens` |
+| functionCall 组的签名回放 | Google thought signatures | `thoughtSignatureOf` |
 
-| 问题 | 记录 |
-|---|---|
-| 缓存命中率 0（没映射 cached tokens） | [`docs/error.md`](../../../docs/error.md) 2026-08-31 Antigravity 缓存 0 |
-| 0.0.57 长聊 Google 不回 cached_tokens（tools / thinking 前缀抖） | 同文件 2026-08-31 Antigravity 隐式缓存前缀 |
-| sessionId 用 Date.now() | 同文件 2026-08-30 GLM 思考链 / Antigravity sessionId |
-| 套餐 STANDARD TIER | 同文件 2026-08-31 Antigravity 套餐 |
-| 额度条没有刷新时间 / 只到小时 | 同文件 2026-08-31 刷新时间 |
-| 用量 0 tok / 首 token 半句 | 同文件 2026-08-31 Antigravity 流式 |
-| Claude/GPT JSON Schema → protobuf `parameters` 400 | [`docs/error.md`](../../../docs/error.md) 2026-09-03 Cloud Code custom-tool |
-| Gemini 3 首条 contents 必须是 user | 同文件 2026-09-03 first-turn-must-be-user |
-| 不要抄 Pi chat Client-Metadata | 同文件 2026-09-03 Client-Metadata |
-| functionCall 缺 thought_signature 400 | 同文件 2026-09-01 Antigravity thoughtSignature |
-| function_response 列表 400 | 同文件 2026-08-30 INVALID_ARGUMENT |
-| 打了 IDE prod 不是 hub daily | 同文件 2026-08-30 Cloud Code |
-| 403 VALIDATION_REQUIRED 显示成密钥无效 | 同文件 2026-08-31 VALIDATION_REQUIRED |
+**不要发明：** 与上游对照相关的每一条都已在上面「不要」节，这里不重复。
 
-测试：`test/antigravity.test.ts`、`test/cache-families.test.ts`、`test/proxy.test.ts`。
+跨家族对照总表见 [`docs/oauth.md`](../../../docs/oauth.md)。

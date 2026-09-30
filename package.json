@@ -45,11 +45,13 @@
     "README.zh.md"
   ],
   "scripts": {
-    "build": "tsc && tsc -p tsconfig.ui.json",
+    "build": "tsc && node --experimental-strip-types scripts/ui-bundle.ts && tsc -p tsconfig.ui.json",
     "dev-build": "npm run build && node --experimental-strip-types scripts/dev-build.ts",
     "test": "npm run build && node --experimental-strip-types --test 'test/*.test.ts'",
     "analyze": "node --experimental-strip-types scripts/analyze-session.ts",
     "live": "node --experimental-strip-types scripts/live-smoke.ts",
+    "models": "node --experimental-strip-types scripts/models.ts",
+    "rates": "node --experimental-strip-types scripts/rates.ts",
     "prepublishOnly": "npm test"
   },
   "keywords": [

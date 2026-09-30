@@ -13,6 +13,7 @@ import {
   formatReport,
   normalizeFailureMessage,
   parseSessionEvents,
+  readPrefixEstimates,
   readSessionText,
 } from '../lib/utils/analyze-session.js'
 
@@ -537,4 +538,38 @@ test('a provider that never reports a cache field is n/a, not a 0% hit', () => {
   assert.doesNotMatch(formatAggregate(analyzeSessionDir(sessionDir({
     'b/session-2/session.v4.jsonl.zstd': [{ type: 'session', version: 4, id: 'session-2' }, call(1, 1, 10, 'oauth-codex')],
   }))), /n\/a/)
+})
+
+test('Kiro shows the proxy cacheable-prefix estimate as an upper bound, joined by session and family', () => {
+  const profiles = mkdtempSync(join(tmpdir(), 'prefix-est-'))
+  const dir = join(profiles, 'desktop', 'data', 'dsh-plugin-oauth-subs')
+  mkdirSync(dir, { recursive: true })
+  const line = (fields) => JSON.stringify({ ts: 15, family: 'kiro', session: 'session-1', model: 'm', ...fields })
+  writeFileSync(join(dir, 'prefix-estimate.jsonl'), [
+    line({ bytes: 100, matched: null, gapMs: null }),
+    line({ bytes: 200, matched: 180, gapMs: 1_000 }),
+    line({ bytes: 200, matched: 190, gapMs: 400_000 }),
+    line({ session: 'session-other', bytes: 200, matched: 0, gapMs: 1 }),
+    'not json',
+  ].join('\n'))
+  const prefixEstimates = readPrefixEstimates(profiles)
+  assert.equal(prefixEstimates.length, 4)
+
+  const events = [
+    { type: 'session', version: 4, id: 'session-1' },
+    call(1, 1, 10, 'oauth-kiro', { inputTokens: 100 }),
+    call(1, 2, 20, 'oauth-kiro', { inputTokens: 100 }),
+  ]
+  const single = analyzeSession(sessionJsonl(events), { prefixEstimates })
+  assert.deepEqual(single.prefixEstimate, { ratio: 370 / 400, requests: 3, baseline: 2, staleGap: 1 })
+  assert.match(formatReport(single), /prefix est  ≤92\.5% cacheable \(plugin estimate, upper bound\)  baseline 2\/3  gap>5m 1/)
+  assert.equal(analyzeSession(sessionJsonl(events)).prefixEstimate, null, 'no log, no estimate')
+
+  // The provider row pools every Kiro request in the window, other sessions included.
+  const report = analyzeSessionDir(sessionDir({ 'a/session-1/session.v4.jsonl.zstd': events }), { prefixEstimates })
+  assert.equal(report.providers['oauth-kiro'].prefixEstimate.baseline, 3)
+  assert.equal(report.models['oauth-kiro/m'].prefixEstimate.baseline, 3)
+  const text = formatAggregate(report)
+  assert.match(text, /oauth-kiro\s+2\s+\S+\s+≤61\.7%/)
+  assert.match(text, /≤x% = the plugin's cacheable-prefix estimate/)
 })

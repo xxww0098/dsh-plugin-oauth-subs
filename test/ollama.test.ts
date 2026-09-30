@@ -10,8 +10,8 @@ import {
   buildProviders,
   catalogProviders,
   ownedProviderIds,
-  syncHarnessModels,
 } from '../lib/oauth/models.js'
+import { syncHarnessModels } from '../lib/oauth/harness-sync.js'
 import {
   OLLAMA_CHAT_URL,
   OLLAMA_ME_URL,
@@ -35,7 +35,8 @@ import {
   parseOllamaMe,
 } from '../lib/apikey/ollama/index.js'
 import { formatPlanLabel } from '../lib/oauth/plan.js'
-import { QuotaStore, ollamaSessionResetAt, ollamaWeeklyResetAt, parseOllamaUsage } from '../lib/oauth/quota.js'
+import { QuotaStore } from '../lib/oauth/quota.js'
+import { ollamaSessionResetAt, ollamaWeeklyResetAt, parseOllamaUsage } from '../lib/apikey/ollama/quota.js'
 import {
   OLLAMA_IMPORT_EMPTY,
   importOllamaAuth,
@@ -474,6 +475,14 @@ test('live show model_info overrides snapshot; show-less tags keep snapshot not 
     models: [{ name: 'glm-5.3', details: { context_length: 777_777 } }],
   })
   assert.equal(fromTags[0].contextWindow, 777_777)
+})
+
+test('a static-floor ceiling survives the Ollama tags projection', () => {
+  const rows = toOllamaPickerModels(
+    { models: [{ name: 'glm-5.3' }] },
+    { floor: [{ id: 'glm-5.3', maxContextWindow: 2_000_000 }, { id: 'other' }] },
+  )
+  assert.equal(rows.find((model) => model.id === 'glm-5.3')?.maxContextWindow, 2_000_000)
 })
 
 test('useKey paste writes oauth-ollama and discovers tags', async () => {

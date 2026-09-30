@@ -189,8 +189,37 @@ Object.assign(kiro, {
   },
 })
 
+// ── Devin ─────────────────────────────────────────────────────────────────
+
+const devin = {
+  // Usage buckets must arrive OpenAI-style: prompt_tokens is the whole
+  // prompt (uncached + cache read + write), so the host's
+  // prompt_tokens − cached − write recovers the uncached input. The old
+  // mapping sent the bare exclusive count, clamping warm calls to 0 input.
+  // Devin's prefix cache commits async — a run with no hit still passes on
+  // turn 1's usage; only a whole-prompt violation (prompt < cached) fails.
+  async usageBuckets(chat) {
+    const key = `live-smoke-devin-${Date.now().toString(36)}`
+    const filler = Array.from({ length: 160 }, (_, i) => `context line ${i} ${'x'.repeat(60)}`).join('\n')
+    const messages: any[] = [{ role: 'user', content: `Reply with the single word PONG.\n${filler}` }]
+    const one = await chat({ model: 'swe-2', max_tokens: 256, prompt_cache_key: key, messages })
+    if (one.status !== 200) return fail(`turn 1 HTTP ${one.status} ${JSON.stringify(one.raw).slice(0, 160)}`)
+    const first = one.raw?.usage
+    if (!first?.prompt_tokens) return fail(`no usage on turn 1: ${JSON.stringify(one.raw).slice(0, 160)}`)
+    messages.push({ role: 'assistant', content: one.text || 'PONG' }, { role: 'user', content: 'Reply PONG again.' })
+    const two = await chat({ model: 'swe-2', max_tokens: 256, prompt_cache_key: key, messages })
+    const usage = two.status === 200 && two.raw?.usage ? two.raw.usage : first
+    const cached = usage.prompt_tokens_details?.cached_tokens ?? 0
+    const write = usage.prompt_tokens_details?.cache_write_tokens ?? 0
+    if (usage.prompt_tokens < cached) return fail(`prompt_tokens ${usage.prompt_tokens} < cached ${cached} — exclusive mapping is back`)
+    const which = two.status === 200 && two.raw?.usage ? 'turn2' : 'turn1 (turn2 HTTP ' + two.status + ')'
+    return pass(`${which}: prompt ${usage.prompt_tokens} · cached ${cached} · write ${write} · uncached ${usage.prompt_tokens - cached - write}`)
+  },
+}
+
 const CHECKS = {
   cursor: { checks: cursor },
+  devin: { checks: devin },
   kiro: {
     checks: kiro,
     async setup(session) {

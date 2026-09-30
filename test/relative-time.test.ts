@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
 import { test } from 'node:test'
 import { formatRelativeReset } from '../lib/utils/relative-time.js'
+import { assembleUi } from '../scripts/ui-bundle.ts'
 
 const ZH = {
   soon: '即将重置',
@@ -51,7 +51,7 @@ test('formatRelativeReset stays relative past 14 days', () => {
 })
 
 test('Settings formatReset no longer rounds remaining hours', async () => {
-  const src = await readFile(new URL('../src/ui/client.ts', import.meta.url), 'utf8')
+  const src = assembleUi()
   assert.match(src, /const hours = Math\.floor\(\(totalMinutes % 1440\) \/ 60\)/)
   assert.match(src, /const minutes = totalMinutes % 60/)
   assert.match(src, /resetIn:\s*'\{n\}后重置'/)

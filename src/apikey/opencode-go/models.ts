@@ -7,8 +7,8 @@
  * wire protocol. OpenCode Go speaks three protocols, so this plugin owns the
  * complete list on two routes of its own:
  *
- *   `opencode-go-flash`     openai-completions  — 28 models (display "OpenCode Go")
- *   `opencode-go-responses` openai-responses    —  6 models
+ *   `opencode-go-flash`     openai-completions  — 28 models (display "Subs · OpenCode Go · Chat")
+ *   `opencode-go-responses` openai-responses    —  6 models (display "Subs · OpenCode Go · Responses")
  *
  * Sources (2026-09-23, refreshed 2026-09-26):
  *   - `GET https://opencode.ai/zen/go/v1/models` (this key 35)
@@ -26,7 +26,12 @@
  *     duplicates in the picker. 2026-09-26: `space-bunny-free` and
  *     `gpt-6-luna` each answered 200 on their respective endpoints, including
  *     high / none / max effort probes; model limits come from models.dev.
+ *   - 2026-09-29: the two `/responses` Luna rows advertise the 258K default
+ *     input tier instead of models.dev's 1,050,000 total window — see the
+ *     Luna note below.
  */
+
+import { catalogRows } from '../../catalog/index.js'
 
 export const OPENCODE_GO_BUILTIN_ROUTE_ID = 'opencode-go'
 export const OPENCODE_GO_EXTRA_ROUTE_ID = 'opencode-go-flash'
@@ -51,89 +56,34 @@ export function opencodeGoSessionHeaders() {
   return { [OPENCODE_GO_SESSION_HEADER]: OPENCODE_GO_SESSION_ID }
 }
 
-const TEXT = ['text']
-const TEXT_IMAGE = ['text', 'image']
+/**
+ * Static catalog rows live in `src/catalog/models.json`:
+ *   `"opencode-go-flash"`     — every official Go model answering on /chat/completions
+ *   `"opencode-go-responses"` — official Go models answering on /responses only
+ * Rows keep the pi-ai effort ladders (DSH picker keys -> wire spellings) and,
+ * on the completions route, the per-model `compat` dialect (plain OpenAI-compat
+ * vs DeepSeek's: `requiresReasoningContentOnAssistantMessages` /
+ * `thinkingFormat: deepseek`).
+ */
 
-/** pi-ai catalog effort ladders (DSH picker keys -> wire spellings). */
-const EFFORT_LOW_HIGH_MAX = { low: 'low', high: 'high', max: 'max' }
-const EFFORT_HIGH_MAX = { high: 'high', max: 'max' }
-const EFFORT_LOW_HIGH = { low: 'low', high: 'high' }
-const EFFORT_KIMI_K3 = { max: 'max' }
-const EFFORT_QWEN38 = { low: 'low', medium: 'medium', xhigh: 'xhigh' }
-const EFFORT_HY4 = { off: 'none', high: 'high' }
-const EFFORT_HY3 = { off: 'none', low: 'low', high: 'high' }
-const EFFORT_GROK = { low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh' }
-const EFFORT_GPT56 = { low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh', max: 'max' }
-const EFFORT_GPT6 = { off: 'none', ...EFFORT_GPT56 }
-const EFFORT_MUSE = { minimal: 'minimal', low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh' }
+/**
+ * The two Luna rows advertise the vendor's **default** input tier, not the
+ * official total window. models.dev lists 1,050,000 for both (922,000 input +
+ * 128,000 output), but that total includes the large-window tier: Codex CLI
+ * pins the same GPT-6 / 5.6 rows at 258,000 by default and hangs 872,000 on an
+ * opt-in sibling. DSH compacts against `contextWindow`, so advertising the
+ * total lets a long session grow until the Go Responses gateway rejects it
+ * (same shape as the GLM 400K plan cap). Maintainer override 2026-09-29 —
+ * pinned in the `"opencode-go-responses"` rows (258,000).
+ */
 
-/** pi-ai completions dialects: plain OpenAI-compat, and DeepSeek's. */
-const OPENAI_COMPAT = {
-  supportsStore: false,
-  supportsDeveloperRole: false,
-  maxTokensField: 'max_tokens',
-}
-const DEEPSEEK_COMPAT = {
-  ...OPENAI_COMPAT,
-  requiresReasoningContentOnAssistantMessages: true,
-  thinkingFormat: 'deepseek',
-}
+export const OPENCODE_GO_EXTRA_MODELS = catalogRows('opencode-go-flash')
 
-function model(id, name, contextWindow, maxTokens, input, reasoningEfforts, extra?) {
-  const row: any = { id, name, contextWindow, maxTokens, input: [...input] }
-  // `false` must stay `false`: `{ ...false }` is `{}`, and DSH rejects an
-  // empty reasoningEfforts dict for the whole atomic llm-pi-ai write.
-  if (reasoningEfforts === false) row.reasoningEfforts = false
-  else if (reasoningEfforts !== undefined) row.reasoningEfforts = { ...reasoningEfforts }
-  if (extra) Object.assign(row, extra)
-  return row
-}
-
-/** Every official Go model that answers on /chat/completions. */
-export const OPENCODE_GO_EXTRA_MODELS = Object.freeze([
-  model('deepseek-v4.1-flash', 'DeepSeek V4.1 Flash', 1_000_000, 384_000, TEXT_IMAGE, EFFORT_LOW_HIGH_MAX, { compat: DEEPSEEK_COMPAT }),
-  model('deepseek-v4-flash', 'DeepSeek V4 Flash', 1_000_000, 384_000, TEXT, EFFORT_LOW_HIGH_MAX, { compat: DEEPSEEK_COMPAT }),
-  model('deepseek-v4-flash-vision-exp', 'DeepSeek V4 Flash Vision Exp', 1_000_000, 384_000, TEXT_IMAGE, EFFORT_LOW_HIGH_MAX, { compat: DEEPSEEK_COMPAT }),
-  model('deepseek-v4-pro', 'DeepSeek V4 Pro', 1_000_000, 384_000, TEXT, EFFORT_HIGH_MAX, { compat: DEEPSEEK_COMPAT }),
-  model('glm-5.3', 'GLM-5.3', 1_000_000, 131_072, TEXT, EFFORT_LOW_HIGH_MAX, { compat: OPENAI_COMPAT }),
-  model('glm-5.3-flash', 'GLM-5.3-Flash', 1_000_000, 131_072, TEXT_IMAGE, EFFORT_LOW_HIGH_MAX, { compat: OPENAI_COMPAT }),
-  model('glm-5.2', 'GLM-5.2', 1_000_000, 131_072, TEXT, EFFORT_HIGH_MAX, { compat: OPENAI_COMPAT }),
-  model('glm-5.1', 'GLM-5.1', 202_752, 32_768, TEXT, false, { compat: OPENAI_COMPAT }),
-  model('kimi-k3', 'Kimi K3', 1_048_576, 131_072, TEXT_IMAGE, EFFORT_KIMI_K3, { compat: OPENAI_COMPAT }),
-  model('kimi-k2.7-code', 'Kimi K2.7 Code', 262_144, 262_144, TEXT_IMAGE, false, { compat: OPENAI_COMPAT }),
-  model('kimi-k2.6', 'Kimi K2.6', 262_144, 65_536, TEXT_IMAGE, false, { compat: OPENAI_COMPAT }),
-  model('longcat-2.0', 'LongCat-2.0', 1_000_000, 131_072, TEXT, false, { compat: OPENAI_COMPAT }),
-  model('mimo-v2.6-flash', 'MiMo-V2.6-Flash', 1_048_576, 131_072, TEXT_IMAGE, false, { compat: OPENAI_COMPAT }),
-  model('mimo-v2.6-pro', 'MiMo-V2.6-Pro', 1_048_576, 131_072, TEXT_IMAGE, false, { compat: OPENAI_COMPAT }),
-  model('mimo-v2.5', 'MiMo-V2.5', 1_000_000, 128_000, TEXT_IMAGE, false, { compat: OPENAI_COMPAT }),
-  model('mimo-v2.5-pro', 'MiMo-V2.5-Pro', 1_048_576, 128_000, TEXT, false, { compat: OPENAI_COMPAT }),
-  model('minimax-m3', 'MiniMax M3', 1_000_000, 131_072, TEXT_IMAGE, false, { compat: OPENAI_COMPAT }),
-  model('minimax-m2.7', 'MiniMax M2.7', 204_800, 131_072, TEXT, false, { compat: OPENAI_COMPAT }),
-  model('minimax-m2.5', 'MiniMax M2.5', 204_800, 65_536, TEXT, false, { compat: OPENAI_COMPAT }),
-  model('qwen3.8-max', 'Qwen3.8 Max', 1_000_000, 131_072, TEXT_IMAGE, EFFORT_QWEN38, { compat: OPENAI_COMPAT }),
-  model('qwen3.8-flash', 'Qwen3.8 Flash', 1_000_000, 131_072, TEXT_IMAGE, EFFORT_QWEN38, { compat: OPENAI_COMPAT }),
-  model('qwen3.7-max', 'Qwen3.7 Max', 1_000_000, 65_536, TEXT, false, { compat: OPENAI_COMPAT }),
-  model('qwen3.7-plus', 'Qwen3.7 Plus', 1_000_000, 65_536, TEXT, false, { compat: OPENAI_COMPAT }),
-  model('qwen3.6-plus', 'Qwen3.6 Plus', 1_000_000, 65_536, TEXT, false, { compat: OPENAI_COMPAT }),
-  model('hy4-preview', 'Hy4 Preview', 1_024_000, 64_000, TEXT, EFFORT_HY4, { compat: OPENAI_COMPAT }),
-  model('hy3', 'Hy3', 256_000, 128_000, TEXT, EFFORT_HY3, { compat: OPENAI_COMPAT }),
-  model('omen-alpha', 'Omen Alpha', 500_000, 128_000, TEXT_IMAGE, EFFORT_LOW_HIGH, { compat: OPENAI_COMPAT }),
-  model('space-bunny-free', 'Space Bunny Free', 1_048_576, 524_288, TEXT_IMAGE, EFFORT_GPT56, { compat: DEEPSEEK_COMPAT }),
-])
-
-/** Official Go models that only answer on /responses. */
-export const OPENCODE_GO_RESPONSES_MODELS = Object.freeze([
-  model('grok-4.7', 'Grok 4.7', 500_000, 500_000, TEXT_IMAGE, EFFORT_GROK),
-  model('grok-4.6', 'Grok 4.6', 500_000, 500_000, TEXT_IMAGE, EFFORT_GROK),
-  model('gpt-5.6-luna', 'GPT-5.6 Luna', 1_050_000, 128_000, TEXT_IMAGE, EFFORT_GPT56),
-  model('gpt-6-luna', 'GPT-6 Luna', 1_050_000, 128_000, TEXT_IMAGE, EFFORT_GPT6),
-  model('muse-spark-1.3-contributor', 'Muse Spark 1.3 Contributor', 1_048_576, 131_072, TEXT_IMAGE, EFFORT_MUSE),
-  model('muse-spark-1.2-contributor', 'Muse Spark 1.2 Contributor', 1_048_576, 131_072, TEXT_IMAGE, EFFORT_MUSE),
-])
+export const OPENCODE_GO_RESPONSES_MODELS = catalogRows('opencode-go-responses')
 
 export const OPENCODE_GO_EXTRA_ROUTE = Object.freeze({
   id: OPENCODE_GO_EXTRA_ROUTE_ID,
-  displayName: 'OpenCode Go',
+  displayName: 'Subs · OpenCode Go · Chat',
   api: 'openai-completions',
   baseURL: OPENCODE_GO_OPENAI_BASE_URL,
   headers: Object.freeze(opencodeGoSessionHeaders()),
@@ -142,7 +92,7 @@ export const OPENCODE_GO_EXTRA_ROUTE = Object.freeze({
 
 export const OPENCODE_GO_RESPONSES_ROUTE = Object.freeze({
   id: OPENCODE_GO_RESPONSES_ROUTE_ID,
-  displayName: 'OpenCode Go · Responses',
+  displayName: 'Subs · OpenCode Go · Responses',
   api: 'openai-responses',
   baseURL: OPENCODE_GO_OPENAI_BASE_URL,
   headers: Object.freeze(opencodeGoSessionHeaders()),

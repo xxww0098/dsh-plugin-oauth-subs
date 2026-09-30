@@ -1,162 +1,105 @@
 /**
- * Auth controller behind the Settings page RPC.
- * Codex PKCE (+ paste callback + import), Grok device-code (primary) + PKCE fallback.
+ * Auth controller behind the Settings page RPC: owns the per-family token
+ * managers, quota store and flow managers, builds the Settings snapshot, and
+ * syncs routes to the host. The work behind each entry point lives in plain
+ * functions that take the controller: login.ts (flows, keys, imports),
+ * account-quota.ts, self-update.ts, account-marks.ts, and each family's
+ * accounts.ts (auto-import, identity, catalog discovery, login completion).
  */
 
-import { readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { describeError, errorCode, errorMessage } from '../utils/http.js'
-import { writePrivateText } from '../utils/private-text.js'
 import { OAuthFlowManager } from './flow.js'
 import { DeviceFlowManager } from './grok/device-flow.js'
 import { GlmCliFlowManager } from './glm/cli-flow.js'
 import { KiroIdcFlowManager } from './kiro/idc-flow.js'
-import { accountIdOf, deleteSession, getStoredSession, getSession, listStoredSessions, PROVIDER_IDS, publicSession, replaceAccountId, saveSession, switchAccount, updateAccountSession } from './store.js'
 import {
-  codexFlow,
-  exchangeCodexCode,
-  CODEX_PERMANENT_REFRESH_CODES,
-  refreshCodex,
-} from './codex/index.js'
-import {
-  completeGrokDevice,
-  grokDeviceSpec,
-  grokFlow,
-  exchangeGrokCode,
-  refreshGrok,
-} from './grok/index.js'
-import {
-  GLM_MODELS,
-  glmSession,
-  normalizeGlmRegion,
-  pickGlmHumanAccount,
-  pickGlmName,
-  refreshGlm,
-  resolveGlmIdentity,
-} from './glm/index.js'
-import {
-  BUILDER_ID_START_URL,
-  allocateKiroMachineId,
-  canonicalizeKiroMethod,
-  exchangeKiroSocialCode,
-  kiroSession,
-  kiroSocialFlow,
-  refreshKiro,
-  refreshKiroExternalIdp,
-  refreshKiroSocial,
-  validateKiroApiKey,
-  validateKiroIdpEndpoint,
-  validateKiroRefreshToken,
-} from './kiro/index.js'
-import { isKiroBatchImport, parseKiroImportText } from './kiro/import.js'
-import {
-  antigravityFlow,
-  ANTIGRAVITY_PREEMPT_MS,
-  applyAntigravityValidation,
-  exchangeAntigravityCode,
-  probeAntigravityValidation,
-  refreshAntigravity,
-} from './antigravity/index.js'
-import { codexImported, importAntigravityAuth, importCodexAuth, importGrokAuth, importGlmAuth, importKiroAuth } from './import-auth.js'
+  accountIdOf,
+  deleteSession,
+  getSession,
+  listStoredSessions,
+  PROVIDER_IDS,
+  publicSession,
+  switchAccount,
+} from './store.js'
+import { CODEX_PERMANENT_REFRESH_CODES, refreshCodex } from './codex/index.js'
+import { refreshGrok } from './grok/index.js'
+import { GLM_MODELS, refreshGlm } from './glm/index.js'
+import { refreshKiro } from './kiro/index.js'
+import { ANTIGRAVITY_PREEMPT_MS, refreshAntigravity } from './antigravity/index.js'
+import { codexImported } from './import-auth.js'
 import { CursorPollFlowManager } from './cursor/pkce-flow.js'
-import {
-  cursorAccountFromToken,
-  pickCursorHumanAccount,
-  refreshCursor,
-} from './cursor/index.js'
-import { CURSOR_IMPORT_EMPTY, cursorImported, importCursorAuth, readCursorVscdbTokens } from './cursor/import.js'
+import { refreshCursor } from './cursor/index.js'
+import { cursorImported } from './cursor/import.js'
 import { cursorCatalogModels, refreshCursorCatalog } from './cursor/catalog.js'
-import { ollamaSession, refreshOllama, resolveOllamaIdentity, isOllamaOpaqueAccount } from '../apikey/ollama/index.js'
-import { OLLAMA_IMPORT_EMPTY, importOllamaAuth } from '../apikey/ollama/import.js'
+import { refreshOllama } from '../apikey/ollama/index.js'
 import { ollamaCatalogModels, refreshOllamaCatalog } from '../apikey/ollama/catalog.js'
-import {
-  commandCodeFlow,
-  commandCodeSession,
-  commandCodeSessionFromCallback,
-  isCommandCodeOpaqueAccount,
-  refreshCommandCode,
-  resolveCommandCodeIdentity,
-} from '../apikey/command-code/index.js'
-import { COMMAND_CODE_IMPORT_EMPTY, importCommandCodeAuth } from '../apikey/command-code/import.js'
+import { refreshCommandCode } from '../apikey/command-code/index.js'
 import { commandCodeCatalogModels } from '../apikey/command-code/catalog.js'
-import { kiroCatalogModels, refreshKiroCatalog, resetKiroCatalogCache } from './kiro/catalog.js'
-import {
-  completeKimiDevice as sessionFromKimiDevice,
-  configureKimiIdentity,
-  isKimiOpaqueAccount,
-  kimiDeviceSpec,
-  kimiSession,
-  refreshKimi,
-  resolveKimiIdentity,
-} from './kimi/index.js'
-import { KIMI_IMPORT_EMPTY, importKimiAuth, kimiImported } from './kimi/import.js'
+import { catalogPricing, catalogRateTimeOfDay } from '../catalog/index.js'
+import { kiroCatalogModels, refreshKiroCatalog } from './kiro/catalog.js'
+import { configureKimiIdentity, refreshKimi } from './kimi/index.js'
+import { kimiImported } from './kimi/import.js'
 import { kimiCatalogModels, refreshKimiCatalog } from './kimi/catalog.js'
-import {
-  completeCopilotDevice as sessionFromCopilotDevice,
-  isCopilotOpaqueAccount,
-  isCopilotSessionToken,
-  copilotDeviceSpec,
-  mintCopilotSessionFromGithub,
-  refreshCopilot,
-  resolveCopilotIdentity,
-} from './copilot/index.js'
-import { COPILOT_IMPORT_EMPTY, importCopilotAuth } from './copilot/import.js'
+import { refreshCopilot } from './copilot/index.js'
 import { copilotCatalogModels, refreshCopilotCatalog } from './copilot/catalog.js'
-import {
-  devinFlow,
-  devinSession,
-  exchangeDevinCode,
-  isDevinOpaqueAccount,
-  isDevinSessionToken,
-  pickDevinHumanAccount,
-  refreshDevin,
-} from './devin/index.js'
-import { DEVIN_IMPORT_EMPTY, importDevinAuth } from './devin/import.js'
+import { refreshDevin } from './devin/index.js'
 import { devinCatalogModels, refreshDevinCatalog } from './devin/catalog.js'
-import {
-  clineDeviceSpec,
-  clineSessionFromAuthData,
-  isClineOpaqueAccount,
-  refreshCline,
-  registerClineTokens,
-  resolveClineIdentity,
-} from './cline/index.js'
+import { refreshCline } from './cline/index.js'
 import { clineCatalogModels, refreshClineCatalog } from './cline/catalog.js'
-import { CLINE_IMPORT_EMPTY, clineImported, importClineAuth } from './cline/import.js'
-import { devinUserStatus, resolveDevinIdentity } from './devin/transport.js'
-import { OpencodeGoStore, opencodeGoFilePath } from '../apikey/opencode-go/store.js'
-import { opencodeGoKeyHint } from '../apikey/opencode-go/index.js'
+import { clineImported } from './cline/import.js'
+import { devinUserStatus } from './devin/transport.js'
+import { opencodeGoFilePath, OpencodeGoStore } from '../apikey/opencode-go/store.js'
 import {
   APIKEY_FAMILY_IDS,
   buildProviders,
   catalogProviders,
   describeCatalog,
   describeProviders,
-  ensureOpencodeGoRoute,
-  filterProviders,
   MODEL_FAMILY_IDS,
-  ModelSwitch,
-  OPENCODE_GO_API_KEY_ENV,
-  syncHarnessModels,
 } from './models.js'
+import { ensureOpencodeGoRoute, filterProviders, syncHarnessModels } from './harness-sync.js'
+import { ModelSwitch } from './model-switch.js'
 import { TokenManager } from './tokens.js'
 import { QuotaStore } from './quota.js'
-import {
-  fetchLatest,
-  installRelease,
-  localUpdateInfo,
-  DEFAULT_PROFILE,
-} from '../utils/update.js'
-import {
-  AUTO_UPDATE_INTERVAL_MS,
-  readUpdatePrefs,
-  readUpdateState,
-  updatePrefsPath,
-  updateStatePath,
-  writeUpdatePrefs,
-  writeUpdateState,
-} from '../utils/update-prefs.js'
+import { DEFAULT_PROFILE, installRelease, localUpdateInfo } from '../utils/update.js'
+import { readUpdatePrefs, readUpdateState, updatePrefsPath, updateStatePath } from '../utils/update-prefs.js'
 import { outboundFetch } from '../utils/outbound.js'
+import { completeCommandCode, maybeAutoImportCommandCode } from '../apikey/command-code/accounts.js'
+import { discoverOllama, maybeAutoImportOllama } from '../apikey/ollama/accounts.js'
+import {
+  clearOpencodeGo,
+  hasOpencodeGoKey,
+  logoutOpencodeGo,
+  opencodeGoSnapshot,
+  refreshOpencodeGoQuota,
+  saveOpencodeGo,
+  switchOpencodeGo,
+} from '../apikey/opencode-go/accounts.js'
+import { markSignedOut } from './account-marks.js'
+import { accountsWithQuota, consumeReset, ensureAccountQuota, refreshQuota } from './account-quota.js'
+import { completeClineDevice, discoverCline, maybeAutoImportCline } from './cline/accounts.js'
+import { discoverChatgpt, revokeChatgptAccounts } from './chatgpt/accounts.js'
+import { CHATGPT_PERMANENT_REFRESH_CODES, CHATGPT_PREEMPT_MS, refreshChatgpt } from './chatgpt/index.js'
+import { chatgptCatalogModels, refreshChatgptCatalog } from './chatgpt/catalog.js'
+import { completeCopilotDevice, discoverCopilot, maybeAutoImportCopilot } from './copilot/accounts.js'
+import {
+  completeCursor,
+  discoverCursor,
+  maybeAutoImportCursor,
+  resolveCursorIdentities,
+} from './cursor/accounts.js'
+import { discoverDevin, maybeAutoImportDevin } from './devin/accounts.js'
+import { completeGlm, resolveGlmIdentities } from './glm/accounts.js'
+import { completeKimiDevice, discoverKimi, maybeAutoImportKimi } from './kimi/accounts.js'
+import { completeKiroIdc, discoverKiro } from './kiro/accounts.js'
+import { completeDevice, completePkce, importFrom, login, useKey } from './login.js'
+import {
+  checkUpdate,
+  runAutoUpdate,
+  setAutoUpdate,
+  startAutoUpdateWatch,
+  stopAutoUpdateWatch,
+} from './self-update.js'
 
 /** How often the background sweep re-checks stored credential expiry. */
 export const TOKEN_SWEEP_INTERVAL_MS = 60_000
@@ -201,6 +144,7 @@ export class AuthController {
   declare devinAutoImportTried: boolean
   declare devinDiscover: any
   declare clineDiscover: any
+  declare chatgptDiscover: any
   declare clineAutoImport: boolean
   declare clineAutoImportTried: boolean
   declare commandCodeAutoImport: boolean
@@ -211,14 +155,16 @@ export class AuthController {
   declare claims: Map<string, number>
   declare tokens: Record<string, TokenManager>
   declare quota: QuotaStore
-  #identityTried = new Map<string, number>()
+  identityTried = new Map<string, number>()
   #snapshotRun: Promise<Record<string, any>> | undefined
+  #revalidateQuotaNext = false
   declare fetchFn: any
   declare opencodeGo: any
   declare opencodeGoAdopted: boolean
   declare tokenSweepTimer: any
   declare outboundProxy: any
   declare setOutboundProxy: any
+  declare usage: any
   declare installReleaseFn: any
   declare autoUpdate: boolean
   declare updateState: any
@@ -226,7 +172,7 @@ export class AuthController {
   declare autoUpdateTimer: any
   declare prefsFile: string
   declare stateFile: string
-  constructor({ authPath, prefix, origin, settings, patchPath, credentials, grokLogin = 'device', onAuthChanged, models, fetchFn = outboundFetch, quotaTtlMs, profile, readFileFn, updateEnv, installReleaseFn = installRelease, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover, devinAutoImport, devinImport, devinDiscover, clineDiscover, clineAutoImport, commandCodeAutoImport, commandCodeImport }: any) {
+  constructor({ authPath, prefix, origin, settings, patchPath, credentials, grokLogin = 'device', onAuthChanged, models, fetchFn = outboundFetch, quotaTtlMs, profile, readFileFn, updateEnv, installReleaseFn = installRelease, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover, devinAutoImport, devinImport, devinDiscover, clineDiscover, clineAutoImport, commandCodeAutoImport, commandCodeImport, chatgptDiscover }: any) {
     this.authPath = authPath
     this.prefix = prefix
     this.origin = origin
@@ -249,7 +195,7 @@ export class AuthController {
     })
     // Any login-state change re-arms the throttled identity discovery.
     this.onAuthChanged = (provider) => {
-      this.#identityTried.clear()
+      this.identityTried.clear()
       onAuthChanged?.(provider)
     }
     this.models = models ?? new ModelSwitch()
@@ -289,6 +235,9 @@ export class AuthController {
     this.devinDiscover = typeof devinDiscover === 'function'
       ? devinDiscover
       : (process.env.NODE_TEST_CONTEXT ? undefined : ((session) => refreshDevinCatalog(session, { fetchFn })))
+    this.chatgptDiscover = typeof chatgptDiscover === 'function'
+      ? chatgptDiscover
+      : (process.env.NODE_TEST_CONTEXT ? undefined : ((session) => refreshChatgptCatalog(session, { fetchFn })))
     this.clineDiscover = typeof clineDiscover === 'function'
       ? clineDiscover
       : (process.env.NODE_TEST_CONTEXT ? undefined : ((session) => refreshClineCatalog(session, { fetchFn })))
@@ -313,6 +262,15 @@ export class AuthController {
         permanentCodes: CODEX_PERMANENT_REFRESH_CODES,
         imported: codexImported,
         onRemoved: () => this.onAuthChanged?.('codex'),
+      }),
+      chatgpt: new TokenManager({
+        displayName: 'ChatGPT (Sign in with ChatGPT)',
+        preemptMs: CHATGPT_PREEMPT_MS,
+        provider: 'chatgpt',
+        authPath: this.authPath,
+        refresh: (session) => refreshChatgpt(session, fetchFn),
+        permanentCodes: CHATGPT_PERMANENT_REFRESH_CODES,
+        onRemoved: () => this.onAuthChanged?.('chatgpt'),
       }),
       grok: new TokenManager({
         displayName: 'Grok (Subscription)',
@@ -428,6 +386,7 @@ export class AuthController {
   async loggedIn() {
     return {
       codex: (await getSession('codex', this.authPath)) !== undefined,
+      chatgpt: (await getSession('chatgpt', this.authPath)) !== undefined,
       grok: (await getSession('grok', this.authPath)) !== undefined,
       glm: (await getSession('glm', this.authPath)) !== undefined,
       kiro: (await getSession('kiro', this.authPath)) !== undefined,
@@ -462,6 +421,9 @@ export class AuthController {
   }
 
   async catalog() {
+    // Un-overridden build: describeCatalog applies `contexts` itself so rows
+    // keep their catalog default and ceiling next to the effective window,
+    // and setContext can cap edits at the row's own maximum.
     return catalogProviders({
       prefix: this.prefix,
       origin: this.origin(),
@@ -472,72 +434,10 @@ export class AuthController {
       copilotModels: copilotCatalogModels(),
       devinModels: devinCatalogModels(),
       clineModels: clineCatalogModels(),
+      chatgptModels: chatgptCatalogModels(),
       commandCodeModels: commandCodeCatalogModels(),
       glmModels: await this.#glmModels(),
     })
-  }
-
-  async #discoverCursor(session) {
-    if (!session || typeof this.cursorDiscover !== 'function') return cursorCatalogModels()
-    try {
-      return await this.cursorDiscover(session)
-    } catch {
-      return cursorCatalogModels()
-    }
-  }
-
-  async #discoverOllama(session) {
-    if (!session || typeof this.ollamaDiscover !== 'function') return ollamaCatalogModels()
-    try {
-      return await this.ollamaDiscover(session, { fetchFn: this.fetchFn })
-    } catch {
-      return ollamaCatalogModels()
-    }
-  }
-
-  async #discoverKiro(session) {
-    if (!session || typeof this.kiroDiscover !== 'function') return kiroCatalogModels()
-    try {
-      return await this.kiroDiscover(session)
-    } catch {
-      return kiroCatalogModels()
-    }
-  }
-
-  async #discoverKimi(session) {
-    if (!session || typeof this.kimiDiscover !== 'function') return kimiCatalogModels()
-    try {
-      return await this.kimiDiscover(session, { fetchFn: this.fetchFn })
-    } catch {
-      return kimiCatalogModels()
-    }
-  }
-
-  async #discoverCopilot(session) {
-    if (!session || typeof this.copilotDiscover !== 'function') return copilotCatalogModels()
-    try {
-      return await this.copilotDiscover(session, { fetchFn: this.fetchFn })
-    } catch {
-      return copilotCatalogModels()
-    }
-  }
-
-  async #discoverDevin(session) {
-    if (!session || typeof this.devinDiscover !== 'function') return devinCatalogModels()
-    try {
-      return await this.devinDiscover(session, { fetchFn: this.fetchFn })
-    } catch {
-      return devinCatalogModels()
-    }
-  }
-
-  async #discoverCline(session) {
-    if (!session || typeof this.clineDiscover !== 'function') return clineCatalogModels()
-    try {
-      return await this.clineDiscover(session, { fetchFn: this.fetchFn })
-    } catch {
-      return clineCatalogModels()
-    }
   }
 
   /**
@@ -548,13 +448,14 @@ export class AuthController {
    */
   async warmCatalogs() {
     const warmers: Array<[string, any, () => any[], (session: any) => any]> = [
-      ['cursor', this.tokens.cursor, cursorCatalogModels, (session) => this.#discoverCursor(session)],
-      ['ollama', this.tokens.ollama, ollamaCatalogModels, (session) => this.#discoverOllama(session)],
-      ['kiro', this.tokens.kiro, kiroCatalogModels, (session) => this.#discoverKiro(session)],
-      ['kimi', this.tokens.kimi, kimiCatalogModels, (session) => this.#discoverKimi(session)],
-      ['copilot', this.tokens.copilot, copilotCatalogModels, (session) => this.#discoverCopilot(session)],
-      ['devin', this.tokens.devin, devinCatalogModels, (session) => this.#discoverDevin(session)],
-      ['cline', this.tokens.cline, clineCatalogModels, (session) => this.#discoverCline(session)],
+      ['cursor', this.tokens.cursor, cursorCatalogModels, (session) => discoverCursor(this, session)],
+      ['ollama', this.tokens.ollama, ollamaCatalogModels, (session) => discoverOllama(this, session)],
+      ['kiro', this.tokens.kiro, kiroCatalogModels, (session) => discoverKiro(this, session)],
+      ['kimi', this.tokens.kimi, kimiCatalogModels, (session) => discoverKimi(this, session)],
+      ['copilot', this.tokens.copilot, copilotCatalogModels, (session) => discoverCopilot(this, session)],
+      ['devin', this.tokens.devin, devinCatalogModels, (session) => discoverDevin(this, session)],
+      ['cline', this.tokens.cline, clineCatalogModels, (session) => discoverCline(this, session)],
+      ['chatgpt', this.tokens.chatgpt, chatgptCatalogModels, (session) => discoverChatgpt(this, session)],
     ]
     const idsOf = (read) => read().map((model) => model.id).join('\0')
     const before = new Map(warmers.map(([family, , read]) => [family, idsOf(read)]))
@@ -580,10 +481,14 @@ export class AuthController {
    * `lib/`. The callers are untyped on purpose — do not "restore" the inferred
    * type without re-checking `lib/` size.
    */
-  snapshot(fresh = false): Promise<Record<string, any>> {
+  snapshot(fresh = false, opts: { revalidateQuota?: boolean } = {}): Promise<Record<string, any>> {
     // Concurrent polls share one build; cleared on settle so a failure never
     // pins. A post-mutation caller passes `fresh` so it never joins a build
     // that started before its write — later polls join the fresh one.
+    // `revalidateQuota` is sticky on purpose: the page sends it when the user
+    // (re)enters the quota view, and if a build is already running the flag
+    // survives until the next build picks it up — at most one poll later.
+    if (opts.revalidateQuota) this.#revalidateQuotaNext = true
     if (fresh || !this.#snapshotRun) {
       const run = this.#buildSnapshot().finally(() => {
         if (this.#snapshotRun === run) this.#snapshotRun = undefined
@@ -594,20 +499,22 @@ export class AuthController {
   }
 
   async #buildSnapshot(): Promise<Record<string, any>> {
+    const revalidateQuota = this.#revalidateQuotaNext
+    this.#revalidateQuotaNext = false
     await this.models.ready
     await this.prefsReady
-    await this.#resolveGlmIdentities()
-    await this.#maybeAutoImportCursor()
-    await this.#resolveCursorIdentities()
-    await this.#maybeAutoImportOllama()
-    await this.#maybeAutoImportKimi()
-    await this.#maybeAutoImportCopilot()
-    await this.#maybeAutoImportDevin()
-    await this.#maybeAutoImportCline()
-    await this.#maybeAutoImportCommandCode()
+    await resolveGlmIdentities(this)
+    await maybeAutoImportCursor(this)
+    await resolveCursorIdentities(this)
+    await maybeAutoImportOllama(this)
+    await maybeAutoImportKimi(this)
+    await maybeAutoImportCopilot(this)
+    await maybeAutoImportDevin(this)
+    await maybeAutoImportCline(this)
+    await maybeAutoImportCommandCode(this)
     const loggedIn = await this.loggedIn()
     const origin = this.origin()
-    const opencodeGoApiKeySet = await this.#opencodeGoKeySet()
+    const opencodeGoApiKeySet = await hasOpencodeGoKey(this)
     const glmModels = await this.#glmModels()
     const catalog = catalogProviders({
       prefix: this.prefix,
@@ -619,6 +526,7 @@ export class AuthController {
       copilotModels: copilotCatalogModels(),
       devinModels: devinCatalogModels(),
       clineModels: clineCatalogModels(),
+      chatgptModels: chatgptCatalogModels(),
       glmModels,
     })
     const selected = this.models.selectedForSync(catalog)
@@ -626,6 +534,7 @@ export class AuthController {
       prefix: this.prefix,
       origin,
       loggedIn,
+      contexts: this.models.contexts,
       cursorModels: cursorCatalogModels(),
       ollamaModels: ollamaCatalogModels(),
       kiroModels: kiroCatalogModels(),
@@ -633,26 +542,28 @@ export class AuthController {
       copilotModels: copilotCatalogModels(),
       devinModels: devinCatalogModels(),
       clineModels: clineCatalogModels(),
+      chatgptModels: chatgptCatalogModels(),
       commandCodeModels: commandCodeCatalogModels(),
       glmModels,
     }), selected)
     // Every family at once: the cold read is the slowest upstream, not the sum.
-    await Promise.all(PROVIDER_IDS.map((family) => (loggedIn[family] ? this.#ensureAccountQuota(family) : this.quota.clear(family))))
+    await Promise.all(PROVIDER_IDS.map((family) => (loggedIn[family] ? ensureAccountQuota(this, family, revalidateQuota) : this.quota.clear(family))))
     const enabledKeys = this.models.enabledKeys(catalog)
     const opencodeGo = await this.opencodeGoSnapshot()
-    const [codexAccounts, grokAccounts, glmAccounts, kiroAccounts, antigravityAccounts, cursorAccounts, ollamaAccounts, kimiAccounts, copilotAccounts, devinAccounts, clineAccounts, commandCodeAccounts] = await Promise.all([
-      this.#accountsWithQuota('codex'),
-      this.#accountsWithQuota('grok'),
-      this.#accountsWithQuota('glm'),
-      this.#accountsWithQuota('kiro'),
-      this.#accountsWithQuota('antigravity'),
-      this.#accountsWithQuota('cursor'),
-      this.#accountsWithQuota('ollama'),
-      this.#accountsWithQuota('kimi'),
-      this.#accountsWithQuota('copilot'),
-      this.#accountsWithQuota('devin'),
-      this.#accountsWithQuota('cline'),
-      this.#accountsWithQuota('command-code'),
+    const [codexAccounts, chatgptAccounts, grokAccounts, glmAccounts, kiroAccounts, antigravityAccounts, cursorAccounts, ollamaAccounts, kimiAccounts, copilotAccounts, devinAccounts, clineAccounts, commandCodeAccounts] = await Promise.all([
+      accountsWithQuota(this, 'codex'),
+      accountsWithQuota(this, 'chatgpt'),
+      accountsWithQuota(this, 'grok'),
+      accountsWithQuota(this, 'glm'),
+      accountsWithQuota(this, 'kiro'),
+      accountsWithQuota(this, 'antigravity'),
+      accountsWithQuota(this, 'cursor'),
+      accountsWithQuota(this, 'ollama'),
+      accountsWithQuota(this, 'kimi'),
+      accountsWithQuota(this, 'copilot'),
+      accountsWithQuota(this, 'devin'),
+      accountsWithQuota(this, 'cline'),
+      accountsWithQuota(this, 'command-code'),
     ])
     return {
       origin,
@@ -660,7 +571,10 @@ export class AuthController {
       grokLogin: this.grokLogin,
       catalog: describeCatalog(catalog, {
         enabledKeys,
+        contexts: this.models.contexts,
         rates: Object.fromEntries(kiroCatalogModels().filter((model: any) => model.rate).map((model: any) => [`kiro/${model.id}`, model.rate])),
+        pricing: catalogPricing(),
+        pricingTimeOfDay: catalogRateTimeOfDay(),
         loggedIn: {
           ...loggedIn,
           ...Object.fromEntries(APIKEY_FAMILY_IDS.map((family) => [family, opencodeGoApiKeySet])),
@@ -668,8 +582,10 @@ export class AuthController {
       }),
       providers: describeProviders(providers),
       selected: enabledKeys,
+      efforts: { ...this.models.efforts },
       accounts: {
         codex: { ...(await this.status('codex')), activeId: codexAccounts.find((row) => row.active)?.id, accounts: codexAccounts },
+        chatgpt: { ...(await this.status('chatgpt')), activeId: chatgptAccounts.find((row) => row.active)?.id, accounts: chatgptAccounts },
         grok: { ...(await this.status('grok')), activeId: grokAccounts.find((row) => row.active)?.id, accounts: grokAccounts },
         glm: { ...(await this.status('glm')), activeId: glmAccounts.find((row) => row.active)?.id, accounts: glmAccounts },
         kiro: { ...(await this.status('kiro')), activeId: kiroAccounts.find((row) => row.active)?.id, accounts: kiroAccounts },
@@ -694,316 +610,56 @@ export class AuthController {
     }
   }
 
-  async #opencodeGoCredentialSet() {
-    if (typeof this.credentials?.describe === 'function') {
-      const info = await this.credentials.describe(OPENCODE_GO_API_KEY_ENV)
-      return Boolean(info?.configured)
-    }
-    return Boolean(String(process.env[OPENCODE_GO_API_KEY_ENV] ?? '').trim())
+  opencodeGoSnapshot(options?) {
+    return opencodeGoSnapshot(this, options)
   }
 
-  async #opencodeGoKeySet() {
-    if (this.opencodeGo) {
-      await this.opencodeGo.ready
-      if (this.opencodeGo.anyKey()) return true
-    }
-    return this.#opencodeGoCredentialSet()
+  saveOpencodeGo(payload?: any) {
+    return saveOpencodeGo(this, payload)
   }
 
-  /** Adopt a pre-multi-account key from the host credential into the vault, once. */
-  async #maybeAdoptOpencodeGoKey() {
-    if (this.opencodeGoAdopted || !this.opencodeGo) return
-    this.opencodeGoAdopted = true
-    const id = this.opencodeGo.keylessId()
-    if (!id || typeof this.credentials?.resolve !== 'function') return
-    try {
-      const resolved = await this.credentials.resolve(OPENCODE_GO_API_KEY_ENV)
-      if (resolved?.value) await this.opencodeGo.adoptKey(id, resolved.value)
-    } catch {
-      // Unreadable legacy key stays where it is; chat keeps working.
-    }
+  switchOpencodeGo(id) {
+    return switchOpencodeGo(this, id)
   }
 
-  /**
-   * Mirror a stored account's key into the host `OPENCODE_API_KEY` credential.
-   * A keyless account never clears a key another stored account still holds
-   * (a quota-only account must keep chat working); once no stored account has
-   * a key, the credential is removed so the next `sync()` can take the
-   * plugin's `opencode-go-flash` route back out of DSH.
-   */
-  async #mirrorOpencodeGoKey(id) {
-    const key = id ? this.opencodeGo?.keyOf(id) : undefined
-    if (key) {
-      if (typeof this.credentials?.set === 'function') await this.credentials.set(OPENCODE_GO_API_KEY_ENV, key)
-      return
-    }
-    if (this.opencodeGo?.anyKey()) return
-    if (typeof this.credentials?.unset === 'function') await this.credentials.unset(OPENCODE_GO_API_KEY_ENV)
+  logoutOpencodeGo(id) {
+    return logoutOpencodeGo(this, id)
   }
 
-  async opencodeGoSnapshot(options?) {
-    if (!this.opencodeGo) {
-      return {
-        id: 'opencode-go', loggedIn: false, busy: false, activeId: undefined, accounts: [],
-        cookieSet: false, workspaceId: '', apiKeySet: false, configured: false, quota: { status: 'idle' },
-      }
-    }
-    await this.#maybeAdoptOpencodeGoKey()
-    const raw = await this.opencodeGo.snapshot(options)
-    const credentialSet = await this.#opencodeGoCredentialSet()
-    const accounts = raw.accounts.map((row) => ({
-      ...row,
-      account: row.account || opencodeGoKeyHint(this.opencodeGo.keyOf(row.id)),
-      apiKeySet: row.apiKeySet || (raw.accounts.length === 1 && credentialSet),
-    }))
-    const active = accounts.find((row) => row.active)
-    return {
-      id: 'opencode-go',
-      loggedIn: accounts.length > 0,
-      busy: false,
-      activeId: raw.activeId,
-      accounts,
-      // Flat mirrors keep a client built before multi-account working.
-      cookieSet: Boolean(active?.cookieSet),
-      workspaceId: active?.workspaceId ?? '',
-      apiKeySet: Boolean(active?.apiKeySet ?? credentialSet),
-      configured: Boolean(active?.apiKeySet ?? credentialSet) || Boolean(active?.cookieSet),
-      quota: active?.quota ?? { status: 'idle' },
-    }
+  clearOpencodeGo(field, id) {
+    return clearOpencodeGo(this, field, id)
   }
 
-  async saveOpencodeGo(payload: any = {}) {
-    if (!this.opencodeGo) throw new Error('OpenCode Go store is unavailable')
-    const raw = payload.apiKey === undefined ? undefined : String(payload.apiKey ?? '').trim()
-    const result = await this.opencodeGo.save({
-      id: payload.id,
-      apiKey: raw ? raw : undefined,
-      cookie: payload.cookie,
-      workspace: payload.workspace,
-      displayName: payload.displayName,
-    })
-    await this.#mirrorOpencodeGoKey(this.opencodeGo.activeId())
-    this.lastError.delete('opencode-go')
-    if (raw) this.onAuthChanged?.('opencode-go')
-    return this.opencodeGoSnapshot()
+  refreshOpencodeGoQuota(id) {
+    return refreshOpencodeGoQuota(this, id)
   }
 
-  async switchOpencodeGo(id) {
-    if (!this.opencodeGo) throw new Error('OpenCode Go store is unavailable')
-    await this.opencodeGo.switch(id)
-    await this.#mirrorOpencodeGoKey(id)
-    this.lastError.delete('opencode-go')
-    this.onAuthChanged?.('opencode-go')
-    return this.opencodeGoSnapshot()
+  refreshQuota(provider, accountId?) {
+    return refreshQuota(this, provider, accountId)
   }
 
-  async logoutOpencodeGo(id) {
-    if (!this.opencodeGo) throw new Error('OpenCode Go store is unavailable')
-    const result = await this.opencodeGo.remove(id)
-    await this.#mirrorOpencodeGoKey(result.activeId)
-    this.lastError.delete('opencode-go')
-    this.onAuthChanged?.('opencode-go')
-    return this.opencodeGoSnapshot()
+  consumeReset(provider, accountId, creditId?) {
+    return consumeReset(this, provider, accountId, creditId)
   }
 
-  async clearOpencodeGo(field, id) {
-    if (!this.opencodeGo) throw new Error('OpenCode Go store is unavailable')
-    await this.opencodeGo.clear(id, field)
-    // Clearing the key (or the whole account) can remove the last stored key,
-    // which must drop the mirrored credential and re-sync the DSH routes.
-    if (field === undefined || field === 'key') {
-      const active = this.opencodeGo.activeId()
-      await this.#mirrorOpencodeGoKey(active)
-      this.onAuthChanged?.('opencode-go')
-    }
-    return this.opencodeGoSnapshot()
+  checkUpdate(payload?: any) {
+    return checkUpdate(this, payload)
   }
 
-  async refreshOpencodeGoQuota(id) {
-    if (!this.opencodeGo) return this.opencodeGoSnapshot()
-    await this.opencodeGo.refreshQuota(id)
-    return this.opencodeGoSnapshot()
+  setAutoUpdate(payload?: any) {
+    return setAutoUpdate(this, payload)
   }
 
-  async refreshQuota(provider, accountId?) {
-    if (provider === 'opencode-go') return this.refreshOpencodeGoQuota(accountId)
-    if (PROVIDER_IDS.includes(provider)) {
-      const rows = await this.#liveAccounts(provider)
-      const targets = accountId
-        ? rows.filter((row) => row.id === accountId)
-        : rows
-      if (accountId && targets.length === 0) throw new Error(`${provider} account ${accountId} is not signed in`)
-      if (targets.length === 0) return this.quota.peek(provider)
-      await Promise.all(targets.map((row) => this.quota.refresh(provider, row.id, row.session)))
-      if (provider === 'cursor') {
-        await Promise.all(targets.map((row) => this.#rememberCursorPlan(row, this.quota.peek(provider, row.id))))
-      }
-      if (provider === 'ollama') {
-        await Promise.all(targets.map((row) => this.#rememberOllamaIdentity(row, this.quota.peek(provider, row.id))))
-      }
-      if (provider === 'antigravity') {
-        await Promise.all(targets.map((row) => this.#probeAntigravity(row)))
-      }
-      if (provider === 'cursor') {
-        const before = cursorCatalogModels().map((model) => model.id).join('\0')
-        await Promise.all(targets.map((row) => this.#discoverCursor(row.session)))
-        if (this.settings && cursorCatalogModels().map((model) => model.id).join('\0') !== before) {
-          await this.sync().catch(() => undefined)
-        }
-      }
-      if (provider === 'ollama') {
-        const before = ollamaCatalogModels().map((model) => model.id).join('\0')
-        await Promise.all(targets.map((row) => this.#discoverOllama(row.session)))
-        if (this.settings && ollamaCatalogModels().map((model) => model.id).join('\0') !== before) {
-          await this.sync().catch(() => undefined)
-        }
-      }
-      if (provider === 'kiro') {
-        const before = kiroCatalogModels().map((model) => model.id).join('\0')
-        // A manual refresh re-asks: the list follows the egress region, and a
-        // system VPN change is invisible to the token + proxy cache key.
-        resetKiroCatalogCache()
-        await Promise.all(targets.map((row) => this.#discoverKiro(row.session)))
-        if (this.settings && kiroCatalogModels().map((model) => model.id).join('\0') !== before) {
-          await this.sync().catch(() => undefined)
-        }
-      }
-      if (provider === 'kimi') {
-        await Promise.all(targets.map((row) => this.#rememberKimiIdentity(row, this.quota.peek(provider, row.id))))
-        const before = kimiCatalogModels().map((model) => model.id).join('\0')
-        await Promise.all(targets.map((row) => this.#discoverKimi(row.session)))
-        if (this.settings && kimiCatalogModels().map((model) => model.id).join('\0') !== before) {
-          await this.sync().catch(() => undefined)
-        }
-      }
-      if (provider === 'copilot') {
-        await Promise.all(targets.map((row) => this.#rememberCopilotIdentity(row, this.quota.peek(provider, row.id))))
-        const before = copilotCatalogModels().map((model) => model.id).join('\0')
-        await Promise.all(targets.map((row) => this.#discoverCopilot(row.session)))
-        if (this.settings && copilotCatalogModels().map((model) => model.id).join('\0') !== before) {
-          await this.sync().catch(() => undefined)
-        }
-      }
-      if (provider === 'devin') {
-        await Promise.all(targets.map((row) => this.#rememberDevinIdentity(row, this.quota.peek(provider, row.id))))
-        const before = devinCatalogModels().map((model) => model.id).join('\0')
-        await Promise.all(targets.map((row) => this.#discoverDevin(row.session)))
-        if (this.settings && devinCatalogModels().map((model) => model.id).join('\0') !== before) {
-          await this.sync().catch(() => undefined)
-        }
-      }
-      if (provider === 'cline') {
-        await Promise.all(targets.map((row) => this.#rememberClineIdentity(row, this.quota.peek(provider, row.id))))
-        const before = clineCatalogModels().map((model) => model.id).join('\0')
-        await Promise.all(targets.map((row) => this.#discoverCline(row.session)))
-        if (this.settings && clineCatalogModels().map((model) => model.id).join('\0') !== before) {
-          await this.sync().catch(() => undefined)
-        }
-      }
-      // whoami rides the quota chain and promotes the opaque vault id
-      if (provider === 'command-code') {
-        await Promise.all(targets.map((row) => this.#rememberCommandCodeIdentity(row, this.quota.peek(provider, row.id))))
-      }
-      const latest = provider === 'ollama' || provider === 'kimi' || provider === 'copilot' || provider === 'devin' || provider === 'cline' || provider === 'command-code' ? await this.#liveAccounts(provider) : rows
-      if (accountId) {
-        const hit = latest.find((row) => row.id === accountId) ?? latest.find((row) => row.active)
-        return this.quota.peek(provider, hit?.id ?? accountId)
-      }
-      const active = latest.find((row) => row.active)
-      return this.quota.peek(provider, active?.id)
-    }
-    const all = await Promise.all(PROVIDER_IDS.map((family) => this.refreshQuota(family)))
-    return Object.fromEntries(PROVIDER_IDS.map((family, index) => [family, all[index]]))
+  runAutoUpdate() {
+    return runAutoUpdate(this)
   }
 
-  async consumeReset(provider, accountId) {
-    if (provider !== 'codex') throw new Error('only ChatGPT Codex can reset quota')
-    const live = await this.tokens.codex.session(accountId)
-    return this.quota.consume('codex', accountIdOf('codex', live), live)
-  }
-
-  /**
-   * Version check + self-install. `apply` downloads the latest tag tarball and
-   * swaps the installed package dirs in place — the profile layout is the same
-   * on desktop and web, so this never needs `dsh`/`npm`. The new copy loads on
-   * the next host start (`apply.restart` says which restart to ask for). If no
-   * installed dir exists the apply degrades to a `manual` command hint.
-   */
-  async checkUpdate(payload: any = {}) {
-    const apply = payload?.apply === true
-    const profileOpts = {
-      profile: this.profile,
-      env: this.updateEnv ?? process.env,
-      readFileFn: this.readFileFn,
-    }
-    try {
-      const info = await fetchLatest({ fetchFn: this.fetchFn, platform: process.platform, ...profileOpts })
-      if (!apply || info.status !== 'update') {
-        return { ...info, apply: { status: 'none' } }
-      }
-      const result = await this.installReleaseFn({
-        tag: info.latest?.tag,
-        profile: this.profile,
-        env: this.updateEnv ?? process.env,
-        fetchFn: this.fetchFn,
-        readFileFn: this.readFileFn,
-      })
-      return { ...info, apply: result }
-    } catch (error) {
-      return {
-        ...localUpdateInfo(process.platform, profileOpts),
-        status: 'error',
-        error: error instanceof Error ? error.message : String(error),
-        latest: undefined,
-        assets: [],
-        apply: { status: 'none' },
-      }
-    }
-  }
-
-  /** Persist the auto-update switch; turning it on runs one pass now. */
-  async setAutoUpdate(payload: any = {}) {
-    await this.prefsReady
-    this.autoUpdate = payload?.autoUpdate === true
-    await writeUpdatePrefs(this.prefsFile, { autoUpdate: this.autoUpdate })
-    if (this.autoUpdate) void this.runAutoUpdate().catch(() => undefined)
-    return { autoUpdate: this.autoUpdate }
-  }
-
-  /**
-   * One auto-update pass: check the latest tag and self-install it when newer.
-   * The outcome lands in update-state.json so About can show what the
-   * background loop last did.
-   */
-  async runAutoUpdate() {
-    await this.prefsReady
-    if (!this.autoUpdate) return { skipped: true }
-    const result: any = await this.checkUpdate({ apply: true }).catch((error) => ({
-      status: 'error',
-      error: error instanceof Error ? error.message : String(error),
-    }))
-    this.updateState = {
-      at: new Date().toISOString(),
-      status: result?.apply?.status && result.apply.status !== 'none' ? result.apply.status : result?.status,
-      version: result?.version,
-      latest: result?.latest?.tag,
-      error: result?.apply?.error || result?.error,
-    }
-    await writeUpdateState(this.stateFile, this.updateState).catch(() => undefined)
-    return result
-  }
-
-  startAutoUpdateWatch({ intervalMs = AUTO_UPDATE_INTERVAL_MS } = {}) {
-    if (this.autoUpdateTimer) return
-    void this.runAutoUpdate()
-    this.autoUpdateTimer = setInterval(() => void this.runAutoUpdate(), intervalMs)
-    this.autoUpdateTimer.unref?.()
+  startAutoUpdateWatch(options?) {
+    return startAutoUpdateWatch(this, options)
   }
 
   stopAutoUpdateWatch() {
-    if (!this.autoUpdateTimer) return
-    clearInterval(this.autoUpdateTimer)
-    this.autoUpdateTimer = undefined
+    return stopAutoUpdateWatch(this)
   }
 
   /**
@@ -1045,1128 +701,48 @@ export class AuthController {
     }
   }
 
-  /**
-   * Rows still missing a readable identity, minus those tried within the
-   * passive quota TTL — the snapshot poll must not re-hit userinfo / state.vscdb
-   * every tick. `onAuthChanged` clears the table.
-   */
-  #identityDue(provider, rows, hasIdentity) {
-    const now = Date.now()
-    return rows.filter((row) => {
-      if (hasIdentity(row.session?.account)) return false
-      const key = `${provider}\0${row.id}`
-      const last = this.#identityTried.get(key)
-      if (last !== undefined && now - last < this.quota.ttlMs) return false
-      this.#identityTried.set(key, now)
-      return true
-    })
+  login(provider, options) {
+    return login(this, provider, options)
   }
 
-  async #resolveGlmIdentities() {
-    // Keep the strict check: an opaque letters+digits id (poll user.id like
-    // dnarplz6) must re-resolve to an email/name. A resolved username that is
-    // also letters+digits (xxww0098) re-resolves once and is a no-op when
-    // userinfo returns the same value — displayGlmAccount shows it meanwhile.
-    const rows = this.#identityDue('glm', await listStoredSessions('glm', this.authPath), pickGlmHumanAccount)
-    await Promise.all(rows.map(async (row) => {
-      const account = await resolveGlmIdentity(row.session, { fetchFn: this.fetchFn }).catch(() => undefined)
-      if (!account || account === row.session.account) return
-      const next = { ...row.session, account, displayName: account }
-      const nextId = accountIdOf('glm', next)
-      if (nextId !== row.id) {
-        await replaceAccountId('glm', row, next, this.authPath)
-        this.quota.clear('glm', row.id)
-      } else {
-        await updateAccountSession('glm', row, next, this.authPath)
-      }
-    }))
+  completePkce(provider, attempt, claim) {
+    return completePkce(this, provider, attempt, claim)
   }
 
-  async #liveAccounts(provider) {
-    const rows = await listStoredSessions(provider, this.authPath)
-    const live = await Promise.all(rows.map(async (row) => {
-      try {
-        return await this.tokens[provider].account(row.id)
-      } catch {
-        // A transient refresh failure can still use the stored access token.
-        // Permanent failures and logout remove the row instead of reviving it.
-        return getStoredSession(provider, row.id, this.authPath)
-      }
-    }))
-    return live.filter(Boolean)
+  completeKimiDevice(attempt) {
+    return completeKimiDevice(this, attempt)
   }
 
-  async #ensureAccountQuota(provider) {
-    const rows = await this.#liveAccounts(provider)
-    if (rows.length === 0) {
-      this.quota.clear(provider)
-      return []
-    }
-    await Promise.all(rows.map(async (row) => {
-      const quota = await this.quota.ensure(provider, row.id, row.session)
-      if (provider === 'kiro') await this.#rememberKiroProfile(row, quota)
-      if (provider === 'antigravity') await this.#rememberAntigravityPlan(row, quota)
-      if (provider === 'cursor') await this.#rememberCursorPlan(row, quota)
-      if (provider === 'ollama') await this.#rememberOllamaIdentity(row, quota)
-      if (provider === 'kimi') await this.#rememberKimiIdentity(row, quota)
-      if (provider === 'devin') await this.#rememberDevinIdentity(row, quota)
-      if (provider === 'cline') await this.#rememberClineIdentity(row, quota)
-      if (provider === 'command-code') await this.#rememberCommandCodeIdentity(row, quota)
-    }))
-    return rows
+  completeClineDevice(attempt) {
+    return completeClineDevice(this, attempt)
   }
 
-  async #rememberKiroProfile(row, quota) {
-    if (!quota || quota.status !== 'ready') return
-    const email = typeof quota.account === 'string' && quota.account.trim() ? quota.account.trim() : undefined
-    const planType = typeof quota.planType === 'string' && quota.planType.trim() ? quota.planType.trim() : undefined
-    if (!email && !planType) return
-    if ((!email || row.session.account === email) && (!planType || row.session.planType === planType)) return
-    const next = { ...row.session }
-    if (email) next.account = email
-    if (planType) next.planType = planType
-    await updateAccountSession('kiro', row, next, this.authPath)
+  completeCopilotDevice(attempt) {
+    return completeCopilotDevice(this, attempt)
   }
 
-  async #rememberCursorPlan(row, quota) {
-    if (!quota || quota.status !== 'ready') return
-    const email = pickCursorHumanAccount(quota.account, row.session.cachedEmail)
-    const planType = typeof quota.planType === 'string' && quota.planType.trim() ? quota.planType.trim() : undefined
-    const cachedEmail = pickCursorHumanAccount(email, row.session.cachedEmail)
-    if (!email && !planType && cachedEmail === row.session.cachedEmail) return
-    if (
-      (!email || row.session.account === email)
-      && (!planType || row.session.planType === planType)
-      && row.session.cachedEmail === cachedEmail
-    ) return
-    const next = { ...row.session }
-    if (email) next.account = email
-    if (planType) next.planType = planType
-    if (cachedEmail) next.cachedEmail = cachedEmail
-    await this.#rewriteCursorIdentity(row, next)
+  completeDevice(provider, attempt) {
+    return completeDevice(this, provider, attempt)
   }
 
-  async #resolveCursorIdentities() {
-    const rows = this.#identityDue('cursor', await listStoredSessions('cursor', this.authPath), pickCursorHumanAccount)
-    if (rows.length === 0) return
-    const vscdb = await this.#readCursorVscdbHint()
-    await Promise.all(rows.map(async (row) => {
-      const account = pickCursorHumanAccount(
-        cursorAccountFromToken(row.session?.accessToken),
-        this.#cachedEmailFor(row.session, vscdb),
-      )
-      if (!account) return
-      await this.#rewriteCursorIdentity(row, { ...row.session, account })
-    }))
+  completeGlm(attempt) {
+    return completeGlm(this, attempt)
   }
 
-  #cachedEmailFor(session, vscdb) {
-    const email = pickCursorHumanAccount(vscdb?.cachedEmail)
-    if (!email || !session) return undefined
-    const sameAccess = typeof vscdb.accessToken === 'string' && vscdb.accessToken === session.accessToken
-    const sameRefresh = typeof vscdb.refreshToken === 'string' && vscdb.refreshToken === session.refreshToken
-    if (session.source === 'ide_vscdb' || sameAccess || sameRefresh) return email
-    return undefined
+  completeCursor(attempt) {
+    return completeCursor(this, attempt)
   }
 
-  async #readCursorVscdbHint() {
-    const opts = this.cursorImport ?? {}
-    if (process.env.NODE_TEST_CONTEXT && !opts.readVscdbFn && !opts.paths && !opts.home) {
-      return {}
-    }
-    try {
-      return await readCursorVscdbTokens({
-        platform: opts.platform,
-        env: opts.env,
-        home: opts.home,
-        paths: opts.paths,
-        readDb: opts.readVscdbFn,
-        now: opts.now,
-      })
-    } catch {
-      return {}
-    }
+  completeKiroIdc(attempt) {
+    return completeKiroIdc(this, attempt)
   }
 
-  async #rewriteCursorIdentity(row, next) {
-    const nextId = accountIdOf('cursor', next)
-    if (nextId !== row.id) {
-      const saved = await replaceAccountId('cursor', row, next, this.authPath)
-      if (!saved) return
-      this.quota.clear('cursor', row.id)
-      await this.quota.ensure('cursor', saved.id, saved.session)
-      return
-    }
-    await updateAccountSession('cursor', row, next, this.authPath)
+  completeCommandCode(attempt, claim) {
+    return completeCommandCode(this, attempt, claim)
   }
 
-  async #maybeAutoImportCursor() {
-    if (!this.cursorAutoImport || this.cursorAutoImportTried) return
-    this.cursorAutoImportTried = true
-    if (await this.#signedOutOf('cursor')) return
-    const rows = await listStoredSessions('cursor', this.authPath)
-    if (rows.length > 0) return
-    try {
-      const result = await importCursorAuth(this.cursorImport)
-      if (result?.session) {
-        await saveSession('cursor', result.session, this.authPath)
-        await this.#discoverCursor(result.session)
-        this.onAuthChanged?.('cursor')
-        void this.quota.refresh('cursor')
-      }
-    } catch (error) {
-      if (errorCode(error) !== CURSOR_IMPORT_EMPTY && errorMessage(error) !== CURSOR_IMPORT_EMPTY) {
-        // empty machine is fine; other faults stay off the Settings banner
-      }
-    }
-  }
-
-  async #importCursor() {
-    const existing = await listStoredSessions('cursor', this.authPath)
-    const result = await importCursorAuth(this.cursorImport)
-    const incomingId = accountIdOf('cursor', result.session)
-    const hit = existing.find((row) => row.id === incomingId)
-    if (hit?.session?.source === 'pkce') {
-      return { source: 'pkce', session: hit.session, skipped: true }
-    }
-    return result
-  }
-
-  async #maybeAutoImportOllama() {
-    if (!this.ollamaAutoImport || this.ollamaAutoImportTried) return
-    this.ollamaAutoImportTried = true
-    if (await this.#signedOutOf('ollama')) return
-    const rows = await listStoredSessions('ollama', this.authPath)
-    if (rows.length > 0) return
-    try {
-      const result = await importOllamaAuth({ env: process.env })
-      if (result?.session) {
-        const session = await this.#finishOllamaSession(result.session)
-        await saveSession('ollama', session, this.authPath)
-        await this.#discoverOllama(session)
-        this.onAuthChanged?.('ollama')
-        void this.quota.refresh('ollama')
-      }
-    } catch (error) {
-      if (errorCode(error) !== OLLAMA_IMPORT_EMPTY && errorMessage(error) !== OLLAMA_IMPORT_EMPTY) {
-        // empty env is fine; other faults stay off the Settings banner
-      }
-    }
-  }
-
-  async #importOllama() {
-    const existing = await listStoredSessions('ollama', this.authPath)
-    const result = await importOllamaAuth({ env: process.env })
-    const incomingId = accountIdOf('ollama', result.session)
-    const hit = existing.find((row) => row.id === incomingId)
-    if (hit) {
-      return { source: hit.session.source, session: hit.session, skipped: true }
-    }
-    return { ...result, session: await this.#finishOllamaSession(result.session) }
-  }
-
-  async #finishOllamaSession(session) {
-    const identity = await resolveOllamaIdentity(session, { fetchFn: this.fetchFn })
-    if (!identity) return session
-    const next = { ...session }
-    if (identity.account) next.account = identity.account
-    if (identity.planType) next.planType = identity.planType
-    return next
-  }
-
-  async #rememberOllamaIdentity(row, quota) {
-    if (!quota || quota.status !== 'ready') return
-    const account = typeof quota.account === 'string' && quota.account.trim() ? quota.account.trim() : undefined
-    const planType = typeof quota.planType === 'string' && quota.planType.trim() ? quota.planType.trim() : undefined
-    if (!account && !planType) return
-    if (
-      (!account || row.session.account === account)
-      && (!planType || row.session.planType === planType)
-    ) return
-    const next = { ...row.session }
-    if (account) next.account = account
-    if (planType) next.planType = planType
-    const nextId = accountIdOf('ollama', next)
-    if (nextId !== row.id && isOllamaOpaqueAccount(row.id)) {
-      const saved = await replaceAccountId('ollama', row, next, this.authPath)
-      if (!saved) return
-      this.quota.clear('ollama', row.id)
-      await this.quota.ensure('ollama', saved.id, saved.session)
-      return
-    }
-    await updateAccountSession('ollama', row, next, this.authPath)
-  }
-
-  async #maybeAutoImportCommandCode() {
-    if (!this.commandCodeAutoImport || this.commandCodeAutoImportTried) return
-    this.commandCodeAutoImportTried = true
-    if (await this.#signedOutOf('command-code')) return
-    const rows = await listStoredSessions('command-code', this.authPath)
-    if (rows.length > 0) return
-    try {
-      const result = await importCommandCodeAuth({ env: process.env, ...this.commandCodeImport })
-      if (result?.session) {
-        const session = await this.#finishCommandCodeSession(result.session)
-        await saveSession('command-code', session, this.authPath)
-        this.onAuthChanged?.('command-code')
-        void this.quota.refresh('command-code')
-      }
-    } catch (error) {
-      if (errorCode(error) !== COMMAND_CODE_IMPORT_EMPTY && errorMessage(error) !== COMMAND_CODE_IMPORT_EMPTY) {
-        // no env key and no CLI auth.json is fine; other faults stay off the banner
-      }
-    }
-  }
-
-  async #importCommandCode() {
-    const existing = await listStoredSessions('command-code', this.authPath)
-    const result = await importCommandCodeAuth({ env: process.env, ...this.commandCodeImport })
-    const incomingId = accountIdOf('command-code', result.session)
-    // Same key via a different source (paste vs auth.json) must not mint a
-    // second account row — the bearer is the identity here, not the id shape.
-    const hit = existing.find((row) =>
-      row.id === incomingId || row.session?.accessToken === result.session.accessToken)
-    if (hit) {
-      return { source: hit.session.source, session: hit.session, skipped: true }
-    }
-    return { ...result, session: await this.#finishCommandCodeSession(result.session) }
-  }
-
-  async #finishCommandCodeSession(session) {
-    const identity = await resolveCommandCodeIdentity(session, { fetchFn: this.fetchFn })
-    if (!identity) return session
-    const next = { ...session }
-    if (identity.account) next.account = identity.account
-    if (identity.id) next.userId = identity.id
-    if (identity.userName) next.userName = identity.userName
-    if (identity.email) next.email = identity.email
-    if (identity.orgId) next.orgId = identity.orgId
-    return next
-  }
-
-  async #rememberCommandCodeIdentity(row, quota) {
-    if (!quota || quota.status !== 'ready') return
-    const account = typeof quota.account === 'string' && quota.account.trim() ? quota.account.trim() : undefined
-    const planType = typeof quota.planType === 'string' && quota.planType.trim() ? quota.planType.trim() : undefined
-    if (!account && !planType) return
-    if (
-      (!account || row.session.account === account)
-      && (!planType || row.session.planType === planType)
-    ) return
-    const next = { ...row.session }
-    if (account) next.account = account
-    if (planType) next.planType = planType
-    const nextId = accountIdOf('command-code', next)
-    if (nextId !== row.id && isCommandCodeOpaqueAccount(row.id)) {
-      const saved = await replaceAccountId('command-code', row, next, this.authPath)
-      if (!saved) return
-      this.quota.clear('command-code', row.id)
-      await this.quota.ensure('command-code', saved.id, saved.session)
-      return
-    }
-    await updateAccountSession('command-code', row, next, this.authPath)
-  }
-
-  async #maybeAutoImportKimi() {
-    if (!this.kimiAutoImport || this.kimiAutoImportTried) return
-    this.kimiAutoImportTried = true
-    if (await this.#signedOutOf('kimi')) return
-    const rows = await listStoredSessions('kimi', this.authPath)
-    if (rows.length > 0) return
-    try {
-      const result = await importKimiAuth({ env: process.env, allowEnv: false })
-      if (result?.session) {
-        const session = await this.#finishKimiSession(result.session)
-        await saveSession('kimi', session, this.authPath)
-        await this.#discoverKimi(session)
-        this.onAuthChanged?.('kimi')
-        void this.quota.refresh('kimi')
-      }
-    } catch (error) {
-      if (errorCode(error) !== KIMI_IMPORT_EMPTY && errorMessage(error) !== KIMI_IMPORT_EMPTY) {
-        // empty CLI file is fine
-      }
-    }
-  }
-
-  async #maybeAutoImportCopilot() {
-    if (!this.copilotAutoImport || this.copilotAutoImportTried) return
-    this.copilotAutoImportTried = true
-    if (await this.#signedOutOf('copilot')) return
-    const rows = await listStoredSessions('copilot', this.authPath)
-    if (rows.length > 0) return
-    try {
-      const result = await importCopilotAuth({ env: process.env, allowEnv: false, fetchFn: this.fetchFn })
-      if (result?.session) {
-        const session = await this.#finishCopilotSession(result.session)
-        await saveSession('copilot', session, this.authPath)
-        await this.#discoverCopilot(session)
-        this.onAuthChanged?.('copilot')
-        void this.quota.refresh('copilot')
-      }
-    } catch (error) {
-      if (errorCode(error) !== COPILOT_IMPORT_EMPTY && errorMessage(error) !== COPILOT_IMPORT_EMPTY) {
-        // empty hosts.json is fine
-      }
-    }
-  }
-
-  async #maybeAutoImportCline() {
-    if (!this.clineAutoImport || this.clineAutoImportTried) return
-    this.clineAutoImportTried = true
-    if (await this.#signedOutOf('cline')) return
-    const rows = await listStoredSessions('cline', this.authPath)
-    if (rows.length > 0) return
-    try {
-      const result = await importClineAuth({ env: process.env })
-      if (result?.session) {
-        const session = await this.#finishClineSession(result.session)
-        await saveSession('cline', session, this.authPath)
-        await this.#discoverCline(session)
-        this.onAuthChanged?.('cline')
-        void this.quota.refresh('cline')
-      }
-    } catch (error) {
-      if (errorCode(error) !== CLINE_IMPORT_EMPTY && errorMessage(error) !== CLINE_IMPORT_EMPTY) {
-        // empty providers.json is fine
-      }
-    }
-  }
-
-  async #importCline() {
-    const existing = await listStoredSessions('cline', this.authPath)
-    const result = await importClineAuth({ env: process.env })
-    const incomingId = accountIdOf('cline', result.session)
-    const hit = existing.find((row) => row.id === incomingId)
-    if (hit) {
-      return { source: hit.session.source, session: hit.session, skipped: true }
-    }
-    return { ...result, session: await this.#finishClineSession(result.session) }
-  }
-
-  async #importKimi() {
-    const existing = await listStoredSessions('kimi', this.authPath)
-    const result = await importKimiAuth({ env: process.env })
-    const incomingId = accountIdOf('kimi', result.session)
-    const hit = existing.find((row) => row.id === incomingId)
-    if (hit) {
-      return { source: hit.session.source, session: hit.session, skipped: true }
-    }
-    return { ...result, session: await this.#finishKimiSession(result.session) }
-  }
-
-  async #importCopilot() {
-    const existing = await listStoredSessions('copilot', this.authPath)
-    const result = await importCopilotAuth({ env: process.env, fetchFn: this.fetchFn })
-    const incomingId = accountIdOf('copilot', result.session)
-    const hit = existing.find((row) => row.id === incomingId)
-    if (hit) {
-      return { source: hit.session.source, session: hit.session, skipped: true }
-    }
-    return { ...result, session: await this.#finishCopilotSession(result.session) }
-  }
-
-  async #finishKimiSession(session) {
-    const identity = await resolveKimiIdentity(session, { fetchFn: this.fetchFn })
-    if (!identity) return session
-    const next = { ...session }
-    if (identity.account) next.account = identity.account
-    if (identity.planType) next.planType = identity.planType
-    return next
-  }
-
-  async #rememberKimiIdentity(row, quota) {
-    if (!quota || quota.status !== 'ready') return
-    const account = typeof quota.account === 'string' && quota.account.trim() ? quota.account.trim() : undefined
-    const planType = typeof quota.planType === 'string' && quota.planType.trim() ? quota.planType.trim() : undefined
-    if (!account && !planType) return
-    if (
-      (!account || row.session.account === account)
-      && (!planType || row.session.planType === planType)
-    ) return
-    const next = { ...row.session }
-    if (account) next.account = account
-    if (planType) next.planType = planType
-    const nextId = accountIdOf('kimi', next)
-    if (nextId !== row.id && isKimiOpaqueAccount(row.id)) {
-      const saved = await replaceAccountId('kimi', row, next, this.authPath)
-      if (!saved) return
-      this.quota.clear('kimi', row.id)
-      await this.quota.ensure('kimi', saved.id, saved.session)
-      return
-    }
-    await updateAccountSession('kimi', row, next, this.authPath)
-  }
-
-  async #finishClineSession(session) {
-    const identity = await resolveClineIdentity(session, { fetchFn: this.fetchFn })
-    if (!identity) return session
-    const next = { ...session }
-    if (identity.account) next.account = identity.account
-    if (identity.userId) next.userId = identity.userId
-    if (identity.planType) next.planType = identity.planType
-    if (identity.organizationName) next.organizationName = identity.organizationName
-    return next
-  }
-
-  async #rememberClineIdentity(row, quota) {
-    if (!quota || quota.status !== 'ready') return
-    const account = typeof quota.account === 'string' && quota.account.trim() ? quota.account.trim() : undefined
-    const planType = typeof quota.planType === 'string' && quota.planType.trim() ? quota.planType.trim() : undefined
-    if (!account && !planType) return
-    if (
-      (!account || row.session.account === account)
-      && (!planType || row.session.planType === planType)
-    ) return
-    const next = { ...row.session }
-    if (account) next.account = account
-    if (planType) next.planType = planType
-    const nextId = accountIdOf('cline', next)
-    if (nextId !== row.id && isClineOpaqueAccount(row.id)) {
-      const saved = await replaceAccountId('cline', row, next, this.authPath)
-      if (!saved) return
-      this.quota.clear('cline', row.id)
-      await this.quota.ensure('cline', saved.id, saved.session)
-      return
-    }
-    await updateAccountSession('cline', row, next, this.authPath)
-  }
-
-  async #finishCopilotSession(session) {
-    let next = session
-    if (!session?.accessToken || !isCopilotSessionToken(session.accessToken)) {
-      if (session?.githubToken || session?.accessToken) {
-        next = await mintCopilotSessionFromGithub(session.githubToken || session.accessToken, {
-          fetchFn: this.fetchFn,
-          source: session.source,
-          account: session.account,
-        })
-        if (session.planType) next = { ...next, planType: session.planType }
-      }
-    }
-    const identity = await resolveCopilotIdentity(next, { fetchFn: this.fetchFn })
-    if (!identity) return next
-    if (identity.account) next = { ...next, account: identity.account }
-    return next
-  }
-
-  async #rememberCopilotIdentity(row, quota) {
-    if (!quota || quota.status !== 'ready') return
-    const account = typeof quota.account === 'string' && quota.account.trim() ? quota.account.trim() : undefined
-    const planType = typeof quota.planType === 'string' && quota.planType.trim() ? quota.planType.trim() : undefined
-    if (!account && !planType) return
-    if (
-      (!account || row.session.account === account)
-      && (!planType || row.session.planType === planType)
-    ) return
-    const next = { ...row.session }
-    if (account) next.account = account
-    if (planType) next.planType = planType
-    const nextId = accountIdOf('copilot', next)
-    if (nextId !== row.id && isCopilotOpaqueAccount(row.id)) {
-      const saved = await replaceAccountId('copilot', row, next, this.authPath)
-      if (!saved) return
-      this.quota.clear('copilot', row.id)
-      await this.quota.ensure('copilot', saved.id, saved.session)
-      return
-    }
-    await updateAccountSession('copilot', row, next, this.authPath)
-  }
-
-  async #maybeAutoImportDevin() {
-    if (!this.devinAutoImport || this.devinAutoImportTried) return
-    this.devinAutoImportTried = true
-    if (await this.#signedOutOf('devin')) return
-    const rows = await listStoredSessions('devin', this.authPath)
-    // A foreign-shaped row (wrong-prefix token) is not a devin login; it must
-    // not block the CLI import. Its refresh 401s out via isPermanentRefreshFailure.
-    if (rows.some((row) => isDevinSessionToken(row?.session?.accessToken))) return
-    try {
-      const result = await importDevinAuth({ ...this.devinImport })
-      if (result?.session) {
-        const session = await this.#finishDevinSession(result.session)
-        await saveSession('devin', session, this.authPath)
-        await this.#discoverDevin(session)
-        this.onAuthChanged?.('devin')
-        void this.quota.refresh('devin')
-      }
-    } catch (error) {
-      if (errorCode(error) !== DEVIN_IMPORT_EMPTY && errorMessage(error) !== DEVIN_IMPORT_EMPTY) {
-        // missing credentials.toml is fine; other faults stay off the Settings banner
-      }
-    }
-  }
-
-  async #importDevin() {
-    const existing = await listStoredSessions('devin', this.authPath)
-    const result = await importDevinAuth({ ...this.devinImport })
-    const incomingId = accountIdOf('devin', result.session)
-    const hit = existing.find((row) => row.id === incomingId)
-    if (hit) {
-      return { source: hit.session.source, session: hit.session, skipped: true }
-    }
-    return { ...result, session: await this.#finishDevinSession(result.session) }
-  }
-
-  async #finishDevinSession(session) {
-    const identity = await resolveDevinIdentity(session, { fetchFn: this.fetchFn }).catch(() => undefined)
-    if (!identity) return session
-    const next = { ...session }
-    const account = pickDevinHumanAccount(identity.account)
-    if (account) next.account = account
-    if (identity.planType) next.planType = identity.planType
-    return next
-  }
-
-  async #rememberDevinIdentity(row, quota) {
-    if (!quota || quota.status !== 'ready') return
-    const account = pickDevinHumanAccount(quota.account)
-    const planType = typeof quota.planType === 'string' && quota.planType.trim() ? quota.planType.trim() : undefined
-    if (!account && !planType) return
-    if (
-      (!account || row.session.account === account)
-      && (!planType || row.session.planType === planType)
-    ) return
-    const next = { ...row.session }
-    if (account) next.account = account
-    if (planType) next.planType = planType
-    const nextId = accountIdOf('devin', next)
-    if (nextId !== row.id && isDevinOpaqueAccount(row.id)) {
-      const saved = await replaceAccountId('devin', row, next, this.authPath)
-      if (!saved) return
-      this.quota.clear('devin', row.id)
-      await this.quota.ensure('devin', saved.id, saved.session)
-      return
-    }
-    await updateAccountSession('devin', row, next, this.authPath)
-  }
-
-  async #rememberAntigravityPlan(row, quota) {
-    if (!quota || quota.status !== 'ready') return
-    const planType = typeof quota.planType === 'string' && quota.planType.trim() ? quota.planType.trim() : undefined
-    if (!planType || row.session.planType === planType) return
-    await updateAccountSession('antigravity', row, { ...row.session, planType }, this.authPath)
-  }
-
-  async #existingKiroMachineId() {
-    const rows = await listStoredSessions('kiro', this.authPath)
-    for (const row of rows) {
-      const id = row.session?.machineId
-      if (typeof id === 'string' && /^[0-9a-f]{64}$/i.test(id)) return id
-    }
-    return undefined
-  }
-
-  async #accountsWithQuota(provider) {
-    const rows = await listStoredSessions(provider, this.authPath)
-    return rows
-      .map((row) => ({
-        id: row.id,
-        active: row.active,
-        ...publicSession(provider, row.session),
-        quota: this.quota.peek(provider, row.id),
-      }))
-      .sort((left, right) => Number(right.active) - Number(left.active) || left.id.localeCompare(right.id))
-  }
-
-  async login(provider, options) {
-    const payload = typeof options === 'string' || options == null ? { mode: options } : options
-    const mode = payload.mode ?? payload.region
-    if (provider === 'kiro') return this.#loginKiro(payload)
-    if (provider === 'glm') {
-      const region = normalizeGlmRegion(mode)
-      const attempt = await this.glmFlows.start('glm', { region, fetchFn: this.fetchFn })
-      this.finalizing.add('glm')
-      void this.completeGlm(attempt)
-      return { authorizeUrl: attempt.authorizeUrl, mode: 'cli', region }
-    }
-    if (provider === 'ollama') {
-      throw new Error('ollama uses the paste form, not browser login')
-    }
-    if (provider === 'cursor') {
-      const attempt = await this.cursorFlows.start('cursor', { fetchFn: this.fetchFn })
-      this.finalizing.add('cursor')
-      void this.completeCursor(attempt)
-      return { authorizeUrl: attempt.authorizeUrl, mode: 'cli' }
-    }
-    if (provider === 'antigravity') {
-      const attempt = await this.flows.start('antigravity', antigravityFlow)
-      const claim = this.claim('antigravity')
-      void this.completePkce('antigravity', attempt, claim)
-      return { authorizeUrl: attempt.authorizeUrl, redirectUri: attempt.redirectUri, mode: 'oauth' }
-    }
-    if (provider === 'codex') {
-      const attempt = await this.flows.start('codex', codexFlow)
-      const claim = this.claim('codex')
-      void this.completePkce('codex', attempt, claim)
-      return { authorizeUrl: attempt.authorizeUrl, redirectUri: attempt.redirectUri, mode: 'pkce' }
-    }
-    if (provider === 'kimi') {
-      const attempt = await this.devices.start('kimi', kimiDeviceSpec({ fetchFn: this.fetchFn }))
-      this.finalizing.add('kimi')
-      void this.completeKimiDevice(attempt)
-      return {
-        authorizeUrl: attempt.verificationUrl,
-        verificationUri: attempt.verificationUri,
-        userCode: attempt.userCode,
-        mode: 'device',
-      }
-    }
-    if (provider === 'copilot') {
-      const attempt = await this.devices.start('copilot', copilotDeviceSpec({ fetchFn: this.fetchFn }))
-      this.finalizing.add('copilot')
-      void this.completeCopilotDevice(attempt)
-      return {
-        authorizeUrl: attempt.verificationUrl,
-        verificationUri: attempt.verificationUri,
-        userCode: attempt.userCode,
-        mode: 'device',
-      }
-    }
-    if (provider === 'devin') {
-      const attempt = await this.flows.start('devin', devinFlow)
-      const claim = this.claim('devin')
-      void this.completePkce('devin', attempt, claim)
-      return { authorizeUrl: attempt.authorizeUrl, redirectUri: attempt.redirectUri, mode: 'pkce' }
-    }
-    if (provider === 'cline') {
-      const attempt = await this.devices.start('cline', clineDeviceSpec({ fetchFn: this.fetchFn }))
-      this.finalizing.add('cline')
-      void this.completeClineDevice(attempt)
-      return {
-        authorizeUrl: attempt.verificationUrl,
-        verificationUri: attempt.verificationUri,
-        userCode: attempt.userCode,
-        mode: 'device',
-      }
-    }
-    if (provider === 'command-code') {
-      // Studio auth/cli redirects credentials straight to the loopback
-      // callback — collect() resolves them, no code exchange exists.
-      const attempt = await this.flows.start('command-code', commandCodeFlow)
-      const claim = this.claim('command-code')
-      void this.completeCommandCode(attempt, claim)
-      return { authorizeUrl: attempt.authorizeUrl, redirectUri: attempt.redirectUri, mode: 'oauth' }
-    }
-    if (provider !== 'grok') throw new Error(`unknown provider ${provider}`)
-    const useDevice = (mode ?? this.grokLogin) !== 'pkce'
-    if (useDevice) {
-      const attempt = await this.devices.start('grok', await grokDeviceSpec())
-      this.finalizing.add('grok')
-      void this.completeDevice('grok', attempt)
-      return {
-        authorizeUrl: attempt.verificationUrl,
-        verificationUri: attempt.verificationUri,
-        userCode: attempt.userCode,
-        mode: 'device',
-      }
-    }
-    const attempt = await this.flows.start('grok', await grokFlow())
-    const claim = this.claim('grok')
-    void this.completePkce('grok', attempt, claim)
-    return { authorizeUrl: attempt.authorizeUrl, redirectUri: attempt.redirectUri, mode: 'pkce' }
-  }
-
-  async #loginKiro(payload: any = {}) {
-    const mode = canonicalizeKiroMethod(payload.mode ?? payload.authMethod, {
-      tokenEndpoint: payload.tokenEndpoint,
-    })
-    if (mode === 'api_key' || mode === 'external_idp') {
-      throw new Error('kiro API key and enterprise SSO use the paste form, not browser login')
-    }
-    this.claim('kiro')
-    this.flows.pending('kiro')?.cancel()
-    this.kiroFlows.pending('kiro')?.cancel()
-    if (mode === 'idc' || payload.mode === 'builder' || payload.mode === 'builder-id') {
-      const startUrl = typeof payload.startUrl === 'string' && payload.startUrl.trim()
-        ? payload.startUrl.trim()
-        : BUILDER_ID_START_URL
-      const kind = startUrl === BUILDER_ID_START_URL ? 'builder' : 'enterprise'
-      const attempt = await this.kiroFlows.start('kiro', {
-        startUrl,
-        kind,
-        fetchFn: this.fetchFn,
-      })
-      this.finalizing.add('kiro')
-      void this.completeKiroIdc(attempt)
-      return {
-        authorizeUrl: attempt.verificationUrl,
-        verificationUri: attempt.verificationUri,
-        userCode: attempt.userCode,
-        mode: 'device',
-        kind,
-        startUrl,
-      }
-    }
-    const machineId = allocateKiroMachineId(await this.#existingKiroMachineId())
-    const attempt: any = await this.flows.start('kiro', kiroSocialFlow())
-    attempt.machineId = machineId
-    const claim = this.claim('kiro')
-    void this.completePkce('kiro', attempt, claim)
-    return { authorizeUrl: attempt.authorizeUrl, redirectUri: attempt.redirectUri, mode: 'pkce', machineId }
-  }
-
-  async completePkce(provider, attempt, claim) {
-    try {
-      const code = await attempt.waitCode()
-      const session = provider === 'codex'
-        ? await exchangeCodexCode(code, attempt.pkce.verifier, attempt.redirectUri)
-        : provider === 'kiro'
-          ? await exchangeKiroSocialCode(code, attempt.pkce.verifier, attempt.redirectUri, {
-            fetchFn: this.fetchFn,
-            callback: typeof attempt.callback === 'function' ? attempt.callback() : attempt.callback,
-            machineId: attempt.machineId,
-          })
-        : provider === 'antigravity'
-          ? await exchangeAntigravityCode(code, attempt.redirectUri, { fetchFn: this.fetchFn })
-        : provider === 'devin'
-          ? await exchangeDevinCode(code, attempt.pkce.verifier, { fetchFn: this.fetchFn })
-        : await exchangeGrokCode(code, attempt.pkce.verifier, attempt.redirectUri, attempt.pkce.challenge)
-      if (this.claims.get(provider) !== claim) return
-      const saved = await saveSession(provider, provider === 'devin' ? await this.#finishDevinSession(session) : session, this.authPath)
-      this.lastError.delete(provider)
-      if (provider === 'kiro') await this.#discoverKiro(session)
-      if (provider === 'devin') await this.#discoverDevin(session)
-      this.onAuthChanged?.(provider)
-      void this.quota.refresh(provider)
-      if (provider === 'antigravity') void this.#probeAntigravity(saved)
-    } catch (error) {
-      if (this.claims.get(provider) !== claim) return
-      if (!(error instanceof Error && error.message === 'login cancelled')) {
-        this.lastError.set(provider, describeError(error))
-      }
-    }
-  }
-
-  async #probeAntigravity(source) {
-    try {
-      const info = await probeAntigravityValidation(source.session, { fetchFn: this.fetchFn })
-      if (info === undefined) return
-      const next = applyAntigravityValidation(source.session, info)
-      await updateAccountSession('antigravity', source, next, this.authPath)
-    } catch {
-      // probe is best-effort; quota / login must still succeed
-    }
-  }
-
-  async completeKimiDevice(attempt) {
-    try {
-      const tokens = await attempt.waitToken()
-      const session = await this.#finishKimiSession(await sessionFromKimiDevice(tokens))
-      await saveSession('kimi', session, this.authPath)
-      this.lastError.delete('kimi')
-      await this.#discoverKimi(session)
-      this.onAuthChanged?.('kimi')
-      void this.quota.refresh('kimi')
-    } catch (error) {
-      if (!(error instanceof Error && error.message === 'login cancelled')) {
-        this.lastError.set('kimi', error instanceof Error ? error.message : String(error))
-      }
-    } finally {
-      this.finalizing.delete('kimi')
-    }
-  }
-
-  /**
-   * Cline login is two hops: the WorkOS device poll yields a WorkOS token
-   * pair, and `/api/v1/auth/register` exchanges it for the Cline session
-   * (`usr-…` account id + refresh token). Only the second hop produces
-   * something this plugin can use.
-   */
-  async completeClineDevice(attempt) {
-    try {
-      const tokens = await attempt.waitToken()
-      const session = await this.#finishClineSession(await registerClineTokens(tokens, { fetchFn: this.fetchFn }))
-      await saveSession('cline', session, this.authPath)
-      this.lastError.delete('cline')
-      await this.#discoverCline(session)
-      this.onAuthChanged?.('cline')
-      void this.quota.refresh('cline')
-    } catch (error) {
-      if (!(error instanceof Error && error.message === 'login cancelled')) {
-        this.lastError.set('cline', error instanceof Error ? error.message : String(error))
-      }
-    } finally {
-      this.finalizing.delete('cline')
-    }
-  }
-
-  async completeCopilotDevice(attempt) {
-    try {
-      const tokens = await attempt.waitToken()
-      const session = await this.#finishCopilotSession(await sessionFromCopilotDevice(tokens, { fetchFn: this.fetchFn }))
-      await saveSession('copilot', session, this.authPath)
-      this.lastError.delete('copilot')
-      await this.#discoverCopilot(session)
-      this.onAuthChanged?.('copilot')
-      void this.quota.refresh('copilot')
-    } catch (error) {
-      if (!(error instanceof Error && error.message === 'login cancelled')) {
-        this.lastError.set('copilot', error instanceof Error ? error.message : String(error))
-      }
-    } finally {
-      this.finalizing.delete('copilot')
-    }
-  }
-
-  async completeDevice(provider, attempt) {
-    try {
-      const tokens = await attempt.waitToken()
-      const session = await completeGrokDevice(tokens)
-      await saveSession(provider, session, this.authPath)
-      this.lastError.delete(provider)
-      this.onAuthChanged?.(provider)
-      void this.quota.refresh(provider)
-    } catch (error) {
-      if (!(error instanceof Error && error.message === 'login cancelled')) {
-        this.lastError.set(provider, describeError(error))
-      }
-    } finally {
-      this.finalizing.delete(provider)
-    }
-  }
-
-  async completeGlm(attempt) {
-    try {
-      const session = await attempt.waitToken()
-      await saveSession('glm', session, this.authPath)
-      this.lastError.delete('glm')
-      this.onAuthChanged?.('glm')
-      void this.quota.refresh('glm')
-    } catch (error) {
-      if (!(error instanceof Error && error.message === 'login cancelled')) {
-        this.lastError.set('glm', error instanceof Error ? error.message : String(error))
-      }
-    } finally {
-      this.finalizing.delete('glm')
-    }
-  }
-
-  async completeCursor(attempt) {
-    try {
-      const session = await attempt.waitToken()
-      await saveSession('cursor', session, this.authPath)
-      this.lastError.delete('cursor')
-      await this.#discoverCursor(session)
-      this.onAuthChanged?.('cursor')
-      void this.quota.refresh('cursor')
-    } catch (error) {
-      if (!(error instanceof Error && error.message === 'login cancelled')) {
-        this.lastError.set('cursor', error instanceof Error ? error.message : String(error))
-      }
-    } finally {
-      this.finalizing.delete('cursor')
-    }
-  }
-
-  async completeKiroIdc(attempt) {
-    try {
-      const session = await attempt.waitToken()
-      await saveSession('kiro', session, this.authPath)
-      this.lastError.delete('kiro')
-      await this.#discoverKiro(session)
-      this.onAuthChanged?.('kiro')
-      void this.quota.refresh('kiro')
-    } catch (error) {
-      if (!(error instanceof Error && error.message === 'login cancelled')) {
-        this.lastError.set('kiro', error instanceof Error ? error.message : String(error))
-      }
-    } finally {
-      this.finalizing.delete('kiro')
-    }
-  }
-
-  /**
-   * Command Code's waitCode resolves with the callback credentials
-   * {apiKey,userId,userName,keyName} — the session builds directly, there is
-   * no token exchange (flow.ts collect() already state-checked the callback).
-   */
-  async completeCommandCode(attempt, claim) {
-    try {
-      const credentials = await attempt.waitCode()
-      if (this.claims.get('command-code') !== claim) return
-      const session = await this.#finishCommandCodeSession(commandCodeSessionFromCallback(credentials))
-      await saveSession('command-code', session, this.authPath)
-      this.lastError.delete('command-code')
-      this.onAuthChanged?.('command-code')
-      void this.quota.refresh('command-code')
-    } catch (error) {
-      if (this.claims.get('command-code') !== claim) return
-      if (!(error instanceof Error && error.message === 'login cancelled')) {
-        this.lastError.set('command-code', describeError(error))
-      }
-    }
-  }
-
-  async useKey(provider, key, extra) {
-    const payload = typeof extra === 'string' || extra == null ? { region: extra } : extra
-    if (provider === 'kiro') return this.#useKiroKey(key, payload)
-    if (provider === 'ollama') {
-      const session = await this.#finishOllamaSession(ollamaSession({
-        accessToken: key,
-        source: 'paste',
-      }))
-      this.claim('ollama')
-      await saveSession('ollama', session, this.authPath)
-      this.lastError.delete('ollama')
-      await this.#discoverOllama(session)
-      this.onAuthChanged?.('ollama')
-      void this.quota.refresh('ollama')
-      return { account: publicSession('ollama', session) }
-    }
-    if (provider === 'kimi') {
-      const session = await this.#finishKimiSession(kimiSession({
-        accessToken: key,
-        source: 'paste',
-      }))
-      this.claim('kimi')
-      this.devices.pending('kimi')?.cancel()
-      await saveSession('kimi', session, this.authPath)
-      this.lastError.delete('kimi')
-      await this.#discoverKimi(session)
-      this.onAuthChanged?.('kimi')
-      void this.quota.refresh('kimi')
-      return { account: publicSession('kimi', session) }
-    }
-    if (provider === 'copilot') {
-      const session = await this.#finishCopilotSession(await mintCopilotSessionFromGithub(key, {
-        fetchFn: this.fetchFn,
-        source: 'paste',
-      }))
-      this.claim('copilot')
-      this.devices.pending('copilot')?.cancel()
-      await saveSession('copilot', session, this.authPath)
-      this.lastError.delete('copilot')
-      await this.#discoverCopilot(session)
-      this.onAuthChanged?.('copilot')
-      void this.quota.refresh('copilot')
-      return { account: publicSession('copilot', session) }
-    }
-    if (provider === 'devin') {
-      const session = await this.#finishDevinSession(devinSession({
-        accessToken: key,
-        source: 'paste',
-      }))
-      this.claim('devin')
-      this.flows.pending('devin')?.cancel()
-      await saveSession('devin', session, this.authPath)
-      this.lastError.delete('devin')
-      await this.#discoverDevin(session)
-      this.onAuthChanged?.('devin')
-      void this.quota.refresh('devin')
-      return { account: publicSession('devin', session) }
-    }
-    if (provider === 'command-code') {
-      const session = await this.#finishCommandCodeSession(commandCodeSession({
-        accessToken: key,
-        source: 'paste',
-      }))
-      this.claim('command-code')
-      this.flows.pending('command-code')?.cancel()
-      await saveSession('command-code', session, this.authPath)
-      this.lastError.delete('command-code')
-      this.onAuthChanged?.('command-code')
-      void this.quota.refresh('command-code')
-      return { account: publicSession('command-code', session) }
-    }
-    if (provider !== 'glm') throw new Error('only GLM, Kiro, Ollama Cloud, Kimi, Copilot, Devin, and Command Code accept a pasted key')
-    const accessToken = typeof key === 'string' ? key.trim() : ''
-    if (accessToken.length < 8) throw new Error('glm API key is empty')
-    this.claim('glm')
-    this.glmFlows.pending('glm')?.cancel()
-    const resolved = normalizeGlmRegion(payload.region ?? payload.mode)
-    await saveSession('glm', glmSession({
-      accessToken,
-      account: 'api-key',
-      region: resolved,
-    }), this.authPath)
-    this.lastError.delete('glm')
-    this.onAuthChanged?.('glm')
-    void this.quota.refresh('glm')
-    return { region: resolved }
-  }
-
-  async #useKiroKey(key, payload: any = {}) {
-    const raw = typeof key === 'string' ? key.trim() : ''
-    const parsed = parseKiroImportText(raw)
-    if (isKiroBatchImport(parsed.kind) && parsed.sessions.length > 0) {
-      return this.#saveKiroImports(parsed.sessions, { refreshMissingAccess: true })
-    }
-    const mode = canonicalizeKiroMethod(payload.mode ?? payload.authMethod, {
-      tokenEndpoint: payload.tokenEndpoint,
-    })
-    this.claim('kiro')
-    this.flows.pending('kiro')?.cancel()
-    this.kiroFlows.pending('kiro')?.cancel()
-    let session
-    if (raw.startsWith('ksk_') || mode === 'api_key') {
-      const kiroApiKey = validateKiroApiKey(raw || payload.kiroApiKey)
-      session = kiroSession({
-        accessToken: kiroApiKey,
-        kiroApiKey,
-        authMethod: 'api_key',
-        account: typeof payload.account === 'string' ? payload.account : 'api-key',
-      })
-    } else if (mode === 'external_idp' || payload.tokenEndpoint) {
-      const tokenEndpoint = validateKiroIdpEndpoint(payload.tokenEndpoint)
-      session = await refreshKiroExternalIdp(kiroSession({
-        refreshToken: validateKiroRefreshToken(raw || payload.refreshToken),
-        clientId: payload.clientId,
-        tokenEndpoint,
-        issuerUrl: payload.issuerUrl,
-        scopes: payload.scopes,
-        authMethod: 'external_idp',
-        kiroProvider: 'Entra',
-        account: payload.account,
-      }), { fetchFn: this.fetchFn })
-    } else {
-      session = await refreshKiroSocial(kiroSession({
-        refreshToken: validateKiroRefreshToken(raw),
-        authMethod: 'social',
-        kiroProvider: 'Social',
-        account: payload.account,
-      }), { fetchFn: this.fetchFn })
-    }
-    await saveSession('kiro', session, this.authPath)
-    this.lastError.delete('kiro')
-    await this.#discoverKiro(session)
-    this.onAuthChanged?.('kiro')
-    void this.quota.refresh('kiro')
-    return { method: session.authMethod, account: publicSession('kiro', session), count: 1 }
-  }
-
-  async #saveKiroImports(sessions, { refreshMissingAccess = false } = {}) {
-    this.claim('kiro')
-    this.flows.pending('kiro')?.cancel()
-    this.kiroFlows.pending('kiro')?.cancel()
-    const saved: any[] = []
-    const errors: any[] = []
-    for (const draft of sessions) {
-      let session = draft
-      const method = canonicalizeKiroMethod(session.authMethod, { tokenEndpoint: session.tokenEndpoint })
-      const needsRefresh = refreshMissingAccess
-        && method !== 'api_key'
-        && (!session.accessToken || session.accessToken === session.refreshToken)
-      try {
-        if (needsRefresh) session = await refreshKiro(session, { fetchFn: this.fetchFn })
-        await saveSession('kiro', session, this.authPath, { activate: saved.length === 0 })
-        saved.push(session)
-      } catch (error) {
-        errors.push(error instanceof Error ? error.message : String(error))
-      }
-    }
-    if (saved.length === 0) {
-      throw new Error(errors[0] || 'no Kiro credentials imported')
-    }
-    this.lastError.delete('kiro')
-    if (saved[0]) await this.#discoverKiro(saved[0])
-    this.onAuthChanged?.('kiro')
-    void this.quota.refresh('kiro')
-    return {
-      method: saved[0]?.authMethod,
-      account: publicSession('kiro', saved[0]),
-      count: saved.length,
-    }
+  useKey(provider, key, extra) {
+    return useKey(this, provider, key, extra)
   }
 
   async manual(provider, input) {
@@ -2184,32 +760,6 @@ export class AuthController {
     this.cursorFlows.pending(provider)?.cancel()
   }
 
-  // Auto-import restores an empty family from local CLI/IDE credentials on
-  // every start (and every hot reload). A family the user signed out of must
-  // stay signed out; an explicit import or login still works.
-  #signedOutFile() {
-    return join(dirname(this.authPath), 'signed-out.json')
-  }
-
-  async #signedOut(): Promise<string[]> {
-    try {
-      const list = JSON.parse(await readFile(this.#signedOutFile(), 'utf8'))
-      return Array.isArray(list) ? list : []
-    } catch {
-      return []
-    }
-  }
-
-  async #signedOutOf(provider) {
-    return (await this.#signedOut()).includes(provider)
-  }
-
-  async #markSignedOut(provider) {
-    const list = await this.#signedOut()
-    if (list.includes(provider)) return
-    await writePrivateText(this.#signedOutFile(), `${JSON.stringify([...list, provider])}\n`)
-  }
-
   async logout(provider, id) {
     if (provider === 'opencode-go') return this.logoutOpencodeGo(id)
     this.claim(provider)
@@ -2218,12 +768,18 @@ export class AuthController {
     this.glmFlows.pending(provider)?.cancel()
     this.kiroFlows.pending(provider)?.cancel()
     this.cursorFlows.pending(provider)?.cancel()
+    // Sign in with ChatGPT: end the renewable session remotely first (siwc
+    // profiles-and-sessions); an unconfirmed revocation still signs out.
+    const revoked = provider === 'chatgpt' ? await revokeChatgptAccounts(this, id) : true
     await deleteSession(provider, this.authPath, id)
-    await this.#markSignedOut(provider)
+    await markSignedOut(this, provider)
     this.lastError.delete(provider)
+    if (!revoked) {
+      this.lastError.set(provider, 'Signed out locally. Remote revocation could not be confirmed; disconnect the app in ChatGPT Settings → Apps.')
+    }
     this.quota.clear(provider, id)
     this.onAuthChanged?.(provider)
-    if (await getSession(provider, this.authPath)) void this.#ensureAccountQuota(provider)
+    if (await getSession(provider, this.authPath)) void ensureAccountQuota(this, provider)
   }
 
   async switchAccount(provider, id) {
@@ -2237,61 +793,8 @@ export class AuthController {
     return this.snapshot(true)
   }
 
-  async importFrom(provider) {
-    // A newer Settings page can name a family this host build does not know;
-    // never fall through to Grok — that writes a foreign session under the
-    // caller's provider key (observed: Grok tokens stored as `devin`).
-    if (!PROVIDER_IDS.includes(provider)) throw new Error(`unknown provider ${provider}`)
-    const result: any = provider === 'codex'
-      ? await importCodexAuth()
-      : provider === 'glm'
-        ? await importGlmAuth()
-        : provider === 'kiro'
-          ? await importKiroAuth()
-        : provider === 'antigravity'
-          ? await importAntigravityAuth({ fetchFn: this.fetchFn })
-          : provider === 'cursor'
-            ? await this.#importCursor()
-          : provider === 'ollama'
-            ? await this.#importOllama()
-          : provider === 'kimi'
-            ? await this.#importKimi()
-          : provider === 'copilot'
-            ? await this.#importCopilot()
-          : provider === 'devin'
-            ? await this.#importDevin()
-          : provider === 'cline'
-            ? await this.#importCline()
-          : provider === 'command-code'
-            ? await this.#importCommandCode()
-          : await importGrokAuth()
-    this.claim(provider)
-    this.flows.pending(provider)?.cancel()
-    this.devices.pending(provider)?.cancel()
-    this.glmFlows.pending(provider)?.cancel()
-    this.kiroFlows.pending(provider)?.cancel()
-    this.cursorFlows.pending(provider)?.cancel()
-    const sessions = provider === 'kiro' && Array.isArray(result.sessions) && result.sessions.length > 0
-      ? result.sessions
-      : [result.session]
-    for (let i = 0; i < sessions.length; i++) {
-      await saveSession(provider, sessions[i], this.authPath, { activate: i === 0 })
-    }
-    this.lastError.delete(provider)
-    if (provider === 'cursor') await this.#discoverCursor(sessions[0])
-    if (provider === 'ollama') await this.#discoverOllama(sessions[0])
-    if (provider === 'kiro') await this.#discoverKiro(sessions[0])
-    if (provider === 'kimi') await this.#discoverKimi(sessions[0])
-    if (provider === 'copilot') await this.#discoverCopilot(sessions[0])
-    if (provider === 'devin') await this.#discoverDevin(sessions[0])
-    if (provider === 'cline') await this.#discoverCline(sessions[0])
-    this.onAuthChanged?.(provider)
-    void this.quota.refresh(provider)
-    return {
-      source: result.source,
-      account: publicSession(provider, sessions[0]),
-      count: sessions.length,
-    }
+  importFrom(provider) {
+    return importFrom(this, provider)
   }
 
   async setModels(payload: any = {}) {
@@ -2299,16 +802,32 @@ export class AuthController {
     const catalog = await this.catalog()
     if (Array.isArray(payload.selected)) {
       await this.models.setEnabled(payload.selected, catalog)
+    } else if (payload.resetContexts === true) {
+      // 恢复默认窗口: drop every custom input-context override at once.
+      await this.models.resetContexts()
+    } else if (typeof payload.contextKey === 'string') {
+      // Custom input-context window (null resets to the catalog default);
+      // not an enable choice, so selectionExplicit stays as it was.
+      await this.models.setContext(payload.contextKey, payload.context ?? null, catalog)
     } else if (typeof payload.key === 'string') {
       await this.models.toggle(payload.key, payload.on !== false, catalog)
     } else if (MODEL_FAMILY_IDS.includes(payload.family)) {
       await this.models.setFamily(payload.family, payload.on !== false, catalog)
     } else if (typeof payload.all === 'boolean') {
       await this.models.setAll(payload.all, catalog)
+    } else if ('effort' in payload) {
+      // Default effort for `families` (null clears); no families = every family (全部).
+      await this.models.setEffort(payload.effort, payload.families ?? undefined)
     } else {
-      throw new Error('models payload needs selected, key, family, or all')
+      throw new Error('models payload needs selected, key, family, all, or effort')
     }
-    if (this.settings && typeof this.settings.mutate === 'function') {
+    // A context override on a disabled row only persists to models.json —
+    // filterProviders drops it from the route write, so syncing would
+    // produce a byte-identical settings file while paying a seconds-long
+    // host reconcile. The override lands the next time the row is enabled.
+    const dormantContextEdit = typeof payload.contextKey === 'string'
+      && !this.models.isEnabled(payload.contextKey)
+    if (!dormantContextEdit && this.settings && typeof this.settings.mutate === 'function') {
       // Picker already wrote the switch; do not re-enable a deliberate 全关.
       // Mutate failures must reach the RPC so the picker can show them.
       await this.sync(undefined, { recover: false })
@@ -2329,13 +848,18 @@ export class AuthController {
     if (options.recover !== false && selected === undefined) {
       await this.models.recoverEmptyLoggedInFamilies(catalog, loggedIn)
     }
-    const opencodeGoKeySet = await this.#opencodeGoKeySet()
-    const opencodeGoRoute = await ensureOpencodeGoRoute(this.settings, {
+    const opencodeGoKeySet = await hasOpencodeGoKey(this)
+    // Planned only: its writes ride the family-route mutate below, so one sync
+    // costs the host one llm-pi-ai reconcile (a few seconds), not two.
+    const { mutations: opencodeGoMutations = [], ...opencodeGoRoute } = await ensureOpencodeGoRoute(this.settings, {
       selected: this.models.selectedForSync(catalog),
       apiKeySet: opencodeGoKeySet,
+      contexts: this.models.contexts,
+      efforts: this.models.efforts,
+      apply: false,
     })
-    if (opencodeGoRoute.status === 'error' || (opencodeGoKeySet && opencodeGoRoute.status !== 'written' && opencodeGoRoute.status !== 'present')) {
-      throw new Error(`OpenCode Go model sync failed: ${opencodeGoRoute.error ?? opencodeGoRoute.status}`)
+    if (opencodeGoKeySet && opencodeGoRoute.status !== 'pending' && opencodeGoRoute.status !== 'present') {
+      throw new Error(`OpenCode Go model sync failed: ${opencodeGoRoute.status}`)
     }
     const synced = await syncHarnessModels({
       settings: this.settings,
@@ -2344,6 +868,8 @@ export class AuthController {
       origin: this.origin(),
       loggedIn,
       selected: this.models.selectedForSync(catalog),
+      contexts: this.models.contexts,
+      efforts: this.models.efforts,
       cursorModels: cursorCatalogModels(),
       ollamaModels: ollamaCatalogModels(),
       kiroModels: kiroCatalogModels(),
@@ -2351,9 +877,11 @@ export class AuthController {
       copilotModels: copilotCatalogModels(),
       devinModels: devinCatalogModels(),
       clineModels: clineCatalogModels(),
+      chatgptModels: chatgptCatalogModels(),
       commandCodeModels: commandCodeCatalogModels(),
       glmModels: await this.#glmModels(),
+      extraMutations: opencodeGoMutations,
     })
-    return { ...synced, opencodeGoRoute }
+    return { ...synced, opencodeGoRoute: opencodeGoMutations.length ? { ...opencodeGoRoute, status: 'written' } : opencodeGoRoute }
   }
 }

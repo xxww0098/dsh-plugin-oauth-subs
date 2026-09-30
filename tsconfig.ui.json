@@ -4,12 +4,12 @@
     "module": "None",
     "lib": ["ES2022", "DOM"],
     "outDir": "lib/ui",
-    "rootDir": "src/ui",
+    "rootDir": ".ui-build",
     "declaration": false,
     "skipLibCheck": true,
     "strict": false,
     "noImplicitAny": false,
     "removeComments": false
   },
-  "include": ["src/ui/**/*.ts"]
+  "include": [".ui-build/client.ts"]
 }

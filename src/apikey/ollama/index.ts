@@ -13,6 +13,7 @@
 
 import { createHash } from 'node:crypto'
 import { outboundFetch } from '../../utils/outbound.js'
+import { catalogRows } from '../../catalog/index.js'
 
 export const OLLAMA_CLOUD_ORIGIN = 'https://ollama.com'
 export const OLLAMA_CHAT_URL = `${OLLAMA_CLOUD_ORIGIN}/v1/chat/completions`
@@ -57,36 +58,9 @@ export const OLLAMA_SOURCES = Object.freeze(['paste', 'env'])
 /**
  * Official Cloud retirement table (docs.ollama.com/cloud). Upcoming
  * 2026-07-31 rows are already past as of this family. Do not list them.
+ * Ids live in `src/catalog/models.json` under `"ollamaRetired"`.
  */
-export const OLLAMA_RETIRED_MODELS = Object.freeze(new Set([
-  'minimax-m2.5',
-  'kimi-k2.5',
-  'deepseek-v3.1:671b',
-  'deepseek-v3.2',
-  'devstral-2:123b',
-  'devstral-small-2:24b',
-  'ministral-3:14b',
-  'ministral-3:3b',
-  'ministral-3:8b',
-  'gemini-3-flash-preview',
-  'gemma3:12b',
-  'gemma3:27b',
-  'gemma3:4b',
-  'glm-4.7',
-  'glm-5',
-  'minimax-m2.1',
-  'qwen3-coder-next',
-  'qwen3-coder:480b',
-  'rnj-1:8b',
-  'kimi-k2-thinking',
-  'kimi-k2:1t',
-  'minimax-m2',
-  'glm-4.6',
-  'qwen3-next:80b',
-  'qwen3-vl:235b',
-  'qwen3-vl:235b-instruct',
-  'cogito-2.1:671b',
-]))
+export const OLLAMA_RETIRED_MODELS = Object.freeze(new Set(catalogRows('ollamaRetired')))
 
 /** Last-resort name regex when POST /api/show has no `capabilities`. */
 export function inferOllamaInput(id) {
@@ -152,41 +126,19 @@ export function ollamaContextWindow(id, show) {
   return ollamaShowContextLength(show) ?? ollamaSnapshotContextWindow(id) ?? OLLAMA_DEFAULT_CONTEXT
 }
 
-function ollamaModel(id, name, contextWindow, input = OLLAMA_TEXT_INPUT) {
-  return {
-    id,
-    name,
-    contextWindow,
-    maxTokens: OLLAMA_DEFAULT_MAX_TOKENS,
-    input: input.includes('image') ? [...OLLAMA_VISION_INPUT] : [...OLLAMA_TEXT_INPUT],
-    reasoningEfforts: OLLAMA_REASONING,
-  }
-}
-
 /**
  * 17-row Cloud `/api/tags` snapshot (2026-09-26). Windows are POST /api/show
  * `model_info.*.context_length`. `input` is that show's `capabilities` (`vision` →
- * text+image). Live tags+show replace this after login.
+ * text+image). Live tags+show replace this after login. Rows live in
+ * `src/catalog/models.json` under `"ollama"` (every row carries the family
+ * `OLLAMA_REASONING` ladder and `OLLAMA_DEFAULT_MAX_TOKENS`).
  */
-export const OLLAMA_MODELS = Object.freeze([
-  ollamaModel('deepseek-v4-pro:0813', 'DeepSeek V4 Pro', 1_048_576),
-  ollamaModel('deepseek-v4.1-flash', 'DeepSeek V4.1 Flash', 1_048_576, OLLAMA_VISION_INPUT),
-  ollamaModel('gemma4:31b', 'Gemma 4 31B', 262_144, OLLAMA_VISION_INPUT),
-  ollamaModel('glm-5.2', 'GLM-5.2', 1_048_576),
-  ollamaModel('glm-5.3', 'GLM-5.3', 1_048_576),
-  ollamaModel('glm-5.3-flash', 'GLM-5.3 Flash', 1_048_576, OLLAMA_VISION_INPUT),
-  ollamaModel('gpt-oss:120b', 'GPT-OSS 120B', 131_072),
-  ollamaModel('gpt-oss:20b', 'GPT-OSS 20B', 131_072),
-  ollamaModel('kimi-k2.6', 'Kimi K2.6', 262_144, OLLAMA_VISION_INPUT),
-  ollamaModel('kimi-k2.7-code', 'Kimi K2.7 Code', 262_144, OLLAMA_VISION_INPUT),
-  ollamaModel('kimi-k3', 'Kimi K3', 1_048_576, OLLAMA_VISION_INPUT),
-  ollamaModel('minimax-m2.7', 'MiniMax M2.7', 196_608),
-  ollamaModel('minimax-m3', 'MiniMax M3', 512_000, OLLAMA_VISION_INPUT),
-  ollamaModel('mistral-large-3:675b', 'Mistral Large 3 675B', 262_144, OLLAMA_VISION_INPUT),
-  ollamaModel('nemotron-3-nano:30b', 'Nemotron 3 Nano 30B', 262_144),
-  ollamaModel('nemotron-3-super', 'Nemotron 3 Super', 262_144),
-  ollamaModel('nemotron-3-ultra', 'Nemotron 3 Ultra', 262_144),
-])
+export const OLLAMA_MODELS = catalogRows('ollama')
+
+/** Catalog lookup for the custom-context ceiling (`familyMaxContextWindow`). */
+export function ollamaModel(modelId) {
+  return OLLAMA_MODELS.find((model) => model.id === modelId)
+}
 
 export function ollamaSourceLabel(source) {
   if (source === 'env') return 'env'

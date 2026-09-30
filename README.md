@@ -38,6 +38,7 @@ If the app exits instantly on launch, check `launchctl getenv ELECTRON_RUN_AS_NO
 | Provider | Auth | DSH api | Upstream hop |
 |---|---|---|---|
 | ChatGPT Codex | PKCE `localhost:1455` (`1457` fallback); paste-callback; `app_EMoamEEZ73f0CkXaXp7hrann` | `openai-responses` | `chatgpt.com/backend-api/codex/responses` |
+| ChatGPT (Sign in with ChatGPT) | Official open-source flow: `dynamic_agent_client` registration → issued `oaiapp_` client; `127.0.0.1` loopback; ID token verified against JWKS | `openai-responses` | `api.openai.com/v1/responses` |
 | xAI Grok | Device-code (default); PKCE `127.0.0.1:56121`; `b1a00492-073a-47ea-816f-4c329264a828` | `openai-responses` | `api.x.ai/v1/responses` |
 | GLM · Z.ai (global) | ZCode CLI poll `provider: zai`; mint `id.secret`; `client_P8X5CMWmlaRO9gyO-KSqtg` | `anthropic-messages` | `api.z.ai/api/anthropic` (Completions leftover `…/coding/paas/v4`) |
 | GLM · BigModel (China) | Same CLI poll, `provider: bigmodel`; poll JWT is the bearer; client `zcode` | `anthropic-messages` | `open.bigmodel.cn/api/anthropic` (Completions leftover `…/coding/paas/v4`) |
@@ -80,7 +81,7 @@ Subscription tokens: `<profile>/data/dsh-plugin-oauth-subs/auth.json` (`0600`). 
 | Loopback | `http://127.0.0.1:8318/{codex,grok}/v1/responses`, `/glm/v1/messages` (Completions leftover `/glm/v1/chat/completions` until the next sync), `/{kiro,antigravity,cursor,ollama,kimi,copilot,devin,cline}/v1/chat/completions` |
 | Upstream | Refreshed subscription bearer or the active OpenCode Go API key |
 
-After the panel closes, DSH continues using the configured routes. The proxy binds only to loopback and uses `DSH_OAUTH_SUBS_API_KEY`; OpenCode Go bypasses it. Stack and module tree: [AGENTS.md](AGENTS.md). Upstream references: [docs/oauth.md](docs/oauth.md).
+After the panel closes, DSH continues using the configured routes. The proxy binds only to loopback and uses `DSH_OAUTH_SUBS_API_KEY`; OpenCode Go bypasses it. Development, install and release: [docs/development.md](docs/development.md). Upstream references: [docs/oauth.md](docs/oauth.md).
 
 ## Cache
 
@@ -114,23 +115,23 @@ The analyzer labels each call `cold_start` / `delta` / `compaction` / `rebuild` 
 
 ## Fast / models / reasoning
 
-Login and chat use official client identity; UA / fingerprint live in each `src/oauth/<id>/README.md`. The repos those fingerprints were copied from are listed in [docs/oauth.md](docs/oauth.md). The panel's **Models** tab: per-family checkboxes (default all on except **900K**). Reasoning is set in the Harness session menu, not the Models tab. Fast and 900K spend quota faster.
+Login and chat use official client identity; UA / fingerprint live in each `src/oauth/<id>/README.md`. The repos those fingerprints were copied from are listed in [docs/oauth.md](docs/oauth.md). The panel's **Models** tab: per-family switches (all on by default); each row's window badge opens a dialog to raise that row's input window up to its ceiling. Reasoning is set in the Harness session menu, not the Models tab. Fast and larger windows spend quota faster. How the catalog is refreshed from each vendor: [docs/models.md](docs/models.md).
 
 | Family | Fast | Window | Thinking |
 |---|---|---|---|
-| Codex GPT-6 Astra / Sol / Luna and GPT-5.6 Sol / Terra / Luna | Yes. `-fast` → Priority (`service_tier: "priority"` + `x-codex-routing-hint`; `store: false`) | **258K** default; `-900k` (872K) | low / medium / high / xhigh / **max** |
-| Other Codex | GPT-5.5 only: Yes, `-fast` → Priority. GPT-5.4 / 5.4-mini / Spark retired (`not supported when using Codex with a ChatGPT account`) | 258K (no `-900k`) | low–xhigh (no `minimal`) |
+| Codex GPT-6 Astra / Sol / Luna and GPT-5.6 Sol / Terra / Luna | Yes. `-fast` → Priority (`service_tier: "priority"` + `x-codex-routing-hint`; `store: false`) | **258K** default; custom up to 872K | low / medium / high / xhigh / **max** |
+| Other Codex | GPT-5.5 only: Yes, `-fast` → Priority. GPT-5.4 / 5.4-mini / Spark retired (`not supported when using Codex with a ChatGPT account`) | 258K (no larger window) | low–xhigh (no `minimal`) |
 | Grok | No. 2026-08-30: 83.34 vs 82.80 tok/s (0.994). Older ids reject the field | — | 4.6: low / medium / high / xhigh (unset = **high**); 4.5: no xhigh |
-| GLM | — | — | 5.3 / Flash: low / high / **max** (default max; no `medium`; `disabled` 400s). Turbo: on, no depth. Flash is the only GLM image row |
+| GLM | — | 5.3 / Flash: **400K** plan input cap; custom up to the official 1M | 5.3 / Flash: low / high / **max** (default max; no `medium`; `disabled` 400s). Turbo: on, no depth. Flash is the only GLM image row |
 | Kiro | — | — | GPT-5.6: off / low / medium / high / xhigh / max (`off` → wire `none`). Opus 5 / 4.8 / 4.7 and Sonnet 5 add **xhigh**; 4.6 family to max; Haiku / OSS: none. Catalog: [kiro.dev/docs/models](https://kiro.dev/docs/models/) (no Auto) |
 | Antigravity | No | Cloud Code catalog; see [family model notes](src/oauth/antigravity/README.md) | Per-model upstream support |
-| Cursor | Per-model `-fast` variant | Live `GetUsableModels` + `AvailableModels`; 15-row offline fallback | Per-family registry parameters; see [family model notes](src/oauth/cursor/README.md) |
-| Ollama Cloud | No | Live `GET /api/tags` (17-row Cloud snapshot fallback). Context from `POST /api/show` `model_info.<family>.context_length`. No quota bars | off / low / medium / high / max (`off` → wire `none`) |
+| Cursor | Per-model `-fast` variant | Live `GetUsableModels` + `AvailableModels`; static offline fallback | Per-family registry parameters; see [family model notes](src/oauth/cursor/README.md) |
+| Ollama Cloud | No | Live `GET /api/tags` (static Cloud snapshot fallback). Context from `POST /api/show` `model_info.<family>.context_length`. No quota bars | off / low / medium / high / max (`off` → wire `none`) |
 | Kimi | No | Live `GET /coding/v1/models` (static `kimi-for-coding` / highspeed / `k3` / `k3-256k`, 256k/32k). Prefix-hash cache | off / minimal / low / medium / high / xhigh / max → `thinking.effort` |
 | Copilot | No | Live `GET {api}/models` (static floor refreshed from GitHub's official docs tables + models.dev `github-copilot`, 2026-09-23). Prefix-hash + `X-Interaction-Id` | live `reasoning_effort` when the catalog advertises it |
-| Devin | Yes. `-fast` is a real backend variant (not Codex Priority), never through `applyFastMode` | Live `GetCliModelConfigs` (2026-09-23: 49 families / 81 picker rows; the static fallback mirrors them) | Mapped to backend `chat_model_uid` per family (`defaultUid`); `thinking` / `fast` / `1m` become picker rows |
+| Devin | Yes. `-fast` is a real backend variant (not Codex Priority), never through `applyFastMode` | Live `GetCliModelConfigs` (the static fallback mirrors it) | Mapped to backend `chat_model_uid` per family (`defaultUid`); `thinking` / `fast` / `1m` become picker rows |
 | Cline | No | Live `GET /ai/cline/recommended-models` (static feed snapshot fallback) | minimal / low / medium / high / xhigh / max → `reasoning_effort` (`max`→`xhigh`) |
-| OpenCode Go | No | 28 Completions + 6 Responses rows; see [model audit](docs/model-audit-2026-09-26.md) | Depends on the model; DSH closed effort keys |
+| OpenCode Go | No | Two routes: Completions + Responses | Depends on the model; DSH closed effort keys |
 
 Codex Priority echo `created=auto` / `completed=default` is not a confirmation (openai/codex#14204). 2026-08-26 Luna: 88.3 vs 57.5 tok/s (1.54×); 2026-08-30 interleaved mean 1.33× (1.90 then 0.93). Throughput-only; TTFT and cache unchanged.
 

@@ -11,6 +11,7 @@ import { copilotCacheSessionId, COPILOT_STABLE_SESSION } from './cache.js'
 import { createHash } from 'node:crypto'
 import { OAuthEndpointError, oauthError } from '../tokens.js'
 import { outboundFetch } from '../../utils/outbound.js'
+import { catalogRows } from '../../catalog/index.js'
 
 export { applyCopilotCache, copilotCacheHeaders, copilotCacheSessionId, resetCopilotPins } from './cache.js'
 
@@ -33,6 +34,8 @@ export const COPILOT_API_VERSION = '2026-06-01'
 export const COPILOT_PREEMPT_MS = 2 * 60_000
 export const COPILOT_NEVER_EXPIRES = 8.64e15
 export const COPILOT_DEFAULT_CONTEXT = 128_000
+/** GPT rows run the Copilot GPT line's 256K default input window (2026-09). */
+export const COPILOT_GPT_CONTEXT_WINDOW = 256_000
 export const COPILOT_DEFAULT_MAX_TOKENS = 16_384
 export const COPILOT_INPUT = Object.freeze(['text'])
 export const COPILOT_VISION_INPUT = Object.freeze(['text', 'image'])
@@ -55,17 +58,6 @@ export const COPILOT_REASONING = Object.freeze({
   high: 'high',
 })
 
-function model(id, name, extra: any = {}) {
-  return {
-    id,
-    name,
-    contextWindow: extra.contextWindow ?? COPILOT_DEFAULT_CONTEXT,
-    maxTokens: extra.maxTokens ?? COPILOT_DEFAULT_MAX_TOKENS,
-    input: extra.input ? [...extra.input] : [...COPILOT_INPUT],
-    ...(extra.reasoningEfforts ? { reasoningEfforts: { ...extra.reasoningEfforts } } : {}),
-  }
-}
-
 /**
  * Offline floor. Live `GET /models` replaces this after login.
  *
@@ -76,205 +68,18 @@ function model(id, name, extra: any = {}) {
  * utility default although it is no longer GA-listed.
  *
  * `gpt-6-luna` / `gpt-6-sol` use the vendor ids shared by Codex / Cursor /
- * Devin; `claude-opus-5.5` follows Copilot's dotted `claude-opus-4.7`
- * convention. Those three await live confirmation. `Claude Opus 4.8 (fast
- * mode)` is a mode, not a picker row, so it stays out.
+ * Devin; `claude-opus-5.5` / `claude-sonnet-5.5` follow Copilot's dotted
+ * `claude-opus-4.7` convention. Those four await live confirmation.
+ * `Claude Opus 4.8 (fast mode)` is a mode, not a picker row, so it stays out.
+ * Rows live in `src/catalog/models.json` under `"copilot"` (effort ladders
+ * snapshotted from models.dev `github-copilot`).
  */
-/** models.dev `github-copilot` effort ladders: DSH keys -> wire spellings. */
-const COPILOT_REASONING_MINIMAL = Object.freeze({ minimal: 'minimal', low: 'low', medium: 'medium', high: 'high' })
-const COPILOT_REASONING_SMALL = Object.freeze({ low: 'low', medium: 'medium', high: 'high' })
-const COPILOT_REASONING_XHIGH = Object.freeze({ low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh' })
-const COPILOT_REASONING_FULL = Object.freeze({ low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh', max: 'max' })
-const COPILOT_REASONING_NONE = Object.freeze({ off: 'none', low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh' })
-const COPILOT_REASONING_NONE_MAX = Object.freeze({ ...COPILOT_REASONING_NONE, max: 'max' })
-const COPILOT_REASONING_KIMI = Object.freeze({ low: 'low', high: 'high', max: 'max' })
-const COPILOT_REASONING_SONNET = Object.freeze({ low: 'low', medium: 'medium', high: 'high', max: 'max' })
-export const COPILOT_MODELS = Object.freeze([
-  model('gpt-4.1', 'GPT-4.1', { input: [...COPILOT_VISION_INPUT] }),
-  model('gpt-5-mini', 'GPT-5 Mini', {
-    contextWindow: 264_000,
-    maxTokens: 64_000,
-    input: [...COPILOT_VISION_INPUT],
-    reasoningEfforts: { ...COPILOT_REASONING_SMALL },
-  }),
-  model('gpt-5.3-codex', 'GPT-5.3 Codex', {
-    contextWindow: 400_000,
-    maxTokens: 128_000,
-    input: [...COPILOT_VISION_INPUT],
-    reasoningEfforts: { ...COPILOT_REASONING_XHIGH },
-  }),
-  model('gpt-5.4', 'GPT-5.4', {
-    contextWindow: 1_050_000,
-    maxTokens: 128_000,
-    input: [...COPILOT_VISION_INPUT],
-    reasoningEfforts: { ...COPILOT_REASONING_NONE },
-  }),
-  model('gpt-5.4-mini', 'GPT-5.4 mini', {
-    contextWindow: 400_000,
-    maxTokens: 128_000,
-    input: [...COPILOT_VISION_INPUT],
-    reasoningEfforts: { ...COPILOT_REASONING_NONE },
-  }),
-  model('gpt-5.4-nano', 'GPT-5.4 nano', {
-    contextWindow: 400_000,
-    maxTokens: 128_000,
-    input: [...COPILOT_VISION_INPUT],
-  }),
-  model('gpt-5.5', 'GPT-5.5', {
-    contextWindow: 1_050_000,
-    maxTokens: 128_000,
-    input: [...COPILOT_VISION_INPUT],
-    reasoningEfforts: { ...COPILOT_REASONING_NONE },
-  }),
-  model('gpt-5.6-luna', 'GPT-5.6 Luna', {
-    contextWindow: 1_050_000,
-    maxTokens: 128_000,
-    input: [...COPILOT_VISION_INPUT],
-    reasoningEfforts: { ...COPILOT_REASONING_NONE_MAX },
-  }),
-  model('gpt-5.6-sol', 'GPT-5.6 Sol', {
-    contextWindow: 1_050_000,
-    maxTokens: 128_000,
-    input: [...COPILOT_VISION_INPUT],
-    reasoningEfforts: { ...COPILOT_REASONING_NONE_MAX },
-  }),
-  model('gpt-5.6-terra', 'GPT-5.6 Terra', {
-    contextWindow: 1_050_000,
-    maxTokens: 128_000,
-    input: [...COPILOT_VISION_INPUT],
-    reasoningEfforts: { ...COPILOT_REASONING_NONE_MAX },
-  }),
-  model('gpt-6-astra', 'GPT-6 Astra', {
-    contextWindow: 1_050_000,
-    maxTokens: 128_000,
-    input: [...COPILOT_VISION_INPUT],
-    reasoningEfforts: { ...COPILOT_REASONING_FULL },
-  }),
-  model('gpt-6-luna', 'GPT-6 Luna', {
-    contextWindow: 1_050_000,
-    maxTokens: 128_000,
-    input: [...COPILOT_VISION_INPUT],
-    reasoningEfforts: { ...COPILOT_REASONING_FULL },
-  }),
-  model('gpt-6-sol', 'GPT-6 Sol', {
-    contextWindow: 1_050_000,
-    maxTokens: 128_000,
-    input: [...COPILOT_VISION_INPUT],
-    reasoningEfforts: { ...COPILOT_REASONING_FULL },
-  }),
-  model('claude-fable-5', 'Claude Fable 5', {
-    contextWindow: 1_000_000,
-    maxTokens: 128_000,
-    input: [...COPILOT_VISION_INPUT],
-    reasoningEfforts: { ...COPILOT_REASONING_FULL },
-  }),
-  model('claude-fable-5.1', 'Claude Fable 5.1', {
-    contextWindow: 1_000_000,
-    maxTokens: 128_000,
-    input: [...COPILOT_VISION_INPUT],
-    reasoningEfforts: { ...COPILOT_REASONING_FULL },
-  }),
-  model('claude-haiku-4.5', 'Claude Haiku 4.5', {
-    contextWindow: 200_000,
-    maxTokens: 64_000,
-    input: [...COPILOT_VISION_INPUT],
-  }),
-  model('claude-opus-4.7', 'Claude Opus 4.7', {
-    contextWindow: 200_000,
-    maxTokens: 32_000,
-    input: [...COPILOT_VISION_INPUT],
-    reasoningEfforts: { ...COPILOT_REASONING_FULL },
-  }),
-  model('claude-opus-4.8', 'Claude Opus 4.8', {
-    contextWindow: 200_000,
-    maxTokens: 64_000,
-    input: [...COPILOT_VISION_INPUT],
-    reasoningEfforts: { ...COPILOT_REASONING_FULL },
-  }),
-  model('claude-opus-5', 'Claude Opus 5', {
-    contextWindow: 1_000_000,
-    maxTokens: 64_000,
-    input: [...COPILOT_VISION_INPUT],
-    reasoningEfforts: { ...COPILOT_REASONING_FULL },
-  }),
-  model('claude-opus-5.5', 'Claude Opus 5.5', {
-    contextWindow: 1_000_000,
-    maxTokens: 64_000,
-    input: [...COPILOT_VISION_INPUT],
-    reasoningEfforts: { ...COPILOT_REASONING_FULL },
-  }),
-  model('claude-sonnet-4.6', 'Claude Sonnet 4.6', {
-    contextWindow: 200_000,
-    maxTokens: 32_000,
-    input: [...COPILOT_VISION_INPUT],
-    reasoningEfforts: { ...COPILOT_REASONING_SONNET },
-  }),
-  model('claude-sonnet-5', 'Claude Sonnet 5', {
-    contextWindow: 1_000_000,
-    maxTokens: 128_000,
-    input: [...COPILOT_VISION_INPUT],
-    reasoningEfforts: { ...COPILOT_REASONING_FULL },
-  }),
-  model('gemini-3.5-flash', 'Gemini 3.5 Flash', {
-    contextWindow: 200_000,
-    maxTokens: 64_000,
-    input: [...COPILOT_VISION_INPUT],
-    reasoningEfforts: { ...COPILOT_REASONING_MINIMAL },
-  }),
-  model('gemini-3.6-flash', 'Gemini 3.6 Flash', {
-    contextWindow: 1_000_000,
-    maxTokens: 64_000,
-    input: [...COPILOT_VISION_INPUT],
-    reasoningEfforts: { ...COPILOT_REASONING_MINIMAL },
-  }),
-  model('gemini-3.7-flash', 'Gemini 3.7 Flash', {
-    contextWindow: 1_000_000,
-    maxTokens: 64_000,
-    input: [...COPILOT_VISION_INPUT],
-    reasoningEfforts: { ...COPILOT_REASONING_SMALL },
-  }),
-  model('gemini-3.8-flash', 'Gemini 3.8 Flash', {
-    contextWindow: 1_000_000,
-    maxTokens: 64_000,
-    input: [...COPILOT_VISION_INPUT],
-    reasoningEfforts: { ...COPILOT_REASONING_SMALL },
-  }),
-  model('mai-code-1.1-flash', 'MAI-Code-1.1-Flash', {
-    contextWindow: 256_000,
-    maxTokens: 128_000,
-    input: [...COPILOT_VISION_INPUT],
-    reasoningEfforts: { ...COPILOT_REASONING_SMALL },
-  }),
-  model('kimi-k2.7-code', 'Kimi K2.7 Code', {
-    contextWindow: 256_000,
-    maxTokens: 32_000,
-    input: [...COPILOT_VISION_INPUT],
-  }),
-  model('kimi-k3', 'Kimi K3', {
-    contextWindow: 1_048_576,
-    maxTokens: 131_072,
-    input: [...COPILOT_VISION_INPUT],
-    reasoningEfforts: { ...COPILOT_REASONING_KIMI },
-  }),
-  model('grok-4.5', 'Grok 4.5', {
-    contextWindow: 500_000,
-    maxTokens: 128_000,
-    input: [...COPILOT_VISION_INPUT],
-    reasoningEfforts: { ...COPILOT_REASONING_SMALL },
-  }),
-  model('grok-4.6', 'Grok 4.6', {
-    contextWindow: 500_000,
-    maxTokens: 128_000,
-    input: [...COPILOT_VISION_INPUT],
-    reasoningEfforts: { ...COPILOT_REASONING_XHIGH },
-  }),
-  model('grok-4.7', 'Grok 4.7', {
-    contextWindow: 500_000,
-    maxTokens: 128_000,
-    input: [...COPILOT_VISION_INPUT],
-    reasoningEfforts: { ...COPILOT_REASONING_XHIGH },
-  }),
-])
+export const COPILOT_MODELS = catalogRows('copilot')
+
+/** Catalog lookup for the custom-context ceiling (`maxContextWindowOf`). */
+export function copilotModel(modelId) {
+  return COPILOT_MODELS.find((model) => model.id === modelId)
+}
 
 function trimmed(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined

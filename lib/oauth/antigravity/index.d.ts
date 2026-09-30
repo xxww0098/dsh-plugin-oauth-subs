@@ -81,26 +81,10 @@ export declare const ANTIGRAVITY_REASONING_CLAUDE: Readonly<{
  * Dropped 2026-09-01 (upstream 35e3d97dac): gemini-3-flash-agent /
  * gemini-3.5-flash-low / gemini-3.5-flash-extra-low — Cloud Code returns
  * 500 UNKNOWN for those ids. Current 3.5 row: gemini-3.5-flash-lite
- * (upstream d48590a47d, 2026-09-14).
+ * (upstream d48590a47d, 2026-09-14). Rows live in `src/catalog/models.json`
+ * under `"antigravity"`.
  */
-export declare const ANTIGRAVITY_MODELS: readonly ({
-    id: string;
-    name: string;
-    contextWindow: number;
-    maxTokens: number;
-    reasoningEfforts: Readonly<{
-        low: "low";
-        high: "high";
-    }>;
-    input: readonly string[];
-} | {
-    id: string;
-    name: string;
-    contextWindow: number;
-    maxTokens: number;
-    reasoningEfforts: boolean;
-    input: readonly string[];
-})[];
+export declare const ANTIGRAVITY_MODELS: readonly any[];
 export declare const ANTIGRAVITY_PLAN_NAMES: Readonly<{
     free: "Free";
     free_tier: "Free";

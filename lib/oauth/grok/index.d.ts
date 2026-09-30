@@ -12,13 +12,24 @@ export declare const GROK_DISCOVERY_URL = "https://auth.x.ai/.well-known/openid-
 export declare const GROK_API_URL = "https://api.x.ai/v1/responses";
 export declare const GROK_BILLING_URL = "https://cli-chat-proxy.grok.com/v1/billing?format=credits";
 export declare const GROK_CLI_USER_URL = "https://cli-chat-proxy.grok.com/v1/user?include=subscription";
+/** grok CLI's own model list (`~/.grok/models_cache.json` source); read by `scripts/models.ts`. */
+export declare const GROK_MODELS_URL = "https://cli-chat-proxy.grok.com/v1/models";
 export declare const GROK_CREDITS_URL = "https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig";
+/** Reset cards (「重置卡」): grok.com web billing, not in the grok CLI. See `reset-frame.ts`. */
+export declare const GROK_RESET_LIST_URL = "https://grok.com/prod_mc_billing.ConsumerUiSvc/GetRemainingResets";
+export declare const GROK_RESET_REDEEM_URL = "https://grok.com/prod_mc_billing.ConsumerUiSvc/RedeemReset";
 export declare const GROK_CLIENT_VERSION = "0.2.93";
 export declare const GROK_USER_AGENT = "grok-cli/0.2.93";
 export declare const GROK_SCOPE = "openid profile email offline_access grok-cli:access api:access";
 export declare const GROK_CALLBACK_PATH = "/callback";
 export declare const GROK_PREEMPT_MS: number;
 export declare const GROK_LARGE_CONTEXT = 500000;
+/**
+ * grok-4.7 base input window is 256k; the CLI cache / api.x.ai reading of
+ * 500000 is the Max Mode variant window (same attribution the Cursor family
+ * records from the official docs). 4.5/4.6 keep GROK_LARGE_CONTEXT.
+ */
+export declare const GROK_47_CONTEXT = 256000;
 /** grok-4.5: low / medium / high. Reasoning cannot be turned off. */
 export declare const GROK_REASONING_45: Readonly<{
     low: "low";
@@ -46,17 +57,7 @@ export declare const GROK_REASONING_47: Readonly<{
  * passes these through unpeeled and peels the rest.
  */
 export declare const GROK_FAST_MODEL_IDS: readonly string[];
-export declare const GROK_MODELS: readonly {
-    id: string;
-    name: string;
-    contextWindow: number;
-    maxTokens: number;
-    reasoningEfforts: Readonly<{
-        low: "low";
-        medium: "medium";
-        high: "high";
-    }>;
-}[];
+export declare const GROK_MODELS: readonly any[];
 export declare const GROK_TIER_NAMES: Readonly<{
     0: "Free";
     1: "SuperGrok";
@@ -143,6 +144,14 @@ export declare function grokUpstreamHeaders(session: any): {
     authorization: string;
     'x-xai-token-auth': string;
     accept: string;
+};
+/** Reset-card RPCs take the CLI bearer with gRPC-web framing (orca #18116). */
+export declare function grokResetHeaders(session: any): {
+    'user-agent': string;
+    authorization: string;
+    'x-xai-token-auth': string;
+    'content-type': string;
+    'x-grpc-web': string;
 };
 export declare function grokCreditsHeaders(session: any): {
     'user-agent': string;

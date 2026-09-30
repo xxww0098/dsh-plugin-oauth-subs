@@ -40,6 +40,7 @@ export declare function classifyToolError(message: any): {
     timeoutMs: null;
 };
 export declare function parseSessionEvents(text: any): any[];
+export declare function usageOf(event: any): any;
 /**
  * Label each call: cold start, ordinary delta, compaction rewrite,
  * adapter rebuild, unexplained prefix break, or true affinity miss.
@@ -47,10 +48,30 @@ export declare function parseSessionEvents(text: any): any[];
 export declare function annotateCacheCalls(calls: any, events: any): any;
 export declare function callHitRate(call: any): number;
 /**
+ * The proxy's cacheable-prefix estimates (`prefix-estimate.jsonl`, plus its
+ * `.1` generation) from every DSH profile's plugin data dir. Kiro reports no
+ * cached tokens, so these stand in for its hit rate as an upper bound.
+ */
+export declare function readPrefixEstimates(profilesRoot?: string): any[];
+/**
+ * Byte-weighted cacheable prefix over the estimates that had a baseline; an
+ * upper bound on the hit rate (it assumes the server cache was still warm —
+ * `staleGap` counts baselines over 5 minutes old). Null when none had one.
+ */
+export declare function prefixEstimateOf(entries: any): {
+    ratio: number;
+    requests: any;
+    baseline: any;
+    staleGap: any;
+} | null;
+/**
  * @param {string} text
+ * @param {{ prefixEstimates?: object[] }} [options] — see `readPrefixEstimates`
  * @returns {object}
  */
-export declare function analyzeSession(text: any): {
+export declare function analyzeSession(text: any, { prefixEstimates }?: {
+    prefixEstimates?: any[] | undefined;
+}): {
     calls: any;
     callCount: any;
     maxStep: any;
@@ -65,6 +86,12 @@ export declare function analyzeSession(text: any): {
     zeroCacheAfterWarmup: any;
     affinityMissCount: any;
     cacheMeasured: any;
+    prefixEstimate: {
+        ratio: number;
+        requests: any;
+        baseline: any;
+        staleGap: any;
+    } | null;
     compactionCallCount: any;
     rebuildCallCount: any;
     uncachedBreakdown: {
@@ -108,6 +135,15 @@ export declare const CALL_INDEX_BUCKETS: readonly string[];
 export declare function decodeSessionBuffer(buf: Buffer): string;
 /** Plain session.jsonl or DSH's multi-frame session*.jsonl.zstd. */
 export declare function readSessionText(path: string): string;
+export declare function sessionFiles(dir: string, since: number | null, out?: string[]): string[];
+/** Absolute frame times: `{ time }` chunks and `{ time0, dt[] }` chunk runs. */
+export declare function frameTimes(frames: any): number[];
+/** Terminal `finish` failure of an attempt: nested in assistant/attempt, or a
+ * top-level assistant/chunk in older sessions. */
+export declare function attemptFailure(event: any): {
+    code: any;
+    message: string;
+} | null;
 /** Failure text safe to aggregate: no paths, ids, or tokens; digit runs folded. */
 export declare function normalizeFailureMessage(message: any): string;
 /**
@@ -115,9 +151,10 @@ export declare function normalizeFailureMessage(message: any): string;
  * The same session may exist as session.jsonl.zstd and session.v3/v4.jsonl.zstd;
  * only the highest `session.version` copy of each `session.id` counts.
  */
-export declare function analyzeSessionDir(root: string, { since, until }?: {
+export declare function analyzeSessionDir(root: string, { since, until, prefixEstimates }?: {
     since?: number | null;
     until?: number | null;
+    prefixEstimates?: any[];
 }): {
     window: {
         since: string | null;

@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { request as httpRequest } from 'node:http'
 import { test } from 'node:test'
 import { zstdDecompressSync } from 'node:zlib'
-import { createProxy, describeError } from '../lib/oauth/proxy.js'
+import { createProxy, describeError, quotaFamilyOf } from '../lib/oauth/proxy.js'
 import { UPSTREAM_ATTEMPTS, UpstreamFailure } from '../lib/oauth/upstream.js'
 import { classifySseFrame, SseFrameScanner } from '../lib/oauth/responses-sse.js'
 import { CODEX_API_URL } from '../lib/oauth/codex/index.js'
@@ -70,12 +70,51 @@ test('proxy requires the local bearer and forwards Codex Responses', async () =>
     assert.equal(seen[0].headers.authorization, 'Bearer codex-tok')
     assert.equal(seen[0].headers['chatgpt-account-id'], 'acct')
     assert.equal(seen[0].headers.originator, 'codex_cli_rs')
-    assert.equal(seen[0].headers['user-agent'], 'codex_cli_rs/0.155.1')
-    assert.equal(seen[0].headers['openai-version'], '0.155.1')
+    assert.equal(seen[0].headers['user-agent'], 'codex_cli_rs/0.159.2')
+    assert.equal(seen[0].headers['openai-version'], '0.159.2')
     assert.equal(seen[0].headers['session-id'], 'session-cache-1')
     assert.equal(seen[0].headers['thread-id'], 'session-cache-1')
     assert.equal(seen[0].headers['x-client-request-id'], 'session-cache-1')
     assert.equal(seen[0].headers['x-grok-conv-id'], undefined)
+  } finally {
+    await proxy.close()
+  }
+})
+
+test('quotaFamilyOf names the family only for POST chat paths', () => {
+  const at = (method, url) => quotaFamilyOf({ method, url })
+  assert.equal(at('POST', '/codex/v1/responses'), 'codex')
+  assert.equal(at('POST', '/glm/v1/v1/messages'), 'glm')
+  assert.equal(at('POST', '/command-code/chat/completions'), 'command-code')
+  assert.equal(at('POST', '/kimi/v1/chat/completions/'), 'kimi')
+  assert.equal(at('GET', '/codex/v1/responses'), undefined)
+  assert.equal(at('POST', '/codex/v1/models'), undefined)
+  assert.equal(at('GET', '/health'), undefined)
+})
+
+test('a finished chat request reports its family to onQuotaUsed', async () => {
+  const used = []
+  let resolveUsed
+  const reported = new Promise((resolve) => { resolveUsed = resolve })
+  const proxy = createProxy({
+    port: 0,
+    apiKey: 'secret-key',
+    fetchFn: async () => new Response('{"id":"resp"}', { status: 200, headers: { 'content-type': 'application/json' } }),
+    tokens: { codex: { session: async () => ({ accessToken: 'tok', accountId: 'acct' }) } },
+    onQuotaUsed: (family) => { used.push(family); resolveUsed() },
+  })
+  const server = await proxy.listen()
+  const { port } = server.address()
+  try {
+    await (await fetch(`http://127.0.0.1:${port}/codex/v1/models`, { headers: { authorization: 'Bearer secret-key' } })).text()
+    const ok = await fetch(`http://127.0.0.1:${port}/codex/v1/responses`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer secret-key', 'content-type': 'application/json' },
+      body: '{"model":"gpt-5.5"}',
+    })
+    await ok.text()
+    await reported
+    assert.deepEqual(used, ['codex'])
   } finally {
     await proxy.close()
   }

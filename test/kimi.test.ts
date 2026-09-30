@@ -29,7 +29,7 @@ import { KIMI_IMPORT_EMPTY, importKimiAuth, kimiSessionFromCliFile } from '../li
 import { applyKimiCache, kimiCacheHeaders, kimiCacheSessionId, resetKimiPins } from '../lib/oauth/kimi/cache.js'
 import { applyKimiStreamUsage, applyKimiThinking, mapKimiUsage } from '../lib/oauth/kimi/request.js'
 import { DeviceFlowManager } from '../lib/oauth/grok/device-flow.js'
-import { parseKimiUsage } from '../lib/oauth/quota.js'
+import { parseKimiUsage } from '../lib/oauth/kimi/quota.js'
 import { createProxy } from '../lib/oauth/proxy.js'
 
 function json(body, status = 200) {
