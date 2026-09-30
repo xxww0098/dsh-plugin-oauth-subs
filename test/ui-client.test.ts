@@ -593,6 +593,16 @@ test('About keeps the auto-update switch but states hot reload for a linked tree
   assert.equal(src.includes("autoUpdateLinked: '每小时检查一次"), false)
 })
 
+test('the stale-process hint is link-aware: a linked tree never gets the reinstall advice', async () => {
+  const src = assembleUi()
+  // The divergence hint picks its copy by install kind. A linked tree's
+  // divergence is restart-only (code rides hmr) — the generic tail (remove
+  // and re-add from GitHub) would replace the hot link with an installed copy.
+  assert.match(src, /fill\(linked \? t\.updateStaleProcessLinked : t\.updateStaleProcess, disk\)/)
+  assert.match(src, /updateStaleProcessLinked: '磁盘已是 \{n\}，但当前进程仍加载旧模块，重启宿主后生效；代码改动 npm run build 即热载/)
+  assert.match(src, /updateStaleProcessLinked: 'On disk is \{n\}, but this process still runs the old copy — restart the host; code changes hot-reload/)
+})
+
 test('About status banner: tint encodes actionability, CTA only on an installable update', async () => {
   const src = assembleUi()
   assert.match(src, /function VersionStat\(/)

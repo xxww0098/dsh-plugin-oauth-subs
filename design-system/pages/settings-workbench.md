@@ -118,6 +118,10 @@ tokens. Still 13px UI / 12.5px emails.
   / 加载自 are not version concepts and never render as rows — a
   disk≠running divergence is a diagnostic hint (`updateStaleProcess`),
   and installing never restarts the host.
+- The stale-process hint is link-aware (`updateStaleProcessLinked`):
+  a linked tree's divergence is restart-only (code rides `hmr`), and
+  the install-copy advice must not leak in — reinstalling would
+  replace the hot link with an installed copy.
 - A 「本地插件目录」 link keeps the banner neutral: the conclusion names
   the link + running dev build, the subcopy is `autoUpdateLinked`
   (`npm run build` hot-reloads, needs an `hmr` root), and a newer

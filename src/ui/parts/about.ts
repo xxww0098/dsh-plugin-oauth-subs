@@ -294,7 +294,11 @@
           ),
           h('div', { className: 'osubs-hints' },
             linked && update?.status === 'error' && h('p', { className: 'osubs-hint osubs-bad' }, statusLabel(t, update)),
-            stale && disk && h('p', { className: 'osubs-hint osubs-warn' }, fill(t.updateStaleProcess, disk)),
+            // On a linked tree the generic tail (remove and re-add from
+            // GitHub) would replace the hot link with an installed copy —
+            // the link's divergence is restart-only, code rides hmr.
+            stale && disk && h('p', { className: 'osubs-hint osubs-warn' },
+              fill(linked ? t.updateStaleProcessLinked : t.updateStaleProcess, disk)),
             apply && h('p', { className: 'osubs-hint' }, apply),
           ),
         ),
