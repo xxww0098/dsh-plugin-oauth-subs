@@ -85,7 +85,16 @@ export async function loginKiro(ctl: AuthController, payload: any = {}) {
     }
   }
   const machineId = allocateKiroMachineId(await existingKiroMachineId(ctl))
-  const attempt: any = await ctl.flows.start('kiro', kiroSocialFlow())
+  const attempt: any = await ctl.flows.start('kiro', kiroSocialFlow({
+    // The portal's "Your organization" redirect (login_option=awsidc) carries
+    // no code — pivot to the IdC device flow with the issuer it names.
+    startIdc: (idc) => ctl.kiroFlows.start('kiro', {
+      startUrl: idc.issuerUrl,
+      kind: 'enterprise',
+      region: idc.region,
+      fetchFn: ctl.fetchFn,
+    }),
+  }))
   attempt.machineId = machineId
   const claim = ctl.claim('kiro')
   void ctl.completePkce('kiro', attempt, claim)

@@ -138,6 +138,18 @@ export async function login(ctl: AuthController, provider, options) {
 export async function completePkce(ctl: AuthController, provider, attempt, claim) {
   try {
     const code = await attempt.waitCode()
+    // The Kiro portal redirected an organization login to the IdC device flow
+    // (`login_option=awsidc`, issue #167): settle through the device attempt
+    // the callback already started instead of exchanging a code.
+    if (provider === 'kiro' && code && typeof code === 'object' && code.kiroIdcAttempt) {
+      if (ctl.claims.get(provider) !== claim) {
+        code.kiroIdcAttempt.cancel()
+        return
+      }
+      ctl.finalizing.add('kiro')
+      void ctl.completeKiroIdc(code.kiroIdcAttempt)
+      return
+    }
     const session = provider === 'codex'
       ? await exchangeCodexCode(code, attempt.pkce.verifier, attempt.redirectUri)
       : provider === 'kiro'

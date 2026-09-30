@@ -3,6 +3,9 @@
  * server per login attempt receives the provider's redirect, validates
  * `state`, and yields the authorization `code`. A pasted callback URL carrying
  * the matching state can substitute for the browser redirect (`manual`).
+ * Families whose callback carries something other than a `code` (Command Code
+ * credentials, Kiro's IdC pivot) provide `spec.collect`, which may be async;
+ * `spec.callbackPage(result)` overrides the rendered success page.
  */
 
 import { createServer } from 'node:http'
@@ -162,7 +165,7 @@ export class OAuthFlowManager {
       else if (code !== undefined) resolveCode(code)
     }
 
-    const handler = (request, response) => {
+    const handler = async (request, response) => {
       const url = new URL(request.url ?? '/', 'http://localhost')
       if (!isCallbackPath(url.pathname, spec)) {
         response.writeHead(404, { 'content-type': 'text/plain' })
@@ -181,19 +184,32 @@ export class OAuthFlowManager {
         settle(new Error(`authorization failed: ${errorDescription}`))
         return
       }
-      // Families whose callback carries credentials instead of an OAuth
-      // `code` provide spec.collect: it validates the required fields and
-      // returns the attempt result (Command Code's apiKey bundle). The state
-      // check above already ran, so collect only sees matching attempts.
+      // Families whose callback carries something other than an OAuth `code`
+      // provide spec.collect: it validates the required fields and returns the
+      // attempt result (Command Code's apiKey bundle, Kiro's IdC pivot). It may
+      // be async — the result then lands once its own network work settles.
+      // The state check above already ran, so collect only sees matching
+      // attempts. spec.callbackPage(result) overrides the success page (Kiro
+      // redirects the browser to the device confirmation URL).
       if (typeof spec.collect === 'function') {
-        const result = spec.collect(url)
+        let result
+        try {
+          result = await spec.collect(url)
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          response.writeHead(200, { 'content-type': 'text/html' })
+          response.end(failurePage(message))
+          settle(error instanceof Error ? error : new Error(message))
+          return
+        }
         if (result === undefined || result === null) {
           response.writeHead(400, { 'content-type': 'text/plain' })
           response.end('missing callback parameters')
           return
         }
+        const page = typeof spec.callbackPage === 'function' ? spec.callbackPage(result) : undefined
         response.writeHead(200, { 'content-type': 'text/html' })
-        response.end(SUCCESS_PAGE)
+        response.end(page ?? SUCCESS_PAGE)
         callback = oauthCallbackFromUrl(url, spec.callbackPath)
         settle(undefined, result)
         return
@@ -260,12 +276,29 @@ export class OAuthFlowManager {
           if (url.searchParams.get('state') !== input.state) {
             throw new Error('state mismatch: paste the complete callback URL from this login attempt')
           }
-          const result = spec.collect(url)
-          if (result === undefined || result === null) {
+          // A sync collect keeps its throw-on-invalid contract (the RPC answers
+          // it); an async one (Kiro's IdC pivot) settles the attempt instead —
+          // there is no response page to render for a pasted URL.
+          const collected = spec.collect(url)
+          if (collected && typeof collected.then === 'function') {
+            collected.then(
+              (result) => {
+                if (result === undefined || result === null) {
+                  settle(new Error('no credentials found in the pasted callback URL'))
+                  return
+                }
+                callback = oauthCallbackFromPasted(trimmed, spec.callbackPath)
+                settle(undefined, result)
+              },
+              (error) => settle(error instanceof Error ? error : new Error(String(error))),
+            )
+            return
+          }
+          if (collected === undefined || collected === null) {
             throw new Error('no credentials found in the pasted callback URL')
           }
           callback = oauthCallbackFromPasted(trimmed, spec.callbackPath)
-          settle(undefined, result)
+          settle(undefined, collected)
           return
         }
         let code

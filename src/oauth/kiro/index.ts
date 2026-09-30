@@ -324,6 +324,47 @@ export function kiroSocialLoginOption(value) {
 }
 
 /**
+ * The social portal answers "Your organization" with a redirect that carries
+ * no authorization `code`: `login_option=awsidc` + `issuer_url` + `idc_region`
+ * tell the client to redo the login as IAM Identity Center (device flow) —
+ * picking it apart is what fixes the bare `missing authorization code` the
+ * loopback used to answer (issue #167). Returns undefined for every other
+ * callback shape (including a normal social `code`).
+ */
+export function kiroIdcRedirectOf(url) {
+  if (!(url instanceof URL)) return undefined
+  if (url.searchParams.get('code')) return undefined
+  const option = (url.searchParams.get('login_option') ?? url.searchParams.get('loginOption') ?? '').trim().toLowerCase()
+  if (option !== 'awsidc') return undefined
+  const issuerUrl = (url.searchParams.get('issuer_url') ?? url.searchParams.get('issuerUrl') ?? '').trim()
+  if (!/^https:\/\/[^\s/]+(\/\S*)?$/i.test(issuerUrl)) return undefined
+  const region = (url.searchParams.get('idc_region') ?? url.searchParams.get('idcRegion') ?? '').trim().toLowerCase()
+  return {
+    issuerUrl,
+    region: /^[a-z]{2}(-[a-z]+)+-\d$/.test(region) ? region : KIRO_DEFAULT_REGION,
+  }
+}
+
+/**
+ * Loopback answer for the IdC pivot: send the browser straight to the device
+ * confirmation page (the URL pre-fills the user code), so the user keeps
+ * confirming in the tab they came from.
+ */
+export function kiroIdcPendingPage(verificationUrl) {
+  const safe = String(verificationUrl ?? '').replace(/["<>&]/g, (ch) => (
+    ch === '"' ? '%22' : ch === '<' ? '%3C' : ch === '>' ? '%3E' : '&amp;'
+  ))
+  return '<!doctype html><html><head><meta charset="utf-8">'
+    + '<meta http-equiv="refresh" content="0;url=' + safe + '">'
+    + '<title>Organization login</title></head>'
+    + '<body style="font-family:sans-serif;background:#0a0a0b;color:#f4f4f5;padding:48px">'
+    + '<h1>Organization login</h1>'
+    + '<p>Continuing with your organization\'s device confirmation…</p>'
+    + `<p><a href="${safe}" style="color:#7dd3fc">Continue to the device confirmation page</a></p>`
+    + '</body></html>'
+}
+
+/**
  * Token-exchange `redirect_uri` is the URL the browser actually hit:
  * origin + path (`/` / `/oauth/callback` / `/signin/callback`) and
  * `?login_option=google|github` when the callback carried that query.
@@ -348,7 +389,14 @@ function kiroSocialClientAgent(session: any = {}) {
   return `KiroIDE-${KIRO_USAGE_VERSION}-${kiroMachineId(session)}`
 }
 
-export function kiroSocialFlow() {
+/**
+ * Social portal flow. `startIdc` pivots to the IdC device flow when the
+ * callback turns out to be the portal's `login_option=awsidc` redirect: it
+ * receives kiroIdcRedirectOf's `{ issuerUrl, region }` and returns the
+ * KiroIdcFlowManager attempt, whose verification page the loopback then
+ * forwards the browser to.
+ */
+export function kiroSocialFlow({ startIdc }: any = {}) {
   return {
     // KiroIDE registers `http://localhost:<port>` (hostname, no path).
     // listenHosts binds 127.0.0.1 + ::1 so the browser redirect is accepted.
@@ -364,6 +412,21 @@ export function kiroSocialFlow() {
         redirect_from: 'KiroIDE',
       })
       return `${KIRO_PORTAL_URL}/signin?${params}`
+    },
+    async collect(url) {
+      const code = url.searchParams.get('code')
+      if (code) return code
+      const idc = kiroIdcRedirectOf(url)
+      if (!idc) return undefined
+      if (typeof startIdc !== 'function') {
+        throw new Error('organization login needs the Builder ID / Enterprise button here')
+      }
+      return { kiroIdcAttempt: await startIdc(idc) }
+    },
+    callbackPage(result) {
+      const attempt = result && typeof result === 'object' ? result.kiroIdcAttempt : undefined
+      if (!attempt) return undefined
+      return kiroIdcPendingPage(attempt.verificationUrl ?? attempt.verificationUri)
     },
   }
 }

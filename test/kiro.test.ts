@@ -21,6 +21,7 @@ import {
   kiroSession,
   kiroSessionFromImport,
   KIRO_CALLBACK_PATHS,
+  kiroIdcRedirectOf,
   kiroSocialFlow,
   kiroSocialRedirectUri,
   kiroSocialTokenRedirectUri,
@@ -31,12 +32,12 @@ import {
   validateKiroIdpEndpoint,
   validateKiroRefreshToken,
 } from '../lib/oauth/kiro/index.js'
-import { registerKiroOidcClient, kiroIdcSession } from '../lib/oauth/kiro/idc-flow.js'
+import { KiroIdcFlowManager, registerKiroOidcClient, kiroIdcSession } from '../lib/oauth/kiro/idc-flow.js'
 import { fetchKiroQuota, parseKiroUsage } from '../lib/oauth/kiro/quota.js'
 import { formatPlanLabel } from '../lib/oauth/plan.js'
 import { OAuthFlowManager } from '../lib/oauth/flow.js'
 import { AuthController } from '../lib/oauth/controller.js'
-import { accountIdOf, listAccounts, saveSession } from '../lib/oauth/store.js'
+import { accountIdOf, getSession, listAccounts, saveSession } from '../lib/oauth/store.js'
 import { buildProviders, catalogProviders, describeCatalog } from '../lib/oauth/models.js'
 import { importKiroAuth, sessionFromKiroAuth } from '../lib/oauth/import-auth.js'
 import {
@@ -432,6 +433,127 @@ test('Kiro Social loopback registers localhost and accepts / plus /oauth/callbac
   assert.equal(tokenRedirect, `http://localhost:${thirdPort}/signin/callback?login_option=google`)
   assert.equal(String(tokenRedirect).includes('127.0.0.1'), false)
   assert.equal(new URL(third.authorizeUrl).searchParams.get('redirect_uri').includes('127.0.0.1'), false)
+})
+
+test('kiroIdcRedirectOf parses the portal awsidc redirect from the social callback', () => {
+  // Issue #167's exact callback shape: organization chosen on the portal.
+  const url = new URL(`http://localhost:3128/signin/callback?login_option=awsidc&issuer_url=${encodeURIComponent('https://d-abc.awsapps.com/start/')}&idc_region=us-east-1&state=st`)
+  assert.deepEqual(kiroIdcRedirectOf(url), {
+    issuerUrl: 'https://d-abc.awsapps.com/start/',
+    region: 'us-east-1',
+  })
+  // A normal social code is never an IdC pivot, even with the option set.
+  assert.equal(kiroIdcRedirectOf(new URL('http://localhost:3128/?code=x&state=st&login_option=awsidc')), undefined)
+  // No issuer, or a non-https issuer: not actionable.
+  assert.equal(kiroIdcRedirectOf(new URL('http://localhost:3128/?login_option=awsidc&state=st')), undefined)
+  assert.equal(kiroIdcRedirectOf(new URL(`http://localhost:3128/?login_option=awsidc&issuer_url=${encodeURIComponent('http://insecure/start')}&state=st`)), undefined)
+  // A missing / malformed region falls back to the default, not to a pivot failure.
+  assert.deepEqual(
+    kiroIdcRedirectOf(new URL(`http://localhost:3128/?login_option=awsidc&issuer_url=${encodeURIComponent('https://d-abc.awsapps.com/start')}&state=st`)),
+    { issuerUrl: 'https://d-abc.awsapps.com/start', region: 'us-east-1' },
+  )
+  assert.equal(kiroIdcRedirectOf('https://not-a-url-object'), undefined)
+})
+
+test('Kiro social callback pivots an organization login to the IdC device flow', async () => {
+  const flows = new OAuthFlowManager()
+  const idcManager = new KiroIdcFlowManager()
+  const registrations = []
+  const fetchFn = async (url, init = {}) => {
+    const href = String(url)
+    if (href.endsWith('/client/register')) {
+      registrations.push(JSON.parse(init.body).issuerUrl)
+      return json({ clientId: 'cid', clientSecret: 'sec' })
+    }
+    if (href.endsWith('/device_authorization')) {
+      return json({
+        deviceCode: 'dc',
+        userCode: 'ABCD-EFGH',
+        verificationUri: 'https://view.awsapps.com/start/#/device',
+        verificationUriComplete: 'https://view.awsapps.com/start/#/device?user_code=ABCD-EFGH',
+        interval: 1,
+        expiresIn: 600,
+      })
+    }
+    return json({ error: 'authorization_pending' }, 400)
+  }
+  const attempt = await flows.start('kiro', {
+    ...kiroSocialFlow({
+      startIdc: (idc) => idcManager.start('kiro', {
+        startUrl: idc.issuerUrl,
+        kind: 'enterprise',
+        region: idc.region,
+        fetchFn,
+      }),
+    }),
+    listen: { host: 'localhost', ports: [0] },
+    timeoutMs: 8_000,
+  })
+  const port = new URL(attempt.redirectUri).port
+  // The portal's "Your organization" redirect carries no code (issue #167):
+  // the loopback forwards the browser to the device confirmation page and
+  // waitCode resolves with the device-flow attempt.
+  const callback = await fetch(`http://127.0.0.1:${port}/signin/callback?login_option=awsidc&issuer_url=${encodeURIComponent('https://d-abc.awsapps.com/start/')}&idc_region=us-east-1&state=${attempt.state}`)
+  assert.equal(callback.status, 200)
+  const page = await callback.text()
+  assert.match(page, /https:\/\/view\.awsapps\.com\/start\/#\/device\?user_code=ABCD-EFGH/)
+  assert.equal(page.includes('Login successful'), false)
+  const settled = await attempt.waitCode()
+  assert.equal(settled.kiroIdcAttempt.userCode, 'ABCD-EFGH')
+  assert.deepEqual(registrations, ['https://d-abc.awsapps.com/start/'])
+  assert.equal(flows.isBusy('kiro'), false)
+  assert.equal(idcManager.isBusy('kiro'), true)
+  settled.kiroIdcAttempt.cancel()
+  assert.equal(idcManager.isBusy('kiro'), false)
+})
+
+test('controller kiro social login settles an organization callback as a stored IdC session', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const authPath = join(dir, 'auth.json')
+  let polls = 0
+  const controller = new AuthController({
+    authPath,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+    fetchFn: async (url, init = {}) => {
+      const href = String(url)
+      if (href.endsWith('/client/register')) return json({ clientId: 'cid', clientSecret: 'sec' })
+      if (href.endsWith('/device_authorization')) {
+        return json({
+          deviceCode: 'dc',
+          userCode: 'ABCD-EFGH',
+          verificationUri: 'https://view.awsapps.com/start/#/device',
+          verificationUriComplete: 'https://view.awsapps.com/start/#/device?user_code=ABCD-EFGH',
+          interval: 1,
+          expiresIn: 600,
+        })
+      }
+      polls += 1
+      if (polls === 1) return json({ error: 'authorization_pending' }, 400)
+      return json({ accessToken: 'at', refreshToken: RT, expiresIn: 3600 })
+    },
+  })
+  const result = await controller.login('kiro', { mode: 'social' })
+  assert.equal(result.mode, 'pkce')
+  const social = controller.flows.pending('kiro')
+  const port = new URL(result.redirectUri).port
+  const callback = await fetch(`http://127.0.0.1:${port}/signin/callback?login_option=awsidc&issuer_url=${encodeURIComponent('https://d-abc.awsapps.com/start/')}&idc_region=us-east-1&state=${social.state}`)
+  assert.equal(callback.status, 200)
+  const session = await new Promise((resolve, reject) => {
+    const started = Date.now()
+    const tick = async () => {
+      const stored = await getSession('kiro', authPath).catch(() => undefined)
+      if (stored?.authMethod === 'idc') return resolve(stored)
+      if (Date.now() - started > 8_000) return reject(new Error('idc session never landed'))
+      setTimeout(tick, 100)
+    }
+    void tick()
+  })
+  assert.equal(session.startUrl, 'https://d-abc.awsapps.com/start/')
+  assert.equal(session.authRegion, 'us-east-1')
+  assert.equal(session.kiroProvider, 'Enterprise')
+  await controller.cancel('kiro')
 })
 
 test('refreshKiroSocial rewrites stale ms expiresAt from expiresIn', async () => {

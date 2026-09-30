@@ -124,12 +124,37 @@ export declare function kiroUsageHeaders(session: any): {
 export declare function kiroSocialRedirectUri(redirectUri: any): string;
 export declare function kiroSocialLoginOption(value: any): string | undefined;
 /**
+ * The social portal answers "Your organization" with a redirect that carries
+ * no authorization `code`: `login_option=awsidc` + `issuer_url` + `idc_region`
+ * tell the client to redo the login as IAM Identity Center (device flow) —
+ * picking it apart is what fixes the bare `missing authorization code` the
+ * loopback used to answer (issue #167). Returns undefined for every other
+ * callback shape (including a normal social `code`).
+ */
+export declare function kiroIdcRedirectOf(url: any): {
+    issuerUrl: string;
+    region: string;
+} | undefined;
+/**
+ * Loopback answer for the IdC pivot: send the browser straight to the device
+ * confirmation page (the URL pre-fills the user code), so the user keeps
+ * confirming in the tab they came from.
+ */
+export declare function kiroIdcPendingPage(verificationUrl: any): string;
+/**
  * Token-exchange `redirect_uri` is the URL the browser actually hit:
  * origin + path (`/` / `/oauth/callback` / `/signin/callback`) and
  * `?login_option=google|github` when the callback carried that query.
  */
 export declare function kiroSocialTokenRedirectUri(redirectUri: any, callback?: any): string;
-export declare function kiroSocialFlow(): {
+/**
+ * Social portal flow. `startIdc` pivots to the IdC device flow when the
+ * callback turns out to be the portal's `login_option=awsidc` redirect: it
+ * receives kiroIdcRedirectOf's `{ issuerUrl, region }` and returns the
+ * KiroIdcFlowManager attempt, whose verification page the loopback then
+ * forwards the browser to.
+ */
+export declare function kiroSocialFlow({ startIdc }?: any): {
     listen: {
         host: string;
         ports: number[];
@@ -137,6 +162,8 @@ export declare function kiroSocialFlow(): {
     callbackPath: string;
     callbackPaths: string[];
     buildAuthorizeUrl(input: any): string;
+    collect(url: any): Promise<any>;
+    callbackPage(result: any): string | undefined;
 };
 export declare class KiroHttpError extends Error {
     status: any;

@@ -1060,6 +1060,12 @@
 **根因**：`completeGlmCli` 对 bigmodel 不铸 key，把 poll 的 OAuth business token（`data.bigmodel.access_token`）直接当聊天 bearer。该 token 过得了鉴权，但服务端拿它找不到 Coding Plan 上下文，内部转发失败回误导性的「1234 网络错误」——导入路径 `glmKeyFromZcodeCredentials` 的注释早就写了同一结论（业务 JWT「不是 chat key，打 Coding Plan 对话稳定 500」），直接登录路径没同步。官方 ZCode 客户端就是自动在账号上开 API Key 聊天的。附带实测：bigmodel 的 z/login（`/api/auth/z/login`）对 poll token 回 `500 z.ai用户信息异常`（z.ai 身份专用），但 biz/keys API（getCustomerInfo / api_keys / copy）直接认 OAuth token；`getCustomerInfo` 只认 OAuth token（API Key 403「APIKey not allow access」），所以 OAuth token 必须留在 `oauthAccess`。
 **修复**：`mintGlmApiKey` 的 biz bearer 按区域取（z.ai 走 z/login；bigmodel 用 OAuth token 直探 getCustomerInfo、失败才回退 z/login）；`completeGlmCli` 双区域统一铸造，OAuth token 存 `oauthAccess`，bigmodel 铸失败降级回 OAuth token（身份 / 额度可用）。存量会话（bigmodel + accessToken 是三段 JWT）由 `upgradeGlmLegacyBearers` 在 snapshot sweep 里每进程每账号自动重铸一次，失败保留原 bearer。（v0.0.110 及之前登录的账号即此形态。）
 
+## 2026-09-30：Kiro Social 登录选「Your organization」报 missing authorization code（#167）
+
+**现象**：Social 登录打开 portal 授权页后选「Your organization」、填组织 URL 与 Region、点 Continue，页面报 `missing authorization code`，登录挂起直到超时（Windows 11 企业版必现）。
+**根因**：portal 对组织账号不给授权码，而是回调 `login_option=awsidc&issuer_url=…&idc_region=…`（无 `code`）——这是让客户端改走 IAM Identity Center 设备流的指令。通用 flow 引擎的 social 回调只认 `code`，无 code 时回 400 且不 settle。
+**修复**：`OAuthFlowManager` 的 `spec.collect` 支持 async 并新增 `spec.callbackPage(result)` 自定义回调页；`kiroSocialFlow({ startIdc })` 的 `collect` 用 `kiroIdcRedirectOf` 识别该回调（无 code + `awsidc` + https `issuer_url`；`idc_region` 非法落回默认区），转手 `KiroIdcFlowManager` 设备流，回调页把浏览器重定向到设备确认页（预填配对码）；`completePkce` 对该 pivot 结果走 `completeKiroIdc` 收尾。手粘同样形状的回调 URL 也走同一 pivot。
+
 
 ## 2026-08-26：`Error: tool call timed out after 30000ms` 不是本插件
 

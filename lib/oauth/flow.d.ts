@@ -3,6 +3,9 @@
  * server per login attempt receives the provider's redirect, validates
  * `state`, and yields the authorization `code`. A pasted callback URL carrying
  * the matching state can substitute for the browser redirect (`manual`).
+ * Families whose callback carries something other than a `code` (Command Code
+ * credentials, Kiro's IdC pivot) provide `spec.collect`, which may be async;
+ * `spec.callbackPage(result)` overrides the rendered success page.
  */
 export declare const DEFAULT_FLOW_TIMEOUT_MS = 180000;
 /** Path + query the browser actually landed on (Kiro token exchange needs this). */

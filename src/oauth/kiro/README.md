@@ -27,7 +27,7 @@ AWS **Kiro / CodeWhisperer**。协议对齐 [ZyphrZero/kiro.rs](https://github.c
 
 | 方法 | 用户看见 | 怎么登录 | 换票注意 |
 |---|---|---|---|
-| Social / OAuth | Google / GitHub | portal PKCE `app.kiro.dev`，callback 端口 `KIRO_CALLBACK_PORTS` | **authorize 和 token 的 `redirect_uri` 必须字节一致**。Cognito 常是 origin-only（`http://127.0.0.1:PORT`），path 可能是 `/`、`/oauth/callback`、`/signin/callback`。`refreshKiroSocial` 成功后必须用 refresh JSON 的 `expiresIn` / `expiresAt` **重写** `expiresAt`，不能留旧毫秒戳，否则 TokenManager 每轮都刷新 → `/refreshToken` 429。429 带 `status` + `Retry-After` 回给 DSH，不要改成 500。 |
+| Social / OAuth | Google / GitHub | portal PKCE `app.kiro.dev`，callback 端口 `KIRO_CALLBACK_PORTS` | **authorize 和 token 的 `redirect_uri` 必须字节一致**。Cognito 常是 origin-only（`http://127.0.0.1:PORT`），path 可能是 `/`、`/oauth/callback`、`/signin/callback`。portal 页选「Your organization」时回的不是 code 而是 `login_option=awsidc&issuer_url=…&idc_region=…`——`kiroSocialFlow` 的 `collect` 识别它并转走 IdC 设备流（issue #167），回调页（`kiroIdcPendingPage`）把浏览器重定向到设备确认页（`verificationUrl` 预填配对码）。`refreshKiroSocial` 成功后必须用 refresh JSON 的 `expiresIn` / `expiresAt` **重写** `expiresAt`，不能留旧毫秒戳，否则 TokenManager 每轮都刷新 → `/refreshToken` 429。429 带 `status` + `Retry-After` 回给 DSH，不要改成 500。 |
 | Builder ID | 个人 AWS | `idc-flow.ts` + `https://view.awsapps.com/start`，profile `BUILDER_ID_PROFILE_ARN` | |
 | Enterprise / IdC | 企业 IAM IC | 同一套 device poll，用户填 org Start URL | `kiroAccountKind` → `idc` |
 | Entra / Azure AD | 企业 SSO | `external_idp`，token endpoint 必须是 `*.microsoftonline.com` / `.us` / `.cn` | `refresh_token` grant |
@@ -143,6 +143,7 @@ proxy 只删 `prompt_cache_retention` / `prompt_cache_options`，**不**把 `pro
 - 不要把 extra system user+ack 插在 `toolUses` 和匹配的 `toolResults` 中间。
 - 不要把 tools 挪到 conversationState 顶层（官方挂 current `userInputMessageContext`）。
 - 不要把 Social 的 `redirect_uri` 在 authorize 和 token 之间改掉（HTTP 500）。
+- 不要把 `login_option=awsidc` 的回调当「缺 code」失败（那是 portal 让客户端转 IdC 设备流的指令，issue #167 的 `missing authorization code` 就是这么来的）；`kiroIdcRedirectOf` 只认「无 code + awsidc + https issuer_url」，普通 code 回调不受影响，`idc_region` 不是合法区域时落回默认区。
 - 不要在 refresh 成功后保留旧 `expiresAt`（TokenManager 会每轮打 `/refreshToken` → 429）。
 - 不要把 refresh 429 映射成代理 500；原样回 429（有则带 Retry-After）。
 - 刷新永久失败只认 `KiroHttpError` 的 401 或 body `error` 码（`invalid_grant` 等），不扫消息文本。
