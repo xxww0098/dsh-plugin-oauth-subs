@@ -532,29 +532,52 @@ test('GlmCliFlowManager fails immediately on a failed poll and survives a transi
       expires_at: Math.floor(Date.now() / 1000) + 300,
     },
   })
-  // BigModel skips the biz key mint, so the poll is the only network hop this
-  // mock has to serve besides init.
+  // BigModel mints its Coding Plan key with the poll OAuth token as the biz
+  // bearer (no z/login), so the mock serves that chain besides init.
   const attempts = []
-  const fetchFn = async (url) => {
+  const fetchFn = async (url, init = {}) => {
     const href = String(url)
     if (href.includes('/oauth/cli/init')) return initFor('flow-live', 's1')
-    attempts.push(href)
-    if (attempts.length === 1) return json({ code: 0, msg: 'gateway hiccup' }, { status: 503 })
-    return json({
-      code: 0,
-      data: {
-        status: 'ready',
-        token: 'bm-jwt',
-        bigmodel: { access_token: 'bm-oauth' },
-        user: { email: 'dev@bigmodel.cn' },
-      },
-    })
+    if (href.includes('/oauth/cli/poll')) {
+      attempts.push(href)
+      if (attempts.length === 1) return json({ code: 0, msg: 'gateway hiccup' }, { status: 503 })
+      return json({
+        code: 0,
+        data: {
+          status: 'ready',
+          token: 'bm-jwt',
+          bigmodel: { access_token: 'bm-oauth' },
+          user: { email: 'dev@bigmodel.cn' },
+        },
+      })
+    }
+    if (href.includes('/getCustomerInfo')) {
+      assert.equal(init.headers.authorization, 'Bearer bm-oauth')
+      return json({
+        code: 200,
+        data: {
+          organizations: [{
+            organizationId: 'org-1',
+            isDefault: true,
+            projects: [{ projectId: 'proj-1', isDefault: true }],
+          }],
+        },
+      })
+    }
+    if (href.endsWith('/api_keys') && (init.method ?? 'GET') === 'GET') {
+      return json({ code: 200, data: [{ apiKey: 'aaaa1111', name: 'dsh-plugin-oauth-subs' }] })
+    }
+    if (href.includes('/copy/')) {
+      return json({ code: 200, data: { secretKey: 'bbbb222233334444' } })
+    }
+    throw new Error(`unexpected ${href}`)
   }
   const flows = new GlmCliFlowManager()
   const started = await flows.start('glm', { region: 'bigmodel', fetchFn })
   assert.equal(started.authorizeUrl.includes('chat.z.ai'), true)
   const session = await started.waitToken()
-  assert.equal(session.accessToken, 'bm-oauth')
+  assert.equal(session.accessToken, 'aaaa1111.bbbb222233334444')
+  assert.equal(session.oauthAccess, 'bm-oauth')
   assert.equal(session.region, 'bigmodel')
   assert.equal(attempts.length, 2)
 
@@ -716,27 +739,139 @@ test('completeGlmCli mints id.secret through business login + copy', async () =>
   }
 })
 
-test('completeGlmCli for BigModel uses the business token and skips biz mint', async () => {
-  const fetchFn = async (url) => {
-    throw new Error(`unexpected ${url}`)
+test('completeGlmCli for BigModel mints with the OAuth token as biz bearer', async () => {
+  const calls = []
+  const fetchFn = async (url, init = {}) => {
+    const href = String(url)
+    calls.push({ href, method: init.method ?? 'GET', auth: init.headers.authorization })
+    if (href.includes('/api/auth/z/login')) throw new Error('z/login must not be called for BigModel')
+    if (href.includes('/getCustomerInfo')) {
+      return json({
+        code: 200,
+        data: {
+          organizations: [{
+            organizationId: 'org-1',
+            isDefault: true,
+            projects: [{ projectId: 'proj-1', isDefault: true }],
+          }],
+        },
+      })
+    }
+    if (href.endsWith('/api_keys') && (init.method ?? 'GET') === 'GET') {
+      return json({ code: 200, data: [] })
+    }
+    if (href.endsWith('/api_keys') && init.method === 'POST') {
+      return json({ code: 200, data: { apiKey: 'aaaa1111', name: 'dsh-plugin-oauth-subs' } })
+    }
+    if (href.includes('/copy/')) {
+      return json({ code: 200, data: { secretKey: 'bbbb222233334444' } })
+    }
+    throw new Error(`unexpected ${href}`)
   }
   const session = await completeGlmCli(
-    { ready: true, oauthAccess: 'oauth', zcodeJwt: 'jwt', email: 'cn@bigmodel.cn' },
+    { ready: true, oauthAccess: 'bm-oauth', zcodeJwt: 'jwt', email: 'cn@bigmodel.cn' },
     { fetchFn, region: 'bigmodel' },
   )
-  assert.equal(session.accessToken, 'oauth')
+  assert.equal(session.accessToken, 'aaaa1111.bbbb222233334444')
+  assert.equal(session.oauthAccess, 'bm-oauth')
   assert.equal(session.region, 'bigmodel')
   assert.equal(session.account, 'cn@bigmodel.cn')
   assert.equal(session.zcodeJwt, 'jwt')
+  for (const call of calls) {
+    assert.equal(call.auth, 'Bearer bm-oauth')
+  }
 
-  // A ready poll without the provider token must fail: the zcode JWT cannot chat.
+  // Minting fails: BigModel degrades to the OAuth token (identity/quota stay
+  // usable; chat keeps its pre-fix behavior) and still records oauthAccess.
+  const deadFetch = async (url) => json({ code: 500, msg: 'z.ai用户信息异常' }, { status: 500 })
+  const degraded = await completeGlmCli(
+    { ready: true, oauthAccess: 'bm-oauth', zcodeJwt: 'jwt', email: 'cn@bigmodel.cn' },
+    { fetchFn: deadFetch, region: 'bigmodel' },
+  )
+  assert.equal(degraded.accessToken, 'bm-oauth')
+  assert.equal(degraded.oauthAccess, 'bm-oauth')
+
+  // No provider token to mint with and nothing to degrade to: the login fails
+  // with the mint error instead of silently storing a chatless bearer.
   await assert.rejects(
     completeGlmCli(
       { ready: true, oauthAccess: undefined, zcodeJwt: 'jwt', email: 'cn@bigmodel.cn' },
-      { fetchFn, region: 'bigmodel' },
+      { fetchFn: deadFetch, region: 'bigmodel' },
     ),
-    /without a bigmodel access token/,
+    /failed \(HTTP 500\)/,
   )
+})
+
+test('upgradeGlmLegacyBearers re-mints stored BigModel OAuth bearers once', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const authPath = join(dir, 'auth.json')
+  const { getSession, saveSession } = await import('../lib/oauth/store.js')
+  const { upgradeGlmLegacyBearers } = await import('../lib/oauth/glm/accounts.js')
+  const legacyJwt = 'eyJhbGciOiJIUzI1NiJ9.eyJlbWFpbCI6ImNuQGJpZ21vZGVsLmNuIn0.c2lnbmF0dXJl'
+  await saveSession('glm', glmSession({
+    accessToken: legacyJwt,
+    account: 'cn@bigmodel.cn',
+    region: 'bigmodel',
+  }), authPath)
+  const mints = []
+  const ctl = {
+    authPath,
+    fetchFn: async (url, init = {}) => {
+      const href = String(url)
+      mints.push(href)
+      if (href.includes('/getCustomerInfo')) {
+        return json({
+          code: 200,
+          data: {
+            organizations: [{
+              organizationId: 'org-1',
+              isDefault: true,
+              projects: [{ projectId: 'proj-1', isDefault: true }],
+            }],
+          },
+        })
+      }
+      if (href.endsWith('/api_keys') && (init.method ?? 'GET') === 'GET') {
+        return json({ code: 200, data: [{ apiKey: 'cccc3333', name: 'dsh-plugin-oauth-subs' }] })
+      }
+      if (href.includes('/copy/')) {
+        return json({ code: 200, data: { secretKey: 'dddd444455556666' } })
+      }
+      throw new Error(`unexpected ${href}`)
+    },
+  }
+  await upgradeGlmLegacyBearers(ctl)
+  const upgraded = await getSession('glm', authPath)
+  assert.equal(upgraded.accessToken, 'cccc3333.dddd444455556666')
+  assert.equal(upgraded.oauthAccess, legacyJwt)
+  // bearer probe + customer lookup + key list + copy
+  assert.equal(mints.length, 4)
+
+  // Once per process: a second sweep must not re-mint (and a dead fetch would
+  // otherwise leave the legacy bearer in place).
+  await upgradeGlmLegacyBearers({ authPath, fetchFn: async () => { throw new Error('must not be called') } })
+  assert.equal((await getSession('glm', authPath)).accessToken, 'cccc3333.dddd444455556666')
+
+  // A failed mint keeps the stored legacy bearer untouched.
+  const dir2 = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const authPath2 = join(dir2, 'auth.json')
+  await saveSession('glm', glmSession({
+    accessToken: legacyJwt,
+    account: 'cn2@bigmodel.cn',
+    region: 'bigmodel',
+  }), authPath2)
+  await upgradeGlmLegacyBearers({ authPath: authPath2, fetchFn: async () => json({ code: 500, msg: 'no' }, { status: 500 }) })
+  const kept = await getSession('glm', authPath2)
+  assert.equal(kept.accessToken, legacyJwt)
+
+  // `id.secret` bearers and Z.ai sessions are never touched.
+  const dir3 = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const authPath3 = join(dir3, 'auth.json')
+  await saveSession('glm', glmSession({ accessToken: 'aaaa1111.bbbb2222', account: 'cn@bigmodel.cn', region: 'bigmodel' }), authPath3)
+  await saveSession('glm', glmSession({ accessToken: legacyJwt, account: 'dev@z.ai', region: 'zai' }), authPath3)
+  await upgradeGlmLegacyBearers({ authPath: authPath3, fetchFn: async () => { throw new Error('must not be called') } })
+  const rows = await (await import('../lib/oauth/store.js')).listStoredSessions('glm', authPath3)
+  assert.equal(rows.length, 2)
 })
 
 test('glmCliInit posts provider id bigmodel for BigModel', async () => {
@@ -853,7 +988,8 @@ test('completeGlmCli for BigModel without poll email reads JWT email', async () 
     { ready: true, oauthAccess: 'oauth', zcodeJwt: token, accountId: 'zcode' },
     { fetchFn: async (url) => { throw new Error(`unexpected ${url}`) }, region: 'bigmodel' },
   )
-  // Bearer is the BigModel business token; the JWT still supplies identity.
+  // Minting is dead here, so BigModel degrades to the OAuth token as the
+  // bearer; identity still comes from the JWT, no userinfo call needed.
   assert.equal(session.accessToken, 'oauth')
   assert.equal(session.zcodeJwt, token)
   assert.equal(session.account, 'cn@bigmodel.cn')

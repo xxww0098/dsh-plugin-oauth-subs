@@ -1054,6 +1054,13 @@
 **根因**：活目录 `GET .../codex/models?client_version=` 按版本分档下发——6.1 要 ≥ 0.159.0，钉住的 0.155.1 下后端只回 9 行。与 2026-09-23 那次（6 Sol/Luna ≥ 0.155.0）同一机制。
 **修复**：`CODEX_CLIENT_VERSION` 升到 npm latest `0.159.0`（UA 同步）；目录补 `gpt-6.1-sol`（272K/872K、image、off–max + Fast）。钉住版本从此跟 latest 走，不随旧注释停住。
 
+## 2026-09-30：GLM BigModel 登录后聊天全挂 500「1234 网络错误」（#168）
+
+**现象**：bigmodel 区域 OAuth 登录、额度、身份全正常，但所有模型的补全一律失败：网关 `zcode.z.ai/api/v1/ultra/anthropic` 401 1002「Authorization Token非法」→ 回退直连 `open.bigmodel.cn` 500 `1234 网络错误`；任何时段重试一样。
+**根因**：`completeGlmCli` 对 bigmodel 不铸 key，把 poll 的 OAuth business token（`data.bigmodel.access_token`）直接当聊天 bearer。该 token 过得了鉴权，但服务端拿它找不到 Coding Plan 上下文，内部转发失败回误导性的「1234 网络错误」——导入路径 `glmKeyFromZcodeCredentials` 的注释早就写了同一结论（业务 JWT「不是 chat key，打 Coding Plan 对话稳定 500」），直接登录路径没同步。官方 ZCode 客户端就是自动在账号上开 API Key 聊天的。附带实测：bigmodel 的 z/login（`/api/auth/z/login`）对 poll token 回 `500 z.ai用户信息异常`（z.ai 身份专用），但 biz/keys API（getCustomerInfo / api_keys / copy）直接认 OAuth token；`getCustomerInfo` 只认 OAuth token（API Key 403「APIKey not allow access」），所以 OAuth token 必须留在 `oauthAccess`。
+**修复**：`mintGlmApiKey` 的 biz bearer 按区域取（z.ai 走 z/login；bigmodel 用 OAuth token 直探 getCustomerInfo、失败才回退 z/login）；`completeGlmCli` 双区域统一铸造，OAuth token 存 `oauthAccess`，bigmodel 铸失败降级回 OAuth token（身份 / 额度可用）。存量会话（bigmodel + accessToken 是三段 JWT）由 `upgradeGlmLegacyBearers` 在 snapshot sweep 里每进程每账号自动重铸一次，失败保留原 bearer。（v0.0.110 及之前登录的账号即此形态。）
+
+
 ## 2026-08-26：`Error: tool call timed out after 30000ms` 不是本插件
 
 **现象**：会话里 glob / read / grep 超时，但 TRANSPORT 为 0。

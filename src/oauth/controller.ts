@@ -89,7 +89,7 @@ import {
   resolveCursorIdentities,
 } from './cursor/accounts.js'
 import { discoverDevin, maybeAutoImportDevin } from './devin/accounts.js'
-import { completeGlm, resolveGlmIdentities } from './glm/accounts.js'
+import { completeGlm, resolveGlmIdentities, upgradeGlmLegacyBearers } from './glm/accounts.js'
 import { completeKimiDevice, discoverKimi, maybeAutoImportKimi } from './kimi/accounts.js'
 import { completeKiroIdc, discoverKiro } from './kiro/accounts.js'
 import { completeDevice, completePkce, importFrom, login, useKey } from './login.js'
@@ -504,6 +504,7 @@ export class AuthController {
     await this.models.ready
     await this.prefsReady
     await resolveGlmIdentities(this)
+    await upgradeGlmLegacyBearers(this)
     await maybeAutoImportCursor(this)
     await resolveCursorIdentities(this)
     await maybeAutoImportOllama(this)

@@ -15,7 +15,7 @@ Zhipu **Coding Plan**（付费 Lite/Pro/Max）。两个站点、同一套 ZCode 
 
 | 文件 | 职责 |
 |---|---|
-| [`index.ts`](index.ts) | 区域、端点（含 ZCode 网关 + 直连回退）、CLI init/poll、Z.ai biz 登录 + 铸 key、官方身份头、会话 |
+| [`index.ts`](index.ts) | 区域、端点（含 ZCode 网关 + 直连回退）、CLI init/poll、biz bearer（z.ai z/login 交换 / BigModel 直用 OAuth token）+ 铸 key、官方身份头、会话 |
 | [`cli-flow.ts`](cli-flow.ts) | 浏览器打开 `authorize_url`，轮询 `/oauth/cli/poll/{flow_id}`。无 loopback、无 PKCE |
 | [`request.ts`](request.ts) | Anthropic 官方思考 map（`thinking` + `output_config.effort`）+ Completions 残留；再调 cache |
 | [`cache.ts`](cache.ts) | 隐式前缀哈希。Completions：钉首段 system，多余停 **messages 末尾**。Anthropic：钉 system 首块 `cache_control` + **最新非 system 消息滚动 breakpoint**。剥掉 Codex `prompt_cache_key` |
@@ -35,9 +35,13 @@ POST zcode.z.ai/api/v1/oauth/cli/init   { provider: "zai" | "bigmodel" }
 打开 data.authorize_url
 轮询 /oauth/cli/poll/{flow_id}
 
-Z.ai：     data.zai.access_token → POST api.z.ai/api/auth/z/login → 再铸 id.secret（Coding Plan bearer）
-BigModel： data.bigmodel.access_token 就是 Coding Plan bearer（业务 token），不铸 key；
-           data.token（zcode JWT）只给 Start Plan，不能当 bearer
+两个区域都铸 id.secret（Coding Plan 聊天 bearer）：
+Z.ai：     data.zai.access_token → POST api.z.ai/api/auth/z/login 换 biz token → 铸 id.secret
+BigModel： data.bigmodel.access_token 直接当 biz/keys API 的 bearer 铸 id.secret
+           （z/login 打 open.bigmodel.cn 回 500「z.ai用户信息异常」，那是 z.ai 身份专用）；
+           铸 key 失败降级回 OAuth token（身份 / 额度仍可用，聊天与修复前一致）；
+           OAuth token 存 oauthAccess 供 userinfo；
+           data.token（zcode JWT）只给 Start Plan，绝不能当 bearer
 ```
 
 入口：`GlmCliFlowManager.start` → `glmCliInit` / `glmCliPoll` → `completeGlmCli` → `glmSession`。
@@ -206,7 +210,9 @@ Pin map 的 Anthropic 键是 `${sessionId}\0anthropic`，和 Completions 的 `se
 - 不要把 GLM-5.3 / Flash 的自定义窗口设到 400K 以上（500K、1M 都不行）：400K 是套餐网关的单请求输入上限，不是可配置项；窗口越大压缩越晚，只会更早撞网关。算法与每行阈值见「模型 · 上下文与压缩」。
 - 不要在下次 `sync()` 改写残留设置之前拆掉 Completions hop。
 - 不要导入 start-plan JWT（体验套餐不支持，zcode-plan hop 是 captcha 墙）；系统禁用的 coding-plan key 要导入并带原因。
-- 不要把 `data.token`（zcode JWT）写进 BigModel 的 bearer 位——`bigmodel.cn` 会稳定回「令牌已过期或验证不正确」；bearer 只能是 `data.bigmodel.access_token`。
+- 不要把 `data.token`（zcode JWT）写进 BigModel 的 bearer 位——`bigmodel.cn` 会稳定回「令牌已过期或验证不正确」。也不要把 OAuth business token 当聊天 bearer：它过得了鉴权但服务端找不到 Coding Plan 上下文，网关 401 1002、直连 500「1234 网络错误」（issue #168，2026-09-30 实测；与导入路径 `glmKeyFromZcodeCredentials` 的结论一致）。聊天 bearer 只能是铸造的 `id.secret`；OAuth token 只留 `oauthAccess` 打 userinfo / 额度。
+- 不要给 BigModel 的铸 key 流程先打 z/login：`open.bigmodel.cn/api/auth/z/login` 对 poll token 回 `500 z.ai用户信息异常`（z.ai 身份专用）；biz/keys API（getCustomerInfo / api_keys / copy）直接认 OAuth token。`glmBizBearer` 先探 getCustomerInfo、失败才回退 z/login。
+- 存量升级只认「bigmodel 且 accessToken 是三段 JWT」：`id.secret` 是两段，`upgradeGlmLegacyBearers`（snapshot sweep，每进程每账号一次）不会碰 z.ai 会话、手粘 key 或导入的 provisioned key；铸失败保留原 bearer，等下次进程重试。
 - 不要把体验套餐的 Desktop `baseURL`（`…/zcode-plan/anthropic`）当成 hop URL，也不要伪造阿里云 captcha 头。试用对话在 ZCode.app。
 
 ## 归因

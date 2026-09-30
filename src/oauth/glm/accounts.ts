@@ -11,7 +11,13 @@ import {
   saveSession,
   updateAccountSession,
 } from '../store.js'
-import { pickGlmHumanAccount, resolveGlmIdentity } from './index.js'
+import {
+  isGlmJwtShape,
+  mintGlmApiKey,
+  normalizeGlmRegion,
+  pickGlmHumanAccount,
+  resolveGlmIdentity,
+} from './index.js'
 import { identityDue } from '../account-marks.js'
 import type { AuthController } from '../controller.js'
 
@@ -31,6 +37,45 @@ export async function resolveGlmIdentities(ctl: AuthController) {
       ctl.quota.clear('glm', row.id)
     } else {
       await updateAccountSession('glm', row, next, ctl.authPath)
+    }
+  }))
+}
+
+/** BigModel bearers already re-minted this process, keyed `authPath\0accountId`. */
+const GLM_MINT_TRIED = new Set<string>()
+
+/**
+ * Sessions written before the issue #168 fix carry BigModel's OAuth business
+ * token in the bearer slot — it 500s on the Coding Plan hop and the direct
+ * fallback's 401/500 chain never reaches a forced token refresh, so the sweep
+ * here is the only reliable upgrade moment. The poll OAuth token doubles as
+ * the BigModel biz bearer, so this is the same mint the login path does;
+ * tried once per account per process, and a failed mint keeps the legacy
+ * bearer (identity/quota still work; chat is no worse than before the fix).
+ */
+export async function upgradeGlmLegacyBearers(ctl: AuthController) {
+  const rows = await listStoredSessions('glm', ctl.authPath)
+  await Promise.all(rows.map(async (row) => {
+    const session = row.session ?? {}
+    if (normalizeGlmRegion(session.region) !== 'bigmodel') return
+    if (!isGlmJwtShape(session.accessToken)) return
+    const key = `${ctl.authPath}\0${row.id}`
+    if (GLM_MINT_TRIED.has(key)) return
+    GLM_MINT_TRIED.add(key)
+    const oauthAccess = typeof session.oauthAccess === 'string' && session.oauthAccess.trim()
+      ? session.oauthAccess.trim()
+      : session.accessToken
+    try {
+      const minted = await mintGlmApiKey(oauthAccess, { fetchFn: ctl.fetchFn, region: 'bigmodel' })
+      const next = { ...session, accessToken: minted, oauthAccess }
+      const nextId = accountIdOf('glm', next)
+      if (nextId !== row.id) {
+        await replaceAccountId('glm', row, next, ctl.authPath)
+      } else {
+        await updateAccountSession('glm', row, next, ctl.authPath)
+      }
+    } catch {
+      // keep the legacy bearer; a retry waits for the next process
     }
   }))
 }

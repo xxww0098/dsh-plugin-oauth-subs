@@ -6,8 +6,11 @@
  *
  *   1. POST zcode.z.ai/api/v1/oauth/cli/init  { provider: "zai"|"bigmodel" }
  *   2. Open data.authorize_url, poll /oauth/cli/poll/{flow_id}
- *   3. Z.ai only: POST api.z.ai/api/auth/z/login then mint id.secret
- *      BigModel: the poll JWT is the Coding Plan bearer (no biz mint)
+ *   3. Mint id.secret (the Coding Plan chat bearer) in both regions:
+ *      Z.ai exchanges the OAuth token via POST api.z.ai/api/auth/z/login;
+ *      BigModel's biz/keys APIs take the OAuth token itself (z/login there
+ *      rejects the poll token with 「z.ai用户信息异常」). The OAuth token is
+ *      kept as `oauthAccess` for userinfo/identity.
  *
  * Chat default is Anthropic Messages (`/api/anthropic/v1/messages`, ZCode
  * Desktop). Completions leftover (`/api/coding/paas/v4/chat/completions`)
@@ -236,9 +239,9 @@ export declare function parseCliInit(body: any): {
  * (cli-oauth.ts parseReadyData; webAuthService for BigModel) — so the region
  * decides the field, and `data.token` is never a substitute: that is the
  * zcode JWT, which bigmodel.cn rejects with 「令牌已过期或验证不正确」.
- * bigmodelProviderAdapter.ts spells it out: paid Coding Plan calls bigmodel.cn
- * business APIs with the business access token; the zcode JWT is only for
- * Start Plan.
+ * bigmodelProviderAdapter.ts spells it out: the provider token is what
+ * bigmodel.cn business APIs take (here: the biz bearer for key minting and
+ * the `oauthAccess` identity token); the zcode JWT is only for Start Plan.
  */
 export declare function glmProviderAccessToken(data: any, region?: string): string | undefined;
 /**
@@ -339,4 +342,10 @@ export declare function completeGlmCli(ready: any, { fetchFn, region }?: {
     refreshToken: string;
     expiresAt: number;
 }>;
+/**
+ * `id.secret` provisioned keys carry exactly one dot; provider JWTs are three
+ * base64url segments. Spotting the JWT shape is how a stored BigModel bearer
+ * from before the mint fix (issue #168) is recognized for re-minting.
+ */
+export declare function isGlmJwtShape(value: any): boolean;
 export declare function refreshGlm(session: any): Promise<any>;
