@@ -36,6 +36,13 @@ function assertKeyList(keys, label) {
   }
 }
 
+/** Keep only known family ids from a persisted/untrusted list. */
+function validFamilies(raw) {
+  return Array.isArray(raw)
+    ? raw.filter((family) => typeof family === 'string' && MODEL_FAMILY_IDS.includes(family))
+    : []
+}
+
 /** Keep only in-bounds context overrides from a persisted/untrusted map. */
 function validContextEntries(raw) {
   const out: Record<string, number> = {}
@@ -50,10 +57,17 @@ function validContextEntries(raw) {
 
 /**
  * Persisted enable/disable set for the Settings picker.
- * Default is all-on except context variants (`-900k` / `-1m`; opt-in, they
- * burn quota).
+ * Default is all-on for families whose login has already been settled.
  * New non-opt-in catalog ids stay on. Explicit picker choices persist across
  * restarts so automatic recovery cannot mistake all-off for leftover settings.
+ *
+ * 登录默认: a family that signs in while this plugin is running starts with
+ * every catalog row off (`awaitingPick`) — a fresh login must not flood DSH's
+ * model list. Families already signed in when the plugin started are seeded
+ * into `seenLogins` and keep whatever the user had, so an upgrade never turns
+ * an existing install's models off. The first explicit pick for the family
+ * clears `awaitingPick` and leaves `seenLogins` in place, so a later
+ * re-login never re-applies the default over the user's selection.
  */
 export class ModelSwitch {
   #selectionExplicit = false
@@ -62,6 +76,8 @@ export class ModelSwitch {
   declare enabled: Set<string>
   declare contexts: Record<string, number>
   declare efforts: Record<string, string>
+  declare seenLogins: Set<string>
+  declare awaitingPick: Set<string>
   declare ready: Promise<any>
 
   constructor({ path }: any = {}) {
@@ -70,6 +86,8 @@ export class ModelSwitch {
     this.enabled = new Set()
     this.contexts = {}
     this.efforts = {}
+    this.seenLogins = new Set()
+    this.awaitingPick = new Set()
     this.ready = path ? this.load() : Promise.resolve()
   }
 
@@ -82,6 +100,8 @@ export class ModelSwitch {
       const enabled = Array.isArray(raw?.enabled) ? raw.enabled : []
       this.disabled = new Set(disabled.filter((key) => typeof key === 'string' && key.includes('/')))
       this.enabled = new Set(enabled.filter((key) => typeof key === 'string' && key.includes('/')))
+      this.seenLogins = new Set(validFamilies(raw?.seenLogins))
+      this.awaitingPick = new Set(validFamilies(raw?.awaitingPick))
       this.contexts = validContextEntries(raw?.contexts)
       this.efforts = Object.fromEntries(Object.entries(raw?.efforts ?? {})
         .filter(([family, level]) => MODEL_FAMILY_IDS.includes(family) && DEFAULT_EFFORT_LEVELS.includes(level as string))) as Record<string, string>
@@ -100,6 +120,8 @@ export class ModelSwitch {
       enabled: [...this.enabled].sort(),
       contexts: Object.fromEntries(Object.entries(this.contexts).sort(([a], [b]) => a.localeCompare(b))),
       selectionExplicit: this.#selectionExplicit,
+      seenLogins: [...this.seenLogins].sort(),
+      awaitingPick: [...this.awaitingPick].sort(),
       ...(Object.keys(this.efforts).length ? { efforts: Object.fromEntries(Object.entries(this.efforts).sort(([a], [b]) => a.localeCompare(b))) } : {}),
     })}\n`)
   }
@@ -129,8 +151,59 @@ export class ModelSwitch {
 
   isEnabled(key) {
     if (this.disabled.has(key)) return false
+    if (this.awaitingPick.has(familyOfKey(key))) return false
     if (isOptInKey(key)) return this.enabled.has(key)
     return true
+  }
+
+  /**
+   * Startup seeding: every family already signed in when this plugin instance
+   * started is `seen`, so the login default below only ever hits logins that
+   * happen while this code runs. Returns whether the persisted set changed.
+   */
+  async seedSeenLogins(families) {
+    if (!Array.isArray(families)) return false
+    let changed = false
+    for (const family of families) {
+      if (typeof family !== 'string' || !MODEL_FAMILY_IDS.includes(family) || this.seenLogins.has(family)) continue
+      this.seenLogins.add(family)
+      changed = true
+    }
+    if (changed) await this.save()
+    return changed
+  }
+
+  /**
+   * 登录默认: every row of a family that signs in while this plugin runs is
+   * left off until the user picks something for that family — a family's whole
+   * catalog must not land in DSH's model list just because it signed in. Rows
+   * the catalog discovers before that pick stay off too; the first explicit
+   * pick (toggle / family / all / selected) drops the family back into the
+   * ordinary default-on rules. Returns whether the persisted state changed.
+   */
+  async applyLoginDefaults(catalog, loggedIn) {
+    let changed = false
+    for (const family of FAMILY_IDS) {
+      if (!loggedIn?.[family]) continue
+      const keys = familyCatalogKeys(catalog, family)
+      if (this.awaitingPick.has(family)) {
+        // Still waiting for the pick: rows discovered since the login stay off.
+        if (!this.seenLogins.has(family)) { this.seenLogins.add(family); changed = true }
+        for (const key of keys) {
+          if (this.disabled.has(key)) continue
+          this.disabled.add(key)
+          changed = true
+        }
+        continue
+      }
+      if (this.seenLogins.has(family)) continue
+      this.seenLogins.add(family)
+      this.awaitingPick.add(family)
+      for (const key of keys) this.disabled.add(key)
+      changed = true
+    }
+    if (changed) await this.save()
+    return changed
   }
 
   /** The custom input-context window for a key, or undefined (catalog default). */
@@ -206,6 +279,7 @@ export class ModelSwitch {
     const enabled = new Set(keys.filter((key) => known.includes(key)))
     this.disabled = new Set(known.filter((key) => !enabled.has(key)))
     this.enabled = new Set(known.filter((key) => enabled.has(key) && isOptInKey(key)))
+    this.awaitingPick.clear()
     this.#selectionExplicit = true
     await this.save()
     return this.status(catalog)
@@ -224,6 +298,7 @@ export class ModelSwitch {
       this.enabled.delete(key)
       this.disabled.add(key)
     }
+    this.awaitingPick.delete(familyOfKey(key))
     this.#selectionExplicit = true
     await this.save()
     return this.status(catalog)
@@ -242,6 +317,7 @@ export class ModelSwitch {
         this.disabled.add(key)
       }
     }
+    this.awaitingPick.delete(family)
     this.#selectionExplicit = true
     await this.save()
     return this.status(catalog)
@@ -259,6 +335,9 @@ export class ModelSwitch {
     let changed = false
     for (const family of FAMILY_IDS) {
       if (!loggedIn?.[family]) continue
+      // A family waiting for its login pick is all-off on purpose; enabling it
+      // here would undo the login default on the very next sync.
+      if (this.awaitingPick.has(family)) continue
       const keys = familyCatalogKeys(catalog, family)
       if (keys.length === 0 || keys.some((key) => this.isEnabled(key))) continue
       for (const key of keys) this.disabled.delete(key)
@@ -277,6 +356,7 @@ export class ModelSwitch {
       this.disabled = new Set(known)
       this.enabled = new Set()
     }
+    this.awaitingPick.clear()
     this.#selectionExplicit = true
     await this.save()
     return this.status(catalog)

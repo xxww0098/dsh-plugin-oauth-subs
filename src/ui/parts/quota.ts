@@ -150,7 +150,7 @@
       if (icon.raw) {
         return h('svg', {
           className: className ?? 'osubs-tab-icon',
-          viewBox: '0 0 24 24',
+          viewBox: icon.viewBox ?? '0 0 24 24',
           width: 18,
           height: 18,
           'aria-hidden': 'true',
@@ -260,6 +260,7 @@
         if (row.product === 'overage') return t.devinOverage
       }
       if (family === 'command-code' && row.kind === 'credits') return t.commandCodeCredits
+      if (family === 'codex' && row.kind === 'prepaid' && row.product === 'credits') return t.codexCredits
       if (family === 'cursor' && row.product === 'included') return t.cursorIncluded
       if (family === 'cursor' && row.kind === 'product') {
         if (row.product === 'auto' || row.key === 'product:auto') return t.cursorComposer

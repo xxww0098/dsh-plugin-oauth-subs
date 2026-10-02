@@ -77,6 +77,8 @@ export declare class AuthController {
     autoUpdate: boolean;
     updateState: any;
     prefsReady: Promise<void>;
+    /** Resolves once the families signed in at construction time are seeded. */
+    loginsReady: Promise<void>;
     autoUpdateTimer: any;
     prefsFile: string;
     stateFile: string;
@@ -495,6 +497,7 @@ export declare class AuthController {
         devVersion: string | undefined;
         linked: boolean;
         linkedPath: string | undefined;
+        restartKind: string;
         disk: any;
         resolved: any;
         runningPath: string;
@@ -522,6 +525,7 @@ export declare class AuthController {
         devVersion: string | undefined;
         linked: boolean;
         linkedPath: string | undefined;
+        restartKind: string;
         disk: any;
         resolved: any;
         runningPath: string;

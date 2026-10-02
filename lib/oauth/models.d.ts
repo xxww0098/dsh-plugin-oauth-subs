@@ -130,9 +130,10 @@ export declare function harnessModelAlias(provider: any, id: any): string;
  * the effective window is computed here from `contexts` so the row's catalog
  * default and ceiling stay visible alongside the override.
  */
-export declare function describeCatalog(providers: Record<string, any>, { enabledKeys, loggedIn, rates, contexts, pricing, pricingTimeOfDay }?: any): {
+export declare function describeCatalog(providers: Record<string, any>, { enabledKeys, loggedIn, awaitingPick, rates, contexts, pricing, pricingTimeOfDay }?: any): {
     models: any;
     pricingTimeOfDay?: any;
+    awaitingPick?: boolean | undefined;
     provider: string;
     displayName: any;
     family: string;

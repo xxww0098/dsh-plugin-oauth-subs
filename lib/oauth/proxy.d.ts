@@ -7,7 +7,7 @@
  */
 export { describeError } from '../utils/http.js';
 export { MAX_REQUEST_BODY_BYTES } from './proxy-body.js';
-export declare function createProxy({ port, apiKey, tokens, fetchFn, maxRequestBodyBytes, upstreamTimeouts, onAntigravityValidation, cursorRpc, devinChat, onQuotaUsed }: any): {
+export declare function createProxy({ port, apiKey, tokens, fetchFn, maxRequestBodyBytes, upstreamTimeouts, onAntigravityValidation, cursorRpc, devinChat, onQuotaUsed, onQuotaLearned }: any): {
     origin: () => string;
     listen(): Promise<any>;
     /**

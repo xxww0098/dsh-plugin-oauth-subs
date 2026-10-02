@@ -21,7 +21,10 @@ No hero, no feature grid, no glass CTA slab.
   clamps the card to pane height; the column head is sticky) — the
   toolbar, hint and pane stay fixed. Logged-out groups stay listed with
   locked switches, `登录后同步` note, and a 登录 jump to that family's
-  Quota card. Every row carries its input-context window as a tag
+  Quota card. A family that signed in here but is still waiting for its
+  pick is all-off on purpose and carries the `登录后默认不勾选` note
+  (登录默认; `docs/models.md`) next to its `0 / N` count instead of
+  looking broken. Every row carries its input-context window as a tag
   button (`osubs-tag--ctx`; customized rows use the accent
   `--custom` tint) — one default-window row per model, no context
   variant rows. Clicking opens the centered input-context Dialog —
@@ -55,20 +58,36 @@ No hero, no feature grid, no glass CTA slab.
   a family writes only itself, and differing values read 混合. The pick
   shows at once (optimistic, like the switches) while the route rewrite
   waits on the host reconcile; rules in `docs/models.md` 默认档位.
-- **Usage view**: one card — head carries 更新于 HH:MM, a 刷新 button and
-  the 今天 / 7 天 / 30 天 segmented range (今天 = 24 hourly bars). A stat
-  strip: Token (= 输入 + 输出, 输入 being the whole prompt — uncached +
+- **Usage view**: one card — no in-card title (the 用量 tab names it);
+  head carries 更新于 HH:MM + 刷新/分享 on the left and the 今天 / 7 天 /
+  30 天 segmented range on the right (今天 = 24 hourly bars). A stat
+  strip (`osubs-ustats`, auto-fit so five cards sit in one row on a wide
+  pane): Token (= 输入 + 输出, 输入 being the whole prompt — uncached +
   缓存读 + 缓存写, the host session totalTokens the user reconciles
   against; 输入/输出 below), 缓存读 (a subset of 输入) with 命中率 —
   the rate counts only calls whose usage carries a cache field, so a family
   that reports none (Kiro) reads 「—」 / 上游未报告缓存, never 0% — 调用
-  (with 次失败: attempts that failed and were not retried), and 首字延迟
+  (with 次失败: attempts that failed and were not retried), 首字延迟
   (mean step-start → first frame, with output tok/s over calls that
-  streamed ≥ 1 s; burst replies say nothing about speed). The bar chart
-  stacks output on input in two tones of the accent (legend top-right,
-  never vendor tints); hover/focus a bar for the breakdown in an
-  `osubs-rtip`. Per-model rows: mark + model, a sub line (family · calls ·
-  failures · TTFT · tok/s), a share bar, tokens with in/out/hit below.
+  streamed ≥ 1 s; burst replies say nothing about speed), and 估算成本
+  (`≈$…` priced from `rates.json` at read time — an estimate, not a bill;
+  models without a rate row are left out and named in the sub line as
+  「x/y 模型有价目」; `$0` is a price, shown as priced). The bar chart
+  stacks output on input in two tones of the accent (no legend — the
+  stat sub-line and the bar tooltip name them; never vendor tints);
+  hover/focus a bar for the 输入/输出/缓存读/调用 breakdown in an
+  `osubs-rtip` (估算 rides along when the bucket priced above $0).
+  The table head carries a 按模型 / 按会话 toggle (the toggle itself is
+  `data-noshot`, the head label shows the active one with its count).
+  按模型 rows: mark (family name on hover) + model, a sub line
+  (calls · failures · TTFT · tok/s · ≈$ when priced), a share bar, tokens
+  with the share% below. 按会话 rows: 最近写入时间 (file mtime, `M/d
+  HH:MM`) with an 8-char id chip whose click copies the full session id
+  (chip + copy stay out of the shared image; the full id sits in the
+  chip's `title`), a sub line (top models, `另 N 个` when more · calls ·
+  failures), a share bar against the busiest session, tokens with ≈$ or
+  share% below; a family-scoped rail narrows each session to that
+  family's share.
   Data is the host's own session files, read on demand — the proxy records
   nothing. The host scans in a worker thread, caches each file's hourly rows
   by mtime+size (`usage-cache.json`), and memoizes the answer for 5 min;
@@ -118,6 +137,11 @@ tokens. Still 13px UI / 12.5px emails.
   / 加载自 are not version concepts and never render as rows — a
   disk≠running divergence is a diagnostic hint (`updateStaleProcess`),
   and installing never restarts the host.
+- Restart guidance names what the user actually restarts, picked from
+  `restartKind` (`isElectronManagedProfile`): the desktop profile says
+  quit and reopen the app (`updateInstalledApp`, `updateStaleProcessApp`,
+  `autoUpdateHourlyApp`); everything else says restart the host and
+  spells out that the host is the dsh process.
 - The stale-process hint is link-aware (`updateStaleProcessLinked`):
   a linked tree's divergence is restart-only (code rides `hmr`), and
   the install-copy advice must not leak in — reinstalling would

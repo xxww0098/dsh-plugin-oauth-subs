@@ -53,6 +53,7 @@ export declare function localUpdateInfo(platform?: NodeJS.Platform, opts?: any):
     devVersion: string | undefined;
     linked: boolean;
     linkedPath: string | undefined;
+    restartKind: string;
     disk: any;
     resolved: any;
     runningPath: string;
@@ -93,6 +94,7 @@ export declare function fetchLatest({ fetchFn, spawnFn, current, platform, timeo
     devVersion: string | undefined;
     linked: boolean;
     linkedPath: string | undefined;
+    restartKind: string;
     disk: any;
     resolved: any;
     runningPath: string;

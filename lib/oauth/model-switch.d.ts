@@ -6,10 +6,17 @@
 export declare const DEFAULT_EFFORT_LEVELS: readonly string[];
 /**
  * Persisted enable/disable set for the Settings picker.
- * Default is all-on except context variants (`-900k` / `-1m`; opt-in, they
- * burn quota).
+ * Default is all-on for families whose login has already been settled.
  * New non-opt-in catalog ids stay on. Explicit picker choices persist across
  * restarts so automatic recovery cannot mistake all-off for leftover settings.
+ *
+ * 登录默认: a family that signs in while this plugin is running starts with
+ * every catalog row off (`awaitingPick`) — a fresh login must not flood DSH's
+ * model list. Families already signed in when the plugin started are seeded
+ * into `seenLogins` and keep whatever the user had, so an upgrade never turns
+ * an existing install's models off. The first explicit pick for the family
+ * clears `awaitingPick` and leaves `seenLogins` in place, so a later
+ * re-login never re-applies the default over the user's selection.
  */
 export declare class ModelSwitch {
     #private;
@@ -18,6 +25,8 @@ export declare class ModelSwitch {
     enabled: Set<string>;
     contexts: Record<string, number>;
     efforts: Record<string, string>;
+    seenLogins: Set<string>;
+    awaitingPick: Set<string>;
     ready: Promise<any>;
     constructor({ path }?: any);
     load(): Promise<void>;
@@ -29,6 +38,21 @@ export declare class ModelSwitch {
      */
     setEffort(level: any, families?: readonly string[]): Promise<void>;
     isEnabled(key: any): boolean;
+    /**
+     * Startup seeding: every family already signed in when this plugin instance
+     * started is `seen`, so the login default below only ever hits logins that
+     * happen while this code runs. Returns whether the persisted set changed.
+     */
+    seedSeenLogins(families: any): Promise<boolean>;
+    /**
+     * 登录默认: every row of a family that signs in while this plugin runs is
+     * left off until the user picks something for that family — a family's whole
+     * catalog must not land in DSH's model list just because it signed in. Rows
+     * the catalog discovers before that pick stay off too; the first explicit
+     * pick (toggle / family / all / selected) drops the family back into the
+     * ordinary default-on rules. Returns whether the persisted state changed.
+     */
+    applyLoginDefaults(catalog: any, loggedIn: any): Promise<boolean>;
     /** The custom input-context window for a key, or undefined (catalog default). */
     contextOf(key: any): number;
     /**

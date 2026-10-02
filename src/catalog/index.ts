@@ -179,7 +179,7 @@ export function catalogRows(key: string): readonly any[] {
  * offPeakDatesUtc) that the `tod` bands refer to.
  *
  * The numbers mirror the upstream pricing tables attributed in
- * docs/models.md (Command Code `command-code@1.72.2` kD/lD/xD/CD/bD/ED/TD/MD
+ * docs/models.md (Command Code `command-code@1.73.1` kD/lD/xD/CD/bD/ED/TD/MD
  * display-rates; every other family via `npm run rates`) — never invent them.
  */
 

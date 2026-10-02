@@ -38,26 +38,41 @@ export declare function scanSessionText(text: string, fallbackId: string): {
 };
 /**
  * Every session under `root` touched since `since` → merged hourly rows at or
- * after `since`. The same session may exist as v3 and v4 copies; only the
- * highest version counts. Returns the refreshed cache alongside.
+ * after `since`, plus the same window as one aggregate per session (the 用量
+ * tab's 按会话 list; `lastAt` is the file's mtime — when the session last
+ * wrote). The same session may exist as v3 and v4 copies; only the highest
+ * version counts. Returns the refreshed cache alongside.
  */
 export declare function scanUsage(root: string, since: number, cache?: Record<string, FileEntry>, statFile?: typeof statSize): {
     rows: UsageRow[];
+    sessions: {
+        id: string;
+        lastAt: number;
+        rows: UsageRow[];
+    }[];
     files: Record<string, FileEntry>;
 };
 declare function statSize(path: string): {
     mtimeMs: number;
     size: number;
 } | undefined;
+type UsageSession = {
+    id: string;
+    lastAt: number;
+    rows: UsageRow[];
+};
 /**
- * Hourly usage rows since `days` ago, scanned off-thread. Concurrent callers
- * share one scan. ponytail: a worker per request (~30 ms start); keep one
- * alive only if the tab ever polls.
+ * Hourly usage rows and per-session aggregates since `days` ago, scanned
+ * off-thread. Concurrent callers share one scan. ponytail: a worker per
+ * request (~30 ms start); keep one alive only if the tab ever polls.
  */
 export declare function readUsage({ root, cachePath, days, now }: {
     root: string;
     cachePath: string;
     days?: number;
     now?: number;
-}): Promise<UsageRow[]>;
+}): Promise<{
+    rows: UsageRow[];
+    sessions: UsageSession[];
+}>;
 export {};

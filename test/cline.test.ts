@@ -198,7 +198,7 @@ test('live catalog merges the recommended + free buckets and falls back to the s
   assert.deepEqual(CLINE_MODELS.map((model) => model.id), [
     'openai/gpt-6.1-sol', 'anthropic/claude-sonnet-5.5', 'anthropic/claude-opus-5.5',
     'spacexai/grok-4.7', 'openai/gpt-6-astra', 'moonshotai/kimi-k3',
-    'stealth/pixel-canary', 'stealth/space-bunny-alpha', 'cline-free/mimo-v2.6-flash',
+    'stealth/space-bunny-alpha', 'cline-free/mimo-v2.6-flash',
     'cline-free/deepseek-v4.1-flash', 'cline-free/muse-spark-1.3-contributor',
   ])
   const feed = {

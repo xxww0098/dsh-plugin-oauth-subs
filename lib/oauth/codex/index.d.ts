@@ -14,9 +14,9 @@ export declare const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usa
 export declare const CODEX_RESET_CREDITS_URL = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits";
 export declare const CODEX_RESET_CONSUME_URL = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume";
 export declare const CODEX_MODELS_URL = "https://chatgpt.com/backend-api/codex/models";
-export declare const CODEX_CLIENT_VERSION = "0.159.2";
+export declare const CODEX_CLIENT_VERSION = "0.159.3";
 export declare const CODEX_ORIGINATOR = "codex_cli_rs";
-export declare const CODEX_USER_AGENT = "codex_cli_rs/0.159.2";
+export declare const CODEX_USER_AGENT = "codex_cli_rs/0.159.3";
 export declare const CODEX_SCOPE = "openid profile email offline_access api.connectors.read api.connectors.invoke";
 export declare const CODEX_CALLBACK_PATH = "/auth/callback";
 export declare const CODEX_PREEMPT_MS: number;

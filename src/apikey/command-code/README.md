@@ -3,7 +3,7 @@
 本文件是 `src/apikey/command-code/` 的设计源。改登录、目录、对话或缓存先改这里再改代码。
 跨家族硬规则在 [`docs/rules.md`](../../../docs/rules.md)；故障记录在 [`docs/error.md`](../../../docs/error.md)；对照仓库在 [`docs/oauth.md`](../../../docs/oauth.md)。
 
-Command Code 订阅（[commandcode.ai](https://commandcode.ai) / api.commandcode.ai）。官方 CLI 是 npm 包 `command-code`（bin `command-code` / `cmd` / `cmdc` / `commandcode`，本表按 `1.72.2` 归因）。
+Command Code 订阅（[commandcode.ai](https://commandcode.ai) / api.commandcode.ai）。官方 CLI 是 npm 包 `command-code`（bin `command-code` / `cmd` / `cmdc` / `commandcode`，本表按 `1.73.1` 归因）。
 
 > 非正式集成。只用用户自己的 API key（paste / `COMMAND_CODE_API_KEY` / `~/.commandcode/auth.json`）或用户本人跑完的 studio 浏览器登录。
 
@@ -36,7 +36,7 @@ DSH POST /command-code/v1/chat/completions
 
 `baseURL` 是 `${origin}/command-code`，Completions SDK 打到 `/command-code/v1/chat/completions`。`/command-code/v1/responses` 回 **501** 说明。
 
-Wire（1.72.2 bundle，与 1.69.0 逐字一致，仅压缩名偏移）：
+Wire（1.73.1 bundle，与 1.69.0 起逐字一致，仅压缩名偏移）：
 
 - 顶层：`{ config, memory:null, taste:null, skills:null, mode:'chat', permissionMode, threadId?, params }`。`config` 是 `buildServerConfig` 形状——DSH 没有真实工作区，`workingDir`/git 字段诚实地留空，不编造 cwd。
 - `params`：`{ model, messages, tools?, system?, max_tokens, stream:true, temperature?, reasoning_effort? }`。`max_tokens` 上限 64000（CLI `max_tokens ?? 64000`，无 per-model cap）。`stream` 恒 true（CLI 恒流式；非流式由 hop 收集后回 JSON）。
@@ -44,7 +44,7 @@ Wire（1.72.2 bundle，与 1.69.0 逐字一致，仅压缩名偏移）：
 - `tools`：Anthropic 拼写 `{name, description, input_schema}`。
 - `reasoning_effort`：值是 per-model `kr` 表拼写（`low|medium|high|xhigh|max` 子集，逐模型不同）；模型无条目 / `off` → 字段整体省略（CLI `supportsThinking ? effort : undefined`）。
 - 事件：`reasoning-start|reasoning-delta{text}|reasoning-end`、`text-delta{text}`、`tool-call{toolCallId,toolName,input}`、`finish{totalUsage,finishReason,rawFinishReason}`、`error{message,statusCode,isRetryable}`、`abort`。`finish.totalUsage.inputTokenDetails.{cacheReadTokens,cacheWriteTokens}` → `prompt_tokens_details.cached_tokens` / `prompt_cache_write_tokens`。流必须以 `finish` 或 `abort` 收尾，否则判截断。
-- 上游请求头：`Authorization: Bearer <key>` + `x-command-code-version: 1.72.2` + `x-cli-environment: production`（`buildCommandApiHeaders`）。
+- 上游请求头：`Authorization: Bearer <key>` + `x-command-code-version: 1.73.1` + `x-cli-environment: production`（`buildCommandApiHeaders`）。
 
 ## 登录
 
@@ -77,7 +77,9 @@ Key 不写 log。
 
 模型页的价格徽标（💰）读 [`src/catalog/rates.json`](../../catalog/rates.json) 的 `"command-code"` 键：上游 bundle 的显示费率表（`getDisplayRates` 解析序：`f$` 覆盖 → `lD` provider 行 → `kD` 网关主 upstream → `xD/CD/bD/ED/TD/MD` 直连表），每行取 `order[0]` 主 upstream 的 `promptCost/completionCost/cacheReadCost`；`tod.peak/offPeak` 和顶层 `timeOfDay` 来自 bundle 的 `hD/fD/yD/SD` 常量。升钉版本时要重新对这张表。
 
-最近核对：`command-code@1.72.2` bundle；本次（1.70.0 / 1.71.0，见 npm CHANGELOG）收 `gpt-6.1-sol`（105 万窗、text+image、low–max，插在 `gpt-6-astra` 后）与 `inclusionai/ling-3.1-flash:free`（262K、text-only、low/medium/high，badge free、与 sante 同待遇不 hidden；注册表给 `maxOutputTokens:32768`，按本家既定规则不写行级 `maxTokens`）。价目表只加两行（`openai:gpt-6.1-sol` $2/$10、>272K $4/$15；`novita:inclusionai/ling-3.1-flash:free` 全 0），其余 33 行价目与 1.69.0 相同。
+最近核对：2026-10-01，升钉 `command-code@1.73.1`。注册表 91 行对账（−5 hidden 促销行 = 86 可见，与目录双向零差异），无新模型；`stealth/pixel-canary` 行加了 `get hidden(){isPixelCanaryEnded()}` 日期门（`2026-10-01T06:00:00Z`，stealth 预览 9/30 结束，已过）——**删目录行与价目行**（86→85）；`inclusionai/ling-3.1-flash:free` 的 notice 从 100/day 改 300/day（纯提示文案，不进行）；价目表 35 行无变化；wire 与 1.72.2 逐字一致（仅压缩名偏移）。
+
+上次核对：`command-code@1.72.2` bundle；本次（1.70.0 / 1.71.0，见 npm CHANGELOG）收 `gpt-6.1-sol`（105 万窗、text+image、low–max，插在 `gpt-6-astra` 后）与 `inclusionai/ling-3.1-flash:free`（262K、text-only、low/medium/high，badge free、与 sante 同待遇不 hidden；注册表给 `maxOutputTokens:32768`，按本家既定规则不写行级 `maxTokens`）。价目表只加两行（`openai:gpt-6.1-sol` $2/$10、>272K $4/$15；`novita:inclusionai/ling-3.1-flash:free` 全 0），其余 33 行价目与 1.69.0 相同。
 
 ## 额度
 
@@ -119,11 +121,11 @@ GET /alpha/usage/summary?orgId=…&since=<periodStart> → totalCost 等
 
 ## 归因
 
-一线：npm `command-code` **1.72.2**（bin `command-code` / `cmd` / `cmdc` / `commandcode`；本机 `/opt/homebrew/lib/node_modules/command-code/dist/{index,cli}.mjs`）。没有公开源码仓，端点、wire、登录流、目录、套餐表全部读该 bundle。
+一线：npm `command-code` **1.73.1**（bin `command-code` / `cmd` / `cmdc` / `commandcode`；npm tarball `dist/{index,cli}.mjs`）。没有公开源码仓，端点、wire、登录流、目录、套餐表全部读该 bundle。
 
 | 抄 | 出处 | 本 hop |
 |---|---|---|
-| `Bearer` + `x-command-code-version: 1.72.2` + `x-cli-environment: production` | `buildCommandApiHeaders` | `commandCodeUpstreamHeaders` |
+| `Bearer` + `x-command-code-version: 1.73.1` + `x-cli-environment: production` | `buildCommandApiHeaders` | `commandCodeUpstreamHeaders` |
 | `POST /alpha/generate`：`{config, memory, taste, skills, mode:'chat', permissionMode, threadId?, params:{model,messages,tools?,system?,max_tokens,stream,temperature?,reasoning_effort?}}` → JSONL 事件 | `buildServerConfig` / `toWireMessages` | `openaiToCommandCode` / `forwardCommandCode` |
 | 流事件 `reasoning-*` / `text-delta` / `tool-call` / `finish` / `error` / `abort`；`finish.totalUsage.inputTokenDetails` | bundle 流事件 switch | `commandCodeToOpenai` / SSE 映射 |
 | `threadId` 非 uuid 丢弃 | `toWireThreadId` | `applyCommandCodeCache`：uuid 直通、非 uuid sha256→v5、缺省 `dsh-command-code:<model>` 常量种子 |

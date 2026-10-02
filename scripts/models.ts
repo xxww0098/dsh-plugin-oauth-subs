@@ -95,6 +95,59 @@ async function modelsDevBucket(bucket) {
   return models
 }
 
+/**
+ * Every models.dev bucket that lists a bare id — the hand-sourcing hints for
+ * `!` unresolved rows and `>` curated picks. Values are distilled to a
+ * majority vote across buckets (ties → the smaller window / shorter effort
+ * list), with how many buckets agree, so one line orients the hunt for a
+ * second source instead of flooding it with relay copies. Report-only;
+ * nothing here is written to the catalog.
+ */
+async function modelsDevHints(id) {
+  modelsDev ??= await getJson('https://models.dev/api.json')
+  const hits: any[] = []
+  for (const data of Object.values<any>(modelsDev)) {
+    const row = data?.models?.[id]
+    if (row) hits.push(row)
+  }
+  if (!hits.length) return []
+  const tallyNumber = (values) => {
+    const counts = new Map<number, number>()
+    for (const value of values) if (value !== undefined) counts.set(value, (counts.get(value) ?? 0) + 1)
+    let best: { value: number, count: number } | undefined
+    for (const [value, count] of counts) {
+      if (!best || count > best.count || (count === best.count && value < best.value)) best = { value, count }
+    }
+    return best
+  }
+  const context = tallyNumber(hits.map((row) => pos(row.limit?.context)))
+  const output = tallyNumber(hits.map((row) => pos(row.limit?.output)))
+  const effortLists = hits
+    .map((row) => (row.reasoning_options ?? []).find((option: any) => option?.type === 'effort')?.values)
+    .filter((values) => Array.isArray(values) && values.length)
+  const effort = (() => {
+    const counts = new Map<string, { list: string[], count: number }>()
+    for (const list of effortLists) {
+      const key = list.join(',')
+      const hit = counts.get(key) ?? { list, count: 0 }
+      hit.count += 1
+      counts.set(key, hit)
+    }
+    let best: { list: string[], count: number } | undefined
+    for (const hit of counts.values()) {
+      if (!best || hit.count > best.count || (hit.count === best.count && hit.list.length < best.list.length)) best = hit
+    }
+    return best
+  })()
+  const agreed = (count: number) => (hits.length > 1 ? ` (${count}/${hits.length})` : '')
+  const parts = [
+    context ? `context ${context.value}${agreed(context.count)}` : '',
+    output ? `output ${output.value}${agreed(output.count)}` : '',
+    effort ? `effort ${effort.list.join('/')}` : '',
+  ].filter(Boolean)
+  return parts.length ? [parts.join(', ')] : ['listed but no window/output values']
+}
+
 /** models.dev row → catalog fields (effort from `reasoning_options`). */
 function fromModelsDev(id, row) {
   const effort = (row.reasoning_options ?? []).find((option) => option?.type === 'effort')
@@ -339,6 +392,26 @@ for (const key of keys) {
     report.push({ key, status: error instanceof Skip ? 'skipped' : 'failed', detail: error?.message ?? String(error) })
   }
 }
+
+// Hand-sourcing hints (report-only): what models.dev knows about the ids this
+// run leaves to a human — `!` unresolved rows, and `>` curated picks that are
+// genuinely new (the curated report-only list repeats every run; ids the
+// catalog already carries need no second source). A source is offered, never
+// written. Runs before the outbound agent closes.
+const hintIds = [...new Set(report.flatMap((r) => [
+  ...(r.unresolved ?? []).map((row) => row.id),
+  ...(r.notAdded ?? []).filter((row) => !(catalog[r.key] ?? []).some((kept) => kept.id === row.id)).map((row) => row.id),
+]))]
+const hints: Record<string, string[]> = {}
+let hintError: string | undefined
+if (hintIds.length) {
+  try {
+    for (const id of hintIds) hints[id] = await modelsDevHints(id)
+  } catch (error) {
+    hintError = error?.message ?? String(error)
+  }
+}
+
 await outbound.close()
 
 const dirty = report.some((r) => r.status === 'ok' && (r.added.length || r.changed.length || r.removed.length))
@@ -348,7 +421,7 @@ if (args.write && dirty) {
 }
 
 if (args.json) {
-  console.log(JSON.stringify({ written: args.write && dirty, report }, null, 2))
+  console.log(JSON.stringify({ written: args.write && dirty, hints, ...(hintError ? { hintError } : {}), report }, null, 2))
 } else {
   const brief = (value) => JSON.stringify(value) ?? 'undefined'
   for (const r of report) {
@@ -365,7 +438,13 @@ if (args.json) {
     for (const row of r.unresolved) console.log(`  ! ${row.id}  new id without metadata; add by hand with a README source`)
     if (r.notAdded.length) console.log(`  > not added (curated key): ${r.notAdded.map((row) => row.id).join(', ')}`)
     for (const s of r.skipped) console.log(`  · ${s.id}  skipped: ${s.why}`)
+    for (const id of [...r.unresolved.map((row) => row.id), ...r.notAdded.map((row) => row.id)]) {
+      if (hintError) break
+      const hits = hints[id] ?? []
+      console.log(`  i ${id}  models.dev: ${hits.length ? hits.join(' · ') : 'no bucket lists this id'}`)
+    }
   }
+  if (hintError) console.log(`  i models.dev hints unavailable: ${hintError}`)
   console.log(args.write ? (dirty ? `\nwrote ${CATALOG_PATH}; run npm run build, then record sources in each family README` : '\nnothing to write') : '\ndry run; pass --write to apply')
 }
 process.exit(report.some((r) => r.status === 'failed') ? 1 : 0)

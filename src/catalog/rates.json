@@ -590,12 +590,6 @@
     "claude-opus-5-5-fast": {
       "in": 8, "out": 40, "cacheRead": 0.4, "cacheWrite": 10
     },
-    "claude-sonnet-4.5": {
-      "in": 3, "out": 15, "cacheRead": 0.3, "cacheWrite": 3.75
-    },
-    "claude-sonnet-4.5-thinking": {
-      "in": 3, "out": 15, "cacheRead": 0.3, "cacheWrite": 3.75
-    },
     "claude-sonnet-4.6": {
       "in": 3, "out": 15, "cacheRead": 0.3, "cacheWrite": 3.75
     },
@@ -785,9 +779,6 @@
     },
     "moonshotai/kimi-k3": {
       "in": 3, "out": 15, "cacheRead": 0.3
-    },
-    "stealth/pixel-canary": {
-      "in": 0, "out": 0, "cacheRead": 0
     },
     "stealth/space-bunny-alpha": {
       "in": 0, "out": 0, "cacheRead": 0
@@ -1094,9 +1085,6 @@
       "in": 0.5, "out": 1.2, "cacheRead": 0.1
     },
     "stealth/space-bunny-alpha": {
-      "in": 0, "out": 0, "cacheRead": 0
-    },
-    "stealth/pixel-canary": {
       "in": 0, "out": 0, "cacheRead": 0
     },
     "poolside/laguna-s-2.1-free": {

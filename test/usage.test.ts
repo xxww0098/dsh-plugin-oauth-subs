@@ -38,6 +38,11 @@ test('scanUsage: hourly rows per provider/model, one count per step, highest ses
     // no cacheReadTokens field: cachePrompt stays 0 (hit rate n/a, not 0%)
     [Math.floor(T0 / HOUR) + 2, 'oauth-codex', 'gpt', 1, 5, 1, 0, 0, 0, 0, 0, 0, 0, 0],
   ])
+  // The same session as v3 + v4 files is one 按会话 entry, newest-first by
+  // file mtime, carrying only the in-window rows.
+  assert.equal(first.sessions.length, 1)
+  assert.equal(first.sessions[0].id, 'session-a')
+  assert.equal(first.sessions[0].rows.length, rows.length)
 
   // Unchanged files come from the cache without being read again.
   let reads = 0
@@ -50,16 +55,21 @@ test('scanUsage: hourly rows per provider/model, one count per step, highest ses
   assert.deepEqual(Object.values(again.files), Object.values(first.files))
 
   // Rows before the window are dropped.
-  assert.deepEqual(scanUsage(root, T0 + HOUR).rows.map((row) => row[1]), ['oauth-codex'])
+  const late = scanUsage(root, T0 + HOUR)
+  assert.deepEqual(late.rows.map((row) => row[1]), ['oauth-codex'])
+  assert.deepEqual(late.sessions[0].rows.map((row) => row[1]), ['oauth-codex'])
 })
 
 test('readUsage: scans in a worker and persists the per-file cache', async () => {
   const root = mkdtempSync(join(tmpdir(), 'osubs-usage-'))
   session(join(root, 'p', 's'), 'session.jsonl', 1, [message(1, 1, Date.now(), 'oauth-glm', 'glm-5', { inputTokens: 3, outputTokens: 4 })])
   const cachePath = join(mkdtempSync(join(tmpdir(), 'osubs-usage-cache-')), 'usage-cache.json')
-  const rows = await readUsage({ root, cachePath, days: 1 })
+  const { rows, sessions } = await readUsage({ root, cachePath, days: 1 })
   assert.equal(rows.length, 1)
   assert.deepEqual(rows[0].slice(1, 8), ['oauth-glm', 'glm-5', 1, 3, 4, 0, 0])
+  assert.equal(sessions.length, 1)
+  assert.equal(sessions[0].id, 'session-a')
+  assert.equal(sessions[0].rows.length, 1)
   const { readFileSync } = await import('node:fs')
   assert.equal(JSON.parse(readFileSync(cachePath, 'utf8')).v, 3)
 })

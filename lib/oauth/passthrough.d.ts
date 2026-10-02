@@ -4,4 +4,4 @@
  * retryable, usage rewriting on completions SSE, and the forwarded-header
  * filter. Timing and retries belong to upstream.ts.
  */
-export declare function forward(request: any, response: any, { url, fallbackUrl, session, tokens, headersOf, fetchFn, family, wire, maxRequestBodyBytes, upstreamTimeouts, startedAt, signal, classifyFailure, encodeBody }: any): Promise<void>;
+export declare function forward(request: any, response: any, { url, fallbackUrl, session, tokens, headersOf, fetchFn, family, wire, maxRequestBodyBytes, upstreamTimeouts, startedAt, signal, classifyFailure, encodeBody, captureSse }: any): Promise<void>;

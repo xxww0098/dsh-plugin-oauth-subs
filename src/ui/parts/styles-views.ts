@@ -4,9 +4,13 @@
     const CSS_VIEWS = `
 /* Usage tab: stat strip, output-on-input bar chart (CSS columns, two tones
    of the accent — never vendor tints), per-model rows with share bars. */
-/* flex-end: the 分享 image keeps this box at its on-screen width but drops
-   the .osubs-noshot controls, so the range picker must hug the right edge. */
-.osubs-uhead { display: flex; align-items: center; justify-content: flex-end; gap: var(--osubs-s3); flex-wrap: wrap; }
+/* No in-card title: the 用量 tab already names the view. The note+actions
+   group hugs the left, the range picker the right; in the 分享 image the
+   .osubs-noshot controls drop out, so margin-left:auto keeps the picker at
+   the right edge there too. */
+.osubs-uhead { display: flex; align-items: center; gap: var(--osubs-s3); flex-wrap: wrap; }
+.osubs-uhead > .osubs-seg { margin-left: auto; }
+.osubs-uhead-note { margin-right: 2px; }
 /* Skipped when the card is cloned for 分享; lays out as if absent. */
 .osubs-noshot { display: contents; }
 .osubs-dsw-card--shot { width: min(720px, 100%); }
@@ -36,7 +40,9 @@
   border: 1px solid var(--osubs-line); border-radius: 10px;
 }
 .osubs-shot img { display: block; width: 100%; height: auto; }
-.osubs-ustats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--osubs-s3); }
+/* auto-fit: the five stat cards (incl. the cost estimate) sit in one row on a
+   wide pane and wrap evenly when narrow; the 560px rule pins 2 columns. */
+.osubs-ustats { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: var(--osubs-s3); }
 .osubs-ustat {
   display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 10px 12px;
   border: 1px solid var(--osubs-line); border-radius: 10px;
@@ -44,11 +50,10 @@
 .osubs-ustat-l { font-size: 11px; color: var(--osubs-muted); }
 .osubs-ustat-v { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .osubs-ustat-s { font-size: 11px; color: var(--osubs-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.osubs-ulegend { display: flex; justify-content: flex-end; gap: var(--osubs-s3); font-size: 11px; color: var(--osubs-muted); margin-bottom: -6px; }
-.osubs-ulegend > span { display: inline-flex; align-items: center; gap: 5px; }
-.osubs-ukey { width: 8px; height: 8px; border-radius: 2px; }
-.osubs-ukey--in, .osubs-ubar-in { background: color-mix(in oklab, var(--osubs-accent) 42%, transparent); }
-.osubs-ukey--out, .osubs-ubar-out { background: var(--osubs-accent); }
+/* Input/output read as two tones of the accent with no legend — the stat
+   sub-line and each bar's tooltip name them. */
+.osubs-ubar-in { background: color-mix(in oklab, var(--osubs-accent) 42%, transparent); }
+.osubs-ubar-out { background: var(--osubs-accent); }
 .osubs-uchart {
   display: grid; grid-template-columns: auto 1fr; grid-template-rows: 180px auto;
   column-gap: 8px; row-gap: 6px;
@@ -103,6 +108,16 @@
 .osubs-unum small { font-size: 11px; color: var(--osubs-faint); white-space: nowrap; }
 .osubs-ushare { height: 6px; border-radius: 3px; background: var(--osubs-fill); overflow: hidden; }
 .osubs-ushare > i { display: block; height: 100%; border-radius: 3px; background: color-mix(in oklab, var(--osubs-accent) 72%, transparent); }
+/* The 按模型/按会话 head: the label left, the toggle right (out of shots). */
+.osubs-urow--pick { display: flex; justify-content: space-between; align-items: center; }
+.osubs-useg { display: inline-flex; gap: 4px; }
+.osubs-usess-n { display: inline-flex; align-items: center; gap: 6px; }
+.osubs-ucopy {
+  font: inherit; font-size: 11px; font-family: var(--osubs-mono, ui-monospace, monospace);
+  color: var(--osubs-muted); background: none; border: 1px solid var(--osubs-line);
+  border-radius: 5px; padding: 0 5px; cursor: pointer; line-height: 18px;
+}
+.osubs-ucopy:hover { color: var(--osubs-ink); border-color: var(--osubs-muted); }
 /* Loading skeleton: the tiles and chart hold their place while the first scan runs. */
 .osubs-usk { display: flex; flex-direction: column; gap: var(--osubs-s3); }
 .osubs-sk { display: block; border-radius: 6px; background: var(--osubs-fill); animation: osubs-pulse 1.4s ease-in-out infinite; }

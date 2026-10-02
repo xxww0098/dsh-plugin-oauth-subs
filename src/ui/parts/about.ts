@@ -209,6 +209,9 @@
       const apply = applyLabel(t, update)
       const stale = update?.staleProcess || local?.staleProcess
       const disk = update?.disk || local?.disk
+      // The restart wording follows the install kind: the desktop profile is
+      // Electron-managed, so its users restart an app, not a 「宿主」 process.
+      const restartKind = update?.restartKind || local?.restartKind
       // A 「本地插件目录」 install is a link: into a working tree outside the
       // profiles root. Its manifest version is the repo's official number, so
       // About shows the derived `<version>-dev` build instead of the release.
@@ -221,7 +224,7 @@
       // text + outcome (a link's outcome compares the repo's official number
       // with the release tag and would always read as 「已是最新」).
       const autoNote = () => {
-        const bits = linked ? [] : [t.autoUpdateHourly]
+        const bits = linked ? [] : [restartKind === 'app' ? t.autoUpdateHourlyApp : t.autoUpdateHourly]
         if (autoState?.at) {
           const outcome = linked ? '' : autoRunText(t, autoState)
           bits.push(fill(t.autoLastCheck, formatClock(autoState.at)) + (outcome ? ' · ' + outcome : ''))
@@ -298,7 +301,8 @@
             // GitHub) would replace the hot link with an installed copy —
             // the link's divergence is restart-only, code rides hmr.
             stale && disk && h('p', { className: 'osubs-hint osubs-warn' },
-              fill(linked ? t.updateStaleProcessLinked : t.updateStaleProcess, disk)),
+              fill(linked ? t.updateStaleProcessLinked
+                : restartKind === 'app' ? t.updateStaleProcessApp : t.updateStaleProcess, disk)),
             apply && h('p', { className: 'osubs-hint' }, apply),
           ),
         ),

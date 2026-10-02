@@ -29,7 +29,15 @@ DSH `api: openai-completions`。原生 wire 是 `POST https://ollama.com/api/cha
 - [Factory 集成](https://docs.ollama.com/integrations) 写死 `base_url: https://ollama.com/v1/` + `OLLAMA_API_KEY`
 - 无 key / 坏 Bearer 打 `POST https://ollama.com/v1/chat/completions` 返回 **401** `{"error":{"message":"Unauthorized"}}`，不是 404
 
-所以 hop 是 **薄透传**，不翻译 `/api/chat` NDJSON，也不选 Responses（本地 Ollama 虽有 `/v1/responses`，那不是 Cloud 文档路径）。
+所以 hop 是 **薄透传**，不翻译 `/api/chat` NDJSON。
+
+2026-09-30 活测（deepseek-v4.1-flash，Pro key）：Cloud 现在**三种闭集都接单**——`/v1/chat/completions`、`/v1/responses`、`/v1/messages`（Anthropic 形）。三者的流式事件、工具调用、图像输入、服务端 prefix 缓存读数都成立。仍选 Completions，三个理由：
+
+1. **透传零成本**。body 原样转发，连 `reasoning_effort`（`none|low|medium|high|max`）都是 Ollama 原生值；选 Messages 要凭空加一层 Anthropic → Completions 翻译。
+2. **Responses 的状态语义是假的**。Cloud 接受但**忽略** `previous_response_id` 与 `store`（活测 code-word 无记忆、`previous_response_id` 回显 null、`store:true` 回落 false）。DSH 走 Responses 是要无状态 `input` 链，这层能跑通，但换成没有任何收益，而 OpenAI Responses SDK 一旦发 `previous_response_id` 链就会静默丢上下文——把假药当真药更危险。
+3. **usage 字段等价**。三者都报 prefix 缓存读数（Completions `prompt_tokens_details.cached_tokens`、Responses `input_tokens_details.cached_tokens`、Messages `cache_read_input_tokens`），换协议拿不到更多缓存信号。
+
+`/ollama/v1/responses` 的 501 文案因此不写「Cloud 没有 Responses」——它有，是我们不用。
 
 ```text
 DSH POST /ollama/v1/chat/completions
@@ -127,7 +135,7 @@ DSH 每步前置的 runtime snapshot 因此无法在 Ollama Cloud 上做 prefix 
 - 把这个 tab 做成 localhost:11434 包装
 - 把 `id_ed25519.pub` 当 API key
 - 假装 `ollama signin` 是公开 PKCE
-- 选 Responses「因为本地 Ollama 也有 `/v1/responses`」
+- 选 Responses / Anthropic 因为「Cloud 也有这两个端点」——两者都接单但没有任何收益：Responses 的 `previous_response_id` / `store` 被静默忽略（2026-09-30 活测），Anthropic 要加翻译层
 - 抄 Codex / Grok / GLM / Kiro / Antigravity / Cursor 的 cache 头或停车形状
 - 把 0..1 `usage` 当成已经是百分数
 - 从上次点击起算 `now+5h` / `now+7d`（要用 #12532 全局桶）；刮 ollama.com/settings HTML
@@ -146,6 +154,7 @@ DSH 每步前置的 runtime snapshot 因此无法在 Ollama Cloud 上做 prefix 
 | 模型页价格徽标（USD / 1M） | models.dev `ollama-cloud` | `src/catalog/rates.json`，`npm run rates` 写入（见 [docs/models.md](../../../docs/models.md) 费率表） |
 | 原生 wire `https://ollama.com/api/chat` + `GET /api/tags`；退役表 | [Cloud](https://docs.ollama.com/cloud) | 目录 + `ollamaRetired` |
 | Cloud `/v1` 入口 `https://ollama.com/v1/` + `OLLAMA_API_KEY`（官方 [OpenAI compatibility](https://docs.ollama.com/api/openai-compatibility) 页只写 localhost） | [Factory 集成](https://docs.ollama.com/integrations)；本仓库 2026-09-03 探活无 key 回 401 而非 404 | Completions 透传 |
+| Cloud 已开 `/v1/responses` + `/v1/messages`，但忽略 `previous_response_id` / `store`；三协议缓存读数等价 | 本仓库 2026-09-30 活测（code-word 记忆、tool round-trip、cache 复测） | 仍 Completions |
 | `/api/show` 的 `model_info.<family>.context_length` + `capabilities` | Cloud 实测（例：[`deepseek-v4.1-flash`](https://ollama.com/library/deepseek-v4.1-flash) 2026-09-11 → `deepseek_v41.context_length` 1048576，`capabilities` 含 `vision`） | `contextWindow` / `input` |
 | Cloud 忽略 `num_ctx`，窗口只能读 `/api/show` | [ollama#16598](https://github.com/ollama/ollama/issues/16598) | 同上 |
 | session = UTC 5h unix 桶；weekly = UTC 7d 桶偏移 −4d（周一 00:00 UTC） | [ollama#12532](https://github.com/ollama/ollama/issues/12532) | `ollamaSessionResetAt` / `ollamaWeeklyResetAt` |

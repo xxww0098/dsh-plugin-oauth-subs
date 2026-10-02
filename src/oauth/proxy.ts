@@ -40,6 +40,7 @@ import { forwardCursor } from './cursor/transport.js'
 import { devinCatalogModels } from './devin/catalog.js'
 import { forwardDevin } from './devin/transport.js'
 import { describeError, sendJson } from '../utils/http.js'
+import { CODEX_RATE_LIMITS_EVENT } from './codex/quota.js'
 import { encodeCodexBody } from './codex/request.js'
 import { CLINE_CHAT_URL, clineUpstreamHeaders } from './cline/index.js'
 import { clineCatalogModels } from './cline/catalog.js'
@@ -79,7 +80,7 @@ function abortOnDisconnect(request, response) {
   }
 }
 
-export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, maxRequestBodyBytes = MAX_REQUEST_BODY_BYTES, upstreamTimeouts = undefined, onAntigravityValidation = undefined, cursorRpc = undefined, devinChat = undefined, onQuotaUsed = undefined }: any) {
+export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, maxRequestBodyBytes = MAX_REQUEST_BODY_BYTES, upstreamTimeouts = undefined, onAntigravityValidation = undefined, cursorRpc = undefined, devinChat = undefined, onQuotaUsed = undefined, onQuotaLearned = undefined }: any) {
   let server
   // Set once close() starts. A socket that was busy then stays keep-alive and the
   // old server keeps answering on it, so every answer from here on tells the
@@ -230,6 +231,9 @@ export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, max
           upstreamTimeouts,
           startedAt,
           signal: client.signal,
+          // The stream's own rate-limit frame is quota data; the store decides
+          // what to keep (quota.ts `learn`).
+          ...(onQuotaLearned ? { captureSse: { type: CODEX_RATE_LIMITS_EVENT, onData: (data) => onQuotaLearned('codex', data) } } : {}),
         })
       } finally {
         client.cleanup()
@@ -459,7 +463,9 @@ export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, max
     if (path === '/ollama/v1/responses') {
       sendJson(response, 501, {
         error: {
-          message: 'Ollama Cloud is Completions. Point llm-pi-ai at POST /ollama/v1/chat/completions.',
+          // Cloud does serve /v1/responses but ignores previous_response_id and
+          // store, so this hop deliberately stays Completions (see ollama README).
+          message: 'Ollama hop is Completions only. Point llm-pi-ai at POST /ollama/v1/chat/completions.',
         },
       })
       return

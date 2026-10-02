@@ -11,6 +11,22 @@ export declare function parseCodexUsage(payload: any): {
     planType: any;
     rows: any[];
 };
+/**
+ * The `codex.rate_limits` SSE frame that opens a Codex Responses stream: the
+ * account's own windows ahead of the reply, in the same row shape as
+ * `parseCodexUsage` so the quota cards cannot tell them apart. Frame shape per
+ * the codex CLI's `RateLimitSnapshot` (windows keyed `primary` / `secondary`,
+ * `used_percent`, `window_minutes`, `reset_after_seconds`); the endpoint's
+ * `*_window` spellings are accepted too.
+ */
+export declare const CODEX_RATE_LIMITS_EVENT = "codex.rate_limits";
+export declare function parseCodexRateLimitsFrame(payload: any): {
+    rows: never[];
+    planType?: undefined;
+} | {
+    planType: any;
+    rows: any[];
+};
 export declare function parseResetCredits(payload: any): {
     nextExpiresAt?: number | undefined;
     availableCount: number;

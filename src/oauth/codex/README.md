@@ -26,7 +26,7 @@
 | `client_id` | `app_EMoamEEZ73f0CkXaXp7hrann` |
 | authorize | `https://auth.openai.com/oauth/authorize` |
 | token | `https://auth.openai.com/oauth/token` |
-| originator / UA | `codex_cli_rs` / `codex_cli_rs/0.159.2` |
+| originator / UA | `codex_cli_rs` / `codex_cli_rs/0.159.3` |
 | loopback | `localhost:1455`，失败再 `1457`；path `/auth/callback` |
 | 换票 | `application/x-www-form-urlencoded` + PKCE |
 | 刷新 | JSON `{ client_id, grant_type, refresh_token }` |
@@ -67,7 +67,9 @@ Fast：body `service_tier` 从 `fast` 改成 `priority`，并带 `x-codex-routin
 - `fastTier` = `service_tiers` 里有 `priority`。
 - `reasoningEfforts` 取 `supported_reasoning_levels`，但 `minimal` 与 `ultra` 会 400（`ultra` 是 CLI 的多 agent 模式，不是 API effort）；`off` 的 wire 值是 `null`。
 
-最近核对：2026-09-30，活目录 @ `client_version` 0.159.0（+ `gpt-6.1-sol`）；同日钉跟 npm latest 升 0.159.2（探查无新行，纯跟版）。
+最近核对：2026-10-01，活目录 @ `client_version` 0.159.3（钉跟 npm latest 升 0.159.3；探查无新行、无字段变化，纯跟版）。
+
+上次核对：2026-09-30，活目录 @ `client_version` 0.159.0（+ `gpt-6.1-sol`）；同日钉跟 npm latest 升 0.159.2（探查无新行，纯跟版）。
 
 ## 额度
 
@@ -77,6 +79,10 @@ Fast：body `service_tier` 从 `fast` 改成 `priority`，并带 `x-codex-routin
 - `secondary_window` → 条 `weekly`
 
 重置卷（仅 Codex）：`GET .../wham/rate-limit-reset-credits`，消费 `POST .../consume`。Grok 没有对等接口。卡片上的「重置」只对 Codex 亮。
+
+额度余额：`rate_limit.credits`（`{ has_credits, unlimited, balance }`——codex CLI `RateLimitSnapshot` 的 `Credits` 结构，`balance` 是字符串数字）渲染成 `prepaid` 行「额度」，就是 ChatGPT 用量页的「剩余额度」。`has_credits: false` 表示该套餐没有额度计费，不出行；`unlimited` 显示「不限量」。`codex.rate_limits` 帧的 `rate_limits.credits` 走同一条映射；帧没带 `credits` 时 `QuotaStore.learn` 保留上一条余额行。
+
+被动学习（2026-10-02）：Responses 流开头的 `codex.rate_limits` SSE 帧带着同一账号的窗口读数（`primary`/`secondary`，`used_percent` + `window_minutes` + `reset_after_seconds`；codex CLI `RateLimitSnapshot` 拼法，帧的存在性另见 `responses-sse.ts` 引 CLIProxyAPI）。`parseCodexRateLimitsFrame` 把它解析成与 `parseCodexUsage` 同构的行，`QuotaStore.learn` 合进活跃账号的缓存——端点读数仍为权威，`usedAt` 由 `touch` 照常标记。只在 gate 未提交前捕获（帧实践上先于输出）；ChatGPT 家族走 `api.openai.com`，无此帧，不接。
 
 ## 缓存
 

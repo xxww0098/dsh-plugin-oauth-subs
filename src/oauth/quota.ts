@@ -17,7 +17,7 @@ import { fetchCommandCodeQuota } from '../apikey/command-code/quota.js'
 import { outboundFetch } from '../utils/outbound.js'
 import { fetchOllamaQuota } from '../apikey/ollama/quota.js'
 import { fetchAntigravityQuota } from './antigravity/quota.js'
-import { consumeCodexReset, fetchCodexQuota } from './codex/quota.js'
+import { consumeCodexReset, fetchCodexQuota, parseCodexRateLimitsFrame } from './codex/quota.js'
 import { fetchCopilotQuota } from './copilot/quota.js'
 import { fetchCursorQuota } from './cursor/quota.js'
 import { fetchDevinQuota } from './devin/quota.js'
@@ -263,6 +263,40 @@ export class QuotaStore {
     const id = live ? accountIdOf(provider, live) : undefined
     const entry = this.cache.get(quotaCacheKey(provider, id))
     if (entry) entry.usedAt = Date.now()
+  }
+
+  /**
+   * Passive quota learning: the response itself carried this account's quota
+   * (today only the Codex Responses stream's `codex.rate_limits` frame), so the
+   * rows are updated without a side-read. The endpoint read stays authoritative
+   * — a refresh that was in flight overwrites what this wrote, and `usedAt` is
+   * left alone (`touch` marks the spend the moment the response closes).
+   */
+  async learn(provider, data, session?) {
+    if (provider !== 'codex') return undefined
+    const parsed = parseCodexRateLimitsFrame(data)
+    if (!parsed.rows.length) return undefined
+    const live = session ?? await this.#activeSession(provider)
+    const id = live ? accountIdOf(provider, live) : undefined
+    const key = quotaCacheKey(provider, id)
+    const previous = this.cache.get(key)
+    const entry = {
+      status: 'ready',
+      planType: parsed.planType ?? previous?.planType,
+      account: previous?.account,
+      subscriptionStatus: previous?.subscriptionStatus,
+      hasGrokCodeAccess: previous?.hasGrokCodeAccess,
+      updatedAt: Date.now(),
+      // A frame without a credits block must not drop the last known balance
+      // (older servers / account shapes that don't send it on the wire).
+      rows: parsed.rows.some((row) => row.kind === 'prepaid')
+        ? parsed.rows
+        : [...parsed.rows, ...(previous?.rows ?? []).filter((row) => row.kind === 'prepaid')],
+      // The frame says nothing about the reset-credit bank: keep the last one.
+      resetCredits: previous?.resetCredits ?? { availableCount: 0 },
+    }
+    this.cache.set(key, entry)
+    return publicQuota(entry, provider)
   }
 
   async refresh(provider, accountId?, session?) {
