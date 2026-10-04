@@ -8,6 +8,12 @@
  * `spec.callbackPage(result)` overrides the rendered success page.
  */
 export declare const DEFAULT_FLOW_TIMEOUT_MS = 180000;
+/**
+ * Abortable delay shared by the poll-style login flows (Grok device, Kiro IdC,
+ * GLM CLI poll). Rejects with the abort reason — or a plain `aborted` error —
+ * and removes its abort listener on both exit paths.
+ */
+export declare function sleep(ms: any, signal: any): Promise<void>;
 /** Path + query the browser actually landed on (Kiro token exchange needs this). */
 export declare function oauthCallbackFromUrl(url: any, fallbackPath: any): {
     pathname: any;

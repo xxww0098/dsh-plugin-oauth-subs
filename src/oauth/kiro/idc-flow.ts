@@ -11,27 +11,10 @@ import {
   oidcEndpoint,
 } from './index.js'
 import { outboundFetch } from '../../utils/outbound.js'
+import { sleep } from '../flow.js'
 
 const DEFAULT_INTERVAL_SEC = 5
 const DEFAULT_EXPIRES_IN_SEC = 900
-
-function sleep(ms, signal) {
-  return new Promise<void>((resolve, reject) => {
-    if (signal.aborted) {
-      reject(signal.reason instanceof Error ? signal.reason : new Error('aborted'))
-      return
-    }
-    const timer = setTimeout(() => {
-      signal.removeEventListener('abort', onAbort)
-      resolve()
-    }, ms)
-    const onAbort = () => {
-      clearTimeout(timer)
-      reject(signal.reason instanceof Error ? signal.reason : new Error('aborted'))
-    }
-    signal.addEventListener('abort', onAbort, { once: true })
-  })
-}
 
 async function postJson(url, body, fetchFn, signal?) {
   const response = await fetchFn(url, {
