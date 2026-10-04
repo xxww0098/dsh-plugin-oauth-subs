@@ -10,11 +10,16 @@
  *   CSV / TXT     header aliases 邮箱/email/refreshToken/登录方式
  *   kiro.rs       credentials.json array or object
  *   IDE token     ~/.aws/sso/cache/kiro-auth-token.json (+ client registration json)
+ *   IDE store     ~/.kiro/credentials.json / credentials.json in the CWD
  *   API keys      ksk_… lines
  */
 
 import { createHash } from 'node:crypto'
-import { BUILDER_ID_START_URL, isKiroCredential, kiroSessionFromImport } from './index.js'
+import { readdir } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
+import { errorCode } from '../../utils/http.js'
+import { homeFile, readJson } from '../import-auth.js'
+import { BUILDER_ID_START_URL, isKiroCredential, kiroAccountId, kiroSessionFromImport } from './index.js'
 
 const CSV_HEADERS = Object.freeze({
   email: 'email',
@@ -209,4 +214,118 @@ export function parseKiroImportText(raw) {
 
 export function isKiroBatchImport(kind) {
   return kind === 'json' || kind === 'kami' || kind === 'csv' || kind === 'keys'
+}
+
+export function kiroAuthSearchPaths() {
+  return [
+    homeFile('.aws', 'sso', 'cache', 'kiro-auth-token.json'),
+    homeFile('.kiro', 'credentials.json'),
+    join(process.cwd(), 'credentials.json'),
+  ]
+}
+
+export function sessionFromKiroAuth(raw) {
+  return sessionsFromKiroAuth(raw)[0]
+}
+
+function takeKiroSessions(raw, registration) {
+  const hydrated = registration ? hydrateKiroSsoToken(raw, registration) : raw
+  return sessionsFromKiroAuth(hydrated)
+}
+
+function isClientRegistration(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false
+  const clientId = raw.clientId ?? raw.client_id
+  const clientSecret = raw.clientSecret ?? raw.client_secret
+  if (typeof clientId !== 'string' || typeof clientSecret !== 'string') return false
+  if (raw.refreshToken || raw.refresh_token || raw.accessToken || raw.access_token) return false
+  return true
+}
+
+async function importKiroFromCache(dir, tried, seenIds, seenPaths) {
+  let names
+  try {
+    names = await readdir(dir)
+  } catch (error) {
+    if (errorCode(error) === 'ENOENT') return []
+    throw error
+  }
+  const files = new Map()
+  for (const name of names) {
+    if (!name.endsWith('.json')) continue
+    const path = join(dir, name)
+    const raw = await readJson(path)
+    if (raw !== undefined) files.set(name, { path, raw })
+  }
+  const registrations: any[] = []
+  for (const { raw } of files.values()) {
+    if (isClientRegistration(raw)) registrations.push(raw)
+  }
+  const token = files.get('kiro-auth-token.json')
+  const hash = token
+    ? (token.raw.clientIdHash || kiroSsoClientIdHash(token.raw.startUrl))
+    : undefined
+  const hashed = hash ? files.get(`${hash}.json`) : undefined
+  const registration = hashed?.raw ?? registrations[0]
+  const ordered = [
+    'kiro-auth-token.json',
+    ...[...files.keys()].filter((name) => name !== 'kiro-auth-token.json'),
+  ]
+  const found: any[] = []
+  for (const name of ordered) {
+    const row = files.get(name)
+    if (!row) continue
+    if (seenPaths.has(row.path)) continue
+    seenPaths.add(row.path)
+    tried.push(row.path)
+    if (isClientRegistration(row.raw)) continue
+    const sessions = takeKiroSessions(
+      row.raw,
+      name === 'kiro-auth-token.json' ? registration : undefined,
+    )
+    for (const session of sessions) {
+      const id = kiroAccountId(session)
+      if (seenIds.has(id)) continue
+      seenIds.add(id)
+      found.push({ session, source: row.path })
+    }
+  }
+  return found
+}
+
+export async function importKiroAuth(paths?) {
+  const list = paths ?? kiroAuthSearchPaths()
+  const scanCache = paths == null
+  const tried: any[] = []
+  const found: any[] = []
+  const seenIds = new Set()
+  const seenPaths = new Set()
+  for (const path of list) {
+    if (!path || seenPaths.has(path)) continue
+    seenPaths.add(path)
+    tried.push(path)
+    const raw = await readJson(path)
+    if (raw === undefined) continue
+    let registration
+    if (path.endsWith('kiro-auth-token.json')) {
+      const hash = raw.clientIdHash || kiroSsoClientIdHash(raw.startUrl)
+      registration = await readJson(join(dirname(path), `${hash}.json`))
+    }
+    for (const session of takeKiroSessions(raw, registration)) {
+      const id = kiroAccountId(session)
+      if (seenIds.has(id)) continue
+      seenIds.add(id)
+      found.push({ session, source: path })
+    }
+  }
+  if (scanCache) {
+    const fromCache = await importKiroFromCache(homeFile('.aws', 'sso', 'cache'), tried, seenIds, seenPaths)
+    found.push(...fromCache)
+  }
+  if (found.length === 0) throw new Error(`no Kiro session found in ${tried.join(' or ')}`)
+  return {
+    session: found[0].session,
+    sessions: found.map((row) => row.session),
+    source: found[0].source,
+  }
 }

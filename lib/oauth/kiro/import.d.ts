@@ -10,6 +10,7 @@
  *   CSV / TXT     header aliases 邮箱/email/refreshToken/登录方式
  *   kiro.rs       credentials.json array or object
  *   IDE token     ~/.aws/sso/cache/kiro-auth-token.json (+ client registration json)
+ *   IDE store     ~/.kiro/credentials.json / credentials.json in the CWD
  *   API keys      ksk_… lines
  */
 export declare function kiroSsoClientIdHash(startUrl?: string): string;
@@ -26,3 +27,10 @@ export declare function parseKiroImportText(raw: any): {
     sessions: any[];
 };
 export declare function isKiroBatchImport(kind: any): boolean;
+export declare function kiroAuthSearchPaths(): string[];
+export declare function sessionFromKiroAuth(raw: any): any;
+export declare function importKiroAuth(paths?: any): Promise<{
+    session: any;
+    sessions: any[];
+    source: any;
+}>;
