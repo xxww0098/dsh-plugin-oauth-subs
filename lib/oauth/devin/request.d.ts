@@ -16,6 +16,7 @@
  * `message_id`s are deterministic UUIDs off the cascade so history rebuilds
  * keep stable ids (same shape the reference client uses).
  */
+export { devinBasicAuth, devinMetadataBytes } from './metadata.js';
 /**
  * Resolve the picker id + DSH reasoning_effort to a backend chat_model_uid.
  * A raw `*-low`-style uid passes through untouched; a family row resolves via
@@ -52,14 +53,6 @@ export declare function openaiToDevin(payload: any, { cascadeId, executionId }?:
     cascadeId: any;
     chatModelUid: any;
 };
-/**
- * The real CLI sends `Authorization: Basic <apiKey>-<sessionId>` where the
- * session id is the session token itself (MITM capture). metadata.api_key
- * alone is accepted, but the header keeps the hop's fingerprint faithful.
- */
-export declare function devinBasicAuth(session: any): string | undefined;
-/** Wire Metadata message for every Devin RPC (chat, catalog, status, jwt). */
-export declare function devinMetadataBytes(session: any, { userJwt, modelDisplays }?: any): Buffer<ArrayBuffer>;
 /**
  * ModelUsageStats' buckets are disjoint (Anthropic-style): input_tokens is
  * the uncached remainder, cache read/write their own fields, their sum the

@@ -17,7 +17,7 @@ import {
   DEVIN_MODELS_PATH,
   DEVIN_MODEL_DISPLAYS,
 } from './index.js'
-import { devinBasicAuth, devinMetadataBytes } from './request.js'
+import { devinBasicAuth, devinMetadataBytes } from './metadata.js'
 import {
   decodeGetCliModelConfigsResponse,
   decodeUnaryBody,

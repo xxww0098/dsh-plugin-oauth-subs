@@ -92,7 +92,7 @@ export declare function canonicalizeKiroMethod(value: any, { tokenEndpoint }?: a
  * with clientId+clientSecret.
  */
 export declare function inferKiroAuthMethod(raw?: any): string;
-export declare function kiroAccountKind(session?: any): "key" | "entra" | "idc" | "builder" | "social";
+export declare function kiroAccountKind(session?: any): "social" | "idc" | "entra" | "builder" | "key";
 export declare function kiroMethodLabel(methodOrSession: any): "Builder" | "IdC" | "Entra" | "API key" | "Social";
 export declare function kiroAccountId(session?: any): string;
 export declare function oidcEndpoint(region?: string): string;

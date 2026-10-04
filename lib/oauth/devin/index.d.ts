@@ -101,7 +101,7 @@ export declare function devinSession({ accessToken, expiresAt, account, planType
     expiresAt: number;
 };
 export declare const DEVIN_SOURCES: readonly string[];
-export declare function devinSourceLabel(source: any): "env" | "CLI" | "PKCE" | "key" | undefined;
+export declare function devinSourceLabel(source: any): "env" | "key" | "CLI" | "PKCE" | undefined;
 export declare function devinApiServer(session: any): string;
 /**
  * The token has no refresh grant. When the stored expiry is near, probe

@@ -25,18 +25,12 @@ import {
   DEVIN_SOURCE_USER,
   encodeChatMessagePrompt,
   encodeCompletionConfiguration,
-  encodeDevinMetadata,
   DEVIN_STOP_REASON_MAX_TOKENS,
   DEVIN_STOP_REASON_FUNCTION_CALL,
 } from './proto.js'
-import {
-  DEVIN_IDE_NAME,
-  DEVIN_IDE_VERSION,
-  DEVIN_EXTENSION_NAME,
-  DEVIN_EXTENSION_VERSION,
-  DEVIN_LOCALE,
-  DEVIN_STOP_PATTERNS,
-} from './index.js'
+import { DEVIN_STOP_PATTERNS } from './index.js'
+
+export { devinBasicAuth, devinMetadataBytes } from './metadata.js'
 
 function textOf(value) {
   return typeof value === 'string' ? value : ''
@@ -224,31 +218,6 @@ export function openaiToDevin(payload, { cascadeId, executionId }: any = {}) {
   }
 
   return { fields, cascadeId: cascade, chatModelUid }
-}
-
-/**
- * The real CLI sends `Authorization: Basic <apiKey>-<sessionId>` where the
- * session id is the session token itself (MITM capture). metadata.api_key
- * alone is accepted, but the header keeps the hop's fingerprint faithful.
- */
-export function devinBasicAuth(session) {
-  const key = session?.accessToken
-  return typeof key === 'string' && key ? `Basic ${key}-${key}` : undefined
-}
-
-/** Wire Metadata message for every Devin RPC (chat, catalog, status, jwt). */
-export function devinMetadataBytes(session, { userJwt, modelDisplays }: any = {}) {
-  return encodeDevinMetadata({
-    apiKey: session?.accessToken,
-    userJwt,
-    ideName: DEVIN_IDE_NAME,
-    ideVersion: DEVIN_IDE_VERSION,
-    extensionName: DEVIN_EXTENSION_NAME,
-    extensionVersion: DEVIN_EXTENSION_VERSION,
-    locale: DEVIN_LOCALE,
-    os: process.platform,
-    modelDisplays,
-  })
 }
 
 /* ---- collected response → chat.completion -------------------------------- */

@@ -9,7 +9,7 @@
 
 import { copilotCacheSessionId, COPILOT_STABLE_SESSION } from './cache.js'
 import { createHash } from 'node:crypto'
-import { OAuthEndpointError, oauthError } from '../tokens.js'
+import { OAuthEndpointError, oauthError } from '../errors.js'
 import { outboundFetch } from '../../utils/outbound.js'
 import { catalogRows } from '../../catalog/index.js'
 

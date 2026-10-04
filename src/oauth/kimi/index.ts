@@ -11,7 +11,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'n
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import os from 'node:os'
-import { oauthError } from '../tokens.js'
+import { oauthError } from '../errors.js'
 import { outboundFetch } from '../../utils/outbound.js'
 import { catalogRows } from '../../catalog/index.js'
 

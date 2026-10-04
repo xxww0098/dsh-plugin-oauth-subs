@@ -67,7 +67,7 @@ export declare const COPILOT_REASONING: Readonly<{
 export declare const COPILOT_MODELS: readonly any[];
 /** Catalog lookup for the custom-context ceiling (`maxContextWindowOf`). */
 export declare function copilotModel(modelId: any): any;
-export declare function copilotSourceLabel(source: any): "env" | "CLI" | "key" | "OAuth" | undefined;
+export declare function copilotSourceLabel(source: any): "env" | "key" | "CLI" | "OAuth" | undefined;
 export declare function isCopilotKeySource(source: any): boolean;
 export declare function copilotAccountFingerprint(token: any): string;
 export declare function copilotDefaultAccount(token: any): string;

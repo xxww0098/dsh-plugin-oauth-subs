@@ -119,7 +119,7 @@ export declare const CLINE_INPUT: readonly string[];
 export declare const CLINE_MODELS: readonly any[];
 /** Catalog lookup for the custom-context ceiling (`familyMaxContextWindow`). */
 export declare function clineModel(modelId: any): any;
-export declare function clineSourceLabel(source: any): "env" | "CLI" | "key" | "OAuth" | undefined;
+export declare function clineSourceLabel(source: any): "env" | "key" | "CLI" | "OAuth" | undefined;
 /** `formatAccessToken` — idempotent `workos:` prefix on the bearer value. */
 export declare function formatClineAccessToken(value: any): string | undefined;
 /** `normalizeStoredAccessToken` — the bare WorkOS JWT. */

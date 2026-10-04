@@ -1,5 +1,7 @@
 /** One refresh owner per stored login and credential version. */
 import { RequestError } from '../utils/http.js';
+/** OAuth token-endpoint error vocabulary, re-exported from the shared leaf. */
+export { OAuthEndpointError, oauthCodeOf, oauthError, isPermanentRefreshFailure } from './errors.js';
 /**
  * The login is missing or gone and only the user can fix it. 403, so the host
  * classifies it AUTH and does not retry; the proxy answers by `status` alone.
@@ -48,21 +50,6 @@ export declare const REFRESH_WAIT_MS = 30000;
  * still-valid token. The exchange itself keeps running (REFRESH_LATE_CAP_MS).
  */
 export declare const REFRESH_EXCHANGE_TIMEOUT_MS = 20000;
-export declare class OAuthEndpointError extends Error {
-    status: any;
-    oauthCode: any;
-    constructor(message: any, status?: any, oauthCode?: any);
-}
-/** The OAuth error code in a token-endpoint body: `error` / `error_code`, or `error.code`. */
-export declare function oauthCodeOf(body: any): string | undefined;
-export declare function oauthError(response: any, label: any): Promise<OAuthEndpointError>;
-/**
- * The only test for "this login is gone": a structured 401 `status` or an
- * OAuth grant code — the shared ones plus the family's `extraCodes`. 403 /
- * 429 / 5xx and digits in message text are transient: deleting a login on
- * them logs the user out over a blip.
- */
-export declare function isPermanentRefreshFailure(error: any, extraCodes?: readonly string[]): boolean;
 export declare class TokenManager {
     #private;
     provider: string;
