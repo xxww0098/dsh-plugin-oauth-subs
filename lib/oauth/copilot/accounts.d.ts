@@ -9,8 +9,8 @@ import type { AuthController } from '../controller.js';
 export declare function discoverCopilot(ctl: AuthController, session: any): Promise<any>;
 export declare function maybeAutoImportCopilot(ctl: AuthController): Promise<void>;
 export declare function importCopilot(ctl: AuthController): Promise<{
-    source: any;
-    session: any;
+    source: unknown;
+    session: import("../store.js").StoredSession;
     skipped: boolean;
 } | {
     session: any;
@@ -27,77 +27,5 @@ export declare function loginCopilot(ctl: AuthController): Promise<{
     mode: string;
 }>;
 export declare function useCopilotKey(ctl: AuthController, key: any): Promise<{
-    account: {
-        account: any;
-        planType: any;
-        planLabel: any;
-        expiresAt: any;
-        region?: undefined;
-        needsValidation?: undefined;
-        validationUrl?: undefined;
-        method?: undefined;
-        methodLabel?: undefined;
-        organizationName?: undefined;
-        scopes?: undefined;
-    } | {
-        account: string | undefined;
-        planType: any;
-        planLabel: any;
-        region: string;
-        expiresAt: any;
-        needsValidation?: undefined;
-        validationUrl?: undefined;
-        method?: undefined;
-        methodLabel?: undefined;
-        organizationName?: undefined;
-        scopes?: undefined;
-    } | {
-        account: any;
-        planType: any;
-        planLabel: any;
-        expiresAt: any;
-        needsValidation: boolean;
-        validationUrl: any;
-        region?: undefined;
-        method?: undefined;
-        methodLabel?: undefined;
-        organizationName?: undefined;
-        scopes?: undefined;
-    } | {
-        account: any;
-        planType: any;
-        planLabel: any;
-        method: any;
-        methodLabel: string | undefined;
-        expiresAt: any;
-        region?: undefined;
-        needsValidation?: undefined;
-        validationUrl?: undefined;
-        organizationName?: undefined;
-        scopes?: undefined;
-    } | {
-        account: any;
-        planType: any;
-        planLabel: any;
-        method: any;
-        methodLabel: string | undefined;
-        organizationName: any;
-        expiresAt: any;
-        region?: undefined;
-        needsValidation?: undefined;
-        validationUrl?: undefined;
-        scopes?: undefined;
-    } | {
-        account: any;
-        planType: any;
-        planLabel: any;
-        scopes: any;
-        expiresAt: any;
-        region?: undefined;
-        needsValidation?: undefined;
-        validationUrl?: undefined;
-        method?: undefined;
-        methodLabel?: undefined;
-        organizationName?: undefined;
-    } | undefined;
+    account: Record<string, unknown> | undefined;
 }>;

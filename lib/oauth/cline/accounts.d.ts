@@ -8,8 +8,8 @@ import type { AuthController } from '../controller.js';
 export declare function discoverCline(ctl: AuthController, session: any): Promise<any>;
 export declare function maybeAutoImportCline(ctl: AuthController): Promise<void>;
 export declare function importCline(ctl: AuthController): Promise<{
-    source: any;
-    session: any;
+    source: unknown;
+    session: import("../store.js").StoredSession;
     skipped: boolean;
 } | {
     session: any;

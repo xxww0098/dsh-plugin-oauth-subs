@@ -25,7 +25,7 @@ export declare function importCursor(ctl: AuthController): Promise<{
     };
 } | {
     source: string;
-    session: any;
+    session: import("../store.js").StoredSession;
     skipped: boolean;
 }>;
 export declare function completeCursor(ctl: AuthController, attempt: any): Promise<void>;
