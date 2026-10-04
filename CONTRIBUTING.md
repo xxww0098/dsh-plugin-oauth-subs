@@ -1,6 +1,6 @@
 # Contributing
 
-Read [`AGENTS.md`](AGENTS.md) first — it is binding and indexes every doc: stack, commands and release flow in [`docs/development.md`](docs/development.md), cross-family rules in [`docs/rules.md`](docs/rules.md), the new-family pipeline in [`docs/oauth.md`](docs/oauth.md).
+Read [`AGENTS.md`](AGENTS.md) first — it is binding and indexes every doc: stack, commands and release flow in [`docs/development.md`](docs/development.md), cross-family rules in [`docs/rules.md`](docs/rules.md), the new-family pipeline in [`docs/new-family.md`](docs/new-family.md).
 
 ## Tests and type checks
 
