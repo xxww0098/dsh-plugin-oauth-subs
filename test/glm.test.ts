@@ -766,6 +766,10 @@ test('completeGlmCli for BigModel mints with the OAuth token as biz bearer', asy
     if (href.includes('/copy/')) {
       return json({ code: 200, data: { secretKey: 'bbbb222233334444' } })
     }
+    if (href.includes('/subscription/list')) {
+      // The zcodePlan-equivalent probe carries the minted key, not the OAuth bearer.
+      return json({ code: 200, data: [] })
+    }
     throw new Error(`unexpected ${href}`)
   }
   const session = await completeGlmCli(
@@ -778,6 +782,10 @@ test('completeGlmCli for BigModel mints with the OAuth token as biz bearer', asy
   assert.equal(session.account, 'cn@bigmodel.cn')
   assert.equal(session.zcodeJwt, 'jwt')
   for (const call of calls) {
+    if (call.href.includes('/subscription/list')) {
+      assert.equal(call.auth, 'Bearer aaaa1111.bbbb222233334444')
+      continue
+    }
     assert.equal(call.auth, 'Bearer bm-oauth')
   }
 
@@ -1513,3 +1521,250 @@ function json(body, init = {}) {
     ...init,
   })
 }
+
+// ---- Team Coding Plan (README 团队套餐; magpie zcode_team.go) -------------------------------
+
+test('glmTeamProjects collects projectType-2 seats across orgs', async () => {
+  const { glmTeamProjects, glmTeamHeaders, glmTeamDetailUsable, glmTeamSeatState, glmTeamStamp } = await import('../lib/oauth/glm/index.js')
+  const seats = glmTeamProjects({
+    organizations: [
+      { organizationId: 'org-1', projects: [
+        { projectId: 'personal-1', projectType: 1 },
+        { projectId: 'team-1', projectType: '2' },
+      ] },
+      { organizationId: '', projects: [{ projectId: 'team-x', projectType: 2 }] },
+      { organizationId: 'org-2', projects: [{ projectId: 'team-2', type: 2 }, { projectType: 2 }] },
+    ],
+  })
+  assert.deepEqual(seats, [
+    { org: 'org-1', project: 'team-1' },
+    { org: 'org-2', project: 'team-2' },
+  ])
+  assert.equal(glmTeamHeaders('bigmodel', 'o', 'p')['Set-Language'], 'zh')
+  assert.equal(glmTeamHeaders('zai', 'o', 'p')['Set-Language'], 'en')
+  assert.equal(glmTeamHeaders('zai', 'o', 'p')['Bigmodel-Organization'], 'o')
+  assert.equal(glmTeamDetailUsable({ status: 'EFFECTIVE', memberGrantStatus: 'VALID' }), true)
+  assert.equal(glmTeamDetailUsable({ hasSubscription: false, status: 'EFFECTIVE', memberGrantStatus: 'VALID' }), false)
+  assert.equal(glmTeamDetailUsable({ status: 'effective', memberGrantStatus: 'valid' }), true)
+  assert.equal(glmTeamSeatState({ status: 'EFFECTIVE', memberGrantStatus: 'UNASSIGNED' }), 'unassigned')
+  assert.equal(glmTeamSeatState({ status: 'EXPIRED', memberGrantStatus: 'VALID' }), 'expired')
+  assert.equal(glmTeamSeatState({ status: 'EFFECTIVE', memberGrantStatus: 'VALID' }), undefined)
+  assert.equal(glmTeamStamp(1760000000, 'zai'), 1760000000 * 1000)
+  assert.equal(glmTeamStamp(1760000000000, 'zai'), 1760000000 * 1000)
+  assert.equal(glmTeamStamp('2026-10-18 12:00:00', 'bigmodel'), Date.UTC(2026, 9, 18, 4, 0, 0))
+  assert.equal(glmTeamStamp('2026-10-18 12:00:00', 'zai'), Date.UTC(2026, 9, 18, 12, 0, 0))
+})
+
+test('mintGlmCodingKey prefers a personal VALID plan and skips team projects when minting it', async () => {
+  const { mintGlmCodingKey } = await import('../lib/oauth/glm/index.js')
+  const calls: any[] = []
+  const minted = await mintGlmCodingKey('oauth-tok', { region: 'zai', fetchFn: async (url, init) => {
+    const href = String(url)
+    calls.push({ href, method: init?.method ?? 'GET' })
+    if (href.includes('/auth/z/login')) return json({ code: 0, data: { access_token: 'biz-tok' } })
+    if (href.includes('/getCustomerInfo')) {
+      assert.equal((init as any).headers.authorization, 'Bearer biz-tok')
+      return json({
+        code: 200,
+        data: {
+          organizations: [{
+            organizationId: 'org-1',
+            isDefault: true,
+            projects: [
+              { projectId: 'team-1', isDefault: true, projectType: 2 },
+              { projectId: 'personal-1', projectType: 1 },
+            ],
+          }],
+        },
+      })
+    }
+    if (href.endsWith('/api_keys') || href.includes('/api_keys/')) {
+      assert.ok(!href.includes('team-1'), 'personal mint must not land on the team project')
+      if (href.endsWith('/api_keys')) return json({ code: 200, data: [{ apiKey: 'k1', name: 'dsh-plugin-oauth-subs' }] })
+      if (href.includes('/copy/')) return json({ code: 200, data: { secretKey: 's1' } })
+    }
+    if (href.includes('/subscription/list')) {
+      assert.equal((init as any).headers.authorization, 'Bearer k1.s1')
+      return json({ code: 200, data: [{ productName: 'GLM Coding Plan Max', status: 'VALID' }] })
+    }
+    throw new Error(`unexpected ${href}`)
+  } })
+  assert.equal(minted.apiKey, 'k1.s1')
+  assert.equal(minted.plan, 'GLM Coding Plan Max')
+  assert.equal(minted.team, undefined)
+  assert.equal(calls.some((call) => call.href.includes('querySubscribeDetail')), false)
+})
+
+test('mintGlmCodingKey falls back to a team seat when there is no personal plan', async () => {
+  const { mintGlmCodingKey } = await import('../lib/oauth/glm/index.js')
+  const seen: any[] = []
+  const minted = await mintGlmCodingKey('bm-oauth', { region: 'bigmodel', fetchFn: async (url, init) => {
+    const href = String(url)
+    if (href.includes('/getCustomerInfo')) {
+      return json({
+        code: 200,
+        data: {
+          organizations: [{
+            organizationId: 'org-9',
+            projects: [{ projectId: 'team-9', projectType: 2 }],
+          }],
+        },
+      })
+    }
+    if (href.includes('/querySubscribeDetail')) {
+      seen.push({ href, headers: (init as any).headers })
+      return json({
+        code: 200,
+        data: {
+          hasSubscription: true,
+          status: 'EFFECTIVE',
+          memberGrantStatus: 'VALID',
+          productName: 'GLM Coding Team Plan',
+          subscribeEndTime: 4102444800,
+        },
+      })
+    }
+    if (href.includes('/api_keys')) {
+      if (init?.method === 'POST') {
+        assert.deepEqual(JSON.parse((init as any).body), { name: 'zcode-team-api-key', keyType: 2 })
+        return json({ code: 200, data: { apiKey: 'tk9' } })
+      }
+      if (href.includes('/copy/')) return json({ code: 200, data: { secretKey: 'ts9' } })
+      return json({ code: 200, data: [] })
+    }
+    throw new Error(`unexpected ${href}`)
+  } })
+  assert.equal(minted.apiKey, 'tk9.ts9')
+  assert.deepEqual(minted.team, { org: 'org-9', project: 'team-9' })
+  assert.equal(minted.plan, 'GLM Coding Team Plan')
+  assert.equal(seen[0].href.includes('open.bigmodel.cn/api/biz/team/subscribe/product/querySubscribeDetail'), true)
+  assert.equal(seen[0].headers['Bigmodel-Organization'], 'org-9')
+  assert.equal(seen[0].headers['Bigmodel-Project'], 'team-9')
+})
+
+test('mintGlmCodingKey explains an unassigned seat and never regresses a minted personal key', async () => {
+  const { mintGlmCodingKey } = await import('../lib/oauth/glm/index.js')
+  const customer = {
+    organizations: [{
+      organizationId: 'org-9',
+      projects: [{ projectId: 'team-9', projectType: 2 }],
+    }],
+  }
+  const refusalFetch = async (url: any, init: any) => {
+    const href = String(url)
+    if (href.includes('/auth/z/login')) return json({ code: 0, data: { access_token: 'biz-tok' } })
+    if (href.includes('/getCustomerInfo')) return json({ code: 200, data: customer })
+    if (href.includes('/querySubscribeDetail')) {
+      return json({ code: 200, data: { status: 'EFFECTIVE', memberGrantStatus: 'UNASSIGNED' } })
+    }
+    throw new Error(`unexpected ${href}`)
+  }
+  await assert.rejects(mintGlmCodingKey('t', { region: 'zai', fetchFn: refusalFetch }), /no seat on it yet — ask the team admin/)
+
+  // A personal key that minted fine is kept even without a plan: today's login must not regress.
+  const mixedFetch = async (url: any, init: any) => {
+    const href = String(url)
+    if (href.includes('/auth/z/login')) return json({ code: 0, data: { access_token: 'biz-tok' } })
+    if (href.includes('/getCustomerInfo')) {
+      return json({
+        code: 200,
+        data: {
+          organizations: [{
+            organizationId: 'org-1',
+            projects: [
+              { projectId: 'personal-1', projectType: 1 },
+              { projectId: 'team-9', projectType: 2 },
+            ],
+          }],
+        },
+      })
+    }
+    if (href.includes('/querySubscribeDetail')) {
+      return json({ code: 200, data: { status: 'EXPIRED', memberGrantStatus: 'VALID' } })
+    }
+    if (href.endsWith('/api_keys')) return json({ code: 200, data: [{ apiKey: 'k1', name: 'dsh-plugin-oauth-subs' }] })
+    if (href.includes('/copy/')) return json({ code: 200, data: { secretKey: 's1' } })
+    if (href.includes('/subscription/list')) return json({ code: 200, data: [] })
+    throw new Error(`unexpected ${href}`)
+  }
+  const kept = await mintGlmCodingKey('t', { region: 'zai', fetchFn: mixedFetch })
+  assert.equal(kept.apiKey, 'k1.s1')
+  assert.match(kept.note ?? '', /expired/)
+})
+
+test('glmSession stores the team seat privately and the plan label', async () => {
+  const { accountIdOf } = await import('../lib/oauth/store.js')
+  const plain = glmSession({ accessToken: 'k.s', account: 'dev@z.ai' })
+  const seated = glmSession({ accessToken: 'k.s', account: 'dev@z.ai', team: { org: ' o ', project: 'p' }, planType: 'GLM Coding Team Plan' })
+  assert.deepEqual(seated.team, { org: 'o', project: 'p' })
+  assert.equal(seated.planType, 'GLM Coding Team Plan')
+  // The seat is not identity: the account id does not move.
+  assert.equal(accountIdOf('glm', plain), accountIdOf('glm', seated))
+  assert.equal(plain.team, undefined)
+})
+
+test('fetchGlmQuota reads a team seat with type=2 windows and TEAM reset cards', async () => {
+  const seen: any[] = []
+  const session = {
+    accessToken: 'teamkey',
+    oauthAccess: 'biz-tok',
+    region: 'bigmodel',
+    team: { org: 'org-9', project: 'team-9' },
+  }
+  const parsed = await fetchGlmQuota(session, async (url, init) => {
+    const href = String(url)
+    seen.push({ href, headers: (init as any).headers })
+    if (href.includes('/quota/limit?type=2')) {
+      return json(GLM_WINDOWS)
+    }
+    if (href.includes('/querySubscribeDetail')) {
+      return json({ code: 200, data: { status: 'EFFECTIVE', memberGrantStatus: 'VALID', productName: 'GLM Coding Team Plan' } })
+    }
+    if (href.includes('customer-package-reset/list')) {
+      return json(resetCardList({ week: [{ recordId: 11, expireTime: '2099-01-01 00:00:00', available: true }] }))
+    }
+    throw new Error(`unexpected ${href}`)
+  })
+  const windows = seen.find((call) => call.href.includes('/quota/limit?type=2'))
+  assert.equal(windows.href, 'https://open.bigmodel.cn/api/monitor/usage/quota/limit?type=2')
+  assert.equal(windows.headers['Bigmodel-Organization'], 'org-9')
+  assert.equal(windows.headers['Bigmodel-Project'], 'team-9')
+  assert.equal(windows.headers.authorization, 'Bearer teamkey')
+  assert.equal(parsed.planType, 'GLM Coding Team Plan')
+  const detail = seen.find((call) => call.href.includes('/querySubscribeDetail'))
+  assert.equal(detail.headers.authorization, 'Bearer biz-tok')
+  const cards = seen.find((call) => call.href.includes('customer-package-reset/list'))
+  assert.equal(cards.href, 'https://open.bigmodel.cn/api/biz/customer-package-reset/list?targetType=TEAM')
+  assert.equal(cards.headers.authorization, 'Bearer biz-tok')
+  assert.equal(cards.headers['Bigmodel-Organization'], 'org-9')
+  assert.equal(parsed.resetCredits.availableCount, 1)
+  // MCP is PERSONAL-scope: a team seat never asks the MCP endpoints.
+  assert.equal(seen.some((call) => call.href.includes('/mcp/usage') || call.href.includes('/tool-usage')), false)
+})
+
+test('glmResetCardBody targets TEAM for a seat and a minted session redeems with the team headers', async () => {
+  const { glmResetCardBody } = await import('../lib/oauth/glm/quota.js')
+  assert.equal(glmResetCardBody({ id: '7', resetType: 'WEEK' }, 'r1', true).targetType, 'TEAM')
+  assert.equal(glmResetCardBody({ id: '7', resetType: 'WEEK' }, 'r1').targetType, 'PERSONAL')
+  const posts: any[] = []
+  const store = new QuotaStore({
+    tokens: { glm: { session: async () => ({ accessToken: 'teamkey', region: 'bigmodel', account: 'a@x', team: { org: 'o', project: 'p' } }) } },
+    fetchFn: async (url: any, init: any) => {
+      const href = String(url)
+      if (href.endsWith('/use')) {
+        posts.push({ body: JSON.parse(init.body), headers: init.headers })
+        return json({ code: 200, success: true, msg: '操作成功' })
+      }
+      if (href.includes('/quota/limit')) return json(GLM_WINDOWS)
+      if (href.includes('customer-package-reset/list')) {
+        return json(resetCardList({ week: [{ recordId: 21, expireTime: '2099-01-01 00:00:00', available: true }] }))
+      }
+      return json({})
+    },
+  })
+  await store.refresh('glm')
+  await store.consume('glm', undefined, undefined, '21')
+  assert.equal(posts[0].body.targetType, 'TEAM')
+  assert.equal(posts[0].headers['Bigmodel-Organization'], 'o')
+  assert.equal(posts[0].headers['Bigmodel-Project'], 'p')
+})

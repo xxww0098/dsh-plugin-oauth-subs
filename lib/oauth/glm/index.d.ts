@@ -150,6 +150,8 @@ export declare function glmAnthropicGatewayUrl(region?: string): string;
 /** ZCode default protocol. https://docs.z.ai/devpack/quick-start */
 export declare function glmAnthropicUrl(region?: string): string;
 export declare function glmQuotaUrl(region?: string): "https://api.z.ai/api/monitor/usage/quota/limit" | "https://open.bigmodel.cn/api/monitor/usage/quota/limit";
+/** Team seat windows: the monitor quota with type=2 (magpie zhipuTeamWindows / buildQuotaLimitUrl). */
+export declare function glmTeamQuotaUrl(region?: string): string;
 export declare function glmToolUsageUrl(region?: string): "https://api.z.ai/api/monitor/usage/tool-usage" | "https://open.bigmodel.cn/api/monitor/usage/tool-usage";
 /**
  * Official ZCode MCP quota endpoint (usage-stats.ts fetchMcpQuotaSnapshot).
@@ -168,7 +170,34 @@ export declare function glmMcpUsageUrl(): string;
  * (241e63b), list live-checked on a BigModel Max account.
  */
 export declare const GLM_RESET_CARD_TARGET_TYPE = "PERSONAL";
-export declare function glmResetCardUrl(region?: string, action?: 'list' | 'use'): string;
+export declare function glmResetCardUrl(region?: string, action?: 'list' | 'use', targetType?: string): string;
+export declare const GLM_TEAM_KEY_NAME = "zcode-team-api-key";
+export declare const GLM_TEAM_KEY_TYPE = 2;
+/** projectType 2 is a team Coding Plan project (isBigModelTeamCodingPlanProject). */
+export declare function glmProjectIsTeam(project: any): boolean;
+/** The account's team Coding Plan projects, org+project pairs. */
+export declare function glmTeamProjects(customer: any): any[];
+/** Headers the team business/usage endpoints are asked with besides Authorization (createBigModelUsageHeaders). */
+export declare function glmTeamHeaders(region: string | undefined, org: any, project: any): {
+    'Bigmodel-Organization': any;
+    'Bigmodel-Project': any;
+    'Set-Language': string;
+    'Accept-Language': string;
+};
+/** A team seat is usable when the plan is EFFECTIVE and the member's grant VALID. */
+export declare function glmTeamDetailUsable(detail: any): boolean;
+/** Why a seat is not usable: 'unassigned' (ask the admin) or 'expired' (the team's plan ran out). */
+export declare function glmTeamSeatState(detail: any): "unassigned" | "expired" | undefined;
+/** Team plan times (zcodeWhen + zhipuTime): unix seconds/milliseconds, or a zone-less stamp — Beijing on BigModel, UTC on Z.ai. */
+export declare function glmTeamStamp(value: any, region?: string): number | undefined;
+/** Seat detail as querySubscribeDetail tells it (envelope-unwrap happens here). */
+export declare function fetchGlmTeamDetail(bizToken: any, { fetchFn, region, org, project }?: any): Promise<{
+    hasSubscription: any;
+    status: string | undefined;
+    memberGrantStatus: string | undefined;
+    productName: string | undefined;
+    subscribeEndTime: any;
+}>;
 /**
  * The card stamps (`expireTime` / `last*ResetTime`) carry no zone.
  * BigModel's are Asia/Shanghai: `lastWeekResetTime` equals the weekly
@@ -310,11 +339,51 @@ export declare function businessLogin(oauthAccessToken: any, { fetchFn, region }
     fetchFn?: typeof outboundFetch | undefined;
     region?: string | undefined;
 }): Promise<string>;
+/**
+ * Personal plan name from subscription/list (magpie zcodePlan): the first
+ * VALID entry's productName, '' when the account has none, undefined when it
+ * cannot be told (transport/envelope failure is NOT read as "no plan").
+ */
+export declare function glmPersonalPlanName(apiKey: any, { fetchFn, region }?: {
+    fetchFn?: typeof outboundFetch | undefined;
+    region?: string | undefined;
+}): Promise<string | undefined>;
+/** The account's own (personal) Coding Plan key — today's mint, team projects excluded. */
 export declare function mintGlmApiKey(oauthAccessToken: any, { fetchFn, region }?: {
     fetchFn?: typeof outboundFetch | undefined;
     region?: string | undefined;
 }): Promise<string>;
-export declare function glmSession({ accessToken, account, accountId, region, zcodeJwt, oauthAccess }?: any): {
+/** A team seat's project key: name zcode-team-api-key, keyType 2 (ensureBigModelTeamPlanProjectApiKeyWithStatus). */
+export declare function mintGlmTeamApiKey(bizToken: any, { fetchFn, region, org, project }?: any): Promise<string>;
+/**
+ * Login mint, personal first (magpie zcodeSignedIn): the personal key when a
+ * VALID subscription backs it; else the first EFFECTIVE + VALID team seat's
+ * keyType-2 key with `team {org, project}`; a minted personal key is kept
+ * even without a seat, so existing logins do not regress.
+ */
+export declare function mintGlmCodingKey(oauthAccessToken: any, { fetchFn, region }?: {
+    fetchFn?: typeof outboundFetch | undefined;
+    region?: string | undefined;
+}): Promise<{
+    plan?: any;
+    apiKey: any;
+    team?: undefined;
+} | {
+    apiKey: string;
+    team: any;
+    plan: string;
+} | {
+    note?: any;
+    apiKey: any;
+    team?: undefined;
+    plan?: undefined;
+}>;
+export declare function glmSession({ accessToken, account, accountId, region, zcodeJwt, oauthAccess, planType, team }?: any): {
+    team?: {
+        org: string | undefined;
+        project: string | undefined;
+    } | undefined;
+    planType?: string | undefined;
     oauthAccess?: string | undefined;
     zcodeJwt?: any;
     region: string;
@@ -333,6 +402,11 @@ export declare function completeGlmCli(ready: any, { fetchFn, region }?: {
     fetchFn?: typeof outboundFetch | undefined;
     region?: string | undefined;
 }): Promise<{
+    team?: {
+        org: string | undefined;
+        project: string | undefined;
+    } | undefined;
+    planType?: string | undefined;
     oauthAccess?: string | undefined;
     zcodeJwt?: any;
     region: string;

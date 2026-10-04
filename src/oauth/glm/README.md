@@ -54,6 +54,32 @@ BigModel： data.bigmodel.access_token 直接当 biz/keys API 的 bearer 铸 id.
 
 Settings：两颗堆叠登录按钮（只这一家）。Tab 图标用 **Z.ai**（`zai`），不是智谱字母。
 
+## 团队套餐（Team Plan）
+
+组织在 Z.ai / BigModel 买的 **GLM Coding Plan 团队套餐**按席位发给成员，由 ZCode 3.14.3 `host/index.js` 定义、magpie `internal/provider/zcode_team.go` 对照（本节同步自后者，插件侧落地为登录自动发现 + TEAM 作用域额度）：
+
+```text
+登录 mint 顺序（照 magpie zcodeSignedIn，个人优先）：
+  getCustomerInfo → 个人项目 = 非 projectType-2 的默认项目（type 2 一律跳过）
+    → 铸个人 key（现状）→ GET /api/biz/subscription/list 找 status VALID
+      VALID / 探不出（传输失败不当「无套餐」）→ 个人会话（现状行为）
+      明确无 VALID → 团队兜底：
+        projectType 2 的项目逐个 GET /api/biz/team/subscribe/product/querySubscribeDetail
+          EFFECTIVE + memberGrantStatus VALID → 铸团队 key（name zcode-team-api-key, keyType 2）
+            → 会话带 team {org, project}，planType = productName（缺省 team → Team）
+          EFFECTIVE + UNASSIGNED → 「找管理员要席位」
+          EXPIRED → 「团队套餐已到期」
+        个人 key 已铸出 → 照旧返回个人会话（不回归现有登录），配额卡继续显示厂商原因
+        无个人项目且无席位 → 登录失败并给上面的话
+```
+
+- 团队项目发现：`organizations[].projects[]` 里 `projectType`/`type` == `2`（`isBigModelTeamCodingPlanProject`）。
+- 团队业务/额度端点额外带 `Bigmodel-Organization` / `Bigmodel-Project`，`Set-Language` BigModel 用 `zh`、Z.ai 用 `en`（`createBigModelUsageHeaders`）。
+- **对话不加团队头**：团队 key 像个人 key 一样携带（magpie：requests carry it as a person's key is carried, with no more headers）——hop 不动。
+- 会话 `team {org, project}` 只存私有 `auth.json`；`publicSession` 不外露（非 token 但属内部 id）。
+- 手粘 API key / ZCode 导入不识别团队切换（`setting.json` 的 `team-coding-plan` 选择不读）：粘贴的团队 key 聊天可用，额度按个人作用域读，卡片可能报业务信封错误——这是已知边界，不是 bug。
+- BigModel 的 `subscribeEndTime` 按 +08:00 读、Z.ai 按 UTC（同重置卡时区约定）；unix 秒 / 毫秒都认（`zcodeWhen`）。
+
 ## 协议
 
 DSH `llm-pi-ai` `api` 是闭集：`openai-completions` | `openai-responses` | `anthropic-messages`。选和上游原生最贴的那一种。
@@ -158,6 +184,8 @@ retainTokens    = floor((W − O) × retainRatio)        # 逐字保留的近期
 monitor 接口是 **HTTP 200 + 业务信封**：`success === false` 或 `code ∉ {0,200}` 时 `fetchGlmQuota` 直接抛 `glm quota failed: <msg>`（如「当前用户不存在coding plan」），store 记 error，卡片显示具体原因；**不要**把它当「ready 但 0 行」，那只会显示「周额度未返回」让人以为 hop 坏了。
 重置卡（「重置卡」，类 Codex reset credits）：`GET glmResetCardUrl(region, 'list')` = `{biz}/api/biz/customer-package-reset/list?targetType=PERSONAL`，同一把 provisioned api-key bearer + 桌面指纹，与 monitor 并行。回 `data.fiveHourResets[]` / `data.weekResets[]`，每项 `{recordId, grantType, expireTime, available}`；桶名即 `resetType`（`FIVE_HOUR` / `WEEK`），5h 卡只清 5h 窗、周卡只清周窗。`parseGlmResetCards` 只留 `available` 且未过期的卡，按过期升序；**两个桶数组缺一 / 业务信封非成功 → undefined**，store 保留上次的卡数，不当成 0 张。套餐没有 5h / 周窗口时直接清空，不调。`expireTime` 没有时区：BigModel 是 +08:00（`lastWeekResetTime` = 周窗 `nextResetTime` − 7d 只在 +08:00 成立，2026-09-29 活测），Z.ai 按 UTC 读（未活测）。兑换 `POST …/use` body `{targetType:'PERSONAL', resetType, recordId, requestId}`，HTTP 200 不算成功、要看信封；传输失败时同一张卡复用 `requestId`（进程内），业务拒绝才换新 id。UI 按类型各一行「剩 N 张」，按钮消耗该类最早过期的一张，先过 `WarnDialog`。出处：ZCode 开源树里没有这个端点，参照 OmniRoute `open-sse/services/usage/glmResetCards.ts`（`241e63b`）；list 已活测，`use` 未活测（会真扣卡）。
 
+
+团队席位（会话带 `team {org, project}`）的额度是 **TEAM 作用域**：窗口走 `GET {biz}/api/monitor/usage/quota/limit?type=2` + 团队头（magpie `zhipuTeamWindows`）；重置卡走 `customer-package-reset/list?targetType=TEAM`，list 兑换 body 的 `targetType` 同步 `TEAM`（`zhipuTeamResets`），bearer 优先 `oauthAccess`（magpie 用 business 登录读成员重置），没有才退回团队 key。MCP 两端点是 PERSONAL 作用域，团队会话不问。刷新时若 `oauthAccess` 可用，顺手读 `querySubscribeDetail`：`productName` 回填 `planType`，`EXPIRED` → `subscriptionStatus: 'expired'`。团队额度路径目前只有单测，无真实席位活测（见 error.md）。
 卡片**不显示**「150%配额」标识。能说清的部分：官方 ZCode 的 Coding Plan 对话**只走** `zcode.z.ai` 平台网关（`official-coding-plan-gateway.ts` + NOTICE.md），网关做套餐权益校验；本 hop 走同一条网关路径 + 同套身份头。发放倍数与「用桌面版斜率」仍在上游服务端，源码看不到，**没有**活测对比过用量斜率——所以不宣称「已经吃上 150%」。
 
 ## 缓存
@@ -214,6 +242,7 @@ Pin map 的 Anthropic 键是 `${sessionId}\0anthropic`，和 Completions 的 `se
 - 不要给 BigModel 的铸 key 流程先打 z/login：`open.bigmodel.cn/api/auth/z/login` 对 poll token 回 `500 z.ai用户信息异常`（z.ai 身份专用）；biz/keys API（getCustomerInfo / api_keys / copy）直接认 OAuth token。`glmBizBearer` 先探 getCustomerInfo、失败才回退 z/login。
 - 存量升级只认「bigmodel 且 accessToken 是三段 JWT」：`id.secret` 是两段，`upgradeGlmLegacyBearers`（snapshot sweep，每进程每账号一次）不会碰 z.ai 会话、手粘 key 或导入的 provisioned key；铸失败保留原 bearer，等下次进程重试。
 - 不要把体验套餐的 Desktop `baseURL`（`…/zcode-plan/anthropic`）当成 hop URL，也不要伪造阿里云 captcha 头。试用对话在 ZCode.app。
+- 不要在个人铸 key 时选到 `projectType 2` 的团队项目（magpie `zcodeMintKey` 显式跳过）：团队项目只走团队席位分支；也不要给对话请求加 `Bigmodel-Organization` / `Bigmodel-Project` 头——团队 key 不需要。
 
 ## 归因
 
@@ -230,6 +259,7 @@ Pin map 的 Anthropic 键是 `${sessionId}\0anthropic`，和 Completions 的 `se
 | 无 signature 的 thinking 块按 `signature: ""` 回放，不降级成 text | `adapters/src/model/anthropic-reasoning-metadata.ts` | 路由 compat `allowEmptySignature` |
 | 对话 + 额度的 bearer 是 provisioned `account-provider:…:api-key`；`oauth:<region>:access_token` 只打 monitor / userinfo，降为 `oauthAccess`；`zcodejwttoken` 仅身份 | `~/.zcode/v2/credentials.json` + `isProviderProvisioningAccountCredentialKey` | [`../import-auth.ts`](../import-auth.ts) `glmKeyFromZcodeConfig` |
 | 重置卡 `{biz}/api/biz/customer-package-reset/list?targetType=PERSONAL` / `…/use`（ZCode 开源树里没有） | 社区 [OmniRoute](https://github.com/diegosouzapw/OmniRoute) `open-sse/services/usage/glmResetCards.ts`（`241e63b`） | `glmResetCardUrl`；stamp 时区 BigModel +08:00 是本仓活测结论，不是 OmniRoute 的 UTC |
+| 团队套餐：席位发现（projectType 2 / querySubscribeDetail EFFECTIVE+VALID / UNASSIGNED / EXPIRED）、团队 key（`zcode-team-api-key` keyType 2）、`quota/limit?type=2` + `Bigmodel-Organization/Project` 头、重置卡 `targetType=TEAM`、`subscribeEndTime` 时区 | magpie `internal/provider/zcode_team.go`（PLUGIN-SERVED 弃用内置，设计冻结于此）← ZCode 3.14.3 `host/index.js`（`isBigModelTeamCodingPlanProject` / `ensureBigModelTeamPlanProjectApiKeyWithStatus` / `buildQuotaLimitUrl` / `createBigModelUsageHeaders`） | `mintGlmCodingKey` / `glmTeamHeaders` / `glm/quota.ts` 团队分支 |
 
 官方文档：[Coding Plan 快开始](https://docs.z.ai/devpack/quick-start)（Anthropic 默认协议）、[缓存](https://docs.z.ai/guides/capabilities/cache)（隐式前缀 + `cache_control`）、[思考](https://docs.z.ai/guides/capabilities/thinking-mode)（Completions 形；Coding Plan 端点默认 Preserved Thinking，`clear_thinking: false` 是标准 API 的 opt-in）、[devpack overview](https://docs.z.ai/devpack/overview)（套餐模型）、[API 定价](https://docs.bigmodel.cn/cn/guide/start/pricing) / [Z.AI Pricing](https://docs.z.ai/guides/overview/pricing)（计价档位，见「模型 · 上下文与压缩」）。catalog 的 `builtinProviderModelRules` 仍启用 5.2 / Turbo 是给老 session 的向后兼容，不等于现售菜单。
 

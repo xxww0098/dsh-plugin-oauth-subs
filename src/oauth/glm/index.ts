@@ -198,6 +198,11 @@ export function glmQuotaUrl(region = 'zai') {
     : GLM_QUOTA_URL
 }
 
+/** Team seat windows: the monitor quota with type=2 (magpie zhipuTeamWindows / buildQuotaLimitUrl). */
+export function glmTeamQuotaUrl(region = 'zai') {
+  return `${glmQuotaUrl(region)}?type=2`
+}
+
 export function glmToolUsageUrl(region = 'zai') {
   return normalizeGlmRegion(region) === 'bigmodel'
     ? 'https://open.bigmodel.cn/api/monitor/usage/tool-usage'
@@ -224,9 +229,97 @@ export function glmMcpUsageUrl() {
  * (241e63b), list live-checked on a BigModel Max account.
  */
 export const GLM_RESET_CARD_TARGET_TYPE = 'PERSONAL'
-export function glmResetCardUrl(region = 'zai', action: 'list' | 'use' = 'list') {
+export function glmResetCardUrl(region = 'zai', action: 'list' | 'use' = 'list', targetType = GLM_RESET_CARD_TARGET_TYPE) {
   const base = `${glmBizBase(region)}/api/biz/customer-package-reset`
-  return action === 'use' ? `${base}/use` : `${base}/list?targetType=${GLM_RESET_CARD_TARGET_TYPE}`
+  return action === 'use' ? `${base}/use` : `${base}/list?targetType=${targetType}`
+}
+
+// ---- Team Coding Plan (README 团队套餐; magpie zcode_team.go ← ZCode 3.14.3 host/index.js)
+
+export const GLM_TEAM_KEY_NAME = 'zcode-team-api-key'
+export const GLM_TEAM_KEY_TYPE = 2
+
+/** projectType 2 is a team Coding Plan project (isBigModelTeamCodingPlanProject). */
+export function glmProjectIsTeam(project) {
+  const type = project?.projectType ?? project?.type
+  return type !== undefined && type !== null && String(type).trim() === '2'
+}
+
+/** The account's team Coding Plan projects, org+project pairs. */
+export function glmTeamProjects(customer) {
+  const out: any[] = []
+  for (const org of Array.isArray(customer?.organizations) ? customer.organizations : []) {
+    const organizationId = trimmed(org?.organizationId)
+    if (!organizationId) continue
+    for (const project of Array.isArray(org?.projects) ? org.projects : []) {
+      const projectId = trimmed(project?.projectId)
+      if (projectId && glmProjectIsTeam(project)) out.push({ org: organizationId, project: projectId })
+    }
+  }
+  return out
+}
+
+/** Headers the team business/usage endpoints are asked with besides Authorization (createBigModelUsageHeaders). */
+export function glmTeamHeaders(region = 'zai', org, project) {
+  return {
+    'Bigmodel-Organization': org,
+    'Bigmodel-Project': project,
+    'Set-Language': normalizeGlmRegion(region) === 'bigmodel' ? 'zh' : 'en',
+    'Accept-Language': 'en-US,en',
+  }
+}
+
+/** A team seat is usable when the plan is EFFECTIVE and the member's grant VALID. */
+export function glmTeamDetailUsable(detail) {
+  return detail?.hasSubscription !== false
+    && String(detail?.status ?? '').trim().toUpperCase() === 'EFFECTIVE'
+    && String(detail?.memberGrantStatus ?? '').trim().toUpperCase() === 'VALID'
+}
+
+/** Why a seat is not usable: 'unassigned' (ask the admin) or 'expired' (the team's plan ran out). */
+export function glmTeamSeatState(detail) {
+  const status = String(detail?.status ?? '').trim().toUpperCase()
+  const grant = String(detail?.memberGrantStatus ?? '').trim().toUpperCase()
+  if (status === 'EFFECTIVE' && grant === 'UNASSIGNED') return 'unassigned'
+  if (status === 'EXPIRED') return 'expired'
+  return undefined
+}
+
+/** Team plan times (zcodeWhen + zhipuTime): unix seconds/milliseconds, or a zone-less stamp — Beijing on BigModel, UTC on Z.ai. */
+export function glmTeamStamp(value, region = 'zai') {
+  const numeric = typeof value === 'number' ? value : typeof value === 'string' && value.trim() ? Number(value.trim()) : undefined
+  if (numeric !== undefined && Number.isFinite(numeric) && numeric > 0) {
+    return numeric > 1e12 ? numeric : numeric * 1000
+  }
+  if (typeof value === 'string') {
+    const match = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/.exec(value.trim())
+    if (match) {
+      const [, y, mo, d, hh, mm, ss] = match
+      const utc = Date.UTC(Number(y), Number(mo) - 1, Number(d), Number(hh), Number(mm), Number(ss))
+      const offset = normalizeGlmRegion(region) === 'bigmodel' ? 8 * 60 : 0
+      return Number.isFinite(utc) ? utc - offset * 60_000 : undefined
+    }
+  }
+  return undefined
+}
+
+/** Seat detail as querySubscribeDetail tells it (envelope-unwrap happens here). */
+export async function fetchGlmTeamDetail(bizToken, { fetchFn = outboundFetch, region = 'zai', org, project }: any = {}) {
+  const data = unwrapEnvelope(
+    await getJson(`${glmBizBase(region)}/api/biz/team/subscribe/product/querySubscribeDetail`, {
+      authorization: `Bearer ${bizToken}`,
+      accept: 'application/json',
+      ...glmTeamHeaders(region, org, project),
+    }, fetchFn),
+    'team detail',
+  )
+  return {
+    hasSubscription: data?.hasSubscription,
+    status: trimmed(data?.status),
+    memberGrantStatus: trimmed(data?.memberGrantStatus),
+    productName: trimmed(data?.productName),
+    subscribeEndTime: data?.subscribeEndTime,
+  }
 }
 
 /**
@@ -733,7 +826,7 @@ function asKeyArray(value) {
   return []
 }
 
-export async function mintGlmApiKey(oauthAccessToken, { fetchFn = outboundFetch, region = 'zai' } = {}) {
+async function glmAccountContext(oauthAccessToken, { fetchFn = outboundFetch, region = 'zai' } = {}) {
   const bizToken = await glmBizBearer(oauthAccessToken, { fetchFn, region })
   const auth = { authorization: `Bearer ${bizToken}` }
   const base = glmBizBase(region)
@@ -741,38 +834,149 @@ export async function mintGlmApiKey(oauthAccessToken, { fetchFn = outboundFetch,
     await getJson(`${base}/api/biz/customer/getCustomerInfo`, auth, fetchFn),
     'customer lookup',
   )
+  return { bizToken, auth, base, customer }
+}
+
+/**
+ * The default project a PERSONAL key is minted on. Team Coding Plan projects
+ * (projectType 2) are skipped: a member's personal key never lands on the
+ * team's project (magpie zcodeMintKey skips them the same way).
+ */
+function pickPersonalProject(customer) {
   const orgs = Array.isArray(customer?.organizations) ? customer.organizations : []
   const org = orgs.find((row) => row?.isDefault) ?? orgs[0]
-  const projects = Array.isArray(org?.projects) ? org.projects : []
+  const projects = (Array.isArray(org?.projects) ? org.projects : []).filter((row) => !glmProjectIsTeam(row))
   const project = projects.find((row) => row?.isDefault) ?? projects[0]
   const organizationId = trimmed(org?.organizationId)
   const projectId = trimmed(project?.projectId)
-  if (!organizationId || !projectId) {
-    throw new Error('glm key provisioning failed: no organization/project on account')
-  }
-  const keysUrl = `${base}/api/biz/v1/organization/${organizationId}/projects/${projectId}/api_keys`
-  const existing = asKeyArray(unwrapEnvelope(await getJson(keysUrl, auth, fetchFn), 'api key list'))
-    .find((key) => key.name === GLM_KEY_NAME)
+  return organizationId && projectId ? { org: organizationId, project: projectId } : undefined
+}
+
+async function provisionProjectKey(keysUrl, auth, extraHeaders, want, fetchFn, label) {
+  const headers = { ...auth, ...extraHeaders }
+  const typed = want.keyType !== undefined
+  const existing = asKeyArray(unwrapEnvelope(await getJson(keysUrl, headers, fetchFn), `${label} list`))
+    .find((key) => key.name === want.name && (!typed || String(key.keyType) === String(want.keyType)))
   const keyRecord = existing ?? unwrapEnvelope(
-    await postJson(keysUrl, { name: GLM_KEY_NAME }, auth, fetchFn),
-    'api key create',
+    await postJson(keysUrl, want, headers, fetchFn),
+    `${label} create`,
   )
   const apiKey = trimmed(keyRecord?.apiKey)
-  if (!apiKey) throw new Error('glm key provisioning returned no apiKey')
+  if (!apiKey) throw new Error(`glm key provisioning returned no apiKey (${label})`)
   const copied = unwrapEnvelope(
-    await getJson(`${keysUrl}/copy/${encodeURIComponent(apiKey)}`, auth, fetchFn),
-    'api key copy',
+    await getJson(`${keysUrl}/copy/${encodeURIComponent(apiKey)}`, headers, fetchFn),
+    `${label} copy`,
   )
   const secretKey = trimmed(copied?.secretKey)
-  if (!secretKey) throw new Error('glm key provisioning returned no secretKey')
+  if (!secretKey) throw new Error(`glm key provisioning returned no secretKey (${label})`)
   return `${apiKey}.${secretKey}`
 }
 
-export function glmSession({ accessToken, account, accountId, region = 'zai', zcodeJwt, oauthAccess }: any = {}) {
+function projectKeysUrl(base, org, project) {
+  return `${base}/api/biz/v1/organization/${encodeURIComponent(org)}/projects/${encodeURIComponent(project)}/api_keys`
+}
+
+/**
+ * Personal plan name from subscription/list (magpie zcodePlan): the first
+ * VALID entry's productName, '' when the account has none, undefined when it
+ * cannot be told (transport/envelope failure is NOT read as "no plan").
+ */
+export async function glmPersonalPlanName(apiKey, { fetchFn = outboundFetch, region = 'zai' } = {}) {
+  let list
+  try {
+    list = asKeyArray(unwrapEnvelope(
+      await getJson(`${glmBizBase(region)}/api/biz/subscription/list`, {
+        authorization: `Bearer ${apiKey}`,
+        accept: 'application/json',
+      }, fetchFn),
+      'subscription list',
+    ))
+  } catch {
+    return undefined
+  }
+  const valid = (Array.isArray(list) ? list : [])
+    .find((row) => String(row?.status ?? '').trim().toUpperCase() === 'VALID')
+  return trimmed(valid?.productName) ?? ''
+}
+
+/** The account's own (personal) Coding Plan key — today's mint, team projects excluded. */
+export async function mintGlmApiKey(oauthAccessToken, { fetchFn = outboundFetch, region = 'zai' } = {}) {
+  const { bizToken, auth, base, customer } = await glmAccountContext(oauthAccessToken, { fetchFn, region })
+  const personal = pickPersonalProject(customer)
+  if (!personal) {
+    throw new Error('glm key provisioning failed: no organization/project on account')
+  }
+  return provisionProjectKey(projectKeysUrl(base, personal.org, personal.project), auth, undefined,
+    { name: GLM_KEY_NAME }, fetchFn, 'api key')
+}
+
+/** A team seat's project key: name zcode-team-api-key, keyType 2 (ensureBigModelTeamPlanProjectApiKeyWithStatus). */
+export async function mintGlmTeamApiKey(bizToken, { fetchFn = outboundFetch, region = 'zai', org, project }: any = {}) {
+  return provisionProjectKey(projectKeysUrl(glmBizBase(region), org, project),
+    { authorization: `Bearer ${bizToken}` }, glmTeamHeaders(region, org, project),
+    { name: GLM_TEAM_KEY_NAME, keyType: GLM_TEAM_KEY_TYPE }, fetchFn, 'team api key')
+}
+
+/**
+ * Login mint, personal first (magpie zcodeSignedIn): the personal key when a
+ * VALID subscription backs it; else the first EFFECTIVE + VALID team seat's
+ * keyType-2 key with `team {org, project}`; a minted personal key is kept
+ * even without a seat, so existing logins do not regress.
+ */
+export async function mintGlmCodingKey(oauthAccessToken, { fetchFn = outboundFetch, region = 'zai' } = {}) {
+  const resolved = normalizeGlmRegion(region)
+  const { bizToken, auth, base, customer } = await glmAccountContext(oauthAccessToken, { fetchFn, region: resolved })
+  let personalKey
+  let personalPlan
+  let personalErr
+  const personal = pickPersonalProject(customer)
+  if (personal) {
+    try {
+      personalKey = await provisionProjectKey(projectKeysUrl(base, personal.org, personal.project), auth, undefined,
+        { name: GLM_KEY_NAME }, fetchFn, 'api key')
+      personalPlan = await glmPersonalPlanName(personalKey, { fetchFn, region: resolved })
+    } catch (error) {
+      personalErr = error
+    }
+  }
+  if (personalKey && (personalPlan === undefined || personalPlan !== '')) {
+    return { apiKey: personalKey, ...(personalPlan ? { plan: personalPlan } : {}) }
+  }
+  const teams = glmTeamProjects(customer)
+  let refusal
+  for (const seat of teams) {
+    let detail
+    try {
+      detail = await fetchGlmTeamDetail(bizToken, { fetchFn, region: resolved, org: seat.org, project: seat.project })
+    } catch {
+      continue
+    }
+    if (glmTeamDetailUsable(detail)) {
+      const apiKey = await mintGlmTeamApiKey(bizToken, { fetchFn, region: resolved, org: seat.org, project: seat.project })
+      return { apiKey, team: seat, plan: trimmed(detail.productName) || 'team' }
+    }
+    const state = glmTeamSeatState(detail)
+    if (!refusal) {
+      if (state === 'unassigned') {
+        refusal = 'this account is in a team with a GLM Coding Plan but has no seat on it yet — ask the team admin to grant one, then sign in again'
+      } else if (state === 'expired') {
+        refusal = "the team's GLM Coding Plan this account is in has expired"
+      }
+    }
+  }
+  if (personalKey) return { apiKey: personalKey, ...(refusal ? { note: refusal } : {}) }
+  if (refusal) throw new Error(refusal)
+  throw personalErr ?? new Error('glm key provisioning failed: no organization/project on account')
+}
+
+export function glmSession({ accessToken, account, accountId, region = 'zai', zcodeJwt, oauthAccess, planType, team }: any = {}) {
   if (typeof accessToken !== 'string' || !accessToken) {
     throw new Error('glm session needs an access token')
   }
   const human = pickGlmHumanAccount(account, accountFromJwt(zcodeJwt), accountFromJwt(accessToken), accountFromJwt(oauthAccess))
+  const seat = team && trimmed(team.org) && trimmed(team.project)
+    ? { org: trimmed(team.org), project: trimmed(team.project) }
+    : undefined
   return {
     accessToken,
     refreshToken: accessToken,
@@ -783,6 +987,9 @@ export function glmSession({ accessToken, account, accountId, region = 'zai', zc
     // The OAuth business token is kept only for userinfo/identity — the
     // provisioned api-key in accessToken is what chats and reads quota.
     ...(typeof oauthAccess === 'string' && oauthAccess.trim() ? { oauthAccess: oauthAccess.trim() } : {}),
+    ...(typeof planType === 'string' && planType.trim() ? { planType: planType.trim() } : {}),
+    // Team Coding Plan seat (README 团队套餐): private auth.json only, never publicSession.
+    ...(seat === undefined ? {} : { team: seat }),
   }
 }
 
@@ -867,26 +1074,28 @@ export async function completeGlmCli(ready, { fetchFn = outboundFetch, region = 
   // identity and quota survive with pre-fix chat behavior.
   let minted
   try {
-    minted = await mintGlmApiKey(ready.oauthAccess, { fetchFn, region: resolved })
+    minted = await mintGlmCodingKey(ready.oauthAccess, { fetchFn, region: resolved })
   } catch (error) {
     if (resolved !== 'bigmodel' || !trimmed(ready.oauthAccess)) throw error
-    minted = ready.oauthAccess
+    minted = { apiKey: ready.oauthAccess }
   }
-  if (!minted) throw new Error('glm key provisioning returned no apiKey')
+  if (!minted?.apiKey) throw new Error('glm key provisioning returned no apiKey')
   const account = await resolveGlmIdentity({
     email: ready.email,
     account: ready.account,
-    accessToken: minted,
+    accessToken: minted.apiKey,
     oauthAccess: ready.oauthAccess,
     zcodeJwt: ready.zcodeJwt,
     region: resolved,
   }, { fetchFn })
   return glmSession({
-    accessToken: minted,
+    accessToken: minted.apiKey,
     account,
     region: resolved,
     zcodeJwt: ready.zcodeJwt,
     oauthAccess: ready.oauthAccess,
+    ...(minted.team ? { team: minted.team } : {}),
+    ...(minted.plan ? { planType: minted.plan } : {}),
   })
 }
 

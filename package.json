@@ -50,6 +50,7 @@
   "scripts": {
     "build": "tsc && node --experimental-strip-types scripts/ui-bundle.ts && tsc -p tsconfig.ui.json",
     "dev-build": "npm run build && node --experimental-strip-types scripts/dev-build.ts",
+    "dev": "node --experimental-strip-types scripts/dev-watch.ts",
     "test": "npm run build && node --experimental-strip-types --test 'test/*.test.ts'",
     "typecheck": "node --experimental-strip-types scripts/typecheck-ratchet.ts",
     "analyze": "node --experimental-strip-types scripts/analyze-session.ts",

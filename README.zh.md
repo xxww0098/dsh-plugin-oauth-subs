@@ -19,7 +19,7 @@ dsh web
 
 **Desktop** 由 Electron 应用管理——`dsh plugin --profile desktop` 会被拒绝，请改用 **插件 → 添加插件** 粘贴仓库地址安装。数据在 `~/.dsh/profiles/desktop/data/dsh-plugin-oauth-subs/`，与 web profile **不**共享；迁移：退出应用后把 `auth.json`（连同保存选择器状态的 `models.json`）复制过去。代理端口（`8318`）是全局回环绑定——两个 profile 不能同时运行（`EADDRINUSE`）；要改端口，在该 profile 的 `cordis.patch.yml` 里给 `id: oauth-subs` 设不同的 `config.port`。若桌面应用启动即退，运行 `launchctl unsetenv ELECTRON_RUN_AS_NODE`。
 
-更新从 **版本** 卡片自安装（**检查更新 → 安装更新**，或每 15 分钟检查一次的自动更新开关）；重启后加载新副本，`data/` 保留。若 `node_modules` 比运行中的进程新，卡片会标记过期进程。本地目录链接时则改走 `npm run build` 热重载。
+更新从 **版本** 卡片自安装（**检查更新 → 安装更新**，或每 15 分钟检查一次的自动更新开关）；重启后加载新副本，`data/` 保留。若 `node_modules` 比运行中的进程新，卡片会标记过期进程。本地目录链接时则改走 `npm run build` 热重载；挂着 `npm run dev` 可监听源码、保存即自动重建。
 
 ## 家族
 

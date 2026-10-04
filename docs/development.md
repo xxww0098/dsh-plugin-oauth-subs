@@ -32,7 +32,7 @@ npm run rates      # 模型页价格表对照各家价目源（干跑；--write 
 
 | 面板入口 | profile 里是什么 | 用途 | 改完怎么生效 |
 |---|---|---|---|
-| 本地插件目录（仓库绝对路径） | `link:<repo>` | 开发/测试首选；依赖走仓库自己的 `node_modules`（先 `npm install`） | `npm run dev-build` 后**热重载**（宿主半见下节 `hmr` 配置，UI 半自动替换）；About 的当前版本 = 递增的 `0.0.105-dev.N`（仓库清单仍是正式号） |
+| 本地插件目录（仓库绝对路径） | `link:<repo>` | 开发/测试首选；依赖走仓库自己的 `node_modules`（先 `npm install`） | `npm run dev-build`（或挂着 `npm run dev` 自动构建，见下节）后**热重载**（宿主半见下节 `hmr` 配置，UI 半自动替换）；About 的当前版本 = 递增的 `0.0.105-dev.N`（仓库清单仍是正式号） |
 | GitHub 地址 `https://github.com/xxww0098/dsh-plugin-oauth-subs`（可加 `#v0.0.105`） | `github:…` | 验证「用户从仓库装发布版」 | 装的是仓库里**已提交**的 `lib/`；改代码要重新构建 + 提交才生效 |
 | 包名 `dsh-plugin-oauth-subs` | registry | 发布后的常规安装 | 要求该包已在 npm（当前未发布，`npm view` 404）；`npm publish` 后可用 |
 
@@ -43,6 +43,8 @@ npm run rates      # 模型页价格表对照各家价目源（干跑；--write 
 - 热链在版本页要认得出：`localUpdateInfo` 给出 `linked` / `linkedPath`（realpath 落在 `~/.dsh/profiles` 之外即热链）与 `devVersion`；热链下不显示「安装更新」、不报 release 结果、不承诺重启——否则仓库正式号会被当成发布版报「已是最新」。版本卡怎么显示见 [`design-system/pages/settings-workbench.md`](../design-system/pages/settings-workbench.md) Version card。
 
 ## 热重载（本地插件目录）
+
+日常开发只要两条命令：一次 `npm install`，之后挂着 `npm run dev`。它在启动时和每次构建后自检接线——哪个 profile link 了本工作树（还是装的是副本）、该 profile 的 `hmr` 是否监听本仓库——缺什么就把带绝对路径、可直接粘贴的 YAML 打出来（profile patch 的改动本身就由宿主半监听，保存即生效、无需重启），不必回来翻这段文档。下面是它自检的原理：
 
 DSH 自带两半热重载，但宿主半默认**只监听配置**（base 组合包给 `hmr` 的 `root: []`），要监听源码得在 profile patch 里显式加一条：
 
@@ -59,6 +61,17 @@ DSH 自带两半热重载，但宿主半默认**只监听配置**（base 组合�
 - UI 半（`lib/ui/client.js`）：`dsh-client-hmr` 按 mtime/ctime/size 每 500ms 轮询每个 client entry，重建后自动替换进已打开的页面，**不用刷新页面**。
 - 仍要重启的：换包版本（tgz / npm / GitHub 安装或更新——DSH 明说换包版本必须重启）、依赖或框架变化（HMR 走 `loader.exit()` 全量重启）、以及没配 `hmr` `root` 时的宿主半改动。
 - 热重载会重建插件实例：内存里的 quota 缓存与 UI 组件状态会丢（会话 / 工作区不受影响）。
+
+### `npm run dev`：监听源码自动重建
+
+手动 `npm run dev-build` 可以省掉：仓库根挂着 `npm run dev`，它监听 `src/`、`scripts/`（递归）和 `package.json`、`tsconfig.json`、`tsconfig.ui.json`，保存后防抖 500ms（固定窗口、从首个变更事件起算——连续写入不会把窗口无限推后）自动跑一遍 `npm run dev-build`，两半 HMR 随后各走各的：宿主半由上面的 `hmr` 条目重载，UI 半由 `dsh-client-hmr` 轮询替换。保存到生效全程不重启应用、不刷新页面、不手动构建（整链 ≈ 防抖 0.5s + 构建 ~1.5s + 宿主/UI 各自的监听间隔）。
+
+- 构建串行：构建期间的新变更合并为一次重跑（`src/utils/dev-watch.ts` 的队列，`test/dev-watch.test.ts` 锁语义）；构建失败不退出 watch，修好再存一次即可。
+- 启动与每次构建后自检 profile 接线（`inspectHmrWiring`，只读不写）：link 还是安装副本、`hmr` `root` 是否覆盖本仓库；只在状态变化时打印，缺配置时给出的 YAML 块带绝对路径，照抄即可。
+- 监听范围刻意不含 `lib/`、`node_modules/`：构建只写 `lib/`，监听它就是反馈环；点开头文件（`.DS_Store` 等）忽略。
+- 根级文件（`package.json`、`tsconfig*.json`）经父目录监听，编辑器的原子保存（写临时文件再 rename）换 inode 也不会丢事件。
+- 改 `scripts/dev-watch.ts` 自身要重启 watch（触发时会提示）。
+- Cordis 配置项支持 `disabled: true`：条目按 `id` 保留、只卸载插件（比如临时停掉上面的 `hmr` 监听），删掉该行即恢复——详见 Cordis 教程「组合与 HMR」。
 
 ## 版本号
 

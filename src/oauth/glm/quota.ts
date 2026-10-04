@@ -7,11 +7,16 @@
 import { formatPlanLabel, pickPlanRaw } from '../plan.js'
 import {
   GLM_RESET_CARD_TARGET_TYPE,
+  fetchGlmTeamDetail,
   glmMcpUsageHeaders,
   glmMcpUsageUrl,
   glmQuotaUrl,
   glmResetCardUrl,
   glmResetStampOffsetMinutes,
+  glmTeamDetailUsable,
+  glmTeamHeaders,
+  glmTeamQuotaUrl,
+  glmTeamSeatState,
   glmToolUsageUrl,
   glmUpstreamHeaders,
 } from './index.js'
@@ -312,24 +317,45 @@ export async function fetchGlmQuota(session, fetchFn = outboundFetch) {
   return { ...parsed, resetCredits: cards.value }
 }
 
+function glmTeamSeatOf(session) {
+  return session?.team && typeof session.team.org === 'string' && session.team.org.trim()
+    && typeof session.team.project === 'string' && session.team.project.trim()
+    ? session.team
+    : undefined
+}
+
 export async function fetchGlmResetCards(session, fetchFn = outboundFetch) {
   const wait = timeoutSignal(QUOTA_TIMEOUT_MS)
   try {
-    const response = await fetchFn(glmResetCardUrl(session.region, 'list'), {
-      method: 'GET',
-      headers: glmUpstreamHeaders(session),
-      signal: wait.signal,
-    })
+    const team = glmTeamSeatOf(session)
+    // A member's resets are read with the business sign-in (magpie
+    // zhipuTeamResets); the provisioned team key is the fallback bearer when
+    // no OAuth token was kept on the session.
+    const headers = team
+      ? {
+          ...glmUpstreamHeaders(session),
+          ...glmTeamHeaders(session.region, team.org, team.project),
+          authorization: `Bearer ${session.oauthAccess?.trim() || session.accessToken}`,
+        }
+      : glmUpstreamHeaders(session)
+    const response = await fetchFn(
+      glmResetCardUrl(session.region, 'list', team ? 'TEAM' : GLM_RESET_CARD_TARGET_TYPE),
+      {
+        method: 'GET',
+        headers,
+        signal: wait.signal,
+      },
+    )
     return parseGlmResetCards(await readJson(response, 'glm reset cards'), session.region)
   } finally {
     wait.cancel()
   }
 }
 
-export function glmResetCardBody(credit, requestId) {
+export function glmResetCardBody(credit, requestId, team = false) {
   const numeric = Number(credit.id)
   return {
-    targetType: GLM_RESET_CARD_TARGET_TYPE,
+    targetType: team ? 'TEAM' : GLM_RESET_CARD_TARGET_TYPE,
     resetType: credit.resetType,
     recordId: Number.isSafeInteger(numeric) ? numeric : credit.id,
     requestId,
@@ -347,10 +373,15 @@ export class GlmResetRejected extends Error {}
 export async function consumeGlmResetCard(session, credit, requestId, fetchFn = outboundFetch) {
   const wait = timeoutSignal(QUOTA_TIMEOUT_MS)
   try {
-    const response = await fetchFn(glmResetCardUrl(session.region, 'use'), {
+    const team = glmTeamSeatOf(session)
+    const response = await fetchFn(glmResetCardUrl(session.region, 'use', team ? 'TEAM' : GLM_RESET_CARD_TARGET_TYPE), {
       method: 'POST',
-      headers: { ...glmUpstreamHeaders(session), 'content-type': 'application/json' },
-      body: JSON.stringify(glmResetCardBody(credit, requestId)),
+      headers: {
+        ...glmUpstreamHeaders(session),
+        ...(team ? glmTeamHeaders(session.region, team.org, team.project) : {}),
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(glmResetCardBody(credit, requestId, team !== undefined)),
       signal: wait.signal,
     })
     const body = await readJson(response, 'glm reset card')
@@ -364,7 +395,65 @@ export async function consumeGlmResetCard(session, credit, requestId, fetchFn = 
   }
 }
 
+/** The monitor endpoints answer HTTP 200 with a business envelope (see fetchGlmUsage). */
+function assertGlmQuotaEnvelope(body) {
+  if (body && typeof body === 'object' && !Array.isArray(body)) {
+    const code = asNumber(body.code)
+    if (body.success === false || (code !== undefined && code !== 0 && code !== 200)) {
+      throw new Error(`glm quota failed: ${trimmedQuotaMsg(body.msg) ?? `code ${String(body.code)}`}`)
+    }
+  }
+  return body
+}
+
+/**
+ * A team seat's windows (README 团队套餐): quota/limit?type=2 with the team key
+ * and the org/project headers (magpie zhipuTeamWindows); the MCP endpoints
+ * are PERSONAL-scope and are not asked. Seat detail (plan name, EXPIRED) is
+ * refreshed alongside, best-effort.
+ */
+async function fetchGlmTeamUsage(session, team, fetchFn) {
+  const wait = timeoutSignal(QUOTA_TIMEOUT_MS)
+  try {
+    const response = await fetchFn(glmTeamQuotaUrl(session.region), {
+      method: 'GET',
+      headers: {
+        ...glmUpstreamHeaders(session),
+        ...glmTeamHeaders(session.region, team.org, team.project),
+      },
+      signal: wait.signal,
+    })
+    const parsed = parseGlmQuota(assertGlmQuotaEnvelope(await readJson(response, 'glm quota')))
+    const bearer = typeof session.oauthAccess === 'string' ? session.oauthAccess.trim() : ''
+    if (!bearer) return parsed
+    try {
+      const detail = await fetchGlmTeamDetail(bearer, {
+        fetchFn,
+        region: session.region,
+        org: team.org,
+        project: team.project,
+      })
+      if (glmTeamDetailUsable(detail)) {
+        const plan = detail.productName?.trim()
+        return plan ? { ...parsed, planType: plan } : parsed
+      }
+      if (glmTeamSeatState(detail) === 'expired') {
+        return { ...parsed, subscriptionStatus: 'expired' }
+      }
+    } catch {
+      // the windows stand without the seat detail
+    }
+    return parsed
+  } finally {
+    wait.cancel()
+  }
+}
+
 async function fetchGlmUsage(session, fetchFn = outboundFetch) {
+  const team = glmTeamSeatOf(session)
+  if (team) {
+    return fetchGlmTeamUsage(session, team, fetchFn)
+  }
   const wait = timeoutSignal(QUOTA_TIMEOUT_MS)
   try {
     const response = await fetchFn(glmQuotaUrl(session.region), {
@@ -377,13 +466,7 @@ async function fetchGlmUsage(session, fetchFn = outboundFetch) {
     // plan-less account returns { code: 500, msg: "当前用户不存在coding plan" };
     // without this the card reads "quota ready, no rows" and the UI shows the
     // vague 「周额度未返回」 instead of the vendor's reason.
-    if (body && typeof body === 'object' && !Array.isArray(body)) {
-      const code = asNumber(body.code)
-      if (body.success === false || (code !== undefined && code !== 0 && code !== 200)) {
-        throw new Error(`glm quota failed: ${trimmedQuotaMsg(body.msg) ?? `code ${String(body.code)}`}`)
-      }
-    }
-    const parsed = parseGlmQuota(body)
+    const parsed = parseGlmQuota(assertGlmQuotaEnvelope(body))
     if (parsed.rows.some((row) => row.kind === 'mcp')) return parsed
     // Official MCP quota is a separate endpoint (usage-stats.ts
     // fetchMcpQuotaSnapshot): GET zcode.z.ai/api/v1/mcp/usage with the zcode

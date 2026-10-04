@@ -62,6 +62,11 @@ export declare function glmAuthSearchPaths(): string[];
 export declare function importGlmAuth(paths?: string[]): Promise<{
     note?: string | undefined;
     session: {
+        team?: {
+            org: string | undefined;
+            project: string | undefined;
+        } | undefined;
+        planType?: string | undefined;
         oauthAccess?: string | undefined;
         zcodeJwt?: any;
         region: string;

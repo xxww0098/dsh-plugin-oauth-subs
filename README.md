@@ -19,7 +19,7 @@ Open **订阅 / Subscriptions** under **插件 Plugins** in the sidebar. The wor
 
 **Desktop** is managed by the Electron app — `dsh plugin --profile desktop` is rejected. Install via **插件 → 添加插件** with the repo URL instead. Data lives under `~/.dsh/profiles/desktop/data/dsh-plugin-oauth-subs/` and is **not** shared with the web profile; to migrate, quit the app and copy `auth.json` (plus `models.json` for picker state) across. The proxy port (`8318`) is a global loopback bind — two profiles cannot run simultaneously (`EADDRINUSE`); set a different `config.port` under `id: oauth-subs` in the profile's `cordis.patch.yml` to override. If the desktop app exits instantly on launch, run `launchctl unsetenv ELECTRON_RUN_AS_NODE`.
 
-Updates self-install from the Version card (**检查更新 → 安装更新**, or the 15-minute auto-update switch); a restart loads the new copy, and `data/` survives. If `node_modules` is newer than the running process, the card flags the stale process. On a local-directory link, `npm run build` hot-reloads instead.
+Updates self-install from the Version card (**检查更新 → 安装更新**, or the 15-minute auto-update switch); a restart loads the new copy, and `data/` survives. If `node_modules` is newer than the running process, the card flags the stale process. On a local-directory link, `npm run build` hot-reloads instead, and `npm run dev` watches the sources and rebuilds on every save.
 
 ## Families
 

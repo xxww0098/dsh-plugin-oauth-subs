@@ -16,7 +16,8 @@
  * The merge rules and the per-key source table live in docs/models.md; the
  * rules themselves are `src/catalog/merge.ts`. Every adapter reuses the
  * family's own runtime parser, so the snapshot and the live picker read a
- * source the same way.
+ * source the same way. Keys are fetched concurrently (independent hosts and
+ * sessions); the report stays in catalog-key order.
  */
 
 import { readFileSync, writeFileSync } from 'node:fs'
@@ -87,9 +88,24 @@ function pick(row) {
   return Object.fromEntries(ROW_FIELDS.filter((field) => row[field] !== undefined).map((field) => [field, row[field]]))
 }
 
-let modelsDev
+/**
+ * models.dev api.json, fetched once per run and shared by every adapter.
+ * Memoized as the in-flight promise, not the value: adapters run
+ * concurrently, so an awaited assignment would race several fetches into
+ * flight before the first one landed. A failed fetch unpins itself so a
+ * later key can retry instead of inheriting the rejection.
+ */
+let modelsDevFetch
+function modelsDevApi() {
+  modelsDevFetch ??= getJson('https://models.dev/api.json').catch((error) => {
+    modelsDevFetch = undefined
+    throw error
+  })
+  return modelsDevFetch
+}
+
 async function modelsDevBucket(bucket) {
-  modelsDev ??= await getJson('https://models.dev/api.json')
+  const modelsDev = await modelsDevApi()
   const models = modelsDev?.[bucket]?.models
   if (!models) throw new Error(`models.dev has no "${bucket}" bucket`)
   return models
@@ -104,7 +120,7 @@ async function modelsDevBucket(bucket) {
  * nothing here is written to the catalog.
  */
 async function modelsDevHints(id) {
-  modelsDev ??= await getJson('https://models.dev/api.json')
+  const modelsDev = await modelsDevApi()
   const hits: any[] = []
   for (const data of Object.values<any>(modelsDev)) {
     const row = data?.models?.[id]
@@ -375,23 +391,29 @@ if (unknown.length) {
 const keys = args.keys.length ? args.keys : [...CATALOG_KEYS]
 const outbound = configureOutbound({ path: outboundProxyPath(DATA_DIR), env: process.env })
 const catalog = JSON.parse(readFileSync(CATALOG_PATH, 'utf8'))
-const report: any[] = []
 
-for (const key of keys) {
+// Every key in flight at once: each adapter reads its own session and talks to
+// its own host, so the run waits on the slowest key instead of the sum of all
+// of them. Per-key deadline, merge, and failure isolation are unchanged, and
+// the report below stays in catalog-key order whatever order the fetches
+// settle in.
+const settled = new Map<string, any>()
+await Promise.all(keys.map(async (key) => {
   const adapter = ADAPTERS[key]
   if (!adapter || adapter.manual) {
-    report.push({ key, status: 'manual', detail: adapter?.manual ?? 'no adapter' })
-    continue
+    settled.set(key, { key, status: 'manual', detail: adapter?.manual ?? 'no adapter' })
+    return
   }
   try {
     const source = await withDeadline(adapter.fetch(), key)
     const result = mergeCatalogRows(catalog[key], source, { keep: adapter.keep, skip: adapter.skip, add: adapter.add, prune: args.prune, newRow: adapter.newRow })
     catalog[key] = result.rows
-    report.push({ key, status: 'ok', source: adapter.source, offered: source.length, ...result, rows: undefined })
+    settled.set(key, { key, status: 'ok', source: adapter.source, offered: source.length, ...result, rows: undefined })
   } catch (error) {
-    report.push({ key, status: error instanceof Skip ? 'skipped' : 'failed', detail: error?.message ?? String(error) })
+    settled.set(key, { key, status: error instanceof Skip ? 'skipped' : 'failed', detail: error?.message ?? String(error) })
   }
-}
+}))
+const report: any[] = keys.map((key) => settled.get(key))
 
 // Hand-sourcing hints (report-only): what models.dev knows about the ids this
 // run leaves to a human — `!` unresolved rows, and `>` curated picks that are
