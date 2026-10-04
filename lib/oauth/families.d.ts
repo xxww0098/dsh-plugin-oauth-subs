@@ -2,8 +2,9 @@
  * Family registry: the one table keyed by family id that the central
  * per-family dispatchers look up instead of growing `family === '<id>'`
  * chains — today the inbound cache rewrite (proxy-body.ts), the quota
- * fetch (quota.ts QuotaStore) and the account-quota hydration hooks
- * (account-quota.ts).
+ * fetch (quota.ts QuotaStore), the account-quota hydration hooks
+ * (account-quota.ts) and the passthrough Completions usage rewrite
+ * (passthrough.ts).
  *
  * Contract (docs/rules.md):
  * - A row holds ONLY references to functions defined in the family folder
@@ -50,6 +51,22 @@ export interface FamilyQuotaHooks {
     /** refreshQuota: the hooks above may rewrite stored rows — re-list them before peeking. */
     relistAccountsAfterRefresh?: boolean;
 }
+/**
+ * Per-family passthrough forward hooks driven by src/oauth/passthrough.ts:
+ * Completions usage rewriting on the forwarded answer. The mappers and the
+ * envelope unwrap stay in each family's own request.ts; a row only
+ * references them (same contract as every other field on the row).
+ */
+export interface FamilyForwardHooks {
+    /**
+     * Resolve this request's Completions usage mapper; undefined = forward
+     * the usage object untouched. GLM maps its chat wire only — Anthropic
+     * usage is native already.
+     */
+    completionsUsage?: (wire?: string) => ((usage: any) => any) | undefined;
+    /** Unwrap a non-streaming Completions body before usage mapping (Cline `{success, data}`). */
+    unwrapCompletionsBody?: (parsed: any) => any;
+}
 /** One family's row in the registry — references only, never implementations. */
 export interface OAuthFamily {
     id: FamilyId;
@@ -59,6 +76,8 @@ export interface OAuthFamily {
     }) => FamilyCacheRewrite;
     /** QuotaStore: one account's quota read (family quota.ts owns endpoints/parsing). */
     fetchQuota: (session: any, fetchFn: any) => any;
+    /** passthrough: Completions usage rewriting on forwarded answers, when this family maps any. */
+    forward?: FamilyForwardHooks;
     /** account-quota: per-account hydration / refresh side effects, when this family has them. */
     quota?: FamilyQuotaHooks;
 }

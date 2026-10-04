@@ -2,8 +2,9 @@
  * Family registry: the one table keyed by family id that the central
  * per-family dispatchers look up instead of growing `family === '<id>'`
  * chains — today the inbound cache rewrite (proxy-body.ts), the quota
- * fetch (quota.ts QuotaStore) and the account-quota hydration hooks
- * (account-quota.ts).
+ * fetch (quota.ts QuotaStore), the account-quota hydration hooks
+ * (account-quota.ts) and the passthrough Completions usage rewrite
+ * (passthrough.ts).
  *
  * Contract (docs/rules.md):
  * - A row holds ONLY references to functions defined in the family folder
@@ -33,7 +34,7 @@ import { chatgptQuota } from './chatgpt/index.js'
 import { chatgptCatalogModels } from './chatgpt/catalog.js'
 import { discoverChatgpt } from './chatgpt/accounts.js'
 import { glmCacheSessionId } from './glm/cache.js'
-import { normalizeGlmAnthropicBody, normalizeGlmChatBody } from './glm/request.js'
+import { mapGlmChatUsage, normalizeGlmAnthropicBody, normalizeGlmChatBody } from './glm/request.js'
 import { fetchGlmQuota } from './glm/quota.js'
 import { kiroConversationId } from './kiro/cache.js'
 import { fetchKiroQuota } from './kiro/quota.js'
@@ -51,12 +52,12 @@ import { fetchOllamaQuota } from '../apikey/ollama/quota.js'
 import { ollamaCatalogModels } from '../apikey/ollama/catalog.js'
 import { discoverOllama, rememberOllamaIdentity } from '../apikey/ollama/accounts.js'
 import { applyKimiCache } from './kimi/cache.js'
-import { applyKimiStreamUsage, applyKimiThinking } from './kimi/request.js'
+import { applyKimiStreamUsage, applyKimiThinking, mapKimiUsage } from './kimi/request.js'
 import { fetchKimiQuota } from './kimi/quota.js'
 import { kimiCatalogModels } from './kimi/catalog.js'
 import { discoverKimi, rememberKimiIdentity } from './kimi/accounts.js'
 import { applyCopilotCache, copilotHasVision, copilotInitiatorOf } from './copilot/cache.js'
-import { applyCopilotStreamUsage, applyCopilotThinking } from './copilot/request.js'
+import { applyCopilotStreamUsage, applyCopilotThinking, mapCopilotUsage } from './copilot/request.js'
 import { fetchCopilotQuota } from './copilot/quota.js'
 import { copilotCatalogModels } from './copilot/catalog.js'
 import { discoverCopilot, rememberCopilotIdentity } from './copilot/accounts.js'
@@ -65,7 +66,7 @@ import { fetchDevinQuota } from './devin/quota.js'
 import { devinCatalogModels } from './devin/catalog.js'
 import { discoverDevin, rememberDevinIdentity } from './devin/accounts.js'
 import { applyClineCache } from './cline/cache.js'
-import { applyClineMaxCompletionTokens, applyClineStreamUsage, applyClineThinking } from './cline/request.js'
+import { applyClineMaxCompletionTokens, applyClineStreamUsage, applyClineThinking, mapClineUsage, unwrapClineEnvelope } from './cline/request.js'
 import { fetchClineQuota } from './cline/quota.js'
 import { clineCatalogModels } from './cline/catalog.js'
 import { discoverCline, rememberClineIdentity } from './cline/accounts.js'
@@ -109,6 +110,23 @@ export interface FamilyQuotaHooks {
   relistAccountsAfterRefresh?: boolean
 }
 
+/**
+ * Per-family passthrough forward hooks driven by src/oauth/passthrough.ts:
+ * Completions usage rewriting on the forwarded answer. The mappers and the
+ * envelope unwrap stay in each family's own request.ts; a row only
+ * references them (same contract as every other field on the row).
+ */
+export interface FamilyForwardHooks {
+  /**
+   * Resolve this request's Completions usage mapper; undefined = forward
+   * the usage object untouched. GLM maps its chat wire only — Anthropic
+   * usage is native already.
+   */
+  completionsUsage?: (wire?: string) => ((usage: any) => any) | undefined
+  /** Unwrap a non-streaming Completions body before usage mapping (Cline `{success, data}`). */
+  unwrapCompletionsBody?: (parsed: any) => any
+}
+
 /** One family's row in the registry — references only, never implementations. */
 export interface OAuthFamily {
   id: FamilyId
@@ -116,6 +134,8 @@ export interface OAuthFamily {
   applyCache: (payload: any, extra: { wire?: string }) => FamilyCacheRewrite
   /** QuotaStore: one account's quota read (family quota.ts owns endpoints/parsing). */
   fetchQuota: (session: any, fetchFn: any) => any
+  /** passthrough: Completions usage rewriting on forwarded answers, when this family maps any. */
+  forward?: FamilyForwardHooks
   /** account-quota: per-account hydration / refresh side effects, when this family has them. */
   quota?: FamilyQuotaHooks
 }
@@ -181,6 +201,10 @@ const glmFamily: OAuthFamily = {
     }
   },
   fetchQuota: fetchGlmQuota,
+  forward: {
+    // Chat wire only: Anthropic usage is native and forwards untouched.
+    completionsUsage: (wire) => (wire === 'anthropic' ? undefined : mapGlmChatUsage),
+  },
 }
 
 const kiroFamily: OAuthFamily = {
@@ -263,6 +287,7 @@ const kimiFamily: OAuthFamily = {
     return { payload: applyKimiStreamUsage(applyKimiThinking(cached)), cacheSessionId }
   },
   fetchQuota: fetchKimiQuota,
+  forward: { completionsUsage: () => mapKimiUsage },
   quota: {
     afterEnsure: rememberKimiIdentity,
     remember: rememberKimiIdentity,
@@ -287,6 +312,7 @@ const copilotFamily: OAuthFamily = {
     }
   },
   fetchQuota: fetchCopilotQuota,
+  forward: { completionsUsage: () => mapCopilotUsage },
   quota: {
     // No afterEnsure hook: identity write-back rides the manual refresh only.
     remember: rememberCopilotIdentity,
@@ -332,6 +358,12 @@ const clineFamily: OAuthFamily = {
     return { payload: next, cacheSessionId }
   },
   fetchQuota: fetchClineQuota,
+  forward: {
+    completionsUsage: () => mapClineUsage,
+    // A non-streaming completion arrives wrapped in `{success, data}`; a raw
+    // passthrough would hand DSH an envelope with no `choices`.
+    unwrapCompletionsBody: unwrapClineEnvelope,
+  },
   quota: {
     afterEnsure: rememberClineIdentity,
     remember: rememberClineIdentity,
