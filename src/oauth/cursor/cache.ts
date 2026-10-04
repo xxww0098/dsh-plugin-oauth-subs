@@ -24,6 +24,7 @@
  */
 
 import { createHash } from 'node:crypto'
+import { unrelatedPrompt } from '../../utils/system-pin.js'
 
 export const CURSOR_STABLE_SESSION = 'dsh-cursor'
 export const CURSOR_FAST_SUFFIX = '-fast'
@@ -120,20 +121,6 @@ export function pinCursorSystemPrefix(conversationId, systemText) {
     ? text.slice(existing.length).replace(/^\n+/, '').trim()
     : text
   return { pinned: existing, extra }
-}
-
-/** Under half of the shorter text shared as prefix + suffix: a different
- * prompt, not an edit of the pinned one. DSH's session-title request shares
- * the chat's session id; parking the chat's prompt behind a pinned title
- * prompt made the model answer with a title. */
-function unrelatedPrompt(existing, text) {
-  const max = Math.min(existing.length, text.length)
-  let prefix = 0
-  while (prefix < max && existing.charCodeAt(prefix) === text.charCodeAt(prefix)) prefix += 1
-  let suffix = 0
-  while (suffix < max - prefix
-    && existing.charCodeAt(existing.length - 1 - suffix) === text.charCodeAt(text.length - 1 - suffix)) suffix += 1
-  return (prefix + suffix) * 2 < max
 }
 
 export function cursorConversationId(payload: any = {}, explicit?) {

@@ -18,32 +18,14 @@
  */
 
 import { createHash } from 'node:crypto'
+import { readVarint, WIRE_FIXED32, WIRE_FIXED64, WIRE_LEN, WIRE_VARINT } from '../../utils/protobuf.js'
 
-const WIRE_VARINT = 0
-const WIRE_FIXED64 = 1
-const WIRE_LEN = 2
-const WIRE_FIXED32 = 5
 const TRAILER_FLAG = 0x80
 const FIELD_TOKEN = 10
 const TOKEN_ID_FIELDS = [10, 1]
 const TOKEN_GRANTED_FIELDS = [20, 2]
 const TOKEN_EXPIRES_FIELDS = [30, 3]
 const REDEEM_TOKEN_ID_FIELD = 10
-
-function readVarint(bytes, offset) {
-  let value = 0
-  let shift = 0
-  let index = offset
-  while (index < bytes.length) {
-    const byte = bytes[index]
-    index += 1
-    value += (byte & 0x7f) * 2 ** shift
-    if ((byte & 0x80) === 0) return { value, next: index }
-    shift += 7
-    if (shift > 63) return undefined
-  }
-  return undefined
-}
 
 function encodeVarint(value) {
   const out: number[] = []

@@ -15,6 +15,7 @@
  */
 
 import { outboundFetch } from '../../utils/outbound.js'
+import { asNumber } from '../../oauth/quota-shared.js'
 import {
   COMMAND_CODE_CREDITS_URL,
   COMMAND_CODE_PLAN_CREDITS,
@@ -28,10 +29,6 @@ import {
 
 const ACTIVE_SUBSCRIPTION_STATUSES = new Set(['active', 'trialing', 'past_due'])
 
-function asNumber(value) {
-  const n = Number(value)
-  return Number.isFinite(n) ? n : undefined
-}
 
 function stampOf(value) {
   const n = asNumber(value)
