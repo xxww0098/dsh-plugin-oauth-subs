@@ -1,6 +1,7 @@
 /**
  * Quota store: the per-account cache (mirrored to quota-snapshot.json), the
- * stale-while-revalidate read, reset-card spending, and the family dispatch.
+ * stale-while-revalidate read, reset-card spending, and the family dispatch
+ * (a registry lookup into `families.ts`).
  * Each family's endpoints and parsing live in its own `quota.ts`
  * (`src/oauth/<id>/quota.ts`, `src/apikey/<id>/quota.ts`); shared coercion
  * and fetch helpers are in `quota-shared.ts`.
