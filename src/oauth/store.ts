@@ -28,32 +28,67 @@ export { readPrivateText, writePrivateText }
 /** Dropped families: their vault is never read and leaves the file with its next write. */
 const RETIRED_PROVIDER_IDS = Object.freeze(['anthropic', 'workbuddy', 'workbuddy-ai'])
 
+/**
+ * One stored login. The store's hard floor is a usable accessToken; every
+ * other field (credentials, identity labels, hydrated hints) is family
+ * territory and arrives as an open shape — assertSessionShape enforces the
+ * credential triple when the file is read.
+ */
+export interface StoredSession {
+  accessToken: string
+  /** Credential triple the loader asserts on every entry it reads. */
+  refreshToken?: string
+  expiresAt: number
+  [key: string]: unknown
+}
+
+/** One provider's entry in auth.json: its logins plus rotation bookkeeping. */
+export interface SessionVault {
+  activeId: string | undefined
+  accounts: Record<string, StoredSession>
+  /** Opaque change token per account id — rotated on every save. */
+  generations: Record<string, string>
+}
+
+/** A stored login plus the change tokens refresh bookkeeping compares on. */
+export interface StoredAccount {
+  id: string
+  session: StoredSession
+  active: boolean
+  generation: string
+  version: string
+}
+
+/** The parsed auth.json: provider-keyed JSON, values still raw until asVault. */
+export type SessionStore = Record<string, unknown>
+
 export const PROVIDER_IDS = Object.freeze(['codex', 'chatgpt', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline', 'command-code'])
 
-export function defaultDataDir() {
+export function defaultDataDir(): string {
   return join(homedir(), '.dsh', 'plugins', 'oauth-subs')
 }
 
-export function authFilePath(dataDir = defaultDataDir()) {
+export function authFilePath(dataDir = defaultDataDir()): string {
   return join(dataDir, 'auth.json')
 }
 
 
 
-function assertSessionShape(provider, value) {
+function assertSessionShape(provider: string, value: unknown) {
   if (typeof value !== 'object' || value === null) {
     throw new Error(`oauth-subs auth store: entry "${provider}" is not an object; fix or delete the store file`)
   }
-  if (typeof value.accessToken !== 'string' || value.accessToken.length === 0
-    || typeof value.refreshToken !== 'string' || value.refreshToken.length === 0
-    || typeof value.expiresAt !== 'number' || !Number.isFinite(value.expiresAt)) {
+  const record = value as Record<string, unknown>
+  if (typeof record.accessToken !== 'string' || record.accessToken.length === 0
+    || typeof record.refreshToken !== 'string' || record.refreshToken.length === 0
+    || typeof record.expiresAt !== 'number' || !Number.isFinite(record.expiresAt)) {
     throw new Error(
       `oauth-subs auth store: entry "${provider}" is missing accessToken/refreshToken/expiresAt; fix or delete the store file`,
     )
   }
 }
 
-export function accountIdOf(provider, session) {
+export function accountIdOf(provider: string, session: StoredSession | null | undefined): string {
   if (!session || typeof session !== 'object') return `${provider}-account`
   if (provider === 'codex') {
     const id = session.emailAddress || session.accountId
@@ -87,25 +122,27 @@ export function accountIdOf(provider, session) {
   return `${provider}-account`
 }
 
-function isSessionEntry(value) {
-  return value && typeof value === 'object' && typeof value.accessToken === 'string'
+function isSessionEntry(value: unknown): value is StoredSession {
+  return !!value && typeof value === 'object' && typeof (value as Record<string, unknown>).accessToken === 'string'
 }
 
-function isVaultEntry(value) {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    && value.accounts && typeof value.accounts === 'object' && !Array.isArray(value.accounts)
+function isVaultEntry(value: unknown): value is { accounts: Record<string, unknown>; generations?: Record<string, unknown>; activeId?: unknown } {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+    && !!(value as Record<string, unknown>).accounts
+    && typeof (value as Record<string, unknown>).accounts === 'object'
+    && !Array.isArray((value as Record<string, unknown>).accounts)
     && !isSessionEntry(value)
 }
 
-function legacyGeneration(provider, id, session) {
+function legacyGeneration(provider: string, id: string, session: unknown): string {
   return createHash('sha256').update(JSON.stringify([provider, id, session])).digest('hex')
 }
 
-export function asVault(provider, entry) {
+export function asVault(provider: string, entry: unknown): SessionVault {
   if (entry === undefined) return { activeId: undefined, accounts: {}, generations: {} }
   if (isVaultEntry(entry)) {
-    const accounts = {}
-    const generations = {}
+    const accounts: Record<string, StoredSession> = {}
+    const generations: Record<string, string> = {}
     for (const [rawId, session] of Object.entries(entry.accounts)) {
       if (!isSessionEntry(session)) continue
       const id = typeof rawId === 'string' && rawId.trim() ? rawId.trim() : accountIdOf(provider, session)
@@ -125,7 +162,7 @@ export function asVault(provider, entry) {
   throw new Error(`oauth-subs auth store: entry "${provider}" is not an object; fix or delete the store file`)
 }
 
-function parseStore(text, path) {
+function parseStore(text: string, path: string): SessionStore {
   let parsed
   try {
     parsed = JSON.parse(text)
@@ -149,20 +186,20 @@ function parseStore(text, path) {
   return parsed
 }
 
-export async function loadStore(path) {
+export async function loadStore(path?: string): Promise<SessionStore> {
   const file = path ?? authFilePath()
   const text = await readPrivateText(file, 'oauth-subs auth store')
   if (text === undefined) return {}
   return parseStore(text, file)
 }
 
-async function writeStore(store, path) {
+async function writeStore(store: SessionStore, path: string): Promise<void> {
   await writePrivateText(path, `${JSON.stringify(store, null, 2)}\n`)
 }
 
-const writeChains = new Map()
+const writeChains = new Map<string, Promise<void>>()
 
-async function serialize(path, action) {
+async function serialize<T>(path: string, action: () => Promise<T>): Promise<T> {
   const previous = writeChains.get(path) ?? Promise.resolve()
   const next = previous.then(action, action)
   const tail = next.then(() => undefined, () => undefined)
@@ -174,11 +211,11 @@ async function serialize(path, action) {
   }
 }
 
-export async function getSession(provider, path) {
+export async function getSession(provider: string, path?: string): Promise<StoredSession | undefined> {
   return (await getStoredSession(provider, undefined, path))?.session
 }
 
-export async function listAccounts(provider, path) {
+export async function listAccounts(provider: string, path?: string): Promise<Record<string, unknown>[]> {
   const vault = asVault(provider, (await loadStore(path))[provider])
   return Object.entries(vault.accounts)
     .map(([id, session]) => ({
@@ -189,7 +226,7 @@ export async function listAccounts(provider, path) {
     .sort((left, right) => Number(right.active) - Number(left.active) || left.id.localeCompare(right.id))
 }
 
-function storedAccount(vault, id: string | undefined) {
+function storedAccount(vault: SessionVault, id: string | undefined): StoredAccount | undefined {
   if (!id || !Object.hasOwn(vault.accounts, id)) return undefined
   const session = vault.accounts[id]
   const generation = vault.generations[id]
@@ -199,7 +236,7 @@ function storedAccount(vault, id: string | undefined) {
   return { id, session, active: id === vault.activeId, generation, version }
 }
 
-function matchingAccount(vault, source) {
+function matchingAccount(vault: SessionVault, source: StoredAccount): StoredAccount | undefined {
   // Identity hydration may rename the key while a refresh is in flight.
   const id = vault.generations[source.id] === source.generation
     ? source.id
@@ -208,7 +245,7 @@ function matchingAccount(vault, source) {
   return current?.version === source.version ? current : undefined
 }
 
-export async function listStoredSessions(provider, path) {
+export async function listStoredSessions(provider: string, path?: string): Promise<StoredAccount[]> {
   const vault = asVault(provider, (await loadStore(path))[provider])
   return Object.keys(vault.accounts).flatMap((id) => {
     const account = storedAccount(vault, id)
@@ -216,7 +253,7 @@ export async function listStoredSessions(provider, path) {
   })
 }
 
-export async function getStoredSession(provider, id, path) {
+export async function getStoredSession(provider: string, id: string | undefined, path?: string): Promise<StoredAccount | undefined> {
   const file = path ?? authFilePath()
   // A read opened before rotation must settle before that rotation's owner retires.
   return serialize(file, async () => {
@@ -227,7 +264,7 @@ export async function getStoredSession(provider, id, path) {
 }
 
 /** Only update the login/credentials that produced the result; never activate it. */
-export async function updateAccountSession(provider, source, session, path, nextId?) {
+export async function updateAccountSession(provider: string, source: StoredAccount, session: StoredSession, path?: string, nextId?: string): Promise<StoredAccount | undefined> {
   const file = path ?? authFilePath()
   return serialize(file, async () => {
     const store = await loadStore(file)
@@ -256,7 +293,7 @@ export async function updateAccountSession(provider, source, session, path, next
   })
 }
 
-export async function replaceAccountId(provider, source, session, path) {
+export async function replaceAccountId(provider: string, source: StoredAccount, session: StoredSession, path?: string): Promise<StoredAccount | undefined> {
   return updateAccountSession(provider, source, session, path, accountIdOf(provider, session))
 }
 
@@ -272,7 +309,7 @@ const SESSION_CREDENTIAL_KEYS = new Set([
   'accessToken', 'refreshToken', 'idToken', 'expiresAt', 'sessionToken', 'tokenType', 'source',
 ])
 
-function mergeSavedSession(existing, session) {
+function mergeSavedSession(existing: StoredSession | undefined, session: StoredSession): StoredSession {
   if (!existing || typeof existing !== 'object') return session
   const merged = { ...session }
   for (const [key, value] of Object.entries(existing)) {
@@ -282,7 +319,7 @@ function mergeSavedSession(existing, session) {
   return merged
 }
 
-export async function saveSession(provider, session, path, options?) {
+export async function saveSession(provider: string, session: StoredSession, path?: string, options?: { activate?: boolean; id?: string }): Promise<StoredAccount | undefined> {
   const file = path ?? authFilePath()
   const activate = options?.activate !== false
   return serialize(file, async () => {
@@ -300,7 +337,7 @@ export async function saveSession(provider, session, path, options?) {
   })
 }
 
-export async function switchAccount(provider, id, path) {
+export async function switchAccount(provider: string, id: string, path?: string): Promise<void> {
   if (typeof id !== 'string' || !id.trim()) throw new Error(`${provider} account id is required`)
   const file = path ?? authFilePath()
   return serialize(file, async () => {
@@ -314,7 +351,7 @@ export async function switchAccount(provider, id, path) {
   })
 }
 
-export async function deleteSession(provider, path, id, source?) {
+export async function deleteSession(provider: string, path?: string, id?: string, source?: StoredAccount): Promise<boolean> {
   const file = path ?? authFilePath()
   return serialize(file, async () => {
     const store = await loadStore(file)
@@ -334,7 +371,7 @@ export async function deleteSession(provider, path, id, source?) {
   })
 }
 
-export function publicSession(provider, session) {
+export function publicSession(provider: string, session: StoredSession | undefined): Record<string, unknown> | undefined {
   if (session === undefined) return undefined
   const planType = session.planType
   const planLabel = formatPlanLabel(planType, provider)
