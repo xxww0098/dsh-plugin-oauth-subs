@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml/badge.svg)](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml)
 
-把 **ChatGPT / Codex**、**xAI Grok**、**智谱 GLM**、**AWS Kiro**、**Google Antigravity**、**Cursor**、**Ollama Cloud**、**Kimi Code Plan**、**GitHub Copilot**、**Devin Agent**、**Cline** 的订阅，以及 **OpenCode Go** API key 接到 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。订阅家族通过本机回环代理；OpenCode Go 直连其 API。模型路由使用 DSH 的 `openai-responses`、`openai-completions`、`anthropic-messages` 三种 `api`。
+把 **ChatGPT / Codex**、**xAI Grok**、**智谱 GLM**、**AWS Kiro**、**Google Antigravity**、**Cursor**、**Ollama Cloud**、**Kimi Code Plan**、**GitHub Copilot**、**Devin Agent**、**Cline** 的订阅，或 **OpenCode Go** / **Command Code** 的 API key 接入 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。除 OpenCode Go 外的每个家族都走本机回环代理；OpenCode Go 直连其 API。模型路由使用 DSH `api` 值 `openai-responses`、`openai-completions`、`anthropic-messages`。
 
 ![订阅工作台 —— 额度页签、账号卡片与供应商栏](docs/readme-workbench.jpg)
 
@@ -15,162 +15,78 @@ dsh plugin --profile web add https://github.com/xxww0098/dsh-plugin-oauth-subs
 dsh web
 ```
 
-打开主页侧边栏 **订阅**（**插件**按钮下方的入口）。工作台顶部固定三个页签——**额度 / 模型 / 版本**，左侧是供应商栏，右侧内容区滚动。每个账号一张卡片（额度都在卡片上；Ollama Cloud 没有额度条）。**版本**页的 **当前版本** 固定显示本进程加载插件时的版本；自安装后仍显示旧运行版本，直到重启。本插件专攻 desktop：自身不 spawn `dsh`/`npm`，也不会重启宿主——版本卡对比运行版本与 GitHub 最新 tag，点 **安装更新** 会把 tag 的 tarball 自安装进 profile 的 `node_modules`（同卡还有每 15 分钟检查的自动更新开关；「本地插件目录」热链时开关照旧，只是提示改成 `npm run build` 热重载、不列 release 结果）。profile `node_modules` 比运行进程新时会列出 **磁盘** 并标记过期进程。或 `pnpm dsh web --patch ./cordis.patch.yml`（`id: oauth-subs`）。
+在侧边栏的 **插件 Plugins** 下打开 **订阅 / Subscriptions**。工作台有三个页签——**额度**、**模型**、**版本**——每个账号一张卡片。
 
-### Desktop
+**Desktop** 由 Electron 应用管理——`dsh plugin --profile desktop` 会被拒绝，请改用 **插件 → 添加插件** 粘贴仓库地址安装。数据在 `~/.dsh/profiles/desktop/data/dsh-plugin-oauth-subs/`，与 web profile **不**共享；迁移：退出应用后把 `auth.json`（连同保存选择器状态的 `models.json`）复制过去。代理端口（`8318`）是全局回环绑定——两个 profile 不能同时运行（`EADDRINUSE`）；要改端口，在该 profile 的 `cordis.patch.yml` 里给 `id: oauth-subs` 设不同的 `config.port`。若桌面应用启动即退，运行 `launchctl unsetenv ELECTRON_RUN_AS_NODE`。
 
-`desktop` profile 由 Electron 应用独占管理，`dsh plugin --profile desktop` 会被拒绝。走界面安装：
+更新从 **版本** 卡片自安装（**检查更新 → 安装更新**，或每 15 分钟检查一次的自动更新开关）；重启后加载新副本，`data/` 保留。若 `node_modules` 比运行中的进程新，卡片会标记过期进程。本地目录链接时则改走 `npm run build` 热重载。
 
-1. DeepSeek Harness → **插件** → **添加插件**
-2. 粘贴 `https://github.com/xxww0098/dsh-plugin-oauth-subs` → **安装**
-3. 打开开关；组件行应显示 **运行中**
+## 家族
 
-数据在 `~/.dsh/profiles/desktop/data/dsh-plugin-oauth-subs/`，登录态**不**与 web profile 共享。迁移已有账号：先退出应用，把 `~/.dsh/profiles/web/data/dsh-plugin-oauth-subs/` 下的 `auth.json`（勾选状态另有 `models.json`）复制到该目录，再启动。必须在退出状态下拷贝——插件把 token 缓存在内存，热改可能被覆写。
+| 提供商 | 登录 / 导入 | DSH api |
+|---|---|---|
+| ChatGPT Codex | PKCE `localhost:1455`（可粘贴回调）；导入 `~/.codex/auth.json` | `openai-responses` |
+| ChatGPT（Sign in with ChatGPT） | 官方应用流程走回环；ID token 经 JWKS 验签 | `openai-responses` |
+| xAI Grok | 设备码（默认）或 PKCE；导入 `~/.grok/auth.json`、`~/.hermes/auth.json` | `openai-responses` |
+| 智谱 GLM（Z.ai / BigModel） | ZCode CLI 登录轮询；导入 `~/.zcode/v2/config.json` | `anthropic-messages` |
+| AWS Kiro | Social PKCE / Builder ID / IdC / Entra / `ksk_` 密钥；粘贴 JSON · kami · CSV；导入 `~/.kiro/credentials.json` | `openai-completions` |
+| Google Antigravity | Google OAuth `localhost:51121`（可粘贴回调）；导入 `~/.gemini/antigravity-cli/` 的 token | `openai-completions` |
+| Cursor | PKCE，或 **导入本机 Cursor**（macOS Keychain / `state.vscdb`） | `openai-completions` |
+| Ollama Cloud | 粘贴 API key / `OLLAMA_API_KEY` | `openai-completions` |
+| Kimi Code Plan | 设备码；导入 `~/.kimi-code/credentials/kimi-code.json`；`KIMI_API_KEY` | `openai-completions` |
+| GitHub Copilot | 设备码；导入 `~/.config/github-copilot/hosts.json`；`GITHUB_TOKEN` | `openai-completions` |
+| Devin Agent | PKCE `127.0.0.1:59653`；导入 `~/.local/share/devin/credentials.toml`；粘贴 `devin-session-token$…` | `openai-completions` |
+| Cline | 设备码；导入 `~/.cline/data/settings/providers.json` | `openai-completions` |
+| Command Code | 粘贴 API key / `COMMAND_CODE_API_KEY` / 导入 `~/.commandcode/auth.json`；或 studio 浏览器登录 | `openai-completions` |
+| OpenCode Go | 粘贴 API key（可选加 Console cookie / 工作区以读额度）；直连，不走代理 | `openai-completions` / `openai-responses` |
 
-代理端口（默认 `8318`）是全局回环绑定，web 与 desktop profile 不能同时运行（`EADDRINUSE`）。杀掉另一个 profile，或在该 profile 的 `cordis.patch.yml` 里给 `id: oauth-subs` 改 `config.port`。
+各家族的设计、钉住的客户端版本与上游 hop：[docs/oauth.md](docs/oauth.md) 与各 `src/oauth/<id>/README.md` / `src/apikey/<id>/README.md`。
 
-本插件专攻 desktop：宿主生命周期面（DSH CLI/npm 更新、重启宿主）已**整体删除**而非隐藏——Electron 应用独占管理 profile 与进程。升级是自安装的：**检查更新 → 安装更新** 会下载 release tarball 原地换目录（或打开 **自动更新** 每 15 分钟检查）；装好后重启应用加载新版本。`data/` 目录保留，登录态不丢。手动兜底：**插件** → 卸载 → 添加插件 → 重装仓库地址。
-
-如果应用启动即退：检查 `launchctl getenv ELECTRON_RUN_AS_NODE`——该变量会让所有 Electron 应用退化成纯 Node 模式，`launchctl unsetenv ELECTRON_RUN_AS_NODE` 即可修复。
-
-## 系列
-
-| 提供商 | 登录 | DSH api | 上游 hop |
-|---|---|---|---|
-| ChatGPT Codex | PKCE `localhost:1455`（占用则 `1457`）；可粘贴回调；`app_EMoamEEZ73f0CkXaXp7hrann` | `openai-responses` | `chatgpt.com/backend-api/codex/responses` |
-| ChatGPT（Sign in with ChatGPT） | 官方开源客户端流程：`dynamic_agent_client` 注册 → 颁发 `oaiapp_` client；`127.0.0.1` 回环；ID token 按 JWKS 验签 | `openai-responses` | `api.openai.com/v1/responses` |
-| xAI Grok | 设备码（默认）；PKCE `127.0.0.1:56121`；`b1a00492-073a-47ea-816f-4c329264a828` | `openai-responses` | `api.x.ai/v1/responses` |
-| GLM · Z.ai（全球） | ZCode CLI 轮询 `provider: zai`；再换发 `id.secret`；`client_P8X5CMWmlaRO9gyO-KSqtg` | `anthropic-messages` | `api.z.ai/api/anthropic`（Completions 残留 `…/coding/paas/v4`） |
-| GLM · BigModel（中国） | 同一 CLI 轮询，`provider: bigmodel`；poll JWT 即密钥；client `zcode` | `anthropic-messages` | `open.bigmodel.cn/api/anthropic`（Completions 残留 `…/coding/paas/v4`） |
-| AWS Kiro | Social PKCE `app.kiro.dev`（3128…53153）/ Builder ID / IdC / Entra / `ksk_` | `openai-completions` | `q.<region>.amazonaws.com` `GenerateAssistantResponse` |
-| Google Antigravity | Google OAuth `localhost:51121`；可粘贴回调；`1071006060591-…apps.googleusercontent.com` | `openai-completions` | `daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent` |
-| Cursor | PKCE 轮询 `cursor.com/loginDeepControl`；或 **导入本机 Cursor** | `openai-completions` | Connect `agentn.us.api5.cursor.sh` `AgentService/Run` |
-| Ollama Cloud | 粘贴 API key / 导入 `OLLAMA_API_KEY` | `openai-completions` | `https://ollama.com/v1/chat/completions` |
-| Kimi Code Plan | 设备码（无 PKCE）；导入 `~/.kimi-code/credentials/kimi-code.json`；可选 `KIMI_API_KEY` | `openai-completions` | `https://api.kimi.com/coding/v1/chat/completions` |
-| GitHub Copilot | 设备码（无 PKCE）；导入 `~/.config/github-copilot/hosts.json`；可选 `GITHUB_TOKEN` | `openai-completions` | `https://api.githubcopilot.com/chat/completions`（`tid=` session） |
-| Devin Agent | PKCE `127.0.0.1:59653`；导入 `~/.local/share/devin/credentials.toml`；粘贴 `devin-session-token$…` | `openai-completions` | Connect `server.codeium.com` `ApiServerService/GetChatMessage` |
-| Cline | WorkOS 设备码（无 PKCE）；导入 `~/.cline/data/settings/providers.json` | `openai-completions` | `https://api.cline.bot/api/v1/chat/completions` |
-| OpenCode Go | 粘贴 API key；可选 Console cookie 与工作区以读取额度 | `openai-completions` / `openai-responses` | 直连 `https://opencode.ai/zen/go/v1` |
-
-### 导入已有凭据
-
-| 路径 | 系列 |
-|---|---|
-| `~/.codex/auth.json` | Codex |
-| `~/.grok/auth.json`、`~/.hermes/auth.json` | Grok |
-| `~/.zcode/v2/config.json`（旧路径 `cli/config.json` / `config.json` 仍读） | GLM |
-| `~/.kiro/credentials.json`；`credentials.json`（kiro.rs 当前目录）；`~/.aws/sso/cache/kiro-auth-token.json` | Kiro |
-| 面板粘贴：kami / JSON / CSV / Social refresh / `ksk_…` | Kiro |
-| `~/.gemini/antigravity-cli/antigravity-oauth-token`；`~/.cli-proxy-api/antigravity-*.json` | Antigravity |
-| macOS Keychain `cursor-access-token` / `cursor-refresh-token`；IDE `state.vscdb`（只读当前用户）；`CURSOR_ACCESS_TOKEN` | Cursor |
-| 环境变量 `OLLAMA_API_KEY`（不是 `~/.ollama/id_ed25519.pub`） | Ollama Cloud |
-| `~/.kimi-code/credentials/kimi-code.json`；只读 `~/.kimi/credentials/kimi-code.json`；`KIMI_API_KEY` | Kimi |
-| `~/.config/github-copilot/hosts.json`；OpenCode `~/.local/share/opencode/auth.json`；`COPILOT_GITHUB_TOKEN` / `GITHUB_TOKEN` / `GH_TOKEN` | Copilot |
-| `~/.local/share/devin/credentials.toml`（`$XDG_DATA_HOME/devin/`；Windows `%LOCALAPPDATA%\devin\`）；`DEVIN_API_KEY` / `WINDSURF_API_KEY` | Devin |
-| `~/.cline/data/settings/providers.json` | Cline |
-| 面板粘贴：OpenCode Go API key；可选 Console cookie / 工作区 | OpenCode Go |
-
-订阅令牌：`<profile>/data/dsh-plugin-oauth-subs/auth.json`（`0600`）。OpenCode Go 账号：同目录 `opencode-go.json`。模型选择：`models.json`。
+令牌存于 `<profile>/data/dsh-plugin-oauth-subs/auth.json`（`0600`）；OpenCode Go 账号在 `opencode-go.json`；模型选择在 `models.json`——都在该数据目录里。
 
 ## 工作原理
 
 | 平面 | 作用 |
 |---|---|
-| 订阅面板 | 登录 / 导入 / 退出，同步模型 |
-| llm-pi-ai | DSH 调用面；订阅家族走本机代理，OpenCode Go 直连其 API |
-| 回环 | `http://127.0.0.1:8318/{codex,grok}/v1/responses`、`/glm/v1/messages`（Completions 残留 `/glm/v1/chat/completions` 留到下次 sync）、`/{kiro,antigravity,cursor,ollama,kimi,copilot,devin,cline}/v1/chat/completions` |
-| 上游 | 使用刷新后的订阅令牌或活动 OpenCode Go API key |
+| 订阅面板 | 登录 / 导入 / 退出，随后同步模型 |
+| llm-pi-ai | DSH 调用面；把各家族路由到回环代理（OpenCode Go 直连） |
+| 回环代理 | `http://127.0.0.1:8318/{codex,grok}/v1/responses`、`/glm/v1/messages`、`/<family>/v1/chat/completions` |
+| 上游 | 刷新后的订阅 bearer，或当前生效的 API key |
 
-面板关闭后，DSH 继续使用已配置的路由。代理只监听回环地址，并用本地凭证 `DSH_OAUTH_SUBS_API_KEY` 鉴权；OpenCode Go 不经过它。开发、安装与发布：[docs/development.md](docs/development.md)。上游对照：[docs/oauth.md](docs/oauth.md)。
+代理只绑定回环地址，并要求 `DSH_OAUTH_SUBS_API_KEY`。面板关闭后，DSH 继续使用已配置的路由。
 
-## 缓存
+## 模型与额度
 
-完整 `session-772f7f3a-…` SkillStar 会话验收（`oauth-codex` / `gpt-5.6-terra-fast`，211 次调用，71 分钟）：
+**模型**页签按家族提供开关（默认全开）；行上的窗口徽标可打开对话框，在该行上限内上调输入窗口。推理等级在 Harness **会话**模型菜单里设，不在「模型」页签。上游支持处提供 `-fast` 变体（Codex Priority；Devin 后端变体）。Fast 与更大的窗口都更耗额度。
 
-| | 2026-08-26 事故 | 0.0.14 亲和头之后 |
-|---|---|---|
-| 加权缓存命中 | 27.4% | **95.6%** |
-| 前缀复用（中位） | — | **99.6%** |
-| 亲和丢失 | 47 / 90 零缓存 | **0** |
-| 前缀改写 | — | 1 次适配器重建 + 9 次压缩 |
-| TRANSPORT 故障 | 29 | 0 |
+**额度**页签为每个账号显示套餐徽章与用量 / 重置进度条（Ollama Cloud：会话 / 每周用量），约每分钟刷新一次，或点 **刷新额度**。
 
-![Codex 缓存命中](docs/readme-cache-hit.svg)
-![Codex 亲和丢失与 TRANSPORT](docs/readme-cache-faults.svg)
-
-剩下的未缓存几乎都是新的工具输出（`delta`），加上预期的前缀改写：退出 plan（step 55，169k）和 DSH 压缩（330k）；每次改写后的下一拍复用约 99%。健康规则：加权命中 ≥ **80%**，**亲和丢失为 0**，且无 TRANSPORT。压缩 / `request/header` 重建造成的零缓存不会判失败。细节见 [docs/error.md](docs/error.md)。
+各家族的模型目录、推理等级、窗口、额度接口与费率出处：[docs/models.md](docs/models.md)、[docs/oauth.md](docs/oauth.md) 与各家族 README。
 
 ## 诊断
 
 ```sh
-npm run analyze -- path/to/session.jsonl
-node --experimental-strip-types scripts/analyze-session.ts --json path/to/session.jsonl
-node --experimental-strip-types scripts/analyze-session.ts --fail-below 80 path/to/session.jsonl
-npm run analyze -- --dir ~/.dsh/sessions --since 30d [--until ISO] [--json] [--compare base.json]
+npm run analyze -- path/to/session.jsonl              # one session
+npm run analyze -- --dir ~/.dsh/sessions --since 30d  # aggregate every session
 ```
 
-目录模式按 provider 与模型汇总所有会话（明文或 zstd，同一会话 id 只算一份）：按调用序号的命中率、宿主重试、300s 空闲超时、首字节、流内静默、连接池空闲；`--compare` 对照之前保存的 `--json` 报告，按每 1k 次调用输出差值。
+健康标准：加权缓存命中 ≥ **80%**，**亲和丢失为 0**。每次调用都打上 `cold_start` / `delta` / `compaction` / `rebuild` / `affinity_miss` 标签，避免把压缩误判成分片回归。细节见 [CONTRIBUTING.md](CONTRIBUTING.md) 和 [docs/error.md](docs/error.md)。
 
-分析器给每步打标 `cold_start` / `delta` / `compaction` / `rebuild` / `affinity_miss`，避免把压缩会话误判成分片回归。也可 `import` `dsh-plugin-oauth-subs/analyze-session`。
-
-## Fast / 模型 / 推理
-
-登录和对话走官方客户端身份；UA / 指纹见各 `src/oauth/<id>/README.md`。对照仓库见 [docs/oauth.md](docs/oauth.md)。面板 **模型** 页签：按系列开关（默认全开）；每行的窗口徽标可点开，在该行上限内自定义输入窗口。推理等级在 Harness **会话**模型菜单里设，不在「模型」页签。Fast 和更大的窗口都更耗额度。目录如何对照各家接口更新见 [docs/models.md](docs/models.md)。
-
-| 系列 | Fast | 窗口 | 思考 |
-|---|---|---|---|
-| Codex GPT-6 Astra / Sol / Luna 和 GPT-5.6 Sol / Terra / Luna | 可以。`-fast` → Priority（`service_tier: "priority"` + `x-codex-routing-hint`；`store: false`） | **258K** 默认；可自定义到 872K | low / medium / high / xhigh / **max** |
-| 其余 Codex | 只剩 GPT-5.5：可以，`-fast` → Priority。GPT-5.4 / 5.4-mini / Spark 已下线（订阅账号 400 “not supported when using Codex with a ChatGPT account”） | 258K（无更大窗口） | low–xhigh（无 `minimal`） |
-| Grok | 不行。2026-08-30：83.34 对 82.80 tok/s（0.994）。更早的 id 拒绝该字段 | — | 4.6：low / medium / high / xhigh（不选 = **high**）；4.5：无 xhigh |
-| GLM | — | 5.3 / Flash：**400K** 套餐输入上限；可自定义到官方 1M | 5.3 / Flash：low / high / **max**（默认 max；无 `medium`；`disabled` 会 400）。Turbo：开着，无深度。只有 Flash 是 GLM 图文行 |
-| Kiro | — | — | GPT-5.6：off / low / medium / high / xhigh / max（`off` → 线上 `none`）。Opus 5 / 4.8 / 4.7 和 Sonnet 5 另有 **xhigh**；4.6 家族到 max；Haiku / 开源权重：无。目录：[kiro.dev/docs/models](https://kiro.dev/docs/models/)（不含 Auto） |
-| Antigravity | 不行 | Cloud Code 目录；见[家族模型说明](src/oauth/antigravity/README.md) | 取决于上游模型 |
-| Cursor | 按模型提供 `-fast` 变体 | 登录后 `GetUsableModels` + `AvailableModels`；离线回落静态目录 | 按家族发送注册表参数；见[家族模型说明](src/oauth/cursor/README.md) |
-| Ollama Cloud | 不行 | 登录后 live `GET /api/tags`（静态 Cloud 快照作回落）。窗口来自 `POST /api/show` 的 `model_info.<family>.context_length`。无额度条 | off / low / medium / high / max（`off` → 线上 `none`） |
-| Kimi | 不行 | 登录后 live `GET /coding/v1/models`（静态 `kimi-for-coding` / highspeed / `k3` / `k3-256k`，256k/32k）。前缀哈希缓存 | off / minimal / low / medium / high / xhigh / max → `thinking.effort` |
-| Copilot | 不行 | 登录后 live `GET {api}/models`（静态楼 2026-09-23 按 GitHub 官方 docs 数据表 + models.dev `github-copilot` 重刷）。前缀哈希 + `X-Interaction-Id` | 目录声明才保留 `reasoning_effort` |
-| Devin | 可以。`-fast` 是真后端变体（不是 Codex Priority），不过 `applyFastMode` | 登录后 live `GetCliModelConfigs`（静态回落同镜像） | 按家族映射到后端 `chat_model_uid`（`defaultUid`）；`thinking` / `fast` / `1m` 收成独立 picker 行 |
-| Cline | 不行 | 登录后 live `GET /ai/cline/recommended-models`（静态 feed 快照回落） | minimal / low / medium / high / xhigh / max → `reasoning_effort`（`max`→`xhigh`） |
-| OpenCode Go | 不行 | Completions + Responses 两条路由 | 依具体模型；推理等级键遵循 DSH 闭集 |
-
-Codex Priority 回显 `created=auto` / `completed=default` 不能当确认（openai/codex#14204）。2026-08-26 Luna：88.3 对 57.5 tok/s（1.54 倍）；2026-08-30 交错均值 1.33 倍（1.90 再 0.93）。只影响生成吞吐；首 token 时间和缓存不变。
-
-## 额度
-
-| 订阅 | 接口 | 显示 |
-|---|---|---|
-| ChatGPT Codex | `chatgpt.com/backend-api/wham/usage` | 套餐等级（Plus / Pro / Team …）+ 5 小时窗口 + 每周窗口，展示**剩余**百分比和重置时间 |
-| ChatGPT Codex 重置 | `…/wham/rate-limit-reset-credits` 与 `/consume` | 银行的周窗口重置券和过期时间；Codex 卡片上按券各一颗确认按钮 |
-| xAI Grok | `cli-chat-proxy.grok.com/v1/billing?format=credits` + `/v1/user?include=subscription` + `grok.com` `GetGrokCreditsConfig`（gRPC-web） | 套餐徽章（SuperGrok / X Premium+ …）、Grok Code 准入标、带周期区间的用量条、产品分项；`{val}` 美分字段在计费账号下发时转美元行（月度包含池 / 按需封顶 / 预付余额） |
-| 智谱 GLM | `api.z.ai` 或 `open.bigmodel.cn` 的 `monitor/usage/quota/limit` | 套餐徽章（Lite / Pro / Max）+ Coding Plan 积分窗口；站点随当前账号 |
-| AWS Kiro | `q.<region>.amazonaws.com/getUsageLimits` | 本周期用量、上限，以及适用的试用或赠送额度 |
-| Google Antigravity | daily-cloudcode-pa 的 `loadCodeAssist` + `fetchAvailableModels`（prod 仅 5xx / 传输失败回落） | 套餐徽章（Pro / Ultra / Free / Standard）+ SkillStar 模型分组剩余条和重置时间 |
-| Cursor | `api2.cursor.sh` `DashboardService/GetCurrentPeriodUsage` | 套餐徽章（Free / Pro / Pro+ / Ultra …）+ 包含额度美元数（`includedSpend`/`limit`，美分 → `$已用/$总额`）和分项剩余百分比 |
-| Ollama Cloud | 没有文档化的额度 JSON | 不显示额度条 |
-| Kimi Code | `api.kimi.com/coding/v1/usages` + `/me` | `/me.user_level_name` 套餐徽章 + 剩余条；API 没给重置时刻就不编 |
-| GitHub Copilot | `api.github.com/copilot_internal/user` | 套餐徽章（Free / Pro / Pro+ / Business / Enterprise）+ Premium 剩余百分比 |
-| Devin | `server.codeium.com` `SeatManagementService/GetUserStatus` | 套餐徽章（Pro / Max / Teams / Enterprise / Free / Trial）+ Prompt / Flow / Flex 点数桶（已用 / 月度额度，随 `plan_end` 重置）+ 美元超额余额 + 层可见时的每日 / 每周剩余条 |
-| Cline | `api.cline.bot` `/users/me` + `/users/{id}/balance`（微美元）+ `/users/me/plan`；ClinePass 另有 `/plan/usage-limits` | 套餐徽章 + 预付**额度余额**（`$x.xx`）；ClinePass 才有 5 小时 / 每周 / 每月条。credit 账号没有窗口条 |
-| OpenCode Go | Console `/console/api/{orgs,go/status,billing/status,user}`；旧工作区回落 | 按账号显示 Go 用量、余额；提供 Console cookie 时可显示邮箱 |
-
-约每分钟刷新一次，也可点 **刷新额度**。进度条：`hsl(剩余 × 1.2, 78%, 38%)`。Codex `pro` → **Pro 20x** / $200，`prolite` → **Pro 5x** / $100。Plus/Pro 可能有银行的周窗口重置券——每张未用券在 Codex 卡片上各一颗确认按钮（Harness 风险确认后 `POST …/consume`，请求体 `{ redeem_request_id }`，并带 `idempotencyKey`）。消耗的是 **周额度窗口**。Grok 没有对应能力。Ollama Cloud 没有文档化的额度 JSON（`/api/quota` 404）；卡片 idle，不画额度条。
-
-## 配置
+## 选项
 
 | 选项 | 默认 | 说明 |
 |---|---|---|
-| `port` | `8318` | 本机代理端口 |
-| `provider` | `oauth` | 同步到 DSH 的路由 ID 前缀；每个家族都是 `oauth-<id>`（`oauth-codex`、`oauth-grok`……） |
-| `dataDir` | profile 数据目录 | `auth.json`、`models.json` 与 `proxy-key` 位置 |
+| `port` | `8318` | 本机回环代理端口 |
+| `provider` | `oauth` | llm-pi-ai 路由前缀；每个家族都落在 `oauth-<id>` |
+| `dataDir` | profile 数据目录 | `auth.json`、`models.json` 与 `proxy-key` |
 | `grokLogin` | `device` | `device` 或 `pkce` |
-| `proxyUrl` | 设置页 / 环境 | 模型 / 额度 / 登录出站 HTTP(S) 代理 |
+| `proxyUrl` | 设置页 / 环境变量 | 模型 / 额度 / 登录出站 HTTP(S) 代理 |
 | `cursorProxy` | — | Cursor 上游代理（`http://` 或 `socks5://`），用于区域门模型 |
 
 ## 开发
 
 ```sh
 npm test
-npm run analyze -- path/to/session.jsonl
 ```
 
-见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+见 [CONTRIBUTING.md](CONTRIBUTING.md) 和 [docs/development.md](docs/development.md)。
