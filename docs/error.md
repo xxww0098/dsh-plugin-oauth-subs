@@ -2,6 +2,12 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。每条只写 **现象** / **根因** / **修复** 三行，各 1–2 句；只留 grep 代码得不到的症状、根因与落点，不写过程与清单。
 
+## 2026-10-04：Antigravity 指纹停在 hub 2.11.0，本机旧安装还会把它压得更低
+
+**现象**：对话 User-Agent 要么是回退 `antigravity/hub/2.11.0`，要么被本机 Antigravity.app 2.12.2 盖住。Cloud Code 拒过期客户端（「This version of Antigravity is no longer supported」）。
+**根因**：回退钉在 2026-08-30 的 2.11.0；版本探测无条件采用已安装版本。官方 hub 更新清单 `latest-arm64-mac.yml` 已是 2.19.1，启动参数仍是 `--subclient_type hub`、`--override_ide_version`、daily-cloudcode-pa。
+**修复**：回退改为 2.19.1。已安装版本比回退新才采用，否则用回退。UA 形状不变：`antigravity/hub/<ver> <os>/<arch>`。
+
 ## 2026-10-04：Kiro 静态目录补上 claude-sonnet-5.5，chat 列表仍不放行
 
 **现象**：治理列表（`KIRO_CONSOLE`）有 `claude-sonnet-5.5`，本机 chat 列表（`origin=AI_EDITOR`）没有。

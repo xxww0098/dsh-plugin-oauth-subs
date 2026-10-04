@@ -95,17 +95,22 @@ test('authorize URL is the official Google installed-app client', () => {
   assert.equal(url.searchParams.has('code_challenge'), false)
 })
 
-test('fallback version is current official Antigravity.app 2.11.0', () => {
-  assert.equal(ANTIGRAVITY_FALLBACK_VERSION, '2.11.0')
+test('fallback version is current official Antigravity hub 2.19.1', () => {
+  assert.equal(ANTIGRAVITY_FALLBACK_VERSION, '2.19.1')
   assert.equal(detectAntigravityVersion({
     platform: 'linux',
     execFile: () => { throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' }) },
-  }), '2.11.0')
+  }), '2.19.1')
   assert.equal(detectAntigravityVersion({
     platform: 'darwin',
     readFile: () => { throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' }) },
     execFile: () => { throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' }) },
-  }), '2.11.0')
+  }), '2.19.1')
+  assert.equal(detectAntigravityVersion({
+    platform: 'darwin',
+    readFile: () => '<plist><key>CFBundleShortVersionString</key><string>2.12.2</string></plist>',
+    execFile: () => { throw new Error('plist parse should not need plutil') },
+  }), '2.19.1')
 })
 
 test('plist helper reads CFBundleShortVersionString from Antigravity.app XML', () => {
@@ -116,13 +121,13 @@ test('plist helper reads CFBundleShortVersionString from Antigravity.app XML', (
 	<key>CFBundleIdentifier</key>
 	<string>com.google.antigravity</string>
 	<key>CFBundleShortVersionString</key>
-	<string>2.11.0</string>
+	<string>2.20.0</string>
 	<key>CFBundleVersion</key>
 	<string>99.0.0</string>
 </dict>
 </plist>`
-  assert.equal(parseAntigravityPlistVersion(plist), '2.11.0')
-  assert.equal(parseAntigravityVersionText('Antigravity 2.11.0\n'), '2.11.0')
+  assert.equal(parseAntigravityPlistVersion(plist), '2.20.0')
+  assert.equal(parseAntigravityVersionText('Antigravity 2.20.0\n'), '2.20.0')
   assert.equal(normalizeAntigravityVersion('2.11.0.0'), '2.11.0')
   const seen = []
   const detected = detectAntigravityVersion({
@@ -133,7 +138,7 @@ test('plist helper reads CFBundleShortVersionString from Antigravity.app XML', (
     },
     execFile: () => { throw new Error('plist parse should not need plutil') },
   })
-  assert.equal(detected, '2.11.0')
+  assert.equal(detected, '2.20.0')
   assert.deepEqual(seen, [ANTIGRAVITY_MAC_APP_PLIST])
   assert.equal(ANTIGRAVITY_MAC_APP_PLIST, '/Applications/Antigravity.app/Contents/Info.plist')
   assert.equal(ANTIGRAVITY_MAC_APP_PLIST.includes('IDE.app'), false)
@@ -145,19 +150,23 @@ test('plist helper reads CFBundleShortVersionString from Antigravity.app XML', (
       const command = args.join(' ')
       assert.equal(command.includes('Antigravity.exe'), true)
       assert.equal(command.includes('IDE.app') || command.includes('Antigravity IDE'), false)
-      return '2.11.0.0\r\n'
+      return '2.20.0.0\r\n'
     },
   })
-  assert.equal(win, '2.11.0')
+  assert.equal(win, '2.20.0')
   const linux = detectAntigravityVersion({
     platform: 'linux',
     execFile: (file, args) => {
       assert.equal(file, 'antigravity')
       assert.deepEqual(args, ['--version'])
-      return '2.11.0\n'
+      return '2.20.0\n'
     },
   })
-  assert.equal(linux, '2.11.0')
+  assert.equal(linux, '2.20.0')
+  assert.equal(detectAntigravityVersion({
+    platform: 'linux',
+    execFile: () => '2.12.2\n',
+  }), '2.19.1')
 })
 
 test('request UA is CLIProxyAPI hub shape and never the plugin name', () => {

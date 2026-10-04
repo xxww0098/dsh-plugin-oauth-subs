@@ -27,7 +27,7 @@ Google **Antigravity hub**（`Antigravity.app`），Cloud Code `daily-cloudcode-
 | authorize | `https://accounts.google.com/o/oauth2/v2/auth` |
 | token | `https://oauth2.googleapis.com/token` |
 | loopback | `127.0.0.1:51121` `/oauth-callback` |
-| 模仿 | Antigravity.app **2.11.0**（Mac plist `/Applications/Antigravity.app`，忽略 IDE.app 2.5.5） |
+| 模仿 | Antigravity.app hub **2.19.1**（官方更新清单 `latest-arm64-mac.yml`，2026-10-04）。本机 plist 更旧时不采用。忽略 IDE.app |
 | UA | `antigravity/hub/<ver> <os>/<arch>`。chat / loadCodeAssist **只有** User-Agent，不要 `Client-Metadata` / `x-goog-api-client` |
 | body metadata | `{ ideType: 'ANTIGRAVITY' }` |
 | Cloud Code | daily 优先，prod 仅 5xx / 传输失败（`fetchAntigravityCloudCode`） |
@@ -92,7 +92,7 @@ DSH chat/completions  →  POST daily-cloudcode-pa.googleapis.com/v1internal:gen
 
 ## 缓存
 
-Gemini **隐式缓存** 钉的是稳定前缀：`systemInstruction` + contents 前缀 + **tools**。粘滞 id 是 `request.sessionId`，不是 Codex 头，也不是 `x-grok-conv-id`。官方 CLI（`agy` 1.1.22 / hub 2.11.0）打同一条 `streamGenerateContent?alt=sse`，**不**调 CreateCachedContent，也 **不**发 `implicitCacheConfig`（那是 DURABLE_CACHE_TRUSTED_USERS）。`--subclient_type hub` 是 language_server 旗标，不要上 HTTP。
+Gemini **隐式缓存** 钉的是稳定前缀：`systemInstruction` + contents 前缀 + **tools**。粘滞 id 是 `request.sessionId`，不是 Codex 头，也不是 `x-grok-conv-id`。官方 CLI（`agy` 1.2.16 / hub 2.19.1）打同一条 `streamGenerateContent?alt=sse`，**不**调 CreateCachedContent，也 **不**发 `implicitCacheConfig`（那是 DURABLE_CACHE_TRUSTED_USERS）。`--subclient_type hub` 是 language_server 旗标，不要上 HTTP。
 
 DSH 每步再插 runtime-context system，工具 JSON 的 key 顺序也会抖。不处理则前缀每轮都变，Google 连 `cachedContentTokenCount` 都不回。
 
@@ -121,7 +121,7 @@ DSH 每步再插 runtime-context system，工具 JSON 的 key 顺序也会抖。
 - 不要把 OpenAI JSON Schema（`additionalProperties` / `anyOf` / `$ref` / `format` / `nullable`）写进 Claude / GPT-OSS 的 protobuf `parameters`。
 - 不要给 Gemini 3 发 `functionCall.id`。
 - 不要在 chat / loadCodeAssist / fetchAvailableModels 上加 `Client-Metadata`、`x-goog-api-client` 或 `anthropic-beta`（onboardUser 已有较长 UA + `x-goog-api-client`）。
-- 不要抄 Pi 的 2.8.0 UA / `vscode_cloudshelleditor` / `cachedContents` / `implicitCacheConfig`。fingerprint 仍是 hub 2.11.0 + daily-cloudcode-pa。
+- 不要抄 Pi 的 2.8.0 UA / `vscode_cloudshelleditor` / `cachedContents` / `implicitCacheConfig`。fingerprint 仍是 hub 2.19.1 + daily-cloudcode-pa。
 - 不要把 picker id 收成裸 `gemini-3.8-flash`。线 id 就是 picker id（`gemini-3.8-flash-high`、`gemini-pro-agent`，…）。
 - 不要用 `currentTier` 当套餐 pill。
 - 不要把 Antigravity extras 停成 GLM trailing system。
@@ -130,11 +130,11 @@ DSH 每步再插 runtime-context system，工具 JSON 的 key 顺序也会抖。
 
 ## 归因
 
-一线：本机 **Antigravity.app 2.11.0** hub（`--subclient_type hub`，daily-cloudcode-pa）。社区对照：[router-for-me/CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)、[Rahularya01/pi-antigravity](https://github.com/Rahularya01/pi-antigravity)；thought 签名语义：[Google thought signatures](https://ai.google.dev/gemini-api/docs/thought-signatures)。
+一线：官方 **Antigravity.app hub 2.19.1**（`--subclient_type hub`，`--override_ide_version`，daily-cloudcode-pa；2026-10-04 更新清单，启动参数与 2.12.2 相同）。社区对照：[router-for-me/CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)、[Rahularya01/pi-antigravity](https://github.com/Rahularya01/pi-antigravity)；thought 签名语义：[Google thought signatures](https://ai.google.dev/gemini-api/docs/thought-signatures)。
 
 | 抄 | 出处 | 本 hop |
 |---|---|---|
-| hub 指纹、daily-cloudcode-pa 端点 | 本机 Antigravity.app hub 2.11.0 | `ANTIGRAVITY_DAILY_API_URL` / `antigravityChatHeaders` |
+| hub 指纹、daily-cloudcode-pa 端点 | 官方 Antigravity.app hub 2.19.1（更新清单 `latest-arm64-mac.yml`） | `ANTIGRAVITY_FALLBACK_VERSION` / `antigravityChatHeaders` |
 | 模型页价格徽标（USD / 1M） | models.dev `google` / `anthropic`；`gemini-pro-agent`、`-low`、`gemini-3-flash`、`gpt-oss-120b-medium` 的映射写在 `scripts/rates.ts` | `src/catalog/rates.json`，`npm run rates` 写入（见 [docs/models.md](../../../docs/models.md) 费率表） |
 | 公开 installed-app 客户端、短 UA、onboard UA | CLIProxyAPI `constants.go` | `ANTIGRAVITY_CLIENT_ID` / `antigravityOnboardUserHeaders` |
 | 模型行 | CLIProxyAPI `internal/registry/models/models.json` 的 `antigravity` 行 | 目录 `antigravity` 键（见「模型」） |

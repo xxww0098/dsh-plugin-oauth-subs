@@ -1,9 +1,11 @@
 /**
  * Google Antigravity (hub / Antigravity.app) OAuth + chat fingerprint.
  *
- * Official desktop to mimic (2026-08-30 Mac): Antigravity.app 2.11.0
- * (`com.google.antigravity`, `--subclient_type hub`). Ignore
- * Antigravity IDE.app 2.5.5 (`--subclient_type ide`). Hub
+ * Official desktop to mimic (2026-10-04): Antigravity.app hub 2.19.1
+ * (`com.google.antigravity`, `--subclient_type hub`). The pin is the
+ * hub updater manifest `latest-arm64-mac.yml`. A stale local install
+ * (this Mac had 2.12.2) must not drag the UA down. Ignore
+ * Antigravity IDE.app (`--subclient_type ide`). Hub
  * `--cloud_code_endpoint` is daily-cloudcode-pa; IDE uses prod
  * cloudcode-pa. language_server uses protobuf ClientMetadata.ide_type
  * ANTIGRAVITY. UA shape is CLIProxyAPI AntigravityRequestUserAgent:
@@ -50,10 +52,12 @@ export declare function antigravityCloudCodeFallbacks(url: any): string[];
 export declare function fetchAntigravityCloudCode(url: any, init: any, fetchFn?: typeof outboundFetch): Promise<any>;
 export declare const ANTIGRAVITY_SCOPE: string;
 /**
- * Current official Antigravity.app short version when the desktop app
- * is not installed. Cloud Code still rejects clients below 2.9.0.
+ * Current official Antigravity hub short version (updater manifest
+ * `latest-arm64-mac.yml`, 2026-10-04). Used when the desktop app is
+ * missing or older. Cloud Code rejects stale client versions
+ * (historically anything below 2.9.0).
  */
-export declare const ANTIGRAVITY_FALLBACK_VERSION = "2.11.0";
+export declare const ANTIGRAVITY_FALLBACK_VERSION = "2.19.1";
 /** Official hub app only — never Antigravity IDE.app. */
 export declare const ANTIGRAVITY_MAC_APP_PLIST = "/Applications/Antigravity.app/Contents/Info.plist";
 export declare const ANTIGRAVITY_NODE_API_CLIENT_UA = "google-api-nodejs-client/10.3.0";
@@ -131,10 +135,17 @@ export declare function parseAntigravityPlistVersion(plistXml: any): string | un
 /** First `X.Y` / `X.Y.Z` / `X.Y.Z.W` token in CLI or PowerShell output. */
 export declare function parseAntigravityVersionText(text: any): string | undefined;
 /**
- * Prefer the installed official Antigravity.app (SkillStar
+ * Installed hub version when it is newer than the pinned official
+ * release; otherwise the pin. An old Antigravity.app must not be the
+ * User-Agent.
+ */
+export declare function currentAntigravityVersion(detected: any, floor?: string): string;
+/**
+ * Prefer a newer installed official Antigravity.app (SkillStar
  * `detect_ide_version`): macOS Info.plist, Windows LocalAppData
  * `Antigravity.exe` FileVersion, linux `antigravity --version`.
- * Never reads Antigravity IDE.app. Else 2.11.0.
+ * Never reads Antigravity IDE.app. An older install does not override
+ * {@link ANTIGRAVITY_FALLBACK_VERSION}.
  */
 export declare function detectAntigravityVersion({ platform, env, readFile, execFile, }?: {
     platform?: NodeJS.Platform | undefined;
