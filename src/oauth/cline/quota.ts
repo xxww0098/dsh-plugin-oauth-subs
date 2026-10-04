@@ -25,6 +25,7 @@ import {
   parseClineUserInfo,
 } from './index.js'
 import { outboundFetch } from '../../utils/outbound.js'
+import { asNumber, readJson } from '../quota-shared.js'
 
 const CLINE_QUOTA_TIMEOUT_MS = 10_000
 
@@ -42,28 +43,6 @@ function timeoutSignal(ms) {
   const timer = setTimeout(() => controller.abort(), ms)
   if (typeof timer.unref === 'function') timer.unref()
   return { signal: controller.signal, cancel: () => clearTimeout(timer) }
-}
-
-function asNumber(value) {
-  if (typeof value === 'number' && Number.isFinite(value)) return value
-  if (typeof value === 'string' && value.trim() !== '') {
-    const next = Number(value)
-    if (Number.isFinite(next)) return next
-  }
-  return undefined
-}
-
-async function readJson(response, label) {
-  const text = await response.text()
-  if (!response.ok) {
-    throw new Error(`${label} failed (HTTP ${response.status})${text ? `: ${text.slice(0, 180)}` : ''}`)
-  }
-  if (!text) return {}
-  try {
-    return JSON.parse(text)
-  } catch {
-    throw new Error(`${label} returned non-JSON`)
-  }
 }
 
 function envelope(payload) {

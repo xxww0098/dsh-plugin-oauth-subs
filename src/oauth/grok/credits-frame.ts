@@ -17,28 +17,11 @@
  * the weekly pool.
  */
 
+import { readVarint, WIRE_FIXED32, WIRE_FIXED64, WIRE_LEN, WIRE_VARINT } from '../../utils/protobuf.js'
+
 export const GROK_WEB_EMPTY_FRAME = Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00])
 
-const WIRE_VARINT = 0
-const WIRE_FIXED64 = 1
-const WIRE_LEN = 2
-const WIRE_FIXED32 = 5
 const TRAILER_FLAG = 0x80
-
-function readVarint(bytes, offset) {
-  let value = 0
-  let shift = 0
-  let index = offset
-  while (index < bytes.length) {
-    const byte = bytes[index]
-    index += 1
-    value += (byte & 0x7f) * 2 ** shift
-    if ((byte & 0x80) === 0) return { value, next: index }
-    shift += 7
-    if (shift > 63) return undefined
-  }
-  return undefined
-}
 
 function readLength(bytes, offset, size) {
   if (offset + size > bytes.length) return undefined

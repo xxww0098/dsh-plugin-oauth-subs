@@ -15,6 +15,8 @@
  * names no conversation, so it never pins.
  */
 
+import { splitLeadingSystem, systemText } from '../../utils/system-pin.js'
+
 const SYSTEM_PIN_CAP = 64
 const SYSTEM_PINS = new Map()
 
@@ -46,29 +48,6 @@ function usePin(key) {
   SYSTEM_PINS.delete(key)
   SYSTEM_PINS.set(key, pin)
   return pin
-}
-
-function systemText(message) {
-  const content = message?.content
-  if (typeof content === 'string') return content
-  if (!Array.isArray(content)) return content == null ? '' : String(content)
-  return content
-    .map((part) => {
-      if (typeof part === 'string') return part
-      if (part && typeof part.text === 'string') return part.text
-      return ''
-    })
-    .join('')
-}
-
-function splitLeadingSystem(messages) {
-  const head: any[] = []
-  let index = 0
-  while (index < messages.length && messages[index]?.role === 'system') {
-    head.push(messages[index])
-    index += 1
-  }
-  return { head, rest: messages.slice(index) }
 }
 
 export function stabilizeClineSystemPrefix(messages, sessionId) {
