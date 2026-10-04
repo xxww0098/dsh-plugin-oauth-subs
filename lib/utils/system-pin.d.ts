@@ -7,14 +7,16 @@
  * cache rewrite in src/utils/).
  */
 /** Flatten one message's content to text: string, content-part array, or scalar. */
-export declare function systemText(message: any): string;
+export declare function systemText(message: {
+    content?: unknown;
+} | null | undefined): string;
 /** Split the leading run of system messages off the rest of the array. */
-export declare function splitLeadingSystem(messages: any): {
+export declare function splitLeadingSystem(messages: readonly any[]): {
     head: any[];
-    rest: any;
+    rest: any[];
 };
 /** Under half of the shorter text shared as prefix + suffix: a different
  * prompt, not an edit of the pinned one. DSH's session-title request shares
  * the chat's session id; parking the chat's prompt behind a pinned title
  * prompt made the model answer with a title. */
-export declare function unrelatedPrompt(existing: any, text: any): boolean;
+export declare function unrelatedPrompt(existing: string, text: string): boolean;

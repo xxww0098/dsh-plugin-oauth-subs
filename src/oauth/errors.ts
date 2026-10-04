@@ -8,10 +8,10 @@
 const PERMANENT_REFRESH_CODES = ['invalid_grant', 'invalid_client', 'unauthorized_client']
 
 export class OAuthEndpointError extends Error {
-  declare status: any
-  declare oauthCode: any
+  declare status: number | undefined
+  declare oauthCode: string | undefined
 
-  constructor(message, status?, oauthCode?) {
+  constructor(message: string, status?: number, oauthCode?: string) {
     super(message)
     this.name = 'OAuthEndpointError'
     this.status = status
@@ -20,7 +20,7 @@ export class OAuthEndpointError extends Error {
 }
 
 /** The OAuth error code in a token-endpoint body: `error` / `error_code`, or `error.code`. */
-export function oauthCodeOf(body) {
+export function oauthCodeOf(body: string): string | undefined {
   let parsed
   try { parsed = JSON.parse(body) } catch { return undefined }
   const error = parsed?.error
@@ -28,7 +28,7 @@ export function oauthCodeOf(body) {
   return typeof code === 'string' && code.length > 0 ? code : undefined
 }
 
-export async function oauthError(response, label) {
+export async function oauthError(response: { status: number; text(): Promise<string> }, label: string): Promise<OAuthEndpointError> {
   let body = ''
   try { body = await response.text() } catch { body = '' }
   const code = oauthCodeOf(body)
@@ -50,8 +50,9 @@ export async function oauthError(response, label) {
  * 429 / 5xx and digits in message text are transient: deleting a login on
  * them logs the user out over a blip.
  */
-export function isPermanentRefreshFailure(error, extraCodes: readonly string[] = []) {
-  if (error?.status === 401) return true
-  const code = error?.oauthCode
+export function isPermanentRefreshFailure(error: unknown, extraCodes: readonly string[] = []): boolean {
+  const record = error as { status?: unknown; oauthCode?: unknown } | null | undefined
+  if (record?.status === 401) return true
+  const code = record?.oauthCode
   return typeof code === 'string' && (PERMANENT_REFRESH_CODES.includes(code) || extraCodes.includes(code))
 }

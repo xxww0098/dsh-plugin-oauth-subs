@@ -17,7 +17,7 @@ export declare const WIRE_FIXED32 = 5;
  * undefined as decode failure, unlike the always-resolving cursor/devin
  * readers).
  */
-export declare function readVarint(bytes: any, offset: any): {
+export declare function readVarint(bytes: Uint8Array, offset: number): {
     value: number;
-    next: any;
+    next: number;
 } | undefined;
