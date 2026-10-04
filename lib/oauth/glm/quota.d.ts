@@ -9,7 +9,7 @@ export declare function parseGlmQuota(payload: any): {
     rows: never[];
     planType?: undefined;
 } | {
-    planType: any;
+    planType: string | undefined;
     rows: any[];
 };
 /**
