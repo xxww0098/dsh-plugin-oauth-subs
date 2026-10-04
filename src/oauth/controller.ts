@@ -36,7 +36,6 @@ import { cursorCatalogModels, refreshCursorCatalog } from './cursor/catalog.js'
 import { refreshOllama } from '../apikey/ollama/index.js'
 import { ollamaCatalogModels, refreshOllamaCatalog } from '../apikey/ollama/catalog.js'
 import { refreshCommandCode } from '../apikey/command-code/index.js'
-import { commandCodeCatalogModels } from '../apikey/command-code/catalog.js'
 import { catalogPricing, catalogRateTimeOfDay } from '../catalog/index.js'
 import { kiroCatalogModels, refreshKiroCatalog } from './kiro/catalog.js'
 import { configureKimiIdentity, refreshKimi } from './kimi/index.js'
@@ -60,6 +59,7 @@ import {
   MODEL_FAMILY_IDS,
 } from './models.js'
 import { ensureOpencodeGoRoute, filterProviders, syncHarnessModels } from './harness-sync.js'
+import { familyCatalogInputs } from './families.js'
 import { ModelSwitch } from './model-switch.js'
 import { TokenManager } from './tokens.js'
 import { QuotaStore } from './quota.js'
@@ -448,6 +448,17 @@ export class AuthController {
     return GLM_MODELS
   }
 
+  /**
+   * The one model-list bag every llm-pi-ai projection consumes — catalog(),
+   * #buildSnapshot's catalogProviders and buildProviders — straight off the
+   * family registry (familyCatalogInputs), so no family can be missed at one
+   * site. GLM's rows stay the explicit async seat: resolved behind the glm
+   * session read above, never read synchronously from the registry.
+   */
+  async #catalogInputs() {
+    return familyCatalogInputs({ glmModels: await this.#glmModels() })
+  }
+
   async catalog() {
     // Un-overridden build: describeCatalog applies `contexts` itself so rows
     // keep their catalog default and ceiling next to the effective window,
@@ -455,16 +466,7 @@ export class AuthController {
     return catalogProviders({
       prefix: this.prefix,
       origin: this.origin(),
-      cursorModels: cursorCatalogModels(),
-      ollamaModels: ollamaCatalogModels(),
-      kiroModels: kiroCatalogModels(),
-      kimiModels: kimiCatalogModels(),
-      copilotModels: copilotCatalogModels(),
-      devinModels: devinCatalogModels(),
-      clineModels: clineCatalogModels(),
-      chatgptModels: chatgptCatalogModels(),
-      commandCodeModels: commandCodeCatalogModels(),
-      glmModels: await this.#glmModels(),
+      ...await this.#catalogInputs(),
     })
   }
 
@@ -544,19 +546,11 @@ export class AuthController {
     const loggedIn = await this.loggedIn()
     const origin = this.origin()
     const opencodeGoApiKeySet = await hasOpencodeGoKey(this)
-    const glmModels = await this.#glmModels()
+    const catalogInputs = await this.#catalogInputs()
     const catalog = catalogProviders({
       prefix: this.prefix,
       origin,
-      cursorModels: cursorCatalogModels(),
-      ollamaModels: ollamaCatalogModels(),
-      kiroModels: kiroCatalogModels(),
-      kimiModels: kimiCatalogModels(),
-      copilotModels: copilotCatalogModels(),
-      devinModels: devinCatalogModels(),
-      clineModels: clineCatalogModels(),
-      chatgptModels: chatgptCatalogModels(),
-      glmModels,
+      ...catalogInputs,
     })
     const selected = this.models.selectedForSync(catalog)
     const providers = filterProviders(buildProviders({
@@ -564,16 +558,7 @@ export class AuthController {
       origin,
       loggedIn,
       contexts: this.models.contexts,
-      cursorModels: cursorCatalogModels(),
-      ollamaModels: ollamaCatalogModels(),
-      kiroModels: kiroCatalogModels(),
-      kimiModels: kimiCatalogModels(),
-      copilotModels: copilotCatalogModels(),
-      devinModels: devinCatalogModels(),
-      clineModels: clineCatalogModels(),
-      chatgptModels: chatgptCatalogModels(),
-      commandCodeModels: commandCodeCatalogModels(),
-      glmModels,
+      ...catalogInputs,
     }), selected)
     // Every family at once: the cold read is the slowest upstream, not the sum.
     await Promise.all(PROVIDER_IDS.map((family) => (loggedIn[family] ? ensureAccountQuota(this, family, revalidateQuota) : this.quota.clear(family))))
@@ -918,18 +903,11 @@ export class AuthController {
       origin: this.origin(),
       loggedIn,
       selected: this.models.selectedForSync(catalog),
+      // Every other family's rows are read from the registry inside
+      // syncHarnessModels; glmModels is its one caller-resolved (async) seat.
+      glmModels: await this.#glmModels(),
       contexts: this.models.contexts,
       efforts: this.models.efforts,
-      cursorModels: cursorCatalogModels(),
-      ollamaModels: ollamaCatalogModels(),
-      kiroModels: kiroCatalogModels(),
-      kimiModels: kimiCatalogModels(),
-      copilotModels: copilotCatalogModels(),
-      devinModels: devinCatalogModels(),
-      clineModels: clineCatalogModels(),
-      chatgptModels: chatgptCatalogModels(),
-      commandCodeModels: commandCodeCatalogModels(),
-      glmModels: await this.#glmModels(),
       extraMutations: opencodeGoMutations,
     })
     return { ...synced, opencodeGoRoute: opencodeGoMutations.length ? { ...opencodeGoRoute, status: 'written' } : opencodeGoRoute }

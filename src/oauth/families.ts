@@ -3,8 +3,9 @@
  * per-family dispatchers look up instead of growing `family === '<id>'`
  * chains — today the inbound cache rewrite (proxy-body.ts), the quota
  * fetch (quota.ts QuotaStore), the account-quota hydration hooks
- * (account-quota.ts) and the passthrough Completions usage rewrite
- * (passthrough.ts).
+ * (account-quota.ts), the passthrough Completions usage rewrite
+ * (passthrough.ts), and the model-catalog bag every llm-pi-ai projection
+ * consumes (familyCatalogInputs below; models.ts / harness-sync.ts).
  *
  * Contract (docs/rules.md):
  * - A row holds ONLY references to functions defined in the family folder
@@ -71,6 +72,7 @@ import { fetchClineQuota } from './cline/quota.js'
 import { clineCatalogModels } from './cline/catalog.js'
 import { discoverCline, rememberClineIdentity } from './cline/accounts.js'
 import { applyCommandCodeCache } from '../apikey/command-code/cache.js'
+import { commandCodeCatalogModels } from '../apikey/command-code/catalog.js'
 import { fetchCommandCodeQuota } from '../apikey/command-code/quota.js'
 import { rememberCommandCodeIdentity } from '../apikey/command-code/accounts.js'
 import { applyFastMode } from '../utils/fast-mode.js'
@@ -138,6 +140,15 @@ export interface OAuthFamily {
   forward?: FamilyForwardHooks
   /** account-quota: per-account hydration / refresh side effects, when this family has them. */
   quota?: FamilyQuotaHooks
+  /**
+   * models.ts buildProviders/catalogProviders: this family's catalog rows,
+   * referencing its own catalog.ts export (never a copy). Families without a
+   * slot here project their static MODEL rows directly inside models.ts
+   * (codex, grok, antigravity). GLM deliberately has no sync accessor: its
+   * rows are read behind the glm session load (controller `#glmModels`) and
+   * ride into familyCatalogInputs pre-resolved.
+   */
+  catalogModels?: () => readonly { id: string }[]
 }
 
 const codexFamily: OAuthFamily = {
@@ -164,6 +175,7 @@ const chatgptFamily: OAuthFamily = {
   },
   // No quota endpoint: the plan is read off the session's own token claims.
   fetchQuota: (session) => chatgptQuota(session),
+  catalogModels: chatgptCatalogModels,
   quota: {
     discover: {
       models: chatgptCatalogModels,
@@ -216,6 +228,7 @@ const kiroFamily: OAuthFamily = {
     return { payload: next, cacheSessionId: kiroConversationId(next) }
   },
   fetchQuota: fetchKiroQuota,
+  catalogModels: kiroCatalogModels,
   quota: {
     afterEnsure: rememberKiroProfile,
     discover: {
@@ -252,6 +265,7 @@ const cursorFamily: OAuthFamily = {
     return { payload: next, cacheSessionId }
   },
   fetchQuota: fetchCursorQuota,
+  catalogModels: cursorCatalogModels,
   quota: {
     afterEnsure: rememberCursorPlan,
     remember: rememberCursorPlan,
@@ -269,6 +283,7 @@ const ollamaFamily: OAuthFamily = {
     return { payload: next, cacheSessionId }
   },
   fetchQuota: fetchOllamaQuota,
+  catalogModels: ollamaCatalogModels,
   quota: {
     afterEnsure: rememberOllamaIdentity,
     remember: rememberOllamaIdentity,
@@ -288,6 +303,7 @@ const kimiFamily: OAuthFamily = {
   },
   fetchQuota: fetchKimiQuota,
   forward: { completionsUsage: () => mapKimiUsage },
+  catalogModels: kimiCatalogModels,
   quota: {
     afterEnsure: rememberKimiIdentity,
     remember: rememberKimiIdentity,
@@ -313,6 +329,7 @@ const copilotFamily: OAuthFamily = {
   },
   fetchQuota: fetchCopilotQuota,
   forward: { completionsUsage: () => mapCopilotUsage },
+  catalogModels: copilotCatalogModels,
   quota: {
     // No afterEnsure hook: identity write-back rides the manual refresh only.
     remember: rememberCopilotIdentity,
@@ -333,6 +350,7 @@ const devinFamily: OAuthFamily = {
     return { payload: next, cacheSessionId }
   },
   fetchQuota: fetchDevinQuota,
+  catalogModels: devinCatalogModels,
   quota: {
     afterEnsure: rememberDevinIdentity,
     remember: rememberDevinIdentity,
@@ -364,6 +382,7 @@ const clineFamily: OAuthFamily = {
     // passthrough would hand DSH an envelope with no `choices`.
     unwrapCompletionsBody: unwrapClineEnvelope,
   },
+  catalogModels: clineCatalogModels,
   quota: {
     afterEnsure: rememberClineIdentity,
     remember: rememberClineIdentity,
@@ -385,6 +404,7 @@ const commandCodeFamily: OAuthFamily = {
     return { payload: next, cacheSessionId: threadId, threadId }
   },
   fetchQuota: fetchCommandCodeQuota,
+  catalogModels: commandCodeCatalogModels,
   quota: {
     afterEnsure: rememberCommandCodeIdentity,
     // whoami rides the quota chain and promotes the opaque vault id.
@@ -407,4 +427,33 @@ export const OAUTH_FAMILIES: ReadonlyMap<string, OAuthFamily> = new Map(
 /** Registry lookup; `undefined` means the id is not a known family. */
 export function oauthFamily(id: string): OAuthFamily | undefined {
   return OAUTH_FAMILIES.get(id)
+}
+
+/** The buildProviders/catalogProviders slot name of one family id (`command-code` → `commandCodeModels`). */
+function catalogInputKey(id: string) {
+  return `${id.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase())}Models`
+}
+
+/**
+ * The model-list bag src/oauth/models.ts projects: one `<family>Models` slot
+ * per registry row that has a catalog accessor, keyed by buildProviders' /
+ * catalogProviders' own parameter names. Every consumer spreads this same
+ * bag (controller `#catalogInputs`, harness-sync's syncHarnessModels), so a
+ * family row added to the registry can no longer be missed at one call site
+ * — the review P1-2/P2-6 漏传 class, where one site omitted commandCodeModels
+ * and only the static-catalog fallback inside models.ts hid it.
+ *
+ * GLM is the one async seat: the controller resolves its rows behind the glm
+ * session load (`#glmModels`) and passes them in pre-resolved; they are never
+ * read synchronously here. Left out, models.ts falls back to its static
+ * GLM_MODELS — the behavior every syncHarnessModels caller without a session
+ * (tests) already had.
+ */
+export function familyCatalogInputs({ glmModels }: { glmModels?: readonly any[] } = {}) {
+  const inputs: Record<string, readonly any[]> = {}
+  for (const family of OAUTH_FAMILIES.values()) {
+    if (family.catalogModels === undefined) continue
+    inputs[catalogInputKey(family.id)] = family.catalogModels()
+  }
+  return { ...inputs, ...(glmModels === undefined ? {} : { glmModels }) }
 }
