@@ -5,6 +5,7 @@
  * posted to /oauth/cli/init is `zai` or `bigmodel`.
  */
 import { outboundFetch } from '../../utils/outbound.js';
+import { createFlowAttempts } from '../flow.js';
 /**
  * Upstream OAuth incidents the client cannot fix. `3004 invalid_flow` is the
  * server killing the flow while exchanging the browser code — reported for
@@ -15,19 +16,12 @@ import { outboundFetch } from '../../utils/outbound.js';
  */
 export declare function glmLoginFailureMessage(error: any): string;
 export declare class GlmCliFlowManager {
-    attempts: Map<string, any>;
-    starting: Set<string>;
+    attempts: ReturnType<typeof createFlowAttempts>;
     constructor();
     isBusy(provider: any): boolean;
     pending(provider: any): any;
     start(provider: any, { region, fetchFn }?: {
         region?: string | undefined;
         fetchFn?: typeof outboundFetch | undefined;
-    }): Promise<{
-        authorizeUrl: any;
-        flowId: any;
-        mode: string;
-        waitToken: () => Promise<unknown>;
-        cancel: () => void;
-    }>;
+    }): Promise<any>;
 }
