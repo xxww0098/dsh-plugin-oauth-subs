@@ -198,6 +198,7 @@ export function localUpdateInfo(platform = process.platform, opts: any = {}) {
     devVersion,
     linked,
     linkedPath,
+    restartKind: isElectronManagedProfile(opts.profile) ? 'app' : 'host',
     disk: disk || undefined,
     resolved: resolved || undefined,
     runningPath,

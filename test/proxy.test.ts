@@ -70,8 +70,8 @@ test('proxy requires the local bearer and forwards Codex Responses', async () =>
     assert.equal(seen[0].headers.authorization, 'Bearer codex-tok')
     assert.equal(seen[0].headers['chatgpt-account-id'], 'acct')
     assert.equal(seen[0].headers.originator, 'codex_cli_rs')
-    assert.equal(seen[0].headers['user-agent'], 'codex_cli_rs/0.159.2')
-    assert.equal(seen[0].headers['openai-version'], '0.159.2')
+    assert.equal(seen[0].headers['user-agent'], 'codex_cli_rs/0.160.0')
+    assert.equal(seen[0].headers['openai-version'], '0.160.0')
     assert.equal(seen[0].headers['session-id'], 'session-cache-1')
     assert.equal(seen[0].headers['thread-id'], 'session-cache-1')
     assert.equal(seen[0].headers['x-client-request-id'], 'session-cache-1')
@@ -1065,6 +1065,31 @@ test('the head waits through a real preamble and goes out once output arrives', 
       assert.equal(text, preamble + sse(DELTA, DONE), `${family}: the preamble is sent exactly once, in order`)
     })
   }
+})
+
+test('a codex.rate_limits frame reaches onQuotaLearned and still streams verbatim', async () => {
+  // Live shape per the codex CLI's RateLimitSnapshot (codex/quota.ts).
+  const RATE_LIMITS = `event: codex.rate_limits\ndata: ${JSON.stringify({
+    type: 'codex.rate_limits',
+    plan_type: 'pro',
+    rate_limits: {
+      allowed: true,
+      limit_reached: false,
+      primary: { used_percent: 3, window_minutes: 300, reset_after_seconds: 100 },
+      secondary: { used_percent: 11, window_minutes: 10_080, reset_after_seconds: 500_000 },
+    },
+  })}\n\n`
+  const body = RATE_LIMITS + sse(DELTA, DONE)
+  const learned: any[] = []
+  const fetchFn = async () => streamingUpstream([body])
+  await withProxy(fetchFn, async (port) => {
+    const response = await post(port)
+    assert.equal(response.status, 200)
+    assert.equal(await response.text(), body, 'the frame is the client\'s bytes too — capture is read-only')
+  }, { onQuotaLearned: (family: string, data: any) => learned.push([family, data]) })
+  assert.equal(learned.length, 1)
+  assert.equal(learned[0][0], 'codex')
+  assert.equal(learned[0][1].rate_limits.primary.used_percent, 3)
 })
 
 test('past 2 MiB with no output the gate commits rather than kill the response', async () => {

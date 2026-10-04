@@ -129,8 +129,10 @@ export function scanSessionText(text: string, fallbackId: string) {
 
 /**
  * Every session under `root` touched since `since` → merged hourly rows at or
- * after `since`. The same session may exist as v3 and v4 copies; only the
- * highest version counts. Returns the refreshed cache alongside.
+ * after `since`, plus the same window as one aggregate per session (the 用量
+ * tab's 按会话 list; `lastAt` is the file's mtime — when the session last
+ * wrote). The same session may exist as v3 and v4 copies; only the highest
+ * version counts. Returns the refreshed cache alongside.
  */
 export function scanUsage(root: string, since: number, cache: Record<string, FileEntry> = {}, statFile = statSize) {
   const files: Record<string, FileEntry> = {}
@@ -153,8 +155,13 @@ export function scanUsage(root: string, since: number, cache: Record<string, Fil
     if ((best.get(entry.id)?.version ?? -1) < entry.version) best.set(entry.id, entry)
   }
   const sinceHour = Math.floor(since / HOUR_MS)
-  const rows = [...best.values()].flatMap((entry) => entry.rows.filter((row) => row[0] >= sinceHour))
-  return { rows, files }
+  const inWindow = (row: UsageRow) => row[0] >= sinceHour
+  const rows = [...best.values()].flatMap((entry) => entry.rows.filter(inWindow))
+  const sessions = [...best.values()]
+    .map((entry) => ({ id: entry.id, lastAt: entry.mtimeMs, rows: entry.rows.filter(inWindow) }))
+    .filter((session) => session.rows.length > 0)
+    .sort((a, b) => b.lastAt - a.lastAt)
+  return { rows, sessions, files }
 }
 
 function statSize(path: string) {
@@ -173,22 +180,24 @@ async function runWorker({ root, since, cachePath }) {
     const saved = JSON.parse((await readPrivateText(cachePath, 'oauth-subs usage cache')) ?? '{}')
     if (saved?.v === CACHE_VERSION && saved.files && typeof saved.files === 'object') cache = saved.files
   } catch { /* corrupt cache: rescan */ }
-  const { rows, files } = scanUsage(root, since, cache)
+  const { rows, sessions, files } = scanUsage(root, since, cache)
   const changed = Object.keys(files).length !== Object.keys(cache).length
     || Object.entries(files).some(([path, entry]) => cache[path] !== entry)
   if (changed) await writePrivateText(cachePath, JSON.stringify({ v: CACHE_VERSION, files })).catch(() => {})
-  return rows
+  return { rows, sessions }
 }
 
-let inflight: Promise<UsageRow[]> | undefined
+type UsageSession = { id: string, lastAt: number, rows: UsageRow[] }
+
+let inflight: Promise<{ rows: UsageRow[], sessions: UsageSession[] }> | undefined
 
 /**
- * Hourly usage rows since `days` ago, scanned off-thread. Concurrent callers
- * share one scan. ponytail: a worker per request (~30 ms start); keep one
- * alive only if the tab ever polls.
+ * Hourly usage rows and per-session aggregates since `days` ago, scanned
+ * off-thread. Concurrent callers share one scan. ponytail: a worker per
+ * request (~30 ms start); keep one alive only if the tab ever polls.
  */
 export function readUsage({ root, cachePath, days = 30, now = Date.now() }: { root: string, cachePath: string, days?: number, now?: number }) {
-  inflight ??= new Promise<UsageRow[]>((resolve, reject) => {
+  inflight ??= new Promise<{ rows: UsageRow[], sessions: UsageSession[] }>((resolve, reject) => {
     const worker = new Worker(new URL(import.meta.url), {
       workerData: { kind: 'osubs-usage', root, cachePath, since: now - days * 24 * HOUR_MS },
     })
@@ -200,5 +209,8 @@ export function readUsage({ root, cachePath, days = 30, now = Date.now() }: { ro
 }
 
 if (!isMainThread && workerData?.kind === 'osubs-usage') {
-  runWorker(workerData).then((rows) => parentPort?.postMessage(rows), (error) => { throw error })
+  runWorker(workerData).then(
+    (result) => parentPort?.postMessage(result),
+    (error) => { throw error },
+  )
 }

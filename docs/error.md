@@ -2,6 +2,72 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。每条只写 **现象** / **根因** / **修复** 三行，各 1–2 句；只留 grep 代码得不到的症状、根因与落点，不写过程与清单。
 
+## 2026-10-04：Kiro 静态目录补上 claude-sonnet-5.5，chat 列表仍不放行
+
+**现象**：治理列表（`KIRO_CONSOLE`）有 `claude-sonnet-5.5`，本机 chat 列表（`origin=AI_EDITOR`）没有。
+**根因**：治理列表不是权限列表。登录后的选择器只采用 chat 列表，缺行的 id 对话会 400 `INVALID_MODEL_ID`。
+**修复**：静态 fallback 按治理列表的 `tokenLimits` 收了这一行，`skip` 已删。登录选择器不补这一行，等 chat 列表出现它再出现。
+
+## 2026-10-04：Antigravity 注册表换上 Claude 5.5，Cloud Code 仍只服务 4.6
+
+**现象**：CLIProxyAPI 的 antigravity 注册表用 `claude-opus-5-5-high` / `claude-sonnet-5-5-high` 换掉了 `claude-opus-4-6-thinking` / `claude-sonnet-4-6`，但本机 `fetchAvailableModels`（33 个 id）仍只回 4.6、没有 5.5。同日其余家族相对 2026-10-03 没有新的可收行。
+**根因**：目录源的公开注册表超前于订阅后端。注册表列出不等于 Cloud Code 在服务，注册表缺行也不等于已下架。
+**修复**：两行按注册表收进目录。4.6 仍留着，因为活列表还在服务。额度分组仍是冻结的 SkillStar 表，不改。
+
+## 2026-10-03：Devin swe-2-max 首 token 卡在 270s 预算上，一步静默被掐成两次 504
+
+**现象**：`oauth-devin` / `swe-2` / `max`，上下文约 11.5 万且当轮没有缓存读时，同一步连续两次 `504 devin upstream: no output within 270s (1 attempts)`，每次刚好 270.0s；第三次 268s 才吐出第一个块（178 个输出 token，`inputTokens` 115371、无 `cacheRead`）。这一步界面空白约 13 分钟。前一步仍是缓存命中、十几秒返回。
+**根因**：共用输出前预算 270s 放在宿主 300s 流空闲看门狗前面。看门狗只在解析出非空 text / reasoning / tool 块时重置，usage 帧和空字节都不算数。`swe-2-max` 冷前缀的首 token 就落在这条线上，计时器把还活着的 `GetChatMessage` 整秒掐断；预算用尽后内部重试排不进去（还要再留 120s 首字节），宿主只能整段重开。
+**修复**：Devin 的输出前预算和空闲改为 290s（`DEVIN_STREAM_BUDGET_MS`），仍早于宿主看门狗。首字节 120s 不变。超过看门狗的静默仍然救不了——不向宿主交出可见内容块，就无法把 300s 往后拨。
+
+## 2026-10-03：目录刷新日——codex 跟版 0.160.0、kiro 治理列表超前 chat 列表、OpenCode Go 六行回潮、command-code 价目表换单表
+
+**现象**：`npm run models` 干跑：codex 0.160.0 活目录 8 行无新行；kiro 治理列表（`origin=KIRO_CONSOLE`）多 `claude-sonnet-5.5`，且 `deepseek-3.2` / `minimax-m2.1` / `qwen3-coder-next` 的输入收成 text；OpenCode Go 带 key 列表把 2026-09-30 轮下的 6 行又列出来；command-code 1.74.1 的价目表从 kD/lD/… 多表换成一张按 billing id 的单表（`promptCost`/`completionCost`/`cacheWrite5mCost`/`cacheHitCost` 在 bundle 里已不存在），且不再带 `contextTiers` / `timeOfDay`。
+**根因**：① Kiro 的治理列表本来就超前于 chat 列表（真正的 picker）——`claude-sonnet-5.5` 只在治理列表，2026-10-03 实测 chat 列表 8 行没有它；② OpenCode Go 上游列表当天可变，「09-30 轮下」不是永久下架；③ command-code 1.74.x 重构显示费率表，峰谷价 / 超阈档在新表里没有对应物。
+**修复**：codex 钉 0.160.0（纯跟版）；kiro 加 `skip` 规则拒收 `claude-sonnet-5.5`、三行 `input` 随 chat 列表收成 text；OpenCode Go 重收 `kimi-k2.6` / `qwen3.6-plus` / `qwen3.7-max`（后两行活测带 `reasoning_content` → DeepSeek 方言 compat，`kimi-k2.6` 无 → plain），`glm-5.1` / `omen-alpha` / `minimax-m2.5` 因 models.dev 无元数据仍不收；command-code 基础价与新增 `cacheWrite` 按 1.74.1 单表更新，`tod.*` / tier 字段按合并规则保留（源不再声明，维护者确认取消后再删）。用户可见：Command Code 5 行 deepseek 可关思考、`space-bunny-alpha` 多 `max` 档、GLM-5 涨到 $1/$3.2、15 行多缓存写价；OpenCode Go 3 行回归、cline `kimi-k3` 与 copilot `claude-opus-4.8-fast` 价目更新。
+
+## 2026-10-02：WorkBuddy / WorkBuddy AI 两家族整体移除（落地当日撤，非故障）
+
+**现象**：无用户可见故障——活测收口同日，维护者裁定两家（腾讯 CodeBuddy 国内版 + 国际版）不再随插件分发，家族整体下架。
+**根因**：产品取舍，与 wire 无关；下方 2026-10-02 活测条目的结论（非流式 400(11101)、refresh token 一次性、CLI UA 门控）仍为事实，magpie `3515d99` 归因随家族一并留档。
+**修复**：`src/oauth/workbuddy{,-ai}` 与目录 15+16 行、`catalog-rates.test.ts` 的 credits 费率豁免、`docs/oauth.md` 总表两行一并删除；老用户残留的 `workbuddy[-ai]` session 文件由 `RETIRED_PROVIDER_IDS` 机制在同路径外自然废弃，不做迁移。
+
+## 2026-10-02：WorkBuddy / WorkBuddy AI 活测收口——非流式 400(11101)、refresh token 一次性、`workbuddy.cn` 域
+
+**现象**：链接登录（微信快捷 / Google broker）、额度（Free 1200 / 100 credits，字符串容量解析）、活目录（CLI UA，15 / 16 行与静态表**逐 id 一致**）、流式对话（SSE `: heartbeat` 注释行开头、`data: [DONE]` 收尾、usage 带 `prompt_cache_hit_tokens`/`prompt_cache_miss_tokens`/`credit`）两家全通。非流式一律 `400 {code:11101, "Non-stream chat request is currently not supported"}`（magpie #124 原文），代理按转发契约原样透出不重试。`X-Refresh-Token` 刷新成功且 **refresh token 轮换（一次性）**——`workbuddyImported` 只重读桌面文件、绝不兑换 refresh token 的设计由此坐实。
+**根因**：三个 wire 事实与假设有出入——① 登录页 authUrl host 是 `www.workbuddy.cn` / `www.workbuddy.ai`（state 接口返回，未硬编码）；国内版账号 `domain` 字段实际值 `www.workbuddy.cn`（非站点回退值 `copilot.tencent.com`；X-Domain 用账号自身 domain，符合 wbDomain 语义）；② 上游 usage 自带 prompt-cache 命中/未命中统计，但 wire 仍无缓存亲和字段，维持「剥 DSH 缓存字段 + `dsh-workbuddy[-ai]` 分析器常量」策略（冷启动 `prompt_cache_hit_tokens: 0` 一致）；③ magpie 的「unapproved channel」拒答在 2026-10-02 用短 Codex 式系统提示**未复现**（两家 200）——拒答应针对完整官方系统提示或旧网关行为；中性补齐与普通 agent 提示均畅通，DSH 会话不受影响。
+**修复**：无需改码（均为确认性观察）；两个 README 补「活测」小节。残余：桌面端导入（`workbuddy-desktop[-ai].info`）本机无桌面端未活测，靠单元测试与 magpie 对照；真实 DSH 长会话缓存命中率待 `npm run analyze` 后续观察。
+
+## 2026-10-01：目录刷新日——Pixel Canary 退役（command-code + cline）、Devin 撤 Claude Sonnet 4.5 两行
+
+**现象**：command-code 1.73.1 给 `stealth/pixel-canary` 行加 `get hidden(){isPixelCanaryEnded()}`（门 `2026-10-01T06:00:00Z`，npm CHANGELOG：stealth 预览 9/30 23:00 PT 结束）；cline feed 同日撤下同名行。Devin `GetCliModelConfigs`（737 个原始 config）里 `claude-sonnet-4.5` / `-thinking` 整行消失（不是变无家族；同代 `claude-opus-4.5` 仍在，排除账号/出口过滤）。
+**根因**：上游按日程退役/清理旧模型；`npm run models` 对静态家族分别报 `? stealth/pixel-canary`（cline）与 manual 家族不探（command-code）。
+**修复**：两家族的 pixel-canary 目录行 + 价目行删（command-code 86→85、cline 11→10）；devin 两行随源删（80→78）。codex 0.159.3、command-code 1.73.1 均无新模型；cline `mimo-v2.6-flash` 窗口随 models.dev 桶 1048576→1050000。
+
+## 2026-09-30：Copilot 活目录解析出 0 行——上游把 `model_picker_enabled` 整体翻成 false
+
+**现象**：登录态 `GET {endpoints.api}/models` 正常回 60 行，但每行 `model_picker_enabled: false`（`gh` 的 `gho_`、Copilot CLI 的 `gho_`、设备码 `tid=` 三种凭据视角一致）；`toCopilotPickerModels` 过滤后剩 0 行，活目录静默回落静态楼，`npm run models -- copilot` 报全部行 `?`（0 from source），无任何报错。
+**根因**：2026-09-29 该字段还在真实反映 picker（「只在 `/responses` 上服务」先例靠它列出）；上游随后把标志整体置 false，可用的收录信号只剩 `policy` + `supported_endpoints` + `capabilities.supports`。
+**修复**：收录标准改为能力视图（维护者 2026-09-30 裁定「最稳定」方案）：带 `policy` 对象（值不读，账号开关不抖动）+ 端点规则 + `tool_calls` + 别名/快照 `LIVE_SKIP_IDS`；自管行（search/exec 代理、embeddings、gpt-4o 时代、free-auto、带日期快照）恰好全不带 `policy`，一个门全杀。本次目录变更按解析器口径人工对活载荷 diff 落盘（copilot/README.md 模型 2026-09-30）。
+
+## 2026-09-30：Copilot premium 额度耗尽时，非基础模型一律 `400 model_not_supported`（不是 429）
+
+**现象**：premium 剩 0% 的账号（individual，10-01 重置）对 `kimi-k3`、`gpt-5-mini`、`claude-haiku-4.5` 等——包括 `restricted_to` 明确含 `free`/`pro` 的行——`/chat/completions` 全回 `400 {"code":"model_not_supported"}`，只有 `gpt-4o-mini` 这类基础行 200；错误码长得像模型不存在，不是配额错。
+**根因**：premium 请求池耗尽的拒绝落在这个 code 上（对 Copilot CLI 的 `gho_` 视图也成立：它只能看到 8 个基础行）；`billing.restricted_to` 说的是套餐可用性，不管当期余额。
+**修复**：诊断口径——活测 Copilot 端点/模型前先看 `copilot_internal/user` 的 `percent_remaining`；0% 时只能测基础行，等重置后再验。9 个活端点标注 responses-only 的目录行（gpt-5.4-mini/5.5/5.6 全家/6 系/mai-code-1.1-flash）真伪挂起在此（copilot/README.md 模型）。
+
+## 2026-09-30：家族登录后不再默认开启这一家所有模型（登录默认）
+
+**现象**：新登录一个家族，它整份目录立刻进 `settings.yaml` 与 DSH 选择器（Devin 80 行、Command Code 86 行），用户得一个个关；只登录不勾选还会被当成「登录后全关、yaml 缺路由」的坏状态。
+**根因**：勾选默认全开（`ModelSwitch.isEnabled`），同步又不看家族是什么时候登录的；全关恢复只看「已登录 + 全关」，分不出用户的选择和登录默认。
+**修复**：登录默认——插件实例启动时已在册的家族记进 `seenLogins`（升级不动老安装），之后登录的家族进 `awaitingPick`：当前与随后发现的行全部关着，直到用户在模型页勾一行（全选 / 全关 / 显式 `selected` 也算）才结算；`recoverEmptyLoggedInFamilies` 跳过 `awaitingPick`，不再把故意全关当坏状态修掉。回归 `test/login-defaults.test.ts`，模型页给这家显示「登录后默认不勾选」。
+
+## 2026-09-30：Ollama Cloud 三协议活测——都接单，但选 Responses 会静默丢上下文
+
+**现象**：无 key 探活 `/v1/responses` 与 `/v1/messages` 都回 401 而非 404（README 旧文只确认过 chat/completions）；带 Pro key 活测三协议的非流式 / 流式 / 工具调用 / 图像输入 / prefix 缓存读数全部成立。
+**根因**：Cloud 后端现在三种闭集协议全上了，但 `/v1/responses` 的状态语义是假的——`previous_response_id` 接受后忽略（code-word 第二轮无记忆、回显 null），`store:true` 回落 false；唯一收益只剩无状态 input 链，与 Completions 等价。
+**修复**：协议仍为 `openai-completions` 薄透传（`reasoning_effort` 原生值直发，选 Anthropic 要加翻译层、选 Responses 拿到一个会静默丢上下文的假状态）；`/ollama/v1/responses` 的 501 文案改为「本 hop 只用 Completions」，不再说 Cloud 没有 Responses；结论写进 `src/apikey/ollama/README.md` 协议节。
+
 
 ## 2026-09-30：目录刷新日——各源同日增删（Devin 撤 6.1-sol off 档/thinking-fast、Go 套餐轮下 6 行、窗口口径补齐）
 

@@ -42,7 +42,7 @@ function retryAfterOf(upstreamHeaders) {
 /** Gateway answers that mean "not this hop", not "bad request body". */
 const GATEWAY_FALLBACK_STATUSES = new Set([401, 403, 404])
 
-export async function forward(request, response, { url, fallbackUrl = undefined, session, tokens, headersOf, fetchFn, family, wire = undefined, maxRequestBodyBytes, upstreamTimeouts, startedAt, signal, classifyFailure = undefined, encodeBody = undefined }: any) {
+export async function forward(request, response, { url, fallbackUrl = undefined, session, tokens, headersOf, fetchFn, family, wire = undefined, maxRequestBodyBytes, upstreamTimeouts, startedAt, signal, classifyFailure = undefined, encodeBody = undefined, captureSse = undefined }: any) {
   const raw = await readBody(request, maxRequestBodyBytes)
   const { payload, cacheSessionId, stream, routingHint, grokModel, copilotVision, copilotInitiator } = rewriteUpstreamBody(raw, family, wire)
   // A route's `encodeBody` (Codex zstd) runs once; retries resend the same bytes.
@@ -82,7 +82,7 @@ export async function forward(request, response, { url, fallbackUrl = undefined,
         ...(family === 'codex' && turn.state ? { 'x-codex-turn-state': turn.state } : {}),
       }
       try {
-        return await attemptUpstream(response, { url, headers, body, stream, fetchFn, family, wire, attempt, turn, classifyFailure })
+        return await attemptUpstream(response, { url, headers, body, stream, fetchFn, family, wire, attempt, turn, classifyFailure, captureSse })
       } catch (error) {
         // The Coding Plan gateway (zcode.z.ai) can refuse a bearer the model
         // endpoint still accepts: reroute once, within this attempt.
@@ -127,7 +127,7 @@ function completionsUsageMapper(family, wire) {
  * `response.created` and nothing else — can be retried without the client ever
  * seeing a truncated stream. Timing and retries belong to `upstreamRequest`.
  */
-async function attemptUpstream(response, { url, headers, body, stream, fetchFn, family, wire, attempt, turn, classifyFailure }: any) {
+async function attemptUpstream(response, { url, headers, body, stream, fetchFn, family, wire, attempt, turn, classifyFailure, captureSse }: any) {
   const { signal } = attempt
   const upstream = await fetchFn(url, { method: 'POST', headers, body, signal })
   const transport = (message) => {
@@ -173,7 +173,9 @@ async function attemptUpstream(response, { url, headers, body, stream, fetchFn, 
   }
   // Codex/Grok Responses can open with handshake-only frames. Completions
   // SSE has no `response.created` preamble — gating it would wait for 64KiB.
-  const gate = new CommitGate(response, upstream, stream === true && (family === 'codex' || family === 'chatgpt' || family === 'grok'), emit, family)
+  // `captureSse` (the Codex rate-limit frame) is read by the same scanner, so
+  // it only sees pre-commit frames — the frame leads the stream in practice.
+  const gate = new CommitGate(response, upstream, stream === true && (family === 'codex' || family === 'chatgpt' || family === 'grok'), emit, family, captureSse)
   let lastByteAt = Date.now()
   try {
     await pumpBody(upstream.body, attempt, async (value) => {
@@ -222,7 +224,7 @@ class CommitGate {
   declare gated: boolean
   declare scanner: SseFrameScanner | null
 
-  constructor(response, upstream, stream, emit, family) {
+  constructor(response, upstream, stream, emit, family, captureSse = undefined) {
     this.response = response
     this.upstream = upstream
     this.emit = emit
@@ -233,7 +235,7 @@ class CommitGate {
     this.committed = false
     this.sawPreamble = false
     this.gated = stream === true
-    this.scanner = new SseFrameScanner()
+    this.scanner = new SseFrameScanner(captureSse)
   }
 
   /** Returns true once the caller should write `chunk` through itself. */

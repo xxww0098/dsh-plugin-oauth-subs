@@ -186,19 +186,28 @@ const modelKey = (id) => String(id).toLowerCase().split('/').pop().replace(/[._]
  * Vercel's `<vendor>/<id>-fast` priority rows (never the base price).
  */
 function vendorIndex() {
+  // An all-zero vendor row is models.dev saying "no price" (e.g. nvidia's
+  // deepseek-ai rows), not a free model: it must not shadow the next source in
+  // the chain — 缺 ≠ 免费, and a $0 badge would be wrong (docs/models.md 费率表).
+  const priced = (name, id) => {
+    const rate = fromModelsDev(bucket(name)[id])
+    if (!rate) return undefined
+    const zero = rate.in === 0 && rate.out === 0 && rate.cacheRead === undefined && rate.cacheWrite === undefined
+    return zero ? undefined : rate
+  }
   const plain = new Map()
   for (const name of ['openai', 'anthropic', 'google', 'xai', 'deepseek', 'moonshotai', 'zai', 'minimax', 'xiaomi', 'alibaba', 'meta', 'nvidia', 'openrouter']) {
     for (const id of Object.keys(bucket(name))) {
       const key = modelKey(id)
-      if (!plain.has(key) && fromModelsDev(bucket(name)[id])) plain.set(key, [name, id])
+      if (!plain.has(key) && priced(name, id)) plain.set(key, [name, id])
     }
   }
   const fast = new Map()
-  for (const id of Object.keys(bucket('vercel'))) if (id.endsWith('-fast')) fast.set(modelKey(id), ['vercel', id])
+  for (const id of Object.keys(bucket('vercel'))) if (id.endsWith('-fast') && priced('vercel', id)) fast.set(modelKey(id), ['vercel', id])
   return (rowId) => {
     const key = modelKey(rowId).replace(/-thinking(?=-fast$|$)/, '')
     const hit = key.endsWith('-fast') ? fast.get(key) : plain.get(key)
-    return hit ? { rate: devRate(hit[0], hit[1]), from: `${hit[0]}:${hit[1]}` } : undefined
+    return hit ? { rate: priced(hit[0], hit[1]), from: `${hit[0]}:${hit[1]}` } : undefined
   }
 }
 

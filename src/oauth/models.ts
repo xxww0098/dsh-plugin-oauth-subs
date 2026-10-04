@@ -665,7 +665,7 @@ export function harnessModelAlias(provider, id) {
  * the effective window is computed here from `contexts` so the row's catalog
  * default and ceiling stay visible alongside the override.
  */
-export function describeCatalog(providers: Record<string, any>, { enabledKeys, loggedIn, rates, contexts, pricing, pricingTimeOfDay }: any = {}) {
+export function describeCatalog(providers: Record<string, any>, { enabledKeys, loggedIn, awaitingPick, rates, contexts, pricing, pricingTimeOfDay }: any = {}) {
   const enabled = enabledKeys === undefined ? null : new Set(enabledKeys)
   const overrides = contexts ?? {}
   return Object.entries(providers).map(([provider, value]) => {
@@ -675,6 +675,9 @@ export function describeCatalog(providers: Record<string, any>, { enabledKeys, l
       displayName: value.displayName,
       family,
       loggedIn: loggedIn ? Boolean(loggedIn[family]) : true,
+      // Signed in here and still all-off on purpose: the Models page explains
+      // why the family has no row on (登录默认) instead of looking broken.
+      ...(awaitingPick?.has(family) ? { awaitingPick: true } : {}),
       ...(pricingTimeOfDay ? { pricingTimeOfDay } : {}),
       models: value.models.map((model) => {
         const key = modelKey(provider, model.id)

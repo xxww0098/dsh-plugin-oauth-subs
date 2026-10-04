@@ -85,12 +85,6 @@
       return fill(units.suffix, bits.join(' '))
     }
 
-    function formatDay(stamp) {
-      const date = new Date(stamp)
-      if (!Number.isFinite(date.getTime())) return ''
-      return `${date.getMonth() + 1}/${date.getDate()}`
-    }
-
     function formatStamp(resetAt) {
       if (typeof resetAt !== 'number' || resetAt <= 0) return ''
       try {

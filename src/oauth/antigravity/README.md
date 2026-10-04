@@ -70,7 +70,9 @@ DSH chat/completions  →  POST daily-cloudcode-pa.googleapis.com/v1internal:gen
 
 行在 [`src/catalog/models.json`](../../catalog/models.json) 的 `"antigravity"` 键；行格式、来源与 `npm run models` 更新流程见 [`docs/models.md`](../../../docs/models.md)。本节只记本家的取舍与出处。
 
-最近核对：2026-09-23，[router-for-me/CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) `main` 的 `internal/registry/models/models.json`。
+最近核对：2026-10-04，[router-for-me/CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) `main` 的 `antigravity` 数组，并用本机 `fetchAvailableModels` 对过线 id。注册表新增 `claude-opus-5-5-high` / `claude-sonnet-5-5-high`（1M / 128K / text+image，无 `thinking.levels` → `low`/`high`），已收入目录。同一天活列表（33 个 id）仍只有 4.6、没有 5.5；4.6 继续留着，不因注册表缺行而删。价目是 models.dev `anthropic` 的 `claude-opus-5-5` / `claude-sonnet-5-5`（线 id 去掉 `-high`）。
+
+上次核对：2026-09-23，同一份注册表。
 
 - 来源：CLIProxyAPI registry 的 `antigravity` 数组。id 是 Cloud Code 线 id，不是 Gemini API 裸 id；线 id 就是 picker id。
 - 字段映射：`display_name` → `name`（去掉档位括号，例：`Gemini 3.1 Pro (High)` → Gemini 3.1 Pro）；`context_length` → `contextWindow`；`max_completion_tokens` → `maxTokens`；`supportedInputModalities` 只取 `text` / `image`。

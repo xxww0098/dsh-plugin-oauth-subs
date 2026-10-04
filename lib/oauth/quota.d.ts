@@ -91,6 +91,40 @@ export declare class QuotaStore {
      * shortens the cached entry's freshness window — no upstream call here.
      */
     touch(provider: any, session?: any): Promise<void>;
+    /**
+     * Passive quota learning: the response itself carried this account's quota
+     * (today only the Codex Responses stream's `codex.rate_limits` frame), so the
+     * rows are updated without a side-read. The endpoint read stays authoritative
+     * — a refresh that was in flight overwrites what this wrote, and `usedAt` is
+     * left alone (`touch` marks the spend the moment the response closes).
+     */
+    learn(provider: any, data: any, session?: any): Promise<{
+        status: string;
+        planType?: undefined;
+        planLabel?: undefined;
+        account?: undefined;
+        subscriptionStatus?: undefined;
+        hasGrokCodeAccess?: undefined;
+        updatedAt?: undefined;
+        error?: undefined;
+        rows?: undefined;
+        resetCredits?: undefined;
+    } | {
+        status: any;
+        planType: any;
+        planLabel: any;
+        account: any;
+        subscriptionStatus: any;
+        hasGrokCodeAccess: any;
+        updatedAt: any;
+        error: any;
+        rows: any;
+        resetCredits: {
+            nextExpiresAt?: any;
+            availableCount: any;
+            credits: any;
+        };
+    } | undefined>;
     refresh(provider: any, accountId?: any, session?: any): Promise<any>;
     consume(provider: any, accountId?: any, session?: any, creditId?: any): Promise<any>;
 }

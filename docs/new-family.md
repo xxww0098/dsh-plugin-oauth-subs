@@ -11,7 +11,7 @@
 4. **模型** — 分三段：
    - 目录：`src/catalog/models.json` 加 `<id>` 键，`scripts/models.ts` 的 `ADAPTERS` 接上该家目录源（没有端点就写 `manual`），`<id>/index.ts` 导出 `<ID>_MODELS = catalogRows('<id>')`。价格徽标：在 `scripts/rates.ts` 的 `resolvers` 接上该家价目源，`npm run rates -- --write` 写 `src/catalog/rates.json` 的 `<id>` 键（字段与源见 [`docs/models.md`](models.md) 末节）。每个参数的出处写进 README。规则见 [`docs/models.md`](models.md)。
    - 接线：`models.ts` 的 `FAMILY_IDS`、`buildProviders`、`catalogProviders`、`describeCatalog`、`familyOfProvider` 后缀、`HARNESS_MODEL_AGENT`；价格经 `catalogPricing()` 自动进 `describeCatalog`，不用单独接线。`displayName` 按 `Subs · <家族名> · <协议>`（协议段 = Chat / Responses / Anthropic，由 `api` 推导，见 [`docs/rules.md`](rules.md)）。有活目录的家族加 `<id>CatalogModels()`，并在 login / import / 额度刷新 / `warmCatalogs` 时重新 sync（Cursor / Devin 是先例）。`baseURL` 对齐该 SDK 真正 post 的路径。
-   - 渲染：未登录也在模型页列出（锁定，提示登录后同步）；`sync()` 只把已登录且已勾选的行写进 `settings.yaml`。`-fast` 孪生行只在该家有真 Fast 语义时加（Codex Priority / Cursor RequestedModel / Devin 后端变体）。
+   - 渲染：未登录也在模型页列出（锁定，提示登录后同步）；`sync()` 只把已登录且已勾选的行写进 `settings.yaml`，**新登录的家族默认一行都不勾选**（登录默认，见 [`models.md`](models.md)）。`-fast` 孪生行只在该家有真 Fast 语义时加（Codex Priority / Cursor RequestedModel / Devin 后端变体）。
 5. **UI** — `src/ui/parts/`：文案 `copy.ts`、家族表 `usage.ts`、图标 `quota.ts`、账号卡 `provider-card.ts`；`src/index.ts` re-export 公共件。图标规则见 [`design-system/pages/settings-workbench.md`](../design-system/pages/settings-workbench.md) Rail icons。
 6. **测试** — `test/<id>.test.ts`：登录解析、session 往返、目录、缓存隔离、代理路由、额度 snapshot。
 7. **活测 + 收口** — 真实账号跑一遍，`npm run analyze` 看缓存命中率，结论写进 [`docs/error.md`](error.md)。活测结论落进 error.md 才算完成。

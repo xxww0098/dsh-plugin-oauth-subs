@@ -62,7 +62,7 @@
 
 每个键的一线来源按可信度排：**厂商目录端点 > 钉住客户端自带的列表 > 公开注册表 / 文档**。厂商端点优先，因为它就是订阅后端实际服务的列表，文档会滞后，也常常只列部分模型。当前每个键接的是哪个源，以 `ADAPTERS` 的 `source` 为准；源分三类：
 
-- **登录态端点**：要一份已存账号。多数端点按账号、套餐或出口区域过滤（Kiro 与 Cursor 的列表随出口 IP 变化），所以脚本从某次拉取里看到「缺行」，不等于该模型已下架。
+- **登录态端点**：要一份已存账号。多数端点按账号、套餐或出口区域过滤（Kiro 与 Cursor 的列表随出口 IP 变化），所以脚本从某次拉取里看到「缺行」，不等于该模型已下架。Copilot 先例：grok 整族只按政策开关出现、premium 耗尽的账号所有非基础模型回 `400 model_not_supported`（[error](error.md) 2026-09-30）。
 - **公开端点 / 注册表**：不需要登录（Cline feed、Ollama `/api/tags` + `/api/show`、CLIProxyAPI registry、models.dev）。
 - **无端点**（`manual`）：Command Code 只有 CLI bundle 里的注册表，`ollamaRetired` 来自退役公告。这两个键手改，出处照旧记进 README。
 
@@ -100,6 +100,7 @@ npm run models -- --json           # 机器可读报告
 | `?` | 目录有、源里没有 | 先排除账号 / 出口过滤；确认下架才 `--prune` 或手删 |
 | `!` | 新 id，但源没给参数 | 找到有出处的参数后手加 |
 | `>` | 精选键，新 id 只报告不写入 | 按该家 README 的精选规则手动挑 |
+| `i` | models.dev 跨桶提示（只跟在 `!`/`>` 后，目录里还没有的 id）：窗口 / 输出 / effort 的多数值与同意桶数（平票取小窗 / 短档） | 只当找第二源的线索，出处仍以厂商页为准，不直接抄进目录 |
 | `·` | 被 `skip` 规则跳过 | 规则理由失效时删掉那条规则 |
 
 ## 合并规则
@@ -142,7 +143,7 @@ npm run models -- --json           # 机器可读报告
 - **键对齐目录**：`<家族>/<模型 id>`，id 必须命中 `models.json` 行，或是运行时长出的 `<id>-fast` 孪生（Codex `fastTier`、Cursor 活目录 Fast）；加载器按此校验，多一个就抛。
 - **接线**：`controller.ts` 把 `catalogPricing()`（全部家族）喂给 `describeCatalog` 的 `pricing`；共享 `timeOfDay` 由 `pricingTimeOfDay` 一次性带下去。
 - **行字段**：`in` / `out` 必填（主 upstream 的 USD/1M）；源标了缓存命中价才有 `cacheRead`（缺 ≠ 免费，tooltip 不显示该行）；上游对缓存写计费才有 `cacheWrite` / `cacheWrite1h`；峰谷价的行带 `tod.peak` / `tod.offPeak`（共享的时刻表在顶层 `timeOfDay`：生效日、UTC 峰时窗、峰时星期、指定整日按谷价的日期）；`tierThreshold` / `tiers` 描述上下文超阈后的加价档（只收单档）。
-- **出处即上游价目表**，不许发明数字：command-code 抄 CLI bundle 的显示费率表（kD 网关表 → lD 各 provider 表 → xD/CD/bD/ED/TD/MD 直连表，`getDisplayRates` 同序取主 upstream），升级钉住版本时要重新对表。其余家族由 `npm run rates`（`scripts/rates.ts`）从各家源写入，每家的源与 id 映射写在脚本的 `resolvers` 和家族 README「归因」：
+- **出处即上游价目表**，不许发明数字：command-code 抄 CLI bundle 的显示费率表（1.74.1 起是一张按 billing id 的单表，`getDisplayRates` 直接查；`tod.*` 与 `tierThreshold`/`tiers` 是 1.73.1 多表时代的字段，1.74.1 的源不再声明、按「源没有的字段保留目录值」留着，维护者确认取消后再删），升级钉住版本时要重新对表。其余家族由 `npm run rates`（`scripts/rates.ts`）从各家源写入，每家的源与 id 映射写在脚本的 `resolvers` 和家族 README「归因」：
 
 | 家族 | 价目源 |
 |---|---|
@@ -155,6 +156,7 @@ npm run models -- --json           # 机器可读报告
 
   本家源没价的行回落同一模型的厂商标价（`vendorIndex`，Kimi 除外：它的 id 是套餐别名），干跑报告用 `~` 列出来逐条核对；`-fast` 只匹配 `-fast` 标价，不借基础价。订阅家族的标价是厂商按量价，不是订阅扣费（Kiro 另有 `×N` 积分倍率）。
 - **Kiro 的 `rate` 倍率是另一回事**：那是订阅积分倍率（`rateMultiplier`），不是 USD 价目，仍走目录行旁的 `×N` 徽标，不写进本表。
+- **用量页的「估算成本」也读这张表**（`src/utils/usage-cost.ts`，读时计价：改价目即重述历史，不落任何金额）。口径：小时行没有单次上下文，`tierThreshold` 按该行平均 prompt（input + 缓存读 + 缓存写 ÷ 调用数）判定并整行套用；`tod` 按行的 UTC 小时落峰/谷档；源没列的缓存价按 `in` 折算（缺 ≠ 免费，估高不估低）；`cacheWrite` 缺时用 `cacheWrite1h` 再退 `in`；无价目行的模型不计入（页上显示为 — 与「x/y 模型有价目」，$0 价行算有价）。`opencode-go` 的用量行查 flash / responses 两张表；旧的 `-900k` / `-1m` 路由 id 按剥离后基名取价。
 
 ## 默认档位
 
@@ -164,6 +166,16 @@ npm run models -- --json           # 机器可读报告
 - **DSH 不退档**：模型没声明的档，选择器不会把它当默认，请求直接报 `UNSUPPORTED_REASONING_EFFORT`。所以写路由时，给缺这一档的模型补一个同名键，值取它自己最近的一档：先往下找，除非选的就是 off，否则不落到 off；下面没有再往上。选择器里会多出这一档，实际发的是补上的值。
 - **家族里有不支持思考的模型（`reasoningEfforts` 为 `false` 或缺省），整个家族不写默认档**：否则 DSH 会拒掉那个模型所有没选档的请求。
 - 换模型时 DSH 用新模型的默认档；每次选择还会存成新会话的默认（`agent-default-model`）。所以这里的默认档只管「没手选」的情况。
+
+## 登录默认（勾选）
+
+模型页的勾选（`ModelSwitch` 的 `disabled`）对已结算的家族默认全开，但**家族登录后不默认开这一家的任何模型**：登录只写凭据，要用的行得在模型页勾选，路由才进 `settings.yaml`。一次登录把整家目录（Devin 80 行、Command Code 86 行）塞进 DSH 选择器不是「默认好用」，是默认噪音。
+
+- **只对「跑着的时候登录」生效**：插件实例构造时把当时已在册的家族写进 `seenLogins`（`#seedSeenLogins` 读一次 `auth.json`），这些家族保持用户已有的选择——升级不会把老安装的模型关掉。判断标准就是这一个：`auth.json` 里在启动前就有 session 的家族不动，之后才出现的（显式登录、`useKey` 粘贴、导入本机登录、启动时的自动导入）都按登录默认处理。
+- **等待勾选期间整家关着**：新登录的家族进 `awaitingPick`，它的当前目录行全部落进 `disabled`；这期间活目录新发现的行也一起关。模型页给这家显示「登录后默认不勾选」（`describeCatalog` 的 `awaitingPick`）。
+- **第一次手选就结算**：勾一行 / 家族的「全选」「全关」/ 显式 `selected` 都把这家移出 `awaitingPick`，之后回到普通规则（新发现的行默认开）。
+- **不覆盖已有选择**：`seenLogins` 只增不减，登出再登录不会再关一次，用户勾过的行不会被 re-login 抹掉。
+- **和「全关恢复」的关系**：`recoverEmptyLoggedInFamilies` 把「已登录且全关」当历史坏状态修掉；`awaitingPick` 的家族是**故意**全关，恢复逻辑显式跳过它们（背景见 [`error.md`](error.md) 2026-09-30 条）。
 
 ## 加一个键
 

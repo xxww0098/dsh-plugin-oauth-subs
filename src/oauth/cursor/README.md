@@ -144,7 +144,9 @@ AgentService/Run 与 unary 发 Cursor **CLI** 头。CLI 版本对齐 [Rahularya0
 
 行在 [`src/catalog/models.json`](../../catalog/models.json) 的 `"cursor"` 键；行格式、来源与 `npm run models` 更新流程见 [`docs/models.md`](../../../docs/models.md)。本节只记本家的取舍与出处。
 
-最近核对：2026-09-30，[cursor.com/docs/models-and-pricing](https://cursor.com/docs/models-and-pricing)（HTML 表 + `/docs/models/<slug>` Model ID 页 + `llms.txt`）；本次活列表把 Claude Sonnet 5 / 5.5 的非 Max Mode `context` 抬到 300K（docs 标 1M 扩展窗）、Gemini 3.1 Pro / 3.8 Flash 抬到 1M（docs 页原生 1M），`claude-sonnet-5-5` 的活 `supportsImages` 变 false（同族 sonnet-5 仍是 text+image，按活列表收——活列表就是 Run 注册表校验的口径）。
+最近核对：2026-10-04，[cursor.com/docs/llms.txt](https://cursor.com/docs/llms.txt) 的 `/docs/models/<slug>` 仍是静态楼这 16 个家族，没有新 slug。pricing 表里的旧行（Claude 4.x、GPT-5.4 及更早、Gemini 3.7 及更早等）继续只报告不写入。
+
+上次核对：2026-09-30，[cursor.com/docs/models-and-pricing](https://cursor.com/docs/models-and-pricing)（HTML 表 + `/docs/models/<slug>` Model ID 页 + `llms.txt`）；本次活列表把 Claude Sonnet 5 / 5.5 的非 Max Mode `context` 抬到 300K（docs 标 1M 扩展窗）、Gemini 3.1 Pro / 3.8 Flash 抬到 1M（docs 页原生 1M），`claude-sonnet-5-5` 的活 `supportsImages` 变 false（同族 sonnet-5 仍是 text+image，按活列表收——活列表就是 Run 注册表校验的口径）。
 
 **活目录是真相，静态楼只做离线 fallback。** 登录、本机导入、额度刷新、启动 warmup（`controller.warmCatalogs`，只跑已登录家族）走活发现：
 

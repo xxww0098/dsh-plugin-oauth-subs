@@ -511,10 +511,19 @@ test('catalog is the live cloudcode-pa list, not Vertex-direct names', () => {
   assert.equal(ids.includes('gemini-3.5-flash-low'), false)
   assert.equal(ids.includes('gemini-3.5-flash-extra-low'), false)
   assert.equal(ids.some((id) => id.startsWith('publishers/') || id.includes('vertex')), false)
-  // Exactly the 12 rows of the 2026-09-23 CLIProxyAPI antigravity registry.
+  // 2026-10-04: the registry added the Claude 5.5 -high wire ids. Live
+  // fetchAvailableModels still served only the 4.6 rows, so those stay too.
+  const opus55 = ANTIGRAVITY_MODELS.find((model) => model.id === 'claude-opus-5-5-high')
+  assert.equal(opus55.name, 'Claude Opus 5.5')
+  assert.equal(opus55.contextWindow, 1_000_000)
+  assert.equal(opus55.maxTokens, 128_000)
+  assert.deepEqual(opus55.input, ['text', 'image'])
+  assert.deepEqual(opus55.reasoningEfforts, { low: 'low', high: 'high' })
   assert.deepEqual(ids.slice().sort(), [
     'claude-opus-4-6-thinking',
+    'claude-opus-5-5-high',
     'claude-sonnet-4-6',
+    'claude-sonnet-5-5-high',
     'gemini-3-flash',
     'gemini-3.1-flash-image',
     'gemini-3.1-flash-lite',

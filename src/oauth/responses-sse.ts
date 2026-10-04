@@ -27,20 +27,42 @@ const PREAMBLE_EVENT_TYPES = new Set([
  * Anthropic `message_start` included — and anything untyped is `other`.
  */
 export function classifySseFrame(frame: string): SseFrameKind {
+  return scanSseFrame(frame).kind
+}
+
+/**
+ * One frame, fully read: its classification, its event type, and — only when
+ * the caller asked for that type — the parsed `data:` JSON. `data` is set only
+ * for a capture match, so a classification-time parse of a data-only frame is
+ * never mistaken for a captured one, and a captured frame's JSON is parsed
+ * only when classification did not already parse it.
+ */
+export function scanSseFrame(frame: string, captureType?: string): { kind: SseFrameKind, type: string | undefined, data: any } {
   const data: string[] = []
-  let type: unknown
+  let event: string | undefined
   for (const line of frame.split(/\r?\n/)) {
-    if (line.startsWith('event:')) {
-      type = line.slice(6).trim()
-      break
-    }
-    if (line.startsWith('data:')) data.push(line.slice(5))
+    // Data lines can follow the event line (and do, in every real frame), so
+    // the scan never breaks early.
+    if (line.startsWith('event:') && event === undefined) event = line.slice(6).trim()
+    else if (line.startsWith('data:')) data.push(line.slice(5))
   }
+  let parsed: any
+  let type = event
   if (type === undefined) {
-    try { type = JSON.parse(data.join('\n'))?.type } catch { type = undefined }
+    try {
+      parsed = JSON.parse(data.join('\n'))
+      type = parsed?.type
+    } catch { type = undefined }
   }
-  if (typeof type !== 'string' || !type) return 'other'
-  return PREAMBLE_EVENT_TYPES.has(type) ? 'preamble' : 'output'
+  if (typeof type !== 'string' || !type) return { kind: 'other', type: undefined, data: undefined }
+  if (captureType === type && parsed === undefined) {
+    try { parsed = JSON.parse(data.join('\n')) } catch { parsed = undefined }
+  }
+  return {
+    kind: PREAMBLE_EVENT_TYPES.has(type) ? 'preamble' : 'output',
+    type,
+    data: captureType === type ? parsed : undefined,
+  }
 }
 
 /**
@@ -50,6 +72,13 @@ export function classifySseFrame(frame: string): SseFrameKind {
  */
 export class SseFrameScanner {
   #tail = ''
+  #captureType: string | undefined
+  #onCaptured: ((data: any) => void) | undefined
+
+  constructor(capture?: { type: string, onData: (data: any) => void }) {
+    this.#captureType = capture?.type
+    this.#onCaptured = capture?.onData
+  }
 
   push(chunk: Uint8Array): { kind: SseFrameKind, bytes: number }[] {
     // A separator already fully in the old tail would have been split off, so
@@ -63,7 +92,9 @@ export class SseFrameScanner {
     for (let match = separator.exec(this.#tail); match; match = separator.exec(this.#tail)) {
       const end = match.index + match[0].length
       const frame = Buffer.from(this.#tail.slice(start, match.index), 'latin1').toString('utf8')
-      frames.push({ kind: classifySseFrame(frame), bytes: end - start })
+      const scanned = scanSseFrame(frame, this.#captureType)
+      frames.push({ kind: scanned.kind, bytes: end - start })
+      if (this.#onCaptured && scanned.data !== undefined) this.#onCaptured(scanned.data)
       start = end
     }
     this.#tail = this.#tail.slice(start)

@@ -351,8 +351,8 @@ test('QuotaRow is a remaining bar for Codex remainingPercent and Cursor usedPerc
   assert.match(src, /100 - row\.usedPercent/)
   assert.match(src, /const remaining = remainingPercentOf\(row\)/)
   assert.match(src, /h\(QuotaMeter,/)
-  assert.match(src, /function QuotaMeter\(\{ t, remainingPercent, amount, label, reset, period, onToggleAmount \}\)/)
-  assert.match(src, /reset && h\('span', \{ className: 'osubs-qreset' \}, period \? `\$\{period\} · ` : '', reset\)/)
+  assert.match(src, /function QuotaMeter\(\{ t, remainingPercent, amount, label, reset, onToggleAmount \}\)/)
+  assert.match(src, /reset && h\('span', \{ className: 'osubs-qreset' \}, reset\)/)
   assert.match(src, /h\(RemainingBar, \{ remainingPercent \}\)/)
   // Bar fill is a green→red ramp on remaining: full = --osubs-ok, half =
   // --osubs-warn, empty = --osubs-bad (hsl keeps the midpoint clean amber).
@@ -391,9 +391,14 @@ test('QuotaMeter owns each window reset; nothing floats between bars', async () 
   const row = src.match(/function QuotaRow\([\s\S]*?\n    \}/)?.[0] ?? ''
   const qmeterCss = src.match(/\.osubs-qmeter \{[^}]*\}/)?.[0] ?? ''
   const qresetCss = src.match(/\.osubs-qreset \{[^}]*\}/)?.[0] ?? ''
-  assert.match(meter, /reset && h\('span', \{ className: 'osubs-qreset' \}, period \? `\$\{period\} · ` : '', reset\)/)
+  assert.match(meter, /reset && h\('span', \{ className: 'osubs-qreset' \}, reset\)/)
   assert.match(meter, /osubs-qreset[\s\S]*RemainingBar/)
-  assert.match(row, /reset,\s*period,\s*onToggleAmount: tokens \? onToggleUnits : undefined,\s*\}\),/)
+  assert.match(row, /reset,\s*onToggleAmount: tokens \? onToggleUnits : undefined,\s*\}\),/)
+  // The reset line is the relative countdown alone: no period date range,
+  // and no day formatter left behind for one.
+  assert.equal(meter.includes('period'), false)
+  assert.equal(row.includes('periodStart'), false)
+  assert.equal(src.includes('formatDay'), false)
   assert.equal(/reset && h\('span', \{ className: 'osubs-note' \}, reset\)/.test(row), false)
   assert.match(qmeterCss, /display: flex/)
   assert.match(qmeterCss, /flex-direction: column/)
@@ -480,6 +485,11 @@ test('Settings Models is a searchable switch table; locked groups still offer si
   const switchCss = src.match(/\.osubs-switch \{[^}]*\}/)?.[0] ?? ''
   assert.equal(panel.includes('osubs-family--locked'), false)
   assert.match(panel, /t\.modelsNeedLogin/)
+  // 登录默认: the group explains why a freshly signed-in family is all-off.
+  assert.match(panel, /t\.modelsLoginOff/)
+  assert.match(panel, /group\.loggedIn && group\.awaitingPick && h\('span'/)
+  assert.match(src, /modelsLoginOff:\s*'登录后默认不勾选'/)
+  assert.match(src, /modelsLoginOff:\s*'Off until checked'/)
   assert.match(panel, /onOpenFamily\?\.\(group\.family\)/)
   assert.match(panel, /label: t\.login/)
   assert.match(panel, /className: 'osubs-mtable'/)
@@ -537,7 +547,7 @@ test('Settings Copilot tab is device-code after Kimi, never @lobehub/icons', asy
 test('usage totals count the whole prompt — cache reads fold into 输入', async () => {
   const src = await readFile(new URL('../lib/ui/client.js', import.meta.url), 'utf8')
   const empty = src.match(/const emptyUsage = \(\) => \(\{[^\n]*\}\)/)?.[0]
-  const body = src.match(/function addUsage\(sum, row\) \{[\s\S]*?\n        \}/)?.[0]
+  const body = src.match(/function addUsage\(sum, row, cost = null\) \{[\s\S]*?\n        \}/)?.[0]
   const tokens = src.match(/const usageTokens = \(sum\) => sum\.input \+ sum\.output/)?.[0]
   assert.ok(empty && body && tokens, 'usage helpers not found in the assembled client')
   const { emptyUsage, addUsage, usageTokens } = new Function(`${empty}\n${body}\n${tokens}\nreturn { emptyUsage, addUsage, usageTokens }`)() as any
@@ -548,6 +558,11 @@ test('usage totals count the whole prompt — cache reads fold into 输入', asy
   addUsage(sum, [0, 'oauth-devin', 'swe-2', 104, 32876, 48439, 9503232, 0, 0, 0, 0, 0, 0, 0])
   assert.equal(usageTokens(sum), 32876 + 48439 + 9503232)
   assert.equal(sum.cacheRead, 9503232)
+  // Cost rides the same fold: unpriced rows add nothing, priced ones sum.
+  assert.equal(sum.cost, 0)
+  addUsage(sum, [0, 'x', 'y', 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 1.25)
+  addUsage(sum, [0, 'x', 'y', 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], null)
+  assert.equal(sum.cost, 1.25)
 })
 
 test('About Installed prefers the fresher of checkUpdate and snapshot', async () => {
@@ -586,7 +601,7 @@ test('About keeps the auto-update switch but states hot reload for a linked tree
   // reports the last run — a link's release-tag outcome would always read as
   // 「已是最新」.
   assert.match(src, /h\(AutoUpdateRow, \{/)
-  assert.match(src, /const bits = linked \? \[\] : \[t\.autoUpdateHourly\]/)
+  assert.match(src, /const bits = linked \? \[\] : \[restartKind === 'app' \? t\.autoUpdateHourlyApp : t\.autoUpdateHourly\]/)
   assert.match(src, /const outcome = linked \? '' : autoRunText\(t, autoState\)/)
   assert.match(src, /autoUpdateLinked: '本地链接：npm run build 后热重载生效，无需重启宿主（需 profile 配 hmr root）'/)
   assert.match(src, /autoUpdateLinked: 'Local link: npm run build hot-reloads the plugin/)
@@ -598,9 +613,25 @@ test('the stale-process hint is link-aware: a linked tree never gets the reinsta
   // The divergence hint picks its copy by install kind. A linked tree's
   // divergence is restart-only (code rides hmr) — the generic tail (remove
   // and re-add from GitHub) would replace the hot link with an installed copy.
-  assert.match(src, /fill\(linked \? t\.updateStaleProcessLinked : t\.updateStaleProcess, disk\)/)
+  assert.match(src, /fill\(linked \? t\.updateStaleProcessLinked/)
+  assert.match(src, /restartKind === 'app' \? t\.updateStaleProcessApp : t\.updateStaleProcess, disk\)/)
   assert.match(src, /updateStaleProcessLinked: '磁盘已是 \{n\}，但当前进程仍加载旧模块，重启宿主后生效；代码改动 npm run build 即热载/)
   assert.match(src, /updateStaleProcessLinked: 'On disk is \{n\}, but this process still runs the old copy — restart the host; code changes hot-reload/)
+})
+
+test('restart guidance names what the user actually restarts: the app on desktop, the dsh host elsewhere', async () => {
+  const src = assembleUi()
+  // 宿主 is plugin jargon; the desktop profile is Electron-managed, so every
+  // restart hint there must tell the user to quit and reopen the app.
+  assert.match(src, /updateStaleProcessApp: '磁盘已是 \{n\}，但应用仍在运行旧版本。请退出应用后重新打开/)
+  assert.match(src, /updateStaleProcessApp: 'On disk is \{n\}, but the app still runs the old copy\. Quit and reopen the app/)
+  assert.match(src, /updateInstalledApp: '已安装 \{n\}。请退出应用后重新打开，即可加载新版。'/)
+  assert.match(src, /updateInstalledApp: 'Installed \{n\}\. Quit and reopen the app to load it\.'/)
+  assert.match(src, /autoUpdateHourlyApp: '每 15 分钟检查一次，装好新版后重启应用生效'/)
+  assert.match(src, /autoUpdateHourlyApp: 'Checks every 15 minutes; quit and reopen the app/)
+  // The host variants spell out what the host is instead of assuming the term.
+  assert.match(src, /updateStaleProcess: '磁盘已是 \{n\}，但当前进程仍在运行旧版本。请重启宿主（运行 dsh 的进程）加载新版/)
+  assert.match(src, /updateInstalledHost: '已安装 \{n\}。请重启宿主（运行 dsh 的进程），即可加载新版。'/)
 })
 
 test('About status banner: tint encodes actionability, CTA only on an installable update', async () => {

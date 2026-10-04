@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import { QUOTA_TTL_MS, QUOTA_USED_TTL_MS, QuotaStore } from '../lib/oauth/quota.js'
 import { applyGrokCreditsSnapshot, parseGrokBilling } from '../lib/oauth/grok/quota.js'
 import { asNumber, creditBagAmounts, isAvailableResetCredit } from '../lib/oauth/quota-shared.js'
-import { consumeResetBody, parseCodexUsage, parseResetCredits } from '../lib/oauth/codex/quota.js'
+import { consumeResetBody, parseCodexRateLimitsFrame, parseCodexUsage, parseResetCredits } from '../lib/oauth/codex/quota.js'
 import {
   parseAntigravityModelQuota,
   parseAntigravityPaidCredits,
@@ -70,6 +70,35 @@ test('parseCodexUsage maps 5h + weekly remaining', () => {
   assert.equal(parsed.rows[1].resetAt, 1_770_000_000_000)
 })
 
+test('parseCodexUsage maps the credits balance to a prepaid row', () => {
+  const parsed = parseCodexUsage({
+    plan_type: 'pro',
+    rate_limit: {
+      primary_window: { used_percent: 5, limit_window_seconds: 18_000 },
+      secondary_window: { used_percent: 46, limit_window_seconds: 604_800 },
+      credits: { has_credits: true, unlimited: false, balance: '58655.0' },
+    },
+  })
+  assert.equal(parsed.rows.length, 3)
+  assert.deepEqual(parsed.rows[2], {
+    key: 'credits', kind: 'prepaid', product: 'credits', remaining: 58655,
+  })
+  // Unlimited plans render the unlimited badge, not a number.
+  const unlimited = parseCodexUsage({
+    rate_limit: { credits: { has_credits: true, unlimited: true, balance: '' } },
+  })
+  assert.equal(unlimited.rows.length, 1)
+  assert.equal(unlimited.rows[0].unlimited, true)
+  // has_credits: false means the plan has no credit metering — no row.
+  const none = parseCodexUsage({
+    rate_limit: { credits: { has_credits: false, unlimited: false, balance: '0' } },
+  })
+  assert.equal(none.rows.some((row) => row.kind === 'prepaid'), false)
+  // A top-level credits object (endpoint spellings drift) is read too.
+  const topLevel = parseCodexUsage({ credits: { hasCredits: true, balance: '7' } })
+  assert.equal(topLevel.rows[0].remaining, 7)
+})
+
 test('parseCodexUsage reads resets_at and seconds_until_reset aliases', () => {
   const parsed = parseCodexUsage({
     rate_limit: {
@@ -79,6 +108,96 @@ test('parseCodexUsage reads resets_at and seconds_until_reset aliases', () => {
   })
   assert.equal(parsed.rows[0].resetAt, Date.parse('2099-01-02T00:00:00Z'))
   assert.ok(parsed.rows[1].resetAt > Date.now() + 80_000_000)
+})
+
+test('parseCodexRateLimitsFrame reads the stream frame, either spelling', () => {
+  const parsed = parseCodexRateLimitsFrame({
+    type: 'codex.rate_limits',
+    plan_type: 'pro',
+    rate_limits: {
+      allowed: true,
+      limit_reached: false,
+      primary: { used_percent: 3, window_minutes: 300, reset_after_seconds: 100 },
+      secondary: { used_percent: 46, window_minutes: 10_080, reset_at: 1_770_000_000 },
+    },
+  })
+  assert.equal(parsed.planType, 'pro')
+  assert.equal(parsed.rows.length, 2)
+  assert.equal(parsed.rows[0].kind, 'primary')
+  assert.equal(parsed.rows[0].usedPercent, 3)
+  assert.equal(parsed.rows[0].remainingPercent, 97)
+  assert.equal(parsed.rows[0].windowMinutes, 300)
+  assert.ok(parsed.rows[0].resetAt > Date.now())
+  assert.equal(parsed.rows[1].kind, 'weekly')
+  assert.equal(parsed.rows[1].resetAt, 1_770_000_000_000)
+  // The usage endpoint's *_window keys land in the same rows.
+  assert.deepEqual(parseCodexRateLimitsFrame({ rate_limits: { primary_window: { used_percent: 9 } } }).rows, [
+    { key: 'primary', kind: 'primary', usedPercent: 9, remainingPercent: 91, windowMinutes: undefined, resetAt: undefined },
+  ])
+  // The frame's credits block lands as the same prepaid row the endpoint maps.
+  assert.deepEqual(parseCodexRateLimitsFrame({
+    rate_limits: {
+      primary: { used_percent: 3, window_minutes: 300 },
+      credits: { has_credits: true, unlimited: false, balance: '58655' },
+    },
+  }).rows.at(-1), { key: 'credits', kind: 'prepaid', product: 'credits', remaining: 58655 })
+  // Nothing readable is not news: no rows, no write.
+  assert.deepEqual(parseCodexRateLimitsFrame(undefined), { rows: [] })
+  assert.deepEqual(parseCodexRateLimitsFrame({ rate_limits: { allowed: true } }).rows, [])
+})
+
+test('QuotaStore.learn writes the frame rows for the serving account', async () => {
+  const store = new QuotaStore({
+    tokens: { codex: { session: async () => ({ accessToken: 't', accountId: 'acct-7' }) } },
+    fetchFn: async () => { throw new Error('learn must not read the endpoint') },
+  })
+  const failing = await store.ensure('codex')
+  assert.equal(failing.status, 'error')
+  const learned = await store.learn('codex', {
+    type: 'codex.rate_limits',
+    plan_type: 'pro',
+    rate_limits: { primary: { used_percent: 42, window_minutes: 300, reset_after_seconds: 60 } },
+  })
+  assert.equal(learned.status, 'ready')
+  assert.equal(learned.error, undefined)
+  assert.equal(learned.planType, 'pro')
+  assert.deepEqual(learned.rows.map((row) => [row.kind, row.usedPercent]), [['primary', 42]])
+  assert.equal(await store.learn('grok', { rate_limits: {} }), undefined, 'no family parse, no write')
+  // Served from the learned rows within the TTL — the fetch fn throws.
+  const cached = await store.ensure('codex', 'acct-7')
+  assert.equal(cached.status, 'ready')
+  assert.equal(cached.rows[0].usedPercent, 42)
+})
+
+test('QuotaStore.learn keeps the last credit balance when the frame omits it', async () => {
+  const store = new QuotaStore({
+    tokens: { codex: { session: async () => ({ accessToken: 't', accountId: 'acct-8' }) } },
+    fetchFn: async () => new Response(JSON.stringify({
+      plan_type: 'pro',
+      rate_limit: {
+        primary_window: { used_percent: 10, limit_window_seconds: 18_000 },
+        credits: { has_credits: true, unlimited: false, balance: '12345' },
+      },
+    }), { status: 200 }),
+  })
+  const first = await store.ensure('codex')
+  assert.equal(first.rows.at(-1).product, 'credits')
+  assert.equal(first.rows.at(-1).remaining, 12345)
+  // Frame carries its own credits → the learned balance replaces the old one.
+  const withCredits = await store.learn('codex', {
+    rate_limits: {
+      primary: { used_percent: 42, window_minutes: 300 },
+      credits: { has_credits: true, unlimited: false, balance: '12000' },
+    },
+  })
+  assert.deepEqual(withCredits.rows.map((row) => row.kind), ['primary', 'prepaid'])
+  assert.equal(withCredits.rows.at(-1).remaining, 12000)
+  // Frame without credits keeps the last known balance row.
+  const without = await store.learn('codex', {
+    rate_limits: { primary: { used_percent: 44, window_minutes: 300 } },
+  })
+  assert.deepEqual(without.rows.map((row) => row.kind), ['primary', 'prepaid'])
+  assert.equal(without.rows.at(-1).remaining, 12000)
 })
 
 test('parseResetCredits reads available_count and skips redeemed/expired', () => {
@@ -228,7 +347,7 @@ test('QuotaStore fetches Codex usage + reset credits and caches', async () => {
   assert.equal(seen.some((row) => row.url === CODEX_RESET_CREDITS_URL), true)
   assert.equal(seen[0].headers['chatgpt-account-id'], 'acct-1')
   assert.equal(seen[0].headers.originator, 'codex_cli_rs')
-  assert.equal(seen[0].headers['user-agent'], 'codex_cli_rs/0.159.2')
+  assert.equal(seen[0].headers['user-agent'], 'codex_cli_rs/0.160.0')
   assert.equal(first.planType, 'pro')
   assert.equal(first.planLabel, 'Pro 20x')
   assert.equal(first.rows[0].remainingPercent, 90)

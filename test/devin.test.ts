@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { chmod, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { test } from 'node:test'
+import { mock, test } from 'node:test'
 import { isPermanentRefreshFailure } from '../lib/oauth/tokens.js'
 import { AuthController } from '../lib/oauth/controller.js'
 import { accountIdOf, listStoredSessions, publicSession, saveSession } from '../lib/oauth/store.js'
@@ -393,11 +393,11 @@ test('a static-floor ceiling survives the Devin projection', () => {
 test('static Devin floor mirrors the live GetCliModelConfigs picker rows', () => {
   resetDevinCatalog()
   try {
-    // 2026-09-30 live probe: 662 configs -> 643 family-bearing -> 85 picker rows,
-    // minus the 4 blocked Fusion rows (devin/README.md 模型) -> 80.
-    assert.equal(DEVIN_MODELS.length, 80)
+    // 2026-10-01 live probe: the two legacy Claude Sonnet 4.5 rows are gone
+    // from GetCliModelConfigs (upstream removed; devin/README.md 模型) -> 78.
+    assert.equal(DEVIN_MODELS.length, 78)
     const ids = new Set(DEVIN_MODELS.map((row) => row.id))
-    assert.equal(ids.size, 80)
+    assert.equal(ids.size, 78)
     // Families the previous 17-row floor did not cover.
     for (const id of [
       'claude-opus-4.5', 'claude-opus-4.6-1m', 'claude-opus-4.8-fast', 'claude-opus-5-5',
@@ -1060,6 +1060,35 @@ function devinFetch(chat) {
 }
 
 const trailer = (code) => frameConnect(Buffer.from(JSON.stringify({ error: { code, message: code } })), { compress: false, end: true })
+
+test('devin: a live stream with no content survives 270s and fails at 290s', { timeout: 10_000 }, async () => {
+  mock.timers.enable({ apis: ['setTimeout', 'Date'] })
+  const { fetchFn, counts } = devinFetch(() => new Response(new ReadableStream({
+    start(controller) { controller.enqueue(new Uint8Array([0])) },
+  }), { status: 200 }))
+  const proxy = await devinProxy({ fetchFn }).listen()
+  try {
+    let settled = false
+    const pending = postDevin(proxy.address().port, true).then((res) => {
+      settled = true
+      return res
+    })
+    for (let i = 0; i < 20 && counts.chat < 1; i += 1) await new Promise((resolve) => setImmediate(resolve))
+    assert.equal(counts.chat, 1)
+    for (let i = 0; i < 5; i += 1) await new Promise((resolve) => setImmediate(resolve))
+    await mock.timers.tick(270_000)
+    await new Promise((resolve) => setImmediate(resolve))
+    assert.equal(settled, false, 'the shared 270s budget must not cut a live Devin stream')
+    await mock.timers.tick(20_000)
+    const res = await pending
+    assert.equal(res.status, 504)
+    assert.match(JSON.stringify(await res.json()), /no output within 290s \(1 attempts\): no output within 290s/)
+    assert.equal(counts.chat, 1)
+  } finally {
+    proxy.close()
+    mock.timers.reset()
+  }
+})
 
 test('devin: a stalled stream answers 504 before any head', async () => {
   const { fetchFn, counts } = devinFetch(() => new Response(new ReadableStream({ start() {} }), { status: 200 }))

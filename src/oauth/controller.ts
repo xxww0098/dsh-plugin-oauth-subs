@@ -14,9 +14,11 @@ import { GlmCliFlowManager } from './glm/cli-flow.js'
 import { KiroIdcFlowManager } from './kiro/idc-flow.js'
 import {
   accountIdOf,
+  asVault,
   deleteSession,
   getSession,
   listStoredSessions,
+  loadStore,
   PROVIDER_IDS,
   publicSession,
   switchAccount,
@@ -169,6 +171,8 @@ export class AuthController {
   declare autoUpdate: boolean
   declare updateState: any
   declare prefsReady: Promise<void>
+  /** Resolves once the families signed in at construction time are seeded. */
+  declare loginsReady: Promise<void>
   declare autoUpdateTimer: any
   declare prefsFile: string
   declare stateFile: string
@@ -199,6 +203,10 @@ export class AuthController {
       onAuthChanged?.(provider)
     }
     this.models = models ?? new ModelSwitch()
+    this.loginsReady = (async () => {
+      await this.models.ready
+      await this.#seedSeenLogins()
+    })()
     this.flows = new OAuthFlowManager()
     this.devices = new DeviceFlowManager()
     this.glmFlows = new GlmCliFlowManager()
@@ -381,6 +389,25 @@ export class AuthController {
     const next = (this.claims.get(provider) ?? 0) + 1
     this.claims.set(provider, next)
     return next
+  }
+
+  /**
+   * Grandfather every family already signed in when this plugin instance
+   * started. The login default (a family that signs in starts with every row
+   * off) must only hit logins that happen while this code runs, so an upgrade
+   * never turns an existing install's models off.
+   */
+  async #seedSeenLogins() {
+    let families: string[]
+    try {
+      const store = await loadStore(this.authPath)
+      families = PROVIDER_IDS.filter((family) => asVault(family, store[family]).activeId !== undefined)
+    } catch {
+      // An unreadable store cannot say what was signed in; seed nothing rather
+      // than guess (a broken store fails loggedIn() on this same sync anyway).
+      return
+    }
+    await this.models.seedSeenLogins(families)
   }
 
   async loggedIn() {
@@ -572,8 +599,11 @@ export class AuthController {
       grokLogin: this.grokLogin,
       catalog: describeCatalog(catalog, {
         enabledKeys,
+        awaitingPick: this.models.awaitingPick,
         contexts: this.models.contexts,
-        rates: Object.fromEntries(kiroCatalogModels().filter((model: any) => model.rate).map((model: any) => [`kiro/${model.id}`, model.rate])),
+        rates: Object.fromEntries([
+          ...kiroCatalogModels().filter((model: any) => model.rate).map((model: any) => [`kiro/${model.id}`, model.rate]),
+        ]),
         pricing: catalogPricing(),
         pricingTimeOfDay: catalogRateTimeOfDay(),
         loggedIn: {
@@ -841,13 +871,20 @@ export class AuthController {
       throw new Error('settings service is not mounted; cannot sync llm-pi-ai routes')
     }
     await this.models.ready
+    await this.loginsReady
     const catalog = await this.catalog()
     if (selected !== undefined) {
       await this.models.setEnabled(selected, catalog)
     }
     const loggedIn = await this.loggedIn()
-    if (options.recover !== false && selected === undefined) {
-      await this.models.recoverEmptyLoggedInFamilies(catalog, loggedIn)
+    if (selected === undefined) {
+      // 登录默认: a family that signs in while this runs keeps every row off
+      // until the user picks for it (families signed in at startup are seeded,
+      // so an upgrade never turns an existing install's models off).
+      await this.models.applyLoginDefaults(catalog, loggedIn)
+      if (options.recover !== false) {
+        await this.models.recoverEmptyLoggedInFamilies(catalog, loggedIn)
+      }
     }
     const opencodeGoKeySet = await hasOpencodeGoKey(this)
     // Planned only: its writes ride the family-route mutate below, so one sync

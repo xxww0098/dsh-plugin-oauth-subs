@@ -311,9 +311,9 @@ export async function importFrom(ctl: AuthController, provider) {
           ? await importDevin(ctl)
         : provider === 'cline'
           ? await importCline(ctl)
-        : provider === 'command-code'
-          ? await importCommandCode(ctl)
-        : await importGrokAuth()
+          : provider === 'command-code'
+            ? await importCommandCode(ctl)
+            : await importGrokAuth()
   ctl.claim(provider)
   ctl.flows.pending(provider)?.cancel()
   ctl.devices.pending(provider)?.cancel()

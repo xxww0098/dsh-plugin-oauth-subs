@@ -94,7 +94,9 @@ DSH chat/completions  →  POST https://q.<region>.amazonaws.com/
 
 行在 [`src/catalog/models.json`](../../catalog/models.json) 的 `"kiro"` 键；行格式、来源与 `npm run models` 更新流程见 [`docs/models.md`](../../../docs/models.md)。本节只记本家的取舍与出处。
 
-最近核对：2026-09-29，management `List-Available-Models`（`origin=KIRO_CONSOLE` 治理列表 + chat 实测）。
+最近核对：2026-10-04，management `List-Available-Models` 两个 origin 对账。治理列表有 `claude-sonnet-5.5`（`tokenLimits` 1M / 128K，`TEXT`+`IMAGE`，`output_config.effort` 为 low / medium / high / xhigh / max，`rateMultiplier` 1.3），已收入静态 fallback。同一天本机 chat 列表（`origin=AI_EDITOR`，9 个 id）仍没有它。登录后的选择器只采用 chat 列表，不把这一行补进去——chat 发治理列表独有的 id 会 400 `INVALID_MODEL_ID`。`skip` 已删。
+
+上次核对：2026-10-03。chat 列表把 `deepseek-3.2` / `minimax-m2.1` / `qwen3-coder-next` 的 `supportedInputTypes` 收成 `TEXT`，目录三行 `input` 随 chat 列表从 text+image 改成 text。
 
 **选择器以接口为准，不以文档为准。** 登录 / 导入 / 额度刷新 / 启动 warmup 后，`refreshKiroCatalog` 打 management `https://management.<region>.kiro.dev/` `List-Available-Models`，`origin` 用对话同一个 `KIRO_CHAT_ORIGIN`（`AI_EDITOR`）。遇到空列表或区域 403 会再探 `us-east-1` / `eu-central-1`，不在第一个 403 停。**活列表非空就是选择器本身**，同时写进 `oauth-kiro.models` yaml，不再补静态行。对话 hop **仍是** `q.<region>.amazonaws.com` GenerateAssistantResponse。
 
@@ -104,7 +106,7 @@ DSH chat/completions  →  POST https://q.<region>.amazonaws.com/
 - **列表按出口区域过滤**（与 Cursor 同理）：中国大陆出口拿不到 Claude。要用 Claude 就给插件配非中国大陆出口的出站代理（`outbound-proxy.json` / 插件 `proxyUrl` / `HTTPS_PROXY`），chat、目录、额度都会走它。目录缓存 key 是 token 加出口代理；手动「刷新」总是重拉，因为系统 VPN 切换出口时 key 感知不到。
 - `origin=KIRO_CONSOLE` 是治理目录，**不是**权限列表：chat 发它是 `Improperly formed request`，不要拿它当选择器。它只作静态 fallback 的来源（`npm run models` 读它）。合法 origin 可以用非法值让接口报错列出。
 - `KIRO_MODELS` 只是离线 fallback（活列表失败或为空时用）：`KIRO_CONSOLE` 快照去掉 Auto，外加兼容 ID `claude-fable-5`（[pi-provider-kiro](https://github.com/mikeyobrien/pi-provider-kiro) bootstrap）。窗口 / 输出取接口 `tokenLimits` 的精确值，不取官方文档表的取整值。id 用点号（`claude-sonnet-5`、`claude-fable-5.1`）。
-- **新模型要等它上 chat 列表才进目录**：治理列表没有、chat 发出去 400 `Invalid model` 的 id 不提前加行（例：`claude-sonnet-5.5` 发布后后端未服务）。`inferKiroReasoning` / `inferKiroWindow` 按前缀推断，上架后无需改代码。
+- **新模型要等它上 chat 列表才进登录选择器**：不在 chat 列表里的 id 对话会 400 `INVALID_MODEL_ID`，不要并进活列表。静态 fallback 可以先收治理列表已给出 `tokenLimits` 的行。`claude-sonnet-5.5` 就是这样：2026-10-04 收进静态目录，chat 列表仍没有，登录后不会出现。`inferKiroReasoning` / `inferKiroWindow` 按前缀推断，上架后无需改代码。
 - **Auto 不进选择器**，活列表列出来也跳过。
 - 不要把 `none` 当 DSH 键——整段 `oauth-kiro` 写不进 settings.yaml。
 - 离线 fallback 必须有 Opus 5、Opus 4.8；Sonnet 主推是 **Claude Sonnet 5**（4.5 与 4.0 仍保留）。

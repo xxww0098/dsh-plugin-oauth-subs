@@ -499,6 +499,23 @@
       "reasoningEfforts": false
     },
     {
+      "id": "claude-sonnet-5.5",
+      "name": "Claude Sonnet 5.5",
+      "contextWindow": 1000000,
+      "maxTokens": 128000,
+      "input": [
+        "text",
+        "image"
+      ],
+      "reasoningEfforts": {
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "max": "max",
+        "xhigh": "xhigh"
+      }
+    },
+    {
       "id": "claude-sonnet-5",
       "name": "Claude Sonnet 5",
       "contextWindow": 1000000,
@@ -604,8 +621,7 @@
       "contextWindow": 164000,
       "maxTokens": 64000,
       "input": [
-        "text",
-        "image"
+        "text"
       ],
       "reasoningEfforts": false
     },
@@ -635,8 +651,7 @@
       "contextWindow": 196000,
       "maxTokens": 64000,
       "input": [
-        "text",
-        "image"
+        "text"
       ],
       "reasoningEfforts": false
     },
@@ -646,13 +661,40 @@
       "contextWindow": 256000,
       "maxTokens": 64000,
       "input": [
-        "text",
-        "image"
+        "text"
       ],
       "reasoningEfforts": false
     }
   ],
   "antigravity": [
+    {
+      "id": "claude-opus-5-5-high",
+      "name": "Claude Opus 5.5",
+      "contextWindow": 1000000,
+      "maxTokens": 128000,
+      "input": [
+        "text",
+        "image"
+      ],
+      "reasoningEfforts": {
+        "low": "low",
+        "high": "high"
+      }
+    },
+    {
+      "id": "claude-sonnet-5-5-high",
+      "name": "Claude Sonnet 5.5",
+      "contextWindow": 1000000,
+      "maxTokens": 128000,
+      "input": [
+        "text",
+        "image"
+      ],
+      "reasoningEfforts": {
+        "low": "low",
+        "high": "high"
+      }
+    },
     {
       "id": "claude-opus-4-6-thinking",
       "name": "Claude Opus 4.6",
@@ -1164,6 +1206,23 @@
   ],
   "copilot": [
     {
+      "id": "claude-opus-4.8-fast",
+      "name": "Claude Opus 4.8 (fast mode)",
+      "contextWindow": 1000000,
+      "maxTokens": 64000,
+      "input": [
+        "text",
+        "image"
+      ],
+      "reasoningEfforts": {
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "xhigh",
+        "max": "max"
+      }
+    },
+    {
       "id": "gpt-4.1",
       "name": "GPT-4.1",
       "contextWindow": 256000,
@@ -1356,6 +1415,7 @@
         "image"
       ],
       "reasoningEfforts": {
+        "off": "none",
         "low": "low",
         "medium": "medium",
         "high": "high",
@@ -1374,6 +1434,7 @@
         "image"
       ],
       "reasoningEfforts": {
+        "off": "none",
         "low": "low",
         "medium": "medium",
         "high": "high",
@@ -1386,7 +1447,7 @@
       "id": "claude-fable-5",
       "name": "Claude Fable 5",
       "contextWindow": 1000000,
-      "maxTokens": 128000,
+      "maxTokens": 64000,
       "input": [
         "text",
         "image"
@@ -1403,7 +1464,7 @@
       "id": "claude-fable-5.1",
       "name": "Claude Fable 5.1",
       "contextWindow": 1000000,
-      "maxTokens": 128000,
+      "maxTokens": 64000,
       "input": [
         "text",
         "image"
@@ -1420,7 +1481,7 @@
       "id": "claude-haiku-4.5",
       "name": "Claude Haiku 4.5",
       "contextWindow": 200000,
-      "maxTokens": 64000,
+      "maxTokens": 32000,
       "input": [
         "text",
         "image"
@@ -1429,8 +1490,8 @@
     {
       "id": "claude-opus-4.7",
       "name": "Claude Opus 4.7",
-      "contextWindow": 200000,
-      "maxTokens": 32000,
+      "contextWindow": 1000000,
+      "maxTokens": 64000,
       "input": [
         "text",
         "image"
@@ -1446,7 +1507,7 @@
     {
       "id": "claude-opus-4.8",
       "name": "Claude Opus 4.8",
-      "contextWindow": 200000,
+      "contextWindow": 1000000,
       "maxTokens": 64000,
       "input": [
         "text",
@@ -1481,7 +1542,7 @@
       "id": "claude-opus-5.5",
       "name": "Claude Opus 5.5",
       "contextWindow": 1000000,
-      "maxTokens": 64000,
+      "maxTokens": 128000,
       "input": [
         "text",
         "image"
@@ -1514,7 +1575,7 @@
       "id": "claude-sonnet-5",
       "name": "Claude Sonnet 5",
       "contextWindow": 1000000,
-      "maxTokens": 128000,
+      "maxTokens": 64000,
       "input": [
         "text",
         "image"
@@ -1547,7 +1608,7 @@
     {
       "id": "gemini-3.5-flash",
       "name": "Gemini 3.5 Flash",
-      "contextWindow": 200000,
+      "contextWindow": 1000000,
       "maxTokens": 64000,
       "input": [
         "text",
@@ -1594,8 +1655,8 @@
     {
       "id": "gemini-3.8-flash",
       "name": "Gemini 3.8 Flash",
-      "contextWindow": 1000000,
-      "maxTokens": 64000,
+      "contextWindow": 1048576,
+      "maxTokens": 65536,
       "input": [
         "text",
         "image"
@@ -2248,32 +2309,6 @@
         "xhigh": "claude-opus-5-5-xhigh-fast",
         "max": "claude-opus-5-5-max-fast"
       }
-    },
-    {
-      "id": "claude-sonnet-4.5",
-      "name": "Claude Sonnet 4.5",
-      "contextWindow": 200000,
-      "maxTokens": 64000,
-      "input": [
-        "text",
-        "image"
-      ],
-      "variants": {},
-      "defaultUid": "MODEL_PRIVATE_2",
-      "reasoningEfforts": false
-    },
-    {
-      "id": "claude-sonnet-4.5-thinking",
-      "name": "Claude Sonnet 4.5 Thinking",
-      "contextWindow": 200000,
-      "maxTokens": 64000,
-      "input": [
-        "text",
-        "image"
-      ],
-      "variants": {},
-      "defaultUid": "MODEL_PRIVATE_3",
-      "reasoningEfforts": false
     },
     {
       "id": "claude-sonnet-4.6",
@@ -3422,24 +3457,6 @@
       }
     },
     {
-      "id": "stealth/pixel-canary",
-      "name": "Pixel Canary (free)",
-      "contextWindow": 128000,
-      "maxTokens": 8192,
-      "input": [
-        "text",
-        "image"
-      ],
-      "reasoningEfforts": {
-        "minimal": "minimal",
-        "low": "low",
-        "medium": "medium",
-        "high": "high",
-        "xhigh": "xhigh",
-        "max": "xhigh"
-      }
-    },
-    {
       "id": "stealth/space-bunny-alpha",
       "name": "Space Bunny Alpha (free)",
       "contextWindow": 1000000,
@@ -3460,7 +3477,7 @@
     {
       "id": "cline-free/mimo-v2.6-flash",
       "name": "MiMo-V2.6-Flash (free)",
-      "contextWindow": 1048576,
+      "contextWindow": 1050000,
       "maxTokens": 131072,
       "input": [
         "text",
@@ -4156,6 +4173,7 @@
         "text"
       ],
       "reasoningEfforts": {
+        "off": null,
         "high": "high",
         "max": "max"
       }
@@ -4168,6 +4186,7 @@
         "text"
       ],
       "reasoningEfforts": {
+        "off": null,
         "high": "high",
         "max": "max"
       }
@@ -4181,6 +4200,7 @@
         "image"
       ],
       "reasoningEfforts": {
+        "off": null,
         "high": "high",
         "max": "max"
       }
@@ -4207,6 +4227,7 @@
         "image"
       ],
       "reasoningEfforts": {
+        "off": null,
         "low": "low",
         "high": "high",
         "max": "max"
@@ -4221,6 +4242,7 @@
         "image"
       ],
       "reasoningEfforts": {
+        "off": null,
         "low": "low",
         "high": "high",
         "max": "max"
@@ -4734,21 +4756,8 @@
       "reasoningEfforts": {
         "low": "low",
         "medium": "medium",
-        "high": "high"
-      }
-    },
-    {
-      "id": "stealth/pixel-canary",
-      "name": "Pixel Canary",
-      "contextWindow": 262144,
-      "input": [
-        "text",
-        "image"
-      ],
-      "reasoningEfforts": {
-        "low": "low",
-        "medium": "medium",
-        "xhigh": "xhigh"
+        "high": "high",
+        "max": "max"
       }
     },
     {
@@ -4902,6 +4911,57 @@
     }
   ],
   "opencode-go-flash": [
+    {
+      "id": "kimi-k2.6",
+      "name": "Kimi K2.6",
+      "contextWindow": 262144,
+      "maxTokens": 65536,
+      "input": [
+        "text",
+        "image"
+      ],
+      "reasoningEfforts": false,
+      "compat": {
+        "supportsStore": false,
+        "supportsDeveloperRole": false,
+        "maxTokensField": "max_tokens"
+      }
+    },
+    {
+      "id": "qwen3.6-plus",
+      "name": "Qwen3.6 Plus",
+      "contextWindow": 1000000,
+      "maxTokens": 65536,
+      "input": [
+        "text",
+        "image"
+      ],
+      "reasoningEfforts": false,
+      "compat": {
+        "supportsStore": false,
+        "supportsDeveloperRole": false,
+        "maxTokensField": "max_tokens",
+        "requiresReasoningContentOnAssistantMessages": true,
+        "thinkingFormat": "deepseek"
+      }
+    },
+    {
+      "id": "qwen3.7-max",
+      "name": "Qwen3.7 Max",
+      "contextWindow": 1000000,
+      "maxTokens": 65536,
+      "input": [
+        "text"
+      ],
+      "reasoningEfforts": false,
+      "compat": {
+        "supportsStore": false,
+        "supportsDeveloperRole": false,
+        "maxTokensField": "max_tokens",
+        "requiresReasoningContentOnAssistantMessages": true,
+        "thinkingFormat": "deepseek"
+      }
+    },
     {
       "id": "longcat-2.5-preview-free",
       "name": "LongCat 2.5 Preview Free",

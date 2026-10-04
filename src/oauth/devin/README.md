@@ -39,7 +39,7 @@ DSH POST /devin/v1/chat/completions
 
 非流 Completions：Connect 是流；hop **收集整段再回一条 JSON**。
 
-失败：计时、重试、401 刷新都归 `upstream.ts` 的 `upstreamRequest`（首字节 120s、输出前预算 270s，从路由入口起算）。HTTP 非 2xx 与 Connect trailer 错误是上游自己的回答，**只转发一次、代理内不重放**：HTTP 状态原样，trailer `code` 经 `connectCodeStatus`（`deadline_exceeded`→504、`unavailable`→503、`unauthenticated`→401 …，未知码→502 并打日志）。socket 错、超时、空流 / 无消息流，以及没有 Connect end 帧（`0x02`）或残帧就 EOF 的截断，才在输出前重试。第一块内容映射输出之前不写头（role 块随首块内容走，usage / stop 帧不提交头）；之后再失败直接断流，不写 SSE 错误块。chat 401 先走 user_jwt 例外（见下），token-only 仍 401 再经共用的 401 刷新钩子（`tokens.ts` `forcedRefresh` → `refreshNow`）重试一次（session token 不轮换；`refreshDevin` 只在本地 `expiresAt` 过期后才用 `GetUserStatus` 探活，未过期时就是同一 token 再试一次）。
+失败：计时、重试、401 刷新都归 `upstream.ts` 的 `upstreamRequest`（首字节 120s，从路由入口起算）。输出前预算和输出后空闲 Devin 用 **290s**，不是共用的 270s。宿主流空闲看门狗默认 300s，而且只在解析出非空 text / reasoning / tool 块时重置；usage 帧、空 SSE、注释都不算。`swe-2-max` 冷前缀的首 token 会落在 270s 这条线上，共用预算把还能完成的 `GetChatMessage` 掐成 504，宿主再整段重开（内部重试排不进：预算已用完，还要再留 120s 首字节）。290s 仍赶在看门狗前面回可重试的 504。死连接仍是 120s 首字节失败，预算里面还能内部重试。看门狗之外的静默救不了：不向宿主交出可见内容块，就无法把 300s 往后拨。HTTP 非 2xx 与 Connect trailer 错误是上游自己的回答，**只转发一次、代理内不重放**：HTTP 状态原样，trailer `code` 经 `connectCodeStatus`（`deadline_exceeded`→504、`unavailable`→503、`unauthenticated`→401 …，未知码→502 并打日志）。socket 错、超时、空流 / 无消息流，以及没有 Connect end 帧（`0x02`）或残帧就 EOF 的截断，才在输出前重试。第一块内容映射输出之前不写头（role 块随首块内容走，usage / stop 帧不提交头）；之后再失败直接断流，不写 SSE 错误块。chat 401 先走 user_jwt 例外（见下），token-only 仍 401 再经共用的 401 刷新钩子（`tokens.ts` `forcedRefresh` → `refreshNow`）重试一次（session token 不轮换；`refreshDevin` 只在本地 `expiresAt` 过期后才用 `GetUserStatus` 探活，未过期时就是同一 token 再试一次）。
 
 `GetUserJwt` 是 best-effort：返回 `user_jwt` 填进 Metadata field 21、可能给 `custom_api_server_url`（per-deployment 后端）。**session token 本身就够聊天**；失败不挡对话。jwt 约 15 分钟有效，`devinChatAuth` 按 `exp−90s` 复用（每跳一次 RPC ≈2s）；chat 401 时丢掉重试一次 token-only。所有 RPC 带 `Authorization: Basic <token>-<token>`（CLI 的 `api_key-session_id` 形状，session id 即 token 本身，MITM 实测）。
 
@@ -94,7 +94,9 @@ HTTP 头：`content-type: application/connect+proto`（chat）/ `application/pro
 
 行在 [`src/catalog/models.json`](../../catalog/models.json) 的 `"devin"` 键；行格式、来源与 `npm run models` 更新流程见 [`docs/models.md`](../../../docs/models.md)。本节只记本家的取舍与出处。
 
-最近核对：2026-09-30（第二次），生产 `GetCliModelConfigs`：`gpt-6-1-sol` / `-fast` 仍在（1M 窗、128K 输出、image、low–max → `*-low…-max` / `*-priority` uid）；同日早些时候探到的 `off`（`*-none` uid）档与 `-thinking-fast` 行**当天就被上游撤下**，目录随源收掉（先例：上游几小时内就能增删档位/变体，收行当天的快照不代表稳定态）。
+最近核对：2026-10-01，生产 `GetCliModelConfigs`（737 个原始 config）：`claude-sonnet-4.5` / `claude-sonnet-4.5-thinking` 两行**整行没了**（不是变无家族——原始载荷里搜不到；同代 `claude-opus-4.5` / `-thinking` 仍在，排除账号/出口过滤），目录与价目随源删两行（80→78）。
+
+上次核对：2026-09-30（第二次），生产 `GetCliModelConfigs`：`gpt-6-1-sol` / `-fast` 仍在（1M 窗、128K 输出、image、low–max → `*-low…-max` / `*-priority` uid）；同日早些时候探到的 `off`（`*-none` uid）档与 `-thinking-fast` 行**当天就被上游撤下**，目录随源收掉（先例：上游几小时内就能增删档位/变体，收行当天的快照不代表稳定态）。
 
 屏蔽（2026-09-30）：Fusion 家族不进目录与 picker。静态楼删行；`toDevinPickerModels` 按家族 uid 挡（活目录与静态快照共用此闸）；devin 适配器 `skip` 规则防 `npm run models` 回灌。裸 uid 直连不经此闸（`devinWireModelId` 仍透传）。
 

@@ -518,6 +518,10 @@ test('useKey paste writes oauth-ollama and discovers tags', async () => {
   assert.equal(snap.accounts.ollama.account, 'cloud@ollama.local')
   assert.equal(snap.catalog.find((row) => row.provider === 'oauth-ollama').models.some((model) => model.id === 'live-only'), true)
   await controller.sync()
+  // 登录默认: the paste alone (a sign-in while the plugin runs) leaves every
+  // row off until the user picks one.
+  assert.equal(yaml.providers['oauth-ollama'], undefined)
+  await controller.setModels({ key: 'oauth-ollama/live-only', on: true })
   assert.equal(yaml.providers['oauth-ollama'].models.some((model) => model.id === 'live-only'), true)
 })
 

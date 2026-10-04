@@ -150,7 +150,7 @@
       if (icon.raw) {
         return h('svg', {
           className: className ?? 'osubs-tab-icon',
-          viewBox: '0 0 24 24',
+          viewBox: icon.viewBox ?? '0 0 24 24',
           width: 18,
           height: 18,
           'aria-hidden': 'true',
@@ -260,6 +260,7 @@
         if (row.product === 'overage') return t.devinOverage
       }
       if (family === 'command-code' && row.kind === 'credits') return t.commandCodeCredits
+      if (family === 'codex' && row.kind === 'prepaid' && row.product === 'credits') return t.codexCredits
       if (family === 'cursor' && row.product === 'included') return t.cursorIncluded
       if (family === 'cursor' && row.kind === 'product') {
         if (row.product === 'auto' || row.key === 'product:auto') return t.cursorComposer
@@ -294,7 +295,7 @@
       )
     }
 
-    function QuotaMeter({ t, remainingPercent, amount, label, reset, period, onToggleAmount }) {
+    function QuotaMeter({ t, remainingPercent, amount, label, reset, onToggleAmount }) {
       const tone = quotaTone(remainingPercent)
       const color = tone ? `var(--osubs-${tone})` : 'inherit'
       const caption = remainingPercent === undefined ? '' : fill(t.leftPercent, remainingPercent)
@@ -312,7 +313,7 @@
             caption,
           ),
         ),
-        reset && h('span', { className: 'osubs-qreset' }, period ? `${period} · ` : '', reset),
+        reset && h('span', { className: 'osubs-qreset' }, reset),
         remainingPercent !== undefined && h(RemainingBar, { remainingPercent }),
       )
     }
@@ -347,10 +348,6 @@
             : `${formatAmount(row.used)} / ${formatAmount(row.total)}`
         : ''
       const reset = formatReset(row.resetAt, t)
-      const periodStartMs = typeof row.periodStart === 'number' ? row.periodStart : Date.parse(row.periodStart ?? '')
-      const period = reset && Number.isFinite(periodStartMs)
-        ? `${formatDay(periodStartMs)}–${formatDay(row.resetAt)}`
-        : undefined
       return h('div', { className: 'osubs-qrow' },
         h(QuotaMeter, {
           t,
@@ -358,7 +355,6 @@
           amount,
           label: rowLabel(row, t, family),
           reset,
-          period,
           onToggleAmount: tokens ? onToggleUnits : undefined,
         }),
         row.status && row.status !== 'ok' && h('span', { className: 'osubs-tag osubs-tag--warn' }, row.status),

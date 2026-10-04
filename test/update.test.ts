@@ -176,6 +176,7 @@ test('localUpdateInfo reports the running module when profile disk is newer', ()
   assert.equal(info.disk, '0.0.71')
   assert.equal(info.running, '0.0.70')
   assert.equal(info.staleProcess, true)
+  assert.equal(info.restartKind, 'host')
 })
 
 test('localUpdateInfo marks a link: install pointing outside the profiles root', () => {
@@ -192,6 +193,7 @@ test('localUpdateInfo marks a link: install pointing outside the profiles root',
   assert.equal(info.linkedPath, linkedDir)
   assert.equal(info.devVersion, '0.0.105-dev')
   assert.equal(info.staleProcess, false)
+  assert.equal(info.restartKind, 'app')
 })
 
 test('localUpdateInfo prefers the dev-build counter when the linked tree has one', () => {

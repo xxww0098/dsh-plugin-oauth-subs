@@ -161,6 +161,8 @@
             h('span', null, group.displayName),
             h('span', { className: 'osubs-mgroup-side' },
               group.loggedIn && h('span', { className: 'osubs-note' }, fill(t.modelsEnabled, `${groupOn} / ${group.models.length}`)),
+              // 登录默认: signed in here, every row deliberately off until picked.
+              group.loggedIn && group.awaitingPick && h('span', { className: 'osubs-note' }, t.modelsLoginOff),
               group.loggedIn && h('div', { className: 'osubs-seg' },
                 h(Button, { size: 'sm', onClick: () => onFamily(group.family, true), label: t.modelsAll }),
                 h(Button, { size: 'sm', onClick: () => onFamily(group.family, false), label: t.modelsNone }),
@@ -205,9 +207,12 @@
           ),
           hasCustom && h(Button, { size: 'sm', onClick: onResetContexts, label: t.ctxResetAll }),
           single && (single.loggedIn
-            ? h('div', { className: 'osubs-seg' },
-              h(Button, { size: 'sm', onClick: () => onFamily(single.family, true), label: t.modelsAll }),
-              h(Button, { size: 'sm', onClick: () => onFamily(single.family, false), label: t.modelsNone }),
+            ? h(Fragment || 'span', null,
+              single.awaitingPick && h('span', { className: 'osubs-note' }, t.modelsLoginOff),
+              h('div', { className: 'osubs-seg' },
+                h(Button, { size: 'sm', onClick: () => onFamily(single.family, true), label: t.modelsAll }),
+                h(Button, { size: 'sm', onClick: () => onFamily(single.family, false), label: t.modelsNone }),
+              ),
             )
             : h(Fragment || 'span', null,
               h('span', { className: 'osubs-note' }, t.modelsNeedLogin),

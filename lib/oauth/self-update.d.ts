@@ -31,6 +31,7 @@ export declare function checkUpdate(ctl: AuthController, payload?: any): Promise
     devVersion: string | undefined;
     linked: boolean;
     linkedPath: string | undefined;
+    restartKind: string;
     disk: any;
     resolved: any;
     runningPath: string;
@@ -58,6 +59,7 @@ export declare function checkUpdate(ctl: AuthController, payload?: any): Promise
     devVersion: string | undefined;
     linked: boolean;
     linkedPath: string | undefined;
+    restartKind: string;
     disk: any;
     resolved: any;
     runningPath: string;

@@ -271,7 +271,7 @@ test('static Copilot floor mirrors the GitHub official model tables', () => {
   }
 })
 
-test('logged-out catalog still lists Copilot; sync writes oauth-copilot after login', async () => {
+test('logged-out catalog still lists Copilot; a login writes no route until a model is picked', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'copilot-sync-'))
   const authPath = join(dir, 'auth.json')
   const ops = []
@@ -298,22 +298,28 @@ test('logged-out catalog still lists Copilot; sync writes oauth-copilot after lo
     source: 'oauth',
   }), authPath)
   const result = await controller.sync()
-  assert.equal(result.routes.some((row) => row.provider === 'oauth-copilot'), true)
-  assert.equal(result.routes.find((row) => row.provider === 'oauth-copilot').models.includes('gpt-4.1'), true)
+  // 登录默认: a sign-in while the plugin runs lands no route of its own;
+  // the family waits for the user's pick (see test/login-defaults.test.ts).
+  assert.equal(result.routes.some((row) => row.provider === 'oauth-copilot'), false)
+  assert.equal(ops.at(-1).mutations.some((row) => row.op === 'set' && row.path.join('.') === 'providers.oauth-copilot'), false)
+
+  await controller.setModels({ family: 'copilot', on: true })
   const set = ops.at(-1).mutations.filter((row) => row.op === 'set').map((row) => row.path.join('.'))
   assert.equal(set.includes('providers.oauth-copilot'), true)
   const after = await controller.snapshot()
   assert.equal(after.catalog.find((row) => row.family === 'copilot').loggedIn, true)
+  assert.equal(after.providers.find((row) => row.provider === 'oauth-copilot').models.some((model) => model.id === 'gpt-4.1'), true)
 })
 
-test('live picker drops disabled rows and keeps vision / effort', () => {
+test('live picker is the capability view: policy-governed rows stay, self-managed rows drop', () => {
   resetCopilotCatalogCache()
   const models = toCopilotPickerModels({
     data: [
       {
         id: 'gpt-5.5',
         name: 'GPT-5.5',
-        model_picker_enabled: true,
+        model_picker_enabled: false,
+        policy: { state: 'disabled' },
         capabilities: {
           limits: { max_context_window_tokens: 272000, max_output_tokens: 128000 },
           supports: { tool_calls: true, vision: true, reasoning_effort: ['low', 'medium', 'high'] },
@@ -321,15 +327,20 @@ test('live picker drops disabled rows and keeps vision / effort', () => {
       },
       {
         id: 'claude-opus-4.7',
-        model_picker_enabled: true,
+        policy: { state: 'enabled' },
         capabilities: {
           limits: { max_context_window_tokens: 1_000_000, max_output_tokens: 64000 },
           supports: { tool_calls: true },
         },
       },
-      { id: 'hidden', model_picker_enabled: false, capabilities: { supports: { tool_calls: true } } },
-      { id: 'blocked', policy: { state: 'disabled' }, capabilities: { supports: { tool_calls: true } } },
-      { id: 'no-tools', model_picker_enabled: true, capabilities: { supports: { tool_calls: false } } },
+      // Self-managed rows carry no policy object (search/exec agents,
+      // embeddings, gpt-4o-era ids): dropped regardless of picker flag.
+      { id: 'utility', model_picker_enabled: true, capabilities: { supports: { tool_calls: true } } },
+      { id: 'text-embedding-3-small', capabilities: { type: 'embeddings', supports: {} } },
+      // Aliases and dated snapshots mirror a kept row.
+      { id: 'kimi-k3-base', policy: { state: 'enabled' }, capabilities: { supports: { tool_calls: true } } },
+      { id: 'gpt-4.1-2025-04-14', policy: { state: 'enabled' }, capabilities: { supports: { tool_calls: true } } },
+      { id: 'no-tools', policy: { state: 'enabled' }, capabilities: { supports: { tool_calls: false } } },
     ],
   })
   assert.deepEqual(models.map((model) => model.id), ['gpt-5.5', 'claude-opus-4.7'])
@@ -347,14 +358,15 @@ test('live picker drops disabled rows and keeps vision / effort', () => {
 test('live picker skips rows Copilot serves off /chat/completions (the only endpoint the hop speaks)', () => {
   resetCopilotCatalogCache()
   const capabilities = { supports: { tool_calls: true } }
+  const policy = { state: 'enabled' }
   const models = toCopilotPickerModels({
     data: [
-      { id: 'responses-only', supported_endpoints: ['/responses', 'ws:/responses'], capabilities },
-      { id: 'messages-only', supported_endpoints: ['/v1/messages'], capabilities },
-      { id: 'both', supported_endpoints: ['/responses', '/chat/completions'], capabilities },
-      { id: 'claude', supported_endpoints: ['/v1/messages', '/chat/completions'], capabilities },
-      { id: 'no-field', capabilities },
-      { id: 'empty-field', supported_endpoints: [], capabilities },
+      { id: 'responses-only', policy, supported_endpoints: ['/responses', 'ws:/responses'], capabilities },
+      { id: 'messages-only', policy, supported_endpoints: ['/v1/messages'], capabilities },
+      { id: 'both', policy, supported_endpoints: ['/responses', '/chat/completions'], capabilities },
+      { id: 'claude', policy, supported_endpoints: ['/v1/messages', '/chat/completions'], capabilities },
+      { id: 'no-field', policy, capabilities },
+      { id: 'empty-field', policy, supported_endpoints: [], capabilities },
     ],
   })
   assert.deepEqual(models.map((model) => model.id).sort(), ['both', 'claude', 'empty-field', 'no-field'])
@@ -523,7 +535,7 @@ test('controller snapshot shows quota on every copilot account; hop is Completio
         data: [{
           id: 'gpt-4.1',
           name: 'GPT-4.1',
-          model_picker_enabled: true,
+          policy: { state: 'enabled' },
           capabilities: { supports: { tool_calls: true, vision: true } },
         }],
       })

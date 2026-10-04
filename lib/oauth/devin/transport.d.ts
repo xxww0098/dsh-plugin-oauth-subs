@@ -114,6 +114,15 @@ export declare function resolveDevinIdentity(session: any, { fetchFn, statusFn }
  */
 export declare function runDevinChat(session: any, built: any, { signal, onEvent, touch, fetchFn }?: any): Promise<any>;
 /**
+ * Pre-output budget and post-output idle for this hop. The shared 270s
+ * budget sits on swe-2-max's cold time-to-first-token; the host stream
+ * watchdog is 300s and only resets when a content chunk is parsed, so this
+ * stays under it. See README «失败».
+ */
+export declare const DEVIN_STREAM_BUDGET_MS = 290000;
+/** Caller timeouts win, so tests can still shrink the clock. */
+export declare function devinUpstreamTimeouts(overrides: any): any;
+/**
  * Proxy-facing forward, same contract as forwardCursor: writes the OpenAI
  * response itself — Completions JSON or SSE. Timers, transport retries and the
  * one 401 refresh come from `upstreamRequest`; the head waits for the first

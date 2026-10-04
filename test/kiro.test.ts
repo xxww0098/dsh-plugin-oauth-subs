@@ -230,6 +230,7 @@ test('Kiro offline fallback is the KIRO_CONSOLE snapshot plus Fable 5 (no Auto),
     'claude-opus-4.7',
     'claude-opus-4.6',
     'claude-opus-4.5',
+    'claude-sonnet-5.5',
     'claude-sonnet-5',
     'claude-fable-5.1',
     'claude-fable-5',
@@ -251,12 +252,24 @@ test('Kiro offline fallback is the KIRO_CONSOLE snapshot plus Fable 5 (no Auto),
   assert.equal(kiro.models.find((model) => model.id === 'gpt-5.6-sol').contextWindow, 1_000_000)
   assert.equal(kiro.models.find((model) => model.id === 'claude-opus-5').contextWindow, 1_000_000)
   assert.equal(kiro.models.find((model) => model.id === 'claude-sonnet-5').name, 'Claude Sonnet 5')
+  const sonnet55 = KIRO_MODELS.find((model) => model.id === 'claude-sonnet-5.5')
+  assert.equal(sonnet55.name, 'Claude Sonnet 5.5')
+  assert.equal(sonnet55.contextWindow, 1_000_000)
+  assert.equal(sonnet55.maxTokens, 128_000)
+  assert.deepEqual(sonnet55.input, ['text', 'image'])
+  assert.deepEqual(sonnet55.reasoningEfforts, {
+    low: 'low',
+    medium: 'medium',
+    high: 'high',
+    max: 'max',
+    xhigh: 'xhigh',
+  })
   assert.equal(kiro.models.find((model) => model.id === 'claude-sonnet-4').name, 'Claude Sonnet 4.0')
   assert.deepEqual(kiro.models.find((model) => model.id === 'claude-opus-4.8').input, ['text', 'image'])
   assert.deepEqual(kiro.models.find((model) => model.id === 'gpt-5.6-sol').input, ['text', 'image'])
   assert.deepEqual(kiro.models.find((model) => model.id === 'glm-5').input, ['text'])
-  assert.deepEqual(kiro.models.find((model) => model.id === 'deepseek-3.2').input, ['text', 'image'])
-  assert.deepEqual(kiro.models.find((model) => model.id === 'qwen3-coder-next').input, ['text', 'image'])
+  assert.deepEqual(kiro.models.find((model) => model.id === 'deepseek-3.2').input, ['text'])
+  assert.deepEqual(kiro.models.find((model) => model.id === 'qwen3-coder-next').input, ['text'])
   assert.equal(kiro.models.find((model) => model.id === 'minimax-m2.1').contextWindow, 196_000)
   assert.deepEqual(kiro.models.find((model) => model.id === 'gpt-5.6-sol').reasoningEfforts, {
     off: 'none',

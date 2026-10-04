@@ -78,7 +78,11 @@ DSH POST /copilot/v1/chat/completions
 
 行在 [`src/catalog/models.json`](../../catalog/models.json) 的 `"copilot"` 键；行格式、来源与 `npm run models` 更新流程见 [`docs/models.md`](../../../docs/models.md)。本节只记本家的取舍与出处。
 
-最近核对：2026-09-28，GitHub docs 数据表 + models.dev `github-copilot`（本机无 Copilot 凭据，活 `GET {api}/models` 未实测）。
+最近核对：2026-09-30，**首次活测** `GET {endpoints.api}/models`（设备码 `tid=` session，individual 套餐；此前 2026-09-28 只对过 GitHub docs 数据表 + models.dev `github-copilot`，本机无凭据）。本次：收 `claude-opus-4.8-fast`（活行 1M/64K/vision/low–max + docs 表 GA 条目 "Claude Opus 4.8 (fast mode) (preview)"）；按活载荷刷 13 处字段（opus-4.7/4.8 与 gemini-3.5-flash 窗口抬到 1M、gemini-3.8-flash 对齐 2^20 精确值、若干行 maxTokens 调整、gpt-6-luna/sol 补 `off: none` 档）；拒收 `gpt-6.1-sol`（`supported_endpoints` 只有 `/responses`+ws）与 `kimi-k3-base`/`kimi-k3-copilot`（kimi-k3 的路由别名，参数全同）。`gpt-5.3-codex`/`gpt-5.4-nano`/`claude-sonnet-4.6` 不在本账号清单、grok-4.5/4.6/4.7 整族缺席——按账号/政策过滤处理，不删（models.dev 也仍在列）。
+
+2026-10-03 复核：`npm run models -- copilot` 仍是 `?` 一串（19 行，含 `kimi-k2.7-code` / `gemini-3.5-flash` / `gemini-3.6-flash`），与 2026-09-30 同类——端点规则 + 账号/政策过滤，未确认下架不删；活目录 15 行全部命中目录，无新行。
+
+⚠ **`model_picker_enabled` 已被上游整体翻成 false**（2026-09-30，三种凭据视角一致，见 docs/error.md）：收录标准同日改为**能力视图**——带 `policy` 对象（值不读：账号开关只翻 enabled/disabled，活目录列的是能力不是许可）+ 端点规则 + `tool_calls` + 三个别名/快照 skip（`kimi-k3-base`/`kimi-k3-copilot`/`gpt-4.1-2025-04-14`）。自管行（search/exec 代理、embeddings、gpt-4o 时代旧行、free-auto、带日期快照）全都不带 `policy`，一个门就够。活测注记：premium 额度耗尽的账号（本次 0%、10-01 重置）对所有非基础模型回 `400 model_not_supported`（不是 429），只有 `gpt-4o-mini` 这类基础行 200——**9 个目录行（gpt-5.4-mini/5.5/5.6 全家/6 系全家/mai-code-1.1-flash）的活端点只剩 `/responses`，真伪待额度重置后活测**，静态楼先保留。
 
 Settings → 模型始终列出 `Subs · GitHub Copilot · Chat`（未登录锁定 +「登录后同步」）。Harness picker 的 `oauth-copilot/...` **只在有 session 之后** `sync()` 才写入。
 
@@ -90,7 +94,7 @@ Authorization: Bearer <tid=>
 Copilot-Integration-Id: vscode-chat
 ```
 
-- 只收 `model_picker_enabled` 且 `policy.state !== disabled` 且声明 `tool_calls` 的行。
+- 只收带 `policy` 对象且声明 `tool_calls` 的行（能力视图，2026-09-30 起；`policy.state` 的值不读——账号开关只翻 enabled/disabled，见上方 ⚠）。`kimi-k3-base`/`kimi-k3-copilot`/`gpt-4.1-2025-04-14` 是别名/快照，解析器常量 `LIVE_SKIP_IDS` 排除。
 - `supported_endpoints` 非空却不含 `/chat/completions` 的行不收：hop 只有这一个端点，`/responses` 回 501（opencode `plugin/github-copilot/models.ts` 同样按该字段选端点；见 docs/error.md 2026-09-29 Copilot 选择器列出只在 `/responses` 上服务的模型）。不要把 `/v1/messages`-only 行改打 Anthropic。
 - `capabilities.supports.reasoning_effort` → DSH `reasoningEfforts`（键是 picker 档，值是 vendor 拼写）。没有 effort 图就省略字段。
 

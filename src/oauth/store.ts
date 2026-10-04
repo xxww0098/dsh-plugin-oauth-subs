@@ -26,7 +26,7 @@ import { readPrivateText, writePrivateText } from '../utils/private-text.js'
 export { readPrivateText, writePrivateText }
 
 /** Dropped families: their vault is never read and leaves the file with its next write. */
-const RETIRED_PROVIDER_IDS = Object.freeze(['anthropic'])
+const RETIRED_PROVIDER_IDS = Object.freeze(['anthropic', 'workbuddy', 'workbuddy-ai'])
 
 export const PROVIDER_IDS = Object.freeze(['codex', 'chatgpt', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline', 'command-code'])
 

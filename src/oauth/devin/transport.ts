@@ -299,6 +299,19 @@ export async function runDevinChat(session, built, { signal, onEvent, touch, fet
 }
 
 /**
+ * Pre-output budget and post-output idle for this hop. The shared 270s
+ * budget sits on swe-2-max's cold time-to-first-token; the host stream
+ * watchdog is 300s and only resets when a content chunk is parsed, so this
+ * stays under it. See README «失败».
+ */
+export const DEVIN_STREAM_BUDGET_MS = 290_000
+
+/** Caller timeouts win, so tests can still shrink the clock. */
+export function devinUpstreamTimeouts(overrides) {
+  return { budgetMs: DEVIN_STREAM_BUDGET_MS, idleMs: DEVIN_STREAM_BUDGET_MS, ...overrides }
+}
+
+/**
  * Proxy-facing forward, same contract as forwardCursor: writes the OpenAI
  * response itself — Completions JSON or SSE. Timers, transport retries and the
  * one 401 refresh come from `upstreamRequest`; the head waits for the first
@@ -325,7 +338,7 @@ export async function forwardDevin(response, {
   const built = openaiToDevin(source, cacheSessionId ? { cascadeId: deterministicDevinId(cacheSessionId) } : {})
   const model = source.model ?? built.chatModelUid
   const id = `chatcmpl-${Date.now()}`
-  const upstream = upstreamRequest({ family: 'devin', signal, startedAt, stream, response, timeouts })
+  const upstream = upstreamRequest({ family: 'devin', signal, startedAt, stream, response, timeouts: devinUpstreamTimeouts(timeouts) })
   // Session tokens do not rotate, so before the local expiry this is one retry with the same token.
   const refresh = forcedRefresh(tokens, () => session, (next) => { session = next })
 

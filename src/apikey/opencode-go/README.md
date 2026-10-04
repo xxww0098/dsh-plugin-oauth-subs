@@ -61,7 +61,7 @@ DSH 会把每会话 `sessionId` 交给 pi-ai，但 pi-ai 0.85.1 的 openai-compl
 
 行在 [`src/catalog/models.json`](../../catalog/models.json) 的 `"opencode-go-flash"` / `"opencode-go-responses"` 键；行格式、来源与 `npm run models` 更新流程见 [`docs/models.md`](../../../docs/models.md)。本节只记本家的取舍与出处。路由定义留在 [`models.ts`](models.ts)。
 
-最近核对：2026-09-30，官方 `GET https://opencode.ai/zen/go/v1/models`（**带 Go key 的列表**，无认证返回的是更大的公开缓存视图）+ models.dev `opencode-go` 桶。
+最近核对：2026-10-03，官方 `GET https://opencode.ai/zen/go/v1/models`（**带 Go key 的列表**，无认证返回的是更大的公开缓存视图）+ models.dev `opencode-go` 桶。带 key 列表把 2026-09-30 轮下的 `kimi-k2.6` / `qwen3.6-plus` / `qwen3.7-max` / `glm-5.1` / `omen-alpha` / `minimax-m2.5` 六行又列了出来：前三行 models.dev 桶有元数据，重新收进 `opencode-go-flash`（`qwen3.6-plus` 带 256K 超阈档）；后三行桶里仍无元数据（`omen-alpha` 任何桶都没有），按「补不到参数就是 unresolved，不写入」继续留在目录外。新收 completions 行先活测：`qwen3.6-plus` / `qwen3.7-max` 回包带 `reasoning_content` → 写 DeepSeek 方言 compat；`kimi-k2.6` 回 `reasoning` / `reasoning_details`、无 `reasoning_content` → 默认 plain compat。
 
 - 来源：官方 `/v1/models` 只给 id，决定收哪些行；context / output / input / effort 取 models.dev `opencode-go` 桶；DeepSeek 方言与 effort 阶梯对照内置 pi-ai catalog。Go docs 端点表定每个 id 走哪条协议。
 - 协议分键：models.dev 标 `@ai-sdk/openai` 的行只在 `/responses` 可用，进 `opencode-go-responses`；其余走 `/chat/completions`。归属要逐行活测确认，公开列表里有的 id 两种协议都回 `Model is unavailable`，这类不进目录。

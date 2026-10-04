@@ -27,19 +27,40 @@ function parseCodexWindow(window) {
   if (!window || typeof window !== 'object') return undefined
   const usedPercent = clampPct(window.used_percent ?? window.usedPercent ?? 0) ?? 0
   const seconds = asNumber(window.limit_window_seconds ?? window.limitWindowSeconds)
+  // The SSE frame names its window in minutes (`window_minutes`); the usage
+  // endpoint in seconds (`limit_window_seconds`). Same window, two spellings.
+  const minutes = asNumber(window.window_minutes ?? window.windowMinutes)
+    ?? (seconds !== undefined && seconds > 0 ? Math.floor((seconds + 59) / 60) : undefined)
   return {
     usedPercent,
     remainingPercent: 100 - usedPercent,
-    windowMinutes: seconds !== undefined && seconds > 0 ? Math.floor((seconds + 59) / 60) : undefined,
+    windowMinutes: minutes,
     resetAt: resetAtOf(window),
   }
 }
 
-export function parseCodexUsage(payload) {
-  if (!payload || typeof payload !== 'object') return { rows: [] }
-  const rate = payload.rate_limit ?? payload.rateLimit
-  const primary = parseCodexWindow(rate?.primary_window ?? rate?.primaryWindow)
-  const secondary = parseCodexWindow(rate?.secondary_window ?? rate?.secondaryWindow)
+/**
+ * The purchasable balance ChatGPT's usage page shows as the credits amount:
+ * credits: { has_credits, unlimited, balance } where balance is a string
+ * number (the codex CLI's Credits struct on RateLimitSnapshot). The usage
+ * endpoint nests it under rate_limit; the codex.rate_limits SSE frame carries
+ * it under rate_limits — both spellings land here. has_credits: false means
+ * the plan has no credit metering, so no row — not zero.
+ */
+function codexCreditsRow(payload, rate) {
+  const credits = rate?.credits ?? payload?.credits
+  if (!credits || typeof credits !== 'object') return undefined
+  const hasCredits = credits.has_credits ?? credits.hasCredits
+  if (hasCredits === false) return undefined
+  if (credits.unlimited === true) {
+    return { key: 'credits', kind: 'prepaid', product: 'credits', unlimited: true }
+  }
+  const balance = asNumber(credits.balance)
+  if (balance === undefined) return undefined
+  return { key: 'credits', kind: 'prepaid', product: 'credits', remaining: balance }
+}
+
+function codexRows(primary, secondary, credits) {
   const rows: any[] = []
   if (primary) {
     rows.push({
@@ -61,10 +82,46 @@ export function parseCodexUsage(payload) {
       resetAt: secondary.resetAt,
     })
   }
-  const planType = typeof payload.plan_type === 'string' && payload.plan_type
+  if (credits) rows.push(credits)
+  return rows
+}
+
+function payloadPlanType(payload) {
+  return typeof payload?.plan_type === 'string' && payload.plan_type
     ? payload.plan_type
-    : typeof payload.planType === 'string' ? payload.planType : undefined
-  return { planType, rows }
+    : typeof payload?.planType === 'string' ? payload.planType : undefined
+}
+
+export function parseCodexUsage(payload) {
+  if (!payload || typeof payload !== 'object') return { rows: [] }
+  const rate = payload.rate_limit ?? payload.rateLimit
+  const rows = codexRows(
+    parseCodexWindow(rate?.primary_window ?? rate?.primaryWindow),
+    parseCodexWindow(rate?.secondary_window ?? rate?.secondaryWindow),
+    codexCreditsRow(payload, rate),
+  )
+  return { planType: payloadPlanType(payload), rows }
+}
+
+/**
+ * The `codex.rate_limits` SSE frame that opens a Codex Responses stream: the
+ * account's own windows ahead of the reply, in the same row shape as
+ * `parseCodexUsage` so the quota cards cannot tell them apart. Frame shape per
+ * the codex CLI's `RateLimitSnapshot` (windows keyed `primary` / `secondary`,
+ * `used_percent`, `window_minutes`, `reset_after_seconds`); the endpoint's
+ * `*_window` spellings are accepted too.
+ */
+export const CODEX_RATE_LIMITS_EVENT = 'codex.rate_limits'
+
+export function parseCodexRateLimitsFrame(payload) {
+  if (!payload || typeof payload !== 'object') return { rows: [] }
+  const rate = payload.rate_limits ?? payload.rateLimits
+  const rows = codexRows(
+    parseCodexWindow(rate?.primary ?? rate?.primary_window ?? rate?.primaryWindow),
+    parseCodexWindow(rate?.secondary ?? rate?.secondary_window ?? rate?.secondaryWindow),
+    codexCreditsRow(payload, rate),
+  )
+  return { planType: payloadPlanType(payload), rows }
 }
 
 function parseResetCredit(item) {

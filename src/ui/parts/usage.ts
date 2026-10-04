@@ -74,8 +74,8 @@
       return (id) => seen.get(id)?.size ?? 0
     }
 
-    const emptyUsage = () => ({ calls: 0, input: 0, output: 0, cacheRead: 0, failed: 0, cachePrompt: 0, timed: 0, ttft: 0, decodeMs: 0, decodeOut: 0 })
-    function addUsage(sum, row) {
+    const emptyUsage = () => ({ calls: 0, input: 0, output: 0, cacheRead: 0, failed: 0, cachePrompt: 0, timed: 0, ttft: 0, decodeMs: 0, decodeOut: 0, cost: 0 })
+    function addUsage(sum, row, cost = null) {
       sum.calls += row[3]
       // 输入 is the whole prompt — uncached + cache read + cache write — so
       // Token reconciles with the host's per-session totalTokens (what the
@@ -90,6 +90,18 @@
       sum.ttft += row[11] ?? 0
       sum.decodeMs += row[12] ?? 0
       sum.decodeOut += row[13] ?? 0
+      // Unpriced rows add nothing: an estimate that ignores them stays lower,
+      // and the card's cover sub-line says which models are missing.
+      sum.cost += cost ?? 0
+      return cost != null
+    }
+    /** `$0.42` → `<$0.01` / cents / dollars; large like tokens (`$1.2k`). */
+    function compactUsd(n) {
+      if (!(n > 0)) return '$0'
+      if (n < 0.01) return '<$0.01'
+      if (n < 10) return `$${n.toFixed(2)}`
+      if (n < 1000) return `$${String(n.toFixed(1)).replace(/\.0$/, '')}`
+      return `$${compactNumber(n)}`
     }
     // Token counts everything the call moved: the whole prompt in, the reply
     // out. The hit rate still only counts calls whose usage carries a cache
@@ -227,6 +239,11 @@
       const d = new Date(ms)
       const two = (n) => String(n).padStart(2, '0')
       return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}`
+    }
+    const shortStamp = (ms) => {
+      const d = new Date(ms)
+      const two = (n) => String(n).padStart(2, '0')
+      return `${d.getMonth() + 1}/${d.getDate()} ${two(d.getHours())}:${two(d.getMinutes())}`
     }
 
     function IconShare() {
@@ -405,6 +422,8 @@
     function UsagePanel({ t, data, error, scope, busy, onRefresh, version, repo }) {
       const [range, setRange] = useState<number | 'today'>(7)
       const [hover, setHover] = useState(-1)
+      const [by, setBy] = useState<'model' | 'session'>('model')
+      const [copiedId, setCopiedId] = useState(null)
       const shot = useShot(t)
       const cardRef = useRef(null)
       const rows = data?.rows ?? null
@@ -419,12 +438,10 @@
         }), `oauth-subs-usage-${stamp(data.at).slice(0, 10)}.png`)
       }
 
-      const head = h('header', { className: 'osubs-card-head' },
-        h('div', { className: 'osubs-head-main' }, h('h3', { className: 'osubs-card-title' }, t.usageTitle)),
-        h('div', { className: 'osubs-uhead' },
+      const head = h('header', { className: 'osubs-uhead' },
           // Controls stay out of the shared image (the footer carries the date).
           h('span', { className: 'osubs-noshot', 'data-noshot': '' },
-            data && h('span', { className: 'osubs-note' }, fill(t.usageUpdated, new Date(data.at).toLocaleTimeString(localeOf(), { hour: '2-digit', minute: '2-digit' }))),
+            data && h('span', { className: 'osubs-note osubs-uhead-note' }, fill(t.usageUpdated, new Date(data.at).toLocaleTimeString(localeOf(), { hour: '2-digit', minute: '2-digit' }))),
             h(Button, {
               size: 'sm', disabled: busy, onClick: onRefresh,
               label: h('span', { className: 'osubs-refresh' + (busy ? ' osubs-refresh--spin' : '') }, h(IconRefresh), t.quotaRefresh),
@@ -433,7 +450,7 @@
           h('div', { className: 'osubs-seg', role: 'group' }, ranges.map(([id, label]) => h(Button, {
             key: id, size: 'sm', variant: range === id ? 'primary' : undefined,
             onClick: () => { setRange(id); setHover(-1) }, label,
-          })))))
+          }))))
       if (rows === null) {
         return h('section', { className: 'osubs-card', 'aria-busy': !error },
           head, error ? h('p', { className: 'osubs-hint osubs-bad' }, error) : h(UsageSkeleton))
@@ -454,15 +471,20 @@
       const byKey = new Map(buckets.map((bucket) => [bucket.key, bucket]))
       const models = new Map()
       const total = emptyUsage()
-      for (const row of rows) {
-        if (scope !== 'all' && row[1] !== scope) continue
+      const costs = Array.isArray(data?.costs) ? data.costs : []
+      rows.forEach((row, i) => {
+        if (scope !== 'all' && row[1] !== scope) return
         const bucket = byKey.get(bucketKey(row[0] * HOUR_MS))
-        if (!bucket) continue
-        addUsage(bucket, row)
-        addUsage(total, row)
+        if (!bucket) return
+        const cost = costs[i] ?? null
+        addUsage(bucket, row, cost)
+        addUsage(total, row, cost)
         const key = `${row[1]}/${row[2]}`
-        addUsage(models.get(key) ?? models.set(key, { family: row[1], model: row[2], ...emptyUsage() }).get(key), row)
-      }
+        const model = models.get(key) ?? models.set(key, { family: row[1], model: row[2], priced: false, ...emptyUsage() }).get(key)
+        addUsage(model, row, cost)
+        // A $0 rate row is still a priced model (Cline's free group).
+        if (cost != null) model.priced = true
+      })
       const top = niceCeil(Math.max(...buckets.map(usageTokens)))
       const ranked = [...models.values()].filter((model) => model.calls || model.failed)
         .sort((a, b) => usageTokens(b) - usageTokens(a) || b.calls - a.calls)
@@ -473,6 +495,41 @@
       const ttft = usageTtft(total)
       const speed = usageSpeed(total)
       const inOut = (sum) => fill(t.usageInOut, { a: compactNumber(sum.input), b: compactNumber(sum.output) })
+      const pricedModels = ranked.filter((row) => row.priced).length
+      const costSub = ranked.length && pricedModels < ranked.length
+        ? fill(t.usageCostCover, { a: pricedModels, b: ranked.length })
+        : t.usageCostSub
+      // 按会话: one row per session, newest first (the host aggregates each
+      // session file). A scoped rail narrows to that family's share of it.
+      const sessionList = ((data?.sessions ?? []) as any[])
+        .map((session) => {
+          if (scope === 'all') {
+            return { id: session.id, lastAt: session.lastAt, calls: session.calls, failed: session.failed,
+              tokens: session.input + session.output, cost: session.cost, models: session.models ?? [] }
+          }
+          const models = (session.models ?? []).filter((model) => model.family === scope)
+          if (!models.length) return null
+          return { id: session.id, lastAt: session.lastAt,
+            calls: models.reduce((n, m) => n + m.calls, 0), failed: 0,
+            tokens: models.reduce((n, m) => n + m.tokens, 0), cost: models.reduce((n, m) => n + m.cost, 0), models }
+        })
+        .filter(Boolean)
+        .slice(0, 50)
+      const sessionPeak = Math.max(1, ...sessionList.map((session) => session.tokens))
+      const copySessionId = (id) => {
+        try {
+          void navigator.clipboard?.writeText(id).then(() => {
+            setCopiedId(id)
+            setTimeout(() => setCopiedId((current) => (current === id ? null : current)), 1500)
+          }, () => undefined)
+        } catch { /* no clipboard: the full id stays in the chip's title */ }
+      }
+      const sessionModelsSub = (session) => [
+        [session.models[0]?.model, session.models[1]?.model,
+          session.models.length > 2 ? fill(t.usageModelsMore, { n: session.models.length - 2 }) : ''].filter(Boolean).join(' · '),
+        [fill(t.usageCallsN, session.calls.toLocaleString('en-US')),
+          session.failed ? fill(t.usageFailed, session.failed) : ''].filter(Boolean).join(' · '),
+      ].filter(Boolean).join(' · ')
 
       const stat = (label, value, sub, title?) => h('div', { className: 'osubs-ustat', title },
         h('span', { className: 'osubs-ustat-l' }, label),
@@ -482,11 +539,11 @@
         h('span', { className: 'osubs-ptip-l' }, label),
         h('span', { className: 'osubs-ptip-v' }, value.toLocaleString('en-US')))
       const modelSub = (row) => [
-        scope === 'all' ? usageFamilyName(t, row.family) : '',
         fill(t.usageCallsN, row.calls.toLocaleString('en-US')),
         row.failed ? fill(t.usageFailed, row.failed) : '',
         usageTtft(row) != null ? fill(t.usageTtftShort, formatMs(usageTtft(row))) : '',
         usageSpeed(row) != null ? `${Math.round(usageSpeed(row))} tok/s` : '',
+        row.priced ? fill(t.usageEstShort, { v: compactUsd(row.cost) }) : '',
       ].filter(Boolean).join(' · ')
 
       return h(Fragment || 'div', null, h('section', { className: 'osubs-card', ref: cardRef },
@@ -496,13 +553,11 @@
           stat(t.usageTokens, compactNumber(usageTokens(total)), inOut(total)),
           stat(t.usageCacheRead, hit != null || total.cacheRead ? compactNumber(total.cacheRead) : '—', hit != null ? fill(t.usageHit, `${Math.round(hit * 100)}%`) : t.usageHitNa, t.usageHitNote),
           stat(t.usageCalls, total.calls.toLocaleString('en-US'), total.failed ? fill(t.usageFailed, total.failed) : ''),
-          stat(t.usageTtft, ttft != null ? formatMs(ttft) : '—', speed != null ? fill(t.usageSpeed, Math.round(speed)) : '')),
+          stat(t.usageTtft, ttft != null ? formatMs(ttft) : '—', speed != null ? fill(t.usageSpeed, Math.round(speed)) : ''),
+          stat(t.usageCost, total.cost > 0 || pricedModels ? compactUsd(total.cost) : '—', costSub, t.usageCostNote)),
         total.calls === 0 && total.failed === 0
           ? h('p', { className: 'osubs-hint' }, t.usageEmpty)
           : h(Fragment || 'div', null,
-            h('div', { className: 'osubs-ulegend', 'aria-hidden': 'true' },
-              h('span', null, h('i', { className: 'osubs-ukey osubs-ukey--in' }), t.usageInput),
-              h('span', null, h('i', { className: 'osubs-ukey osubs-ukey--out' }), t.usageOutput)),
             h('div', { className: 'osubs-uchart', role: 'img', 'aria-label': `${hourly ? t.usageChartHourly : t.usageChart}: ${compactNumber(usageTokens(total))}` },
               h('div', { className: 'osubs-uaxis', 'aria-hidden': 'true' },
                 h('span', null, compactNumber(top)), h('span', null, compactNumber(top / 2)), h('span', null, '0')),
@@ -521,30 +576,58 @@
                   h('span', { className: 'osubs-ubar', style: { height: `${(usageTokens(bucket) / top) * 100}%` } },
                     bucket.output > 0 && h('i', { className: 'osubs-ubar-out', style: { flexGrow: bucket.output } }),
                     bucket.input > 0 && h('i', { className: 'osubs-ubar-in', style: { flexGrow: bucket.input } })),
-                  hover === i && h('div', { className: `osubs-rtip osubs-utip${i >= buckets.length / 2 ? ' osubs-utip--end' : ''}`, role: 'tooltip' },
+                  // Right-anchored a bit early: at 30 bars the rightmost
+                  // right-opening tip still clears the card edge.
+                  hover === i && h('div', { className: `osubs-rtip osubs-utip${i >= Math.floor(buckets.length * 0.45) ? ' osubs-utip--end' : ''}`, role: 'tooltip' },
                     h('strong', null, bucket.label),
-                    tipLine(t.usageTokens, usageTokens(bucket)),
                     tipLine(t.usageInput, bucket.input),
                     tipLine(t.usageOutput, bucket.output),
                     h('div', { className: 'osubs-ptip-sep' }),
                     tipLine(t.usageCacheRead, bucket.cachePrompt || bucket.cacheRead ? bucket.cacheRead : '—'),
                     tipLine(t.usageCalls, bucket.calls),
+                    bucket.cost > 0 && tipLine(t.usageCostTip, compactUsd(bucket.cost)),
                     bucket.failed > 0 && tipLine(t.usageFailedLabel, bucket.failed))))),
               h('div', { className: 'osubs-uxlabels', 'aria-hidden': 'true' },
                 buckets.map((bucket, i) => h('span', { key: bucket.key }, labelled(i) ? bucket.label : '')))),
             h('div', { className: 'osubs-utable' },
-              h('div', { className: 'osubs-urow osubs-urow--head' }, h('span', null, t.usageByModel)),
-              ranked.map((row) => h('div', { className: 'osubs-urow', key: `${row.family}/${row.model}` },
-                h('span', { className: 'osubs-umodel' },
-                  usageFamilyIcon(row.family) && h('span', { className: 'osubs-rail-ic', style: FAMILY_COLOR[row.family] ? { color: FAMILY_COLOR[row.family] } : undefined },
-                    h(TabIcon, { name: usageFamilyIcon(row.family), className: 'osubs-rail-icon' })),
-                  h('span', { className: 'osubs-umodel-who' },
-                    h('span', { className: 'osubs-umodel-n' }, row.model),
-                    h('span', { className: 'osubs-umodel-s' }, modelSub(row)))),
-                h('span', { className: 'osubs-ushare', title: `${Math.round((usageTokens(row) / Math.max(1, usageTokens(total))) * 100)}%` },
-                  h('i', { style: { width: `${Math.max(1.5, (usageTokens(row) / peak) * 100)}%` } })),
-                h('span', { className: 'osubs-unum' },
-                  h('b', null, compactNumber(usageTokens(row))),
-                  h('small', null, usageHit(row) != null ? `${inOut(row)} · ${fill(t.usageHit, `${Math.round(usageHit(row) * 100)}%`)}` : inOut(row))))))),
+              h('div', { className: 'osubs-urow osubs-urow--head osubs-urow--pick' },
+                h('span', null, by === 'model' ? t.usageByModel : fill(t.usageSessionsN, sessionList.length)),
+                h('span', { className: 'osubs-useg', role: 'group', 'data-noshot': '' },
+                  [['model', t.usageByModel], ['session', t.usageBySession]].map(([id, label]) => h(Button, {
+                    key: id, size: 'sm', variant: by === id ? 'primary' : undefined,
+                    onClick: () => setBy(id), label,
+                  })))),
+              by === 'model'
+                ? ranked.map((row) => h('div', { className: 'osubs-urow', key: `${row.family}/${row.model}` },
+                  h('span', { className: 'osubs-umodel' },
+                    usageFamilyIcon(row.family) && h('span', { className: 'osubs-rail-ic', title: usageFamilyName(t, row.family), style: FAMILY_COLOR[row.family] ? { color: FAMILY_COLOR[row.family] } : undefined },
+                      h(TabIcon, { name: usageFamilyIcon(row.family), className: 'osubs-rail-icon' })),
+                    h('span', { className: 'osubs-umodel-who' },
+                      h('span', { className: 'osubs-umodel-n' }, row.model),
+                      h('span', { className: 'osubs-umodel-s' }, modelSub(row)))),
+                  h('span', { className: 'osubs-ushare' },
+                    h('i', { style: { width: `${Math.max(1.5, (usageTokens(row) / peak) * 100)}%` } })),
+                  h('span', { className: 'osubs-unum' },
+                    h('b', null, compactNumber(usageTokens(row))),
+                    h('small', null, `${Math.round((usageTokens(row) / Math.max(1, usageTokens(total))) * 100)}%`))))
+                : sessionList.map((session) => h('div', { className: 'osubs-urow', key: session.id },
+                  h('span', { className: 'osubs-umodel' },
+                    h('span', { className: 'osubs-umodel-who' },
+                      h('span', { className: 'osubs-umodel-n osubs-usess-n' },
+                        shortStamp(session.lastAt),
+                        h('button', {
+                          type: 'button', className: 'osubs-ucopy', 'data-noshot': '',
+                          title: session.id, 'aria-label': t.usageCopyId,
+                          onClick: () => copySessionId(session.id),
+                        }, copiedId === session.id ? t.usageCopiedShort : session.id.slice(0, 8))),
+                      h('span', { className: 'osubs-umodel-s', title: session.models.map((model) => `${model.family}/${model.model}`).join('\n') },
+                        sessionModelsSub(session)))),
+                  h('span', { className: 'osubs-ushare' },
+                    h('i', { style: { width: `${Math.max(1.5, (session.tokens / sessionPeak) * 100)}%` } })),
+                  h('span', { className: 'osubs-unum' },
+                    h('b', null, compactNumber(session.tokens)),
+                    h('small', null, session.cost > 0
+                      ? fill(t.usageEstShort, { v: compactUsd(session.cost) })
+                      : `${Math.round((session.tokens / Math.max(1, usageTokens(total))) * 100)}%`)))))),
       ), shot.layer)
     }

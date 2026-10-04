@@ -1,7 +1,7 @@
 /**
  * Command Code（api.commandcode.ai）— 常量 + API key session + 模型目录。
  *
- * Command Code CLI `command-code@1.72.2`（npm 包 `command-code`，bin 别名
+ * Command Code CLI `command-code@1.74.1`（npm 包 `command-code`，bin 别名
  * `cmd`/`cmdc`/`commandcode`）发：
  *
  *   GET  /alpha/whoami?limits=1
@@ -17,11 +17,12 @@
  * 凭据：`COMMAND_CODE_API_KEY` 环境变量优先，其次 `~/.commandcode/auth.json`
  * 的 `apiKey`（CLI `getCommandAuthKey` 同序）。Bearer，无 refresh。
  *
- * 模型目录：CLI bundle 内置注册表 `uD`（88 行，含 5 个 hidden 促销行 +
- * 1 个 `MiniMaxAI/MiniMax-M3-Free` 隐藏别名——本表取 82 个可见行）。
- * `reasoningEfforts` 由 `kr` per-model Map 提供；`getSupportedEfforts`
- * 无该模型条目时返回 null（不发明 fallback）。`contextWindow` 缺省回填
- * CLI 默认 200000（`Ir`）。上游无 /alpha/models，目录是静态的。
+ * 模型目录：CLI bundle 内置注册表（1.74.1 为 92 行，含 6 个 hidden 促销 /
+ * 别名行——本表取 86 个可见行；另有日期门控退役行 `stealth/pixel-canary`，
+ * 2026-10-01 起隐藏，已从本表删）。`reasoningEfforts` 取注册表行自带的
+ * 列表；bundle 另有一张 effort Map，只在行缺该字段时回退，没有条目就不发明
+ * fallback。`contextWindow` 缺省回填 CLI 默认 200000。上游无 /alpha/models，
+ * 目录是静态的。
  * 规划价目（CLI `rr` 表，USD/月）：individual-go $10 / individual-provider
  * $15 / individual-pro $30 / individual-pro-v1 $80 / teams-pro $40 /
  * individual-goat $70 / individual-max $150 / individual-ultra $300。
@@ -41,7 +42,7 @@ export const COMMAND_CODE_SUBSCRIPTIONS_URL = `${COMMAND_CODE_API_BASE}/alpha/bi
 export const COMMAND_CODE_USAGE_URL = `${COMMAND_CODE_API_BASE}/alpha/usage/summary`
 
 /** CLI 发 `x-command-code-version` 的值；无 header 时上游照跑（401/计费门正常）。 */
-export const COMMAND_CODE_CLI_VERSION = '1.72.2'
+export const COMMAND_CODE_CLI_VERSION = '1.74.1'
 
 export const COMMAND_CODE_DEFAULT_CONTEXT = 200_000
 /** CLI `max_tokens ?? 64000` 上限；无 per-model output cap。 */

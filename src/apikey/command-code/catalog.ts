@@ -1,13 +1,12 @@
 /**
  * Command Code model catalog — static floor only.
  *
- * The CLI's registry is bundle-defined (`pD` in dist/cli.mjs, command-code
- * 1.72.2): there is no `/alpha/models` endpoint to refresh from, so unlike
+ * The CLI's registry is bundle-defined (dist/cli.mjs, command-code 1.74.1):
+ * there is no `/alpha/models` endpoint to refresh from, so unlike
  * Cursor/Kimi/Devin this family keeps a pure static catalog. The rows in
- * index.ts are the registry's non-hidden entries with per-model effort lists
- * merged from the CLI's `kr` effort map; models with no entry keep no
- * `reasoningEfforts` (the CLI itself returns null there — no invented
- * fallback).
+ * index.ts are the registry's non-hidden entries, carrying the row's own
+ * effort list; models with no entry keep no `reasoningEfforts` (the CLI
+ * itself returns null there — no invented fallback).
  */
 
 import { catalogRateTable, catalogRateTimeOfDay } from '../../catalog/index.js'
