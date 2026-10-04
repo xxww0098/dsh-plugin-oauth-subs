@@ -31,7 +31,6 @@ export const KIMI_USER_AGENT = 'dsh-plugin-oauth-subs'
 export const KIMI_PLATFORM = 'dsh'
 export const KIMI_PREEMPT_MS = 2 * 60_000
 export const KIMI_NEVER_EXPIRES = 8.64e15
-export const KIMI_CONTEXT_WINDOW = 262_144
 export const KIMI_MAX_TOKENS = 32_000
 export const KIMI_INPUT = Object.freeze(['text', 'image'])
 export const KIMI_SOURCES = Object.freeze(['oauth', 'cli', 'paste', 'env'])

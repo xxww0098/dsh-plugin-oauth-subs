@@ -46,7 +46,6 @@ export declare function usageOf(event: any): any;
  * adapter rebuild, unexplained prefix break, or true affinity miss.
  */
 export declare function annotateCacheCalls(calls: any, events: any): any;
-export declare function callHitRate(call: any): number;
 /**
  * The proxy's cacheable-prefix estimates (`prefix-estimate.jsonl`, plus its
  * `.1` generation) from every DSH profile's plugin data dir. Kiro reports no

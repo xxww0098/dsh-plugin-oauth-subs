@@ -44,7 +44,6 @@ export const COMMAND_CODE_USAGE_URL = `${COMMAND_CODE_API_BASE}/alpha/usage/summ
 /** CLI 发 `x-command-code-version` 的值；无 header 时上游照跑（401/计费门正常）。 */
 export const COMMAND_CODE_CLI_VERSION = '1.74.1'
 
-export const COMMAND_CODE_DEFAULT_CONTEXT = 200_000
 /** CLI `max_tokens ?? 64000` 上限；无 per-model output cap。 */
 export const COMMAND_CODE_MAX_TOKENS = 64_000
 

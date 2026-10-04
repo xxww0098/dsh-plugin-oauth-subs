@@ -38,11 +38,6 @@ export declare function maxContextWindowOf(modelId: any): any;
 export declare function familyMaxContextWindow(family: any, modelId: any): any;
 export declare function isCodex900kBase(modelId: any): boolean;
 /**
- * Codex keeps its established `-900k` alias for the 872K ceiling; other
- * families derive the suffix from the window (`-1m`).
- */
-export declare function contextVariantSuffix(modelId: any, large: any): string;
-/**
  * Picker classification is suffix-surface: any id ending in a known context
  * suffix is an opt-in alias, even when the base is not in the static catalog
  * (live rows, renamed ids) — an unknown `-900k` / `-1m` key must stay opt-in,

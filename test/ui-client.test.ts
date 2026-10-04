@@ -710,3 +710,14 @@ test('分享 on 额度: identities masked in the image, add-account row and acco
   // Masking lives in the clone only; the page keeps the full identity.
   assert.match(src, /if \(source\.hasAttribute\('data-shot-mask'\)\) \{\n\s*copy\.textContent = maskIdentity\(source\.textContent\)/)
 })
+
+test('Settings formatReset no longer rounds remaining hours', async () => {
+  const src = assembleUi()
+  assert.match(src, /const hours = Math\.floor\(\(totalMinutes % 1440\) \/ 60\)/)
+  assert.match(src, /const minutes = totalMinutes % 60/)
+  assert.match(src, /resetIn:\s*'\{n\}后重置'/)
+  assert.match(src, /resetIn:\s*'resets in \{n\}'/)
+  assert.equal(src.includes('Math.round(minutes / 60)'), false)
+  assert.equal(src.includes('resetHours:'), false)
+  assert.equal(src.includes('if (days >= 14) return formatStamp(resetAt)'), false)
+})

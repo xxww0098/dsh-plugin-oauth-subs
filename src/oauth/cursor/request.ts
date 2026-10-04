@@ -22,7 +22,6 @@ import {
   encodeJsonValueBytes,
   encodeRequestedModel,
   encodeUserMessage,
-  frameConnect,
   splitConnectFrames,
 } from './proto.js'
 
@@ -458,8 +457,4 @@ export function consumeCursorFrames(chunk, rest, onMessage) {
     onMessage(decodeAgentServerMessage(frame.payload))
   }
   return leftover
-}
-
-export function firstConnectFrame(built) {
-  return frameConnect(built.requestBytes)
 }

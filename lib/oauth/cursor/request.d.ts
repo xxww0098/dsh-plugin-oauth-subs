@@ -92,4 +92,3 @@ export declare function createCursorOpenaiStream({ model, id, conversationId }: 
     };
 };
 export declare function consumeCursorFrames(chunk: any, rest: any, onMessage: any): Buffer<any>;
-export declare function firstConnectFrame(built: any): Buffer<ArrayBuffer>;

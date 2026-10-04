@@ -14,7 +14,6 @@ export declare function parseAntigravityQuotaSummary(payload: any): {
     planType: string | undefined;
 };
 export declare function parseAntigravityPaidCredits(payload: any): any[];
-export declare function pickAntigravityPlanName(payload: any): string | undefined;
 export declare function fetchAntigravityQuota(session: any, fetchFn?: typeof outboundFetch): Promise<{
     planType: string | undefined;
     rows: any[];

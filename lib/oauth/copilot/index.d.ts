@@ -33,7 +33,6 @@ export declare const COPILOT_DEFAULT_MAX_TOKENS = 16384;
 export declare const COPILOT_INPUT: readonly string[];
 export declare const COPILOT_VISION_INPUT: readonly string[];
 export declare const COPILOT_SOURCES: readonly string[];
-export declare const COPILOT_DEFAULT_MODEL = "gpt-4.1";
 export declare const COPILOT_PLAN_NAMES: Readonly<{
     free: "Free";
     individual: "Individual";

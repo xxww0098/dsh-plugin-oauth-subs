@@ -338,10 +338,6 @@ function hitRate(cache, uncached) {
   return total === 0 ? 0 : cache / total
 }
 
-export function callHitRate(call) {
-  return hitRate(call.cacheReadTokens, call.inputTokens)
-}
-
 /**
  * The proxy's cacheable-prefix estimates (`prefix-estimate.jsonl`, plus its
  * `.1` generation) from every DSH profile's plugin data dir. Kiro reports no

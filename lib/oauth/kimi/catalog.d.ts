@@ -3,7 +3,6 @@
  * login. KIMI_MODELS is the offline fallback only.
  */
 export declare const KIMI_CATALOG_TTL_MS: number;
-export declare function resetKimiCatalogCache(): void;
 export declare function kimiCatalogTokenHash(token: any): string;
 export declare function kimiCatalogModels(): any[];
 export declare function kimiReasoningEffortsOf(row: any): any;

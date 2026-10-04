@@ -18,8 +18,6 @@ export declare const DEVIN_AUTHORIZE_PATH = "/auth/cli/continue";
 export declare const DEVIN_TOKEN_PATH = "/auth/cli/token";
 export declare const DEVIN_CALLBACK_PORT = 59653;
 export declare const DEVIN_CALLBACK_PATH = "/callback";
-/** Marker the CLI puts on its PKCE continue URL. */
-export declare const DEVIN_PKCE_MARKER = "cli_pkce_marker=1";
 export declare const DEVIN_AUTHORIZE_URL = "https://app.devin.ai/auth/cli/continue";
 export declare const DEVIN_TOKEN_URL = "https://api.devin.ai/auth/cli/token";
 export declare const DEVIN_CHAT_PATH = "/exa.api_server_pb.ApiServerService/GetChatMessage";
@@ -135,16 +133,6 @@ export declare function exchangeDevinCode(code: any, verifier: any, { fetchFn }?
     accessToken: string;
     refreshToken: string;
     expiresAt: number;
-}>;
-/** Devin chat is Completions-shaped at the DSH edge; efforts ride the uid. */
-export declare const DEVIN_REASONING: Readonly<{
-    off: "none";
-    minimal: "minimal";
-    low: "low";
-    medium: "medium";
-    high: "high";
-    xhigh: "xhigh";
-    max: "max";
 }>;
 /**
  * Static floor mirroring the live GetCliModelConfigs probe (2026-09-29, Pro
