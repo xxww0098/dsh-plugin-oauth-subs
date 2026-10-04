@@ -9,7 +9,7 @@
 
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { decodeJwtPayload } from '../../utils/jwt.js'
-import { OAuthEndpointError, oauthError } from '../tokens.js'
+import { OAuthEndpointError, oauthError } from '../errors.js'
 import { outboundFetch } from '../../utils/outbound.js'
 import { catalogRows } from '../../catalog/index.js'
 

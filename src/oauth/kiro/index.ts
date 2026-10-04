@@ -9,7 +9,7 @@
 
 import { createHash, randomUUID } from 'node:crypto'
 import { outboundFetch } from '../../utils/outbound.js'
-import { oauthCodeOf } from '../tokens.js'
+import { oauthCodeOf } from '../errors.js'
 import { catalogRows } from '../../catalog/index.js'
 
 export const KIRO_PORTAL_URL = 'https://app.kiro.dev'

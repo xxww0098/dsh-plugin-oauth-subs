@@ -24,7 +24,7 @@
 
 import os from 'node:os'
 import { join } from 'node:path'
-import { OAuthEndpointError, oauthError } from '../tokens.js'
+import { OAuthEndpointError, oauthError } from '../errors.js'
 import { applyClineCache, clineCacheHeaders, clineCacheSessionId, resetClinePins } from './cache.js'
 import { outboundFetch } from '../../utils/outbound.js'
 import { catalogRows } from '../../catalog/index.js'

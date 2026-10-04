@@ -14,7 +14,8 @@
 
 import { RequestError, sendJson } from '../../utils/http.js'
 import { UpstreamFailure, connectCodeStatus, pumpBody, upstreamRequest, writeSse } from '../upstream.js'
-import { OAuthEndpointError, forcedRefresh } from '../tokens.js'
+import { OAuthEndpointError } from '../errors.js'
+import { forcedRefresh } from '../tokens.js'
 import {
   DEVIN_TIER_NAMES,
   devinApiServer,
