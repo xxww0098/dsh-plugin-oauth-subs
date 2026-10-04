@@ -39,7 +39,7 @@ export declare class QuotaStore {
     } | {
         status: any;
         planType: any;
-        planLabel: any;
+        planLabel: string | undefined;
         account: any;
         subscriptionStatus: any;
         hasGrokCodeAccess: any;
@@ -68,7 +68,7 @@ export declare class QuotaStore {
     } | {
         status: any;
         planType: any;
-        planLabel: any;
+        planLabel: string | undefined;
         account: any;
         subscriptionStatus: any;
         hasGrokCodeAccess: any;
@@ -113,7 +113,7 @@ export declare class QuotaStore {
     } | {
         status: any;
         planType: any;
-        planLabel: any;
+        planLabel: string | undefined;
         account: any;
         subscriptionStatus: any;
         hasGrokCodeAccess: any;
