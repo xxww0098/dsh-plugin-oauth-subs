@@ -1,7 +1,7 @@
 /**
- * Copilot account lifecycle for AuthController: live catalog discovery, hosts.json
- * auto-import, session minting from the GitHub token, identity, and device-code
- * completion.
+ * Copilot account lifecycle for AuthController: device login start, live catalog
+ * discovery, hosts.json auto-import, session minting from the GitHub token
+ * (device completion or a pasted key), and identity.
  * Functions take the controller as their first argument; the class keeps
  * the public entry points.
  */
@@ -10,12 +10,14 @@ import { errorCode, errorMessage } from '../../utils/http.js'
 import {
   accountIdOf,
   listStoredSessions,
+  publicSession,
   replaceAccountId,
   saveSession,
   updateAccountSession,
 } from '../store.js'
 import {
   completeCopilotDevice as sessionFromCopilotDevice,
+  copilotDeviceSpec,
   isCopilotOpaqueAccount,
   isCopilotSessionToken,
   mintCopilotSessionFromGithub,
@@ -125,4 +127,31 @@ export async function completeCopilotDevice(ctl: AuthController, attempt) {
   } finally {
     ctl.finalizing.delete('copilot')
   }
+}
+
+export async function loginCopilot(ctl: AuthController) {
+  const attempt = await ctl.devices.start('copilot', copilotDeviceSpec({ fetchFn: ctl.fetchFn }))
+  ctl.finalizing.add('copilot')
+  void ctl.completeCopilotDevice(attempt)
+  return {
+    authorizeUrl: attempt.verificationUrl,
+    verificationUri: attempt.verificationUri,
+    userCode: attempt.userCode,
+    mode: 'device',
+  }
+}
+
+export async function useCopilotKey(ctl: AuthController, key) {
+  const session = await finishCopilotSession(ctl, await mintCopilotSessionFromGithub(key, {
+    fetchFn: ctl.fetchFn,
+    source: 'paste',
+  }))
+  ctl.claim('copilot')
+  ctl.devices.pending('copilot')?.cancel()
+  await saveSession('copilot', session, ctl.authPath)
+  ctl.lastError.delete('copilot')
+  await discoverCopilot(ctl, session)
+  ctl.onAuthChanged?.('copilot')
+  void ctl.quota.refresh('copilot')
+  return { account: publicSession('copilot', session) }
 }

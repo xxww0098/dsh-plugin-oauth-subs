@@ -1,11 +1,17 @@
 /**
- * Antigravity account lifecycle for AuthController: plan write-back and the Google validation probe.
+ * Antigravity account lifecycle for AuthController: PKCE login start and code
+ * exchange, plan write-back, and the Google validation probe.
  * Functions take the controller as their first argument; the class keeps
  * the public entry points.
  */
 
 import { updateAccountSession } from '../store.js'
-import { applyAntigravityValidation, probeAntigravityValidation } from './index.js'
+import {
+  antigravityFlow,
+  applyAntigravityValidation,
+  exchangeAntigravityCode,
+  probeAntigravityValidation,
+} from './index.js'
 import type { AuthController } from '../controller.js'
 
 export async function rememberAntigravityPlan(ctl: AuthController, row, quota) {
@@ -24,4 +30,15 @@ export async function probeAntigravity(ctl: AuthController, source) {
   } catch {
     // probe is best-effort; quota / login must still succeed
   }
+}
+
+export async function loginAntigravity(ctl: AuthController) {
+  const attempt = await ctl.flows.start('antigravity', antigravityFlow)
+  const claim = ctl.claim('antigravity')
+  void ctl.completePkce('antigravity', attempt, claim)
+  return { authorizeUrl: attempt.authorizeUrl, redirectUri: attempt.redirectUri, mode: 'oauth' }
+}
+
+export async function completeAntigravityPaste(ctl: AuthController, code, attempt) {
+  return exchangeAntigravityCode(code, attempt.redirectUri, { fetchFn: ctl.fetchFn })
 }

@@ -1,6 +1,6 @@
 /**
- * Cline account lifecycle for AuthController: live catalog discovery, local CLI
- * auto-import, identity, and the two-hop device-code completion.
+ * Cline account lifecycle for AuthController: device login start, live catalog
+ * discovery, local CLI auto-import, identity, and the two-hop device-code completion.
  * Functions take the controller as their first argument; the class keeps
  * the public entry points.
  */
@@ -13,7 +13,12 @@ import {
   saveSession,
   updateAccountSession,
 } from '../store.js'
-import { isClineOpaqueAccount, registerClineTokens, resolveClineIdentity } from './index.js'
+import {
+  clineDeviceSpec,
+  isClineOpaqueAccount,
+  registerClineTokens,
+  resolveClineIdentity,
+} from './index.js'
 import { clineCatalogModels } from './catalog.js'
 import { CLINE_IMPORT_EMPTY, importClineAuth } from './import.js'
 import { signedOutOf } from '../account-marks.js'
@@ -116,5 +121,17 @@ export async function completeClineDevice(ctl: AuthController, attempt) {
     }
   } finally {
     ctl.finalizing.delete('cline')
+  }
+}
+
+export async function loginCline(ctl: AuthController) {
+  const attempt = await ctl.devices.start('cline', clineDeviceSpec({ fetchFn: ctl.fetchFn }))
+  ctl.finalizing.add('cline')
+  void ctl.completeClineDevice(attempt)
+  return {
+    authorizeUrl: attempt.verificationUrl,
+    verificationUri: attempt.verificationUri,
+    userCode: attempt.userCode,
+    mode: 'device',
   }
 }

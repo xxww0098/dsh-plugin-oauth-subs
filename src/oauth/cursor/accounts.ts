@@ -1,6 +1,6 @@
 /**
- * Cursor account lifecycle for AuthController: live catalog discovery, auto-import from the
- * CLI / IDE, identity from the token or state.vscdb, and plan write-back.
+ * Cursor account lifecycle for AuthController: login start, live catalog discovery,
+ * auto-import from the CLI / IDE, identity from the token or state.vscdb, and plan write-back.
  * Functions take the controller as their first argument; the class keeps
  * the public entry points.
  */
@@ -147,4 +147,11 @@ export async function completeCursor(ctl: AuthController, attempt) {
   } finally {
     ctl.finalizing.delete('cursor')
   }
+}
+
+export async function loginCursor(ctl: AuthController) {
+  const attempt = await ctl.cursorFlows.start('cursor', { fetchFn: ctl.fetchFn })
+  ctl.finalizing.add('cursor')
+  void ctl.completeCursor(attempt)
+  return { authorizeUrl: attempt.authorizeUrl, mode: 'cli' }
 }

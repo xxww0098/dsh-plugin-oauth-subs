@@ -1,6 +1,6 @@
 /**
- * Command Code account lifecycle for AuthController: auth.json auto-import, whoami identity, and
- * the loopback-callback login completion.
+ * Command Code account lifecycle for AuthController: loopback login start and pasted
+ * keys, auth.json auto-import, whoami identity, and the loopback-callback login completion.
  * Functions take the controller as their first argument; the class keeps
  * the public entry points.
  */
@@ -9,11 +9,14 @@ import { describeError, errorCode, errorMessage } from '../../utils/http.js'
 import {
   accountIdOf,
   listStoredSessions,
+  publicSession,
   replaceAccountId,
   saveSession,
   updateAccountSession,
 } from '../../oauth/store.js'
 import {
+  commandCodeFlow,
+  commandCodeSession,
   commandCodeSessionFromCallback,
   isCommandCodeOpaqueAccount,
   resolveCommandCodeIdentity,
@@ -112,4 +115,27 @@ export async function completeCommandCode(ctl: AuthController, attempt, claim) {
       ctl.lastError.set('command-code', describeError(error))
     }
   }
+}
+
+export async function loginCommandCode(ctl: AuthController) {
+  // Studio auth/cli redirects credentials straight to the loopback
+  // callback — collect() resolves them, no code exchange exists.
+  const attempt = await ctl.flows.start('command-code', commandCodeFlow)
+  const claim = ctl.claim('command-code')
+  void ctl.completeCommandCode(attempt, claim)
+  return { authorizeUrl: attempt.authorizeUrl, redirectUri: attempt.redirectUri, mode: 'oauth' }
+}
+
+export async function useCommandCodeKey(ctl: AuthController, key) {
+  const session = await finishCommandCodeSession(ctl, commandCodeSession({
+    accessToken: key,
+    source: 'paste',
+  }))
+  ctl.claim('command-code')
+  ctl.flows.pending('command-code')?.cancel()
+  await saveSession('command-code', session, ctl.authPath)
+  ctl.lastError.delete('command-code')
+  ctl.onAuthChanged?.('command-code')
+  void ctl.quota.refresh('command-code')
+  return { account: publicSession('command-code', session) }
 }

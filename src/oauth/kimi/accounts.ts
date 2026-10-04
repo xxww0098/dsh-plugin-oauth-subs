@@ -1,6 +1,6 @@
 /**
- * Kimi account lifecycle for AuthController: live catalog discovery, local Kimi Code
- * auto-import, identity, and device-code completion.
+ * Kimi account lifecycle for AuthController: device login start and completion,
+ * pasted keys, live catalog discovery, local Kimi Code auto-import, and identity.
  * Functions take the controller as their first argument; the class keeps
  * the public entry points.
  */
@@ -9,6 +9,7 @@ import { errorCode, errorMessage } from '../../utils/http.js'
 import {
   accountIdOf,
   listStoredSessions,
+  publicSession,
   replaceAccountId,
   saveSession,
   updateAccountSession,
@@ -16,6 +17,8 @@ import {
 import {
   completeKimiDevice as sessionFromKimiDevice,
   isKimiOpaqueAccount,
+  kimiDeviceSpec,
+  kimiSession,
   resolveKimiIdentity,
 } from './index.js'
 import { importKimiAuth, KIMI_IMPORT_EMPTY } from './import.js'
@@ -113,4 +116,31 @@ export async function completeKimiDevice(ctl: AuthController, attempt) {
   } finally {
     ctl.finalizing.delete('kimi')
   }
+}
+
+export async function loginKimi(ctl: AuthController) {
+  const attempt = await ctl.devices.start('kimi', kimiDeviceSpec({ fetchFn: ctl.fetchFn }))
+  ctl.finalizing.add('kimi')
+  void ctl.completeKimiDevice(attempt)
+  return {
+    authorizeUrl: attempt.verificationUrl,
+    verificationUri: attempt.verificationUri,
+    userCode: attempt.userCode,
+    mode: 'device',
+  }
+}
+
+export async function useKimiKey(ctl: AuthController, key) {
+  const session = await finishKimiSession(ctl, kimiSession({
+    accessToken: key,
+    source: 'paste',
+  }))
+  ctl.claim('kimi')
+  ctl.devices.pending('kimi')?.cancel()
+  await saveSession('kimi', session, ctl.authPath)
+  ctl.lastError.delete('kimi')
+  await discoverKimi(ctl, session)
+  ctl.onAuthChanged?.('kimi')
+  void ctl.quota.refresh('kimi')
+  return { account: publicSession('kimi', session) }
 }

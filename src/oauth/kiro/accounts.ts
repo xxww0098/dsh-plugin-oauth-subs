@@ -10,6 +10,7 @@ import {
   allocateKiroMachineId,
   BUILDER_ID_START_URL,
   canonicalizeKiroMethod,
+  exchangeKiroSocialCode,
   kiroSession,
   kiroSocialFlow,
   refreshKiro,
@@ -116,6 +117,31 @@ export async function completeKiroIdc(ctl: AuthController, attempt) {
   } finally {
     ctl.finalizing.delete('kiro')
   }
+}
+
+/**
+ * The Kiro portal redirected an organization login to the IdC device flow
+ * (`login_option=awsidc`, issue #167): settle through the device attempt
+ * the callback already started instead of exchanging a code. Returns true
+ * when the paste completion is settled (or cancelled) this way.
+ */
+export function resumeKiroIdcPaste(ctl: AuthController, code, claim) {
+  if (!code || typeof code !== 'object' || !code.kiroIdcAttempt) return false
+  if (ctl.claims.get('kiro') !== claim) {
+    code.kiroIdcAttempt.cancel()
+    return true
+  }
+  ctl.finalizing.add('kiro')
+  void ctl.completeKiroIdc(code.kiroIdcAttempt)
+  return true
+}
+
+export async function completeKiroPaste(ctl: AuthController, code, attempt) {
+  return exchangeKiroSocialCode(code, attempt.pkce.verifier, attempt.redirectUri, {
+    fetchFn: ctl.fetchFn,
+    callback: typeof attempt.callback === 'function' ? attempt.callback() : attempt.callback,
+    machineId: attempt.machineId,
+  })
 }
 
 export async function useKiroKey(ctl: AuthController, key, payload: any = {}) {
