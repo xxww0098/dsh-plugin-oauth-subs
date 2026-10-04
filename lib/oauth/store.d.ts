@@ -6,189 +6,53 @@
  */
 import { readPrivateText, writePrivateText } from '../utils/private-text.js';
 export { readPrivateText, writePrivateText };
+/**
+ * One stored login. The store's hard floor is a usable accessToken; every
+ * other field (credentials, identity labels, hydrated hints) is family
+ * territory and arrives as an open shape — assertSessionShape enforces the
+ * credential triple when the file is read.
+ */
+export interface StoredSession {
+    accessToken: string;
+    /** Credential triple the loader asserts on every entry it reads. */
+    refreshToken?: string;
+    expiresAt: number;
+    [key: string]: unknown;
+}
+/** One provider's entry in auth.json: its logins plus rotation bookkeeping. */
+export interface SessionVault {
+    activeId: string | undefined;
+    accounts: Record<string, StoredSession>;
+    /** Opaque change token per account id — rotated on every save. */
+    generations: Record<string, string>;
+}
+/** A stored login plus the change tokens refresh bookkeeping compares on. */
+export interface StoredAccount {
+    id: string;
+    session: StoredSession;
+    active: boolean;
+    generation: string;
+    version: string;
+}
+/** The parsed auth.json: provider-keyed JSON, values still raw until asVault. */
+export type SessionStore = Record<string, unknown>;
 export declare const PROVIDER_IDS: readonly string[];
 export declare function defaultDataDir(): string;
 export declare function authFilePath(dataDir?: string): string;
-export declare function accountIdOf(provider: any, session: any): any;
-export declare function asVault(provider: any, entry: any): {
-    activeId: any;
-    accounts: {};
-    generations: {};
-};
-export declare function loadStore(path: any): Promise<any>;
-export declare function getSession(provider: any, path: any): Promise<any>;
-export declare function listAccounts(provider: any, path: any): Promise<({
-    id: string;
-    active: boolean;
-} | {
-    account: any;
-    planType: any;
-    planLabel: any;
-    expiresAt: any;
-    region?: undefined;
-    needsValidation?: undefined;
-    validationUrl?: undefined;
-    method?: undefined;
-    methodLabel?: undefined;
-    organizationName?: undefined;
-    scopes?: undefined;
-    id: string;
-    active: boolean;
-} | {
-    account: string | undefined;
-    planType: any;
-    planLabel: any;
-    region: string;
-    expiresAt: any;
-    needsValidation?: undefined;
-    validationUrl?: undefined;
-    method?: undefined;
-    methodLabel?: undefined;
-    organizationName?: undefined;
-    scopes?: undefined;
-    id: string;
-    active: boolean;
-} | {
-    account: any;
-    planType: any;
-    planLabel: any;
-    expiresAt: any;
-    needsValidation: boolean;
-    validationUrl: any;
-    region?: undefined;
-    method?: undefined;
-    methodLabel?: undefined;
-    organizationName?: undefined;
-    scopes?: undefined;
-    id: string;
-    active: boolean;
-} | {
-    account: any;
-    planType: any;
-    planLabel: any;
-    method: any;
-    methodLabel: string | undefined;
-    expiresAt: any;
-    region?: undefined;
-    needsValidation?: undefined;
-    validationUrl?: undefined;
-    organizationName?: undefined;
-    scopes?: undefined;
-    id: string;
-    active: boolean;
-} | {
-    account: any;
-    planType: any;
-    planLabel: any;
-    method: any;
-    methodLabel: string | undefined;
-    organizationName: any;
-    expiresAt: any;
-    region?: undefined;
-    needsValidation?: undefined;
-    validationUrl?: undefined;
-    scopes?: undefined;
-    id: string;
-    active: boolean;
-} | {
-    account: any;
-    planType: any;
-    planLabel: any;
-    scopes: any;
-    expiresAt: any;
-    region?: undefined;
-    needsValidation?: undefined;
-    validationUrl?: undefined;
-    method?: undefined;
-    methodLabel?: undefined;
-    organizationName?: undefined;
-    id: string;
-    active: boolean;
-})[]>;
-export declare function listStoredSessions(provider: any, path: any): Promise<{
-    id: string;
-    session: any;
-    active: boolean;
-    generation: any;
-    version: string;
-}[]>;
-export declare function getStoredSession(provider: any, id: any, path: any): Promise<any>;
+export declare function accountIdOf(provider: string, session: StoredSession | null | undefined): string;
+export declare function asVault(provider: string, entry: unknown): SessionVault;
+export declare function loadStore(path?: string): Promise<SessionStore>;
+export declare function getSession(provider: string, path?: string): Promise<StoredSession | undefined>;
+export declare function listAccounts(provider: string, path?: string): Promise<Record<string, unknown>[]>;
+export declare function listStoredSessions(provider: string, path?: string): Promise<StoredAccount[]>;
+export declare function getStoredSession(provider: string, id: string | undefined, path?: string): Promise<StoredAccount | undefined>;
 /** Only update the login/credentials that produced the result; never activate it. */
-export declare function updateAccountSession(provider: any, source: any, session: any, path: any, nextId?: any): Promise<any>;
-export declare function replaceAccountId(provider: any, source: any, session: any, path: any): Promise<any>;
-export declare function saveSession(provider: any, session: any, path: any, options?: any): Promise<any>;
-export declare function switchAccount(provider: any, id: any, path: any): Promise<any>;
-export declare function deleteSession(provider: any, path: any, id: any, source?: any): Promise<any>;
-export declare function publicSession(provider: any, session: any): {
-    account: any;
-    planType: any;
-    planLabel: any;
-    expiresAt: any;
-    region?: undefined;
-    needsValidation?: undefined;
-    validationUrl?: undefined;
-    method?: undefined;
-    methodLabel?: undefined;
-    organizationName?: undefined;
-    scopes?: undefined;
-} | {
-    account: string | undefined;
-    planType: any;
-    planLabel: any;
-    region: string;
-    expiresAt: any;
-    needsValidation?: undefined;
-    validationUrl?: undefined;
-    method?: undefined;
-    methodLabel?: undefined;
-    organizationName?: undefined;
-    scopes?: undefined;
-} | {
-    account: any;
-    planType: any;
-    planLabel: any;
-    expiresAt: any;
-    needsValidation: boolean;
-    validationUrl: any;
-    region?: undefined;
-    method?: undefined;
-    methodLabel?: undefined;
-    organizationName?: undefined;
-    scopes?: undefined;
-} | {
-    account: any;
-    planType: any;
-    planLabel: any;
-    method: any;
-    methodLabel: string | undefined;
-    expiresAt: any;
-    region?: undefined;
-    needsValidation?: undefined;
-    validationUrl?: undefined;
-    organizationName?: undefined;
-    scopes?: undefined;
-} | {
-    account: any;
-    planType: any;
-    planLabel: any;
-    method: any;
-    methodLabel: string | undefined;
-    organizationName: any;
-    expiresAt: any;
-    region?: undefined;
-    needsValidation?: undefined;
-    validationUrl?: undefined;
-    scopes?: undefined;
-} | {
-    account: any;
-    planType: any;
-    planLabel: any;
-    scopes: any;
-    expiresAt: any;
-    region?: undefined;
-    needsValidation?: undefined;
-    validationUrl?: undefined;
-    method?: undefined;
-    methodLabel?: undefined;
-    organizationName?: undefined;
-} | undefined;
+export declare function updateAccountSession(provider: string, source: StoredAccount, session: StoredSession, path?: string, nextId?: string): Promise<StoredAccount | undefined>;
+export declare function replaceAccountId(provider: string, source: StoredAccount, session: StoredSession, path?: string): Promise<StoredAccount | undefined>;
+export declare function saveSession(provider: string, session: StoredSession, path?: string, options?: {
+    activate?: boolean;
+    id?: string;
+}): Promise<StoredAccount | undefined>;
+export declare function switchAccount(provider: string, id: string, path?: string): Promise<void>;
+export declare function deleteSession(provider: string, path?: string, id?: string, source?: StoredAccount): Promise<boolean>;
+export declare function publicSession(provider: string, session: StoredSession | undefined): Record<string, unknown> | undefined;
