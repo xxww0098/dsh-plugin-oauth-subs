@@ -1,0 +1,2 @@
+# lib/ is committed build output kept in sync by CI (never hand-patched): review diffs should treat it as generated.
+lib/** linguist-generated=true
