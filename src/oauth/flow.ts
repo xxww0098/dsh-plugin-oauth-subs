@@ -6,6 +6,9 @@
  * Families whose callback carries something other than a `code` (Command Code
  * credentials, Kiro's IdC pivot) provide `spec.collect`, which may be async;
  * `spec.callbackPage(result)` overrides the rendered success page.
+ *
+ * The poll-style login managers (Grok device flow, Kiro IdC, GLM CLI) share
+ * `createFlowAttempts()` below for their generic attempt bookkeeping.
  */
 
 import { createServer } from 'node:http'
@@ -34,6 +37,89 @@ export function sleep(ms, signal) {
     }
     signal.addEventListener('abort', onAbort, { once: true })
   })
+}
+
+/**
+ * Attempt bookkeeping shared by the poll-style login managers (Grok device
+ * flow, Kiro IdC, GLM CLI). Each manager owns one registry: no sessions,
+ * caches, or provider ids live here — only the one-attempt-per-provider slot
+ * handling and the deferred token promise the family poll loop settles.
+ *
+ * `begin(provider)` reserves the slot synchronously (across start()'s
+ * registration awaits) and returns a handle: `abandon()` when registration
+ * failed, `publish(fields)` to register the attempt — adding the shared
+ * `waitToken`/`cancel` surface — and `settle(error?, value?)` when it
+ * resolves. `settle` and `owns` ignore calls from an attempt that no
+ * longer owns the slot (a newer login may already have taken it).
+ */
+export function createFlowAttempts() {
+  const attempts = new Map<string, any>()
+  // Slots reserved by start() before its first await. The busy guard alone is
+  // not atomic across awaits, so two concurrent start() calls would both pass
+  // it and each bind a listener / register a device flow.
+  const starting = new Set<string>()
+
+  function begin(provider) {
+    if (attempts.has(provider) || starting.has(provider)) {
+      throw new Error(`a ${provider} login attempt is already in progress`)
+    }
+    starting.add(provider)
+    const controller = new AbortController()
+    let resolveToken
+    let rejectToken
+    const tokenPromise = new Promise((resolve, reject) => {
+      resolveToken = resolve
+      rejectToken = reject
+    })
+    tokenPromise.catch(() => undefined)
+    let published
+    const settle = (error, value?) => {
+      if (attempts.get(provider) !== published) return
+      attempts.delete(provider)
+      if (error !== undefined) rejectToken(error)
+      else if (value !== undefined) resolveToken(value)
+    }
+    // Name the global AbortSignal interface so the emitted declaration can
+    // reference it; the inferred controller.signal type cannot be named.
+    const signal: AbortSignal = controller.signal
+    return {
+      signal,
+      settle,
+      /** Registration failed before publish: release the reserved slot. */
+      abandon() {
+        starting.delete(provider)
+      },
+      /** Is `attempt` still the one registered under this provider? */
+      owns(attempt) {
+        return attempts.get(provider) === attempt
+      },
+      /** Register the attempt under the provider and arm settle() for it. */
+      publish(fields) {
+        const attempt = {
+          ...fields,
+          waitToken: () => tokenPromise,
+          cancel() {
+            controller.abort(new Error('login cancelled'))
+            settle(new Error('login cancelled'))
+          },
+        }
+        published = attempt
+        attempts.set(provider, attempt)
+        starting.delete(provider)
+        return attempt
+      },
+    }
+  }
+
+  return {
+    isBusy(provider) {
+      return attempts.has(provider) || starting.has(provider)
+    },
+    pending(provider) {
+      return attempts.get(provider)
+    },
+    begin,
+  }
 }
 
 const SUCCESS_PAGE = '<!doctype html><html><head><meta charset="utf-8"><title>Login successful</title></head>'
