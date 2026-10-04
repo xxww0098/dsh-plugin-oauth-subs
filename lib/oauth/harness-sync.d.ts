@@ -48,7 +48,15 @@ export declare function ensureOpencodeGoRoute(settings: any, { selected, apiKeyS
     mutations?: undefined;
     error?: undefined;
 }>;
-export declare function syncHarnessModels({ settings, patchPath, prefix, origin, loggedIn, selected, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels, clineModels, commandCodeModels, chatgptModels, contexts, efforts, extraMutations }: any): Promise<{
+/**
+ * Family model lists come from the registry (familyCatalogInputs), not a
+ * per-call parameter bag: the controller passes only `glmModels`, the one
+ * session-sequenced seat it resolves itself (`#glmModels`); every other
+ * family's rows are read here through its own registry row, so no family can
+ * be dropped from one caller's bag again. Without `glmModels`, models.ts
+ * falls back to its static GLM_MODELS floor.
+ */
+export declare function syncHarnessModels({ settings, patchPath, prefix, origin, loggedIn, selected, glmModels, contexts, efforts, extraMutations }: any): Promise<{
     routes: {
         provider: string;
         api: any;

@@ -23,6 +23,7 @@ import {
   ownedProviderIds,
   withDefaultEffort,
 } from './models.js'
+import { familyCatalogInputs } from './families.js'
 
 export function filterProviders(providers: Record<string, any>, selected) {
   if (selected === undefined) return providers
@@ -209,11 +210,19 @@ async function assertPersistedProviders(settings, expected: Record<string, any>)
   }
 }
 
-export async function syncHarnessModels({ settings, patchPath, prefix, origin, loggedIn, selected, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels, clineModels, commandCodeModels, chatgptModels = undefined, contexts, efforts = {} as Record<string, string>, extraMutations = [] as any[] }: any) {
+/**
+ * Family model lists come from the registry (familyCatalogInputs), not a
+ * per-call parameter bag: the controller passes only `glmModels`, the one
+ * session-sequenced seat it resolves itself (`#glmModels`); every other
+ * family's rows are read here through its own registry row, so no family can
+ * be dropped from one caller's bag again. Without `glmModels`, models.ts
+ * falls back to its static GLM_MODELS floor.
+ */
+export async function syncHarnessModels({ settings, patchPath, prefix, origin, loggedIn, selected, glmModels, contexts, efforts = {} as Record<string, string>, extraMutations = [] as any[] }: any) {
   const routePrefix = String(prefix ?? '').trim()
   if (!routePrefix) throw new Error('Harness route prefix cannot be empty')
   const providers = Object.fromEntries(Object.entries(filterProviders(buildProviders({
-    prefix: routePrefix, origin, loggedIn, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels, clineModels, commandCodeModels, chatgptModels, contexts,
+    prefix: routePrefix, origin, loggedIn, contexts, ...familyCatalogInputs({ glmModels }),
   }), selected)).map(([id, value]) => [id, withDefaultEffort(value, efforts[familyOfProvider(id)])]))
   for (const [id, value] of Object.entries(providers)) {
     assertDshServiceableProvider(id, value)
