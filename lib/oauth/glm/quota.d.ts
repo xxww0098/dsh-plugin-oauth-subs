@@ -52,7 +52,7 @@ export declare function fetchGlmResetCards(session: any, fetchFn?: typeof outbou
     availableCount: number;
     credits: any[];
 } | undefined>;
-export declare function glmResetCardBody(credit: any, requestId: any): {
+export declare function glmResetCardBody(credit: any, requestId: any, team?: boolean): {
     targetType: string;
     resetType: any;
     recordId: any;

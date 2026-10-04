@@ -1144,3 +1144,10 @@
 **现象**：会话里 glob / read / grep 超时，但 TRANSPORT 为 0。
 **根因**：fs 工具由 `@deepseek-ai/dsh-tool-fs-search` 执行，默认超时 30s；本插件不跑这些工具。
 **修复**：不在本插件处理；要加长超时去改 `dsh-tool-fs-search`。
+
+## 2026-10-04：GLM 团队套餐（Team Plan）接入——活测缺口
+
+**状态**：代码 + 单测已落地，**无真实团队席位活测**（手头没有组织席位账号）。落地内容：登录 mint 个人优先（subscription/list VALID 探测，传输失败不当「无套餐」）、无个人计划时 `querySubscribeDetail` 找 EFFECTIVE+VALID 席位铸 `keyType 2` 团队 key；额度走 `quota/limit?type=2` + `Bigmodel-Organization/Project`；重置卡 `targetType=TEAM`（bearer 优先 `oauthAccess`，是对 magpie `zhipuTeamResets` 用 business 登录的类比，**未活测**）；`subscribeEndTime` BigModel 按 +08:00、Z.ai 按 UTC（类比重置卡时区结论，未活测）。
+**待活测清单**（拿到席位后）：① 登录落团队会话、卡片显示产品名；② `?type=2` 窗口与个人窗口的形状差异；③ TEAM 卡 list / use（use 会真扣卡）；④ UNASSIGNED / EXPIRED 拒绝文案与服务端真值一致；⑤ 团队 key 直接对话（magpie 称无需额外头）。
+**已知边界**：手粘 API key / ZCode 导入不识别团队切换，额度按 PERSONAL 读，卡片可能报业务信封错误；`mintGlmApiKey`（存量升级路径）现在也会跳过 `projectType 2` 项目，只有团队项目的存量账号若升级后铸失败会保留原 bearer 等下次进程。
+
