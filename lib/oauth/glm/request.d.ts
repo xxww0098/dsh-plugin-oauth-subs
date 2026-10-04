@@ -29,7 +29,7 @@ export declare function glmAnthropicFamily(model: any): "glm-5.3" | "glm-5.2" | 
  */
 export declare function glmAnthropicEffort(payload: any): string | undefined;
 /** Coding Plan output cap per model (ZCode modelRules maxOutputTokens). */
-export declare function glmMaxTokens(model: any): 128000 | 64000;
+export declare function glmMaxTokens(model: any): 64000 | 128000;
 /**
  * Anthropic hop thinking: official GLM shape, not the Completions shape.
  * 5.3 / Flash are forced on; 5.2 keeps `disabled`; Turbo and unknown ids keep

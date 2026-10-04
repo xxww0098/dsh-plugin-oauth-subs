@@ -18,12 +18,9 @@
  */
 import { outboundFetch } from '../../utils/outbound.js';
 export declare const GLM_CLIENT_ID = "client_P8X5CMWmlaRO9gyO-KSqtg";
-export declare const GLM_BIGMODEL_APP_ID = "zcode";
 export declare const GLM_CLI_INIT_URL = "https://zcode.z.ai/api/v1/oauth/cli/init";
 export declare const GLM_CLI_POLL_URL = "https://zcode.z.ai/api/v1/oauth/cli/poll";
-export declare const GLM_TOKEN_URL = "https://zcode.z.ai/api/v1/oauth/token";
 export declare const GLM_AUTHORIZE_URL = "https://chat.z.ai/api/oauth/authorize";
-export declare const GLM_BIGMODEL_AUTHORIZE_URL = "https://bigmodel.cn/login";
 export declare const GLM_BUSINESS_LOGIN_URL = "https://api.z.ai/api/auth/z/login";
 export declare const GLM_BIZ_BASE = "https://api.z.ai";
 export declare const GLM_CODING_URL = "https://api.z.ai/api/coding/paas/v4/chat/completions";
@@ -67,37 +64,6 @@ export declare const GLM_AGENT = "glm";
 /** resolveRuntimeZCodeEnv default (`ZCODE_ENV` unset) is production. */
 export declare const GLM_RELEASE_CHANNEL = "production";
 export declare const GLM_NEVER_EXPIRES = 8640000000000000;
-export declare const GLM_CONTEXT_WINDOW = 128000;
-export declare const GLM_LARGE_CONTEXT = 1000000;
-export declare const GLM_TURBO_CONTEXT = 200000;
-/**
- * Coding Plan input cap (2026-09-29): the plan gateway accepts at most 400K
- * input tokens per request even though the official GLM-5.3 window is 1M
- * (docs.z.ai/guides/llm/glm-5.3 still says 1M / 128K output). The picker
- * default targets the cap so DSH compacts before the gateway rejects; the
- * official 1M stays reachable as the row's custom-context ceiling
- * (`maxContextWindow`, `maxContextOfRow`) — no `-1m` variant row any more.
- */
-export declare const GLM_INPUT_CONTEXT = 400000;
-/** Text-only GLM rows. Flash is the one multimodal Coding Plan model. */
-export declare const GLM_TEXT_INPUT: readonly string[];
-export declare const GLM_VISION_INPUT: readonly string[];
-/**
- * GLM-5.3 / GLM-5.3-Flash thinking depth. Official docs (2026-08):
- * `reasoning_effort` is `low` / `high` / `max`, default `max`. Thinking
- * cannot be turned off — `thinking.type: disabled` 400s. No `medium`.
- * Turbo is hybrid on/off with no effort ladder.
- *
- * Values are the wire spellings ZCode's catalog map reads
- * (config/provider/zcode-builtin.json modelApiRules, apiTypeMatch
- * `anthropic-messages`): `output_config.effort` is the level verbatim.
- */
-export declare const GLM_REASONING: Readonly<{
-    low: "low";
-    high: "high";
-    max: "max";
-}>;
-export declare const GLM_REGIONS: readonly string[];
 export declare const GLM_CLI_PROVIDERS: Readonly<{
     zai: "zai";
     bigmodel: "bigmodel";
