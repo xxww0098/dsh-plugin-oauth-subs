@@ -22,6 +22,7 @@ import {
 } from '../lib/oauth/models.js'
 import { ModelSwitch } from '../lib/oauth/model-switch.js'
 import {
+  compactionTmpPath,
   filterProviders,
   peekPiAiProviders,
   ensureOpencodeGoRoute,
@@ -1131,6 +1132,15 @@ test('an entry DSH appended inside the compaction markers survives the next sync
   assert.ok(text.includes(saved), 'the default model is kept')
   assert.ok(text.indexOf(saved) < text.indexOf('# >>> dsh-plugin-oauth-subs'), 'and moved out of the managed block')
   assert.equal((await sync()).compaction.status, 'unchanged')
+})
+
+test('the compaction tmp name is unique per call and carries the pid', () => {
+  const patchPath = join('profile', 'cordis.patch.yml')
+  const first = compactionTmpPath(patchPath)
+  const second = compactionTmpPath(patchPath)
+  assert.ok(first.startsWith(`profile/cordis.patch.yml.tmp-${process.pid}-`), first)
+  assert.ok(second.startsWith(`profile/cordis.patch.yml.tmp-${process.pid}-`), second)
+  assert.notEqual(first, second)
 })
 
 test('a default effort maps each model to its own nearest level; a route with a non-reasoning model gets none', () => {

@@ -160,6 +160,7 @@ export class AuthController {
   identityTried = new Map<string, number>()
   #snapshotRun: Promise<Record<string, any>> | undefined
   #revalidateQuotaNext = false
+  #syncQueue: Promise<void> = Promise.resolve()
   declare fetchFn: any
   declare opencodeGo: any
   declare opencodeGoAdopted: boolean
@@ -866,7 +867,18 @@ export class AuthController {
     return this.snapshot(true)
   }
 
+  // Startup, onAuthChanged, and the RPC can all call sync() concurrently;
+  // queue the whole body (same shape as installQueue in utils/update.ts) so
+  // their settings mutates and compaction read-modify-writes never interleave.
+  // Each queued call still runs its own full sync; the swallowed catch keeps
+  // one rejection from poisoning the queue.
   async sync(selected?, options: any = {}) {
+    const pending = this.#syncQueue.then(() => this.#performSync(selected, options))
+    this.#syncQueue = pending.then(() => undefined, () => undefined)
+    return pending
+  }
+
+  async #performSync(selected?, options: any = {}) {
     if (this.settings === undefined || typeof this.settings.mutate !== 'function') {
       throw new Error('settings service is not mounted; cannot sync llm-pi-ai routes')
     }

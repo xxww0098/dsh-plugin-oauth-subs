@@ -5,6 +5,7 @@
  * profile's cordis.patch.yml.
  */
 
+import { randomUUID } from 'node:crypto'
 import { readFile, rename, rm, writeFile } from 'node:fs/promises'
 import {
   OPENCODE_GO_BUILTIN_ROUTE_ID,
@@ -310,6 +311,14 @@ function stripCompactionBlock(text) {
   return text.slice(0, begin) + foreign + text.slice(end + COMPACTION_BLOCK_END.length).replace(/^\n+/, '')
 }
 
+/**
+ * Distinct tmp name per write: overlapping sync() calls in this process
+ * must not share one (the second rename would hit ENOENT).
+ */
+export function compactionTmpPath(patchPath) {
+  return `${patchPath}.tmp-${process.pid}-${randomUUID()}`
+}
+
 async function syncCompactionPolicies(patchPath, providers) {
   if (typeof patchPath !== 'string' || !patchPath) return { status: 'unavailable' }
   const policies: any[] = []
@@ -337,7 +346,7 @@ async function syncCompactionPolicies(patchPath, providers) {
   const next = policies.length === 0 ? stripped + '\n'
     : stripped + (stripped ? '\n\n' : '') + compactionBlock(policies)
   if (next === text) return { status: 'unchanged' }
-  const tmp = `${patchPath}.tmp-${process.pid}`
+  const tmp = compactionTmpPath(patchPath)
   try {
     await writeFile(tmp, next, 'utf8')
     await rename(tmp, patchPath)

@@ -382,6 +382,33 @@ test('sync after a stored session writes llm-pi-ai providers', async () => {
   assert.equal(status.accounts.grok.quota.rows[0].remainingPercent, 90)
 })
 
+test('overlapping sync() calls queue: one mutate at a time, both full syncs resolve', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
+  const ops = []
+  let inMutate = false
+  const settings = {
+    // Re-entrancy detector: a second mutate must not begin before the first
+    // settles. The setImmediate yield opens the window interleaving would use.
+    mutate: async (target, mutations) => {
+      assert.equal(inMutate, false, 'settings.mutate re-entered before the previous call completed')
+      inMutate = true
+      try {
+        ops.push({ target, mutations })
+        await new Promise((resolve) => setImmediate(resolve))
+      } finally {
+        inMutate = false
+      }
+    },
+  }
+  const { controller } = await glmController({ dir, settings, models: new ModelSwitch({ path: join(dir, 'models.json') }) })
+  const [first, second] = await Promise.all([controller.sync(), controller.sync()])
+  assert.equal(first.routes[0].provider, 'oauth-glm')
+  assert.equal(second.routes[0].provider, 'oauth-glm')
+  // Each queued call performed its own full sync — one llm-pi-ai mutate each.
+  assert.equal(ops.length, 2)
+  assert.equal(ops.every((op) => op.target === 'llm-pi-ai'), true)
+})
+
 test('setModels contextKey customizes a route window and resets to catalog', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
   const settings = createPiAiSettings()
