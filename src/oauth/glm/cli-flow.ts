@@ -7,6 +7,7 @@
 
 import { GlmBusinessError, GlmHttpError, completeGlmCli, glmCliInit, glmCliPoll } from './index.js'
 import { outboundFetch } from '../../utils/outbound.js'
+import { sleep } from '../flow.js'
 
 /**
  * Official poll loop (auth-login-polling.ts): transport errors and
@@ -39,24 +40,6 @@ export function glmLoginFailureMessage(error) {
     return 'glm authorization failed upstream (2007 http error): the OAuth token endpoint is failing (zai-org/feedback#523); retry later, or paste a Coding Plan API key in the GLM tab'
   }
   return message
-}
-
-function sleep(ms, signal) {
-  return new Promise<void>((resolve, reject) => {
-    if (signal.aborted) {
-      reject(signal.reason instanceof Error ? signal.reason : new Error('aborted'))
-      return
-    }
-    const timer = setTimeout(() => {
-      signal.removeEventListener('abort', onAbort)
-      resolve()
-    }, ms)
-    const onAbort = () => {
-      clearTimeout(timer)
-      reject(signal.reason instanceof Error ? signal.reason : new Error('aborted'))
-    }
-    signal.addEventListener('abort', onAbort, { once: true })
-  })
 }
 
 export class GlmCliFlowManager {
