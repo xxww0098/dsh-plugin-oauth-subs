@@ -66,17 +66,6 @@ export declare const ANTIGRAVITY_BODY_USER_AGENT = "antigravity";
 export declare const ANTIGRAVITY_PREEMPT_MS: number;
 export declare const ANTIGRAVITY_ONBOARD_ATTEMPTS = 5;
 export declare const ANTIGRAVITY_ONBOARD_PAUSE_MS = 2000;
-export declare const ANTIGRAVITY_TEXT_INPUT: readonly string[];
-export declare const ANTIGRAVITY_VISION_INPUT: readonly string[];
-export declare const ANTIGRAVITY_REASONING_GEMINI: Readonly<{
-    low: "low";
-    medium: "medium";
-    high: "high";
-}>;
-export declare const ANTIGRAVITY_REASONING_CLAUDE: Readonly<{
-    low: "low";
-    high: "high";
-}>;
 /**
  * Live CLIProxyAPI `models.json` → `antigravity` (not Vertex-direct ids).
  * Registry snapshot: router-for-me/CLIProxyAPI main

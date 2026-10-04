@@ -96,27 +96,6 @@ export declare function antigravityToOpenai(body: any, { model, id, sessionId }?
         total_tokens: any;
     } | undefined;
 };
-export declare function antigravityToOpenaiChunk(body: any, { model, id, done, sessionId }?: any): {
-    usage?: {
-        prompt_tokens_details?: {
-            cached_tokens: number;
-        } | undefined;
-        completion_tokens_details?: {
-            reasoning_tokens: any;
-        } | undefined;
-        prompt_tokens: any;
-        completion_tokens: any;
-        total_tokens: any;
-    } | undefined;
-    id: any;
-    object: string;
-    model: any;
-    choices: {
-        index: number;
-        delta: any;
-        finish_reason: string | null;
-    }[];
-};
 export declare function parseAntigravitySseBlocks(buffer: any): {
     events: any[];
     rest: string;

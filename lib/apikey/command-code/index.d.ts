@@ -35,7 +35,6 @@ export declare const COMMAND_CODE_SUBSCRIPTIONS_URL = "https://api.commandcode.a
 export declare const COMMAND_CODE_USAGE_URL = "https://api.commandcode.ai/alpha/usage/summary";
 /** CLI 发 `x-command-code-version` 的值；无 header 时上游照跑（401/计费门正常）。 */
 export declare const COMMAND_CODE_CLI_VERSION = "1.74.1";
-export declare const COMMAND_CODE_DEFAULT_CONTEXT = 200000;
 /** CLI `max_tokens ?? 64000` 上限；无 per-model output cap。 */
 export declare const COMMAND_CODE_MAX_TOKENS = 64000;
 /** Static catalog. Rows live in `src/catalog/models.json` under `"command-code"`; per-model output cap comes from `COMMAND_CODE_MAX_TOKENS` at the harness seam. */

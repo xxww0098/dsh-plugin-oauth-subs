@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { test, type TestContext } from 'node:test'
 import { createProxy } from '../lib/oauth/proxy.js'
 import { resetKiroPrefixBaselines, setPrefixEstimateLog } from '../lib/oauth/kiro/cache.js'
-import { encodeKiroEventStream } from '../lib/oauth/kiro/request.js'
+import { encodeKiroEventStream } from './kiro-frames.ts'
 
 const kiroSession = (accessToken = 'test-token') => ({ accessToken, region: 'us-east-1', authMethod: 'social' })
 const hello = (text = 'partial') => encodeKiroEventStream([{ type: 'assistantResponseEvent', payload: { content: text } }])

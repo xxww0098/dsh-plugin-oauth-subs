@@ -21,7 +21,6 @@ export declare const KIMI_USER_AGENT = "dsh-plugin-oauth-subs";
 export declare const KIMI_PLATFORM = "dsh";
 export declare const KIMI_PREEMPT_MS: number;
 export declare const KIMI_NEVER_EXPIRES = 8640000000000000;
-export declare const KIMI_CONTEXT_WINDOW = 262144;
 export declare const KIMI_MAX_TOKENS = 32000;
 export declare const KIMI_INPUT: readonly string[];
 export declare const KIMI_SOURCES: readonly string[];

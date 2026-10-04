@@ -171,5 +171,3 @@ export declare function kiroClientErrorBody(status: any, parsed: any, text: any)
         code: string;
     };
 };
-export declare function encodeKiroEventFrame(type: any, payload: any, messageType?: string): Buffer<ArrayBuffer>;
-export declare function encodeKiroEventStream(events: any): Buffer<ArrayBuffer>;

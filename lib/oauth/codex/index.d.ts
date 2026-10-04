@@ -46,16 +46,6 @@ export declare const CODEX_REASONING_EFFORTS: Readonly<{
     xhigh: "xhigh";
     off: null;
 }>;
-/** GPT-6 Astra / Sol / Luna and GPT-5.6 Sol / Terra / Luna add `max`.
- *  `ultra` is a Codex CLI multi-agent mode, not an API effort — it 400s. */
-export declare const CODEX_REASONING_EFFORTS_56: Readonly<{
-    max: "max";
-    low: "low";
-    medium: "medium";
-    high: "high";
-    xhigh: "xhigh";
-    off: null;
-}>;
 /**
  * Mirrors Codex CLI `models.json` plus GET
  * chatgpt.com/backend-api/codex/models (probed 2026-10-03 at `client_version`

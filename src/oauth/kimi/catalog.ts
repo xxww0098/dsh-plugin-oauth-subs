@@ -18,12 +18,6 @@ export const KIMI_CATALOG_TTL_MS = 5 * 60_000
 
 const cached: { tokenHash: string; models?: any[]; expiresAt: number } = { tokenHash: '', models: undefined, expiresAt: 0 }
 
-export function resetKimiCatalogCache() {
-  cached.tokenHash = ''
-  cached.models = undefined
-  cached.expiresAt = 0
-}
-
 export function kimiCatalogTokenHash(token) {
   return createHash('sha256').update(String(token ?? '')).digest('hex').slice(0, 16)
 }

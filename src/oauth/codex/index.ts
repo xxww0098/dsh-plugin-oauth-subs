@@ -56,13 +56,6 @@ export const CODEX_REASONING_EFFORTS = Object.freeze({
   ...CODEX_REASONING,
 })
 
-/** GPT-6 Astra / Sol / Luna and GPT-5.6 Sol / Terra / Luna add `max`.
- *  `ultra` is a Codex CLI multi-agent mode, not an API effort — it 400s. */
-export const CODEX_REASONING_EFFORTS_56 = Object.freeze({
-  ...CODEX_REASONING_EFFORTS,
-  max: 'max',
-})
-
 /**
  * Mirrors Codex CLI `models.json` plus GET
  * chatgpt.com/backend-api/codex/models (probed 2026-10-03 at `client_version`

@@ -866,36 +866,6 @@ export function antigravityToOpenai(body, { model, id = `chatcmpl-${Date.now()}`
   }
 }
 
-export function antigravityToOpenaiChunk(body, { model, id, done = false, sessionId }: any = {}) {
-  const collected = collectAntigravityParts(body, { sessionId })
-  const delta: any = {}
-  if (collected.text) delta.content = collected.text
-  if (collected.toolCalls.length) {
-    delta.tool_calls = collected.toolCalls.map((call, index) => {
-      const next = {
-        index,
-        id: call.id,
-        type: 'function',
-        function: call.function,
-      }
-      if (call.thoughtSignature) attachThoughtSignatureFields(next, call.thoughtSignature)
-      return next
-    })
-  }
-  const usage = mapAntigravityUsage(collected.usage)
-  return {
-    id,
-    object: 'chat.completion.chunk',
-    model,
-    choices: [{
-      index: 0,
-      delta: done && !collected.text && !collected.toolCalls.length ? {} : delta,
-      finish_reason: done ? (collected.toolCalls.length ? 'tool_calls' : collected.finishReason) : null,
-    }],
-    ...(usage ? { usage } : {}),
-  }
-}
-
 export function parseAntigravitySseBlocks(buffer) {
   const events: any[] = []
   const chunks = String(buffer).split(/\r?\n\r?\n/)

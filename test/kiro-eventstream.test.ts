@@ -2,10 +2,10 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
   KiroEventStreamParser,
-  encodeKiroEventFrame,
   kiroToOpenai,
   parseKiroEventStream,
 } from '../lib/oauth/kiro/request.js'
+import { encodeKiroEventFrame } from './kiro-frames.ts'
 
 test('Kiro accepts complete frames across every byte boundary and preserves JSON exceptions', () => {
   const body = Buffer.concat([

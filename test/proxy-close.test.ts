@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import http from 'node:http'
 import { test } from 'node:test'
 import { createProxy } from '../lib/oauth/proxy.js'
-import { encodeKiroEventStream } from '../lib/oauth/kiro/request.js'
+import { encodeKiroEventStream } from './kiro-frames.ts'
 
 const session = { accessToken: 'tok', region: 'us-east-1', authMethod: 'social' }
 const body = JSON.stringify({ model: 'deepseek-3.2', stream: false, messages: [{ role: 'user', content: 'hi' }] })

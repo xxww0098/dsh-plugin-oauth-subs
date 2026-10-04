@@ -124,20 +124,6 @@ export const ANTIGRAVITY_PREEMPT_MS = 5 * 60_000
 export const ANTIGRAVITY_ONBOARD_ATTEMPTS = 5
 export const ANTIGRAVITY_ONBOARD_PAUSE_MS = 2_000
 
-export const ANTIGRAVITY_TEXT_INPUT = Object.freeze(['text'])
-export const ANTIGRAVITY_VISION_INPUT = Object.freeze(['text', 'image'])
-
-export const ANTIGRAVITY_REASONING_GEMINI = Object.freeze({
-  low: 'low',
-  medium: 'medium',
-  high: 'high',
-})
-
-export const ANTIGRAVITY_REASONING_CLAUDE = Object.freeze({
-  low: 'low',
-  high: 'high',
-})
-
 /**
  * Live CLIProxyAPI `models.json` → `antigravity` (not Vertex-direct ids).
  * Registry snapshot: router-for-me/CLIProxyAPI main

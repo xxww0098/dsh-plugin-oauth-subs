@@ -10,8 +10,6 @@ import {
   KIRO_STABLE_SESSION,
   KIRO_SYSTEM_ACK,
   collectKiroEvents,
-  encodeKiroEventFrame,
-  encodeKiroEventStream,
   kiroChatHeaders,
   kiroChatUrl,
   kiroClientErrorBody,
@@ -24,6 +22,7 @@ import {
   resetKiroSystemPins,
   resolveKiroUsage,
 } from '../lib/oauth/kiro/request.js'
+import { encodeKiroEventFrame, encodeKiroEventStream } from './kiro-frames.ts'
 
 const RT = `rt_${'x'.repeat(120)}`
 

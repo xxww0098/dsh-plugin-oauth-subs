@@ -11,7 +11,6 @@
  */
 export declare const OPENCODE_GO_ID = "opencode-go";
 export declare const OPENCODE_GO_ORIGIN = "https://opencode.ai";
-export declare const OPENCODE_GO_RESPONSES_URL = "https://opencode.ai/zen/go/v1";
 export declare const OPENCODE_GO_COOKIE_MASK = "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022";
 export declare function parseOpencodeGoCookie(raw: any): string | undefined;
 export declare function normalizeOpencodeGoWorkspaceId(raw: any): string | undefined;

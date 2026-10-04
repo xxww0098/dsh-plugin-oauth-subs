@@ -221,16 +221,6 @@ export function parseAntigravityPaidCredits(payload) {
   return rows
 }
 
-export function pickAntigravityPlanName(payload) {
-  if (!payload || typeof payload !== 'object') return undefined
-  const fromTiers = antigravityPlanType(payload)
-  if (fromTiers) return fromTiers
-  const tiers = Array.isArray(payload.allowedTiers) ? payload.allowedTiers : []
-  const fallback = tiers.find((entry) => entry?.isDefault) ?? tiers[0]
-  const id = fallback?.id
-  return typeof id === 'string' && id.trim() ? id.trim() : undefined
-}
-
 function isQuotaHttpStatus(error, status) {
   const message = error instanceof Error ? error.message : String(error)
   return message.includes(`HTTP ${status}`) || (status === 400 && /bad request/i.test(message))

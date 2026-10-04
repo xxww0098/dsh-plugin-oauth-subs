@@ -14,7 +14,6 @@ import { createHash } from 'node:crypto'
 
 export const OPENCODE_GO_ID = 'opencode-go'
 export const OPENCODE_GO_ORIGIN = 'https://opencode.ai'
-export const OPENCODE_GO_RESPONSES_URL = 'https://opencode.ai/zen/go/v1'
 export const OPENCODE_GO_COOKIE_MASK = '••••••••'
 
 // Migrated workspaces live in the Console SPA, whose session is a separate
