@@ -1,6 +1,7 @@
 /**
- * Ollama Cloud account lifecycle for AuthController: live catalog discovery, OLLAMA_API_KEY
- * auto-import, and identity from /api/me.
+ * Ollama Cloud account lifecycle for AuthController: paste-only login (browser
+ * login rejects), live catalog discovery, OLLAMA_API_KEY auto-import, and identity
+ * from /api/me.
  * Functions take the controller as their first argument; the class keeps
  * the public entry points.
  */
@@ -9,11 +10,12 @@ import { errorCode, errorMessage } from '../../utils/http.js'
 import {
   accountIdOf,
   listStoredSessions,
+  publicSession,
   replaceAccountId,
   saveSession,
   updateAccountSession,
 } from '../../oauth/store.js'
-import { isOllamaOpaqueAccount, resolveOllamaIdentity } from './index.js'
+import { isOllamaOpaqueAccount, ollamaSession, resolveOllamaIdentity } from './index.js'
 import { importOllamaAuth, OLLAMA_IMPORT_EMPTY } from './import.js'
 import { ollamaCatalogModels } from './catalog.js'
 import { signedOutOf } from '../../oauth/account-marks.js'
@@ -91,4 +93,22 @@ export async function rememberOllamaIdentity(ctl: AuthController, row, quota) {
     return
   }
   await updateAccountSession('ollama', row, next, ctl.authPath)
+}
+
+export function loginOllama() {
+  throw new Error('ollama uses the paste form, not browser login')
+}
+
+export async function useOllamaKey(ctl: AuthController, key) {
+  const session = await finishOllamaSession(ctl, ollamaSession({
+    accessToken: key,
+    source: 'paste',
+  }))
+  ctl.claim('ollama')
+  await saveSession('ollama', session, ctl.authPath)
+  ctl.lastError.delete('ollama')
+  await discoverOllama(ctl, session)
+  ctl.onAuthChanged?.('ollama')
+  void ctl.quota.refresh('ollama')
+  return { account: publicSession('ollama', session) }
 }

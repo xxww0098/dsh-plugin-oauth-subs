@@ -1,5 +1,6 @@
 /**
- * GLM account lifecycle for AuthController: identity re-resolution and CLI login completion.
+ * GLM account lifecycle for AuthController: CLI login start and completion,
+ * pasted API keys, identity re-resolution, and legacy bearer upgrades.
  * Functions take the controller as their first argument; the class keeps
  * the public entry points.
  */
@@ -12,6 +13,7 @@ import {
   updateAccountSession,
 } from '../store.js'
 import {
+  glmSession,
   isGlmJwtShape,
   mintGlmApiKey,
   normalizeGlmRegion,
@@ -94,4 +96,29 @@ export async function completeGlm(ctl: AuthController, attempt) {
   } finally {
     ctl.finalizing.delete('glm')
   }
+}
+
+export async function loginGlm(ctl: AuthController, payload: any = {}) {
+  const region = normalizeGlmRegion(payload.mode ?? payload.region)
+  const attempt = await ctl.glmFlows.start('glm', { region, fetchFn: ctl.fetchFn })
+  ctl.finalizing.add('glm')
+  void ctl.completeGlm(attempt)
+  return { authorizeUrl: attempt.authorizeUrl, mode: 'cli', region }
+}
+
+export async function useGlmKey(ctl: AuthController, key, payload: any = {}) {
+  const accessToken = typeof key === 'string' ? key.trim() : ''
+  if (accessToken.length < 8) throw new Error('glm API key is empty')
+  ctl.claim('glm')
+  ctl.glmFlows.pending('glm')?.cancel()
+  const resolved = normalizeGlmRegion(payload.region ?? payload.mode)
+  await saveSession('glm', glmSession({
+    accessToken,
+    account: 'api-key',
+    region: resolved,
+  }), ctl.authPath)
+  ctl.lastError.delete('glm')
+  ctl.onAuthChanged?.('glm')
+  void ctl.quota.refresh('glm')
+  return { region: resolved }
 }

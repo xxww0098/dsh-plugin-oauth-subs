@@ -1,6 +1,6 @@
 /**
- * Cursor account lifecycle for AuthController: live catalog discovery, auto-import from the
- * CLI / IDE, identity from the token or state.vscdb, and plan write-back.
+ * Cursor account lifecycle for AuthController: login start, live catalog discovery,
+ * auto-import from the CLI / IDE, identity from the token or state.vscdb, and plan write-back.
  * Functions take the controller as their first argument; the class keeps
  * the public entry points.
  */
@@ -29,3 +29,7 @@ export declare function importCursor(ctl: AuthController): Promise<{
     skipped: boolean;
 }>;
 export declare function completeCursor(ctl: AuthController, attempt: any): Promise<void>;
+export declare function loginCursor(ctl: AuthController): Promise<{
+    authorizeUrl: string;
+    mode: string;
+}>;

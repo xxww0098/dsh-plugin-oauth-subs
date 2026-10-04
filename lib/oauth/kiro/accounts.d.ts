@@ -28,6 +28,14 @@ export declare function loginKiro(ctl: AuthController, payload?: any): Promise<{
     startUrl?: undefined;
 }>;
 export declare function completeKiroIdc(ctl: AuthController, attempt: any): Promise<void>;
+/**
+ * The Kiro portal redirected an organization login to the IdC device flow
+ * (`login_option=awsidc`, issue #167): settle through the device attempt
+ * the callback already started instead of exchanging a code. Returns true
+ * when the paste completion is settled (or cancelled) this way.
+ */
+export declare function resumeKiroIdcPaste(ctl: AuthController, code: any, claim: any): boolean;
+export declare function completeKiroPaste(ctl: AuthController, code: any, attempt: any): Promise<any>;
 export declare function useKiroKey(ctl: AuthController, key: any, payload?: any): Promise<{
     method: any;
     account: {

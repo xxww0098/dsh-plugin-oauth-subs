@@ -3,7 +3,8 @@
  * per-family dispatchers look up instead of growing `family === '<id>'`
  * chains — today the inbound cache rewrite (proxy-body.ts), the quota
  * fetch (quota.ts QuotaStore), the account-quota hydration hooks
- * (account-quota.ts), the passthrough Completions usage rewrite
+ * (account-quota.ts), the login flow / paste completion / pasted-key
+ * dispatch (login.ts), the passthrough Completions usage rewrite
  * (passthrough.ts), and the model-catalog bag every llm-pi-ai projection
  * consumes (familyCatalogInputs below; models.ts / harness-sync.ts).
  *
@@ -26,55 +27,100 @@ import { codexRoutingHint } from './codex/index.js'
 import { applyCodexCache } from './codex/cache.js'
 import { normalizeCodexResponsesBody } from './codex/request.js'
 import { fetchCodexQuota } from './codex/quota.js'
+import { completeCodexPaste, loginCodex } from './codex/accounts.js'
+import { importCodexAuth } from './codex/import.js'
 import { applyGrokCache } from './grok/cache.js'
 import { normalizeGrokResponsesBody } from './grok/request.js'
 import { fetchGrokQuota } from './grok/quota.js'
+import { completeGrokPaste, loginGrok } from './grok/accounts.js'
+import { importGrokAuth } from './grok/import.js'
 import { applyChatgptCache } from './chatgpt/cache.js'
 import { normalizeChatgptResponsesBody } from './chatgpt/request.js'
 import { chatgptQuota } from './chatgpt/index.js'
 import { chatgptCatalogModels } from './chatgpt/catalog.js'
-import { discoverChatgpt } from './chatgpt/accounts.js'
+import { discoverChatgpt, loginChatgpt } from './chatgpt/accounts.js'
 import { glmCacheSessionId } from './glm/cache.js'
 import { mapGlmChatUsage, normalizeGlmAnthropicBody, normalizeGlmChatBody } from './glm/request.js'
 import { fetchGlmQuota } from './glm/quota.js'
+import { loginGlm, useGlmKey } from './glm/accounts.js'
+import { importGlmAuth } from './glm/import.js'
 import { kiroConversationId } from './kiro/cache.js'
 import { fetchKiroQuota } from './kiro/quota.js'
 import { kiroCatalogModels, resetKiroCatalogCache } from './kiro/catalog.js'
-import { discoverKiro, rememberKiroProfile } from './kiro/accounts.js'
+import {
+  completeKiroPaste,
+  discoverKiro,
+  loginKiro,
+  rememberKiroProfile,
+  resumeKiroIdcPaste,
+  useKiroKey,
+} from './kiro/accounts.js'
+import { importKiroAuth } from './kiro/import.js'
 import { antigravitySessionIdOf } from './antigravity/cache.js'
 import { fetchAntigravityQuota } from './antigravity/quota.js'
-import { probeAntigravity, rememberAntigravityPlan } from './antigravity/accounts.js'
+import {
+  completeAntigravityPaste,
+  loginAntigravity,
+  probeAntigravity,
+  rememberAntigravityPlan,
+} from './antigravity/accounts.js'
+import { importAntigravityAuth } from './antigravity/import.js'
 import { applyCursorCache } from './cursor/cache.js'
 import { fetchCursorQuota } from './cursor/quota.js'
 import { cursorCatalogModels } from './cursor/catalog.js'
-import { discoverCursor, rememberCursorPlan } from './cursor/accounts.js'
+import { discoverCursor, importCursor, loginCursor, rememberCursorPlan } from './cursor/accounts.js'
 import { applyOllamaCache } from '../apikey/ollama/cache.js'
 import { fetchOllamaQuota } from '../apikey/ollama/quota.js'
 import { ollamaCatalogModels } from '../apikey/ollama/catalog.js'
-import { discoverOllama, rememberOllamaIdentity } from '../apikey/ollama/accounts.js'
+import {
+  discoverOllama,
+  importOllama,
+  loginOllama,
+  rememberOllamaIdentity,
+  useOllamaKey,
+} from '../apikey/ollama/accounts.js'
 import { applyKimiCache } from './kimi/cache.js'
 import { applyKimiStreamUsage, applyKimiThinking, mapKimiUsage } from './kimi/request.js'
 import { fetchKimiQuota } from './kimi/quota.js'
 import { kimiCatalogModels } from './kimi/catalog.js'
-import { discoverKimi, rememberKimiIdentity } from './kimi/accounts.js'
+import { discoverKimi, importKimi, loginKimi, rememberKimiIdentity, useKimiKey } from './kimi/accounts.js'
 import { applyCopilotCache, copilotHasVision, copilotInitiatorOf } from './copilot/cache.js'
 import { applyCopilotStreamUsage, applyCopilotThinking, mapCopilotUsage } from './copilot/request.js'
 import { fetchCopilotQuota } from './copilot/quota.js'
 import { copilotCatalogModels } from './copilot/catalog.js'
-import { discoverCopilot, rememberCopilotIdentity } from './copilot/accounts.js'
+import {
+  discoverCopilot,
+  importCopilot,
+  loginCopilot,
+  rememberCopilotIdentity,
+  useCopilotKey,
+} from './copilot/accounts.js'
 import { applyDevinCache } from './devin/cache.js'
 import { fetchDevinQuota } from './devin/quota.js'
 import { devinCatalogModels } from './devin/catalog.js'
-import { discoverDevin, rememberDevinIdentity } from './devin/accounts.js'
+import {
+  completeDevinPaste,
+  discoverDevin,
+  finishDevinSession,
+  importDevin,
+  loginDevin,
+  rememberDevinIdentity,
+  useDevinKey,
+} from './devin/accounts.js'
 import { applyClineCache } from './cline/cache.js'
 import { applyClineMaxCompletionTokens, applyClineStreamUsage, applyClineThinking, mapClineUsage, unwrapClineEnvelope } from './cline/request.js'
 import { fetchClineQuota } from './cline/quota.js'
 import { clineCatalogModels } from './cline/catalog.js'
-import { discoverCline, rememberClineIdentity } from './cline/accounts.js'
+import { discoverCline, importCline, loginCline, rememberClineIdentity } from './cline/accounts.js'
 import { applyCommandCodeCache } from '../apikey/command-code/cache.js'
 import { commandCodeCatalogModels } from '../apikey/command-code/catalog.js'
 import { fetchCommandCodeQuota } from '../apikey/command-code/quota.js'
-import { rememberCommandCodeIdentity } from '../apikey/command-code/accounts.js'
+import {
+  importCommandCode,
+  loginCommandCode,
+  rememberCommandCodeIdentity,
+  useCommandCodeKey,
+} from '../apikey/command-code/accounts.js'
 import { applyFastMode } from '../utils/fast-mode.js'
 
 export type FamilyId =
@@ -129,6 +175,41 @@ export interface FamilyForwardHooks {
   unwrapCompletionsBody?: (parsed: any) => any
 }
 
+/**
+ * Per-family login hooks driven by src/oauth/login.ts: the flow start
+ * (login), the loopback-paste completion (completePkce), and pasted keys
+ * (useKey). The bodies live in each family's own accounts.ts; a row only
+ * references them (same contract as every other field on the row).
+ */
+export interface FamilyLoginHooks {
+  /** login(): start this family's browser / device / CLI flow. */
+  attempt: (ctl: AuthController, payload: any) => unknown
+  /** completePkce(): this family's loopback-callback completion, when it has one. */
+  completePaste?: FamilyPasteHooks
+  /** useKey(): accept a pasted key / CLI credential, when this family takes one. */
+  useKey?: (ctl: AuthController, key: any, payload: any) => unknown
+  /** importLocal(): read this family's local CLI/IDE credential store. */
+  importLocal?: (ctl: AuthController) => Promise<any>
+}
+
+/** completePkce hooks: the code exchange plus the family's save-time side effects. */
+export interface FamilyPasteHooks {
+  /** Exchange the loopback code for a session (family index.ts owns the endpoint). */
+  exchange: (ctl: AuthController, code: any, attempt: any) => any
+  /**
+   * Kiro only: the portal can pivot an organization login to the IdC device
+   * flow (`login_option=awsidc`, issue #167); a true return settles the paste
+   * through that device attempt instead of a code exchange.
+   */
+  resume?: (ctl: AuthController, code: any, claim: any) => boolean
+  /** Finalize the session right before it is saved (Devin resolves identity first). */
+  finish?: (ctl: AuthController, session: any) => any
+  /** Awaited post-save catalog discovery, before the change notification. */
+  discover?: (ctl: AuthController, session: any) => unknown
+  /** Fire-and-forget validation after the quota refresh starts (Antigravity). */
+  probe?: (ctl: AuthController, saved: any) => unknown
+}
+
 /** One family's row in the registry — references only, never implementations. */
 export interface OAuthFamily {
   id: FamilyId
@@ -138,6 +219,8 @@ export interface OAuthFamily {
   fetchQuota: (session: any, fetchFn: any) => any
   /** passthrough: Completions usage rewriting on forwarded answers, when this family maps any. */
   forward?: FamilyForwardHooks
+  /** login.ts: flow start, paste completion, and pasted keys (family accounts.ts owns them). */
+  login: FamilyLoginHooks
   /** account-quota: per-account hydration / refresh side effects, when this family has them. */
   quota?: FamilyQuotaHooks
   /**
@@ -163,6 +246,11 @@ const codexFamily: OAuthFamily = {
     }
   },
   fetchQuota: fetchCodexQuota,
+  login: {
+    attempt: loginCodex,
+    completePaste: { exchange: completeCodexPaste },
+    importLocal: () => importCodexAuth() as any,
+  },
 }
 
 const chatgptFamily: OAuthFamily = {
@@ -175,6 +263,7 @@ const chatgptFamily: OAuthFamily = {
   },
   // No quota endpoint: the plan is read off the session's own token claims.
   fetchQuota: (session) => chatgptQuota(session),
+  login: { attempt: loginChatgpt },
   catalogModels: chatgptCatalogModels,
   quota: {
     discover: {
@@ -198,6 +287,11 @@ const grokFamily: OAuthFamily = {
     }
   },
   fetchQuota: fetchGrokQuota,
+  login: {
+    attempt: loginGrok,
+    completePaste: { exchange: completeGrokPaste },
+    importLocal: () => importGrokAuth() as any,
+  },
 }
 
 const glmFamily: OAuthFamily = {
@@ -213,6 +307,7 @@ const glmFamily: OAuthFamily = {
     }
   },
   fetchQuota: fetchGlmQuota,
+  login: { attempt: loginGlm, useKey: useGlmKey, importLocal: () => importGlmAuth() },
   forward: {
     // Chat wire only: Anthropic usage is native and forwards untouched.
     completionsUsage: (wire) => (wire === 'anthropic' ? undefined : mapGlmChatUsage),
@@ -228,6 +323,15 @@ const kiroFamily: OAuthFamily = {
     return { payload: next, cacheSessionId: kiroConversationId(next) }
   },
   fetchQuota: fetchKiroQuota,
+  login: {
+    attempt: loginKiro,
+    completePaste: {
+      resume: resumeKiroIdcPaste,
+      exchange: completeKiroPaste,
+    },
+    useKey: useKiroKey,
+    importLocal: () => importKiroAuth(),
+  },
   catalogModels: kiroCatalogModels,
   quota: {
     afterEnsure: rememberKiroProfile,
@@ -250,6 +354,14 @@ const antigravityFamily: OAuthFamily = {
     return { payload: next, cacheSessionId: antigravitySessionIdOf(next) }
   },
   fetchQuota: fetchAntigravityQuota,
+  login: {
+    attempt: loginAntigravity,
+    completePaste: {
+      exchange: completeAntigravityPaste,
+      probe: probeAntigravity,
+    },
+    importLocal: (ctl) => importAntigravityAuth({ fetchFn: ctl.fetchFn }),
+  },
   quota: {
     afterEnsure: rememberAntigravityPlan,
     probe: probeAntigravity,
@@ -265,6 +377,7 @@ const cursorFamily: OAuthFamily = {
     return { payload: next, cacheSessionId }
   },
   fetchQuota: fetchCursorQuota,
+  login: { attempt: loginCursor, importLocal: importCursor },
   catalogModels: cursorCatalogModels,
   quota: {
     afterEnsure: rememberCursorPlan,
@@ -283,6 +396,7 @@ const ollamaFamily: OAuthFamily = {
     return { payload: next, cacheSessionId }
   },
   fetchQuota: fetchOllamaQuota,
+  login: { attempt: loginOllama, useKey: useOllamaKey, importLocal: importOllama },
   catalogModels: ollamaCatalogModels,
   quota: {
     afterEnsure: rememberOllamaIdentity,
@@ -302,6 +416,7 @@ const kimiFamily: OAuthFamily = {
     return { payload: applyKimiStreamUsage(applyKimiThinking(cached)), cacheSessionId }
   },
   fetchQuota: fetchKimiQuota,
+  login: { attempt: loginKimi, useKey: useKimiKey, importLocal: importKimi },
   forward: { completionsUsage: () => mapKimiUsage },
   catalogModels: kimiCatalogModels,
   quota: {
@@ -328,6 +443,7 @@ const copilotFamily: OAuthFamily = {
     }
   },
   fetchQuota: fetchCopilotQuota,
+  login: { attempt: loginCopilot, useKey: useCopilotKey, importLocal: importCopilot },
   forward: { completionsUsage: () => mapCopilotUsage },
   catalogModels: copilotCatalogModels,
   quota: {
@@ -350,6 +466,16 @@ const devinFamily: OAuthFamily = {
     return { payload: next, cacheSessionId }
   },
   fetchQuota: fetchDevinQuota,
+  login: {
+    attempt: loginDevin,
+    completePaste: {
+      exchange: completeDevinPaste,
+      finish: finishDevinSession,
+      discover: discoverDevin,
+    },
+    useKey: useDevinKey,
+    importLocal: importDevin,
+  },
   catalogModels: devinCatalogModels,
   quota: {
     afterEnsure: rememberDevinIdentity,
@@ -376,6 +502,7 @@ const clineFamily: OAuthFamily = {
     return { payload: next, cacheSessionId }
   },
   fetchQuota: fetchClineQuota,
+  login: { attempt: loginCline, importLocal: importCline },
   forward: {
     completionsUsage: () => mapClineUsage,
     // A non-streaming completion arrives wrapped in `{success, data}`; a raw
@@ -404,6 +531,7 @@ const commandCodeFamily: OAuthFamily = {
     return { payload: next, cacheSessionId: threadId, threadId }
   },
   fetchQuota: fetchCommandCodeQuota,
+  login: { attempt: loginCommandCode, useKey: useCommandCodeKey, importLocal: importCommandCode },
   catalogModels: commandCodeCatalogModels,
   quota: {
     afterEnsure: rememberCommandCodeIdentity,

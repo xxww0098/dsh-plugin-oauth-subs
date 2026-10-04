@@ -1,5 +1,6 @@
 /**
- * GLM account lifecycle for AuthController: identity re-resolution and CLI login completion.
+ * GLM account lifecycle for AuthController: CLI login start and completion,
+ * pasted API keys, identity re-resolution, and legacy bearer upgrades.
  * Functions take the controller as their first argument; the class keeps
  * the public entry points.
  */
@@ -16,3 +17,11 @@ export declare function resolveGlmIdentities(ctl: AuthController): Promise<void>
  */
 export declare function upgradeGlmLegacyBearers(ctl: AuthController): Promise<void>;
 export declare function completeGlm(ctl: AuthController, attempt: any): Promise<void>;
+export declare function loginGlm(ctl: AuthController, payload?: any): Promise<{
+    authorizeUrl: any;
+    mode: string;
+    region: string;
+}>;
+export declare function useGlmKey(ctl: AuthController, key: any, payload?: any): Promise<{
+    region: string;
+}>;

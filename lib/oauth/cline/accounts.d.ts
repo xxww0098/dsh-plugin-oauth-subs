@@ -1,6 +1,6 @@
 /**
- * Cline account lifecycle for AuthController: live catalog discovery, local CLI
- * auto-import, identity, and the two-hop device-code completion.
+ * Cline account lifecycle for AuthController: device login start, live catalog
+ * discovery, local CLI auto-import, identity, and the two-hop device-code completion.
  * Functions take the controller as their first argument; the class keeps
  * the public entry points.
  */
@@ -25,3 +25,9 @@ export declare function rememberClineIdentity(ctl: AuthController, row: any, quo
  * something this plugin can use.
  */
 export declare function completeClineDevice(ctl: AuthController, attempt: any): Promise<void>;
+export declare function loginCline(ctl: AuthController): Promise<{
+    authorizeUrl: any;
+    verificationUri: any;
+    userCode: any;
+    mode: string;
+}>;

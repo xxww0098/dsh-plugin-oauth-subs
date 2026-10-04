@@ -3,7 +3,8 @@
  * per-family dispatchers look up instead of growing `family === '<id>'`
  * chains — today the inbound cache rewrite (proxy-body.ts), the quota
  * fetch (quota.ts QuotaStore), the account-quota hydration hooks
- * (account-quota.ts), the passthrough Completions usage rewrite
+ * (account-quota.ts), the login flow / paste completion / pasted-key
+ * dispatch (login.ts), the passthrough Completions usage rewrite
  * (passthrough.ts), and the model-catalog bag every llm-pi-ai projection
  * consumes (familyCatalogInputs below; models.ts / harness-sync.ts).
  *
@@ -68,6 +69,39 @@ export interface FamilyForwardHooks {
     /** Unwrap a non-streaming Completions body before usage mapping (Cline `{success, data}`). */
     unwrapCompletionsBody?: (parsed: any) => any;
 }
+/**
+ * Per-family login hooks driven by src/oauth/login.ts: the flow start
+ * (login), the loopback-paste completion (completePkce), and pasted keys
+ * (useKey). The bodies live in each family's own accounts.ts; a row only
+ * references them (same contract as every other field on the row).
+ */
+export interface FamilyLoginHooks {
+    /** login(): start this family's browser / device / CLI flow. */
+    attempt: (ctl: AuthController, payload: any) => unknown;
+    /** completePkce(): this family's loopback-callback completion, when it has one. */
+    completePaste?: FamilyPasteHooks;
+    /** useKey(): accept a pasted key / CLI credential, when this family takes one. */
+    useKey?: (ctl: AuthController, key: any, payload: any) => unknown;
+    /** importLocal(): read this family's local CLI/IDE credential store. */
+    importLocal?: (ctl: AuthController) => Promise<any>;
+}
+/** completePkce hooks: the code exchange plus the family's save-time side effects. */
+export interface FamilyPasteHooks {
+    /** Exchange the loopback code for a session (family index.ts owns the endpoint). */
+    exchange: (ctl: AuthController, code: any, attempt: any) => any;
+    /**
+     * Kiro only: the portal can pivot an organization login to the IdC device
+     * flow (`login_option=awsidc`, issue #167); a true return settles the paste
+     * through that device attempt instead of a code exchange.
+     */
+    resume?: (ctl: AuthController, code: any, claim: any) => boolean;
+    /** Finalize the session right before it is saved (Devin resolves identity first). */
+    finish?: (ctl: AuthController, session: any) => any;
+    /** Awaited post-save catalog discovery, before the change notification. */
+    discover?: (ctl: AuthController, session: any) => unknown;
+    /** Fire-and-forget validation after the quota refresh starts (Antigravity). */
+    probe?: (ctl: AuthController, saved: any) => unknown;
+}
 /** One family's row in the registry — references only, never implementations. */
 export interface OAuthFamily {
     id: FamilyId;
@@ -79,6 +113,8 @@ export interface OAuthFamily {
     fetchQuota: (session: any, fetchFn: any) => any;
     /** passthrough: Completions usage rewriting on forwarded answers, when this family maps any. */
     forward?: FamilyForwardHooks;
+    /** login.ts: flow start, paste completion, and pasted keys (family accounts.ts owns them). */
+    login: FamilyLoginHooks;
     /** account-quota: per-account hydration / refresh side effects, when this family has them. */
     quota?: FamilyQuotaHooks;
     /**
