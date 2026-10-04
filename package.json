@@ -3,6 +3,9 @@
   "version": "0.0.113",
   "description": "ChatGPT (Codex + Sign-in-with-ChatGPT), xAI Grok, Zhipu GLM, AWS Kiro, Google Antigravity, Cursor, Ollama Cloud, Kimi Code Plan, GitHub Copilot, Devin, Cline, Command Code, and OpenCode Go subscription OAuth / API keys for DeepSeek Harness — PKCE / device-code / Google login, local proxy, llm-pi-ai sync.",
   "license": "MIT",
+  "engines": {
+    "node": ">=22.6.0"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/xxww0098/dsh-plugin-oauth-subs.git"
@@ -48,6 +51,7 @@
     "build": "tsc && node --experimental-strip-types scripts/ui-bundle.ts && tsc -p tsconfig.ui.json",
     "dev-build": "npm run build && node --experimental-strip-types scripts/dev-build.ts",
     "test": "npm run build && node --experimental-strip-types --test 'test/*.test.ts'",
+    "typecheck": "node --experimental-strip-types scripts/typecheck-ratchet.ts",
     "analyze": "node --experimental-strip-types scripts/analyze-session.ts",
     "live": "node --experimental-strip-types scripts/live-smoke.ts",
     "models": "node --experimental-strip-types scripts/models.ts",

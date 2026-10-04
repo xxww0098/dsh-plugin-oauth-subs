@@ -13,9 +13,6 @@ fast-mode.json
 # 本地 dev 构建计数（npm run dev-build）——本机状态，不入库
 .dev-build.json
 
-# graft's local graph cache — regenerable, not committed (run `graft build`).
-/graft/
-
 # Agent tooling: portable configs are tracked, local write metadata is not.
 .amp/*.amp-write-meta
 
