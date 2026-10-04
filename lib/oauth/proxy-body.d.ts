@@ -1,7 +1,8 @@
 /**
  * Inbound request body: size-capped read and the per-family rewrite that
- * strips or applies cache fields before a hop (each family's own cache.ts
- * owns the rewrite; this only dispatches).
+ * strips or applies cache fields before a hop. The rewrite itself lives in
+ * each family's own cache.ts; this only dispatches, by looking the family's
+ * `applyCache` row up in `families.ts`.
  */
 export declare const MAX_REQUEST_BODY_BYTES: number;
 export declare function readBody(request: any, limit?: number): Promise<unknown>;
@@ -18,45 +19,5 @@ export declare function rewriteUpstreamBody(buffer: any, family: any, wire?: any
     payload: any;
     cacheSessionId: any;
     stream: boolean;
-    grokModel?: undefined;
-    routingHint?: undefined;
-    copilotVision?: undefined;
-    copilotInitiator?: undefined;
-    threadId?: undefined;
-} | {
-    payload: any;
-    cacheSessionId: string;
-    stream: boolean;
-    grokModel: any;
-    routingHint?: undefined;
-    copilotVision?: undefined;
-    copilotInitiator?: undefined;
-    threadId?: undefined;
-} | {
-    payload: any;
-    cacheSessionId: string | undefined;
-    stream: boolean;
-    routingHint: string | undefined;
-    grokModel?: undefined;
-    copilotVision?: undefined;
-    copilotInitiator?: undefined;
-    threadId?: undefined;
-} | {
-    payload: any;
-    cacheSessionId: string;
-    stream: boolean;
-    copilotVision: boolean;
-    copilotInitiator: string;
-    grokModel?: undefined;
-    routingHint?: undefined;
-    threadId?: undefined;
-} | {
-    payload: any;
-    cacheSessionId: string | undefined;
-    threadId: string | undefined;
-    stream: boolean;
-    grokModel?: undefined;
-    routingHint?: undefined;
-    copilotVision?: undefined;
-    copilotInitiator?: undefined;
+    [extra: string]: any;
 };
