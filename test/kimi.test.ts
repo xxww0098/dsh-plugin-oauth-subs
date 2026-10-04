@@ -204,6 +204,11 @@ test('thinking maps DSH effort onto thinking.effort', () => {
   assert.equal(applyKimiStreamUsage({ model: 'k3' }).stream_options, undefined)
 })
 
+test('usage mapping picks the first valid cache alias, not the first present one', () => {
+  assert.equal(mapKimiUsage({ prompt_tokens: 10, prompt_tokens_details: { cached_tokens: '123' }, cached_tokens: 50 }).prompt_tokens_details.cached_tokens, 50)
+  assert.equal(mapKimiUsage({ prompt_tokens: 10, prompt_tokens_details: { cached_tokens: 'x' } }).prompt_tokens_details.cached_tokens, 'x')
+})
+
 test('kimi hop maps cache_read usage and asks the vendor for stream usage', async () => {
   const seen = []
   const fetchFn = async (_url, init) => {

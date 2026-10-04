@@ -307,6 +307,13 @@ test('completions hop renames max_tokens for reasoning-era ids, asks for usage, 
   assert.equal(mapped.prompt_tokens_details.cached_tokens, 4)
 })
 
+test('usage mapping picks the first valid cache alias, not the first present one', () => {
+  const skipped = mapClineUsage({ prompt_tokens: 10, prompt_tokens_details: { cached_tokens: '123' }, cached_tokens: 50 })
+  assert.equal(skipped.prompt_tokens_details.cached_tokens, 50)
+  const unmapped = mapClineUsage({ prompt_tokens: 10, prompt_tokens_details: { cached_tokens: 'x' } })
+  assert.equal(unmapped.prompt_tokens_details.cached_tokens, 'x')
+})
+
 test('non-streaming completions are unwrapped out of the success/data envelope', async () => {
   assert.deepEqual(
     unwrapClineEnvelope({ success: true, data: { choices: [{ index: 0 }] } }),

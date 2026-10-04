@@ -112,11 +112,15 @@ export function clineQuotaFailure(status, payload) {
 /** Map vendor cache-read aliases. Absent field stays absent — do not invent 0. */
 export function mapClineUsage(usage) {
   if (!usage || typeof usage !== 'object') return usage
-  const cached = usage.prompt_tokens_details?.cached_tokens
-    ?? usage.cached_tokens
-    ?? usage.cache_read_input_tokens
-    ?? usage.cache_read_tokens
-  if (typeof cached !== 'number' || !Number.isFinite(cached) || cached < 0) return usage
+  // Pick the first alias that is actually a valid count: ?? would stop at a
+  // present-but-invalid value (e.g. the string "123") and skip a valid later one.
+  const cached = [
+    usage.prompt_tokens_details?.cached_tokens,
+    usage.cached_tokens,
+    usage.cache_read_input_tokens,
+    usage.cache_read_tokens,
+  ].find((value) => typeof value === 'number' && Number.isFinite(value) && value >= 0)
+  if (cached === undefined) return usage
   const details = usage.prompt_tokens_details && typeof usage.prompt_tokens_details === 'object'
     ? { ...usage.prompt_tokens_details }
     : {}
