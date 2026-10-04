@@ -8,7 +8,7 @@
  */
 
 /** Flatten one message's content to text: string, content-part array, or scalar. */
-export function systemText(message) {
+export function systemText(message: { content?: unknown } | null | undefined): string {
   const content = message?.content
   if (typeof content === 'string') return content
   if (!Array.isArray(content)) return content == null ? '' : String(content)
@@ -22,7 +22,7 @@ export function systemText(message) {
 }
 
 /** Split the leading run of system messages off the rest of the array. */
-export function splitLeadingSystem(messages) {
+export function splitLeadingSystem(messages: readonly any[]): { head: any[]; rest: any[] } {
   const head: any[] = []
   let index = 0
   while (index < messages.length && messages[index]?.role === 'system') {
@@ -36,7 +36,7 @@ export function splitLeadingSystem(messages) {
  * prompt, not an edit of the pinned one. DSH's session-title request shares
  * the chat's session id; parking the chat's prompt behind a pinned title
  * prompt made the model answer with a title. */
-export function unrelatedPrompt(existing, text) {
+export function unrelatedPrompt(existing: string, text: string): boolean {
   const max = Math.min(existing.length, text.length)
   let prefix = 0
   while (prefix < max && existing.charCodeAt(prefix) === text.charCodeAt(prefix)) prefix += 1
