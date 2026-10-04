@@ -25,6 +25,46 @@ import { familyMaxContextWindow, formatWindow, maxContextWindowOf } from '../uti
 export const OAUTH_CREDENTIAL_REF = 'DSH_OAUTH_SUBS_API_KEY'
 
 /**
+ * One family catalog row as the picker and the harness route both read it.
+ * Families add fields beyond the floor (rate, maxContextWindow, fastTier...)
+ * through the open shape.
+ */
+export interface ModelRow {
+  id: string
+  name: string
+  contextWindow: number
+  maxTokens?: number
+  input?: string[]
+  reasoningEfforts?: Record<string, string> | false
+  [key: string]: unknown
+}
+
+/** One provider route as buildProviders/catalogProviders write it. */
+export interface HarnessProvider {
+  api: string
+  models: ModelRow[]
+  [key: string]: unknown
+}
+
+/** buildProviders/catalogProviders inputs: prefix, hop origin, live rows. */
+export interface BuildProvidersOptions {
+  prefix: string
+  origin: string
+  loggedIn: Record<string, boolean>
+  cursorModels?: readonly ModelRow[]
+  ollamaModels?: readonly ModelRow[]
+  kiroModels?: readonly ModelRow[]
+  kimiModels?: readonly ModelRow[]
+  copilotModels?: readonly ModelRow[]
+  devinModels?: readonly ModelRow[]
+  glmModels?: readonly ModelRow[]
+  clineModels?: readonly ModelRow[]
+  commandCodeModels?: readonly ModelRow[]
+  chatgptModels?: readonly ModelRow[]
+  contexts?: Record<string, number>
+}
+
+/**
  * DSH llm-pi-ai `api` is a closed union (`openai-completions` |
  * `openai-responses` | `anthropic-messages`). Bare `openai` is refused
  * and the whole section write is dropped, so Codex/Grok stay and GLM /
@@ -63,13 +103,14 @@ export { CODEX_REASONING_EFFORTS }
  * package is not a dependency; this matches the JSON shape it rejects so a
  * bad payload fails here instead of silently keeping the last good section.
  */
-export function assertDshServiceableProvider(provider, value) {
+export function assertDshServiceableProvider(provider: string, value: unknown) {
   if (value == null || typeof value !== 'object') return
-  const api = value.api
+  const record = value as Record<string, unknown>
+  const api = record.api
   if (typeof api === 'string' && api !== HARNESS_COMPLETIONS_API && api !== HARNESS_RESPONSES_API && api !== HARNESS_ANTHROPIC_API) {
     throw new Error(`llm-pi-ai: provider "${provider}" api must be openai-completions | openai-responses | anthropic-messages`)
   }
-  for (const model of value.models ?? []) {
+  for (const model of (Array.isArray(record.models) ? record.models : []) as Record<string, unknown>[]) {
     const efforts = model.reasoningEfforts
     if (efforts && typeof efforts === 'object') {
       if (Object.keys(efforts).length === 0) {
@@ -86,10 +127,11 @@ export function assertDshServiceableProvider(provider, value) {
       }
     }
   }
-  const compat = value.compat
+  const compat = record.compat
   if (compat && typeof compat === 'object' && api !== HARNESS_COMPLETIONS_API) {
+    const compatMap = compat as Record<string, unknown>
     for (const field of DSH_COMPLETIONS_ONLY_COMPAT) {
-      if (compat[field] !== undefined) {
+      if (compatMap[field] !== undefined) {
         throw new Error(
           `llm-pi-ai: provider "${provider}" sets compat "${field}", but no model on the route speaks a protocol that takes it; it exists on openai-completions`,
         )
@@ -106,11 +148,11 @@ export function assertDshServiceableProvider(provider, value) {
  * backend variants) are ordinary rows. `isLargeContextKey` stays in
  * context-mode for hop peeling of routes older versions wrote.
  */
-export function isOptInKey(_key) {
+export function isOptInKey(_key: string): boolean {
   return false
 }
 
-export function modelKey(provider, id) {
+export function modelKey(provider: string, id: string): string {
   return `${provider}/${id}`
 }
 
@@ -134,7 +176,7 @@ export const MODEL_CONTEXT_MAX = 2_097_152
  * from an un-overridden catalog build — an already-customized `contextWindow`
  * would shrink the ceiling on re-edit.
  */
-export function maxContextOfRow(row, family) {
+export function maxContextOfRow(row: ModelRow | undefined, family?: string): number {
   const base = String(row?.id ?? '').replace(/-fast$/, '')
   const max = family !== undefined
     ? familyMaxContextWindow(family, base)
@@ -157,14 +199,14 @@ export function applyContextOverrides(providers: Record<string, any>, contexts: 
   if (keys.length === 0) return providers
   const out: Record<string, any> = {}
   for (const [provider, value] of Object.entries(providers)) {
-    const models = (value as any)?.models
-    if (!Array.isArray(models) || !models.some((model) => contexts[`${provider}/${model.id}`] !== undefined)) {
+    const models = (value as HarnessProvider | undefined)?.models
+    if (!Array.isArray(models) || !models.some((model: ModelRow) => contexts[`${provider}/${model.id}`] !== undefined)) {
       out[provider] = value
       continue
     }
     out[provider] = {
-      ...(value as any),
-      models: models.map((model) => {
+      ...value as HarnessProvider,
+      models: models.map((model: ModelRow) => {
         const contextWindow = contexts[`${provider}/${model.id}`]
         return contextWindow === undefined ? model : { ...model, contextWindow }
       }),
@@ -182,19 +224,19 @@ export function applyContextOverrides(providers: Record<string, any>, contexts: 
  * name. A route with a non-reasoning model gets no default at all: DSH would
  * reject that model's every request that picks no effort.
  */
-export function withDefaultEffort(value, level) {
-  const models = value?.models ?? []
+export function withDefaultEffort(value: HarnessProvider, level: string | undefined): HarnessProvider {
+  const models = value.models ?? []
   if (!level || models.length === 0) return value
-  const rank = (l) => DSH_THINKING_LEVELS.indexOf(l)
-  const mapped = models.map((model) => {
+  const rank = (l: string) => DSH_THINKING_LEVELS.indexOf(l)
+  const mapped = models.map((model: ModelRow) => {
     const efforts = model.reasoningEfforts
     if (!efforts || typeof efforts !== 'object') return undefined
     if (efforts[level] !== undefined) return model
-    const declared = DSH_THINKING_LEVELS.filter((l) => efforts[l] != null && (l !== 'off' || level === 'off'))
-    const nearest = declared.filter((l) => rank(l) < rank(level)).at(-1) ?? declared.find((l) => rank(l) > rank(level))
-    return nearest && { ...model, reasoningEfforts: { ...efforts, [level]: efforts[nearest] } }
+    const declared = DSH_THINKING_LEVELS.filter((l: string) => efforts[l] != null && (l !== 'off' || level === 'off'))
+    const nearest = declared.filter((l: string) => rank(l) < rank(level)).at(-1) ?? declared.find((l: string) => rank(l) > rank(level))
+    return nearest ? { ...model, reasoningEfforts: { ...efforts, [level]: efforts[nearest] } } : undefined
   })
-  if (mapped.some((model) => !model)) return value
+  if (!mapped.every((model): model is ModelRow => model !== undefined)) return value
   return { ...value, reasoning: level, models: mapped }
 }
 
@@ -214,20 +256,20 @@ export const MODEL_FAMILY_IDS = Object.freeze([...FAMILY_IDS, ...APIKEY_FAMILY_I
 /** Dropped families. Still unset leftover harness routes; never written back. */
 export const RETIRED_FAMILY_IDS = Object.freeze(['opencode', 'anthropic'])
 
-export function ownedProviderIds(prefix) {
+export function ownedProviderIds(prefix: string): string[] {
   return [...FAMILY_IDS, ...RETIRED_FAMILY_IDS].map((id) => `${prefix}-${id}`)
 }
 
-function harnessInput(model) {
+function harnessInput(model: ModelRow): string[] {
   if (Array.isArray(model.input) && model.input.length > 0) return [...model.input]
   return ['text', 'image']
 }
 
-function harnessReasoningEfforts(model) {
+function harnessReasoningEfforts(model: ModelRow): Record<string, string> | false | undefined {
   const raw = model.reasoningEfforts
   if (raw === false) return false
   if (!raw || typeof raw !== 'object') return undefined
-  const efforts: any = {}
+  const efforts: Record<string, string> = {}
   for (const [level, wire] of Object.entries(raw)) {
     if (!DSH_THINKING_LEVELS.includes(level)) {
       throw new Error(
@@ -250,14 +292,14 @@ function harnessReasoningEfforts(model) {
  */
 const HARNESS_REQUEST_MAX_TOKENS = 32_768
 
-function harnessMaxTokens(maxTokens) {
+function harnessMaxTokens(maxTokens: unknown): number | undefined {
   const value = Number(maxTokens)
   if (!Number.isFinite(value) || value <= 0) return undefined
   return Math.min(value, HARNESS_REQUEST_MAX_TOKENS)
 }
 
-function toHarnessModel(model) {
-  const row: any = {
+function toHarnessModel(model: ModelRow): ModelRow {
+  const row: ModelRow = {
     id: model.id,
     name: model.name,
     contextWindow: model.contextWindow,
@@ -276,8 +318,8 @@ function toHarnessModel(model) {
  * keeps exactly one default-window row, and the large window is the row's
  * custom input-context ceiling (`maxContextOfRow`).
  */
-export function withPickerVariants(models) {
-  const out: any[] = []
+export function withPickerVariants(models: readonly ModelRow[]): ModelRow[] {
+  const out: ModelRow[] = []
   for (const model of models) {
     out.push(model)
     if (modelSupportsFastMode(model.id) && !String(model.id).endsWith('-fast')) {
@@ -287,54 +329,54 @@ export function withPickerVariants(models) {
   return out
 }
 
-function cursorHarnessModels(cursorModels) {
+function cursorHarnessModels(cursorModels: readonly ModelRow[] | undefined): readonly ModelRow[] {
   if (Array.isArray(cursorModels) && cursorModels.length > 0) return cursorModels
   return CURSOR_MODELS
 }
 
-function ollamaHarnessModels(ollamaModels) {
+function ollamaHarnessModels(ollamaModels: readonly ModelRow[] | undefined): readonly ModelRow[] {
   if (Array.isArray(ollamaModels) && ollamaModels.length > 0) return ollamaModels
   return OLLAMA_MODELS
 }
 
-function kimiHarnessModels(kimiModels) {
+function kimiHarnessModels(kimiModels: readonly ModelRow[] | undefined): readonly ModelRow[] {
   if (Array.isArray(kimiModels) && kimiModels.length > 0) return kimiModels
   return KIMI_MODELS
 }
 
-function copilotHarnessModels(copilotModels) {
+function copilotHarnessModels(copilotModels: readonly ModelRow[] | undefined): readonly ModelRow[] {
   if (Array.isArray(copilotModels) && copilotModels.length > 0) return copilotModels
   return COPILOT_MODELS
 }
 
-function devinHarnessModels(devinModels) {
+function devinHarnessModels(devinModels: readonly ModelRow[] | undefined): readonly ModelRow[] {
   if (Array.isArray(devinModels) && devinModels.length > 0) return devinModels
   return DEVIN_MODELS
 }
 
-function kiroHarnessModels(kiroModels) {
+function kiroHarnessModels(kiroModels: readonly ModelRow[] | undefined): readonly ModelRow[] {
   if (Array.isArray(kiroModels) && kiroModels.length > 0) return kiroModels
   return KIRO_MODELS
 }
 
-function glmHarnessModels(glmModels) {
+function glmHarnessModels(glmModels: readonly ModelRow[] | undefined): readonly ModelRow[] {
   if (Array.isArray(glmModels) && glmModels.length > 0) return glmModels
   return GLM_MODELS
 }
 
 /** ChatGPT's own Fast twins: `fastTier` rows grow `<id>-fast` (peeled in chatgpt/request.ts). */
-export function chatgptPickerModels(chatgptModels) {
+export function chatgptPickerModels(chatgptModels: readonly ModelRow[] | undefined): ModelRow[] {
   return chatgptHarnessModels(chatgptModels)
 }
 
-function chatgptHarnessModels(chatgptModels) {
+function chatgptHarnessModels(chatgptModels: readonly ModelRow[] | undefined): ModelRow[] {
   const rows = Array.isArray(chatgptModels) && chatgptModels.length > 0 ? chatgptModels : CHATGPT_MODELS
   return rows.flatMap((model) => (model.fastTier === true && !String(model.id).endsWith('-fast')
     ? [model, { ...model, id: `${model.id}-fast`, name: `${model.name} Fast` }]
     : [model]))
 }
 
-function clineHarnessModels(clineModels) {
+function clineHarnessModels(clineModels: readonly ModelRow[] | undefined): readonly ModelRow[] {
   if (Array.isArray(clineModels) && clineModels.length > 0) return clineModels
   return CLINE_MODELS
 }
@@ -344,15 +386,15 @@ function clineHarnessModels(clineModels) {
  * `max_tokens ?? 64000` for every model, so the family constant is the real
  * cap toHarnessModel clamps against the request budget.
  */
-function commandCodeHarnessModels(commandCodeModels) {
+function commandCodeHarnessModels(commandCodeModels: readonly ModelRow[] | undefined): ModelRow[] {
   const rows = Array.isArray(commandCodeModels) && commandCodeModels.length > 0
     ? commandCodeModels
     : COMMAND_CODE_MODELS
-  return rows.map((model) => ({ ...model, maxTokens: model.maxTokens ?? COMMAND_CODE_MAX_TOKENS }))
+  return rows.map((model: ModelRow) => ({ ...model, maxTokens: model.maxTokens ?? COMMAND_CODE_MAX_TOKENS }))
 }
 
-export function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels, clineModels, commandCodeModels, chatgptModels = undefined, contexts }: any) {
-  const providers = {}
+export function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels, clineModels, commandCodeModels, chatgptModels = undefined, contexts }: BuildProvidersOptions): Record<string, HarnessProvider> {
+  const providers: Record<string, HarnessProvider> = {}
   if (loggedIn.codex) {
     providers[`${prefix}-codex`] = {
       displayName: 'Subs · ChatGPT Codex · Responses',
@@ -560,7 +602,7 @@ export function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaM
   // it every Completions family falls back to its process-wide `dsh-<id>`
   // constant. Responses routes already get the id; on anthropic-messages
   // `long` means a 1h cache_control TTL, which is out of scope.
-  for (const value of Object.values(providers) as any[]) {
+  for (const value of Object.values(providers)) {
     if (value.api === HARNESS_COMPLETIONS_API) value.cacheRetention = 'long'
   }
   return applyContextOverrides(providers, contexts)
@@ -570,11 +612,11 @@ export function describeProviders(providers: Record<string, any>) {
   return Object.entries(providers).map(([provider, value]) => ({
     provider,
     api: value.api,
-    models: value.models.map((model) => ({ ...model, key: modelKey(provider, model.id) })),
+    models: value.models.map((model: ModelRow) => ({ ...model, key: modelKey(provider, model.id) })),
   }))
 }
 
-export function catalogProviders({ prefix, origin, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels = undefined, clineModels, commandCodeModels, chatgptModels = undefined, contexts }: any) {
+export function catalogProviders({ prefix, origin, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels = undefined, clineModels, commandCodeModels, chatgptModels = undefined, contexts }: Omit<BuildProvidersOptions, 'loggedIn'>) {
   const providers = buildProviders({
     prefix,
     origin,
@@ -608,11 +650,11 @@ export function catalogProviders({ prefix, origin, cursorModels, ollamaModels, k
 
 export function catalogKeys(providers: Record<string, any>) {
   return Object.entries(providers).flatMap(([provider, value]) =>
-    (value.models ?? []).map((model) => modelKey(provider, model.id)),
+    (value.models ?? []).map((model: ModelRow) => modelKey(provider, model.id)),
   )
 }
 
-export function familyOfProvider(provider) {
+export function familyOfProvider(provider: string): string {
   if (String(provider).endsWith('-codex')) return 'codex'
   if (String(provider).endsWith('-chatgpt')) return 'chatgpt'
   if (String(provider).endsWith('-grok')) return 'grok'
@@ -629,12 +671,12 @@ export function familyOfProvider(provider) {
   return String(provider)
 }
 
-export function familyOfKey(key) {
+export function familyOfKey(key: string): string {
   const slash = String(key).indexOf('/')
   return familyOfProvider(slash === -1 ? key : key.slice(0, slash))
 }
 
-export function familyCatalogKeys(catalog, family) {
+export function familyCatalogKeys(catalog: Record<string, HarnessProvider>, family: string): string[] {
   return catalogKeys(catalog).filter((key) => familyOfKey(key) === family)
 }
 
@@ -652,7 +694,7 @@ const HARNESS_MODEL_AGENT: Record<string, string> = {
   cline: 'Cline', 'opencode-go': 'OpenCode Go', 'command-code': 'Command Code',
 }
 
-export function harnessModelAlias(provider, id) {
+export function harnessModelAlias(provider: string, id: string): string {
   const family = String(provider).startsWith('opencode-go') ? 'opencode-go' : familyOfProvider(provider)
   return `${HARNESS_MODEL_AGENT[family] ?? family}/${id}`
 }
@@ -679,7 +721,7 @@ export function describeCatalog(providers: Record<string, any>, { enabledKeys, l
       // why the family has no row on (登录默认) instead of looking broken.
       ...(awaitingPick?.has(family) ? { awaitingPick: true } : {}),
       ...(pricingTimeOfDay ? { pricingTimeOfDay } : {}),
-      models: value.models.map((model) => {
+      models: value.models.map((model: ModelRow) => {
         const key = modelKey(provider, model.id)
         const override = overrides[key]
         const max = maxContextOfRow(model, family)

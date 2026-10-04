@@ -341,8 +341,8 @@ export declare class AuthController {
         };
         routes: {
             provider: string;
-            api: any;
-            models: any;
+            api: string;
+            models: string[];
         }[];
         compaction: {
             status: string;

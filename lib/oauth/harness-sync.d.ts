@@ -59,8 +59,8 @@ export declare function ensureOpencodeGoRoute(settings: any, { selected, apiKeyS
 export declare function syncHarnessModels({ settings, patchPath, prefix, origin, loggedIn, selected, glmModels, contexts, efforts, extraMutations }: any): Promise<{
     routes: {
         provider: string;
-        api: any;
-        models: any;
+        api: string;
+        models: string[];
     }[];
     compaction: {
         status: string;
