@@ -84,21 +84,7 @@ export declare class AuthController {
     stateFile: string;
     constructor({ authPath, prefix, origin, settings, patchPath, credentials, grokLogin, onAuthChanged, models, fetchFn, quotaTtlMs, profile, readFileFn, updateEnv, installReleaseFn, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover, devinAutoImport, devinImport, devinDiscover, clineDiscover, clineAutoImport, commandCodeAutoImport, commandCodeImport, chatgptDiscover }: any);
     claim(provider: any): number;
-    loggedIn(): Promise<{
-        codex: boolean;
-        chatgpt: boolean;
-        grok: boolean;
-        glm: boolean;
-        kiro: boolean;
-        antigravity: boolean;
-        cursor: boolean;
-        ollama: boolean;
-        kimi: boolean;
-        copilot: boolean;
-        devin: boolean;
-        cline: boolean;
-        'command-code': boolean;
-    }>;
+    loggedIn(): Promise<Record<string, boolean>>;
     status(provider: any): Promise<{
         detail?: any;
         quota: {

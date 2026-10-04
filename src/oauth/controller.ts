@@ -23,32 +23,18 @@ import {
   publicSession,
   switchAccount,
 } from './store.js'
-import { CODEX_PERMANENT_REFRESH_CODES, refreshCodex } from './codex/index.js'
-import { refreshGrok } from './grok/index.js'
-import { GLM_MODELS, refreshGlm } from './glm/index.js'
-import { refreshKiro } from './kiro/index.js'
-import { ANTIGRAVITY_PREEMPT_MS, refreshAntigravity } from './antigravity/index.js'
-import { codexImported } from './import-auth.js'
+import { GLM_MODELS } from './glm/index.js'
 import { CursorPollFlowManager } from './cursor/pkce-flow.js'
-import { refreshCursor } from './cursor/index.js'
-import { cursorImported } from './cursor/import.js'
 import { cursorCatalogModels, refreshCursorCatalog } from './cursor/catalog.js'
-import { refreshOllama } from '../apikey/ollama/index.js'
 import { ollamaCatalogModels, refreshOllamaCatalog } from '../apikey/ollama/catalog.js'
 import { refreshCommandCode } from '../apikey/command-code/index.js'
 import { catalogPricing, catalogRateTimeOfDay } from '../catalog/index.js'
 import { kiroCatalogModels, refreshKiroCatalog } from './kiro/catalog.js'
-import { configureKimiIdentity, refreshKimi } from './kimi/index.js'
-import { kimiImported } from './kimi/import.js'
+import { configureKimiIdentity } from './kimi/index.js'
 import { kimiCatalogModels, refreshKimiCatalog } from './kimi/catalog.js'
-import { refreshCopilot } from './copilot/index.js'
 import { copilotCatalogModels, refreshCopilotCatalog } from './copilot/catalog.js'
-import { refreshDevin } from './devin/index.js'
 import { devinCatalogModels, refreshDevinCatalog } from './devin/catalog.js'
-import { refreshCline } from './cline/index.js'
 import { clineCatalogModels, refreshClineCatalog } from './cline/catalog.js'
-import { clineImported } from './cline/import.js'
-import { devinUserStatus } from './devin/transport.js'
 import { opencodeGoFilePath, OpencodeGoStore } from '../apikey/opencode-go/store.js'
 import {
   APIKEY_FAMILY_IDS,
@@ -61,6 +47,7 @@ import {
 import { ensureOpencodeGoRoute, filterProviders, syncHarnessModels } from './harness-sync.js'
 import { familyCatalogInputs } from './families.js'
 import { ModelSwitch } from './model-switch.js'
+import { buildTokenManagers } from './token-managers.js'
 import { TokenManager } from './tokens.js'
 import { QuotaStore } from './quota.js'
 import { DEFAULT_PROFILE, installRelease, localUpdateInfo } from '../utils/update.js'
@@ -81,7 +68,6 @@ import { markSignedOut } from './account-marks.js'
 import { accountsWithQuota, consumeReset, ensureAccountQuota, refreshQuota } from './account-quota.js'
 import { completeClineDevice, discoverCline, maybeAutoImportCline } from './cline/accounts.js'
 import { discoverChatgpt, revokeChatgptAccounts } from './chatgpt/accounts.js'
-import { CHATGPT_PERMANENT_REFRESH_CODES, CHATGPT_PREEMPT_MS, refreshChatgpt } from './chatgpt/index.js'
 import { chatgptCatalogModels, refreshChatgptCatalog } from './chatgpt/catalog.js'
 import { completeCopilotDevice, discoverCopilot, maybeAutoImportCopilot } from './copilot/accounts.js'
 import {
@@ -261,118 +247,13 @@ export class AuthController {
     this.lastError = new Map()
     this.finalizing = new Set()
     this.claims = new Map()
-    this.tokens = {
-      codex: new TokenManager({
-        displayName: 'ChatGPT (Codex)',
-        preemptMs: 5 * 60_000,
-        provider: 'codex',
-        authPath: this.authPath,
-        refresh: (session) => refreshCodex(session, fetchFn),
-        permanentCodes: CODEX_PERMANENT_REFRESH_CODES,
-        imported: codexImported,
-        onRemoved: () => this.onAuthChanged?.('codex'),
-      }),
-      chatgpt: new TokenManager({
-        displayName: 'ChatGPT (Sign in with ChatGPT)',
-        preemptMs: CHATGPT_PREEMPT_MS,
-        provider: 'chatgpt',
-        authPath: this.authPath,
-        refresh: (session) => refreshChatgpt(session, fetchFn),
-        permanentCodes: CHATGPT_PERMANENT_REFRESH_CODES,
-        onRemoved: () => this.onAuthChanged?.('chatgpt'),
-      }),
-      grok: new TokenManager({
-        displayName: 'Grok (Subscription)',
-        preemptMs: 2 * 60_000,
-        provider: 'grok',
-        authPath: this.authPath,
-        refresh: (session) => refreshGrok(session, fetchFn),
-        onRemoved: () => this.onAuthChanged?.('grok'),
-      }),
-      glm: new TokenManager({
-        displayName: 'GLM (Coding Plan)',
-        preemptMs: 24 * 60 * 60_000,
-        provider: 'glm',
-        authPath: this.authPath,
-        refresh: refreshGlm,
-        onRemoved: () => this.onAuthChanged?.('glm'),
-      }),
-      kiro: new TokenManager({
-        displayName: 'Kiro',
-        preemptMs: 2 * 60_000,
-        provider: 'kiro',
-        authPath: this.authPath,
-        refresh: (session) => refreshKiro(session, { fetchFn }),
-        onRemoved: () => this.onAuthChanged?.('kiro'),
-      }),
-      antigravity: new TokenManager({
-        displayName: 'Antigravity',
-        preemptMs: ANTIGRAVITY_PREEMPT_MS,
-        provider: 'antigravity',
-        authPath: this.authPath,
-        refresh: (session) => refreshAntigravity(session, fetchFn),
-        onRemoved: () => this.onAuthChanged?.('antigravity'),
-      }),
-      cursor: new TokenManager({
-        displayName: 'Cursor',
-        preemptMs: 5 * 60_000,
-        provider: 'cursor',
-        authPath: this.authPath,
-        refresh: (session) => refreshCursor(session, fetchFn),
-        imported: cursorImported(this.cursorImport),
-        onRemoved: () => this.onAuthChanged?.('cursor'),
-      }),
-      ollama: new TokenManager({
-        displayName: 'Ollama Cloud',
-        preemptMs: 24 * 60 * 60_000,
-        provider: 'ollama',
-        authPath: this.authPath,
-        refresh: refreshOllama,
-        onRemoved: () => this.onAuthChanged?.('ollama'),
-      }),
-      kimi: new TokenManager({
-        displayName: 'Kimi (Code Plan)',
-        preemptMs: 2 * 60_000,
-        provider: 'kimi',
-        authPath: this.authPath,
-        refresh: (session) => refreshKimi(session, fetchFn),
-        imported: kimiImported,
-        onRemoved: () => this.onAuthChanged?.('kimi'),
-      }),
-      copilot: new TokenManager({
-        displayName: 'GitHub Copilot',
-        preemptMs: 2 * 60_000,
-        provider: 'copilot',
-        authPath: this.authPath,
-        refresh: (session) => refreshCopilot(session, fetchFn),
-        onRemoved: () => this.onAuthChanged?.('copilot'),
-      }),
-      devin: new TokenManager({
-        displayName: 'Devin Agent',
-        preemptMs: 5 * 60_000,
-        provider: 'devin',
-        authPath: this.authPath,
-        refresh: (session) => refreshDevin(session, { fetchFn, statusFn: devinUserStatus }),
-        onRemoved: () => this.onAuthChanged?.('devin'),
-      }),
-      cline: new TokenManager({
-        displayName: 'Cline',
-        preemptMs: 5 * 60_000,
-        provider: 'cline',
-        authPath: this.authPath,
-        refresh: (session) => refreshCline(session, fetchFn),
-        imported: clineImported,
-        onRemoved: () => this.onAuthChanged?.('cline'),
-      }),
-      'command-code': new TokenManager({
-        displayName: 'Command Code',
-        preemptMs: 24 * 60 * 60_000,
-        provider: 'command-code',
-        authPath: this.authPath,
-        refresh: refreshCommandCode,
-        onRemoved: () => this.onAuthChanged?.('command-code'),
-      }),
-    }
+    this.tokens = buildTokenManagers({
+      authPath: this.authPath,
+      fetchFn,
+      cursorImport: this.cursorImport,
+      // Resolves this.onAuthChanged at fire time, like the inline closures did.
+      onAuthChanged: (provider) => this.onAuthChanged?.(provider),
+    })
     this.quota = new QuotaStore({
       tokens: this.tokens,
       fetchFn,
@@ -412,21 +293,13 @@ export class AuthController {
   }
 
   async loggedIn() {
-    return {
-      codex: (await getSession('codex', this.authPath)) !== undefined,
-      chatgpt: (await getSession('chatgpt', this.authPath)) !== undefined,
-      grok: (await getSession('grok', this.authPath)) !== undefined,
-      glm: (await getSession('glm', this.authPath)) !== undefined,
-      kiro: (await getSession('kiro', this.authPath)) !== undefined,
-      antigravity: (await getSession('antigravity', this.authPath)) !== undefined,
-      cursor: (await getSession('cursor', this.authPath)) !== undefined,
-      ollama: (await getSession('ollama', this.authPath)) !== undefined,
-      kimi: (await getSession('kimi', this.authPath)) !== undefined,
-      copilot: (await getSession('copilot', this.authPath)) !== undefined,
-      devin: (await getSession('devin', this.authPath)) !== undefined,
-      cline: (await getSession('cline', this.authPath)) !== undefined,
-      'command-code': (await getSession('command-code', this.authPath)) !== undefined,
+    // Driven by PROVIDER_IDS (same order the hand-written literal kept) so a
+    // new family cannot be missed; sequential awaits like the literal had.
+    const out: Record<string, boolean> = {}
+    for (const family of PROVIDER_IDS) {
+      out[family] = (await getSession(family, this.authPath)) !== undefined
     }
+    return out
   }
 
   async status(provider) {
@@ -564,21 +437,18 @@ export class AuthController {
     await Promise.all(PROVIDER_IDS.map((family) => (loggedIn[family] ? ensureAccountQuota(this, family, revalidateQuota) : this.quota.clear(family))))
     const enabledKeys = this.models.enabledKeys(catalog)
     const opencodeGo = await this.opencodeGoSnapshot()
-    const [codexAccounts, chatgptAccounts, grokAccounts, glmAccounts, kiroAccounts, antigravityAccounts, cursorAccounts, ollamaAccounts, kimiAccounts, copilotAccounts, devinAccounts, clineAccounts, commandCodeAccounts] = await Promise.all([
-      accountsWithQuota(this, 'codex'),
-      accountsWithQuota(this, 'chatgpt'),
-      accountsWithQuota(this, 'grok'),
-      accountsWithQuota(this, 'glm'),
-      accountsWithQuota(this, 'kiro'),
-      accountsWithQuota(this, 'antigravity'),
-      accountsWithQuota(this, 'cursor'),
-      accountsWithQuota(this, 'ollama'),
-      accountsWithQuota(this, 'kimi'),
-      accountsWithQuota(this, 'copilot'),
-      accountsWithQuota(this, 'devin'),
-      accountsWithQuota(this, 'cline'),
-      accountsWithQuota(this, 'command-code'),
-    ])
+    // Account rows per OAuth family, in PROVIDER_IDS order.
+    const familyAccounts = await Promise.all(PROVIDER_IDS.map((family) => accountsWithQuota(this, family)))
+    // Same shape the hand-written literal produced: one status read per family
+    // (sequential, in PROVIDER_IDS order) so a new family cannot be missed;
+    // opencode-go is an apikey family outside PROVIDER_IDS and stays explicit.
+    const accounts: Record<string, any> = {}
+    for (let index = 0; index < PROVIDER_IDS.length; index++) {
+      const family = PROVIDER_IDS[index]
+      const rows = familyAccounts[index]
+      accounts[family] = { ...(await this.status(family)), activeId: rows.find((row) => row.active)?.id, accounts: rows }
+    }
+    accounts['opencode-go'] = opencodeGo
     return {
       origin,
       profile: this.profile,
@@ -600,22 +470,7 @@ export class AuthController {
       providers: describeProviders(providers),
       selected: enabledKeys,
       efforts: { ...this.models.efforts },
-      accounts: {
-        codex: { ...(await this.status('codex')), activeId: codexAccounts.find((row) => row.active)?.id, accounts: codexAccounts },
-        chatgpt: { ...(await this.status('chatgpt')), activeId: chatgptAccounts.find((row) => row.active)?.id, accounts: chatgptAccounts },
-        grok: { ...(await this.status('grok')), activeId: grokAccounts.find((row) => row.active)?.id, accounts: grokAccounts },
-        glm: { ...(await this.status('glm')), activeId: glmAccounts.find((row) => row.active)?.id, accounts: glmAccounts },
-        kiro: { ...(await this.status('kiro')), activeId: kiroAccounts.find((row) => row.active)?.id, accounts: kiroAccounts },
-        antigravity: { ...(await this.status('antigravity')), activeId: antigravityAccounts.find((row) => row.active)?.id, accounts: antigravityAccounts },
-        cursor: { ...(await this.status('cursor')), activeId: cursorAccounts.find((row) => row.active)?.id, accounts: cursorAccounts },
-        ollama: { ...(await this.status('ollama')), activeId: ollamaAccounts.find((row) => row.active)?.id, accounts: ollamaAccounts },
-        kimi: { ...(await this.status('kimi')), activeId: kimiAccounts.find((row) => row.active)?.id, accounts: kimiAccounts },
-        copilot: { ...(await this.status('copilot')), activeId: copilotAccounts.find((row) => row.active)?.id, accounts: copilotAccounts },
-        devin: { ...(await this.status('devin')), activeId: devinAccounts.find((row) => row.active)?.id, accounts: devinAccounts },
-        cline: { ...(await this.status('cline')), activeId: clineAccounts.find((row) => row.active)?.id, accounts: clineAccounts },
-        'command-code': { ...(await this.status('command-code')), activeId: commandCodeAccounts.find((row) => row.active)?.id, accounts: commandCodeAccounts },
-        'opencode-go': opencodeGo,
-      },
+      accounts,
       opencodeGo,
       update: localUpdateInfo(process.platform, {
         profile: this.profile,
