@@ -1,7 +1,7 @@
 {
   "name": "dsh-plugin-oauth-subs",
   "version": "0.0.113",
-  "description": "ChatGPT Codex, xAI Grok, Zhipu GLM, AWS Kiro, Google Antigravity, Cursor, Ollama Cloud, Kimi, and GitHub Copilot subscription OAuth for DeepSeek Harness — PKCE / device-code / Google login, local Responses proxy, llm-pi-ai sync.",
+  "description": "ChatGPT (Codex + Sign-in-with-ChatGPT), xAI Grok, Zhipu GLM, AWS Kiro, Google Antigravity, Cursor, Ollama Cloud, Kimi Code Plan, GitHub Copilot, Devin, Cline, Command Code, and OpenCode Go subscription OAuth / API keys for DeepSeek Harness — PKCE / device-code / Google login, local proxy, llm-pi-ai sync.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -67,7 +67,14 @@
     "pkce",
     "antigravity",
     "google",
-    "cursor"
+    "cursor",
+    "kimi",
+    "copilot",
+    "devin",
+    "cline",
+    "ollama",
+    "command-code",
+    "opencode-go"
   ],
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1"
