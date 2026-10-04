@@ -68,3 +68,8 @@ export declare function syncHarnessModels({ settings, patchPath, prefix, origin,
         error?: undefined;
     };
 }>;
+/**
+ * Distinct tmp name per write: overlapping sync() calls in this process
+ * must not share one (the second rename would hit ENOENT).
+ */
+export declare function compactionTmpPath(patchPath: any): string;
