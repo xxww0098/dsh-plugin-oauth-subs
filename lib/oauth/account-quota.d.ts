@@ -21,7 +21,7 @@ export declare function accountsWithQuota(ctl: AuthController, provider: any): P
     } | {
         status: any;
         planType: any;
-        planLabel: any;
+        planLabel: string | undefined;
         account: any;
         subscriptionStatus: any;
         hasGrokCodeAccess: any;

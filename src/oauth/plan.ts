@@ -15,7 +15,27 @@ import { DEVIN_PLAN_NAMES, DEVIN_TIER_NAMES } from './devin/index.js'
 import { CLINE_PLAN_NAMES } from './cline/index.js'
 import { commandCodePlanLabel } from '../apikey/command-code/quota.js'
 
-export const CODEX_PLAN_NAMES = Object.freeze({
+/** Slug → Settings-card label. A widened view of each family's frozen plan table so a runtime slug can index it. */
+type PlanNameTable = Readonly<Record<string, string>>
+
+/** Numeric wire tier (Grok JWT tier, Devin `teams_tier`) → label. */
+type TierNameTable = Readonly<Record<number, string>>
+
+/** First truthy hit among the candidate keys — the slug-then-compact order every family branch used. */
+function planNameOf(table: PlanNameTable, ...keys: string[]): string | undefined {
+  for (const key of keys) {
+    const label = table[key]
+    if (label) return label
+  }
+  return undefined
+}
+
+/** Numeric tier lookup; an unknown tier returns undefined and the caller falls back to the number. */
+function tierNameOf(table: TierNameTable, tier: number): string | undefined {
+  return table[tier]
+}
+
+export const CODEX_PLAN_NAMES: PlanNameTable = Object.freeze({
   free: 'Free',
   free_plan: 'Free',
   free_trial: 'Free',
@@ -52,7 +72,7 @@ export const CODEX_PLAN_NAMES = Object.freeze({
   student: 'Student',
 })
 
-const GROK_PLAN_ALIASES = Object.freeze({
+const GROK_PLAN_ALIASES: PlanNameTable = Object.freeze({
   free: 'Free',
   supergrok: 'SuperGrok',
   super_grok: 'SuperGrok',
@@ -74,7 +94,7 @@ const GROK_PLAN_ALIASES = Object.freeze({
   super_grok_plus: 'SuperGrok Plus',
 })
 
-function slugOf(value) {
+function slugOf(value: string): string {
   return String(value)
     .trim()
     .toLowerCase()
@@ -84,60 +104,63 @@ function slugOf(value) {
     .replace(/^_|_$/g, '')
 }
 
-function compactOf(value) {
+function compactOf(value: string): string {
   return slugOf(value).replace(/_/g, '')
 }
 
-export function formatPlanLabel(raw, family?) {
+export function formatPlanLabel(raw: unknown, family?: string): string | undefined {
   if (raw === undefined || raw === null) return undefined
   if (family === 'devin' && typeof raw === 'number' && Number.isInteger(raw)) {
-    return DEVIN_TIER_NAMES[raw] ?? String(raw)
+    return tierNameOf(DEVIN_TIER_NAMES, raw) ?? String(raw)
   }
   if (typeof raw === 'number' && Number.isInteger(raw)) {
-    return GROK_TIER_NAMES[raw] ?? String(raw)
+    return tierNameOf(GROK_TIER_NAMES, raw) ?? String(raw)
   }
   if (typeof raw !== 'string') return undefined
   const trimmed = raw.trim()
   if (!trimmed) return undefined
-  if (/^\d+$/.test(trimmed) && GROK_TIER_NAMES[Number(trimmed)]) {
-    return GROK_TIER_NAMES[Number(trimmed)]
+  if (/^\d+$/.test(trimmed)) {
+    const tier = tierNameOf(GROK_TIER_NAMES, Number(trimmed))
+    if (tier) return tier
   }
   const slug = slugOf(trimmed)
   const compact = compactOf(trimmed)
   if (family === 'glm') {
-    if (GLM_PLAN_NAMES[slug]) return GLM_PLAN_NAMES[slug]
-    if (GLM_PLAN_NAMES[compact]) return GLM_PLAN_NAMES[compact]
+    const label = planNameOf(GLM_PLAN_NAMES, slug, compact)
+    if (label) return label
   }
   if (family === 'kiro') {
-    if (KIRO_PLAN_NAMES[slug]) return KIRO_PLAN_NAMES[slug]
-    if (KIRO_PLAN_NAMES[compact]) return KIRO_PLAN_NAMES[compact]
+    const label = planNameOf(KIRO_PLAN_NAMES, slug, compact)
+    if (label) return label
   }
   if (family === 'antigravity') {
-    if (ANTIGRAVITY_PLAN_NAMES[slug]) return ANTIGRAVITY_PLAN_NAMES[slug]
-    if (ANTIGRAVITY_PLAN_NAMES[compact]) return ANTIGRAVITY_PLAN_NAMES[compact]
+    const label = planNameOf(ANTIGRAVITY_PLAN_NAMES, slug, compact)
+    if (label) return label
   }
   if (family === 'cursor') {
-    if (CURSOR_PLAN_NAMES[slug]) return CURSOR_PLAN_NAMES[slug]
-    if (CURSOR_PLAN_NAMES[compact]) return CURSOR_PLAN_NAMES[compact]
+    const label = planNameOf(CURSOR_PLAN_NAMES, slug, compact)
+    if (label) return label
   }
   if (family === 'ollama') {
-    if (OLLAMA_PLAN_NAMES[slug]) return OLLAMA_PLAN_NAMES[slug]
-    if (OLLAMA_PLAN_NAMES[compact]) return OLLAMA_PLAN_NAMES[compact]
+    const label = planNameOf(OLLAMA_PLAN_NAMES, slug, compact)
+    if (label) return label
   }
   if (family === 'copilot') {
-    if (COPILOT_PLAN_NAMES[slug]) return COPILOT_PLAN_NAMES[slug]
-    if (COPILOT_PLAN_NAMES[compact]) return COPILOT_PLAN_NAMES[compact]
+    const label = planNameOf(COPILOT_PLAN_NAMES, slug, compact)
+    if (label) return label
   }
   if (family === 'cline') {
-    if (CLINE_PLAN_NAMES[slug]) return CLINE_PLAN_NAMES[slug]
-    if (CLINE_PLAN_NAMES[compact]) return CLINE_PLAN_NAMES[compact]
+    const label = planNameOf(CLINE_PLAN_NAMES, slug, compact)
+    if (label) return label
   }
   if (family === 'devin') {
-    if (DEVIN_PLAN_NAMES[slug]) return DEVIN_PLAN_NAMES[slug]
-    if (DEVIN_PLAN_NAMES[compact]) return DEVIN_PLAN_NAMES[compact]
+    const label = planNameOf(DEVIN_PLAN_NAMES, slug, compact)
+    if (label) return label
     // `teams_tier` may arrive as a numeric string (16 = Devin Pro).
-    const tier = Number(trimmed)
-    if (/^\d+$/.test(trimmed) && DEVIN_TIER_NAMES[tier]) return DEVIN_TIER_NAMES[tier]
+    if (/^\d+$/.test(trimmed)) {
+      const tier = tierNameOf(DEVIN_TIER_NAMES, Number(trimmed))
+      if (tier) return tier
+    }
   }
   if (family === 'command-code') {
     // planId spellings ('individual-pro', 'pro', 'max') share slugs with the
@@ -146,12 +169,15 @@ export function formatPlanLabel(raw, family?) {
     if (label) return label
   }
   if (family !== 'glm' && family !== 'grok' && family !== 'kiro' && family !== 'antigravity' && family !== 'cursor' && family !== 'ollama' && family !== 'kimi' && family !== 'copilot' && family !== 'devin' && family !== 'cline' && family !== 'command-code') {
-    if (CODEX_PLAN_NAMES[slug]) return CODEX_PLAN_NAMES[slug]
-    if (CODEX_PLAN_NAMES[compact]) return CODEX_PLAN_NAMES[compact]
+    const label = planNameOf(CODEX_PLAN_NAMES, slug, compact)
+    if (label) return label
   }
-  if (GLM_PLAN_NAMES[slug] && family !== 'codex' && family !== 'chatgpt') return GLM_PLAN_NAMES[slug]
-  if (GROK_PLAN_ALIASES[slug]) return GROK_PLAN_ALIASES[slug]
-  if (GROK_PLAN_ALIASES[compact]) return GROK_PLAN_ALIASES[compact]
+  if (family !== 'codex' && family !== 'chatgpt') {
+    const label = planNameOf(GLM_PLAN_NAMES, slug)
+    if (label) return label
+  }
+  const alias = planNameOf(GROK_PLAN_ALIASES, slug, compact)
+  if (alias) return alias
   const known = Object.values(GROK_TIER_NAMES)
   const match = known.find((name) => name.toLowerCase() === trimmed.toLowerCase())
   if (match) return match
@@ -161,7 +187,7 @@ export function formatPlanLabel(raw, family?) {
     .replace(/\b\w/g, (char) => char.toUpperCase())
 }
 
-export function pickPlanRaw(...values) {
+export function pickPlanRaw(...values: unknown[]): number | string | undefined {
   for (const value of values) {
     if (typeof value === 'number' && Number.isInteger(value)) return value
     if (typeof value === 'string' && value.trim()) return value.trim()

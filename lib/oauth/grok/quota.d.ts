@@ -15,7 +15,7 @@ export declare function parseGrokBilling(billing: any, { cliUser }?: any): {
     subscriptionStatus?: undefined;
     hasGrokCodeAccess?: undefined;
 } | {
-    planType: any;
+    planType: string | undefined;
     subscriptionStatus: any;
     hasGrokCodeAccess: boolean | undefined;
     rows: any[];

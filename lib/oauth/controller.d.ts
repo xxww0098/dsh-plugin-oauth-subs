@@ -101,7 +101,7 @@ export declare class AuthController {
         } | {
             status: any;
             planType: any;
-            planLabel: any;
+            planLabel: string | undefined;
             account: any;
             subscriptionStatus: any;
             hasGrokCodeAccess: any;
