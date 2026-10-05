@@ -199,19 +199,19 @@ test('live catalog merges the recommended + free buckets and falls back to the s
     'openai/gpt-6.1-sol', 'anthropic/claude-sonnet-5.5', 'anthropic/claude-opus-5.5',
     'spacexai/grok-4.7', 'openai/gpt-6-astra', 'moonshotai/kimi-k3',
     'stealth/space-bunny-alpha', 'cline-free/mimo-v2.6-flash',
-    'cline-free/deepseek-v4.1-flash', 'cline-free/muse-spark-1.3-contributor',
+    'cline-free/muse-spark-1.3-contributor',
   ])
   const feed = {
     recommended: [{ id: 'anthropic/claude-opus-5.5', name: 'claude-opus-5.5' }, { id: 'new/lab-model', name: 'lab-model' }],
-    free: [{ id: 'cline-free/deepseek-v4.1-flash', name: 'Deepseek-v4.1-Flash' }],
+    free: [{ id: 'cline-free/mimo-v2.6-flash', name: 'Mimo V2.6 Flash' }],
     clinePass: [{ id: 'cline-pass/glm-5.3', name: 'cline-pass/glm-5.3' }],
   }
   const merged = toClinePickerModels(feed)
-  assert.deepEqual(merged.map((model) => model.id), ['anthropic/claude-opus-5.5', 'new/lab-model', 'cline-free/deepseek-v4.1-flash'])
+  assert.deepEqual(merged.map((model) => model.id), ['anthropic/claude-opus-5.5', 'new/lab-model', 'cline-free/mimo-v2.6-flash'])
   assert.equal(merged[0].contextWindow, 1_000_000)
   assert.equal(merged[1].contextWindow, 128_000)
   assert.equal(merged[1].maxTokens, 8_192)
-  assert.equal(merged[2].name, 'DeepSeek V4.1 Flash (free)')
+  assert.equal(merged[2].name, 'MiMo-V2.6-Flash (free)')
   const live = await refreshClineCatalog(null, { fetchFn: async () => json(feed) })
   assert.equal(live.length, 3)
   assert.equal(clineCatalogModels().length, 3)
@@ -577,7 +577,7 @@ test('sync writes the live cline catalog, not the offline seed', async () => {
   }
   const liveFeed = {
     recommended: [{ id: 'openai/gpt-6-astra', name: 'gpt-6-astra' }, { id: 'new/lab-model', name: 'lab-model' }],
-    free: [{ id: 'cline-free/deepseek-v4.1-flash', name: 'Deepseek-v4.1-Flash' }],
+    free: [{ id: 'cline-free/mimo-v2.6-flash', name: 'Mimo V2.6 Flash' }],
   }
   resetClineCatalogCache()
   await refreshClineCatalog(null, { fetchFn: async () => json(liveFeed) })

@@ -1061,6 +1061,8 @@ test('cursor static catalog matches the live Cursor model set and has no Fast ro
   assert.equal(CURSOR_MODELS.find((model) => model.id === 'grok-4.5').contextWindow, 256_000)
   assert.equal(CURSOR_MODELS.find((model) => model.id === 'grok-4.7').contextWindow, 256_000)
   assert.deepEqual(CURSOR_MODELS.find((model) => model.id === 'grok-4.7').input, ['text'])
+  // Live list flips this one back and forth (supportsImages false on 09-30, true on 10-05).
+  assert.deepEqual(CURSOR_MODELS.find((model) => model.id === 'claude-sonnet-5-5').input, ['text', 'image'])
   assert.equal(CURSOR_MODELS.find((model) => model.id === 'claude-opus-5').contextWindow, 300_000)
   assert.equal(CURSOR_MODELS.find((model) => model.id === 'claude-opus-5-5').contextWindow, 300_000)
   assert.equal(CURSOR_MODELS.find((model) => model.id === 'muse-spark-1.3').contextWindow, 300_000)

@@ -690,7 +690,7 @@
             "in": 0.4, "out": 2.4, "cacheRead": 0.04, "cacheWrite": 0.5
         },
         "gpt-5.6-sol": {
-            "in": 1.2, "out": 6, "cacheRead": 0.12, "cacheWrite": 1.5
+            "in": 4, "out": 20, "cacheRead": 0.4, "cacheWrite": 5
         },
         "gpt-5.6-sol-fast": {
             "in": 8, "out": 40, "cacheRead": 0.8, "cacheWrite": 10
@@ -790,15 +790,12 @@
             "tiers": [{ "in": 20, "out": 75, "cacheRead": 2 }]
         },
         "moonshotai/kimi-k3": {
-            "in": 2.7, "out": 13.5, "cacheRead": 0.27
+            "in": 0.67, "out": 14, "cacheRead": 0.22
         },
         "stealth/space-bunny-alpha": {
             "in": 0, "out": 0, "cacheRead": 0
         },
         "cline-free/mimo-v2.6-flash": {
-            "in": 0, "out": 0, "cacheRead": 0
-        },
-        "cline-free/deepseek-v4.1-flash": {
             "in": 0, "out": 0, "cacheRead": 0
         },
         "cline-free/muse-spark-1.3-contributor": {

@@ -983,7 +983,8 @@
       "contextWindow": 300000,
       "maxTokens": 128000,
       "input": [
-        "text"
+        "text",
+        "image"
       ],
       "reasoningEfforts": {
         "low": "low",
@@ -3479,24 +3480,6 @@
       "name": "MiMo-V2.6-Flash (free)",
       "contextWindow": 1050000,
       "maxTokens": 131072,
-      "input": [
-        "text",
-        "image"
-      ],
-      "reasoningEfforts": {
-        "minimal": "minimal",
-        "low": "low",
-        "medium": "medium",
-        "high": "high",
-        "xhigh": "xhigh",
-        "max": "xhigh"
-      }
-    },
-    {
-      "id": "cline-free/deepseek-v4.1-flash",
-      "name": "DeepSeek V4.1 Flash (free)",
-      "contextWindow": 1048576,
-      "maxTokens": 943718,
       "input": [
         "text",
         "image"

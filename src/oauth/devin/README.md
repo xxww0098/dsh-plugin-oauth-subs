@@ -94,9 +94,11 @@ HTTP 头：`content-type: application/connect+proto`（chat）/ `application/pro
 
 行在 [`src/catalog/models.json`](../../catalog/models.json) 的 `"devin"` 键；行格式、来源与 `npm run models` 更新流程见 [`docs/models.md`](../../../docs/models.md)。本节只记本家的取舍与出处。
 
-最近核对：2026-10-01，生产 `GetCliModelConfigs`（737 个原始 config）：`claude-sonnet-4.5` / `claude-sonnet-4.5-thinking` 两行**整行没了**（不是变无家族——原始载荷里搜不到；同代 `claude-opus-4.5` / `-thinking` 仍在，排除账号/出口过滤），目录与价目随源删两行（80→78）。
+最近核对：2026-10-05，价目源 [docs.devin.ai/desktop/models.md](https://docs.devin.ai/desktop/models.md) 的 `modelCostData`（PRO 档）重对：`gpt-5-6-sol-*` 全族从 $1.2/$6/$0.12/$1.5 换成标准价 $4/$20/$0.4/$5（priority uid 仍 $8/$40/$0.8/$10）。目录行与 `npm run models` 无变化，价目由 `npm run rates` 写入；上一轮的 1.2/6 是上游促销价，Cursor docs 表同款也是 $4/$20。
 
-上次核对：2026-09-30（第二次），生产 `GetCliModelConfigs`：`gpt-6-1-sol` / `-fast` 仍在（1M 窗、128K 输出、image、low–max → `*-low…-max` / `*-priority` uid）；同日早些时候探到的 `off`（`*-none` uid）档与 `-thinking-fast` 行**当天就被上游撤下**，目录随源收掉（先例：上游几小时内就能增删档位/变体，收行当天的快照不代表稳定态）。
+上次核对：2026-10-01，生产 `GetCliModelConfigs`（737 个原始 config）：`claude-sonnet-4.5` / `claude-sonnet-4.5-thinking` 两行**整行没了**（不是变无家族——原始载荷里搜不到；同代 `claude-opus-4.5` / `-thinking` 仍在，排除账号/出口过滤），目录与价目随源删两行（80→78）。
+
+更早核对：2026-09-30（第二次），生产 `GetCliModelConfigs`：`gpt-6-1-sol` / `-fast` 仍在（1M 窗、128K 输出、image、low–max → `*-low…-max` / `*-priority` uid）；同日早些时候探到的 `off`（`*-none` uid）档与 `-thinking-fast` 行**当天就被上游撤下**，目录随源收掉（先例：上游几小时内就能增删档位/变体，收行当天的快照不代表稳定态）。
 
 屏蔽（2026-09-30）：Fusion 家族不进目录与 picker。静态楼删行；`toDevinPickerModels` 按家族 uid 挡（活目录与静态快照共用此闸）；devin 适配器 `skip` 规则防 `npm run models` 回灌。裸 uid 直连不经此闸（`devinWireModelId` 仍透传）。
 
