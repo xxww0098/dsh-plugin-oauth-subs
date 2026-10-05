@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-oauth-subs",
-  "version": "0.0.114",
+  "version": "0.0.115",
   "description": "ChatGPT (Codex + Sign-in-with-ChatGPT), xAI Grok, Zhipu GLM, AWS Kiro, Google Antigravity, Cursor, Ollama Cloud, Kimi Code Plan, GitHub Copilot, Devin, Cline, Command Code, and OpenCode Go subscription OAuth / API keys for DeepSeek Harness — PKCE / device-code / Google login, local proxy, llm-pi-ai sync.",
   "license": "MIT",
   "engines": {
