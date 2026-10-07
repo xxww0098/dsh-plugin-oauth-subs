@@ -2,6 +2,12 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。每条只写 **现象** / **根因** / **修复** 三行，各 1–2 句；只留 grep 代码得不到的症状、根因与落点，不写过程与清单。
 
+## 2026-10-07：目录刷新日——codex/command-code 跟版、Space Bunny 免费预览三处退役、cline/ollama/OpenCode Go 各收一行
+
+**现象**：`npm run models` 干跑：codex 0.160.1 活目录 7 行，`? gpt-5.5`（比 10-03 的 8 行少一行，登录态端点按账号过滤，未确认下架不删）；command-code 无端点（`manual`），1.77.0 bundle 注册表 93 行 −8 hidden = 85 可见；cline `+ cline-free/solar-mini4`、`? stealth/space-bunny-alpha`；ollama `+ mistral-large-4`；OpenCode Go `+ space-bunny`、`? space-bunny-free`，`glm-5.1` / `omen-alpha` / `minimax-m2.5` 仍无 models.dev 元数据。`npm run rates` 干跑只报行数增量，写盘实际还改了 Devin 四行（丢掉源里已不存在的 `tierThreshold`/`tiers`）与 `deepseek-v4-1-flash` 的价（0.3/1.2 → 0.22/0.66）——源值变化仍要 `git diff` 才看得到。
+**根因**：① Stealth 免费预览 9/30 结束后陆续下线，三处独立印证：cline feed 撤下 `stealth/space-bunny-alpha`、OpenCode Go 撤下 `space-bunny-free`（活测 400 `Model is unavailable.`）、command-code 1.74.2 把它移进 hidden `Set`（退役 = 隐藏，行仍在注册表但 effort/output 字段被剥掉）；② 上游当天照常增删：cline free 桶上新 `cline-free/solar-mini4`、ollama Cloud 上新 `mistral-large-4`（与 command-code 1.75.0 同日收的 `mistral/mistral-large-4` 同代）、OpenCode Go 上 `space-bunny` 付费行（活测回 `reasoning_content` → DeepSeek 方言）；③ Devin `modelCostData` 是扁平表、没有 context tier，脚本按源重写就丢掉了 1.73.1 时代抄进来的 tier 字段。
+**修复**：codex 钉 0.160.1（纯跟版，wire 无变化）；command-code 升钉 1.77.0，收 `mistral/mistral-large-4`（$1.36/$4.18/$0.14）、删 `stealth/space-bunny-alpha` 目录行 + 价目行（注册表价目表 96→95 条，其余逐行同价）；cline 收 `cline-free/solar-mini4`（$0）、删 `stealth/space-bunny-alpha`；ollama 收 `mistral-large-4`（models.dev 无价，不出版本徽标）；OpenCode Go 收 `space-bunny`（DeepSeek 方言 compat）、删 `space-bunny-free`，三行 unresolved 继续不收；Devin 四行 tier 字段与 `deepseek-v4-1-flash` 价随源更新。用户可见：Command Code / cline / ollama / OpenCode Go 各多一行，Space Bunny 免费档三处同时消失。
+
 ## 2026-10-05：目录刷新日——cline 免费档撤下 deepseek-v4.1-flash、两处价目回落到标准价
 
 **现象**：`npm run models` 干跑只有三处差异：cursor `~ claude-sonnet-5-5.input` `["text"] → ["text","image"]`；cline `? cline-free/deepseek-v4.1-flash`（公开 feed 的 free 桶 4→3 行）；OpenCode Go `! glm-5.1` / `omen-alpha` / `minimax-m2.5` 仍无元数据。`npm run rates` 干跑行数全不变，但写盘实际改了 Devin `gpt-5.6-sol`（$1.2/$6 → $4/$20）与 cline `moonshotai/kimi-k3`（2.7/13.5 → 0.67/14）两行价——干跑只报行数与厂商回落，源里的值变化要 `git diff` 才看得到。kimi 键 `SKIPPED`（三个 profile 都没有 kimi 账号，未核对）。

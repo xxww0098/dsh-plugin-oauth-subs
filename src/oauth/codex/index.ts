@@ -19,7 +19,7 @@ export const CODEX_USAGE_URL = 'https://chatgpt.com/backend-api/wham/usage'
 export const CODEX_RESET_CREDITS_URL = 'https://chatgpt.com/backend-api/wham/rate-limit-reset-credits'
 export const CODEX_RESET_CONSUME_URL = 'https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume'
 export const CODEX_MODELS_URL = 'https://chatgpt.com/backend-api/codex/models'
-export const CODEX_CLIENT_VERSION = '0.160.0'
+export const CODEX_CLIENT_VERSION = '0.160.1'
 export const CODEX_ORIGINATOR = 'codex_cli_rs'
 export const CODEX_USER_AGENT = `${CODEX_ORIGINATOR}/${CODEX_CLIENT_VERSION}`
 export const CODEX_SCOPE = 'openid profile email offline_access api.connectors.read api.connectors.invoke'
@@ -58,8 +58,8 @@ export const CODEX_REASONING_EFFORTS = Object.freeze({
 
 /**
  * Mirrors Codex CLI `models.json` plus GET
- * chatgpt.com/backend-api/codex/models (probed 2026-10-03 at `client_version`
- * 0.160.0) — the one place model facts live, so the picker, the context
+ * chatgpt.com/backend-api/codex/models (probed 2026-10-07 at `client_version`
+ * 0.160.1) — the one place model facts live, so the picker, the context
  * aliases and the Fast tier cannot drift apart. The backend gates rows on
  * `client_version`: `gpt-6-sol` / `gpt-6-luna` appear at >= 0.155.0,
  * `gpt-6.1-sol` at >= 0.159.0 — a stale pin hides new models, hence

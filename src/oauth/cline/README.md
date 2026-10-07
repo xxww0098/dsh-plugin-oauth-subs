@@ -93,11 +93,12 @@ WorkOS 那一对 token 不是 Cline 会话——`register` 兑换才拿到 `usr-
 - 免费档可用、不扣余额，个别模型按出口 IP 403 区域门（非本 hop 问题）；见 docs/error.md 2026-09-19 Cline 免费档活测。推理模型别把 `max_tokens` 设太小，reasoning token 吃满预算会得到空 `content`。
 - 上限槽：`maxContextWindow`（自定义输入窗上限）对 cline 行生效（`familyMaxContextWindow` 查静态楼）；`pickerRow` 会把 fact 上的同名字段带进活目录（运行时 fact 就是传进来的静态楼）。feed 与 models.dev `openrouter` 都只给一档 `limit.context`，没有第二档可挂，行上目前不写。
 
-最近核对：2026-10-05，公开 feed + models.dev `openrouter`：feed 的 `free` 桶撤下 `cline-free/deepseek-v4.1-flash`（4→3 行；同名 id 仍在 `clinePass` / `clineCloud` 两个付费桶里 → 免费档促销结束，不是模型下架），目录与价目随源删行（10→9）；`moonshotai/kimi-k3` 价随 models.dev `openrouter` 桶 2.7/13.5/0.27 → 0.67/14/0.22。
+最近核对：2026-10-07，公开 feed + models.dev `openrouter`：feed 的 `free` 桶新增 `cline-free/solar-mini4`（Solar Mini 4，524288 窗 / 131072 输出 / text / minimal–max；free 组 → 价目 $0）；撤下 `stealth/space-bunny-alpha`（Stealth 免费预览结束——command-code 1.74.2 同日退役 "Space Bunny Alpha" 与 "Pixel Canary"，互相印证），目录与价目随源删行；`moonshotai/kimi-k3` 价随 models.dev `openrouter` 桶 0.67/14/0.22 → 0.69/15/0.45。行数 9→9。
 
-上次核对：2026-10-01，公开 feed + models.dev `openrouter`：feed 撤下 `stealth/pixel-canary`（Stealth 预览 9/30 结束；command-code 1.73.1 同日加退役日期门 `2026-10-01T06:00:00Z`，互相印证），目录与价目删行（11→10）；`cline-free/mimo-v2.6-flash` 的 `contextWindow` 随 models.dev 桶 1048576 → 1050000。
+上次核对：2026-10-05，公开 feed + models.dev `openrouter`：feed 的 `free` 桶撤下 `cline-free/deepseek-v4.1-flash`（4→3 行；同名 id 仍在 `clinePass` / `clineCloud` 两个付费桶里 → 免费档促销结束，不是模型下架），目录与价目随源删行（10→9）；`moonshotai/kimi-k3` 价随 models.dev `openrouter` 桶 2.7/13.5/0.27 → 0.67/14/0.22。
 
-更早核对：2026-09-30，公开 feed + models.dev `openrouter`；本次收 feed recommended 新行 `openai/gpt-6.1-sol`（参数同桶），`cline-free/deepseek-v4.1-flash` 的 `maxTokens` 随桶 384000 → 943718（桶的推导值，输出上限只作单次预算）。
+更早核对：2026-10-01，公开 feed + models.dev `openrouter`：feed 撤下 `stealth/pixel-canary`（Stealth 预览 9/30 结束；command-code 1.73.1 同日加退役日期门 `2026-10-01T06:00:00Z`，互相印证），目录与价目删行（11→10）；`cline-free/mimo-v2.6-flash` 的 `contextWindow` 随 models.dev 桶 1048576 → 1050000。
+
 
 ## 额度
 

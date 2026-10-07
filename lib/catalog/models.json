@@ -3350,6 +3350,23 @@
     ],
     "cline": [
         {
+            "id": "cline-free/solar-mini4",
+            "name": "Solar Mini 4 (free)",
+            "contextWindow": 524288,
+            "maxTokens": 131072,
+            "input": [
+                "text"
+            ],
+            "reasoningEfforts": {
+                "minimal": "minimal",
+                "low": "low",
+                "medium": "medium",
+                "high": "high",
+                "xhigh": "xhigh",
+                "max": "xhigh"
+            }
+        },
+        {
             "id": "openai/gpt-6.1-sol",
             "name": "GPT-6.1 Sol",
             "contextWindow": 1050000,
@@ -3458,24 +3475,6 @@
             }
         },
         {
-            "id": "stealth/space-bunny-alpha",
-            "name": "Space Bunny Alpha (free)",
-            "contextWindow": 1000000,
-            "maxTokens": 524288,
-            "input": [
-                "text",
-                "image"
-            ],
-            "reasoningEfforts": {
-                "minimal": "minimal",
-                "low": "low",
-                "medium": "medium",
-                "high": "high",
-                "xhigh": "xhigh",
-                "max": "xhigh"
-            }
-        },
-        {
             "id": "cline-free/mimo-v2.6-flash",
             "name": "MiMo-V2.6-Flash (free)",
             "contextWindow": 1050000,
@@ -3513,6 +3512,23 @@
         }
     ],
     "ollama": [
+        {
+            "id": "mistral-large-4",
+            "name": "Mistral Large 4",
+            "contextWindow": 1048576,
+            "maxTokens": 16384,
+            "input": [
+                "text",
+                "image"
+            ],
+            "reasoningEfforts": {
+                "off": "none",
+                "low": "low",
+                "medium": "medium",
+                "high": "high",
+                "max": "max"
+            }
+        },
         {
             "id": "deepseek-v4-pro:0813",
             "name": "DeepSeek V4 Pro",
@@ -4729,21 +4745,6 @@
             ]
         },
         {
-            "id": "stealth/space-bunny-alpha",
-            "name": "Space Bunny Alpha",
-            "contextWindow": 1000000,
-            "input": [
-                "text",
-                "image"
-            ],
-            "reasoningEfforts": {
-                "low": "low",
-                "medium": "medium",
-                "high": "high",
-                "max": "max"
-            }
-        },
-        {
             "id": "poolside/laguna-s-2.1-free",
             "name": "Laguna S 2.1",
             "contextWindow": 256000,
@@ -4891,9 +4892,47 @@
                 "high": "high",
                 "xhigh": "xhigh"
             }
+        },
+        {
+            "id": "mistral/mistral-large-4",
+            "name": "Mistral Large 4",
+            "contextWindow": 524288,
+            "input": [
+                "text",
+                "image"
+            ],
+            "reasoningEfforts": {
+                "low": "low",
+                "medium": "medium",
+                "high": "high"
+            }
         }
     ],
     "opencode-go-flash": [
+        {
+            "id": "space-bunny",
+            "name": "Space Bunny",
+            "contextWindow": 1048576,
+            "maxTokens": 524288,
+            "input": [
+                "text",
+                "image"
+            ],
+            "reasoningEfforts": {
+                "low": "low",
+                "medium": "medium",
+                "high": "high",
+                "xhigh": "xhigh",
+                "max": "max"
+            },
+            "compat": {
+                "supportsStore": false,
+                "supportsDeveloperRole": false,
+                "maxTokensField": "max_tokens",
+                "requiresReasoningContentOnAssistantMessages": true,
+                "thinkingFormat": "deepseek"
+            }
+        },
         {
             "id": "kimi-k2.6",
             "name": "Kimi K2.6",
@@ -5339,30 +5378,6 @@
                 "supportsStore": false,
                 "supportsDeveloperRole": false,
                 "maxTokensField": "max_tokens"
-            }
-        },
-        {
-            "id": "space-bunny-free",
-            "name": "Space Bunny Free",
-            "contextWindow": 1048576,
-            "maxTokens": 524288,
-            "input": [
-                "text",
-                "image"
-            ],
-            "reasoningEfforts": {
-                "low": "low",
-                "medium": "medium",
-                "high": "high",
-                "xhigh": "xhigh",
-                "max": "max"
-            },
-            "compat": {
-                "supportsStore": false,
-                "supportsDeveloperRole": false,
-                "maxTokensField": "max_tokens",
-                "requiresReasoningContentOnAssistantMessages": true,
-                "thinkingFormat": "deepseek"
             }
         }
     ],

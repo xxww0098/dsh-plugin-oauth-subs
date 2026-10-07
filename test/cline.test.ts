@@ -196,9 +196,10 @@ test('catalog is Completions at /cline with declared effort keys only', () => {
 test('live catalog merges the recommended + free buckets and falls back to the seed', async () => {
   resetClineCatalogCache()
   assert.deepEqual(CLINE_MODELS.map((model) => model.id), [
+    'cline-free/solar-mini4',
     'openai/gpt-6.1-sol', 'anthropic/claude-sonnet-5.5', 'anthropic/claude-opus-5.5',
     'spacexai/grok-4.7', 'openai/gpt-6-astra', 'moonshotai/kimi-k3',
-    'stealth/space-bunny-alpha', 'cline-free/mimo-v2.6-flash',
+    'cline-free/mimo-v2.6-flash',
     'cline-free/muse-spark-1.3-contributor',
   ])
   const feed = {

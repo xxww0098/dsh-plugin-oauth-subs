@@ -347,7 +347,7 @@ test('JSONL events collect into a chat.completion with usage + tool calls', asyn
     fetchFn: async (url, init) => {
       assert.equal(url, COMMAND_CODE_GENERATE_URL)
       assert.equal(init.headers.authorization, `Bearer ${KEY}`)
-      assert.equal(init.headers['x-command-code-version'], '1.74.1')
+      assert.equal(init.headers['x-command-code-version'], '1.77.0')
       assert.equal(init.headers['x-cli-environment'], 'production')
       return jsonl(events)
     },
@@ -708,7 +708,7 @@ test('proxy: models list, completions hop to /alpha/generate, SSE stream, /respo
     assert.equal(completion.usage.total_tokens, 7)
     assert.equal(seen[0].url, COMMAND_CODE_GENERATE_URL)
     assert.equal(seen[0].headers.authorization, `Bearer ${KEY}`)
-    assert.equal(seen[0].headers['x-command-code-version'], '1.74.1')
+    assert.equal(seen[0].headers['x-command-code-version'], '1.77.0')
     const wire = JSON.parse(seen[0].body)
     assert.equal(wire.params.model, 'claude-sonnet-5')
     assert.equal(wire.params.stream, true)
@@ -751,7 +751,7 @@ test('permanent key: refresh is a no-op and never fails permanently', async () =
   await assert.rejects(() => refreshCommandCode({ accessToken: '' }), /API key/)
   const headers = commandCodeUpstreamHeaders(session)
   assert.equal(headers.authorization, `Bearer ${KEY}`)
-  assert.equal(headers['x-command-code-version'], '1.74.1')
+  assert.equal(headers['x-command-code-version'], '1.77.0')
   assert.equal(headers['x-cli-environment'], 'production')
 })
 

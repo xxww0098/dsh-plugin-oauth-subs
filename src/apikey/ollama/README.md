@@ -93,7 +93,9 @@ Authorization: Bearer <key>
 - 退役 id（`ollamaRetired` 键）来自 Cloud retirements 表，已过期的 upcoming 也算退役；活列表里出现也不进 picker。
 - 上限槽：`maxContextWindow`（自定义输入窗上限）对 ollama 行生效；`toOllamaPickerModels` 按 id 把静态楼的上限带进活行（`applyOllamaShowWindows` 用 spread，字段保留）。`/api/show` 只给一个 `context_length`，Cloud 又不吃 `num_ctx`，没有第二档可挂，行上目前不写。
 
-最近核对：2026-09-26，公开 `/api/tags` + `/api/show`。
+最近核对：2026-10-07，公开 `/api/tags` + `/api/show`：新收 `mistral-large-4`（1M 窗 / 16384 输出 / text+image / off–max）；models.dev `ollama-cloud` 桶没有它的价目，不写费率行、不出版本徽标。
+
+上次核对：2026-09-26，公开 `/api/tags` + `/api/show`。
 
 ## 额度
 

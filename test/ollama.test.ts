@@ -110,12 +110,13 @@ test('catalog is Completions at /ollama, not /ollama/v1', () => {
   assert.equal(route.models.find((model) => model.id === 'gpt-oss:120b').reasoningEfforts.off, 'none')
   resetOllamaCatalogCache()
   const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
-  assert.equal(catalog['oauth-ollama'].models.length, 17)
+  assert.equal(catalog['oauth-ollama'].models.length, 18)
   assert.equal(catalog['oauth-ollama'].models.length, OLLAMA_MODELS.length)
 })
 
 test('static OLLAMA_MODELS windows and input match the Cloud /api/show snapshot', () => {
   const snapshot = {
+    'mistral-large-4': { window: 1_048_576, vision: true },
     'deepseek-v4-pro:0813': { window: 1_048_576, vision: false },
     'deepseek-v4.1-flash': { window: 1_048_576, vision: true },
     'gemma4:31b': { window: 262_144, vision: true },
@@ -134,7 +135,7 @@ test('static OLLAMA_MODELS windows and input match the Cloud /api/show snapshot'
     'nemotron-3-super': { window: 262_144, vision: false },
     'nemotron-3-ultra': { window: 262_144, vision: false },
   }
-  assert.equal(OLLAMA_MODELS.length, 17)
+  assert.equal(OLLAMA_MODELS.length, 18)
   assert.deepEqual(OLLAMA_MODELS.map((model) => model.id), Object.keys(snapshot))
   for (const model of OLLAMA_MODELS) {
     const row = snapshot[model.id]
