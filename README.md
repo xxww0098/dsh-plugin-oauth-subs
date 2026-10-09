@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml/badge.svg)](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml)
 
-Use a **ChatGPT / Codex**, **xAI Grok**, **Zhipu GLM**, **AWS Kiro**, **Google Antigravity**, **Cursor**, **Ollama Cloud**, **Kimi Code Plan**, **GitHub Copilot**, **Devin Agent**, or **Cline** subscription—or an **OpenCode Go** / **Command Code** API key—inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). Every family except OpenCode Go goes through a local loopback proxy; OpenCode Go routes directly to its API. Model routes use the DSH `api` values `openai-responses`, `openai-completions`, and `anthropic-messages`.
+**Use the AI subscriptions you already pay for, inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).** Sign in once and your ChatGPT / Codex, Grok, GLM, Kiro, Antigravity, Cursor, Ollama Cloud, Kimi, Copilot, Devin or Cline plan becomes a model you can pick in any session — with quota, models and usage in one workbench.
 
 ![Subscription workbench — quota tab with per-account cards and provider rail](docs/readme-workbench.jpg)
 
@@ -31,20 +31,80 @@ Use a **ChatGPT / Codex**, **xAI Grok**, **Zhipu GLM**, **AWS Kiro**, **Google A
 
 </details>
 
-## Install
+## Quick start
+
+**1 · Install the plugin**
 
 ```sh
 dsh plugin --profile web add https://github.com/xxww0098/dsh-plugin-oauth-subs
 dsh web
 ```
 
-Open **订阅 / Subscriptions** under **插件 Plugins** in the sidebar. The workbench is tabbed — **额度 Quota**, **模型 Models**, **用量 Usage**, **榜单 Leaderboard**, **设置 Settings** — with one card per account on the Quota tab.
+On the desktop app, use **插件 Plugins → 添加插件** and paste the same repo URL instead — the command above is web-only.
 
-**Desktop** is managed by the Electron app — `dsh plugin --profile desktop` is rejected. Install via **插件 → 添加插件** with the repo URL instead. Data lives under `~/.dsh/profiles/desktop/data/dsh-plugin-oauth-subs/` and is **not** shared with the web profile; to migrate, quit the app and copy `auth.json` (plus `models.json` for picker state) across. The proxy port (`8318`) is a global loopback bind — two profiles cannot run simultaneously (`EADDRINUSE`); set a different `config.port` under `id: oauth-subs` in the profile's `cordis.patch.yml` to override. If the desktop app exits instantly on launch, run `launchctl unsetenv ELECTRON_RUN_AS_NODE`.
+**2 · Open the workbench**
 
-Updates self-install from the Settings card (**检查更新 → 安装更新**, or the 15-minute auto-update switch); a restart loads the new copy, and `data/` survives. If `node_modules` is newer than the running process, the card flags the stale process. On a local-directory link, `npm run build` hot-reloads instead, and `npm run dev` watches the sources and rebuilds on every save.
+Sidebar → **插件 Plugins** → **订阅 Subscriptions**.
 
-## Families
+**3 · Add an account**
+
+Pick your service and sign in. Most take one click — the browser opens, you approve, you are back. Already signed in on this computer? Choose **Import local …** and the plugin picks up the login you already have.
+
+**4 · Use your models**
+
+Open the **模型 Models** tab, switch on the families you want, then pick a model from the model menu in a Harness session.
+
+## The workbench
+
+| Tab | What it does |
+|---|---|
+| **额度 Quota** | One card per account — plan badge, usage and reset bars. Refreshes about once a minute, or tap **刷新额度**. |
+| **模型 Models** | The model list. Switch families on or off, and raise a model's input window. |
+| **用量 Usage** | Tokens, cache hits, calls, latency and estimated cost — by model or by session. |
+| **榜单 Leaderboard** | Daily model ranking snapshot. |
+| **设置 Settings** | Updates, proxy, and where the plugin comes from. |
+
+## Supported services
+
+| Service | How you sign in |
+|---|---|
+| **ChatGPT / Codex** | Sign in with ChatGPT, or import your local Codex login |
+| **xAI Grok** | Device code — approve it in the browser |
+| **Zhipu GLM** | Z.ai / BigModel login, or import your local ZCode login |
+| **AWS Kiro** | Social, Builder ID, IdC or Entra sign-in, an `ksk_` key, or a pasted JSON/CSV |
+| **Google Antigravity** | Google sign-in, or import your local Antigravity token |
+| **Cursor** | Sign in, or **Import local Cursor** |
+| **Ollama Cloud** | Paste an API key |
+| **Kimi Code Plan** | Device code, or import your local Kimi login |
+| **GitHub Copilot** | Device code, or import your local Copilot login |
+| **Devin Agent** | Sign in, or import your local Devin credentials |
+| **Cline** | Device code, or import your local Cline login |
+| **Command Code** | Paste an API key, or import your local login |
+| **OpenCode Go** | Paste an API key — add your console workspace to see quota |
+
+## Good to know
+
+- **Accounts stay on your machine.** Everything is stored in your local DSH profile; the only traffic is to the service you signed into.
+- **`-fast` models cost more quota.** They answer sooner and spend your plan faster — reach for them when latency matters.
+- **Reasoning effort** is picked in the Harness session menu, not in the Models tab.
+- **Updates install themselves.** The **设置 Settings** tab can also check and install on demand.
+- **Cost is an estimate,** worked out from published prices — not from your bill.
+
+## If something looks wrong
+
+| What you see | What to try |
+|---|---|
+| The tab still shows an old version | **设置 Settings → 检查更新 → 安装更新**, then restart |
+| A model is missing | Open **模型 Models** and check its family is switched on |
+| Quota looks stale | Tap **刷新额度** — it also refreshes on its own about once a minute |
+| The desktop app closes the moment it opens | Run `launchctl unsetenv ELECTRON_RUN_AS_NODE` in Terminal, then start it again |
+
+<details>
+<summary><b>Advanced</b> — configuration, families, internals and diagnostics</summary>
+
+<br>
+
+### Families and routes
 
 | Provider | Login / import | DSH api |
 |---|---|---|
@@ -65,9 +125,7 @@ Updates self-install from the Settings card (**检查更新 → 安装更新**, 
 
 Per-family design, pinned client versions, and upstream hops: [docs/oauth.md](docs/oauth.md) and each `src/oauth/<id>/README.md` / `src/apikey/<id>/README.md`.
 
-Tokens live in `<profile>/data/dsh-plugin-oauth-subs/auth.json` (`0600`); OpenCode Go accounts in `opencode-go.json`; model selections in `models.json` — all in that data directory.
-
-## How it works
+### How it works
 
 | Plane | Role |
 |---|---|
@@ -78,7 +136,7 @@ Tokens live in `<profile>/data/dsh-plugin-oauth-subs/auth.json` (`0600`); OpenCo
 
 The proxy binds only to loopback and requires `DSH_OAUTH_SUBS_API_KEY`. After the panel closes, DSH keeps using the configured routes.
 
-## Models & quota
+### Models and quota
 
 The **Models** tab has per-family switches (all on by default); a row's window badge opens a dialog to raise that row's input window up to its ceiling. Reasoning effort is set in the Harness session menu, not the Models tab. `-fast` variants exist where the vendor supports them (Codex Priority; Devin backend variant). Fast and larger windows spend quota faster.
 
@@ -86,16 +144,11 @@ The **Quota** tab shows a plan badge plus usage/reset bars for every account (Ol
 
 Per-family model catalogs, efforts, windows, quota endpoints, and pricing sources: [docs/models.md](docs/models.md), [docs/oauth.md](docs/oauth.md), and the family READMEs.
 
-## Diagnose
+### Where data lives
 
-```sh
-npm run analyze -- path/to/session.jsonl              # one session
-npm run analyze -- --dir ~/.dsh/sessions --since 30d  # aggregate every session
-```
+Tokens live in `<profile>/data/dsh-plugin-oauth-subs/auth.json` (`0600`); OpenCode Go accounts in `opencode-go.json`; model selections in `models.json` — all in that data directory.
 
-Healthy: weighted cache hit ≥ **80%**, **zero affinity misses**. Calls are labeled `cold_start` / `delta` / `compaction` / `rebuild` / `affinity_miss`, so compaction is not flagged as a shard regression. Details: [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/error.md](docs/error.md).
-
-## Options
+### Options
 
 | Option | Default | Notes |
 |---|---|---|
@@ -106,10 +159,17 @@ Healthy: weighted cache hit ≥ **80%**, **zero affinity misses**. Calls are lab
 | `proxyUrl` | settings / env | Outbound HTTP(S) proxy for model / quota / login hops |
 | `cursorProxy` | — | Cursor upstream proxy (`http://` or `socks5://`) for region-gated models |
 
-## Develop
+### Diagnose
 
 ```sh
-npm test
+npm run analyze -- path/to/session.jsonl              # one session
+npm run analyze -- --dir ~/.dsh/sessions --since 30d  # aggregate every session
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/development.md](docs/development.md).
+Healthy: weighted cache hit ≥ **80%**, **zero affinity misses**. Calls are labeled `cold_start` / `delta` / `compaction` / `rebuild` / `affinity_miss`, so compaction is not flagged as a shard regression. Details: [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/error.md](docs/error.md).
+
+</details>
+
+## Contributing
+
+Issues and pull requests are welcome. Build, test and release commands live in [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/development.md](docs/development.md).
