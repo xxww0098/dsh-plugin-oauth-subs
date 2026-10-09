@@ -83,6 +83,10 @@
   border-color: color-mix(in oklab, var(--osubs-bad) 58%, transparent);
 }
 .osubs-btn--sm { height: 28px; padding: 0 10px; font-size: 11px; }
+/* Icon-only action: a square tap target with no text padding, so the glyph
+   is the whole label and aria-label/title carry the name. Square comes from
+   the height the size modifier already sets, so any size stays square. */
+.osubs-btn--icon { padding: 0; aspect-ratio: 1; flex: none; }
 .osubs-btn--update {
   color: var(--osubs-warn);
   border-color: color-mix(in oklab, var(--osubs-warn) 55%, transparent);
@@ -337,6 +341,8 @@
 }
 .osubs-acct-main { display: flex; flex-direction: column; gap: 6px; min-width: 0; flex: 1 1 180px; }
 .osubs-acct-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.osubs-acct-id { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.osubs-acct-mark { flex: none; display: inline-flex; color: inherit; }
 .osubs-accts { display: flex; flex-direction: column; gap: 12px; }
 .osubs-acct-add {
   display: flex; align-items: center; justify-content: center; gap: 7px;
@@ -442,11 +448,6 @@
   line-height: 1.4; white-space: nowrap;
 }
 .osubs-tag--plain { text-transform: none; letter-spacing: .02em; }
-.osubs-tag--on {
-  color: inherit;
-  background: transparent;
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, currentColor 55%, transparent);
-}
 .osubs-tag--warn {
   color: var(--osubs-bad);
   background: color-mix(in oklab, var(--osubs-bad) 14%, transparent);
@@ -649,23 +650,26 @@
   position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
-.osubs-rstack { position: relative; flex: none; width: 40px; height: 44px; margin-top: 6px; }
-.osubs-rstack::before, .osubs-rstack::after {
-  content: ''; position: absolute; opacity: 0;
-  border: 1px solid color-mix(in oklab, currentColor 55%, transparent); border-bottom: 0;
-  transition: opacity 220ms cubic-bezier(0.16, 1, 0.3, 1);
+/* Front card stays put. Cards behind step right; the white line is inset
+   so it stays on the black face instead of vanishing into the page. */
+.osubs-rstack {
+  --rcard-w: 40px; --rcard-h: 44px; --rcard-step: 8px;
+  --rcard-edge: inset 0 0 0 1px var(--dsw-alias-bg-layer-2, #fff);
+  position: relative; flex: none;
+  width: calc(var(--rcard-w) + var(--rcard-behind, 0) * var(--rcard-step));
+  height: var(--rcard-h);
 }
-.osubs-rstack::before { left: 4px; right: 4px; top: -4px; height: 4px; border-radius: 5px 5px 0 0; }
-.osubs-rstack::after { left: 8px; right: 8px; top: -7px; height: 3px; border-radius: 4px 4px 0 0; }
-.osubs-rstack[data-depth="2"]::before,
-.osubs-rstack[data-depth="3"]::before,
-.osubs-rstack[data-depth="3"]::after { opacity: 1; }
-/* Ink card: currentColor fill; the digits knock out to the host surface. */
+.osubs-rcard-back {
+  position: absolute; top: 0; width: var(--rcard-w); height: var(--rcard-h);
+  border-radius: 7px; pointer-events: none;
+  background: currentColor; box-shadow: var(--rcard-edge);
+}
+/* Ink card: currentColor fill; digits and the inset edge knock out to the host surface. */
 .osubs-rcard {
-  position: absolute; inset: 0;
+  position: absolute; left: 0; top: 0; z-index: 2; width: var(--rcard-w); height: var(--rcard-h); box-sizing: border-box;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
-  border: 1px solid transparent; border-radius: 7px;
-  background: currentColor;
+  border: 0; border-radius: 7px;
+  background: currentColor; box-shadow: var(--rcard-edge);
   overflow: hidden;
   transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 200ms cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -674,7 +678,7 @@
   color: var(--dsw-alias-bg-layer-2, Canvas);
 }
 .osubs-rcard-u { font-size: 10px; line-height: 1; color: color-mix(in oklab, var(--dsw-alias-bg-layer-2, Canvas) 75%, transparent); }
-.osubs-rstack--empty .osubs-rcard { border: 1px dashed var(--osubs-edge); background: transparent; }
+.osubs-rstack--empty .osubs-rcard { border: 1px dashed var(--osubs-edge); background: transparent; box-shadow: none; }
 .osubs-rstack[tabindex] { outline: none; }
 .osubs-rstack[tabindex]:focus-visible .osubs-rcard { outline: 2px solid var(--osubs-ring); outline-offset: 2px; }
 .osubs-rtip {

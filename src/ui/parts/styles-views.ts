@@ -150,17 +150,17 @@
 .osubs-rstack--empty .osubs-rcard-u { color: var(--osubs-faint); }
 .osubs-rstack--busy .osubs-rcard {
   transform: translateY(-3px);
-  box-shadow: 0 4px 10px -5px color-mix(in oklab, currentColor 45%, transparent);
+  box-shadow: var(--rcard-edge), 0 4px 10px -5px color-mix(in oklab, currentColor 45%, transparent);
 }
 
 /* Urgent: the earliest banked card expires inside 24h. The stack's ink
-   (face + peeking lips) goes bad-red; under 1h the face breathes with a
+   (face + the cards stepped to its right) goes bad-red; under 1h the face breathes with a
    period that tightens as expiry nears, and under 10min the face swaps
    the count for a live seconds countdown. */
-.osubs-rstack { transition: color 480ms cubic-bezier(0.16, 1, 0.3, 1); }
+.osubs-rstack { transition: color 480ms cubic-bezier(0.16, 1, 0.3, 1), width 200ms cubic-bezier(0.16, 1, 0.3, 1); }
 .osubs-rstack--urgent { color: var(--osubs-bad); }
 .osubs-rcard::after {
-  content: ''; position: absolute; inset: 0; border-radius: 6px;
+  content: ''; position: absolute; inset: 2px; border-radius: 5px;
   background: var(--osubs-bad); opacity: 0; pointer-events: none;
   transition: opacity 480ms cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -172,11 +172,11 @@
 @keyframes osubs-rblink {
   0%, 100% {
     filter: brightness(1);
-    box-shadow: 0 0 0 0 color-mix(in oklab, var(--osubs-bad) 0%, transparent);
+    box-shadow: var(--rcard-edge), 0 0 0 0 color-mix(in oklab, var(--osubs-bad) 0%, transparent);
   }
   50% {
     filter: brightness(1.45);
-    box-shadow: 0 2px 12px -1px color-mix(in oklab, var(--osubs-bad) 65%, transparent);
+    box-shadow: var(--rcard-edge), 0 2px 12px -1px color-mix(in oklab, var(--osubs-bad) 65%, transparent);
   }
 }
 .osubs-rcard-n--cd { font-size: 15px; letter-spacing: -0.04em; }
@@ -189,7 +189,7 @@
 .osubs-reset-rel--bad { color: var(--osubs-bad); font-weight: 600; font-variant-numeric: tabular-nums; }
 
 .osubs-rcard--ghost {
-  z-index: 1; pointer-events: none;
+  z-index: 3; pointer-events: none;
   animation: osubs-card-spend 560ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 .osubs-rcard-n--in { animation: osubs-count-in 380ms 150ms cubic-bezier(0.16, 1, 0.3, 1) both; }
@@ -364,6 +364,61 @@
   background: var(--dsw-alias-button-primary-hover, color-mix(in oklab, #0f1115 88%, #fff));
 }
 .osubs-dsw-btn:disabled { opacity: .4; cursor: default; pointer-events: none; }
+
+/* About changelog: wider than the login dialog so three release sections
+   read as a list, not a narrow column. Hairlines match the reference
+   notes card (title rule, version rule, pinned close). */
+.osubs-dsw-card--notes { width: min(640px, 100%); gap: 0; }
+.osubs-dsw-card--notes .osubs-dsw-head {
+  border-bottom: 1px solid var(--dsw-alias-border-l2, color-mix(in oklab, currentColor 10%, transparent));
+}
+.osubs-dsw-body--notes {
+  overflow: auto;
+  padding: 8px 24px 4px;
+  gap: 0;
+}
+.osubs-dsw-card--notes .osubs-dsw-foot {
+  padding-top: 16px;
+  border-top: 1px solid var(--dsw-alias-border-l2, color-mix(in oklab, currentColor 10%, transparent));
+}
+.osubs-notes { display: flex; flex-direction: column; }
+.osubs-notes-rel + .osubs-notes-rel {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--dsw-alias-border-l2, color-mix(in oklab, currentColor 10%, transparent));
+}
+.osubs-notes-ver {
+  margin: 10px 0 0;
+  font-size: 15px; line-height: 22px; font-weight: 650;
+  color: var(--dsw-alias-label-primary, inherit);
+}
+.osubs-notes-sec { margin-top: 14px; }
+.osubs-notes-cat {
+  margin: 0 0 8px;
+  font-size: 14px; line-height: 20px; font-weight: 650;
+  color: var(--dsw-alias-label-primary, inherit);
+}
+.osubs-notes-list {
+  margin: 0; padding: 0 0 0 1.2em;
+  display: flex; flex-direction: column; gap: 8px;
+  list-style: disc;
+}
+.osubs-notes-list li {
+  font-size: 13px; line-height: 1.6;
+  color: var(--dsw-alias-label-secondary, color-mix(in oklab, currentColor 72%, transparent));
+}
+.osubs-notes-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.92em;
+  padding: 0 4px; border-radius: 4px;
+  background: color-mix(in oklab, currentColor 8%, transparent);
+  color: var(--dsw-alias-label-primary, inherit);
+}
+.osubs-notes-status {
+  margin: 12px 0;
+  font-size: 13px; line-height: 1.5;
+  color: var(--dsw-alias-label-secondary, var(--osubs-muted));
+}
 
 .osubs-mtools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .osubs-msearch { position: relative; flex: 1 1 160px; max-width: 300px; }

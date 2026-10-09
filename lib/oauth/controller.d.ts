@@ -275,6 +275,18 @@ export declare class AuthController {
         repo: string;
         repoSlug: string;
     }>;
+    changelog(): Promise<{
+        releases: {
+            tag: any;
+            name: any;
+            url: any;
+            publishedAt: string | undefined;
+            sections: {
+                title: string;
+                items: string[];
+            }[];
+        }[];
+    }>;
     setAutoUpdate(payload?: any): Promise<{
         autoUpdate: boolean;
     }>;

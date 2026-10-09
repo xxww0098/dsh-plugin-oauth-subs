@@ -39,8 +39,8 @@ test('a family without a cache-write rate folds cache writes at the input rate',
 })
 
 test('opencode-go usage resolves the split rate tables by model id', () => {
-  // minimax-m3 lives in opencode-go-flash; 2M prompt over 1 call crosses its 512K tier.
-  near(usageRowCost(row('opencode-go', 'minimax-m3', 1, 1_000_000, 1_000_000, 0, 0)), 0.6 + 2.4, 'flash tier')
+  // minimax-m3 lives in opencode-go-messages; 2M prompt over 1 call crosses its 512K tier.
+  near(usageRowCost(row('opencode-go', 'minimax-m3', 1, 1_000_000, 1_000_000, 0, 0)), 0.6 + 2.4, 'messages tier')
 })
 
 test('ids with a slash and -fast twins resolve inside their own table', () => {

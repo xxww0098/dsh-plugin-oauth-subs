@@ -5,10 +5,11 @@
  * cannot append to a catalog route: a non-empty `models` list replaces the
  * whole served catalog and a route-level `api` overrides every model's own
  * wire protocol. OpenCode Go speaks three protocols, so this plugin owns the
- * complete list on two routes of its own:
+ * complete list on three routes of its own:
  *
- *   `opencode-go-flash`     openai-completions  — 28 models (display "Subs · OpenCode Go · Chat")
- *   `opencode-go-responses` openai-responses    —  6 models (display "Subs · OpenCode Go · Responses")
+ *   `opencode-go-flash`     openai-completions  — display "Subs · OpenCode Go · Chat"
+ *   `opencode-go-responses` openai-responses    — display "Subs · OpenCode Go · Responses"
+ *   `opencode-go-messages`  anthropic-messages  — display "Subs · OpenCode Go · Anthropic"
  *
  * Sources (2026-09-23, refreshed 2026-09-26):
  *   - `GET https://opencode.ai/zen/go/v1/models` (this key 35)
@@ -33,7 +34,10 @@
 export declare const OPENCODE_GO_BUILTIN_ROUTE_ID = "opencode-go";
 export declare const OPENCODE_GO_EXTRA_ROUTE_ID = "opencode-go-flash";
 export declare const OPENCODE_GO_RESPONSES_ROUTE_ID = "opencode-go-responses";
+export declare const OPENCODE_GO_MESSAGES_ROUTE_ID = "opencode-go-messages";
 export declare const OPENCODE_GO_OPENAI_BASE_URL = "https://opencode.ai/zen/go/v1";
+/** Anthropic SDK appends `/v1/messages`, so this origin stops before `/v1`. */
+export declare const OPENCODE_GO_ANTHROPIC_BASE_URL = "https://opencode.ai/zen/go";
 /**
  * Console Go hard-requires a stable session id (400 `MissingSessionID`
  * otherwise): https://opencode.ai/docs/go/#where-can-i-use-it. DSH passes a
@@ -46,7 +50,7 @@ export declare const OPENCODE_GO_OPENAI_BASE_URL = "https://opencode.ai/zen/go/v
  */
 export declare const OPENCODE_GO_SESSION_HEADER = "x-opencode-session";
 export declare const OPENCODE_GO_SESSION_ID = "dsh-opencode-go";
-/** The one route header both Go routes carry. */
+/** The one route header every Go route carries. */
 export declare function opencodeGoSessionHeaders(): {
     "x-opencode-session": string;
 };
@@ -54,10 +58,11 @@ export declare function opencodeGoSessionHeaders(): {
  * Static catalog rows live in `src/catalog/models.json`:
  *   `"opencode-go-flash"`     — every official Go model answering on /chat/completions
  *   `"opencode-go-responses"` — official Go models answering on /responses only
+ *   `"opencode-go-messages"`  — official Go models answering on /v1/messages
  * Rows keep the pi-ai effort ladders (DSH picker keys -> wire spellings) and,
  * on the completions route, the per-model `compat` dialect (plain OpenAI-compat
  * vs DeepSeek's: `requiresReasoningContentOnAssistantMessages` /
- * `thinkingFormat: deepseek`).
+ * `thinkingFormat: deepseek`). Messages rows carry no completions compat.
  */
 /**
  * The two Luna rows advertise the vendor's **default** input tier, not the
@@ -71,6 +76,7 @@ export declare function opencodeGoSessionHeaders(): {
  */
 export declare const OPENCODE_GO_EXTRA_MODELS: readonly any[];
 export declare const OPENCODE_GO_RESPONSES_MODELS: readonly any[];
+export declare const OPENCODE_GO_MESSAGES_MODELS: readonly any[];
 export declare const OPENCODE_GO_EXTRA_ROUTE: Readonly<{
     id: "opencode-go-flash";
     displayName: "Subs · OpenCode Go · Chat";
@@ -91,6 +97,16 @@ export declare const OPENCODE_GO_RESPONSES_ROUTE: Readonly<{
     }>;
     models: readonly any[];
 }>;
+export declare const OPENCODE_GO_MESSAGES_ROUTE: Readonly<{
+    id: "opencode-go-messages";
+    displayName: "Subs · OpenCode Go · Anthropic";
+    api: "anthropic-messages";
+    baseURL: "https://opencode.ai/zen/go";
+    headers: Readonly<{
+        "x-opencode-session": string;
+    }>;
+    models: readonly any[];
+}>;
 export declare const OPENCODE_GO_ROUTES: readonly (Readonly<{
     id: "opencode-go-flash";
     displayName: "Subs · OpenCode Go · Chat";
@@ -105,6 +121,15 @@ export declare const OPENCODE_GO_ROUTES: readonly (Readonly<{
     displayName: "Subs · OpenCode Go · Responses";
     api: "openai-responses";
     baseURL: "https://opencode.ai/zen/go/v1";
+    headers: Readonly<{
+        "x-opencode-session": string;
+    }>;
+    models: readonly any[];
+}> | Readonly<{
+    id: "opencode-go-messages";
+    displayName: "Subs · OpenCode Go · Anthropic";
+    api: "anthropic-messages";
+    baseURL: "https://opencode.ai/zen/go";
     headers: Readonly<{
         "x-opencode-session": string;
     }>;

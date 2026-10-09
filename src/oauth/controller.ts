@@ -83,6 +83,7 @@ import { completeKiroIdc, discoverKiro } from './kiro/accounts.js'
 import { completeDevice, completePkce, importFrom, login, useKey } from './login.js'
 import {
   checkUpdate,
+  fetchChangelog,
   runAutoUpdate,
   setAutoUpdate,
   startAutoUpdateWatch,
@@ -516,6 +517,10 @@ export class AuthController {
 
   checkUpdate(payload?: any) {
     return checkUpdate(this, payload)
+  }
+
+  changelog() {
+    return fetchChangelog(this)
   }
 
   setAutoUpdate(payload?: any) {

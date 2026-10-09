@@ -407,6 +407,14 @@ test('QuotaMeter owns each window reset; nothing floats between bars', async () 
   assert.match(src, /const reset = formatReset\(row\.resetAt, t\)/)
 })
 
+test('the active account shows a circled check beside the identity', async () => {
+  const src = assembleUi()
+  assert.match(src, /className: 'osubs-acct-id'/,)
+  assert.match(src, /h\('span', \{ className: 'osubs-mono', 'data-shot-mask': '' \}, identityOf\(row, id\)\),\s*row\.active && h\('span', \{\s*className: 'osubs-acct-mark',/)
+  assert.equal(src.includes('osubs-tag--on'), false)
+  assert.match(src, /\.osubs-acct-mark \{[^}]*display: inline-flex/)
+})
+
 test('Add account opens a centered dialog, not a sheet', async () => {
   const src = assembleUi()
   assert.match(src, /addAccountTitle:\s*'添加账号'/)
@@ -565,6 +573,40 @@ test('usage totals count the whole prompt — cache reads fold into 输入', asy
   assert.equal(sum.cost, 1.25)
 })
 
+test('usage range defaults to 今天 and restores the last choice', async () => {
+  const src = await readFile(new URL('../lib/ui/client.js', import.meta.url), 'utf8')
+  const key = src.match(/const USAGE_RANGE_STORE = '[^']*'/)
+  const read = src.match(/function readStoredRange\(\) \{[\s\S]*?\n        \}/)
+  const write = src.match(/function writeStoredRange\(range\) \{[\s\S]*?\n        \}/)
+  assert.ok(key?.[0] && read?.[0] && write?.[0], 'usage range helpers not found in the assembled client')
+  const make = (stored: string | null) => {
+    const store = new Map<string, string>()
+    if (stored !== null) store.set('dsh-plugin-oauth-subs.usage-range', stored)
+    const localStorage = {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => { store.set(k, v) },
+    }
+    const helpers = new Function('localStorage',
+      `${key[0]}\n${read[0]}\n${write[0]}\nreturn { readStoredRange, writeStoredRange }`)(localStorage)
+    return { ...helpers, store }
+  }
+  // First open, a stale/garbage value, and a storage that throws all land on 今天.
+  assert.equal(make(null).readStoredRange(), 'today')
+  assert.equal(make('9').readStoredRange(), 'today')
+  assert.equal(make('{}').readStoredRange(), 'today')
+  const throwing = new Function('localStorage',
+    `${key[0]}\n${read[0]}\nreturn readStoredRange`)({ getItem: () => { throw new Error('private mode') } })
+  assert.equal(throwing(), 'today')
+  // 7 / 30 restore, and a pick writes the exact value back.
+  assert.equal(make('7').readStoredRange(), 7)
+  assert.equal(make('30').readStoredRange(), 30)
+  const { writeStoredRange, store } = make(null)
+  writeStoredRange(7)
+  assert.equal(store.get('dsh-plugin-oauth-subs.usage-range'), '7')
+  writeStoredRange('today')
+  assert.equal(store.get('dsh-plugin-oauth-subs.usage-range'), 'today')
+})
+
 test('About Installed prefers the fresher of checkUpdate and snapshot', async () => {
   const src = assembleUi()
   assert.match(src, /function fresherAboutVersion/)
@@ -647,6 +689,20 @@ test('About status banner: tint encodes actionability, CTA only on an installabl
   assert.equal(src.includes("tone: 'ok'"), false)
 })
 
+test('About changelog button sits left of check-update and opens a 3-release dialog', async () => {
+  const src = assembleUi()
+  const actions = src.match(/className: 'osubs-about-actions'[\s\S]*?label: busy \? t\.checking : t\.checkUpdate/)
+  assert.ok(actions, 'about actions block missing')
+  assert.match(actions[0], /label: t\.changelog/)
+  assert.ok(actions[0].indexOf('t.changelog') < actions[0].lastIndexOf('t.checkUpdate'))
+  assert.match(src, /callRpc\(rpc, 'changelog'\)/)
+  assert.match(src, /result\.releases\.slice\(0, 3\)/)
+  assert.match(src, /osubs-dsw-card osubs-dsw-card--notes/)
+  assert.match(src, /changelogTitle: '\{n\} 更新内容'/)
+  assert.match(src, /changelog: 'Release notes'/)
+  assert.match(src, /changelogTitle: 'What\\'s new in \{n\}'/)
+})
+
 test('About panel carries no DSH-cli version rows', async () => {
   const src = assembleUi()
   assert.equal(src.includes('dshLatestTag'), false)
@@ -677,6 +733,13 @@ test('ResetBank serves Codex, Grok and GLM: one row per window, spends the earli
   assert.match(src, /h\(ResetStack, \{ t, count, cards: group\.cards,/)
   assert.match(src, /hasTip && tipOpen && h\('span', \{ id: tipId, role: 'tooltip', className: 'osubs-rtip' \},\s*cards\.map\(/)
   assert.match(src, /onMouseEnter: open,\s*onMouseLeave: shut,\s*onFocus: open,\s*onBlur: shut,/)
+  // One drawn card per banked card; the white edge stays inset.
+  assert.match(src, /const behind = Math.max\(0, count - 1\)/)
+  assert.equal(/Math\.min\(count, 3\)/.test(src), false)
+  assert.match(src, /className: 'osubs-rcard-back'/)
+  assert.match(src, /--rcard-step: 8px/)
+  assert.match(src, /--rcard-edge: inset 0 0 0 1px var\(--dsw-alias-bg-layer-2, #fff\)/)
+  assert.equal(src.includes('top: -4px'), false)
 })
 
 test('resetGroups drops a lapsed card at render time, before the next quota read', async () => {
@@ -709,6 +772,28 @@ test('分享 on 额度: identities masked in the image, add-account row and acco
   assert.match(src, /\.osubs-shooting \.osubs-pane-panel:has\(> \[data-noshot\]\)/)
   // Masking lives in the clone only; the page keeps the full identity.
   assert.match(src, /if \(source\.hasAttribute\('data-shot-mask'\)\) \{\n\s*copy\.textContent = maskIdentity\(source\.textContent\)/)
+})
+
+test('account card 切换/刷新/退出 are icon-only buttons that keep their names', async () => {
+  const src = assembleUi()
+  // The glyph is the whole label for all three account actions.
+  assert.match(src, /!row\.active && h\(Button, \{\n\s*size: 'sm',\n\s*icon: true,/)
+  assert.match(src, /function IconSwitch\(\) \{/)
+  assert.match(src, /label: h\(IconSwitch\),/)
+  assert.match(src, /title: t\.switchTo,\n\s*ariaLabel: t\.switchTo,/)
+  assert.match(src, /icon: true,\n\s*disabled: refreshing,/)
+  assert.match(src, /h\('span', \{ className: 'osubs-refresh' \+ \(refreshing \? ' osubs-refresh--spin' : ''\) \},\n\s*h\(IconRefresh\)\),/)
+  // Only the account card went icon-only: the 用量 head's 刷新 keeps its text.
+  assert.equal(src.includes("label: t.switchTo"), false)
+  assert.equal(src.split('h(IconRefresh), t.quotaRefresh)').length - 1, 1)
+  assert.match(src, /function IconLogout\(\) \{/)
+  assert.match(src, /label: h\(IconLogout\),/)
+  // Losing the text must not lose the accessible name: Button forwards both.
+  assert.match(src, /title: t\.quotaRefresh,\n\s*ariaLabel: t\.quotaRefresh,/)
+  assert.match(src, /title: t\.logout,\n\s*ariaLabel: t\.logout,/)
+  assert.match(src, /'aria-label': ariaLabel,/)
+  // Square comes from the size modifier's height, so no fixed width.
+  assert.match(src, /\.osubs-btn--icon \{ padding: 0; aspect-ratio: 1; flex: none; \}/)
 })
 
 test('Settings formatReset no longer rounds remaining hours', async () => {

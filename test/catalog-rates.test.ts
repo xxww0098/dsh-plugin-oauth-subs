@@ -94,7 +94,7 @@ test('catalogRate resolves <family>/<id> and refuses unknown ids', () => {
   assert.equal(catalogRate('command-code/not-a-model'), undefined)
   // The same model id is priced per family, never shared across families.
   assert.notDeepEqual(catalogRate('kiro/gpt-5.6-sol'), catalogRate('command-code/gpt-5.6-sol'))
-  assert.equal(Object.keys(catalogRateTable('command-code')).length, 85)
+  assert.equal(Object.keys(catalogRateTable('command-code')).length, 87)
 })
 
 test('describeCatalog puts a price on rows of every family, including runtime -fast twins', () => {
@@ -165,6 +165,11 @@ test('describeCatalog exposes pricing on Models-tab rows; route rows never carry
   // never in a route row
   const routes = buildProviders({ prefix: 'oauth', origin: 'http://127.0.0.1:8318', loggedIn: { 'command-code': true } })
   assert.doesNotMatch(JSON.stringify(routes), /"pricing"/)
+})
+
+test('step-5-preview-free keeps the published free OpenCode Go price', () => {
+  const row = catalogRate('opencode-go-flash/step-5-preview-free')
+  assert.deepEqual({ in: row.in, out: row.out, cacheRead: row.cacheRead }, { in: 0, out: 0, cacheRead: 0 })
 })
 
 test('every catalog family key is allowed as a rates.json top-level key', () => {

@@ -3,7 +3,7 @@
  * persisted auto-update switch, and its hourly background pass.
  */
 
-import { fetchLatest, localUpdateInfo } from '../utils/update.js'
+import { fetchLatest, fetchRecentReleases, localUpdateInfo } from '../utils/update.js'
 import { AUTO_UPDATE_INTERVAL_MS, writeUpdatePrefs, writeUpdateState } from '../utils/update-prefs.js'
 import type { AuthController } from './controller.js'
 
@@ -14,6 +14,15 @@ import type { AuthController } from './controller.js'
  * the next host start (`apply.restart` says which restart to ask for). If no
  * installed dir exists the apply degrades to a `manual` command hint.
  */
+/** Last few published release notes for the About changelog dialog. */
+export async function fetchChangelog(ctl: AuthController) {
+  const releases = await fetchRecentReleases({
+    fetchFn: ctl.fetchFn,
+    env: ctl.updateEnv ?? process.env,
+  })
+  return { releases }
+}
+
 export async function checkUpdate(ctl: AuthController, payload: any = {}) {
   const apply = payload?.apply === true
   const profileOpts = {

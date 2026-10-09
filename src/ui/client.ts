@@ -454,6 +454,7 @@ window.__ModuleLoader__.load({
               setSnap((current) => current ? { ...current, autoUpdate: checked } : current)
               void run('autoUpdate', { autoUpdate: checked })
             },
+            rpc,
           }), view === 'version'),
           panel('donate', h(DonatePanel, {
             t,

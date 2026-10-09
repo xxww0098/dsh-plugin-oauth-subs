@@ -8,8 +8,11 @@ import { test } from 'node:test'
 import {
   classifyAsset,
   compareVersions,
+  CHANGELOG_LIMIT,
   fetchLatest,
+  fetchRecentReleases,
   formatPublishedAt,
+  parseReleaseNotes,
   fresherVersion,
   hostPlatform,
   installedPackageDirs,
@@ -126,6 +129,59 @@ test('fetchLatest compares installed version against GitHub latest', async () =>
   assert.equal(ahead.status, 'ahead')
   const current = await fetchLatest({ fetchFn, current: '0.0.15', platform: 'win32' })
   assert.equal(current.status, 'current')
+})
+
+test('parseReleaseNotes groups bold labels and splits semicolon clauses', () => {
+  const sections = parseReleaseNotes([
+    '- **模型目录**:codex 跟版 0.160.1;Space Bunny 免费预览结束——撤下 `stealth/space-bunny-alpha`',
+    '- **价目**:Devin 四行去掉超阈档',
+    '- 测试 1085 项全绿',
+    '- **模型目录**:kimi 本次未核对',
+  ].join('\n'))
+  assert.equal(sections.length, 3)
+  assert.equal(sections[0].title, '模型目录')
+  assert.deepEqual(sections[0].items, [
+    'codex 跟版 0.160.1',
+    'Space Bunny 免费预览结束——撤下 `stealth/space-bunny-alpha`',
+    'kimi 本次未核对',
+  ])
+  assert.equal(sections[1].title, '价目')
+  assert.deepEqual(sections[1].items, ['Devin 四行去掉超阈档'])
+  assert.equal(sections[2].title, '')
+  assert.deepEqual(sections[2].items, ['测试 1085 项全绿'])
+  assert.deepEqual(parseReleaseNotes(''), [])
+  assert.equal(CHANGELOG_LIMIT, 3)
+})
+
+test('fetchRecentReleases keeps the three newest non-draft releases', async () => {
+  const calls = []
+  const fetchFn = async (url, init) => {
+    calls.push({ url: String(url), auth: init.headers.authorization })
+    return new Response(JSON.stringify([
+      { tag_name: 'v0.0.116', name: 'v0.0.116', body: '- **价目**:回到 $0.22', html_url: 'https://github.com/xxww0098/dsh-plugin-oauth-subs/releases/tag/v0.0.116', published_at: '2026-10-08T02:00:00Z' },
+      { tag_name: 'v0.0.115', name: 'v0.0.115', draft: true, body: '- hidden' },
+      { tag_name: 'v0.0.114', name: 'v0.0.114', body: '- **修复**:zstd 尾帧' },
+      { tag_name: 'v0.0.113', name: 'v0.0.113', body: '- **目录刷新**:Codex 钉 0.160.0' },
+      { tag_name: 'v0.0.112', name: 'v0.0.112', body: '- older' },
+    ]), { status: 200, headers: { 'content-type': 'application/json' } })
+  }
+  const releases = await fetchRecentReleases({ fetchFn, env: { GITHUB_TOKEN: 'ghs_test' } })
+  assert.match(calls[0].url, /\/releases\?per_page=3$/)
+  assert.equal(calls[0].auth, 'Bearer ghs_test')
+  assert.deepEqual(releases.map((row) => row.tag), ['v0.0.116', 'v0.0.114', 'v0.0.113'])
+  assert.equal(releases[0].sections[0].title, '价目')
+  assert.equal(releases[0].publishedAt, '2026-10-08 10:00:00')
+})
+
+test('fetchRecentReleases uses gh api after GitHub API 403', async () => {
+  const fetchFn = async () => new Response('nope', { status: 403 })
+  const spawnFn = fakeChild({
+    stdout: JSON.stringify([{ tag_name: 'v0.0.9', name: 'v0.0.9', body: '- **修复**:gh fallback' }]),
+  })
+  const releases = await fetchRecentReleases({ fetchFn, spawnFn, env: {}, existsSyncFn: () => false })
+  assert.equal(releases.length, 1)
+  assert.equal(releases[0].tag, 'v0.0.9')
+  assert.equal(releases[0].sections[0].items[0], 'gh fallback')
 })
 
 test('profileFromBaseUrl reads $DSH_HOME/profiles/<name>', () => {

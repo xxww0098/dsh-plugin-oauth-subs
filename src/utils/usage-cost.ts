@@ -27,7 +27,7 @@ function rateOf(family: string, model: string) {
   const peeled = peelContextSuffix(model).model
   if (peeled !== model) ids.push(peeled)
   // OpenCode Go splits its rate table per wire route; usage rows just say the family.
-  const tables = family === 'opencode-go' ? ['opencode-go-flash', 'opencode-go-responses'] : [family]
+  const tables = family === 'opencode-go' ? ['opencode-go-flash', 'opencode-go-responses', 'opencode-go-messages'] : [family]
   for (const table of tables) {
     for (const id of ids) {
       const rate = catalogRate(`${table}/${id}`)

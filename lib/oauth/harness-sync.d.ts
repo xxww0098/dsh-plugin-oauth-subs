@@ -21,7 +21,7 @@ export declare function peekPiAiProviders(settings: any): Promise<any>;
  * stops showing it; every other shape is a user profile and is untouched.
  *
  * The plugin writes its own complete catalog on one route per wire protocol
- * (`opencode-go-flash` completions + `opencode-go-responses`), so the picker
+ * (`opencode-go-flash` completions, `opencode-go-responses`, `opencode-go-messages`), so the picker
  * shows every official Go model even when DSH's built-in route is not enabled.
  * Each route follows the picker (`selected` undefined = all) and carries the
  * required `x-opencode-session` header. Without `OPENCODE_API_KEY` nothing is

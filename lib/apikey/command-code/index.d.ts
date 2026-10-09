@@ -1,7 +1,7 @@
 /**
  * Command Code（api.commandcode.ai）— 常量 + API key session + 模型目录。
  *
- * Command Code CLI `command-code@1.77.0`（npm 包 `command-code`，bin 别名
+ * Command Code CLI `command-code@1.79.1`（npm 包 `command-code`，bin 别名
  * `cmd`/`cmdc`/`commandcode`）发：
  *
  *   GET  /alpha/whoami?limits=1
@@ -17,8 +17,8 @@
  * 凭据：`COMMAND_CODE_API_KEY` 环境变量优先，其次 `~/.commandcode/auth.json`
  * 的 `apiKey`（CLI `getCommandAuthKey` 同序）。Bearer，无 refresh。
  *
- * 模型目录：CLI bundle 内置注册表（1.77.0 为 93 行，含 8 个 hidden 促销 /
- * 别名 / 退役行——本表取 85 个可见行；`inclusionai/ling-3.0-flash-free` 另有
+ * 模型目录：CLI bundle 内置注册表（1.79.1 为 95 行，含 8 个 hidden 促销 /
+ * 别名 / 退役行——本表取 87 个可见行；`inclusionai/ling-3.0-flash-free` 另有
  * 日期门控 `isLingFlashFreeEnded`）。`reasoningEfforts` 取注册表行自带的
  * 列表；bundle 另有一张 effort Map，只在行缺该字段时回退，没有条目就不发明
  * fallback。`contextWindow` 缺省回填 CLI 默认 200000。上游无 /alpha/models，
@@ -34,7 +34,7 @@ export declare const COMMAND_CODE_CREDITS_URL = "https://api.commandcode.ai/alph
 export declare const COMMAND_CODE_SUBSCRIPTIONS_URL = "https://api.commandcode.ai/alpha/billing/subscriptions";
 export declare const COMMAND_CODE_USAGE_URL = "https://api.commandcode.ai/alpha/usage/summary";
 /** CLI 发 `x-command-code-version` 的值；无 header 时上游照跑（401/计费门正常）。 */
-export declare const COMMAND_CODE_CLI_VERSION = "1.77.0";
+export declare const COMMAND_CODE_CLI_VERSION = "1.79.1";
 /** CLI `max_tokens ?? 64000` 上限；无 per-model output cap。 */
 export declare const COMMAND_CODE_MAX_TOKENS = 64000;
 /** Static catalog. Rows live in `src/catalog/models.json` under `"command-code"`; per-model output cap comes from `COMMAND_CODE_MAX_TOKENS` at the harness seam. */

@@ -37,11 +37,12 @@ const INPUT_KINDS = Object.freeze(['text', 'image'])
 /**
  * Every top-level key the JSON must carry, nothing more. `ollamaRetired`
  * is a flat array of retired model ids, not rows; OpenCode Go is split per
- * wire-protocol route (`opencode-go-flash` completions + `opencode-go-responses`).
+ * wire-protocol route (`opencode-go-flash` completions, `opencode-go-responses`,
+ * `opencode-go-messages`).
  */
 export const CATALOG_KEYS = Object.freeze([
   'codex', 'chatgpt', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'kimi', 'copilot', 'devin', 'cline',
-  'ollama', 'ollamaRetired', 'command-code', 'opencode-go-flash', 'opencode-go-responses',
+  'ollama', 'ollamaRetired', 'command-code', 'opencode-go-flash', 'opencode-go-responses', 'opencode-go-messages',
 ])
 
 const RETIRED_KEY = 'ollamaRetired'
@@ -179,7 +180,7 @@ export function catalogRows(key: string): readonly any[] {
  * offPeakDatesUtc) that the `tod` bands refer to.
  *
  * The numbers mirror the upstream pricing tables attributed in
- * docs/models.md (Command Code `command-code@1.77.0` single billing-id
+ * docs/models.md (Command Code `command-code@1.79.1` single billing-id
  * display-rate table — the kD/lD/… multi-table era ended at 1.73.1; every other
  * family via `npm run rates`) — never invent them.
  */

@@ -1,6 +1,48 @@
 // Settings UI part — inlined into the client.ts factory by scripts/ui-bundle.ts.
 // Per-family account card and the add-account dialog (ProviderCard).
 
+    // 切换 / switch: two arrows trading places — the account this row would
+    // promote — drawn in the same 12px stroke as its two head-mates.
+    function IconSwitch() {
+      return h('svg', {
+        width: 12, height: 12, viewBox: '0 0 24 24', fill: 'none',
+        stroke: 'currentColor', strokeWidth: 2.2, strokeLinecap: 'round', strokeLinejoin: 'round',
+        'aria-hidden': 'true',
+      },
+        h('path', { d: 'M3 7h14' }),
+        h('path', { d: 'M14.5 4.5L17 7l-2.5 2.5' }),
+        h('path', { d: 'M21 17H7' }),
+        h('path', { d: 'M9.5 14.5L7 17l2.5 2.5' }),
+      )
+    }
+
+    // Active account: a circled check glued to the identity, not a text chip.
+    function IconAccountCheck() {
+      return h('svg', {
+        width: 16, height: 16, viewBox: '0 0 16 16', fill: 'none',
+        stroke: 'currentColor', strokeWidth: 1.4, strokeLinecap: 'round', strokeLinejoin: 'round',
+        'aria-hidden': 'true',
+      },
+        h('circle', { cx: 8, cy: 8, r: 6.2 }),
+        h('path', { d: 'M5.1 8.15l1.85 1.85L10.9 5.9' }),
+      )
+    }
+
+    // 退出 / logout: the door the arrow leaves through, drawn in the same
+    // 12px stroke style as IconRefresh so the icon-only actions in the
+    // account head read as one set.
+    function IconLogout() {
+      return h('svg', {
+        width: 12, height: 12, viewBox: '0 0 24 24', fill: 'none',
+        stroke: 'currentColor', strokeWidth: 2.2, strokeLinecap: 'round', strokeLinejoin: 'round',
+        'aria-hidden': 'true',
+      },
+        h('path', { d: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4' }),
+        h('path', { d: 'M16 17l5-5-5-5' }),
+        h('path', { d: 'M21 12H9' }),
+      )
+    }
+
     function AccountCard({ t, id, row, quota, onSwitch, onLogout, onRefreshQuota, onResetQuota }) {
       const regionLabel = (region) => region === 'bigmodel' ? t.glmRegionCn : t.glmRegionGlobal
       const planLabel = planOf({ ...row, quota }, id)
@@ -23,9 +65,16 @@
         h('div', { className: 'osubs-acct-head' },
           h('div', { className: 'osubs-acct-main' },
             h('div', { className: 'osubs-acct-row' },
-              h('span', { className: 'osubs-mono', 'data-shot-mask': '' }, identityOf(row, id)),
+              h('span', { className: 'osubs-acct-id' },
+                h('span', { className: 'osubs-mono', 'data-shot-mask': '' }, identityOf(row, id)),
+                row.active && h('span', {
+                  className: 'osubs-acct-mark',
+                  role: 'img',
+                  title: t.inUse,
+                  'aria-label': t.inUse,
+                }, h(IconAccountCheck)),
+              ),
               planLabel && h('span', { className: 'osubs-tag' }, planLabel),
-              row.active && h('span', { className: 'osubs-tag osubs-tag--on' }, t.inUse),
               id === 'glm' && row.region && h('span', { className: 'osubs-tag' }, regionLabel(row.region)),
               id === 'kiro' && row.methodLabel && h('span', { className: 'osubs-tag' }, row.methodLabel),
               (id === 'cursor' || id === 'ollama' || id === 'kimi' || id === 'copilot' || id === 'devin' || id === 'cline' || id === 'command-code') && row.methodLabel && h('span', { className: 'osubs-tag' }, row.methodLabel),
@@ -35,10 +84,20 @@
             ),
           ),
           h('div', { className: 'osubs-actions', 'data-noshot': '', onClick: (event) => event.stopPropagation() },
-            !row.active && h(Button, { size: 'sm', onClick: () => onSwitch(id, row.id), label: t.switchTo }),
+            !row.active && h(Button, {
+              size: 'sm',
+              icon: true,
+              onClick: () => onSwitch(id, row.id),
+              title: t.switchTo,
+              ariaLabel: t.switchTo,
+              label: h(IconSwitch),
+            }),
             h(Button, {
               size: 'sm',
+              icon: true,
               disabled: refreshing,
+              title: t.quotaRefresh,
+              ariaLabel: t.quotaRefresh,
               onClick: async () => {
                 if (refreshBusy) return
                 setRefreshBusy(true)
@@ -52,9 +111,16 @@
                 }
               },
               label: h('span', { className: 'osubs-refresh' + (refreshing ? ' osubs-refresh--spin' : '') },
-                h(IconRefresh), t.quotaRefresh),
+                h(IconRefresh)),
             }),
-            h(Button, { size: 'sm', onClick: () => onLogout(id, row.id), label: t.logout }),
+            h(Button, {
+              size: 'sm',
+              icon: true,
+              onClick: () => onLogout(id, row.id),
+              title: t.logout,
+              ariaLabel: t.logout,
+              label: h(IconLogout),
+            }),
           ),
         ),
         h('div', { onClick: (event) => event.stopPropagation() },

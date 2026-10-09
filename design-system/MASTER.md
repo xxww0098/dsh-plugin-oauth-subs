@@ -67,8 +67,8 @@ green→red ramp on remaining (`quotaFillColor`): 100% = `--osubs-ok`,
 50% = `--osubs-warn`, 0% = `--osubs-bad`, mixed in hsl so the midpoint
 stays amber — never vendor, never used%. Caption text still reserves
 color for a warning via `quotaTone`: ink above 40%, warn ≤ 40%,
-bad ≤ 15%. The active card and 「使用中」 tag are monochrome too
-(ink border / outlined tag), not green.
+bad ≤ 15%. The active card and its circled check are monochrome too
+(ink border / ink circle), not green.
 
 ## Dialog
 

@@ -16,7 +16,7 @@ import { OLLAMA_RETIRED_MODELS } from '../lib/apikey/ollama/index.js'
  */
 
 /** OpenCode Go picker families are route ids, not one family key. */
-const OPENCODE_GO_ROUTE_KEYS = ['opencode-go-flash', 'opencode-go-responses']
+const OPENCODE_GO_ROUTE_KEYS = ['opencode-go-flash', 'opencode-go-responses', 'opencode-go-messages']
 
 test('catalog JSON top-level keys are exactly the expected set', () => {
   const raw = JSON.parse(readFileSync(fileURLToPath(new URL('../lib/catalog/models.json', import.meta.url)), 'utf8'))

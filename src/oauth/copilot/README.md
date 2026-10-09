@@ -78,7 +78,9 @@ DSH POST /copilot/v1/chat/completions
 
 行在 [`src/catalog/models.json`](../../catalog/models.json) 的 `"copilot"` 键；行格式、来源与 `npm run models` 更新流程见 [`docs/models.md`](../../../docs/models.md)。本节只记本家的取舍与出处。
 
-最近核对：2026-09-30，**首次活测** `GET {endpoints.api}/models`（设备码 `tid=` session，individual 套餐；此前 2026-09-28 只对过 GitHub docs 数据表 + models.dev `github-copilot`，本机无凭据）。本次：收 `claude-opus-4.8-fast`（活行 1M/64K/vision/low–max + docs 表 GA 条目 "Claude Opus 4.8 (fast mode) (preview)"）；按活载荷刷 13 处字段（opus-4.7/4.8 与 gemini-3.5-flash 窗口抬到 1M、gemini-3.8-flash 对齐 2^20 精确值、若干行 maxTokens 调整、gpt-6-luna/sol 补 `off: none` 档）；拒收 `gpt-6.1-sol`（`supported_endpoints` 只有 `/responses`+ws）与 `kimi-k3-base`/`kimi-k3-copilot`（kimi-k3 的路由别名，参数全同）。`gpt-5.3-codex`/`gpt-5.4-nano`/`claude-sonnet-4.6` 不在本账号清单、grok-4.5/4.6/4.7 整族缺席——按账号/政策过滤处理，不删（models.dev 也仍在列）。
+最近核对：2026-10-08，活列表 `GET {endpoints.api}/models` 新增 `claude-haiku-5.5`（1M / 128K / text+image / low–max）。GitHub docs `model-release-status.yml` 列 `Claude Haiku 5.5` 为 GA，按活载荷收。19 行 `?` 仍是账号能力视图，不删。
+
+上次核对：2026-09-30，**首次活测** `GET {endpoints.api}/models`（设备码 `tid=` session，individual 套餐；此前 2026-09-28 只对过 GitHub docs 数据表 + models.dev `github-copilot`，本机无凭据）。本次：收 `claude-opus-4.8-fast`（活行 1M/64K/vision/low–max + docs 表 GA 条目 "Claude Opus 4.8 (fast mode) (preview)"）；按活载荷刷 13 处字段（opus-4.7/4.8 与 gemini-3.5-flash 窗口抬到 1M、gemini-3.8-flash 对齐 2^20 精确值、若干行 maxTokens 调整、gpt-6-luna/sol 补 `off: none` 档）；拒收 `gpt-6.1-sol`（`supported_endpoints` 只有 `/responses`+ws）与 `kimi-k3-base`/`kimi-k3-copilot`（kimi-k3 的路由别名，参数全同）。`gpt-5.3-codex`/`gpt-5.4-nano`/`claude-sonnet-4.6` 不在本账号清单、grok-4.5/4.6/4.7 整族缺席——按账号/政策过滤处理，不删（models.dev 也仍在列）。
 
 2026-10-03 复核：`npm run models -- copilot` 仍是 `?` 一串（19 行，含 `kimi-k2.7-code` / `gemini-3.5-flash` / `gemini-3.6-flash`），与 2026-09-30 同类——端点规则 + 账号/政策过滤，未确认下架不删；活目录 15 行全部命中目录，无新行。
 

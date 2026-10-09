@@ -144,7 +144,9 @@ AgentService/Run 与 unary 发 Cursor **CLI** 头。CLI 版本对齐 [Rahularya0
 
 行在 [`src/catalog/models.json`](../../catalog/models.json) 的 `"cursor"` 键；行格式、来源与 `npm run models` 更新流程见 [`docs/models.md`](../../../docs/models.md)。本节只记本家的取舍与出处。
 
-最近核对：2026-10-05，活列表 `GetUsableModels + AvailableModels`：`claude-sonnet-5-5` 的 `supportsImages` 回到 true（2026-09-30 收成 text 的口径回摆，同族 sonnet-5 一直是 text+image），目录 `input` 随活列表改回 text+image；其余 15 行与 2026-10-04 一致，没有新 id。
+最近核对：2026-10-08，活列表 + [docs slug](https://cursor.com/docs/models/claude-haiku-5-5.md) + 价目表都有 `Claude Haiku 5.5`。静态楼收 `claude-haiku-5-5`（非 Max `contextTokenLimit` 300000，docs 1M 是 Max Mode 天花板，与其它 Claude 5.5 行同一口径；text+image；effort low–max；无 fast 孪生）。变体不广告输出上限，`toCursorPickerModels` 落到 `inferCursorMaxOutputTokens` 的默认 64000，静态行跟这个回落值，不把推断写成厂商公布的 cap。其余 `>` id 仍是隐藏/旧行，只报告不收。同页价目把 `Claude Sonnet 5.5` 的 cache read 从 $0.20 改成 $0.10；Haiku 5.5 带 >100k 的 5× 档。
+
+上次核对：2026-10-05，活列表 `GetUsableModels + AvailableModels`：`claude-sonnet-5-5` 的 `supportsImages` 回到 true（2026-09-30 收成 text 的口径回摆，同族 sonnet-5 一直是 text+image），目录 `input` 随活列表改回 text+image；其余 15 行与 2026-10-04 一致，没有新 id。
 
 上次核对：2026-10-04，[cursor.com/docs/llms.txt](https://cursor.com/docs/llms.txt) 的 `/docs/models/<slug>` 仍是静态楼这 16 个家族，没有新 slug。pricing 表里的旧行（Claude 4.x、GPT-5.4 及更早、Gemini 3.7 及更早等）继续只报告不写入。
 

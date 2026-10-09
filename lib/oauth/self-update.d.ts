@@ -10,6 +10,19 @@ import type { AuthController } from './controller.js';
  * the next host start (`apply.restart` says which restart to ask for). If no
  * installed dir exists the apply degrades to a `manual` command hint.
  */
+/** Last few published release notes for the About changelog dialog. */
+export declare function fetchChangelog(ctl: AuthController): Promise<{
+    releases: {
+        tag: any;
+        name: any;
+        url: any;
+        publishedAt: string | undefined;
+        sections: {
+            title: string;
+            items: string[];
+        }[];
+    }[];
+}>;
 export declare function checkUpdate(ctl: AuthController, payload?: any): Promise<{
     apply: any;
     version: any;

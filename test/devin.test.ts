@@ -393,11 +393,10 @@ test('a static-floor ceiling survives the Devin projection', () => {
 test('static Devin floor mirrors the live GetCliModelConfigs picker rows', () => {
   resetDevinCatalog()
   try {
-    // 2026-10-01 live probe: the two legacy Claude Sonnet 4.5 rows are gone
-    // from GetCliModelConfigs (upstream removed; devin/README.md 模型) -> 78.
-    assert.equal(DEVIN_MODELS.length, 78)
+    // 2026-10-08: GetCliModelConfigs added claude-haiku-5-5 -> 79.
+    assert.equal(DEVIN_MODELS.length, 79)
     const ids = new Set(DEVIN_MODELS.map((row) => row.id))
-    assert.equal(ids.size, 78)
+    assert.equal(ids.size, 79)
     // Families the previous 17-row floor did not cover.
     for (const id of [
       'claude-opus-4.5', 'claude-opus-4.6-1m', 'claude-opus-4.8-fast', 'claude-opus-5-5',

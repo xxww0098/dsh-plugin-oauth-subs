@@ -63,6 +63,7 @@ DSH  →  本机 /chatgpt/v1/responses  →  POST api.openai.com/v1/responses
 - **Fast**：`fastTier` 行派生 `<id>-fast`，请求时剥成 `<id>` + `service_tier: "priority"`（`peelChatgptFast`，本家自管，不走 Codex 的 `applyFastMode` / routing-hint）。2026-09-30 活测 `gpt-5.6-luna` 交替 6 次：85.8 vs 56.4 tok/s（1.52×），TTFT 2.1s vs 3.3s；回显仍是 `default`（与 Codex 相同，不是确认）。8 行都 200 接受 `priority`。`fastTier` 取自 Codex 同 id 行；目录外的新 slug 不给 `-fast`，直到测过。其它 tier 一律剥掉（官方：不支持的 tier 覆盖报 `subscription_sharing_unsupported_capability`）。费率 `-fast` = models.dev `vercel` priority 价。
 - **不带 `maxContextWindow`**：872K 是 Codex 后端的 `max_context_window`，本路由未见出处。
 - 2026-09-30 活测：`/v1/models` 回 `gpt-6-astra / gpt-5.6-sol / -terra / -luna / gpt-5.5`（`visibility: list`，`context_window` 272000）+ 两条 `hide`；静态行里的 `gpt-6.1-sol / gpt-6-sol / gpt-6-luna` 不在列表但请求都 `response.completed`，所以发现结果 = 目录外的新活行（置顶）+ 静态目录全部行（新→旧，活行字段覆盖）。
+- 2026-10-08 核对：`/v1/models` 同日两次结果不同（一次只缺 `gpt-5.5`，一次缺 `gpt-6.1-sol / gpt-6-sol / gpt-6-luna / gpt-5.5` 四行）——列表按账号 / 当天过滤且随时摆动；`gpt-5.5` 两轮都不在列表，但 `POST /v1/responses` 200 `response.completed`（Codex 家族同日同样 200）。结论：列表消失 ≠ 下架，8 行静态行保持。
 
 费率：`src/catalog/rates.json` `"chatgpt"` = models.dev `openai`（公开 API 价，`scripts/rates.ts`），仅展示。
 

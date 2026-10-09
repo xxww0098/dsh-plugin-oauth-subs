@@ -31,7 +31,8 @@ export declare const CATALOG_EFFORT_KEYS: readonly string[];
 /**
  * Every top-level key the JSON must carry, nothing more. `ollamaRetired`
  * is a flat array of retired model ids, not rows; OpenCode Go is split per
- * wire-protocol route (`opencode-go-flash` completions + `opencode-go-responses`).
+ * wire-protocol route (`opencode-go-flash` completions, `opencode-go-responses`,
+ * `opencode-go-messages`).
  */
 export declare const CATALOG_KEYS: readonly string[];
 /**

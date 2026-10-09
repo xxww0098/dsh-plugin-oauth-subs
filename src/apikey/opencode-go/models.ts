@@ -5,10 +5,11 @@
  * cannot append to a catalog route: a non-empty `models` list replaces the
  * whole served catalog and a route-level `api` overrides every model's own
  * wire protocol. OpenCode Go speaks three protocols, so this plugin owns the
- * complete list on two routes of its own:
+ * complete list on three routes of its own:
  *
- *   `opencode-go-flash`     openai-completions  — 28 models (display "Subs · OpenCode Go · Chat")
- *   `opencode-go-responses` openai-responses    —  6 models (display "Subs · OpenCode Go · Responses")
+ *   `opencode-go-flash`     openai-completions  — display "Subs · OpenCode Go · Chat"
+ *   `opencode-go-responses` openai-responses    — display "Subs · OpenCode Go · Responses"
+ *   `opencode-go-messages`  anthropic-messages  — display "Subs · OpenCode Go · Anthropic"
  *
  * Sources (2026-09-23, refreshed 2026-09-26):
  *   - `GET https://opencode.ai/zen/go/v1/models` (this key 35)
@@ -36,7 +37,10 @@ import { catalogRows } from '../../catalog/index.js'
 export const OPENCODE_GO_BUILTIN_ROUTE_ID = 'opencode-go'
 export const OPENCODE_GO_EXTRA_ROUTE_ID = 'opencode-go-flash'
 export const OPENCODE_GO_RESPONSES_ROUTE_ID = 'opencode-go-responses'
+export const OPENCODE_GO_MESSAGES_ROUTE_ID = 'opencode-go-messages'
 export const OPENCODE_GO_OPENAI_BASE_URL = 'https://opencode.ai/zen/go/v1'
+/** Anthropic SDK appends `/v1/messages`, so this origin stops before `/v1`. */
+export const OPENCODE_GO_ANTHROPIC_BASE_URL = 'https://opencode.ai/zen/go'
 
 /**
  * Console Go hard-requires a stable session id (400 `MissingSessionID`
@@ -51,7 +55,7 @@ export const OPENCODE_GO_OPENAI_BASE_URL = 'https://opencode.ai/zen/go/v1'
 export const OPENCODE_GO_SESSION_HEADER = 'x-opencode-session'
 export const OPENCODE_GO_SESSION_ID = 'dsh-opencode-go'
 
-/** The one route header both Go routes carry. */
+/** The one route header every Go route carries. */
 export function opencodeGoSessionHeaders() {
   return { [OPENCODE_GO_SESSION_HEADER]: OPENCODE_GO_SESSION_ID }
 }
@@ -60,10 +64,11 @@ export function opencodeGoSessionHeaders() {
  * Static catalog rows live in `src/catalog/models.json`:
  *   `"opencode-go-flash"`     — every official Go model answering on /chat/completions
  *   `"opencode-go-responses"` — official Go models answering on /responses only
+ *   `"opencode-go-messages"`  — official Go models answering on /v1/messages
  * Rows keep the pi-ai effort ladders (DSH picker keys -> wire spellings) and,
  * on the completions route, the per-model `compat` dialect (plain OpenAI-compat
  * vs DeepSeek's: `requiresReasoningContentOnAssistantMessages` /
- * `thinkingFormat: deepseek`).
+ * `thinkingFormat: deepseek`). Messages rows carry no completions compat.
  */
 
 /**
@@ -80,6 +85,8 @@ export function opencodeGoSessionHeaders() {
 export const OPENCODE_GO_EXTRA_MODELS = catalogRows('opencode-go-flash')
 
 export const OPENCODE_GO_RESPONSES_MODELS = catalogRows('opencode-go-responses')
+
+export const OPENCODE_GO_MESSAGES_MODELS = catalogRows('opencode-go-messages')
 
 export const OPENCODE_GO_EXTRA_ROUTE = Object.freeze({
   id: OPENCODE_GO_EXTRA_ROUTE_ID,
@@ -99,4 +106,17 @@ export const OPENCODE_GO_RESPONSES_ROUTE = Object.freeze({
   models: OPENCODE_GO_RESPONSES_MODELS,
 })
 
-export const OPENCODE_GO_ROUTES = Object.freeze([OPENCODE_GO_EXTRA_ROUTE, OPENCODE_GO_RESPONSES_ROUTE])
+export const OPENCODE_GO_MESSAGES_ROUTE = Object.freeze({
+  id: OPENCODE_GO_MESSAGES_ROUTE_ID,
+  displayName: 'Subs · OpenCode Go · Anthropic',
+  api: 'anthropic-messages',
+  baseURL: OPENCODE_GO_ANTHROPIC_BASE_URL,
+  headers: Object.freeze(opencodeGoSessionHeaders()),
+  models: OPENCODE_GO_MESSAGES_MODELS,
+})
+
+export const OPENCODE_GO_ROUTES = Object.freeze([
+  OPENCODE_GO_EXTRA_ROUTE,
+  OPENCODE_GO_RESPONSES_ROUTE,
+  OPENCODE_GO_MESSAGES_ROUTE,
+])

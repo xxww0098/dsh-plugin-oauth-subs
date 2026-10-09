@@ -7,12 +7,12 @@ OpenCode Go 是 **API key 范围**，不是 OAuth 家族。
 
 - **不**进 `FAMILY_IDS`，**不**进 OAuth 页签，**不**走本机回环网关。
 - 退役的 `oauth-opencode`（Zen Free / Go Free hop）仍在 `RETIRED_FAMILY_IDS`，继续 unset。
-- 对话 / 部署：`opencode-go.json` 是**多账号 vault**（每个账号 `apiKey` + `cookieHeader` + `workspaceId`）；活动账号的 key 镜像进宿主凭据 `OPENCODE_API_KEY`，没有任何账号还带 key 时清掉该凭据（否则 DSH 路由会留在模型列表里）。DSH 内置 pi-ai `opencode-go` provider 自带一份官方模型，但 llm-pi-ai 只在 profile 点名它时才注册路由，所以插件**不写** `providers.opencode-go`：内置模型归 DSH 模型设置页，要用由用户自己开。插件改为**自带完整官方目录**、按 wire 协议分两条自有路由（`opencode-go-flash` completions + `opencode-go-responses`，见下），直连 `https://opencode.ai/zen/go`，不走回环网关。
+- 对话 / 部署：`opencode-go.json` 是**多账号 vault**（每个账号 `apiKey` + `cookieHeader` + `workspaceId`）；活动账号的 key 镜像进宿主凭据 `OPENCODE_API_KEY`，没有任何账号还带 key 时清掉该凭据（否则 DSH 路由会留在模型列表里）。DSH 内置 pi-ai `opencode-go` provider 自带一份官方模型，但 llm-pi-ai 只在 profile 点名它时才注册路由，所以插件**不写** `providers.opencode-go`：内置模型归 DSH 模型设置页，要用由用户自己开。插件改为**自带完整官方目录**、按 wire 协议分三条自有路由（`opencode-go-flash` completions + `opencode-go-responses` + `opencode-go-messages`，见下），直连 `https://opencode.ai/zen/go`，不走回环网关。
 - Settings 用通用 `ProviderCard` / `AccountCard`：一账号一卡、卡片内额度条、点卡切换、`退出` 删号；主按钮打开居中 Dialog（`CenterDialog`），在窗内粘贴 key / cookie / workspace 后 `goSave`。
 - 账号 id 取工作区 `wrk_…`；没有工作区时取 key/cookie 的 `go_<12hex>` 哈希（同 key 再粘不会多一张卡）。
 - 卡片标题优先显示本地名称，未设置时显示登录邮箱：Console 账号从 `GET /console/api/user` 拿，未迁移工作区仍从 dashboard `GET /workspace/{wrk_}/go` 的 RSC payload 刮 `userEmail["wrk_…"]`；刷新额度时存进 vault（`email`），下次 snapshot 起用；没有 cookie / 刮不到时退回工作区 id，再退回 key 尾巴。**API key 本身拿不到邮箱**（`GET /zen/go/v1/usage` 只返回用量，无身份接口）。
 - 只有 API key 时无法自动拿到邮箱；每张卡的「修改名称」把用户指定的显示名称存进本地 vault，并优先用作标题，不改变凭据。
-- Settings > 模型 列插件自有的两条家族组：`Subs · OpenCode Go · Chat`（completions）与 `Subs · OpenCode Go · Responses`（沿用插件统一的 `Subs · <家族> · <协议>` 组名，不是 OAuth 登录）；DSH 内置 `opencode-go` 的模型归 DSH 模型设置页。`OPENCODE_API_KEY` 未注入时模型照列但**不勾选**，两条插件路由都 unset（DSH 模型列表里也不出现）。
+- Settings > 模型 列插件自有的三条家族组：`Subs · OpenCode Go · Chat`（completions）、`Subs · OpenCode Go · Responses` 与 `Subs · OpenCode Go · Anthropic`（沿用插件统一的 `Subs · <家族> · <协议>` 组名，不是 OAuth 登录）；DSH 内置 `opencode-go` 的模型归 DSH 模型设置页。`OPENCODE_API_KEY` 未注入时模型照列但**不勾选**，三条插件路由都 unset（DSH 模型列表里也不出现）。
 
 ## 文件
 
@@ -21,7 +21,7 @@ OpenCode Go 是 **API key 范围**，不是 OAuth 家族。
 | [`index.ts`](index.ts) | cookie / workspace 解析、账号 id / key 遮罩、公开 snapshot（不回传 key/cookie） |
 | [`store.ts`](store.ts) | `<dataDir>/opencode-go.json` 0600 多账号 vault（旧单账号文件自动迁移）。不进 `auth.json` |
 | [`quota.ts`](quota.ts) | 已迁移账号：cookie + `x-org-id` 打 `/console/api/{orgs,go/status,billing/status,user}`（Console JSON API）；未迁移账号兜底刮 `/workspace/{id}/go`（额度 + `userEmail["wrk_…"]` 邮箱），缺 workspace 时先 `/console/api/orgs` 再 `GET /_server?id=`；cookie 缺失或失效时先按 key 打同一个 `go/status`（`Authorization: Bearer`，有 `used/limit` 金额），该路由拒绝才退回 `/zen/go/v1/usage`（仅百分比和重置时间，无邮箱、余额） |
-| [`models.ts`](models.ts) | 两条自有路由定义（completions / responses），行取自目录 JSON |
+| [`models.ts`](models.ts) | 三条自有路由定义（completions / responses / messages），行取自目录 JSON |
 
 调度：Settings 左侧家族胶囊（`.osubs-tabs`），排在 Copilot 之后换行；**不是**右侧 util，也**不**另开 API-key 胶囊。新增 / 更新账号走 RPC `goSave`（`{ id?, apiKey?, cookie?, workspace? }`），字段清除走 `goClear`（`{ id?, field }`）；切换 / 删号 / 额度刷新走通用 `switch` / `logout` / `quota`（`provider: 'opencode-go'`），controller 内部分派到本目录。**没有** `proxy.ts` hop，**没有** `cache.ts`。
 
@@ -33,42 +33,50 @@ OpenCode Go 是 **API key 范围**，不是 OAuth 家族。
 - 单账号形状的文件（`{ cookieHeader, workspaceId }`）读取时转成 vault；vault 为空而 `OPENCODE_API_KEY` 有值时，首次 snapshot 用 `credentials.resolve` 收进 vault（`resolve` 不可用则跳过）。
 - snapshot 每行只给 `apiKeySet` / `cookieSet` / 遮罩尾巴（`sk-…1234`），不回传 key 或 cookie 明文。
 
-路由：插件启动 / `sync()` 写两条自有路由（`ensureOpencodeGoRoute`）：
+路由：插件启动 / `sync()` 写三条自有路由（`ensureOpencodeGoRoute`）：
 
 同步从 DSH `settings.describe()` 读取 `llm-pi-ai` 当前路由，再用 `settings.mutate()` 改写；有 Go key 时读不到配置，或写入失败会报错，避免模型页勾选与 DSH 提供商列表脱节。
 
 ```text
 opencode-go-flash     openai-completions  https://opencode.ai/zen/go/v1
 opencode-go-responses openai-responses    https://opencode.ai/zen/go/v1
+opencode-go-messages  anthropic-messages  https://opencode.ai/zen/go
+                      （SDK 自己补 `/v1/messages`）
                       { apiKeyEnv: OPENCODE_API_KEY,
                         headers: { x-opencode-session: dsh-opencode-go } }
                     → 已验证可服务的官方目录行
 ```
 
-`providers.opencode-go`（DSH 内置模型）插件**不创建也不刷新**；插件的完整目录写在自有两条路由上，与内置路由互不影响。llm-pi-ai 只注册 profile 点名的目录路由，替用户写 `{ apiKeyEnv, headers }` 就会把内置模型带进 DSH 模型列表，所以这条路由归 DSH 模型设置页，用户要就自己开。插件自己写过的同形 profile（apiKeyEnv + 家族 header，没有 `api` / `models`）在 sync 时 unset；裸 `{ apiKeyEnv }`（DSH 模型页自己写的）和其它任何形状都当用户配置，不动。
+`providers.opencode-go`（DSH 内置模型）插件**不创建也不刷新**；插件的完整目录写在自有三条路由上，与内置路由互不影响。llm-pi-ai 只注册 profile 点名的目录路由，替用户写 `{ apiKeyEnv, headers }` 就会把内置模型带进 DSH 模型列表，所以这条路由归 DSH 模型设置页，用户要就自己开。插件自己写过的同形 profile（apiKeyEnv + 家族 header，没有 `api` / `models`）在 sync 时 unset；裸 `{ apiKeyEnv }`（DSH 模型页自己写的）和其它任何形状都当用户配置，不动。
 
 ### `x-opencode-session`
 
 Console Go 现在硬性要求这个头：缺了直接 400 `MissingSessionID`（`deepseek-flash` 和内置 `glm-5.3` 实测一样）。官方文档 https://opencode.ai/docs/go/#where-can-i-use-it 要求客户端「每个会话发一个稳定 session id」，并把 DeepSeek Harness 列进 "Known Problematic Clients"（会话信息只在部分 adapter 上到达）。
 
-DSH 会把每会话 `sessionId` 交给 pi-ai，但 pi-ai 0.85.1 的 openai-completions 从不写 `x-opencode-session`（`sessionAffinityFormat`/`sendSessionAffinityHeaders` 都不映射这个头），llm-pi-ai 又把 `sendSessionAffinityHeaders` 设为 withhold、profile 转不了会话 id。所以插件写出的两条路由都带家族常量 `dsh-opencode-go`：单机一个路由 shard，满足硬性检查；**不是**每会话值。等 DSH/pi-ai 原生发送会话头后可删掉这个常量。（用户自己开的内置 `opencode-go` 路由插件不碰；缺这个头时 Console Go 会 400，属 DSH/pi-ai 侧问题。）
+DSH 会把每会话 `sessionId` 交给 pi-ai，但 pi-ai 0.85.1 的 openai-completions 从不写 `x-opencode-session`（`sessionAffinityFormat`/`sendSessionAffinityHeaders` 都不映射这个头），llm-pi-ai 又把 `sendSessionAffinityHeaders` 设为 withhold、profile 转不了会话 id。所以插件写出的三条路由都带家族常量 `dsh-opencode-go`：单机一个路由 shard，满足硬性检查；**不是**每会话值。等 DSH/pi-ai 原生发送会话头后可删掉这个常量。（用户自己开的内置 `opencode-go` 路由插件不碰；缺这个头时 Console Go 会 400，属 DSH/pi-ai 侧问题。）
 
-`llm-pi-ai` 的 `models` 一旦非空就**替换**整条内置目录，追加不了，所以缺失模型只能单独开路由。这条按 picker 选择过滤 `models`，全关则 unset，用户自建同名路由不覆盖。Settings > 模型 picker 列 `opencode-go-flash` / `opencode-go-responses` 两组（内置模型归 DSH 模型设置页）。**没有 `OPENCODE_API_KEY` 时不显示为已开启：勾选框不勾、插件路由 unset，DSH 的模型列表里也不出现插件写的东西**。用户只需在 DSH 凭据 / 环境里存 `OPENCODE_API_KEY`。
+`llm-pi-ai` 的 `models` 一旦非空就**替换**整条内置目录，追加不了，所以缺失模型只能单独开路由。这条按 picker 选择过滤 `models`，全关则 unset，用户自建同名路由不覆盖。Settings > 模型 picker 列 `opencode-go-flash` / `opencode-go-responses` / `opencode-go-messages` 三组（内置模型归 DSH 模型设置页）。**没有 `OPENCODE_API_KEY` 时不显示为已开启：勾选框不勾、插件路由 unset，DSH 的模型列表里也不出现插件写的东西**。用户只需在 DSH 凭据 / 环境里存 `OPENCODE_API_KEY`。
 
 ## 协议
 
-官方 [Go · API 端点](https://opencode.ai/docs/zh-cn/go/#api-%E7%AB%AF%E7%82%B9)。两条路由就是协议分发：completions 行 `/v1/chat/completions`（`@ai-sdk/openai-compatible`），responses 行 `/v1/responses`。
+官方 [Go · API 端点](https://opencode.ai/docs/zh-cn/go/#api-%E7%AB%AF%E7%82%B9)。三条路由就是协议分发：completions 行 `/v1/chat/completions`（`@ai-sdk/openai-compatible`），responses 行 `/v1/responses`，messages 行 `/v1/messages`（`@ai-sdk/anthropic`，路由 `api: anthropic-messages`，不写 completions compat）。
 
-行在 [`src/catalog/models.json`](../../catalog/models.json) 的 `"opencode-go-flash"` / `"opencode-go-responses"` 键；行格式、来源与 `npm run models` 更新流程见 [`docs/models.md`](../../../docs/models.md)。本节只记本家的取舍与出处。路由定义留在 [`models.ts`](models.ts)。
+行在 [`src/catalog/models.json`](../../catalog/models.json) 的 `"opencode-go-flash"` / `"opencode-go-responses"` / `"opencode-go-messages"` 键；行格式、来源与 `npm run models` 更新流程见 [`docs/models.md`](../../../docs/models.md)。本节只记本家的取舍与出处。路由定义留在 [`models.ts`](models.ts)。
 
-最近核对：2026-10-07，带 key 列表 + models.dev `opencode-go` 桶：新收 `space-bunny`（1M 窗 / 524288 输出 / text+image / low–max）；活测回包带 `reasoning_content` → 按 DeepSeek 方言写 compat。`space-bunny-free` 从带 key 列表消失，活测 400 `Model is unavailable.`（Stealth 免费预览结束，command-code 1.74.2 同日退役 "Space Bunny Alpha"），随源删目录行 + 价目行。`glm-5.1` / `omen-alpha` / `minimax-m2.5` 仍无桶元数据，继续留在目录外。行数 26 + 6 不变。
+最近核对：2026-10-08（同日再后），带 key 列表 + models.dev `opencode-go` + [官方端点表](https://opencode.ai/docs/go/) 新收 `step-5-preview-free`（Step 5 Preview Free，限时免费）。端点表把它放在 `/v1/chat/completions`（`@ai-sdk/openai-compatible`）。models.dev：1M / 65536 / text+image+video / low–high，`cost` 0/0/`cache_read` 0，`interleaved.field` 为 `reasoning_content`；目录 `input` 只留 text+image（video 按目录规则剥掉）。最小活测 `POST /v1/chat/completions` 200，回包同时有 `reasoning` 与 `reasoning_content`，compat 写 DeepSeek 方言，不用脚本默认的 plain。`glm-5.1` / `omen-alpha` / `minimax-m2.5` 仍无桶元数据，继续不收。flash 22 + responses 6 + messages 6。
+
+上次核对：2026-10-08（同日稍后），官方端点表把一批行改到 `/v1/messages`。带 key 的 `claude-haiku-5-5` 在 `/chat/completions` 与 `/responses` 都回 `ModelProtocolUnsupported`，`x-api-key` + `anthropic-version: 2023-06-01` + `x-opencode-session` 打 `/v1/messages` 则 200（`minimax-m2.7` / `minimax-m3` / `qwen3.7-plus` / `qwen3.8-flash` / `qwen3.8-max` 同样 200，completions 上 `minimax-m2.7` 已 400）。这五行从 flash 挪到新键 `opencode-go-messages`，并收 `claude-haiku-5-5`（models.dev：1M / 128K / text+image / low–max）。messages 行去掉 completions compat。Anthropic SDK 的 baseURL 是 `https://opencode.ai/zen/go`（自己补 `/v1/messages`）。`glm-5.1` / `omen-alpha` / `minimax-m2.5` 仍无桶元数据，继续不收。flash 21 + responses 6 + messages 6。
+
+上次核对：2026-10-08 上午，带 key 列表 + models.dev `opencode-go` 桶 + 官方 Go 文档清单：无新行、无下架，行数 26 + 6 不变。`glm-5.1` / `omen-alpha` / `minimax-m2.5` 仍无桶元数据（`omen-alpha` 任何桶都没有），且官方文档「current list of models」也不列它们（GLM 只列 5.2 / 5.3，MiniMax 只列 M2.7 / M3）——端点列出 ≠ 套餐在服务，继续留在目录外。
+
+上次核对：2026-10-07，带 key 列表 + models.dev `opencode-go` 桶：新收 `space-bunny`（1M 窗 / 524288 输出 / text+image / low–max）；活测回包带 `reasoning_content` → 按 DeepSeek 方言写 compat。`space-bunny-free` 从带 key 列表消失，活测 400 `Model is unavailable.`（Stealth 免费预览结束，command-code 1.74.2 同日退役 "Space Bunny Alpha"），随源删目录行 + 价目行。`glm-5.1` / `omen-alpha` / `minimax-m2.5` 仍无桶元数据，继续留在目录外。行数 26 + 6 不变。
 
 上次核对：2026-10-05，带 key 列表仍列 `glm-5.1` / `omen-alpha` / `minimax-m2.5` 三行，models.dev `opencode-go` 桶（33 行）到现在仍没有它们的元数据，按「补不到参数就是 unresolved，不写入」继续留在目录外；其余两条路由的行数与 2026-10-03 一致（26 + 6），无新行、无下架。
 
 更早核对：2026-10-03，官方 `GET https://opencode.ai/zen/go/v1/models`（**带 Go key 的列表**，无认证返回的是更大的公开缓存视图）+ models.dev `opencode-go` 桶。带 key 列表把 2026-09-30 轮下的 `kimi-k2.6` / `qwen3.6-plus` / `qwen3.7-max` / `glm-5.1` / `omen-alpha` / `minimax-m2.5` 六行又列了出来：前三行 models.dev 桶有元数据，重新收进 `opencode-go-flash`（`qwen3.6-plus` 带 256K 超阈档）；后三行桶里仍无元数据（`omen-alpha` 任何桶都没有），按「补不到参数就是 unresolved，不写入」继续留在目录外。新收 completions 行先活测：`qwen3.6-plus` / `qwen3.7-max` 回包带 `reasoning_content` → 写 DeepSeek 方言 compat；`kimi-k2.6` 回 `reasoning` / `reasoning_details`、无 `reasoning_content` → 默认 plain compat。
 
 - 来源：官方 `/v1/models` 只给 id，决定收哪些行；context / output / input / effort 取 models.dev `opencode-go` 桶；DeepSeek 方言与 effort 阶梯对照内置 pi-ai catalog。Go docs 端点表定每个 id 走哪条协议。
-- 协议分键：models.dev 标 `@ai-sdk/openai` 的行只在 `/responses` 可用，进 `opencode-go-responses`；其余走 `/chat/completions`。归属要逐行活测确认，公开列表里有的 id 两种协议都回 `Model is unavailable`，这类不进目录。
+- 协议分键：官方端点表优先于 models.dev 的 `provider.npm`。表上 `/v1/messages`（`@ai-sdk/anthropic`）的行进 `opencode-go-messages`，不写 completions compat；models.dev 标 `@ai-sdk/openai` 的行只在 `/responses` 可用，进 `opencode-go-responses`；其余走 `/chat/completions`。归属要逐行活测确认，公开列表里有的 id 两种协议都回 `Model is unavailable`，这类不进目录。
 - 别名：同一模型的两个 id（例：`deepseek-flash` 与 `deepseek-v4.1-flash`）只留 docs 现行 id，picker 不出现两条同名行。
 - compat：completions 行写 `openai` / `deepseek` 方言；DeepSeek 方言（回放 `reasoning_content`）要先活测确认再写，新行默认按普通 OpenAI。responses 行不写 compat（`sessionAffinityFormat` 是 llm-pi-ai 的 withhold 字段，profile 不许声明）。
 - 窗口：Luna 两行报 OpenAI 侧的默认输入档 258K（`OPENCODE_GO_LUNA_CONTEXT`，与 Codex `CODEX_CONTEXT_WINDOW` 同值），不报 models.dev 的总窗——DSH 按 `contextWindow` 触发压缩，报总窗会让长会话涨到被 Go 网关拒绝（见 [`docs/error.md`](../../../docs/error.md) 2026-09-29 OpenCode Go Responses Luna 窗口）。Go 是 API key 家族，没有 `maxContextWindow` 可挂官方大窗。
@@ -156,7 +164,7 @@ cookie → GET /workspace/{wrk_}/go
 - 把 cookie 当 OAuth session 写 `auth.json`
 - snapshot 把 key / cookie 明文回给 Settings
 - 给每个账号再开一套 `opencode-go*` 路由或第四种 DSH `api`；聊天的 key 只有活动账号那一个
-- 把插件目录当成「只补内置缺的那几条」——插件目录是自带的完整官方副本，只写自有 `opencode-go-flash` / `opencode-go-responses` 两条路由
+- 把插件目录当成「只补内置缺的那几条」——插件目录是自带的完整官方副本，只写自有 `opencode-go-flash` / `opencode-go-responses` / `opencode-go-messages` 三条路由
 - 写 / 刷新 `providers.opencode-go`（等于替用户把内置模型注册进 DSH 模型列表；只有旧版本插件自己写的同形 profile 才 unset 清掉）
 - 把 `providers.opencode-go` 写成带 `api` / `models` 的形态（会丢 pi-ai catalog 的 per-model 协议 / compat / 思考档与 env auth）
 - 去掉 `x-opencode-session` 头（除非 DSH / pi-ai 已原生按会话发送；现在缺它 Console Go 直接 400）
@@ -169,6 +177,6 @@ cookie → GET /workspace/{wrk_}/go
 - 设置形：Orca OpenCode Go 提供商（cookie + workspace ID 覆盖）
 - 额度：CodexBar [`OpenCodeGoUsageFetcher`](https://github.com/steipete/CodexBar/blob/main/Sources/CodexBarCore/Providers/OpenCodeGo/OpenCodeGoUsageFetcher.swift)（console 优先 + legacy 兜底）、`OpenCodeGoZenBalanceParser`（billing status）；Console 字段 schema 实测自 `/console/assets/index-*.js` 打包产物（`x-org-id`、`goStatus`→`/orgs/:orgId/go/status` 的 header 别名、`BillingStatus`/`meters` 类定义）
 - 宿主对话：DSH pi-ai `opencode-go` + `OPENCODE_API_KEY`
-- 模型页价格徽标：models.dev `opencode-go`（`longcat-2.5-preview-free` 标价 $0），`npm run rates` 写入 `src/catalog/rates.json`
+- 模型页价格徽标：models.dev `opencode-go`（`longcat-2.5-preview-free`、`step-5-preview-free` 标价 $0），`npm run rates` 写入 `src/catalog/rates.json`
 
 总表见 [`docs/oauth.md`](../../../docs/oauth.md)。

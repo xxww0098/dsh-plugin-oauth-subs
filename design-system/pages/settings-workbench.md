@@ -60,7 +60,8 @@ No hero, no feature grid, no glass CTA slab.
   waits on the host reconcile; rules in `docs/models.md` 默认档位.
 - **Usage view**: one card — no in-card title (the 用量 tab names it);
   head carries 更新于 HH:MM + 刷新/分享 on the left and the 今天 / 7 天 /
-  30 天 segmented range on the right (今天 = 24 hourly bars). A stat
+  30 天 segmented range on the right (今天 = 24 hourly bars); a first open
+  defaults to 今天, and every later open restores the last choice. A stat
   strip (`osubs-ustats`, auto-fit so five cards sit in one row on a wide
   pane): Token (= 输入 + 输出, 输入 being the whole prompt — uncached +
   缓存读 + 缓存写, the host session totalTokens the user reconciles
@@ -114,7 +115,7 @@ No hero, no feature grid, no glass CTA slab.
   Dialog so the image can be saved. Reduced motion: no flash or flight,
   the thumbnail only fades. PNG, not JPG: the clipboard only takes image/png and
   flat UI text stays sharp in it.
-- **Version view**: the single plugin update card, full-width.
+- **Version view**: the single plugin update card, full-width. Header actions are 更新日志 then 检查更新. The changelog is a centered dialog of the last 3 GitHub releases: version heading, bold category, bullet list, footer 关闭.
 - One primary CTA → centered Dialog.
 
 ## Density
@@ -169,8 +170,11 @@ between meters. Codex reset credits and GLM reset cards share one
 `ResetBank` in the card and open `WarnDialog`, not the add-account
 Dialog. One row per window (Codex: weekly; GLM: 5-hour + weekly), led
 by an ink count card (`currentColor` fill, digits knocked out to the
-host surface; dashed outline at 0) whose lips show depth, inside a
-dashed frame with dashed row dividers — no nested fills. Hover or
+host surface; dashed outline at 0). One drawn card per banked card,
+stepped 8px right — the face is not a stand-in for a capped depth. Each
+card's edge is an inset surface line — white on the light workbench —
+so it stays on the black face instead of disappearing into the page.
+The bank sits inside a dashed frame with dashed row dividers — no nested fills. Hover or
 focus on the count card opens a tooltip with one expiry line per card,
 earliest first (Esc closes); the row names only the window and
 the earliest expiry, and its button spends that earliest card. A count
@@ -195,6 +199,23 @@ account action buttons, and whole families with no account. They are
 removed from the live layout only while `renderLongShot` measures and
 clones (`.osubs-shooting`, synchronous, never painted), so the image
 closes up around them. The page itself never masks or hides anything.
+
+The active account (`.osubs-acct--on`) shows a monochrome circled check
+immediately to the right of the identity, before the plan tag. The words
+stay on `aria-label` and `title` (`t.inUse`); there is no 「使用中」 chip.
+
+### Account card actions
+
+An account head ends in three **icon-only** buttons: 切换 (only when the
+row is not the active account) promotes that account, 刷新 re-reads its
+quota, 退出 signs out and drops the stored account. Their glyph is the
+whole label, so the name rides on `aria-label` + `title` (`t.switchTo` /
+`t.quotaRefresh` / `t.logout`) through the shared `Button`'s square
+`.osubs-btn--icon` variant — whose side comes from the height the size
+modifier already sets, so no fixed width appears. The trio keeps the head
+from wrapping to a third line on a narrow pane; 刷新 spins in place while
+its read is in flight. All three stay in the `[data-noshot]` action row, so
+the shared 额度 image still drops them.
 
 ## Rail icons
 

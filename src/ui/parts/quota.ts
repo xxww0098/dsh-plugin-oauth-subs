@@ -70,12 +70,20 @@
         : `color-mix(in hsl, var(--osubs-warn) ${Math.round(pct * 2)}%, var(--osubs-bad))`
     }
 
-    function Button({ label, onClick, variant, size, type = 'button', disabled, mark }) {
+    // `icon` drops the text padding for a square button whose glyph is the
+    // whole label — the name then lives in `ariaLabel` (a11y) + `title`
+    // (hover), so an icon-only control never becomes nameless.
+    function Button({ label, onClick, variant, size, type = 'button', disabled, mark, icon, title, ariaLabel }) {
       const classes = ['osubs-btn']
       if (variant) classes.push(`osubs-btn--${variant}`)
       if (size) classes.push(`osubs-btn--${size}`)
       if (mark) classes.push('osubs-btn--update')
-      return h('button', { type, onClick, disabled, className: classes.join(' ') }, label)
+      if (icon) classes.push('osubs-btn--icon')
+      return h('button', {
+        type, onClick, disabled, title,
+        'aria-label': ariaLabel,
+        className: classes.join(' '),
+      }, label)
     }
 
     const HOLD_TIP_MS = 450
@@ -736,7 +744,7 @@
       const urgent = urgentAt < Infinity && leftMs < RESET_URGENT_MS
       const blinkMs = urgent ? resetBlinkInt(leftMs) : null
       const cd = urgent && leftMs <= RESET_CD_MS && leftMs > 0 ? Math.ceil(leftMs / 1000) : 0
-      const depth = Math.max(0, Math.min(count, 3))
+      const behind = Math.max(0, count - 1)
       const classes = ['osubs-rstack']
       if (count === 0) classes.push('osubs-rstack--empty')
       if (busy) classes.push('osubs-rstack--busy')
@@ -746,8 +754,11 @@
       const shut = () => setTipOpen(false)
       return h('div', {
         className: classes.join(' '),
-        'data-depth': depth,
-        style: blinkMs ? { '--osubs-blink-int': `${blinkMs}ms` } : undefined,
+        'data-depth': count,
+        style: {
+          '--rcard-behind': behind,
+          ...(blinkMs ? { '--osubs-blink-int': `${blinkMs}ms` } : {}),
+        },
         tabIndex: hasTip ? 0 : undefined,
         'aria-label': hasTip ? fill(t.resetTipLabel, count) : undefined,
         'aria-describedby': hasTip && tipOpen ? tipId : undefined,
@@ -756,6 +767,15 @@
         onFocus: open,
         onBlur: shut,
       },
+        Array.from({ length: behind }, (_, index) => {
+          const step = behind - index
+          return h('span', {
+            key: `back-${step}`,
+            className: 'osubs-rcard-back',
+            'aria-hidden': 'true',
+            style: { left: `calc(var(--rcard-step) * ${step})`, zIndex: 1 },
+          })
+        }),
         h('span', { className: 'osubs-rcard', 'aria-hidden': 'true' },
           h('span', {
             // cd: remount each second so the tick animation replays as a beat.

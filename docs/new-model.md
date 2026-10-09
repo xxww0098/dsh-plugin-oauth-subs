@@ -80,7 +80,8 @@ grep -rn "<旧版本号或被改的数值>" src test docs | grep -v lib/    # �
 | kiro `? claude-fable-5` | 有意加的兼容 id，保留 | kiro/README.md 模型 |
 | kiro `claude-sonnet-5.5` | 已在静态 fallback。chat 列表仍没有，登录选择器不要补这一行，也不要再加 `skip` | kiro/README.md 模型 |
 | antigravity `?` Claude 4.6 两行 | 活 `fetchAvailableModels` 仍在服务，注册表已不列也不要 `--prune`。5.5 的 `-high` 行已按注册表收入 | antigravity/README.md 模型 |
-| chatgpt `? gpt-6.1-sol` 等 3 行 | 登录态端点按账号过滤，未确认下架不删 | models.md「来源」 |
+| chatgpt `? gpt-6.1-sol` 等 1–4 行（同日会摆动） | 登录态端点按账号 / 当天过滤；`gpt-5.5` 已活测仍在服务（2026-10-08），不删 | chatgpt/README.md 模型 + docs/error.md 2026-10-08 |
+| codex `? gpt-5.5` | 活测 200 `response.completed`（2026-10-08），列表过滤不是下架，不删 | codex/README.md 模型 |
 | cursor 一串 `>` | 精选键只报告不写入，按 docs 表手挑 | cursor/README.md 模型 |
 | opencode-go 想删 curl 直接能看到官方页面列着的 id | 无认证列表是公开缓存视图，带 key 的才是订阅视图 | docs/error.md 2026-09-30 目录刷新日 |
 | 同一家族同一天两次结果不一样 | 上游当天就能增删档位/变体，快照≠稳定态 | docs/error.md 2026-09-30 目录刷新日 |

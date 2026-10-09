@@ -2,6 +2,24 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。每条只写 **现象** / **根因** / **修复** 三行，各 1–2 句；只留 grep 代码得不到的症状、根因与落点，不写过程与清单。
 
+## 2026-10-08：同日再后——OpenCode Go 收 Step 5 Preview Free
+
+**现象**：钉住版本未变（codex `0.161.0`、command-code `1.79.1`，均等于 npm latest）。`npm run models` 只有 `opencode-go-flash + step-5-preview-free`；其余键无新行、无字段变化。chatgpt token 两分钟内过期被跳过；kimi 仍无账号。Cursor 官方 docs 表没有要手挑的新非隐藏行。`glm-5.1` / `omen-alpha` / `minimax-m2.5` 仍无 models.dev 元数据。
+**根因**：官方 Go 端点表把 Step 5 Preview Free 放在 `/v1/chat/completions`，带 key 列表已在服务。models.dev 标 `interleaved.field = reasoning_content`；最小活测 200，回包同时有 `reasoning` 与 `reasoning_content`。脚本默认 plain compat 会在多轮丢掉推理回放。同一次 rates 写盘还改了两处源价：cline `moonshotai/kimi-k3` 0.65/15 → 0.62/12.3，kiro `claude-sonnet-5.5` cache read $0.20 → $0.10（bedrock global，与当日 anthropic 表同口径）。
+**修复**：flash 收 `step-5-preview-free`（1M / 65536 / text+image / low–high，DeepSeek 方言；video 按目录规则剥掉）。价目随 models.dev 写 $0/$0/$0。`gpt-5.5`、copilot 的 `?` 行、kiro `claude-fable-5` 不删。
+
+## 2026-10-08：同日稍后——Haiku 5.5 五处入目录，OpenCode 一批行改走 /messages
+
+**现象**：上午那轮 `+0 ~0` 之后，copilot / devin / cursor / command-code / OpenCode Go 都出现 Claude Haiku 5.5。OpenCode 带 key 列表里的 `claude-haiku-5-5` 打 `/chat/completions` 与 `/responses` 都是 `ModelProtocolUnsupported`；目录里已有的 `minimax-m2.7` 在 completions 上同样 400。command-code npm 最新是 `1.79.1`。kimi 仍无账号；codex 仍钉 0.161.0；`gpt-5.5` 与 copilot 的 `?` 行不删。
+**根因**：官方 Go 端点表把 Haiku 5.5、MiniMax M2.7/M3、Qwen3.7 Plus、Qwen3.8 Max/Flash 改到 `/v1/messages`（`@ai-sdk/anthropic`），models.dev 仍把它们标成 completions，脚本会误收进 flash。`x-api-key` + `anthropic-version` + `x-opencode-session` 打 `/v1/messages` 这六行都 200。Cursor 变体不广告输出上限，picker 回落到默认 64000。command-code 1.78.0/1.79.0 的注册表与价目表加了 Haiku 与免费 Glyph Cluster，wire 只有压缩名偏移。
+**修复**：copilot 收 `claude-haiku-5.5`，devin / cursor / command-code / OpenCode messages 收 `claude-haiku-5-5`，command-code 另收 `stealth/glyph-cluster:free` 并升钉 1.79.1。OpenCode 新增 `opencode-go-messages`（`anthropic-messages`，baseURL `https://opencode.ai/zen/go`），上述五行从 flash 挪过来并去掉 completions compat；512K / 256K 档价跟着走。Glyph 的行级 `maxOutputTokens` 不写。同一次 rates 写盘把 Sonnet 5.5 的 cache read 从 $0.20 改成 $0.10（models.dev anthropic 与 Cursor 价目表），cline `moonshotai/kimi-k3` 落到 $0.65/$15/$0.43。
+
+## 2026-10-08：目录刷新日——codex 跟版 0.161.0、gpt-5.5 列表消失但后端仍在服务、三处价目随源更新
+
+**现象**：`npm run models` 干跑全键 `+0 ~0`：无新行、无字段变化、无确认下架；codex（升钉后 @ 0.161.0）与 chatgpt 两源都不回 `gpt-5.5`，chatgpt `/v1/models` 同日两次在缺 1 行与缺 4 行（多 `gpt-6.1-sol / gpt-6-sol / gpt-6-luna`）之间摆动；OpenCode Go `! glm-5.1 / omen-alpha / minimax-m2.5` 仍无 models.dev 元数据，官方 Go 文档模型清单也不列它们；kimi 三个 profile 仍无账号（`SKIPPED`）。`npm run rates` 写盘改了三处：kimi `k3` / `k3-256k` 补 `cacheWrite: 3`、cline `moonshotai/kimi-k3` 价回落（0.69/0.45 → 0.5/0.43）、ollama `mistral-large-4` 补价（$1.36/$4.18/$0.14，与 command-code CLI 表同价互证）。
+**根因**：① 登录态列表按账号 / 当天过滤，列表消失 ≠ 下架——`gpt-5.5` 定向活测：chatgpt `POST /v1/responses` 200、codex 流式 200 `response.completed`（10-07 起两个端点列表都不回它）；② 上游当天就能增删列表行（chatgpt 30 分钟内两次结果不同）；③ models.dev `ollama-cloud` 桶补上了 10-07 收的 `mistral-large-4` 的价。
+**修复**：codex 钉 0.161.0（npm 当日发布，changelog 无新模型——GPT-6.1 Sol 设为 CLI 默认档，纯跟版、wire 无变化）；`gpt-5.5` 两家目录行保留；OpenCode Go 三行继续留在目录外；rates 三处随源落盘。用户可见：ollama `mistral-large-4` 出价格徽标，kimi k3 tooltip 多缓存写价，cline kimi-k3 价目更新。
+
 ## 2026-10-07：目录刷新日——codex/command-code 跟版、Space Bunny 免费预览三处退役、cline/ollama/OpenCode Go 各收一行
 
 **现象**：`npm run models` 干跑：codex 0.160.1 活目录 7 行，`? gpt-5.5`（比 10-03 的 8 行少一行，登录态端点按账号过滤，未确认下架不删）；command-code 无端点（`manual`），1.77.0 bundle 注册表 93 行 −8 hidden = 85 可见；cline `+ cline-free/solar-mini4`、`? stealth/space-bunny-alpha`；ollama `+ mistral-large-4`；OpenCode Go `+ space-bunny`、`? space-bunny-free`，`glm-5.1` / `omen-alpha` / `minimax-m2.5` 仍无 models.dev 元数据。`npm run rates` 干跑只报行数增量，写盘实际还改了 Devin 四行（丢掉源里已不存在的 `tierThreshold`/`tiers`）与 `deepseek-v4-1-flash` 的价（0.3/1.2 → 0.22/0.66）——源值变化仍要 `git diff` 才看得到。

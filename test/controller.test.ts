@@ -100,7 +100,7 @@ test('snapshot reports logged-out accounts and empty providers', async () => {
   assert.equal(snap.opencodeGo.apiKeySet, false)
   assert.equal(snap.opencodeGo.quota.status, 'idle')
   assert.deepEqual(snap.providers, [])
-  assert.equal(snap.catalog.length, 15)
+  assert.equal(snap.catalog.length, 16)
   assert.equal(snap.accounts.anthropic, undefined)
   assert.equal(snap.catalog.some((row) => row.family === 'anthropic'), false)
   assert.equal(snap.catalog.some((row) => row.family === 'kimi'), true)

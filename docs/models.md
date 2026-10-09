@@ -37,7 +37,7 @@
 | `variants` / `defaultUid` | 档位 → 后端 uid | devin |
 | `compat` | pi-ai completions 方言 | opencode-go |
 
-键集合固定（`CATALOG_KEYS`）：每个家族一个键，OpenCode Go 按协议拆成 `opencode-go-flash` / `opencode-go-responses`，`ollamaRetired` 是退役 id 数组。加载器在模块加载时校验，有一行不合法就整体抛错，绝不静默沿用旧目录。
+键集合固定（`CATALOG_KEYS`）：每个家族一个键，OpenCode Go 按协议拆成 `opencode-go-flash` / `opencode-go-responses` / `opencode-go-messages`，`ollamaRetired` 是退役 id 数组。加载器在模块加载时校验，有一行不合法就整体抛错，绝不静默沿用旧目录。
 
 ## 加一个新模型 / 新家族
 

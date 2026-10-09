@@ -50,6 +50,22 @@
     function writeStoredUsage(usage) {
       try { localStorage.setItem(USAGE_STORE, JSON.stringify(usage)) } catch { /* quota / private mode */ }
     }
+    // The range picker remembers the last choice; a first open (or a bad
+    // stored value) falls back to 今天.
+    const USAGE_RANGE_STORE = 'dsh-plugin-oauth-subs.usage-range'
+    function readStoredRange(): number | 'today' {
+      try {
+        const raw = localStorage.getItem(USAGE_RANGE_STORE)
+        if (raw === 'today') return 'today'
+        const days = Number(raw)
+        return days === 7 || days === 30 ? days : 'today'
+      } catch {
+        return 'today'
+      }
+    }
+    function writeStoredRange(range: number | 'today') {
+      try { localStorage.setItem(USAGE_RANGE_STORE, String(range)) } catch { /* private mode */ }
+    }
     const dayKey = (ms) => {
       const d = new Date(ms)
       return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`
@@ -420,7 +436,7 @@
     }
 
     function UsagePanel({ t, data, error, scope, busy, onRefresh, version, repo }) {
-      const [range, setRange] = useState<number | 'today'>(7)
+      const [range, setRange] = useState<number | 'today'>(readStoredRange)
       const [hover, setHover] = useState(-1)
       const [by, setBy] = useState<'model' | 'session'>('model')
       const [copiedId, setCopiedId] = useState(null)
@@ -429,6 +445,7 @@
       const rows = data?.rows ?? null
       const ranges = [['today', t.usageToday], [7, fill(t.usageDays, 7)], [30, fill(t.usageDays, 30)]]
       const rangeLabel = ranges.find(([id]) => id === range)?.[1]
+      const pickRange = (id) => { setRange(id); writeStoredRange(id); setHover(-1) }
       const share = () => {
         if (!data) return
         setHover(-1)
@@ -449,7 +466,7 @@
             h(ShareButton, { t, busy: shot.busy, disabled: !rows, onClick: share })),
           h('div', { className: 'osubs-seg', role: 'group' }, ranges.map(([id, label]) => h(Button, {
             key: id, size: 'sm', variant: range === id ? 'primary' : undefined,
-            onClick: () => { setRange(id); setHover(-1) }, label,
+            onClick: () => pickRange(id), label,
           }))))
       if (rows === null) {
         return h('section', { className: 'osubs-card', 'aria-busy': !error },

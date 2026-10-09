@@ -26,7 +26,7 @@
 | `client_id` | `app_EMoamEEZ73f0CkXaXp7hrann` |
 | authorize | `https://auth.openai.com/oauth/authorize` |
 | token | `https://auth.openai.com/oauth/token` |
-| originator / UA | `codex_cli_rs` / `codex_cli_rs/0.160.1` |
+| originator / UA | `codex_cli_rs` / `codex_cli_rs/0.161.0` |
 | loopback | `localhost:1455`，失败再 `1457`；path `/auth/callback` |
 | 换票 | `application/x-www-form-urlencoded` + PKCE |
 | 刷新 | JSON `{ client_id, grant_type, refresh_token }` |
@@ -67,9 +67,11 @@ Fast：body `service_tier` 从 `fast` 改成 `priority`，并带 `x-codex-routin
 - `fastTier` = `service_tiers` 里有 `priority`。
 - `reasoningEfforts` 取 `supported_reasoning_levels`，但 `minimal` 与 `ultra` 会 400（`ultra` 是 CLI 的多 agent 模式，不是 API effort）；`off` 的 wire 值是 `null`。
 
-最近核对：2026-10-07，活目录 @ `client_version` 0.160.1（钉跟 npm latest 升 0.160.1；探查 7 行、无新行、无字段变化，纯跟版。`? gpt-5.5` 源里没有——登录态端点按账号过滤，未确认下架不删）。
+最近核对：2026-10-08，活目录 @ `client_version` 0.161.0（npm latest 0.161.0 当日发布，changelog 无新模型——只是把 GPT-6.1 Sol 设为 CLI 默认档；探查 7 行、无新行、无字段变化，纯跟版。`? gpt-5.5` 源里没有——同日定向活测 `POST .../codex/responses` 仍 200 `response.completed`，chatgpt 家族同样：列表不回 ≠ 下架，不删）。
 
-上次核对：2026-10-03，活目录 @ `client_version` 0.160.0（钉跟 npm latest 升 0.160.0；探查 8 行、无新行、无字段变化，纯跟版）。
+上次核对：2026-10-07，活目录 @ `client_version` 0.160.1（钉跟 npm latest 升 0.160.1；探查 7 行、无新行、无字段变化，纯跟版。`? gpt-5.5` 源里没有——登录态端点按账号过滤，未确认下架不删）。
+
+更早核对：2026-10-03，活目录 @ `client_version` 0.160.0（钉跟 npm latest 升 0.160.0；探查 8 行、无新行、无字段变化，纯跟版）。
 
 更早核对：2026-09-30，活目录 @ `client_version` 0.159.0（+ `gpt-6.1-sol`）；同日钉跟 npm latest 升 0.159.2（探查无新行，纯跟版）。
 
@@ -112,7 +114,7 @@ Fast：body `service_tier` 从 `fast` 改成 `priority`，并带 `x-codex-routin
 
 ## 归因
 
-一线：[openai/codex](https://github.com/openai/codex) tag `rust-v0.160.1`（升钉核对时 npm latest 0.160.1；缓存头源码蒸馏自 0.153.4）。
+一线：[openai/codex](https://github.com/openai/codex) tag `rust-v0.161.0`（升钉核对时 npm latest 0.161.0；缓存头源码蒸馏自 0.153.4）。
 
 | 抄 | 出处 | 本 hop |
 |---|---|---|

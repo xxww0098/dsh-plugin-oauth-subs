@@ -185,6 +185,13 @@ function fromModelsDev(id, row) {
 
 const PLAIN_GO_COMPAT = { supportsStore: false, supportsDeveloperRole: false, maxTokensField: 'max_tokens' }
 
+// Official Go docs endpoint table (2026-10-08): these ids answer only on
+// /v1/messages. models.dev still tags them as completions, which would
+// mis-file them. opencode-go/README.md.
+const OPENCODE_GO_MESSAGES_IDS = new Set([
+  'claude-haiku-5-5', 'minimax-m3', 'minimax-m2.7', 'qwen3.8-max', 'qwen3.8-flash', 'qwen3.7-plus',
+])
+
 async function opencodeGo(protocol) {
   const vault = JSON.parse(readFileSync(`${DATA_DIR}/opencode-go.json`, 'utf8'))
   const key = Object.values<any>(vault.accounts ?? {}).find((entry) => entry?.apiKey)?.apiKey
@@ -197,8 +204,14 @@ async function opencodeGo(protocol) {
   for (const { id } of live.data ?? []) {
     const meta = dev[id]
     // models.dev marks the /responses-only rows with an @ai-sdk/openai provider.
+    // /messages ids are the docs table above — the bucket has not caught up.
     const responses = meta?.provider?.npm === '@ai-sdk/openai'
-    if ((protocol === 'responses') !== responses) continue
+    const messages = OPENCODE_GO_MESSAGES_IDS.has(id)
+    if (protocol === 'messages') {
+      if (!messages) continue
+    } else if (messages || (protocol === 'responses') !== responses) {
+      continue
+    }
     rows.push(meta ? fromModelsDev(id, meta) : { id })
   }
   return rows
@@ -349,7 +362,10 @@ const ADAPTERS: Record<string, any> = {
   'opencode-go-flash': {
     source: 'GET opencode.ai/zen/go/v1/models (ids) + models.dev "opencode-go" (metadata)',
     fetch: () => opencodeGo('completions'),
-    skip: [{ ids: ['deepseek-flash'], why: 'alias of deepseek-v4.1-flash; the picker keeps the docs id (opencode-go/README.md)' }],
+    skip: [
+      { ids: ['deepseek-flash'], why: 'alias of deepseek-v4.1-flash; the picker keeps the docs id (opencode-go/README.md)' },
+      { ids: [...OPENCODE_GO_MESSAGES_IDS], why: 'docs endpoint is /v1/messages; completions returns ModelProtocolUnsupported (opencode-go/README.md)' },
+    ],
     // DeepSeek dialect rows need a live test first (README); new rows start plain.
     newRow: (row) => ({ ...row, compat: { ...PLAIN_GO_COMPAT } }),
   },
@@ -357,6 +373,10 @@ const ADAPTERS: Record<string, any> = {
     source: 'GET opencode.ai/zen/go/v1/models (ids) + models.dev "opencode-go" (metadata)',
     fetch: () => opencodeGo('responses'),
     keep: [{ ids: ['gpt-5.6-luna', 'gpt-6-luna'], fields: ['contextWindow'], why: 'maintainer pin 2026-09-29: 258K default input tier, not the 1.05M total (opencode-go/README.md)' }],
+  },
+  'opencode-go-messages': {
+    source: 'GET opencode.ai/zen/go/v1/models (ids) + Go docs /v1/messages table + models.dev "opencode-go" (metadata)',
+    fetch: () => opencodeGo('messages'),
   },
   chatgpt: {
     source: 'GET api.openai.com/v1/models (Sign in with ChatGPT access token)',

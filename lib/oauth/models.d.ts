@@ -132,7 +132,7 @@ export declare const FAMILY_IDS: readonly string[];
  * writes itself; DSH's built-in `opencode-go` catalog route carries the rest.
  * Without `OPENCODE_API_KEY` the family is only locked (checkbox disabled).
  */
-export declare const APIKEY_FAMILY_IDS: readonly ("opencode-go-flash" | "opencode-go-responses")[];
+export declare const APIKEY_FAMILY_IDS: readonly ("opencode-go-flash" | "opencode-go-responses" | "opencode-go-messages")[];
 /** Every family the Settings picker can toggle. */
 export declare const MODEL_FAMILY_IDS: readonly string[];
 /** Dropped families. Still unset leftover harness routes; never written back. */

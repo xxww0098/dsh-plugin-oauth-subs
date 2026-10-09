@@ -94,7 +94,9 @@ DSH chat/completions  →  POST https://q.<region>.amazonaws.com/
 
 行在 [`src/catalog/models.json`](../../catalog/models.json) 的 `"kiro"` 键；行格式、来源与 `npm run models` 更新流程见 [`docs/models.md`](../../../docs/models.md)。本节只记本家的取舍与出处。
 
-最近核对：2026-10-04，management `List-Available-Models` 两个 origin 对账。治理列表有 `claude-sonnet-5.5`（`tokenLimits` 1M / 128K，`TEXT`+`IMAGE`，`output_config.effort` 为 low / medium / high / xhigh / max，`rateMultiplier` 1.3），已收入静态 fallback。同一天本机 chat 列表（`origin=AI_EDITOR`，9 个 id）仍没有它。登录后的选择器只采用 chat 列表，不把这一行补进去——chat 发治理列表独有的 id 会 400 `INVALID_MODEL_ID`。`skip` 已删。
+最近核对：2026-10-08，治理列表（`npm run models`，`origin=KIRO_CONSOLE`）无新行、无字段变化；`? claude-fable-5` 仍是有意保留的兼容 id，不删。价目：`claude-sonnet-5.5` 的 cache read 随 models.dev `amazon-bedrock` `global.anthropic.claude-sonnet-5-5` 从 $0.20 改成 $0.10。chat 列表是否放行 sonnet-5.5 这次没重探。
+
+上次核对：2026-10-04，management `List-Available-Models` 两个 origin 对账。治理列表有 `claude-sonnet-5.5`（`tokenLimits` 1M / 128K，`TEXT`+`IMAGE`，`output_config.effort` 为 low / medium / high / xhigh / max，`rateMultiplier` 1.3），已收入静态 fallback。同一天本机 chat 列表（`origin=AI_EDITOR`，9 个 id）仍没有它。登录后的选择器只采用 chat 列表，不把这一行补进去——chat 发治理列表独有的 id 会 400 `INVALID_MODEL_ID`。`skip` 已删。
 
 上次核对：2026-10-03。chat 列表把 `deepseek-3.2` / `minimax-m2.1` / `qwen3-coder-next` 的 `supportedInputTypes` 收成 `TEXT`，目录三行 `input` 随 chat 列表从 text+image 改成 text。
 

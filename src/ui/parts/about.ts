@@ -191,6 +191,24 @@
       )
     }
 
+    /** `code` and **bold** in a release bullet, matching the notes card chips. */
+    function noteNodes(text) {
+      const nodes = []
+      const re = /`([^`]+)`|\*\*([^*]+)\*\*/g
+      let last = 0
+      let match
+      let key = 0
+      const source = String(text ?? '')
+      while ((match = re.exec(source))) {
+        if (match.index > last) nodes.push(source.slice(last, match.index))
+        if (match[1] != null) nodes.push(h('code', { key: key++, className: 'osubs-notes-code' }, match[1]))
+        else nodes.push(h('strong', { key: key++ }, match[2]))
+        last = match.index + match[0].length
+      }
+      if (last < source.length) nodes.push(source.slice(last))
+      return nodes.length ? nodes : [source]
+    }
+
     function AboutPanel({
       t,
       local,
@@ -201,7 +219,11 @@
       autoUpdate,
       autoState,
       onAutoUpdate,
+      rpc,
     }) {
+      const [notesOpen, setNotesOpen] = useState(false)
+      const [notes, setNotes] = useState(null)
+      const notesGen = useRef(0)
       const repo = aboutRepoOf(local, update)
       const slug = local?.repoSlug || update?.repoSlug || 'xxww0098/dsh-plugin-oauth-subs'
       const latest = update?.latest
@@ -244,8 +266,8 @@
           })
         : null
 
-      // The banner owns the status conclusion — the head keeps only the
-      // check button; only 当前版本 / 最新版本 exist as version slots.
+      // The banner owns the status conclusion — the head keeps the changelog
+      // and check buttons; only 当前版本 / 最新版本 exist as version slots.
       const vstat = linked
         ? h(VersionStat, { busy, icon: h(IconLink), title: fill(t.verLinkedRun, version), sub: t.autoUpdateLinked,
             side: latestTag && h('span', {
@@ -272,6 +294,28 @@
             h('h3', { className: 'osubs-card-title' }, t.pluginAboutTitle || t.aboutTitle),
           ),
           h('div', { className: 'osubs-about-actions' },
+            h(Button, {
+              size: 'sm',
+              onClick: () => {
+                setNotesOpen(true)
+                if (notes && !notes.error) return
+                const gen = ++notesGen.current
+                setNotes(null)
+                Promise.resolve()
+                  .then(() => callRpc(rpc, 'changelog'))
+                  .then((result) => {
+                    if (notesGen.current !== gen) return
+                    const releases = Array.isArray(result?.releases) ? result.releases.slice(0, 3) : []
+                    setNotes({ releases })
+                  })
+                  .catch((caught) => {
+                    if (notesGen.current !== gen) return
+                    const message = caught instanceof Error ? caught.message : String(caught)
+                    setNotes({ error: isUnknownOauthMethod(message) ? t.hostStale : message, releases: [] })
+                  })
+              },
+              label: t.changelog,
+            }),
             h(Button, {
               size: 'sm',
               onClick: onCheck,
@@ -308,8 +352,44 @@
         ),
       )
 
+      const releases = Array.isArray(notes?.releases) ? notes.releases : []
+      const notesTitle = releases[0]?.tag ? fill(t.changelogTitle, releases[0].tag) : t.changelog
+      const notesBody = !notes
+        ? h('p', { className: 'osubs-notes-status' }, t.changelogLoading)
+        : notes.error
+          ? h('p', { className: 'osubs-notes-status osubs-bad' }, `${t.changelogError}${notes.error ? ` · ${notes.error}` : ''}`)
+          : releases.length === 0
+            ? h('p', { className: 'osubs-notes-status' }, t.changelogEmpty)
+            : h('div', { className: 'osubs-notes' }, releases.map((release) => h('section', {
+                key: release.tag || release.name,
+                className: 'osubs-notes-rel',
+              },
+                h('h3', { className: 'osubs-notes-ver' }, release.tag || release.name),
+                ...(Array.isArray(release.sections) ? release.sections : []).map((section) => h('div', {
+                  key: section.title || 'notes',
+                  className: 'osubs-notes-sec',
+                },
+                  section.title && h('h4', { className: 'osubs-notes-cat' }, section.title),
+                  h('ul', { className: 'osubs-notes-list' },
+                    (section.items || []).map((item, index) => h('li', { key: index }, ...noteNodes(item)))),
+                )),
+              )))
+      const notesDialog = notesOpen && h(CenterDialog, {
+        titleId: 'osubs-notes-title',
+        title: notesTitle,
+        closeLabel: t.dialogClose,
+        onClose: () => setNotesOpen(false),
+        cardClass: 'osubs-dsw-card osubs-dsw-card--notes',
+        bodyClass: 'osubs-dsw-body osubs-dsw-body--notes',
+        footer: h('button', {
+          type: 'button',
+          className: 'osubs-dsw-btn osubs-dsw-btn--primary',
+          onClick: () => setNotesOpen(false),
+        }, t.dialogClose),
+      }, notesBody)
+
       const Frag = Fragment || 'div'
-      return h(Frag, null, pluginCard)
+      return h(Frag, null, pluginCard, notesDialog)
     }
 
     /** Donate tab: the payment QR codes ship as package assets; the host

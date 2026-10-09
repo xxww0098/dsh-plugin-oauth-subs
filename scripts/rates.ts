@@ -283,6 +283,7 @@ function resolvers({ cursor, cursorFastX, devin, clineFree }) {
     ollama: { source: 'models.dev "ollama-cloud"', resolve: exact('ollama-cloud') },
     'opencode-go-flash': { source: 'models.dev "opencode-go"', resolve: exact('opencode-go') },
     'opencode-go-responses': { source: 'models.dev "opencode-go"', resolve: exact('opencode-go') },
+    'opencode-go-messages': { source: 'models.dev "opencode-go"', resolve: exact('opencode-go') },
   }
 }
 

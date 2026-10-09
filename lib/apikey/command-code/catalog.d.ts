@@ -1,7 +1,7 @@
 /**
  * Command Code model catalog — static floor only.
  *
- * The CLI's registry is bundle-defined (dist/cli.mjs, command-code 1.77.0):
+ * The CLI's registry is bundle-defined (dist/cli.mjs, command-code 1.79.1):
  * there is no `/alpha/models` endpoint to refresh from, so unlike
  * Cursor/Kimi/Devin this family keeps a pure static catalog. The rows in
  * index.ts are the registry's non-hidden entries, carrying the row's own

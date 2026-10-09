@@ -1048,6 +1048,7 @@ test('cursor static catalog matches the live Cursor model set and has no Fast ro
     'claude-opus-5',
     'claude-sonnet-5-5',
     'claude-sonnet-5',
+    'claude-haiku-5-5',
     'gemini-3.1-pro',
     'gemini-3.8-flash',
     'muse-spark-1.3',
@@ -1065,6 +1066,8 @@ test('cursor static catalog matches the live Cursor model set and has no Fast ro
   assert.deepEqual(CURSOR_MODELS.find((model) => model.id === 'claude-sonnet-5-5').input, ['text', 'image'])
   assert.equal(CURSOR_MODELS.find((model) => model.id === 'claude-opus-5').contextWindow, 300_000)
   assert.equal(CURSOR_MODELS.find((model) => model.id === 'claude-opus-5-5').contextWindow, 300_000)
+  assert.equal(CURSOR_MODELS.find((model) => model.id === 'claude-haiku-5-5').contextWindow, 300_000)
+  assert.equal(CURSOR_MODELS.find((model) => model.id === 'claude-haiku-5-5').maxTokens, 64_000)
   assert.equal(CURSOR_MODELS.find((model) => model.id === 'muse-spark-1.3').contextWindow, 300_000)
   assert.equal(CURSOR_MODELS.find((model) => model.id === 'muse-spark-1.3').maxTokens, 64_000)
   assert.equal(CURSOR_MODELS.find((model) => model.id === 'gpt-5.6-sol').contextWindow, 272_000)

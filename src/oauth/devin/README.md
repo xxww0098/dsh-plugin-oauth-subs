@@ -94,7 +94,9 @@ HTTP 头：`content-type: application/connect+proto`（chat）/ `application/pro
 
 行在 [`src/catalog/models.json`](../../catalog/models.json) 的 `"devin"` 键；行格式、来源与 `npm run models` 更新流程见 [`docs/models.md`](../../../docs/models.md)。本节只记本家的取舍与出处。
 
-最近核对：2026-10-05，价目源 [docs.devin.ai/desktop/models.md](https://docs.devin.ai/desktop/models.md) 的 `modelCostData`（PRO 档）重对：`gpt-5-6-sol-*` 全族从 $1.2/$6/$0.12/$1.5 换成标准价 $4/$20/$0.4/$5（priority uid 仍 $8/$40/$0.8/$10）。目录行与 `npm run models` 无变化，价目由 `npm run rates` 写入；上一轮的 1.2/6 是上游促销价，Cursor docs 表同款也是 $4/$20。
+最近核对：2026-10-08，`ApiServerService/GetCliModelConfigs` 新增 `claude-haiku-5-5`（1M / 128K / text+image；uid `claude-haiku-5-5-{effort}`，`defaultUid` `claude-haiku-5-5-medium`）。价目随 `modelCostData` 的 defaultUid 由 `npm run rates` 写入。
+
+上次核对：2026-10-05，价目源 [docs.devin.ai/desktop/models.md](https://docs.devin.ai/desktop/models.md) 的 `modelCostData`（PRO 档）重对：`gpt-5-6-sol-*` 全族从 $1.2/$6/$0.12/$1.5 换成标准价 $4/$20/$0.4/$5（priority uid 仍 $8/$40/$0.8/$10）。目录行与 `npm run models` 无变化，价目由 `npm run rates` 写入；上一轮的 1.2/6 是上游促销价，Cursor docs 表同款也是 $4/$20。
 
 上次核对：2026-10-01，生产 `GetCliModelConfigs`（737 个原始 config）：`claude-sonnet-4.5` / `claude-sonnet-4.5-thinking` 两行**整行没了**（不是变无家族——原始载荷里搜不到；同代 `claude-opus-4.5` / `-thinking` 仍在，排除账号/出口过滤），目录与价目随源删两行（80→78）。
 

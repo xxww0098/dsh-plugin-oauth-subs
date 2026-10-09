@@ -124,6 +124,7 @@ export function registerRpc(ctx, controller) {
     goClear: (payload) => controller.clearOpencodeGo(payload?.field, payload?.id),
     reset: (payload) => controller.consumeReset(payload?.provider, payload?.id, payload?.credit),
     update: (payload) => controller.checkUpdate(payload),
+    changelog: () => controller.changelog(),
     autoUpdate: (payload) => controller.setAutoUpdate(payload),
     proxyGet: () => controller.outboundProxy(),
     proxySet: (payload) => controller.setOutboundProxy(payload),

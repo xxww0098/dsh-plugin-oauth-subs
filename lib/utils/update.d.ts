@@ -20,6 +20,8 @@ export declare function modulePackageJsonPath(): string;
 export declare const REPO_SLUG = "xxww0098/dsh-plugin-oauth-subs";
 export declare const REPO_URL = "https://github.com/xxww0098/dsh-plugin-oauth-subs";
 export declare const RELEASES_API = "https://api.github.com/repos/xxww0098/dsh-plugin-oauth-subs/releases/latest";
+/** About changelog shows this many newest published releases, no more. */
+export declare const CHANGELOG_LIMIT = 3;
 export declare const RELEASES_LATEST_HTML = "https://github.com/xxww0098/dsh-plugin-oauth-subs/releases/latest";
 export declare const PLATFORMS: readonly string[];
 export declare const PLUGIN_NAME = "dsh-plugin-oauth-subs";
@@ -110,6 +112,37 @@ export declare function fetchLatest({ fetchFn, spawnFn, current, platform, timeo
     repo: string;
     repoSlug: string;
 }>;
+/**
+ * GitHub release body → figure-style sections. A bullet that starts with
+ * `**label**:` becomes that category; later bullets with the same label join
+ * it. Semicolons outside code spans become separate items so a one-line
+ * category still reads as a list. Unlabeled bullets keep an empty title.
+ */
+export declare function parseReleaseNotes(body: any): {
+    title: string;
+    items: string[];
+}[];
+export declare function releaseNotesFromPayload(payload: any): {
+    tag: any;
+    name: any;
+    url: any;
+    publishedAt: string | undefined;
+    sections: {
+        title: string;
+        items: string[];
+    }[];
+};
+/** Newest published releases for the About changelog. Drafts are dropped. */
+export declare function fetchRecentReleases({ fetchFn, spawnFn, env, timeoutMs, limit, existsSyncFn, }?: any): Promise<{
+    tag: any;
+    name: any;
+    url: any;
+    publishedAt: string | undefined;
+    sections: {
+        title: string;
+        items: string[];
+    }[];
+}[]>;
 /** `$DSH_HOME/profiles/<name>` from Cordis `ctx.baseUrl`, else web. */
 export declare function profileFromBaseUrl(baseUrl: any): string;
 /**

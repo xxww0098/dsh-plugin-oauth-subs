@@ -36,6 +36,8 @@ export function modulePackageJsonPath() {
 export const REPO_SLUG = 'xxww0098/dsh-plugin-oauth-subs'
 export const REPO_URL = 'https://github.com/xxww0098/dsh-plugin-oauth-subs'
 export const RELEASES_API = `https://api.github.com/repos/${REPO_SLUG}/releases/latest`
+/** About changelog shows this many newest published releases, no more. */
+export const CHANGELOG_LIMIT = 3
 export const RELEASES_LATEST_HTML = `${REPO_URL}/releases/latest`
 export const PLATFORMS = Object.freeze(['win', 'mac', 'linux'])
 export const PLUGIN_NAME = 'dsh-plugin-oauth-subs'
@@ -410,6 +412,137 @@ export async function fetchLatest({
       },
       assets: pickDownloads(payload?.assets, local.platform),
     }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** Split a release bullet on semicolons that sit outside `code` spans. */
+function changelogClauses(text) {
+  const parts: string[] = []
+  let buf = ''
+  let code = false
+  for (const ch of String(text ?? '')) {
+    if (ch === '`') {
+      code = !code
+      buf += ch
+      continue
+    }
+    if (!code && (ch === ';' || ch === '；')) {
+      const piece = buf.trim()
+      if (piece) parts.push(piece)
+      buf = ''
+      continue
+    }
+    buf += ch
+  }
+  const tail = buf.trim()
+  if (tail) parts.push(tail)
+  return parts
+}
+
+/**
+ * GitHub release body → figure-style sections. A bullet that starts with
+ * `**label**:` becomes that category; later bullets with the same label join
+ * it. Semicolons outside code spans become separate items so a one-line
+ * category still reads as a list. Unlabeled bullets keep an empty title.
+ */
+export function parseReleaseNotes(body) {
+  const text = String(body ?? '').replace(/\r\n/g, '\n').trim()
+  if (!text) return []
+  const bullets: string[] = []
+  let current = ''
+  for (const line of text.split('\n')) {
+    if (/^\s*[-*]\s+/.test(line)) {
+      if (current) bullets.push(current.trim())
+      current = line.replace(/^\s*[-*]\s+/, '')
+    } else if (current && line.trim()) {
+      current += ` ${line.trim()}`
+    } else if (!current && line.trim()) {
+      bullets.push(line.trim())
+    }
+  }
+  if (current) bullets.push(current.trim())
+  const sections: { title: string, items: string[] }[] = []
+  const index = new Map<string, number>()
+  for (const bullet of bullets) {
+    const labeled = bullet.match(/^\*\*([^*]+)\*\*\s*[:：]?\s*([\s\S]*)$/)
+    const title = labeled ? labeled[1].trim() : ''
+    const rest = (labeled ? labeled[2] : bullet).trim()
+    const items = changelogClauses(rest)
+    if (items.length === 0) continue
+    let at = index.get(title)
+    if (at === undefined) {
+      at = sections.length
+      index.set(title, at)
+      sections.push({ title, items: [] })
+    }
+    sections[at].items.push(...items)
+  }
+  return sections
+}
+
+export function releaseNotesFromPayload(payload) {
+  const tag = typeof payload?.tag_name === 'string' && payload.tag_name.trim()
+    ? payload.tag_name.trim()
+    : (typeof payload?.name === 'string' ? payload.name.trim() : '')
+  return {
+    tag,
+    name: typeof payload?.name === 'string' && payload.name.trim() ? payload.name.trim() : tag,
+    url: typeof payload?.html_url === 'string' && payload.html_url.trim()
+      ? payload.html_url.trim()
+      : (tag ? `${REPO_URL}/releases/tag/${encodeURIComponent(tag)}` : `${REPO_URL}/releases`),
+    publishedAt: formatPublishedAt(payload?.published_at),
+    sections: parseReleaseNotes(payload?.body),
+  }
+}
+
+/** Newest published releases for the About changelog. Drafts are dropped. */
+export async function fetchRecentReleases({
+  fetchFn = outboundFetch,
+  spawnFn = spawn,
+  env = process.env,
+  timeoutMs = 10_000,
+  limit = CHANGELOG_LIMIT,
+  existsSyncFn = existsSync,
+}: any = {}) {
+  const count = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : CHANGELOG_LIMIT
+  const userAgent = 'dsh-plugin-oauth-subs'
+  const wait = new AbortController()
+  const timer = setTimeout(() => wait.abort(), timeoutMs)
+  let payload
+  let apiStatus = 0
+  try {
+    try {
+      const response = await fetchFn(`https://api.github.com/repos/${REPO_SLUG}/releases?per_page=${count}`, {
+        headers: githubRequestHeaders(userAgent, env),
+        signal: wait.signal,
+      })
+      if (response.ok) payload = await response.json()
+      else apiStatus = response.status
+    } catch (error) {
+      if (wait.signal.aborted) throw error
+      apiStatus = 0
+    }
+    if (!Array.isArray(payload)) {
+      try {
+        const gh = await runGhApiJson({
+          spawnFn,
+          args: ['api', `repos/${REPO_SLUG}/releases?per_page=${count}`],
+          env,
+          existsSyncFn,
+        })
+        if (Array.isArray(gh)) payload = gh
+      } catch {
+        // keep apiStatus
+      }
+    }
+    if (!Array.isArray(payload)) throw new Error(apiStatus ? `GitHub releases ${apiStatus}` : 'GitHub releases unavailable')
+    return payload
+      .filter((row) => row && row.draft !== true)
+      .slice(0, count)
+      .map(releaseNotesFromPayload)
+      .filter((row) => row.tag)
   } finally {
     clearTimeout(timer)
   }

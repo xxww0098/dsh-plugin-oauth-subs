@@ -14,9 +14,9 @@ export declare const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usa
 export declare const CODEX_RESET_CREDITS_URL = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits";
 export declare const CODEX_RESET_CONSUME_URL = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume";
 export declare const CODEX_MODELS_URL = "https://chatgpt.com/backend-api/codex/models";
-export declare const CODEX_CLIENT_VERSION = "0.160.1";
+export declare const CODEX_CLIENT_VERSION = "0.161.0";
 export declare const CODEX_ORIGINATOR = "codex_cli_rs";
-export declare const CODEX_USER_AGENT = "codex_cli_rs/0.160.1";
+export declare const CODEX_USER_AGENT = "codex_cli_rs/0.161.0";
 export declare const CODEX_SCOPE = "openid profile email offline_access api.connectors.read api.connectors.invoke";
 export declare const CODEX_CALLBACK_PATH = "/auth/callback";
 export declare const CODEX_PREEMPT_MS: number;
@@ -48,8 +48,8 @@ export declare const CODEX_REASONING_EFFORTS: Readonly<{
 }>;
 /**
  * Mirrors Codex CLI `models.json` plus GET
- * chatgpt.com/backend-api/codex/models (probed 2026-10-07 at `client_version`
- * 0.160.1) — the one place model facts live, so the picker, the context
+ * chatgpt.com/backend-api/codex/models (probed 2026-10-08 at `client_version`
+ * 0.161.0) — the one place model facts live, so the picker, the context
  * aliases and the Fast tier cannot drift apart. The backend gates rows on
  * `client_version`: `gpt-6-sol` / `gpt-6-luna` appear at >= 0.155.0,
  * `gpt-6.1-sol` at >= 0.159.0 — a stale pin hides new models, hence

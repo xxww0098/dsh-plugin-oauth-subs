@@ -30,7 +30,7 @@
   协议段由该路由 DSH `api` 推导——`openai-completions` → `Chat`、
   `openai-responses` → `Responses`、`anthropic-messages` → `Anthropic`。
   OAuth 家族写在 `src/oauth/models.ts` `buildProviders`，OpenCode Go 写在
-  `src/apikey/opencode-go/models.ts` 的两条自有路由上；同一前缀 `Subs`
+  `src/apikey/opencode-go/models.ts` 的三条自有路由上；同一前缀 `Subs`
   不暗示登录方式（Go / Command Code 仍是 API key 直连）。协议段不是厂商
   品牌：GLM 是 `Subs · GLM · Anthropic`，不是 `Subs · GLM`。
 - Public sessions never expose tokens, refresh secrets, or opaque account
