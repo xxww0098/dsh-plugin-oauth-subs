@@ -8,6 +8,29 @@
 
 ![订阅工作台 —— 额度页签、账号卡片与供应商栏](docs/readme-workbench.jpg)
 
+<details>
+<summary><b>更多页面</b> —— 模型 · 用量 · 榜单 · 设置</summary>
+
+<br>
+
+### 模型
+
+![模型页 —— 模型目录与各家族启用开关](docs/screenshots/models.jpg)
+
+### 用量
+
+![用量页 —— Token、缓存读、调用、首字延迟与估算成本](docs/screenshots/usage.jpg)
+
+### 榜单
+
+![榜单页 —— 按净提升排序的模型榜单](docs/screenshots/ranking.jpg)
+
+### 设置
+
+![设置页 —— 版本、仓库、自动更新与代理](docs/screenshots/settings.jpg)
+
+</details>
+
 ## 安装
 
 ```sh
@@ -15,11 +38,11 @@ dsh plugin --profile web add https://github.com/xxww0098/dsh-plugin-oauth-subs
 dsh web
 ```
 
-在侧边栏的 **插件 Plugins** 下打开 **订阅 / Subscriptions**。工作台有三个页签——**额度**、**模型**、**版本**——每个账号一张卡片。
+在侧边栏的 **插件 Plugins** 下打开 **订阅 / Subscriptions**。工作台分为 **额度**、**模型**、**用量**、**榜单**、**设置** 等页签——额度页每个账号一张卡片。
 
 **Desktop** 由 Electron 应用管理——`dsh plugin --profile desktop` 会被拒绝，请改用 **插件 → 添加插件** 粘贴仓库地址安装。数据在 `~/.dsh/profiles/desktop/data/dsh-plugin-oauth-subs/`，与 web profile **不**共享；迁移：退出应用后把 `auth.json`（连同保存选择器状态的 `models.json`）复制过去。代理端口（`8318`）是全局回环绑定——两个 profile 不能同时运行（`EADDRINUSE`）；要改端口，在该 profile 的 `cordis.patch.yml` 里给 `id: oauth-subs` 设不同的 `config.port`。若桌面应用启动即退，运行 `launchctl unsetenv ELECTRON_RUN_AS_NODE`。
 
-更新从 **版本** 卡片自安装（**检查更新 → 安装更新**，或每 15 分钟检查一次的自动更新开关）；重启后加载新副本，`data/` 保留。若 `node_modules` 比运行中的进程新，卡片会标记过期进程。本地目录链接时则改走 `npm run build` 热重载；挂着 `npm run dev` 可监听源码、保存即自动重建。
+更新从 **设置** 卡片自安装（**检查更新 → 安装更新**，或每 15 分钟检查一次的自动更新开关）；重启后加载新副本，`data/` 保留。若 `node_modules` 比运行中的进程新，卡片会标记过期进程。本地目录链接时则改走 `npm run build` 热重载；挂着 `npm run dev` 可监听源码、保存即自动重建。
 
 ## 家族
 
