@@ -198,6 +198,19 @@
       )
     }
 
+    /**
+     * The Zen panel: the legend chrome every family card carries (a bordered
+     * group box whose provider name straddles the top border), around the wallet
+     * card, and no add-account row — Zen rides the Go account's credential, so
+     * there is nothing to add. Without the box the wallet card rendered as a
+     * bare article under the OpenCode Go legend and read as part of Go.
+     */
+    function ZenQuotaPanel({ t, title, account, onRefresh }) {
+      return h('section', { className: 'osubs-card osubs-card--legend' },
+        h('h3', { className: 'osubs-card-title' }, title),
+        h('div', { className: 'osubs-accts' }, h(ZenQuotaCard, { t, account, onRefresh })))
+    }
+
     function ProviderCard({ t, id, title, account, pending, onLogin, onImport, onLogout, onCancel, onManual, onSwitch, onRefreshQuota, onResetQuota, onUseKey, onGoSave }) {
       const [addOpen, setAddOpen] = useState(false)
       const [paste, setPaste] = useState('')

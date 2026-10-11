@@ -135,17 +135,38 @@ providers are not reported.
 
 分享 renders the whole card, not only the visible part, as a long PNG:
 clone with computed styles inlined, draw via SVG foreignObject onto a
-canvas, no library. The clone keeps no frozen **width** on a text-bearing
-box: an SVG image resolves the font on its own, so a shrink-to-fit box
-pinned to the page's pixel width wraps inside that width and paints over
-the line below it (剩余 100% over its own reset line). Absolute boxes keep
-their geometry, and every height stays inlined — bars and card chrome
-depend on it. Footer under a rule: plugin + version and repo on the
-left; 分析日期 (the scan time) and scope · range on the right. Head
-controls (更新于 / 刷新 / 分享, `.osubs-noshot`) stay out of the image.
-The PNG goes straight to the clipboard. The write starts inside the click
-so user activation holds. A write that never settles counts as failed
-after 4 s.
+canvas, no library. Only styles that differ from what the image computes
+on its own are inlined, which is what keeps the button quick: a 40-row
+card inlines ~23k properties instead of ~467k, its SVG markup drops from
+~15 MB to ~0.9 MB, the decode from ~133 ms to ~10 ms, and the thumbnail
+lands 2.3× earlier — pixel-identical output, pinned by diffing both
+renders. Custom properties ride the clone root (they are inherited; a
+descendant keeps its own only where its inline style resolves `var()`);
+an inherited property is dropped when it equals the parent's value, but
+only while the tag has no UA rule for it (h3 `font-size`, p margins,
+button font); everything else is dropped when it equals the tag's UA
+default, read from a hidden same-origin iframe probe. Two families never
+prune, each one a measured regression: an SVG image resolves fonts per
+element (a pruned `font-family` re-measures the text), and `min-width` /
+`min-height` keep a context-dependent `auto` for flex/grid items that a
+block-level probe reads as `0px`. The clone keeps no frozen **width** on
+a text-bearing box: an SVG image resolves the font on its own, so a
+shrink-to-fit box pinned to the page's pixel width wraps inside that
+width and paints over the line below it (剩余 100% over its own reset
+line). Absolute boxes keep their geometry, and every height stays
+inlined — bars and card chrome depend on it. Footer under a rule: plugin
++ version and repo on the left; 分析日期 (the scan time) and scope ·
+range on the right. Head controls (更新于 / 刷新 / 分享, `.osubs-noshot`)
+stay out of the image.
+
+The click paints before the capture: the flash and the busy button go up
+first, and the capture starts one frame later, so the ~150 ms of cloning
+never reads as an unacknowledged click. The decoded SVG is already the
+finished image, so the thumbnail and the preview show it while the PNG is
+still encoding; the clipboard and 保存图片 take the PNG, and their buttons
+stay disabled until it lands. The write is still created in the click's
+own task, so user activation holds. A write that never settles counts as
+failed after 4 s.
 
 Motion matches the macOS screenshot: a white flash over the card's
 on-screen rect, then `ShotThumb` flies from that rect to the window's
@@ -283,6 +304,13 @@ category, bullet list, footer 关闭.
 Remaining-bar color and copy are in [`../MASTER.md`](../MASTER.md).
 `QuotaRow` is remaining-only. Cursor `kind === 'product'` is not a
 used-bar exception.
+
+OpenCode's two products share one account (one key, one vault) and still keep
+their own panels: `ProviderCard` for Go, `ZenQuotaPanel` for the Zen wallet.
+Both carry the family legend box — the Zen panel only leaves out the
+add-account row, because there is no second credential to add. A wallet card
+without that legend reads as part of the OpenCode Go section, in the pane and
+in the shared image alike.
 
 Each window's reset sits inside that row's `QuotaMeter`. A missing
 `resetAt` draws nothing, never a shared line between meters. The reset

@@ -377,7 +377,8 @@ test('Zen keeps its own card: Go meters and the Zen wallet never mix', () => {
   const ui = assembleUi()
   // One account, two products: the credential and the Console read stay shared,
   // but each product gets its own 额度 card (a Zen entry that rendered the Go
-  // card, or nothing at all, is the bug this pins).
+  // card, or nothing at all, is the bug this pins) — and its own legend, or the
+  // wallet card renders as a bare article under the OpenCode Go heading.
   for (const expected of [
     'const opencodeProductView = (keep) => {',
     'const opencodeGoView = opencodeProductView((row) => !isZenRow(row))',
@@ -386,7 +387,11 @@ test('Zen keeps its own card: Go meters and the Zen wallet never mix', () => {
     'function ZenQuotaCard({ t, account, onRefresh })',
     "h(QuotaBlock, { t, family: 'opencode-zen', quota })",
     "quotaPanel('opencode-go', card('opencode-go', opencodeGoView))",
-    "quotaPanel('opencode-zen', h(ZenQuotaCard, {",
+    'function ZenQuotaPanel({ t, title, account, onRefresh })',
+    "h('section', { className: 'osubs-card osubs-card--legend' },",
+    "h('div', { className: 'osubs-accts' }, h(ZenQuotaCard, { t, account, onRefresh }))",
+    "quotaPanel('opencode-zen', h(ZenQuotaPanel, {",
+    "title: usageFamilyName(t, 'opencode-zen'),",
     "id !== 'opencode-zen' || zenVisible",
   ]) {
     assert.equal(ui.includes(expected), true, expected)

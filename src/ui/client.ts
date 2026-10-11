@@ -516,8 +516,9 @@ window.__ModuleLoader__.load({
             quotaPanel('devin'),
             quotaPanel('cline'),
             quotaPanel('opencode-go', card('opencode-go', opencodeGoView)),
-            zenVisible && quotaPanel('opencode-zen', h(ZenQuotaCard, {
+            zenVisible && quotaPanel('opencode-zen', h(ZenQuotaPanel, {
               t,
+              title: usageFamilyName(t, 'opencode-zen'),
               account: opencodeZenView,
               onRefresh: (accountId) => run('quota', { provider: 'opencode-go', id: accountId }),
             })),

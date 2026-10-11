@@ -604,9 +604,11 @@ test('OpenCode Go renders through the shared account cards and add-account dialo
   assert.match(src, /opencodeGoHostStale/)
   assert.equal(src.includes('OpencodeGoPanel'), false)
   // The Go card renders the account's own view (Zen's wallet rows are filtered
-  // out of it), and Zen gets its own card next to it.
+  // out of it), and Zen gets its own card next to it — behind the same legend
+  // box every family card uses, so it does not read as part of OpenCode Go.
   assert.match(src, /quotaPanel\('opencode-go', card\('opencode-go', opencodeGoView\)\)/)
-  assert.match(src, /quotaPanel\('opencode-zen', h\(ZenQuotaCard, \{/)
+  assert.match(src, /quotaPanel\('opencode-zen', h\(ZenQuotaPanel, \{/)
+  assert.match(src, /function ZenQuotaPanel\(\{ t, title, account, onRefresh \}\) \{\n\s*return h\('section', \{ className: 'osubs-card osubs-card--legend' \},/)
   assert.match(src, /onGoSave: async \(payload\) => \{\s*await callRpc\(rpc, 'goSave', payload\)\s*await refresh\(true\)\s*\}/)
   assert.match(src, /id === 'opencode-go' && !busy && h\('form'/)
   assert.match(src, /roster\.some\(\(row\) => row\.apiKeySet\) \? t\.opencodeGoKeySet : t\.opencodeGoKeyPlaceholder/)
@@ -1191,6 +1193,53 @@ test('分享 on 额度: identities masked in the image, add-account row and acco
   assert.match(src, /&& source\.scrollWidth <= source\.clientWidth \+ 1/)
   // Heights stay frozen: the remaining bar and the card chrome depend on them.
   assert.equal(/releaseWidth && \(name === 'height'/.test(src), false)
+})
+
+test('分享 long shot inlines only what the image would not compute on its own', async () => {
+  const src = assembleUi()
+  // Custom properties are inherited, so the clone root carries the whole set and
+  // a descendant keeps its own only where its inline style resolves var().
+  assert.match(src, /const INHERITED = new Set\(`-webkit-border-horizontal-spacing/)
+  assert.match(src, /const keepCustom = isRoot \|\| VAR_REF\.test\(raw\)/)
+  assert.match(src, /const custom = name\.startsWith\('--'\)\n\s*if \(custom && !keepCustom\) continue/)
+  // Everything else is dropped when it matches what the image computes anyway:
+  // the parent's value for an inherited property, the tag's UA default otherwise.
+  assert.match(src, /if \(value === parentStyle\.getPropertyValue\(name\)/)
+  assert.match(src, /else if \(value === defaults\.get\(name\)\) continue/)
+  // The UA default comes from a same-origin iframe with no author CSS, one probe
+  // per tag, plus one shared probe of initial values.
+  assert.match(src, /function tagDefaultOf\(source\) \{/)
+  assert.match(src, /const key = `\$\{source\.localName\}|\$\{source\.namespaceURI\}`/)
+  assert.match(src, /const probe = doc\.createElement\('div'\)\n\s*probe\.style\.all = 'initial'/)
+  // A tag's own UA rule beats inheritance once our value is gone (h3 font-size,
+  // p margin, button font), so an inherited value drops only when that rule
+  // lands on the same value.
+  assert.match(src, /ua === undefined \|\| ua === initialValuesOf\(\)\.get\(name\) \|\| ua === value/)
+  // Two families never pruned, each a measured regression: an SVG image
+  // resolves fonts per element (a pruned font-family re-measures the text), and
+  // min-* keeps a context-dependent auto for flex/grid items that a block-level
+  // probe reads as 0px.
+  assert.match(src, /const NEVER_PRUNE = new Set\(\['font', 'font-family', 'min-width', 'min-height', 'min-inline-size', 'min-block-size'\]\)/)
+  assert.match(src, /if \(!isRoot && !NEVER_PRUNE\.has\(name\)\) \{/)
+})
+
+test('分享 paints feedback first and shows the SVG preview before the PNG lands', async () => {
+  const src = assembleUi()
+  // The capture waits one frame, so the flash and the busy button paint before
+  // the clone takes the thread (~150 ms on a 40-row card).
+  assert.match(src, /const nextFrame = \(\) => new Promise<void>\(\(resolve\) => \{/)
+  assert.match(src, /const capture = nextFrame\(\)\.then\(\(\) => renderLongShot\(node, footer\)\)/)
+  assert.match(src, /setShot\(\{ id: seq\.current\+\+, phase: 'busy', from, flash: !reducedMotion\(\), copied: null, fileName \}\)/)
+  // The capture returns the decoded SVG preview plus the PNG promise; the
+  // clipboard write is still created in the click's own task, so user
+  // activation holds.
+  assert.match(src, /const png = new Promise<Blob>\(\(resolve, reject\) => canvas\.toBlob/)
+  assert.match(src, /return \{ svg, png \}/)
+  assert.match(src, /void copyPng\(capture\.then\(\(\{ png \}\) => png\)\)/)
+  // Thumbnail and preview read the SVG, copy and save read the PNG.
+  assert.match(src, /key: shot\.id,/)
+  assert.match(src, /link\.href = shot\.pngUrl/)
+  assert.match(src, /disabled: !shot\.pngUrl, onClick: save, label: t\.usageSave/)
 })
 
 test('额度 分享 says on hover what the image does to identities; 用量 / 榜单 stay plain', async () => {
