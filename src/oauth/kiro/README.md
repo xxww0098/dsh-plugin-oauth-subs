@@ -36,7 +36,7 @@ AWS **Kiro / CodeWhisperer**。协议对齐 [ZyphrZero/kiro.rs](https://github.c
 `canonicalizeKiroMethod` 把 `oauth`/`github`/`google`/`gmail`/`gh` → `social`，`builder-id`/`builderid` → `idc`，`azuread`/`entra` → `external_idp`。
 没有 `authMethod` 时 `inferKiroAuthMethod` 看 provider / 是否带 clientId+secret：GitHub/Google 是 social，Builder ID / Enterprise 是 idc。
 
-导入：`parseKiroImportText` / `sessionsFromKiroAuth` / `importKiroAuth`。格式蒸馏自 [kiro-manager-lite](https://github.com/lucks-cloud/kiro-manager-lite)（**不**抄 AGPL 源码）和 kiro.rs：
+导入：`parseKiroImportText` / `sessionsFromKiroAuth` / `importKiroAuth`。格式对照 [kiro-manager-lite](https://github.com/lucks-cloud/kiro-manager-lite) 与 kiro.rs 的导出样例（**不**引用 AGPL 源码）：
 
 | 来源 | 形状 |
 |---|---|
@@ -161,7 +161,7 @@ proxy 只删 `prompt_cache_retention` / `prompt_cache_options`，**不**把 `pro
 - 不要用「以已有文本开头」猜累计快照：块是增量，重复开头的块是新文本；也不要 trim 推理块，边界空格是正文。
 - 不要给没提供 tools 的请求发 `toolUses` / `toolResults`（Bedrock 400）。
 - 不要在会话中途改工具列表的顺序 / 描述（工具在缓存前缀里，改一处整段缓存作废）。
-- 不要把 kiro-manager-lite 的 AGPL 源码贴进来；只蒸馏格式，解析器写自己的。
+- 不要把 kiro-manager-lite 的 AGPL 源码贴进来；格式只做对照，解析器写自己的。
 
 ## 归因
 

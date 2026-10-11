@@ -21,7 +21,6 @@ import { commandCodeModelById } from '../apikey/command-code/index.js'
 import { ollamaModel } from '../apikey/ollama/index.js'
 import { codexModel } from '../oauth/codex/index.js'
 import { clineModel } from '../oauth/cline/index.js'
-import { copilotModel } from '../oauth/copilot/index.js'
 import { devinModel } from '../oauth/devin/index.js'
 import { glmModel } from '../oauth/glm/index.js'
 
@@ -48,22 +47,20 @@ export function codexMaxContextWindow(modelId) {
 
 /** The row's `maxContextWindow` across families, or undefined when it has none. */
 export function maxContextWindowOf(modelId) {
-  return codexMaxContextWindow(modelId) ?? glmModel(modelId)?.maxContextWindow ?? copilotModel(modelId)?.maxContextWindow
+  return codexMaxContextWindow(modelId) ?? glmModel(modelId)?.maxContextWindow
 }
 
 /**
- * Family-scoped ceiling lookup. Vendor ids collide across families
- * (`gpt-6-sol` exists in both `codex` and `copilot`, with different ceilings),
- * so `maxContextOfRow` resolves the row inside its own family and falls back
- * to the row's catalog window — never another family's ceiling. Codex / GLM /
- * Copilot answer from their own catalog lookups; Devin / Cline / Command Code
- * / Ollama are plain static floors, so their branch scans the frozen rows.
+ * Family-scoped ceiling lookup. Vendor ids collide across families, so
+ * `maxContextOfRow` resolves the row inside its own family and falls back to
+ * the row's catalog window — never another family's ceiling. Codex / GLM
+ * answer from their own catalog lookups; Devin / Cline / Command Code /
+ * Ollama are plain static floors, so their branch scans the frozen rows.
  */
 export function familyMaxContextWindow(family, modelId) {
   switch (family) {
     case 'codex': return codexMaxContextWindow(modelId)
     case 'glm': return glmModel(modelId)?.maxContextWindow
-    case 'copilot': return copilotModel(modelId)?.maxContextWindow
     case 'devin': return devinModel(modelId)?.maxContextWindow
     case 'cline': return clineModel(modelId)?.maxContextWindow
     case 'command-code': return commandCodeModelById(modelId)?.maxContextWindow

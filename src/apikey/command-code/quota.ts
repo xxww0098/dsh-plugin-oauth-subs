@@ -15,7 +15,7 @@
  */
 
 import { outboundFetch } from '../../utils/outbound.js'
-import { asNumber } from '../../oauth/quota-shared.js'
+import { asNumber, stampOf } from '../../oauth/quota-shared.js'
 import {
   COMMAND_CODE_CREDITS_URL,
   COMMAND_CODE_PLAN_CREDITS,
@@ -28,17 +28,6 @@ import {
 } from './index.js'
 
 const ACTIVE_SUBSCRIPTION_STATUSES = new Set(['active', 'trialing', 'past_due'])
-
-
-function stampOf(value) {
-  const n = asNumber(value)
-  if (n !== undefined && n > 0) return n > 1e12 ? Math.round(n) : Math.round(n * 1000)
-  if (typeof value === 'string' && value.trim()) {
-    const parsed = Date.parse(value)
-    if (Number.isFinite(parsed)) return parsed
-  }
-  return undefined
-}
 
 /**
  * `getPlanInfo`: planId lowercased, `_`→`-`, longest-prefix match against the

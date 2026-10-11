@@ -7,7 +7,7 @@
  */
 
 import type { ServerResponse } from 'node:http'
-import { RequestError, describeError, sendJson } from '../utils/http.js'
+import { RequestError, describeError, isPreDeliveryFailure, sendJson } from '../utils/http.js'
 import { appendPrivateLine } from '../utils/private-text.js'
 
 /**
@@ -18,6 +18,19 @@ import { appendPrivateLine } from '../utils/private-text.js'
  * may stream without client output — preamble frames do not count.
  */
 export const UPSTREAM_TIMEOUTS = { firstByteMs: 120_000, budgetMs: 270_000, idleMs: 270_000, firstOutputMs: 0 }
+
+/**
+ * Unclassifiable bytes a gated stream may buffer before committing anyway.
+ * Shared by the SSE commit gate (passthrough.ts) and the Codex WebSocket
+ * gate (codex/websocket.ts) so both transports withhold the same window.
+ */
+export const MAX_UNCLASSIFIED_BYTES = 64 * 1024
+
+/**
+ * Everything a gated stream may buffer. Past this the gate commits without
+ * retry protection rather than kill a legitimate response.
+ */
+export const MAX_GATE_BUFFER_BYTES = 2 * 1024 * 1024
 
 let logPath: string | undefined
 
@@ -210,9 +223,12 @@ export function upstreamRequest({ family, signal, startedAt = Date.now(), stream
         if (failure instanceof UpstreamFailure ? (failure.code === 'http' || failure.code === 'quota') : failure instanceof RequestError) throw failure
         const last = failure instanceof UpstreamFailure ? failure : new UpstreamFailure(502, describeError(failure), { code: 'transport' })
         failures += 1
-        const wait = retryDelayMs(failures - 1)
+        // A fault raised before any HTTP answer is a fresh dial, not a busy
+        // upstream, so the first retry goes out at once; once the path has
+        // failed twice the schedule takes over (see isPreDeliveryFailure).
+        const wait = failures === 1 && isPreDeliveryFailure(failure) ? 0 : retryDelayMs(failures - 1)
         if (failures < UPSTREAM_ATTEMPTS && Date.now() - startedAt + wait + firstByteMs <= budgetMs) {
-          logUpstream(`${family} retrying upstream (attempt ${failures + 1}/${UPSTREAM_ATTEMPTS}) in ${wait}ms: ${last.message}`)
+          logUpstream(`${family} retrying upstream (attempt ${failures + 1}/${UPSTREAM_ATTEMPTS}) ${wait === 0 ? 'at once' : `in ${wait}ms`}: ${last.message}`)
           await sleep(wait, signal)
           continue
         }

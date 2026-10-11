@@ -27,7 +27,35 @@ export declare function peekPiAiProviders(settings: any): Promise<any>;
  * required `x-opencode-session` header. Without `OPENCODE_API_KEY` nothing is
  * served, so DSH's model list stays clean.
  */
-export declare function ensureOpencodeGoRoute(settings: any, { selected, apiKeySet, contexts, efforts, apply }?: any): Promise<{
+export declare function ensureOpencodeGoRoute(settings: any, options?: any): Promise<{
+    status: string;
+    routes?: undefined;
+    mutations?: undefined;
+    error?: undefined;
+} | {
+    status: string;
+    routes: any[];
+    mutations: any[];
+    error?: undefined;
+} | {
+    status: string;
+    error: string;
+    routes?: undefined;
+    mutations?: undefined;
+} | {
+    status: string;
+    routes: any[];
+    mutations?: undefined;
+    error?: undefined;
+}>;
+/**
+ * OpenCode Zen's three routes, on the same credential as Go (`OPENCODE_API_KEY`):
+ * the account, vault, Console session and card stay one, so this writer has no
+ * legacy profile to clean up and never touches DSH's own `providers.opencode`
+ * (the built-in Zen catalog route is the user's to enable). Same selection,
+ * context-override and effort rules as Go; the routes carry no headers.
+ */
+export declare function ensureOpencodeZenRoute(settings: any, options?: any): Promise<{
     status: string;
     routes?: undefined;
     mutations?: undefined;

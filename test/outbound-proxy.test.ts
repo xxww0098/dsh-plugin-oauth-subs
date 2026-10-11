@@ -16,6 +16,7 @@ import {
   outboundFetch,
   outboundProxyFor,
   outboundProxyPath,
+  parseScutilProxy,
   proxySource,
   readOutboundPrefs,
   redactProxyUrl,
@@ -23,6 +24,7 @@ import {
   shouldBypassProxy,
   writeOutboundPrefs,
 } from '../lib/utils/outbound.js'
+import { isPreDeliveryFailure } from '../lib/utils/http.js'
 
 // This file must be the first in the process to touch the module-level owner:
 // every later test calls configureOutbound, which replaces it. The
@@ -101,14 +103,161 @@ test('an invalid config or settings value falls through to the next source', () 
   const env = { HTTPS_PROXY: 'http://e:1' }
   assert.equal(resolveProxyUrl('socks5://c:1', 'http://s:2', env), 'http://s:2')
   assert.equal(proxySource('socks5://c:1', 'http://s:2', env), 'settings')
-  assert.equal(resolveProxyUrl('', 'http://', env), 'http://e:1')
-  assert.equal(proxySource('', 'http://', env), 'env')
+  // A settings URL that cannot normalize no longer falls to env: custom owns
+  // its failure (direct + off); env fallback is the auto tier's job.
+  assert.equal(resolveProxyUrl('', 'http://', env), undefined)
+  assert.equal(proxySource('', 'http://', env), 'off')
   assert.equal(resolveProxyUrl('', 'http://s:2', env), 'http://s:2', 'settings beats env')
   assert.equal(resolveProxyUrl(undefined, undefined, {}), undefined)
   // A bare word is a valid http hostname after scheme-defaulting; only an
   // unnormalizable scheme falls all the way through to off.
   assert.equal(proxySource('nope', '', {}), 'config')
   assert.equal(proxySource('socks5://x:1', '', {}), 'off')
+})
+
+// --- tri-state modes ------------------------------------------------------------
+
+test('off mode forces direct even when the system and env carry proxies', async () => {
+  const session = createOutboundSession({
+    env: { HTTPS_PROXY: 'http://env:9' },
+    fetchFn: async () => ({ ok: true }),
+    readSystemProxy: async () => ({ url: 'http://127.0.0.1:1082', bypass: [] }),
+  })
+  await session.ready
+  assert.equal(session.snapshot().source, 'os', 'auto wins before the switch')
+  const view = await session.setPrefs({ mode: 'off' })
+  assert.equal(view.mode, 'off')
+  assert.equal(await session.proxyFor('https://api.x.ai/x'), undefined)
+  const snap = session.snapshot()
+  assert.equal(snap.source, 'off')
+  assert.equal(snap.configured, false)
+  await session.close()
+})
+
+test('auto mode rides the system proxy, its exceptions, and reports os', async () => {
+  const session = createOutboundSession({
+    env: { HTTPS_PROXY: 'http://env:9' },
+    agentFor: (url) => ({ uri: url }),
+    fetchFn: async () => ({ ok: true }),
+    readSystemProxy: async () => ({ url: 'http://127.0.0.1:1082', bypass: ['skip.example'] }),
+  })
+  await session.ready
+  assert.equal(await session.proxyFor('https://api.x.ai/v1/responses'), 'http://127.0.0.1:1082', 'system beats env')
+  assert.equal(await session.proxyFor('https://skip.example/x'), undefined, 'system ExceptionsList bypasses')
+  assert.equal(await session.proxyFor('https://deep.skip.example/y'), undefined, 'suffix rule applies')
+  const snap = session.snapshot()
+  assert.equal(snap.source, 'os')
+  assert.equal(snap.mode, 'auto')
+  assert.equal(snap.url, 'http://127.0.0.1:1082')
+  await session.close()
+})
+
+test('auto mode falls back to env when the system reports nothing', async () => {
+  const session = createOutboundSession({
+    env: { HTTPS_PROXY: 'http://env:9' },
+    agentFor: (url) => ({ uri: url }),
+    fetchFn: async () => ({ ok: true }),
+    readSystemProxy: async () => ({ url: '', bypass: [] }),
+  })
+  await session.ready
+  assert.equal(await session.proxyFor('https://api.x.ai/x'), 'http://env:9')
+  assert.equal(session.snapshot().source, 'env')
+  await session.close()
+})
+
+test('a system-proxy change swaps the agent on the next forced refresh', async () => {
+  let system = { url: 'http://127.0.0.1:1082', bypass: [] }
+  const dispatchers: any[] = []
+  const session = createOutboundSession({
+    env: {},
+    agentFor: (url) => ({ uri: url }),
+    fetchFn: async (_input: any, init: any = {}) => {
+      dispatchers.push(init.dispatcher)
+      return { ok: true }
+    },
+    readSystemProxy: async () => system,
+  })
+  await session.ready
+  await session.request('https://chatgpt.com/x')
+  assert.deepEqual(dispatchers.at(-1), { uri: 'http://127.0.0.1:1082' })
+  system = { url: 'http://127.0.0.1:1083', bypass: [] }
+  // setPrefs(auto) forces the refresh; the rebuilt agent rides the new URL.
+  await session.setPrefs({ mode: 'auto' })
+  await session.request('https://chatgpt.com/x')
+  assert.deepEqual(dispatchers.at(-1), { uri: 'http://127.0.0.1:1083' })
+  await session.close()
+})
+
+test('setPrefs keeps the custom draft across an auto detour; prefs raw, snapshot redacted', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-outbound-'))
+  const path = outboundProxyPath(dir)
+  const session = createOutboundSession({
+    path,
+    env: {},
+    agentFor: (url) => ({ uri: url }),
+    fetchFn: async () => ({ ok: true }),
+    readSystemProxy: () => undefined,
+  })
+  await session.ready
+  await session.setPrefs({ mode: 'custom', url: 'http://user:secret@10.0.0.2:8080' })
+  assert.equal((await readOutboundPrefs(path)).url, 'http://user:secret@10.0.0.2:8080')
+  // prefs() carries the raw URL for the settings prefill…
+  assert.equal((await session.prefs()).url, 'http://user:secret@10.0.0.2:8080')
+  // …while snapshot() stays redacted (that one lands in the stored status).
+  assert.equal(session.snapshot().url, 'http://***@10.0.0.2:8080')
+  await session.setPrefs({ mode: 'auto', url: 'http://user:secret@10.0.0.2:8080' })
+  assert.deepEqual(await readOutboundPrefs(path), { mode: 'auto', url: 'http://user:secret@10.0.0.2:8080' }, 'the draft survives the detour')
+  assert.equal(session.snapshot().source, 'off', 'nothing to follow: direct')
+  await session.setPrefs({ mode: 'custom', url: 'http://user:secret@10.0.0.2:8080' })
+  assert.equal(session.snapshot().source, 'settings')
+  await assert.rejects(() => session.setPrefs({ mode: 'custom', url: 'socks5://x:1' }), /Invalid proxy URL/)
+  await assert.rejects(() => session.setPrefs({ mode: 'custom', url: '' }), /Invalid proxy URL/)
+  await session.close()
+})
+
+test('a legacy {url} prefs file reads back as custom mode', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-outbound-'))
+  const path = outboundProxyPath(dir)
+  await writeFile(path, '{"url":"http://127.0.0.1:7890"}\n', 'utf8')
+  const session = createOutboundSession({
+    path,
+    env: {},
+    agentFor: (url) => ({ uri: url }),
+    fetchFn: async () => ({ ok: true }),
+    readSystemProxy: () => undefined,
+  })
+  await session.ready
+  assert.equal(session.snapshot().mode, 'custom')
+  assert.equal(session.snapshot().source, 'settings')
+  await session.close()
+})
+
+// --- system proxy (scutil) ------------------------------------------------------
+
+test('parseScutilProxy prefers HTTPS, falls back to HTTP, and collects exceptions', () => {
+  const both = parseScutilProxy(`<dictionary> {
+  ExceptionsList : <array> {
+    0 : 127.0.0.1
+    1 : *.local
+    2 : 169.254.0.0/16"
+  }
+  HTTPEnable : 1
+  HTTPProxy : 127.0.0.1
+  HTTPPort : 1082
+  HTTPSEnable : 1
+  HTTPSProxy : 127.0.0.1
+  HTTPSPort : 1083
+  SOCKSEnable : 0
+}`)
+  assert.equal(both.url, 'http://127.0.0.1:1083')
+  assert.deepEqual(both.bypass, ['127.0.0.1', '*.local', '169.254.0.0/16"'])
+  const httpOnly = parseScutilProxy('<dictionary> {\n  HTTPEnable : 1\n  HTTPProxy : 10.0.0.5\n  HTTPPort : 8080\n  HTTPSEnable : 0\n}')
+  assert.equal(httpOnly.url, 'http://10.0.0.5:8080')
+  assert.equal(httpOnly.bypass.length, 0)
+  // SOCKS-only settings cannot be honored: ProxyAgent speaks http(s) tunnels.
+  assert.equal(parseScutilProxy('<dictionary> {\n  SOCKSEnable : 1\n  SOCKSProxy : 127.0.0.1\n  SOCKSPort : 1080\n}').url, '')
+  assert.equal(parseScutilProxy('').url, '')
+  assert.equal(parseScutilProxy(undefined).url, '')
 })
 
 // --- NO_PROXY matching ----------------------------------------------------------
@@ -146,16 +295,18 @@ test('redactProxyUrl masks any userinfo and blanks unusable input', () => {
 // --- prefs files ----------------------------------------------------------------
 
 test('normalizeOutboundPrefs trims, tolerates junk, and writeOutboundPrefs round-trips', async () => {
-  assert.deepEqual(normalizeOutboundPrefs(null), { url: '' })
-  assert.deepEqual(normalizeOutboundPrefs({}), { url: '' })
-  assert.deepEqual(normalizeOutboundPrefs({ url: '  http://p:1  ' }), { url: 'http://p:1' })
+  assert.deepEqual(normalizeOutboundPrefs(null), { mode: 'auto', url: '' })
+  assert.deepEqual(normalizeOutboundPrefs({}), { mode: 'auto', url: '' })
+  assert.deepEqual(normalizeOutboundPrefs({ url: '  http://p:1  ' }), { mode: 'custom', url: 'http://p:1' }, 'legacy {url} means custom')
+  assert.deepEqual(normalizeOutboundPrefs({ mode: 'off', url: 'http://p:1' }), { mode: 'off', url: 'http://p:1' }, 'non-custom modes keep the draft')
+  assert.deepEqual(normalizeOutboundPrefs({ mode: 'junk' }), { mode: 'auto', url: '' })
   const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-outbound-'))
   const path = outboundProxyPath(dir)
   assert.ok(path.endsWith(join(dir, OUTBOUND_PROXY_FILE)))
-  const saved = await writeOutboundPrefs(path, { url: '  http://127.0.0.1:7890  ' })
-  assert.deepEqual(saved, { url: 'http://127.0.0.1:7890' }, 'saved value is normalized')
-  assert.equal(await readFile(path, 'utf8'), '{"url":"http://127.0.0.1:7890"}\n')
-  assert.deepEqual(await readOutboundPrefs(path), { url: 'http://127.0.0.1:7890' })
+  const saved = await writeOutboundPrefs(path, { mode: 'custom', url: '  http://127.0.0.1:7890  ' })
+  assert.deepEqual(saved, { mode: 'custom', url: 'http://127.0.0.1:7890' }, 'saved value is normalized')
+  assert.equal(await readFile(path, 'utf8'), '{"mode":"custom","url":"http://127.0.0.1:7890"}\n')
+  assert.deepEqual(await readOutboundPrefs(path), { mode: 'custom', url: 'http://127.0.0.1:7890' })
 })
 
 test('readOutboundPrefs falls back to defaults on unreadable or malformed files', async () => {
@@ -164,7 +315,7 @@ test('readOutboundPrefs falls back to defaults on unreadable or malformed files'
   await writeFile(bad, '{nope', 'utf8')
   assert.deepEqual(await readOutboundPrefs(bad), defaultOutboundPrefs(), 'broken JSON')
   await writeFile(bad, '[1,2]', 'utf8')
-  assert.deepEqual(await readOutboundPrefs(bad), { url: '' }, 'non-object JSON')
+  assert.deepEqual(await readOutboundPrefs(bad), { mode: 'auto', url: '' }, 'non-object JSON')
   const asDir = join(dir, 'as-dir.json')
   await mkdir(asDir)
   assert.deepEqual(await readOutboundPrefs(asDir), defaultOutboundPrefs(), 'a directory is unreadable')
@@ -176,6 +327,7 @@ test('requestUrl accepts strings, Request-like .url objects, URL instances, and 
   const seen: any[] = []
   const session = createOutboundSession({
     env: {},
+    readSystemProxy: () => undefined,
     fetchFn: async (input: any, init: any = {}) => {
       seen.push({ input, init })
       return { ok: true }
@@ -230,7 +382,29 @@ test('a proxied failure is wrapped with the redacted via-url unless the caller a
   await session.close()
 })
 
-test('setUrl leaves file and state untouched when persisting fails', async () => {
+test('a proxied socket fault keeps its cause so the upstream retry can classify it', async () => {
+  const agent = { uri: 'stub' }
+  const socketFault = new TypeError('fetch failed', { cause: Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' }) })
+  const session = createOutboundSession({
+    configUrl: 'http://127.0.0.1:7890',
+    env: {},
+    agentFor: () => agent,
+    fetchFn: async () => { throw socketFault },
+  })
+  await session.ready
+  await assert.rejects(
+    () => session.request('https://chatgpt.com/x'),
+    (error: any) => {
+      assert.equal(error.message, 'outbound proxy unavailable: fetch failed: ECONNRESET via http://127.0.0.1:7890')
+      assert.equal(error.cause, socketFault, 'the wrapper keeps the fetch error reachable')
+      assert.equal(isPreDeliveryFailure(error), true)
+      return true
+    },
+  )
+  await session.close()
+})
+
+test('setPrefs leaves file and state untouched when persisting fails', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-outbound-'))
   const path = outboundProxyPath(dir)
   await writeOutboundPrefs(path, { url: 'http://127.0.0.1:7890' })
@@ -238,6 +412,7 @@ test('setUrl leaves file and state untouched when persisting fails', async () =>
   const session = createOutboundSession({
     path,
     env: {},
+    readSystemProxy: () => undefined,
     agentFor: (url: string) => ({ uri: url }),
     fetchFn: async (_input: any, init: any = {}) => {
       dispatchers.push(init.dispatcher)
@@ -250,7 +425,7 @@ test('setUrl leaves file and state untouched when persisting fails', async () =>
   await rm(path)
   await mkdir(path)
   await assert.rejects(
-    () => session.setUrl('http://10.0.0.2:8080'),
+    () => session.setPrefs({ mode: 'custom', url: 'http://10.0.0.2:8080' }),
     (error: any) => ['EISDIR', 'ENOTDIR', 'EPERM'].includes(error?.code),
   )
   assert.deepEqual(session.snapshot(), before, 'state is exactly what it was')
@@ -267,6 +442,7 @@ test('agent close failures during a swap are swallowed, not surfaced', async () 
   const session = createOutboundSession({
     path,
     env: {},
+    readSystemProxy: () => undefined,
     agentFor: (url: string) => ({
       uri: url,
       close: url.includes('7890') ? async () => { throw new Error('close boom') } : async () => {},
@@ -274,7 +450,7 @@ test('agent close failures during a swap are swallowed, not surfaced', async () 
     fetchFn: async () => ({ ok: true }),
   })
   await session.ready
-  await session.setUrl('http://10.0.0.2:8080')
+  await session.setPrefs({ mode: 'custom', url: 'http://10.0.0.2:8080' })
   for (let i = 0; i < 10; i++) await new Promise((resolve) => setImmediate(resolve))
   assert.equal(session.snapshot().url, 'http://10.0.0.2:8080', 'the swap completed despite the old agent refusing to close')
   await session.close()

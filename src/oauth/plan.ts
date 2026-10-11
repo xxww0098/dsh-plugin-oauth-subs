@@ -10,7 +10,6 @@ import { KIRO_PLAN_NAMES } from './kiro/index.js'
 import { ANTIGRAVITY_PLAN_NAMES } from './antigravity/index.js'
 import { CURSOR_PLAN_NAMES } from './cursor/index.js'
 import { OLLAMA_PLAN_NAMES } from '../apikey/ollama/index.js'
-import { COPILOT_PLAN_NAMES } from './copilot/index.js'
 import { DEVIN_PLAN_NAMES, DEVIN_TIER_NAMES } from './devin/index.js'
 import { CLINE_PLAN_NAMES } from './cline/index.js'
 import { commandCodePlanLabel } from '../apikey/command-code/quota.js'
@@ -145,10 +144,6 @@ export function formatPlanLabel(raw: unknown, family?: string): string | undefin
     const label = planNameOf(OLLAMA_PLAN_NAMES, slug, compact)
     if (label) return label
   }
-  if (family === 'copilot') {
-    const label = planNameOf(COPILOT_PLAN_NAMES, slug, compact)
-    if (label) return label
-  }
   if (family === 'cline') {
     const label = planNameOf(CLINE_PLAN_NAMES, slug, compact)
     if (label) return label
@@ -168,7 +163,7 @@ export function formatPlanLabel(raw: unknown, family?: string): string | undefin
     const label = commandCodePlanLabel(trimmed)
     if (label) return label
   }
-  if (family !== 'glm' && family !== 'grok' && family !== 'kiro' && family !== 'antigravity' && family !== 'cursor' && family !== 'ollama' && family !== 'kimi' && family !== 'copilot' && family !== 'devin' && family !== 'cline' && family !== 'command-code') {
+  if (family !== 'glm' && family !== 'grok' && family !== 'kiro' && family !== 'antigravity' && family !== 'cursor' && family !== 'ollama' && family !== 'kimi' && family !== 'devin' && family !== 'cline' && family !== 'command-code') {
     const label = planNameOf(CODEX_PLAN_NAMES, slug, compact)
     if (label) return label
   }

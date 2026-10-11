@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml/badge.svg)](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml)
 
-**把你已经在付费的 AI 订阅接进 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。** 登录一次，ChatGPT / Codex、Grok、GLM、Kiro、Antigravity、Cursor、Ollama Cloud、Kimi、Copilot、Devin、Cline 的套餐就变成会话里能直接选的模型——额度、模型、用量都在一个工作台里。
+**把你已经在付费的 AI 订阅接进 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。** 登录一次，ChatGPT / Codex、Grok、GLM、Kiro、Antigravity、Cursor、Ollama Cloud、Kimi、Devin、Cline 的套餐就变成会话里能直接选的模型——额度、模型、用量都在一个工作台里。
 
 ![订阅工作台 —— 额度页签、账号卡片与供应商栏](docs/readme-workbench.jpg)
 
@@ -19,7 +19,7 @@
 
 ### 用量
 
-![用量页 —— Token、缓存读、调用、首字延迟与估算成本](docs/screenshots/usage.jpg)
+![用量页 —— Token、缓存读、调用与估算成本](docs/screenshots/usage.jpg)
 
 ### 榜单
 
@@ -60,7 +60,7 @@ dsh web
 |---|---|
 | **额度** | 每个账号一张卡片——套餐徽章、用量与重置进度条。约每分钟自动刷新，也可点 **刷新额度**。 |
 | **模型** | 模型清单。按家族开关，并可上调单个模型的输入窗口。 |
-| **用量** | Token、缓存命中、调用次数、首字延迟与估算成本，按模型或按会话查看。 |
+| **用量** | Token、缓存命中、调用次数与估算成本，按模型或按会话查看（单模型的首字延迟在各行）。 |
 | **榜单** | 每日更新的模型排名快照。 |
 | **设置** | 更新、代理，以及插件自身的来源信息。 |
 
@@ -76,7 +76,6 @@ dsh web
 | **Cursor** | 登录，或点 **导入本机 Cursor** |
 | **Ollama Cloud** | 粘贴 API key |
 | **Kimi Code Plan** | 设备码，或导入本机 Kimi 登录 |
-| **GitHub Copilot** | 设备码，或导入本机 Copilot 登录 |
 | **Devin Agent** | 登录，或导入本机 Devin 凭据 |
 | **Cline** | 设备码，或导入本机 Cline 登录 |
 | **Command Code** | 粘贴 API key，或导入本机登录 |
@@ -117,7 +116,6 @@ dsh web
 | Cursor | PKCE，或 **导入本机 Cursor**（macOS Keychain / `state.vscdb`） | `openai-completions` |
 | Ollama Cloud | 粘贴 API key / `OLLAMA_API_KEY` | `openai-completions` |
 | Kimi Code Plan | 设备码；导入 `~/.kimi-code/credentials/kimi-code.json`；`KIMI_API_KEY` | `openai-completions` |
-| GitHub Copilot | 设备码；导入 `~/.config/github-copilot/hosts.json`；`GITHUB_TOKEN` | `openai-completions` |
 | Devin Agent | PKCE `127.0.0.1:59653`；导入 `~/.local/share/devin/credentials.toml`；粘贴 `devin-session-token$…` | `openai-completions` |
 | Cline | 设备码；导入 `~/.cline/data/settings/providers.json` | `openai-completions` |
 | Command Code | 粘贴 API key / `COMMAND_CODE_API_KEY` / 导入 `~/.commandcode/auth.json`；或 studio 浏览器登录 | `openai-completions` |

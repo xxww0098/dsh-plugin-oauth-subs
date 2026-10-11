@@ -34,8 +34,6 @@ import { commandCodeCatalogModels } from '../apikey/command-code/catalog.js'
 import { forwardCommandCode } from '../apikey/command-code/transport.js'
 import { KIMI_CHAT_URL, kimiUpstreamHeaders } from './kimi/index.js'
 import { kimiCatalogModels } from './kimi/catalog.js'
-import { copilotChatUrl, copilotUpstreamHeaders } from './copilot/index.js'
-import { copilotCatalogModels } from './copilot/catalog.js'
 import { forwardCursor } from './cursor/transport.js'
 import { devinCatalogModels } from './devin/catalog.js'
 import { forwardDevin } from './devin/transport.js'
@@ -49,11 +47,13 @@ import { CHATGPT_RESPONSES_URL, chatgptUpstreamHeaders } from './chatgpt/index.j
 import { chatgptCatalogModels } from './chatgpt/catalog.js'
 import { chatgptPickerModels } from './models.js'
 import { chatgptQuotaFailure } from './chatgpt/request.js'
+import { CHATGPT_USAGE_EVENT } from './chatgpt/usage.js'
 import { withPickerVariants } from './models.js'
 import { outboundFetch } from '../utils/outbound.js'
 import { answerFailure } from './upstream.js'
 import { forward } from './passthrough.js'
 import { inboundCacheKeys, MAX_REQUEST_BODY_BYTES, readBody, rewriteUpstreamBody } from './proxy-body.js'
+import { accountIdOf, getStoredSession } from './store.js'
 
 function originOf(port) {
   return `http://127.0.0.1:${port}`
@@ -86,6 +86,54 @@ export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, max
   // old server keeps answering on it, so every answer from here on tells the
   // client to reconnect (to the new instance on the same port).
   let closing = false
+  // The session a chat hop selected. close can fire before session() returns;
+  // a later resolution must not be treated as a spend.
+  const spent = new WeakMap()
+
+  function noteSession(response, session) {
+    const slot = spent.get(response)
+    if (slot) slot.session = session
+  }
+
+  async function takeSession(response, manager) {
+    const session = await manager.session()
+    noteSession(response, session)
+    return session
+  }
+
+  // Logout removes the vault row. A refresh failure must not look like that,
+  // so a real manager is checked by the stored row, not by session().
+  async function sessionStillHeld(family, session) {
+    if (!session) return false
+    const manager = tokens?.[family]
+    if (!manager) return false
+    const id = accountIdOf(family, session)
+    if (typeof manager.authPath === 'string' && manager.authPath.length > 0) {
+      try {
+        const stored = await getStoredSession(family, id, manager.authPath)
+        return !!stored?.session && accountIdOf(family, stored.session) === id
+      } catch {
+        return false
+      }
+    }
+    if (typeof manager.session !== 'function') return false
+    try {
+      const live = await manager.session(id)
+      return accountIdOf(family, live) === id
+    } catch {
+      return false
+    }
+  }
+
+  async function reportUsed(family, session) {
+    if (!onQuotaUsed || !(await sessionStillHeld(family, session))) return
+    try { onQuotaUsed(family, session) } catch { /* best-effort */ }
+  }
+
+  async function reportLearned(family, data, session) {
+    if (!onQuotaLearned || !(await sessionStillHeld(family, session))) return
+    try { onQuotaLearned(family, data, session) } catch { /* best-effort */ }
+  }
 
   // llm-pi-ai sends Authorization: Bearer for Completions/Responses but the
   // Anthropic SDK authenticates with x-api-key (authToken is only used for
@@ -167,12 +215,6 @@ export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, max
         }
       } catch { /* not logged in */ }
       try {
-        if (tokens.copilot) {
-          await tokens.copilot.session()
-          data.push(...copilotCatalogModels().map((model) => ({ id: model.id, object: 'model', owned_by: 'copilot' })))
-        }
-      } catch { /* not logged in */ }
-      try {
         if (tokens.devin) {
           await tokens.devin.session()
           data.push(...devinCatalogModels().map((model) => ({ id: model.id, object: 'model', owned_by: 'devin' })))
@@ -219,9 +261,10 @@ export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, max
     if (path === '/codex/v1/responses' && request.method === 'POST') {
       const client = abortOnDisconnect(request, response)
       try {
+        const session = await takeSession(response, tokens.codex)
         await forward(request, response, {
           url: CODEX_API_URL,
-          session: await tokens.codex.session(),
+          session,
           tokens: tokens.codex,
           headersOf: codexUpstreamHeaders,
           fetchFn,
@@ -232,8 +275,8 @@ export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, max
           startedAt,
           signal: client.signal,
           // The stream's own rate-limit frame is quota data; the store decides
-          // what to keep (quota.ts `learn`).
-          ...(onQuotaLearned ? { captureSse: { type: CODEX_RATE_LIMITS_EVENT, onData: (data) => onQuotaLearned('codex', data) } } : {}),
+          // what to keep (quota.ts learn). The hop's session stays with it.
+          ...(onQuotaLearned ? { captureSse: { type: CODEX_RATE_LIMITS_EVENT, onData: (data) => { void reportLearned('codex', data, session) } } } : {}),
         })
       } finally {
         client.cleanup()
@@ -252,9 +295,10 @@ export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, max
     if (path === '/chatgpt/v1/responses' && request.method === 'POST') {
       const client = abortOnDisconnect(request, response)
       try {
+        const session = await takeSession(response, tokens.chatgpt)
         await forward(request, response, {
           url: CHATGPT_RESPONSES_URL,
-          session: await tokens.chatgpt.session(),
+          session,
           tokens: tokens.chatgpt,
           headersOf: chatgptUpstreamHeaders,
           fetchFn,
@@ -264,6 +308,9 @@ export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, max
           upstreamTimeouts,
           startedAt,
           signal: client.signal,
+          // The terminal event's usage block is this route's only in-contract
+          // usage signal; the store turns it into measured window rows.
+          ...(onQuotaLearned ? { captureSse: { type: CHATGPT_USAGE_EVENT, onData: (data) => { void reportLearned('chatgpt', data, session) } } } : {}),
         })
       } finally {
         client.cleanup()
@@ -276,7 +323,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, max
       try {
         await forward(request, response, {
           url: GROK_API_URL,
-          session: await tokens.grok.session(),
+          session: await takeSession(response, tokens.grok),
           tokens: tokens.grok,
           headersOf: grokUpstreamHeaders,
           fetchFn,
@@ -295,7 +342,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, max
     if (path === '/glm/v1/chat/completions' && request.method === 'POST') {
       const client = abortOnDisconnect(request, response)
       try {
-        const session = await tokens.glm.session()
+        const session = await takeSession(response, tokens.glm)
         await forward(request, response, {
           url: glmCodingUrl(session.region),
           session,
@@ -317,7 +364,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, max
     if ((path === '/glm/v1/messages' || path === '/glm/v1/v1/messages') && request.method === 'POST') {
       const client = abortOnDisconnect(request, response)
       try {
-        const session = await tokens.glm.session()
+        const session = await takeSession(response, tokens.glm)
         await forward(request, response, {
           // Official Coding Plan hop: the endpoint rewritten to the ZCode
           // gateway (official-coding-plan-gateway.ts). Direct endpoint stays as
@@ -376,7 +423,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, max
     if (path === '/kiro/v1/chat/completions' && request.method === 'POST') {
       const client = abortOnDisconnect(request, response)
       try {
-        const session = await tokens.kiro.session()
+        const session = await takeSession(response, tokens.kiro)
         const input = rewriteUpstreamBody(await readBody(request, maxRequestBodyBytes), 'kiro')
         await forwardKiro(response, {
           ...input,
@@ -405,7 +452,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, max
     if ((path === '/cursor/v1/chat/completions' || path === '/cursor/chat/completions') && request.method === 'POST') {
       const client = abortOnDisconnect(request, response)
       try {
-        const session = await tokens.cursor.session()
+        const session = await takeSession(response, tokens.cursor)
         const input = rewriteUpstreamBody(await readBody(request, maxRequestBodyBytes), 'cursor')
         await forwardCursor(response, {
           ...input,
@@ -444,7 +491,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, max
       try {
         await forward(request, response, {
           url: OLLAMA_CHAT_URL,
-          session: await tokens.ollama.session(),
+          session: await takeSession(response, tokens.ollama),
           tokens: tokens.ollama,
           headersOf: ollamaUpstreamHeaders,
           fetchFn,
@@ -484,7 +531,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, max
       try {
         await forward(request, response, {
           url: KIMI_CHAT_URL,
-          session: await tokens.kimi.session(),
+          session: await takeSession(response, tokens.kimi),
           tokens: tokens.kimi,
           headersOf: kimiUpstreamHeaders,
           fetchFn,
@@ -509,45 +556,6 @@ export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, max
       return
     }
 
-    if ((path === '/copilot/v1/models' || path === '/copilot/models') && request.method === 'GET') {
-      sendJson(response, 200, {
-        object: 'list',
-        data: copilotCatalogModels().map((model) => ({ id: model.id, object: 'model', owned_by: 'copilot' })),
-      })
-      return
-    }
-
-    if ((path === '/copilot/v1/chat/completions' || path === '/copilot/chat/completions') && request.method === 'POST') {
-      const client = abortOnDisconnect(request, response)
-      try {
-        const session = await tokens.copilot.session()
-        await forward(request, response, {
-          url: copilotChatUrl(session),
-          session,
-          tokens: tokens.copilot,
-          headersOf: (sess, pin) => copilotUpstreamHeaders(sess, pin),
-          fetchFn,
-          family: 'copilot',
-          maxRequestBodyBytes,
-          upstreamTimeouts,
-          startedAt,
-          signal: client.signal,
-        })
-      } finally {
-        client.cleanup()
-      }
-      return
-    }
-
-    if (path === '/copilot/v1/responses') {
-      sendJson(response, 501, {
-        error: {
-          message: 'GitHub Copilot is Completions. Point llm-pi-ai at POST /copilot/v1/chat/completions.',
-        },
-      })
-      return
-    }
-
     if ((path === '/devin/v1/models' || path === '/devin/models') && request.method === 'GET') {
       sendJson(response, 200, {
         object: 'list',
@@ -559,7 +567,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, max
     if ((path === '/devin/v1/chat/completions' || path === '/devin/chat/completions') && request.method === 'POST') {
       const client = abortOnDisconnect(request, response)
       try {
-        const session = await tokens.devin.session()
+        const session = await takeSession(response, tokens.devin)
         const input = rewriteUpstreamBody(await readBody(request, maxRequestBodyBytes), 'devin')
         await forwardDevin(response, {
           ...input,
@@ -599,7 +607,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, max
       try {
         await forward(request, response, {
           url: CLINE_CHAT_URL,
-          session: await tokens.cline.session(),
+          session: await takeSession(response, tokens.cline),
           tokens: tokens.cline,
           headersOf: clineUpstreamHeaders,
           fetchFn,
@@ -636,7 +644,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, max
     if ((path === '/command-code/v1/chat/completions' || path === '/command-code/chat/completions') && request.method === 'POST') {
       const client = abortOnDisconnect(request, response)
       try {
-        const session = await tokens['command-code'].session()
+        const session = await takeSession(response, tokens['command-code'])
         const input = rewriteUpstreamBody(await readBody(request, maxRequestBodyBytes), 'command-code')
         await forwardCommandCode(response, {
           ...input,
@@ -662,7 +670,7 @@ export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, max
     if (path === '/antigravity/v1/chat/completions' && request.method === 'POST') {
       const client = abortOnDisconnect(request, response)
       try {
-        const session = await tokens.antigravity.session()
+        const session = await takeSession(response, tokens.antigravity)
         const input = rewriteUpstreamBody(await readBody(request, maxRequestBodyBytes), 'antigravity')
         await forwardAntigravity(response, {
           ...input,
@@ -696,10 +704,13 @@ export function createProxy({ port, apiKey, tokens, fetchFn = outboundFetch, max
     origin: () => originOf(port),
     async listen() {
       server = createServer((request, response) => {
-        // A chat hop spends the family's quota whatever the outcome (a 429 is
-        // news too). Fire once the response is fully written or torn down.
+        // A chat hop spends the selected login's quota whatever the outcome
+        // (a 429 is news too). close before that login is selected is not a
+        // spend, and a login removed before the observation is not one either.
         const family = onQuotaUsed ? quotaFamilyOf(request) : undefined
-        if (family) response.once('close', () => { try { onQuotaUsed(family) } catch { /* best-effort */ } })
+        const slot = { session: undefined }
+        spent.set(response, slot)
+        if (family) response.once('close', () => { void reportUsed(family, slot.session) })
         handle(request, response).catch((error) => answerFailure(response, error))
       })
       await new Promise((resolve, reject) => {

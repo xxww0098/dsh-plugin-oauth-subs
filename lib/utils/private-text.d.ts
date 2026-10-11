@@ -11,4 +11,6 @@ export declare function writePrivateText(path: any, text: any): Promise<void>;
  * past `maxBytes` (one generation kept). Not state: a torn line loses only
  * itself, so no temp file + rename.
  */
-export declare function appendPrivateLine(path: any, line: any, maxBytes?: number): Promise<void>;
+export declare function appendPrivateLine(path: any, line: any, maxBytes?: number, { noFollow }?: {
+    noFollow?: boolean | undefined;
+}): Promise<void>;

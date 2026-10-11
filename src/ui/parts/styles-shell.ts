@@ -179,7 +179,7 @@
   font-size: 11px; letter-spacing: .04em; color: var(--osubs-faint);
 }
 .osubs-rail {
-  flex: 0 0 176px; display: flex; flex-direction: column; gap: 2px;
+  flex: 0 0 228px; display: flex; flex-direction: column; gap: 2px;
   overflow-y: auto; min-height: 0;
 }
 .osubs-rail-item {
@@ -198,7 +198,25 @@
 .osubs-rail-item--on .osubs-rail-ic { color: var(--osubs-accent); }
 .osubs-rail-icon { width: 16px; height: 16px; flex: none; }
 .osubs-rail-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.osubs-rail-count { flex: none; font-size: 11px; color: var(--osubs-faint); font-variant-numeric: tabular-nums; }
+/* The view's own count keeps a fixed right-aligned slot so a 1- to 3-digit
+   number never moves the column beside it. */
+.osubs-rail-count {
+  flex: none; min-width: 22px; text-align: right;
+  font-size: 11px; color: var(--osubs-faint); font-variant-numeric: tabular-nums;
+}
+/* 供应商 rows report the models switched on: one right-aligned tail holds the
+   mark and the count, both in fixed slots — the switch glyph starts at the
+   same x on every row (its digits hang right) and the count keeps its own
+   right-aligned slot, so neither number drifts with the other's width. The
+   mark is the rail's only green (the fill a 模型 switch shows when it is on)
+   and renders only above zero, so a green row is a real signal, not filler. */
+.osubs-rail-tail { display: inline-flex; align-items: center; gap: 8px; flex: none; }
+.osubs-rail-on {
+  display: inline-flex; align-items: center; gap: 3px; flex: none;
+  width: 40px;
+  color: var(--osubs-ok); font-size: 11px; font-weight: 600; line-height: 1;
+}
+.osubs-rail-sw { display: block; width: 16px; height: 10px; flex: none; }
 .osubs-tab-icon { width: 18px; height: 18px; display: block; flex: none; }
 .osubs-about { display: flex; flex-direction: column; gap: var(--osubs-s3); font-size: 13px; line-height: 1.45; }
 .osubs-about .osubs-link,

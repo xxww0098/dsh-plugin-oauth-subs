@@ -7,6 +7,7 @@ import { parseOpencodeGoCookie, normalizeOpencodeGoWorkspaceId, opencodeGoAccoun
 import { parseOpencodeGoEmail, parseOpencodeGoUsage, parseOpencodeGoWorkspaceName, parseOpencodeGoBilling, parseOpencodeGoConsoleStatus, parseOpencodeGoConsoleBilling, fetchOpencodeGoQuota } from '../lib/apikey/opencode-go/quota.js'
 import { OpencodeGoStore, opencodeGoFilePath } from '../lib/apikey/opencode-go/store.js'
 import { writePrivateText } from '../lib/utils/private-text.js'
+import { assembleUi } from '../scripts/ui-bundle.ts'
 
 test('parseOpencodeGoCookie keeps only auth cookies or wraps a raw token', () => {
   assert.equal(parseOpencodeGoCookie('Fe26.2abc'), 'auth=Fe26.2abc')
@@ -253,6 +254,9 @@ test('OpencodeGoStore rejects a cookie header without an auth cookie', async () 
 })
 
 const CONSOLE_STATUS = {
+  // The Go toggle lives at the top level of go/status, next to access —
+  // never in billing/status (that mode is the Zen wallet's).
+  useBalance: true,
   access: {
     startsAt: '2026-09-01T00:00:00.000Z',
     endsAt: '2026-10-01T00:00:00.000Z',
@@ -278,6 +282,46 @@ test('parseOpencodeGoConsoleStatus reads micro-cent meters', () => {
   // The month meter carries no resetsAt; the billing period end stands in.
   assert.equal(monthly.resetAt, Date.parse('2026-10-01T00:00:00.000Z'))
   assert.equal(monthly.usedPercent, 1)
+  assert.equal(rolling.label, '5h')
+  assert.equal(weekly.label, '7d')
+  assert.equal(monthly.label, '30d')
+})
+
+test('OpenCode Go month label is the billing period length', () => {
+  const label = (payload) => parseOpencodeGoConsoleStatus(payload).rows.find((row) => row.kind === 'monthly').label
+  assert.equal(label({ access: {
+    startsAt: '2026-09-10T10:33:00Z',
+    endsAt: '2026-10-10T10:33:00Z',
+    meters: { month: { percent: 6 } },
+  } }), '30d')
+  assert.equal(label({ access: {
+    startsAt: '2026-02-28T12:00:00Z',
+    endsAt: '2026-03-31T12:00:00Z',
+    meters: { month: { percent: 1 } },
+  } }), '31d')
+  assert.equal(label({ access: {
+    startsAt: '2026-01-31T12:00:00Z',
+    endsAt: '2026-02-28T12:00:00Z',
+    meters: { month: { percent: 1 } },
+  } }), '28d')
+  assert.equal(label({ access: {
+    startsAt: '2025-10-10T00:00:00Z',
+    endsAt: '2026-10-10T00:00:00Z',
+    meters: { month: { percent: 6, resetsAt: '2026-10-10T10:33:00Z' } },
+  } }), '30d')
+  const usage = (body) => parseOpencodeGoUsage(JSON.stringify(body)).rows.find((row) => row.kind === 'monthly').label
+  assert.equal(usage({ usage: { rolling: { percent: 1 }, monthly: { percent: 6, resetsAt: '2026-10-10T10:33:00Z' } } }), '30d')
+  assert.equal(usage({ usage: { rolling: { percent: 1 }, monthly: { percent: 1, resetsAt: '2024-03-29T00:00:00Z' } } }), '29d')
+  assert.equal(usage({ usage: { rolling: { percent: 1 }, monthly: { percent: 6 } } }), 'Monthly')
+})
+
+test('OpenCode Go meter copy is the compact countdown', () => {
+  const src = assembleUi()
+  assert.match(src, /family === 'opencode-go' \? formatMeterReset/)
+  assert.match(src, /meterHours: '\{n\}时'/)
+  assert.match(src, /meterResetSoon: '即将重置'/)
+  assert.match(src, /meterResetSoon: 'Resetting soon'/)
+  assert.match(src, /meterJoin: ' '/)
 })
 
 test('parseOpencodeGoConsoleStatus flags a missing subscription', () => {
@@ -287,11 +331,13 @@ test('parseOpencodeGoConsoleStatus flags a missing subscription', () => {
 })
 
 test('parseOpencodeGoConsoleBilling reads prepaid balance in USD', () => {
+  // billingMode is the Zen wallet's mode — it never fills useBalance (that is
+  // Go's own "fall back to balance" toggle, read from go/status instead).
   assert.deepEqual(parseOpencodeGoConsoleBilling({
     billingMode: 'prepaid', mode: 'pay-as-you-go', balanceMicroCents: '1250000000',
-  }), { useBalance: true, balance: 12.5 })
+  }), { balance: 12.5 })
   assert.deepEqual(parseOpencodeGoConsoleBilling({ billingMode: 'seat', balanceMicroCents: '0' }),
-    { useBalance: false, balance: 0 })
+    { balance: 0 })
   assert.deepEqual(parseOpencodeGoConsoleBilling(undefined), {})
 })
 
@@ -433,7 +479,10 @@ test('fetchOpencodeGoQuota keeps a balance-only account out of the error state',
       '/console/api/billing/status': { billingMode: 'prepaid', mode: 'pay-as-you-go', balanceMicroCents: '500000000' },
     }),
   })
-  assert.equal(quota.rows.length, 0)
+  // The prepaid balance is now a Zen row on the same card (kind zen-balance),
+  // so the read still succeeds without a Go subscription.
+  assert.deepEqual(quota.rows.map((row) => row.kind), ['zen-balance'])
+  assert.equal(quota.rows[0].remaining, 5)
   assert.equal(quota.balance, 5)
   await assert.rejects(
     () => fetchOpencodeGoQuota({ cookieHeader: '__Host-console_session=cs.x', workspaceId: 'wrk_abc123' }, {

@@ -12,27 +12,66 @@ import type { AuthController } from './controller.js'
 // Auto-import restores an empty family from local CLI/IDE credentials on
 // every start (and every hot reload). A family the user signed out of must
 // stay signed out; an explicit import or login still works.
-export function signedOutFile(ctl: AuthController) {
-  return join(dirname(ctl.authPath), 'signed-out.json')
+//
+// The mark is "the user left this family and has not come back": it is set
+// only when the LAST account of a family goes (a partial logout leaves the
+// family signed in), and `saveSession` clears it the moment any login lands
+// (store.ts calls `clearSignedOutMark`). It is path-based — not tied to a
+// controller — so the store can clear it without importing the controller.
+export function signedOutPath(authPath: string) {
+  return join(dirname(authPath), 'signed-out.json')
 }
 
-export async function signedOut(ctl: AuthController): Promise<string[]> {
+export function signedOutFile(ctl: AuthController) {
+  return signedOutPath(ctl.authPath)
+}
+
+// Read-modify-write of one small file: concurrent logouts / logins must not
+// lose each other's change, so every edit runs through one chain per file.
+const chains = new Map<string, Promise<unknown>>()
+
+function serialized<T>(file: string, task: () => Promise<T>): Promise<T> {
+  const next = (chains.get(file) ?? Promise.resolve()).then(task, task)
+  const settled = next.then(() => undefined, () => undefined)
+  chains.set(file, settled)
+  void settled.then(() => { if (chains.get(file) === settled) chains.delete(file) })
+  return next
+}
+
+async function readMarks(file: string): Promise<string[]> {
   try {
-    const list = JSON.parse(await readFile(signedOutFile(ctl), 'utf8'))
-    return Array.isArray(list) ? list : []
+    const list = JSON.parse(await readFile(file, 'utf8'))
+    return Array.isArray(list) ? list.filter((id) => typeof id === 'string') : []
   } catch {
     return []
   }
+}
+
+export async function signedOut(ctl: AuthController): Promise<string[]> {
+  return readMarks(signedOutFile(ctl))
 }
 
 export async function signedOutOf(ctl: AuthController, provider) {
   return (await signedOut(ctl)).includes(provider)
 }
 
-export async function markSignedOut(ctl: AuthController, provider) {
-  const list = await signedOut(ctl)
-  if (list.includes(provider)) return
-  await writePrivateText(signedOutFile(ctl), `${JSON.stringify([...list, provider])}\n`)
+export function markSignedOut(ctl: AuthController, provider) {
+  const file = signedOutFile(ctl)
+  return serialized(file, async () => {
+    const list = await readMarks(file)
+    if (list.includes(provider)) return
+    await writePrivateText(file, `${JSON.stringify([...list, provider])}\n`)
+  })
+}
+
+/** A login landed: the family is signed in again, so auto-import may run again. */
+export function clearSignedOutMark(authPath: string, provider: string) {
+  const file = signedOutPath(authPath)
+  return serialized(file, async () => {
+    const list = await readMarks(file)
+    if (!list.includes(provider)) return
+    await writePrivateText(file, `${JSON.stringify(list.filter((id) => id !== provider))}\n`)
+  })
 }
 
 /**

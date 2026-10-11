@@ -67,7 +67,7 @@ function createPiAiSettings(initialProviders = {}) {
   }
 }
 
-const GLM_CURRENT = ['oauth-glm/glm-5.3', 'oauth-glm/glm-5.3-flash', 'oauth-glm/glm-5-turbo']
+const GLM_CURRENT = ['oauth-glm/glm-5.3-flashx', 'oauth-glm/glm-5.3', 'oauth-glm/glm-5.3-flash', 'oauth-glm/glm-5-turbo']
 const GLM_VARIANT_KEYS = ['oauth-glm/glm-5.3-1m', 'oauth-glm/glm-5.3-flash-1m']
 const GLM_STALE = ['oauth-glm/glm-4.7', 'oauth-glm/glm-5', 'oauth-glm/glm-5.1', 'oauth-glm/glm-5.2']
 
@@ -151,7 +151,7 @@ test('buildProviders only emits logged-in families with DSH api ids', () => {
   const chat = buildProviders({
     prefix: 'oauth',
     origin: 'http://127.0.0.1:8318',
-    loggedIn: { glm: true, kiro: true, antigravity: true, cursor: true, ollama: true, kimi: true, copilot: true },
+    loggedIn: { glm: true, kiro: true, antigravity: true, cursor: true, ollama: true, kimi: true },
   })
   assert.equal(chat['oauth-glm'].api, HARNESS_ANTHROPIC_API)
   assert.equal(chat['oauth-glm'].baseURL, 'http://127.0.0.1:8318/glm')
@@ -186,21 +186,6 @@ test('buildProviders only emits logged-in families with DSH api ids', () => {
   assert.equal(chat['oauth-kimi'].baseURL.endsWith('/kimi/v1'), false)
   assert.equal(chat['oauth-kimi'].models.some((model) => model.id === 'k3'), true)
   assert.equal(chat['oauth-opencode'], undefined)
-  assert.equal(chat['oauth-copilot'].api, HARNESS_COMPLETIONS_API)
-  assert.equal(chat['oauth-copilot'].api, 'openai-completions')
-  assert.equal(chat['oauth-copilot'].baseURL, 'http://127.0.0.1:8318/copilot')
-  assert.equal(chat['oauth-copilot'].baseURL.endsWith('/copilot/v1'), false)
-  assert.equal(chat['oauth-copilot'].compat.supportsReasoningEffort, true)
-  assert.equal(chat['oauth-copilot'].compat.thinkingFormat, 'openai')
-  assert.equal(chat['oauth-copilot'].displayName, 'Subs · GitHub Copilot · Chat')
-  assert.equal(chat['oauth-copilot'].models.some((model) => model.id === 'gpt-4.1'), true)
-  assert.deepEqual(chat['oauth-copilot'].models.find((model) => model.id === 'gpt-5.5').reasoningEfforts, {
-    off: 'none',
-    low: 'low',
-    medium: 'medium',
-    high: 'high',
-    xhigh: 'xhigh',
-  })
   assert.equal(chat['oauth-codex'], undefined)
 })
 
@@ -219,10 +204,13 @@ test('syncHarnessModels unsets owned routes then sets the live catalog', async (
   })
   assert.equal(ops[0].target, 'llm-pi-ai')
   assert.equal(FAMILY_IDS.includes('opencode'), false)
-  assert.deepEqual([...RETIRED_FAMILY_IDS], ['opencode', 'anthropic'])
+  assert.deepEqual([...RETIRED_FAMILY_IDS], ['opencode', 'anthropic', 'copilot'])
   assert.equal(ownedProviderIds('oauth').includes('oauth-opencode'), true)
   assert.equal(FAMILY_IDS.includes('anthropic'), false)
   assert.equal(ownedProviderIds('oauth').includes('oauth-anthropic'), true)
+  // Copilot was removed as a family: its leftover route is still unset.
+  assert.equal(FAMILY_IDS.includes('copilot'), false)
+  assert.equal(ownedProviderIds('oauth').includes('oauth-copilot'), true)
   const unset = ops[0].mutations.filter((row) => row.op === 'unset').map((row) => row.path.join('.'))
   assert.deepEqual(unset, ownedProviderIds('oauth').map((id) => `providers.${id}`))
   assert.equal(unset.includes('providers.oauth-opencode'), true)
@@ -700,17 +688,20 @@ test('recoverEmptyLoggedInFamilies enables current GLM keys after leftover 全�
   assert.equal(loggedOut, false)
 })
 
-test('GLM catalog is the plan trio; Codex stays image-capable', () => {
+test('GLM catalog is the plan quartet; Codex stays image-capable', () => {
   const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
   const glm = catalog['oauth-glm'].models
-  assert.deepEqual(glm.map((model) => model.id), ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
+  assert.deepEqual(glm.map((model) => model.id), ['glm-5.3-flashx', 'glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
   // Base rows sit at the plan's 400K input cap; the official 1M window is
   // the row's custom-context ceiling, no longer a `-1m` sibling row.
+  // FlashX is the exception served at its full 1M window (glm/README.md 模型).
   assert.equal(glm.find((model) => model.id === 'glm-5.3').contextWindow, 400_000)
+  assert.equal(glm.find((model) => model.id === 'glm-5.3-flashx').contextWindow, 1_000_000)
   assert.equal(glm.find((model) => model.id === 'glm-5.3-1m'), undefined)
   assert.equal(glm.find((model) => model.id === 'glm-5.3-flash-1m'), undefined)
   assert.deepEqual(glm.find((model) => model.id === 'glm-5.3').input, ['text'])
   assert.deepEqual(glm.find((model) => model.id === 'glm-5.3-flash').input, ['text', 'image'])
+  assert.deepEqual(glm.find((model) => model.id === 'glm-5.3-flashx').input, ['text', 'image'])
   assert.deepEqual(glm.find((model) => model.id === 'glm-5-turbo').input, ['text'])
   assert.deepEqual(glm.find((model) => model.id === 'glm-5.3').reasoningEfforts, {
     low: 'low',
@@ -718,9 +709,8 @@ test('GLM catalog is the plan trio; Codex stays image-capable', () => {
     max: 'max',
   })
   // Legacy / not-on-plan ids stay out of the picker: 5.2 + 5.1 auto-route to
-  // 5.3, FlashX is not yet on the plan.
+  // 5.3.
   assert.equal(glm.find((model) => model.id === 'glm-5.2'), undefined)
-  assert.equal(glm.find((model) => model.id === 'glm-5.3-flashx'), undefined)
   assert.equal(glm.find((model) => model.id === 'glm-5-turbo').maxTokens, 32_768)
   assert.equal(glm.find((model) => model.id === 'glm-5-turbo').reasoningEfforts, false)
   assert.equal(catalog['oauth-glm'].compat?.forceAdaptiveThinking, true)
@@ -782,11 +772,12 @@ test('Antigravity catalog is cloudcode-pa Claude / Gemini / GPT-OSS', () => {
   assert.equal(catalog['oauth-antigravity'].compat.supportsReasoningEffort, true)
 })
 
-test('logged-in GLM 3/3 persist writes oauth-glm and a subsequent get shows it', async () => {
+test('logged-in GLM 4/4 persist writes oauth-glm and a subsequent get shows it', async () => {
   const settings = createPiAiSettings({ 'oauth-codex': { api: 'openai-responses', models: [{ id: 'gpt-5.5' }] } })
   const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://127.0.0.1:8318' })
   const selected = catalogKeys(catalog).filter((key) => key.startsWith('oauth-glm/'))
   assert.deepEqual(selected, [
+    'oauth-glm/glm-5.3-flashx',
     'oauth-glm/glm-5.3',
     'oauth-glm/glm-5.3-flash',
     'oauth-glm/glm-5-turbo',
@@ -806,11 +797,11 @@ test('logged-in GLM 3/3 persist writes oauth-glm and a subsequent get shows it',
   assert.equal(glm.value.compat.allowEmptySignature, true)
   assert.equal(glm.value.compat.thinkingFormat, undefined)
   assert.equal(glm.value.compat.supportsReasoningEffort, undefined)
-  assert.deepEqual(glm.value.models.map((model) => model.id), ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
-  assert.deepEqual(result.routes.find((row) => row.provider === 'oauth-glm').models, ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
+  assert.deepEqual(glm.value.models.map((model) => model.id), ['glm-5.3-flashx', 'glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
+  assert.deepEqual(result.routes.find((row) => row.provider === 'oauth-glm').models, ['glm-5.3-flashx', 'glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
   const stored = await peekPiAiProviders(settings)
   assert.equal(stored['oauth-glm'].api, 'anthropic-messages')
-  assert.deepEqual(stored['oauth-glm'].models.map((model) => model.id), ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
+  assert.deepEqual(stored['oauth-glm'].models.map((model) => model.id), ['glm-5.3-flashx', 'glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
   assert.equal(stored['oauth-codex'], undefined)
 })
 
@@ -976,10 +967,10 @@ test('syncHarnessModels rejects a silent drop after mutate', async () => {
 })
 
 test('cacheRetention long rides only the Completions routes and survives sync', async () => {
-  const all = { codex: true, grok: true, glm: true, kiro: true, antigravity: true, cursor: true, ollama: true, kimi: true, copilot: true, devin: true, cline: true }
+  const all = { codex: true, grok: true, glm: true, kiro: true, antigravity: true, cursor: true, ollama: true, kimi: true, devin: true, cline: true }
   const providers = buildProviders({ prefix: 'oauth', origin: 'http://127.0.0.1:8318', loggedIn: all })
   const completions = Object.keys(providers).filter((id) => providers[id].api === HARNESS_COMPLETIONS_API).sort()
-  assert.deepEqual(completions, ['oauth-antigravity', 'oauth-cline', 'oauth-copilot', 'oauth-cursor', 'oauth-devin', 'oauth-kimi', 'oauth-kiro', 'oauth-ollama'])
+  assert.deepEqual(completions, ['oauth-antigravity', 'oauth-cline', 'oauth-cursor', 'oauth-devin', 'oauth-kimi', 'oauth-kiro', 'oauth-ollama'])
   for (const [id, value] of Object.entries(providers)) {
     assert.equal(value.cacheRetention, value.api === HARNESS_COMPLETIONS_API ? 'long' : undefined, id)
   }

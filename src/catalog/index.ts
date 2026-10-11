@@ -36,13 +36,15 @@ const INPUT_KINDS = Object.freeze(['text', 'image'])
 
 /**
  * Every top-level key the JSON must carry, nothing more. `ollamaRetired`
- * is a flat array of retired model ids, not rows; OpenCode Go is split per
- * wire-protocol route (`opencode-go-flash` completions, `opencode-go-responses`,
- * `opencode-go-messages`).
+ * is a flat array of retired model ids, not rows; the OpenCode family is split
+ * per wire-protocol route on both of its products — Go (`opencode-go-flash`
+ * completions, `opencode-go-responses`, `opencode-go-messages`) and Zen
+ * (`opencode-zen-chat`, `opencode-zen-responses`, `opencode-zen-messages`).
  */
 export const CATALOG_KEYS = Object.freeze([
-  'codex', 'chatgpt', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'kimi', 'copilot', 'devin', 'cline',
+  'codex', 'chatgpt', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'kimi', 'devin', 'cline',
   'ollama', 'ollamaRetired', 'command-code', 'opencode-go-flash', 'opencode-go-responses', 'opencode-go-messages',
+  'opencode-zen-chat', 'opencode-zen-responses', 'opencode-zen-messages',
 ])
 
 const RETIRED_KEY = 'ollamaRetired'

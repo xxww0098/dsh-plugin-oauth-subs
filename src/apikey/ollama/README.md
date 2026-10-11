@@ -11,13 +11,13 @@ Ollama **Cloud** 订阅（[ollama.com](https://ollama.com)）。**不是**本机
 
 | 文件 | 职责 |
 |---|---|
-| [`index.ts`](index.ts) | 目录、API key session、Bearer 头、`/api/me` 身份、`/api/usage` URL、退役表 |
+| [`index.ts`](index.ts) | 目录、API key session、Bearer 头、`/api/me` 身份、`/api/balance` URL、退役表 |
 | [`import.ts`](import.ts) | `OLLAMA_API_KEY` 环境变量。不是 `ollama signin` |
 | [`catalog.ts`](catalog.ts) | 登录后 `GET /api/tags` + `POST /api/show`（窗口 + `capabilities` → `input`）；静态 `OLLAMA_MODELS` 只做离线 fallback |
 | [`cache.ts`](cache.ts) | 剥 Codex / Grok 字段。没有文档化的 sticky id；cache-read 由上游 `usage` 自带 |
 
 调度：[`../../oauth/proxy.ts`](../../oauth/proxy.ts) `family === 'ollama'` 剥 cache 字段，`forward()` 到 `https://ollama.com/v1/chat/completions`。
-额度：[`quota.ts`](quota.ts) `fetchOllamaQuota` 并行 `GET /api/usage` + `POST /api/me`。`limits.*.usage` 是 0..1 分数。有 `resets_at` / `reset_at` / `resetAt` / `next_reset` 就用。Session 缺 stamp 时用下一 UTC 5h unix 桶（`18000 - (epoch % 18000)`，[ollama#12532](https://github.com/ollama/ollama/issues/12532)），不是从上次点击起算 5h。Weekly 缺 stamp 时用下一 UTC 7d 桶、偏移 −4d（`604800 - ((epoch - 4d) % 604800)`，周一 00:00 UTC），不编 `now+7d`。
+额度：[`quota.ts`](quota.ts) `fetchOllamaQuota` 并行 `GET /api/balance` + `POST /api/me`。2026-10-07 起（[ollama#18829](https://github.com/ollama/ollama/pull/18829)）官方 balance 端点取代了老 `GET /api/usage` 的 `limits.*.usage` 分数（该端点现在是 `?range=24h|7d|30d` 的请求计数历史，没有额度语义，不调）。`included` 是 oneOf 两形状：legacy 计划给 `session` / `weekly` 的 `remaining_percent`（0..100，**剩余**语义，75 = 剩 75%）+ `resets_at`；信用计划给 `balance_usd` / `allowance_usd` / `period{from,until}`。`purchased.balance_usd` > 0 时出一条 `prepaid` 行。`resets_at` 缺失时才回落 #12532 桶算（session 下一 UTC 5h unix 桶、weekly 下一 UTC 7d 桶偏移 −4d），不编 `now+5h` / `now+7d`。
 套餐：`me.Plan`（`pro` → Pro），不走 Codex `pro` → Pro 20x。
 
 ## 协议
@@ -99,24 +99,27 @@ Authorization: Bearer <key>
 
 ## 额度
 
-官方 Cloud usage 页（ollama.com Cloud usage）有 Session / Weekly 两条。wire 无公开文档，但 `GET https://ollama.com/api/usage` + Bearer 稳定 200（与 oh-my-pi / pi-ollama-cloud-usage 同形）。
+2026-10-07 起（[ollama#18829](https://github.com/ollama/ollama/pull/18829)，服务器 `x-build-time` 2026-10-09 已带）官方文档化两个端点，本家额度读 [Balance](https://docs.ollama.com/api/balance)：
 
 ```text
-GET  /api/usage   Authorization: Bearer
-POST /api/me      Authorization: Bearer  body {}
+GET  /api/balance  Authorization: Bearer   ← 额度条数据源
+POST /api/me       Authorization: Bearer body {}   ← 身份（GET 405）
 ```
 
-`limits.session.usage` / `limits.weekly.usage` 是 **0..1 分数**，不是 0–100。`0.095` = 已用 9.5% = **剩余 90.5%**。不要把 0.095 当成 0.095%。
+`included` 是 **oneOf** 两形状（[openapi.yaml](https://github.com/ollama/ollama) `BalanceResponse`）：
 
-`/api/me` 是 PascalCase：`Email` / `Name` / `Plan`。`Plan: "pro"` → 徽章 **Pro**。GET `/api/me` 是 405。
+- **legacy 计划**（2026-10-10 实测 Pro 账号仍走这条）：`included.session` / `included.weekly` 各给 `remaining_percent`（0..100，**剩余**语义，75 = 剩 75%，不要当已用）+ `resets_at`（UTC）。出 Session（`t.primary`，`windowMinutes: 300`）+ Weekly（`t.weekly`）两条剩余条，`usedPercent = 100 − remaining_percent`。
+- **信用计划**：`included.balance_usd` / `allowance_usd` + `period{from, until}`（按套餐月度重置）。出一条 primary 剩余条，`remainingPercent = balance_usd / allowance_usd × 100`，`used` / `total`（`unit: 'usd'`）画 `formatUsd` 金额，`resetAt = period.until`。
 
-2026-09-03 live `GET /api/usage` 的 `limits.session` / `limits.weekly` 只有 `usage` + `models`，没有 `resets_at`。官方 Cloud UI 仍画 session / weekly 倒计时。定价文案：session 每 5 小时、weekly 每 7 天。社区观察（[ollama#12532](https://github.com/ollama/ollama/issues/12532)）两条都是**全局 unix 桶**：session `18000 - (epoch % 18000)`；weekly `604800 - ((epoch - 4d) % 604800)`（周一 00:00 UTC；2026-08/09 多人对上官方 UI）。
+`purchased.balance_usd` 是未过期的已购余额，> 0 时出一条 `prepaid`（`t.prepaid` 预付余额）行，不并进 included 百分比。两形状都有它。
 
-`parseOllamaLimitWindow`：先读 `resets_at` / `reset_at` / `resetAt` / `next_reset`。Session 缺 stamp → `ollamaSessionResetAt`（下一 UTC 5h 边界）。Weekly 缺 stamp → `ollamaWeeklyResetAt`（下一 UTC 7d 边界，偏移 −4d）。不编 `Date.now()+5h` / `+7d`。有 `resetAt` 后 Settings `formatReset` 画「{n}后重置」（一律相对时间），写在该条 `QuotaMeter` 百分比行下方，不夹在两条中间。
+老 wire 的 `limits.*.usage` 0..1 分数随 2026-10-07 改版消失；`GET /api/usage?range=24h|7d|30d` 现在是请求计数 / token / USD 的历史序列（`totals` + `buckets`，按天或小时），**没有**剩余额度语义，也不再有按模型拆分（上游列在 coming soon）。所以额度不调它，也不伪造 weekly 按模型 note。
 
-**不要**刮 ollama.com/settings HTML。行标签仍是 `t.primary`（5 小时）/ `t.weekly`（每周）。
+限频：balance 与 usage 各 **10 req/min/user，跨该用户所有 API key 共享**，429 带 `Retry-After`。`QuotaStore` TTL 60s、每次刷新 balance + me 两发，手动刷新节奏安全；不要加轮询或每 key 并刷。
 
-卡片画两条剩余条（`QuotaMeter` / `RemainingBar`，剩余 N%，减填），不是官方「% used」条。Weekly `note` 每条 `name × count` 一行（`\n` + `.osubs-note` `pre-wrap`），含 `web search` / `web fetch`，不加图表库。
+`parseOllamaBalance`：legacy 行的 `resetAt` 直接用 `resets_at`；stamp 缺失才回落 #12532 全局 unix 桶（session `18000 - (epoch % 18000)`，weekly `604800 - ((epoch - 4d) % 604800)`，周一 00:00 UTC——2026-10-10 实测 `resets_at` 周值正是下周一 00:00 UTC，与桶算互证）。不编 `Date.now()+5h` / `+7d`。有 `resetAt` 后 Settings `formatReset` 画「{n}后重置」（一律相对时间），写在该条 `QuotaMeter` 百分比行下方。
+
+**不要**刮 ollama.com/settings HTML。卡片画剩余条（`QuotaMeter` / `RemainingBar`，剩余 N%，减填），不是官方「% used」条。
 
 `QuotaStore` 对 ollama 走 `fetchOllamaQuota`，刷新按钮与别的家族一样。localhost:11434 不在这个家族。
 
@@ -139,9 +142,11 @@ DSH 每步前置的 runtime snapshot 因此无法在 Ollama Cloud 上做 prefix 
 - 假装 `ollama signin` 是公开 PKCE
 - 选 Responses / Anthropic 因为「Cloud 也有这两个端点」——两者都接单但没有任何收益：Responses 的 `previous_response_id` / `store` 被静默忽略（2026-09-30 活测），Anthropic 要加翻译层
 - 抄 Codex / Grok / GLM / Kiro / Antigravity / Cursor 的 cache 头或停车形状
-- 把 0..1 `usage` 当成已经是百分数
-- 从上次点击起算 `now+5h` / `now+7d`（要用 #12532 全局桶）；刮 ollama.com/settings HTML
+- 把 `remaining_percent`（剩余语义）当已用；把信用计划的 `balance_usd / allowance_usd` 直接当百分数
+- 有 `resets_at` 还自己用 #12532 桶算；stamp 缺失时从上次点击起算 `now+5h` / `now+7d`（要用 #12532 全局桶）；刮 ollama.com/settings HTML
+- 把 `/api/usage?range=` 的请求计数历史当额度读，或编造按模型 note（上游 coming soon）
 - 发明 `cached_tokens`
+- 对 balance 加轮询或每 key 并刷（官方 10 req/min/user 跨 key 共享）
 - 用 128k/200k/256k 家族启发式当 DSH `contextWindow`，或把 launch `extraCloudModelLimits` 抄进 picker
 - 用名字 regex 当 picker `input` 的主路径（`glm-5.3-flash` 对不上 `gemma|vl`，但 show 有 `vision`）
 - 发明 `audio` 模态
@@ -157,9 +162,12 @@ DSH 每步前置的 runtime snapshot 因此无法在 Ollama Cloud 上做 prefix 
 | 原生 wire `https://ollama.com/api/chat` + `GET /api/tags`；退役表 | [Cloud](https://docs.ollama.com/cloud) | 目录 + `ollamaRetired` |
 | Cloud `/v1` 入口 `https://ollama.com/v1/` + `OLLAMA_API_KEY`（官方 [OpenAI compatibility](https://docs.ollama.com/api/openai-compatibility) 页只写 localhost） | [Factory 集成](https://docs.ollama.com/integrations)；本仓库 2026-09-03 探活无 key 回 401 而非 404 | Completions 透传 |
 | Cloud 已开 `/v1/responses` + `/v1/messages`，但忽略 `previous_response_id` / `store`；三协议缓存读数等价 | 本仓库 2026-09-30 活测（code-word 记忆、tool round-trip、cache 复测） | 仍 Completions |
+| 额度 wire：`GET /api/balance`，`included` oneOf legacy（`session`/`weekly` 的 `remaining_percent` + `resets_at`）与 credits（`balance_usd`/`allowance_usd`/`period`），`purchased.balance_usd` 独立 | 官方 [Balance](https://docs.ollama.com/api/balance)（[ollama#18829](https://github.com/ollama/ollama/pull/18829)）+ 本仓库 2026-10-10 活测（Pro 账号走 legacy 形状，weekly `resets_at` 落下周一 00:00 UTC） | `fetchOllamaQuota` / `parseOllamaBalance` |
+| `/api/usage` 改版为请求计数历史（`?range=24h|7d|30d`，`totals` + `buckets`），老 `limits.*.usage` 分数废弃 | 官方 [Cloud usage](https://docs.ollama.com/api/cloud-usage) + 本仓库 2026-10-10 活测（老形状实测消失） | 不调（无额度语义） |
+| balance / usage 限频 10 req/min/user 跨 key 共享，429 带 `Retry-After` | 官方两页 Rate limits 节 | 不轮询 |
 | `/api/show` 的 `model_info.<family>.context_length` + `capabilities` | Cloud 实测（例：[`deepseek-v4.1-flash`](https://ollama.com/library/deepseek-v4.1-flash) 2026-09-11 → `deepseek_v41.context_length` 1048576，`capabilities` 含 `vision`） | `contextWindow` / `input` |
 | Cloud 忽略 `num_ctx`，窗口只能读 `/api/show` | [ollama#16598](https://github.com/ollama/ollama/issues/16598) | 同上 |
-| session = UTC 5h unix 桶；weekly = UTC 7d 桶偏移 −4d（周一 00:00 UTC） | [ollama#12532](https://github.com/ollama/ollama/issues/12532) | `ollamaSessionResetAt` / `ollamaWeeklyResetAt` |
+| session/weekly 重置 stamp 缺失时的回落 = UTC 5h unix 桶 / UTC 7d 桶偏移 −4d（周一 00:00 UTC） | [ollama#12532](https://github.com/ollama/ollama/issues/12532)（2026-10-10 实测官方 `resets_at` 与桶算互证） | `ollamaSessionResetAt` / `ollamaWeeklyResetAt`（仅缺 stamp 时） |
 
 **不要发明：** sticky conversation id（Cloud 没有文档化的会话亲和字段）。其余禁令（`cached_tokens`、`id_ed25519.pub` 当 key、包一层 localhost）在「不要」节。
 

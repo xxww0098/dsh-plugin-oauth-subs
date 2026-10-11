@@ -42,7 +42,6 @@ async function selectionFixture(t) {
     cursorAutoImport: false,
     ollamaAutoImport: false,
     kimiAutoImport: false,
-    copilotAutoImport: false,
     updateEnv: { DSH_HOME: dir },
     readFileFn: () => '{"version":"0.0.0"}',
     fetchFn: async (input) => {

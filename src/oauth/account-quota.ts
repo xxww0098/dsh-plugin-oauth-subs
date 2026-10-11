@@ -7,7 +7,7 @@
 import { accountIdOf, getStoredSession, listStoredSessions, PROVIDER_IDS, publicSession } from './store.js'
 import { ImportedLoginStale } from './tokens.js'
 import { QUOTA_USED_TTL_MS } from './quota.js'
-import { oauthFamily } from './families.js'
+import { NO_RESET_CARDS, oauthFamily } from './families.js'
 import type { AuthController } from './controller.js'
 
 export async function liveAccounts(ctl: AuthController, provider) {
@@ -113,15 +113,9 @@ export async function refreshQuota(ctl: AuthController, provider, accountId?) {
 }
 
 export async function consumeReset(ctl: AuthController, provider, accountId, creditId?) {
-  if (provider === 'glm') {
-    const live = await ctl.tokens.glm.session(accountId)
-    return ctl.quota.consume('glm', accountIdOf('glm', live), live, creditId)
-  }
-  if (provider === 'grok') {
-    const live = await ctl.tokens.grok.session(accountId)
-    return ctl.quota.consume('grok', accountIdOf('grok', live), live, creditId)
-  }
-  if (provider !== 'codex') throw new Error('only ChatGPT Codex, Grok and GLM can reset quota')
-  const live = await ctl.tokens.codex.session(accountId)
-  return ctl.quota.consume('codex', accountIdOf('codex', live), live)
+  // A family with reset cards spends one through its registry hook
+  // (families.ts); one without is refused here, before its session is read.
+  if (!oauthFamily(provider)?.reset) throw new Error(NO_RESET_CARDS)
+  const session = await ctl.tokens[provider].session(accountId)
+  return ctl.quota.consume(provider, accountIdOf(provider, session), session, creditId)
 }

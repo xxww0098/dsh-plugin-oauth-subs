@@ -5,6 +5,11 @@
  * the public entry points.
  */
 import type { AuthController } from '../../oauth/controller.js';
+/**
+ * Live picker rows for warmCatalogs: the discover seam refreshes the vendor's
+ * list; without one (or when the read fails) the pinned registry stands.
+ */
+export declare function discoverCommandCode(ctl: AuthController, session: any): Promise<any>;
 export declare function maybeAutoImportCommandCode(ctl: AuthController): Promise<void>;
 export declare function importCommandCode(ctl: AuthController): Promise<{
     source: unknown;

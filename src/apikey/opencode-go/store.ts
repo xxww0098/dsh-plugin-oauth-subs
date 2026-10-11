@@ -128,6 +128,13 @@ export class OpencodeGoStore {
     return this.#ids().some((id) => Boolean(this.vault.accounts[id]?.apiKey))
   }
 
+  /** The id whose key chat should use: the active account's, else the first stored key. */
+  keyedId() {
+    const active = this.vault.activeId
+    if (active && this.vault.accounts[active]?.apiKey) return active
+    return this.#ids().find((id) => Boolean(this.vault.accounts[id]?.apiKey))
+  }
+
   /** The single keyless account, if the vault holds exactly one (legacy adoption). */
   keylessId() {
     const ids = this.#ids()
@@ -337,6 +344,11 @@ export class OpencodeGoStore {
         rows: parsed.rows ?? [],
         ...(parsed.useBalance === undefined ? {} : { useBalance: parsed.useBalance }),
         ...(parsed.balance === undefined ? {} : { balance: parsed.balance }),
+        // Zen prepaid wallet of the same OpenCode account, plus the Go
+        // subscription state ('ended'/'none') when the meters are gone.
+        // Display-only, never a credential.
+        ...(parsed.zen === undefined ? {} : { zen: parsed.zen }),
+        ...(parsed.subscription === undefined ? {} : { subscription: parsed.subscription }),
       })
     } catch (error) {
       this.quotas.set(id, {

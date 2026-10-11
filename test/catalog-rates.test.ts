@@ -118,7 +118,6 @@ test('describeCatalog puts a price on rows of every family, including runtime -f
   assert.ok(priced('cursor', 'composer-2.5'))
   assert.ok(priced('devin', 'swe-2'))
   assert.ok(priced('codex', 'gpt-5.5-fast'))
-  assert.ok(priced('copilot', 'gpt-4.1'))
   assert.equal(priced('codex', 'gpt-5.5-fast').in > priced('codex', 'gpt-5.5').in, true, 'priority twin is dearer than its base row')
   // Cursor fast variants: an explicit "(Fast)" docs row when the table has one,
   // else the base row × the multiplier its notes state ("Fast mode is available
@@ -170,6 +169,21 @@ test('describeCatalog exposes pricing on Models-tab rows; route rows never carry
 test('step-5-preview-free keeps the published free OpenCode Go price', () => {
   const row = catalogRate('opencode-go-flash/step-5-preview-free')
   assert.deepEqual({ in: row.in, out: row.out, cacheRead: row.cacheRead }, { in: 0, out: 0, cacheRead: 0 })
+})
+
+test('cline prices the renamed Grok id from openrouter and the free Step 5 row at zero', () => {
+  const grok = catalogRate('cline/x-ai/grok-4.7')
+  const legacy = catalogRate('cline/spacexai/grok-4.7')
+  assert.deepEqual(
+    { in: grok.in, out: grok.out, cacheRead: grok.cacheRead, tierThreshold: grok.tierThreshold, tiers: grok.tiers },
+    { in: 2, out: 6, cacheRead: 0.5, tierThreshold: 200000, tiers: [{ in: 4, out: 12, cacheRead: 1 }] },
+  )
+  assert.deepEqual(
+    { in: legacy.in, out: legacy.out, cacheRead: legacy.cacheRead, tierThreshold: legacy.tierThreshold, tiers: legacy.tiers },
+    { in: grok.in, out: grok.out, cacheRead: grok.cacheRead, tierThreshold: grok.tierThreshold, tiers: grok.tiers },
+  )
+  const step = catalogRate('cline/cline-free/step-5-preview')
+  assert.deepEqual({ in: step.in, out: step.out, cacheRead: step.cacheRead }, { in: 0, out: 0, cacheRead: 0 })
 })
 
 test('every catalog family key is allowed as a rates.json top-level key', () => {

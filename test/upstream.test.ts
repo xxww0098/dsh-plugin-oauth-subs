@@ -16,9 +16,10 @@ import {
 } from '../lib/oauth/upstream.js'
 import { LoginRequiredError, TokenManager } from '../lib/oauth/tokens.js'
 import { clineQuotaFailure } from '../lib/oauth/cline/request.js'
+import { commandCodeFailure } from '../lib/apikey/command-code/failure.js'
 import { createProxy } from '../lib/oauth/proxy.js'
 import { outboundFetch } from '../lib/utils/outbound.js'
-import { RequestError } from '../lib/utils/http.js'
+import { RequestError, isPreDeliveryFailure } from '../lib/utils/http.js'
 
 const hang = () => new Promise(() => {})
 const transport = (message = 'fetch failed: ECONNRESET') => new UpstreamFailure(502, message, { code: 'transport' })
@@ -175,16 +176,22 @@ test('retries and mid-response failures are also appended to the upstream log, w
   }
 }))
 
-test('transport faults retry on the backoff schedule; three of them answer 502 with the proxyExhausted wording', withClock(async () => {
+test('a pre-delivery socket fault retries at once; the next failure keeps the schedule', withClock(async (errorLog) => {
   const seen = []
   const { error, at } = await settle(request().run(async (attempt) => {
     seen.push([attempt.index, Date.now()])
     throw new TypeError('fetch failed', { cause: Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' }) })
   }))
-  assert.deepEqual(seen, [[0, 0], [1, 1000], [2, 5000]])
-  assert.equal(at, 5000)
+  // Attempt 2 is a fresh dial for a dead pooled socket (one mocked tick, i.e.
+  // no wait of its own); by attempt 3 the path itself has failed twice, so the
+  // schedule takes over.
+  assert.deepEqual(seen.map(([index]) => index), [0, 1, 2])
+  assert.equal(seen[1][1] - seen[0][1], 100, 'the pre-delivery retry waits only the clock tick')
+  assert.equal(seen[2][1] - seen[1][1], 4000, 'the second failure is paced')
+  assert.equal(at, 4100)
   assert.equal(error.status, 502)
   assert.equal(error.message, `ollama upstream failed ${UPSTREAM_ATTEMPTS} times: fetch failed: ECONNRESET`)
+  assert.match(errorLog.mock.calls[0].arguments[0], /ollama retrying upstream \(attempt 2\/3\) at once: fetch failed: ECONNRESET/)
 
   let calls = 0
   const recovered = await settle(request().run(async () => {
@@ -193,8 +200,33 @@ test('transport faults retry on the backoff schedule; three of them answer 502 w
     return 'ok'
   }))
   assert.equal(recovered.value, 'ok')
-  assert.equal(recovered.at - at, 1000)
+  assert.equal(recovered.at - at, 1000, 'a family transport answer still waits out the schedule')
 }))
+
+test('a transport failure with no connection fault keeps the backoff schedule', withClock(async () => {
+  const seen = []
+  const { error, at } = await settle(request().run(async (attempt) => {
+    seen.push([attempt.index, Date.now()])
+    throw transport()
+  }))
+  assert.deepEqual(seen, [[0, 0], [1, 1000], [2, 5000]])
+  assert.equal(at, 5000)
+  assert.equal(error.status, 502)
+  assert.equal(error.message, `ollama upstream failed ${UPSTREAM_ATTEMPTS} times: fetch failed: ECONNRESET`)
+}))
+
+test('isPreDeliveryFailure sees the socket fault behind undici and the outbound proxy wrapper', () => {
+  assert.equal(isPreDeliveryFailure(new TypeError('fetch failed', { cause: Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' }) })), true)
+  assert.equal(isPreDeliveryFailure(new TypeError('terminated', { cause: { code: 'UND_ERR_SOCKET' } })), true)
+  assert.equal(isPreDeliveryFailure(new Error(
+    'outbound proxy unavailable: fetch failed: 0 via http://127.0.0.1:1082',
+    { cause: new TypeError('fetch failed', { cause: { code: 0 } }) },
+  )), true, 'the live "fetch failed: 0" shape')
+  assert.equal(isPreDeliveryFailure(transport()), false, 'a family transport answer carries no connection code')
+  assert.equal(isPreDeliveryFailure(new UpstreamFailure(504, 'no first byte within 120s', { code: 'timeout' })), false)
+  assert.equal(isPreDeliveryFailure(new UpstreamFailure(503, 'ollama upstream 503', { code: 'http' })), false)
+  assert.equal(isPreDeliveryFailure(new Error('boom')), false)
+})
 
 test('upstream HTTP answers, quota answers and request errors are never replayed', withClock(async () => {
   for (const failure of [
@@ -416,6 +448,24 @@ test('proxy answers the Cline daily cap as a 429 usage-limit, forwarded once', a
     assert.equal(calls, 1)
   })
   assert.equal(clineQuotaFailure(429, { error: { message: 'rate limited' } }), undefined, 'other 429s stay upstream answers')
+})
+
+test('host classification contract: Command Code refusals keep the login, caps read as quota', () => {
+  const cases = [
+    [403, { error: { code: 'upgrade_required', message: 'Your Command Code CLI is out of date.', minVersion: '0.18.10' } }, 'INVALID_REQUEST'],
+    [403, { error: { message: 'MODEL_NOT_IN_PLAN: gpt-6-sol' } }, 'INVALID_REQUEST'],
+    [400, { error: { message: 'You have insufficient credits to make this request.' } }, QUOTA_EXCEEDED_CODE],
+    [429, { error: { code: 'RATE_LIMITED', message: 'You have reached your 5-hour limit. It resets in 2h.' } }, QUOTA_EXCEEDED_CODE],
+  ]
+  for (const [status, payload, code] of cases) {
+    const mapped = commandCodeFailure(status, payload)
+    assert.ok(mapped, `expected a mapping for ${status} ${JSON.stringify(payload)}`)
+    const message = hostMessage(new RequestError(mapped.status, mapped.message))
+    assert.equal(classifyPiAiError(message), code, message)
+    assert.equal(HOST_RETRIED.has(code), code === QUOTA_EXCEEDED_CODE ? false : HOST_RETRIED.has(code))
+  }
+  // A 401 stays the upstream's own answer: the key itself is what failed.
+  assert.equal(commandCodeFailure(401, { error: { message: "Invalid 'Authorization' header or token." } }), undefined)
 })
 
 test('host classification contract: Kiro monthly quota is QUOTA_EXCEEDED, a refused token after refresh is not AUTH', async () => {

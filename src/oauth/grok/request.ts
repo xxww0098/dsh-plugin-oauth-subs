@@ -16,7 +16,8 @@
  */
 
 import { GROK_FAST_MODEL_IDS } from './index.js'
-import { grokConversationId, pinGrokSystemPrefix } from './cache.js'
+import { applyGrokCache, grokConversationId, pinGrokSystemPrefix, type GrokPinDecision } from './cache.js'
+import { createGrokCacheObserver } from './diagnostics.js'
 
 const INSTRUCTION_ROLES = new Set(['system', 'developer'])
 
@@ -55,10 +56,10 @@ function splitLeadingInstructions(input) {
   return { lifted: lifted.join('\n\n'), rest }
 }
 
-function stabilizeGrokInput(next, conversationId) {
+function stabilizeGrokInput(next, conversationId, observe?: (decision: GrokPinDecision) => void) {
   if (!Array.isArray(next.input)) return next
   const { lifted, rest } = splitLeadingInstructions(next.input)
-  const { pinned, extra } = pinGrokSystemPrefix(conversationId, lifted)
+  const { pinned, extra } = pinGrokSystemPrefix(conversationId, lifted, observe)
   const prefix: any[] = []
   if (pinned) prefix.push(systemItem(pinned))
   const suffix = extra ? [developerItem(extra)] : []
@@ -85,8 +86,20 @@ export function normalizeGrokModel(payload) {
   return next
 }
 
-export function normalizeGrokResponsesBody(payload) {
+export function normalizeGrokResponsesBody(payload, observe?: (decision: GrokPinDecision) => void) {
   if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return payload
   const normalized = normalizeGrokModel(payload)
-  return stabilizeGrokInput({ ...normalized }, grokConversationId(normalized))
+  return stabilizeGrokInput({ ...normalized }, grokConversationId(normalized), observe)
+}
+
+/** Keep diagnostics beside the final wire body, never inside it. */
+export function prepareGrokResponsesBody(payload) {
+  let pin: GrokPinDecision | undefined
+  const normalized = normalizeGrokResponsesBody(payload, decision => { pin = decision })
+  const { payload: next, cacheSessionId } = applyGrokCache(normalized)
+  return {
+    payload: next, cacheSessionId,
+    grokModel: typeof next.model === 'string' ? next.model : undefined,
+    observeResponse: createGrokCacheObserver(next, cacheSessionId, pin),
+  }
 }

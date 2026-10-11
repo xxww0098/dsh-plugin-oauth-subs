@@ -22,28 +22,11 @@ import {
   CLINE_USAGE_BILLING,
   clineBalanceUrl,
   clineBearer,
+  clineIdentityHeaders,
   parseClineUserInfo,
 } from './index.js'
 import { outboundFetch } from '../../utils/outbound.js'
-import { asNumber, readJson } from '../quota-shared.js'
-
-const CLINE_QUOTA_TIMEOUT_MS = 10_000
-
-/** Release an unread response body so its socket is not pinned until GC. */
-function drainBody(response) {
-  try {
-    return response?.body?.cancel?.() ?? Promise.resolve()
-  } catch {
-    return Promise.resolve()
-  }
-}
-
-function timeoutSignal(ms) {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), ms)
-  if (typeof timer.unref === 'function') timer.unref()
-  return { signal: controller.signal, cancel: () => clearTimeout(timer) }
-}
+import { asNumber, quotaReads } from '../quota-shared.js'
 
 function envelope(payload) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return undefined
@@ -184,53 +167,24 @@ export function parseClineUsage(user, balance, plan, limits: any[] = []) {
 
 export async function fetchClineQuota(session, fetchFn = outboundFetch) {
   const authorization = `Bearer ${clineBearer(session)}`
-  const headers = { accept: 'application/json', authorization }
-  const meWait = timeoutSignal(CLINE_QUOTA_TIMEOUT_MS)
-  try {
-    const me = envelope(await fetchFn(CLINE_ME_URL, { headers, signal: meWait.signal })
-      .then((response) => readJson(response, 'cline me')))
-    const userId = typeof me?.id === 'string' && me.id.trim()
-      ? me.id.trim()
-      : typeof session?.userId === 'string' && session.userId.trim() ? session.userId.trim() : undefined
-    if (!userId) throw new Error('cline account id is unavailable')
-    // Arm each follow-up with its own full budget. Creating planWait up front
-    // let a slow `me` read eat the plan request's timeout, and the abort was
-    // swallowed by .catch(() => undefined), silently dropping plan/caps.
-    const balanceWait = timeoutSignal(CLINE_QUOTA_TIMEOUT_MS)
-    const limitsWait = timeoutSignal(CLINE_QUOTA_TIMEOUT_MS)
-    const planWait = timeoutSignal(CLINE_QUOTA_TIMEOUT_MS)
-    try {
-      const [balance, plan, limits] = await Promise.all([
-        fetchFn(clineBalanceUrl(userId), { headers, signal: balanceWait.signal })
-          .then((response) => readJson(response, 'cline balance'))
-          .then((payload) => parseClineBalance(payload)),
-        // Both plan reads 404 for a credit account; they stay best-effort so
-        // the balance row survives a missing plan.
-        fetchFn(CLINE_PLAN_URL, { headers, signal: planWait.signal })
-          .then(async (response) => {
-            if (response.ok) return response.json()
-            // A credit account 404s here: consume the body or the socket stays pinned.
-            await drainBody(response)
-            return undefined
-          })
-          .then((payload) => parseClinePlan(payload))
-          .catch(() => undefined),
-        fetchFn(CLINE_PLAN_LIMITS_URL, { headers, signal: limitsWait.signal })
-          .then(async (response) => {
-            if (response.ok) return response.json()
-            await drainBody(response)
-            return undefined
-          })
-          .then((payload) => parseClinePlanLimits(payload))
-          .catch(() => []),
-      ])
-      return parseClineUsage(me, balance, plan, limits)
-    } finally {
-      balanceWait.cancel()
-      limitsWait.cancel()
-      planWait.cancel()
-    }
-  } finally {
-    meWait.cancel()
-  }
+  const headers = { ...clineIdentityHeaders(), authorization }
+  const [me] = await quotaReads(fetchFn, [
+    { url: CLINE_ME_URL, label: 'cline me', init: { headers }, parse: envelope },
+  ])
+  if (!me.ok) throw me.error
+  const userId = typeof me.value?.id === 'string' && me.value.id.trim()
+    ? me.value.id.trim()
+    : typeof session?.userId === 'string' && session.userId.trim() ? session.userId.trim() : undefined
+  if (!userId) throw new Error('cline account id is unavailable')
+  // The balance is what the card is; both plan reads 404 for a credit account,
+  // so they stay best-effort and the balance row survives a missing plan. Each
+  // follow-up is armed with its own full budget: a slow `me` read cannot eat
+  // theirs, and an unread body is drained by the read itself.
+  const [balance, plan, limits] = await quotaReads(fetchFn, [
+    { url: clineBalanceUrl(userId), label: 'cline balance', init: { headers }, parse: parseClineBalance },
+    { url: CLINE_PLAN_URL, label: 'cline plan', init: { headers }, parse: parseClinePlan },
+    { url: CLINE_PLAN_LIMITS_URL, label: 'cline plan limits', init: { headers }, parse: parseClinePlanLimits },
+  ])
+  if (!balance.ok) throw balance.error
+  return parseClineUsage(me.value, balance.value, plan.ok ? plan.value : undefined, limits.ok ? limits.value : [])
 }

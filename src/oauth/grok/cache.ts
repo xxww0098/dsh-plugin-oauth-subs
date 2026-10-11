@@ -11,8 +11,8 @@
  * for byte. DSH snapshots that would rewrite the leading system/developer
  * are pinned per conv id; extras park at the input suffix.
  *
- * A later 512-token cache block with <10% reuse is an affinity miss
- * (wrong xAI shard), not a prefix rewrite.
+ * Low reuse is a diagnostic signal, not proof of the shard or prefix
+ * responsible; correlate request fingerprints and observed usage.
  */
 
 import { randomUUID } from 'node:crypto'
@@ -20,8 +20,24 @@ import { randomUUID } from 'node:crypto'
 /** When DSH sends neither session_id nor prompt_cache_key, still pin a constant. */
 export const GROK_STABLE_SESSION = 'dsh-grok'
 
-const SYSTEM_PINS = new Map()
+// Compatible module graphs share this Grok-only, process-local state. A new
+// schema must use a new version key; nothing is serialized or shared with a
+// different family. Explicit reset still clears every live module reference.
+const PIN_STATE_KEY = Symbol.for('dsh-plugin-oauth-subs.grok.system-pins.v1')
+type GrokPinState = { pins: Map<string, string>, generation: number }
+const pinRoot: typeof globalThis & { [PIN_STATE_KEY]?: GrokPinState } = globalThis
+const pinState = pinRoot[PIN_STATE_KEY] ??= {
+  pins: new Map(), generation: 0,
+}
+const GENERATION = ++pinState.generation
+const SYSTEM_PINS = pinState.pins
 const SYSTEM_PIN_CAP = 64
+
+export interface GrokPinDecision {
+  action: 'empty' | 'unkeyed' | 'new' | 'reuse' | 'append' | 'changed' | 'repin'
+  generation: number
+  evicted: boolean
+}
 
 export function grokCacheSessionId(key) {
   if (typeof key !== 'string') return undefined
@@ -53,33 +69,31 @@ function usePin(key) {
  * prepended snapshot or an in-place edit must not re-park the whole blob,
  * which would leave its untouched front permanently uncached.
  */
-export function pinGrokSystemPrefix(conversationId, systemText) {
-  const text = typeof systemText === 'string' ? systemText : ''
-  if (!text) return { pinned: '', extra: '' }
-  if (!conversationId || conversationId === GROK_STABLE_SESSION) {
-    return { pinned: text, extra: '' }
+export function pinGrokSystemPrefix(conversationId, systemText, observe?: (decision: GrokPinDecision) => void) {
+  const finish = (pinned: string, extra: string, action: GrokPinDecision['action'], evicted = false) => {
+    observe?.({ action, generation: GENERATION, evicted })
+    return { pinned, extra }
   }
+  const text = typeof systemText === 'string' ? systemText : ''
+  if (!text) return finish('', '', 'empty')
+  if (!conversationId || conversationId === GROK_STABLE_SESSION) return finish(text, '', 'unkeyed')
   const existing = usePin(conversationId)
   if (existing === undefined) {
-    if (SYSTEM_PINS.size >= SYSTEM_PIN_CAP) {
-      const first = SYSTEM_PINS.keys().next().value
-      SYSTEM_PINS.delete(first)
-    }
+    const evicted = SYSTEM_PINS.size >= SYSTEM_PIN_CAP
+    if (evicted) SYSTEM_PINS.delete(SYSTEM_PINS.keys().next().value!)
     SYSTEM_PINS.set(conversationId, text)
-    return { pinned: text, extra: '' }
+    return finish(text, '', 'new', evicted)
   }
-  if (existing === text || existing.startsWith(text)) return { pinned: existing, extra: '' }
+  if (existing === text || existing.startsWith(text)) return finish(existing, '', 'reuse')
   if (text.startsWith(existing)) {
-    return { pinned: existing, extra: text.slice(existing.length).replace(/^\n+/, '').trim() }
+    return finish(existing, text.slice(existing.length).replace(/^\n+/, '').trim(), 'append')
   }
   const extra = changedRegion(existing, text)
-  if (extra !== null) return { pinned: existing, extra }
+  if (extra !== null) return finish(existing, extra, 'changed')
   // A different prompt on the same conv id (DSH's session-title request
-  // shares the chat's prompt_cache_key) is its own request, not a rewrite:
-  // parking the chat's prompt behind the title's made Grok answer with a
-  // title. Re-pin and send it as-is.
+  // shares the chat's prompt_cache_key) is its own request, not a rewrite.
   SYSTEM_PINS.set(conversationId, text)
-  return { pinned: text, extra: '' }
+  return finish(text, '', 'repin')
 }
 
 /** The smallest whole-line slice of `text` that differs from `existing`:

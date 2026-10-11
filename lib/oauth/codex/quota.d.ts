@@ -36,31 +36,7 @@ export declare function parseResetCredits(payload: any): {
         expiresAt: number | undefined;
     } | undefined)[];
 };
-export declare function fetchCodexQuota(session: any, fetchFn?: typeof outboundFetch): Promise<{
-    resetCredits: {
-        nextExpiresAt?: number | undefined;
-        availableCount: number;
-        credits: ({
-            id: string | undefined;
-            status: any;
-            expiresAt: number | undefined;
-        } | undefined)[];
-    };
-    rows: never[];
-    planType?: undefined;
-} | {
-    resetCredits: {
-        nextExpiresAt?: number | undefined;
-        availableCount: number;
-        credits: ({
-            id: string | undefined;
-            status: any;
-            expiresAt: number | undefined;
-        } | undefined)[];
-    };
-    planType: any;
-    rows: any[];
-}>;
+export declare function fetchCodexQuota(session: any, fetchFn?: typeof outboundFetch): Promise<any>;
 export declare function consumeResetBody(redeemRequestId: any): {
     redeem_request_id: any;
     idempotencyKey: any;

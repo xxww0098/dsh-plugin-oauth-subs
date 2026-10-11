@@ -2,9 +2,9 @@
  * Family registry: the one table keyed by family id that the central
  * per-family dispatchers look up instead of growing `family === '<id>'`
  * chains — today the inbound cache rewrite (proxy-body.ts), the quota
- * fetch (quota.ts QuotaStore), the account-quota hydration hooks
- * (account-quota.ts), the login flow / paste completion / pasted-key
- * dispatch (login.ts), the passthrough Completions usage rewrite
+ * fetch and reset-card spend (quota.ts QuotaStore), the account-quota
+ * hydration hooks (account-quota.ts), the login flow / paste completion /
+ * pasted-key dispatch (login.ts), the passthrough Completions usage rewrite
  * (passthrough.ts), and the model-catalog bag every llm-pi-ai projection
  * consumes (familyCatalogInputs below; models.ts / harness-sync.ts).
  *
@@ -22,13 +22,26 @@
  *   style); every other central dispatcher imports a row from this table.
  */
 import type { AuthController } from './controller.js';
-export type FamilyId = 'codex' | 'chatgpt' | 'grok' | 'glm' | 'kiro' | 'antigravity' | 'cursor' | 'ollama' | 'kimi' | 'copilot' | 'devin' | 'cline' | 'command-code';
+export type FamilyId = 'codex' | 'chatgpt' | 'grok' | 'glm' | 'kiro' | 'antigravity' | 'cursor' | 'ollama' | 'kimi' | 'devin' | 'cline' | 'command-code';
 /** One family's inbound cache rewrite; extra keys ride along to the hop. */
 export interface FamilyCacheRewrite {
     payload: any;
     cacheSessionId?: string;
+    observeResponse?: FamilyResponseObserver;
     [extra: string]: unknown;
 }
+/** Passive per-attempt byte observer; implementations live in the owning family. */
+export interface FamilyResponseObservation {
+    status: (code: number) => void;
+    push: (chunk: Uint8Array) => void;
+    finish: () => Promise<void>;
+}
+export type FamilyResponseObserver = (attempt: {
+    requestId?: string;
+    accountId?: string;
+    attempt: number;
+    wireBody: Uint8Array;
+}) => FamilyResponseObservation | undefined;
 /** refreshQuota: re-read this family's own model list, re-sync when it changed. */
 export interface FamilyCatalogDiscovery {
     /** Current catalog rows; ids compared before/after discovery. */
@@ -52,6 +65,27 @@ export interface FamilyQuotaHooks {
     discover?: FamilyCatalogDiscovery;
     /** refreshQuota: the hooks above may rewrite stored rows — re-list them before peeking. */
     relistAccountsAfterRefresh?: boolean;
+}
+/**
+ * Per-family reset-card hooks driven by QuotaStore.consume: the store owns the
+ * account's cache key, the read it must wait out, the invalidation and the
+ * re-read; the family owns what a card is, how one is resolved and how it is
+ * spent (family quota.ts).
+ */
+export interface FamilyResetHooks {
+    /**
+     * Spend one card. `creditId` is the public card id the panel sent
+     * (undefined for Codex, whose reset takes none); `bank` is that account's
+     * cached `resetCredits`, which a family consults (GLM) or ignores (Grok
+     * resolves its hashed id by a fresh list read); `key` is the store's cache
+     * key of the account, for state a family keeps per account. Throws when the
+     * card is gone, or when the vendor refused it.
+     */
+    spend: (session: any, creditId: string | undefined, ctx: {
+        fetchFn: any;
+        bank?: any;
+        key: string;
+    }) => Promise<unknown>;
 }
 /**
  * Per-family passthrough forward hooks driven by src/oauth/passthrough.ts:
@@ -117,6 +151,8 @@ export interface OAuthFamily {
     login: FamilyLoginHooks;
     /** account-quota: per-account hydration / refresh side effects, when this family has them. */
     quota?: FamilyQuotaHooks;
+    /** QuotaStore.consume: this family's reset-card spend, when it has reset cards. */
+    reset?: FamilyResetHooks;
     /**
      * models.ts buildProviders/catalogProviders: this family's catalog rows,
      * referencing its own catalog.ts export (never a copy). Families without a
@@ -129,6 +165,8 @@ export interface OAuthFamily {
         id: string;
     }[];
 }
+/** The refusal a family without reset cards gets, from both reset entry points (QuotaStore.consume, account-quota's consumeReset). */
+export declare const NO_RESET_CARDS = "only ChatGPT Codex, Grok and GLM can reset quota";
 /** The registry, keyed by family id (the ids of store.ts `PROVIDER_IDS`). */
 export declare const OAUTH_FAMILIES: ReadonlyMap<string, OAuthFamily>;
 /** Registry lookup; `undefined` means the id is not a known family. */

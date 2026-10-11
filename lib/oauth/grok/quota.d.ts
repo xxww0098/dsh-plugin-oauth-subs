@@ -39,3 +39,11 @@ export declare function consumeGrokResetToken(session: any, tokenId: any, fetchF
     ok: boolean;
     outcome: string;
 }>;
+/**
+ * Spend the card the panel named by its public id — the family's reset hook
+ * (families.ts), driven by QuotaStore.consume. The public id is a hash
+ * (reset-frame.ts), so the token is resolved by a fresh list read: a card
+ * spent or expired since the panel rendered is refused instead of silently
+ * spending another.
+ */
+export declare function spendGrokResetCard(session: any, creditId: any, { fetchFn }: any): Promise<void>;

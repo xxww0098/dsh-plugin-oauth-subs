@@ -10,9 +10,11 @@ export declare function maybeAdoptOpencodeGoKey(ctl: AuthController): Promise<vo
 /**
  * Mirror a stored account's key into the host `OPENCODE_API_KEY` credential.
  * A keyless account never clears a key another stored account still holds
- * (a quota-only account must keep chat working); once no stored account has
- * a key, the credential is removed so the next `sync()` can take the
- * plugin's `opencode-go-flash` route back out of DSH.
+ * (a quota-only account must keep chat working) — but it must not leave a
+ * REMOVED account's key behind either: when `id` has no key, the mirror
+ * moves to the account that still holds one. Once no stored account has a
+ * key, the credential is removed so the next `sync()` can take the plugin's
+ * `opencode-go-flash` route back out of DSH.
  */
 export declare function mirrorOpencodeGoKey(ctl: AuthController, id: any): Promise<void>;
 export declare function opencodeGoSnapshot(ctl: AuthController, options?: any): Promise<{

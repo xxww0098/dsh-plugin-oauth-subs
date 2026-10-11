@@ -85,6 +85,22 @@
       return fill(units.suffix, bits.join(' '))
     }
 
+    // SkillStar usage meters: compact units, no "后重置" / "resets in".
+    function formatMeterReset(resetAt, t) {
+      if (typeof resetAt !== 'number' || resetAt <= 0) return ''
+      const delta = resetAt - Date.now()
+      if (delta <= 0) return t.meterResetSoon
+      const totalMinutes = Math.max(1, Math.round(delta / 60_000))
+      const days = Math.floor(totalMinutes / 1440)
+      const hours = Math.floor((totalMinutes % 1440) / 60)
+      const minutes = totalMinutes % 60
+      const bits = []
+      if (days) bits.push(fill(t.meterDays, days))
+      if (hours) bits.push(fill(t.meterHours, hours))
+      if (minutes || bits.length === 0) bits.push(fill(t.meterMinutes, minutes))
+      return bits.join(t.meterJoin ?? '')
+    }
+
     function formatStamp(resetAt) {
       if (typeof resetAt !== 'number' || resetAt <= 0) return ''
       try {
@@ -224,14 +240,6 @@
         if (slug === 'hobby' || compact === 'hobby') return 'Hobby'
         if (slug === 'enterprise' || compact === 'enterprise') return 'Enterprise'
       }
-      if (family === 'copilot') {
-        if (slug === 'proplus' || slug === 'pro_plus' || compact === 'proplus') return 'Pro+'
-        if (slug === 'pro' || compact === 'pro') return 'Pro'
-        if (slug === 'free' || compact === 'free') return 'Free'
-        if (slug === 'business' || compact === 'business') return 'Business'
-        if (slug === 'enterprise' || compact === 'enterprise') return 'Enterprise'
-        if (slug === 'individual' || compact === 'individual') return 'Individual'
-      }
       if (family === 'devin') {
         if (slug === '16' || slug === 'devin_pro' || slug === 'pro' || compact === 'pro') return 'Pro'
         if (slug === '17' || slug === 'devin_max' || slug === 'max' || compact === 'max') return 'Max'
@@ -309,10 +317,6 @@
       return /^kimi-[0-9a-f]{8}$/i.test(String(value ?? '').trim())
     }
 
-    function isCopilotOpaqueIdentity(value) {
-      return /^copilot-[0-9a-f]{8}$/i.test(String(value ?? '').trim())
-    }
-
     function isDevinOpaqueIdentity(value) {
       const raw = String(value ?? '').trim()
       return /^devin-[A-Za-z0-9_-]{4,}$/i.test(raw) || /^devin-team\$[A-Za-z0-9_-]+$/i.test(raw) || /^user-[0-9a-f]{16,}$/i.test(raw)
@@ -330,7 +334,6 @@
       if (family === 'cursor') return account && !isCursorOpaqueIdentity(account) ? account : ''
       if (family === 'ollama') return account && !isOllamaOpaqueIdentity(account) ? account : ''
       if (family === 'kimi') return account && !isKimiOpaqueIdentity(account) ? account : ''
-      if (family === 'copilot') return account && !isCopilotOpaqueIdentity(account) ? account : ''
       if (family === 'devin') return account && !isDevinOpaqueIdentity(account) ? account : ''
       if (family === 'command-code') return account && !isCommandCodeOpaqueIdentity(account) ? account : ''
       if (account && !isGlmAppIdentity(account)) return account

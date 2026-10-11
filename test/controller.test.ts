@@ -16,7 +16,7 @@ import {
 } from '../lib/oauth/models.js'
 import { ModelSwitch } from '../lib/oauth/model-switch.js'
 import { glmSession } from '../lib/oauth/glm/index.js'
-import { OPENCODE_GO_BUILTIN_ROUTE_ID, OPENCODE_GO_EXTRA_MODELS, OPENCODE_GO_EXTRA_ROUTE, OPENCODE_GO_ROUTES } from '../lib/apikey/opencode-go/models.js'
+import { OPENCODE_GO_BUILTIN_ROUTE_ID, OPENCODE_GO_EXTRA_MODELS, OPENCODE_GO_EXTRA_ROUTE, OPENCODE_GO_ROUTES, OPENCODE_ZEN_ROUTES } from '../lib/apikey/opencode-go/models.js'
 import { kiroSession, KIRO_MODELS } from '../lib/oauth/kiro/index.js'
 import { antigravitySession } from '../lib/oauth/antigravity/index.js'
 
@@ -50,7 +50,7 @@ function createPiAiSettings(initialProviders = {}) {
   }
 }
 
-const GLM_CURRENT = ['oauth-glm/glm-5.3', 'oauth-glm/glm-5.3-flash', 'oauth-glm/glm-5-turbo']
+const GLM_CURRENT = ['oauth-glm/glm-5.3-flashx', 'oauth-glm/glm-5.3', 'oauth-glm/glm-5.3-flash', 'oauth-glm/glm-5-turbo']
 const GLM_STALE = ['oauth-glm/glm-4.7', 'oauth-glm/glm-5', 'oauth-glm/glm-5.1', 'oauth-glm/glm-5.2']
 
 function glmQuotaFetch() {
@@ -92,7 +92,8 @@ test('snapshot reports logged-out accounts and empty providers', async () => {
   assert.equal(snap.accounts.codex.loggedIn, false)
   assert.equal(snap.accounts.grok.loggedIn, false)
   assert.equal(snap.accounts.kimi.loggedIn, false)
-  assert.equal(snap.accounts.copilot.loggedIn, false)
+  // Copilot was removed as a family: no account row, no catalog group.
+  assert.equal(snap.accounts.copilot, undefined)
   assert.equal(snap.accounts.opencode, undefined)
   assert.equal(snap.accounts['opencode-go'].loggedIn, false)
   assert.deepEqual(snap.accounts['opencode-go'].accounts, [])
@@ -100,7 +101,8 @@ test('snapshot reports logged-out accounts and empty providers', async () => {
   assert.equal(snap.opencodeGo.apiKeySet, false)
   assert.equal(snap.opencodeGo.quota.status, 'idle')
   assert.deepEqual(snap.providers, [])
-  assert.equal(snap.catalog.length, 16)
+  // 12 OAuth families + OpenCode Go's 3 routes + OpenCode Zen's 3 routes.
+  assert.equal(snap.catalog.length, 18)
   assert.equal(snap.accounts.anthropic, undefined)
   assert.equal(snap.catalog.some((row) => row.family === 'anthropic'), false)
   assert.equal(snap.catalog.some((row) => row.family === 'kimi'), true)
@@ -110,13 +112,14 @@ test('snapshot reports logged-out accounts and empty providers', async () => {
   const go = snap.catalog.find((row) => row.family === OPENCODE_GO_EXTRA_ROUTE.id)
   assert.equal(go.loggedIn, false)
   assert.deepEqual(go.models.map((model) => model.id), OPENCODE_GO_EXTRA_MODELS.map((model) => model.id))
+  for (const route of OPENCODE_ZEN_ROUTES) {
+    const zen = snap.catalog.find((row) => row.family === route.id)
+    assert.equal(zen.loggedIn, false, `${route.id} stays locked without a key`)
+    assert.deepEqual(zen.models.map((model) => model.id), route.models.map((model) => model.id))
+  }
   assert.equal(go.models.every((model) => model.enabled), true)
   assert.equal(snap.catalog.filter((row) => row.family.startsWith('opencode-go')).length, OPENCODE_GO_ROUTES.length)
-  const copilot = snap.catalog.find((row) => row.family === 'copilot')
-  assert.equal(copilot.loggedIn, false)
-  assert.equal(copilot.displayName, 'Subs · GitHub Copilot · Chat')
-  assert.ok(copilot.models.length > 0)
-  assert.equal(copilot.models.some((model) => model.id === 'gpt-4.1'), true)
+  assert.equal(snap.catalog.some((row) => row.family === 'copilot'), false)
   // No opt-in rows exist any more: every listed model defaults on, and the
   // removed `-900k` key never appears in the selection.
   assert.equal(snap.catalog.every((row) => row.models.every((model) => model.enabled)), true)
@@ -282,7 +285,6 @@ test('OpenCode Go unlock needs a key; picker selection filters the supplemental 
     cursorAutoImport: false,
     ollamaAutoImport: false,
     kimiAutoImport: false,
-    copilotAutoImport: false,
   })
   const snap = await controller.snapshot()
   assert.equal(snap.catalog.find((row) => row.family === OPENCODE_GO_EXTRA_ROUTE.id).loggedIn, true)
@@ -330,7 +332,6 @@ test('OpenCode Go routes appear only while a key is stored', async () => {
     cursorAutoImport: false,
     ollamaAutoImport: false,
     kimiAutoImport: false,
-    copilotAutoImport: false,
   })
   await controller.sync()
   assert.equal(store.section.providers[OPENCODE_GO_BUILTIN_ROUTE_ID], undefined)
@@ -644,8 +645,8 @@ test('snapshot marks GLM catalog loggedIn for a vault account', async () => {
   assert.equal(snap.accounts.glm.activeId, 'dev@x@bigmodel')
   assert.equal(snap.accounts.glm.account, 'dev@x')
   assert.equal(glm.loggedIn, true)
-  assert.equal(glm.models.length, 3)
-  assert.deepEqual(glm.models.map((model) => model.id), ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
+  assert.equal(glm.models.length, 4)
+  assert.deepEqual(glm.models.map((model) => model.id), ['glm-5.3-flashx', 'glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
   assert.equal(glm.models.find((model) => model.id === 'glm-5.3-flash').name, 'GLM-5.3-Flash')
   // The 1M window is the row's custom-context ceiling, not an opt-in row.
   assert.equal(glm.models.find((model) => model.id === 'glm-5.3').windowMax, '1M')
@@ -684,14 +685,14 @@ test('login/sync recovers leftover GLM 全关 and writes the current catalog rou
   const { controller } = await glmController({ dir, models, ops })
   const result = await controller.sync()
   const glm = result.routes.find((row) => row.provider === 'oauth-glm')
-  assert.deepEqual(glm.models, ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
+  assert.deepEqual(glm.models, ['glm-5.3-flashx', 'glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
   for (const key of GLM_CURRENT) assert.equal(models.isEnabled(key), true)
   for (const key of GLM_STALE) assert.equal(models.disabled.has(key), true)
   const set = ops.at(-1).mutations.filter((row) => row.op === 'set')
   const route = set.find((row) => row.path[1] === 'oauth-glm')
   assert.equal(route.value.api, HARNESS_ANTHROPIC_API)
   assert.equal(route.value.compat.forceAdaptiveThinking, true)
-  assert.deepEqual(route.value.models.map((model) => model.id), ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
+  assert.deepEqual(route.value.models.map((model) => model.id), ['glm-5.3-flashx', 'glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
 })
 
 test('setModels 全关 still unsets oauth-glm and does not recover', async () => {
@@ -705,7 +706,7 @@ test('setModels 全关 still unsets oauth-glm and does not recover', async () =>
   assert.equal(empty.some((row) => row.path[1] === 'oauth-glm'), false)
 })
 
-test('setModels 全选 persists logged-in GLM 3/3 into the settings store', async () => {
+test('setModels 全选 persists logged-in GLM 4/4 into the settings store', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-'))
   const store = createPiAiSettings()
   const { controller } = await glmController({ dir, models: new ModelSwitch(), settings: store })
@@ -713,9 +714,9 @@ test('setModels 全选 persists logged-in GLM 3/3 into the settings store', asyn
   const set = store.ops.at(-1).mutations.filter((row) => row.op === 'set')
   const glm = set.find((row) => row.path[1] === 'oauth-glm')
   assert.equal(glm.value.api, HARNESS_ANTHROPIC_API)
-  assert.deepEqual(glm.value.models.map((model) => model.id), ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
+  assert.deepEqual(glm.value.models.map((model) => model.id), ['glm-5.3-flashx', 'glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
   assert.equal(store.section.providers['oauth-glm'].api, 'anthropic-messages')
-  assert.deepEqual(store.section.providers['oauth-glm'].models.map((model) => model.id), ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
+  assert.deepEqual(store.section.providers['oauth-glm'].models.map((model) => model.id), ['glm-5.3-flashx', 'glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
 })
 
 test('Antigravity 全选 clears leftover disabled keys and writes oauth-antigravity', async () => {

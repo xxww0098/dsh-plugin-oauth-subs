@@ -78,7 +78,7 @@ test('Settings workbench enters as a sidebar panel below 插件', async () => {
   assert.match(src, /callRpc\(rpc, 'status', payload\)/)
   // models already returns a fresh snapshot — adopt it; everything else
   // still forces a fresh status read.
-  assert.match(src, /return result\s*\}\s*if \(method === 'models' && result && typeof result === 'object'\) \{\s*\/\/ setModels already returns a fresh snapshot[^\n]*\n[^\n]*\n\s*setSnap\(result\)\s*writeStoredSnap\(result\)\s*\} else \{\s*await refresh\(true\)\s*\}/)
+  assert.match(src, /if \(method === 'models' && result && typeof result === 'object'\) \{[\s\S]*?if \(mine < snapSeen\.current\) return true\s*snapSeen\.current = mine\s*setSnap\(result\)\s*writeStoredSnap\(result\)\s*setError\(''\)\s*\} else if \(method !== 'update'\) \{\s*await refresh\(true\)\s*\}/)
   assert.match(src, /if \(live\) timer = setTimeout\(tick, loginPending\.current \? 1500 : 3000\)/)
   assert.match(src, /document\.addEventListener\('visibilitychange', onVisibility\)/)
   assert.match(src, /className: 'osubs', ref: root/)
@@ -99,6 +99,35 @@ test('settings bundle ships self-update but no host-lifecycle surface', async ()
   assert.match(text, /osubs-auto-row/)
   assert.match(text, /自动更新/)
   assert.match(text, /Auto-update/)
+})
+
+test('设置 tab ships a standalone 代理 card with a tri-state seg and a custom URL row', async () => {
+  const src = assembleUi()
+  // Own card, mounted below the update card in the version panel.
+  assert.match(src, /function ProxyCard\(\{ t, proxy, rpc, onProxy \}\)/)
+  const aboutAt = src.indexOf('h(AboutPanel, {')
+  const proxyAt = src.indexOf('h(ProxyCard, {')
+  assert.ok(aboutAt >= 0 && proxyAt > aboutAt, '代理 card renders below the OAuth 订阅 update card')
+  // Segmented control: 自动 / 关闭 / 自定义 in that order, active = primary.
+  assert.match(src, /\[\['auto', t\.proxyAuto\], \['off', t\.proxyOff\], \['custom', t\.proxyCustom\]\]/)
+  assert.match(src, /variant: mode === id \? 'primary' : undefined/)
+  // Writes go through the tri-state RPCs; auto/off persist immediately.
+  assert.match(src, /callRpc\(rpc, 'proxyGet'\)/)
+  assert.match(src, /callRpc\(rpc, 'proxySet', payload\)/)
+  // The raw custom URL (credentials included) stays card-local: the snapshot
+  // merge only ever sees redacted display fields, so localStorage never holds it.
+  assert.match(src, /function proxyDisplayFields\(view\)/)
+  assert.match(src, /url: view\.resolved \?\? view\.url \?\? ''/)
+  assert.match(src, /onProxy: \(next\) => setSnap\(\(current\) => current \? \{ \.\.\.current, proxy: next \} : current\)/)
+  assert.equal(src.includes('writeStoredSnap(result.url'), false)
+  // Config-pinned proxy locks the seg; the scope note sets expectations.
+  assert.match(src, /proxyConfigLocked: '已由插件配置 proxyUrl 固定，此处的选择不生效'/)
+  assert.match(src, /proxyConfigLocked: 'Pinned by the plugin config proxyUrl; choices here have no effect'/)
+  assert.match(src, /proxyFollowOs: '跟随系统代理：\{n\}'/)
+  assert.match(src, /proxyFollowOs: 'Following system proxy: \{n\}'/)
+  assert.match(src, /proxyOffNote: '已关闭：上游请求直连，忽略系统与环境变量代理'/)
+  assert.match(src, /proxyScopeNote: '作用于本插件的全部上游请求（对话、额度、登录、目录、更新检查）'/)
+  assert.match(src, /proxyUrlPlaceholder: 'http:\/\/127\.0\.0\.1:7890'/)
 })
 
 test('Settings GLM card hides opaque ZCode user.id in identityOf', async () => {
@@ -139,12 +168,12 @@ test('Settings Cursor tab uses Import local Cursor copy and shows source, never 
   assert.match(src, /cursorImport:\s*'导入本机 Cursor'/)
   assert.match(src, /cursorImport:\s*'Import local Cursor'/)
   assert.match(src, /cursorImportEmpty:\s*'本机没有 Cursor CLI 或 IDE 登录'/)
-  assert.match(src, /id === 'cursor' \? t\.cursorImport : id === 'kimi' \? t\.kimiImport : id === 'copilot' \? t\.copilotImport : id === 'devin' \? t\.devinImport : id === 'cline' \? t\.clineImport : id === 'command-code' \? t\.commandCodeImport : t\.import/)
-  assert.match(src, /\(id === 'cursor' \|\| id === 'ollama' \|\| id === 'kimi' \|\| id === 'copilot' \|\| id === 'devin' \|\| id === 'cline' \|\| id === 'command-code'\) && row\.methodLabel/)
+  assert.match(src, /id === 'cursor' \? t\.cursorImport : id === 'kimi' \? t\.kimiImport : id === 'devin' \? t\.devinImport : id === 'cline' \? t\.clineImport : id === 'command-code' \? t\.commandCodeImport : t\.import/)
+  assert.match(src, /\(id === 'cursor' \|\| id === 'ollama' \|\| id === 'kimi' \|\| id === 'devin' \|\| id === 'cline' \|\| id === 'command-code'\) && row\.methodLabel/)
   assert.match(src, /message === 'cursor-import-empty' \? t\.cursorImportEmpty/)
   assert.match(src, /quotaPanel\('cursor'\)/)
   assert.match(src, /icons\/\{grok,zai,cursor,ollama,cline,github,opencode,openai\}\.svg/)
-  assert.match(src, /icons\/\{codex,kiro,antigravity,kimi,copilot,devin,deepseek\}-color\.svg/)
+  assert.match(src, /icons\/\{codex,kiro,antigravity,kimi,devin,deepseek\}-color\.svg/)
   // Usage-only: DSH's own DeepSeek providers, brand color from deepseek-color.svg
   assert.match(src, /deepseek: \{ raw: '<path d="M23\.748 4\.482[^']*fill="#4D6BFE"\/>' \}/)
   assert.match(src, /const USAGE_ONLY_FAMILIES = \['deepseek'\]/)
@@ -155,7 +184,8 @@ test('Settings Cursor tab uses Import local Cursor copy and shows source, never 
   assert.equal(/cursor[\s\S]{0,200}accessToken/.test(src), false)
   const panelOrder = src.match(/quotaPanel\('([\w-]+)'/g) ?? []
   const ids = panelOrder.map((row) => /quotaPanel\('([\w-]+)'/.exec(row)?.[1])
-  assert.deepEqual(ids, ['codex', 'chatgpt', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline', 'opencode-go', 'command-code'])
+  // OpenCode Zen is its own card right after the account it shares a key with.
+  assert.deepEqual(ids, ['codex', 'chatgpt', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'devin', 'cline', 'opencode-go', 'opencode-zen', 'command-code'])
 })
 
 test('Settings Ollama tab is Cloud key paste after Cursor, never localhost', async () => {
@@ -182,7 +212,7 @@ test('Settings entry is horizontal page tabs over a family rail, page padded', a
   assert.match(src, /className: 'osubs-ptabs', role: 'tablist'/)
   const pageTabs = src.match(/h\(PageTab, \{ id: '(\w+)'/g) ?? []
   const pageIds = pageTabs.map((row) => /id: '(\w+)'/.exec(row)?.[1])
-  assert.deepEqual(pageIds, ['quota', 'models', 'usage', 'version', 'donate'])
+  assert.deepEqual(pageIds, ['quota', 'models', 'usage', 'arena', 'version', 'donate'])
 
   // No family tabs in the top bar; families live in the rail below.
   assert.equal(/id: 'codex'/.test(pageTabs.join(' ')), false)
@@ -222,10 +252,349 @@ test('Settings entry is horizontal page tabs over a family rail, page padded', a
   // Rail lists every family; 'all' entry first, opencode-go bucket last.
   assert.match(src, /\{ id: 'all', name: t\.allFamilies/)
   assert.match(src, /'codex', 'chatgpt', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama',/)
-  assert.match(src, /'kimi', 'copilot', 'devin', 'cline', 'opencode-go',/)
+  assert.match(src, /'kimi', 'devin', 'cline', 'opencode-go',/)
   const panelOrder = src.match(/quotaPanel\('([\w-]+)'/g) ?? []
   const ids = panelOrder.map((row) => /quotaPanel\('([\w-]+)'/.exec(row)?.[1])
-  assert.deepEqual(ids, ['codex', 'chatgpt', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline', 'opencode-go', 'command-code'])
+  // OpenCode Zen is its own card right after the account it shares a key with.
+  assert.deepEqual(ids, ['codex', 'chatgpt', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'devin', 'cline', 'opencode-go', 'opencode-zen', 'command-code'])
+})
+
+test('Arena view names its source and links to the official board', async () => {
+  const src = assembleUi()
+  assert.match(src, /ARENA_SOURCE_URL = 'https:\/\/arena\.ai\/leaderboard\/agent'/)
+  // The footer link targets the category route being viewed — routes, not
+  // the upstream dataSource slugs (chat → consumer, work → gdp).
+  assert.match(src, /\['overall', 'arenaCatOverall', ''\]/)
+  assert.match(src, /\['chat', 'arenaCatChat', '\/chat'\]/)
+  assert.match(src, /\['work', 'arenaCatWork', '\/work'\]/)
+  assert.match(src, /className: 'osubs-link osubs-afoot-link',\n\s*href: ARENA_SOURCE_URL \+ \(ARENA_CATEGORIES\.find\(\(\[id\]\) => id === category\)\?\.\[2\] \?\? ''\),\n\s*target: '_blank', rel: 'noreferrer',/)
+  assert.match(src, /t\.arenaSource, ' ',/)
+  assert.match(src, /' · ', t\.arenaSourceNote,/)
+  // The footline ends with the last-refresh timestamp (data.at — when we
+  // pulled the snapshot, distinct from the snapshot's own date in the header).
+  assert.match(src, /data\?\.at \? h\('span', \{ className: 'osubs-afoot-at' \},\s*' · ', fill\(t\.arenaFetched, stamp\(data\.at\)\)\) : null/)
+  assert.match(src, /arenaFetched: '上次刷新 \{n\}'/)
+  assert.match(src, /arenaFetched: 'Refreshed \{n\}'/)
+  // Attribution sits in a footline that never takes part in the fill layout.
+  assert.match(src, /\.osubs-afoot \{ flex: none; \}/)
+  assert.match(src, /arenaSource: '数据来源'/)
+  assert.match(src, /arenaSource: 'Data from'/)
+  // The 排名 table carries the site's Cost/Task (P50) column: sortable head,
+  // right-aligned money figures, — for unpriced models; narrow panes keep it
+  // while Confirmed Success drops.
+  assert.match(src, /arenaColCost: '每任务成本（P50）'/)
+  assert.match(src, /sortButton\('costUsd', t\.arenaColCost, true\)/)
+  assert.match(src, /className: 'osubs-atcell osubs-atcell--cost', role: 'cell' \},\n\s+row\.costUsd != null/)
+  assert.match(src, /arenaUsd\(row\.costUsd\)\)/)
+  assert.match(src, /\.osubs-acost \{ font-size: 12px; color: var\(--osubs-muted\); font-variant-numeric: tabular-nums; white-space: nowrap; \}/)
+  assert.match(src, /grid-template-columns: 48px minmax\(0, 1fr\) minmax\(190px, 34%\) minmax\(104px, auto\) minmax\(72px, auto\);/)
+  assert.match(src, /\.osubs-atcell--success \{ display: none; \}/)
+})
+
+test('Arena view shares a long shot of the table through the usage pipeline', async () => {
+  const src = assembleUi()
+  // The panel rides the same 分享 pipeline as 用量/额度 and gets the footer facts.
+  assert.match(src, /function ArenaPanel\(\{ t, data, error, busy, onRefresh, version, repo \}\)/)
+  assert.match(src, /const shot = useShot\(t\)\n\s+const shareRef = useRef\(null\)/)
+  assert.match(src, /h\(ShareButton, \{ t, busy: shot\.busy, disabled: !board/)
+  assert.match(src, /shot\.start\(shareRef\.current, shotFooter\(t, \{/)
+  assert.match(src, /atLabel: fill\(t\.arenaUpdated, stamp\(board\.lastUpdated \|\| data\.at\)\),/)
+  assert.match(src, /scope: `\$\{t\.tabArena\} · \$\{t\[ARENA_CATEGORIES\.find/)
+  assert.match(src, /`oauth-subs-arena-\$\{stamp\(Date\.now\(\)\)\.slice\(0, 10\)\}\.png`/)
+  assert.match(src, /version: aboutVersionOf\(snap\?\.update, update\),\n\s+repo: aboutRepoOf\(snap\?\.update, update\),\n\s+\}\), view === 'arena', true\)/)
+  // Only board content enters the image: controls drop out via [data-noshot].
+  assert.match(src, /h\('header', \{ className: 'osubs-uhead', 'data-noshot': '' \}/)
+  assert.match(src, /h\('div', \{ className: 'osubs-atools', 'data-noshot': '' \}/)
+  // During the shot the section leaves the fill layout and the table unscrolls.
+  assert.match(src, /\.osubs-arena\.osubs-shooting \{ flex: none; \}/)
+  assert.match(src, /\.osubs-arena\.osubs-shooting \.osubs-atable \{ flex: none; overflow: visible; \}/)
+  // shotFooter takes an optional date override so arena stamps the snapshot.
+  assert.match(src, /date: atLabel \?\? fill\(t\.usageAnalyzed, stamp\(at\)\),/)
+})
+
+test('Arena view offers the Pareto frontier chart from cached rows', async () => {
+  const src = assembleUi()
+  // View switch (排名/性价比 — the site's Ranking/Pareto) persists like the
+  // category pick and swaps the
+  // pane; both buttons carry the site's glyphs (list / axes-plus-curve).
+  assert.match(src, /const ARENA_VIEW_STORE = 'dsh-plugin-oauth-subs\.arena-view'/)
+  assert.match(src, /const \[viewMode, setViewMode\] = useState\(readStoredArenaView\)/)
+  assert.match(src, /\[\['rank', t\.arenaViewRank\], \['pareto', t\.arenaViewPareto\]\]\.map/)
+  assert.match(src, /viewMode === 'pareto' \? h\(ArenaPareto, \{ t, rows: sorted \}\) : table/)
+  assert.match(src, /function ViewIconRank\(\)/)
+  assert.match(src, /h\('path', \{ d: 'M20 20H4V4' \}\)/)
+  assert.match(src, /h\('path', \{ d: 'M4 7l8 8 3-3 4\.5 4\.5' \}\)/)
+  assert.match(src, /label: h\('span', \{ className: 'osubs-vseg' \}, id === 'rank' \? h\(ViewIconRank\) : h\(ViewIconPareto\), label\)/)
+  // The frontier is a cheapest-first sweep keeping every new best value —
+  // parameterised on an X accessor so the metric tab can re-derive it.
+  assert.match(src, /function arenaFrontier\(rows, xOf = \(row\) => row\.costUsd\) \{/)
+  assert.match(src, /\.sort\(\(a, b\) => xOf\(a\) - xOf\(b\)\)/)
+  assert.match(src, /if \(row\.value > best\) \{ front\.push\(row\); best = row\.value \}/)
+  // Chart geometry and domains measured off the live site: 788×380 viewBox
+  // (the logical coordinate space stays fixed; the browser scales it to the
+  // column width so narrow layouts shrink rather than clip), 688×280 plot at
+  // (80,30), X = [min×0.7, max×1.3] reversed log, Y pads the rating
+  // extremes; dollar ticks sit on the BOTTOM axis (site draws them at
+  // B+19 below the plot, not on top).
+  assert.match(src, /const W = 788, H = 380, L = 80, T = 30, PW = 688, PH = 280/)
+  assert.match(src, /Math\.min\(\.\.\.priced\.map\(\(row\) => xOf\(row\)\)\) \* 0\.7/)
+  assert.match(src, /Math\.max\(\.\.\.priced\.map\(\(row\) => xOf\(row\)\)\) \* 1\.3/)
+  assert.match(src, /vLo - Math\.abs\(vLo\) \* 0\.34/)
+  assert.match(src, /vHi \+ Math\.abs\(vHi\) \* 0\.947/)
+  // X is a reversed log scale over the *current* zoom window [lo,hi].
+  assert.match(src, /\(hi - Math\.log10\(Math\.max\(c, Math\.pow\(10, lo\)\)\)\) \/ \(hi - lo\) \* PW/)
+  assert.match(src, /h\('text', \{ className: 'osubs-aptick', x: px\(c\), y: B \+ 19, textAnchor: 'middle' \}, METRIC\.fmt\(c\)\)/)
+  assert.match(src, /h\('svg', \{/)
+  assert.match(src, /viewBox: `0 0 \$\{W\} \$\{H\}`/)
+  // Dashed grid everywhere, solid frame ticks, 2.5px line with lead-in/out
+  // past the plot edges. The r=5 svg circles are VISIBLE green dots (the
+  // site fills them #40b841); the white 28×28 marker tiles with a 2px
+  // green border + org icon sit on top.
+  assert.match(src, /\.osubs-apgrid \{ stroke: var\(--osubs-line\); stroke-width: 1; stroke-dasharray: 4 4; \}/)
+  assert.match(src, /\.osubs-apline \{\s*fill: none; stroke: var\(--osubs-ok\); stroke-width: 2\.5;/)
+  assert.match(src, /h\('line', \{ className: 'osubs-apline', x1: L - 10, x2: leftEnd\.x, y1: leftEnd\.y, y2: leftEnd\.y \}\)/)
+  assert.match(src, /h\('line', \{ className: 'osubs-apline', x1: rightEnd\.x, x2: R \+ 10, y1: rightEnd\.y, y2: rightEnd\.y \}\)/)
+  assert.match(src, /className: 'osubs-aphot', cx: x, cy: y, r: 5, fill: '#40b841'/)
+  assert.match(src, /className: 'osubs-apmk',/)
+  assert.match(src, /border: 2px solid var\(--osubs-ok\)/)
+  // Hover is live on all three point layers: circles, scatters and marker
+  // tiles all drive `setHovered`, which renders the .osubs-aptip card
+  // (icon + name + org·license + Score/Cost). Dots lift like the site's:
+  // scatter scale(1.8) + opacity 1, marker scale(1.15), all at 150ms.
+  assert.match(src, /const \[hovered, setHovered\] = useState\(null\)/)
+  assert.match(src, /onMouseEnter: \(\) => setHovered\(\{ row, x, y \}\)/)
+  assert.match(src, /onMouseEnter: \(\) => setHovered\(\{ row, x: px\(xOf\(row\)\), y: py\(row\.value\) \}\)/)
+  assert.match(src, /onMouseLeave: \(\) => setHovered\(\(cur\) => cur\?\.row === row \? null : cur\)/)
+  assert.match(src, /hovered && h\('div', \{\s*className: `osubs-aptip\$\{hovered\.y < 90 \? ' osubs-aptip--below' : ''\}`, role: 'tooltip',/)
+  // Tooltip stays inside the wrap's *clamped* width (the wrap clips at the
+  // column edge in the side-by-side layout) — anchor clamps to
+  // [HALF, wrapW-HALF], and points near the top flip the card below.
+  assert.match(src, /const wrapW = wrapRef\.current \? wrapRef\.current\.clientWidth : W/)
+  assert.match(src, /const cx = Math\.min\(Math\.max\(hovered\.x \* \(wrapW \/ W\), HALF\), Math\.max\(HALF, wrapW - HALF\)\)/)
+  assert.match(src, /\.osubs-aptip--below \{ transform: translate\(-50%, 14px\); \}/)
+  assert.match(src, /h\(ArenaMark, \{ org: hovered\.row\.org \}\)/)
+  assert.match(src, /className: 'osubs-aptip-name' \}, hovered\.row\.model\)/)
+  assert.match(src, /`\$\{t\.arenaScore\}: `, h\('b', \{ className: 'osubs-aptip-pos' \}, arenaSignPct\(hovered\.row\.value\)\)/)
+  assert.match(src, /metric === 'tokens' \? arenaTok\(xOf\(hovered\.row\)\) : arenaUsd\(xOf\(hovered\.row\)\)/)
+  assert.match(src, /\.osubs-aphot \{ pointer-events: all; cursor: pointer; \}/)
+  assert.match(src, /\.osubs-apsc:hover \{ transform: translate\(-50%, -50%\) scale\(1\.8\); opacity: 1; \}/)
+  assert.match(src, /\.osubs-apmk:hover \{ transform: translate\(-50%, -50%\) scale\(1\.15\); \}/)
+  // Zoom/pan: an @visx/zoom-style transform on the X log-domain. `win` holds
+  // the visible [lo,hi] window (null = full extent); ctrl/trackpad wheel
+  // zooms centred on the pointer, drag pans, +/− step it, double-click resets.
+  // Only X rescales — Y stays fixed. Scatters/markers clip to the window, the
+  // frontier clips to the plot rect via #apclip.
+  assert.match(src, /const \[win, setWin\] = useState\(null\)/)
+  assert.match(src, /const clampWin = \(a, b\) => \{/)
+  assert.match(src, /const zoomAt = \(factor, lx\) => \{/)
+  assert.match(src, /const panBy = \(dlx\) => setWin/)
+  assert.match(src, /onWheel: onWheel/)
+  assert.match(src, /onDoubleClick: \(\) => setWin\(null\)/)
+  assert.match(src, /onPointerDown: onDown/)
+  assert.match(src, /Math\.exp\(-\(e\.deltaY \|\| 0\) \* 0\.0022\)/)
+  assert.match(src, /clipPath: 'url\(#apclip\)'/)
+  assert.match(src, /front\.filter\(\(row\) => inWin\(xOf\(row\)\)\)/)
+  assert.match(src, /!front\.includes\(row\) && inWin\(xOf\(row\)\)/)
+  // The ⌘Scroll hint chip + Zoom in/out buttons in the header.
+  assert.match(src, /className: 'osubs-apscroll'/)
+  assert.match(src, /'aria-label': t\.arenaZoomIn/)
+  assert.match(src, /'aria-label': t\.arenaZoomOut/)
+  assert.match(src, /zoomAt\(1\.4, \(lo \+ hi\) \/ 2\)/)
+  assert.match(src, /zoomAt\(1 \/ 1\.4, \(lo \+ hi\) \/ 2\)/)
+  // Sans chip labels lane-shift around the frontier line and each other;
+  // unresolvable labels are dropped, like the site's own chart.
+  assert.match(src, /const CHIP_H = 21, LANE = 23/)
+  assert.match(src, /for \(let ty = p\.y \+ 30; ty \+ CHIP_H <= B \+ 18 && top === null; ty \+= LANE\)/)
+  assert.match(src, /if \(top === null\) continue/)
+  // The background scatter layer: every non-frontier priced model as an
+  // 8×8 org-coloured square at its own (cost, value), clipped to the plot.
+  assert.match(src, /className: 'osubs-apscat', 'aria-hidden': 'true'/)
+  assert.match(src, /priced\.filter\(\(row\) => !front\.includes\(row\) && inWin\(xOf\(row\)\)\)/)
+  assert.match(src, /osubs-apsc--\$\{ARENA_SCATTER_COLOR\[row\.org\] \?\? 'neutral'\}/)
+  // Chart and optimal list sit side-by-side inside ONE card — the site's
+  // 4xl:flex-row: chart column (flex-1) on the left, a fixed 288px optimal
+  // rail on the right, collapsing to stacked below 940px.
+  assert.match(src, /className: 'osubs-aptwo'/)
+  assert.match(src, /className: 'osubs-apmain'/)
+  assert.match(src, /h\('aside', \{ className: 'osubs-apside' \}/)
+  assert.match(src, /\.osubs-aptwo \{ display: flex; flex-direction: row;/)
+  assert.match(src, /\.osubs-apside \{\s*flex: 0 0 288px; width: 288px;/)
+  assert.match(src, /@media \(max-width: 940px\)/)
+  // The list below the chart is the frontier itself as a timeline: green
+  // square nodes with connectors, org mark, name + org·license, right side
+  // value/cost figures.
+  assert.match(src, /const ranked = \[\.\.\.front\]\.sort\(\(a, b\) => b\.value - a\.value\)/)
+  assert.match(src, /i < ranked\.length - 1 && h\('i', null\)/)
+  assert.match(src, /h\(ArenaMark, \{ org: row\.org \}\)/)
+  assert.match(src, /const arenaSignPct = \(v\) => \(v >= 0 \? '\+' : ''\) \+ arenaPct\(v\)/)
+  assert.match(src, /className: `osubs-apval\$\{row\.value < 0 \? ' osubs-apval--bad' : ''\}`/)
+  // Pareto joins the shared shot: its pane unscrolls during shooting.
+  assert.match(src, /\.osubs-arena\.osubs-shooting \.osubs-aparetto \{ flex: none; overflow: visible; \}/)
+  assert.match(src, /viewMode === 'pareto' \? ` · \$\{t\.arenaViewPareto\}` : ''/)
+  assert.match(src, /arenaViewPareto: '性价比'/)
+  assert.match(src, /arenaParetoTitle: '性价比前沿'/)
+  assert.equal(src.includes("arenaParetoTitle: 'Pareto Frontier'"), true)
+  // The axis caption is ONE string per (projection, percentile): the site
+  // prints it under the frontier chart AND under the per-task card, then
+  // appends the rolling 14-day window line.
+  assert.match(src, /arenaAxisCost: '每任务中位成本'/)
+  assert.equal(src.includes("arenaAxisCost: 'Median cost per task'"), true)
+  assert.match(src, /arenaAxisTokens: '每任务中位输出 Token'/)
+  assert.equal(src.includes("arenaAxisTokens: 'Median output tokens'"), true)
+  assert.equal(src.includes("arenaAxisCostP25: 'Short-task cost, P25'"), true)
+  assert.equal(src.includes("arenaAxisCostP95: 'Long-task cost, P95'"), true)
+  assert.equal(src.includes("arenaAxisTokensP25: 'Short-task output tokens, P25'"), true)
+  assert.equal(src.includes("arenaAxisTokensP95: 'Long-task output tokens, P95'"), true)
+  assert.match(src, /arenaWindow14: '（近 14 天）'/)
+  assert.equal(src.includes("arenaWindow14: ' (last 14 days)'"), true)
+  assert.match(src, /function arenaAxisLabel\(t, metric, pct\) \{/)
+  assert.match(src, /return t\[key\] \+ t\.arenaWindow14/)
+  // X-metric toggle: a role=tablist pair (Cost | Output Tokens) ahead of the
+  // zoom chrome. Switching re-derives the frontier over row.tokensM×1e6 and
+  // resets the zoom window (the stored [lo,hi] is in the old log space).
+  assert.match(src, /const \[metric, setMetric\] = useState\('cost'\)/)
+  assert.match(src, /const pickMetric = \(id\) => \{ setMetric\(id\); setWin\(null\); setHovered\(null\) \}/)
+  assert.match(src, /return m != null \? m \* 1e6 : null/)
+  assert.match(src, /arenaFrontier\(rows, xOf\)/)
+  assert.match(src, /role: 'tablist'/)
+  assert.match(src, /'aria-selected': metric === id/)
+  assert.match(src, /\[\['cost', t\.arenaMetricCost\], \['tokens', t\.arenaMetricTokens\]\]\.map/)
+  assert.match(src, /arenaMetricCost: '成本'/)
+  assert.match(src, /arenaMetricTokens: '输出 Token'/)
+  assert.match(src, /arenaMetricCost: 'Cost'/)
+  assert.match(src, /arenaMetricTokens: 'Output Tokens'/)
+  // The token axis log-scales over K/M magnitudes with SI-suffixed ticks;
+  // the foot line and tooltip second figure follow the metric.
+  // The site's own formatTokensPerTask: the Mtok figure rounds to two
+  // decimals before the branch, so 999.6K is `1M` (not `1000K`).
+  assert.match(src, /const arenaTok = \(n\) => \{\n\s+const mtok = Number\(\(n \/ 1e6\)\.toFixed\(2\)\)/)
+  assert.match(src, /ladder: \[1e3, 2e3, 5e3, 1e4, 2e4, 5e4, 1e5, 2e5, 5e5, 1e6, 2e6\]/)
+  assert.match(src, /h\('p', \{ className: 'osubs-apfoot' \}, arenaAxisLabel\(t, metric, pct\)\)/)
+  assert.match(src, /metric === 'tokens' \? t\.arenaParetoSubTokens : t\.arenaParetoSub/)
+  assert.match(src, /arenaParetoSubTokens: '真实 Agent Mode 任务的净提升 × 输出 Token'/)
+  assert.equal(src.includes("arenaParetoSubTokens: 'Net Improvement x Output tokens from real Agent Mode tasks'"), true)
+  assert.match(src, /metric === 'tokens' \? t\.arenaMetricTokens : t\.arenaCostPerTask/)
+  // Task-length filter: a percentile dropdown (25/50/95) next to the metric
+  // tabs — same Radix menu as the cost card's sort. It re-keys the X figure
+  // per row (costUsd25/95 or tokensM25/95×1e6), re-derives the frontier, and
+  // resets the zoom window like a metric switch.
+  assert.match(src, /const \[pct, setPct\] = useState\('50'\)/)
+  assert.match(src, /const pickPct = \(id\) => \{ setPct\(id\); setPctOpen\(false\); setWin\(null\); setHovered\(null\) \}/)
+  assert.match(src, /pct === '25' \? row\.tokensM25 : pct === '95' \? row\.tokensM95 : null\) \?\? row\.tokensM/)
+  assert.match(src, /pct === '25' \? row\.costUsd25 : pct === '95' \? row\.costUsd95 : null\) \?\? row\.costUsd/)
+  assert.match(src, /'aria-label': t\.arenaPctLabel/)
+  assert.match(src, /t\[`arenaPct\$\{pct\}`\]/)
+  assert.match(src, /\[\['25', t\.arenaPct25, t\.arenaPct25Sub\], \['50', t\.arenaPct50, t\.arenaPct50Sub\], \['95', t\.arenaPct95, t\.arenaPct95Sub\]\]\.map/)
+  assert.match(src, /arenaPct25: '第 25 百分位'/)
+  assert.match(src, /arenaPct95Sub: '较长任务'/)
+  assert.match(src, /arenaPct25: '25th percentile'/)
+  assert.match(src, /arenaPct95Sub: 'Longer tasks'/)
+  // The site's pareto page continues below the frontier timeline with a
+  // "Pareto Optimal Models" heading, then the "Cost per Task" card: title +
+  // ⓘ/sub, a green-swatch "Pareto optimal" legend chip, a Sort dropdown
+  // (Ranking / Highest / Lowest), and 15 priced rows whose green bars scale
+  // to the column max (hsl brand-green-8, darker than --osubs-ok). Frontier
+  // members carry the green rank tile.
+  // The whole page translates — zh copy is Chinese, en keeps arena's terms.
+  assert.match(src, /arenaOptimalTitle: '性价比最优模型'/)
+  assert.match(src, /arenaCostTitle: '每任务成本'/)
+  assert.match(src, /arenaCostLegend: '性价比最优'/)
+  assert.equal(src.includes("arenaOptimalTitle: 'Pareto Optimal Models'"), true)
+  assert.equal(src.includes("arenaCostTitle: 'Cost per Task'"), true)
+  assert.equal(src.includes("arenaCostLegend: 'Pareto optimal'"), true)
+  assert.match(src, /arenaScore: '得分'/)
+  assert.match(src, /arenaCostPerTask: '每任务成本'/)
+  assert.match(src, /arenaScrollHint: '滚动'/)
+  assert.match(src, /arenaZoomIn: '放大'/)
+  assert.match(src, /arenaZoomOut: '缩小'/)
+  assert.match(src, /arenaColRank: '排名'/)
+  assert.match(src, /arenaColNet: '净提升'/)
+  assert.match(src, /arenaColSuccess: '确认成功率'/)
+  assert.match(src, /arenaPerTask: '\/任务'/)
+  assert.match(src, /arenaSortRanking: 'Ranking'/)
+  assert.match(src, /arenaSortCostDesc: 'Highest Cost per Task'/)
+  assert.match(src, /arenaSortCostAsc: 'Lowest Cost per Task'/)
+  // The card is projection-aware, not cost-only — the site renders the same
+  // component with `kind: cost | output-mtok`, so the Cost | Output Tokens
+  // tab also swaps this card's title, sub-line, figures, bar scale, Sort
+  // options, ⓘ sentence and the frontier its filter narrows to.
+  assert.match(src, /function ArenaCostList\(\{ t, rows, metric, pct, xOf \}\)/)
+  assert.match(src, /h\(ArenaCostList, \{ t, rows, metric, pct, xOf \}\)/)
+  assert.match(src, /const onFrontier = new Set\(arenaFrontier\(rows, xOf\)\.map\(\(row\) => row\.model\)\)/)
+  assert.match(src, /const fig = \(row\) => \(tokens \? arenaTok\(xOf\(row\)\) : arenaUsd\(xOf\(row\)\)\) \+ t\.arenaPerTask/)
+  assert.match(src, /tokens \? t\.arenaCostTitleTokens : t\.arenaCostTitle/)
+  assert.match(src, /h\('p', \{ className: 'osubs-acost-sub' \}, arenaAxisLabel\(t, metric, pct\)\)/)
+  assert.match(src, /const max = Math\.max\(0\.0001, \.\.\.priced\.map\(\(row\) => xOf\(row\)\)\)/)
+  assert.match(src, /\['cost-desc', tokens \? t\.arenaSortTokensDesc : t\.arenaSortCostDesc\]/)
+  assert.match(src, /\['cost-asc', tokens \? t\.arenaSortTokensAsc : t\.arenaSortCostAsc\]/)
+  assert.match(src, /'aria-label': tokens \? t\.arenaCostInfoTokensLabel : t\.arenaCostInfoLabel/)
+  assert.match(src, /fill\(tokens \? t\.arenaCostInfoTokens : t\.arenaCostInfo, \{ stat: arenaStatNoun\(t, pct\) \}\)/)
+  assert.match(src, /arenaCostTitleTokens: '每任务输出 Token'/)
+  assert.equal(src.includes("arenaCostTitleTokens: 'Output Tokens per Task'"), true)
+  assert.match(src, /arenaSortTokensDesc: '每任务输出 Token（高→低）'/)
+  assert.equal(src.includes("arenaSortTokensDesc: 'Highest Output Tokens per Task'"), true)
+  assert.equal(src.includes("arenaSortTokensAsc: 'Lowest Output Tokens per Task'"), true)
+  assert.equal(src.includes("arenaCostInfoLabel: 'Explain the cost ranking'"), true)
+  assert.equal(src.includes("arenaCostInfoTokensLabel: 'Explain the output token ranking'"), true)
+  assert.match(src, /arenaStatMedian: '中位数'/)
+  assert.equal(src.includes("arenaStatP95: 'the 95th percentile'"), true)
+  // The list always renders in full — the site's own "+ Show N more" cap is
+  // deliberately dropped so the Pareto-optimal filter reads as the whole
+  // frontier. `sorted` is the entire pool under the current sort.
+  assert.match(src, /const sorted = \[\.\.\.pool\]\.sort\(\(a, b\) => \{/)
+  assert.match(src, /const TRACK = 404/)
+  assert.match(src, /h\('rect', \{ x: 0, y: 6, height: 32, rx: 2, width: barW\(xOf\(row\)\) \}\)/)
+  assert.match(src, /style: \{ left: `\$\{barW\(xOf\(row\)\) \+ 8\}px` \}/)
+  assert.match(src, /osubs-acost-num--front/)
+  assert.match(src, /fill: #2e9440/)
+  // No expander: the + Show N more / − Show less button and its copy are gone.
+  assert.equal(src.includes('osubs-acost-more'), false)
+  assert.equal(src.includes('arenaCostShowMore'), false)
+  assert.equal(src.includes('arenaCostShowLess'), false)
+  assert.equal(src.includes('setExpanded'), false)
+  // the "Pareto optimal" chip is a real filter toggle (aria-pressed), not a label —
+  // pressing it narrows the list to frontier members only.
+  assert.match(src, /\['aria-pressed'\]: onlyFront|\{'aria-pressed': onlyFront\}|'aria-pressed': onlyFront/)
+  assert.match(src, /onlyFront \? priced\.filter\(\(row\) => onFrontier\.has\(row\.model\)\) : priced/)
+  assert.match(src, /osubs-acost-legend--on/)
+  // Org icons are real site svg inner markup keyed by org, not mono letters:
+  // each entry carries its own viewBox so non-square marks (Tencent 1000x1000,
+  // Mistral 191x135, Thinky 400x400, SpaceXAI 69 99 832 319) keep their aspect.
+  assert.match(src, /const mark = ARENA_EXTRA_MARKS\[org\]/)
+  assert.match(src, /viewBox: mark\.viewBox/)
+  assert.match(src, /Anthropic: \{ viewBox: '0 0 24 24', raw: '<path d="M13\.827/)
+  assert.match(src, /'Z\.ai': \{ viewBox: '0 0 1000 1000'/)
+  assert.match(src, /Xiaomi: \{ viewBox: '0 0 24 24', raw: '<rect x="2" y="2" width="20" height="20" rx="4\.5"/)
+  assert.match(src, /Thinky: \{ viewBox: '0 0 400 400'/)
+})
+
+test('arena projection figures follow the board formatters', async () => {
+  const src = await readFile(new URL('../lib/ui/client.js', import.meta.url), 'utf8')
+  const tokBody = src.match(/const arenaTok = \(n\) => \{[\s\S]*?\n        \};/)?.[0]
+  assert.ok(tokBody)
+  const arenaTok = new Function(`${tokBody}; return arenaTok`)() as (n: number) => string
+  // The site's formatTokensPerTask rounds the Mtok figure to two decimals
+  // BEFORE branching, so 999.6K collapses to 1M instead of reading 1000K.
+  assert.equal(arenaTok(66_525), '66.5K')
+  assert.equal(arenaTok(226_952), '227K')
+  assert.equal(arenaTok(999_600), '1M')
+  assert.equal(arenaTok(1_500_000), '1.5M')
+  assert.equal(arenaTok(14_541), '14.5K')
+  assert.equal(arenaTok(145), '145')
+  const xOfBody = src.match(/function arenaXOf\(row, metric, pct\) \{[\s\S]*?\n        \}/)?.[0]
+  assert.ok(xOfBody)
+  const arenaXOf = new Function(`${xOfBody}; return arenaXOf`)() as (row: any, metric: string, pct: string) => number | null
+  const row = { costUsd: 3.75, costUsd25: 1.25, costUsd95: 9.5, tokensM: 0.066525, tokensM25: 0.05, tokensM95: 0.2 }
+  assert.equal(arenaXOf(row, 'cost', '50'), 3.75)
+  assert.equal(arenaXOf(row, 'cost', '95'), 9.5)
+  assert.equal(arenaXOf(row, 'tokens', '50'), 66_525)
+  assert.equal(arenaXOf(row, 'tokens', '25'), 50_000)
+  // P50 stands in when a cached answer predates the percentile fields…
+  assert.equal(arenaXOf({ costUsd: 2 }, 'cost', '95'), 2)
+  assert.equal(arenaXOf({ tokensM: 0.01 }, 'tokens', '95'), 10_000)
+  // …and a row with no sample in the active projection cannot place at all.
+  assert.equal(arenaXOf({ costUsd: 2 }, 'tokens', '50'), null)
+  assert.equal(arenaXOf({ tokensM: 0.01 }, 'cost', '50'), null)
 })
 
 test('OpenCode Go renders through the shared account cards and add-account dialog', async () => {
@@ -234,7 +603,10 @@ test('OpenCode Go renders through the shared account cards and add-account dialo
   assert.match(src, /opencodeGoKey:\s*'API key'/)
   assert.match(src, /opencodeGoHostStale/)
   assert.equal(src.includes('OpencodeGoPanel'), false)
-  assert.match(src, /quotaPanel\('opencode-go'\)/)
+  // The Go card renders the account's own view (Zen's wallet rows are filtered
+  // out of it), and Zen gets its own card next to it.
+  assert.match(src, /quotaPanel\('opencode-go', card\('opencode-go', opencodeGoView\)\)/)
+  assert.match(src, /quotaPanel\('opencode-zen', h\(ZenQuotaCard, \{/)
   assert.match(src, /onGoSave: async \(payload\) => \{\s*await callRpc\(rpc, 'goSave', payload\)\s*await refresh\(true\)\s*\}/)
   assert.match(src, /id === 'opencode-go' && !busy && h\('form'/)
   assert.match(src, /roster\.some\(\(row\) => row\.apiKeySet\) \? t\.opencodeGoKeySet : t\.opencodeGoKeyPlaceholder/)
@@ -267,7 +639,7 @@ test('Settings Kimi tab uses LobeHub Kimi path, device login, and never @lobehub
   assert.match(src, /LobeHub `Kimi` icon/)
   assert.match(src, /kimi: \{ raw: '<rect width="24" height="24" rx="5" fill="#000"\/>/)
   assert.match(src, /quotaPanel\('kimi'\)/)
-  assert.match(src, /id === 'grok' \|\| id === 'kimi' \|\| id === 'copilot' \|\| id === 'cline' \? t\.device/)
+  assert.match(src, /id === 'grok' \|\| id === 'kimi' \|\| id === 'cline' \? t\.device/)
   assert.match(src, /id === 'kimi' && showKey && !busy/)
   assert.match(src, /family === 'kimi'\) return account && !isKimiOpaqueIdentity/)
   assert.equal(src.includes("from '@lobehub/icons'"), false)
@@ -404,7 +776,8 @@ test('QuotaMeter owns each window reset; nothing floats between bars', async () 
   assert.match(qmeterCss, /flex-direction: column/)
   assert.equal(qmeterCss.includes('display: contents'), false)
   assert.match(qresetCss, /text-align: right/)
-  assert.match(src, /const reset = formatReset\(row\.resetAt, t\)/)
+  // opencode-go uses its meter-style reset; everyone else uses formatReset.
+  assert.match(src, /const reset = family === 'opencode-go' \? formatMeterReset\(row\.resetAt, t\) : formatReset\(row\.resetAt, t\)/)
 })
 
 test('the active account shows a circled check beside the identity', async () => {
@@ -435,7 +808,7 @@ test('Add account opens a centered dialog, not a sheet', async () => {
   assert.match(src, /id === 'glm' && !busy && h\('div', \{ className: 'osubs-glm-logins' \}/)
   assert.match(src, /id === 'kiro' && !busy && h\('div', \{ className: 'osubs-logins' \}/)
   assert.match(src, /id === 'ollama' && !busy && h\('div', \{ className: 'osubs-logins' \}/)
-  assert.match(src, /id === 'cursor' \? t\.cursorImport : id === 'kimi' \? t\.kimiImport : id === 'copilot' \? t\.copilotImport : id === 'devin' \? t\.devinImport : id === 'cline' \? t\.clineImport : id === 'command-code' \? t\.commandCodeImport : t\.import/)
+  assert.match(src, /id === 'cursor' \? t\.cursorImport : id === 'kimi' \? t\.kimiImport : id === 'devin' \? t\.devinImport : id === 'cline' \? t\.clineImport : id === 'command-code' \? t\.commandCodeImport : t\.import/)
   assert.match(src, /h\('span', null, t\.ollamaImport\)/)
   assert.equal(/osubs-sheet|osubs-drawer|role: 'sheet'|side.?sheet|侧边抽屉/i.test(src), false)
 })
@@ -473,6 +846,34 @@ test('Reset-credit confirm stays a centered alertdialog', async () => {
   assert.match(src, /quotaResetConfirmOk/)
   assert.match(src, /event\.key === 'Escape'/)
   assert.match(src, /pending && h\(WarnDialog/)
+})
+
+test('退出 asks for a second confirmation before the account is dropped', async () => {
+  const src = assembleUi()
+  // The row button only stages the logout; the RPC runs from the confirm.
+  assert.match(src, /h\(Button, \{\s*size: 'sm',\s*icon: true,\s*onClick: \(\) => onLogout\(id, row\.id\),\s*title: t\.logout,/)
+  assert.match(src, /onLogout: \(family, accountId\) => requestLogout\(family, accountId, row\)/)
+  assert.match(src, /const requestLogout = \(family, accountId, row\) => \{\s*setLogoutAcked\(false\)\s*setLogoutFor\(\{ accountId, label: identityOf\(row, family\) \|\| title \}\)/)
+  assert.match(src, /const confirmLogout = async \(\) => \{\s*if \(!logoutFor \|\| !logoutAcked\) return\s*const target = logoutFor\s*closeLogout\(\)\s*await onLogout\(id, target\.accountId\)/)
+  // WarnDialog stays the one destructive confirm: logout names its own action
+  // and the reset-card copy remains the dialog's default.
+  assert.match(src, /logoutFor && h\(WarnDialog, \{/)
+  assert.match(src, /idPrefix: 'osubs-logout'/)
+  assert.match(src, /title: t\.logoutConfirmTitle/)
+  assert.match(src, /description: fill\(t\.logoutConfirmBody, \{ n: logoutFor\.label \}\)/)
+  assert.match(src, /acknowledgeLabel: t\.logoutConfirmAck/)
+  assert.match(src, /confirmLabel: t\.logoutConfirmOk/)
+  assert.match(src, /const heading = title \|\| t\.quotaResetWarnTitle/)
+  assert.match(src, /const ack = acknowledgeLabel \|\| t\.quotaResetAck/)
+  assert.match(src, /disabled: !acknowledged/)
+  // Copy: the dialog names the account and says what the second step costs.
+  assert.match(src, /logoutConfirmTitle: '退出账号'/)
+  assert.match(src, /logoutConfirmBody: '退出后本机保存的 \{n\} 登录凭据会被删除/)
+  assert.match(src, /logoutConfirmAck: '我确认退出此账号'/)
+  assert.match(src, /logoutConfirmOk: '确认退出'/)
+  assert.match(src, /logoutConfirmTitle: 'Sign out of this account'/)
+  assert.match(src, /logoutConfirmBody: 'Signing out deletes the stored credentials for \{n\}/)
+  assert.match(src, /logoutConfirmAck: 'I understand this signs the account out'/)
 })
 
 test('Settings has no OpenCode Go Free tab or harness family', async () => {
@@ -538,17 +939,9 @@ test('Settings Models is a searchable switch table; locked groups still offer si
   assert.equal(src.includes('Fast is Codex Priority only'), false)
 })
 
-test('Settings Copilot tab is device-code after Kimi, never @lobehub/icons', async () => {
+test('removed Copilot family leaves no tab, copy, icon, or quota card', async () => {
   const src = assembleUi()
-  assert.match(src, /copilot: 'Copilot'/)
-  assert.match(src, /copilotLoginApiKey:\s*'粘贴 GitHub Token'/)
-  assert.match(src, /copilotLoginApiKey:\s*'Paste GitHub token'/)
-  assert.match(src, /copilotImport:\s*'导入本机 Copilot'/)
-  assert.match(src, /LobeHub `Copilot` icon/)
-  assert.match(src, /quotaPanel\('copilot'\)/)
-  assert.match(src, /id === 'grok' \|\| id === 'kimi' \|\| id === 'copilot' \|\| id === 'cline' \? t\.device/)
-  assert.match(src, /id === 'copilot' && h\('button'/)
-  assert.match(src, /t\.copilotImport/)
+  assert.equal(/copilot/i.test(src), false)
   assert.equal(src.includes("from '@lobehub/icons'"), false)
 })
 
@@ -571,6 +964,20 @@ test('usage totals count the whole prompt — cache reads fold into 输入', asy
   addUsage(sum, [0, 'x', 'y', 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 1.25)
   addUsage(sum, [0, 'x', 'y', 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], null)
   assert.equal(sum.cost, 1.25)
+})
+
+test('用量 strip is four cards in one row — TTFT stays on the model rows', async () => {
+  const src = assembleUi()
+  // Token / 缓存读 / 调用 / 估算成本 — four stat() calls, so the strip's grid
+  // (repeat(4, …)) always lands them on one row.
+  assert.deepEqual(src.match(/stat\(t\./g) ?? [], ['stat(t.', 'stat(t.', 'stat(t.', 'stat(t.'])
+  assert.match(src, /\.osubs-ustats \{ display: grid; grid-template-columns: repeat\(4, minmax\(0, 1fr\)\)/)
+  // 首字延迟 is not a card: its label is gone, the per-row short form stays.
+  assert.equal(src.includes("usageTtft:"), false)
+  assert.match(src, /usageTtftShort: '首字 \{n\}'/)
+  assert.match(src, /fill\(t\.usageTtftShort, formatMs\(usageTtft\(row\)\)\)/)
+  // The skeleton holds the same four tiles, so the first scan lands flat.
+  assert.match(src, /className: 'osubs-ustats' \}, \[0, 1, 2, 3\]\.map/)
 })
 
 test('usage range defaults to 今天 and restores the last choice', async () => {
@@ -772,6 +1179,31 @@ test('分享 on 额度: identities masked in the image, add-account row and acco
   assert.match(src, /\.osubs-shooting \.osubs-pane-panel:has\(> \[data-noshot\]\)/)
   // Masking lives in the clone only; the page keeps the full identity.
   assert.match(src, /if \(source\.hasAttribute\('data-shot-mask'\)\) \{\n\s*copy\.textContent = maskIdentity\(source\.textContent\)/)
+  // The image resolves the font on its own, so a text-bearing box must not
+  // carry the page's frozen pixel width into the clone: pinned to that width,
+  // the image's text wraps inside its own box and paints over the line below
+  // it (剩余 100% colliding with its reset line on a 额度 shot).
+  assert.match(src, /const carriesText = \(Array\.from\(source\.childNodes\) as any\[\]\)\.some\(/)
+  assert.match(src, /const releaseWidth = carriesText\n\s*&& style\.position !== 'absolute' && style\.position !== 'fixed'/)
+  assert.match(src, /if \(releaseWidth && \(name === 'width' \|\| name === 'inline-size'\)\) continue/)
+  // A box that is already truncating its text keeps the page's width, so the
+  // image truncates it the same way instead of letting it run wide.
+  assert.match(src, /&& source\.scrollWidth <= source\.clientWidth \+ 1/)
+  // Heights stay frozen: the remaining bar and the card chrome depend on them.
+  assert.equal(/releaseWidth && \(name === 'height'/.test(src), false)
+})
+
+test('额度 分享 says on hover what the image does to identities; 用量 / 榜单 stay plain', async () => {
+  const src = assembleUi()
+  // zh / en copy for the hover title: the shot hides the account.
+  assert.match(src, /usageShareMask: '分享截图会隐藏账号（邮箱\/用户名打码）',/)
+  assert.match(src, /usageShareMask: 'Shared screenshots hide accounts \(email \/ username masked\)',/)
+  // ShareButton forwards it as the button's title (hover); the label stays 分享.
+  assert.match(src, /function ShareButton\(\{ t, busy, disabled, onClick, hint \}\) \{/)
+  assert.match(src, /size: 'sm', disabled: disabled \|\| busy, onClick, title: hint,/)
+  // Only 额度 passes the hint: the 用量 / 榜单 images carry no account identity.
+  assert.match(src, /busy: quotaShot\.busy,\n\s*\/\/ The image masks account identities; the hover title says so\.\n\s*hint: t\.usageShareMask,/)
+  assert.equal(src.split('hint: t.usageShareMask').length - 1, 1)
 })
 
 test('account card 切换/刷新/退出 are icon-only buttons that keep their names', async () => {
@@ -783,9 +1215,10 @@ test('account card 切换/刷新/退出 are icon-only buttons that keep their na
   assert.match(src, /title: t\.switchTo,\n\s*ariaLabel: t\.switchTo,/)
   assert.match(src, /icon: true,\n\s*disabled: refreshing,/)
   assert.match(src, /h\('span', \{ className: 'osubs-refresh' \+ \(refreshing \? ' osubs-refresh--spin' : ''\) \},\n\s*h\(IconRefresh\)\),/)
-  // Only the account card went icon-only: the 用量 head's 刷新 keeps its text.
+  // Only the account card went icon-only: the 用量 and 榜单 heads' 刷新 keep
+  // their text.
   assert.equal(src.includes("label: t.switchTo"), false)
-  assert.equal(src.split('h(IconRefresh), t.quotaRefresh)').length - 1, 1)
+  assert.equal(src.split('h(IconRefresh), t.quotaRefresh)').length - 1, 2)
   assert.match(src, /function IconLogout\(\) \{/)
   assert.match(src, /label: h\(IconLogout\),/)
   // Losing the text must not lose the accessible name: Button forwards both.
@@ -806,3 +1239,44 @@ test('Settings formatReset no longer rounds remaining hours', async () => {
   assert.equal(src.includes('resetHours:'), false)
   assert.equal(src.includes('if (days >= 14) return formatStamp(resetAt)'), false)
 })
+test('the provider rail marks each family with its switched-on models', async () => {
+  const src = assembleUi()
+  const rail = src.match(/function RailItem\([\s\S]*?\n    \}/)?.[0] ?? ''
+  assert.ok(rail, 'RailItem not found')
+  // zh / en copy for the mark's tooltip and accessible name.
+  assert.match(src, /railModelsOn:\s*'已启用 \{n\} \/ \{m\} 个模型'/)
+  assert.match(src, /railModelsOn:\s*'\{n\} \/ \{m\} models on'/)
+  // The mark is a switch drawn in its on state (knob right, track an
+  // outline) plus the count, in one tail with the view's own count.
+  assert.match(src, /function RailOnMark\(\)/)
+  assert.match(src, /className: 'osubs-rail-tail'/)
+  assert.match(src, /className: 'osubs-rail-on'/)
+  assert.match(rail, /role: 'img'/)
+  assert.match(rail, /const modelsOn = on > 0 \? fill\(t\.railModelsOn, \{ n: on, m: item\.models\.total \}\) : ''/)
+  // Zero renders nothing: an unmarked row means nothing is on.
+  assert.match(rail, /modelsOn \? h\('span', \{/)
+  // The mark is the rail's only green — the fill a 模型 switch shows when on.
+  const onCss = src.match(/\.osubs-rail-on \{[^}]*\}/)?.[0] ?? ''
+  assert.match(onCss, /color: var\(--osubs-ok\)/)
+  // Both numbers sit in fixed slots, so a 1-to-3-digit value can never shift
+  // the column beside it: the switch glyph starts at the same x on every row
+  // and the count keeps its own right-aligned slot (otherwise the mark
+  // column floats with the neighbouring number's width and reads as broken).
+  assert.match(onCss, /width: 40px/)
+  const countCss = src.match(/\.osubs-rail-count \{[^}]*\}/)?.[0] ?? ''
+  assert.match(countCss, /min-width: 22px/)
+  assert.match(countCss, /text-align: right/)
+  const swCss = src.match(/\.osubs-rail-sw \{[^}]*\}/)?.[0] ?? ''
+  assert.match(swCss, /width: 16px/)
+  assert.match(swCss, /height: 10px/)
+  // The tally mirrors the 模型 table: a signed-out family counts nothing, and
+  // a pending override already counts as clicked.
+  assert.match(src, /if \(!group\.loggedIn\) continue/)
+  assert.match(src, /Boolean\(modelOverrides\[model\.key\] \?\? model\.enabled\)/)
+  assert.match(src, /const modelsOnOf = \(id\) => \(id === 'all' \? allOn : \(modelOn\.get\(id\) \?\? \{ on: 0, total: 0 \}\)\)/)
+  assert.match(src, /models: modelsOnOf\('all'\)/)
+  assert.match(src, /models: modelsOnOf\(id\)/)
+  // Every rail view carries it (额度 / 模型 / 用量), not only the quota page.
+  assert.match(src, /h\(RailItem, \{ item, current: family, onSelect: setFamily, t, key: item\.id \}\)/)
+})
+

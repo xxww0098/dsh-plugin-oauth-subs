@@ -2,7 +2,7 @@
  * DSH OpenAI-Completions body ↔ Command Code `POST /alpha/generate` wire.
  *
  * Wire shape (decoded from the command-code CLI bundle; re-verified identical at 1.79.1):
- *   request : { config, memory:null, taste:null, skills:null, mode:'chat',
+ *   request : { config, memory:null, taste:null, skills:null, mode:'agent',
  *               permissionMode, threadId?, params:{ model, messages, tools,
  *               system, max_tokens, stream:true, temperature?,
  *               reasoning_effort? } }
@@ -201,7 +201,13 @@ export function openaiToCommandCode(payload, { threadId }: any = {}) {
     memory: null,
     taste: null,
     skills: null,
-    mode: 'chat',
+    // The main conversation lane. The server validates this against a closed
+    // enum — agent|learning|custom-agent|custom-agent-create|title-gen|
+    // tool-desc|compact|vision — and answers 400 BAD_REQUEST to anything else,
+    // including the 'chat' this hop sent before 2026-10-11. The CLI injects it
+    // per lane (`featureClient(mode)` → `withUsageContext`); the main chat lane
+    // is 'agent'.
+    mode: 'agent',
     permissionMode: 'standard',
     params,
   }

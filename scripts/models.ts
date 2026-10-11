@@ -26,7 +26,6 @@ import { fileURLToPath } from 'node:url'
 import { assertCatalog, CATALOG_EFFORT_KEYS, CATALOG_KEYS } from '../lib/catalog/index.js'
 import { mergeCatalogRows } from '../lib/catalog/merge.js'
 import { CODEX_CONTEXT_WINDOW, CODEX_DEFAULT_MAX_TOKENS } from '../lib/oauth/codex/index.js'
-import { COPILOT_GPT_CONTEXT_WINDOW } from '../lib/oauth/copilot/index.js'
 import { listStoredSessions } from '../lib/oauth/store.js'
 import { configureOutbound, outboundFetch, outboundProxyPath } from '../lib/utils/outbound.js'
 
@@ -192,10 +191,93 @@ const OPENCODE_GO_MESSAGES_IDS = new Set([
   'claude-haiku-5-5', 'minimax-m3', 'minimax-m2.7', 'qwen3.8-max', 'qwen3.8-flash', 'qwen3.7-plus',
 ])
 
-async function opencodeGo(protocol) {
+/** The single OpenCode API key in this profile's vault (Go and Zen share it). */
+function opencodeApiKey() {
   const vault = JSON.parse(readFileSync(`${DATA_DIR}/opencode-go.json`, 'utf8'))
   const key = Object.values<any>(vault.accounts ?? {}).find((entry) => entry?.apiKey)?.apiKey
-  if (!key) throw new Skip('no OpenCode Go API key in opencode-go.json')
+  if (!key) throw new Skip('no OpenCode API key in opencode-go.json (Go and Zen share it)')
+  return key
+}
+
+// ── OpenCode Zen ──────────────────────────────────────────────────────────
+//
+// Same vault key as Go, different origin (`/zen/v1`). The protocol split comes
+// from the official Zen docs endpoint table (2026-10-10,
+// https://opencode.ai/docs/zen/): `/v1/messages` = @ai-sdk/anthropic,
+// `/v1/responses` = @ai-sdk/openai, `/v1/chat/completions` =
+// @ai-sdk/openai-compatible. Two further table rows are not expressible on this
+// plugin's routes — `/v1/models/<id>` (@ai-sdk/google, the Gemini ids) and
+// `/v1/systemone` (Jev) — and never ship; the same goes for every free-tier
+// row (`*-free`, `big-pickle`), which the gateway refuses to a non-OpenCode
+// client with `403 FreeTierError`.
+const OPENCODE_ZEN_MESSAGES_IDS = new Set([
+  'claude-fable-5-1', 'claude-haiku-4-5', 'claude-haiku-5-5', 'claude-opus-5-5',
+  'claude-sonnet-5', 'claude-sonnet-5-5', 'qwen3.6-plus', 'qwen3.8-flash',
+])
+
+const OPENCODE_ZEN_RESPONSES_IDS = new Set([
+  'gpt-5.3-codex', 'gpt-5.3-codex-spark', 'gpt-5.4-mini', 'gpt-5.4-nano', 'gpt-5.5',
+  'gpt-5.5-pro', 'gpt-6-astra', 'gpt-6-sol', 'gpt-6.1-sol', 'gpt-6-luna',
+  'gpt-5.6-terra', 'grok-4.7', 'grok-build-0.1', 'muse-spark-1.3',
+])
+
+/** Ids the Zen docs put outside the three DSH-servable protocols. */
+const OPENCODE_ZEN_OTHER_PROTOCOL_IDS = new Set(['jev-1.13', 'jev-1.13-free'])
+
+/** Docs `/v1/models/<id>` rows (@ai-sdk/google): Gemini, not a chat protocol. */
+const OPENCODE_ZEN_GOOGLE_IDS = new Set([
+  'gemini-3-flash', 'gemini-3.1-pro', 'gemini-3.5-flash', 'gemini-3.5-flash-lite',
+  'gemini-3.6-flash', 'gemini-3.7-flash', 'gemini-3.8-flash',
+])
+
+const OPENCODE_ZEN_FREE_IDS = new Set([
+  'big-pickle', 'ling-3.1-flash-free', 'mimo-v2.6-flash-free', 'mimo-v2.5-free',
+  'muse-spark-1.2-contributor-free', 'muse-spark-1.3-contributor-free',
+  'nemotron-3-ultra-free', 'nemotron-3.5-lightning-free', 'space-bunny-free',
+  'longcat-2.5-preview-free', 'step-5-preview-free', 'exo-free', 'ling-3.0-flash-fin-free',
+])
+
+/**
+ * Maintainer pin 2026-10-10: the Zen docs price table splits these rows at
+ * 272K (`GPT 5.5 (≤ 272K tokens)` / `(> 272K tokens)`), the same
+ * default-tier shape Codex (258K) pins. The long-context
+ * path is unverifiable here (this account's Zen balance is $0), so the catalog
+ * reports the default tier and DSH compacts before it; see the family README
+ * and docs/error.md.
+ */
+const OPENCODE_ZEN_TIERED_WINDOW_IDS = new Set([
+  'gpt-5.5', 'gpt-5.6-terra', 'gpt-6-astra', 'gpt-6-sol', 'gpt-6.1-sol', 'gpt-6-luna',
+])
+
+const OPENCODE_ZEN_DEFAULT_WINDOW = 272_000
+
+async function opencodeZen(protocol) {
+  const key = opencodeApiKey()
+  const [live, dev] = await Promise.all([
+    getJson('https://opencode.ai/zen/v1/models', { headers: { authorization: `Bearer ${key}` } }),
+    modelsDevBucket('opencode'),
+  ])
+  const rows: any[] = []
+  for (const { id } of live.data ?? []) {
+    const messages = OPENCODE_ZEN_MESSAGES_IDS.has(id)
+    const responses = OPENCODE_ZEN_RESPONSES_IDS.has(id)
+    if (protocol === 'messages') {
+      if (!messages) continue
+    } else if (protocol === 'responses') {
+      if (!responses) continue
+    } else if (messages || responses) {
+      continue
+    }
+    const meta = dev[id]
+    const row: any = meta ? fromModelsDev(id, meta) : { id }
+    if (OPENCODE_ZEN_TIERED_WINDOW_IDS.has(id)) row.contextWindow = OPENCODE_ZEN_DEFAULT_WINDOW
+    rows.push(row)
+  }
+  return rows
+}
+
+async function opencodeGo(protocol) {
+  const key = opencodeApiKey()
   const [live, dev] = await Promise.all([
     getJson('https://opencode.ai/zen/go/v1/models', { headers: { authorization: `Bearer ${key}` } }),
     modelsDevBucket('opencode-go'),
@@ -258,9 +340,11 @@ const ADAPTERS: Record<string, any> = {
       const body = await getJson(glmCodingUrl(s.region).replace(/\/chat\/completions$/, '/models'), { headers: glmUpstreamHeaders(s) })
       return (body.data ?? []).map((m) => ({ id: m.id }))
     },
+    // glm-5.3-flashx went live on the plan (2026-10-10 live test: served as
+    // itself, 948K input accepted) — parameters still need the second source
+    // (ZCode catalog rules match it; see glm/README.md 模型).
     skip: [
       { ids: ['glm-4.5', 'glm-4.5-air', 'glm-4.6', 'glm-4.7', 'glm-5', 'glm-5.1', 'glm-5.2'], why: 'historical id the plan reroutes to 5.3 / 5.3-Flash (glm/README.md 模型)' },
-      { ids: ['glm-5.3-flashx'], why: 'official docs: not yet available on the plan' },
     ],
   },
   kiro: {
@@ -316,22 +400,6 @@ const ADAPTERS: Record<string, any> = {
       return toKimiPickerModels(await getJson(KIMI_MODELS_URL, { headers: { ...kimiUpstreamHeaders(s), accept: 'application/json' } })).map(pick)
     },
   },
-  copilot: {
-    source: 'GET {endpoints.api}/models',
-    async fetch() {
-      const { COPILOT_API_VERSION, copilotIdentityHeaders, copilotModelsUrl } = await import('../lib/oauth/copilot/index.js')
-      const { toCopilotPickerModels } = await import('../lib/oauth/copilot/catalog.js')
-      const s = await session('copilot')
-      const body = await getJson(copilotModelsUrl(s), {
-        headers: { authorization: `Bearer ${s.accessToken}`, accept: 'application/json', 'x-github-api-version': COPILOT_API_VERSION, ...copilotIdentityHeaders() },
-      })
-      return toCopilotPickerModels(body).map(pick)
-    },
-    // GPT rows keep the Copilot GPT line's 256K default input window; the
-    // vendor's larger window stays as `maxContextWindow` (toCopilotPickerModels
-    // already emits both).
-    newRow: (row) => (String(row?.id ?? '').startsWith('gpt-') ? { ...row, contextWindow: COPILOT_GPT_CONTEXT_WINDOW } : row),
-  },
   devin: {
     source: 'ApiServerService/GetCliModelConfigs',
     async fetch() {
@@ -341,13 +409,16 @@ const ADAPTERS: Record<string, any> = {
     skip: [{ ids: ['fusion', 'fusion-fast', 'fusion-thinking', 'fusion-thinking-fast'], why: 'maintainer block 2026-09-30: the Fusion family stays out of the picker (devin/README.md 模型)' }],
   },
   cline: {
-    source: 'GET api.cline.bot/api/v1/ai/cline/recommended-models (public) + models.dev "openrouter"',
+    source: 'GET api.cline.bot/api/v1/ai/cline/recommended-models + /ai/cline/models (public)',
     async fetch() {
-      const { CLINE_RECOMMENDED_MODELS_URL } = await import('../lib/oauth/cline/index.js')
+      const { CLINE_MODELS_URL, CLINE_RECOMMENDED_MODELS_URL, clineIdentityHeaders } = await import('../lib/oauth/cline/index.js')
       const { toClinePickerModels } = await import('../lib/oauth/cline/catalog.js')
-      const [feed, openrouter] = await Promise.all([getJson(CLINE_RECOMMENDED_MODELS_URL), modelsDevBucket('openrouter')])
-      const facts = Object.entries<any>(openrouter).map(([id, row]) => fromModelsDev(id, row))
-      return toClinePickerModels(feed, { models: facts }).map(pick)
+      const headers = clineIdentityHeaders()
+      const [feed, cloud] = await Promise.all([
+        getJson(CLINE_RECOMMENDED_MODELS_URL, { headers }),
+        getJson(CLINE_MODELS_URL, { headers }).catch(() => undefined),
+      ])
+      return toClinePickerModels(feed, { cloud }).map(pick)
     },
   },
   ollama: {
@@ -378,6 +449,27 @@ const ADAPTERS: Record<string, any> = {
     source: 'GET opencode.ai/zen/go/v1/models (ids) + Go docs /v1/messages table + models.dev "opencode-go" (metadata)',
     fetch: () => opencodeGo('messages'),
   },
+  'opencode-zen-chat': {
+    source: 'GET opencode.ai/zen/v1/models (ids) + Zen docs /v1/chat/completions table + models.dev "opencode" (metadata)',
+    fetch: () => opencodeZen('chat'),
+    skip: [
+      { ids: [...OPENCODE_ZEN_FREE_IDS], why: 'free tier: gateway answers 403 FreeTierError outside OpenCode (opencode-go/README.md)' },
+      { ids: [...OPENCODE_ZEN_OTHER_PROTOCOL_IDS], why: 'docs endpoint is /v1/systemone, outside the DSH api union (opencode-go/README.md)' },
+      { ids: [...OPENCODE_ZEN_GOOGLE_IDS], why: 'docs endpoint is /v1/models/<id> (@ai-sdk/google), outside the DSH api union (opencode-go/README.md)' },
+      { ids: ['test'], why: 'not a model: the probe id present in the keyed list, absent from the docs table' },
+    ],
+    // DeepSeek dialect rows need a live test first (README); new rows start plain.
+    newRow: (row) => ({ ...row, compat: { ...PLAIN_GO_COMPAT } }),
+  },
+  'opencode-zen-responses': {
+    source: 'GET opencode.ai/zen/v1/models (ids) + Zen docs /v1/responses table + models.dev "opencode" (metadata)',
+    fetch: () => opencodeZen('responses'),
+    keep: [{ ids: [...OPENCODE_ZEN_TIERED_WINDOW_IDS], fields: ['contextWindow'], why: 'maintainer pin 2026-10-10: docs price tier starts above 272K (opencode-go/README.md)' }],
+  },
+  'opencode-zen-messages': {
+    source: 'GET opencode.ai/zen/v1/models (ids) + Zen docs /v1/messages table + models.dev "opencode" (metadata)',
+    fetch: () => opencodeZen('messages'),
+  },
   chatgpt: {
     source: 'GET api.openai.com/v1/models (Sign in with ChatGPT access token)',
     async fetch() {
@@ -386,7 +478,20 @@ const ADAPTERS: Record<string, any> = {
       return toChatgptPickerModels(await getJson(CHATGPT_MODELS_URL, { headers: chatgptUpstreamHeaders(await session('chatgpt')) }))
     },
   },
-  'command-code': { manual: 'no model endpoint; rows come from the command-code CLI bundle registry (command-code/README.md 模型)' },
+  'command-code': {
+    // The Provider API's model list, not the CLI's registry: it answers
+    // without a key and carries the vendor's own name/context_length (live
+    // 2026-10-10: 87 rows, identical ids to the pinned registry). Effort
+    // lists and image input stay the pinned registry's — the list says
+    // nothing about either, so a row it adds is written with what it says.
+    source: 'GET api.commandcode.ai/provider/v1/models (public)',
+    async fetch() {
+      const { COMMAND_CODE_MODELS, COMMAND_CODE_PROVIDER_MODELS_URL } = await import('../lib/apikey/command-code/index.js')
+      const { commandCodeProviderRows, mergeCommandCodeProviderModels } = await import('../lib/apikey/command-code/catalog.js')
+      const live = commandCodeProviderRows(await getJson(COMMAND_CODE_PROVIDER_MODELS_URL))
+      return mergeCommandCodeProviderModels(live, { models: COMMAND_CODE_MODELS }).map(pick)
+    },
+  },
   ollamaRetired: { manual: 'Ollama Cloud retirements table (ollama/README.md 模型); not a live list' },
 }
 

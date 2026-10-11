@@ -21,7 +21,6 @@ export declare class QuotaStore {
     ttlMs: number;
     cache: Map<string, any>;
     inflight: Map<string, any>;
-    glmResetRequests: Map<string, string>;
     constructor({ tokens, fetchFn, ttlMs, snapshotPath }?: any);
     /** Persist the cache now, when it is persisted at all. */
     flush(): Promise<void>;
@@ -94,10 +93,11 @@ export declare class QuotaStore {
     touch(provider: any, session?: any): Promise<void>;
     /**
      * Passive quota learning: the response itself carried this account's quota
-     * (today only the Codex Responses stream's `codex.rate_limits` frame), so the
-     * rows are updated without a side-read. The endpoint read stays authoritative
-     * — a refresh that was in flight overwrites what this wrote, and `usedAt` is
-     * left alone (`touch` marks the spend the moment the response closes).
+     * (the Codex Responses stream's `codex.rate_limits` frame, or a ChatGPT
+     * `response.completed` usage block), so the rows are updated without a
+     * side-read. The endpoint read stays authoritative — a refresh that was in
+     * flight overwrites what this wrote, and `usedAt` is left alone (`touch`
+     * marks the spend the moment the response closes).
      */
     learn(provider: any, data: any, session?: any): Promise<{
         status: string;
@@ -127,5 +127,12 @@ export declare class QuotaStore {
         };
     } | undefined>;
     refresh(provider: any, accountId?: any, session?: any): Promise<any>;
+    /**
+     * Spend one of an account's reset cards through the family's own hook
+     * (families.ts): the store owns the cache key, waits out a read in flight
+     * for that account, hands over the cached bank, then drops the entry and
+     * re-reads, so the card that was spent is gone from the panel. A family
+     * without reset cards is refused here, before any vendor is asked.
+     */
     consume(provider: any, accountId?: any, session?: any, creditId?: any): Promise<any>;
 }

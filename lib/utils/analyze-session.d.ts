@@ -13,6 +13,7 @@
  * prompt should have hit.
  */
 export declare const CACHE_KINDS: Readonly<{
+    unmeasured: "unmeasured";
     cold_start: "cold_start";
     delta: "delta";
     compaction: "compaction";
@@ -79,7 +80,7 @@ export declare function analyzeSession(text: any, { prefixEstimates }?: {
     cacheReadTokens: any;
     cacheWriteTokens: any;
     billedInputTokens: any;
-    weightedCacheHit: number;
+    weightedCacheHit: number | null;
     prefixReuseMedian: any;
     zeroCacheCount: any;
     zeroCacheAfterWarmup: any;
@@ -100,7 +101,7 @@ export declare function analyzeSession(text: any, { prefixEstimates }?: {
         rebuild: number;
         prefix_break: number;
         affinity_miss: number;
-    };
+    } | null;
     toolErrors: any[];
     toolCauseCounts: {
         host_timeout: number;

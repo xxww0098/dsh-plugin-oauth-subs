@@ -1,8 +1,8 @@
 /**
  * Cline (cline.bot) subscription OAuth — usage-billing / ClinePass credits.
  *
- * Pinned client: **Cline CLI 3.0.62** (npm `cline`, `apps/cli`) on
- * `@cline/core 0.0.83` — source tag `cli-v3.0.62` of github.com/cline/cline:
+ * Pinned client: **Cline CLI 3.0.70** (npm `cline`, `apps/cli`) on
+ * `@cline/core 0.0.92` — source tag `cli-v3.0.70` of github.com/cline/cline:
  * `sdk/packages/core/src/auth/cline.ts` (login / refresh),
  * `sdk/packages/core/src/auth/provider-auth-registry.ts` (`workos:` prefix),
  * `sdk/packages/llms/src/providers/request-headers.ts` (chat headers),
@@ -37,6 +37,8 @@ export const CLINE_REFRESH_URL = `${CLINE_API_BASE}/auth/refresh`
 export const CLINE_ME_URL = `${CLINE_API_BASE}/users/me`
 export const CLINE_PLAN_URL = `${CLINE_API_BASE}/users/me/plan`
 export const CLINE_RECOMMENDED_MODELS_URL = `${CLINE_API_BASE}/ai/cline/recommended-models`
+/** Cloud catalog `loadCloudModels` reads. Facts only — not the picker membership. */
+export const CLINE_MODELS_URL = `${CLINE_API_BASE}/ai/cline/models`
 export const CLINE_PLAN_LIMITS_URL = `${CLINE_API_BASE}/users/me/plan/usage-limits`
 export const CLINE_WORKOS_ORIGIN = 'https://api.workos.com'
 export const CLINE_WORKOS_DEVICE_URL = `${CLINE_WORKOS_ORIGIN}/user_management/authorize/device`
@@ -46,9 +48,9 @@ export const CLINE_WORKOS_CLIENT_ID = 'client_01K3A541FN8TA3EPPHTD2325AR'
 export const CLINE_ACCESS_TOKEN_PREFIX = 'workos:'
 
 /** `cliBuildInfo.version` — the installed `apps/cli/package.json`. */
-export const CLINE_CLIENT_VERSION = '3.0.62'
+export const CLINE_CLIENT_VERSION = '3.0.70'
 /** `@cline/core` package version (`X-CORE-VERSION`). */
-export const CLINE_CORE_VERSION = '0.0.83'
+export const CLINE_CORE_VERSION = '0.0.92'
 /** `apps/cli/src/main.ts` extensionContext.client — the CLI's own identity. */
 export const CLINE_CLIENT_TYPE = 'cline-cli'
 export const CLINE_PLATFORM = 'cli'
@@ -92,8 +94,8 @@ export const CLINE_SOURCES = Object.freeze(['oauth', 'cli', 'paste', 'env'])
  * Transcribed from `sdk/packages/llms/src/providers/routing/portable-reasoning.ts`:
  * the `cline` provider id is in neither the portable nor the non-portable set,
  * so an effort passes through unchanged except `max` → `xhigh`, and a disabled
- * reasoning control sends **no** field at all — hence no `off` key (same shape
- * as `COPILOT_REASONING`). `@ai-sdk/openai-compatible` composes the portable
+ * reasoning control sends **no** field at all — hence no `off` key.
+ * `@ai-sdk/openai-compatible` composes the portable
  * option into the `reasoning_effort` body field this hop forwards.
  */
 export const CLINE_REASONING = Object.freeze({
@@ -110,15 +112,9 @@ export const CLINE_DEFAULT_MAX_TOKENS = 8_192
 export const CLINE_INPUT = Object.freeze(['text', 'image'])
 
 /**
- * Offline picker seed: the `recommended` + `free` buckets of
- * `GET {apiBase}/ai/cline/recommended-models` refreshed 2026-09-29, crossed with
- * `https://models.dev/api.json` → `openrouter` — the CLI's own metadata source
- * (`buildClineModels` in `sdk/packages/llms/src/providers/builtins.ts`), which
- * also resolves an id by its last path segment (that is how the `cline-free/*`
- * rows map onto `deepseek/…`, `xiaomi/…`, `upstage/…`). `refreshClineCatalog`
- * replaces this list after login; it never drops it. Rows live in
- * `src/catalog/models.json` under `"cline"` (all rows carry the family
- * `CLINE_REASONING` ladder).
+ * Offline picker seed. `refreshClineCatalog` replaces it after login from
+ * the recommended feed plus `/ai/cline/models`; it never drops the seed when
+ * that fetch fails. Rows live in `src/catalog/models.json` under `"cline"`.
  */
 export const CLINE_MODELS = catalogRows('cline')
 
@@ -218,7 +214,7 @@ export async function registerClineTokens(tokens, { fetchFn = outboundFetch, sig
   }
   const response = await fetchFn(CLINE_REGISTER_URL, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', accept: 'application/json' },
+    headers: { ...clineIdentityHeaders(), 'content-type': 'application/json' },
     body: JSON.stringify({ accessToken, refreshToken }),
     signal,
   })
@@ -287,23 +283,45 @@ export function isClineOpaqueAccount(value) {
   return /^cline-account$/i.test(String(value ?? '').trim())
 }
 
+/**
+ * `ClineOAuthTokenError.isLikelyInvalidGrant` from the pinned CLI
+ * (`@cline/core` 0.0.92) — the endpoint answers **400**
+ * `{"data":"","error":"failed to refresh token: invalid_grant","success":false}`
+ * for a dead grant (live-probed 2026-10-11), and the shared test matches grant
+ * codes exactly, so `invalid_grant` buried in a sentence would be filed as a
+ * transient 4xx and the dead login would be retried forever.
+ */
+async function clineRefreshFailure(response) {
+  const error = await oauthError(response, 'cline refresh')
+  const code = typeof error.oauthCode === 'string' ? error.oauthCode : ''
+  const rejected = /invalid_grant|invalid_token|unauthorized/i.test(code)
+    || ((error.status === 400 || error.status === 401 || error.status === 403)
+      && /invalid|expired|revoked|unauthorized/i.test(error.message))
+  return rejected ? new OAuthEndpointError(error.message, error.status, 'invalid_grant') : error
+}
+
 /** `refreshClineToken`: JSON `{refreshToken, grantType:"refresh_token"}`. */
 export async function refreshCline(session, fetchFn = outboundFetch, { signal }: any = {}) {
   const refreshToken = trimmed(session?.refreshToken)
   if (!refreshToken) throw new Error('cline session needs a refresh token')
   const response = await fetchFn(CLINE_REFRESH_URL, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', accept: 'application/json' },
+    headers: { ...clineIdentityHeaders(), 'content-type': 'application/json' },
     body: JSON.stringify({ refreshToken, grantType: 'refresh_token' }),
     signal,
   })
-  if (!response.ok) throw await oauthError(response, 'cline refresh')
+  if (!response.ok) throw await clineRefreshFailure(response)
   const payload: any = await response.json().catch(() => undefined)
   if (!payload?.success || !payload.data?.accessToken) {
-    // The endpoint answers 200 with `success:false` for a rejected grant —
+    // A 200 with `success:false` is the other shape of the same rejection —
     // surface it as permanent so a dead refresh token is not kept forever.
     throw new OAuthEndpointError('cline refresh: refresh token was rejected', 401, 'invalid_grant')
   }
+  // A save the store refuses is the shared manager's problem: it holds this
+  // rotation against the version it was bought for, so the spent token is
+  // never redeemed twice (tokens.ts `#holdRotation`). Keeping a family-local
+  // copy here pinned the endpoint — every later refresh answered with the
+  // held pair and the login froze once its access token expired.
   return clineSessionFromAuthData(payload.data, session)
 }
 
@@ -323,6 +341,20 @@ export function clineCredentialHeaders() {
     'X-PLATFORM': CLINE_PLATFORM,
     'X-PLATFORM-VERSION': CLINE_CLIENT_VERSION,
     'X-CORE-VERSION': CLINE_CORE_VERSION,
+  }
+}
+
+/**
+ * Identity the CLI sends on catalog, auth, and account calls
+ * (`buildClineClientHeaders`). No `X-Task-ID`: those calls are not a
+ * conversation, and a fresh id per request would also break the prefix
+ * cache the chat path pins.
+ */
+export function clineIdentityHeaders() {
+  return {
+    accept: 'application/json',
+    'user-agent': CLINE_USER_AGENT,
+    ...clineCredentialHeaders(),
   }
 }
 
@@ -363,7 +395,7 @@ export async function resolveClineIdentity(session, { fetchFn = outboundFetch, s
   if (!token) return undefined
   try {
     const response = await fetchFn(CLINE_ME_URL, {
-      headers: { accept: 'application/json', authorization: `Bearer ${clineBearer(session)}` },
+      headers: { ...clineIdentityHeaders(), authorization: `Bearer ${clineBearer(session)}` },
       signal,
     })
     if (!response.ok) return undefined

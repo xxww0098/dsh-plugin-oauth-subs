@@ -72,7 +72,7 @@ async function main() {
   } else {
     process.stdout.write(`${formatReport(report)}\n`)
   }
-  if (args.failBelow != null && report.weightedCacheHit * 100 < args.failBelow) {
+  if (args.failBelow != null && report.cacheMeasured && report.weightedCacheHit != null && report.weightedCacheHit * 100 < args.failBelow) {
     console.error(`cache hit ${(report.weightedCacheHit * 100).toFixed(1)}% is below ${args.failBelow}%`)
     // process.exit() would truncate the buffered stdout report when piped (the
     // exact --fail-below CI case); set the code and let the process drain.

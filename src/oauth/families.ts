@@ -2,9 +2,9 @@
  * Family registry: the one table keyed by family id that the central
  * per-family dispatchers look up instead of growing `family === '<id>'`
  * chains — today the inbound cache rewrite (proxy-body.ts), the quota
- * fetch (quota.ts QuotaStore), the account-quota hydration hooks
- * (account-quota.ts), the login flow / paste completion / pasted-key
- * dispatch (login.ts), the passthrough Completions usage rewrite
+ * fetch and reset-card spend (quota.ts QuotaStore), the account-quota
+ * hydration hooks (account-quota.ts), the login flow / paste completion /
+ * pasted-key dispatch (login.ts), the passthrough Completions usage rewrite
  * (passthrough.ts), and the model-catalog bag every llm-pi-ai projection
  * consumes (familyCatalogInputs below; models.ts / harness-sync.ts).
  *
@@ -26,12 +26,11 @@ import type { AuthController } from './controller.js'
 import { codexRoutingHint } from './codex/index.js'
 import { applyCodexCache } from './codex/cache.js'
 import { normalizeCodexResponsesBody } from './codex/request.js'
-import { fetchCodexQuota } from './codex/quota.js'
+import { consumeCodexReset, fetchCodexQuota } from './codex/quota.js'
 import { completeCodexPaste, loginCodex } from './codex/accounts.js'
 import { importCodexAuth } from './codex/import.js'
-import { applyGrokCache } from './grok/cache.js'
-import { normalizeGrokResponsesBody } from './grok/request.js'
-import { fetchGrokQuota } from './grok/quota.js'
+import { prepareGrokResponsesBody } from './grok/request.js'
+import { fetchGrokQuota, spendGrokResetCard } from './grok/quota.js'
 import { completeGrokPaste, loginGrok } from './grok/accounts.js'
 import { importGrokAuth } from './grok/import.js'
 import { applyChatgptCache } from './chatgpt/cache.js'
@@ -41,7 +40,7 @@ import { chatgptCatalogModels } from './chatgpt/catalog.js'
 import { discoverChatgpt, loginChatgpt } from './chatgpt/accounts.js'
 import { glmCacheSessionId } from './glm/cache.js'
 import { mapGlmChatUsage, normalizeGlmAnthropicBody, normalizeGlmChatBody } from './glm/request.js'
-import { fetchGlmQuota } from './glm/quota.js'
+import { fetchGlmQuota, spendGlmResetCard } from './glm/quota.js'
 import { loginGlm, useGlmKey } from './glm/accounts.js'
 import { importGlmAuth } from './glm/import.js'
 import { kiroConversationId } from './kiro/cache.js'
@@ -84,17 +83,6 @@ import { applyKimiStreamUsage, applyKimiThinking, mapKimiUsage } from './kimi/re
 import { fetchKimiQuota } from './kimi/quota.js'
 import { kimiCatalogModels } from './kimi/catalog.js'
 import { discoverKimi, importKimi, loginKimi, rememberKimiIdentity, useKimiKey } from './kimi/accounts.js'
-import { applyCopilotCache, copilotHasVision, copilotInitiatorOf } from './copilot/cache.js'
-import { applyCopilotStreamUsage, applyCopilotThinking, mapCopilotUsage } from './copilot/request.js'
-import { fetchCopilotQuota } from './copilot/quota.js'
-import { copilotCatalogModels } from './copilot/catalog.js'
-import {
-  discoverCopilot,
-  importCopilot,
-  loginCopilot,
-  rememberCopilotIdentity,
-  useCopilotKey,
-} from './copilot/accounts.js'
 import { applyDevinCache } from './devin/cache.js'
 import { fetchDevinQuota } from './devin/quota.js'
 import { devinCatalogModels } from './devin/catalog.js'
@@ -125,14 +113,25 @@ import { applyFastMode } from '../utils/fast-mode.js'
 
 export type FamilyId =
   | 'codex' | 'chatgpt' | 'grok' | 'glm' | 'kiro' | 'antigravity' | 'cursor'
-  | 'ollama' | 'kimi' | 'copilot' | 'devin' | 'cline' | 'command-code'
+  | 'ollama' | 'kimi' | 'devin' | 'cline' | 'command-code'
 
 /** One family's inbound cache rewrite; extra keys ride along to the hop. */
 export interface FamilyCacheRewrite {
   payload: any
   cacheSessionId?: string
+  observeResponse?: FamilyResponseObserver
   [extra: string]: unknown
 }
+
+/** Passive per-attempt byte observer; implementations live in the owning family. */
+export interface FamilyResponseObservation {
+  status: (code: number) => void
+  push: (chunk: Uint8Array) => void
+  finish: () => Promise<void>
+}
+export type FamilyResponseObserver = (attempt: {
+  requestId?: string, accountId?: string, attempt: number, wireBody: Uint8Array,
+}) => FamilyResponseObservation | undefined
 
 /** refreshQuota: re-read this family's own model list, re-sync when it changed. */
 export interface FamilyCatalogDiscovery {
@@ -156,6 +155,24 @@ export interface FamilyQuotaHooks {
   discover?: FamilyCatalogDiscovery
   /** refreshQuota: the hooks above may rewrite stored rows — re-list them before peeking. */
   relistAccountsAfterRefresh?: boolean
+}
+
+/**
+ * Per-family reset-card hooks driven by QuotaStore.consume: the store owns the
+ * account's cache key, the read it must wait out, the invalidation and the
+ * re-read; the family owns what a card is, how one is resolved and how it is
+ * spent (family quota.ts).
+ */
+export interface FamilyResetHooks {
+  /**
+   * Spend one card. `creditId` is the public card id the panel sent
+   * (undefined for Codex, whose reset takes none); `bank` is that account's
+   * cached `resetCredits`, which a family consults (GLM) or ignores (Grok
+   * resolves its hashed id by a fresh list read); `key` is the store's cache
+   * key of the account, for state a family keeps per account. Throws when the
+   * card is gone, or when the vendor refused it.
+   */
+  spend: (session: any, creditId: string | undefined, ctx: { fetchFn: any, bank?: any, key: string }) => Promise<unknown>
 }
 
 /**
@@ -223,6 +240,8 @@ export interface OAuthFamily {
   login: FamilyLoginHooks
   /** account-quota: per-account hydration / refresh side effects, when this family has them. */
   quota?: FamilyQuotaHooks
+  /** QuotaStore.consume: this family's reset-card spend, when it has reset cards. */
+  reset?: FamilyResetHooks
   /**
    * models.ts buildProviders/catalogProviders: this family's catalog rows,
    * referencing its own catalog.ts export (never a copy). Families without a
@@ -246,6 +265,8 @@ const codexFamily: OAuthFamily = {
     }
   },
   fetchQuota: fetchCodexQuota,
+  // A Codex reset takes no card id (consumeCodexReset mints its own redeem id).
+  reset: { spend: (session, _creditId, { fetchFn }) => consumeCodexReset(session, fetchFn) },
   login: {
     attempt: loginCodex,
     completePaste: { exchange: completeCodexPaste },
@@ -275,18 +296,9 @@ const chatgptFamily: OAuthFamily = {
 
 const grokFamily: OAuthFamily = {
   id: 'grok',
-  applyCache(payload) {
-    // Grok Fast is a real backend model id (`grok-4.7-build-fast`), not Codex
-    // Priority: the shared peel would rewrite it to a nonexistent model.
-    // normalizeGrokResponsesBody owns model hygiene + service_tier here.
-    const { payload: next, cacheSessionId } = applyGrokCache(normalizeGrokResponsesBody(payload))
-    return {
-      payload: next,
-      cacheSessionId,
-      grokModel: typeof next.model === 'string' ? next.model : undefined,
-    }
-  },
+  applyCache: prepareGrokResponsesBody,
   fetchQuota: fetchGrokQuota,
+  reset: { spend: spendGrokResetCard },
   login: {
     attempt: loginGrok,
     completePaste: { exchange: completeGrokPaste },
@@ -307,6 +319,7 @@ const glmFamily: OAuthFamily = {
     }
   },
   fetchQuota: fetchGlmQuota,
+  reset: { spend: spendGlmResetCard },
   login: { attempt: loginGlm, useKey: useGlmKey, importLocal: () => importGlmAuth() },
   forward: {
     // Chat wire only: Anthropic usage is native and forwards untouched.
@@ -430,33 +443,6 @@ const kimiFamily: OAuthFamily = {
   },
 }
 
-const copilotFamily: OAuthFamily = {
-  id: 'copilot',
-  applyCache(payload) {
-    const { payload: cached, cacheSessionId } = applyCopilotCache(applyFastMode(payload))
-    const next = applyCopilotStreamUsage(applyCopilotThinking(cached))
-    return {
-      payload: next,
-      cacheSessionId,
-      copilotVision: copilotHasVision(next.messages),
-      copilotInitiator: copilotInitiatorOf(next.messages),
-    }
-  },
-  fetchQuota: fetchCopilotQuota,
-  login: { attempt: loginCopilot, useKey: useCopilotKey, importLocal: importCopilot },
-  forward: { completionsUsage: () => mapCopilotUsage },
-  catalogModels: copilotCatalogModels,
-  quota: {
-    // No afterEnsure hook: identity write-back rides the manual refresh only.
-    remember: rememberCopilotIdentity,
-    discover: {
-      models: copilotCatalogModels,
-      run: discoverCopilot,
-    },
-    relistAccountsAfterRefresh: true,
-  },
-}
-
 const devinFamily: OAuthFamily = {
   id: 'devin',
   applyCache(payload) {
@@ -543,9 +529,12 @@ const commandCodeFamily: OAuthFamily = {
 
 const FAMILIES: readonly OAuthFamily[] = [
   codexFamily, chatgptFamily, grokFamily, glmFamily, kiroFamily, antigravityFamily,
-  cursorFamily, ollamaFamily, kimiFamily, copilotFamily, devinFamily, clineFamily,
+  cursorFamily, ollamaFamily, kimiFamily, devinFamily, clineFamily,
   commandCodeFamily,
 ]
+
+/** The refusal a family without reset cards gets, from both reset entry points (QuotaStore.consume, account-quota's consumeReset). */
+export const NO_RESET_CARDS = 'only ChatGPT Codex, Grok and GLM can reset quota'
 
 /** The registry, keyed by family id (the ids of store.ts `PROVIDER_IDS`). */
 export const OAUTH_FAMILIES: ReadonlyMap<string, OAuthFamily> = new Map(

@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml/badge.svg)](https://github.com/xxww0098/dsh-plugin-oauth-subs/actions/workflows/ci.yml)
 
-**Use the AI subscriptions you already pay for, inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).** Sign in once and your ChatGPT / Codex, Grok, GLM, Kiro, Antigravity, Cursor, Ollama Cloud, Kimi, Copilot, Devin or Cline plan becomes a model you can pick in any session — with quota, models and usage in one workbench.
+**Use the AI subscriptions you already pay for, inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).** Sign in once and your ChatGPT / Codex, Grok, GLM, Kiro, Antigravity, Cursor, Ollama Cloud, Kimi, Devin or Cline plan becomes a model you can pick in any session — with quota, models and usage in one workbench.
 
 ![Subscription workbench — quota tab with per-account cards and provider rail](docs/readme-workbench.jpg)
 
@@ -19,7 +19,7 @@
 
 ### 用量 Usage
 
-![Usage tab — token, cache-read, call, latency and estimated-cost panels](docs/screenshots/usage.jpg)
+![Usage tab — token, cache-read, call and estimated-cost panels](docs/screenshots/usage.jpg)
 
 ### 榜单 Leaderboard
 
@@ -60,7 +60,7 @@ Open the **模型 Models** tab, switch on the families you want, then pick a mod
 |---|---|
 | **额度 Quota** | One card per account — plan badge, usage and reset bars. Refreshes about once a minute, or tap **刷新额度**. |
 | **模型 Models** | The model list. Switch families on or off, and raise a model's input window. |
-| **用量 Usage** | Tokens, cache hits, calls, latency and estimated cost — by model or by session. |
+| **用量 Usage** | Tokens, cache hits, calls and estimated cost — by model or by session (per-model latency reads on each row). |
 | **榜单 Leaderboard** | Daily model ranking snapshot. |
 | **设置 Settings** | Updates, proxy, and where the plugin comes from. |
 
@@ -76,7 +76,6 @@ Open the **模型 Models** tab, switch on the families you want, then pick a mod
 | **Cursor** | Sign in, or **Import local Cursor** |
 | **Ollama Cloud** | Paste an API key |
 | **Kimi Code Plan** | Device code, or import your local Kimi login |
-| **GitHub Copilot** | Device code, or import your local Copilot login |
 | **Devin Agent** | Sign in, or import your local Devin credentials |
 | **Cline** | Device code, or import your local Cline login |
 | **Command Code** | Paste an API key, or import your local login |
@@ -117,7 +116,6 @@ Open the **模型 Models** tab, switch on the families you want, then pick a mod
 | Cursor | PKCE, or **Import local Cursor** (macOS Keychain / `state.vscdb`) | `openai-completions` |
 | Ollama Cloud | Paste API key / `OLLAMA_API_KEY` | `openai-completions` |
 | Kimi Code Plan | Device-code; import `~/.kimi-code/credentials/kimi-code.json`; `KIMI_API_KEY` | `openai-completions` |
-| GitHub Copilot | Device-code; import `~/.config/github-copilot/hosts.json`; `GITHUB_TOKEN` | `openai-completions` |
 | Devin Agent | PKCE `127.0.0.1:59653`; import `~/.local/share/devin/credentials.toml`; paste `devin-session-token$…` | `openai-completions` |
 | Cline | Device-code; import `~/.cline/data/settings/providers.json` | `openai-completions` |
 | Command Code | Paste API key / `COMMAND_CODE_API_KEY` / import `~/.commandcode/auth.json`; or studio browser login | `openai-completions` |

@@ -22,8 +22,22 @@ import {
   resolveCommandCodeIdentity,
 } from './index.js'
 import { COMMAND_CODE_IMPORT_EMPTY, importCommandCodeAuth } from './import.js'
+import { commandCodeCatalogModels } from './catalog.js'
 import { signedOutOf } from '../../oauth/account-marks.js'
 import type { AuthController } from '../../oauth/controller.js'
+
+/**
+ * Live picker rows for warmCatalogs: the discover seam refreshes the vendor's
+ * list; without one (or when the read fails) the pinned registry stands.
+ */
+export async function discoverCommandCode(ctl: AuthController, session) {
+  if (!session || typeof ctl.commandCodeDiscover !== 'function') return commandCodeCatalogModels()
+  try {
+    return await ctl.commandCodeDiscover(session, { fetchFn: ctl.fetchFn })
+  } catch {
+    return commandCodeCatalogModels()
+  }
+}
 
 export async function maybeAutoImportCommandCode(ctl: AuthController) {
   if (!ctl.commandCodeAutoImport || ctl.commandCodeAutoImportTried) return

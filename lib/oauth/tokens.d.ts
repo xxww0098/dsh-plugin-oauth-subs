@@ -73,8 +73,12 @@ export declare class TokenManager {
     /** version → the exchange that owns it: { at, late, promise }. */
     inflight: Map<any, any>;
     failures: Map<any, any>;
+    /** version → the rotation the store refused; see `#holdRotation`. */
+    heldRotations: Map<any, any>;
+    /** Store writer seam; tests inject a refusing writer to pin the held-rotation recovery. */
+    updateSession: any;
     sources: WeakMap<object, any>;
-    constructor({ provider, authPath, displayName, preemptMs, refresh, permanentCodes, onRemoved, imported, refreshWaitMs, exchangeTimeoutMs }: any);
+    constructor({ provider, authPath, displayName, preemptMs, refresh, permanentCodes, onRemoved, imported, refreshWaitMs, exchangeTimeoutMs, updateSession }: any);
     session(id: any): Promise<any>;
     /** The stored-account row that produced this session, when known. */
     sourceOf(session: any): any;

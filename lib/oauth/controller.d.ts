@@ -46,9 +46,6 @@ export declare class AuthController {
     kimiAutoImport: boolean;
     kimiAutoImportTried: boolean;
     kimiDiscover: any;
-    copilotAutoImport: boolean;
-    copilotAutoImportTried: boolean;
-    copilotDiscover: any;
     devinAutoImport: boolean;
     devinImport: any;
     devinAutoImportTried: boolean;
@@ -60,6 +57,7 @@ export declare class AuthController {
     commandCodeAutoImport: boolean;
     commandCodeAutoImportTried: boolean;
     commandCodeImport: any;
+    commandCodeDiscover: any;
     lastError: Map<string, any>;
     finalizing: Set<string>;
     claims: Map<string, number>;
@@ -73,6 +71,7 @@ export declare class AuthController {
     outboundProxy: any;
     setOutboundProxy: any;
     usage: any;
+    arena: any;
     installReleaseFn: any;
     autoUpdate: boolean;
     updateState: any;
@@ -82,7 +81,7 @@ export declare class AuthController {
     autoUpdateTimer: any;
     prefsFile: string;
     stateFile: string;
-    constructor({ authPath, prefix, origin, settings, patchPath, credentials, grokLogin, onAuthChanged, models, fetchFn, quotaTtlMs, profile, readFileFn, updateEnv, installReleaseFn, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover, devinAutoImport, devinImport, devinDiscover, clineDiscover, clineAutoImport, commandCodeAutoImport, commandCodeImport, chatgptDiscover }: any);
+    constructor({ authPath, prefix, origin, settings, patchPath, credentials, grokLogin, onAuthChanged, models, fetchFn, quotaTtlMs, profile, readFileFn, updateEnv, installReleaseFn, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, devinAutoImport, devinImport, devinDiscover, clineDiscover, clineAutoImport, commandCodeAutoImport, commandCodeImport, commandCodeDiscover, chatgptDiscover }: any);
     claim(provider: any): number;
     loggedIn(): Promise<Record<string, boolean>>;
     status(provider: any): Promise<{
@@ -309,7 +308,6 @@ export declare class AuthController {
     completePkce(provider: any, attempt: any, claim: any): Promise<void>;
     completeKimiDevice(attempt: any): Promise<void>;
     completeClineDevice(attempt: any): Promise<void>;
-    completeCopilotDevice(attempt: any): Promise<void>;
     completeDevice(provider: any, attempt: any): Promise<void>;
     completeGlm(attempt: any): Promise<void>;
     completeCursor(attempt: any): Promise<void>;
@@ -339,6 +337,19 @@ export declare class AuthController {
     setModels(payload?: any): Promise<Record<string, any>>;
     sync(selected?: any, options?: any): Promise<{
         opencodeGoRoute: {
+            status: string;
+            routes?: undefined;
+            error?: undefined;
+        } | {
+            status: string;
+            routes: any[];
+            error?: undefined;
+        } | {
+            status: string;
+            error: string;
+            routes?: undefined;
+        };
+        opencodeZenRoute: {
             status: string;
             routes?: undefined;
             error?: undefined;

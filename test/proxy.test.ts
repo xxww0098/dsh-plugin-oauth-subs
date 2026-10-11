@@ -1147,6 +1147,9 @@ test('describeError unwraps the undici cause behind "fetch failed"', () => {
   const error = new TypeError('fetch failed', { cause: Object.assign(new Error('other side closed'), { code: 'UND_ERR_SOCKET' }) })
   assert.equal(describeError(error), 'fetch failed: UND_ERR_SOCKET')
   assert.equal(describeError(new Error('plain')), 'plain')
+  // outbound.ts embeds the reason AND keeps the cause: it must not print twice.
+  const wrapped = new Error('outbound proxy unavailable: fetch failed: ECONNRESET via http://127.0.0.1:1082', { cause: error })
+  assert.equal(describeError(wrapped), wrapped.message)
 })
 
 test('a streamed body that never looked like an SSE preamble is forwarded, not retried', async () => {
@@ -1703,7 +1706,7 @@ test('proxy strips upstream content-encoding/content-length after undici decompr
 })
 
 
-test('a 401 refresh retry keeps the route overrides: stream accept, zstd, Copilot agent initiator', { timeout: 5000 }, async () => {
+test('a 401 refresh retry keeps the route overrides: stream accept and zstd', { timeout: 5000 }, async () => {
   const seen = []
   const fetchFn = async (url, init) => {
     seen.push(init.headers)
@@ -1715,7 +1718,7 @@ test('a 401 refresh retry keeps the route overrides: stream accept, zstd, Copilo
     sourceOf: (session) => ({ id: 'acct-1', session }),
     refreshNow: async () => ({ session: { accessToken: 'fresh-tok', accountId: 'acct', expiresAt: Date.now() + 3_600_000 } }),
   })
-  const proxy = createProxy({ port: 0, apiKey: 'secret-key', fetchFn, tokens: { codex: tokens(), copilot: tokens() } })
+  const proxy = createProxy({ port: 0, apiKey: 'secret-key', fetchFn, tokens: { codex: tokens() } })
   const server = await proxy.listen()
   const port = server.address().port
   const send = (path, body) => fetch(`http://127.0.0.1:${port}${path}`, {
@@ -1725,20 +1728,12 @@ test('a 401 refresh retry keeps the route overrides: stream accept, zstd, Copilo
   }).then((response) => response.text())
   try {
     await send('/codex/v1/responses', { model: 'gpt-5.6-luna', stream: true, input: [] })
-    await send('/copilot/v1/chat/completions', {
-      model: 'gpt-4.1',
-      stream: true,
-      messages: [{ role: 'user', content: 'x' }, { role: 'assistant', content: 'y' }, { role: 'tool', tool_call_id: 't', content: 'z' }],
-    })
-    assert.equal(seen.length, 4)
-    const [codexFirst, codexRetry, copilotFirst, copilotRetry] = seen
+    assert.equal(seen.length, 2)
+    const [codexFirst, codexRetry] = seen
     assert.equal(codexRetry.authorization, 'Bearer fresh-tok')
     for (const key of ['accept', 'content-encoding']) assert.equal(codexRetry[key], codexFirst[key], `codex ${key}`)
     assert.equal(codexRetry.accept, 'text/event-stream')
     assert.equal(codexRetry['content-encoding'], 'zstd')
-    assert.equal(copilotFirst['x-initiator'], 'agent')
-    assert.equal(copilotRetry['x-initiator'], 'agent')
-    assert.equal(copilotRetry.accept, 'text/event-stream')
   } finally {
     await proxy.close()
   }

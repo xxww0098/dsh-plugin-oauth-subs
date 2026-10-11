@@ -15,7 +15,7 @@ export declare const OLLAMA_CHAT_URL = "https://ollama.com/v1/chat/completions";
 export declare const OLLAMA_TAGS_URL = "https://ollama.com/api/tags";
 export declare const OLLAMA_SHOW_URL = "https://ollama.com/api/show";
 export declare const OLLAMA_ME_URL = "https://ollama.com/api/me";
-export declare const OLLAMA_USAGE_URL = "https://ollama.com/api/usage";
+export declare const OLLAMA_BALANCE_URL = "https://ollama.com/api/balance";
 /** ollama.com /api/me Plan slugs. Not Codex `pro` → Pro 20x. */
 export declare const OLLAMA_PLAN_NAMES: Readonly<{
     free: "Free";

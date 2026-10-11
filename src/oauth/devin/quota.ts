@@ -5,7 +5,7 @@
 import { DEVIN_TIER_NAMES, pickDevinHumanAccount } from './index.js'
 import { devinUserStatus } from './transport.js'
 import { outboundFetch } from '../../utils/outbound.js'
-import { asNumber, clampPct, QUOTA_TIMEOUT_MS, timeoutSignal } from '../quota-shared.js'
+import { asNumber, clampPct, withQuotaTimeout } from '../quota-shared.js'
 
 function devinQuotaRow({ key, kind, label, windowMinutes = undefined, remainingPercent, resetAt }: any) {
   const remaining = clampPct(remainingPercent)
@@ -120,15 +120,10 @@ export function parseDevinUserStatus(payload) {
 }
 
 export async function fetchDevinQuota(session, fetchFn = outboundFetch) {
-  const wait = timeoutSignal(QUOTA_TIMEOUT_MS)
-  try {
-    const parsed = parseDevinUserStatus(await devinUserStatus(session, { fetchFn, signal: wait.signal }))
-    return {
-      ...parsed,
-      account: parsed.account || session.account,
-      planType: parsed.planType || session.planType,
-    }
-  } finally {
-    wait.cancel()
+  const parsed = parseDevinUserStatus(await withQuotaTimeout((signal) => devinUserStatus(session, { fetchFn, signal })))
+  return {
+    ...parsed,
+    account: parsed.account || session.account,
+    planType: parsed.planType || session.planType,
   }
 }

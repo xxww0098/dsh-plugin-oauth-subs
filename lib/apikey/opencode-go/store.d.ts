@@ -26,6 +26,8 @@ export declare class OpencodeGoStore {
     activeId(): any;
     keyOf(id: any): any;
     anyKey(): boolean;
+    /** The id whose key chat should use: the active account's, else the first stored key. */
+    keyedId(): any;
     /** The single keyless account, if the vault holds exactly one (legacy adoption). */
     keylessId(): string | undefined;
     adoptKey(id: any, key: any): Promise<boolean>;

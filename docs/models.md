@@ -32,12 +32,12 @@
 | `maxTokens?` | 厂商输出上限 | 路由侧被 `HARNESS_REQUEST_MAX_TOKENS` 截成单次请求预算 |
 | `input?` | `text` / `image` 子集 | 缺省 = text+image；audio / video / pdf 一律剥掉 |
 | `reasoningEfforts?` | DSH 档位 → 厂商拼写 | 键只取闭集 `off…max`；值是厂商拼写或 `null`；非推理模型为 `false` |
-| `maxContextWindow?` | 该行自定义窗口的上限（按家族查，`familyMaxContextWindow`） | codex / glm / copilot / devin / cline / command-code / ollama |
+| `maxContextWindow?` | 该行自定义窗口的上限（按家族查，`familyMaxContextWindow`） | codex / glm / devin / cline / command-code / ollama |
 | `fastTier?` | 是否长 `-fast` 孪生 | codex |
 | `variants` / `defaultUid` | 档位 → 后端 uid | devin |
 | `compat` | pi-ai completions 方言 | opencode-go |
 
-键集合固定（`CATALOG_KEYS`）：每个家族一个键，OpenCode Go 按协议拆成 `opencode-go-flash` / `opencode-go-responses` / `opencode-go-messages`，`ollamaRetired` 是退役 id 数组。加载器在模块加载时校验，有一行不合法就整体抛错，绝不静默沿用旧目录。
+键集合固定（`CATALOG_KEYS`）：每个家族一个键，OpenCode 按协议拆成 Go 的 `opencode-go-flash` / `opencode-go-responses` / `opencode-go-messages` 与 Zen 的 `opencode-zen-chat` / `opencode-zen-responses` / `opencode-zen-messages`，`ollamaRetired` 是退役 id 数组。加载器在模块加载时校验，有一行不合法就整体抛错，绝不静默沿用旧目录。
 
 ## 加一个新模型 / 新家族
 
@@ -62,11 +62,11 @@
 
 每个键的一线来源按可信度排：**厂商目录端点 > 钉住客户端自带的列表 > 公开注册表 / 文档**。厂商端点优先，因为它就是订阅后端实际服务的列表，文档会滞后，也常常只列部分模型。当前每个键接的是哪个源，以 `ADAPTERS` 的 `source` 为准；源分三类：
 
-- **登录态端点**：要一份已存账号。多数端点按账号、套餐或出口区域过滤（Kiro 与 Cursor 的列表随出口 IP 变化），所以脚本从某次拉取里看到「缺行」，不等于该模型已下架。Copilot 先例：grok 整族只按政策开关出现、premium 耗尽的账号所有非基础模型回 `400 model_not_supported`（[error](error.md) 2026-09-30）。
+- **登录态端点**：要一份已存账号。多数端点按账号、套餐或出口区域过滤（Kiro 与 Cursor 的列表随出口 IP 变化），所以脚本从某次拉取里看到「缺行」，不等于该模型已下架。先例：某些行只按政策开关出现；额度耗尽的账号所有非基础模型回 `400 model_not_supported`（不是 429，[error](error.md) 2026-09-30），先排除账号/余额再判下架。
 - **公开端点 / 注册表**：不需要登录（Cline feed、Ollama `/api/tags` + `/api/show`、CLIProxyAPI registry、models.dev）。
 - **无端点**（`manual`）：Command Code 只有 CLI bundle 里的注册表，`ollamaRetired` 来自退役公告。这两个键手改，出处照旧记进 README。
 
-有的端点只给 id（GLM、OpenCode Go），参数要从第二个源补（OpenCode Go 用 models.dev `opencode-go` 桶）。补不到参数的新 id 报 `unresolved`，不写入——不发明数字。
+有的端点只给 id（GLM、OpenCode Go / Zen），参数要从第二个源补（Go 用 models.dev `opencode-go` 桶，Zen 用 `opencode` 桶；Zen 的协议不在桶里，取官方端点表）。补不到参数的新 id 报 `unresolved`，不写入——不发明数字。
 
 ## 更新流程
 
@@ -79,7 +79,7 @@ npm run models -- --write --prune  # 另外删掉源里已消失的行（先读�
 npm run models -- --json           # 机器可读报告
 ```
 
-`--profile` 选读哪个 profile 的凭据（默认 `desktop`）。脚本对账号只读：不刷新令牌（2 分钟内过期的账号直接跳过，开一下应用让它自己刷新）、不写 store；拉模型列表不耗额度。出站走插件的 `outbound-proxy.json` 与 `HTTPS_PROXY`，要看非中国大陆出口的列表就配好代理再跑。
+`--profile` 选读哪个 profile 的凭据（默认 `desktop`）。脚本对账号只读：不刷新令牌（2 分钟内过期的账号直接跳过，开一下应用让它自己刷新）、不写 store；拉模型列表不耗额度。出站走插件设置页「代理」三态（`outbound-proxy.json` 的 auto/off/custom：auto 先系统代理后 `HTTPS_PROXY`，off 直连，custom 用保存的 URL），要看非中国大陆出口的列表就配好代理再跑。
 
 跑完以后：
 
@@ -118,7 +118,7 @@ npm run models -- --json           # 机器可读报告
 
 脚本只负责搬数，下面这些判断属于维护者，要在适配器里写成规则（`keep` / `skip` / `newRow` / `add: false`），并在家族 README 写明理由：
 
-- **默认窗口不一定等于厂商总窗。** DSH 按 `contextWindow` 触发压缩，报总窗会让长会话长到被网关拒绝。例子：Codex 用 CLI 的 258K 可用输入而不是原始的 272K（新行由 `newRow` 填），Copilot 的 GPT 行钉 256K 默认窗、厂商大窗挂 `maxContextWindow`（`newRow`），OpenCode Go 的两行 Luna 钉在 258K（`keep`），GLM 套餐窗是 400K，1M 只作为 `maxContextWindow` 上限。
+- **默认窗口不一定等于厂商总窗。** DSH 按 `contextWindow` 触发压缩，报总窗会让长会话长到被网关拒绝。例子：Codex 用 CLI 的 258K 可用输入而不是原始的 272K（新行由 `newRow` 填），OpenCode Go 的两行 Luna 钉在 258K（`keep`），GLM 套餐窗是 400K，1M 只作为 `maxContextWindow` 上限（例外：`glm-5.3-flashx` 的套餐基线就是 1M，2026-10-10 活测，见 glm/README.md「模型」）。
 - **厂商列出的，不等于订阅能用的。** 历史改道 id、未上套餐的 id、同一模型的别名，都用 `skip` 写明理由（GLM、OpenCode Go 有先例）；后端返回 400 的模型不进目录（`gpt-5.3-codex` 先例）。
 - **精选键**：Cursor 的底表跟官方 docs 表走，活列表里还有隐藏行和旧行，所以新 id 只报告（`add: false`）。
 - **方言**：OpenCode Go 的新行默认按普通 OpenAI compat 处理；DeepSeek 方言要先活测确认再手改。
@@ -132,7 +132,7 @@ npm run models -- --json           # 机器可读报告
 - **覆盖是用户数据，不是目录。** 存在插件数据目录的 `models.json` 里（`ModelSwitch`），不写回 `src/catalog/models.json`；它也不算启停选择，不影响「全部关掉后自动恢复」的逻辑。
 - **只在路由写出的那几个接缝上生效**（`applyContextOverrides`），压缩余量从覆盖后的窗口推导，所以宿主压缩会跟着改过的窗口走。
 - **残留的窗口后缀。** settings.yaml 里带 `-900k` / `-1m` 的路由行会在 sync 时清掉，hop 仍会剥这些后缀以兼容残留请求。Devin 目录里本身就以 `-1m` 结尾的真实 id 是普通行，不受影响。
-- **没有第二档窗的家族照样可以手填上限。** devin / cline / command-code / ollama 的上限槽已接通（`familyMaxContextWindow` 按家族查静态楼，活目录按 row id 把上限带过来），但这四家的源各自只给一档窗（CLI config / models.dev `limit.context` / CLI 注册表 ctx / `/api/show` `context_length`），所以行上目前都没有 `maxContextWindow`；要挂就把维护者钉的数字连同出处在家族 README 记下。
+- **没有第二档窗的家族照样可以手填上限。** devin / cline / command-code / ollama 的上限槽已接通（`familyMaxContextWindow` 按家族查静态楼，活目录按 row id 把上限带过来），但这四家的源各自只给一档窗（CLI config / `/ai/cline/models` `context_length` / CLI 注册表 ctx / `/api/show` `context_length`），所以行上目前都没有 `maxContextWindow`；要挂就把维护者钉的数字连同出处在家族 README 记下。
 
 模型页上窗口徽标的交互见 [`design-system/pages/settings-workbench.md`](../design-system/pages/settings-workbench.md)。
 
@@ -149,14 +149,14 @@ npm run models -- --json           # 机器可读报告
 |---|---|
 | Cursor | 官方 [models-and-pricing](https://cursor.com/docs/models-and-pricing.md) 表（按行名）；`-fast` 取 `<name> (Fast)` 行，没有独立行的取基础行 × notes 写明的倍数（"Fast mode is available at Nx pricing"，如 GPT-5.6）；notes 无倍数出处的不派生 |
 | Devin | 官方 [models](https://docs.devin.ai/desktop/models.md) `modelCostData`，Pro 档，按 `defaultUid` |
-| Copilot / Ollama / OpenCode Go | models.dev 本家桶（`github-copilot` / `ollama-cloud` / `opencode-go`） |
+| Ollama / OpenCode Go / OpenCode Zen | models.dev 本家桶（`ollama-cloud` / `opencode-go` / `opencode`） |
 | Codex / Grok / GLM / Kimi / Antigravity | models.dev 厂商桶（`openai` / `xai` / `zai` / `moonshotai` / `google`+`anthropic`）；Codex `-fast` 取 `vercel` priority 行；Grok 真后端 Fast（`grok-4.7-build-fast`）= 基础行 × 2（上游 picker 自述 "Fast variant. 2x the price."） |
 | Kiro | models.dev `amazon-bedrock` `global.*` 端点 |
 | Cline | feed `free` 组 $0，其余 models.dev `openrouter` |
 
   本家源没价的行回落同一模型的厂商标价（`vendorIndex`，Kimi 除外：它的 id 是套餐别名），干跑报告用 `~` 列出来逐条核对；`-fast` 只匹配 `-fast` 标价，不借基础价。订阅家族的标价是厂商按量价，不是订阅扣费（Kiro 另有 `×N` 积分倍率）。
 - **Kiro 的 `rate` 倍率是另一回事**：那是订阅积分倍率（`rateMultiplier`），不是 USD 价目，仍走目录行旁的 `×N` 徽标，不写进本表。
-- **用量页的「估算成本」也读这张表**（`src/utils/usage-cost.ts`，读时计价：改价目即重述历史，不落任何金额）。口径：小时行没有单次上下文，`tierThreshold` 按该行平均 prompt（input + 缓存读 + 缓存写 ÷ 调用数）判定并整行套用；`tod` 按行的 UTC 小时落峰/谷档；源没列的缓存价按 `in` 折算（缺 ≠ 免费，估高不估低）；`cacheWrite` 缺时用 `cacheWrite1h` 再退 `in`；无价目行的模型不计入（页上显示为 — 与「x/y 模型有价目」，$0 价行算有价）。`opencode-go` 的用量行查 flash / responses 两张表；旧的 `-900k` / `-1m` 路由 id 按剥离后基名取价。
+- **用量页的「估算成本」也读这张表**（`src/utils/usage-cost.ts`，读时计价：改价目即重述历史，不落任何金额）。口径：小时行没有单次上下文，`tierThreshold` 按该行平均 prompt（input + 缓存读 + 缓存写 ÷ 调用数）判定并整行套用；`tod` 按行的 UTC 小时落峰/谷档；源没列的缓存价按 `in` 折算（缺 ≠ 免费，估高不估低）；`cacheWrite` 缺时用 `cacheWrite1h` 再退 `in`；无价目行的模型不计入（页上显示为 — 与「x/y 模型有价目」，$0 价行算有价）。`opencode-go` / `opencode-zen` 的用量行查各自产品的三张表；旧的 `-900k` / `-1m` 路由 id 按剥离后基名取价。
 
 ## 默认档位
 

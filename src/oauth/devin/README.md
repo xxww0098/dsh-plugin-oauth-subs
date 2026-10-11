@@ -146,7 +146,7 @@ unary GetUserStatus  server.codeium.com  /exa.seat_management_pb.SeatManagementS
 
 ## 不要
 
-- 从 Codex / Grok / GLM / Kiro / Antigravity / Cursor / Ollama / Kimi / Copilot 抄 cache helper
+- 从 Codex / Grok / GLM / Kiro / Antigravity / Cursor / Ollama / Kimi 抄 cache helper
 - 把 `devin-session-token$` 再加一次前缀（双前缀活测 401）
 - 把 `ide_name` 改成 `devin`/`Devin`/`devin-cli`/`devin_cli` 当默认（活测 1 条 stub config；真 CLI 发 `chisel`，`windsurf` 也通但那是别家指纹）
 - 把 Devin `-fast` 当 Codex `service_tier: priority` 或走 `applyFastMode`

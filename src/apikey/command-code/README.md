@@ -12,11 +12,12 @@ Command Code 订阅（[commandcode.ai](https://commandcode.ai) / api.commandcode
 | 文件 | 职责 |
 |---|---|
 | [`index.ts`](index.ts) | 端点常量、API key session、Bearer 头、`/alpha/whoami` 身份、套餐表、studio loopback flow spec |
-| [`catalog.ts`](catalog.ts) | 静态目录出口 `commandCodeCatalogModels()` |
+| [`catalog.ts`](catalog.ts) | 目录出口 `commandCodeCatalogModels()`：钉住注册表做下限，`GET /provider/v1/models` 刷新成员与窗口 |
 | [`import.ts`](import.ts) | `COMMAND_CODE_API_KEY` 优先、`~/.commandcode/auth.json` 其次（与 CLI `getCommandAuthKey` 同序） |
 | [`cache.ts`](cache.ts) | `threadId` uuid 亲和：DSH 会话键 → 确定性 uuid；剥全部外来字段 |
 | [`request.ts`](request.ts) | OpenAI body ↔ `/alpha/generate` wire；JSONL 事件 → chat.completion / SSE |
-| [`transport.ts`](transport.ts) | `POST /alpha/generate` JSONL 消费、`forwardCommandCode`（stream/non-stream；输出前只重放传输故障，HTTP 状态与 `error` 事件原样交给宿主重试） |
+| [`transport.ts`](transport.ts) | `POST /alpha/generate` JSONL 消费、`forwardCommandCode`（stream/non-stream；输出前只重放传输故障，HTTP 状态与 `error` 事件交给宿主重试） |
+| [`failure.ts`](failure.ts) | 上游拒绝的分类：版本门 / 不在套餐 / 额度与窗口 → 宿主看得懂的答案（见「失败分类」） |
 | [`quota.ts`](quota.ts) | whoami + credits + subscriptions + usage/summary → 额度行 |
 
 调度：[`../../oauth/proxy.ts`](../../oauth/proxy.ts) `family === 'command-code'` → `applyCommandCodeCache` → `forwardCommandCode`。
@@ -38,7 +39,7 @@ DSH POST /command-code/v1/chat/completions
 
 Wire（1.79.1 bundle，与 1.69.0 起逐字一致，仅压缩名偏移）：
 
-- 顶层：`{ config, memory:null, taste:null, skills:null, mode:'chat', permissionMode, threadId?, params }`。`config` 是 `buildServerConfig` 形状——DSH 没有真实工作区，`workingDir`/git 字段诚实地留空，不编造 cwd。
+- 顶层：`{ config, memory:null, taste:null, skills:null, mode:'agent', permissionMode, threadId?, params }`。`mode` 是服务端闭集枚举（`agent`/`learning`/`custom-agent`/`custom-agent-create`/`title-gen`/`tool-desc`/`compact`/`vision`），主对话走 `agent`；旧值 `chat` 已被拒（400 BAD_REQUEST，2026-10-11 活测）。`config` 是 `buildServerConfig` 形状——DSH 没有真实工作区，`workingDir`/git 字段诚实地留空，不编造 cwd。
 - `params`：`{ model, messages, tools?, system?, max_tokens, stream:true, temperature?, reasoning_effort? }`。`max_tokens` 上限 64000（CLI `max_tokens ?? 64000`，无 per-model cap）。`stream` 恒 true（CLI 恒流式；非流式由 hop 收集后回 JSON）。
 - `messages`：user `content` 是 string 或 part[]（`{type:'text'}` / `{type:'image', image}`）；assistant content parts `{type:'text'|'reasoning'|'tool-call'}`，tool-call 是 `{toolCallId, toolName, input}`；`role:'tool'` 的 result part 是 `{type:'tool-result', toolCallId, toolName, output:{type:'text'|'error-text', value}}`。
 - `tools`：Anthropic 拼写 `{name, description, input_schema}`。
@@ -68,7 +69,16 @@ Key 不写 log。
 
 行在 [`src/catalog/models.json`](../../catalog/models.json) 的 `"command-code"` 键；行格式、来源与 `npm run models` 更新流程见 [`docs/models.md`](../../../docs/models.md)。本节只记本家的取舍与出处。
 
-没有模型端点（`/alpha/models` 不存在），`commandCodeCatalogModels()` 是纯静态出口，不做 live 刷新；`npm run models` 对本键只报 `manual`。
+`/alpha/models` 不存在，但供应商自己的模型列表在：`GET https://api.commandcode.ai/provider/v1/models` **不需要 key**（活测 2026-10-10：200，`{object:'list',data:[…]}`，87 行，id / name / `context_length` 与钉住注册表逐行相同）。`commandCodeCatalogModels()` 以钉住注册表为下限，`warmCatalogs` 登录后用它刷新；`npm run models -- command-code` 也打这个列表做漂移报告（活测同日 `+0 ~0 -0 missing 0`）。
+
+合并规则（`mergeCommandCodeProviderModels`）：
+
+- 已知 id 保留策展名、`reasoningEfforts`、`input`（列表一个都不带），窗口取列表的 `context_length`（注册表只是钉住那一刻的快照）。
+- 列表新增的 id 追加在末尾，只写列表确实说了的三样：`id` / `name` / `contextWindow`。列表不说推理档位也不说看图，本 hop 就不写——magpie 对模态用的是同一条规矩（说不出来就别说，让宿主自己答）。行加载器只要求 id/name/contextWindow，缺 `input` 时路由按宿主默认走。
+- 注册表里有、列表里没有的行**保留**：`/alpha/generate` 归因的是钉住注册表，漂移由 `npm run models` 报出来，不做静默删除。
+- 读失败或读空都退回钉住注册表；刷新按 10 分钟 TTL 缓存。
+
+**为什么不上 Provider API 做传输。** magpie 的默认路径是 `api.commandcode.ai/provider/v1`（Claude 走 `/messages`，其余走 `/chat/completions`，`supported_endpoints` 决定），`/alpha/generate` 只是 Go 档的回退。这个面确实是活的：同一个 key 打 `/provider/v1/{chat/completions,messages,responses}` 都过鉴权（活测 2026-10-10 回 400 `insufficient credits`，不是 401/403），`x-api-key` 与 `Authorization` 任一都可，列表不带 key 也 200。本 hop 仍然只用 `/alpha/generate`：① 该账号没有订阅（`subscriptions` 回 `data:null`）、没有额度，跑不出一次成功补全，换传输等于交一段没活测过的代码；② Go 档按 magpie 的说法没有 Provider API 权限，切过去要按套餐分叉；③ DSH 的 `api` 是闭集，`/messages` 与 `/chat/completions` 要拆成多条路由（照 opencode-go 的三路由），那是另一次改动。要动先活测。
 
 - 行来自 CLI bundle 的静态注册表（1.79.1 95 行），剔除 hidden `Set` 的 8 行（`MiniMaxAI/MiniMax-M3-Free`、`minimax/minimax-{m2.7,m3}-free`、`meituan/LongCat-2.0:free`、`tencent/Hy3`、`inclusionai/ling-3.0-flash-free`、`stealth/space-bunny-alpha`、`stealth/pixel-canary`），取 87 个可见行；`listSelectableModelIds` 只按这个 `Set` 过滤（行内 `hidden` 字段不是权威），`inclusionai/ling-3.0-flash-free` 另有日期门 `isLingFlashFreeEnded`。1.74.1 起隐藏别名也进了注册表，仍按 hidden 不收。
 - `reasoningEfforts` 取注册表行自带的 `reasoningEfforts` 列表（值是 wire 拼写）；bundle 的 effort Map 只在行缺该字段时回退，没有条目不发明 fallback。
@@ -77,7 +87,9 @@ Key 不写 log。
 
 模型页的价格徽标（💰）读 [`src/catalog/rates.json`](../../catalog/rates.json) 的 `"command-code"` 键。**1.74.1 起价目表是一张按 billing id 的单表**（`getDisplayRates` 直接查它，字段 `inputCost/outputCost/cacheReadCost/cacheWriteCost/cacheWrite1hCost`，不再有 `kD/lD/xD/…` 多表与 `order`/provider 解析，也不再带 `contextTiers` 与 `timeOfDay`）；本表基础价与 `cacheWrite` 按该表逐行对账。`tod.peak`/`tod.offPeak`（5 行 deepseek 峰谷价）与 `tierThreshold`/`tiers`（4 行 gpt 超阈档）是 1.73.1 bundle 的 `timeOfDay`/`contextTiers` 留下的字段——1.74.1 的源不再声明它们，按 models.md「源没有的字段保留目录值」留着；维护者确认峰谷 / 超阈档取消后，删这 5 行的 `tod.*`、4 行的 tier 字段与顶层 `timeOfDay`。升钉版本时要重新对这张表。1.79.1 的表 97 条：新增 `anthropic:claude-haiku-5-5`（目录 id `claude-haiku-5-5`，$0.10/$0.50/$0.01，cacheWrite $0.125，cacheWrite1h $0.20）与 `stealth/glyph-cluster:free`（$0/$0/$0，无 cacheWrite）；旧键逐行同价。1.77.0 的表是 95 条。
 
-最近核对：2026-10-08，升钉 `command-code@1.79.1`（1.78.0 CHANGELOG `feat: haiku 5.5`，1.79.0 `feat: add Glyph Cluster free model`，1.79.1 只修 Windows prompt 冻结）。注册表 95 行对账（−8 hidden = 87 可见）：新增 `claude-haiku-5-5`（1M 窗、text+image、low–max，行上无 `maxOutputTokens`）与 `stealth/glyph-cluster:free`（256K 窗、text、low–xhigh；行级 `maxOutputTokens:256000` 按本家规则不写）。hidden `Set` 未变。价目表 95→97 条，旧键无改价。wire 与 1.77.0 逐字一致（`64e3` / `x-cmd-zdr` / body 字段与流事件标记全同，仅压缩名偏移）。
+最近核对：2026-10-10，对齐社区对照 `@magpie-community/opencode-commandcode-auth`（钉 CLI 1.72.2，已落后）：收它的模型列表源（`/provider/v1/models`，公开、无需 key）与拒绝分类；不收它的 Provider API 传输（理由见「模型」节）。活测：列表 200 / 87 行，id 与 `context_length` 与目录逐行相同（`npm run models -- command-code` 报 `+0 ~0 -0`）；`supported_endpoints` 分布 `/chat/completions` 76、`/responses` 68、`/messages` 11（Claude）；同 key 打 Provider API 三个端点都过鉴权、停在 400 `insufficient credits`（`subscriptions` 回 `data:null`，无订阅无额度）；`/alpha/generate` 无版本头回 403 `upgrade_required`、带 1.79.1 过。目录行未变（仍 87 行）。
+
+上次核对：2026-10-08，升钉 `command-code@1.79.1`（1.78.0 CHANGELOG `feat: haiku 5.5`，1.79.0 `feat: add Glyph Cluster free model`，1.79.1 只修 Windows prompt 冻结）。注册表 95 行对账（−8 hidden = 87 可见）：新增 `claude-haiku-5-5`（1M 窗、text+image、low–max，行上无 `maxOutputTokens`）与 `stealth/glyph-cluster:free`（256K 窗、text、low–xhigh；行级 `maxOutputTokens:256000` 按本家规则不写）。hidden `Set` 未变。价目表 95→97 条，旧键无改价。wire 与 1.77.0 逐字一致（`64e3` / `x-cmd-zdr` / body 字段与流事件标记全同，仅压缩名偏移）。
 
 上次核对：2026-10-07，升钉 `command-code@1.77.0`。注册表 93 行对账（−8 hidden = 85 可见，与目录双向零差异）：新增 `mistral/mistral-large-4`（524288 窗、text+image、low/medium/high；行级 `maxOutputTokens:262144` 按本家规则不写）；`stealth/space-bunny-alpha` 进 hidden `Set`（1.74.2 CHANGELOG「retire the two free stealth preview models」——退役 = 隐藏，行仍在注册表但 `reasoningEfforts`/`maxOutputTokens` 被剥掉），**删目录行与价目行**；`stealth/pixel-canary` 的 billing id 同样从价目表删除。价目表 96→95 条，除上述加删外无一条改价。wire 与 1.74.1 逐字一致（`toWireMessages` / `64e3` / `x-cmd-zdr` / body 字段与流事件标记全同，仅压缩名偏移）。
 
@@ -86,6 +98,22 @@ Key 不写 log。
 更早核对：2026-10-01，升钉 `command-code@1.73.1`。注册表 91 行对账（−5 hidden 促销行 = 86 可见，与目录双向零差异），无新模型；`stealth/pixel-canary` 行加了 `get hidden(){isPixelCanaryEnded()}` 日期门（`2026-10-01T06:00:00Z`，stealth 预览 9/30 结束，已过）——**删目录行与价目行**（86→85）；`inclusionai/ling-3.1-flash:free` 的 notice 从 100/day 改 300/day（纯提示文案，不进行）；价目表 35 行无变化；wire 与 1.72.2 逐字一致（仅压缩名偏移）。
 
 早期核对：`command-code@1.72.2` bundle；本次（1.70.0 / 1.71.0，见 npm CHANGELOG）收 `gpt-6.1-sol`（105 万窗、text+image、low–max，插在 `gpt-6-astra` 后）与 `inclusionai/ling-3.1-flash:free`（262K、text-only、low/medium/high，badge free、与 sante 同待遇不 hidden；注册表给 `maxOutputTokens:32768`，按本家既定规则不写行级 `maxTokens`）。价目表只加两行（`openai:gpt-6.1-sol` $2/$10、>272K $4/$15；`novita:inclusionai/ling-3.1-flash:free` 全 0），其余 33 行价目与 1.69.0 相同。
+
+## 失败分类
+
+上游的拒绝有两种信封——`/alpha/generate` 是 `{success:false,error:{code,status,message,hint}}`，Provider API 是 `{error:{message,type,code}}`；CLI 自己的 `classifyKind`（bundle 1.79.2）把它们分成 auth / credits / plan / usage-limit / rate-limit / overloaded。[`failure.ts`](failure.ts) 只改其中三类，其余交给上游：
+
+| 上游 | 宿主若照收会怎么读 | 本 hop |
+|---|---|---|
+| `upgrade_required`（403；客户端版本低于服务端 `minVersion`） | 报文里的 403 → AUTH，登录被判死 | 400 +「Command Code rejected this client version; update the plugin (upstream minVersion …)」 |
+| `MODEL_NOT_IN_PLAN` / `model_not_in_plan` | 同上（403） | 400 +「Model not in plan: …」 |
+| 额度（`premium_credits_exhausted` / `insufficient credits` / `out of credits`） | 402 不算配额，宿主要么当未知错要么重试 | 429 `usage limit reached: …`（QUOTA_EXCEEDED，不重试） |
+| 窗口（`RATE_LIMITED` / `window_limit` / 5 小时 / 每周 / resets） | 429 → RATE_LIMIT，白重试 5 次 | 同上，走 `quotaFailure` |
+| 401、普通 429、5xx、校验错误 | —— | 原样转发 |
+
+宿主分类器（`llm-pi-ai` `classifyPiAiError`）的次序是 `\b(?:401|403)\b` → AUTH、再配额、再 429，所以**改写过的报文里不能再出现 401/403 这两个数字**：版本门与套餐拒绝自己措辞，额度/窗口的厂商原文先过一遍 `4xx` 替换（`sanitize`）。版本门是活的：活测 2026-10-10 不带版本头或带 `0.1.0` 都回 403 `upgrade_required`（`minVersion 0.18.10`），钉住的 1.79.1 与 1.72.2 都过——上游抬 `minVersion` 时用户会先看到「更新插件」，而不是被登出。
+
+`forwardCommandCode` 输出前的失败现在带上游状态（原来一律 502，把 429/400 糊成 SERVER 重试；传输故障仍 502）。流中途已经出过字节的失败只能写 SSE error 行，状态改不了。
 
 ## 额度
 
@@ -118,12 +146,15 @@ GET /alpha/usage/summary?orgId=…&since=<periodStart> → totalCost 等
 
 - 把 `/alpha/generate` 当 OpenAI 兼容端点透传——它是私有 JSONL 协议
 - 给浏览器登录套 `exchange*Code`——回调直接带 apiKey，没有 code
-- 写 `commandcode.ai` 页面源码里没出现的端点（`/alpha/models` 不存在）
+- 写没验证过的端点：`/alpha/models` 不存在；`/provider/v1/models` 是活的（公开、200）但只当列表用，别顺手把 `/provider/v1/chat/completions` 当成本 hop 的推理入口
 - 把 `user_…` key / uuid / `command-code-<hex>` 当卡片账号名
 - 发明 `promptCache` / workspace 字段（CLI 有 `config`，DSH 没有真实 cwd——留空）
 - 发明 per-model `maxTokens`（CLI 全局 64000）或不存在的 effort 拼写
 - 抄别家 cache 头/字段；`session_id`/`prompt_cache_key` 原样上送会污染 wire
 - 用 `Date.now()`/random 当 threadId
+- 把上游 403 原样交给宿主：版本门（`upgrade_required`）与不在套餐（`MODEL_NOT_IN_PLAN`）都会读成登录失效；改写后的报文里也不要留 401/403 字样
+- 在没活测过成功补全的情况下把传输换成 Provider API（理由见「模型」节）；也别以为 `x-api-key` 是必需的——Bearer 单独就能过
+- 把云列表里的新 id 直接当完整行写进目录：它只给 id / name / context_length，推理档位与看图要另找出处
 
 ## 归因
 
@@ -132,7 +163,7 @@ GET /alpha/usage/summary?orgId=…&since=<periodStart> → totalCost 等
 | 抄 | 出处 | 本 hop |
 |---|---|---|
 | `Bearer` + `x-command-code-version: 1.79.1` + `x-cli-environment: production` | `buildCommandApiHeaders` | `commandCodeUpstreamHeaders` |
-| `POST /alpha/generate`：`{config, memory, taste, skills, mode:'chat', permissionMode, threadId?, params:{model,messages,tools?,system?,max_tokens,stream,temperature?,reasoning_effort?}}` → JSONL 事件 | `buildServerConfig` / `toWireMessages` | `openaiToCommandCode` / `forwardCommandCode` |
+| `POST /alpha/generate`：`{config, memory, taste, skills, mode:'agent', permissionMode, threadId?, params:{model,messages,tools?,system?,max_tokens,stream,temperature?,reasoning_effort?}}` → JSONL 事件 | `buildServerConfig` / `toWireMessages` | `openaiToCommandCode` / `forwardCommandCode` |
 | 流事件 `reasoning-*` / `text-delta` / `tool-call` / `finish` / `error` / `abort`；`finish.totalUsage.inputTokenDetails` | bundle 流事件 switch | `commandCodeToOpenai` / SSE 映射 |
 | `threadId` 非 uuid 丢弃 | `toWireThreadId` | `applyCommandCodeCache`：uuid 直通、非 uuid sha256→v5、缺省 `dsh-command-code:<model>` 常量种子 |
 | `/studio/auth/cli?callback&state&mode=redirect` → loopback `127.0.0.1:5959–5968/callback?apiKey&userId&userName&keyName&state` | `createAuthServer` / `buildCommandAuthUrl` | `commandCodeFlow` + `flow.ts` `spec.collect`（回调即凭据，无 code 交换） |
@@ -140,6 +171,8 @@ GET /alpha/usage/summary?orgId=…&since=<periodStart> → totalCost 等
 | 模型注册表（剔 hidden / 别名 + 日期门控行）+ 行自带 effort 列表；`max_tokens ?? 64000`；ctx 默认 `2e5` | bundle 注册表（`{id,inputModalities,reasoningEfforts,contextWindow}` 形状）与 hidden `Set` | `COMMAND_CODE_MODELS`；无条目不发明 effort |
 | whoami → credits + subscriptions → summary（`since=currentPeriodStart`）；套餐价目 `individual-*` / `teams-pro` | `fetchUsageData` / `rr` | `fetchCommandCodeQuota` / `COMMAND_CODE_PLAN_*` |
 | 显示费率表（1.79.1 仍按 billing id 的单表，1.74.1 起即如此；1.73.1 及以前的 kD/lD/… 多表已不存在） | bundle 价目表 | `src/catalog/rates.json` → Models 页价格 tooltip（不进路由行） |
+| 供应商模型列表（成员 + name + `context_length` + `supported_endpoints`） | 社区对照 [`@magpie-community/opencode-commandcode-auth`](https://github.com/magpie-community/plugins/tree/main/packages/commandcode) `liveModels`；本 hop 活测复核 200 / 87 行 / 与注册表零差异 | `refreshCommandCodeCatalog` + `mergeCommandCodeProviderModels`，`npm run models -- command-code` |
+| 拒绝分类（auth / credits / plan / usage-limit / rate-limit） | CLI bundle `classifyKind` + magpie `failure()`；本 hop 活测复核 403 版本门与 400 额度门 | `commandCodeFailure`（「失败分类」节的四类改写；不照抄 magpie 的「套餐=403」——DSH 宿主见 403 就判死登录） |
 
 端点实测（2026-01，`xxww0098` 账号）：`whoami` / `credits` / `subscriptions` / `usage/summary` 200；`generate` 过了 400 系校验、停在 402 计费门（账号 0 额度），即 wire 形状已到计费校验层。
 

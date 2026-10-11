@@ -20,6 +20,7 @@ import { decodeJwtPayload } from '../../utils/jwt.js'
 import { outboundFetch } from '../../utils/outbound.js'
 import { randomToken } from '../../utils/pkce.js'
 import { OAuthEndpointError, oauthError } from '../errors.js'
+import { chatgptUsageRows } from './usage.js'
 
 export const CHATGPT_ISSUER = 'https://auth.openai.com'
 export const CHATGPT_AUTHORIZE_URL = `${CHATGPT_ISSUER}/api/accounts/authorize`
@@ -298,12 +299,19 @@ export function chatgptPlanUseGranted(tokens) {
   return scopesOf(tokens?.scope).includes(CHATGPT_DIRECT_SCOPE)
 }
 
-/** No quota endpoint exists for this flow; usage lives in ChatGPT Settings → Usage. */
-export function chatgptQuota(session) {
+/**
+ * No quota endpoint exists for this flow; official usage lives in ChatGPT
+ * Settings → Usage. The card still shows measured rolling token windows the
+ * hop itself observed (usage.ts owns that log); they are a local reading, not
+ * the plan's quota unit.
+ */
+export async function chatgptQuota(session) {
+  const accountKey = typeof session?.accountKey === 'string' && session.accountKey.trim() ? session.accountKey.trim() : ''
+  const rows = accountKey ? await chatgptUsageRows(accountKey) : []
   return {
     ...(typeof session?.planType === 'string' && session.planType ? { planType: session.planType } : {}),
     ...(typeof session?.emailAddress === 'string' && session.emailAddress ? { account: session.emailAddress } : {}),
-    rows: [],
+    rows,
   }
 }
 

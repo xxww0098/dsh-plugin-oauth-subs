@@ -21,6 +21,17 @@ export declare const UPSTREAM_TIMEOUTS: {
     firstOutputMs: number;
 };
 /**
+ * Unclassifiable bytes a gated stream may buffer before committing anyway.
+ * Shared by the SSE commit gate (passthrough.ts) and the Codex WebSocket
+ * gate (codex/websocket.ts) so both transports withhold the same window.
+ */
+export declare const MAX_UNCLASSIFIED_BYTES: number;
+/**
+ * Everything a gated stream may buffer. Past this the gate commits without
+ * retry protection rather than kill a legitimate response.
+ */
+export declare const MAX_GATE_BUFFER_BYTES: number;
+/**
  * Retries and mid-response failures are also appended here: the host only
  * records "terminated", and stderr is not kept. ponytail: one global sink,
  * set once by the plugin; one rotation to `.1` past 1 MB.

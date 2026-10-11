@@ -188,6 +188,7 @@ function windowRow(kind, bag, now) {
   const row: any = {
     key: kind,
     kind,
+    label: kind === 'primary' ? '5h' : kind === 'weekly' ? '7d' : opencodeGoMonthLabel({ resetsAt: bag.resetAt }, undefined, undefined),
     usedPercent: bag.usedPercent,
     remainingPercent: 100 - bag.usedPercent,
     windowMinutes,
@@ -346,7 +347,52 @@ function dateMsOf(value) {
   return n > 1_000_000_000_000 ? n : n * 1000
 }
 
-function meterRow(kind, meter, fallbackResetAt) {
+/** Billing span in days. OpenCode `getMonthlyBounds`: only 28–31 is a month. */
+function periodDays(start, end) {
+  if (start === undefined || end === undefined) return undefined
+  const span = end - start
+  if (span <= 0) return undefined
+  const days = Math.floor((span + 43_200_000) / 86_400_000)
+  return days >= 28 && days <= 31 ? days : undefined
+}
+
+function lastUtcDay(year, monthIndex) {
+  return new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate()
+}
+
+/** Same UTC clock last month, clamped to the shorter month. */
+function previousMonthAnchor(endMs) {
+  const end = new Date(endMs)
+  let year = end.getUTCFullYear()
+  let month = end.getUTCMonth()
+  if (month === 0) {
+    year -= 1
+    month = 11
+  } else {
+    month -= 1
+  }
+  const day = Math.min(end.getUTCDate(), lastUtcDay(year, month))
+  return Date.UTC(year, month, day, end.getUTCHours(), end.getUTCMinutes(), end.getUTCSeconds())
+}
+
+function daysEndingAt(endMs) {
+  return periodDays(previousMonthAnchor(endMs), endMs)
+}
+
+/**
+ * Month meter label. A measured billing span wins; otherwise the reset instant
+ * is one anniversary. No usable span stays `Monthly`.
+ */
+function opencodeGoMonthLabel(meter, periodStart, periodEnd) {
+  const reset = dateMsOf(meter?.resetsAt ?? meter?.resetAt ?? meter?.reset_at ?? meter?.resetTime) ?? periodEnd
+  const start = reset !== undefined && reset === periodEnd
+    ? periodStart
+    : dateMsOf(meter?.startsAt)
+  const days = periodDays(start, reset) ?? (reset !== undefined ? daysEndingAt(reset) : undefined)
+  return days ? `${days}d` : 'Monthly'
+}
+
+function meterRow(kind, meter, fallbackResetAt, periodStart, periodEnd) {
   if (!meter || typeof meter !== 'object') return undefined
   const usedMicro = finiteNumber(meter.usedMicroCents)
   const limitMicro = finiteNumber(meter.limitMicroCents)
@@ -364,6 +410,7 @@ function meterRow(kind, meter, fallbackResetAt) {
   const row: any = {
     key: kind,
     kind,
+    label: kind === 'primary' ? '5h' : kind === 'weekly' ? '7d' : opencodeGoMonthLabel(meter, periodStart, periodEnd),
     usedPercent,
     remainingPercent: 100 - usedPercent,
     windowMinutes: kind === 'primary' ? 300 : kind === 'weekly' ? 7 * 24 * 60 : undefined,
@@ -395,26 +442,120 @@ export function parseOpencodeGoConsoleStatus(payload, now = Date.now()) {
     : undefined
   if (!access || typeof access !== 'object') throw new Error('Missing usage fields.')
   const meters = access.meters ?? {}
+  const periodStart = dateMsOf(access.startsAt)
   const periodEnd = dateMsOf(access.endsAt ?? access.renewAt)
   const rows = [
-    meterRow('primary', meters.fiveHour ?? meters.fiveHours ?? meters.rolling, undefined),
-    meterRow('weekly', meters.week ?? meters.weekly, undefined),
-    meterRow('monthly', meters.month ?? meters.monthly, periodEnd),
+    meterRow('primary', meters.fiveHour ?? meters.fiveHours ?? meters.rolling, undefined, periodStart, periodEnd),
+    meterRow('weekly', meters.week ?? meters.weekly, undefined, periodStart, periodEnd),
+    meterRow('monthly', meters.month ?? meters.monthly, periodEnd, periodStart, periodEnd),
   ].filter(Boolean)
   if (rows.length === 0) throw new Error('Missing usage fields.')
-  return { rows, renewsAt: periodEnd }
+  // The card reads Go's own balance-fallback toggle from here (the billing
+  // payload's mode is the Zen wallet's, not this switch).
+  return {
+    rows,
+    renewsAt: periodEnd,
+    subscription: {
+      state: 'active',
+      product: stringField(payload.renewalProduct ?? payload.product),
+      ...(typeof payload.useBalance === 'boolean' ? { useBalance: payload.useBalance } : {}),
+    },
+  }
 }
 
-/** `GET /console/api/billing/status` payload → `{ useBalance, balance }`. */
+/** `GET /console/api/billing/status` payload → `{ balance }`. */
 export function parseOpencodeGoConsoleBilling(payload) {
   if (!payload || typeof payload !== 'object') return {}
   const result: any = {}
-  if (typeof payload.billingMode === 'string') result.useBalance = payload.billingMode === 'prepaid'
+  // useBalance used to be derived from billingMode === 'prepaid' here — wrong:
+  // that is the Zen wallet's billing mode, while the card's 余额兜底 hint is Go's
+  // "fall back to Zen balance after the limits" toggle, which only go/status
+  // carries. A prepaid Zen workspace is not a Go overage opt-in.
   const balance = finiteNumber(payload.balanceMicroCents ?? payload.balance)
   if (balance !== undefined) {
     result.balance = payload.balanceMicroCents !== undefined ? balance / MICRO_CENTS : balance
   }
   return result
+}
+
+/**
+ * OpenCode Zen Console reads — same cookie + `x-org-id` as the Go meters,
+ * because Zen is the pay-as-you-go side of the same workspace.
+ *
+ * `GET /console/api/billing/status` carries the prepaid amounts
+ * (`billingMode` prepaid|legacy|seat|credit, `balanceMicroCents`,
+ * `availableMicroCents`, `creditLimitMicroCents`); `GET
+ * /console/api/usage/summary?range=30d` carries the workspace's 30-day spend
+ * (`totalCostMicroCents` + request/token counters). CodexBar's OpenCode (Zen)
+ * provider reads exactly these two (OpenCodeConsoleUsageFetcher +
+ * OpenCodeZenBillingParser) and treats the summary as the monthly spend of a
+ * pay-as-you-go workspace.
+ */
+export function parseOpencodeZenBilling(payload) {
+  if (!payload || typeof payload !== 'object') return undefined
+  const usd = (microCents) => {
+    // `null` is the API's "no such amount" (`creditLimitMicroCents: null`),
+    // never a 0 the card would render as a real limit.
+    if (microCents === null || microCents === undefined) return undefined
+    const value = finiteNumber(microCents)
+    return value === undefined ? undefined : value / MICRO_CENTS
+  }
+  const zen: any = {}
+  const mode = stringField(payload.billingMode) ?? stringField(payload.mode)
+  if (mode) zen.mode = mode
+  const balance = usd(payload.balanceMicroCents)
+  if (balance !== undefined) zen.balanceUSD = balance
+  const available = usd(payload.availableMicroCents)
+  if (available !== undefined) zen.availableUSD = available
+  const creditLimit = usd(payload.creditLimitMicroCents)
+  if (creditLimit !== undefined) zen.creditLimitUSD = creditLimit
+  return Object.keys(zen).length ? zen : undefined
+}
+
+/**
+ * Zen wallet rows: the prepaid side of the same OpenCode account that carries
+ * the Go subscription. The Go docs state the link outright — "If you also have
+ * credits on your Zen balance, you can enable the Use balance option in the
+ * console. When enabled, Go will fall back to your Zen balance after you've
+ * reached your usage limits" — which is exactly the `useBalance` field the Go
+ * side has always read as 余额兜底.
+ *
+ * The Zen section is only the wallet: no usage ledger, no request counter. The
+ * console's `/console/api/usage/summary` is the **workspace's** 30-day ledger
+ * (`x-org-id`; `range=7d` tracks the Go week meter), so on a Go account it
+ * would report Go usage under a Zen heading — the exact mis-attribution this
+ * section must not make. Go's own meters already state consumption.
+ *
+ * There is deliberately **no** monthly-limit row either: the console JSON API
+ * exposes none (`/console/api/usage`, `/billing/limits`, `/zen/status` all 404, and
+ * `usage/summary` takes only `30d`/`7d`/`all`), while the docs' monthly limit
+ * ("Zen will not use more than $20 in a month") is only reachable through the
+ * dashboard's SolidStart billing function (`/_server?id=c83b78…`), which needs
+ * the `auth=` dashboard session and answers 302 to `/console/login` once that
+ * expires. So the card states what the account really has instead of inventing
+ * a denominator.
+ */
+export function opencodeZenQuotaRows(zen) {
+  const rows: any[] = []
+  if (!zen || typeof zen !== 'object') return rows
+  // Prepaid balance: the money Zen calls draw from (and Go's overage wallet
+  // when Use balance is on). $0 is a real, actionable value — it is what blocks
+  // a Zen call — so it is always a row.
+  if (typeof zen.balanceUSD === 'number') {
+    rows.push({ key: 'zen-balance', kind: 'zen-balance', remaining: zen.balanceUSD, unit: 'usd' })
+  }
+  // Credit line: only when the workspace has one (`creditLimitMicroCents: null`
+  // means "no such amount", not a $0 limit).
+  if (typeof zen.creditLimitUSD === 'number' && zen.creditLimitUSD > 0 && typeof zen.availableUSD === 'number') {
+    rows.push({
+      key: 'zen-credit',
+      kind: 'zen-credit',
+      remaining: zen.availableUSD,
+      total: zen.creditLimitUSD,
+      unit: 'usd',
+    })
+  }
+  return rows
 }
 
 function orgRowName(orgs, workspaceId) {
@@ -487,6 +628,8 @@ async function fetchLegacyOpencodeGoQuota(workspaceId, cookieHeader, { fetchFn, 
 async function fetchConsoleOpencodeGoQuota(workspaceId, workspaceName, cookieHeader, { fetchFn, signal, now }: any) {
   const status = await fetchConsoleJson({ path: '/console/api/go/status', workspaceId, cookieHeader, fetchFn, signal })
   const [billingPayload, user, orgs] = await Promise.all([
+    // The Zen wallet read of the same account: prepaid amounts only. The
+    // workspace usage ledger is deliberately not read (see opencodeZenQuotaRows).
     fetchConsoleJson({ path: '/console/api/billing/status', workspaceId, cookieHeader, fetchFn, signal }).catch(() => undefined),
     fetchConsoleJson({ path: '/console/api/user', cookieHeader, fetchFn, signal }).catch(() => undefined),
     workspaceName
@@ -494,19 +637,44 @@ async function fetchConsoleOpencodeGoQuota(workspaceId, workspaceName, cookieHea
       : fetchConsoleJson({ path: '/console/api/orgs', cookieHeader, fetchFn, signal }).catch(() => undefined),
   ])
   const billing = parseOpencodeGoConsoleBilling(billingPayload)
+  const zen = parseOpencodeZenBilling(billingPayload)
   let usage
   try {
     usage = parseOpencodeGoConsoleStatus(status, now)
   } catch (error: any) {
-    if (error?.code !== 'no_subscription' || !(billing.balance > 0)) throw error
-    usage = { rows: [] }
+    // No Go subscription object. Two different cases hide behind `access:
+    // null`: a workspace that had a subscription (the API still names the
+    // subscriber, or reports resumability — that one ended/lapsed) vs one that
+    // never did. Both keep the read so the Zen half of the same account still
+    // draws its card; only a bare workspace with nothing else to show errors
+    // the whole quota.
+    if (error?.code !== 'no_subscription') throw error
+    // Only an actual amount counts: a seat/invoiceable payload parses to a
+    // bare { mode } object, which is not a wallet.
+    const hasZen = zen?.balanceUSD !== undefined || zen?.availableUSD !== undefined
+    const ended = typeof status?.subscriberUserId === 'string' || typeof status?.resumability === 'string'
+    const state = ended ? 'ended' : 'none'
+    if (!(billing.balance > 0) && !hasZen && state === 'none') throw error
+    usage = {
+      rows: [],
+      subscription: {
+        state,
+        product: stringField(status?.renewalProduct ?? status?.product),
+        ...(typeof status?.useBalance === 'boolean' ? { useBalance: status.useBalance } : {}),
+      },
+    }
   }
   return {
     ...usage,
+    // Go's subscription meters first, then the Zen wallet: one card, two
+    // products, one account.
+    rows: [...(usage.rows ?? []), ...opencodeZenQuotaRows(zen)],
     workspaceId,
     workspaceName: workspaceName ?? orgRowName(orgs, workspaceId),
     email: stringField(user?.email),
     ...billing,
+    ...(usage.subscription?.useBalance === undefined ? {} : { useBalance: usage.subscription.useBalance }),
+    ...(zen && Object.keys(zen).length ? { zen } : {}),
   }
 }
 

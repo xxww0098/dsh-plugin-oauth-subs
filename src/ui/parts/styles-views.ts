@@ -40,9 +40,11 @@
   border: 1px solid var(--osubs-line); border-radius: 10px;
 }
 .osubs-shot img { display: block; width: 100%; height: auto; }
-/* auto-fit: the five stat cards (incl. the cost estimate) sit in one row on a
-   wide pane and wrap evenly when narrow; the 560px rule pins 2 columns. */
-.osubs-ustats { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: var(--osubs-s3); }
+/* The four stat cards (Token / 缓存读 / 调用 / 估算成本) are the strip's whole
+   set, so four equal columns hold them in one row at every width — 估算成本
+   never orphans onto a second line. Values are short and the sub-lines
+   ellipsize; the 560px rule falls back to 2×2. */
+.osubs-ustats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--osubs-s3); }
 .osubs-ustat {
   display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 10px 12px;
   border: 1px solid var(--osubs-line); border-radius: 10px;
@@ -469,6 +471,465 @@
 .osubs-vision { flex: none; display: inline-flex; margin-left: -2px; color: var(--osubs-faint); }
 .osubs-vision svg { width: 13px; height: 13px; display: block; }
 .osubs-mempty { padding: 14px 12px; }
+
+/* 榜单 tab: the arena.ai agent leaderboard. The panel takes the
+   fill variant (only the table scrolls, the head sticks) — same mechanics
+   as the models table, including the double-layer sticky background so
+   rows never ghost under the head. */
+.osubs-pane-panel--fill > .osubs-arena { flex: 1 1 auto; min-height: 0; }
+.osubs-arena { display: flex; flex-direction: column; gap: var(--osubs-s3); }
+/* Shooting the leaderboard: with the controls [data-noshot]-hidden, the
+   section leaves the fill layout and the table unscrolls to its full
+   height, so every filtered row lands in the image. */
+.osubs-arena.osubs-shooting { flex: none; }
+.osubs-arena.osubs-shooting .osubs-atable { flex: none; overflow: visible; }
+.osubs-arena.osubs-shooting .osubs-aparetto { flex: none; overflow: visible; }
+.osubs-atools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex: none; }
+.osubs-asearch { flex: 1 1 150px; max-width: 260px; }
+.osubs-atable {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto;
+  border: 1px solid var(--osubs-line); border-radius: 10px;
+}
+.osubs-atrow {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) minmax(190px, 34%) minmax(104px, auto) minmax(72px, auto);
+  align-items: center; gap: 12px;
+  min-height: 48px; padding: 6px 14px;
+}
+.osubs-atrow + .osubs-atrow { border-top: 1px solid var(--osubs-hair); }
+.osubs-atrow:hover { background: var(--osubs-fill); }
+.osubs-atrow--head {
+  position: sticky; top: 0; z-index: 1;
+  min-height: 0; height: 34px;
+  font-size: 11px; color: var(--osubs-faint);
+  background: linear-gradient(var(--osubs-fill), var(--osubs-fill)), var(--dsw-alias-bg-layer-2, Canvas);
+}
+.osubs-atrow--empty { min-height: 0; }
+.osubs-atcell { min-width: 0; }
+.osubs-atcell--rank { text-align: center; }
+.osubs-atcell--score { display: flex; justify-content: flex-end; }
+.osubs-atcell--success { justify-content: center; }
+.osubs-atcell--cost { display: flex; justify-content: flex-end; }
+.osubs-acost { font-size: 12px; color: var(--osubs-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.osubs-ahead-btn {
+  display: inline-flex; align-items: center; gap: 3px;
+  border: 0; padding: 0; background: transparent; color: inherit;
+  font: inherit; font-size: 11px; cursor: pointer; appearance: none;
+}
+.osubs-ahead-btn:hover { color: var(--osubs-muted); }
+.osubs-ahead-btn:focus-visible { outline: 2px solid var(--osubs-ring); outline-offset: 1px; }
+.osubs-ahead-btn--on { color: var(--osubs-muted); }
+.osubs-ahead-btn--end { margin-left: auto; }
+.osubs-ahead-arrow { font-variant-numeric: tabular-nums; }
+/* Rank: the number over its interval (min⋯max glyph, title carries the
+   range). */
+.osubs-arank { display: inline-flex; flex-direction: column; align-items: center; line-height: 1.25; }
+.osubs-arank-n { font-size: 13px; font-variant-numeric: tabular-nums; }
+.osubs-arank-spread {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 10.5px; color: var(--osubs-faint); font-variant-numeric: tabular-nums;
+}
+.osubs-arank-spread svg { width: 12px; height: 12px; }
+/* Model: org mark (ink, like arena's table) + mono name + org · license. */
+.osubs-amodel { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.osubs-amark { width: 16px; height: 16px; flex: none; color: var(--osubs-muted); }
+.osubs-amark--alt {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; border-radius: 4px;
+  border: 1px solid var(--osubs-line); font-size: 9px; color: var(--osubs-faint);
+}
+.osubs-amodel-who { display: flex; flex-direction: column; min-width: 0; }
+.osubs-amodel-n {
+  font-family: var(--osubs-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12.5px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+a.osubs-amodel-n { color: inherit; text-decoration: none; }
+a.osubs-amodel-n:hover { color: var(--osubs-accent); text-decoration: underline; }
+.osubs-amodel-s { font-size: 11px; color: var(--osubs-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Score cells: the arena stack (▲14.33% over ±2.18%), ok/bad by sign —
+   tool hallucination inverts (positive rate = Down = good). Only Net
+   Improvement grows the diverging whisker bar. */
+.osubs-ascore { display: flex; align-items: center; gap: 10px; min-width: 0; width: 100%; }
+.osubs-astack {
+  display: inline-flex; flex-direction: column; align-items: flex-end; flex: none; width: 68px;
+  line-height: 1.25; font-variant-numeric: tabular-nums;
+}
+.osubs-atcell--success .osubs-astack { align-items: center; }
+.osubs-avalue { display: inline-flex; align-items: center; gap: 2px; font-size: 12.5px; }
+.osubs-aarrow { width: 10px; height: 10px; flex: none; }
+.osubs-aok { color: var(--osubs-ok); }
+.osubs-abad { color: var(--osubs-bad); }
+.osubs-aci { font-size: 10.5px; color: var(--osubs-faint); }
+.osubs-abar { display: block; flex: 1 1 auto; min-width: 0; height: 16px; width: 100%; overflow: visible; }
+.osubs-abar-track { fill: var(--osubs-fill-2); }
+.osubs-abar-ok { fill: var(--osubs-ok); }
+.osubs-abar-bad { fill: var(--osubs-bad); }
+.osubs-abar-mid { stroke: var(--osubs-accent); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.osubs-abar-ci { stroke: var(--osubs-muted); stroke-width: 0.8; vector-effect: non-scaling-stroke; }
+/* Source attribution footline: stays under the scroller, never flexes. */
+.osubs-afoot { flex: none; }
+.osubs-afoot-link { display: inline-flex; align-items: baseline; gap: 3px; }
+.osubs-afoot-link svg { width: 10px; height: 10px; flex: none; align-self: center; opacity: .8; }
+/* 帕累托 view: frontier chart + timeline list, drawn to match the site's
+   chart (dashed grid, top dollar axis, 2.5px frontier line, sans chips).
+   Only this pane scrolls; the chart is a fixed-aspect svg that fills the
+   width. */
+.osubs-aparetto {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto;
+  border: 1px solid var(--osubs-line); border-radius: 10px;
+  padding: var(--osubs-s3);
+  display: flex; flex-direction: column; gap: var(--osubs-s3);
+}
+/* Chart + optimal list sit side-by-side inside the single card, like the
+   site's 4xl:flex-row: chart column flexes, the optimal list is a fixed
+   288px rail that drops below on narrow panes. */
+.osubs-aptwo { display: flex; flex-direction: row; gap: var(--osubs-s3); flex: 0 0 auto; min-width: 0; align-items: stretch; }
+.osubs-apmain { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: var(--osubs-s3); }
+.osubs-apside {
+  flex: 0 0 288px; width: 288px; min-width: 0;
+  display: flex; flex-direction: column; gap: var(--osubs-s2);
+  border-left: 1px solid var(--osubs-line); padding-left: var(--osubs-s3);
+}
+@media (max-width: 940px) {
+  .osubs-aptwo { flex-direction: column; }
+  .osubs-apside { flex: none; width: auto; border-left: 0; padding-left: 0; border-top: 1px solid var(--osubs-line); padding-top: var(--osubs-s3); }
+}
+.osubs-aphead { display: flex; flex-direction: row; align-items: flex-start; justify-content: space-between; gap: var(--osubs-s2); flex: none; }
+.osubs-aphead-l { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.osubs-aptitle { font-size: 16px; font-weight: 300; }
+.osubs-apsub { font-size: 12px; color: var(--osubs-muted); }
+/* Chart chrome top-right: ⌘Scroll hint chip + the +/− zoom pair, mirroring
+   the site's bordered control cluster (h-7, radius-md, font-xs). */
+.osubs-apctrl { display: flex; align-items: center; gap: 6px; flex: none; }
+/* Cost | Output Tokens segmented tabs, the site's role=tab pair. Same
+   bordered 28px chip as the zoom group; the active tab fills. */
+.osubs-apmetric { display: inline-flex; align-items: stretch; height: 28px; border: 1px solid var(--osubs-line); border-radius: 6px; overflow: hidden; background: var(--osubs-bg,#fff); }
+.osubs-apmetab {
+  display: inline-flex; align-items: center; padding: 0 10px; border: 0;
+  background: transparent; color: var(--osubs-muted); font-size: 12px;
+  font-family: inherit; cursor: pointer; white-space: nowrap;
+}
+.osubs-apmetab + .osubs-apmetab { border-left: 1px solid var(--osubs-line); }
+.osubs-apmetab:hover { background: var(--osubs-fill-1, rgba(0,0,0,.05)); color: var(--osubs-ink); }
+.osubs-apmetab--on, .osubs-apmetab[aria-selected='true'] { background: var(--osubs-fill-1, rgba(0,0,0,.06)); color: var(--osubs-ink); font-weight: 500; }
+/* Task-length percentile picker — same bordered-28px chrome as the zoom
+   pair, menu reused from .osubs-acost-menu. Items get a check column and a
+   two-line label (percentile + task-length hint) like the site's menu. */
+.osubs-appct { position: relative; display: inline-flex; align-items: stretch; }
+.osubs-appct .osubs-acost-sortbtn {
+  height: 28px; padding: 0 8px; display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--osubs-line); border-radius: 6px; background: var(--osubs-bg,#fff);
+  font-size: 12px; color: var(--osubs-muted); cursor: pointer; white-space: nowrap;
+}
+.osubs-appct .osubs-acost-sortbtn:hover { color: var(--osubs-ink); background: var(--osubs-fill-1, rgba(0,0,0,.05)); }
+.osubs-appct .osubs-acost-sortbtn svg { width: 13px; height: 13px; flex: none; }
+.osubs-appct .osubs-acost-menu { min-width: 196px; }
+.osubs-appct-item { align-items: flex-start; gap: 6px; }
+.osubs-appct-tick { width: 14px; flex: none; color: var(--osubs-ink); font-size: 12px; line-height: 1.4; }
+.osubs-appct-lines { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.osubs-appct-name { font-size: 13px; color: var(--osubs-ink); line-height: 1.3; }
+.osubs-appct-sub { font-size: 11.5px; color: var(--osubs-muted); line-height: 1.3; }
+.osubs-apscroll {
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px;
+  background: var(--osubs-bg, #fff); border: 1px solid var(--osubs-line); border-radius: 6px;
+  font-size: 12px; color: var(--osubs-muted); white-space: nowrap;
+}
+.osubs-apkbd {
+  display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px;
+  background: var(--osubs-fill-1, rgba(0,0,0,.05)); border: 1px solid var(--osubs-line); border-radius: 4px;
+  font-family: inherit; font-size: 12px; color: var(--osubs-muted); font-style: normal;
+}
+.osubs-apzoom { display: inline-flex; align-items: stretch; height: 28px; border: 1px solid var(--osubs-line); border-radius: 6px; overflow: hidden; background: var(--osubs-bg,#fff); }
+.osubs-apzoomb {
+  display: inline-flex; align-items: center; justify-content: center; width: 28px;
+  border: 0; background: transparent; color: var(--osubs-muted); cursor: pointer; padding: 0;
+}
+.osubs-apzoomb + .osubs-apzoomb { border-left: 1px solid var(--osubs-line); }
+.osubs-apzoomb:hover { background: var(--osubs-fill-1, rgba(0,0,0,.05)); color: var(--osubs-ink); }
+.osubs-apzoomb svg { width: 15px; height: 15px; }
+/* Chart frame: the svg keeps a fixed 788×380 viewBox so every overlay offset
+   stays in logical units; CSS stretches it to the column width and the
+   browser scales overlays by percentage so narrow columns still show the
+   right-hand frontier points instead of clipping them off. */
+/* No overflow:hidden here: post-viewBox the svg scales to exactly the wrap
+   width, so nothing needs clipping — and the hover card must float past the
+   wrap top at near-top points (site's Radix card overflows the chart too). */
+.osubs-apwrap { position: relative; width: 100%; max-width: 788px; height: auto; flex: none; align-self: center; }
+.osubs-apchart { display: block; width: 100%; height: auto; flex: none; cursor: grab; touch-action: none; }
+.osubs-apchart:active { cursor: grabbing; }
+.osubs-apgrid { stroke: var(--osubs-line); stroke-width: 1; stroke-dasharray: 4 4; }
+.osubs-apaxis { stroke: var(--osubs-line); stroke-width: 1; }
+.osubs-aptick {
+  font-family: var(--osubs-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px; fill: var(--osubs-muted); font-variant-numeric: tabular-nums;
+}
+.osubs-apline {
+  fill: none; stroke: var(--osubs-ok); stroke-width: 2.5;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+/* Frontier dots inside the svg — the site draws them as solid #40b841 r=5
+   circles (visible, not just hit areas), the white marker tile sits on top. */
+.osubs-aphot { pointer-events: all; cursor: pointer; }
+/* Scatter layer: clipped to the 688×280 plot (80,30) — the site's own
+   absolute overflow-hidden layer at those exact offsets. pointer-events
+   stay on the dots; the layer itself passes events through to the svg. */
+.osubs-apscat {
+  position: absolute; left: 10.15%; top: 7.89%; width: 87.31%; height: 73.68%;
+  overflow: hidden; pointer-events: none;
+}
+.osubs-apsc {
+  position: absolute; width: 8px; height: 8px; opacity: .7;
+  /* left/top is the point; the square centres on it. The translate lives in
+     the base rule so :hover's scale() composes instead of overriding. */
+  transform: translate(-50%, -50%);
+  cursor: pointer; pointer-events: all;
+  transition: transform 150ms ease-out, opacity 150ms ease-out;
+}
+@supports (width: 1cqw) {
+  .osubs-apsc { width: 1.02cqw; height: 1.02cqw; }
+}
+.osubs-apsc:hover { transform: translate(-50%, -50%) scale(1.8); opacity: 1; }
+.osubs-apsc--teal { background: #14b8a6; }
+.osubs-apsc--blue8 { background: #1e40af; }
+.osubs-apsc--blue7 { background: #1d4ed8; }
+.osubs-apsc--blue6 { background: #2563eb; }
+.osubs-apsc--blue5 { background: #3b82f6; }
+.osubs-apsc--yellow { background: #eab308; }
+.osubs-apsc--yellow7 { background: #a16207; }
+.osubs-apsc--yellow8 { background: #854d0e; }
+.osubs-apsc--neutral7 { background: #404040; }
+.osubs-apsc--neutral6 { background: #525252; }
+.osubs-apsc--red { background: #ef4444; }
+/* Marker layer: offset -18/-18 (site uses 62/12 vs scatter's 80/30) so
+   labels can rise past the plot top. Percentage offsets keep the layer
+   glued to the plot when the viewBox shrinks. */
+.osubs-apmark {
+  position: absolute; left: 7.87%; top: 3.16%; width: 91.88%; height: 83.16%;
+  /* parent layer passes events; tiles opt back in below. */
+  pointer-events: none;
+}
+.osubs-apmk { pointer-events: all; }
+.osubs-apmk {
+  position: absolute; display: flex; align-items: center; justify-content: center;
+  /* 28px at the 788 viewBox; scales with the column via cqw so the tile
+     doesn't dominate when the svg shrinks below its logical width. */
+  width: 28px; height: 28px; border-radius: 2px;
+  /* left/top is the point; the tile centres on it — keep the translate in the
+     base rule so :hover's scale(1.15) composes instead of overriding. */
+  transform: translate(-50%, -50%);
+  background: rgba(255, 255, 255, .95); border: 2px solid var(--osubs-ok);
+  color: var(--osubs-ink); overflow: hidden;
+  cursor: pointer; pointer-events: all;
+  transition: transform 150ms ease-out;
+}
+@supports (width: 1cqw) {
+  .osubs-apwrap { container-type: inline-size; }
+  .osubs-apmk { width: 3.55cqw; height: 3.55cqw; border-width: 0.254cqw; }
+  .osubs-apmk .osubs-amark { width: 2.03cqw; height: 2.03cqw; }
+}
+.osubs-apmk:hover { transform: translate(-50%, -50%) scale(1.15); }
+.osubs-apmk .osubs-amark { width: 16px; height: 16px; }
+/* Leader line: a 1px dashed green run from a displaced chip back down to its
+   marker — the site draws these so a bumped label still reads as its point. */
+.osubs-aplead {
+  position: absolute; width: 0;
+  border-left: 1px dashed var(--osubs-ok);
+  pointer-events: none;
+}
+.osubs-aplab {
+  position: absolute; display: inline-block; padding: 3px 6px;
+  /* left is the chip's centre x — translateX centres the label on it without
+     needing the measured chip width in the component. */
+  transform: translateX(-50%);
+  background: var(--osubs-bg, #fff); border: 1px solid var(--osubs-line); border-radius: 4px;
+  font-size: 10px; font-weight: 500; color: var(--osubs-muted);
+  white-space: nowrap; line-height: 1.2;
+}
+/* Hover tooltip — the site's card pinned to the point: white surface,
+   border-medium edge, rounded-lg, 12×8 padding, max-width 220, z 40. */
+.osubs-aptip {
+  position: absolute; display: flex; align-items: flex-start; gap: 8px;
+  padding: 8px 12px; border-radius: 8px; max-width: 220px;
+  background: var(--osubs-bg, #fff); border: 1px solid var(--osubs-line);
+  box-shadow: 0 10px 15px -3px rgba(0,0,0,.1), 0 4px 6px -4px rgba(0,0,0,.1);
+  pointer-events: none; z-index: 40;
+  /* Anchor is the data point; the card floats centred ~10px above it. */
+  transform: translate(-50%, calc(-100% - 10px));
+}
+/* Too close to the top edge to float above — drop below the point. */
+.osubs-aptip--below { transform: translate(-50%, 14px); }
+/* 得分/成本换行后卡会收缩到一行宽，名称/厂商跟着折行——给卡体一个
+   贴近站点 220 卡的最小宽，名称与 org·license 保持单行。 */
+.osubs-aptip-body { min-width: 150px; }
+.osubs-aptip .osubs-amark { width: 18px; height: 18px; flex: none; margin-top: 2px; }
+.osubs-aptip-name { margin: 0; font-size: 14px; font-weight: 500; color: var(--osubs-ink); line-height: 1.3; }
+.osubs-aptip-org { margin: 1px 0 0; font-size: 12px; color: var(--osubs-muted); line-height: 1.3; }
+/* 得分/成本两段在 zh 下长于英文（卡 max-width 220 放不下）：行内可换行，
+   每段自身 nowrap 保证数字不断行；列间距 12、行间距收紧到 2。 */
+.osubs-aptip-figs { margin: 4px 0 0; font-size: 12px; color: var(--osubs-muted); display: flex; flex-wrap: wrap; column-gap: 12px; row-gap: 2px; }
+.osubs-aptip-figs > span { white-space: nowrap; }
+.osubs-aptip-pos { color: var(--osubs-ok); font-weight: 500; }
+/* Axis title: centred under the plot area (the svg's left margin is 80/788,
+   right 20/788), mono like the site's footnote row. */
+.osubs-apfoot {
+  flex: none; font-size: 12px; color: var(--osubs-muted);
+  font-family: var(--osubs-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  margin: 0 2.5% 0 10.2%; text-align: center;
+}
+.osubs-aplist { display: flex; flex-direction: column; flex: none; }
+.osubs-aprow {
+  display: grid; grid-template-columns: 10px 20px minmax(0, 1fr) auto;
+  align-items: center; gap: 12px; padding: 8px 4px;
+}
+.osubs-apnode {
+  position: relative; width: 8px; height: 8px; flex: none;
+  border: 1.5px solid var(--osubs-ok); border-radius: 2px; justify-self: center;
+}
+.osubs-apnode i {
+  position: absolute; left: 50%; top: 100%; width: 1px; height: 46px;
+  background: var(--osubs-ok); transform: translateX(-50%);
+}
+.osubs-apwho { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.osubs-apname {
+  font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+a.osubs-apname { color: inherit; }
+.osubs-apsub { font-size: 11.5px; color: var(--osubs-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.osubs-apfigs { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
+.osubs-apval { font-size: 13.5px; color: var(--osubs-ok); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.osubs-apval--bad { color: var(--osubs-bad); }
+.osubs-apcost { font-size: 11.5px; color: var(--osubs-faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* View-as toggle buttons carry the site's glyphs. */
+.osubs-vseg { display: inline-flex; align-items: center; gap: 4px; }
+.osubs-vseg svg { width: 13px; height: 13px; }
+
+/* Cost per Task — the pareto page's second block: bordered card, header row
+   (title+ⓘ/sub left, legend+Sort right), then 15 rows of cost bars scaled
+   to the column max. Bar green is brand-green-8, a step darker than the
+   frontier line's --osubs-ok. */
+.osubs-acostcard {
+  flex: none; display: flex; flex-direction: column; gap: var(--osubs-s2);
+  border: 1px solid var(--osubs-line); border-radius: 10px; padding: var(--osubs-s3);
+}
+.osubs-acost-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: var(--osubs-s2);
+}
+.osubs-acost-titlebox { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.osubs-acost-title {
+  display: flex; align-items: center; gap: 6px; margin: 0;
+  font-size: 16px; font-weight: 300; color: var(--osubs-ink);
+}
+.osubs-acost-info {
+  display: inline-flex; padding: 0; border: 0; background: none;
+  color: var(--osubs-faint); cursor: help;
+}
+.osubs-acost-info svg { width: 14px; height: 14px; }
+.osubs-acost-sub { margin: 0; font-size: 12px; color: var(--osubs-muted); }
+.osubs-acost-tools { display: flex; align-items: center; gap: 6px; flex: none; }
+.osubs-acost-legend {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 28px; padding: 0 8px; border: 1px solid var(--osubs-line); border-radius: 6px;
+  background: transparent; color: var(--osubs-muted);
+  font: inherit; font-size: 12px; white-space: nowrap; cursor: pointer;
+}
+.osubs-acost-legend:hover { color: var(--osubs-ink); }
+.osubs-acost-legend--on {
+  background: var(--osubs-bg, Canvas); color: var(--osubs-ink);
+  border-color: var(--osubs-line);
+}
+.osubs-acost-legend:focus-visible { outline: 2px solid var(--osubs-accent, #2563eb); outline-offset: 2px; }
+.osubs-acost-legend i {
+  width: 8px; height: 8px; border-radius: 2px; background: var(--osubs-ok); flex: none;
+}
+.osubs-acost-sort { position: relative; }
+.osubs-acost-sortbtn {
+  display: inline-flex; align-items: center; justify-content: space-between; gap: 4px;
+  height: 28px; padding: 0 8px; border: 1px solid var(--osubs-line); border-radius: 6px;
+  background: var(--osubs-bg, transparent); color: var(--osubs-muted);
+  font-size: 12px; cursor: pointer; white-space: nowrap;
+}
+.osubs-acost-sortbtn:hover { color: var(--osubs-ink); }
+.osubs-acost-sortbtn svg { width: 14px; height: 14px; flex: none; }
+.osubs-acost-menu {
+  position: absolute; top: calc(100% + 4px); right: 0; z-index: 10;
+  min-width: 170px; padding: 4px;
+  border: 1px solid var(--osubs-line); border-radius: 8px;
+  background: var(--osubs-bg, #fff); box-shadow: 0 8px 24px rgb(0 0 0 / .10);
+  display: flex; flex-direction: column;
+}
+.osubs-acost-item {
+  display: flex; align-items: center; width: 100%; padding: 7px 10px;
+  border: 0; border-radius: 5px; background: none; text-align: left;
+  font-size: 12px; color: var(--osubs-muted); cursor: pointer;
+}
+.osubs-acost-item:hover { background: var(--osubs-fill-1); color: var(--osubs-ink); }
+.osubs-acost-item--on { color: var(--osubs-ink); font-weight: 500; }
+.osubs-acost-list { display: flex; flex-direction: column; flex: none; }
+.osubs-acost-row {
+  display: grid; grid-template-columns: 24px 20px minmax(0, 1fr) auto; /* rank, mark, name, figs */
+  grid-template-rows: auto auto; align-items: center; column-gap: 10px;
+  min-height: 44px; padding: 6px 4px; position: relative;
+}
+.osubs-acost-num {
+  grid-row: 1; width: 24px; height: 24px; border-radius: 2px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--osubs-line); background: var(--osubs-fill-1);
+  color: var(--osubs-muted); font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums;
+}
+.osubs-acost-num--front {
+  background: var(--osubs-ok); border-color: var(--osubs-ok); color: #fff;
+}
+.osubs-acost-row > .osubs-amark { grid-row: 1; }
+.osubs-acost-name {
+  grid-row: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 14px; color: var(--osubs-ink);
+}
+.osubs-acost-link { color: inherit; text-decoration: none; }
+.osubs-acost-link:hover { text-decoration: underline; }
+.osubs-acost-track {
+  grid-column: 1 / -1; grid-row: 2; position: relative; display: block;
+  height: 6px; margin-top: 6px;
+  border-radius: 999px; background: var(--osubs-fill-1); overflow: hidden;
+}
+.osubs-acost-svg { display: none; }
+.osubs-acost-bar {
+  position: absolute; inset: 0 auto 0 0; min-width: 4px;
+  border-radius: 999px; background: #2e9440; /* hsl(var(--brand-green-8)) */
+}
+.osubs-acost-figs { display: flex; flex-direction: column; gap: 0; line-height: 1.15; }
+.osubs-acost-figs--side { grid-column: 4; grid-row: 1; align-items: flex-end; }
+.osubs-acost-figs--float { display: none; }
+.osubs-acost-usd {
+  font-size: 13px; color: var(--osubs-ink); font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.osubs-acost-pct {
+  font-size: 11.5px; color: var(--osubs-ok); font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.osubs-acost-pct--bad { color: var(--osubs-bad); }
+/* ≥560px the site swaps to the tall bar + right-of-bar figures layout. */
+@media (min-width: 560px) {
+  .osubs-acost-row { grid-template-columns: 24px 20px minmax(0, 220px) minmax(0, 1fr); }
+  .osubs-acost-name { grid-row: 1; }
+  .osubs-acost-track {
+    grid-column: 4; grid-row: 1; height: 44px; margin-top: 0;
+    background: none; border-radius: 0; overflow: visible;
+  }
+  .osubs-acost-svg { display: block; width: 100%; height: 44px; }
+  .osubs-acost-svg rect { fill: #2e9440; } /* hsl(var(--brand-green-8)) */
+  .osubs-acost-bar { display: none; }
+  .osubs-acost-figs--side { display: none; }
+  .osubs-acost-figs--float {
+    display: flex; position: absolute; top: 0; bottom: 0;
+    flex-direction: column; align-items: flex-start; justify-content: center;
+  }
+}
+/* Narrow pane: arena's own table drops columns too; keep rank + model + the
+   headline score, let the bar flex smaller. */
+@media (max-width: 560px) {
+  .osubs-atrow { grid-template-columns: 40px minmax(0, 1fr) minmax(130px, auto) minmax(64px, auto); gap: 8px; padding: 6px 10px; }
+  .osubs-atcell--success { display: none; }
+}
 
 .osubs-switch { position: relative; display: inline-flex; flex: none; cursor: pointer; }
 .osubs-switch input {

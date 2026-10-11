@@ -60,7 +60,11 @@ window.__ModuleLoader__.load({
 
     //@part about
 
+    //@part proxy
+
     //@part usage
+
+    //@part arena
 
     function SettingsSection({ rpc, close: _close }) {
       const t = COPY[localeOf()]
@@ -113,21 +117,58 @@ window.__ModuleLoader__.load({
         void loadUsage(false)
       }, [view])
 
+      // 榜单: same contract as 用量 — the stored answer shows at once, the
+      // tab asks again only past the arena TTL, 刷新 always re-fetches.
+      const [arena, setArena] = useState(readStoredArena)
+      const [arenaError, setArenaError] = useState('')
+      const [arenaBusy, setArenaBusy] = useState(false)
+      const loadArena = async (fresh) => {
+        setArenaBusy(true)
+        try {
+          const next = await callRpc(rpc, 'arena', fresh ? { fresh: true } : undefined)
+          if (next && typeof next.at === 'number' && typeof next.boards === 'object' && next.boards !== null) {
+            setArena(next)
+            writeStoredArena(next)
+          }
+          setArenaError('')
+        } catch (caught) {
+          const message = caught instanceof Error ? caught.message : String(caught)
+          setArenaError(isUnknownOauthMethod(message) ? t.hostStale : message)
+        } finally {
+          setArenaBusy(false)
+        }
+      }
+      useEffect(() => {
+        if (view !== 'arena' || arenaBusy) return
+        if (arena && Date.now() - arena.at < ARENA_TTL_MS) return
+        void loadArena(false)
+      }, [view])
+
+      // One owner for the status snapshot. A refresh, a models write, an
+      // update check, and the auto-update click each stamp a turn when they
+      // start. A later success wins; an earlier return must not replace the
+      // snap, the stored copy, or paint its error.
+      const snapTurn = useRef(0)
+      const snapSeen = useRef(0)
       // `fresh` after the user's own action: the answer must not come from a
       // poll's snapshot that was already building before the write.
       // `revalidateQuota` goes with (re)entering the quota view: the host
       // re-reads readings older than its 15s floor behind the cached answer.
       const refresh = useCallback(async (fresh = false, revalidateQuota = false) => {
         if (rpc === undefined) return
+        const mine = ++snapTurn.current
         try {
           const payload = fresh || revalidateQuota
             ? { ...(fresh ? { fresh: true } : {}), ...(revalidateQuota ? { revalidateQuota: true } : {}) }
             : undefined
           const next = await callRpc(rpc, 'status', payload)
+          if (mine < snapSeen.current) return
+          snapSeen.current = mine
           setSnap(next)
           writeStoredSnap(next)
           setError('')
         } catch (caught) {
+          if (mine < snapSeen.current) return
           setError(caught instanceof Error ? caught.message : t.noRpc)
         }
       }, [rpc, t.noRpc])
@@ -188,6 +229,10 @@ window.__ModuleLoader__.load({
       }, [snap])
 
       const run = async (method, payload) => {
+        // Stamp when the call starts, not when it returns. A poll that
+        // started earlier must not replace this result, and this result
+        // must not replace a snapshot that won while the call was in flight.
+        const mine = method === 'models' || method === 'update' ? ++snapTurn.current : 0
         try {
           const result = await callRpc(rpc, method, payload)
           if (method === 'login') {
@@ -200,6 +245,8 @@ window.__ModuleLoader__.load({
             setPending((current) => ({ ...current, [payload.provider]: undefined }))
           }
           if (method === 'update') {
+            if (mine < snapSeen.current) return result
+            snapSeen.current = mine
             setUpdate(result)
             setSnap((current) => current ? { ...current, update: { ...current.update, ...result } } : current)
             return result
@@ -207,13 +254,17 @@ window.__ModuleLoader__.load({
           if (method === 'models' && result && typeof result === 'object') {
             // setModels already returns a fresh snapshot — adopt it instead of
             // spending a second status RPC + snapshot build on convergence.
+            if (mine < snapSeen.current) return true
+            snapSeen.current = mine
             setSnap(result)
             writeStoredSnap(result)
-          } else {
+            setError('')
+          } else if (method !== 'update') {
             await refresh(true)
           }
           return true
         } catch (caught) {
+          if (mine && mine < snapSeen.current) return false
           const message = caught instanceof Error ? caught.message : String(caught)
           if (isUnknownOauthMethod(message)) return false
           if (/^unknown provider /i.test(message)) {
@@ -222,7 +273,7 @@ window.__ModuleLoader__.load({
             setError(t.hostStale)
             return false
           }
-          setError(message === 'cursor-import-empty' ? t.cursorImportEmpty : message === 'ollama-import-empty' ? t.ollamaImportEmpty : message === 'kimi-import-empty' ? t.kimiImportEmpty : message === 'copilot-import-empty' ? t.copilotImportEmpty : message === 'devin-import-empty' ? t.devinImportEmpty : message === 'cline-import-empty' ? t.clineImportEmpty : message === 'command-code-import-empty' ? t.commandCodeImportEmpty : message)
+          setError(message === 'cursor-import-empty' ? t.cursorImportEmpty : message === 'ollama-import-empty' ? t.ollamaImportEmpty : message === 'kimi-import-empty' ? t.kimiImportEmpty : message === 'devin-import-empty' ? t.devinImportEmpty : message === 'cline-import-empty' ? t.clineImportEmpty : message === 'command-code-import-empty' ? t.commandCodeImportEmpty : message)
           return false
         }
       }
@@ -330,11 +381,11 @@ window.__ModuleLoader__.load({
         role: 'tabpanel',
       }, child)
 
-      const card = (id) => h(ProviderCard, {
+      const card = (id, account = snap?.accounts?.[id]) => h(ProviderCard, {
         t,
         id,
         title: FAMILY_NAME[id] ?? id,
-        account: snap?.accounts?.[id],
+        account,
         pending: pending[id],
         onLogin: (provider, mode, extra) => run('login', { provider, mode, ...extra }),
         onImport: (provider) => run('import', { provider }),
@@ -354,21 +405,71 @@ window.__ModuleLoader__.load({
       })
 
       const catalogGroups = Array.isArray(snap?.catalog) ? snap.catalog : []
+      // One OpenCode account, two products: the credential and the Console read
+      // stay shared (one key, one vault), but the 额度 pane keeps them apart —
+      // Go's card shows its subscription meters, Zen's card its prepaid wallet,
+      // so neither number can be read as the other product's.
+      const opencode = snap?.accounts?.['opencode-go']
+      const isZenRow = (row) => typeof row?.kind === 'string' && row.kind.startsWith('zen-')
+      const opencodeProductView = (keep) => {
+        if (!opencode) return undefined
+        const rows = (Array.isArray(opencode.accounts) ? opencode.accounts : []).map((row) => (
+          row?.quota
+            ? { ...row, quota: { ...row.quota, rows: (Array.isArray(row.quota.rows) ? row.quota.rows : []).filter(keep) } }
+            : row
+        ))
+        return { ...opencode, accounts: rows }
+      }
+      const opencodeGoView = opencodeProductView((row) => !isZenRow(row))
+      const opencodeZenView = opencodeProductView(isZenRow)
+      const zenAccounts = Array.isArray(opencodeZenView?.accounts) ? opencodeZenView.accounts : []
+      // No wallet read (key-only account, or a workspace without Zen billing):
+      // no Zen card and no Zen rail entry — nothing to show, and no blank pane.
+      const zenVisible = zenAccounts.some((row) => (row?.quota?.rows ?? []).some(isZenRow))
       const accountCountOf = (id) => {
-        const roster = snap?.accounts?.[id]?.accounts
+        const roster = id === 'opencode-zen' ? (zenVisible ? zenAccounts : []) : snap?.accounts?.[id]?.accounts
         return Array.isArray(roster) ? roster.length : 0
       }
       const modelCountOf = (id) => catalogGroups.reduce(
         (n, group) => n + (railIdOf(group.family) === id && Array.isArray(group.models) ? group.models.length : 0), 0)
       const usageCountOf = usageModelCounts(usage?.rows)
       const railCount = (id) => view === 'models' ? modelCountOf(id) : view === 'usage' ? usageCountOf(id) : accountCountOf(id)
-      const railFamilies = view === 'usage' ? [...FAMILY_ORDER, ...USAGE_ONLY_FAMILIES] : FAMILY_ORDER
+      const railFamilies = view === 'usage'
+        ? [...FAMILY_ORDER, ...USAGE_ONLY_FAMILIES]
+        // The 额度 rail is account cards: Zen only appears once its wallet read
+        // exists (its card has no login form to fill from an empty state).
+        : view === 'quota' ? FAMILY_ORDER.filter((id) => id !== 'opencode-zen' || zenVisible) : FAMILY_ORDER
+      // Switched-on models per rail entry, for the mark every rail view
+      // carries. Same rule the 模型 table uses: a signed-out family has every
+      // switch locked, and a pending override already counts as clicked.
+      const modelOn = new Map()
+      const allOn = { on: 0, total: 0 }
+      for (const group of catalogGroups) {
+        const railId = railIdOf(group.family)
+        let tally = modelOn.get(railId)
+        if (tally === undefined) {
+          tally = { on: 0, total: 0 }
+          modelOn.set(railId, tally)
+        }
+        for (const model of Array.isArray(group.models) ? group.models : []) {
+          tally.total += 1
+          allOn.total += 1
+          if (!group.loggedIn) continue
+          if (!Boolean(modelOverrides[model.key] ?? model.enabled)) continue
+          tally.on += 1
+          allOn.on += 1
+        }
+      }
+      const modelsOnOf = (id) => (id === 'all' ? allOn : (modelOn.get(id) ?? { on: 0, total: 0 }))
       const railItems = [
-        { id: 'all', name: t.allFamilies, count: railFamilies.reduce((n, id) => n + railCount(id), 0) },
-        ...railFamilies.map((id) => ({ id, name: usageFamilyName(t, id), icon: usageFamilyIcon(id), color: FAMILY_COLOR[id], count: railCount(id) })),
+        { id: 'all', name: t.allFamilies, count: railFamilies.reduce((n, id) => n + railCount(id), 0), models: modelsOnOf('all') },
+        ...railFamilies.map((id) => ({ id, name: usageFamilyName(t, id), icon: usageFamilyIcon(id), color: FAMILY_COLOR[id], count: railCount(id), models: modelsOnOf(id) })),
       ]
-      const quotaPanel = (id) => panel(
-        id, card(id), view === 'quota' && (family === 'all' || family === id),
+      // A Zen selection whose wallet vanished falls back to the Go card rather
+      // than rendering nothing.
+      const quotaScope = family === 'opencode-zen' && !zenVisible ? 'opencode-go' : family
+      const quotaPanel = (id, child?) => panel(
+        id, child ?? card(id), view === 'quota' && (quotaScope === 'all' || quotaScope === id),
       )
 
       return h('div', { className: 'osubs', ref: root },
@@ -376,13 +477,14 @@ window.__ModuleLoader__.load({
           h(PageTab, { id: 'quota', label: t.quota, view, onSelect: setView }),
           h(PageTab, { id: 'models', label: t.modelsTitle, view, onSelect: setView }),
           h(PageTab, { id: 'usage', label: t.tabUsage, view, onSelect: setView }),
+          h(PageTab, { id: 'arena', label: t.tabArena, view, onSelect: setView }),
           h(PageTab, { id: 'version', label: t.tabSettings, view, onSelect: setView }),
           h(PageTab, { id: 'donate', label: t.tabDonate, view, onSelect: setView }),
         ),
         h('div', { className: 'osubs-body' },
           (view === 'quota' || view === 'models' || view === 'usage') && h('div', { className: 'osubs-rail' },
             h('div', { className: 'osubs-rail-label' }, t.providers),
-            railItems.map((item) => h(RailItem, { item, current: family, onSelect: setFamily, key: item.id }))),
+            railItems.map((item) => h(RailItem, { item, current: family, onSelect: setFamily, t, key: item.id }))),
           h('div', { className: 'osubs-pane' },
           error && h('p', { className: 'osubs-hint osubs-bad' }, error),
           snap?.proxy?.error && h('p', { className: 'osubs-hint osubs-bad' }, fill(t.proxyError, snap.proxy.error)),
@@ -390,6 +492,8 @@ window.__ModuleLoader__.load({
             h(ShareButton, {
               t,
               busy: quotaShot.busy,
+              // The image masks account identities; the hover title says so.
+              hint: t.usageShareMask,
               onClick: () => quotaShot.start(quotaListRef.current, shotFooter(t, {
                 version: aboutVersionOf(snap?.update, update),
                 repo: aboutRepoOf(snap?.update, update),
@@ -409,10 +513,14 @@ window.__ModuleLoader__.load({
             quotaPanel('cursor'),
             quotaPanel('ollama'),
             quotaPanel('kimi'),
-            quotaPanel('copilot'),
             quotaPanel('devin'),
             quotaPanel('cline'),
-            quotaPanel('opencode-go'),
+            quotaPanel('opencode-go', card('opencode-go', opencodeGoView)),
+            zenVisible && quotaPanel('opencode-zen', h(ZenQuotaCard, {
+              t,
+              account: opencodeZenView,
+              onRefresh: (accountId) => run('quota', { provider: 'opencode-go', id: accountId }),
+            })),
             quotaPanel('command-code')),
           panel('models', h(ModelsPanel, {
             t,
@@ -441,21 +549,41 @@ window.__ModuleLoader__.load({
             version: aboutVersionOf(snap?.update, update),
             repo: aboutRepoOf(snap?.update, update),
           }), view === 'usage'),
-          panel('version', h(AboutPanel, {
+          panel('arena', h(ArenaPanel, {
             t,
-            local: snap?.update,
-            update,
-            busy: updateBusy,
-            onCheck: () => checkUpdate(false),
-            onApply: () => checkUpdate(true),
-            autoUpdate: snap?.autoUpdate === true,
-            autoState: snap?.autoUpdateState,
-            onAutoUpdate: (checked) => {
-              setSnap((current) => current ? { ...current, autoUpdate: checked } : current)
-              void run('autoUpdate', { autoUpdate: checked })
-            },
-            rpc,
-          }), view === 'version'),
+            data: arena,
+            error: arenaError,
+            busy: arenaBusy,
+            onRefresh: () => { void loadArena(true) },
+            version: aboutVersionOf(snap?.update, update),
+            repo: aboutRepoOf(snap?.update, update),
+          }), view === 'arena', true),
+          // 设置 tab: the update card on top, the standalone 代理 card below —
+          // two sibling cards in one panel, each its own bordered box.
+          panel('version', h(Fragment || 'div', null,
+            h(AboutPanel, {
+              t,
+              local: snap?.update,
+              update,
+              busy: updateBusy,
+              onCheck: () => checkUpdate(false),
+              onApply: () => checkUpdate(true),
+              autoUpdate: snap?.autoUpdate === true,
+              autoState: snap?.autoUpdateState,
+              onAutoUpdate: (checked) => {
+                const mine = ++snapTurn.current
+                if (mine >= snapSeen.current) snapSeen.current = mine
+                setSnap((current) => current ? { ...current, autoUpdate: checked } : current)
+                void run('autoUpdate', { autoUpdate: checked })
+              },
+              rpc,
+            }),
+            h(ProxyCard, {
+              t,
+              proxy: snap?.proxy,
+              rpc,
+              onProxy: (next) => setSnap((current) => current ? { ...current, proxy: next } : current),
+            })), view === 'version'),
           panel('donate', h(DonatePanel, {
             t,
             rpc,

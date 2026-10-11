@@ -8,22 +8,15 @@
 
 import { randomUUID } from 'node:crypto'
 import { codexCacheHeaders } from './codex/cache.js'
+import { attemptCodexWebSocket, codexWebSocketCooling, codexWebSocketEnabled, markCodexWebSocketFallback } from './codex/websocket.js'
 import { grokAffinityHeaders } from './grok/index.js'
 import { describeError, sendJson } from '../utils/http.js'
 import { oauthFamily } from './families.js'
 import { SseFrameScanner } from './responses-sse.js'
-import { pumpBody, UpstreamFailure, upstreamRequest, waitForDrain } from './upstream.js'
+import { MAX_GATE_BUFFER_BYTES, MAX_UNCLASSIFIED_BYTES, pumpBody, UpstreamFailure, upstreamRequest, waitForDrain } from './upstream.js'
 import { forcedRefresh } from './tokens.js'
 import { readBody, rewriteUpstreamBody } from './proxy-body.js'
-
-/** Unclassifiable bytes a gated stream may buffer before committing anyway. */
-const MAX_UNCLASSIFIED_BYTES = 64 * 1024
-
-/**
- * Everything a gated stream may buffer. Past this the gate commits without
- * retry protection rather than kill a legitimate response.
- */
-const MAX_GATE_BUFFER_BYTES = 2 * 1024 * 1024
+import { accountIdOf } from './store.js'
 
 /**
  * Forward the upstream's own retry headers so the client can back off at the
@@ -42,13 +35,13 @@ const GATEWAY_FALLBACK_STATUSES = new Set([401, 403, 404])
 
 export async function forward(request, response, { url, fallbackUrl = undefined, session, tokens, headersOf, fetchFn, family, wire = undefined, maxRequestBodyBytes, upstreamTimeouts, startedAt, signal, classifyFailure = undefined, encodeBody = undefined, captureSse = undefined }: any) {
   const raw = await readBody(request, maxRequestBodyBytes)
-  const { payload, cacheSessionId, stream, routingHint, grokModel, copilotVision, copilotInitiator } = rewriteUpstreamBody(raw, family, wire)
+  const { payload, cacheSessionId, stream, routingHint, grokModel, observeResponse } = rewriteUpstreamBody(raw, family, wire)
   // A route's `encodeBody` (Codex zstd) runs once; retries resend the same bytes.
   const plain = Buffer.from(JSON.stringify(payload))
   const { body, headers: encodingHeaders = {} } = encodeBody?.(plain) ?? { body: plain }
   const grokReqId = family === 'grok' ? randomUUID() : undefined
   // Rebuilt whole after a 401 refresh: the route overrides below must win over
-  // the family's own headers (stream `accept`, Copilot `x-initiator`).
+  // the family's own headers (stream `accept`).
   const headersFor = (current) => ({
     ...headersOf(current, cacheSessionId),
     'content-type': request.headers['content-type'] ?? 'application/json',
@@ -58,10 +51,6 @@ export async function forward(request, response, { url, fallbackUrl = undefined,
       ...codexCacheHeaders(cacheSessionId),
       ...(routingHint ? { 'x-codex-routing-hint': routingHint } : {}),
     } : {}),
-    ...(family === 'copilot' ? {
-      'x-initiator': copilotInitiator === 'agent' ? 'agent' : 'user',
-      ...(copilotVision ? { 'copilot-vision-request': 'true' } : {}),
-    } : {}),
   })
   let baseHeaders = headersFor(session)
   // Codex hands back `x-codex-turn-state` on a failed attempt; the retry replays it.
@@ -69,6 +58,27 @@ export async function forward(request, response, { url, fallbackUrl = undefined,
   // One-shot reroute to the direct endpoint when the gateway refuses this hop.
   let fallbackPending = typeof fallbackUrl === 'string' && fallbackUrl.length > 0 && fallbackUrl !== url
   await upstreamRequest({ family, signal, startedAt, stream, response, timeouts: upstreamTimeouts }).run(async (attempt) => {
+    // Codex first tries the pooled WebSocket (connection-scoped continuation).
+    // Only the first attempt, never for Fast (`;tier=` routing-hint) requests,
+    // and never while the session is cooling down after a WS fault; SSE stays
+    // the wire the retry below speaks. A 401 refresh keeps index 0, so WS
+    // reconnects with the fresh token.
+    if (attempt.index === 0 && family === 'codex' && stream === true
+      && typeof cacheSessionId === 'string' && cacheSessionId.length > 0
+      && !String(routingHint ?? '').includes(';tier=')
+      && codexWebSocketEnabled() && !codexWebSocketCooling(cacheSessionId)) {
+      try {
+        return await attemptCodexWebSocket(response, { url, session, payload, cacheSessionId, signal: attempt.signal, touch: attempt.touch, captureSse })
+      } catch (error) {
+        // A pre-commit transport fault cools the session and falls straight
+        // through to the SSE wire below, inside this attempt — no retry
+        // backoff (pi's immediate fallback). Timed-out or committed attempts
+        // rethrow: the attempt is over and the hop's failure contract answers.
+        if (!(error instanceof UpstreamFailure) || error.code !== 'transport' || attempt.committed() || attempt.signal.aborted) throw error
+        markCodexWebSocketFallback(cacheSessionId)
+        console.error(`[oauth-subs] codex websocket fell back to sse for ${cacheSessionId}: ${error.message}`)
+      }
+    }
     for (;;) {
       const headers = {
         ...baseHeaders,
@@ -79,8 +89,9 @@ export async function forward(request, response, { url, fallbackUrl = undefined,
         }) : {}),
         ...(family === 'codex' && turn.state ? { 'x-codex-turn-state': turn.state } : {}),
       }
+      const observation = observeResponse?.({ requestId: grokReqId, accountId: tokens.sourceOf?.(session)?.id ?? accountIdOf(family, session), attempt: attempt.index, wireBody: plain })
       try {
-        return await attemptUpstream(response, { url, headers, body, stream, fetchFn, family, wire, attempt, turn, classifyFailure, captureSse })
+        return await attemptUpstream(response, { url, headers, body, stream, fetchFn, family, wire, attempt, turn, classifyFailure, captureSse, observation })
       } catch (error) {
         // The Coding Plan gateway (zcode.z.ai) can refuse a bearer the model
         // endpoint still accepts: reroute once, within this attempt.
@@ -88,6 +99,9 @@ export async function forward(request, response, { url, fallbackUrl = undefined,
         fallbackPending = false
         url = fallbackUrl
         console.error(`[oauth-subs] ${family} gateway ${error.status}; falling back to the direct endpoint`)
+      } finally {
+        // Best-effort observations never hold up the response or a retry.
+        void observation?.finish()
       }
     }
   }, {
@@ -117,9 +131,10 @@ function upstreamErrorPayload(text, family, status) {
  * `response.created` and nothing else — can be retried without the client ever
  * seeing a truncated stream. Timing and retries belong to `upstreamRequest`.
  */
-async function attemptUpstream(response, { url, headers, body, stream, fetchFn, family, wire, attempt, turn, classifyFailure, captureSse }: any) {
+async function attemptUpstream(response, { url, headers, body, stream, fetchFn, family, wire, attempt, turn, classifyFailure, captureSse, observation }: any) {
   const { signal } = attempt
   const upstream = await fetchFn(url, { method: 'POST', headers, body, signal })
+  observation?.status(upstream.status)
   const transport = (message) => {
     const state = family === 'codex' ? upstream.headers?.get?.('x-codex-turn-state')?.trim() : undefined
     if (state) turn.state = state
@@ -166,13 +181,15 @@ async function attemptUpstream(response, { url, headers, body, stream, fetchFn, 
   }
   // Codex/Grok Responses can open with handshake-only frames. Completions
   // SSE has no `response.created` preamble — gating it would wait for 64KiB.
-  // `captureSse` (the Codex rate-limit frame) is read by the same scanner, so
-  // it only sees pre-commit frames — the frame leads the stream in practice.
+  // `captureSse` (the Codex rate-limit frame, the ChatGPT terminal usage
+  // block) is read by the same scanner for the stream's whole life: the
+  // rate-limit frame leads it in practice, the usage block trails it.
   const gate = new CommitGate(response, upstream, stream === true && (family === 'codex' || family === 'chatgpt' || family === 'grok'), emit, family, captureSse)
   let lastByteAt = Date.now()
   try {
     await pumpBody(upstream.body, attempt, async (value) => {
       lastByteAt = Date.now()
+      observation?.push(value)
       if (await gate.push(value)) await emit(value)
     })
   } catch (error) {
@@ -214,6 +231,7 @@ class CommitGate {
   declare unclassified: number
   declare committed: boolean
   declare sawPreamble: boolean
+  declare outputSeen: boolean
   declare gated: boolean
   declare scanner: SseFrameScanner | null
 
@@ -227,27 +245,31 @@ class CommitGate {
     this.unclassified = 0
     this.committed = false
     this.sawPreamble = false
+    this.outputSeen = false
     this.gated = stream === true
     this.scanner = new SseFrameScanner(captureSse)
   }
 
   /** Returns true once the caller should write `chunk` through itself. */
   async push(chunk) {
-    if (this.committed) return true
-    if (!this.gated) {
-      this.commit()
+    // The capture scanner runs to the stream's end even after commit — the
+    // ChatGPT usage block rides the terminal frame, which arrives long after
+    // the first output committed the gate.
+    for (const frame of this.scanner!.push(chunk)) {
+      if (this.committed || !this.gated) continue
+      if (frame.kind === 'output') this.outputSeen = true
+      else if (frame.kind === 'preamble') this.sawPreamble = true
+      else this.unclassified += frame.bytes
+    }
+    if (this.committed || !this.gated) {
+      if (!this.committed) this.commit()
       return true
     }
     this.buffered.push(chunk)
     this.bytes += chunk.length
     // Preamble frames echo the whole request prompt (~128KB for DSH), so only
     // bytes that are neither preamble nor output count toward the cap.
-    let output = false
-    for (const frame of this.scanner!.push(chunk)) {
-      if (frame.kind === 'output') output = true
-      else if (frame.kind === 'preamble') this.sawPreamble = true
-      else this.unclassified += frame.bytes
-    }
+    let output = this.outputSeen
     if (!output && this.bytes > MAX_GATE_BUFFER_BYTES) {
       console.error(`[oauth-subs] ${this.family} buffered ${this.bytes}B with no output event; committing without retry protection`)
       output = true
@@ -269,7 +291,7 @@ class CommitGate {
     this.commit()
     for (const chunk of this.buffered) await this.emit(chunk)
     this.buffered = []
-    this.scanner = null
+    // The scanner stays: a capture type may still arrive after commit.
   }
 }
 

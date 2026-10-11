@@ -77,7 +77,7 @@
               planLabel && h('span', { className: 'osubs-tag' }, planLabel),
               id === 'glm' && row.region && h('span', { className: 'osubs-tag' }, regionLabel(row.region)),
               id === 'kiro' && row.methodLabel && h('span', { className: 'osubs-tag' }, row.methodLabel),
-              (id === 'cursor' || id === 'ollama' || id === 'kimi' || id === 'copilot' || id === 'devin' || id === 'cline' || id === 'command-code') && row.methodLabel && h('span', { className: 'osubs-tag' }, row.methodLabel),
+              (id === 'cursor' || id === 'ollama' || id === 'kimi' || id === 'devin' || id === 'cline' || id === 'command-code') && row.methodLabel && h('span', { className: 'osubs-tag' }, row.methodLabel),
               id === 'opencode-go' && row.workspaceName && h('span', { className: 'osubs-tag osubs-tag--plain' }, row.workspaceName),
               id === 'grok' && quota?.hasGrokCodeAccess === true && h('span', { className: 'osubs-tag osubs-tag--plain', title: t.grokCodeHint }, t.grokCode),
               id === 'grok' && quota?.subscriptionStatus && quota.subscriptionStatus !== 'active' && h('span', { className: 'osubs-tag osubs-tag--warn' }, quota.subscriptionStatus),
@@ -142,7 +142,59 @@
           }),
           id === 'opencode-go' && quota?.useBalance && Number(quota.balance) > 0
             && h('p', { className: 'osubs-hint' }, fill(t.opencodeGoBalance, `$${Number(quota.balance).toFixed(2)}`)),
+
         ),
+      )
+    }
+
+    /**
+     * OpenCode Zen's own card: the prepaid side of the same OpenCode account
+     * that carries the Go subscription (one key, one vault), so it holds no
+     * credential UI — just the wallet rows and a refresh that re-reads the
+     * shared account quota. Go's subscription meters never mix in here.
+     */
+    function ZenQuotaCard({ t, account, onRefresh }) {
+      const roster = Array.isArray(account?.accounts) ? account.accounts : []
+      const row = roster.find((entry) => entry?.active) ?? roster[0]
+      const quota = row?.quota ?? { status: 'loading' }
+      const [busy, setBusy] = useState(false)
+      const refreshing = busy || quota.status === 'loading'
+      return h('article', { className: 'osubs-acct osubs-acct--on' },
+        h('div', { className: 'osubs-acct-head' },
+          h('div', { className: 'osubs-acct-main' },
+            h('div', { className: 'osubs-acct-row' },
+              h('span', { className: 'osubs-acct-id' },
+                h('span', { className: 'osubs-mono', 'data-shot-mask': '' }, identityOf(row, 'opencode-go')),
+              ),
+              h('span', { className: 'osubs-tag osubs-tag--plain' }, 'OpenCode Zen'),
+              row?.workspaceName && h('span', { className: 'osubs-tag osubs-tag--plain' }, row.workspaceName),
+            ),
+          ),
+          h('div', { className: 'osubs-actions', 'data-noshot': '', onClick: (event) => event.stopPropagation() },
+            h(Button, {
+              size: 'sm',
+              icon: true,
+              disabled: refreshing,
+              title: t.quotaRefresh,
+              ariaLabel: t.quotaRefresh,
+              onClick: async () => {
+                if (busy) return
+                setBusy(true)
+                try {
+                  await Promise.all([
+                    onRefresh(row?.id),
+                    new Promise((resolve) => setTimeout(resolve, 400)),
+                  ])
+                } finally {
+                  setBusy(false)
+                }
+              },
+              label: h('span', { className: 'osubs-refresh' + (refreshing ? ' osubs-refresh--spin' : '') },
+                h(IconRefresh)),
+            }),
+          ),
+        ),
+        h('div', {}, h(QuotaBlock, { t, family: 'opencode-zen', quota })),
       )
     }
 
@@ -176,6 +228,24 @@
         setGoMessage('')
         setMethod('')
         setAddOpen(false)
+      }
+      // 退出 drops the stored credential on the host, so the row button only
+      // stages it: WarnDialog names the account, and the RPC runs on 确认退出.
+      const [logoutFor, setLogoutFor] = useState(null)
+      const [logoutAcked, setLogoutAcked] = useState(false)
+      const closeLogout = () => {
+        setLogoutAcked(false)
+        setLogoutFor(null)
+      }
+      const requestLogout = (family, accountId, row) => {
+        setLogoutAcked(false)
+        setLogoutFor({ accountId, label: identityOf(row, family) || title })
+      }
+      const confirmLogout = async () => {
+        if (!logoutFor || !logoutAcked) return
+        const target = logoutFor
+        closeLogout()
+        await onLogout(id, target.accountId)
       }
       // Starts a login/import once; the pressed row spins until the host
       // answers, the others stay disabled so a double-click can't fork flows.
@@ -218,7 +288,7 @@
             row,
             quota: row.quota,
             onSwitch,
-            onLogout,
+            onLogout: (family, accountId) => requestLogout(family, accountId, row),
             onRefreshQuota,
             onResetQuota,
             key: row.id,
@@ -269,7 +339,7 @@
             className: 'osubs-login',
             ...startAttrs('primary'), onClick: () => begin('primary', () => onLogin(id)),
           },
-            h('span', null, id === 'chatgpt' ? t.chatgptLogin : id === 'grok' || id === 'kimi' || id === 'copilot' || id === 'cline' ? t.device : loggedIn ? t.addAccount : t.login),
+            h('span', null, id === 'chatgpt' ? t.chatgptLogin : id === 'grok' || id === 'kimi' || id === 'cline' ? t.device : loggedIn ? t.addAccount : t.login),
           ),
           id === 'grok' && h('button', {
             type: 'button',
@@ -309,39 +379,6 @@
             h('p', { className: 'osubs-hint' }, t.kimiKeyHint),
             h('div', { className: 'osubs-actions' },
               h(Button, { type: 'submit', variant: 'primary', disabled: !apiKey.trim(), label: t.kimiKeyGo }),
-            ),
-          ),
-          id === 'copilot' && h('button', {
-            type: 'button',
-            className: 'osubs-login',
-            'aria-expanded': showKey, onClick: () => toggleMethod('key'),
-          },
-            h('span', null, t.copilotLoginApiKey),
-          ),
-          id === 'copilot' && showKey && !busy && h('form', {
-            className: 'osubs-fields',
-            onSubmit: (event) => {
-              event.preventDefault()
-              onUseKey(id, apiKey)
-              setApiKey('')
-              setMethod('')
-              closeAdd()
-            },
-          },
-            h('input', {
-              className: 'osubs-input',
-              value: apiKey,
-              onChange: (event) => setApiKey(event.target.value),
-              placeholder: t.copilotKeyPlaceholder,
-              type: 'password',
-              autoFocus: true,
-              spellCheck: false,
-              'aria-label': t.copilotLoginApiKey,
-              autoComplete: 'off',
-            }),
-            h('p', { className: 'osubs-hint' }, t.copilotKeyHint),
-            h('div', { className: 'osubs-actions' },
-              h(Button, { type: 'submit', variant: 'primary', disabled: !apiKey.trim(), label: t.copilotKeyGo }),
             ),
           ),
           id === 'devin' && h('button', {
@@ -415,7 +452,7 @@
             className: 'osubs-login osubs-login-ghost',
             ...startAttrs('import'), onClick: () => begin('import', () => onImport(id), true),
           },
-            h('span', null, id === 'cursor' ? t.cursorImport : id === 'kimi' ? t.kimiImport : id === 'copilot' ? t.copilotImport : id === 'devin' ? t.devinImport : id === 'cline' ? t.clineImport : id === 'command-code' ? t.commandCodeImport : t.import),
+            h('span', null, id === 'cursor' ? t.cursorImport : id === 'kimi' ? t.kimiImport : id === 'devin' ? t.devinImport : id === 'cline' ? t.clineImport : id === 'command-code' ? t.commandCodeImport : t.import),
           ),
         ),
         id === 'ollama' && !busy && h('div', { className: 'osubs-logins' },
@@ -772,5 +809,18 @@
           ),
         ),
         ),
+        logoutFor && h(WarnDialog, {
+          t,
+          idPrefix: 'osubs-logout',
+          title: t.logoutConfirmTitle,
+          description: fill(t.logoutConfirmBody, { n: logoutFor.label }),
+          acknowledgeLabel: t.logoutConfirmAck,
+          confirmLabel: t.logoutConfirmOk,
+          closeLabel: t.dialogClose,
+          acknowledged: logoutAcked,
+          onAcknowledgedChange: setLogoutAcked,
+          onCancel: closeLogout,
+          onConfirm: confirmLogout,
+        }),
       )
     }

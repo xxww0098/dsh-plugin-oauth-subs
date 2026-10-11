@@ -321,9 +321,10 @@ test('GLM-5.2 keeps the official disabled switch; Turbo and other ids stay conse
 })
 
 test('glmMaxTokens uses the ZCode catalog output caps per model', () => {
-  assert.deepEqual(GLM_MODELS.map((model) => model.id), ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
+  assert.deepEqual(GLM_MODELS.map((model) => model.id), ['glm-5.3-flashx', 'glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
   assert.equal(glmMaxTokens('glm-5.3'), 128_000)
   assert.equal(glmMaxTokens('glm-5.3-flash'), 128_000)
+  assert.equal(glmMaxTokens('glm-5.3-flashx'), 128_000)
   assert.equal(glmMaxTokens('glm-5.2'), 128_000)
   assert.equal(glmMaxTokens('glm-5-turbo'), 64_000)
   const turbo = normalizeGlmAnthropicBody({ model: 'glm-5-turbo', messages: [{ role: 'user', content: 'hi' }] })
@@ -1402,24 +1403,27 @@ test('catalog includes GLM as Anthropic Messages (ZCode default)', () => {
   assert.equal(providers['oauth-glm'].api, 'anthropic-messages')
   assert.equal(providers['oauth-glm'].baseURL, 'http://127.0.0.1:8318/glm')
   const ids = providers['oauth-glm'].models.map((model) => model.id)
-  assert.deepEqual(ids, ['glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
+  assert.deepEqual(ids, ['glm-5.3-flashx', 'glm-5.3', 'glm-5.3-flash', 'glm-5-turbo'])
   // Base rows sit at the plan's 400K input cap; the official 1M window is the
   // row's custom-context ceiling, no longer an opt-in `-1m` sibling row.
+  // FlashX is the exception the plan serves at its full 1M window
+  // (glm/README.md 模型, 2026-10-10 live test).
   assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.3').contextWindow, 400_000)
   assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.3-flash').contextWindow, 400_000)
+  assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.3-flashx').contextWindow, 1_000_000)
   assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.3-1m'), undefined)
   assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.3-flash-1m'), undefined)
   assert.deepEqual(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.3').input, ['text'])
   assert.deepEqual(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.3-flash').input, ['text', 'image'])
+  assert.deepEqual(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.3-flashx').input, ['text', 'image'])
   assert.deepEqual(providers['oauth-glm'].models.find((model) => model.id === 'glm-5-turbo').input, ['text'])
   assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.3-flash').name, 'GLM-5.3-Flash')
+  assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.3-flashx').name, 'GLM-5.3-FlashX')
   assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5-turbo').name, 'GLM-5-Turbo')
   assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5-turbo').contextWindow, 200_000)
   assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5-turbo').maxTokens, 32_768)
-  // 5.2 / FlashX are not plan rows: 5.2 auto-routes to 5.3, FlashX is not yet
-  // on the plan.
+  // 5.2 is not a plan row: it auto-routes to 5.3.
   assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.2'), undefined)
-  assert.equal(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.3-flashx'), undefined)
   assert.deepEqual(providers['oauth-glm'].models.find((model) => model.id === 'glm-5.3').reasoningEfforts, {
     low: 'low',
     high: 'high',

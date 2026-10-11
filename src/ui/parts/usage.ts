@@ -3,20 +3,26 @@
 
     const FAMILY_ORDER = [
       'codex', 'chatgpt', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama',
-      'kimi', 'copilot', 'devin', 'cline', 'opencode-go', 'command-code',
+      'kimi', 'devin', 'cline', 'opencode-go', 'opencode-zen', 'command-code',
     ]
+    // OpenCode rides one account (one card, one vault) but two products: the
+    // rail entry is per product ('opencode-zen'), while usage rows carry the
+    // route id ('opencode-zen-chat'), so both spellings resolve to one name.
+    const OPENCODE_ZEN_IDS = ['opencode-zen', 'opencode-zen-chat', 'opencode-zen-responses', 'opencode-zen-messages']
     const FAMILY_NAME = {
       codex: 'Codex', chatgpt: 'ChatGPT', grok: 'Grok', glm: 'GLM', kiro: 'Kiro', antigravity: 'Antigravity',
-      cursor: 'Cursor', ollama: 'Ollama', kimi: 'Kimi', copilot: 'Copilot', devin: 'Devin',
+      cursor: 'Cursor', ollama: 'Ollama', kimi: 'Kimi', devin: 'Devin',
       cline: 'Cline', 'opencode-go': 'OpenCode Go', 'command-code': 'Command Code',
+      ...Object.fromEntries(OPENCODE_ZEN_IDS.map((id) => [id, 'OpenCode Zen'])),
     }
     const FAMILY_ICON = {
       codex: 'codex', chatgpt: 'openai', grok: 'grok', glm: 'zai', kiro: 'kiro', antigravity: 'antigravity',
-      cursor: 'cursor', ollama: 'ollama', kimi: 'kimi', copilot: 'copilot', devin: 'devin',
+      cursor: 'cursor', ollama: 'ollama', kimi: 'kimi', devin: 'devin',
       cline: 'cline', 'opencode-go': 'opencodeGo', 'command-code': 'commandCode',
+      ...Object.fromEntries(OPENCODE_ZEN_IDS.map((id) => [id, 'opencodeGo'])),
     }
     // Brand tints for rail icons whose LobeHub mark is mono-only; codex,
-    // kiro, antigravity, kimi, copilot and devin render their
+    // kiro, antigravity, kimi and devin render their
     // official colored SVG via `raw`, while grok/cursor/ollama/opencode-go
     // stay monochrome like their official marks. Hues follow the brand.
     const FAMILY_COLOR = {
@@ -28,7 +34,11 @@
     const USAGE_ONLY_FAMILIES = ['deepseek']
     const usageFamilyName = (t, id) => FAMILY_NAME[id] ?? (id === 'deepseek' ? t.usageDeepseek : id)
     const usageFamilyIcon = (id) => FAMILY_ICON[id] ?? (USAGE_ONLY_FAMILIES.includes(id) ? id : undefined)
-    const railIdOf = (fam) => String(fam ?? '').startsWith('opencode-go') ? 'opencode-go' : String(fam ?? '')
+    const railIdOf = (fam) => {
+      const id = String(fam ?? '')
+      if (id.startsWith('opencode-zen')) return 'opencode-zen'
+      return id.startsWith('opencode-go') ? 'opencode-go' : id
+    }
 
     // Usage rows from the `usage` RPC ({ at, rows }), per hour/family/model:
     // [hour epoch, family, model, calls, input, output, cacheRead, cacheWrite,
@@ -124,6 +134,9 @@
     // field (Kiro's never do: n/a, not 0%).
     const usageTokens = (sum) => sum.input + sum.output
     const usageHit = (sum) => (sum.cachePrompt ? sum.cacheRead / sum.cachePrompt : null)
+    // 首字延迟 / 输出 tok/s are per call, not per range — one burst reply
+    // averages into a range and says nothing. They stay on the 按模型 rows
+    // (modelSub), where the calls behind the mean are in the same line.
     const usageTtft = (sum) => (sum.timed ? sum.ttft / sum.timed : null)
     const usageSpeed = (sum) => (sum.decodeMs ? sum.decodeOut / (sum.decodeMs / 1000) : null)
 
@@ -138,8 +151,27 @@
       const copy = source.cloneNode(false)
       if (source.nodeType !== 1) return copy
       const style = getComputedStyle(source)
+      // An SVG image resolves the font on its own, so the width it measures
+      // for a string is not always the width the page measured. A
+      // shrink-to-fit text box frozen at the page's own pixel width then wraps
+      // inside its own box and paints over the line below it — the quota
+      // reset line colliding with 剩余 100% on a 额度 shot. A text-bearing box
+      // therefore keeps no width of its own; the image lays it out with its
+      // own metrics. Absolutely positioned boxes keep their geometry.
+      const carriesText = (Array.from(source.childNodes) as any[]).some(
+        (node: any) => node.nodeType === 3 && String(node.nodeValue ?? '').trim() !== '')
+      // ...and only while the box is exactly as wide as its text: a box that is
+      // already truncating it (scrollWidth > clientWidth) keeps the width the
+      // page gave it, so the image truncates the same way.
+      const releaseWidth = carriesText
+        && style.position !== 'absolute' && style.position !== 'fixed'
+        && source.scrollWidth <= source.clientWidth + 1
       let text = ''
-      for (let i = 0; i < style.length; i++) text += `${style[i]}:${style.getPropertyValue(style[i])};`
+      for (let i = 0; i < style.length; i++) {
+        const name = style[i]
+        if (releaseWidth && (name === 'width' || name === 'inline-size')) continue
+        text += `${name}:${style.getPropertyValue(name)};`
+      }
       // The element's own inline style goes last: a bar still animating toward
       // its `height: %` is captured at its target, not mid-transition.
       copy.setAttribute('style', `${text}animation:none;transition:none;${source.getAttribute('style') ?? ''}`)
@@ -336,10 +368,10 @@
     }
 
     /** The footer every shared image carries: plugin + version, repo, date, scope. */
-    const shotFooter = (t, { version, repo, at, scope }) => ({
+    const shotFooter = (t, { version, repo, at, scope, atLabel }: any) => ({
       title: version && version !== '—' ? `${t.pluginAboutTitle} v${version}` : t.pluginAboutTitle,
       repo: String(repo).replace(/^https?:\/\//, ''),
-      date: fill(t.usageAnalyzed, stamp(at)),
+      date: atLabel ?? fill(t.usageAnalyzed, stamp(at)),
       scope,
     })
 
@@ -421,9 +453,12 @@
       return { busy: shot?.phase === 'busy', start, layer }
     }
 
-    function ShareButton({ t, busy, disabled, onClick }) {
+    // `hint` is the button's hover title. 额度 passes the masking note (its
+    // image hides account identities); 用量 / 榜单 leave it off — their
+    // images carry no account identity.
+    function ShareButton({ t, busy, disabled, onClick, hint }) {
       return h(Button, {
-        size: 'sm', disabled: disabled || busy, onClick,
+        size: 'sm', disabled: disabled || busy, onClick, title: hint,
         label: h('span', { className: 'osubs-refresh' + (busy ? ' osubs-refresh--spin' : '') }, h(IconShare), busy ? t.usageSharing : t.usageShare),
       })
     }
@@ -509,8 +544,6 @@
       // Hours: every 6th. Days: all 7; at 30, every 5th back from today.
       const labelled = (i) => (hourly ? i % 6 === 0 : range <= 7 || (range - 1 - i) % 5 === 0)
       const hit = usageHit(total)
-      const ttft = usageTtft(total)
-      const speed = usageSpeed(total)
       const inOut = (sum) => fill(t.usageInOut, { a: compactNumber(sum.input), b: compactNumber(sum.output) })
       const pricedModels = ranked.filter((row) => row.priced).length
       const costSub = ranked.length && pricedModels < ranked.length
@@ -570,7 +603,6 @@
           stat(t.usageTokens, compactNumber(usageTokens(total)), inOut(total)),
           stat(t.usageCacheRead, hit != null || total.cacheRead ? compactNumber(total.cacheRead) : '—', hit != null ? fill(t.usageHit, `${Math.round(hit * 100)}%`) : t.usageHitNa, t.usageHitNote),
           stat(t.usageCalls, total.calls.toLocaleString('en-US'), total.failed ? fill(t.usageFailed, total.failed) : ''),
-          stat(t.usageTtft, ttft != null ? formatMs(ttft) : '—', speed != null ? fill(t.usageSpeed, Math.round(speed)) : ''),
           stat(t.usageCost, total.cost > 0 || pricedModels ? compactUsd(total.cost) : '—', costSub, t.usageCostNote)),
         total.calls === 0 && total.failed === 0
           ? h('p', { className: 'osubs-hint' }, t.usageEmpty)

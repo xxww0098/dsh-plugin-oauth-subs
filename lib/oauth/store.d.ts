@@ -55,4 +55,11 @@ export declare function saveSession(provider: string, session: StoredSession, pa
 }): Promise<StoredAccount | undefined>;
 export declare function switchAccount(provider: string, id: string, path?: string): Promise<void>;
 export declare function deleteSession(provider: string, path?: string, id?: string, source?: StoredAccount): Promise<boolean>;
+/**
+ * Remove retired families' vaults from the file itself. Reading already
+ * ignores them; this deletes the tokens on disk. Runs on the same chain as
+ * every other write, rewrites nothing when there is nothing to remove, and
+ * returns the family ids it dropped.
+ */
+export declare function purgeRetiredSessions(path?: string): Promise<string[]>;
 export declare function publicSession(provider: string, session: StoredSession | undefined): Record<string, unknown> | undefined;

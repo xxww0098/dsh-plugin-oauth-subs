@@ -74,17 +74,17 @@ test('writeOutboundPrefs round-trips the url', async () => {
   const path = outboundProxyPath(dir)
   assert.equal(path.endsWith(OUTBOUND_PROXY_FILE), true)
   const saved = await writeOutboundPrefs(path, { url: 'http://127.0.0.1:7890' })
-  assert.deepEqual(saved, { url: 'http://127.0.0.1:7890' })
+  assert.deepEqual(saved, { mode: 'custom', url: 'http://127.0.0.1:7890' }, 'a bare {url} write means custom')
   const text = await readFile(path, 'utf8')
   assert.equal(JSON.parse(text).url, 'http://127.0.0.1:7890')
   const loaded = await readOutboundPrefs(path)
-  assert.deepEqual(loaded, { url: 'http://127.0.0.1:7890' })
+  assert.deepEqual(loaded, { mode: 'custom', url: 'http://127.0.0.1:7890' })
 })
 
 test('readOutboundPrefs returns defaults when the file is missing', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-proxy-'))
   assert.deepEqual(await readOutboundPrefs(join(dir, 'nope.json')), defaultOutboundPrefs())
-  assert.deepEqual(normalizeOutboundPrefs({ url: 1 }), { url: '' })
+  assert.deepEqual(normalizeOutboundPrefs({ url: 1 }), { mode: 'auto', url: '' })
 })
 
 test('configureOutbound injects dispatcher except for loopback', async () => {
@@ -116,6 +116,7 @@ test('configureOutbound without agentFor resolves ready and fails loudly on a de
   const session = configureOutbound({
     path: outboundProxyPath(dir),
     env: { HTTPS_PROXY: 'http://127.0.0.1:9' },
+    readSystemProxy: () => undefined,
   })
   await session.ready
   assert.equal(session.snapshot().configured, true)
@@ -135,6 +136,7 @@ test('configureOutbound keeps ready settling when the agent cannot be built', as
   const session = configureOutbound({
     path,
     env: {},
+    readSystemProxy: () => undefined,
     fetchFn: async (input) => {
       seen.push(input)
       return { ok: true }
@@ -150,7 +152,7 @@ test('configureOutbound keeps ready settling when the agent cannot be built', as
   assert.deepEqual(seen, ['http://127.0.0.1:8318/health'])
 })
 
-test('configureOutbound setUrl leaves prefs and state alone when the agent cannot be built', async () => {
+test('configureOutbound setPrefs leaves prefs and state alone when the agent cannot be built', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-proxy-'))
   const path = outboundProxyPath(dir)
   await writeOutboundPrefs(path, { url: 'http://127.0.0.1:7890' })
@@ -158,6 +160,7 @@ test('configureOutbound setUrl leaves prefs and state alone when the agent canno
   const session = configureOutbound({
     path,
     env: {},
+    readSystemProxy: () => undefined,
     fetchFn: async (input, init: any = {}) => {
       seen.push(init.dispatcher)
       return { ok: true }
@@ -169,20 +172,21 @@ test('configureOutbound setUrl leaves prefs and state alone when the agent canno
   })
   await session.ready
   const before = session.snapshot()
-  await assert.rejects(() => session.setUrl('http://10.0.0.9:8080'), /cannot build/)
+  await assert.rejects(() => session.setPrefs({ mode: 'custom', url: 'http://10.0.0.9:8080' }), /cannot build/)
   assert.deepEqual(session.snapshot(), before)
-  assert.equal(await readFile(path, 'utf8'), '{"url":"http://127.0.0.1:7890"}\n')
+  assert.equal(await readFile(path, 'utf8'), '{"mode":"custom","url":"http://127.0.0.1:7890"}\n')
   await outboundFetch('https://chatgpt.com/backend-api/codex/models')
   assert.deepEqual(seen.at(-1), { uri: 'http://127.0.0.1:7890' })
 })
 
-test('configureOutbound setUrl persists and rebuilds the agent', async () => {
+test('configureOutbound setPrefs persists and rebuilds the agent', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-subs-proxy-'))
   const path = outboundProxyPath(dir)
   const seen = []
   const session = configureOutbound({
     path,
     env: { HTTPS_PROXY: 'http://env:9' },
+    readSystemProxy: () => undefined,
     fetchFn: async (input, init = {}) => {
       seen.push(init.dispatcher)
       return { ok: true }
@@ -191,19 +195,20 @@ test('configureOutbound setUrl persists and rebuilds the agent', async () => {
   })
   await session.ready
   assert.deepEqual(session.snapshot(), {
+    mode: 'auto',
     url: 'http://env:9',
     source: 'env',
     configured: true,
   })
-  await session.setUrl('http://user:secret@10.0.0.2:8080')
+  await session.setPrefs({ mode: 'custom', url: 'http://user:secret@10.0.0.2:8080' })
   assert.equal(session.snapshot().source, 'settings')
   assert.equal(session.snapshot().url, 'http://***@10.0.0.2:8080')
   assert.equal((await readOutboundPrefs(path)).url, 'http://user:secret@10.0.0.2:8080')
   await outboundFetch('https://chatgpt.com/backend-api/codex/responses')
   assert.deepEqual(seen.at(-1), { uri: 'http://user:secret@10.0.0.2:8080' })
-  await session.setUrl('')
+  await session.setPrefs({ mode: 'auto' })
   assert.equal(session.snapshot().source, 'env')
-  await assert.rejects(() => session.setUrl('socks5://127.0.0.1:7891'), /Invalid proxy URL/)
+  await assert.rejects(() => session.setPrefs({ mode: 'custom', url: 'socks5://127.0.0.1:7891' }), /Invalid proxy URL/)
 })
 
 test('outboundFetch goes direct through undici before configuration and defaults user-agent to node', async (t) => {
@@ -233,6 +238,7 @@ test('configureOutbound honors NO_PROXY and waits for saved settings before choo
   const session = configureOutbound({
     path,
     env: { NO_PROXY: 'api2.cursor.sh' },
+    readSystemProxy: () => undefined,
     fetchFn: async (input, init: any = {}) => {
       seen.push(init.dispatcher)
       return { ok: true }
@@ -284,7 +290,7 @@ test('outboundFetch keeps an idle connection past undici\'s 4s default, direct a
     sockets.add(upstream)
   })
   const proxyPort = await listen(proxy)
-  const plain = createOutboundSession({ env: {} })
+  const plain = createOutboundSession({ env: {}, readSystemProxy: () => undefined })
   const proxied = createOutboundSession({ configUrl: `http://127.0.0.1:${proxyPort}`, env: {} })
   t.after(async () => {
     await Promise.all([plain.close(), proxied.close()])

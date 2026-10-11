@@ -15,10 +15,9 @@ import { CURSOR_MODELS } from './cursor/index.js'
 import { OLLAMA_MODELS } from '../apikey/ollama/index.js'
 import { COMMAND_CODE_MAX_TOKENS, COMMAND_CODE_MODELS } from '../apikey/command-code/index.js'
 import { KIMI_MODELS } from './kimi/index.js'
-import { COPILOT_MODELS } from './copilot/index.js'
 import { DEVIN_MODELS } from './devin/index.js'
 import { CLINE_MODELS } from './cline/index.js'
-import { OPENCODE_GO_ROUTES } from '../apikey/opencode-go/models.js'
+import { OPENCODE_GO_ROUTES, OPENCODE_ZEN_ROUTES } from '../apikey/opencode-go/models.js'
 import { modelSupportsFastMode } from '../utils/fast-mode.js'
 import { familyMaxContextWindow, formatWindow, maxContextWindowOf } from '../utils/context-mode.js'
 
@@ -55,7 +54,6 @@ export interface BuildProvidersOptions {
   ollamaModels?: readonly ModelRow[]
   kiroModels?: readonly ModelRow[]
   kimiModels?: readonly ModelRow[]
-  copilotModels?: readonly ModelRow[]
   devinModels?: readonly ModelRow[]
   glmModels?: readonly ModelRow[]
   clineModels?: readonly ModelRow[]
@@ -169,10 +167,10 @@ export const MODEL_CONTEXT_MAX = 2_097_152
 /**
  * A row's custom input-context ceiling: the vendor's large window when the
  * row advertises one (`maxContextWindow`, mirroring Codex CLI
- * `max_context_window`: Codex 872K, GLM 1M, Copilot GPT rows' vendor window
- * above the 256K default), else its catalog window. `-fast` twins share the
- * base model's ceiling. The lookup is family-scoped because vendor ids
- * collide across families (`gpt-6-sol` in codex and copilot). Rows must come
+ * `max_context_window`: Codex 872K, GLM 1M above the plan's default input
+ * window), else its catalog window. `-fast` twins share the base model's
+ * ceiling. The lookup is family-scoped because vendor ids collide across
+ * families. Rows must come
  * from an un-overridden catalog build — an already-customized `contextWindow`
  * would shrink the ceiling on re-edit.
  */
@@ -240,21 +238,28 @@ export function withDefaultEffort(value: HarnessProvider, level: string | undefi
   return { ...value, reasoning: level, models: mapped }
 }
 
-export const FAMILY_IDS = Object.freeze(['codex', 'chatgpt', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline', 'command-code'])
+export const FAMILY_IDS = Object.freeze(['codex', 'chatgpt', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'devin', 'cline', 'command-code'])
 
 /**
- * OpenCode Go picker families: direct API-key routes, not OAuth logins, and
- * no loopback hop. The picker lists only the supplemental model(s) the plugin
- * writes itself; DSH's built-in `opencode-go` catalog route carries the rest.
- * Without `OPENCODE_API_KEY` the family is only locked (checkbox disabled).
+ * OpenCode picker families: direct API-key routes, not OAuth logins, and no
+ * loopback hop. Two products share the one OpenCode account behind
+ * `OPENCODE_API_KEY` — Go (subscription meters) and Zen (pay-as-you-go) —
+ * so each route id is its own picker family while the credential, vault,
+ * Console session and account card stay one. The plugin writes the complete
+ * catalog it ships on these routes; DSH's built-in `opencode-go` / `opencode`
+ * catalog routes stay the user's to enable from the host's Models page.
+ * Without `OPENCODE_API_KEY` every one of them is only locked (checkbox off).
  */
-export const APIKEY_FAMILY_IDS = Object.freeze(OPENCODE_GO_ROUTES.map((route) => route.id))
+export const APIKEY_FAMILY_IDS = Object.freeze([
+  ...OPENCODE_GO_ROUTES.map((route) => route.id),
+  ...OPENCODE_ZEN_ROUTES.map((route) => route.id),
+])
 
 /** Every family the Settings picker can toggle. */
 export const MODEL_FAMILY_IDS = Object.freeze([...FAMILY_IDS, ...APIKEY_FAMILY_IDS])
 
 /** Dropped families. Still unset leftover harness routes; never written back. */
-export const RETIRED_FAMILY_IDS = Object.freeze(['opencode', 'anthropic'])
+export const RETIRED_FAMILY_IDS = Object.freeze(['opencode', 'anthropic', 'copilot'])
 
 export function ownedProviderIds(prefix: string): string[] {
   return [...FAMILY_IDS, ...RETIRED_FAMILY_IDS].map((id) => `${prefix}-${id}`)
@@ -344,11 +349,6 @@ function kimiHarnessModels(kimiModels: readonly ModelRow[] | undefined): readonl
   return KIMI_MODELS
 }
 
-function copilotHarnessModels(copilotModels: readonly ModelRow[] | undefined): readonly ModelRow[] {
-  if (Array.isArray(copilotModels) && copilotModels.length > 0) return copilotModels
-  return COPILOT_MODELS
-}
-
 function devinHarnessModels(devinModels: readonly ModelRow[] | undefined): readonly ModelRow[] {
   if (Array.isArray(devinModels) && devinModels.length > 0) return devinModels
   return DEVIN_MODELS
@@ -393,7 +393,7 @@ function commandCodeHarnessModels(commandCodeModels: readonly ModelRow[] | undef
   return rows.map((model: ModelRow) => ({ ...model, maxTokens: model.maxTokens ?? COMMAND_CODE_MAX_TOKENS }))
 }
 
-export function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels, clineModels, commandCodeModels, chatgptModels = undefined, contexts }: BuildProvidersOptions): Record<string, HarnessProvider> {
+export function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaModels, kiroModels, kimiModels, devinModels, glmModels, clineModels, commandCodeModels, chatgptModels = undefined, contexts }: BuildProvidersOptions): Record<string, HarnessProvider> {
   const providers: Record<string, HarnessProvider> = {}
   if (loggedIn.codex) {
     providers[`${prefix}-codex`] = {
@@ -520,25 +520,6 @@ export function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaM
       models: kimiHarnessModels(kimiModels).map(toHarnessModel),
     }
   }
-  if (loggedIn.copilot) {
-    const copilotRows = copilotHarnessModels(copilotModels).map(toHarnessModel)
-    const copilotHasEffort = copilotRows.some((model) => model.reasoningEfforts && typeof model.reasoningEfforts === 'object')
-    providers[`${prefix}-copilot`] = {
-      displayName: 'Subs · GitHub Copilot · Chat',
-      api: HARNESS_COMPLETIONS_API,
-      apiKeyEnv: OAUTH_CREDENTIAL_REF,
-      // Completions hop is /copilot/v1/chat/completions. DSH posts
-      // `{baseURL}/v1/chat/completions`, so baseURL is `${origin}/copilot`.
-      baseURL: `${origin}/copilot`,
-      ...(copilotHasEffort ? {
-        compat: {
-          supportsReasoningEffort: true,
-          thinkingFormat: 'openai',
-        },
-      } : {}),
-      models: copilotRows,
-    }
-  }
   if (loggedIn.devin) {
     const devinRows = devinHarnessModels(devinModels).map(toHarnessModel)
     const devinHasEffort = devinRows.some((model) => model.reasoningEfforts && typeof model.reasoningEfforts === 'object')
@@ -616,16 +597,15 @@ export function describeProviders(providers: Record<string, any>) {
   }))
 }
 
-export function catalogProviders({ prefix, origin, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels = undefined, clineModels, commandCodeModels, chatgptModels = undefined, contexts }: Omit<BuildProvidersOptions, 'loggedIn'>) {
+export function catalogProviders({ prefix, origin, cursorModels, ollamaModels, kiroModels, kimiModels, devinModels, glmModels = undefined, clineModels, commandCodeModels, chatgptModels = undefined, contexts }: Omit<BuildProvidersOptions, 'loggedIn'>) {
   const providers = buildProviders({
     prefix,
     origin,
-    loggedIn: { codex: true, chatgpt: true, grok: true, glm: true, kiro: true, antigravity: true, cursor: true, ollama: true, kimi: true, copilot: true, devin: true, cline: true, 'command-code': true },
+    loggedIn: { codex: true, chatgpt: true, grok: true, glm: true, kiro: true, antigravity: true, cursor: true, ollama: true, kimi: true, devin: true, cline: true, 'command-code': true },
     cursorModels,
     ollamaModels,
     kiroModels,
     kimiModels,
-    copilotModels,
     devinModels,
     glmModels,
     clineModels,
@@ -633,15 +613,17 @@ export function catalogProviders({ prefix, origin, cursorModels, ollamaModels, k
     chatgptModels,
     contexts,
   })
-  // OpenCode Go is API key, not OAuth: the picker lists only the supplemental
-  // route this plugin writes; the controller decides locked vs usable from
-  // OPENCODE_API_KEY. DSH serves the built-in `opencode-go` catalog itself.
-  for (const route of OPENCODE_GO_ROUTES) {
+  // OpenCode is API key, not OAuth: the picker lists only the routes this
+  // plugin writes; the controller decides locked vs usable from
+  // OPENCODE_API_KEY. DSH serves the built-in `opencode-go` / `opencode`
+  // catalogs itself and the plugin never writes those profiles.
+  for (const route of [...OPENCODE_GO_ROUTES, ...OPENCODE_ZEN_ROUTES]) {
     providers[route.id] = {
       displayName: route.displayName,
       api: route.api,
       apiKeyEnv: OPENCODE_GO_API_KEY_ENV,
       baseURL: route.baseURL,
+      ...('headers' in route && route.headers !== undefined ? { headers: { ...route.headers } } : {}),
       models: route.models.map(toHarnessModel),
     }
   }
@@ -664,7 +646,6 @@ export function familyOfProvider(provider: string): string {
   if (String(provider).endsWith('-cursor')) return 'cursor'
   if (String(provider).endsWith('-ollama')) return 'ollama'
   if (String(provider).endsWith('-kimi')) return 'kimi'
-  if (String(provider).endsWith('-copilot')) return 'copilot'
   if (String(provider).endsWith('-devin')) return 'devin'
   if (String(provider).endsWith('-cline')) return 'cline'
   if (String(provider).endsWith('-command-code')) return 'command-code'
@@ -690,12 +671,23 @@ export function familyCatalogKeys(catalog: Record<string, HarnessProvider>, fami
  */
 const HARNESS_MODEL_AGENT: Record<string, string> = {
   codex: 'Codex', chatgpt: 'ChatGPT', grok: 'Grok', glm: 'GLM', kiro: 'Kiro', antigravity: 'Antigravity',
-  cursor: 'Cursor', ollama: 'Ollama', kimi: 'Kimi', copilot: 'Copilot', devin: 'Devin',
-  cline: 'Cline', 'opencode-go': 'OpenCode Go', 'command-code': 'Command Code',
+  cursor: 'Cursor', ollama: 'Ollama', kimi: 'Kimi', devin: 'Devin',
+  cline: 'Cline', 'command-code': 'Command Code',
+  // The two OpenCode products keep separate agent labels even though they share
+  // one account: settings.yaml shows the alias without the provider group, so
+  // `OpenCode Zen/gpt-5.5` must not read as Go.
+  'opencode-go': 'OpenCode Go', 'opencode-zen': 'OpenCode Zen',
+}
+
+/** The product a route id belongs to; OpenCode ids carry their own prefix. */
+function opencodeProduct(provider: string): string | undefined {
+  if (String(provider).startsWith('opencode-zen')) return 'opencode-zen'
+  if (String(provider).startsWith('opencode-go')) return 'opencode-go'
+  return undefined
 }
 
 export function harnessModelAlias(provider: string, id: string): string {
-  const family = String(provider).startsWith('opencode-go') ? 'opencode-go' : familyOfProvider(provider)
+  const family = opencodeProduct(provider) ?? familyOfProvider(provider)
   return `${HARNESS_MODEL_AGENT[family] ?? family}/${id}`
 }
 

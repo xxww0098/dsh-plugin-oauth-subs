@@ -8,7 +8,6 @@ import { kiroCacheSessionId, kiroConversationId, pinKiroSystemPrefix, KIRO_STABL
 import { applyCursorCache, cursorCacheHeaders, cursorCacheSessionId, cursorConversationId, CURSOR_STABLE_SESSION } from '../lib/oauth/cursor/cache.js'
 import { applyOllamaCache, ollamaCacheHeaders, ollamaCacheSessionId, OLLAMA_STABLE_SESSION } from '../lib/apikey/ollama/cache.js'
 import { applyKimiCache, kimiCacheHeaders, kimiCacheSessionId, KIMI_STABLE_SESSION, resetKimiPins } from '../lib/oauth/kimi/cache.js'
-import { applyCopilotCache, copilotCacheHeaders, copilotCacheSessionId, COPILOT_STABLE_SESSION, resetCopilotPins } from '../lib/oauth/copilot/cache.js'
 import { applyClineCache, CLINE_STABLE_SESSION, isClineFallback, resetClinePins } from '../lib/oauth/cline/cache.js'
 import { applyDevinCache } from '../lib/oauth/devin/cache.js'
 import { openaiToKiro } from '../lib/oauth/kiro/request.js'
@@ -16,7 +15,6 @@ import { openaiToAntigravity } from '../lib/oauth/antigravity/request.js'
 import { openaiToCursor } from '../lib/oauth/cursor/request.js'
 import { openaiToDevin } from '../lib/oauth/devin/request.js'
 import { isKimiFallback } from '../lib/oauth/kimi/cache.js'
-import { isCopilotFallback } from '../lib/oauth/copilot/cache.js'
 import { isKiroFallback } from '../lib/oauth/kiro/cache.js'
 import { isCursorFallback, resetCursorSystemPins } from '../lib/oauth/cursor/cache.js'
 import { isAntigravityFallback, resetAntigravitySystemPins } from '../lib/oauth/antigravity/cache.js'
@@ -36,7 +34,6 @@ test('each family owns its cache id helper (same clip, separate modules)', () =>
   assert.equal(cursorCacheSessionId(dirty), 'session-772f7f3a-foo')
   assert.equal(ollamaCacheSessionId(dirty), 'session-772f7f3a-foo')
   assert.equal(kimiCacheSessionId(dirty), 'session-772f7f3a-foo')
-  assert.equal(copilotCacheSessionId(dirty), 'session-772f7f3a-foo')
   assert.equal(codexCacheSessionId(''), undefined)
   assert.equal(grokCacheSessionId(null), undefined)
 })
@@ -237,26 +234,6 @@ test('Kimi cache strips Codex/Grok fields and does not invent a shard header', (
   resetKimiPins()
 })
 
-test('Copilot cache strips Codex/Grok fields and writes X-Interaction-Id', () => {
-  resetCopilotPins()
-  const { payload, cacheSessionId } = applyCopilotCache({
-    session_id: 'sess-copilot',
-    prompt_cache_key: 'codex-style',
-    prompt_cache_retention: '24h',
-    model: 'gpt-4.1',
-  })
-  assert.equal(cacheSessionId, 'sess-copilot')
-  assert.equal(payload.prompt_cache_key, undefined)
-  assert.equal(payload.prompt_cache_retention, undefined)
-  assert.equal(payload.session_id, undefined)
-  assert.deepEqual(copilotCacheHeaders(cacheSessionId), { 'x-interaction-id': 'sess-copilot' })
-  assert.equal(Object.hasOwn(copilotCacheHeaders(cacheSessionId), 'session-id'), false)
-  assert.equal(Object.hasOwn(copilotCacheHeaders(cacheSessionId), 'x-grok-conv-id'), false)
-  assert.equal(applyCopilotCache({}).cacheSessionId, COPILOT_STABLE_SESSION)
-  assert.deepEqual(copilotCacheHeaders(), { 'x-interaction-id': COPILOT_STABLE_SESSION })
-  resetCopilotPins()
-})
-
 // What pi-ai sends once a Completions route has `cacheRetention: 'long'`.
 const HOST_ID = 'session-6f1c2a9e-0b7d-4c55-9a43-2e8f7d1b3c60'
 const hostBody = (model) => ({
@@ -277,13 +254,11 @@ test('Cursor derives the conversation id from prompt_cache_key before deleting i
 test('every Completions family keys on the host session id and sends no prompt_cache_* upstream', () => {
   resetKiroSystemPins()
   resetKimiPins()
-  resetCopilotPins()
   resetClinePins()
   const families = {
     cursor: () => applyCursorCache(hostBody('composer-2')),
     ollama: () => applyOllamaCache(hostBody('deepseek-v4.1-flash')),
     kimi: () => applyKimiCache(hostBody('k3')),
-    copilot: () => applyCopilotCache(hostBody('gpt-4.1')),
     cline: () => applyClineCache(hostBody('cline-free/deepseek-v4.1-flash')),
     devin: () => applyDevinCache(hostBody('swe-2')),
     // Custom transports build a fresh wire body from the host payload.
@@ -305,14 +280,12 @@ test('every Completions family keys on the host session id and sends no prompt_c
   }
   resetKiroSystemPins()
   resetKimiPins()
-  resetCopilotPins()
   resetClinePins()
 })
 
 // Each family's system prompt as it reaches the wire, via the same id the proxy derives.
 const FALLBACK_FAMILIES = {
   kimi: (body) => applyKimiCache(body).payload.messages[0].content,
-  copilot: (body) => applyCopilotCache(body).payload.messages[0].content,
   cline: (body) => applyClineCache(body).payload.messages[0].content,
   kiro: (body) => openaiToKiro(body, { conversationId: kiroConversationId(body) })
     .conversationState.history[0].userInputMessage.content,
@@ -322,11 +295,11 @@ const FALLBACK_FAMILIES = {
   devin: (body) => openaiToDevin(body).fields.prompt,
 }
 const MODELS = {
-  kimi: 'k3', copilot: 'gpt-4.1', cline: 'cline-free/deepseek-v4.1-flash', kiro: 'claude-sonnet-4.5',
+  kimi: 'k3', cline: 'cline-free/deepseek-v4.1-flash', kiro: 'claude-sonnet-4.5',
   cursor: 'composer-2', antigravity: 'gemini-3.7-flash-high', devin: 'swe-2',
 }
 const resetAllPins = () => {
-  resetKimiPins(); resetCopilotPins(); resetClinePins(); resetKiroSystemPins(); resetCursorSystemPins(); resetAntigravitySystemPins()
+  resetKimiPins(); resetClinePins(); resetKiroSystemPins(); resetCursorSystemPins(); resetAntigravitySystemPins()
 }
 
 test('two id-less sessions each keep their own system prompt (fallback ids never pin)', () => {
@@ -421,7 +394,6 @@ for (const [family, frontOf] of Object.entries(PINNED_FRONTS)) {
 test('fallback predicates match the bare constant and its model-suffixed form only', () => {
   const cases = {
     kimi: [isKimiFallback, KIMI_STABLE_SESSION],
-    copilot: [isCopilotFallback, COPILOT_STABLE_SESSION],
     cline: [isClineFallback, CLINE_STABLE_SESSION],
     kiro: [isKiroFallback, KIRO_STABLE_SESSION],
     cursor: [isCursorFallback, CURSOR_STABLE_SESSION],
@@ -442,7 +414,6 @@ test('fallback predicates match the bare constant and its model-suffixed form on
   assert.equal(isAntigravityFallback(antigravitySessionIdOf({ model: 'gemini-3.7-flash-high' })), true)
   assert.equal(isDevinFallback(devinConversationId({ model: 'swe-2' })), true)
   assert.equal(isKimiFallback(applyKimiCache({}).cacheSessionId), true)
-  assert.equal(isCopilotFallback(applyCopilotCache({}).cacheSessionId), true)
   assert.equal(isClineFallback(applyClineCache({}).cacheSessionId), true)
 })
 

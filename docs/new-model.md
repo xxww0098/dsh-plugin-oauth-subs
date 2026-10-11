@@ -33,7 +33,7 @@ npm run models -- <id>[,…]   # 只看某几家（如 cursor,devin）
 | 家族 | 原因 | 怎么办 |
 |---|---|---|
 | command-code | `manual`——没有模型端点，目录来自 CLI bundle 注册表 | 升 npm 钉住版本后重读 bundle（`pD` 注册表 + `kr` effort 表 + `kD/lD/…` 价目表），手改 |
-| kimi / copilot 等 | 当前 profile 没有已存账号 → `SKIPPED` | 换 `--profile` 或登录一个账号再跑 |
+| kimi 等 | 当前 profile 没有已存账号 → `SKIPPED` | 换 `--profile` 或登录一个账号再跑 |
 | cursor 等精选键 | 新 id 打 `>` 只报告不写入 | 按该家 README 的精选规则手动挑 |
 | ollamaRetired | 退役清单，不是活目录 | 退役公告时手改 |
 
@@ -85,8 +85,8 @@ grep -rn "<旧版本号或被改的数值>" src test docs | grep -v lib/    # �
 | cursor 一串 `>` | 精选键只报告不写入，按 docs 表手挑 | cursor/README.md 模型 |
 | opencode-go 想删 curl 直接能看到官方页面列着的 id | 无认证列表是公开缓存视图，带 key 的才是订阅视图 | docs/error.md 2026-09-30 目录刷新日 |
 | 同一家族同一天两次结果不一样 | 上游当天就能增删档位/变体，快照≠稳定态 | docs/error.md 2026-09-30 目录刷新日 |
-| kimi / copilot `SKIPPED` | 该 profile 没有已存账号，换 `--profile` 或先登录 | models.md「更新流程」 |
-| copilot `?` 一串（2026-10-03 实测 19 行：responses-only gpt 系 + grok×3 + `gpt-5.3-codex`/`gpt-5.4-nano`/`gpt-5.4-mini` + `sonnet-4.6` + `mai-code-1.1-flash` + `kimi-k2.7-code` + `gemini-3.5/3.6-flash`） | 能力视图不含它们：端点规则 + 账号/政策过滤，未确认下架不删 | copilot/README.md 模型 + docs/error.md 2026-09-30 |
+| kimi `SKIPPED` | 该 profile 没有已存账号，换 `--profile` 或先登录 | models.md「更新流程」 |
+| cline `? spacexai/grok-4.7` | feed 已改列 `x-ai/grok-4.7`；旧 id 活测仍 200（2026-10-10），不 `--prune` | cline/README.md 模型 |
 
 ### 探针的坑（都踩过一遍）
 
@@ -96,7 +96,6 @@ grep -rn "<旧版本号或被改的数值>" src test docs | grep -v lib/    # �
 - opencode.ai 按 UA 指纹回 Cloudflare 1010 拦 python urllib，curl 可过；出站请求必须带 `x-opencode-session`。
 - cursor docs 的 `.md` 表 WebFetch 会 404，curl 直接拿；窗口列不在 pricing 表里，在 `/docs/models/<slug>.md` 页（slug 以 `docs/llms.txt` 为准）。
 - 新收 completions 行先发一条最小活测，看回包有没有 `reasoning_content`——有就是 DeepSeek 方言，compat 不能用默认 plain（opencode-go/README.md 模型）。
-- copilot 探查只认 `tid=` session：`gh` 和 `@github/copilot` CLI 的 token 都是 `gho_`，`/copilot_internal/v2/token` 一律 403（CLI 的在 login keychain，服务名 `copilot-cli`，两条目同值）；设备码（`copilotDeviceSpec`）是唯一换票路径。premium 0% 的账号所有非基础模型回 `400 model_not_supported` 不是 429，活测前先查 `copilot_internal/user`（docs/error.md 2026-09-30）。
 
 ### command-code 升钉 = 重读 bundle（最大的单块工作）
 
@@ -124,4 +123,4 @@ grep -rn "<旧版本号或被改的数值>" src test docs | grep -v lib/    # �
 
 **当天后续**：Devin 源在几小时内撤掉了 `off`（`*-none`）档与 `-thinking-fast` 行（只剩 low–max 与 `-fast`），目录随源收掉；command-code 升钉 1.72.2 后也从 CLI bundle 收到 `gpt-6.1-sol`（1.70/1.71.0），cline feed 同日上了 `openai/gpt-6.1-sol`。教训有二：**先对齐钉住版本，再下"源里没有"的结论**；**上游当天就能增删档位/变体，收行当天的快照不代表稳定态**（复核见 [`docs/error.md`](error.md) 2026-09-30 目录刷新日）。
 
-同期各源：grok/kiro/antigravity/cline/ollama/opencode-go 都没有；command-code 的 CLI bundle（钉住 1.69.0）注册表和价目表都没打包 6.1——这就是「目录源没有就只能等上游」的情形。codex 第一遍也没报，但不是没有——钉住的 `CODEX_CLIENT_VERSION=0.155.1` 低于 6.1 的下发门（≥ 0.159.0），升到 npm latest 后 `+ gpt-6.1-sol`（272K/872K、image、off–max、`fastTier`→自动孪生 `-fast`）就出现了。copilot 的活载荷也列了 `gpt-6.1-sol`，但 `supported_endpoints` 只有 `/responses`——hop 只说 completions，拒收（端点规则先例，copilot/README.md 模型）。
+同期各源：grok/kiro/antigravity/cline/ollama/opencode-go 都没有；command-code 的 CLI bundle（钉住 1.69.0）注册表和价目表都没打包 6.1——这就是「目录源没有就只能等上游」的情形。codex 第一遍也没报，但不是没有——钉住的 `CODEX_CLIENT_VERSION=0.155.1` 低于 6.1 的下发门（≥ 0.159.0），升到 npm latest 后 `+ gpt-6.1-sol`（272K/872K、image、off–max、`fastTier`→自动孪生 `-fast`）就出现了。

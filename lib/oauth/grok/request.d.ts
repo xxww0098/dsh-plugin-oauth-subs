@@ -14,6 +14,7 @@
  *
  * Cache identity lives in `./cache.ts`.
  */
+import { type GrokPinDecision } from './cache.js';
 /**
  * Grok Fast is a real model id (`grok-4.7-build-fast`), not Codex Priority,
  * so the shared `applyFastMode` peel is bypassed for this family. A stale
@@ -21,4 +22,11 @@
  * model, and `service_tier` is stripped (xAI never takes it).
  */
 export declare function normalizeGrokModel(payload: any): any;
-export declare function normalizeGrokResponsesBody(payload: any): any;
+export declare function normalizeGrokResponsesBody(payload: any, observe?: (decision: GrokPinDecision) => void): any;
+/** Keep diagnostics beside the final wire body, never inside it. */
+export declare function prepareGrokResponsesBody(payload: any): {
+    payload: any;
+    cacheSessionId: string;
+    grokModel: any;
+    observeResponse: import("../families.js").FamilyResponseObserver | undefined;
+};

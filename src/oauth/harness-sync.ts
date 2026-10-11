@@ -12,6 +12,7 @@ import {
   OPENCODE_GO_ROUTES,
   OPENCODE_GO_SESSION_HEADER,
   OPENCODE_GO_SESSION_ID,
+  OPENCODE_ZEN_ROUTES,
 } from '../apikey/opencode-go/models.js'
 import {
   assertDshServiceableProvider,
@@ -51,19 +52,24 @@ export async function peekPiAiProviders(settings) {
   }
 }
 
-function opencodeGoRouteValue(route, models) {
+/**
+ * One owned OpenCode route's value. Go's routes carry the mandatory
+ * `x-opencode-session` shard; Zen's carry no headers (its docs require none),
+ * so the field is written only when the route declares headers at all.
+ */
+function opencodeRouteValue(route, models) {
   return {
     displayName: route.displayName,
     apiKeyEnv: OPENCODE_GO_API_KEY_ENV,
     api: route.api,
     baseURL: route.baseURL,
-    headers: { ...route.headers },
+    ...(route.headers === undefined ? {} : { headers: { ...route.headers } }),
     models,
   }
 }
 
 /** A route this plugin owns: same key env, protocol, origin, and only catalog ids. */
-function isOwnedOpencodeGoRoute(route, existing) {
+function isOwnedOpencodeRoute(route, existing) {
   if (existing == null || typeof existing !== 'object') return false
   if (existing.apiKeyEnv !== OPENCODE_GO_API_KEY_ENV) return false
   if (existing.api !== route.api || existing.baseURL !== route.baseURL) return false
@@ -89,25 +95,101 @@ function isLegacyOpencodeGoBuiltin(existing) {
   return headerKeys.length === 1 && existing.headers[OPENCODE_GO_SESSION_HEADER] === OPENCODE_GO_SESSION_ID
 }
 
-function sameOpencodeGoHeaders(existing, route) {
-  const headers = existing?.headers
-  if (headers == null || typeof headers !== 'object') return false
+/** Route headers must match the declared set exactly (missing = empty set). */
+function sameOpencodeRouteHeaders(existing, route) {
+  const headers = existing?.headers ?? {}
+  if (typeof headers !== 'object') return false
+  const expected = route.headers ?? {}
   const keys = Object.keys(headers)
-  return keys.length === 1 && headers[OPENCODE_GO_SESSION_HEADER] === route.headers?.[OPENCODE_GO_SESSION_HEADER]
+  const expectedKeys = Object.keys(expected)
+  return keys.length === expectedKeys.length
+    && expectedKeys.every((key) => headers[key] === expected[key])
 }
 
-function sameOpencodeGoRoute(route, existing, value) {
+function sameOpencodeRoute(route, existing, value) {
   const models = value.models
   const efforts = (row) => JSON.stringify(Object.entries(row?.reasoningEfforts ?? {}).sort())
   if (existing.displayName !== route.displayName) return false
   if (existing.api !== route.api || existing.baseURL !== route.baseURL) return false
   if (existing.apiKeyEnv !== OPENCODE_GO_API_KEY_ENV) return false
-  if (!sameOpencodeGoHeaders(existing, route)) return false
+  if (!sameOpencodeRouteHeaders(existing, route)) return false
   if (existing.reasoning !== value.reasoning) return false
   return Array.isArray(existing.models)
     && existing.models.length === models.length
     && existing.models.every((model, index) => model?.id === models[index]?.id && model?.name === models[index]?.name
       && efforts(model) === efforts(models[index]))
+}
+
+/**
+ * Write one OpenCode product's routes. Both products share the picker
+ * selection, the context overrides and the default-effort map; they differ in
+ * origin, headers and the Go-only legacy-profile cleanup, so those arrive as
+ * `routes` and `prepare`. A route the plugin does not recognize as its own
+ * (different api / baseURL / key env, ids outside the catalog) is a user
+ * profile and is left untouched; a route the plugin owns is rewritten only
+ * when something actually changed.
+ */
+async function ensureOpencodeRoutes(settings, { routes: routeSet, selected, apiKeySet = true, contexts, efforts, apply = true, prepare }: any = {}) {
+  if (settings == null || typeof settings.mutate !== 'function') return { status: 'unavailable' }
+  const providers = await peekPiAiProviders(settings)
+  if (providers === undefined) return { status: 'unreadable' }
+  const locked = apiKeySet === false
+  const selection = selected === undefined ? null : new Set(selected)
+  const overrides = contexts ?? {}
+  const mutations: any[] = []
+  const routes: any[] = []
+
+  // Product-specific pre-writes (Go's retired built-in profile cleanup).
+  const prepared = prepare?.(providers)
+  if (prepared) {
+    mutations.push(...(prepared.mutations ?? []))
+    routes.push(...(prepared.routes ?? []))
+  }
+
+  // One plugin-owned route per wire protocol; each follows the picker
+  // selection and, on Go, carries the required x-opencode-session header.
+  for (const route of routeSet) {
+    const models = locked
+      ? []
+      : (selection === null
+          ? route.models
+          : route.models.filter((model) => selection.has(`${route.id}/${model.id}`)))
+        .map((model) => {
+          const contextWindow = overrides[`${route.id}/${model.id}`]
+          return {
+            ...model,
+            ...(contextWindow === undefined ? {} : { contextWindow }),
+            name: harnessModelAlias(route.id, model.id),
+          }
+        })
+    const value = withDefaultEffort(opencodeRouteValue(route, models), efforts?.[route.id])
+    const existing = providers[route.id]
+    if (existing === undefined) {
+      if (models.length > 0) {
+        mutations.push({ op: 'set', path: ['providers', route.id], value })
+        routes.push(route.id)
+      }
+    } else if (isOwnedOpencodeRoute(route, existing)) {
+      if (models.length === 0) {
+        mutations.push({ op: 'unset', path: ['providers', route.id] })
+        routes.push(route.id)
+      } else if (!sameOpencodeRoute(route, existing, value)) {
+        mutations.push({ op: 'set', path: ['providers', route.id], value })
+        routes.push(route.id)
+      }
+    }
+  }
+
+  if (mutations.length === 0) return { status: 'present' }
+  // `apply: false` hands the writes back so sync lands them in the same
+  // llm-pi-ai mutate as the family routes: one host reconcile, not two.
+  if (!apply) return { status: 'pending', routes, mutations }
+  try {
+    await settings.mutate('llm-pi-ai', mutations)
+  } catch (error) {
+    return { status: 'error', error: error instanceof Error ? error.message : String(error) }
+  }
+  return { status: 'written', routes }
 }
 
 /**
@@ -130,69 +212,29 @@ function sameOpencodeGoRoute(route, existing, value) {
  * required `x-opencode-session` header. Without `OPENCODE_API_KEY` nothing is
  * served, so DSH's model list stays clean.
  */
-export async function ensureOpencodeGoRoute(settings, { selected, apiKeySet = true, contexts, efforts, apply = true }: any = {}) {
-  if (settings == null || typeof settings.mutate !== 'function') return { status: 'unavailable' }
-  const providers = await peekPiAiProviders(settings)
-  if (providers === undefined) return { status: 'unreadable' }
-  const locked = apiKeySet === false
-  const selection = selected === undefined ? null : new Set(selected)
-  const overrides = contexts ?? {}
-  const mutations: any[] = []
-  const routes: any[] = []
-
-  // Built-in catalog route: never written or refreshed here. Only the exact
-  // profile the plugin used to auto-create is removed; a user's own
-  // providers.opencode-go (bare apiKeyEnv from DSH's Models page, api/models,
-  // extra fields) stays untouched.
-  if (isLegacyOpencodeGoBuiltin(providers[OPENCODE_GO_BUILTIN_ROUTE_ID])) {
-    mutations.push({ op: 'unset', path: ['providers', OPENCODE_GO_BUILTIN_ROUTE_ID] })
-    routes.push(OPENCODE_GO_BUILTIN_ROUTE_ID)
-  }
-
-  // One plugin-owned route per OpenCode Go wire protocol; each follows the
-  // picker selection and carries the required x-opencode-session header.
-  for (const route of OPENCODE_GO_ROUTES) {
-    const models = locked
-      ? []
-      : (selection === null
-          ? route.models
-          : route.models.filter((model) => selection.has(`${route.id}/${model.id}`)))
-        .map((model) => {
-          const contextWindow = overrides[`${route.id}/${model.id}`]
-          return {
-            ...model,
-            ...(contextWindow === undefined ? {} : { contextWindow }),
-            name: harnessModelAlias(route.id, model.id),
-          }
-        })
-    const value = withDefaultEffort(opencodeGoRouteValue(route, models), efforts?.[route.id])
-    const existing = providers[route.id]
-    if (existing === undefined) {
-      if (models.length > 0) {
-        mutations.push({ op: 'set', path: ['providers', route.id], value })
-        routes.push(route.id)
+export function ensureOpencodeGoRoute(settings, options: any = {}) {
+  return ensureOpencodeRoutes(settings, {
+    ...options,
+    routes: OPENCODE_GO_ROUTES,
+    prepare: (providers) => {
+      if (!isLegacyOpencodeGoBuiltin(providers[OPENCODE_GO_BUILTIN_ROUTE_ID])) return undefined
+      return {
+        mutations: [{ op: 'unset', path: ['providers', OPENCODE_GO_BUILTIN_ROUTE_ID] }],
+        routes: [OPENCODE_GO_BUILTIN_ROUTE_ID],
       }
-    } else if (isOwnedOpencodeGoRoute(route, existing)) {
-      if (models.length === 0) {
-        mutations.push({ op: 'unset', path: ['providers', route.id] })
-        routes.push(route.id)
-      } else if (!sameOpencodeGoRoute(route, existing, value)) {
-        mutations.push({ op: 'set', path: ['providers', route.id], value })
-        routes.push(route.id)
-      }
-    }
-  }
+    },
+  })
+}
 
-  if (mutations.length === 0) return { status: 'present' }
-  // `apply: false` hands the writes back so sync lands them in the same
-  // llm-pi-ai mutate as the family routes: one host reconcile, not two.
-  if (!apply) return { status: 'pending', routes, mutations }
-  try {
-    await settings.mutate('llm-pi-ai', mutations)
-  } catch (error) {
-    return { status: 'error', error: error instanceof Error ? error.message : String(error) }
-  }
-  return { status: 'written', routes }
+/**
+ * OpenCode Zen's three routes, on the same credential as Go (`OPENCODE_API_KEY`):
+ * the account, vault, Console session and card stay one, so this writer has no
+ * legacy profile to clean up and never touches DSH's own `providers.opencode`
+ * (the built-in Zen catalog route is the user's to enable). Same selection,
+ * context-override and effort rules as Go; the routes carry no headers.
+ */
+export function ensureOpencodeZenRoute(settings, options: any = {}) {
+  return ensureOpencodeRoutes(settings, { ...options, routes: OPENCODE_ZEN_ROUTES })
 }
 
 async function assertPersistedProviders(settings, expected: Record<string, any>) {

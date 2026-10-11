@@ -14,10 +14,11 @@
 | [`credits-frame.ts`](credits-frame.ts) | grok.com `GetGrokCreditsConfig` 的 gRPC-web 帧解码 |
 | [`reset-frame.ts`](reset-frame.ts) | grok.com 重置卡 `GetRemainingResets` / `RedeemReset` 的 gRPC-web 编解码 + 公开卡 id 哈希 |
 | [`request.ts`](request.ts) | DSH Responses body：钉 leading system，多余 snapshot 挂 **input 后缀**；真 Fast id（`grok-4.7-build-fast`）原样透传、残留 `-fast` 别名剥掉、`service_tier` 永不发。不抬顶层 `instructions` |
-| [`cache.ts`](cache.ts) | `prompt_cache_key` + grok-build 头（`x-grok-conv-id` / `session-id` / `req-id` / `model-override`）。禁止带 Codex `session-id` |
+| [`cache.ts`](cache.ts) | `prompt_cache_key` + grok-build 头；家族内、按兼容版本保存的进程级 leading-prefix LRU，兼容热重载保留，进程重启或显式 reset 清空。禁止带 Codex `session-id` |
+| [`diagnostics.ts`](diagnostics.ts) | 私有、轮转的缓存诊断：进程内加盐指纹、钉住原因／模块代次、输入公共前缀字节数、上游真实缓存读数；不改变请求、响应或重试 |
 
 调度：[`../proxy.ts`](../proxy.ts) `family === 'grok'` → `normalizeGrokResponsesBody` + `applyGrokCache` + `grokAffinityHeaders`。
-额度：[`quota.ts`](quota.ts) `fetchGrokQuota` / `parseGrokBilling` / `applyGrokCreditsSnapshot`；重置卡 `fetchGrokResetTokens` / `consumeGrokResetToken`。
+额度：[`quota.ts`](quota.ts) `fetchGrokQuota` / `parseGrokBilling` / `applyGrokCreditsSnapshot`；重置卡 `fetchGrokResetTokens` / `consumeGrokResetToken`；registry reset 钩子 `spendGrokResetCard`。
 套餐：[`../plan.ts`](../plan.ts) + `GROK_TIER_NAMES`（JWT 数字档 0–7）。
 
 ## 登录
@@ -81,7 +82,15 @@ DSH  →  本机 Responses 代理  →  POST https://api.x.ai/v1/responses
 | 4 | `applyGrokCache` | body `prompt_cache_key` = conv id；删 `session_id` / `prompt_cache_retention` |
 | 5 | `grokAffinityHeaders` | `x-grok-conv-id` = `x-grok-session-id` = conv id；每请求一个 `x-grok-req-id`；`x-grok-model-override`；重试 `x-grok-transient-retry` |
 
-判定：后面一块 **512 token** 的 cache 且复用 < 10% = **affinity miss**（打到错误分片），不是前缀被改写。分析器标签在 `src/utils/analyze-session.ts`，不要把 GLM 的 576 token 残骸当成这件事。
+前缀 LRU 仍只保留 64 个最近使用的 conv id；状态的兼容版本键只属 Grok，不落盘，也不与其他家族共享。兼容的模块图热重载复用它，标题请求的不同 prompt 仍会重钉，显式 reset 对旧／新模块引用都生效。
+
+`grok-cache.jsonl` 放在插件私有 dataDir，0600、约 1 MB 轮转，只保留一份 `.1`；写入用不跟随链接的文件描述符，校验私有父目录／属主并通过描述符收紧权限。会话键、账号、请求 id、模型／工具／输入内容仅作进程随机密钥 HMAC 指纹；明文模型只允许目录中的 id。
+
+诊断基线最多 64 个 profile／账号／会话／模型组合、每个最多 512 个输入条目指纹，待写日志最多 128 行。重试对每个账号只建立一次逻辑请求基线，无 id 的共享 fallback 不建立跨请求基线。复用已序列化的 normalized wire bytes，不为日志重复 stringify 整个请求；请求诊断工作预算 2 MiB，超预算只对开头字节与总长度作明确标记的样本指纹（`requestFingerprintTruncated`／`diagnosticWorkTruncated`），前缀／共享字节数据为 null，不冒充完整证据。
+
+观察整个上游字节流，包含提交输出后的终止 usage；支持 CR／LF／CRLF 分片边界和 JSON 非流，每帧／JSON 保留至多 2 MiB。缺少或无效的 `cached_tokens` 记 `null`，显式零才记 `0`；超限帧或写盘失败不影响对话。公共前缀**字节数**仅是完整输入条目序列化字节数的和，不含数组分隔符，也不是缓存 token 数或命中率。
+
+分析器的 < 10% 复用 `affinity_miss` 是低缓存启发式标签，不是上游分片证据；还需对照钉住原因、前缀指纹、压缩标记和停顿。不要把 GLM 的 576 token 残骸当成同一信号。
 
 健康长会话：加权命中 ≥ 80%，**零** affinity miss。压缩 / 计划重建造成的 0 命中不是分片 miss。
 

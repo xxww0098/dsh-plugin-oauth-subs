@@ -120,7 +120,7 @@
 
     // LobeHub icons from @lobehub/icons-static-svg@1.95.1
     // https://unpkg.com/@lobehub/icons-static-svg@1.95.1/icons/{grok,zai,cursor,ollama,cline,github,opencode,openai}.svg
-    // `raw` entries are the official colored variants (icons/{codex,kiro,antigravity,kimi,copilot,devin,deepseek}-color.svg)
+    // `raw` entries are the official colored variants (icons/{codex,kiro,antigravity,kimi,devin,deepseek}-color.svg)
     // inlined verbatim so the rail shows real brand marks without a dep.
     const TAB_ICONS = {
       // Usage view only: the host's own DeepSeek providers (not a plugin family).
@@ -138,8 +138,6 @@
       // LobeHub `Kimi` icon (`@lobehub/icons-static-svg` icons/kimi-color.svg);
       // the official K is #fff so a black tile is added for it to read.
       kimi: { raw: '<rect width="24" height="24" rx="5" fill="#000"/><path d="M21.846 0a1.923 1.923 0 110 3.846H20.15a.226.226 0 01-.227-.226V1.923C19.923.861 20.784 0 21.846 0z" fill="#1783FF"/><path d="M11.065 11.199l7.257-7.2c.137-.136.06-.41-.116-.41H14.3a.164.164 0 00-.117.051l-7.82 7.756c-.122.12-.302.013-.302-.179V3.82c0-.127-.083-.23-.185-.23H3.186c-.103 0-.186.103-.186.23V19.77c0 .128.083.23.186.23h2.69c.103 0 .186-.102.186-.23v-3.25c0-.069.025-.135.069-.178l2.424-2.406a.158.158 0 01.205-.023l6.484 4.772a7.677 7.677 0 003.453 1.283c.108.012.2-.095.2-.23v-3.06c0-.117-.07-.212-.164-.227a5.028 5.028 0 01-2.027-.807l-5.613-4.064c-.117-.078-.132-.279-.028-.381z" fill="#fff"/>' },
-      // LobeHub `Copilot` icon (`@lobehub/icons-static-svg` icons/copilot-color.svg)
-      copilot: { raw: '<path d="M17.533 1.829A2.528 2.528 0 0015.11 0h-.737a2.531 2.531 0 00-2.484 2.087l-1.263 6.937.314-1.08a2.528 2.528 0 012.424-1.833h4.284l1.797.706 1.731-.706h-.505a2.528 2.528 0 01-2.423-1.829l-.715-2.453z" fill="url(#osubs-copilot-0)" transform="translate(0 1)"/><path d="M6.726 20.16A2.528 2.528 0 009.152 22h1.566c1.37 0 2.49-1.1 2.525-2.48l.17-6.69-.357 1.228a2.528 2.528 0 01-2.423 1.83h-4.32l-1.54-.842-1.667.843h.497c1.124 0 2.113.75 2.426 1.84l.697 2.432z" fill="url(#osubs-copilot-1)" transform="translate(0 1)"/><path d="M15 0H6.252c-2.5 0-4 3.331-5 6.662-1.184 3.947-2.734 9.225 1.75 9.225H6.78c1.13 0 2.12-.753 2.43-1.847.657-2.317 1.809-6.359 2.713-9.436.46-1.563.842-2.906 1.43-3.742A1.97 1.97 0 0115 0" fill="url(#osubs-copilot-2)" transform="translate(0 1)"/><path d="M15 0H6.252c-2.5 0-4 3.331-5 6.662-1.184 3.947-2.734 9.225 1.75 9.225H6.78c1.13 0 2.12-.753 2.43-1.847.657-2.317 1.809-6.359 2.713-9.436.46-1.563.842-2.906 1.43-3.742A1.97 1.97 0 0115 0" fill="url(#osubs-copilot-3)" transform="translate(0 1)"/><path d="M9 22h8.749c2.5 0 4-3.332 5-6.663 1.184-3.948 2.734-9.227-1.75-9.227H17.22c-1.129 0-2.12.754-2.43 1.848a1149.2 1149.2 0 01-2.713 9.437c-.46 1.564-.842 2.907-1.43 3.743A1.97 1.97 0 019 22" fill="url(#osubs-copilot-4)" transform="translate(0 1)"/><path d="M9 22h8.749c2.5 0 4-3.332 5-6.663 1.184-3.948 2.734-9.227-1.75-9.227H17.22c-1.129 0-2.12.754-2.43 1.848a1149.2 1149.2 0 01-2.713 9.437c-.46 1.564-.842 2.907-1.43 3.743A1.97 1.97 0 019 22" fill="url(#osubs-copilot-5)" transform="translate(0 1)"/><defs><radialGradient cx="85.44%" cy="100.653%" fx="85.44%" fy="100.653%" gradientTransform="scale(-.8553 -1) rotate(50.927 2.041 -1.946)" id="osubs-copilot-0" r="105.116%"><stop offset="9.6%" stop-color="#00AEFF"/><stop offset="77.3%" stop-color="#2253CE"/><stop offset="100%" stop-color="#0736C4"/></radialGradient><radialGradient cx="18.143%" cy="32.928%" fx="18.143%" fy="32.928%" gradientTransform="scale(.8897 1) rotate(52.069 .193 .352)" id="osubs-copilot-1" r="95.612%"><stop offset="0%" stop-color="#FFB657"/><stop offset="63.4%" stop-color="#FF5F3D"/><stop offset="92.3%" stop-color="#C02B3C"/></radialGradient><radialGradient cx="82.987%" cy="-9.792%" fx="82.987%" fy="-9.792%" gradientTransform="scale(-1 -.9441) rotate(-70.872 .142 1.17)" id="osubs-copilot-4" r="140.622%"><stop offset="6.6%" stop-color="#8C48FF"/><stop offset="50%" stop-color="#F2598A"/><stop offset="89.6%" stop-color="#FFB152"/></radialGradient><linearGradient id="osubs-copilot-2" x1="39.465%" x2="46.884%" y1="12.117%" y2="103.774%"><stop offset="15.6%" stop-color="#0D91E1"/><stop offset="48.7%" stop-color="#52B471"/><stop offset="65.2%" stop-color="#98BD42"/><stop offset="93.7%" stop-color="#FFC800"/></linearGradient><linearGradient id="osubs-copilot-3" x1="45.949%" x2="50%" y1="0%" y2="100%"><stop offset="0%" stop-color="#3DCBFF"/><stop offset="24.7%" stop-color="#0588F7" stop-opacity="0"/></linearGradient><linearGradient id="osubs-copilot-5" x1="83.507%" x2="83.453%" y1="-6.106%" y2="21.131%"><stop offset="5.8%" stop-color="#F8ADFA"/><stop offset="70.8%" stop-color="#A86EDD" stop-opacity="0"/></linearGradient></defs>' },
       // LobeHub `Devin` colored icon (`@lobehub/icons-static-svg` icons/devin-color.svg)
       devin: { raw: '<path d="M2.033 9.867l2.554 1.483a.589.589 0 00.592 0l2.554-1.483.01-.008a.608.608 0 00.11-.084l.013-.015a.631.631 0 00.076-.1c.003-.005.008-.01.01-.016a.558.558 0 00.052-.125l.007-.028a.611.611 0 00.019-.14V7.868c0-.572.307-1.105.8-1.392a1.595 1.595 0 011.598 0l1.277.742a.54.54 0 00.129.053l.028.01c.044.01.088.015.133.016h.006l.013-.002a.587.587 0 00.27-.074l.011-.004 2.554-1.483a.596.596 0 00.297-.516V2.253a.595.595 0 00-.297-.516L12.293.257a.587.587 0 00-.591 0L9.148 1.737l-.01.01a.609.609 0 00-.109.083l-.014.015a.632.632 0 00-.076.1c-.003.005-.008.01-.01.016a.57.57 0 00-.052.124l-.007.028a.612.612 0 00-.018.14v1.483c0 .572-.307 1.105-.8 1.393a1.597 1.597 0 01-1.599 0l-1.276-.742a.603.603 0 00-.13-.053l-.028-.008a.658.658 0 00-.133-.018h-.02a.57.57 0 00-.269.074c-.003.002-.008.002-.012.005L2.033 5.872a.596.596 0 00-.297.515v2.966c0 .213.113.41.297.515z" fill="#3969CA"/><path d="M15.943 10.607a1.596 1.596 0 011.599 0l1.276.74c.041.025.085.04.13.055l.028.008c.043.01.088.016.133.018h.005c.005 0 .01-.002.014-.003a.474.474 0 00.122-.016l.021-.005a.616.616 0 00.126-.052c.004-.002.009-.002.013-.005l2.554-1.482a.597.597 0 00.297-.516V6.383a.596.596 0 00-.297-.515l-2.552-1.483a.587.587 0 00-.592 0l-2.553 1.482-.011.008a.61.61 0 00-.108.084l-.014.016a.637.637 0 00-.076.1c-.003.005-.008.01-.01.016a.57.57 0 00-.052.124l-.007.029a.612.612 0 00-.018.14v1.482c0 .572-.307 1.105-.8 1.393a1.597 1.597 0 01-1.599 0l-1.276-.742a.584.584 0 00-.13-.053l-.028-.008a.62.62 0 00-.133-.018h-.02a.587.587 0 00-.269.074l-.012.004L9.15 10a.596.596 0 00-.296.516v2.966c0 .212.112.409.296.515l2.554 1.483s.008.002.012.005c.04.022.082.04.126.052l.02.004a.57.57 0 00.123.017l.014.002h.006c.054 0 .108-.01.16-.025a.587.587 0 00.13-.054l1.277-.741a1.597 1.597 0 012.398 1.392v1.482c0 .049.007.095.019.14l.007.028a.619.619 0 00.051.125c.004.006.008.01.01.016a.6.6 0 00.076.1l.014.015c.033.032.069.06.108.084.004.002.006.006.011.008l2.554 1.483a.59.59 0 00.593 0l2.554-1.483a.597.597 0 00.296-.516v-2.965a.595.595 0 00-.296-.515a.54.54 0 00-.126-.051c-.007-.003-.013-.003-.02-.005a.635.635 0 00-.125-.017h-.018a.557.557 0 00-.16.026.588.588 0 00-.13.053l-1.276.742a1.595 1.595 0 01-1.598 0 1.615 1.615 0 010-2.785l-.005-.001z" fill="#21C19A"/><path d="M14.848 18.265l-2.554-1.482-.012-.005a.526.526 0 00-.126-.052c-.007-.002-.014-.002-.02-.005a.64.64 0 00-.124-.017h-.02a.56.56 0 00-.16.026.588.588 0 00-.13.053l-1.276.742a1.594 1.594 0 01-1.598 0c-.493-.286-.8-.82-.8-1.393V14.65a.563.563 0 00-.018-.14l-.008-.028a.604.604 0 00-.051-.124l-.01-.017a.603.603 0 00-.076-.1l-.014-.015a.596.596 0 00-.109-.084c-.003-.002-.005-.006-.01-.008L5.178 12.65a.587.587 0 00-.591 0l-2.554 1.483a.596.596 0 00-.297.516v2.965c0 .213.113.41.297.516l2.554 1.483.012.004a.618.618 0 00.267.074l.016.002h.007a.55.55 0 00.16-.026.584.584 0 00.129-.053l1.277-.742a1.597 1.597 0 012.398 1.393v1.482c0 .05.007.095.019.14l.007.028c.013.044.03.085.051.125l.01.016c.022.036.047.07.076.1l.014.015c.032.032.069.06.109.084l.01.008 2.554 1.483a.587.587 0 00.593 0l2.554-1.483a.596.596 0 00.296-.515v-2.966a.596.596 0 00-.296-.516h-.002z" fill="#0294DE"/>' },
       github: { d: 'M12 0c6.63 0 12 5.276 12 11.79-.001 5.067-3.29 9.567-8.175 11.187-.6.118-.825-.25-.825-.56 0-.398.015-1.665.015-3.242 0-1.105-.375-1.813-.81-2.181 2.67-.295 5.475-1.297 5.475-5.822 0-1.297-.465-2.344-1.23-3.169.12-.295.54-1.503-.12-3.125 0 0-1.005-.324-3.3 1.209a11.32 11.32 0 00-3-.398c-1.02 0-2.04.133-3 .398-2.295-1.518-3.3-1.209-3.3-1.209-.66 1.622-.24 2.83-.12 3.125-.765.825-1.23 1.887-1.23 3.169 0 4.51 2.79 5.527 5.46 5.822-.345.294-.66.81-.765 1.577-.69.31-2.415.81-3.495-.973-.225-.354-.9-1.223-1.845-1.209-1.005.015-.405.56.015.781.51.28 1.095 1.327 1.23 1.666.24.663 1.02 1.93 4.035 1.385 0 .988.015 1.916.015 2.196 0 .31-.225.664-.825.56C3.303 21.374-.003 16.867 0 11.791 0 5.276 5.37 0 12 0z' },
@@ -200,7 +198,25 @@
       )
     }
 
-    function RailItem({ item, current, onSelect }) {
+    /** The rail's "models on" mark: a switch drawn in its on state, the same
+        idiom as the switches on the 模型 page — knob right, track an outline —
+        so the row reads without a legend. */
+    function RailOnMark() {
+      return h('svg', {
+        className: 'osubs-rail-sw',
+        viewBox: '0 0 16 10', width: 16, height: 10,
+        'aria-hidden': 'true',
+      },
+        h('rect', { x: 0.5, y: 0.5, width: 15, height: 9, rx: 4.5, fill: 'none', stroke: 'currentColor', strokeOpacity: 0.5 }),
+        h('circle', { cx: 11.5, cy: 5, r: 2.9, fill: 'currentColor' }),
+      )
+    }
+
+    function RailItem({ item, current, onSelect, t }) {
+      const on = item.models?.on ?? 0
+      // The tail is one right-aligned pair: the models-on mark, then the
+      // view's own count (accounts / models / models in use).
+      const modelsOn = on > 0 ? fill(t.railModelsOn, { n: on, m: item.models.total }) : ''
       return h('button', {
         type: 'button',
         'aria-current': current === item.id ? 'true' : undefined,
@@ -212,7 +228,17 @@
             ? h(IconGrid)
             : item.icon && h(TabIcon, { name: item.icon, className: 'osubs-rail-icon' })),
         h('span', { className: 'osubs-rail-name' }, item.name),
-        item.count !== undefined && h('span', { className: 'osubs-rail-count' }, item.count),
+        h('span', { className: 'osubs-rail-tail' },
+          // Nothing renders at zero: an unmarked row means nothing is on,
+          // so a marked row stays a real signal.
+          modelsOn ? h('span', {
+            className: 'osubs-rail-on',
+            role: 'img',
+            'aria-label': modelsOn,
+            title: modelsOn,
+          }, h(RailOnMark), on) : null,
+          item.count !== undefined && h('span', { className: 'osubs-rail-count' }, item.count),
+        ),
       )
     }
 
@@ -273,6 +299,17 @@
       if (family === 'cursor' && row.kind === 'product') {
         if (row.product === 'auto' || row.key === 'product:auto') return t.cursorComposer
         if (row.product === 'api' || row.key === 'product:api') return t.cursorApi
+      }
+      // 'opencode-zen' is the Zen-side card of the same OpenCode account, so it
+      // resolves the same rows (5h / 7d / Monthly and the Zen wallet kinds).
+      if (family === 'opencode-go' || family === 'opencode-zen') {
+        if (row.label) return row.label
+        if (row.kind === 'primary') return '5h'
+        if (row.kind === 'weekly') return '7d'
+        if (row.kind === 'monthly') return 'Monthly'
+        // Zen (prepaid) side of the same account card: the wallet only.
+        if (row.kind === 'zen-balance') return t.opencodeGoZenBalance
+        if (row.kind === 'zen-credit') return t.opencodeGoZenCredit
       }
       if (row.kind === 'product' && row.product) return row.product
       if (row.kind === 'primary') {
@@ -345,6 +382,18 @@
           h('span', { className: 'osubs-mono' }, amount),
         )
       }
+      // OpenCode Zen rows: state-only head rows (no percent bar) — the prepaid
+      // wallet of the same account that carries the Go subscription.
+      if (row.kind === 'zen-balance' || row.kind === 'zen-credit') {
+        const amount = [
+          formatUsd(Number(row.remaining ?? 0)),
+          typeof row.total === 'number' ? ` / ${formatUsd(row.total)}` : '',
+        ].join('')
+        return h('div', { className: 'osubs-qrow-head' },
+          h('span', { style: { color: 'var(--osubs-muted)' } }, rowLabel(row, t, family)),
+          h('span', { className: 'osubs-mono' }, amount),
+        )
+      }
       const remaining = remainingPercentOf(row)
       const tokens = row.unit === 'tokens' && row.used !== undefined && row.total !== undefined
       const usd = row.unit === 'usd'
@@ -355,7 +404,7 @@
             ? `${formatUsd(row.used)} / ${formatUsd(row.total)}`
             : `${formatAmount(row.used)} / ${formatAmount(row.total)}`
         : ''
-      const reset = formatReset(row.resetAt, t)
+      const reset = family === 'opencode-go' ? formatMeterReset(row.resetAt, t) : formatReset(row.resetAt, t)
       return h('div', { className: 'osubs-qrow' },
         h(QuotaMeter, {
           t,
@@ -579,7 +628,11 @@
       )
     }
 
-    function WarnDialog({ t, description, acknowledged, onAcknowledgedChange, onCancel, onConfirm }) {
+    // The one destructive-confirm dialog: an alertdialog with the action's
+    // consequence, an explicit acknowledgement checkbox, and the confirm that
+    // only unlocks once it is ticked. Callers name their own action (reset
+    // cards, account 退出); the reset-card copy stays the default.
+    function WarnDialog({ t, title, description, acknowledgeLabel, confirmLabel, closeLabel, idPrefix = 'osubs-warn', acknowledged, onAcknowledgedChange, onCancel, onConfirm }) {
       useEffect(() => {
         const onKey = (event) => {
           if (event.key === 'Escape') onCancel()
@@ -587,15 +640,19 @@
         window.addEventListener('keydown', onKey)
         return () => window.removeEventListener('keydown', onKey)
       }, [onCancel])
+      const heading = title || t.quotaResetWarnTitle
+      const ack = acknowledgeLabel || t.quotaResetAck
+      const ok = confirmLabel || t.quotaResetConfirmOk
+      const close = closeLabel || t.quotaResetClose
       if (typeof HostRisk === 'function') {
         return h(HostRisk, {
           open: true,
-          title: t.quotaResetWarnTitle,
+          title: heading,
           description,
-          acknowledgeLabel: t.quotaResetAck,
+          acknowledgeLabel: ack,
           cancelLabel: t.cancel,
-          closeLabel: t.quotaResetClose,
-          confirmLabel: t.quotaResetConfirmOk,
+          closeLabel: close,
+          confirmLabel: ok,
           acknowledged,
           onAcknowledgedChange,
           onCancel,
@@ -608,22 +665,22 @@
           className: 'osubs-dsw-card',
           role: 'alertdialog',
           'aria-modal': 'true',
-          'aria-labelledby': 'osubs-warn-title',
-          'aria-describedby': 'osubs-warn-body',
+          'aria-labelledby': `${idPrefix}-title`,
+          'aria-describedby': `${idPrefix}-body`,
         },
           h('div', { className: 'osubs-dsw-head' },
-            h('h2', { id: 'osubs-warn-title', className: 'osubs-dsw-title' }, t.quotaResetWarnTitle),
+            h('h2', { id: `${idPrefix}-title`, className: 'osubs-dsw-title' }, heading),
             h('button', {
               type: 'button',
               className: 'osubs-dsw-x',
-              'aria-label': t.quotaResetClose,
+              'aria-label': close,
               onClick: onCancel,
             }, h(IconClose)),
           ),
           h('div', { className: 'osubs-dsw-body' },
             h('div', { className: 'osubs-dsw-warning' },
               h(IconWarning),
-              h('p', { id: 'osubs-warn-body' }, description),
+              h('p', { id: `${idPrefix}-body` }, description),
             ),
             h('label', { className: 'osubs-dsw-ack' },
               h('input', {
@@ -632,7 +689,7 @@
                 autoFocus: true,
                 onChange: (event) => onAcknowledgedChange(event.currentTarget.checked),
               }),
-              h('span', null, t.quotaResetAck),
+              h('span', null, ack),
             ),
           ),
           h('div', { className: 'osubs-dsw-foot' },
@@ -642,7 +699,7 @@
               className: 'osubs-dsw-btn osubs-dsw-btn--primary',
               disabled: !acknowledged,
               onClick: onConfirm,
-            }, t.quotaResetConfirmOk),
+            }, ok),
           ),
         ),
       )
@@ -980,6 +1037,10 @@
         || typeof row.remainingPercent === 'number'
         || (row.kind === 'prepaid' && typeof row.remaining === 'number' && row.remaining > 0)
         || (row.used !== undefined && row.total !== undefined)
+        // Zen states count as content even at $0: a zero prepaid balance is the
+        // state that blocks Zen calls, not an empty card.
+        || (row.kind === 'zen-balance' && typeof row.remaining === 'number')
+        || (row.kind === 'zen-credit' && typeof row.remaining === 'number')
       ))
       const hasTokens = rows.some((row) => row.unit === 'tokens' && row.used !== undefined && row.total !== undefined)
       const units = hasTokens
@@ -994,11 +1055,22 @@
         : undefined
       return h('div', { className: 'osubs-quota' },
         quota.status === 'loading' && rows.length === 0 && h('p', { className: 'osubs-hint' }, t.quotaLoading),
-        quota.status === 'error' && !hasUsage && h('p', {
+        // A failed read is always said out loud, rows or not: the rows in an
+        // error entry are the previous reading, so suppressing the line left a
+        // frozen card looking like a successful refresh (Cline, 2026-10-11).
+        quota.status === 'error' && h('p', {
           className: 'osubs-hint osubs-bad',
           title: quota.error || undefined,
         }, `${t.quotaFailed}${quota.error ? ` · ${formatQuotaError(quota.error)}` : ''}`),
-        quota.status === 'ready' && !hasUsage && family !== 'chatgpt' && h('p', { className: 'osubs-hint' }, t.quotaUnknown),
+        // The Go card explains its empty meters with the subscription state —
+        // "周额度未返回" would read as a fetch hiccup, not a lapsed/never-
+        // subscribed workspace.
+        family === 'opencode-go' && quota.status === 'ready' && !hasUsage
+          && (quota.subscription?.state === 'ended' || quota.subscription?.state === 'none')
+          && h('p', { className: 'osubs-hint' },
+          `${quota.subscription.state === 'ended' ? t.opencodeGoSubscriptionEnded : t.opencodeGoNoSubscription} `,
+          h('a', { className: 'osubs-link', href: 'https://opencode.ai/console', target: '_blank', rel: 'noreferrer' }, t.opencodeGoConsoleLink)),
+        quota.status === 'ready' && !hasUsage && !(family === 'opencode-go' && quota.subscription?.state) && family !== 'chatgpt' && h('p', { className: 'osubs-hint' }, t.quotaUnknown),
         family === 'chatgpt' && quota.status !== 'error' && h('p', { className: 'osubs-hint' },
           `${t.chatgptPlanHint} `,
           h('a', { className: 'osubs-link', href: 'https://chatgpt.com/settings/usage', target: '_blank', rel: 'noreferrer' }, t.chatgptManageUsage)),

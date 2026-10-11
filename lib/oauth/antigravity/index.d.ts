@@ -1,7 +1,7 @@
 /**
  * Google Antigravity (hub / Antigravity.app) OAuth + chat fingerprint.
  *
- * Official desktop to mimic (2026-10-04): Antigravity.app hub 2.19.1
+ * Official desktop to mimic (2026-10-10): Antigravity.app hub 2.22.0
  * (`com.google.antigravity`, `--subclient_type hub`). The pin is the
  * hub updater manifest `latest-arm64-mac.yml`. A stale local install
  * (this Mac had 2.12.2) must not drag the UA down. Ignore
@@ -53,11 +53,11 @@ export declare function fetchAntigravityCloudCode(url: any, init: any, fetchFn?:
 export declare const ANTIGRAVITY_SCOPE: string;
 /**
  * Current official Antigravity hub short version (updater manifest
- * `latest-arm64-mac.yml`, 2026-10-04). Used when the desktop app is
+ * `latest-arm64-mac.yml`, 2026-10-10). Used when the desktop app is
  * missing or older. Cloud Code rejects stale client versions
  * (historically anything below 2.9.0).
  */
-export declare const ANTIGRAVITY_FALLBACK_VERSION = "2.19.1";
+export declare const ANTIGRAVITY_FALLBACK_VERSION = "2.22.0";
 /** Official hub app only — never Antigravity IDE.app. */
 export declare const ANTIGRAVITY_MAC_APP_PLIST = "/Applications/Antigravity.app/Contents/Info.plist";
 export declare const ANTIGRAVITY_NODE_API_CLIENT_UA = "google-api-nodejs-client/10.3.0";

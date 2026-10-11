@@ -1,8 +1,8 @@
 /**
  * Cline (cline.bot) subscription OAuth — usage-billing / ClinePass credits.
  *
- * Pinned client: **Cline CLI 3.0.62** (npm `cline`, `apps/cli`) on
- * `@cline/core 0.0.83` — source tag `cli-v3.0.62` of github.com/cline/cline:
+ * Pinned client: **Cline CLI 3.0.70** (npm `cline`, `apps/cli`) on
+ * `@cline/core 0.0.92` — source tag `cli-v3.0.70` of github.com/cline/cline:
  * `sdk/packages/core/src/auth/cline.ts` (login / refresh),
  * `sdk/packages/core/src/auth/provider-auth-registry.ts` (`workos:` prefix),
  * `sdk/packages/llms/src/providers/request-headers.ts` (chat headers),
@@ -31,6 +31,8 @@ export declare const CLINE_REFRESH_URL = "https://api.cline.bot/api/v1/auth/refr
 export declare const CLINE_ME_URL = "https://api.cline.bot/api/v1/users/me";
 export declare const CLINE_PLAN_URL = "https://api.cline.bot/api/v1/users/me/plan";
 export declare const CLINE_RECOMMENDED_MODELS_URL = "https://api.cline.bot/api/v1/ai/cline/recommended-models";
+/** Cloud catalog `loadCloudModels` reads. Facts only — not the picker membership. */
+export declare const CLINE_MODELS_URL = "https://api.cline.bot/api/v1/ai/cline/models";
 export declare const CLINE_PLAN_LIMITS_URL = "https://api.cline.bot/api/v1/users/me/plan/usage-limits";
 export declare const CLINE_WORKOS_ORIGIN = "https://api.workos.com";
 export declare const CLINE_WORKOS_DEVICE_URL = "https://api.workos.com/user_management/authorize/device";
@@ -39,13 +41,13 @@ export declare const CLINE_WORKOS_AUTHENTICATE_URL = "https://api.workos.com/use
 export declare const CLINE_WORKOS_CLIENT_ID = "client_01K3A541FN8TA3EPPHTD2325AR";
 export declare const CLINE_ACCESS_TOKEN_PREFIX = "workos:";
 /** `cliBuildInfo.version` — the installed `apps/cli/package.json`. */
-export declare const CLINE_CLIENT_VERSION = "3.0.62";
+export declare const CLINE_CLIENT_VERSION = "3.0.70";
 /** `@cline/core` package version (`X-CORE-VERSION`). */
-export declare const CLINE_CORE_VERSION = "0.0.83";
+export declare const CLINE_CORE_VERSION = "0.0.92";
 /** `apps/cli/src/main.ts` extensionContext.client — the CLI's own identity. */
 export declare const CLINE_CLIENT_TYPE = "cline-cli";
 export declare const CLINE_PLATFORM = "cli";
-export declare const CLINE_USER_AGENT = "Cline/3.0.62";
+export declare const CLINE_USER_AGENT = "Cline/3.0.70";
 /** `DEFAULT_REFRESH_BUFFER_MS` — refresh 5 min before `expiresAt`. */
 export declare const CLINE_PREEMPT_MS: number;
 /** `DEFAULT_RETRYABLE_TOKEN_GRACE_MS` — keep a still-valid token on a blip. */
@@ -90,8 +92,8 @@ export declare const CLINE_SOURCES: readonly string[];
  * Transcribed from `sdk/packages/llms/src/providers/routing/portable-reasoning.ts`:
  * the `cline` provider id is in neither the portable nor the non-portable set,
  * so an effort passes through unchanged except `max` → `xhigh`, and a disabled
- * reasoning control sends **no** field at all — hence no `off` key (same shape
- * as `COPILOT_REASONING`). `@ai-sdk/openai-compatible` composes the portable
+ * reasoning control sends **no** field at all — hence no `off` key.
+ * `@ai-sdk/openai-compatible` composes the portable
  * option into the `reasoning_effort` body field this hop forwards.
  */
 export declare const CLINE_REASONING: Readonly<{
@@ -106,15 +108,9 @@ export declare const CLINE_DEFAULT_CONTEXT = 128000;
 export declare const CLINE_DEFAULT_MAX_TOKENS = 8192;
 export declare const CLINE_INPUT: readonly string[];
 /**
- * Offline picker seed: the `recommended` + `free` buckets of
- * `GET {apiBase}/ai/cline/recommended-models` refreshed 2026-09-29, crossed with
- * `https://models.dev/api.json` → `openrouter` — the CLI's own metadata source
- * (`buildClineModels` in `sdk/packages/llms/src/providers/builtins.ts`), which
- * also resolves an id by its last path segment (that is how the `cline-free/*`
- * rows map onto `deepseek/…`, `xiaomi/…`, `upstage/…`). `refreshClineCatalog`
- * replaces this list after login; it never drops it. Rows live in
- * `src/catalog/models.json` under `"cline"` (all rows carry the family
- * `CLINE_REASONING` ladder).
+ * Offline picker seed. `refreshClineCatalog` replaces it after login from
+ * the recommended feed plus `/ai/cline/models`; it never drops the seed when
+ * that fetch fails. Rows live in `src/catalog/models.json` under `"cline"`.
  */
 export declare const CLINE_MODELS: readonly any[];
 /** Catalog lookup for the custom-context ceiling (`familyMaxContextWindow`). */
@@ -202,6 +198,24 @@ export declare function clineCredentialHeaders(): {
     'X-PLATFORM': string;
     'X-PLATFORM-VERSION': string;
     'X-CORE-VERSION': string;
+};
+/**
+ * Identity the CLI sends on catalog, auth, and account calls
+ * (`buildClineClientHeaders`). No `X-Task-ID`: those calls are not a
+ * conversation, and a fresh id per request would also break the prefix
+ * cache the chat path pins.
+ */
+export declare function clineIdentityHeaders(): {
+    'HTTP-Referer': string;
+    'X-Title': string;
+    'X-IS-MULTIROOT': string;
+    'X-CLIENT-TYPE': string;
+    'X-CLIENT-VERSION': string;
+    'X-PLATFORM': string;
+    'X-PLATFORM-VERSION': string;
+    'X-CORE-VERSION': string;
+    accept: string;
+    'user-agent': string;
 };
 export declare function clineUpstreamHeaders(session: any, cacheSessionId: any): {
     'X-Task-ID': string;

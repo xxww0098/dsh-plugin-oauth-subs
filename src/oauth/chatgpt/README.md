@@ -16,6 +16,8 @@ OpenAI 官方给开源客户端的 ChatGPT 套餐共享流程（[developers.open
 | [`request.ts`](request.ts) | 剥不支持字段、`system` → `developer`、`store:false` + `stream:true`、用量上限 → 额度错误 |
 | [`cache.ts`](cache.ts) | `prompt_cache_key` ← DSH `prompt_cache_key` / `session_id`，缺省 `dsh-chatgpt`；不发任何亲和头 |
 | [`catalog.ts`](catalog.ts) | `GET api.openai.com/v1/models`（按账号）；静态行做离线下限 |
+| [`usage.ts`](usage.ts) | 实测用量：终端 `response.completed` 的 usage 记账（私有 jsonl）→ 卡片 5h / 7d 滚动 token 窗口行；`setChatgptUsageLog` 接 dataDir |
+| [`probe.ts`](probe.ts) | 人工诊断：真实本地代理、6 次硬预算、原始 cache usage 与私盐指纹；不挂正常 hop |
 
 调度：[`../proxy.ts`](../proxy.ts) `/chatgpt/v1/responses` → [`../proxy-body.ts`](../proxy-body.ts) `family === 'chatgpt'` → `forward()` 到 `CHATGPT_RESPONSES_URL`，`classifyFailure: chatgptQuotaFailure`。
 
@@ -52,7 +54,7 @@ DSH  →  本机 /chatgpt/v1/responses  →  POST api.openai.com/v1/responses
         Authorization: Bearer <access_token>
 ```
 
-请求体（preview-limitations）：`store:false`、`stream:true`；剥 `background conversation max_output_tokens max_tool_calls metadata moderation multi_agent prompt prompt_cache_retention prompt_cache_options safety_identifier temperature top_logprobs top_p truncation user previous_response_id service_tier`（`-fast` 行再补 `service_tier: priority`）；`{type:"message", role:"system"}` 改 `developer`（位置不动，前缀不变）。
+请求体（preview-limitations）：`store:false`、`stream:true`；剥 `background conversation max_output_tokens max_tool_calls metadata moderation multi_agent prompt prompt_cache_retention prompt_cache_options safety_identifier temperature top_logprobs top_p truncation user previous_response_id service_tier`（`-fast` 行再补 `service_tier: priority`；内容块里的 `prompt_cache_breakpoint` 同属 400 字段，一并剥掉）；`{type:"message", role:"system"}` 改 `developer`（位置不动，前缀不变）。
 
 `subscription_sharing_usage_limit_exceeded`（429）→ `quotaFailure`（宿主 QUOTA_EXCEEDED，不重试），附 [ChatGPT 设置 → 用量](https://chatgpt.com/settings/usage)。其余错误原样转发。
 
@@ -67,9 +69,38 @@ DSH  →  本机 /chatgpt/v1/responses  →  POST api.openai.com/v1/responses
 
 费率：`src/catalog/rates.json` `"chatgpt"` = models.dev `openai`（公开 API 价，`scripts/rates.ts`），仅展示。
 
+## 固定前缀缓存诊断
+
+[`probe.ts`](probe.ts) 只为人工诊断运行：经真实本地 `/chatgpt/v1/responses`，固定一个已登录会话，禁止刷新和切换，整轮最多 6 次上游尝试（含代理重试），token 不够覆盖测试就拒绝发请求。对照是同一文本的 leading developer input 与 request-level `instructions`；它是探索，不改变正常 hop。
+
+报告只含每轮私盐 HMAC 的缓存键／完整 wire／指令文本指纹与原生 terminal usage；`cached_tokens`（读）与 `cache_write_tokens`（写）各自带「字段存在」标记——明确写 0 才是零，缺失或非法计数记 null，缺失不能当成缓存回归，写计数缺失也不能当成「没写」。输入分母用上游原生 `input_tokens`（已含 cached token），重试／失败／不完整回复不混入成功调用命中率；报告不得含提示原文、token、响应文本或账号 id。CLI 须显式 `--live`，不刷新 auth、不写 store，默认只显示用法。
+
+运行入口是 [`scripts/chatgpt-cache-probe.ts`](../../../scripts/chatgpt-cache-probe.ts)：先构建，默认 `--help` 不访问账号或网络；显式 `--live` 才读取固定的 `--profile desktop --account 0` 并消耗额度。`--out` 必须是新文件，已有报告拒绝覆盖；默认报告在新建私有临时目录，文件 0600 / 目录 0700，逐次在出站前落账本，异常后不得自动重放。
+
+### 实测结论（2026-10-11）：低命中率在路由侧，不在本 hop
+
+30 天聚合：本家 318 次调用 / 3200 万输入 token 命中 **10.3%**，同宿主同账号的 `oauth-codex` 376 次 / 4500 万命中 **95.3%**；逐调用看，命中几乎只落在 26,752 token 一档（所有会话共有的 DSH 系统头），会话正文前缀基本没被复用。同日经本 hop 的固定前缀复测（只读账号、不刷新）：
+
+| 变量 | 取值 | 原生 usage |
+|---|---|---|
+| 逐字相同的重复请求 | 4,270 / 9,267 / 62,069 token；间隔 1.5s / 15s / 40s / 86s / 数分钟 | `cached_tokens` 全 0，`cache_write_tokens` 也全 0 |
+| 模型 | gpt-6.1-sol / gpt-6-astra / gpt-5.6-luna | 全 0 |
+| `prompt_cache_key` | 有 / 无 | 全 0 |
+| 指令位置 | leading developer input / request-level `instructions` | 全 0 |
+| 出口 | 系统代理（127.0.0.1:1082）/ 直连 | 全 0 |
+| `prompt_cache_options` | mode / prewarm / ttl 任一形状 | HTTP 400 `prompt_cache_options is not supported on this model` |
+| `prompt_cache_breakpoint` | 内容块标记 | HTTP 400 `prompt_cache_breakpoint is not supported on this model` |
+| 对照：同一方法打 Codex 后端 | `chatgpt.com/backend-api/codex/responses`，9,233 token 逐字重复 | 第 2 / 3 次各 `cached_tokens` 9,088（整段复用） |
+
+对照证明探针本身能读出命中：同账号、同宿主、同提示词，Codex 后端整段复用，而 `api.openai.com/v1/responses` 一次都不复用；官方文档给的两个缓存旋钮（显式断点 / `prompt_cache_options`）在本路由 400，`prompt_cache_retention` 也在官方不支持清单里。真实会话里偶发的 ~26,752 命中更可能是跨会话共有的系统头落在同一台机器上（推断，未直接取证），不是本 hop 的分片回归。developer → `instructions` 没有收益，也不构成改默认指令位置的理由。
+
+**要省掉旧前缀的重复计费只剩一条路：不让旧前缀上网。** siwc 文档允许同一连接上的 WS 续传（`previous_response_id`），本仓库 Codex 家族已有同形状的默认关实现（[`../codex/websocket.ts`](../codex/websocket.ts)，`DSH_CODEX_WEBSOCKET=on`）；那是新的传输级任务，需要独立活测，不在缓存结论内。
+
 ## 额度
 
-没有额度端点：siwc 文档只给 [ChatGPT 设置 → 用量](https://chatgpt.com/settings/usage)，且禁止本家 token 打 `chatgpt.com/backend-api`（所以不能读 `wham/usage`、不能用重置卡）。2026-09-30 活测：响应头没有限额头，SSE 没有 `codex.rate_limits` 帧；access token 的 `https://api.openai.com/auth` 只有 `per_user_salt` + `encrypted_auth_metadata`，ID token 不带 `chatgpt_plan_type`，所以也没有套餐徽章。卡片只显示「管理用量」链接。本家用量与 Codex 窗口是否同一池子未验证。
+没有额度端点：siwc 文档只给 [ChatGPT 设置 → 用量](https://chatgpt.com/settings/usage)，且禁止本家 token 打 `chatgpt.com/backend-api`（所以不能读 `wham/usage`、不能用重置卡）。2026-09-30 活测：响应头没有限额头，SSE 没有 `codex.rate_limits` 帧；access token 的 `https://api.openai.com/auth` 只有 `per_user_salt` + `encrypted_auth_metadata`，ID token 不带 `chatgpt_plan_type`，所以也没有套餐徽章。本家用量与 Codex 窗口是否同一池子未验证。
+
+**实测用量窗口**（[`usage.ts`](usage.ts)，2026-10-10）：这条路线唯一在合同内的用量信号是终端 `response.completed` 事件里的 `usage`（公开 Responses 字段）。hop 经 `captureSse` 捕获该帧（`passthrough.ts` 的门控扫描器现在跑到流尾——用量块在首个输出提交之后才到）→ `QuotaStore.learn('chatgpt')` 把一笔 spend 追加进 `chatgpt-usage.jsonl`（dataDir，0600，1MB 轮转留 `.1`），卡片读出**近 5 小时 / 近 7 天滚动窗口的 input+output token 与调用次数**（`kind: primary/weekly`，数值放 `note`，不造 `total`、不算百分比——官方额度单位不是 token）。`chatgptQuota` 同源返回这些行，refresh 不清空。零消费的 usage 块、其它事件形状一律不记。官方窗口是「自首次使用起 5 小时」的固定窗，与本地滚动窗不同步：卡片行只是实测参考，「管理用量」链接仍是官方读数出处。
 
 ## 不要
 
@@ -91,5 +122,6 @@ DSH  →  本机 /chatgpt/v1/responses  →  POST api.openai.com/v1/responses
 | ID token JWKS 验签、aud/azp/nonce、账号不可变 | openclaw 同上；pingdotgg/t3code `apps/server/src/provider/CodexChatGptAuth.ts` @ `27bdf1a` | `verifyChatgptIdToken` / `redeemChatgptCode` |
 | host id `urn:uuid:`、注册跨登出保留、`earliest_refresh_at`、撤销重试 | t3code 同上 | `host.ts` / `refreshChatgpt` / `revokeChatgpt` |
 | 剥不支持字段、用量上限提示 | pi `packages/ai/src/api/openai-responses.ts` `isChatGPTSignIn`；siwc preview-limitations | `request.ts` |
+| 终端 `response.completed` 的 `usage` 记账 → 滚动 token 窗口 | usage 字段形状 = 公开 Responses 文档（`input_tokens` 已含 cached）；窗口命名沿用 Codex primary/secondary，数据是本地实测 | `usage.ts` + `quota.ts` `#learnChatgptUsage` |
 
 **不要发明：** 官方文档未列、上面三家都不发的头或参数（installation-id、自定义 UA 指纹等）。

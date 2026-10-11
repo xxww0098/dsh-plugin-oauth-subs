@@ -818,6 +818,42 @@ test('signing out survives a restart: auto-import does not restore the family', 
   assert.equal((await listStoredSessions('cursor', authPath)).length, 1)
 })
 
+test('sign out, sign back in, sign out again: each restart honours the latest choice', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-cursor-signout-cycle-'))
+  const authPath = join(dir, 'auth.json')
+  const access = validAccess('auto@x')
+  const make = () => new AuthController({
+    authPath,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings: { mutate: async () => undefined },
+    cursorAutoImport: true,
+    cursorImport: emptyImport({
+      platform: 'darwin',
+      execFileFn: async (_cmd, args) => {
+        const service = args[args.indexOf('-s') + 1]
+        return { stdout: service === 'cursor-access-token' ? access : 'rt-auto' }
+      },
+    }),
+    fetchFn: async () => json({ planUsage: { totalPercentUsed: 5, includedSpend: 0, limit: 10 }, membershipType: 'pro', email: 'auto@x' }),
+  })
+  const first = make()
+  assert.equal((await first.snapshot()).accounts.cursor.loggedIn, true, 'auto-import on the first run')
+  await first.logout('cursor', 'auto@x')
+
+  // The user explicitly signs back in (an import click), then leaves again.
+  const second = make()
+  assert.equal((await second.snapshot(true)).accounts.cursor.loggedIn, false, 'signed out stays signed out across a restart')
+  await second.importFrom('cursor')
+  assert.equal((await listStoredSessions('cursor', authPath)).length, 1)
+  await second.logout('cursor', 'auto@x')
+
+  // The latest choice is "signed out": the next restart must not bring it back.
+  const third = make()
+  assert.equal((await third.snapshot(true)).accounts.cursor.loggedIn, false)
+  assert.deepEqual(await listStoredSessions('cursor', authPath), [])
+})
+
 test('snapshot backfills opaque cursor vault when usage has email', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'oauth-cursor-usage-'))
   const authPath = join(dir, 'auth.json')

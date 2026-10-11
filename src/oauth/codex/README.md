@@ -9,9 +9,10 @@
 
 | 文件 | 职责 |
 |---|---|
-| [`index.ts`](index.ts) | 客户端 id、端点、目录、PKCE authorize、换票、刷新、上游头 |
+| [`index.ts`](index.ts) | 客户端 id、端点、授权 URL、回调 client_id 校验、换票、刷新、上游头 |
 | [`request.ts`](request.ts) | Responses 体：把 `input` 里的 system/developer 抬到 `instructions`，后缀停放，剥 gpt-5.6 拒收字段；`encodeCodexBody` zstd 压缩 |
 | [`cache.ts`](cache.ts) | `prompt_cache_key` + `session-id` / `thread-id` / `x-client-request-id`。禁止给别的家族用 |
+| [`websocket.ts`](websocket.ts) | WS 传输 + 连接级续传（`previous_response_id` 增量），池 / 冷却 / SSE 回退；`DSH_CODEX_WEBSOCKET=on` 显式开启 |
 
 调度：[`../proxy.ts`](../proxy.ts) `family === 'codex'` → `normalizeCodexResponsesBody` + `applyCodexCache` + `codexCacheHeaders`。
 额度：[`quota.ts`](quota.ts) `fetchCodexQuota` / `parseCodexUsage` / `consumeCodexReset`。
@@ -53,6 +54,21 @@ DSH  →  本机 Responses 代理  →  POST chatgpt.com/backend-api/codex/respo
 请求体：`encodeCodexBody` 用 zstd 压缩（`content-encoding: zstd`，默认级别，不设大小门槛），每个请求只压一次，重试复用同一份字节；后端解码失败（400 / 415）时不回退明文。
 Fast：body `service_tier` 从 `fast` 改成 `priority`，并带 `x-codex-routing-hint`（`codexRoutingHint`，见 openai/codex#37345）。
 `store` 必须 `false`。`include` 默认 `reasoning.encrypted_content`。剥掉 `prompt_cache_retention` / `prompt_cache_options` / `safety_identifier` / `max_output_tokens`（gpt-5.6 400，Codex #39397）。
+
+## WebSocket 续传（[`websocket.ts`](websocket.ts)，默认关）
+
+同一端点也说 Responses over WebSocket，且 `store:false` 下**连接本身保留服务端会话**，下一轮可以 `previous_response_id` + 只发增量 `input`（协议对照 earendil-works/pi `packages/ai/src/api/openai-codex-responses.ts`）：
+
+- 升级：POST 同路径转 ws/wss，头 = 授权头 + `originator` / UA + `openai-version` + `openai-beta: responses_websockets=2026-02-06` + `session-id` + `x-client-request-id`（**不发 `thread-id`**，pi 升级也不发；HTTP hop 三头不变）。走 `outboundWebsocketDispatcher`（`src/utils/outbound.ts` 唯一 undici 属主），代理 / 直连与 HTTP hop 同一套裁定。
+- 请求：一个文本帧 `{type:"response.create", ...body}`，明文 JSON（zstd 只是 HTTP 的事）。
+- 回包：每个 WS 消息一个事件 JSON（与 SSE `data:` 同物）；`response.done` 在 WS 侧是终止名，转发给宿主前改名 `response.completed`，宿主看到的与 SSE 事件集一致。
+- 池：按（`prompt_cache_key` × `chatgpt-account-id`）一条连接；空闲 5 分钟关、最长 55 分钟换；并行同会话请求各开一次性连接，不共享续传态。
+- 增量守卫：body 除 `input` 外逐字段稳定（排序键比较，含 model / instructions / tools / reasoning），且新 `input` 前缀逐项覆盖 [上次全量 input, 上次响应 output]（宿主重放多带的 `phase` / `namespace` 允许）→ 才发增量；任何不符整段重发，不会错删。宿主（llm-pi-ai）重放与服务端 items 的字段序不同，所以比较必须无视键序。
+- 失败语义：`error` / `response.failed` 事件按 code 映射 429/401/400（无 HTTP 状态可抄）；`previous_response_not_found` 清续传态后同连接重发整段一次；`websocket_connection_limit_reached` 与一切 pre-commit 传输故障：标记会话冷却 5 分钟（期间全走 SSE），并在**同一 attempt 内**立即落 SSE，不付重试退避；提交后（已出输出）按流中断契约销毁响应，绝不静默重试成重复输出。
+- 门口（全部满足才试 WS）：`DSH_CODEX_WEBSOCKET=on`（**默认关**，活测确认后放开默认）、首个 attempt、`stream:true`、有会话 id、非 Fast（`;tier=` 路由提示不带 WS）、会话不在冷却中。401 刷新重试保持 attempt 0，会换新 token 重连 WS。
+
+健康会话在 WS 下的收益不是「前缀缓存命中」，而是**旧前缀根本不上网**：长会话每轮只发新增 items（DSH `instructions` ~128KB + 全史 `input` 从第二轮起不再传）。命中观察：`response.completed` 的 `usage` 里 `input_tokens` 应显著小于全史（服务端按存储上下文计）。
+
 
 ## 模型
 
@@ -98,6 +114,7 @@ Fast：body `service_tier` 从 `fast` 改成 `priority`，并带 `x-codex-routin
 | 2 | `stabilizeInputPrefix` | 已有 `instructions` 不变；多出来的快照改成 **input 末尾** 的 developer |
 | 3 | `applyCodexCache` | `prompt_cache_key` ← DSH `prompt_cache_key` 或 `session_id`（`codexCacheSessionId` 清洗，最长 64）。抄完后从上游 JSON **删掉** `session_id`（chatgpt.com `Unsupported parameter`） |
 | 4 | `codexCacheHeaders` | `session-id` = body `prompt_cache_key`；`thread-id` = `x-client-request-id`。DSH 一轮对话就是一条 thread，三值相同。官方 CLI 子代理共享 session、各有 thread |
+| 5 | `websocket.ts`（可选） | WS 连接级续传：增量守卫通过时整段旧史不上网；不通过或任何失败 → 整段 + SSE，行为退回第 1–4 步 |
 
 健康长会话：加权命中 ≥ 80%，**零** affinity miss。压缩 / 计划重建造成的 0 命中不是分片 miss。同一 DSH 请求的重试回放 `x-codex-turn-state`（CLI 同 turn 粘滞）。
 
@@ -111,14 +128,17 @@ Fast：body `service_tier` 从 `fast` 改成 `priority`，并带 `x-codex-routin
 - 不要把 `prompt_cache_retention` 送上去。
 - 不要把 Fast 只写 body 不写 `x-codex-routing-hint`（回显会一直是 default）。
 - 不要把 `api` 改成 Completions / Anthropic。
+- 不要把 `websocket.ts` 的连接 / 续传态给别的家族，也不要在 WS 升级头里发明 `thread-id` 或 `x-codex-routing-hint`（pi 的 WS 不发）。
+- 活测确认前不要把 `DSH_CODEX_WEBSOCKET` 的默认改成开。
 
 ## 归因
 
-一线：[openai/codex](https://github.com/openai/codex) tag `rust-v0.161.0`（升钉核对时 npm latest 0.161.0；缓存头源码蒸馏自 0.153.4）。
+一线：[openai/codex](https://github.com/openai/codex) tag `rust-v0.161.0`（升钉核对时 npm latest 0.161.0；缓存头按 0.153.4 的源码形状核对）。
 
 | 抄 | 出处 | 本 hop |
 |---|---|---|
 | `session-id` + `thread-id` + `x-client-request-id`（三者同值） | `codex-rs/codex-api/src/requests/headers.rs` `build_session_headers` | `codexCacheHeaders`：三值都等于 DSH pin（一轮对话一条 thread） |
+| WS Responses 协议（`response.create` 帧 / 事件消息 / `response.done` / `previous_response_not_found` / 连接池 5min-55min / SSE 即时回退） | earendil-works/pi `packages/ai/src/api/openai-codex-responses.ts`（仓库即 badlogic/pi-mono 后继） | `websocket.ts`（增量守卫为键序无关比较 + 允许宿主重放多带字段，与 pi 的整串比较不同：本 hop 宿主是 llm-pi-ai，重放键序与服务端 items 不一致） |
 | 模型页价格徽标（USD / 1M） | models.dev `openai`；`-fast` 孪生行取 models.dev `vercel` `openai/<id>-fast`（priority 档） | `src/catalog/rates.json`，`npm run rates` 写入（见 [docs/models.md](../../../docs/models.md) 费率表） |
 | 同 turn 重试回放 `x-codex-turn-state` | `codex-rs/core/src/client.rs` | `proxy.ts` 重试路径（仅 `family === 'codex'`） |
 | Fast → Priority | [#37345](https://github.com/openai/codex/issues/37345) | body `service_tier: priority` + `x-codex-routing-hint` |

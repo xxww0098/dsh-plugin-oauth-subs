@@ -21,6 +21,7 @@ import {
   loadStore,
   PROVIDER_IDS,
   publicSession,
+  purgeRetiredSessions,
   switchAccount,
 } from './store.js'
 import { GLM_MODELS } from './glm/index.js'
@@ -32,9 +33,9 @@ import { catalogPricing, catalogRateTimeOfDay } from '../catalog/index.js'
 import { kiroCatalogModels, refreshKiroCatalog } from './kiro/catalog.js'
 import { configureKimiIdentity } from './kimi/index.js'
 import { kimiCatalogModels, refreshKimiCatalog } from './kimi/catalog.js'
-import { copilotCatalogModels, refreshCopilotCatalog } from './copilot/catalog.js'
 import { devinCatalogModels, refreshDevinCatalog } from './devin/catalog.js'
 import { clineCatalogModels, refreshClineCatalog } from './cline/catalog.js'
+import { commandCodeCatalogModels, refreshCommandCodeCatalog } from '../apikey/command-code/catalog.js'
 import { opencodeGoFilePath, OpencodeGoStore } from '../apikey/opencode-go/store.js'
 import {
   APIKEY_FAMILY_IDS,
@@ -44,7 +45,7 @@ import {
   describeProviders,
   MODEL_FAMILY_IDS,
 } from './models.js'
-import { ensureOpencodeGoRoute, filterProviders, syncHarnessModels } from './harness-sync.js'
+import { ensureOpencodeGoRoute, ensureOpencodeZenRoute, filterProviders, syncHarnessModels } from './harness-sync.js'
 import { familyCatalogInputs } from './families.js'
 import { ModelSwitch } from './model-switch.js'
 import { buildTokenManagers } from './token-managers.js'
@@ -53,7 +54,7 @@ import { QuotaStore } from './quota.js'
 import { DEFAULT_PROFILE, installRelease, localUpdateInfo } from '../utils/update.js'
 import { readUpdatePrefs, readUpdateState, updatePrefsPath, updateStatePath } from '../utils/update-prefs.js'
 import { outboundFetch } from '../utils/outbound.js'
-import { completeCommandCode, maybeAutoImportCommandCode } from '../apikey/command-code/accounts.js'
+import { completeCommandCode, discoverCommandCode, maybeAutoImportCommandCode } from '../apikey/command-code/accounts.js'
 import { discoverOllama, maybeAutoImportOllama } from '../apikey/ollama/accounts.js'
 import {
   clearOpencodeGo,
@@ -69,7 +70,6 @@ import { accountsWithQuota, consumeReset, ensureAccountQuota, refreshQuota } fro
 import { completeClineDevice, discoverCline, maybeAutoImportCline } from './cline/accounts.js'
 import { discoverChatgpt, revokeChatgptAccounts } from './chatgpt/accounts.js'
 import { chatgptCatalogModels, refreshChatgptCatalog } from './chatgpt/catalog.js'
-import { completeCopilotDevice, discoverCopilot, maybeAutoImportCopilot } from './copilot/accounts.js'
 import {
   completeCursor,
   discoverCursor,
@@ -125,9 +125,6 @@ export class AuthController {
   declare kimiAutoImport: boolean
   declare kimiAutoImportTried: boolean
   declare kimiDiscover: any
-  declare copilotAutoImport: boolean
-  declare copilotAutoImportTried: boolean
-  declare copilotDiscover: any
   declare devinAutoImport: boolean
   declare devinImport: any
   declare devinAutoImportTried: boolean
@@ -139,6 +136,7 @@ export class AuthController {
   declare commandCodeAutoImport: boolean
   declare commandCodeAutoImportTried: boolean
   declare commandCodeImport: any
+  declare commandCodeDiscover: any
   declare lastError: Map<string, any>
   declare finalizing: Set<string>
   declare claims: Map<string, number>
@@ -155,6 +153,7 @@ export class AuthController {
   declare outboundProxy: any
   declare setOutboundProxy: any
   declare usage: any
+  declare arena: any
   declare installReleaseFn: any
   declare autoUpdate: boolean
   declare updateState: any
@@ -164,7 +163,7 @@ export class AuthController {
   declare autoUpdateTimer: any
   declare prefsFile: string
   declare stateFile: string
-  constructor({ authPath, prefix, origin, settings, patchPath, credentials, grokLogin = 'device', onAuthChanged, models, fetchFn = outboundFetch, quotaTtlMs, profile, readFileFn, updateEnv, installReleaseFn = installRelease, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, copilotAutoImport, copilotDiscover, devinAutoImport, devinImport, devinDiscover, clineDiscover, clineAutoImport, commandCodeAutoImport, commandCodeImport, chatgptDiscover }: any) {
+  constructor({ authPath, prefix, origin, settings, patchPath, credentials, grokLogin = 'device', onAuthChanged, models, fetchFn = outboundFetch, quotaTtlMs, profile, readFileFn, updateEnv, installReleaseFn = installRelease, cursorAutoImport, cursorImport, cursorDiscover, ollamaAutoImport, ollamaDiscover, kiroDiscover, kimiAutoImport, kimiDiscover, devinAutoImport, devinImport, devinDiscover, clineDiscover, clineAutoImport, commandCodeAutoImport, commandCodeImport, commandCodeDiscover, chatgptDiscover }: any) {
     this.authPath = authPath
     this.prefix = prefix
     this.origin = origin
@@ -193,6 +192,10 @@ export class AuthController {
     this.models = models ?? new ModelSwitch()
     this.loginsReady = (async () => {
       await this.models.ready
+      // Retired families have no logout button: delete their tokens from
+      // auth.json instead of leaving them there for good. Only a configured
+      // path — an instance without one must never reach for the default dir.
+      if (typeof authPath === 'string' && authPath) await purgeRetiredSessions(authPath).catch(() => [])
       await this.#seedSeenLogins()
     })()
     this.flows = new OAuthFlowManager()
@@ -220,11 +223,6 @@ export class AuthController {
     this.kimiDiscover = typeof kimiDiscover === 'function'
       ? kimiDiscover
       : (process.env.NODE_TEST_CONTEXT ? undefined : ((session) => refreshKimiCatalog(session, { fetchFn })))
-    this.copilotAutoImport = copilotAutoImport ?? !process.env.NODE_TEST_CONTEXT
-    this.copilotAutoImportTried = false
-    this.copilotDiscover = typeof copilotDiscover === 'function'
-      ? copilotDiscover
-      : (process.env.NODE_TEST_CONTEXT ? undefined : ((session) => refreshCopilotCatalog(session, { fetchFn })))
     this.devinAutoImport = devinAutoImport ?? !process.env.NODE_TEST_CONTEXT
     this.devinImport = devinImport && typeof devinImport === 'object' ? devinImport : {}
     this.devinAutoImportTried = false
@@ -241,6 +239,9 @@ export class AuthController {
     this.clineAutoImportTried = false
     // The Command Code CLI's auth.json is its only credential store — harvest
     // it once like cursor's IDE import, so an installed CLI means instant login.
+    this.commandCodeDiscover = typeof commandCodeDiscover === 'function'
+      ? commandCodeDiscover
+      : (process.env.NODE_TEST_CONTEXT ? undefined : ((session) => refreshCommandCodeCatalog(session, { fetchFn })))
     this.commandCodeAutoImport = commandCodeAutoImport ?? !process.env.NODE_TEST_CONTEXT
     this.commandCodeImport = commandCodeImport && typeof commandCodeImport === 'object' ? commandCodeImport : {}
     this.commandCodeAutoImportTried = false
@@ -356,10 +357,10 @@ export class AuthController {
       ['ollama', this.tokens.ollama, ollamaCatalogModels, (session) => discoverOllama(this, session)],
       ['kiro', this.tokens.kiro, kiroCatalogModels, (session) => discoverKiro(this, session)],
       ['kimi', this.tokens.kimi, kimiCatalogModels, (session) => discoverKimi(this, session)],
-      ['copilot', this.tokens.copilot, copilotCatalogModels, (session) => discoverCopilot(this, session)],
       ['devin', this.tokens.devin, devinCatalogModels, (session) => discoverDevin(this, session)],
       ['cline', this.tokens.cline, clineCatalogModels, (session) => discoverCline(this, session)],
       ['chatgpt', this.tokens.chatgpt, chatgptCatalogModels, (session) => discoverChatgpt(this, session)],
+      ['command-code', this.tokens['command-code'], commandCodeCatalogModels, (session) => discoverCommandCode(this, session)],
     ]
     const idsOf = (read) => read().map((model) => model.id).join('\0')
     const before = new Map(warmers.map(([family, , read]) => [family, idsOf(read)]))
@@ -413,7 +414,6 @@ export class AuthController {
     await resolveCursorIdentities(this)
     await maybeAutoImportOllama(this)
     await maybeAutoImportKimi(this)
-    await maybeAutoImportCopilot(this)
     await maybeAutoImportDevin(this)
     await maybeAutoImportCline(this)
     await maybeAutoImportCommandCode(this)
@@ -594,10 +594,6 @@ export class AuthController {
     return completeClineDevice(this, attempt)
   }
 
-  completeCopilotDevice(attempt) {
-    return completeCopilotDevice(this, attempt)
-  }
-
   completeDevice(provider, attempt) {
     return completeDevice(this, provider, attempt)
   }
@@ -649,12 +645,19 @@ export class AuthController {
     // profiles-and-sessions); an unconfirmed revocation still signs out.
     const revoked = provider === 'chatgpt' ? await revokeChatgptAccounts(this, id) : true
     await deleteSession(provider, this.authPath, id)
-    await markSignedOut(this, provider)
+    // "Signed out" gates auto-import from local CLI/IDE logins, so it means the
+    // family is EMPTY — leaving one of two accounts must not mark the family.
+    // (store.saveSession clears the mark again when any login lands.)
+    if ((await listStoredSessions(provider, this.authPath)).length === 0) await markSignedOut(this, provider)
     this.lastError.delete(provider)
     if (!revoked) {
       this.lastError.set(provider, 'Signed out locally. Remote revocation could not be confirmed; disconnect the app in ChatGPT Settings → Apps.')
     }
     this.quota.clear(provider, id)
+    // The cached reading is mirrored to quota-snapshot.json behind a 2s
+    // debounce; a reload right after logout would otherwise restore this
+    // account's plan and numbers from disk.
+    await this.quota.flush()
     this.onAuthChanged?.(provider)
     if (await getSession(provider, this.authPath)) void ensureAccountQuota(this, provider)
   }
@@ -756,6 +759,18 @@ export class AuthController {
     if (opencodeGoKeySet && opencodeGoRoute.status !== 'pending' && opencodeGoRoute.status !== 'present') {
       throw new Error(`OpenCode Go model sync failed: ${opencodeGoRoute.status}`)
     }
+    // OpenCode Zen rides the same credential/vault/account as Go; its three
+    // routes are planned here and land in the one mutate below.
+    const { mutations: opencodeZenMutations = [], ...opencodeZenRoute } = await ensureOpencodeZenRoute(this.settings, {
+      selected: this.models.selectedForSync(catalog),
+      apiKeySet: opencodeGoKeySet,
+      contexts: this.models.contexts,
+      efforts: this.models.efforts,
+      apply: false,
+    })
+    if (opencodeGoKeySet && opencodeZenRoute.status !== 'pending' && opencodeZenRoute.status !== 'present') {
+      throw new Error(`OpenCode Zen model sync failed: ${opencodeZenRoute.status}`)
+    }
     const synced = await syncHarnessModels({
       settings: this.settings,
       patchPath: this.patchPath,
@@ -768,8 +783,12 @@ export class AuthController {
       glmModels: await this.#glmModels(),
       contexts: this.models.contexts,
       efforts: this.models.efforts,
-      extraMutations: opencodeGoMutations,
+      extraMutations: [...opencodeGoMutations, ...opencodeZenMutations],
     })
-    return { ...synced, opencodeGoRoute: opencodeGoMutations.length ? { ...opencodeGoRoute, status: 'written' } : opencodeGoRoute }
+    return {
+      ...synced,
+      opencodeGoRoute: opencodeGoMutations.length ? { ...opencodeGoRoute, status: 'written' } : opencodeGoRoute,
+      opencodeZenRoute: opencodeZenMutations.length ? { ...opencodeZenRoute, status: 'written' } : opencodeZenRoute,
+    }
   }
 }

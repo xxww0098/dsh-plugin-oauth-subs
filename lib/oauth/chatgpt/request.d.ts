@@ -20,7 +20,15 @@ export declare function peelChatgptFast(modelId: any): {
     model: string;
     fast: boolean;
 };
-/** preview-limitations "Unsupported fields", plus previous_response_id / prompt_cache_options / service_tier. */
+/**
+ * preview-limitations "Unsupported fields", plus previous_response_id /
+ * prompt_cache_options / service_tier. The doc list is confirmed live for
+ * prompt_cache_options: every cache-control shape (mode / prewarm / ttl)
+ * answers HTTP 400 "prompt_cache_options is not supported on this model"
+ * (2026-10-11, gpt-6.1-sol / gpt-6-astra / gpt-5.6-luna). Only the
+ * diagnostics-only comparison_response_id is accepted, and it changes no
+ * cache behavior — so the whole field stays stripped.
+ */
 export declare const CHATGPT_UNSUPPORTED_FIELDS: readonly string[];
 export declare function normalizeChatgptResponsesBody(payload: any): any;
 /**

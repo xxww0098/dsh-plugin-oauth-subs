@@ -28,12 +28,11 @@ export declare function codexMaxContextWindow(modelId: any): any;
 /** The row's `maxContextWindow` across families, or undefined when it has none. */
 export declare function maxContextWindowOf(modelId: any): any;
 /**
- * Family-scoped ceiling lookup. Vendor ids collide across families
- * (`gpt-6-sol` exists in both `codex` and `copilot`, with different ceilings),
- * so `maxContextOfRow` resolves the row inside its own family and falls back
- * to the row's catalog window — never another family's ceiling. Codex / GLM /
- * Copilot answer from their own catalog lookups; Devin / Cline / Command Code
- * / Ollama are plain static floors, so their branch scans the frozen rows.
+ * Family-scoped ceiling lookup. Vendor ids collide across families, so
+ * `maxContextOfRow` resolves the row inside its own family and falls back to
+ * the row's catalog window — never another family's ceiling. Codex / GLM
+ * answer from their own catalog lookups; Devin / Cline / Command Code /
+ * Ollama are plain static floors, so their branch scans the frozen rows.
  */
 export declare function familyMaxContextWindow(family: any, modelId: any): any;
 export declare function isCodex900kBase(modelId: any): boolean;

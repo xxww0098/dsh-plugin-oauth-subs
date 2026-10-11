@@ -70,3 +70,4 @@ export declare function consumeGlmResetCard(session: any, credit: any, requestId
     ok: boolean;
     requestId: any;
 }>;
+export declare function spendGlmResetCard(session: any, creditId: any, { fetchFn, bank, key }: any): Promise<void>;

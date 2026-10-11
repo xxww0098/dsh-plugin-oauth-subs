@@ -204,7 +204,6 @@ test('the controller wires each read-only family, and only its imported sources'
     cursorAutoImport: false,
     ollamaAutoImport: false,
     kimiAutoImport: false,
-    copilotAutoImport: false,
   })
   const cases = {
     codex: [{ source: '/home/u/.codex/auth.json' }, {}],
@@ -219,9 +218,8 @@ test('the controller wires each read-only family, and only its imported sources'
   }
   assert.equal(controller.tokens.cursor.imported.is({ source: 'ide_vscdb' }), true)
   assert.equal(controller.tokens.cursor.imported.is({ source: 'env' }), false)
-  // Excluded: Devin's refresh never exchanges; Copilot mints from a non-rotating GitHub token.
+  // Excluded: Devin's refresh never exchanges.
   assert.equal(controller.tokens.devin.imported, undefined)
-  assert.equal(controller.tokens.copilot.imported, undefined)
 })
 
 test('a reread that finds nothing newer is not repeated on every request', async (t) => {

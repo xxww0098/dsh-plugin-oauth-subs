@@ -27,6 +27,7 @@ import {
   grokRedeemOutcome,
   grokRedeemResetFrame,
   grokResetBank,
+  grokResetCardId,
   grokRpcFrame,
   readGrokRpc,
 } from './reset-frame.js'
@@ -37,10 +38,9 @@ import {
   clampPct,
   creditBagAmounts,
   creditBagUsedPercent,
-  QUOTA_TIMEOUT_MS,
-  readJson,
-  timeoutSignal,
+  quotaReads,
   trimmedQuotaMsg,
+  withQuotaTimeout,
 } from '../quota-shared.js'
 
 function creditUsageSources(billing, config) {
@@ -310,55 +310,46 @@ function grokQuotaHeaders(session) {
 
 export async function fetchGrokQuota(session, fetchFn = outboundFetch) {
   const headers = grokQuotaHeaders(session)
-  const billingWait = timeoutSignal(QUOTA_TIMEOUT_MS)
-  const userWait = timeoutSignal(QUOTA_TIMEOUT_MS)
-  const creditsWait = timeoutSignal(QUOTA_TIMEOUT_MS)
-  try {
-    const [billingResult, userResult, creditsResult, resetResult] = await Promise.allSettled([
-      fetchFn(GROK_BILLING_URL, { method: 'GET', headers, signal: billingWait.signal })
-        .then((response) => readJson(response, 'grok billing')),
-      fetchFn(GROK_CLI_USER_URL, { method: 'GET', headers, signal: userWait.signal })
-        .then((response) => readJson(response, 'grok user')),
-      fetchFn(GROK_CREDITS_URL, {
-        method: 'POST',
-        headers: grokCreditsHeaders(session),
-        body: GROK_WEB_EMPTY_FRAME,
-        signal: creditsWait.signal,
-      }).then(async (response) => {
-        if (!response.ok) {
-          throw new Error(`grok credits failed (HTTP ${response.status})`)
-        }
+  const [billing, user, credits, reset] = await quotaReads(fetchFn, [
+    { url: GROK_BILLING_URL, label: 'grok billing', init: { headers } },
+    { url: GROK_CLI_USER_URL, label: 'grok user', init: { headers } },
+    {
+      label: 'grok credits',
+      run: async (signal) => {
+        const response = await fetchFn(GROK_CREDITS_URL, {
+          method: 'POST',
+          headers: grokCreditsHeaders(session),
+          body: GROK_WEB_EMPTY_FRAME,
+          signal,
+        })
+        if (!response.ok) throw new Error(`grok credits failed (HTTP ${response.status})`)
         const decoded = decodeGrokCreditsFrame(Buffer.from(await response.arrayBuffer()))
         if (!decoded) throw new Error('grok credits returned no usage')
         return decoded
-      }),
-      fetchGrokResetTokens(session, fetchFn),
-    ])
-    if (billingResult.status === 'rejected' && creditsResult.status === 'rejected') {
-      throw billingResult.reason
-    }
-    const billing = billingResult.status === 'fulfilled' ? billingResult.value : {}
-    const cliUser = userResult.status === 'fulfilled' ? userResult.value : undefined
-    const snapshot = creditsResult.status === 'fulfilled' ? creditsResult.value : undefined
-    const parsed = applyGrokCreditsSnapshot(parseGrokBilling(billing, { cliUser }), snapshot)
-    // A failed card read leaves resetCredits off so the store keeps the last bank.
-    if (resetResult.status === 'rejected') return parsed
-    return { ...parsed, resetCredits: grokResetBank(resetResult.value) }
-  } finally {
-    billingWait.cancel()
-    userWait.cancel()
-    creditsWait.cancel()
-  }
+      },
+    },
+    { label: 'grok reset cards', run: () => fetchGrokResetTokens(session, fetchFn) },
+  ])
+  // The CLI billing answer and the web credits frame are two readings of one
+  // weekly pool (unified-billing plans omit the percent on the CLI side), so
+  // only losing both is a failed read.
+  if (!billing.ok && !credits.ok) throw billing.error
+  const parsed = applyGrokCreditsSnapshot(
+    parseGrokBilling(billing.ok ? billing.raw : {}, { cliUser: user.ok ? user.raw : undefined }),
+    credits.ok ? credits.raw : undefined,
+  )
+  // A failed card read leaves resetCredits off so the store keeps the last bank.
+  if (!reset.ok) return parsed
+  return { ...parsed, resetCredits: grokResetBank(reset.raw) }
 }
 
-async function postGrokResetRpc(session, url, body, fetchFn) {
-  const wait = timeoutSignal(QUOTA_TIMEOUT_MS)
-  try {
+function postGrokResetRpc(session, url, body, fetchFn) {
+  return withQuotaTimeout(async (signal) => {
     const response = await fetchFn(url, {
       method: 'POST',
       headers: grokResetHeaders(session),
       body,
-      signal: wait.signal,
+      signal,
     })
     if (!response.ok) throw new Error(`grok reset cards failed (HTTP ${response.status})`)
     return readGrokRpc(
@@ -366,9 +357,7 @@ async function postGrokResetRpc(session, url, body, fetchFn) {
       response.headers?.get?.('grpc-status'),
       response.headers?.get?.('grpc-message'),
     )
-  } finally {
-    wait.cancel()
-  }
+  })
 }
 
 /**
@@ -400,4 +389,18 @@ export async function consumeGrokResetToken(session, tokenId, fetchFn = outbound
   const detail = trimmedQuotaMsg(rpc.grpcMessage) ?? `grpc-status ${rpc.grpcStatus ?? 'missing'}`
   if (outcome === 'noCredit') throw new GrokResetRejected(`grok reset card failed: ${detail}`)
   throw new Error(`grok reset card failed: ${detail}`)
+}
+
+/**
+ * Spend the card the panel named by its public id — the family's reset hook
+ * (families.ts), driven by QuotaStore.consume. The public id is a hash
+ * (reset-frame.ts), so the token is resolved by a fresh list read: a card
+ * spent or expired since the panel rendered is refused instead of silently
+ * spending another.
+ */
+export async function spendGrokResetCard(session, creditId, { fetchFn }: any) {
+  const tokens = await fetchGrokResetTokens(session, fetchFn)
+  const token = tokens.find((row) => grokResetCardId(row.tokenId) === String(creditId ?? ''))
+  if (!token) throw new Error('Grok reset card is not available — refresh quota and retry')
+  await consumeGrokResetToken(session, token.tokenId, fetchFn)
 }

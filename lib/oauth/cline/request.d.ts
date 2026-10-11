@@ -10,6 +10,7 @@
  *  3. `reasoning_effort` stays on the wire only when the catalog advertises
  *     the model, with `max` → `xhigh` (`portable-reasoning.ts`).
  */
+import { UpstreamFailure } from '../upstream.js';
 export declare function isClineReasoningEraModel(modelId: any): boolean;
 export declare function applyClineThinking(payload?: any, model?: any): any;
 export declare function applyClineMaxCompletionTokens(payload?: any): any;
@@ -25,11 +26,10 @@ export declare function applyClineStreamUsage(payload?: any): any;
  */
 export declare function unwrapClineEnvelope(payload: any): any;
 /**
- * The daily free-model cap (live 2026-09-28): HTTP 429
- * `{"code":"INFERENCE_CAP_ERROR","message":"Error 429: Daily free limit reached on model …"}`.
- * Forwarded as-is the host reads RATE_LIMIT and retries 5 times; the
- * `usage limit reached:` prefix makes it QUOTA_EXCEEDED, which it does not.
+ * Caps become `usage limit reached:` so the host stops retrying. Entitlement
+ * (not subscribed / org cannot use individual inference) is a 400: a 403
+ * would look like a dead login. Other 429s stay the upstream's own answer.
  */
-export declare function clineQuotaFailure(status: any, payload: any): import("../upstream.js").UpstreamFailure | undefined;
+export declare function clineQuotaFailure(status: any, payload: any): UpstreamFailure | undefined;
 /** Map vendor cache-read aliases. Absent field stays absent — do not invent 0. */
 export declare function mapClineUsage(usage: any): any;

@@ -13,13 +13,13 @@ import {
 } from '../lib/oauth/models.js'
 import { syncHarnessModels } from '../lib/oauth/harness-sync.js'
 import {
+  OLLAMA_BALANCE_URL,
   OLLAMA_CHAT_URL,
   OLLAMA_ME_URL,
   OLLAMA_MODELS,
   OLLAMA_REASONING,
   OLLAMA_SHOW_URL,
   OLLAMA_TAGS_URL,
-  OLLAMA_USAGE_URL,
   inferOllamaInput,
   isOllamaOpaqueAccount,
   isOllamaRetiredModel,
@@ -36,7 +36,7 @@ import {
 } from '../lib/apikey/ollama/index.js'
 import { formatPlanLabel } from '../lib/oauth/plan.js'
 import { QuotaStore } from '../lib/oauth/quota.js'
-import { ollamaSessionResetAt, ollamaWeeklyResetAt, parseOllamaUsage } from '../lib/apikey/ollama/quota.js'
+import { ollamaSessionResetAt, ollamaWeeklyResetAt, parseOllamaBalance } from '../lib/apikey/ollama/quota.js'
 import {
   OLLAMA_IMPORT_EMPTY,
   importOllamaAuth,
@@ -170,19 +170,25 @@ test('ollamaShowInput reads capabilities; missing array falls back to name regex
   assert.deepEqual(ollamaInput('gemma4:31b', { details: {} }), ['text', 'image'])
 })
 
-const LIVE_OLLAMA_USAGE = {
-  activity: { cost: '0.00000', period: { type: 'last_4_weeks' }, models: [] },
-  limits: {
-    session: { usage: 0, models: [] },
-    weekly: {
-      usage: 0.095,
-      models: [
-        { name: 'glm-5.3-flash', request_count: 1294 },
-        { name: 'web search', request_count: 3 },
-        { name: 'web fetch', request_count: 2 },
-      ],
-    },
+// Real 2026-10-10 probe of GET /api/balance on a Pro account: the legacy
+// oneOf shape (session/weekly remaining_percent + resets_at), $0 purchased.
+const LIVE_OLLAMA_BALANCE = {
+  included: {
+    session: { remaining_percent: 88.27, resets_at: '2026-10-10T16:00:00Z' },
+    weekly: { remaining_percent: 60.37, resets_at: '2026-10-12T00:00:00Z' },
   },
+  purchased: { balance_usd: 0 },
+}
+
+// Official docs response example for the credit-plan oneOf shape
+// (docs.ollama.com/api/balance).
+const LIVE_OLLAMA_BALANCE_CREDITS = {
+  included: {
+    balance_usd: 72.5,
+    allowance_usd: 100,
+    period: { from: '2026-09-15T09:30:00Z', until: '2026-10-15T09:30:00Z' },
+  },
+  purchased: { balance_usd: 25 },
 }
 
 const LIVE_OLLAMA_ME = {
@@ -196,9 +202,9 @@ async function ollamaCloudFetch(url, init) {
   const href = String(url)
   assert.equal(href.includes('127.0.0.1:11434'), false)
   assert.equal(href.includes('localhost:11434'), false)
-  if (href === OLLAMA_USAGE_URL) {
+  if (href === OLLAMA_BALANCE_URL) {
     assert.equal(init?.method ?? 'GET', 'GET')
-    return json(LIVE_OLLAMA_USAGE)
+    return json(LIVE_OLLAMA_BALANCE)
   }
   if (href === OLLAMA_ME_URL) {
     assert.equal(init?.method, 'POST')
@@ -210,31 +216,43 @@ async function ollamaCloudFetch(url, init) {
   throw new Error(`unexpected ${href}`)
 }
 
-test('parseOllamaUsage maps 0 / 0.095 fractions to remaining 100 and 90.5', () => {
-  const now = Date.parse('2026-09-03T12:34:56Z')
-  const parsed = parseOllamaUsage(LIVE_OLLAMA_USAGE, LIVE_OLLAMA_ME, now)
+test('parseOllamaBalance maps legacy remaining_percent rows and credit plans', () => {
+  const now = Date.parse('2026-10-10T14:46:58Z')
+  const parsed = parseOllamaBalance(LIVE_OLLAMA_BALANCE, LIVE_OLLAMA_ME, now)
   assert.equal(parsed.planType, 'pro')
   assert.equal(formatPlanLabel(parsed.planType, 'ollama'), 'Pro')
   assert.equal(parsed.account, 'cloud@ollama.local')
   assert.equal(parsed.rows.length, 2)
   assert.equal(parsed.rows[0].kind, 'primary')
-  assert.equal(parsed.rows[0].usedPercent, 0)
-  assert.equal(parsed.rows[0].remainingPercent, 100)
-  assert.equal(parsed.rows[0].resetAt, ollamaSessionResetAt(now))
+  assert.equal(parsed.rows[0].usedPercent, 11.7)
+  assert.equal(parsed.rows[0].remainingPercent, 88.3)
+  assert.equal(parsed.rows[0].windowMinutes, 300)
+  assert.equal(parsed.rows[0].resetAt, Date.parse('2026-10-10T16:00:00Z'))
   assert.equal(parsed.rows[1].kind, 'weekly')
-  assert.equal(parsed.rows[1].usedPercent, 9.5)
-  assert.equal(parsed.rows[1].remainingPercent, 90.5)
-  assert.equal(parsed.rows[1].resetAt, ollamaWeeklyResetAt(now))
-  assert.equal(parsed.rows[1].note, 'glm-5.3-flash × 1294\nweb search × 3\nweb fetch × 2')
-  assert.deepEqual(parsed.rows[1].noteItems, [
-    { name: 'glm-5.3-flash', count: 1294 },
-    { name: 'web search', count: 3 },
-    { name: 'web fetch', count: 2 },
-  ])
-  const empty = parseOllamaUsage(undefined, undefined)
+  assert.equal(parsed.rows[1].usedPercent, 39.6)
+  assert.equal(parsed.rows[1].remainingPercent, 60.4)
+  assert.equal(parsed.rows[1].resetAt, Date.parse('2026-10-12T00:00:00Z'))
+  // remaining_percent is REMAINING (75 = 75% left), never re-inverted twice
+  assert.equal(parseOllamaBalance({ included: { session: { remaining_percent: 75 } } }).rows[0].remainingPercent, 75)
+  // Credit plan: one USD meter, purchased credits as a separate prepaid row
+  const credits = parseOllamaBalance(LIVE_OLLAMA_BALANCE_CREDITS, LIVE_OLLAMA_ME, now)
+  assert.equal(credits.rows.length, 2)
+  assert.equal(credits.rows[0].kind, 'primary')
+  assert.equal(credits.rows[0].remainingPercent, 72.5)
+  assert.equal(credits.rows[0].used, 27.5)
+  assert.equal(credits.rows[0].total, 100)
+  assert.equal(credits.rows[0].unit, 'usd')
+  assert.equal(credits.rows[0].resetAt, Date.parse('2026-10-15T09:30:00Z'))
+  assert.equal(credits.rows[1].kind, 'prepaid')
+  assert.equal(credits.rows[1].unit, 'usd')
+  assert.equal(credits.rows[1].remaining, 25)
+  // $0 purchased adds no prepaid row; malformed balances add no rows
+  const noPrepaid = parseOllamaBalance({ ...LIVE_OLLAMA_BALANCE, purchased: { balance_usd: 0 } })
+  assert.equal(noPrepaid.rows.length, 2)
+  const empty = parseOllamaBalance(undefined, undefined)
   assert.deepEqual(empty.rows, [])
   assert.equal(empty.planType, undefined)
-  const meOnly = parseOllamaUsage({ limits: {} }, { Name: 'Only Name', Plan: 'max' })
+  const meOnly = parseOllamaBalance({ included: {} }, { Name: 'Only Name', Plan: 'max' })
   assert.equal(meOnly.account, 'Only Name')
   assert.equal(meOnly.planType, 'max')
   assert.deepEqual(meOnly.rows, [])
@@ -243,46 +261,56 @@ test('parseOllamaUsage maps 0 / 0.095 fractions to remaining 100 and 90.5', () =
   assert.equal(isOllamaOpaqueAccount('cloud@ollama.local'), false)
 })
 
-test('ollama session resetAt is next UTC 5h unix bucket, not now+5h', () => {
+test('balance resetAt prefers official resets_at; missing stamp falls back to #12532 buckets', () => {
+  const now = Date.parse('2026-10-10T14:46:58Z')
+  const stamped = parseOllamaBalance(LIVE_OLLAMA_BALANCE, LIVE_OLLAMA_ME, now)
+  assert.equal(stamped.rows[0].resetAt, Date.parse('2026-10-10T16:00:00Z'))
+  assert.equal(stamped.rows[1].resetAt, Date.parse('2026-10-12T00:00:00Z'))
+  // 2026-10-10 is a Saturday: the official weekly stamp lands on Monday
+  // 00:00 UTC — the same target the #12532 bucket math computes (and the
+  // live session stamp is exactly the next UTC 5h bucket). Prove the stamp
+  // wins with stamps that point elsewhere.
+  const elsewhere = parseOllamaBalance({
+    included: {
+      session: { remaining_percent: 88, resets_at: '2099-01-01T00:00:00Z' },
+      weekly: { remaining_percent: 60, reset_at: '2099-01-08T00:00:00Z' },
+    },
+  }, LIVE_OLLAMA_ME, now)
+  assert.equal(elsewhere.rows[0].resetAt, Date.parse('2099-01-01T00:00:00Z'))
+  assert.notEqual(elsewhere.rows[0].resetAt, ollamaSessionResetAt(now))
+  assert.equal(elsewhere.rows[1].resetAt, Date.parse('2099-01-08T00:00:00Z'))
+  const unstamped = parseOllamaBalance({
+    included: {
+      session: { remaining_percent: 88 },
+      weekly: { remaining_percent: 60 },
+    },
+  }, LIVE_OLLAMA_ME, now)
+  assert.equal(unstamped.rows[0].resetAt, ollamaSessionResetAt(now))
+  assert.equal(unstamped.rows[1].resetAt, ollamaWeeklyResetAt(now))
+  const nextReset = parseOllamaBalance({
+    included: { session: { remaining_percent: 80, next_reset: 1_800_000_000 } },
+  }, undefined, now)
+  assert.equal(nextReset.rows[0].resetAt, 1_800_000_000_000)
+})
+
+test('#12532 bucket math: session next UTC 5h unix bucket, weekly next UTC 7d shifted -4d', () => {
   // ollama/ollama#12532: session remainder = 18000 - (epoch % 18000)
   assert.equal(ollamaSessionResetAt(0), 18_000_000)
   assert.equal(ollamaSessionResetAt(1), 18_000_000)
   assert.equal(ollamaSessionResetAt(17_999_999), 18_000_000)
   assert.equal(ollamaSessionResetAt(18_000_000), 36_000_000)
-  const now = Date.parse('2026-09-03T12:34:56Z')
-  const parsed = parseOllamaUsage(LIVE_OLLAMA_USAGE, LIVE_OLLAMA_ME, now)
-  assert.equal(parsed.rows[0].resetAt, ollamaSessionResetAt(now))
-  assert.notEqual(parsed.rows[0].resetAt, now + 5 * 3600 * 1000)
-  assert.equal(parsed.rows[1].resetAt, ollamaWeeklyResetAt(now))
-  const stamped = parseOllamaUsage({
-    limits: {
-      session: { usage: 0, resets_at: '2099-01-01T00:00:00Z' },
-      weekly: { usage: 0.1, reset_at: '2099-01-08T00:00:00Z', models: [] },
-    },
-  }, LIVE_OLLAMA_ME, now)
-  assert.equal(stamped.rows[0].resetAt, Date.parse('2099-01-01T00:00:00Z'))
-  assert.equal(stamped.rows[1].resetAt, Date.parse('2099-01-08T00:00:00Z'))
-  const nextReset = parseOllamaUsage({
-    limits: { session: { usage: 0.2, next_reset: 1_800_000_000 } },
-  }, undefined, now)
-  assert.equal(nextReset.rows[0].resetAt, 1_800_000_000_000)
-})
-
-test('ollama weekly resetAt is next UTC 7d unix bucket shifted -4d, not now+7d', () => {
-  // ollama/ollama#12532: weekly remainder = 604800 - ((epoch - 4d) % 604800)
-  // Unix epoch Thu + 4d = Mon 1970-01-05 00:00 UTC
+  const now = Date.parse('2026-10-10T14:46:58Z')
+  assert.notEqual(ollamaSessionResetAt(now), now + 5 * 3600 * 1000)
+  // weekly remainder = 604800 - ((epoch - 4d) % 604800); unix epoch Thu
+  // + 4d = Mon 1970-01-05 00:00 UTC
   const monday = 4 * 86_400 * 1000
   const nextMonday = monday + 604_800 * 1000
   assert.equal(ollamaWeeklyResetAt(monday), nextMonday)
   assert.equal(ollamaWeeklyResetAt(monday + 1), nextMonday)
   assert.equal(ollamaWeeklyResetAt(nextMonday - 1), nextMonday)
   assert.equal(ollamaWeeklyResetAt(nextMonday), nextMonday + 604_800 * 1000)
-  const now = Date.parse('2026-09-03T12:34:56Z')
-  assert.equal(ollamaWeeklyResetAt(now), Date.parse('2026-09-07T00:00:00Z'))
+  assert.equal(ollamaWeeklyResetAt(now), Date.parse('2026-10-12T00:00:00Z'))
   assert.notEqual(ollamaWeeklyResetAt(now), now + 7 * 24 * 3600 * 1000)
-  const parsed = parseOllamaUsage(LIVE_OLLAMA_USAGE, LIVE_OLLAMA_ME, now)
-  assert.equal(parsed.rows[0].resetAt, ollamaSessionResetAt(now))
-  assert.equal(parsed.rows[1].resetAt, ollamaWeeklyResetAt(now))
 })
 
 test('snapshot shows quota on every ollama account', async () => {
@@ -317,8 +345,8 @@ test('snapshot shows quota on every ollama account', async () => {
   assert.equal(snap.accounts.ollama.accounts.every((row) => row.quota?.status === 'ready'), true)
   for (const row of snap.accounts.ollama.accounts) {
     assert.equal(row.quota.planLabel, 'Pro')
-    assert.equal(row.quota.rows[0].remainingPercent, 100)
-    assert.equal(row.quota.rows[1].remainingPercent, 90.5)
+    assert.equal(row.quota.rows[0].remainingPercent, 88.3)
+    assert.equal(row.quota.rows[1].remainingPercent, 60.4)
     assert.equal(isOllamaOpaqueAccount(row.account), false)
     assert.match(row.account, /@ollama\.local$/)
   }
@@ -613,7 +641,7 @@ test('refreshQuota persists Email and replaceAccountId on ollama-hex vault id', 
     origin: () => 'http://127.0.0.1:8318',
     ollamaAutoImport: false,
     fetchFn: async (url, init) => {
-      if (String(url) === OLLAMA_USAGE_URL) return json(LIVE_OLLAMA_USAGE)
+      if (String(url) === OLLAMA_BALANCE_URL) return json(LIVE_OLLAMA_BALANCE)
       if (String(url) === OLLAMA_ME_URL) return json(LIVE_OLLAMA_ME)
       if (String(url).includes('11434')) throw new Error('localhost daemon is not this family')
       return json({ models: [] })
@@ -622,8 +650,8 @@ test('refreshQuota persists Email and replaceAccountId on ollama-hex vault id', 
   const quota = await controller.refreshQuota('ollama')
   assert.equal(quota.status, 'ready')
   assert.equal(quota.planLabel, 'Pro')
-  assert.equal(quota.rows[0].remainingPercent, 100)
-  assert.equal(quota.rows[1].remainingPercent, 90.5)
+  assert.equal(quota.rows[0].remainingPercent, 88.3)
+  assert.equal(quota.rows[1].remainingPercent, 60.4)
   const rows = await listStoredSessions('ollama', authPath)
   assert.equal(rows.length, 1)
   assert.equal(rows[0].id, 'cloud@ollama.local')
@@ -634,7 +662,7 @@ test('refreshQuota persists Email and replaceAccountId on ollama-hex vault id', 
   assert.equal(snap.accounts.ollama.accounts[0].planLabel, 'Pro')
 })
 
-test('QuotaStore ollama fetches usage+me; missing usage does not crash; no session stays idle', async () => {
+test('QuotaStore ollama fetches balance+me; missing balance does not crash; no session stays idle', async () => {
   const session = ollamaSession({ accessToken: 'sk-ollama-quota-store', source: 'paste' })
   const seen = []
   const store = new QuotaStore({
@@ -642,7 +670,7 @@ test('QuotaStore ollama fetches usage+me; missing usage does not crash; no sessi
       const href = String(url)
       seen.push({ href, method: init?.method ?? 'GET' })
       assert.equal(href.includes('11434'), false)
-      if (href === OLLAMA_USAGE_URL) return json(LIVE_OLLAMA_USAGE)
+      if (href === OLLAMA_BALANCE_URL) return json(LIVE_OLLAMA_BALANCE)
       if (href === OLLAMA_ME_URL) {
         assert.equal(init?.method, 'POST')
         return json(LIVE_OLLAMA_ME)
@@ -656,14 +684,14 @@ test('QuotaStore ollama fetches usage+me; missing usage does not crash; no sessi
   assert.notEqual(quota.status, 'idle')
   assert.equal(quota.planLabel, 'Pro')
   assert.equal(quota.account, 'cloud@ollama.local')
-  assert.equal(quota.rows[0].remainingPercent, 100)
-  assert.equal(quota.rows[1].remainingPercent, 90.5)
-  assert.equal(seen.some((row) => row.href === OLLAMA_USAGE_URL && row.method === 'GET'), true)
+  assert.equal(quota.rows[0].remainingPercent, 88.3)
+  assert.equal(quota.rows[1].remainingPercent, 60.4)
+  assert.equal(seen.some((row) => row.href === OLLAMA_BALANCE_URL && row.method === 'GET'), true)
   assert.equal(seen.some((row) => row.href === OLLAMA_ME_URL && row.method === 'POST'), true)
 
   const meOnly = new QuotaStore({
     fetchFn: async (url) => {
-      if (String(url) === OLLAMA_USAGE_URL) return new Response('nope', { status: 500 })
+      if (String(url) === OLLAMA_BALANCE_URL) return new Response('nope', { status: 500 })
       if (String(url) === OLLAMA_ME_URL) return json({ Plan: 'pro', Email: 'cloud@ollama.local' })
       throw new Error(`unexpected ${url}`)
     },

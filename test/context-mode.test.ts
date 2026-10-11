@@ -133,7 +133,6 @@ test('withPickerVariants grows only Fast siblings; maxContextWindow stays a ceil
 test('family ceilings are family-scoped; the four static floors carry none yet', () => {
   assert.equal(familyMaxContextWindow('codex', 'gpt-6-sol'), 872_000)
   assert.equal(familyMaxContextWindow('glm', 'glm-5.3'), 1_000_000)
-  assert.equal(familyMaxContextWindow('copilot', 'gpt-5.5'), 1_050_000)
   // Devin / Cline / Command Code / Ollama sources expose a single window each,
   // so their floors declare no second window: the slot is wired, the data is not.
   for (const [family, id] of [

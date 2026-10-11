@@ -269,7 +269,6 @@ function resolvers({ cursor, cursorFastX, devin, clineFree }) {
       source: 'models.dev "moonshotai" (platform.kimi.ai), mapped via the Kimi Code models page',
       resolve: (row) => (KIMI_ALIASES[row.id] ? devRate('moonshotai', KIMI_ALIASES[row.id]) : undefined),
     },
-    copilot: { source: 'models.dev "github-copilot"', resolve: exact('github-copilot') },
     devin: {
       source: `docs.devin.ai/desktop/models.md modelCostData (${DEVIN_TIER}) by defaultUid`,
       resolve: (row) => devin.get(row.defaultUid),
@@ -284,6 +283,11 @@ function resolvers({ cursor, cursorFastX, devin, clineFree }) {
     'opencode-go-flash': { source: 'models.dev "opencode-go"', resolve: exact('opencode-go') },
     'opencode-go-responses': { source: 'models.dev "opencode-go"', resolve: exact('opencode-go') },
     'opencode-go-messages': { source: 'models.dev "opencode-go"', resolve: exact('opencode-go') },
+    // Zen prices the same models on its own bucket; the docs price table is
+    // the same numbers, but models.dev stays the machine-readable source.
+    'opencode-zen-chat': { source: 'models.dev "opencode"', resolve: exact('opencode') },
+    'opencode-zen-responses': { source: 'models.dev "opencode"', resolve: exact('opencode') },
+    'opencode-zen-messages': { source: 'models.dev "opencode"', resolve: exact('opencode') },
   }
 }
 

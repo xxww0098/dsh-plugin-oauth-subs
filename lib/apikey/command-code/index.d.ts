@@ -33,6 +33,12 @@ export declare const COMMAND_CODE_WHOAMI_URL = "https://api.commandcode.ai/alpha
 export declare const COMMAND_CODE_CREDITS_URL = "https://api.commandcode.ai/alpha/billing/credits";
 export declare const COMMAND_CODE_SUBSCRIPTIONS_URL = "https://api.commandcode.ai/alpha/billing/subscriptions";
 export declare const COMMAND_CODE_USAGE_URL = "https://api.commandcode.ai/alpha/usage/summary";
+/**
+ * The vendor's own model list (`{object:'list', data:[{id,name,context_length,supported_endpoints}]}`).
+ * Public — it answers without a key (live 2026-10-10: 200, 87 rows) — and it is
+ * not the CLI's path: `/alpha/generate` stays the inference surface.
+ */
+export declare const COMMAND_CODE_PROVIDER_MODELS_URL = "https://api.commandcode.ai/provider/v1/models";
 /** CLI 发 `x-command-code-version` 的值；无 header 时上游照跑（401/计费门正常）。 */
 export declare const COMMAND_CODE_CLI_VERSION = "1.79.1";
 /** CLI `max_tokens ?? 64000` 上限；无 per-model output cap。 */

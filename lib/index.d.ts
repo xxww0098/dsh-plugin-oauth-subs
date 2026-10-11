@@ -6,7 +6,7 @@
  *   2. drives ChatGPT Codex PKCE, xAI Grok device-code / PKCE,
  *      Zhipu GLM Z.ai / BigModel CLI-poll, AWS Kiro (Social / Builder ID /
  *      IdC / Entra / API key), Google Antigravity, Cursor, Ollama Cloud,
- *      Kimi Code Plan, GitHub Copilot, and Devin Agent logins
+ *      Kimi Code Plan and Devin Agent logins
  *   3. syncs logged-in catalogs into llm-pi-ai
  *
  * The client half (左侧栏面板：插件按钮下方的订阅入口 →
@@ -42,7 +42,6 @@ export { ANTIGRAVITY_CLIENT_ID, ANTIGRAVITY_API_URL, ANTIGRAVITY_STREAM_URL, ant
 export { CURSOR_CLIENT_VERSION, CURSOR_MODELS, cursorChatHeaders, cursorSession, } from './oauth/cursor/index.js';
 export { OLLAMA_MODELS, OLLAMA_CHAT_URL, ollamaSession, ollamaUpstreamHeaders, } from './apikey/ollama/index.js';
 export { KIMI_CLIENT_ID, KIMI_MODELS, KIMI_CHAT_URL, kimiSession, kimiUpstreamHeaders, } from './oauth/kimi/index.js';
-export { COPILOT_CLIENT_ID, COPILOT_MODELS, copilotChatUrl, copilotSession, copilotUpstreamHeaders, } from './oauth/copilot/index.js';
 export { DEVIN_MODELS, DEVIN_AUTHORIZE_URL, DEVIN_TOKEN_URL, devinSession, normalizeDevinToken, } from './oauth/devin/index.js';
 export { CLINE_MODELS, CLINE_API_BASE, CLINE_CHAT_URL, CLINE_WORKOS_CLIENT_ID, clineDeviceSpec, clineSessionFromAuthData, clineUpstreamHeaders, refreshCline, } from './oauth/cline/index.js';
 export { OAUTH_CREDENTIAL_REF } from './oauth/models.js';
@@ -57,7 +56,6 @@ export { parseGlmQuota, parseGlmResetCards } from './oauth/glm/quota.js';
 export { parseKiroUsage } from './oauth/kiro/quota.js';
 export { parseCursorPeriodUsage } from './oauth/cursor/quota.js';
 export { parseKimiUsage } from './oauth/kimi/quota.js';
-export { parseCopilotUsage } from './oauth/copilot/quota.js';
 export { parseDevinUserStatus } from './oauth/devin/quota.js';
 export { QuotaStore } from './oauth/quota.js';
 export { fetchClineQuota, parseClineBalance, parseClinePlan, parseClineUsage } from './oauth/cline/quota.js';

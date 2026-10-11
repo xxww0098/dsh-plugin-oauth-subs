@@ -8,10 +8,8 @@ import {
   asNumber,
   clampPct,
   creditBagAmounts,
-  QUOTA_TIMEOUT_MS,
-  readJson,
+  quotaReads,
   resetAtOf,
-  timeoutSignal,
 } from '../quota-shared.js'
 
 function parseKimiUsageRow(value, fallbackKind, fallbackLabel) {
@@ -79,23 +77,12 @@ export function parseKimiUsage(payload, me) {
 
 export async function fetchKimiQuota(session, fetchFn = outboundFetch) {
   const headers = kimiUpstreamHeaders(session)
-  const usageWait = timeoutSignal(QUOTA_TIMEOUT_MS)
-  const meWait = timeoutSignal(QUOTA_TIMEOUT_MS)
-  try {
-    const [usageResult, meResult] = await Promise.allSettled([
-      fetchFn(KIMI_USAGE_URL, { method: 'GET', headers, signal: usageWait.signal })
-        .then((response) => readJson(response, 'kimi usage')),
-      fetchFn(KIMI_ME_URL, { method: 'GET', headers, signal: meWait.signal })
-        .then((response) => readJson(response, 'kimi me')),
-    ])
-    if (usageResult.status === 'rejected' && meResult.status === 'rejected') {
-      throw usageResult.reason
-    }
-    const usage = usageResult.status === 'fulfilled' ? usageResult.value : {}
-    const me = meResult.status === 'fulfilled' ? meResult.value : undefined
-    return parseKimiUsage(usage, me)
-  } finally {
-    usageWait.cancel()
-    meWait.cancel()
-  }
+  const [usage, me] = await quotaReads(fetchFn, [
+    { url: KIMI_USAGE_URL, label: 'kimi usage', init: { headers } },
+    { url: KIMI_ME_URL, label: 'kimi me', init: { headers } },
+  ])
+  // Either answer tells part of the card — the windows of one, the identity of
+  // the other — so only losing both is a failed read.
+  if (!usage.ok && !me.ok) throw usage.error
+  return parseKimiUsage(usage.ok ? usage.raw : {}, me.ok ? me.raw : undefined)
 }

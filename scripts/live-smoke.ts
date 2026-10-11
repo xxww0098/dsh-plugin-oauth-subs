@@ -9,9 +9,14 @@
  * never writes the store, and every request carries a timeout. Requests are tiny
  * but they are real — they spend a little of the account's quota.
  *
- * Add a family by adding one entry to CHECKS. Exit code 1 if any check fails.
+ * Add a family by adding one entry to CHECKS. Exit code 1 if any check FAILs.
+ * Two outcomes are not failures and say so: BLOCKED (the vendor refused the
+ * account itself — suspended, out of credits — so the code under test never
+ * ran) and SKIP (the account has nothing to test, e.g. no model with an
+ * effort ladder). Both print their reason; neither hides behind a green run.
  */
 
+import { readFile } from 'node:fs/promises'
 import { deflateSync } from 'node:zlib'
 import { createProxy } from '../lib/oauth/proxy.js'
 import { listStoredSessions } from '../lib/oauth/store.js'
@@ -68,7 +73,7 @@ function png(width, height, [r, g, b]) {
 }
 
 /** One non-streaming chat call through the proxy. */
-function chatClient(base, family) {
+function chatClient(base, family, refusals: string[] = []) {
   return async (body) => {
     const t0 = Date.now()
     const res = await fetch(`${base}/${family}/v1/chat/completions`, {
@@ -81,12 +86,14 @@ function chatClient(base, family) {
     let json: any = null
     try { json = JSON.parse(text) } catch { /* error bodies may be plain text */ }
     const message = json?.choices?.[0]?.message
+    if (res.status !== 200) refusals.push(text.slice(0, 400))
     return { status: res.status, ms: Date.now() - t0, message, text: String(message?.content ?? ''), raw: json ?? text.slice(0, 300) }
   }
 }
 
 const pass = (detail) => ({ ok: true, detail })
 const fail = (detail) => ({ ok: false, detail })
+const skip = (detail) => ({ ok: true, skipped: true, detail })
 const ms = (r) => `${(r.ms / 1000).toFixed(1)}s`
 
 // ── Cursor ────────────────────────────────────────────────────────────────
@@ -141,7 +148,7 @@ const kiro = {
   // and a dropped field silently runs the default tier.
   async effort(chat, ctx) {
     const row = ctx.models.find((m) => m.reasoningEfforts && LOW.some((k) => m.reasoningEfforts[k]) && HIGH.some((k) => m.reasoningEfforts[k]))
-    if (!row) return fail('no catalog model with both a low and a high effort tier')
+    if (!row) return skip('no model in this account\'s live catalog has both a low and a high effort tier')
     const wire = (keys) => row.reasoningEfforts[keys.find((k) => row.reasoningEfforts[k])]
     const q = 'How many ordered pairs of non-negative integers (x, y) satisfy x^2 + y^2 = 2025? List them and verify each.'
     const low = await chat({ model: row.id, reasoning_effort: wire(LOW), messages: [{ role: 'user', content: q }] })
@@ -179,7 +186,9 @@ Object.assign(kiro, {
       signal: AbortSignal.timeout(args.timeoutMs),
       body: JSON.stringify({ model, stream: true, tools, messages: [{ role: 'user', content: 'Call git_status now.' }] }),
     })
-    const deltas = (await res.text()).split('\n').filter((line) => line.startsWith('data: {')).flatMap((line) => JSON.parse(line.slice(6)).choices?.[0]?.delta?.tool_calls ?? [])
+    const streamed = await res.text()
+    if (res.status !== 200) ctx.refusals?.push(streamed.slice(0, 400))
+    const deltas = streamed.split('\n').filter((line) => line.startsWith('data: {')).flatMap((line) => JSON.parse(line.slice(6)).choices?.[0]?.delta?.tool_calls ?? [])
     const text = deltas.map((call) => call.function?.arguments ?? '').join('')
     try {
       return deltas.length && typeof JSON.parse(text) === 'object' ? pass(`arguments ${JSON.stringify(text)}`) : fail(`no tool call: ${res.status}`)
@@ -217,8 +226,76 @@ const devin = {
   },
 }
 
+// ── Ping (every other family) ─────────────────────────────────────────────
+//
+// One tiny real turn per family through the real proxy: proves the stored
+// login, the route, the upstream hop and the reply path end to end. The
+// model is each family's cheapest picker row; it must still be in the
+// catalog, so a retired id fails with that reason instead of a vendor 400.
+
+const CATALOG = JSON.parse(await readFile(new URL('../lib/catalog/models.json', import.meta.url), 'utf8'))
+const PING_PROMPT = 'Reply with the single word PONG.'
+
+/** A refusal that is about the account's state, not this code. */
+const ACCOUNT_BLOCKED = /suspended|banned|deactivated|account.{0,30}locked|usage limit reached|insufficient (?:credits|balance|funds)/i
+
+function pingModel(family, model) {
+  const rows = CATALOG[family] ?? []
+  return rows.some((row) => (typeof row === 'string' ? row : row.id) === model) ? undefined : `${model} is not in the ${family} catalog any more`
+}
+
+function pingResult(label, status, text, raw) {
+  if (status === 200 && text.trim()) return pass(`${label}: ${JSON.stringify(text.trim().slice(0, 40))}`)
+  return fail(`${label}: HTTP ${status} ${JSON.stringify(raw).slice(0, 220)}`)
+}
+
+/** Completions families: one non-streaming chat turn. */
+function pingChat(family, model) {
+  return {
+    async ping(chat) {
+      const gone = pingModel(family, model)
+      if (gone) return fail(gone)
+      const r = await chat({ model, messages: [{ role: 'user', content: PING_PROMPT }] })
+      return pingResult(`${model} (${ms(r)})`, r.status, r.text, r.raw)
+    },
+  }
+}
+
+/** Responses families: a streaming turn, read off the SSE events. */
+function pingResponses(family, model) {
+  return {
+    async ping(_chat, ctx) {
+      const gone = pingModel(family, model)
+      if (gone) return fail(gone)
+      const t0 = Date.now()
+      const res = await fetch(`${ctx.base}/${family}/v1/responses`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${KEY}`, 'content-type': 'application/json' },
+        signal: AbortSignal.timeout(args.timeoutMs),
+        body: JSON.stringify({ model, stream: true, store: false, instructions: 'You are a terse assistant.', input: [{ role: 'user', content: [{ type: 'input_text', text: PING_PROMPT }] }] }),
+      })
+      const body = await res.text()
+      const events = body.split('\n').filter((line) => line.startsWith('data: {')).map((line) => { try { return JSON.parse(line.slice(6)) } catch { return {} } })
+      const text = events.filter((event) => event.type === 'response.output_text.delta').map((event) => event.delta ?? '').join('')
+      const failed = events.find((event) => event.type === 'response.failed' || event.type === 'error')
+      const done = events.some((event) => event.type === 'response.completed')
+      const label = `${model} (${((Date.now() - t0) / 1000).toFixed(1)}s)`
+      if (res.status === 200 && done && !failed) return pingResult(label, 200, text || '(no text delta)', body.slice(0, 220))
+      return pingResult(label, failed ? 502 : res.status, '', failed ?? body.slice(0, 220))
+    },
+  }
+}
+
 const CHECKS = {
-  cursor: { checks: cursor },
+  codex: { checks: pingResponses('codex', 'gpt-5.6-luna') },
+  chatgpt: { checks: pingResponses('chatgpt', 'gpt-5.6-luna') },
+  grok: { checks: pingResponses('grok', 'grok-4.7-build-fast') },
+  glm: { checks: pingChat('glm', 'glm-5.3-flash') },
+  antigravity: { checks: pingChat('antigravity', 'gemini-3.1-flash-lite') },
+  cline: { checks: pingChat('cline', 'cline-free/solar-mini4') },
+  ollama: { checks: pingChat('ollama', 'gpt-oss:20b') },
+  'command-code': { checks: pingChat('command-code', 'deepseek/deepseek-v4.1-flash') },
+  cursor: { checks: { ...cursor, ...pingChat('cursor', 'composer-2.5') } },
   devin: { checks: devin },
   kiro: {
     checks: kiro,
@@ -235,6 +312,7 @@ if (!args.families.length || args.families.some((family) => !CHECKS[family])) {
 }
 
 let failed = 0
+let blocked = 0
 for (const family of args.families) {
   const { checks, setup } = CHECKS[family]
   let session
@@ -245,12 +323,23 @@ for (const family of args.families) {
     proxy = createProxy({ port: 0, apiKey: KEY, tokens: { [family]: { session: async () => session } } })
     const server = await proxy.listen()
     const base = `http://127.0.0.1:${server.address().port}`
-    const chat = chatClient(base, family)
+    const refusals: string[] = []
+    const chat = chatClient(base, family, refusals)
     ctx.base = base
+    ctx.refusals = refusals
     for (const [name, run] of Object.entries<any>(checks)) {
+      refusals.length = 0
       const result = await run(chat, ctx).catch((error) => fail(`threw ${error?.name ?? 'Error'}: ${error?.message ?? error}`))
+      // A failed check whose upstream refusal is about the account never ran
+      // the code under test: report it as BLOCKED with the vendor's reason.
+      const blocker = !result.ok ? refusals.find((text) => ACCOUNT_BLOCKED.test(text)) : undefined
+      if (blocker) {
+        blocked += 1
+        console.log(`BLOCKED  ${family}/${name}  account refused: ${blocker.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g, '<id>').replace(/\s+/g, ' ').slice(0, 200)}`)
+        continue
+      }
       if (!result.ok) failed += 1
-      console.log(`${result.ok ? 'PASS' : 'FAIL'}  ${family}/${name}  ${result.detail}`)
+      console.log(`${result.skipped ? 'SKIP' : result.ok ? 'PASS' : 'FAIL'}  ${family}/${name}  ${result.detail}`)
     }
   } catch (error) {
     failed += 1
@@ -259,4 +348,5 @@ for (const family of args.families) {
     await proxy?.close()
   }
 }
+if (blocked) console.log(`\n${blocked} check(s) BLOCKED by the account, not by this code — fix the account and rerun.`)
 process.exit(failed ? 1 : 0)

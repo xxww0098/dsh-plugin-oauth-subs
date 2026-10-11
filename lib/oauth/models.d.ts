@@ -35,7 +35,6 @@ export interface BuildProvidersOptions {
     ollamaModels?: readonly ModelRow[];
     kiroModels?: readonly ModelRow[];
     kimiModels?: readonly ModelRow[];
-    copilotModels?: readonly ModelRow[];
     devinModels?: readonly ModelRow[];
     glmModels?: readonly ModelRow[];
     clineModels?: readonly ModelRow[];
@@ -98,10 +97,10 @@ export declare const MODEL_CONTEXT_MAX = 2097152;
 /**
  * A row's custom input-context ceiling: the vendor's large window when the
  * row advertises one (`maxContextWindow`, mirroring Codex CLI
- * `max_context_window`: Codex 872K, GLM 1M, Copilot GPT rows' vendor window
- * above the 256K default), else its catalog window. `-fast` twins share the
- * base model's ceiling. The lookup is family-scoped because vendor ids
- * collide across families (`gpt-6-sol` in codex and copilot). Rows must come
+ * `max_context_window`: Codex 872K, GLM 1M above the plan's default input
+ * window), else its catalog window. `-fast` twins share the base model's
+ * ceiling. The lookup is family-scoped because vendor ids collide across
+ * families. Rows must come
  * from an un-overridden catalog build — an already-customized `contextWindow`
  * would shrink the ceiling on re-edit.
  */
@@ -127,12 +126,16 @@ export declare function applyContextOverrides(providers: Record<string, any>, co
 export declare function withDefaultEffort(value: HarnessProvider, level: string | undefined): HarnessProvider;
 export declare const FAMILY_IDS: readonly string[];
 /**
- * OpenCode Go picker families: direct API-key routes, not OAuth logins, and
- * no loopback hop. The picker lists only the supplemental model(s) the plugin
- * writes itself; DSH's built-in `opencode-go` catalog route carries the rest.
- * Without `OPENCODE_API_KEY` the family is only locked (checkbox disabled).
+ * OpenCode picker families: direct API-key routes, not OAuth logins, and no
+ * loopback hop. Two products share the one OpenCode account behind
+ * `OPENCODE_API_KEY` — Go (subscription meters) and Zen (pay-as-you-go) —
+ * so each route id is its own picker family while the credential, vault,
+ * Console session and account card stay one. The plugin writes the complete
+ * catalog it ships on these routes; DSH's built-in `opencode-go` / `opencode`
+ * catalog routes stay the user's to enable from the host's Models page.
+ * Without `OPENCODE_API_KEY` every one of them is only locked (checkbox off).
  */
-export declare const APIKEY_FAMILY_IDS: readonly ("opencode-go-flash" | "opencode-go-responses" | "opencode-go-messages")[];
+export declare const APIKEY_FAMILY_IDS: readonly ("opencode-go-flash" | "opencode-go-responses" | "opencode-go-messages" | "opencode-zen-chat" | "opencode-zen-responses" | "opencode-zen-messages")[];
 /** Every family the Settings picker can toggle. */
 export declare const MODEL_FAMILY_IDS: readonly string[];
 /** Dropped families. Still unset leftover harness routes; never written back. */
@@ -147,13 +150,13 @@ export declare function ownedProviderIds(prefix: string): string[];
 export declare function withPickerVariants(models: readonly ModelRow[]): ModelRow[];
 /** ChatGPT's own Fast twins: `fastTier` rows grow `<id>-fast` (peeled in chatgpt/request.ts). */
 export declare function chatgptPickerModels(chatgptModels: readonly ModelRow[] | undefined): ModelRow[];
-export declare function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels, clineModels, commandCodeModels, chatgptModels, contexts }: BuildProvidersOptions): Record<string, HarnessProvider>;
+export declare function buildProviders({ prefix, origin, loggedIn, cursorModels, ollamaModels, kiroModels, kimiModels, devinModels, glmModels, clineModels, commandCodeModels, chatgptModels, contexts }: BuildProvidersOptions): Record<string, HarnessProvider>;
 export declare function describeProviders(providers: Record<string, any>): {
     provider: string;
     api: any;
     models: any;
 }[];
-export declare function catalogProviders({ prefix, origin, cursorModels, ollamaModels, kiroModels, kimiModels, copilotModels, devinModels, glmModels, clineModels, commandCodeModels, chatgptModels, contexts }: Omit<BuildProvidersOptions, 'loggedIn'>): Record<string, any>;
+export declare function catalogProviders({ prefix, origin, cursorModels, ollamaModels, kiroModels, kimiModels, devinModels, glmModels, clineModels, commandCodeModels, chatgptModels, contexts }: Omit<BuildProvidersOptions, 'loggedIn'>): Record<string, any>;
 export declare function catalogKeys(providers: Record<string, any>): any[];
 export declare function familyOfProvider(provider: string): string;
 export declare function familyOfKey(key: string): string;

@@ -49,7 +49,6 @@ async function fixture(t, fetchFn, onAuthChanged) {
     cursorAutoImport: false,
     ollamaAutoImport: false,
     kimiAutoImport: false,
-    copilotAutoImport: false,
   })
   await controller.prefsReady
   return { controller, authPath }
@@ -576,6 +575,53 @@ async function managed(t, session, options) {
   return { manager, authPath, id: accountIdOf('kiro', session) }
 }
 
+test('a rotation the store refused is held, never bought twice', { timeout: 5000 }, async (t) => {
+  // A rotating endpoint spends the refresh token the moment it answers. When
+  // the save then fails, redeeming the stored token again is invalid_grant —
+  // the login's death, not a retry. The rotation is kept for the next attempt.
+  let calls = 0
+  let refuse = true
+  const { manager, authPath, id } = await managed(t, account('held', true), {
+    refresh: async (current) => {
+      calls += 1
+      // A rotating endpoint spends the stored token by its own answer: a
+      // second redemption is invalid_grant, i.e. a deleted login.
+      if (calls > 1) throw Object.assign(new Error('invalid_grant'), { status: 400, oauthCode: 'invalid_grant' })
+      return { ...current, accessToken: 'access-held-1', expiresAt: Date.now() + 3_600_000 }
+    },
+    updateSession: async (provider, source, next, path) => {
+      if (refuse) throw new Error('auth store is read-only')
+      return updateAccountSession(provider, source, next, path)
+    },
+  })
+  await assert.rejects(manager.account(id), /read-only/)
+  assert.equal(calls, 1)
+  assert.equal((await getSession('kiro', authPath)).accessToken, 'access-held', 'the refused rotation never reached the store')
+  refuse = false
+  const served = await manager.account(id)
+  assert.equal(calls, 1, 'the spent refresh token is not redeemed a second time')
+  assert.equal(served.session.accessToken, 'access-held-1')
+  assert.equal((await getSession('kiro', authPath)).accessToken, 'access-held-1', 'the held rotation is persisted on the retry')
+  assert.equal((await listStoredSessions('kiro', authPath)).length, 1, 'and the login was never deleted')
+})
+
+test('a saved rotation never pins the next exchange', { timeout: 5000 }, async (t) => {
+  // The held pair is keyed by the stored session's version, so a save that
+  // succeeded leaves nothing behind to answer a later refresh with.
+  let calls = 0
+  const { manager, id } = await managed(t, account('pin', true), {
+    refresh: async (current) => {
+      calls += 1
+      return { ...current, accessToken: `access-pin-${calls}`, expiresAt: Date.now() + 3_600_000 }
+    },
+  })
+  const first = await manager.account(id)
+  assert.equal(first.session.accessToken, 'access-pin-1')
+  const second = await manager.refreshNow(id, first.session.accessToken)
+  assert.equal(calls, 2, 'a persisted rotation is exchanged again, never replayed')
+  assert.equal(second.session.accessToken, 'access-pin-2')
+})
+
 test('a hung exchange stays the only redemption until the late cap', { timeout: 5000 }, async (t) => {
   t.mock.timers.enable({ apis: ['Date'], now: Date.now() })
   let calls = 0
@@ -690,9 +736,9 @@ test('every family classifies refresh failures through one predicate: only 401 a
     antigravity: () => ({ accessToken: 'a', refreshToken: 'rt', expiresAt: expired, projectId: 'p' }),
     cursor: () => ({ accessToken: 'a', refreshToken: 'rt', expiresAt: expired, source: 'pkce' }),
     kimi: () => ({ accessToken: 'a', refreshToken: 'rt', expiresAt: expired, source: 'oauth' }),
-    copilot: () => ({ accessToken: 'tid=old', refreshToken: 'ghu_table', githubToken: 'ghu_table', expiresAt: expired, source: 'oauth' }),
     devin: () => devinSession({ accessToken: 'table', expiresAt: expired }),
     cline: () => ({ accessToken: 'a', refreshToken: 'rt', expiresAt: expired }),
+    chatgpt: () => ({ accessToken: 'a', refreshToken: 'rt', expiresAt: expired, clientId: 'oaiapp_test123', source: 'oauth' }),
   }
   const rows = [
     { name: '403 rate limit', permanent: () => false, response: () => Response.json({ message: 'rate limit exceeded' }, { status: 403 }) },
@@ -700,7 +746,14 @@ test('every family classifies refresh failures through one predicate: only 401 a
     // Devin's GetUserStatus is not an OAuth endpoint: it never answers with a grant code.
     { name: '400 invalid_grant', permanent: (family) => family !== 'devin', response: () => Response.json({ error: 'invalid_grant', error_description: 'Invalid refresh token' }, { status: 400 }) },
     { name: '5xx mentioning 403', permanent: () => false, response: () => new Response('upstream said 403 Forbidden (401 earlier)', { status: 502 }) },
-    { name: '400 refresh_token_reused', permanent: (family) => family === 'codex', response: () => Response.json({ error: { code: 'refresh_token_reused', message: 'reused' } }, { status: 400 }) },
+    { name: '400 refresh_token_reused', permanent: (family) => family === 'codex' || family === 'chatgpt', response: () => Response.json({ error: { code: 'refresh_token_reused', message: 'reused' } }, { status: 400 }) },
+    // Live 2026-10-11: every other vendor answers a dead grant with a bare
+    // `invalid_grant` (probed per family with a bogus token: codex 401,
+    // chatgpt/grok/kimi/antigravity/kiro-idc 400 + exact code, cursor/kiro-social/
+    // devin 401). Cline is the one that buries it in a sentence, so only its own
+    // classifier may read that body as permanent — the shared exact-code test
+    // keeps filing it as a plain 4xx.
+    { name: '400 sentence-wrapped invalid_grant (Cline live shape)', permanent: (family) => family === 'cline', response: () => Response.json({ data: '', error: 'failed to refresh token: invalid_grant', success: false }, { status: 400 }) },
   ]
   for (const [family, session] of Object.entries(families)) {
     const manager = controller.tokens[family]

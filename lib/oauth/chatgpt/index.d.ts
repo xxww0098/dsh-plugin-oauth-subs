@@ -112,12 +112,23 @@ export declare function redeemChatgptCode({ code, verifier, redirectUri, clientI
 }>;
 /** Whether a token response grants ChatGPT plan use (a valid ID token alone does not). */
 export declare function chatgptPlanUseGranted(tokens: any): boolean;
-/** No quota endpoint exists for this flow; usage lives in ChatGPT Settings → Usage. */
-export declare function chatgptQuota(session: any): {
-    rows: never[];
+/**
+ * No quota endpoint exists for this flow; official usage lives in ChatGPT
+ * Settings → Usage. The card still shows measured rolling token windows the
+ * hop itself observed (usage.ts owns that log); they are a local reading, not
+ * the plan's quota unit.
+ */
+export declare function chatgptQuota(session: any): Promise<{
+    rows: {
+        kind: string;
+        key: string;
+        unit: string;
+        used: any;
+        note: string;
+    }[];
     account?: any;
     planType?: any;
-};
+}>;
 /** Rotating refresh with the issued client id; omit `scope` to keep the grant. */
 export declare function refreshChatgpt(session: any, fetchFn?: typeof outboundFetch): Promise<{
     earliestRefreshAt?: number | undefined;

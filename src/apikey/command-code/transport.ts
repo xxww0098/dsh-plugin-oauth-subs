@@ -21,6 +21,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { RequestError, describeError, sendJson } from '../../utils/http.js'
 import { outboundFetch } from '../../utils/outbound.js'
 import { COMMAND_CODE_GENERATE_URL, commandCodeUpstreamHeaders } from './index.js'
+import { commandCodeFailure } from './failure.js'
 import {
   commandCodeToOpenai,
   createCommandCodeOpenaiStream,
@@ -40,11 +41,14 @@ export class CommandCodeTransportError extends Error {
   declare permanent: boolean | undefined
   declare retryable: boolean | undefined
 
-  constructor(message, { status, retryable }: any = {}) {
+  declare refusal: boolean | undefined
+
+  constructor(message, { status, retryable, refusal }: any = {}) {
     super(message)
     this.name = 'CommandCodeTransportError'
     this.status = status
     this.retryable = retryable
+    this.refusal = refusal
   }
 }
 
@@ -58,15 +62,19 @@ function commandCodeRetryable(error) {
   return error instanceof CommandCodeTransportError ? error.retryable === true : true
 }
 
-async function readErrorBody(response) {
+/**
+ * The failure body as both text and JSON: the text is the message shown, the
+ * JSON carries the `code`/`status` the mapping keys on.
+ */
+async function readErrorPayload(response) {
   const text = await response.text().catch(() => '')
-  if (!text) return ''
+  if (!text) return { detail: '', payload: undefined }
   try {
     const parsed = JSON.parse(text)
     const message = parsed?.error?.message ?? parsed?.message
-    return typeof message === 'string' ? message : text
+    return { detail: typeof message === 'string' ? message : text, payload: parsed }
   } catch {
-    return text
+    return { detail: text, payload: text }
   }
 }
 
@@ -86,10 +94,14 @@ export async function runCommandCodeChat(session, body, { signal, onEvent, fetch
     signal,
   })
   if (!response.ok) {
-    const detail = await readErrorBody(response)
+    const { detail, payload } = await readErrorPayload(response)
+    // A refusal the host would read as a dead login is remapped here; see
+    // failure.ts. Everything else keeps the upstream status and body.
+    const mapped = commandCodeFailure(response.status, payload ?? detail)
     const error = new CommandCodeTransportError(
-      `Command Code chat failed (HTTP ${response.status})${detail ? `: ${detail.slice(0, 300)}` : ''}`,
-      { status: response.status },
+      mapped?.message
+        ?? `Command Code chat failed (HTTP ${response.status})${detail ? `: ${detail.slice(0, 300)}` : ''}`,
+      { status: mapped?.status ?? response.status, refusal: mapped !== undefined },
     )
     if (response.status === 401 || response.status === 403) error.permanent = true
     throw error
@@ -153,10 +165,13 @@ export async function runCommandCodeChat(session, body, { signal, onEvent, fetch
       return
     }
     if (event.type === 'error') {
-      const message = typeof event.message === 'string' ? event.message : 'upstream stream error'
-      throw new CommandCodeTransportError(`Command Code stream error: ${message}`, {
-        status: typeof event.statusCode === 'number' ? event.statusCode : 500,
-      })
+      const raw = typeof event.message === 'string' ? event.message : 'upstream stream error'
+      const status = typeof event.statusCode === 'number' ? event.statusCode : 500
+      const mapped = commandCodeFailure(status, raw)
+      throw new CommandCodeTransportError(
+        mapped?.message ?? `Command Code stream error: ${raw}`,
+        { status: mapped?.status ?? status, refusal: mapped !== undefined },
+      )
     }
     if (event.type === 'abort') {
       aborted = true
@@ -260,9 +275,11 @@ export async function forwardCommandCode(response, {
   const write = async (chunk) => {
     if (!response.write(chunk)) await once(response, 'drain', { signal })
   }
-  const fail = async (message) => {
+  const fail = async (error) => {
+    const message = describeError(error)
+    const status = typeof error?.status === 'number' && error.status >= 400 && error.status <= 599 ? error.status : 502
     if (!headSent) {
-      sendJson(response, 502, { error: { message } })
+      sendJson(response, status, { error: { message } })
       return
     }
     // Once output commits the status, a structured SSE error is the only way
@@ -279,7 +296,7 @@ export async function forwardCommandCode(response, {
     }, () => headSent)
   } catch (error) {
     if (signal?.aborted) throw error
-    await fail(describeError(error))
+    await fail(error)
     return
   }
   head()

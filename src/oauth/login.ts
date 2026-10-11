@@ -50,7 +50,7 @@ export async function completePkce(ctl: AuthController, provider, attempt, claim
 export async function useKey(ctl: AuthController, provider, key, extra) {
   const payload = typeof extra === 'string' || extra == null ? { region: extra } : extra
   const accept = oauthFamily(provider)?.login.useKey
-  if (!accept) throw new Error(`only GLM, Kiro, Ollama Cloud, Kimi, Copilot, Devin, and Command Code accept a pasted key`)
+  if (!accept) throw new Error(`only GLM, Kiro, Ollama Cloud, Kimi, Devin, and Command Code accept a pasted key`)
   return accept(ctl, key, payload)
 }
 

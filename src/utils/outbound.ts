@@ -3,18 +3,25 @@
  * hops all go through `outboundFetch`; the Cursor h2 dialer asks
  * `outboundProxyFor`. Nothing else in src/ imports undici or the global fetch.
  *
- * Resolution: plugin config proxyUrl > Settings outbound-proxy.json > env
- * (HTTPS_PROXY / HTTP_PROXY / ALL_PROXY). Loopback and NO_PROXY stay direct.
+ * Resolution: plugin config proxyUrl always wins; below that the Settings
+ * mode tri-state decides — auto (system proxy via `scutil --proxy` on darwin,
+ * env HTTPS_PROXY/HTTP_PROXY/ALL_PROXY as fallback), off (direct even when
+ * env is set), custom (the saved URL). Loopback and NO_PROXY stay direct.
  * Does not call setGlobalDispatcher — DSH and other plugins keep their fetch.
  */
 
+import { execFile as execFileCb } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { Agent, Headers, ProxyAgent, fetch } from 'undici'
+import { promisify } from 'node:util'
+import { Agent, Headers, ProxyAgent, WebSocket, fetch } from 'undici'
 import { describeError } from './http.js'
 import { writePrivateText } from './private-text.js'
 
+export { WebSocket as OutboundWebSocket }
+
 export const OUTBOUND_PROXY_FILE = 'outbound-proxy.json'
+export const OUTBOUND_MODES = ['auto', 'off', 'custom']
 
 const LOCAL_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '0.0.0.0', '[::1]'])
 
@@ -51,15 +58,69 @@ export function envNoProxy(env = process.env) {
   return String(raw).split(/[\s,]+/).map((part) => part.trim()).filter(Boolean)
 }
 
-export function resolveProxyUrl(configUrl, settingsUrl, env = process.env) {
-  return normalizeProxyUrl(configUrl) || normalizeProxyUrl(settingsUrl) || envProxyUrl(env)
+/**
+ * Resolve the effective proxy URL. `settingsUrl`/`mode` carry the Settings
+ * prefs; a legacy caller that passes no `mode` gets the pre-mode semantics
+ * (a non-empty settings URL means custom, an empty one means auto).
+ */
+export function resolveProxyUrl(configUrl, settingsUrl, env = process.env, mode: any = undefined, autoUrl = '') {
+  const config = normalizeProxyUrl(configUrl)
+  if (config) return config
+  const resolvedMode = OUTBOUND_MODES.includes(mode) ? mode : (settingsUrl ? 'custom' : 'auto')
+  if (resolvedMode === 'off') return undefined
+  if (resolvedMode === 'custom') return normalizeProxyUrl(settingsUrl) || undefined
+  return normalizeProxyUrl(autoUrl) || envProxyUrl(env)
 }
 
-export function proxySource(configUrl, settingsUrl, env = process.env) {
+/** Which tier won: config > settings > os (scutil) > env > off. */
+export function proxySource(configUrl, settingsUrl, env = process.env, mode: any = undefined, autoSource = '') {
   if (normalizeProxyUrl(configUrl)) return 'config'
-  if (normalizeProxyUrl(settingsUrl)) return 'settings'
-  if (envProxyUrl(env)) return 'env'
-  return 'off'
+  const resolvedMode = OUTBOUND_MODES.includes(mode) ? mode : (settingsUrl ? 'custom' : 'auto')
+  if (resolvedMode === 'off') return 'off'
+  if (resolvedMode === 'custom') return normalizeProxyUrl(settingsUrl) ? 'settings' : 'off'
+  return autoSource === 'os' || autoSource === 'env' ? autoSource : (envProxyUrl(env) ? 'env' : 'off')
+}
+
+export const SCUTIL_PATH = '/usr/sbin/scutil'
+/** The auto tier re-reads the system proxy at most this often. */
+const AUTO_TTL_MS = 60_000
+
+/** Parse `scutil --proxy` output: HTTPS wins over plain HTTP, SOCKS/PAC-only
+ *  settings yield no URL (ProxyAgent speaks http(s) CONNECT tunnels only),
+ *  and ExceptionsList entries join the bypass rules verbatim — the suffix
+ *  matcher in `shouldBypassProxy` already understands bare domains. */
+export function parseScutilProxy(text) {
+  const dict = String(text ?? '')
+  const flag = (key) => Number(dict.match(new RegExp(`^\\s*${key}\\s*:\\s*(\\d+)\\s*$`, 'm'))?.[1] ?? 0)
+  const host = (key) => dict.match(new RegExp(`^\\s*${key}\\s*:\\s*(\\S+)\\s*$`, 'm'))?.[1] ?? ''
+  const bypass: string[] = []
+  const block = dict.match(/ExceptionsList\s*:\s*<array>\s*\{([\s\S]*?)\}/)
+  if (block) {
+    for (const line of block[1].split('\n')) {
+      const entry = line.match(/^\s*\d+\s*:\s*(.+?)\s*$/)
+      if (entry) bypass.push(entry[1])
+    }
+  }
+  if (flag('HTTPSEnable') === 1 && host('HTTPSProxy') && flag('HTTPSPort')) {
+    return { url: `http://${host('HTTPSProxy')}:${flag('HTTPSPort')}`, bypass }
+  }
+  if (flag('HTTPEnable') === 1 && host('HTTPProxy') && flag('HTTPPort')) {
+    return { url: `http://${host('HTTPProxy')}:${flag('HTTPPort')}`, bypass }
+  }
+  return { url: '', bypass }
+}
+
+const execFileAsync = promisify(execFileCb)
+
+/** macOS system proxy, absolute path so the host's minimal PATH is irrelevant. */
+async function readSystemProxyDefault() {
+  if (process.platform !== 'darwin') return undefined
+  try {
+    const { stdout } = await execFileAsync(SCUTIL_PATH, ['--proxy'], { timeout: 3000 })
+    return parseScutilProxy(stdout)
+  } catch {
+    return undefined
+  }
 }
 
 export function shouldBypassProxy(target, noProxy = envNoProxy()) {
@@ -98,13 +159,15 @@ export function redactProxyUrl(url) {
   }
 }
 
+/** `{mode, url}`; a legacy `{url}` file means custom, a missing mode means auto. */
 export function normalizeOutboundPrefs(raw) {
   const url = typeof raw?.url === 'string' ? raw.url.trim() : ''
-  return { url }
+  const mode = OUTBOUND_MODES.includes(raw?.mode) ? raw.mode : (url ? 'custom' : 'auto')
+  return { mode, url }
 }
 
 export function defaultOutboundPrefs() {
-  return { url: '' }
+  return { mode: 'auto', url: '' }
 }
 
 export async function readOutboundPrefs(path) {
@@ -168,8 +231,16 @@ export function createOutboundSession({
   env = process.env,
   fetchFn = fetch,
   agentFor = undefined,
+  readSystemProxy = readSystemProxyDefault,
 }: any = {}) {
+  let settingsMode = 'auto'
   let settingsUrl = ''
+  // The auto tier's cached resolution: system proxy first, env as fallback.
+  let autoUrl = ''
+  let autoSource = '' // 'os' | 'env' | ''
+  let autoBypass: string[] = []
+  let autoCheckedAt = 0
+  let autoRefreshing: Promise<void> | undefined
   const direct = new Agent(KEEP_ALIVE)
   let agent = undefined
   let error = ''
@@ -177,13 +248,69 @@ export function createOutboundSession({
   // at a dead proxy, and the settings page must show that too.
   let failure = ''
 
+  const configSet = () => Boolean(normalizeProxyUrl(configUrl))
+
   function resolvedUrl() {
-    return resolveProxyUrl(configUrl, settingsUrl, env)
+    return resolveProxyUrl(configUrl, settingsUrl, env, settingsMode, autoUrl)
+  }
+
+  function sourceOf() {
+    return proxySource(configUrl, settingsUrl, env, settingsMode, autoSource)
+  }
+
+  function bypassList() {
+    // System exceptions only bind the tier that produced them.
+    return autoSource === 'os' ? [...envNoProxy(env), ...autoBypass] : envNoProxy(env)
+  }
+
+  /** Reconcile the agent with the resolved URL; swap+release is atomic. */
+  function syncAgent() {
+    const url = resolvedUrl()
+    const next = url ? makeAgent(url, agentFor) : undefined
+    const prev = agent
+    agent = next
+    void release(prev)
+  }
+
+  async function refreshAuto({ force = false } = {}) {
+    if (configSet()) return // a pinned config proxy makes the auto tier moot
+    if (!force && Date.now() - autoCheckedAt < AUTO_TTL_MS) return
+    if (autoRefreshing) return autoRefreshing
+    autoCheckedAt = Date.now()
+    autoRefreshing = (async () => {
+      let nextUrl = ''
+      let nextSource = ''
+      let nextBypass: string[] = []
+      const system = await readSystemProxy()
+      if (system?.url) {
+        nextUrl = system.url
+        nextSource = 'os'
+        nextBypass = Array.isArray(system.bypass) ? system.bypass.filter(Boolean) : []
+      } else {
+        nextUrl = envProxyUrl(env) ?? ''
+        if (nextUrl) nextSource = 'env'
+      }
+      const before = resolvedUrl()
+      autoUrl = normalizeProxyUrl(nextUrl) ?? ''
+      autoSource = autoUrl ? nextSource : ''
+      autoBypass = nextBypass
+      if (before !== resolvedUrl()) syncAgent()
+    })()
+    try {
+      await autoRefreshing
+    } finally {
+      autoRefreshing = undefined
+    }
   }
 
   async function load() {
     try {
-      if (path) settingsUrl = (await readOutboundPrefs(path)).url
+      if (path) {
+        const prefs = await readOutboundPrefs(path)
+        settingsMode = prefs.mode
+        settingsUrl = prefs.url
+      }
+      await refreshAuto({ force: true })
       const url = resolvedUrl()
       agent = url ? makeAgent(url, agentFor) : undefined
     } catch (caught) {
@@ -196,13 +323,16 @@ export function createOutboundSession({
   /** Proxy URL for `target`, or undefined when it goes direct (unset, NO_PROXY, loopback). */
   function proxyFor(target) {
     const url = resolvedUrl()
-    if (!url || !target || shouldBypassProxy(target, envNoProxy(env))) return undefined
+    if (!url || !target || shouldBypassProxy(target, bypassList())) return undefined
     return url
   }
 
   async function request(input, init: any = {}) {
     // A configured proxy must never be skipped because its prefs file is still loading.
     await ready
+    // Auto-tier staleness: refresh in the background; requests keep riding the
+    // cached agent, the swap lands when the fresh resolution differs.
+    if (settingsMode === 'auto' && !configSet() && Date.now() - autoCheckedAt >= AUTO_TTL_MS) void refreshAuto()
     const options = { ...init, headers: withDefaultUserAgent(input, init?.headers) }
     if (!proxyFor(requestUrl(input))) return fetchFn(input, { ...options, dispatcher: direct })
     if (!agent) throw new Error(`outbound proxy unavailable: ${error || 'closed'}`)
@@ -214,7 +344,9 @@ export function createOutboundSession({
     } catch (caught) {
       if (init?.signal?.aborted) throw caught
       failure = `${describeError(caught)} via ${via}`
-      throw new Error(`outbound proxy unavailable: ${failure}`)
+      // The cause stays on the chain: upstream.ts retries a stale keep-alive
+      // connection at once instead of on the backoff schedule.
+      throw new Error(`outbound proxy unavailable: ${failure}`, { cause: caught })
     }
   }
 
@@ -228,34 +360,58 @@ export function createOutboundSession({
     snapshot() {
       const url = resolvedUrl()
       return {
+        mode: settingsMode,
         url: redactProxyUrl(url),
-        source: proxySource(configUrl, settingsUrl, env),
+        source: sourceOf(),
         configured: Boolean(url),
         ...(error || failure ? { error: error || failure } : {}),
       }
     },
-    async setUrl(raw) {
-      const text = raw == null ? '' : String(raw).trim()
-      const nextSettings = text ? normalizeProxyUrl(text) : ''
-      if (nextSettings === undefined) {
-        throw new Error('Invalid proxy URL; use http(s)://host:port')
+    /** Settings view: carries the raw custom URL for the input prefill — it
+     *  must never flow into the status snapshot (that one is cached in
+     *  localStorage); `resolved` stays redacted for display. */
+    async prefs() {
+      await ready
+      if (settingsMode === 'auto' && !configSet()) await refreshAuto()
+      return {
+        mode: settingsMode,
+        url: settingsUrl,
+        source: sourceOf(),
+        resolved: redactProxyUrl(resolvedUrl()),
+        configured: Boolean(resolvedUrl()),
+        ...(error || failure ? { error: error || failure } : {}),
       }
+    },
+    /** Tri-state write; a legacy `{url}` payload means custom (a URL was
+     *  given) or auto (clearing). Non-custom modes keep the stored URL so the
+     *  draft survives an 自动/关闭 detour. */
+    async setPrefs(raw: any = {}) {
+      const mode = OUTBOUND_MODES.includes(raw?.mode) ? raw.mode : (raw?.url ? 'custom' : 'auto')
+      const text = typeof raw?.url === 'string' ? raw.url.trim() : ''
+      let url = text
+      if (mode === 'custom') {
+        const normalized = text ? normalizeProxyUrl(text) : undefined
+        if (!normalized) throw new Error('Invalid proxy URL; use http(s)://host:port')
+        url = normalized
+      }
+      if (mode === 'auto' && !configSet()) await refreshAuto({ force: true })
       // Build → persist → swap: a failure at either step leaves file and state as they were.
-      const url = resolveProxyUrl(configUrl, nextSettings, env)
-      const next = url ? makeAgent(url, agentFor) : undefined
+      const nextResolved = resolveProxyUrl(configUrl, url, env, mode, autoUrl)
+      const next = nextResolved ? makeAgent(nextResolved, agentFor) : undefined
       try {
-        if (path) await writeOutboundPrefs(path, { url: nextSettings })
+        if (path) await writeOutboundPrefs(path, { mode, url })
       } catch (caught) {
         void release(next)
         throw caught
       }
       const prev = agent
-      settingsUrl = nextSettings
+      settingsMode = mode
+      settingsUrl = url
       agent = next
       error = ''
       failure = ''
       void release(prev)
-      return this.snapshot()
+      return this.prefs()
     },
     /** Frees both agents; later proxied requests fail instead of going direct. */
     async close() {
@@ -268,13 +424,14 @@ export function createOutboundSession({
 }
 
 // Until the plugin configures the owner (unit tests, live scripts) every hop
-// goes direct through undici — never through the global fetch. Built lazily,
-// so a configured plugin never holds a second, unclosed Agent.
+// goes direct through undici — never through the global fetch, and never
+// through the machine's system proxy. Built lazily, so a configured plugin
+// never holds a second, unclosed Agent.
 let current
 let unconfigured
 
 function owner() {
-  current ??= unconfigured = createOutboundSession({ env: {} })
+  current ??= unconfigured = createOutboundSession({ env: {}, readSystemProxy: () => undefined })
   return current
 }
 
@@ -293,6 +450,17 @@ export function configureOutbound(options: any = {}) {
 /** The one outbound fetch: direct Agent, or ProxyAgent when a proxy applies. */
 export function outboundFetch(input, init: any = undefined) {
   return owner().request(input, init)
+}
+
+/**
+ * Dispatcher an outbound WebSocket rides: the proxy tunnel when one applies
+ * to `url`, else a direct Agent. The caller owns the returned dispatcher and
+ * closes it with the socket — pooling would outlive the connection it serves.
+ */
+export async function outboundWebsocketDispatcher(url) {
+  await owner().ready
+  const proxyUrl = await owner().proxyFor(url)
+  return proxyUrl ? new ProxyAgent({ uri: proxyUrl, ...KEEP_ALIVE }) : new Agent(KEEP_ALIVE)
 }
 
 /** Proxy URL (with credentials) the Cursor h2 dialer should tunnel through, if any. */

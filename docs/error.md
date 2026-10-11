@@ -2,6 +2,118 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。每条只写 **现象** / **根因** / **修复** 三行，各 1–2 句；只留 grep 代码得不到的症状、根因与落点，不写过程与清单。
 
+## 2026-10-11：ChatGPT 低缓存是路由侧零复用，不是 hop 分片或日志计数缺失
+
+**现象**：`oauth-chatgpt / gpt-6.1-sol` 命中率极低——30 天聚合 318 次调用 / 3200 万输入 token 命中 10.3%，同宿主同账号的 `oauth-codex` 376 次 / 4500 万命中 95.3%；逐调用看命中几乎只落在 26,752 token 一档，会话正文前缀基本没被复用。2026-10-09 的 6 次固定前缀实测（5422 token、两种指令位置）已是全 0。
+**根因**：低命中在本 hop 之外。2026-10-11 经真实 `/chatgpt/v1/responses` 复测：逐字相同的请求在 4,270 / 9,267 / 62,069 token、gpt-6.1-sol / gpt-6-astra / gpt-5.6-luna、有／无 `prompt_cache_key`、developer input 与 request-level `instructions`、系统代理与直连下，原生 `cached_tokens` 与 `cache_write_tokens` **全为 0**（间隔 1.5s～数分钟一样）；官方文档给的两个缓存旋钮在本路由直接 400：`prompt_cache_options`（mode / prewarm / ttl 任一形状）与内容块里的 `prompt_cache_breakpoint` 都是 `... is not supported on this model`，`prompt_cache_retention` 也在官方不支持清单里。对照实验证明方法本身能读出命中：同账号、同宿主、同形状提示词打 Codex 后端 `chatgpt.com/backend-api/codex/responses`，9,233 token 逐字重复的第 2 / 3 次各复用 9,088 token。真实会话里偶发的 ~26,752 是跨会话共有的系统头（推断，未直接取证），不是本 hop 的分片回归。
+**修复**：不改缓存 wire——developer → `instructions` 无收益、两个旋钮 400、亲和头仍是禁项。顶层 `prompt_cache_options` 剥离之外补上内容块级 `prompt_cache_breakpoint`（同一 400 证据，免得宿主开启显式缓存后每轮被打成 400），`probe.ts` 补 `cache_write_tokens` 与「零读写分账」（分清「路由没写」与「写了没读回」），复测矩阵进家族 README。用户可见不变；命中率本身要等上游修好或改传输（WS 连接级续传）才动。
+
+## 2026-10-11：上游空闲约 4s 就断连，下一轮重新握手
+
+**现象**：两轮之间空闲超过约 4 秒，下一个请求要重新握手（chatgpt.com 约 1.7s）；重试要等 1s + 4s 退避才换新连接。
+**根因**：上游不发 `Keep-Alive` 头，undici 退回默认的 4 秒 `keepAliveTimeout`（已设成 60s）；复用到的陈旧 socket 报 `ECONNRESET` 时请求已经死了，退避等的是并不存在的上游负载。
+**修复**：直连与代理 Agent 都设 `keepAliveTimeout: 60_000`；`upstream.ts` 把「没有任何 HTTP 应答」的失败（`isPreDeliveryFailure`：连接类错误码，或 undici 的裸 `fetch failed` 包装）**第一次重试改为立即发出**，第二次起仍走退避。`outbound.ts` 的代理包装必须保留 `cause`，这个判定才看得见真错误码。
+**跟进（2026-10-11）**：`upstream.log` 13 天 181 行里 78 次重试全是这一类（`fetch failed: 0` 34 / `UND_ERR_SOCKET` 21 / `ECONNRESET` 21 / `EPIPE` 1，均经 127.0.0.1:1082），每次都白等 1s + 4s 才重拨。
+
+## 2026-10-11：落盘失败 = 掉登录——轮换结果没人保管，下次拿已被花掉的 refresh token 再换
+
+**现象**：认证库那一次写入失败（磁盘满 / 只读 / 权限被改）之后，用户在下一次请求被要求重新登录，而不是重试成功。
+**根因**：轮换型端点应答即让旧 refresh token 作废，而 `TokenManager.#refresh` 只把结果交给 `updateAccountSession`；写失败的结果被丢掉，下一次再拿存储里的旧 token 去换 → `invalid_grant` → 按永久失败删登录。这份保管原先只有 Cline 自己在家族里做了一份，其余家族全都裸着。
+**修复**：搬进共享层——`tokens.ts` 写失败时 `#holdRotation`（按来源版本，上限 8），下一次刷新直接交还该结果并重试落盘，不再兑换已花掉的 token；写成功或版本已变即清除；Cline 家族内那份删除（它另有一个把「轮换后的 token」也当键、把刷新钉死的毛病，见同日前一条）。`test/token-lifecycle.test.ts` 钉住「写失败后不再兑换」与「写成功后不残留」。
+
+## 2026-10-11：Cline 额度卡「刷新没变化」——刷新被内存副本钉死、死 grant 又被当成临时故障
+
+**现象**：Cline 卡的刷新按钮转完，数字、重置时刻、失败行都不出现，读数长时间停在同一个值；本机存储会话是 03:18 签发、04:18 到期的那一对，此后再没有新读数。
+**根因**：① `refreshCline` 的内存副本除「刚花掉的 refresh token」外还以「轮换后的 refresh token」为键，而落盘成功后存储里正是后者，于是之后每次刷新都命中自己的上一次答案、从不打端点，会话冻结到访问令牌过期；② 上游对死 grant 回 **HTTP 400** `{"data":"","error":"failed to refresh token: invalid_grant","success":false}`（2026-10-11 活测），共享的 `isPermanentRefreshFailure` 只认 `status===401` 或恰好等于 `invalid_grant` 的 code，句子里那句被判成临时 4xx，登录既不删也不提示；③ 额度卡只在 `!hasUsage` 时画失败行，错误条目带着上一轮 rows 时一个字都不说。
+**修复**：本家的内存副本删除，保管轮换结果的活搬进共享层（`tokens.ts` `#holdRotation`：写失败时按来源版本留住那一对，下次交还并重试落盘，绝不再兑换已花掉的 token）；非 2xx 的刷新拒绝按钉住 CLI `ClineOAuthTokenError.isLikelyInvalidGrant` 判定并归成 `invalid_grant` 永久失败（登录走既有删除路径）；额度卡的失败行不再被 rows 压掉。`test/cline.test.ts` 钉住三条。用户可见：刷新要么真的换到新读数，要么写明失败；refresh token 已死的账号会退回未登录要求重新登录，而不是永远停在旧数字。
+**同类排查（2026-10-11，各家用假 refresh token 活测一次）**：钉死的只有 Cline——其余家族没有刷新结果的内存副本；死凭据判定也都落在永久失败：codex 401 `token_expired`、chatgpt/grok/kimi/antigravity/kiro-idc 400 + 裸 `invalid_grant`、cursor/kiro-social/devin 401；glm/ollama/command-code/opencode-go 没有刷新授权（api key / 无 refresh grant），不走这条路。判定表钉在 `test/token-lifecycle.test.ts` 的跨家族用例（含 chatgpt 与 Cline 的句子形状）。
+
+## 2026-10-11：GitHub Copilot 家族整体移除（产品取舍，非故障）
+
+**现象**：无用户可见故障——维护者裁定 Copilot 家族（GitHub 设备码 / 本机 `hosts.json` 导入的 GitHub token）不再随插件分发，家族整体下架。
+**根因**：产品取舍，与 wire 无关；下方 2026-09-30 两条活测结论（`model_picker_enabled` 被上游整体翻 false、premium 0% 账号非基础模型回 `400 model_not_supported`）仍为事实，随家族留档。
+**修复**：`src/oauth/copilot/` 与 `test/copilot.test.ts`、目录 `copilot` 键（models.json 568 行 + rates.json 131 行）、`CATALOG_KEYS`、`scripts/{models,rates,live-smoke}.ts` 的该家适配器、`docs/oauth.md` 总表一行与 README / PRODUCT 家族表一并删除；设备码的 `jsonBody` 选项（#125 为 Copilot 加的，无第二家使用）连同对应用例删除。老用户残留的 `copilot` session 由 `RETIRED_PROVIDER_IDS` 废弃，settings.yaml 里残留的 `oauth-copilot` 路由由 `RETIRED_FAMILY_IDS` 继续 unset；其余 12 个 OAuth 家族与 OpenCode 六条路由不受影响。
+
+## 2026-10-11：退出账号不干净——退役家族令牌永留 auth.json、「已退出」标记只写不清、OpenCode Go 旧 key 留在宿主
+
+**现象**：① 磁盘上还躺着已删除家族（`opencode`）的 access / refresh 令牌，界面里没有任何入口能退出它；② `signed-out.json` 里的 `cline` / `ollama` / `kiro` 早已重新登录却仍在名单里，多账号家族只退一个就被整家标成「已退出」；③ OpenCode Go 退出当前账号后，被删账号的 key 仍镜像在宿主 `OPENCODE_API_KEY` 里，聊天继续用着它；④ 退出后 2 秒内热重载，缓存的额度读数（套餐、用量）会从 `quota-snapshot.json` 回来。会自动导入本机 CLI / IDE 凭据的家族，退出后重启仍须保持退出（2026-09-28 起的约定）。
+**根因**：`RETIRED_PROVIDER_IDS` 只让读取忽略退役家族、等下一次写才顺带丢掉，而退役家族没有登出按钮、auth.json 可能很久不写；标记只有写入没有清除，且 `logout` 不看家族里是否还有账号；`mirrorOpencodeGoKey` 在被删账号的下一个 active 无 key 时直接返回，不 unset 也不换成还有 key 的账号；额度缓存的落盘有 2 秒防抖，`logout` 不等它。
+**修复**：`purgeRetiredSessions`（`store.ts`）在控制器启动时把退役家族的 vault 从 auth.json 里删掉（不改写无事可删的文件；`opencode` 加进退役名单）；`signed-out.json` 改为串行读改写，`logout` 只在家族已空时标记、`saveSession` 任何登录落地即清除该家族标记（`clearSignedOutMark`）；OpenCode Go 退出后把镜像换到仍持有 key 的账号，没有则 unset；`logout` 里 `await quota.flush()`。`test/logout.test.ts` 钉住这八条，`test/cursor.test.ts` 钉退出 → 重新登录 → 再退出的重启序列。**不在插件管辖内**：旧备份文件（例如 profile 下手工留的 `auth.json.bak-*`）含明文令牌，插件从不写也不清，需自行删除并视情况轮换令牌；ChatGPT 的 `chatgpt.json` 注册表（client_id → 邮箱 / subject）是再授权用的、不含令牌，登出保留是设计。
+
+
+## 2026-10-10：Ollama 额度全空——`/api/usage` 改版成计数历史，官方 `/api/balance` 取代
+
+**现象**：ollama 额度卡两条剩余条消失（quota ready 但 rows 空），`GET /api/usage` 仍 200 但返回 `{range, scope, granularity, totals, buckets}` 的按天请求计数，`limits.session/weekly.usage` 分数与按模型 `models` 列表都没有了。
+**根因**：ollama 2026-10-07 合入 [ollama#18829](https://github.com/ollama/ollama/pull/18829)（服务器 `x-build-time` 2026-10-09 生效），把非文档化的 usage wire 换成官方 `GET /api/usage?range=24h|7d|30d`（纯历史，无额度语义、无按模型拆分——按模型列在 coming soon）+ 新端点 `GET /api/balance`；本家还按 2026-09-03 的老形状解析，`limits` 缺失 → 空 rows。
+**修复**：额度改读 `GET /api/balance`（限频 10 req/min/user 跨 key 共享，不轮询）：`included` oneOf legacy 形状（`session`/`weekly` 的 `remaining_percent` 0..100 **剩余**语义 + `resets_at`，2026-10-10 实测 Pro 账号走这条）出 Session/Weekly 两条剩余条；信用计划形状（`balance_usd`/`allowance_usd`/`period`）出一条 `unit: 'usd'` 的 primary 条；`purchased.balance_usd` > 0 时独立 `prepaid` 行。`resets_at` 缺失才回落 #12532 桶算（2026-10-10 实测官方 stamp 与桶算互证：session 落下一 UTC 5h 桶、weekly 落下周一 00:00 UTC）。weekly 按模型 note 上游删了数据，随 wire 移除、不伪造。契约钉在 `test/ollama.test.ts`（legacy + credits 双 fixture）。
+
+## 2026-10-10：GLM-5.3-FlashX 上套餐，目录收行（1M 基线是家族例外）
+
+**现象**：`glm-5.3-flashx` 此前按官方文档「not yet available on the plan」拒收（2026-09-21 取舍）；现在套餐 `/models` 端点列出它，bigmodel 区域账号最小对话 200 且响应 `model` 原样回显（非 4.x 改道），思考强制开（`reasoning_tokens > 0`）。
+**根因**：厂商在套餐侧上线了 FlashX，官方 devpack overview、VLM Flash 页与 ZCode v3.15.1 开源 tree 都还没更新（文档滞后先例）；且它的套餐输入上限不是 5.3 / Flash 的 400K——活测 656,269 与 948,763 输入 token 均 200，1.4M 才拒 `1261 Prompt exceeds max length`，官方窗 1M、ZCode host 的 `[1m]` 后缀惯例即强制 1M 窗。
+**修复**：目录加 `glm-5.3-flashx` 行（基线 1M / 128K 输出 / low-high-max / text+image，参数取 ZCode catalog 的 5.3 规则 + 官方 VLM 页 + BigModel 定价页 ¥2/¥7），这行不挂 `maxContextWindow`（上限=基线，同 Turbo 形状；压缩阈值 800K，距最低观测上限余量 ~150K）；`scripts/models.ts` 删 flashx skip 规则；rates 收 models.dev `zai` 桶 $0.37/$1.25/cacheRead $0.075。用户可见：模型页多 GLM-5.3-FlashX 且默认勾选；5.3 / Flash 的「窗口勿超 400K」禁令不适用于它。
+
+## 2026-10-10：Antigravity 指纹停在 hub 2.11.0，本机旧安装还会把它压得更低
+
+**现象**：对话 User-Agent 要么是回退 `antigravity/hub/2.11.0`，要么被本机 Antigravity.app 2.12.2 盖住。Cloud Code 拒过期客户端（「This version of Antigravity is no longer supported」）。钉住之后仍随官方发版老化：2026-10-04 清单 2.19.1，2026-10-10 已 2.22.0。
+**根因**：回退钉在 2026-08-30 的 2.11.0；版本探测无条件采用已安装版本。官方 hub 更新清单 `latest-arm64-mac.yml` 已超前一个多月，启动参数仍是 `--subclient_type hub`、`--override_ide_version`、daily-cloudcode-pa。
+**修复**：回退改为 2.19.1，2026-10-10 随清单升到 2.22.0（当日 arm64 / x64 mac 清单同号；本机 2.22.0 `language_server` 三个启动旗标与 daily 端点仍在）。已安装版本比回退新才采用，否则用回退。UA 形状不变：`antigravity/hub/<ver> <os>/<arch>`。
+
+## 2026-10-10：OpenCode Zen 收进 OpenCode 家族（同一账号的第二产品）
+
+**现象**：ZCode 目录里的 OpenCode Zen 三条路由（`/zen/v1` 的 chat / responses / messages）在本插件没有任何入口；带 key 的 `GET /zen/v1/models` 列 45 行，无认证视图却列 87 行；`big-pickle` 与全部 `*-free` 行用本机 key 打 `/chat/completions` 回 `403 FreeTierError: OpenCode's free tier can only be used from within OpenCode`；`glm-5.1` / `deepseek-v4-flash` / `kimi-k2.6` / `gpt-5-nano` 回 `403 Model access is disabled`（账号级模型访问开关，不是协议问题）；其余付费行与免费档不同，一律 `402 Insufficient account funds`（本机 Zen 预付余额 $0）。
+**根因**：Zen 与 Go 是同一个 OpenCode 账号的两个产品（同一 `OPENCODE_API_KEY`、同一 Console 工作区 cookie），但没有独立家族就没有目录、路由与额度读数；另外付费推理需要预付余额，本机为 $0，所以「发一条最小请求看回包方言」这条活测路径在 Zen 上暂时走不通。
+**修复**：在 `src/apikey/opencode-go/` 里按产品加三条 Zen 路由（`opencode-zen-chat/responses/messages`，不带 `x-opencode-session`；带该头是 Go 的硬性要求，Zen 文档不要求），目录收 8 + 14 + 8 = 30 行（协议取官方端点表，参数取 models.dev `opencode`，剔除免费档 12 行 / `test` / `jev-*`（System One）/ `gemini-*`（`@ai-sdk/google`，不在 DSH `api` 闭集）），六个 GPT 行按文档 272K 价档报 `contextWindow: 272000`；completions 行只写普通 OpenAI compat（方言待有余额的账号活测）；额度页给 Zen 单开一张钱包卡（`ZenQuotaCard`：`billing/status` 的预付余额、有信用额度才有的可用额度；`monthlyLimit` 只在 dashboard SolidStart billing function 里，面板会话过期就 302，宁缺不编），与 Go 的订阅表**互不混行**（同一份账号读数按 `zen-*` 行拆成两张卡；钱包读不到就不出 Zen 胶囊，失败读数也仍是一张有标题的卡而不是白板）；`/console/api/usage/summary` 属于工作区台账，挂在任一产品名下都是错归因，故不读；`go/status` 回 `access: null` 时再按 payload 里的 `subscriberUserId` / `resumability` 分「订阅已结束（ended）/ 未开通（none）」——两种情况都照常 ready，Go 卡显示状态行 + Console 链接，不再用「周额度未返回」这句读取失败的错暗示（2026-10-10 实测：取消订阅的工作区到期当天即 access-ended，卡面只剩 Zen 行）；真·什么都没有才沿用 `no_subscription`。同一账号的官方口径见家族 README：Go 是订阅（$10 / $40 Go Plus），Zen 是预付；Go 文档「Usage beyond limits」写明 Go 用尽额度后回落到 Zen 余额（`useBalance`），Go 的 API base 也在 `/zen/go/v1`。`npm run models` 干跑三键 `+0 ~0 -0`，单测锁路由 / 别名 / 幂等 / 不碰用户 profile 与 `providers.opencode`。**活测（真实账号，2026-10-10）**：带 key `GET /zen/v1/models` 45 行；`billing/status` = `{billingMode: prepaid, balanceMicroCents: "0", availableMicroCents: "0"}`；`usage/summary?range=30d` = `{totalRequests: "31580", totalCostMicroCents: "4845844474"}`（$48.46）；控制器快照后 6 条 OpenCode 路由同一次 mutate 落盘（Go 三条带 `x-opencode-session`，Zen 三条不带），别名 `OpenCode Zen/gpt-5.3-codex`、`OpenCode Zen/claude-fable-5-1`。**未跑通**：任何付费推理（402 余额不足），所以逐行协议与 completions 方言仍只有静态三源互证。
+
+## 2026-10-10：Command Code 的 403 版本门会把用户登出，额度门不会被当配额
+
+**现象**：`/alpha/generate` 在客户端版本低于服务端 `minVersion` 时回 403 `upgrade_required`（无版本头或 `0.1.0` 都命中，`minVersion` 活测为 0.18.10）；上游 402 额度门与套餐拒绝按原状态转发。
+**根因**：宿主 `classifyPiAiError` 见到报文里的 `401`/`403` 一律判 AUTH 且不重试，所以版本门 / 不在套餐会被读成登录失效；402 不在宿主的配额正则里，额度耗尽也不显示为配额。传输里 4xx 又都写成 `HTTP <status>` 原样带出。
+**修复**：新增 `failure.ts`——`upgrade_required` 与 `MODEL_NOT_IN_PLAN` 改写成 400 说明（并剥掉报文里的 401/403 字样），额度与 5 小时/每周窗口走 `quotaFailure` → 429 `usage limit reached:`；其余 429/5xx/401 原样转发。输出前的失败改用上游状态（原来一律 502）。同期把目录接到公开 `GET /provider/v1/models`（活测 87 行，与钉住注册表逐行相同）。用户可见：上游抬 `minVersion` 时提示更新插件而不是被登出，额度用尽显示为配额。
+
+## 2026-10-10：Cline 活目录改双端点，未订阅不再被当成登录失效
+
+**现象**：登录后活目录只打 recommended-models，窗口靠静态楼或 models.dev 末段；credit 账号打到 ClinePass 时上游 403，宿主把报文里的 403 归成 AUTH。
+**根因**：运行时没打 `/ai/cline/models`，末段匹配会落到别家同名行。宿主分类器见 `\b403\b` 即 AUTH，所以「没订阅」不能原样转发。免费档门读客户端版本头，钉在 CLI 3.0.62 / core 0.0.83 已落后 npm 3.0.70 / `@cline/core` 0.0.92。
+**修复**：活目录并行打 recommended-models 与 `/ai/cline/models`（身份头、无 `X-Task-ID`）。picker 收 recommended + free + clinePass（标 `(ClinePass)`），不收约 450 行 OpenRouter，也不收 clineCloud。网关前缀只做唯一末段。订阅/组织无权改写成 400，额度类仍走 `usage limit reached`。用户可见：模型页多出 ClinePass 行；credit 账号选它们得到订阅说明，而不是被登出。
+
+## 2026-10-10：Cline 收 Grok 4.7 新前缀与 Step 5 Preview 免费档
+
+**现象**：公开 feed 的 recommended 不再列 `spacexai/grok-4.7`，改列 `x-ai/grok-4.7`；free 桶新增 `cline-free/step-5-preview`。旧 Grok id 定向活测仍 200。新免费行 `max_tokens: 16` 回 500 `empty response content`，加大预算后 200。
+**根因**：Cline 把 Grok 的 OpenRouter 前缀从 `spacexai/` 改成 `x-ai/`，后端仍认旧 id，所以不是下架。`cline-free/step-5-preview` 在 models.dev `openrouter` 没有同名行，末段落到 `stepfun/step-5-preview`；推理模型把很小的 `max_tokens` 吃完会空 content，上游包成 500。
+**修复**：目录收 `x-ai/grok-4.7`（500K/450K，价与旧行相同）和 `cline-free/step-5-preview`（1M/64K，$0）。`spacexai/grok-4.7` 静态行与价目保留。`moonshotai/kimi-k3` 价随 openrouter 桶改为 0.8/13.5/0.55。用户可见：模型页多 Grok 4.7 新 id 与 Step 5 Preview 免费档，Kimi K3 徽标重述；已登录时活目录不再列出旧 `spacexai` id。
+
+## 2026-10-09：Codex WS 续传落地（默认关）——活测缺口
+
+**现象**：Codex 家族长会话每轮整史重发并依赖前缀缓存；调研（community.openai.com 帖 1402231 + openai/codex#42996）证实订阅路线缓存存在但切 `reasoning.effort` 档即整体重建，pi（earendil-works/pi）改走 WS 连接级 `previous_response_id` 续传，旧前缀不再上网。
+**根因**：本 hop 只有 SSE POST 一条路；WS 协议（`response.create` 文本帧、事件消息、`response.done` 终止名、连接池 5min/55min、`previous_response_not_found` 重发、连接数上限回退）在 pi 已验证而本仓库未实测。
+**修复**：`src/oauth/codex/websocket.ts`（池 + 增量守卫 + 同 attempt 零退避 SSE 回退 + 5 分钟会话冷却），`DSH_CODEX_WEBSOCKET=on` 显式开启；undici 收进 `outbound.ts`（防防火墙），关闭钩子挂 index.ts。**默认改开前必须活测**：真实账号开 `on` 跑一轮多轮会话，确认升级 101、`response.completed` usage 的 `input_tokens` 显著小于全史、`previous_response_not_found` 后整段重发成功、断 WS 后 5 分钟冷却内全走 SSE；契约钉在 `test/codex-websocket.test.ts`（手写 RFC6455 mock 服务端，零外部依赖）。
+
+## 2026-10-09：榜单「性价比」页第二屏 Cost per Task 补全 + 前沿图结构校正
+
+**现象**：榜单 tab 的性价比视图最初只有前沿图 + 前沿时间线，缺了实站 `/leaderboard/agent/pareto` 下方的「Cost per Task」区块；补完后用户指出前沿图本身也画错了 — 实站把前沿成员画成带 org 图标的白底方块，散点是各家品牌色的小方点（不是统一灰圆点），X 刻度在图下而不是图上。
+**根因**：上一版实测只取了前沿图 DOM 顶层结构，没读到关键的 HTML 覆盖层 — 实站 svg 只画 grid/轴/折线/hot-spot 圆，散点（44 个 8×8 `hsl(var(--brand-*-{n}))`）和前沿 marker（28×28 白块 2px 绿边 + 16×16 org svg 图标）是 `position:absolute` 的 HTML 层，盖在 svg 上。
+**修复**：svg 改固定 788×380 无 viewBox（plot 80,30 → 768,310，X 刻度 `y=B+19`、Y 刻度 `x=L-12`）；新增两个定位层 — `.osubs-apscat`（clip 80,30,688,280，铺 8×8 彩色散点，按 org 上色）与 `.osubs-apmark`（62,12,724,316，按 `c.cx-14`/`c.y-14` 摆 28×28 marker 块 + `margin-left:-chipW/2` 的 chip 标签）；前沿折线两端各外伸 10px。Xiaomi 的 marker 落到 `xiaomi` key（M 字母 path）。契约钉在 `test/ui-client.test.ts`。
+**后续跟进**：`ArenaCostList` 挂在 `ArenaPareto` 尾部前沿列表之后；前沿成员用 `arenaFrontier(rows)` 的 `Set<model>` 判定；Sort 三档只重排该卡；`style` prop 传对象（`{ left: 'Npx' }`），React 18 UMD 会把字符串 style 拒掉（error #62）。**行数最终定为全量渲染**：站点默认只渲 15 行、其余藏在 `+ Show N more` / `− Show less` 展开器后——先按站点加过同款 expander（`.slice(0,15)` + `expanded` state + `arenaCostShowMore/Less` 文案），维护者裁定**移除展开功能、永远完全展开**（Pareto optimal 过滤后只剩 8 行，天然读成整条前沿），于是删干净：`expanded`/`setExpanded` state、`sortedAll` 中间量、`.osubs-acost-more` 按钮与 CSS、zh/en 两组 copy。`sorted` 现在就是 `[...pool]` 排序后的全量。**"Pareto optimal" 图例不是 label，是过滤开关**：实站按钮 `aria-pressed` + `data-slot="tooltip-trigger"`，点按后把整卡收缩到只有前沿 8 行（rank 1/5/15/16/19/25/32/52，顺序按当前 sort 重排，重新编号 1-8），非前沿行被过滤而不是降透明度。我们把它从 `<span>` 改成 `<button aria-pressed>` + `onlyFront` state，pool = `onlyFront ? priced.filter(onFrontier.has) : priced`；过滤后 ≤15 时 expander 自动消失。**Hover tooltip（第三轮补）**：实站每个数据点挂 Radix popper，hover 弹 `rounded-lg px-3 py-2 shadow-lg` 白卡（max-width 220，z-40）— 18px org 图标 + 模型名（14px/500）+ `org · license`（12px muted）+ `Score: +X.XX%`（绿）/`Cost/task: $Y.YY`，横向居中于点、整体在点上方 ~10px。三层点都接收 hover：svg 上 r=5 的**可见**绿点（`fill:#40b841`，不是透明 hit-area — 这是上一版又一个读错的细节）、44 个散点、8 个 marker 块。hover 升浮规格：散点 `transform:scale(1.8); opacity:.7→1`，marker `scale(1.15)`，均 150ms。我们加了 `useState(null)` 的 `hovered` + 三层 `onMouseEnter/onMouseLeave`（leave 用 `cur?.row===row` 防抖），tooltip 以 `left:x top:y` 锚在点上、`transform:translate(-50%,calc(-100% - 10px))` 居中上浮 — 居中对齐让卡片对最右点也不被 `.osubs-aparetto` 的 `overflow-y:auto` 裁掉（实测最右 marker Solar Pro 4 的 tooltip 右缘 1122 < 卡片右缘 1132）。注意 `style` 传对象 + dispatch `pointerover/mouseover/mouseenter/mousemove` 才能触发 React hover（`elementFromPoint` 单发不够）。CSS `:hover` 升浮是浏览器原生路径，合成事件测不到 transform 但规则已就位。**Zoom/pan（第四轮补）**：实站图表右上区是 `⌘Scroll` 提示 chip（纯 label，非按钮）+ `aria-label="Zoom in"/"Zoom out"` 的 `+/−` 按钮对，机制是 @visx/zoom 风的 **X 域（成本对数轴）缩放+平移**——`ctrl+wheel`（触控板 pinch 也走 wheel）以指针为锚缩放 X 窗口（实测 `deltaY:-240` 把 `$0.05..$5` 收到 `$0.10..$2`），mousedown+drag 平移窗口，Y 轴固定不动。我们落 `[win,setWin]` state（`null`=全域，`[lo,hi]`=当前 log10 窗口），`px` 改在 `[lo,hi]` 上反算，`clampWin` 夹出界/塌缩（下限=全域 5%）、`zoomAt(factor,lx)` 指针锚缩放、`panBy(dlx)` 平移、`onWheel→exp(-deltaY*0.0022)`、`onPointerDown/Move/Up` 拖动、`onDoubleClick→setWin(null)` 复位。数据点按 `inWin(cost)` 过滤（散点/marker/chip 只画窗内），前沿折线保持全量点但套 `#apclip` clipPath 裁到 plot 矩形，平移时边缘干净滑出。合成事件注意：对 svg 发 `WheelEvent('wheel',{ctrlKey:true,deltaY:-240})` 能进 React onWheel；但 React `setState` 后 DOM 更新是异步的，evaluate 里**别返回 Promise**（REPL 会 js_busy 超时）——dispatch 后回主线程 sleep 再读。
+
+## 2026-10-09：Grok 热重载丢前缀钉住状态，低缓存缺少归因证据
+
+**现象**：一份 Grok 4.7 会话 140 次主调用按记录命中 90.53%，数次连续调用只读 1152 cache token，正常增量调用则有 97.78%。会话记录不足以证明是错误分片或热重载。
+**根因**：独立复现发现真实请求模块图重载会清空模块内前缀 Map，用当前动态快照重钉；旧引用的 reset 也清不到新图。该缺陷已复现，但不能认定它就是上述会话低命中的原因。
+**修复**：Grok 自有兼容版本进程态保留有界 LRU，并补私有轮转的进程盐指纹、钉住原因／代次和整个响应的真实 usage 观察；缓存字段缺失记 null，显式零才记 0，不改变 wire、重试或压缩门限。实际命中收益仍需真实会话验证，公共前缀字节数不作缓存命中率。
+
+## 2026-10-09：工作台较新的状态被较早的轮询盖回
+
+**现象**：自动更新已经打开，或模型页刚采纳一次快照，较早的状态轮询随后返回，勾选和 `dsh-plugin-oauth-subs.status` 都回到旧值。较早的轮询失败时勾选还在，但页面画出那次失败。
+**根因**：轮询、模型写入、更新检查和勾选各自替换快照，不记谁先开始。先返回的不一定是后发起的。
+**修复**：同一次快照只认较新的一轮。较早的成功不写状态和存储，较早的失败不画错误。
+
+## 2026-10-09：对话额度记到切换后的账号，或在登出后复活
+
+**现象**：Codex 对话已用 A 的 token 向上游，回复未结束就切到 B 或登出 A，用量帧和关闭后的 touch 记到 B，或写出只有家族名的缓存行。连接在选定会话前断开，会话稍后就绪仍给 A 打 `usedAt`，上游没有被调用。
+**根因**：`onQuotaLearned` / `onQuotaUsed` 不带 hop 选中的会话，store 再读当前登录；登录已不在时这个读取失败，写成家族键。`close` 在选定会话之前就登记，`session()` 返回后才 touch。
+**修复**：chat hop 记下选中的会话；观察时该登录仍在库里才 learn/touch，否则丢掉。选定前的 close 不记，稍后返回也不补记。
+
 ## 2026-10-08：同日再后——OpenCode Go 收 Step 5 Preview Free
 
 **现象**：钉住版本未变（codex `0.161.0`、command-code `1.79.1`，均等于 npm latest）。`npm run models` 只有 `opencode-go-flash + step-5-preview-free`；其余键无新行、无字段变化。chatgpt token 两分钟内过期被跳过；kimi 仍无账号。Cursor 官方 docs 表没有要手挑的新非隐藏行。`glm-5.1` / `omen-alpha` / `minimax-m2.5` 仍无 models.dev 元数据。
@@ -31,12 +143,6 @@
 **现象**：`npm run models` 干跑只有三处差异：cursor `~ claude-sonnet-5-5.input` `["text"] → ["text","image"]`；cline `? cline-free/deepseek-v4.1-flash`（公开 feed 的 free 桶 4→3 行）；OpenCode Go `! glm-5.1` / `omen-alpha` / `minimax-m2.5` 仍无元数据。`npm run rates` 干跑行数全不变，但写盘实际改了 Devin `gpt-5.6-sol`（$1.2/$6 → $4/$20）与 cline `moonshotai/kimi-k3`（2.7/13.5 → 0.67/14）两行价——干跑只报行数与厂商回落，源里的值变化要 `git diff` 才看得到。kimi 键 `SKIPPED`（三个 profile 都没有 kimi 账号，未核对）。
 **根因**：① cursor 活列表的 `supportsImages` 从 9/30 的 false 回摆 true；② cline 免费档是轮换促销，deepseek-v4.1-flash 的免费期结束（同名 id 仍在 `cline-pass` / `cline-cloud` 付费桶）；③ Devin `modelCostData`（PRO 档）把 9 月收的促销价换成标准价 $4/$20，models.dev `openrouter` 桶的 kimi-k3 同日也改了价。
 **修复**：cursor `claude-sonnet-5-5` 按活列表收回 text+image；cline 删 `cline-free/deepseek-v4.1-flash` 目录行 + 价目行（10→9，加载器先拦了残留价目行，这是设计）；Devin / cline 两行价随源更新（Models 页徽标与用量页估算即时重述）；OpenCode Go 三行继续不收；codex 0.160.0 / command-code 1.74.1 都等于 npm latest，无版本可跟。
-
-## 2026-10-04：Antigravity 指纹停在 hub 2.11.0，本机旧安装还会把它压得更低
-
-**现象**：对话 User-Agent 要么是回退 `antigravity/hub/2.11.0`，要么被本机 Antigravity.app 2.12.2 盖住。Cloud Code 拒过期客户端（「This version of Antigravity is no longer supported」）。
-**根因**：回退钉在 2026-08-30 的 2.11.0；版本探测无条件采用已安装版本。官方 hub 更新清单 `latest-arm64-mac.yml` 已是 2.19.1，启动参数仍是 `--subclient_type hub`、`--override_ide_version`、daily-cloudcode-pa。
-**修复**：回退改为 2.19.1。已安装版本比回退新才采用，否则用回退。UA 形状不变：`antigravity/hub/<ver> <os>/<arch>`。
 
 ## 2026-10-04：Kiro 静态目录补上 claude-sonnet-5.5，chat 列表仍不放行
 
@@ -287,9 +393,9 @@
 
 ## 2026-09-30：`npm run analyze` 里 Kiro 命中率恒为 0.0% 是测不到，不是没命中（始 09-28）
 
-**现象**：Kiro 会话命中率 0%、TPS 为空，被报成 affinity-miss。
-**根因**：Kiro 的流里没有 `metadataEvent`，不下发任何 cache 字段；服务端其实按前缀缓存（重复请求 credit 约减半）；输出 token 兜底只按正文估。
-**修复**：家族从未出现过 cache 字段时报 `n/a` / `UNMEASURED`，而不是 0%；输出按正文 + 思考 + 工具参数估。9-30 跟进：代理把每次请求的可缓存前缀估算写进 `prefix-estimate.jsonl`，分析器对 Kiro 显示 `≤x%`（上限，不是实测命中）。
+**现象**：Kiro 会话命中率 0%、TPS 为空，被报成 affinity-miss；文本主判定已是 UNMEASURED，JSON 和 `--fail-below` 仍误报 0% / 低命中。目录分析单次导出时，还会引用同家族其他会话的前缀估算。
+**根因**：Kiro 的流里没有 `metadataEvent`，不下发任何 cache 字段，服务端实际按前缀缓存（重复请求 credit 约减半）；逐调用分类、JSON 与阈值判断仍把缺失值当 0，输出 token 的旧兜底只按正文估。目录估算只筛家族 / 模型 / 时间，没限定该统计行在窗口内包含的会话。
+**修复**：未报告 cache 字段时实测指标返回 `null`、调用标成 `unmeasured`，文本不再声称零缓存或未缓存 token，缓存阈值跳过但传输故障仍判失败；输出按正文 + 思考 + 工具参数估。代理的 `prefix-estimate.jsonl` 只提供 `≤x%` 上限，目录统计按该行的会话、家族 / 模型和时间范围联接，不能代替实测命中。
 
 ## 2026-09-29：对照 magpie（yetone/magpie）审网关 / 账号 / 额度 / hop——采纳一批小改，多账号故障转移与冷却维持不学
 
@@ -351,12 +457,6 @@
 **根因**：内联表单写成了方式列表的兄弟节点，统一排在列表后面。
 **修复**：表单移进列表，紧跟触发它的方式行（各家族都改）。
 
-## 2026-09-28：退出账号后，重启 / 热重载又自动登录回来
-
-**现象**：会自动导入本机 CLI / IDE 凭据的家族，点「退出」后一重启账号又回来。
-**根因**：「已尝试自动导入」只记在内存里，重建实例后清零，又导入一遍。
-**修复**：`logout` 把家族写进 `signed-out.json`，自动导入跳过它；手动导入和重新登录不受影响。
-
 ## 2026-09-28：Kiro Builder ID 额度读取失败 · Invalid profileArn.（HTTP 400）
 
 **现象**：粘贴导入的 Builder ID 账号额度报 400，对话正常。
@@ -404,12 +504,6 @@
 **现象**：Codex 请求体不压缩，长会话每轮要上传几百 KB 到 MB。
 **根因**：`forward()` 没有按家族编码请求体的接缝。
 **修复**：`forward()` 加 `encodeBody`，Codex 用 zstd 并带 `content-encoding: zstd`；后端 400 / 415 时不回退明文。
-
-## 2026-09-28：上游空闲约 4s 就断连，下一轮重新握手
-
-**现象**：两轮之间空闲超过约 4 秒，下一个请求要重新握手（chatgpt.com 约 1.7s）。
-**根因**：上游不发 `Keep-Alive` 头，undici 退回默认的 4 秒 `keepAliveTimeout`。
-**修复**：直连与代理 Agent 都设 `keepAliveTimeout: 60_000`；陈旧 socket 的 ECONNRESET 由重试兜底。
 
 ## 2026-09-28：会话 id 串用——Completions 路由从没收到 DSH 会话 id，回退 id 仍会 pin；GLM `x-session-id` 每进程随机
 
@@ -1180,4 +1274,93 @@
 **状态**：代码 + 单测已落地，**无真实团队席位活测**（手头没有组织席位账号）。落地内容：登录 mint 个人优先（subscription/list VALID 探测，传输失败不当「无套餐」）、无个人计划时 `querySubscribeDetail` 找 EFFECTIVE+VALID 席位铸 `keyType 2` 团队 key；额度走 `quota/limit?type=2` + `Bigmodel-Organization/Project`；重置卡 `targetType=TEAM`（bearer 优先 `oauthAccess`，是对 magpie `zhipuTeamResets` 用 business 登录的类比，**未活测**）；`subscribeEndTime` BigModel 按 +08:00、Z.ai 按 UTC（类比重置卡时区结论，未活测）。
 **待活测清单**（拿到席位后）：① 登录落团队会话、卡片显示产品名；② `?type=2` 窗口与个人窗口的形状差异；③ TEAM 卡 list / use（use 会真扣卡）；④ UNASSIGNED / EXPIRED 拒绝文案与服务端真值一致；⑤ 团队 key 直接对话（magpie 称无需额外头）。
 **已知边界**：手粘 API key / ZCode 导入不识别团队切换，额度按 PERSONAL 读，卡片可能报业务信封错误；`mintGlmApiKey`（存量升级路径）现在也会跳过 `projectType 2` 项目，只有团队项目的存量账号若升级后铸失败会保留原 bearer 等下次进程。
+
+## 2026-10-09：arena.ai 榜单抓取活测结论（榜单 tab 数据源）
+
+**结论**：arena.ai 无公开 JSON API；`GET https://arena.ai/leaderboard/agent[/{code|chat|work}]?_rsc=1` + 头 `RSC: 1`（`accept: text/x-component`）直接回 RSC flight 载荷（约 40 KB gzip），其中 `"snapshot":{…}` 与 `"costStats":{…}` 两个平衡 JSON 就是全表数据（rank/rankSpread/avgScore{value,ci}/signalScores+signalCi/sessions/价格/license/modelUrl；costStats 按 contenderName 给 P50 成本与输出 token）。**裸 UA `node` 会被 Cloudflare 挑战页挡下，必须带浏览器 UA**；无需 cookie。快照一天一动（`lastUpdated` 固定 12:00 UTC），TTL 1h 足够。分类路由与站内 dataSource slug 不同名：chat→`consumer`、work→`gdp`，别按 slug 拼 URL。表格的发散条比例尺 = 列内 max(|value|+ci)（最宽须标恰好贴边），±CI 值 ×100 显示；tool_hallucination 正值渲染为绿色 Down（低幻觉更好）。
+
+
+### 2026-10-09 补充：Pareto 视图（榜单 tab 第二视图）活测结论
+
+榜单页的 Pareto 有独立 URL（`/leaderboard/agent/pareto`）也是页内 "View as" 切换（Ranking/Pareto），**数据全在已抓的 snapshot+costStats 里，零新增请求**。对齐规则（2026-10-09 二次实测：直接读站点图表 SVG + React fiber 里的 `pricedEntries`/`frontier` 数据，逐像素对过）：
+
+- "前沿" = (每任务中位成本 asc, 净提升) 扫描，便宜到贵只保留刷新最好值的模型——实站 8 个前沿模型与我方计算完全一致（同名同成本序）。**不要**用 (cost, success) 或 value−ci 算前沿，都会得出不同的集合。
+- 图表画法（@visx 渲染，实测规格）：svg 788×380，绘图区 688×280 @ (80,30)；网格两轴都是 **#e5e7eb 1px 虚线 4,4**（0 线不特殊）；**$ 刻度在图表顶部**（左贵右贱的反向对数轴，$5 左 $0.05 右），Y 刻度左置；前沿线绿 #40b841 **2.5px 圆角**，且**首尾各水平引出 10px 出绘图区**；点 r=5 实心。
+- 轴域公式（按当天快照解方程验证到 <0.1%）：X = `[min(costPerTaskUsd)×0.7, max×1.3]`（全量 52 行有成本模型，不只前沿）；Y ≈ `[min(rating)×1.34, max(rating)×1.947]`（实测拟合，源码在压缩包里没找到原始常数；这个域下 d3 式取整步进自然落在 ±10% 刻度上，即 0.1 步长 5 条线）。
+- 标签是**绝对定位 sans 10px/500 芯片**，默认居中在点上方 40px；站点自己的布局会上下错开、放不下的**直接不标**（当天 8 点只标 6 个）。本实现用同规则的确定性算法：线/已放芯片阻挡 → 上方 23px 车道逐级 → 下方 30px 起 → 放不下丢弃。
+- 图下列表是**前沿 8 行本身**（按净提升降序），不是全量 52 行——初版照"全部有成本模型"实现是错的，二次实测纠正。行结构：绿框小方块时间轴（节点间 1px 竖连线）+ 厂商图标 + 名称（sans）/`org · license` 子行 + 右侧 `+X.XX%`（绿/红）与 `$X/task`。
+- View as 两个按钮带图标：Ranking = lucide `list`（三横线+左列点），Pareto = 坐标轴+折线（`M20 20H4V4` + `M4 7l8 8 3-3 4.5 4.5`），14px stroke 1.5。
+- Y 数值是百分点：`row.value` 是小数（0.1433），画图/算域先 ×100，否则全部点挤在 0 线附近（本次踩坑）。成本是滚动 14 天窗口，每天快照间会有 ±$0.1 级漂移，与站对数时允许这个差。
+- 排名表 2026-10-09 起补上站点的 `Cost/Task (P50)` 列（可排序、右对齐 `$X.XX`、无成本 `—`）。注意站内表格成本与 pareto 列表的 costPerTaskUsd **偶有 1 分钱差**（实测同日 Opus 表格 $1.76 vs pareto $1.75——两边字段/取整不同源），我方两处都渲染 costStats join 出的 costUsd，以缓存数据为准，不追站内的分币差。
+- 图表副标题实站原文用小写 `x`："Net Improvement x Cost/task from real Agent Mode tasks"；轴标题行"Median cost per task (last 14 days)"居中 mono 12px 在绘图区正下方。
+
+### 2026-10-09 第五次追加：Cost | Output Tokens X 轴切换
+
+实站前沿卡头部是 `role="tab"` 分段控件 `Cost | Output Tokens`（aria-selected），切换把 X 轴从美元换成**每任务中位输出 token**（`costStats.outputMtokPerTask.medianMtok`，单位 Mtok，×1e6 还原为原始计数）。实测规格：
+
+- token 模式 X 刻度是 K/M 对数阶梯（当天 `10K 20K 50K 100K`，反向、左大右小与成本轴一致）；值格式化 `28.8K`——**10K–100K 之间保留一位小数**，≥100K 取整，≥1M 用 `M`。
+- 切换**重新扫前沿**：token 便宜 ≠ 美元便宜，前沿集合当天从 8 个变 7 个（`arenaFrontier` 因此参数化为 `xOf` 取值器，Cost 用 `row.costUsd`，Tokens 用 `row.tokensM*1e6`）。
+- 前沿下方「Pareto Optimal Models」列表**右列跟 tab 走**：副标题 `Net Improvement x Output tokens`、数值 `28.8K/task`（不是 $）。初版漏改右列，对实站截图纠正。
+- 图下轴标题行同样换文案：`Median output tokens per task (last 14 days)`。
+- zoom/pan 的 `[lo,hi]` 窗口存在旧 metric 的 log10 域里，**切 tab 必须 setWin(null) 复位**（否则美元刻度映到 token 刻度上）。
+- tooltip 卡片第二行跟 metric：成本态 `Cost/task $X.XX`，token 态 `Output Tokens 28.8K`。
+- 站点 React 19 的 tab 按钮用合成 `.click()` 不触发 handler（与 Zoom 按钮同一现象，见前文），要 dispatch `pointerdown/mousedown/pointerup/mouseup/click` 全套才切得动。
+
+### 2026-10-09 第六次追加：前沿图与最优列表是「同一张卡左右排」
+
+上一版把「Pareto Optimal Models」放在前沿图**下方**竖排——实测站点其实是**同一张 `rounded-lg border` 卡内的一个 flex 行**：容器 `@4xl:flex-row flex min-h-[500px] flex-1 flex-col`，左列 `flex min-w-0 flex-1 flex-col` 装前沿图（当天实测宽 ~704），右列 `@4xl:w-72 w-full flex-shrink-0`（288px）装最优列表；窄于 4xl 断点时右列掉到下方变全宽。**不是两张卡、也不是上下排**。落点 `.osubs-aptwo`（flex row）+ `.osubs-apmain`（flex-1, min-w-0）+ `.osubs-apside`（flex 0 0 288px，左分割线），`@media (max-width:940px)` 堆叠。最优列表卡在图右侧后，图列只剩 ~526px（< 788 svg）——站点同宽下也是裁不是缩放，`.osubs-apwrap` 加 `overflow:hidden` 对齐（之前不裁是因为图独占整卡宽，右侧无列表）。**styles 文件注释别用反引号**：`.ui-build/client.ts` 把 CSS 内联成模板字符串，注释里 `` ` `` 会提前闭合字面量炸 TS1005（本次踩坑，报 `@media` 行其实是前面注释的 `` ` ``）。
+
+### 2026-10-09 第七次追加：tooltip 在左右排布下被右轨裁掉
+
+同卡左右排后，前沿图列只剩 ~526px，悬停卡的锚点还是按 svg 坐标 `hovered.x`（0–788）放进 `.osubs-apwrap`——wrap 现在有 `overflow:hidden`（图裁），卡在靠右点时伸出可视区被右列裁掉一半。**夹持要按 wrap 的 *渲染宽*（`wrapRef.current.clientWidth`），不是 svg 的 788**：锚点 `cx` 夹到 `[HALF, wrapW-HALF]`（HALF=卡半宽 110+8 边距），近顶（`y<90`）时 `.osubs-aptip--below` 翻到点下方 `translate(-50%,14px)`。中文两行标签 `得分/每任务成本` 会挤压换行，`.osubs-aptip-figs` 加 `white-space:nowrap` 保持一行。实测 Solar Pro 4 悬停卡 tipR 844 < wrapR 890 完全可见（修前探到 ~1084 被右轨裁）。
+
+
+### 2026-10-09 第八次追加：任务时长分位筛选（25/50/95 percentile）
+
+实站前沿卡头部在 `Cost | Output Tokens` 分段旁还有一个 `50th percentile` Radix dropdown（菜单项带「Shorter/Median/Longer tasks」副行）。数据就在同一份 `costStats` 负载里——每条 entry 除 `medianUsd`/`outputMtokPerTask.medianMtok` 外还带 `p25Usd`/`p95Usd` 和 `outputMtokPerTask.p25Mtok/p95Mtok`，**不用多抓任何东西**，站点切分位也是本地重算不是二次请求。落法：
+
+- `ArenaRow` 透 `costUsd25/95` + `tokensM25/95`（Mtok），`xOf` 按 `pct` 选字段；**分位字段全空必须 fallback P50**——缓存里旧答案没这些键，没有 fallback `priced` 会变空、`arenaFrontier` 返回 []、`allPlaced[0]` 解 undefined 直接炸（harness 用旧 json 实测崩过）。
+- `pickPct` 同 `pickMetric`：换分位等于换 log10 域，`setWin(null)` 复位 zoom。
+- 切分位**真会改前沿集合**：同一份快照 p25=8 / p50=8 / p95=5（Solar Pro 4、GPT 6 Luna、Muse Spark 在 p95 掉出，长任务下它们又贵又没拉开差距）。X 轴刻度自动跟着 ladder 换（p95 落到 `$0.50–$20`）。
+- 菜单 UI 复用 `.osubs-acost-menu`：`.osubs-appct-item` 加 `✓` 位 + 两行 label（百分位 + 任务长度提示），zh `第 N 百分位`/`较短|中位|较长任务`，en `Nth percentile`/`Shorter|Median|Longer tasks`。
+- 列表右列 `fig`、tooltip 第二行都改走 `xOf(row)`（不再直接 `row.tokensM`/`row.costUsd`），分位/度量任一换都跟着对。
+- harness 抓包注意：`index.html` 的 rpc mock 签名是 `call(channel, method, payload)`——`callRpc` 会把 channel `/oauth-subs-auth` 当第一参，mock 必须测**第二参** method；且 `callRpc` 认 `{ok:true,value}` 包装，直接 `resolve(board)` 也行但 mock 要回 `{ok:true,value:board}` 或裸对象。**还有一个更狠的坑：组件先读 localStorage 缓存（`readStoredArena`），旧缓存里没有分位字段——改 harness json 后必须 `localStorage.clear()` 再刷新，否则页面拿的是陈数据、怎么切都一个样。**
+
+### 2026-10-09 第九次追加：viewBox 等比缩放修「右侧数据被裁」
+
+同卡左右排 + `.osubs-apwrap{overflow:hidden}` 之后图列只剩 ~526px，svg 788 逻辑宽直接被裁——右半的前沿点、marker、chip 全部不可见（实站同宽也裁，但用户需求是**自己的数据要看全**，这次选择缩放不是对齐站点的裁法）。落法：
+
+- svg 加 `viewBox="0 0 788 380"` + `.osubs-apchart{width:100%;height:auto}`——px/py/chip 布局全部继续在 788×380 逻辑坐标里算，浏览器整体等比缩到列宽。
+- 两层 HTML overlay 的 left/top 全部改**百分比**：`.osubs-apscat` 内的散点是 `(v-L)/688`、`(v-T)/280`；`.osubs-apmark` 自己 offset (62,12)、尺寸 724×316，**它孩子的分母是层宽/高不是 W/H**——marker 用 `(x-62)/724`、`(y-12)/316`，chip 同理，引线 `height` 也按 /316 换成百分比。**用 /W /H 是双 offset 错误**（先扣了层 offset 又按全图宽取百分比），实测 `aligned:0/8`。
+- tile/散点尺寸随列宽缩：`.osubs-apwrap{container-type:inline-size}`（@supports 包着），28px tile→3.55cqw、2px border→0.254cqw、16px icon→2.03cqw、8px 散点→1.02cqw（都是相对 788 的比例）。
+- `transform:translate(-50%,-50%)` 必须写在 **CSS 基础规则**里，不能写 inline style——inline transform 会盖住 `:hover` 的 `scale()`，hover 抬升失效。改完后 hover 是 `transform:translate(-50%,-50%) scale(1.15)` 组合。
+- clientX→svg 换算已经走 `getBoundingClientRect` 比例（`svgX`/`onMove` 里的 `W/r.width`），viewBox 缩放后 zoom/pan 锚点天然正确，不用改。
+- chip label 宽度不再靠 `chipW(name)` 估 + `marginLeft:-w/2`——直接 `translateX(-50%)` 在 CSS 里居中，省掉一半宽度计算。
+- chip 被撞出默认位时，从 marker 中心到 chip 底画 1px **绿色虚线** `.osubs-aplead`（site 原样画的，把被挤走的标签连回它的点）；引线也是 `.osubs-apmark` 的孩子，left/top 同样按 /724 /316。
+- harness 验证：`wrapW=526` 下 `aligned:8/8`、`marksOut:0`、`scatOut:0`、`chipsOut:0`、`leads:7`。缩放后所有数据保持可读，与站点「裁掉」的策略分道扬镳是故意的——用户明确要「数据看得全」。
+
+### 2026-10-09 第十次追加：zh 悬浮卡文字溢出右边界（figs 行）+ 顶点卡被 wrap 裁剪
+
+zh 标签比英文长：`得分: -19.03%` + `每任务成本: $0.02` 两段在 220 卡（内宽 ~170）放不下，`.osubs-aptip-figs` 的 `white-space:nowrap` 让整行撑出卡右边界（用户报「文字有一点超出边界」）。修法三层：
+
+- figs 行改 `flex-wrap: wrap` + `column-gap:12px; row-gap:2px`，每段自身 `.osubs-aptip-figs > span { white-space: nowrap }` 保数字不断行——放不下时成本段掉到第二行。
+- 但 flex-wrap 让卡收缩到「最宽单项」宽（~151px），名称/厂商行反而跟着折行——`.osubs-aptip-body { min-width: 150px }` 把卡托回贴近站点 220 的 footprint（长名 > 220 时仍按 max-width 折行，与站点一致）。
+- 顶点（+14.33%）的卡浮出 wrap 上缘时被 `.osubs-apwrap` 的 `overflow:hidden` 裁掉图标+名称行。viewBox 缩放后 svg 已精确等于 wrap 宽，wrap 裁剪已无存在必要（散点层有自己的 overflow:hidden；marker/chip 全在 wrap 界内）——**直接删掉 wrap 的 overflow:hidden**，卡与站点 Radix 一样浮出图表边界。旧的 `hovered.y < 90` 翻下规则保留即可，顶部卡现在自然浮进头部控制区（z-40 悬停态，不驻留）。
+- harness 验证：solar-pro4 短名卡 tipW 202、figsOverflow -13px（边界内）；claude-opus-5.5-long-name 卡 tipW 220/两行名，顶部完整浮出 wrap 上缘 47.8px，无裁剪。1187/1187 过。
+
+### 2026-10-11 第十一次追加：Cost | Output Tokens 切换要连「每任务」卡一起重渲染
+
+**现象**：用户对着实站指出——切 Cost / Output Tokens 时，不只「Pareto Optimal Models」右列跟着换，「Output Tokens per Task」那张卡整张都会重渲染（标题、副标题、每行数值、条形比例尺）。我方第五次追加只做了图和右列，图下的「每任务成本」卡永远按 cost 渲染（截图里 token 态下它仍写「每任务成本」+ `$3.75/任务`）。
+
+**实测（官方 chunk `4a42b2880361ee324b87265e7082beb8.js` 源码 + 现场 DOM 双证）**：
+
+- 这是**同一个组件**：`_{ kind: "cost" | "output-mtok", statMetric, entries, frontierKeys, windowLabel, search, renderModelIcon }`；站点按 `$.xMetric` 传 kind，`z = cost ? "Cost per Task" : "Output Tokens per Task"`。卡在 entries 为空时整块不渲染。
+- Sort 文案表也在同一模块：cost `{rank:"Ranking","value-desc":"Highest Cost per Task","value-asc":"Lowest Cost per Task"}`，tokens `"Highest/Lowest Output Tokens per Task"`；排序取值器是当前投影的每任务值（`costPerTaskUsd` / `outputMtokPerTask`，已按 statMetric 取好分位）。
+- ⓘ 触发器 aria-label：`Explain the cost ranking` / `Explain the output token ranking`。正文带 statNoun（median / p25 / p95 → `the median` / `the 25th percentile` / `the 95th percentile`）：cost 是「Measured from real Agent Mode tasks, not list prices. Each bar shows {statNoun} across a model's priced tasks, with the model's Net Improvement under the price.」，tokens 是「… Each bar shows {statNoun} for output tokens across a model's measured tasks, with the model's Net Improvement under the count.」。旧 zh 文案（「每任务成本是…的中位数」）与实站不是一句，已按站结构重写。
+- **条形比例尺 = 该投影下全部已计价条目的最大值**，不是可见 15 行：实测 token 态 inline 宽度 `29.3124% / 26.9222% / 51.6221% / 28.7299% / 100% / 26.3071%`，与用全量 51 条算出的 `66.525/226.952`、`61.1005/226.952`… 逐位吻合（`226.952K` = Sonnet 5.5 (Max)，全量最大）。
+- 分位筛（25/50/95）同时改两处文案：p95 + token 态下**前沿图轴标题**与**底部卡副标题**都是 `Long-task output tokens, P95 (last 14 days)`（站点就是 `xValueLabel + windowLabel` 一个串印两处），卡里数值也换成 p95。
+- 卡内 `Pareto optimal` 过滤用的是同一个 frontierKeys：token 态点开后只剩 6 行（GPT 5.5 / Claude Opus 4.8 (High) / Claude Fable 5 (High) / GPT 6 Sol (Max) / GPT 6.1 Sol (Max) / Claude Opus 5.5 (High)），行号按当前 sort 重排 1..6；绿色 rank tile 也是同一集合（rank 27 的 GPT 5.5 被拉进来）。
+- `formatTokensPerTask` 先把 **Mtok 四舍五入到 2 位再分支**：`999.6K → 1M`、`227K` 取整、`66.525K → 66.5K`。旧 `arenaTok` 用 `n>=1e5` 分界，999.6K 会印成 `1000K`；已改成同规则。
+
+**落法**：`arenaXOf(row, metric, pct)` 是唯一取值器（图、右列、卡、tooltip 共用）；`arenaAxisLabel(t, metric, pct) = t[arenaAxis{Cost|Tokens}[P25|P95]] + t.arenaWindow14`；`ArenaCostList({ t, rows, metric, pct, xOf })` 里 title/sub/fig/bar 比例尺/sortItems/ⓘ/frontier 全部按 `metric` 分流；`ArenaPareto` 把 `metric/pct/xOf` 透传下去。copy 侧 zh/en 各新增 17 键、删掉 3 个重复键（净 +14，arena 键集 zh/en 各 69），把 `arenaParetoFoot`/`arenaParetoFootTokens`/`arenaCostSub` 三个**本来就同串**的键合并进 `arenaAxis*`（站上就是一个 xValueLabel）。测试更新 8 处 pin + 新增一条行为用例（`arenaTok` 边界、`arenaXOf` 的四象限与 P50 fallback），1188 用例全绿；zh/en arena 键集合比对一致（69/69）。
 

@@ -1,6 +1,6 @@
 /**
  * Per-family TokenManager wiring, extracted verbatim from controller.ts
- * (behavior-identical move): one factory builds the 13 manager instances the
+ * (behavior-identical move): one factory builds the manager instances the
  * controller assigns to `this.tokens`. Everything those literals used to
  * close over from the constructor arrives through `deps`; family refresh
  * hooks, import predicates, and preempt constants stay imports from their own

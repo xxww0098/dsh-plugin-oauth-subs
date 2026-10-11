@@ -21,7 +21,7 @@ Zhipu **Coding Plan**（付费 Lite/Pro/Max）。两个站点、同一套 ZCode 
 | [`cache.ts`](cache.ts) | 隐式前缀哈希。Completions：钉首段 system，多余停 **messages 末尾**。Anthropic：钉 system 首块 `cache_control` + **最新非 system 消息滚动 breakpoint**。剥掉 Codex `prompt_cache_key` |
 
 调度：[`../proxy.ts`](../proxy.ts) `family === 'glm'` + `wire === 'anthropic'` → `normalizeGlmAnthropicBody`；Completions 残留 → `normalizeGlmChatBody`。`x-session-id` 在 `glmDesktopHeaders`；Anthropic 另加 `anthropic-version`。
-额度：[`quota.ts`](quota.ts) `fetchGlmQuota` / `parseGlmQuota` / `mergeGlmToolUsage`；重置卡 `parseGlmResetCards` / `consumeGlmResetCard`。
+额度：[`quota.ts`](quota.ts) `fetchGlmQuota` / `parseGlmQuota` / `mergeGlmToolUsage`；重置卡 `parseGlmResetCards` / `consumeGlmResetCard`；registry reset 钩子 `spendGlmResetCard`（请求 id 幂等表随它搬进本文件）。
 套餐：`GLM_PLAN_NAMES`（`coding_pro` → **Pro**，不要和 Codex `pro` → Pro 20x 搞混）。
 协议：[`../models.ts`](../models.ts) `api: anthropic-messages`，`baseURL: ${origin}/glm`（Anthropic SDK 打 `{baseURL}/v1/messages`）。
 **体验套餐（Start Plan）不支持：** ZCode Desktop 对 zcode-plan hop 强制注入阿里云 captcha 头，插件不伪造、不接 captcha SDK，没这颗头网关 `400 code 3007 captcha verify failed`。目录 / 路由只留 Coding Plan；导入跳过 start-plan JWT。试用对话请在 ZCode.app。
@@ -131,13 +131,14 @@ DSH openai-completions  →  POST /glm/v1/chat/completions  →
 
 行在 [`src/catalog/models.json`](../../catalog/models.json) 的 `"glm"` 键；行格式、来源与 `npm run models` 更新流程见 [`docs/models.md`](../../../docs/models.md)。本节只记本家的取舍与出处。
 
-最近核对：2026-09-29，官方 devpack overview + [glm-5.3 模型页](https://docs.z.ai/guides/llm/glm-5.3) + ZCode catalog。
+最近核对：2026-10-10，官方 devpack overview + [glm-5.3-flash（VLM）页](https://docs.z.ai/guides/vlm/glm-5.3-flash) + ZCode catalog（v3.15.1 tree）+ 套餐 `/models` 端点活测。
 
 - 收哪些 id：官方 devpack overview 只保证 GLM-5.3 / GLM-5.3-Flash，历史 id 由套餐自动改道。目录收 ZCode `builtinProviderModelRules` 仍启用的那组，外加 maintainer 既有取舍（Turbo）。Coding Plan `/models` 端点只给 id，参数取 ZCode catalog 与官方模型页。
+- **2026-10-10 收 `glm-5.3-flashx`**（此前因官方文档「not yet available on the plan」拒收，先例见 [`docs/error.md`](../../../docs/error.md) 2026-09-21）：套餐 `/models` 端点已列出，最小对话 200 且响应 `model` 原样回显 `glm-5.3-flashx`（非 4.x 改道），bigmodel 区域账号活测。参数出处：ZCode catalog 的 5.3 规则（`modelMatch: .*glm-5\.3(?:-flash)?…` 同样罩住 flashx）给 1M 窗 / 128K 输出 / low-high-max / 强制思考 map，VLM flash 规则给 image；官方 VLM 页给 1M ctx / 128K 输出 / 200 tok/s。devpack overview 与 ZCode v3.15.1 开源 tree 都还没列它（文档滞后先例），但订阅后端在服务，以活端点为准。
+- **窗口口径的例外**：5.3 / Flash 的套餐输入上限是 400K（见「上下文与压缩」），FlashX 不是——2026-10-10 活测 656,269 与 948,763 输入 token 均 200，1.4M 拒 `1261 Prompt exceeds max length`，官方窗 1M、ZCode host 的 `[1m]` 后缀惯例即「运行时强制 1,000,000 上下文窗口」。基线钉 1M，压缩阈值 800K，距最低观测上限仍有 ~150K 余量，所以**这行不挂 `maxContextWindow`**（上限就是基线本身，同 Turbo 的形状）。
 - 窗口：基线 `contextWindow` 是**套餐网关实际收的输入上限**，不是官方模型页的最大窗（例：5.3 官方写 1M，套餐只收 400K）。基线定在套餐上限，宿主压缩才会先于网关拒绝；官方最大窗挂在行的 `maxContextWindow`，作为模型页自定义输入窗的上限（见 [`docs/models.md`](../../../docs/models.md) 自定义窗口）。不派生 `-1m` 变体行；hop 剥后缀逻辑只为兼容旧路由。
 - 输入：catalog 里的 video / pdf 剥掉，只留 text / image。
 - 不进目录（取舍经过见 [`docs/error.md`](../../../docs/error.md) 2026-09-21 GLM 目录取舍）：
-  - `glm-5.3-flashx`：官方 Flash 文档写明「not yet available on the plan」；订阅后端不服务的模型不进目录。官方上线再补。
   - `glm-5.2` 等改道 id：后端按 5.3 处理，5.2 的 `off` 档（`thinking.type: disabled`）会 400（5.3 强制思考）。proxy 仍保留 5.2 的线上形状，给旧 session / 手写路由兜底，但 picker 不复活它（`GLM_STALE`）。
 
 思考的线上形状来自 catalog `modelApiRules`（`apiTypeMatch: anthropic-messages`）：5.3 / Flash `{"thinking":{"type":"enabled"},"output_config":{"effort":<level>}}`；5.2 `disabled` → `{"thinking":{"type":"disabled"}}`，否则同上；Turbo 只有 `thinking.type`。`reasoningEfforts` 的值就是 `output_config.effort` 的拼写，路由 compat 写 `forceAdaptiveThinking` 让 pi-ai 把 picker 档位派发成 `output_config.effort`；`allowEmptySignature` 让没有 signature 的 thinking block 按 `signature: ""` 回放（`anthropic-reasoning-metadata.ts` 同款），不被降级成 text。
@@ -160,17 +161,19 @@ retainTokens    = floor((W − O) × retainRatio)        # 逐字保留的近期
 |---|---|---|---|---|---|
 | `glm-5.3` | 400000 | 32768 | 40000 | **320000**（80%） | 58757 |
 | `glm-5.3-flash` | 400000 | 32768 | 40000 | **320000**（80%） | 58757 |
+| `glm-5.3-flashx` | 1000000 | 32768 | 65536（默认，无 per-row 条目） | **800000**（80%） | 154757 |
 | `glm-5-turbo` | 200000 | 32768 | 20000 | **147232**（73.6%） | 26757 |
 
-表里的阈值 / 保留是公式代入值（W ≥ ~328K 时阈值恒为 `0.8W`），不是官方数字；`headroomTokens` 被 [`test/models.test.ts`](../../../test/models.test.ts) 钉住，窗口被 [`test/glm.test.ts`](../../../test/glm.test.ts) 钉住。Turbo 的阈值随 O 变（O=0 时 160000），5.3 / Flash 的 320000 对任何 O ≤ 47232 都成立。
+表里的阈值 / 保留是公式代入值（W ≥ ~328K 时阈值恒为 `0.8W`），不是官方数字；`headroomTokens` 被 [`test/models.test.ts`](../../../test/models.test.ts) 钉住，窗口被 [`test/glm.test.ts`](../../../test/glm.test.ts) 钉住。Turbo 的阈值随 O 变（O=0 时 160000），5.3 / Flash 的 320000 对任何 O ≤ 47232 都成立，FlashX 的 800000 对任何 O ≤ 134464 都成立。
 
-**不要在 Coding Plan 上把 5.3 / Flash 的窗口改到 400K 以上**：400K 是套餐网关的单请求输入上限（2026-09-29 活测记录，见 [`docs/error.md`](../../../docs/error.md)），不是可配置项。填 500K 时阈值正好 = 400000，压缩余量为 0——估算误差或一轮工具输出就能把请求顶过网关被拒；填 1M 则要到 ~800K 才压缩，400K–800K 整段会话必被拒。要更长输入只能换按量 API key（官方 1M 窗）。
+**不要在 Coding Plan 上把 5.3 / Flash 的窗口改到 400K 以上**：400K 是套餐网关的单请求输入上限（2026-09-29 活测记录，见 [`docs/error.md`](../../../docs/error.md)），不是可配置项。填 500K 时阈值正好 = 400000，压缩余量为 0——估算误差或一轮工具输出就能把请求顶过网关被拒；填 1M 则要到 ~800K 才压缩，400K–800K 整段会话必被拒。要更长输入只能换按量 API key（官方 1M 窗）。**FlashX 不受这条约束**：它的套餐基线就是 1M（2026-10-10 活测，见「模型」节）。
 
 官方计价档位（2026-09-30 核对 [智谱 API 定价](https://docs.bigmodel.cn/cn/guide/start/pricing) / [Z.AI Pricing](https://docs.z.ai/guides/overview/pricing)；只有按量计费才有单价，Coding Plan 走 5h / 周 credits）：
 
 | 行 | 官方档位 |
 |---|---|
 | GLM-5.3 | 1M 单一价，无长度档（BigModel ¥8 输入 / ¥28 输出） |
+| GLM-5.3-FlashX | 1M 单一价，无长度档（BigModel ¥2 输入 / ¥7 输出，缓存命中 ¥0.57） |
 | GLM-5.3-Flash | 1M 单一价（¥0.8 / ¥2.8） |
 | GLM-5-Turbo | 输入 `[0, 32K)` ¥5 / ¥22 → `≥32K` ¥7 / ¥26（缓存命中 ¥1.2 → ¥1.8） |
 
@@ -234,7 +237,7 @@ Pin map 的 Anthropic 键是 `${sessionId}\0anthropic`，和 Completions 的 `se
 - 不要把 Anthropic 对话默认打回 `api.z.ai` / `open.bigmodel.cn` 直连——官方客户端只走网关；直连只在网关回 401/403/404 时一次性回退。
 - 不要在 Anthropic 路由写 Completions-only `compat`（`supportsReasoningEffort` / `thinkingFormat: openai`）；`forceAdaptiveThinking` / `allowEmptySignature` 才是这一协议的字段。
 - 不要在 Anthropic hop 发 `thinking.budget_tokens` / `thinking.display` / `reasoning_effort`，官方 catalog 只发 `thinking.type` + `output_config.effort`（代理会删掉前三个）。
-- 不要复活 `glm-5.2`（套餐自动改道 5.3，`off` 档会 400），也不要把 `glm-5.3-flashx` 塞进 picker（官方写明还没上套餐）。Turbo 不要编思考档位 / 128k 输出（catalog 是 64k，无档位）。
+- 不要复活 `glm-5.2`（套餐自动改道 5.3，`off` 档会 400）。Turbo 不要编思考档位 / 128k 输出（catalog 是 64k，无档位）。
 - 不要把 GLM-5.3 / Flash 的自定义窗口设到 400K 以上（500K、1M 都不行）：400K 是套餐网关的单请求输入上限，不是可配置项；窗口越大压缩越晚，只会更早撞网关。算法与每行阈值见「模型 · 上下文与压缩」。
 - 不要在下次 `sync()` 改写残留设置之前拆掉 Completions hop。
 - 不要导入 start-plan JWT（体验套餐不支持，zcode-plan hop 是 captcha 墙）；系统禁用的 coding-plan key 要导入并带原因。

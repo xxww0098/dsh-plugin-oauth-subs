@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -104,10 +105,47 @@ test('no cache field on any call is unmeasured, not an affinity regression', () 
   ])
   const report = analyzeSession(text)
   assert.equal(report.cacheMeasured, false)
+  assert.equal(report.weightedCacheHit, null)
+  assert.equal(report.prefixReuseMedian, null)
+  assert.equal(report.zeroCacheCount, null)
+  assert.equal(report.zeroCacheAfterWarmup, null)
+  assert.equal(report.uncachedBreakdown, null)
+  assert.ok(report.calls.every((call) => call.kind === 'unmeasured' && call.hit === null && call.reuse === null))
   assert.equal(report.affinityMissCount, 0)
   assert.equal(report.healthy, true)
   assert.match(report.verdict, /unmeasured/)
-  assert.match(formatReport(report), /UNMEASURED/)
+  const formatted = formatReport(report)
+  assert.match(formatted, /UNMEASURED/)
+  assert.match(formatted, /prompt\s+110/)
+  assert.match(formatted, /cache read\s+unmeasured/)
+  assert.match(formatted, /zero-cache\s+unmeasured/)
+  assert.doesNotMatch(formatted, /uncached as|affinity-miss|hit\s+0\.0%/)
+})
+
+test('CLI cache threshold distinguishes unmeasured usage, measured misses, and transport faults', () => {
+  const root = mkdtempSync(join(tmpdir(), 'analyze-cli-'))
+  const run = (name, events) => {
+    const path = join(root, `${name}.jsonl`)
+    writeFileSync(path, sessionJsonl(events))
+    return spawnSync(process.execPath, [
+      '--experimental-strip-types', join(import.meta.dirname, '..', 'scripts', 'analyze-session.ts'),
+      '--json', '--fail-below', '80', path,
+    ], { encoding: 'utf8' })
+  }
+  const usage = { type: 'assistant/message', data: { turn: 1, step: 1, usage: { inputTokens: 60, outputTokens: 2 } } }
+  const unmeasured = run('unmeasured', [usage])
+  assert.equal(unmeasured.status, 0, unmeasured.stderr)
+  assert.equal(JSON.parse(unmeasured.stdout).weightedCacheHit, null)
+  assert.doesNotMatch(unmeasured.stderr, /cache hit.*below/)
+
+  const measured = run('measured', [{ ...usage, data: { ...usage.data, usage: { ...usage.data.usage, cacheReadTokens: 0 } } }])
+  assert.equal(measured.status, 1)
+  assert.match(measured.stderr, /cache hit 0\.0% is below 80%/)
+
+  const fault = run('transport', [usage, { type: 'error', data: { error: 'fetch failed' } }])
+  assert.equal(fault.status, 1, 'unmeasured cache must not hide a transport regression')
+  assert.doesNotMatch(fault.stderr, /cache hit.*below/)
+  assert.equal(JSON.parse(fault.stdout).transportFaults.length, 1)
 })
 
 test('compaction rewrite is not an affinity miss', () => {
@@ -565,11 +603,50 @@ test('Kiro shows the proxy cacheable-prefix estimate as an upper bound, joined b
   assert.match(formatReport(single), /prefix est  ≤92\.5% cacheable \(plugin estimate, upper bound\)  baseline 2\/3  gap>5m 1/)
   assert.equal(analyzeSession(sessionJsonl(events)).prefixEstimate, null, 'no log, no estimate')
 
-  // The provider row pools every Kiro request in the window, other sessions included.
+  // The provider/model rows include estimates only from the selected sessions.
   const report = analyzeSessionDir(sessionDir({ 'a/session-1/session.v4.jsonl.zstd': events }), { prefixEstimates })
-  assert.equal(report.providers['oauth-kiro'].prefixEstimate.baseline, 3)
-  assert.equal(report.models['oauth-kiro/m'].prefixEstimate.baseline, 3)
+  assert.equal(report.providers['oauth-kiro'].prefixEstimate.baseline, 2)
+  assert.equal(report.models['oauth-kiro/m'].prefixEstimate.baseline, 2)
   const text = formatAggregate(report)
-  assert.match(text, /oauth-kiro\s+2\s+\S+\s+≤61\.7%/)
+  assert.match(text, /oauth-kiro\s+2\s+\S+\s+≤92\.5%/)
   assert.match(text, /≤x% = the plugin's cacheable-prefix estimate/)
+})
+
+test('an exported directory has no prefix estimate when all log rows belong to other sessions', () => {
+  const root = sessionDir({
+    's/session.v4.jsonl.zstd': [
+      { type: 'session', version: 4, id: 'selected' },
+      call(1, 1, 10, 'oauth-kiro', { inputTokens: 100 }),
+    ],
+  })
+  const report = analyzeSessionDir(root, { prefixEstimates: [
+    { ts: 10, family: 'kiro', session: 'not-selected', model: 'm', bytes: 100, matched: 97, gapMs: 1 },
+  ] })
+  assert.equal(report.providers['oauth-kiro'].prefixEstimate, null)
+  assert.equal(report.models['oauth-kiro/m'].prefixEstimate, null)
+  assert.doesNotMatch(formatAggregate(report), /≤97\.0%/)
+})
+
+test('prefix estimate joins use row sessions within the requested window', () => {
+  const root = sessionDir({
+    'a/session.v4.jsonl.zstd': [
+      { type: 'session', version: 4, id: 'a' },
+      call(1, 1, 10, 'oauth-kiro', { inputTokens: 100 }, 'm1'),
+      call(1, 2, 25, 'oauth-codex'),
+    ],
+    'b/session.v4.jsonl.zstd': [
+      { type: 'session', version: 4, id: 'b' },
+      call(1, 1, 30, 'oauth-kiro', { inputTokens: 100 }, 'm2'),
+    ],
+  })
+  const report = analyzeSessionDir(root, { since: 20, until: 40, prefixEstimates: [
+    { ts: 25, family: 'kiro', session: 'a', model: 'm2', bytes: 100, matched: 0, gapMs: 1 },
+    { ts: 30, family: 'kiro', session: 'b', model: 'm2', bytes: 100, matched: 90, gapMs: 1 },
+    { ts: 30, family: 'glm', session: 'b', model: 'm2', bytes: 100, matched: 0, gapMs: 1 },
+    { ts: 40, family: 'kiro', session: 'b', model: 'm2', bytes: 100, matched: 0, gapMs: 1 },
+  ] })
+  assert.equal(report.providers['oauth-kiro'].prefixEstimate.ratio, 0.9)
+  assert.equal(report.models['oauth-kiro/m2'].prefixEstimate.ratio, 0.9)
+  assert.equal(report.models['oauth-kiro/m1'], undefined)
+  assert.ok(!JSON.stringify(report).includes('"session"'), 'session membership stays internal')
 })

@@ -22,7 +22,9 @@ import {
   CLINE_CORE_VERSION,
   CLINE_COST_SCALE,
   CLINE_MODELS,
+  CLINE_MODELS_URL,
   CLINE_PLAN_LIMITS_URL,
+  CLINE_RECOMMENDED_MODELS_URL,
   CLINE_REASONING,
   CLINE_REFRESH_URL,
   CLINE_REGISTER_URL,
@@ -36,12 +38,14 @@ import {
   clineUpstreamHeaders,
   formatClineAccessToken,
   normalizeClineAccessToken,
+  clineIdentityHeaders,
   refreshCline,
   registerClineTokens,
 } from '../lib/oauth/cline/index.js'
 import { CLINE_IMPORT_EMPTY, clineSessionFromProvidersFile, importClineAuth } from '../lib/oauth/cline/import.js'
 import { applyClineCache, clineCacheHeaders, clineCacheSessionId, resetClinePins } from '../lib/oauth/cline/cache.js'
-import { applyClineMaxCompletionTokens, applyClineStreamUsage, applyClineThinking, mapClineUsage, unwrapClineEnvelope } from '../lib/oauth/cline/request.js'
+import { applyClineMaxCompletionTokens, applyClineStreamUsage, applyClineThinking, clineQuotaFailure, mapClineUsage, unwrapClineEnvelope } from '../lib/oauth/cline/request.js'
+import { UpstreamFailure } from '../lib/oauth/upstream.js'
 import { CLINE_CATALOG_TTL_MS, clineCatalogModels, refreshClineCatalog, resetClineCatalogCache, toClinePickerModels } from '../lib/oauth/cline/catalog.js'
 import { clineCapUsd, clineCreditUsd, fetchClineQuota, parseClineBalance, parseClinePlan, parseClinePlanLimits, parseClineUsage } from '../lib/oauth/cline/quota.js'
 import { DeviceFlowManager } from '../lib/oauth/grok/device-flow.js'
@@ -149,10 +153,46 @@ test('session round-trip keeps the prefix, never leaks the token, refreshes with
   assert.equal(refreshed.refreshToken, 'ref-b')
 })
 
+test('every call redeems: the family keeps no memory copy of a rotation', async () => {
+  // A stored session that already carries the rotated pair must exchange for
+  // real. The family used to hold the pair in memory, keyed by the rotated
+  // token as well, so every later refresh answered with its own earlier result
+  // and the login froze on that pair for the life of the process. Recovery for
+  // a save the store refused is the shared manager's job now (tokens.ts
+  // `#holdRotation`); here the honest answer is one request per call.
+  const session = clineSessionFromAuthData({
+    accessToken: 'jwt-rot',
+    refreshToken: 'ref-rot-1',
+    expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+    userInfo: { email: 'ada@example.com', clineUserId: 'usr-01ABC' },
+  }, {})
+  let calls = 0
+  const fetchFn = async () => {
+    calls += 1
+    return json({
+      success: true,
+      data: {
+        accessToken: `jwt-rot-${calls + 1}`,
+        refreshToken: `ref-rot-${calls + 1}`,
+        expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+        userInfo: { email: 'ada@example.com', clineUserId: 'usr-01ABC' },
+      },
+    })
+  }
+  const first = await refreshCline(session, fetchFn)
+  // The manager persisted it; by now its access token has aged out.
+  const aged = { ...first, expiresAt: Date.now() - 60_000 }
+  const second = await refreshCline(aged, fetchFn)
+  assert.equal(calls, 2)
+  assert.equal(second.accessToken, 'workos:jwt-rot-3')
+  assert.equal(second.refreshToken, 'ref-rot-3')
+  assert.ok(second.expiresAt > Date.now())
+})
+
 test('refresh rejection is permanent: HTTP 401 and success:false', async () => {
   const session = clineSessionFromAuthData({
     accessToken: 'jwt-a',
-    refreshToken: 'ref-a',
+    refreshToken: 'ref-reject',
     expiresAt: new Date(Date.now() + 3600_000).toISOString(),
     userInfo: { email: 'ada@example.com', clineUserId: 'usr-01ABC' },
   }, {})
@@ -162,6 +202,29 @@ test('refresh rejection is permanent: HTTP 401 and success:false', async () => {
   assert.equal(isPermanentRefreshFailure(rejected), true)
   const transient = await refreshCline(session, async () => json({ error: 'boom' }, 500)).catch((error) => error)
   assert.equal(isPermanentRefreshFailure(transient), false)
+})
+
+test('a 400 "failed to refresh token: invalid_grant" is a permanent rejection', async () => {
+  // api.cline.bot answers exactly this for a dead grant (live-probed
+  // 2026-10-11). The code rides inside a sentence, so an exact-code test filed
+  // it as a transient 4xx: the login was never removed and the quota card kept
+  // re-showing the previous reading behind a silent failure.
+  const session = clineSessionFromAuthData({
+    accessToken: 'jwt-a',
+    refreshToken: 'ref-dead',
+    expiresAt: new Date(Date.now() - 1000).toISOString(),
+    userInfo: { email: 'ada@example.com', clineUserId: 'usr-01ABC' },
+  }, {})
+  const dead = await refreshCline(session, async () => json({
+    data: '',
+    error: 'failed to refresh token: invalid_grant',
+    success: false,
+  }, 400)).catch((error) => error)
+  assert.equal(isPermanentRefreshFailure(dead), true)
+  assert.equal(dead.status, 400)
+  // Any other 400 without a dead-grant verdict stays transient.
+  const unrelated = await refreshCline(session, async () => json({ error: 'malformed request' }, 400)).catch((error) => error)
+  assert.equal(isPermanentRefreshFailure(unrelated), false)
 })
 
 test('catalog is Completions at /cline with declared effort keys only', () => {
@@ -181,8 +244,11 @@ test('catalog is Completions at /cline with declared effort keys only', () => {
     assert.ok(model.contextWindow > 0)
     assert.ok(model.maxTokens > 0)
     assert.ok(model.name)
-    for (const key of Object.keys(model.reasoningEfforts ?? {})) {
-      assert.ok(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(key))
+    const efforts = model.reasoningEfforts
+    if (efforts && typeof efforts === 'object') {
+      for (const key of Object.keys(efforts)) {
+        assert.ok(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(key))
+      }
     }
     assert.equal(model.input.every((part) => part === 'text' || part === 'image'), true)
   }
@@ -193,32 +259,93 @@ test('catalog is Completions at /cline with declared effort keys only', () => {
   assert.equal(CLINE_REASONING.max, 'xhigh')
 })
 
-test('live catalog merges the recommended + free buckets and falls back to the seed', async () => {
+test('live catalog merges recommended + free + clinePass and takes cloud-catalog facts', async () => {
   resetClineCatalogCache()
-  assert.deepEqual(CLINE_MODELS.map((model) => model.id), [
-    'cline-free/solar-mini4',
-    'openai/gpt-6.1-sol', 'anthropic/claude-sonnet-5.5', 'anthropic/claude-opus-5.5',
-    'spacexai/grok-4.7', 'openai/gpt-6-astra', 'moonshotai/kimi-k3',
-    'cline-free/mimo-v2.6-flash',
-    'cline-free/muse-spark-1.3-contributor',
-  ])
+  const grok = CLINE_MODELS.find((model) => model.id === 'x-ai/grok-4.7')
+  assert.equal(grok.contextWindow, 500_000)
+  assert.equal(grok.maxTokens, 450_000)
+  assert.deepEqual(grok.input, ['text', 'image'])
+  const step = CLINE_MODELS.find((model) => model.id === 'cline-free/step-5-preview')
+  assert.equal(step.name, 'Step 5 Preview (free)')
+  assert.equal(step.contextWindow, 1_000_000)
+  assert.equal(step.maxTokens, 64_000)
   const feed = {
     recommended: [{ id: 'anthropic/claude-opus-5.5', name: 'claude-opus-5.5' }, { id: 'new/lab-model', name: 'lab-model' }],
-    free: [{ id: 'cline-free/mimo-v2.6-flash', name: 'Mimo V2.6 Flash' }],
-    clinePass: [{ id: 'cline-pass/glm-5.3', name: 'cline-pass/glm-5.3' }],
+    free: [{ id: 'cline-free/mimo-v2.6-flash', name: 'Mimo V2.6 Flash' }, { id: 'cline-free/twin', name: 'cline-free/twin' }],
+    clinePass: [{ id: 'cline-pass/glm-5.3', name: 'cline-pass/glm-5.3' }, { id: 'cline-free/mimo-v2.6-flash', name: 'ignored' }],
+    clineCloud: [{ id: 'cline-cloud/deepseek-v4.1-flash', name: 'DeepSeek V4.1 Flash' }],
   }
-  const merged = toClinePickerModels(feed)
-  assert.deepEqual(merged.map((model) => model.id), ['anthropic/claude-opus-5.5', 'new/lab-model', 'cline-free/mimo-v2.6-flash'])
+  const cloud = {
+    data: [
+      { id: 'anthropic/claude-opus-5.5', name: 'Anthropic: Claude Opus 5.5', context_length: 1_000_000, context: 0, top_provider: { max_completion_tokens: 128_000 }, architecture: { input_modalities: ['text', 'image', 'file'] }, supported_parameters: ['reasoning_effort'] },
+      { id: 'xiaomi/mimo-v2.6-flash', name: 'Xiaomi: MiMo-V2.6-Flash', context_length: 1_050_000, top_provider: { max_completion_tokens: 131_072 }, architecture: { input_modalities: ['text', 'image', 'audio'] }, supported_parameters: ['reasoning'] },
+      { id: 'z-ai/glm-5.3', name: 'Z.ai: GLM 5.3', context_length: 1_048_576, top_provider: { max_completion_tokens: 943_718 }, architecture: { input_modalities: ['text'] }, supported_parameters: ['reasoning_effort'] },
+      { id: 'vendor-a/twin', name: 'Vendor A Twin', context_length: 11, top_provider: { max_completion_tokens: 11 }, architecture: { input_modalities: ['text'] }, supported_parameters: [] },
+      { id: 'vendor-b/twin', name: 'Vendor B Twin', context_length: 22, top_provider: { max_completion_tokens: 22 }, architecture: { input_modalities: ['text'] }, supported_parameters: [] },
+      { id: 'x-ai/grok-4.7', name: 'SpaceXAI: Grok 4.7', context_length: 500_000, top_provider: { max_completion_tokens: 450_000 }, architecture: { input_modalities: ['text', 'image'] }, supported_parameters: ['reasoning_effort'] },
+    ],
+  }
+  const merged = toClinePickerModels(feed, { models: [], cloud })
+  assert.deepEqual(merged.map((model) => model.id), [
+    'anthropic/claude-opus-5.5', 'new/lab-model', 'cline-free/mimo-v2.6-flash', 'cline-free/twin', 'cline-pass/glm-5.3',
+  ])
+  assert.equal(merged[0].name, 'Claude Opus 5.5')
   assert.equal(merged[0].contextWindow, 1_000_000)
+  assert.equal(merged[0].maxTokens, 128_000)
+  assert.deepEqual(merged[0].input, ['text', 'image'])
+  assert.equal(merged[0].reasoningEfforts.max, 'xhigh')
+  assert.equal(merged[1].name, 'Lab Model')
   assert.equal(merged[1].contextWindow, 128_000)
   assert.equal(merged[1].maxTokens, 8_192)
   assert.equal(merged[2].name, 'MiMo-V2.6-Flash (free)')
-  const live = await refreshClineCatalog(null, { fetchFn: async () => json(feed) })
-  assert.equal(live.length, 3)
-  assert.equal(clineCatalogModels().length, 3)
+  assert.equal(merged[2].contextWindow, 1_050_000)
+  assert.equal(merged[2].reasoningEfforts, false)
+  assert.equal(merged[3].contextWindow, 128_000, 'an ambiguous slug must not borrow either vendor window')
+  assert.equal(merged[4].name, 'GLM 5.3 (ClinePass)')
+  assert.equal(merged[4].contextWindow, 1_048_576)
+  assert.deepEqual(merged[4].input, ['text'])
+  const notStolen = toClinePickerModels(
+    { recommended: [{ id: 'spacexai/grok-4.7', name: 'spacexai/grok-4.7' }] },
+    { models: [], cloud },
+  )
+  assert.equal(notStolen[0].contextWindow, 128_000, 'a non-gateway id does not slug-match another vendor')
+  const calls = []
+  const live = await refreshClineCatalog(null, {
+    models: [],
+    fetchFn: async (url, init) => {
+      calls.push({ url: String(url), headers: init.headers })
+      if (String(url) === CLINE_MODELS_URL) return json(cloud)
+      return json(feed)
+    },
+  })
+  assert.deepEqual(calls.map((call) => call.url).sort(), [CLINE_MODELS_URL, CLINE_RECOMMENDED_MODELS_URL].sort())
+  assert.equal(calls[0].headers['user-agent'], CLINE_USER_AGENT)
+  assert.equal(calls[0].headers['X-CLIENT-VERSION'], '3.0.70')
+  assert.equal(calls[0].headers['X-CORE-VERSION'], CLINE_CORE_VERSION)
+  assert.equal(Object.hasOwn(calls[0].headers, 'X-Task-ID'), false)
+  assert.equal(live.length, 5)
+  assert.equal(clineCatalogModels().length, 5)
   resetClineCatalogCache()
-  assert.equal(clineCatalogModels().length, CLINE_MODELS.length)
+  const failed = await refreshClineCatalog(null, { fetchFn: async () => json({ error: 'nope' }, 500) })
+  assert.equal(failed.length, CLINE_MODELS.length)
   assert.equal(CLINE_CATALOG_TTL_MS > 0, true)
+})
+
+test('cline caps stop retries and entitlement is not a 403 auth failure', () => {
+  const cap = clineQuotaFailure(429, { code: 'INFERENCE_CAP_ERROR', message: 'Error 429: Daily free limit reached on model x' })
+  assert.equal(cap.status, 429)
+  assert.match(cap.message, /^usage limit reached: /)
+  const pass = clineQuotaFailure(429, { error: { message: 'You have reached your ClinePass limit. Please try again later.' } })
+  assert.equal(pass.status, 429)
+  assert.match(pass.message, /ClinePass limit/)
+  const credits = clineQuotaFailure(402, { code: 'insufficient_credits', message: 'insufficient credits' })
+  assert.equal(credits.status, 429)
+  const denied = clineQuotaFailure(403, { message: 'the user is not subscribed to required model plan' })
+  assert.ok(denied instanceof UpstreamFailure)
+  assert.equal(denied.status, 400)
+  assert.equal(/\b(?:401|403)\b/.test(denied.message), false)
+  assert.equal(clineQuotaFailure(429, { error: { message: 'rate limited' } }), undefined)
+  assert.equal(clineQuotaFailure(401, { message: 'the user is not subscribed to required model plan' }), undefined)
 })
 
 test('a fact ceiling survives the Cline projection', () => {

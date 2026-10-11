@@ -18,15 +18,20 @@ import { displayCursorAccount } from './cursor/index.js'
 import { ollamaSourceLabel } from '../apikey/ollama/index.js'
 import { commandCodeDefaultAccount, commandCodeSourceLabel, pickCommandCodeHumanAccount } from '../apikey/command-code/index.js'
 import { kimiSourceLabel } from './kimi/index.js'
-import { copilotSourceLabel } from './copilot/index.js'
 import { devinSourceLabel, pickDevinHumanAccount } from './devin/index.js'
 import { clineSourceLabel } from './cline/index.js'
 import { readPrivateText, writePrivateText } from '../utils/private-text.js'
+import { clearSignedOutMark } from './account-marks.js'
 
 export { readPrivateText, writePrivateText }
 
-/** Dropped families: their vault is never read and leaves the file with its next write. */
-const RETIRED_PROVIDER_IDS = Object.freeze(['anthropic', 'workbuddy', 'workbuddy-ai'])
+/**
+ * Dropped families: their vault is never read, leaves the file with its next
+ * write, and is purged outright when the controller starts
+ * (`purgeRetiredSessions`) — a retired family has no logout button, so
+ * without the purge its tokens would sit in auth.json forever.
+ */
+const RETIRED_PROVIDER_IDS = Object.freeze(['anthropic', 'workbuddy', 'workbuddy-ai', 'copilot', 'opencode'])
 
 /**
  * One stored login. The store's hard floor is a usable accessToken; every
@@ -62,7 +67,7 @@ export interface StoredAccount {
 /** The parsed auth.json: provider-keyed JSON, values still raw until asVault. */
 export type SessionStore = Record<string, unknown>
 
-export const PROVIDER_IDS = Object.freeze(['codex', 'chatgpt', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'copilot', 'devin', 'cline', 'command-code'])
+export const PROVIDER_IDS = Object.freeze(['codex', 'chatgpt', 'grok', 'glm', 'kiro', 'antigravity', 'cursor', 'ollama', 'kimi', 'devin', 'cline', 'command-code'])
 
 export function defaultDataDir(): string {
   return join(homedir(), '.dsh', 'plugins', 'oauth-subs')
@@ -333,6 +338,10 @@ export async function saveSession(provider: string, session: StoredSession, path
     if (activate || !vault.activeId || !vault.accounts[vault.activeId]) vault.activeId = id
     store[provider] = vault
     await writeStore(store, file)
+    // A login landed: the family is signed in again, so a "signed out" mark
+    // left by an earlier logout must not outlive it. Best effort — the mark
+    // only gates auto-import, and a failed clear must not fail the login.
+    await clearSignedOutMark(file, provider).catch(() => undefined)
     return storedAccount(vault, id)
   })
 }
@@ -368,6 +377,33 @@ export async function deleteSession(provider: string, path?: string, id?: string
     else store[provider] = vault
     await writeStore(store, file)
     return true
+  })
+}
+
+/**
+ * Remove retired families' vaults from the file itself. Reading already
+ * ignores them; this deletes the tokens on disk. Runs on the same chain as
+ * every other write, rewrites nothing when there is nothing to remove, and
+ * returns the family ids it dropped.
+ */
+export async function purgeRetiredSessions(path?: string): Promise<string[]> {
+  const file = path ?? authFilePath()
+  return serialize(file, async () => {
+    const text = await readPrivateText(file, 'oauth-subs auth store')
+    if (text === undefined) return []
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(text)
+    } catch {
+      return [] // not ours to repair; loadStore reports a corrupt file to the caller
+    }
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return []
+    const store = parsed as Record<string, unknown>
+    const dropped = RETIRED_PROVIDER_IDS.filter((provider) => Object.hasOwn(store, provider))
+    if (dropped.length === 0) return []
+    for (const provider of dropped) delete store[provider]
+    await writeStore(store, file)
+    return dropped
   })
 }
 
@@ -469,16 +505,6 @@ export function publicSession(provider: string, session: StoredSession | undefin
       planLabel,
       method: session.source,
       methodLabel: commandCodeSourceLabel(session.source),
-      expiresAt: session.expiresAt,
-    }
-  }
-  if (provider === 'copilot') {
-    return {
-      account: session.account,
-      planType,
-      planLabel,
-      method: session.source,
-      methodLabel: copilotSourceLabel(session.source),
       expiresAt: session.expiresAt,
     }
   }

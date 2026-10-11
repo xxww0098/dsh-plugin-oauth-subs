@@ -34,6 +34,9 @@ export class ImportedLoginStale extends LoginRequiredError {
 /** A reread is adopted only when it outlives this margin. */
 const IMPORTED_MIN_TTL_MS = 15_000
 
+/** Rotations the store refused that this process still holds for a retry. */
+const HELD_ROTATION_CAP = 8
+
 /** Fields a reread may replace on a stored login; account labels stay put. */
 const IMPORTED_TOKEN_FIELDS = ['accessToken', 'refreshToken', 'idToken', 'expiresAt']
 
@@ -121,9 +124,13 @@ export class TokenManager {
   /** version → the exchange that owns it: { at, late, promise }. */
   declare inflight: Map<any, any>
   declare failures: Map<any, any>
+  /** version → the rotation the store refused; see `#holdRotation`. */
+  declare heldRotations: Map<any, any>
+  /** Store writer seam; tests inject a refusing writer to pin the held-rotation recovery. */
+  declare updateSession: any
   declare sources: WeakMap<object, any>
 
-  constructor({ provider, authPath, displayName, preemptMs, refresh, permanentCodes = [], onRemoved, imported, refreshWaitMs = REFRESH_WAIT_MS, exchangeTimeoutMs = REFRESH_EXCHANGE_TIMEOUT_MS }: any) {
+  constructor({ provider, authPath, displayName, preemptMs, refresh, permanentCodes = [], onRemoved, imported, refreshWaitMs = REFRESH_WAIT_MS, exchangeTimeoutMs = REFRESH_EXCHANGE_TIMEOUT_MS, updateSession = updateAccountSession }: any) {
     this.provider = provider
     this.authPath = authPath
     this.displayName = displayName
@@ -137,6 +144,8 @@ export class TokenManager {
     this.rereadAt = new Map()
     this.inflight = new Map()
     this.failures = new Map()
+    this.heldRotations = new Map()
+    this.updateSession = updateSession
     this.sources = new WeakMap()
   }
 
@@ -271,14 +280,39 @@ export class TokenManager {
     return next
   }
 
+  /**
+   * Keep a rotation the store refused, under the version it was exchanged for.
+   * The endpoint spends the refresh token the moment it answers, so redeeming
+   * the stored one again is `invalid_grant` — the login's death, not a retry.
+   * In-memory only: a restart loses it, exactly as magpie's `held` does, and
+   * the next process has a fresh chance to save whatever the vendor still
+   * honours. Capped so a long-lived host does not keep every pair forever.
+   */
+  #holdRotation(version, next) {
+    this.heldRotations.delete(version)
+    this.heldRotations.set(version, next)
+    while (this.heldRotations.size > HELD_ROTATION_CAP) {
+      const oldest = this.heldRotations.keys().next().value
+      if (oldest === undefined) break
+      this.heldRotations.delete(oldest)
+    }
+  }
+
   async #refresh(source, owner) {
+    // A rotation this same stored session already paid for is the only way
+    // forward: persist it again instead of buying a second one.
+    const held = this.heldRotations.get(source.version)
     let next
+    let exchanged = false
     try {
-      if (this.imported?.is(source.session)) {
+      if (held) {
+        next = held
+      } else if (this.imported?.is(source.session)) {
         this.rereadAt.set(source.version, Date.now())
         next = await this.#reread(source.session)
       } else {
         next = await this.refresh(source.session)
+        exchanged = true
       }
     } catch (error) {
       // A late verdict arrives after its waiters gave up: keep the login and
@@ -296,7 +330,19 @@ export class TokenManager {
     }
     this.failures.delete(source.version)
     // Version-guarded: a late result cannot revive a logged-out or replaced login.
-    const saved = await updateAccountSession(this.provider, source, next, this.authPath)
+    let saved
+    try {
+      saved = await this.updateSession(this.provider, source, next, this.authPath)
+    } catch (error) {
+      // The exchange succeeded and the store did not take it. Keep the pair so
+      // the next attempt can persist it; re-redeeming the spent token would
+      // trade a retryable write failure for a forced re-login.
+      if (exchanged) this.#holdRotation(source.version, next)
+      throw error
+    }
+    // A version miss means another writer owns the login now: its result wins,
+    // and a held pair from this source is dead weight.
+    this.heldRotations.delete(source.version)
     if (saved) return saved
     const successor = await this.#successor(source)
     if (successor) return successor

@@ -5,7 +5,7 @@
 import { pickPlanRaw } from '../plan.js'
 import { kiroProfileArn, kiroUsageHeaders, kiroUsageRegions, kiroUsageUrl } from './index.js'
 import { outboundFetch } from '../../utils/outbound.js'
-import { asNumber, clampPct, QUOTA_TIMEOUT_MS, readJson, stampOf, timeoutSignal } from '../quota-shared.js'
+import { asNumber, clampPct, readJson, stampOf, withQuotaTimeout } from '../quota-shared.js'
 
 export function parseKiroUsage(payload) {
   if (!payload || typeof payload !== 'object') return { rows: [] }
@@ -70,22 +70,17 @@ export async function fetchKiroQuota(session, fetchFn = outboundFetch) {
   const profileArn = kiroProfileArn(session)
   let lastError
   for (const region of kiroUsageRegions(session)) {
-    const wait = timeoutSignal(QUOTA_TIMEOUT_MS)
-    try {
-      const response = await fetchFn(kiroUsageUrl(region, profileArn), {
-        method: 'GET',
-        headers: kiroUsageHeaders(session),
-        signal: wait.signal,
-      })
-      if (response.ok) {
-        return parseKiroUsage(await readJson(response, 'kiro usage'))
-      }
-      const text = await response.text()
-      lastError = new Error(`kiro usage failed (HTTP ${response.status})${text ? `: ${text.slice(0, 180)}` : ''}`)
-      if (response.status !== 403) throw lastError
-    } finally {
-      wait.cancel()
+    const response = await withQuotaTimeout((signal) => fetchFn(kiroUsageUrl(region, profileArn), {
+      method: 'GET',
+      headers: kiroUsageHeaders(session),
+      signal,
+    }))
+    if (response.ok) {
+      return parseKiroUsage(await readJson(response, 'kiro usage'))
     }
+    const text = await response.text()
+    lastError = new Error(`kiro usage failed (HTTP ${response.status})${text ? `: ${text.slice(0, 180)}` : ''}`)
+    if (response.status !== 403) throw lastError
   }
   throw lastError
 }

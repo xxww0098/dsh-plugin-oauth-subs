@@ -6,7 +6,7 @@
  *   2. drives ChatGPT Codex PKCE, xAI Grok device-code / PKCE,
  *      Zhipu GLM Z.ai / BigModel CLI-poll, AWS Kiro (Social / Builder ID /
  *      IdC / Entra / API key), Google Antigravity, Cursor, Ollama Cloud,
- *      Kimi Code Plan, GitHub Copilot, and Devin Agent logins
+ *      Kimi Code Plan and Devin Agent logins
  *   3. syncs logged-in catalogs into llm-pi-ai
  *
  * The client half (左侧栏面板：插件按钮下方的订阅入口 →
@@ -28,12 +28,16 @@ import { ModelSwitch } from './oauth/model-switch.js'
 import { configureCursorUpstreamProxy } from './oauth/cursor/index.js'
 import { clearCursorH2Pool } from './oauth/cursor/upstream-proxy.js'
 import { setUpstreamLog } from './oauth/upstream.js'
+import { closeCodexWebSockets } from './oauth/codex/websocket.js'
 import { setPrefixEstimateLog } from './oauth/kiro/cache.js'
+import { setGrokCacheLog } from './oauth/grok/diagnostics.js'
+import { setChatgptUsageLog } from './oauth/chatgpt/usage.js'
 import { dshHome, profileFromBaseUrl } from './utils/update.js'
 import { configureOutbound, outboundProxyPath } from './utils/outbound.js'
 import { donateQr } from './utils/donate.js'
 import { readUsage } from './utils/usage.js'
 import { usageRowCost, usageRowCosts } from './utils/usage-cost.js'
+import { ARENA_CACHE_FILE, createArenaSource } from './utils/arena.js'
 
 const USAGE_MEMO_MS = 5 * 60_000
 const HOST_DEEPSEEK = new Set(['deepseek-official', 'deepseek-account'])
@@ -130,6 +134,7 @@ export function registerRpc(ctx, controller) {
     proxySet: (payload) => controller.setOutboundProxy(payload),
     donate: () => donateQr(),
     usage: (payload) => controller.usage(payload),
+    arena: (payload) => controller.arena(payload),
   }
 
   const dispatch = async (endpoint, payload) => {
@@ -272,6 +277,8 @@ export function apply(ctx, config: any = {}) {
   })
   setUpstreamLog(join(dataDir, 'upstream.log'))
   setPrefixEstimateLog(join(dataDir, 'prefix-estimate.jsonl'))
+  setGrokCacheLog(join(dataDir, 'grok-cache.jsonl'))
+  setChatgptUsageLog(join(dataDir, 'chatgpt-usage.jsonl'))
 
   const outbound = configureOutbound({
     path: outboundProxyPath(dataDir),
@@ -314,12 +321,17 @@ export function apply(ctx, config: any = {}) {
 
   controller.outboundProxy = async () => {
     if (outbound.ready) await outbound.ready
-    return outbound.snapshot()
+    return outbound.prefs()
   }
   controller.setOutboundProxy = async (payload: any = {}) => {
     if (outbound.ready) await outbound.ready
-    return outbound.setUrl(payload?.url)
+    return outbound.setPrefs(payload)
   }
+  // 榜单 tab: arena.ai agent leaderboard, file-cached in the data dir on a
+  // 1 h TTL (upstream moves once a day); `fresh` (the page's 刷新) re-fetches.
+  const arena = createArenaSource({ cachePath: join(dataDir, ARENA_CACHE_FILE) })
+  controller.arena = (payload: any = {}) => arena.read(payload?.fresh === true)
+
   // This plugin's routes, keyed by family, plus the host's own DeepSeek
   // providers (`deepseek-official` / `deepseek-account`, built into DSH's
   // llm-deepseek) as `deepseek`; other providers are not ours to report.
@@ -332,7 +344,8 @@ export function apply(ctx, config: any = {}) {
     // providers as `deepseek`; anything else is not ours to report.
     const familyOf = (provider: string) => HOST_DEEPSEEK.has(provider) ? 'deepseek'
       : provider.startsWith('opencode-go') ? 'opencode-go'
-        : provider.startsWith(`${prefix}-`) ? familyOfProvider(provider) : provider
+        : provider.startsWith('opencode-zen') ? 'opencode-zen'
+          : provider.startsWith(`${prefix}-`) ? familyOfProvider(provider) : provider
     const scan = await readUsage({ root: join(dshHome(), 'sessions'), cachePath: join(dataDir, 'usage-cache.json') })
     const mapped = scan.rows.flatMap((row) => {
       const family = familyOf(row[1])
@@ -387,8 +400,8 @@ export function apply(ctx, config: any = {}) {
           tokens: controller.tokens,
           // Chat traffic shortens that account's quota freshness (no fetch here);
           // a Codex rate-limit frame in the stream writes the rows themselves.
-          onQuotaUsed: (family) => { void controller.quota?.touch?.(family).catch(() => undefined) },
-          onQuotaLearned: (family, data) => { void controller.quota?.learn?.(family, data).catch(() => undefined) },
+          onQuotaUsed: (family, session) => { void controller.quota?.touch?.(family, session).catch(() => undefined) },
+          onQuotaLearned: (family, data, session) => { void controller.quota?.learn?.(family, data, session).catch(() => undefined) },
         })
         await proxy.listen()
         ctx.logger?.info?.(`dsh-plugin-oauth-subs: proxy on ${proxy.origin()}`)
@@ -410,7 +423,12 @@ export function apply(ctx, config: any = {}) {
     return () => {
       closed = true
       void controller.quota?.flush?.()
-      void (proxy?.close() ?? Promise.resolve()).finally(() => outbound.close())
+      // Pooled Codex WebSockets are the proxy's own transport too: they close
+      // after the proxy drained, beside the outbound agent.
+      void (proxy?.close() ?? Promise.resolve()).finally(() => {
+        closeCodexWebSockets()
+        outbound.close()
+      })
     }
   }, 'dsh-plugin-oauth-subs: local responses proxy + outbound agent')
 
@@ -491,13 +509,6 @@ export {
   kimiUpstreamHeaders,
 } from './oauth/kimi/index.js'
 export {
-  COPILOT_CLIENT_ID,
-  COPILOT_MODELS,
-  copilotChatUrl,
-  copilotSession,
-  copilotUpstreamHeaders,
-} from './oauth/copilot/index.js'
-export {
   DEVIN_MODELS,
   DEVIN_AUTHORIZE_URL,
   DEVIN_TOKEN_URL,
@@ -532,7 +543,6 @@ export { parseGlmQuota, parseGlmResetCards } from './oauth/glm/quota.js'
 export { parseKiroUsage } from './oauth/kiro/quota.js'
 export { parseCursorPeriodUsage } from './oauth/cursor/quota.js'
 export { parseKimiUsage } from './oauth/kimi/quota.js'
-export { parseCopilotUsage } from './oauth/copilot/quota.js'
 export { parseDevinUserStatus } from './oauth/devin/quota.js'
 export { QuotaStore } from './oauth/quota.js'
 export { fetchClineQuota, parseClineBalance, parseClinePlan, parseClineUsage } from './oauth/cline/quota.js'

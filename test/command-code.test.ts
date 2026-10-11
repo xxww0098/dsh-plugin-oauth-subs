@@ -30,10 +30,20 @@ import {
   pickCommandCodeHumanAccount,
   refreshCommandCode,
 } from '../lib/apikey/command-code/index.js'
-import { commandCodeCatalogModels } from '../lib/apikey/command-code/catalog.js'
+import {
+  COMMAND_CODE_CATALOG_TTL_MS,
+  commandCodeCatalogModels,
+  commandCodeProviderRows,
+  mergeCommandCodeProviderModels,
+  refreshCommandCodeCatalog,
+  resetCommandCodeCatalogCache,
+} from '../lib/apikey/command-code/catalog.js'
+import { commandCodeFailure } from '../lib/apikey/command-code/failure.js'
 import { COMMAND_CODE_IMPORT_EMPTY, importCommandCodeAuth, readCommandCodeAuthFile } from '../lib/apikey/command-code/import.js'
 import { applyCommandCodeCache, commandCodeThreadId, deterministicCommandCodeId } from '../lib/apikey/command-code/cache.js'
 import { commandCodeToOpenai, createCommandCodeOpenaiStream, openaiToCommandCode } from '../lib/apikey/command-code/request.js'
+
+const COMMAND_CODE_MODES = ['agent', 'learning', 'custom-agent', 'custom-agent-create', 'title-gen', 'tool-desc', 'compact', 'vision']
 import { runCommandCodeChat } from '../lib/apikey/command-code/transport.js'
 import { commandCodePlanInfo, commandCodePlanLabel, parseCommandCodeUsage } from '../lib/apikey/command-code/quota.js'
 import { formatPlanLabel } from '../lib/oauth/plan.js'
@@ -256,7 +266,11 @@ test('openaiToCommandCode maps messages/tools/effort onto the /alpha/generate wi
     session_id: 'sess-cc-1',
   })
   const body = openaiToCommandCode(rewritten, { threadId })
-  assert.equal(body.mode, 'chat')
+  // The server validates `mode` against a closed enum (2026-10-11 live:
+  // "agent"|"learning"|"custom-agent"|"custom-agent-create"|"title-gen"|
+  // "tool-desc"|"compact"|"vision"); the retired 'chat' is a 400 BAD_REQUEST.
+  assert.ok(COMMAND_CODE_MODES.includes(body.mode), `mode ${body.mode} is not a server mode`)
+  assert.equal(body.mode, 'agent')
   assert.equal(body.permissionMode, 'standard')
   assert.equal(body.threadId, deterministicCommandCodeId('sess-cc-1'))
   assert.equal(body.memory, null)
@@ -421,9 +435,11 @@ test('runCommandCodeChat: error event, missing finish, and non-ok statuses', asy
       fetchFn: async () => json({ error: { message: 'busy' } }, status),
     }), (error) => error.status === status && error.retryable !== true)
   }
+  // Live: the credit gate is a 402 on /alpha/generate and a 400 on the
+  // Provider API; both are a quota answer to the host, not a retryable 4xx.
   await assert.rejects(() => runCommandCodeChat(session, {}, {
     fetchFn: async () => json({ error: { message: 'insufficient credits' } }, 402),
-  }), (error) => error.status === 402 && error.permanent !== true && /insufficient credits/.test(error.message))
+  }), (error) => error.status === 429 && error.permanent !== true && /^usage limit reached: insufficient credits$/.test(error.message))
   await assert.rejects(() => runCommandCodeChat(session, {}, {
     fetchFn: async () => json({ error: { message: 'unauthorized' } }, 401),
   }), (error) => error.status === 401 && error.permanent === true)
@@ -431,6 +447,87 @@ test('runCommandCodeChat: error event, missing finish, and non-ok statuses', asy
     fetchFn: async () => jsonl([{ type: 'text-delta', text: 'par' }, { type: 'abort' }]),
   })
   assert.equal(aborted.text, 'par')
+
+  // A refusal carrying a 403 becomes the mapped 400 — never the status the
+  // host reads as a dead login.
+  await assert.rejects(() => runCommandCodeChat(session, {}, {
+    fetchFn: async () => json({ success: false, error: { code: 'upgrade_required', status: 403, message: 'Your Command Code CLI is out of date.', minVersion: '0.18.10' } }, 403),
+  }), (error) => error.status === 400 && error.refusal === true && !/\b403\b/.test(error.message))
+  // The same mapping runs on an in-stream error event.
+  await assert.rejects(() => runCommandCodeChat(session, {}, {
+    fetchFn: async () => jsonl([{ type: 'error', message: 'MODEL_NOT_IN_PLAN: gpt-6-sol', statusCode: 403, isRetryable: false }]),
+  }), (error) => error.status === 400 && /Model not in plan/.test(error.message) && error.retryable !== true)
+  // A planless account's credit gate (live: 400 + 'insufficient credits').
+  await assert.rejects(() => runCommandCodeChat(session, {}, {
+    fetchFn: async () => json({ error: { message: 'You have insufficient credits to make this request.', code: 'BAD_REQUEST' } }, 400),
+  }), (error) => error.status === 429 && /^usage limit reached: /.test(error.message))
+})
+
+test('refusals are remapped so no 403 reads as a dead login, and caps read as quota', () => {
+  const old = commandCodeFailure(403, { error: { code: 'upgrade_required', message: 'Your Command Code CLI is out of date.', minVersion: '0.18.10' } })
+  assert.equal(old.status, 400)
+  assert.match(old.message, /update the plugin/)
+  assert.match(old.message, /minVersion 0\.18\.10/)
+  assert.equal(/\b(?:401|403)\b/.test(old.message), false)
+
+  const plan = commandCodeFailure(403, { error: { message: 'MODEL_NOT_IN_PLAN: gpt-6-sol' } })
+  assert.equal(plan.status, 400)
+  assert.match(plan.message, /^Model not in plan: gpt-6-sol$/)
+  assert.equal(/\b(?:401|403)\b/.test(plan.message), false)
+
+  // The Provider API answers the credit gate as a 400; the CLI path as a 402.
+  for (const status of [400, 402]) {
+    const credits = commandCodeFailure(status, { error: { message: 'You have insufficient credits to make this request.' } })
+    assert.equal(credits.status, 429)
+    assert.match(credits.message, /^usage limit reached: /)
+    assert.match(credits.message, /insufficient credits/)
+  }
+  const window = commandCodeFailure(429, { error: { code: 'RATE_LIMITED', message: 'You have reached your 5-hour limit. It resets in 2h.' } })
+  assert.equal(window.status, 429)
+  assert.match(window.message, /^usage limit reached: /)
+
+  // Everything else keeps the upstream's own answer.
+  assert.equal(commandCodeFailure(429, { error: { message: 'Too many requests' } }), undefined)
+  assert.equal(commandCodeFailure(401, { error: { message: "Invalid 'Authorization' header or token." } }), undefined)
+  assert.equal(commandCodeFailure(400, { success: false, error: { code: 'BAD_REQUEST', message: 'Validation error: expected string at "config.workingDir"' } }), undefined)
+})
+
+test('live provider list merges onto the pinned registry and never invents facts', async () => {
+  resetCommandCodeCatalogCache()
+  assert.equal(commandCodeCatalogModels().length, COMMAND_CODE_MODELS.length)
+  const anchored = COMMAND_CODE_MODELS.find((model) => model.id === 'claude-sonnet-5')
+  const live = commandCodeProviderRows({
+    object: 'list',
+    data: [
+      { id: 'claude-sonnet-5', name: 'Claude Sonnet 5', context_length: 2_000_000, supported_endpoints: ['/messages'] },
+      { id: 'zai-org/GLM-5.3', name: 'GLM-5.3', context_length: 0 },
+      { id: 'brand/new-model', name: 'Brand New', context_length: 123_456, supported_endpoints: ['/chat/completions'] },
+    ],
+  })
+  assert.deepEqual(live.map((row) => row.id), ['claude-sonnet-5', 'brand/new-model'], 'a row with no window is not a catalog row')
+  const merged = mergeCommandCodeProviderModels(live, { models: COMMAND_CODE_MODELS })
+  assert.equal(merged.length, COMMAND_CODE_MODELS.length + 1)
+  const kept = merged.find((row) => row.id === 'claude-sonnet-5')
+  assert.equal(kept.contextWindow, 2_000_000, 'the live window wins over the pinned snapshot')
+  assert.equal(kept.name, anchored.name, 'the curated name stays')
+  assert.deepEqual(kept.reasoningEfforts, anchored.reasoningEfforts, 'the registry keeps what the list does not carry')
+  assert.deepEqual(merged.at(-1), { id: 'brand/new-model', name: 'Brand New', contextWindow: 123_456 }, 'a new id carries only what the list says')
+
+  let calls = 0
+  const rows = await refreshCommandCodeCatalog(null, {
+    fetchFn: async () => {
+      calls += 1
+      return json({ object: 'list', data: [{ id: 'claude-sonnet-5', name: 'Claude Sonnet 5', context_length: 2_000_000 }] })
+    },
+  })
+  assert.equal(rows.length, COMMAND_CODE_MODELS.length)
+  assert.equal(commandCodeCatalogModels().find((row) => row.id === 'claude-sonnet-5').contextWindow, 2_000_000)
+  await refreshCommandCodeCatalog(null, { fetchFn: async () => { calls += 1; return json({}) } })
+  assert.equal(calls, 1, 'the second read inside the TTL is served from the cache')
+  resetCommandCodeCatalogCache()
+  const failed = await refreshCommandCodeCatalog(null, { fetchFn: async () => json({ error: 'nope' }, 500) })
+  assert.equal(failed.length, COMMAND_CODE_MODELS.length, 'a failed read leaves the pinned registry')
+  assert.equal(COMMAND_CODE_CATALOG_TTL_MS > 0, true)
 })
 
 test('forwardCommandCode replays transport faults only; upstream statuses pass through once', async () => {
@@ -712,7 +809,7 @@ test('proxy: models list, completions hop to /alpha/generate, SSE stream, /respo
     const wire = JSON.parse(seen[0].body)
     assert.equal(wire.params.model, 'claude-sonnet-5')
     assert.equal(wire.params.stream, true)
-    assert.equal(wire.mode, 'chat')
+    assert.equal(wire.mode, 'agent')
     assert.match(wire.threadId, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)
     assert.equal(wire.params.prompt_cache_key, undefined)
     assert.equal(wire.params.session_id, undefined)

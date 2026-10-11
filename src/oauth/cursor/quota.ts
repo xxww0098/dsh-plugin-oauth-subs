@@ -15,7 +15,7 @@ import {
   pickCursorHumanAccount,
 } from './index.js'
 import { outboundFetch } from '../../utils/outbound.js'
-import { asNumber, clampPct, QUOTA_TIMEOUT_MS, readJson, stampOf, timeoutSignal } from '../quota-shared.js'
+import { asNumber, clampPct, quotaReads, stampOf } from '../quota-shared.js'
 
 function clampUsedPct(value) {
   const n = asNumber(value)
@@ -86,52 +86,21 @@ export function parseCursorPeriodUsage(payload, extras: any = {}) {
   }
 }
 
-async function fetchCursorJson(fetchFn, url, init, label) {
-  try {
-    const response = await fetchFn(url, init)
-    if (!response?.ok) return undefined
-    return await readJson(response, label)
-  } catch {
-    return undefined
-  }
-}
-
 export async function fetchCursorQuota(session, fetchFn = outboundFetch) {
-  const wait = timeoutSignal(QUOTA_TIMEOUT_MS)
   const headers = cursorUsageHeaders(session)
-  try {
-    const [usageRes, stripe, emailProfile] = await Promise.all([
-      fetchFn(CURSOR_USAGE_URL, {
-        method: 'POST',
-        headers,
-        body: '{}',
-        signal: wait.signal,
-      }),
-      fetchCursorJson(fetchFn, CURSOR_STRIPE_PROFILE_URL, {
-        method: 'GET',
-        headers,
-        signal: wait.signal,
-      }, 'cursor stripe profile'),
-      fetchCursorJson(fetchFn, CURSOR_GET_EMAIL_URL, {
-        method: 'POST',
-        headers,
-        body: '{}',
-        signal: wait.signal,
-      }, 'cursor email'),
+  const post = { method: 'POST', headers, body: '{}' }
+  const [usage, stripe, email] = await quotaReads(fetchFn, [
+    { url: CURSOR_USAGE_URL, label: 'cursor period usage', init: post },
+    { url: CURSOR_STRIPE_PROFILE_URL, label: 'cursor stripe profile', init: { headers } },
+    { url: CURSOR_GET_EMAIL_URL, label: 'cursor email', init: post },
+  ])
+  if (!usage.ok) throw usage.error
+  let account = cursorNameFromProfile(email.ok ? email.raw : undefined)
+  if (!account) {
+    const [me] = await quotaReads(fetchFn, [
+      { url: CURSOR_GET_ME_URL, label: 'cursor me', init: post },
     ])
-    if (!usageRes.ok) throw new Error(`cursor quota failed (HTTP ${usageRes.status})`)
-    let account = cursorNameFromProfile(emailProfile)
-    if (!account) {
-      const me = await fetchCursorJson(fetchFn, CURSOR_GET_ME_URL, {
-        method: 'POST',
-        headers,
-        body: '{}',
-        signal: wait.signal,
-      }, 'cursor me')
-      account = cursorNameFromProfile(me)
-    }
-    return parseCursorPeriodUsage(await readJson(usageRes, 'cursor period usage'), { stripe, account })
-  } finally {
-    wait.cancel()
+    account = cursorNameFromProfile(me.ok ? me.raw : undefined)
   }
+  return parseCursorPeriodUsage(usage.raw, { stripe: stripe.ok ? stripe.raw : undefined, account })
 }

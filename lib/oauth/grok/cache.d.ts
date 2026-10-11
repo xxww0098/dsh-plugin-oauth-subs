@@ -11,11 +11,16 @@
  * for byte. DSH snapshots that would rewrite the leading system/developer
  * are pinned per conv id; extras park at the input suffix.
  *
- * A later 512-token cache block with <10% reuse is an affinity miss
- * (wrong xAI shard), not a prefix rewrite.
+ * Low reuse is a diagnostic signal, not proof of the shard or prefix
+ * responsible; correlate request fingerprints and observed usage.
  */
 /** When DSH sends neither session_id nor prompt_cache_key, still pin a constant. */
 export declare const GROK_STABLE_SESSION = "dsh-grok";
+export interface GrokPinDecision {
+    action: 'empty' | 'unkeyed' | 'new' | 'reuse' | 'append' | 'changed' | 'repin';
+    generation: number;
+    evicted: boolean;
+}
 export declare function grokCacheSessionId(key: any): string | undefined;
 export declare function resetGrokSystemPins(): void;
 /**
@@ -25,9 +30,9 @@ export declare function resetGrokSystemPins(): void;
  * prepended snapshot or an in-place edit must not re-park the whole blob,
  * which would leave its untouched front permanently uncached.
  */
-export declare function pinGrokSystemPrefix(conversationId: any, systemText: any): {
-    pinned: any;
-    extra: any;
+export declare function pinGrokSystemPrefix(conversationId: any, systemText: any, observe?: (decision: GrokPinDecision) => void): {
+    pinned: string;
+    extra: string;
 };
 export declare function grokConversationId(payload?: any): string;
 /**

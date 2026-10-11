@@ -144,6 +144,30 @@ test('request body: unsupported fields dropped, system → developer, store fals
   assert.equal(next.stream, true)
 })
 
+// Live 2026-10-11: the plan route answers 400 for the cache-control fields
+// (`prompt_cache_options is not supported on this model`, and the same for a
+// `prompt_cache_breakpoint` content mark on gpt-6.1-sol / gpt-6-astra /
+// gpt-5.6-luna). The top-level strip would leave a nested mark behind.
+test('cache: prompt_cache_options and nested prompt_cache_breakpoint never reach the wire', () => {
+  const marked = normalizeChatgptResponsesBody({
+    model: 'gpt-6-sol',
+    prompt_cache_options: { mode: 'explicit', ttl: '30m' },
+    input: [
+      { type: 'message', role: 'developer', content: [{ type: 'input_text', text: 'sys', prompt_cache_breakpoint: { mode: 'explicit' } }] },
+      { type: 'function_call_output', call_id: 'c1', output: [{ type: 'input_text', text: 'row', prompt_cache_breakpoint: { mode: 'explicit' } }] },
+      { role: 'user', content: 'hi' },
+    ],
+  })
+  assert.equal('prompt_cache_options' in marked, false)
+  assert.equal(JSON.stringify(marked).includes('prompt_cache_breakpoint'), false)
+  // A turn without marks keeps the caller objects and its exact bytes: the
+  // cached prefix must not move because of the strip.
+  const plain = { model: 'gpt-6-sol', input: [{ role: 'user', content: 'hi' }, { type: 'function_call_output', call_id: 'c1', output: 'row' }] }
+  const kept = normalizeChatgptResponsesBody(plain)
+  assert.equal(JSON.stringify(kept.input), JSON.stringify(plain.input))
+  assert.equal(kept.input[0], plain.input[0])
+})
+
 test('cache: DSH session id becomes prompt_cache_key and is never forwarded; missing id falls back to the family constant', () => {
   const pinned = applyChatgptCache({ session_id: 'conv 1' })
   assert.equal(pinned.payload.prompt_cache_key, 'conv-1')

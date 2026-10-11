@@ -20,14 +20,21 @@ import { peelContextSuffix } from './context-mode.js'
 
 const PER_MILLION = 1 / 1_000_000
 
+/** OpenCode product → the route-keyed rate tables its usage rows resolve in. */
+const OPENCODE_RATE_TABLES: Record<string, string[]> = {
+  'opencode-go': ['opencode-go-flash', 'opencode-go-responses', 'opencode-go-messages'],
+  'opencode-zen': ['opencode-zen-chat', 'opencode-zen-responses', 'opencode-zen-messages'],
+}
+
 function rateOf(family: string, model: string) {
   // A usage model id is the route id: the catalog id, a `-fast` twin the rates
   // table keys directly, or an old `-900k`/`-1m` context row whose base is.
   const ids = [model]
   const peeled = peelContextSuffix(model).model
   if (peeled !== model) ids.push(peeled)
-  // OpenCode Go splits its rate table per wire route; usage rows just say the family.
-  const tables = family === 'opencode-go' ? ['opencode-go-flash', 'opencode-go-responses', 'opencode-go-messages'] : [family]
+  // OpenCode splits its rate table per wire route, and per product (Go / Zen);
+  // usage rows just say the family.
+  const tables = OPENCODE_RATE_TABLES[family] ?? [family]
   for (const table of tables) {
     for (const id of ids) {
       const rate = catalogRate(`${table}/${id}`)

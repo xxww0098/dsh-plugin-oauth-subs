@@ -19,7 +19,8 @@ export declare class CommandCodeTransportError extends Error {
     status: any;
     permanent: boolean | undefined;
     retryable: boolean | undefined;
-    constructor(message: any, { status, retryable }?: any);
+    refusal: boolean | undefined;
+    constructor(message: any, { status, retryable, refusal }?: any);
 }
 /**
  * Run one `/alpha/generate` turn. `onEvent` receives

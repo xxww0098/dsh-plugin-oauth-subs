@@ -8,30 +8,30 @@ Cross-family rules: [`docs/rules.md`](../docs/rules.md).
 
 ## Compose
 
-| Layer | Choice | Why |
-|---|---|---|
-| Product | Authenticated OAuth workbench | Account cards, quota, login — not a hero |
-| Style | `minimalism-and-swiss-style` | Enterprise / SaaS / professional tools |
-| Color | B2B Service slate as **intent** | Inherit host mixes; never paint a gray page |
-| Type | Host UI sans | 13px UI / 12.5px emails. No display serif |
-| Overlay | Centered Dialog | Never Sheet / Drawer — operator rejected both |
-| Motion | Subtle + `prefers-reduced-motion` | Keep the reduce block |
+| Layer | Choice |
+|---|---|
+| Product | Account cards, quota, login. No hero |
+| Color | Inherit host `currentColor` mixes. Never paint a gray page |
+| Type | Host UI sans. 13px UI / 12.5px emails. No display serif |
+| Overlay | Centered Dialog. Never Sheet or Drawer |
+| Motion | Subtle, and honor `prefers-reduced-motion` |
 
 ## Shell
 
 Fixed three-region layout; the page itself never scrolls
 (`overflow: hidden`) so the scrollbar can never overlap the tab strip:
 
-- **Top** — `.osubs-ptabs`: horizontal text tabs 额度 / 模型 / 用量 / 设置,
+- **Top** — `.osubs-ptabs`: horizontal text tabs 额度 / 模型 / 用量 / 榜单 / 设置,
   bottom-aligned in a tall bar so headroom stays above them, edge-to-edge
   1px seam, active = accent + inset underline. Blank area is
   `-webkit-app-region: drag` for window drag; tab buttons are `no-drag`.
 - **Left** — `.osubs-rail`: fixed provider column under the tabs, shown
-  on Quota, Models and Usage (Version is full-width). 全部 + every family
-  in `FAMILY_ORDER`, each with brand mark + name + count.
-- **Right** — `.osubs-pane`: the only scroller, except the Models view
-  where the panel fills the pane (`osubs-pane-panel--fill`) so the pane,
-  toolbar and column head stay put and only `.osubs-mtable` scrolls.
+  on 额度, 模型, and 用量 (榜单 and 设置 are full-width). 全部 + every family
+  in `FAMILY_ORDER`, each with brand mark + name + a switched-on-model mark
+  + the view's count.
+- **Right** — `.osubs-pane`: the only scroller, except 模型, where the
+  panel fills the pane (`osubs-pane-panel--fill`) so the pane, toolbar
+  and column head stay put and only `.osubs-mtable` scrolls.
 
 Exact sizes/padding live in the CSS; keep 四周留白 on all sides.
 
@@ -51,9 +51,9 @@ Brand marks (`TabIcon` / `TAB_ICONS`):
 - Officially-mono brands stay theme-mono — do not invent a hue.
 - All icons are inline SVG; no icon packages, no emoji marks.
 
-Models view: `Switch` controls in a searchable `ModelsPanel` table, not
-checkbox lists; logged-out families stay listed with locked switches and
-a sign-in jump to their Quota card — never dim or hide locked rows.
+模型: `Switch` controls in a searchable `ModelsPanel` table. Logged-out
+families stay listed with locked switches and a sign-in jump to their
+额度 card. Never dim or hide locked rows.
 
 No family-level identity row; no shared quota block under a heading.
 
@@ -76,7 +76,10 @@ bad ≤ 15%. The active card and its circled check are monochrome too
   import) live **inside** the centered Dialog (`CenterDialog`,
   `.osubs-dsw*`); the card keeps only the primary CTA and mid-auth
   pairing state. Destructive confirm = `WarnDialog`
-  (`role="alertdialog"`).
+  (`role="alertdialog"`): one component for every irreversible action
+  (spending a reset card, 退出 an account) — heading, consequence, and an
+  acknowledgement checkbox that gates the confirm. Callers pass their own
+  labels; the reset-card copy is the default.
 - Escape and overlay click close non-destructive dialogs.
 - Clickable controls use `cursor: pointer`; focus is always visible
   (`:focus-visible` ring).
