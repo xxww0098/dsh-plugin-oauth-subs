@@ -88,8 +88,12 @@ function glmWindowKey(kind, type, window) {
 
 function glmItemBag(item) {
   const total = asNumber(item.usage ?? item.total ?? item.limit ?? item.amount)
+  // magpie zhipuLimits.windows: when both the whole and what remains are
+  // told, used is their difference — the arithmetic, not a stale percentage.
+  const reportedRemaining = asNumber(item.remaining)
   const used = asNumber(item.currentValue ?? item.used ?? item.spend ?? item.consumed)
-  const remaining = asNumber(item.remaining)
+    ?? (total !== undefined && reportedRemaining !== undefined ? Math.max(0, total - reportedRemaining) : undefined)
+  const remaining = reportedRemaining
     ?? (total !== undefined && used !== undefined ? Math.max(0, total - used) : undefined)
   if (total !== undefined || used !== undefined || remaining !== undefined) {
     return { used, total, remaining }
@@ -152,8 +156,24 @@ function glmRowFromItem(item) {
   }
   const bagTotal = bag.total
   const bagUsed = bag.used
-  const usedPercent = clampPct(item.percentage ?? item.usedPercent ?? item.used_percent)
-    ?? (typeof bagTotal === 'number' && bagTotal > 0 && bagUsed !== undefined ? clampPct((bagUsed / bagTotal) * 100) : undefined)
+  // A window whose whole is told as 0 has no cap (an older plan's; magpie
+  // #366): the vendor may still stamp it 100% used — read 0 with no amounts,
+  // so the card never says full of something uncapped.
+  if (bagTotal === 0) {
+    const kind = glmWindowKind(item)
+    return {
+      key: glmWindowKey(kind, item.type, item.duration ?? item.window),
+      kind,
+      usedPercent: 0,
+      remainingPercent: 100,
+      resetAt: stampOf(item.resetAt ?? item.reset_at ?? item.nextResetAt ?? item.nextResetTime ?? item.expireAt),
+      ...(kind === 'mcp' ? { product: 'ZCode MCP' } : {}),
+    }
+  }
+  // magpie precedence: the amounts' arithmetic first, the vendor's
+  // percentage only when the amounts cannot say (zhipuLimits.windows).
+  const usedPercent = (typeof bagTotal === 'number' && bagTotal > 0 && bagUsed !== undefined ? clampPct((bagUsed / bagTotal) * 100) : undefined)
+    ?? clampPct(item.percentage ?? item.usedPercent ?? item.used_percent)
   const remainingPercent = usedPercent === undefined ? undefined : 100 - usedPercent
   const kind = glmWindowKind(item)
   return {

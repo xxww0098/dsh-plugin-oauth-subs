@@ -964,6 +964,46 @@ test('parseGlmQuota kinds screenshot-like CREDIT_LIMIT plus weekly and MCP', () 
   assert.equal(parsed.rows.some((row) => row.kind === 'cycle'), false)
 })
 
+test('parseGlmQuota reads a no-cap window as 0 used, not the vendor 100%', () => {
+  // magpie #366 (zhipuLimits.windows): a limit whose whole is told as 0 has
+  // no cap (an older plan's) and the vendor may still stamp it 100% used.
+  const parsed = parseGlmQuota({
+    code: 200,
+    success: true,
+    data: {
+      level: 'max',
+      limits: [
+        { type: 'CREDIT_LIMIT', unit: 3, number: 5, usage: 0, percentage: 100 },
+        { type: 'CREDIT_LIMIT', unit: 6, number: 1, usage: 60_000, currentValue: 30_000, remaining: 30_000 },
+      ],
+    },
+  })
+  const primary = parsed.rows.find((row) => row.kind === 'primary')
+  assert.equal(primary.usedPercent, 0)
+  assert.equal(primary.remainingPercent, 100)
+  assert.equal(primary.used, undefined)
+  assert.equal(primary.total, undefined)
+  const weekly = parsed.rows.find((row) => row.kind === 'weekly')
+  assert.equal(weekly.usedPercent, 50)
+})
+
+test('parseGlmQuota trusts the amounts over a stale percentage and derives used from remaining', () => {
+  const parsed = parseGlmQuota({
+    data: {
+      level: 'pro',
+      limits: [
+        // Both whole and remaining told: used is the difference (800) and the
+        // arithmetic (40%) wins over the vendor's percentage (99).
+        { type: 'CREDIT_LIMIT', unit: 3, number: 5, usage: 2000, remaining: 1200, percentage: 99 },
+      ],
+    },
+  })
+  assert.equal(parsed.rows[0].kind, 'primary')
+  assert.equal(parsed.rows[0].used, 800)
+  assert.equal(parsed.rows[0].usedPercent, 40)
+  assert.equal(parsed.rows[0].remainingPercent, 60)
+})
+
 test('mergeGlmToolUsage fills MCP when quota/limit only has credit windows', () => {
   const credits = parseGlmQuota({
     data: {
@@ -1694,6 +1734,62 @@ test('mintGlmCodingKey explains an unassigned seat and never regresses a minted 
   const kept = await mintGlmCodingKey('t', { region: 'zai', fetchFn: mixedFetch })
   assert.equal(kept.apiKey, 'k1.s1')
   assert.match(kept.note ?? '', /expired/)
+})
+
+test('mintGlmCodingKey skips team-only orgs and mints on the default org and 默认项目', async () => {
+  const { mintGlmCodingKey } = await import('../lib/oauth/glm/index.js')
+  const keysUrls: string[] = []
+  const minted = await mintGlmCodingKey('oauth-tok', { region: 'zai', fetchFn: async (url, init) => {
+    const href = String(url)
+    if (href.includes('/auth/z/login')) return json({ code: 0, data: { access_token: 'biz-tok' } })
+    if (href.includes('/getCustomerInfo')) {
+      return json({
+        code: 200,
+        data: {
+          organizations: [
+            { organizationId: 'org-team-only', organizationName: 'Some Team', projects: [{ projectId: 'team-0', projectType: 2 }] },
+            { organizationId: 'org-def', organizationName: '默认机构', projects: [
+              { projectId: 'personal-other', projectType: 1 },
+              { projectId: 'personal-def', projectName: '默认项目', projectType: 1 },
+            ] },
+          ],
+        },
+      })
+    }
+    if (href.includes('/api_keys')) {
+      keysUrls.push(href)
+      if (href.endsWith('/api_keys')) return json({ code: 200, data: [{ apiKey: 'k1', name: 'dsh-plugin-oauth-subs' }] })
+      if (href.includes('/copy/')) return json({ code: 200, data: { secretKey: 's1' } })
+    }
+    if (href.includes('/subscription/list')) {
+      return json({ code: 200, data: [{ productName: 'GLM Coding Plan Pro', status: 'VALID' }] })
+    }
+    throw new Error(`unexpected ${href}`)
+  } })
+  assert.equal(minted.apiKey, 'k1.s1')
+  assert.equal(keysUrls.length, 2)
+  assert.ok(keysUrls.every((u) => u.includes('/organization/org-def/projects/personal-def/api_keys')),
+    `mint must use org-def/personal-def, saw ${keysUrls.join(' ')}`)
+})
+
+test('mintGlmTeamApiKey keeps a keyType-2 key that copy returns with no secret', async () => {
+  const { mintGlmTeamApiKey } = await import('../lib/oauth/glm/index.js')
+  const minted = await mintGlmTeamApiKey('biz-tok', {
+    region: 'bigmodel',
+    org: 'org-9',
+    project: 'team-9',
+    fetchFn: async (url, init) => {
+      const href = String(url)
+      if (href.endsWith('/api_keys')) {
+        if (init?.method === 'POST') return json({ code: 200, data: { apiKey: 'tk9' } })
+        return json({ code: 200, data: [] })
+      }
+      if (href.includes('/copy/')) return json({ code: 200, data: {} })
+      throw new Error(`unexpected ${href}`)
+    },
+  })
+  // magpie zcodeProjectKey: a team key with no secret goes as it is.
+  assert.equal(minted, 'tk9')
 })
 
 test('glmSession stores the team seat privately and the plan label', async () => {

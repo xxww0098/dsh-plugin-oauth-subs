@@ -74,6 +74,8 @@ Settings：两颗堆叠登录按钮（只这一家）。Tab 图标用 **Z.ai**�
 ```
 
 - 团队项目发现：`organizations[].projects[]` 里 `projectType`/`type` == `2`（`isBigModelTeamCodingPlanProject`）。
+- 个人铸 key 的落点照 magpie `zcodeMintKey`：只有带**非团队项目**的组织才是候选（整组 projectType 2 的组织跳过，不抢后面组织的位置）；默认组织（`isDefault` 或名字含「默认机构」）排在哪都赢，没有则第一个候选；组织内默认项目（`isDefault` 或名字含「默认项目」），否则第一个。
+- `copy` 拿不到 secret 时，keyType 2 的团队 key 按 id 原样用（magpie `zcodeProjectKey` ← ZCode `copyBigModelTeamPlanProjectApiKeySecret`）；个人 key 拿不到 secret 才算铸失败。
 - 团队业务/额度端点额外带 `Bigmodel-Organization` / `Bigmodel-Project`，`Set-Language` BigModel 用 `zh`、Z.ai 用 `en`（`createBigModelUsageHeaders`）。
 - **对话不加团队头**：团队 key 像个人 key 一样携带（magpie：requests carry it as a person's key is carried, with no more headers）——hop 不动。
 - 会话 `team {org, project}` 只存私有 `auth.json`；`publicSession` 不外露（非 token 但属内部 id）。
@@ -184,6 +186,7 @@ retainTokens    = floor((W − O) × retainRatio)        # 逐字保留的近期
 `GET glmQuotaUrl(region)` + `GET glmMcpUsageUrl()`（兜底 `glmToolUsageUrl`）。MCP 额度是独立端点 `GET https://zcode.z.ai/api/v1/mcp/usage`（usage-stats.ts `fetchMcpQuotaSnapshot`），**双头**：`authorization: Bearer <zcodeJwt>` + `X-Bigmodel-Authorization: Bearer <api-key>` + `Bigmodel-Target-Type: PERSONAL`；api.z.ai / open.bigmodel.cn 打它是 404。没有 `zcodeJwt` 就跳过（`glmMcpUsageHeaders` 返回 undefined）。回 `{data:{level,total_usage:{used,limit,remaining},next_refresh_at}}` → `parseGlmMcpUsage` 一条 `mcp` 行。
 
 条必须按窗口拆：5 小时 / 每周 / ZCode MCP，不要两条都叫「本周期」。`glmWindowKind` 认 `five_hour` / `weekly` / `mcp`。
+窗口读法照 magpie `zhipuLimits.windows`（zcode.go）：条目里的 `usage` 是**总量**不是已用；`usage == 0` 是「无上限」（老套餐），读 0% 用量、不带 amounts，**不**读厂商可能同时给的 100%（magpie #366：无月上限的老套餐曾被当成用满）；amounts 的算术（`total − remaining` 推已用、再算百分比）优先于条目自带的 `percentage`，percentage 只在 amounts 说不出时兜底。
 monitor 接口是 **HTTP 200 + 业务信封**：`success === false` 或 `code ∉ {0,200}` 时 `fetchGlmQuota` 直接抛 `glm quota failed: <msg>`（如「当前用户不存在coding plan」），store 记 error，卡片显示具体原因；**不要**把它当「ready 但 0 行」，那只会显示「周额度未返回」让人以为 hop 坏了。
 重置卡（「重置卡」，类 Codex reset credits）：`GET glmResetCardUrl(region, 'list')` = `{biz}/api/biz/customer-package-reset/list?targetType=PERSONAL`，同一把 provisioned api-key bearer + 桌面指纹，与 monitor 并行。回 `data.fiveHourResets[]` / `data.weekResets[]`，每项 `{recordId, grantType, expireTime, available}`；桶名即 `resetType`（`FIVE_HOUR` / `WEEK`），5h 卡只清 5h 窗、周卡只清周窗。`parseGlmResetCards` 只留 `available` 且未过期的卡，按过期升序；**两个桶数组缺一 / 业务信封非成功 → undefined**，store 保留上次的卡数，不当成 0 张。套餐没有 5h / 周窗口时直接清空，不调。`expireTime` 没有时区：BigModel 是 +08:00（`lastWeekResetTime` = 周窗 `nextResetTime` − 7d 只在 +08:00 成立，2026-09-29 活测），Z.ai 按 UTC 读（未活测）。兑换 `POST …/use` body `{targetType:'PERSONAL', resetType, recordId, requestId}`，HTTP 200 不算成功、要看信封；传输失败时同一张卡复用 `requestId`（进程内），业务拒绝才换新 id。UI 按类型各一行「剩 N 张」，按钮消耗该类最早过期的一张，先过 `WarnDialog`。出处：ZCode 开源树里没有这个端点，参照 OmniRoute `open-sse/services/usage/glmResetCards.ts`（`241e63b`）；list 已活测，`use` 未活测（会真扣卡）。
 
@@ -263,6 +266,9 @@ Pin map 的 Anthropic 键是 `${sessionId}\0anthropic`，和 Completions 的 `se
 | 对话 + 额度的 bearer 是 provisioned `account-provider:…:api-key`；`oauth:<region>:access_token` 只打 monitor / userinfo，降为 `oauthAccess`；`zcodejwttoken` 仅身份 | `~/.zcode/v2/credentials.json` + `isProviderProvisioningAccountCredentialKey` | [`../import-auth.ts`](../import-auth.ts) `glmKeyFromZcodeConfig` |
 | 重置卡 `{biz}/api/biz/customer-package-reset/list?targetType=PERSONAL` / `…/use`（ZCode 开源树里没有） | 社区 [OmniRoute](https://github.com/diegosouzapw/OmniRoute) `open-sse/services/usage/glmResetCards.ts`（`241e63b`） | `glmResetCardUrl`；stamp 时区 BigModel +08:00 是本仓活测结论，不是 OmniRoute 的 UTC |
 | 团队套餐：席位发现（projectType 2 / querySubscribeDetail EFFECTIVE+VALID / UNASSIGNED / EXPIRED）、团队 key（`zcode-team-api-key` keyType 2）、`quota/limit?type=2` + `Bigmodel-Organization/Project` 头、重置卡 `targetType=TEAM`、`subscribeEndTime` 时区 | magpie `internal/provider/zcode_team.go`（PLUGIN-SERVED 弃用内置，设计冻结于此）← ZCode 3.14.3 `host/index.js`（`isBigModelTeamCodingPlanProject` / `ensureBigModelTeamPlanProjectApiKeyWithStatus` / `buildQuotaLimitUrl` / `createBigModelUsageHeaders`） | `mintGlmCodingKey` / `glmTeamHeaders` / `glm/quota.ts` 团队分支 |
+| 个人铸 key 落点：只有带非团队项目的组织是候选；默认组织（`isDefault` / 名字「默认机构」）、默认项目（`isDefault` / 名字「默认项目」）优先 | magpie `internal/provider/zcode.go` `zcodeMintKey` | [`index.ts`](index.ts) `pickPersonalProject` |
+| keyType 2 的 key `copy` 无 secret 时按 id 原样用 | magpie `zcode.go` `zcodeProjectKey` ← ZCode `copyBigModelTeamPlanProjectApiKeySecret` | [`index.ts`](index.ts) `provisionProjectKey` |
+| 额度窗口读法：`usage`=总量、`usage==0` 无上限读 0%（不是厂商的 100%）、amounts 算术优先于 `percentage`、`total−remaining` 推已用 | magpie `zcode.go` `zhipuLimits.windows()`（#366 `df019e18`：无月上限的老套餐曾被当成用满） | [`quota.ts`](quota.ts) `glmItemBag` / `glmRowFromItem` |
 
 官方文档：[Coding Plan 快开始](https://docs.z.ai/devpack/quick-start)（Anthropic 默认协议）、[缓存](https://docs.z.ai/guides/capabilities/cache)（隐式前缀 + `cache_control`）、[思考](https://docs.z.ai/guides/capabilities/thinking-mode)（Completions 形；Coding Plan 端点默认 Preserved Thinking，`clear_thinking: false` 是标准 API 的 opt-in）、[devpack overview](https://docs.z.ai/devpack/overview)（套餐模型）、[API 定价](https://docs.bigmodel.cn/cn/guide/start/pricing) / [Z.AI Pricing](https://docs.z.ai/guides/overview/pricing)（计价档位，见「模型 · 上下文与压缩」）。catalog 的 `builtinProviderModelRules` 仍启用 5.2 / Turbo 是给老 session 的向后兼容，不等于现售菜单。
 
