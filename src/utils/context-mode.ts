@@ -3,7 +3,8 @@
  *
  * Some catalog rows advertise a `maxContextWindow` well above the window
  * their plan serves by default: Codex rows carry `max_context_window` 872K
- * on top of the 258K default; GLM-5.3 / GLM-5.3-Flash keep the official 1M
+ * on top of the default input window (258K, or 500K on `gpt-6.1-sol` since
+ * 2026-10-12 — codex/README.md 模型); GLM-5.3 / GLM-5.3-Flash keep the official 1M
  * window (docs.z.ai model page) on top of the plan's 400K input cap. Devin /
  * Cline / Command Code / Ollama rows can carry one too (same family-scoped
  * lookup) — their sources expose a single window each, so none declares one

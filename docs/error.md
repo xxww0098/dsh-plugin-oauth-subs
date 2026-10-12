@@ -2,6 +2,12 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。每条只写 **现象** / **根因** / **修复** 三行，各 1–2 句；只留 grep 代码得不到的症状、根因与落点，不写过程与清单。
 
+## 2026-10-12：GPT-6.1 Sol 的目录窗口停在收行时的 258K，源已把它自己的窗抬到 500K
+
+**现象**：模型页 `oauth-codex / GPT-6.1 Sol`（以及 `oauth-chatgpt` 同 id 行）的窗口徽标一直是 258K，宿主按 10% 余量到约 232K 就压缩，长会话提前被压。
+**根因**：Codex 家族的行基线统一钉在 CLI 可用输入 258K（`CODEX_CONTEXT_WINDOW`），而 2026-09-30 收行时源的 `context_window` 是 272K——目录行是静态值，源后来把 `gpt-6.1-sol` 的 `context_window` 抬到 500K（`max_context_window` 仍 872K）也不会同步：适配器只写 `maxContextWindow` / `fastTier` 等源字段，`contextWindow` 由 `newRow` 只补给新行，已有行谁都不动。
+**修复**：`gpt-6.1-sol` 的 codex 与 chatgpt 两行 `contextWindow` 改 500000（出处：Codex 模型端点 `GET chatgpt.com/backend-api/codex/models`，本机 CLI 缓存 `~/.codex/models_cache.json` @ `client_version` 0.162.0 镜像同一份清单；同源的 `gpt-6-astra` / `gpt-6-luna` 仍 272000），`maxContextWindow` 保留 872000；`-fast` 孪生行是基行的展开，自动跟随。用户可见：这两行的徽标 258K → 500K，压缩阈值随窗口从约 232K 到约 450K。
+
 ## 2026-10-11：OpenCode Zen 卡被读成「OpenCode Go 的一部分」——裸 article 绕过了分组图例外壳
 
 **现象**：额度页的 Zen 钱包卡没有自己的分组标题，紧贴在「OpenCode Go」标题下（分享图里同样如此——图与页面同源，rail 里 Zen 却是独立条目，两边读法不一致）。

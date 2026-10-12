@@ -79,13 +79,15 @@ Fast：body `service_tier` 从 `fast` 改成 `priority`，并带 `x-codex-routin
 - 只收 `visibility: list` 的行；`gpt-reserve` / auto-review 这类 `hide` 行是 CLI 内部用的。
 - 活目录按 `client_version` 过滤：新模型只对足够新的版本下发，identity 版本落后就看不到新模型（见 docs/error.md 2026-09-23 Codex 目录轮换）。
 - 不收订阅后端 400（"not supported when using Codex with a ChatGPT account"）的模型，`gpt-5.3-codex` 是先例。
-- `contextWindow` 取 CLI 的可用输入 258K（`CODEX_CONTEXT_WINDOW`），不是端点的原始 `context_window` 272K。端点的 `max_context_window` 写进行的 `maxContextWindow`，作为自定义窗口上限，不派生变体行。
+- `contextWindow` 默认取 CLI 的可用输入 258K（`CODEX_CONTEXT_WINDOW`），不是端点的原始 `context_window`。**唯一例外是 `gpt-6.1-sol`**：2026-10-12 核对时源已把它的 `context_window` 抬到 500K（`max_context_window` 仍 872K），这一行的基线跟源取 500K——适配器的 `newRow` 只填新行、源也不返回 `contextWindow`，所以这个值只能手改，`npm run models --write` 不会把它退回去（见 [`docs/error.md`](../../../docs/error.md) 2026-10-12）。端点的 `max_context_window` 写进行的 `maxContextWindow`，作为自定义窗口上限，不派生变体行。
 - `fastTier` = `service_tiers` 里有 `priority`。
 - `reasoningEfforts` 取 `supported_reasoning_levels`，但 `minimal` 与 `ultra` 会 400（`ultra` 是 CLI 的多 agent 模式，不是 API effort）；`off` 的 wire 值是 `null`。
 
-最近核对：2026-10-08，活目录 @ `client_version` 0.161.0（npm latest 0.161.0 当日发布，changelog 无新模型——只是把 GPT-6.1 Sol 设为 CLI 默认档；探查 7 行、无新行、无字段变化，纯跟版。`? gpt-5.5` 源里没有——同日定向活测 `POST .../codex/responses` 仍 200 `response.completed`，chatgpt 家族同样：列表不回 ≠ 下架，不删）。
+最近核对：2026-10-12，只改 `gpt-6.1-sol` 的窗口基线（258K → 500K）。出处是源的 `context_window`：本机 Codex CLI 缓存 `~/.codex/models_cache.json` 镜像 `GET chatgpt.com/backend-api/codex/models` 的同一份清单，2026-10-12 拉取 @ `client_version` 0.162.0 给 `gpt-6.1-sol` `context_window` 500000 / `max_context_window` 872000（同日 `gpt-6-astra` / `gpt-6-luna` 仍是 272000 / 872000）。插件钉的 `CODEX_CLIENT_VERSION` 仍 0.161.0——窗口不随版本门控，本次未升钉；其余行、其余字段不动。
 
-上次核对：2026-10-07，活目录 @ `client_version` 0.160.1（钉跟 npm latest 升 0.160.1；探查 7 行、无新行、无字段变化，纯跟版。`? gpt-5.5` 源里没有——登录态端点按账号过滤，未确认下架不删）。
+上次核对：2026-10-08，活目录 @ `client_version` 0.161.0（npm latest 0.161.0 当日发布，changelog 无新模型——只是把 GPT-6.1 Sol 设为 CLI 默认档；探查 7 行、无新行、无字段变化，纯跟版。`? gpt-5.5` 源里没有——同日定向活测 `POST .../codex/responses` 仍 200 `response.completed`，chatgpt 家族同样：列表不回 ≠ 下架，不删）。
+
+更早核对：2026-10-07，活目录 @ `client_version` 0.160.1（钉跟 npm latest 升 0.160.1；探查 7 行、无新行、无字段变化，纯跟版。`? gpt-5.5` 源里没有——登录态端点按账号过滤，未确认下架不删）。
 
 更早核对：2026-10-03，活目录 @ `client_version` 0.160.0（钉跟 npm latest 升 0.160.0；探查 8 行、无新行、无字段变化，纯跟版）。
 

@@ -60,7 +60,7 @@ DSH  →  本机 /chatgpt/v1/responses  →  POST api.openai.com/v1/responses
 
 ## 模型
 
-行在 [`src/catalog/models.json`](../../catalog/models.json) 的 `"chatgpt"` 键。静态行 = Codex 家族 `visibility: list` 行的 `id / name / contextWindow / maxTokens / input / reasoningEfforts`（同一套 GPT 模型，窗口取 Codex CLI 可用输入 258K）。运行时以 `GET /v1/models` 为准：只收 `visibility: "list"`，`slug` 为 wire id、`display_name` 为名；新 slug 没有窗口来源（静态行或活行 `context_window`）就不收，不发明数字。
+行在 [`src/catalog/models.json`](../../catalog/models.json) 的 `"chatgpt"` 键。静态行 = Codex 家族 `visibility: list` 行的 `id / name / contextWindow / maxTokens / input / reasoningEfforts`（同一套 GPT 模型，窗口与 Codex 同 id 行一致：`gpt-6.1-sol` 500K，其余仍是 Codex CLI 可用输入 258K；改动与出处见 [`../codex/README.md`](../codex/README.md)「模型」，2026-10-12）。运行时以 `GET /v1/models` 为准：只收 `visibility: "list"`，`slug` 为 wire id、`display_name` 为名；新 slug 没有窗口来源（静态行或活行 `context_window`）就不收，不发明数字。
 
 - **Fast**：`fastTier` 行派生 `<id>-fast`，请求时剥成 `<id>` + `service_tier: "priority"`（`peelChatgptFast`，本家自管，不走 Codex 的 `applyFastMode` / routing-hint）。2026-09-30 活测 `gpt-5.6-luna` 交替 6 次：85.8 vs 56.4 tok/s（1.52×），TTFT 2.1s vs 3.3s；回显仍是 `default`（与 Codex 相同，不是确认）。8 行都 200 接受 `priority`。`fastTier` 取自 Codex 同 id 行；目录外的新 slug 不给 `-fast`，直到测过。其它 tier 一律剥掉（官方：不支持的 tier 覆盖报 `subscription_sharing_unsupported_capability`）。费率 `-fast` = models.dev `vercel` priority 价。
 - **不带 `maxContextWindow`**：872K 是 Codex 后端的 `max_context_window`，本路由未见出处。

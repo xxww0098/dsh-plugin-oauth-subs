@@ -26,7 +26,10 @@ export const CODEX_SCOPE = 'openid profile email offline_access api.connectors.r
 export const CODEX_CALLBACK_PATH = '/auth/callback'
 export const CODEX_PREEMPT_MS = 5 * 60_000
 /** Codex CLI targets ~258K usable input; the raw model window is 272K.
- *  Every catalog row shares this default. */
+ *  Default for new rows and for rows the source does not move. `gpt-6.1-sol`
+ *  is the exception: the source's own `context_window` reached 500K
+ *  (2026-10-12, codex/README.md 模型), so its row carries 500000 by hand —
+ *  the adapter never returns `contextWindow`, so a refresh cannot reset it. */
 export const CODEX_CONTEXT_WINDOW = 258_000
 export const CODEX_DEFAULT_MAX_TOKENS = 128_000
 

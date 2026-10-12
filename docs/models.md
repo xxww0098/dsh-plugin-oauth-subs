@@ -118,7 +118,7 @@ npm run models -- --json           # 机器可读报告
 
 脚本只负责搬数，下面这些判断属于维护者，要在适配器里写成规则（`keep` / `skip` / `newRow` / `add: false`），并在家族 README 写明理由：
 
-- **默认窗口不一定等于厂商总窗。** DSH 按 `contextWindow` 触发压缩，报总窗会让长会话长到被网关拒绝。例子：Codex 用 CLI 的 258K 可用输入而不是原始的 272K（新行由 `newRow` 填），OpenCode Go 的两行 Luna 钉在 258K（`keep`），GLM 套餐窗是 400K，1M 只作为 `maxContextWindow` 上限（例外：`glm-5.3-flashx` 的套餐基线就是 1M，2026-10-10 活测，见 glm/README.md「模型」）。
+- **默认窗口不一定等于厂商总窗。** DSH 按 `contextWindow` 触发压缩，报总窗会让长会话长到被网关拒绝。例子：Codex 用 CLI 的 258K 可用输入而不是原始的 272K（新行由 `newRow` 填），OpenCode Go 的两行 Luna 钉在 258K（`keep`），GLM 套餐窗是 400K，1M 只作为 `maxContextWindow` 上限（例外：`glm-5.3-flashx` 的套餐基线就是 1M，2026-10-10 活测，见 glm/README.md「模型」；另一个例外：`gpt-6.1-sol` 的行基线跟源的 `context_window` 走 500K，2026-10-12，见 codex/README.md「模型」）。
 - **厂商列出的，不等于订阅能用的。** 历史改道 id、未上套餐的 id、同一模型的别名，都用 `skip` 写明理由（GLM、OpenCode Go 有先例）；后端返回 400 的模型不进目录（`gpt-5.3-codex` 先例）。
 - **精选键**：Cursor 的底表跟官方 docs 表走，活列表里还有隐藏行和旧行，所以新 id 只报告（`add: false`）。
 - **方言**：OpenCode Go 的新行默认按普通 OpenAI compat 处理；DeepSeek 方言要先活测确认再手改。
