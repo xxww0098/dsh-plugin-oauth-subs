@@ -122,20 +122,45 @@ window.__ModuleLoader__.load({
       const [arena, setArena] = useState(readStoredArena)
       const [arenaError, setArenaError] = useState('')
       const [arenaBusy, setArenaBusy] = useState(false)
-      const loadArena = async (fresh) => {
+      const [arenaBrowserBusy, setArenaBrowserBusy] = useState(false)
+      const [arenaBrowserNotice, setArenaBrowserNotice] = useState('')
+      const arenaLoading = useRef(false)
+      const loadArena = async (fresh, browser = false) => {
+        if (arenaLoading.current) return
+        arenaLoading.current = true
         setArenaBusy(true)
+        setArenaBrowserBusy(browser)
+        setArenaBrowserNotice('')
+        setArenaError('')
         try {
-          const next = await callRpc(rpc, 'arena', fresh ? { fresh: true } : undefined)
+          let next
+          if (browser) {
+            let state = await callRpc(rpc, 'arena', { browser: 'start' })
+            if (typeof state?.busy !== 'boolean') throw new Error(t.hostStale)
+            while (state.busy) {
+              await new Promise(resolve => setTimeout(resolve, 1000))
+              state = await callRpc(rpc, 'arena', { browser: 'status' })
+              if (typeof state?.busy !== 'boolean') throw new Error(t.hostStale)
+            }
+            if (state.cancelled) return
+            if (state.error) throw new Error(state.error)
+            next = state.answer
+          } else {
+            next = await callRpc(rpc, 'arena', fresh ? { fresh: true } : undefined)
+          }
           if (next && typeof next.at === 'number' && typeof next.boards === 'object' && next.boards !== null) {
             setArena(next)
             writeStoredArena(next)
-          }
+            if (browser) setArenaBrowserNotice(t.arenaBrowserUpdated)
+          } else if (browser) throw new Error(t.hostStale)
           setArenaError('')
         } catch (caught) {
           const message = caught instanceof Error ? caught.message : String(caught)
-          setArenaError(isUnknownOauthMethod(message) ? t.hostStale : message)
+          setArenaError(isUnknownOauthMethod(message) ? t.hostStale : browser ? fill(t.arenaBrowserFailed, message) : message)
         } finally {
+          arenaLoading.current = false
           setArenaBusy(false)
+          setArenaBrowserBusy(false)
         }
       }
       useEffect(() => {
@@ -472,7 +497,7 @@ window.__ModuleLoader__.load({
         id, child ?? card(id), view === 'quota' && (quotaScope === 'all' || quotaScope === id),
       )
 
-      return h('div', { className: 'osubs', ref: root },
+      return h('div', { className: 'osubs' + (view === 'arena' ? ' osubs--arena' : ''), ref: root },
         h('div', { className: 'osubs-ptabs', role: 'tablist' },
           h(PageTab, { id: 'quota', label: t.quota, view, onSelect: setView }),
           h(PageTab, { id: 'models', label: t.modelsTitle, view, onSelect: setView }),
@@ -555,7 +580,11 @@ window.__ModuleLoader__.load({
             data: arena,
             error: arenaError,
             busy: arenaBusy,
+            browserBusy: arenaBrowserBusy,
+            browserNotice: arenaBrowserNotice,
             onRefresh: () => { void loadArena(true) },
+            onVerify: () => { void loadArena(true, true) },
+            onCancelVerify: () => { void callRpc(rpc, 'arena', { browser: 'cancel' }).catch(caught => setArenaError(fill(t.arenaBrowserFailed, String(caught)))) },
             version: aboutVersionOf(snap?.update, update),
             repo: aboutRepoOf(snap?.update, update),
           }), view === 'arena', true),

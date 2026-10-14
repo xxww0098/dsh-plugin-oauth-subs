@@ -227,7 +227,7 @@ const OPENCODE_ZEN_OTHER_PROTOCOL_IDS = new Set(['jev-1.13', 'jev-1.13-free'])
 /** Docs `/v1/models/<id>` rows (@ai-sdk/google): Gemini, not a chat protocol. */
 const OPENCODE_ZEN_GOOGLE_IDS = new Set([
   'gemini-3-flash', 'gemini-3.1-pro', 'gemini-3.5-flash', 'gemini-3.5-flash-lite',
-  'gemini-3.6-flash', 'gemini-3.7-flash', 'gemini-3.8-flash',
+  'gemini-3.6-flash', 'gemini-3.7-flash', 'gemini-3.8-flash', 'gemini-4-argon',
 ])
 
 const OPENCODE_ZEN_FREE_IDS = new Set([
@@ -235,6 +235,7 @@ const OPENCODE_ZEN_FREE_IDS = new Set([
   'muse-spark-1.2-contributor-free', 'muse-spark-1.3-contributor-free',
   'nemotron-3-ultra-free', 'nemotron-3.5-lightning-free', 'space-bunny-free',
   'longcat-2.5-preview-free', 'step-5-preview-free', 'exo-free', 'ling-3.0-flash-fin-free',
+  'cat-jam-free',
 ])
 
 /**
@@ -373,6 +374,11 @@ const ADAPTERS: Record<string, any> = {
             : { low: 'low', high: 'high' },
       }))
     },
+    // 2026-10-14: the registry lists gemini-4-argon-high, but the live picker
+    // (fetchAvailableModels, same day) carries Argon only as
+    // gemini-4-argon-disabled with disabled: true — staged upstream, not a
+    // serviceable line id (antigravity/README.md 模型).
+    skip: [{ ids: ['gemini-4-argon-high'], why: 'staged upstream: live fetchAvailableModels only lists gemini-4-argon-disabled (disabled: true), 2026-10-14 (antigravity/README.md 模型)' }],
   },
   cursor: {
     source: 'agent.v1 GetUsableModels + AvailableModels (egress-filtered)',

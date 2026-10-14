@@ -81,7 +81,7 @@ test('Settings workbench enters as a sidebar panel below 插件', async () => {
   assert.match(src, /if \(method === 'models' && result && typeof result === 'object'\) \{[\s\S]*?if \(mine < snapSeen\.current\) return true\s*snapSeen\.current = mine\s*setSnap\(result\)\s*writeStoredSnap\(result\)\s*setError\(''\)\s*\} else if \(method !== 'update'\) \{\s*await refresh\(true\)\s*\}/)
   assert.match(src, /if \(live\) timer = setTimeout\(tick, loginPending\.current \? 1500 : 3000\)/)
   assert.match(src, /document\.addEventListener\('visibilitychange', onVisibility\)/)
-  assert.match(src, /className: 'osubs', ref: root/)
+  assert.match(src, /className: 'osubs' \+ \(view === 'arena' \? ' osubs--arena' : ''\), ref: root/)
   assert.equal(src.includes('setInterval'), false)
   const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
   assert.ok(pkg.dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-layout'))
@@ -279,6 +279,15 @@ test('Arena view names its source and links to the official board', async () => 
   assert.match(src, /\.osubs-afoot \{ flex: none; \}/)
   assert.match(src, /arenaSource: '数据来源'/)
   assert.match(src, /arenaSource: 'Data from'/)
+  // A wholly gated refresh names the upstream challenge instead of a bare 403;
+  // an archive-rescued round says where its boards came from (utils/arena.ts
+  // Wayback fallback, docs/error.md 2026-10-14).
+  assert.match(src, /arenaBlocked: 'arena\.ai 需要浏览器验证，当前显示缓存快照。点击「浏览器验证」获取最新榜单。'/)
+  assert.match(src, /arenaBlocked: 'arena\.ai requires browser verification\. This is the cached snapshot; select Verify in Chrome to update it\.'/)
+  assert.match(src, /arenaArchived: '站点直连被人机校验挡住，本轮快照取自 Wayback 公共归档，可能滞后数日。'/)
+  assert.match(src, /arenaArchived: 'The direct route is gated by a Cloudflare challenge, so this round came from the Wayback archive and may lag a few days\.'/)
+  assert.match(src, /\(error \|\| \(!browserBusy && \(data\?\.error \|\| data\?\.blocked \|\| data\?\.archived\)\)\) && h\('p', \{ className: 'osubs-hint' \},/)
+  assert.match(src, /error \|\| \(data\?\.blocked \? t\.arenaBlocked : data\?\.error \? fill\(t\.arenaStale, data\.error\) : t\.arenaArchived\)\)/)
   // The 排名 table carries the site's Cost/Task (P50) column: sortable head,
   // right-aligned money figures, — for unpriced models; narrow panes keep it
   // while Confirmed Success drops.
@@ -287,14 +296,89 @@ test('Arena view names its source and links to the official board', async () => 
   assert.match(src, /className: 'osubs-atcell osubs-atcell--cost', role: 'cell' \},\n\s+row\.costUsd != null/)
   assert.match(src, /arenaUsd\(row\.costUsd\)\)/)
   assert.match(src, /\.osubs-acost \{ font-size: 12px; color: var\(--osubs-muted\); font-variant-numeric: tabular-nums; white-space: nowrap; \}/)
-  assert.match(src, /grid-template-columns: 48px minmax\(0, 1fr\) minmax\(190px, 34%\) minmax\(104px, auto\) minmax\(72px, auto\);/)
-  assert.match(src, /\.osubs-atcell--success \{ display: none; \}/)
+  // The live board's twelve columns, in its own order: the five signal
+  // columns (the bash one renamed upstream), Sessions, both P50 figures,
+  // Price $/M — and the narrow-pane retreat that drops them again.
+  assert.match(src, /repeat\(5, 64px\) 64px 72px 82px 78px;/)
+  assert.match(src, /sortButton\('success', t\.arenaColSuccess, true\)/)
+  assert.match(src, /sortButton\('praise', t\.arenaColPraise, true\)/)
+  assert.match(src, /sortButton\('steer', t\.arenaColSteer, true\)/)
+  assert.match(src, /sortButton\('bash', t\.arenaColBash, true\)/)
+  assert.match(src, /sortButton\('halluc', t\.arenaColHalluc, true\)/)
+  assert.match(src, /sortButton\('sessions', t\.arenaColSessions, true\)/)
+  assert.match(src, /sortButton\('tokensM', t\.arenaColTokens, true\)/)
+  assert.match(src, /sortButton\('priceIn', t\.arenaColPrice, true\)/)
+  assert.match(src, /arenaColPraise: 'Praise vs Complaint'/)
+  assert.match(src, /arenaColSteer: 'Steerability'/)
+  assert.match(src, /arenaColBash: 'Bash Reliability'/)
+  assert.match(src, /arenaColHalluc: 'Tool Hallucination'/)
+  assert.match(src, /arenaColSessions: 'Sessions'/)
+  assert.match(src, /arenaColTokens: 'Output Tokens\/Task \(P50\)'/)
+  assert.match(src, /arenaColPrice: 'Price \$\/M'/)
+  assert.match(src, /arenaColPraise: '好评与差评'/)
+  // Cells: tool hallucination inverts the arrow (positive rate = green Down,
+  // live-measured), Sessions are localised counts, tokens reuse arenaTok,
+  // price prints "in / out".
+  assert.match(src, /const down = invert \? value > 0 : value < 0/)
+  assert.match(src, /h\(ArenaScore, \{ value: row\.halluc, ci: row\.hallucCi, invert: true \}\)\)/)
+  assert.match(src, /h\('span', \{ className: 'osubs-acost' \}, Number\(row\.sessions \|\| 0\)\.toLocaleString\(localeOf\(\)\)\)\)/)
+  assert.match(src, /h\('span', \{ className: 'osubs-acost' \}, arenaTok\(row\.tokensM \* 1e6\)\)/)
+  assert.match(src, /const arenaPrice = \(row, t\) => \(row\.priceIn == null \|\| row\.priceOut == null\)/)
+  assert.match(src, /const arenaPriceUsd = \(n\) => \(n % 1 === 0 \? \`\$\$\{n\}\` : \`\$\$\{n\.toFixed\(2\)\}\`\)/)
+  assert.match(src, /\.osubs-atcell--sigx, \.osubs-atcell--price \{ display: none; \}/)
+  assert.match(src, /\.osubs-atcell--cost \{ display: none; \}/)
+})
+
+test('Arena browser flow polls to completion, blocks double starts and persists only success', async () => {
+  const src = await readFile(new URL('../lib/ui/client.js', import.meta.url), 'utf8')
+  const body = src.match(/const loadArena = async \(fresh, browser = false\) => \{[\s\S]*?\n            \};/)?.[0]
+  assert.ok(body)
+  const answer = { at: 123, boards: { overall: { rows: [] } } }
+  const load = async (states) => {
+    const recorded: any = { writes: [], calls: [], arena: 'old', error: '', loading: { current: false } }
+    const bindings = {
+      arenaLoading: recorded.loading,
+      setArenaBusy: value => { recorded.busy = value },
+      setArenaBrowserBusy: value => { recorded.browserBusy = value },
+      setArenaBrowserNotice: value => { recorded.notice = value },
+      setArenaError: value => { recorded.error = value },
+      setArena: value => { recorded.arena = value },
+      writeStoredArena: value => { recorded.writes.push(value) },
+      rpc: {},
+      callRpc: async (_rpc, _method, payload) => { recorded.calls.push(payload); return states.shift() },
+      setTimeout: resolve => { queueMicrotask(resolve) },
+      isUnknownOauthMethod: () => false,
+      fill: (template, value) => template.replace('{n}', value),
+      t: { arenaBrowserUpdated: 'updated', arenaBrowserFailed: 'failed: {n}', hostStale: 'stale host' },
+    }
+    const handler = new Function(...Object.keys(bindings), body + ';return loadArena')(...Object.values(bindings))
+    await Promise.all([handler(true, true), handler(true, true)])
+    return recorded
+  }
+  const success = await load([{ busy: true }, { busy: false, answer }])
+  assert.deepEqual(success.calls, [{ browser: 'start' }, { browser: 'status' }])
+  assert.equal(success.arena, answer)
+  assert.deepEqual(success.writes, [answer])
+  assert.equal(success.notice, 'updated')
+  assert.equal(success.busy, false)
+  assert.equal(success.browserBusy, false)
+  for (const state of [{ busy: false, error: 'Chrome closed' }, { busy: false, cancelled: true }, { busy: false }, answer]) {
+    const failed = await load([state])
+    assert.equal(failed.arena, 'old')
+    assert.deepEqual(failed.writes, [])
+    assert.equal(failed.loading.current, false)
+    if (!state.cancelled) assert.ok(failed.error.startsWith('failed:'))
+  }
+  const ui = assembleUi()
+  assert.match(ui, /onVerify: \(\) => \{ void loadArena\(true, true\) \}/)
+  assert.match(ui, /onClick: onVerify, label: browserBusy \? t\.arenaBrowserVerifying : t\.arenaBrowserVerify/)
+  assert.match(ui, /onClick: onCancelVerify, label: t\.arenaBrowserCancel/)
 })
 
 test('Arena view shares a long shot of the table through the usage pipeline', async () => {
   const src = assembleUi()
   // The panel rides the same 分享 pipeline as 用量/额度 and gets the footer facts.
-  assert.match(src, /function ArenaPanel\(\{ t, data, error, busy, onRefresh, version, repo \}\)/)
+  assert.match(src, /function ArenaPanel\(\{ t, data, error, busy, browserBusy, browserNotice, onRefresh, onVerify, onCancelVerify, version, repo \}\)/)
   assert.match(src, /const shot = useShot\(t\)\n\s+const shareRef = useRef\(null\)/)
   assert.match(src, /h\(ShareButton, \{ t, busy: shot\.busy, disabled: !board/)
   assert.match(src, /shot\.start\(shareRef\.current, shotFooter\(t, \{/)

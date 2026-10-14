@@ -84,6 +84,19 @@
     const arenaSignPct = (v) => (v >= 0 ? '+' : '') + arenaPct(v)
 
     /**
+     * The site's `formatPricePerMillionUsd`, read off its own chunk: a whole
+     * number keeps no decimals ($15), everything else is fixed to two
+     * ($1.40, $0.83). Cost/Task keeps `arenaUsd` — the two agree on every
+     * live cost figure, and the price column is the one the formatter was
+     * named for.
+     */
+    const arenaPriceUsd = (n) => (n % 1 === 0 ? `$${n}` : `$${n.toFixed(2)}`)
+    /** `$4 / $20` — the site's Price $/M cell (input / output per million). */
+    const arenaPrice = (row, t) => (row.priceIn == null || row.priceOut == null)
+      ? t.arenaNoValue
+      : `${arenaPriceUsd(row.priceIn)} / ${arenaPriceUsd(row.priceOut)}`
+
+    /**
      * The active projection's X figure for one row: the percentile column the
      * site's task-length filter asks for, falling back to the median (a
      * cached answer from before those fields shipped has neither). Null means
@@ -685,11 +698,17 @@
         : 'M5.30711 15.287C5.4232 15.5673 5.69668 15.75 6.00002 15.75H18C18.3034 15.75 18.5768 15.5673 18.6929 15.287C18.809 15.0068 18.7449 14.6842 18.5304 14.4697L12.5304 8.46967C12.2375 8.17678 11.7626 8.17678 11.4697 8.46967L5.46969 14.4697C5.25519 14.6842 5.19103 15.0068 5.30711 15.287Z' }))
     }
 
-    /** Value + arrow + ±CI, arena's exact stack (arrow ▲14.33% over ±2.18%). */
+    /**
+     * Value + arrow + ±CI, arena's exact stack (arrow ▲14.33% over ±2.18%).
+     * Live-measured rule (2026-10-14, all 52 rows × 5 signals): the colour
+     * follows the raw sign ("positive" class iff value > 0), while the arrow
+     * flips for an inverted signal — tool_hallucination positive reads as a
+     * green DOWN (a hallucination rate is better when it is lower).
+     */
     function ArenaScore({ value, ci, invert }) {
       if (value === null || value === undefined) return h('span', { className: 'osubs-a mute' }, '—')
-      const good = invert ? value >= 0 : value >= 0
-      const down = invert ? value < 0 : value < 0
+      const good = value >= 0
+      const down = invert ? value > 0 : value < 0
       return h('span', { className: 'osubs-astack' },
         h('span', { className: `osubs-avalue${value === 0 ? '' : good ? ' osubs-aok' : ' osubs-abad'}` },
           value !== 0 && h(ArrowUp, { down }),
@@ -749,7 +768,7 @@
         h('path', { d: 'M4 7l8 8 3-3 4.5 4.5' }))
     }
 
-    function ArenaPanel({ t, data, error, busy, onRefresh, version, repo }) {
+    function ArenaPanel({ t, data, error, busy, browserBusy, browserNotice, onRefresh, onVerify, onCancelVerify, version, repo }) {
       const [category, setCategory] = useState(readStoredArenaCategory)
       const [query, setQuery] = useState('')
       const [license, setLicense] = useState('all')
@@ -774,6 +793,8 @@
             size: 'sm', disabled: busy, onClick: onRefresh,
             label: h('span', { className: 'osubs-refresh' + (busy ? ' osubs-refresh--spin' : '') }, h(IconRefresh), t.quotaRefresh),
           }),
+          h(Button, { size: 'sm', disabled: busy, onClick: onVerify, label: browserBusy ? t.arenaBrowserVerifying : t.arenaBrowserVerify }),
+          browserBusy && h(Button, { size: 'sm', onClick: onCancelVerify, label: t.arenaBrowserCancel }),
           h(ShareButton, { t, busy: shot.busy, disabled: !board, onClick: () => { if (board) shot.start(shareRef.current, shotFooter(t, {
             version, repo,
             at: board.lastUpdated || data.at,
@@ -785,9 +806,11 @@
           onClick: () => pickCategory(id), label: t[key],
         }))))
 
+      const browserHint = (browserBusy || browserNotice) && h('p', { className: 'osubs-hint', role: 'status', 'aria-live': 'polite', 'data-noshot': '' },
+        browserBusy ? t.arenaBrowserWaiting : browserNotice)
       if (rows === null) {
-        return h('section', { className: 'osubs-card', 'aria-busy': !error },
-          head, error ? h('p', { className: 'osubs-hint osubs-bad' }, error) : h(ArenaSkeleton))
+        return h('section', { className: 'osubs-card', 'aria-busy': busy },
+          head, browserHint, error ? h('p', { className: 'osubs-hint osubs-bad' }, error) : h(ArenaSkeleton))
       }
 
       // Diverging-bar scale: the widest |value|+ci fills the half-track.
@@ -815,13 +838,26 @@
         title: label,
       }, label, h('span', { className: 'osubs-ahead-arrow' }, sort.key === key ? (sort.dir === 1 ? '↑' : '↓') : ''))
 
+      // Column set, order and cell formats are the live board's own
+      // (re-identified 2026-10-14 through the browser: docs/error.md): rank ·
+      // model · Net Improvement (the only diverging bar) · the five signal
+      // columns · Sessions · Cost/Task (P50) · Output Tokens/Task (P50) ·
+      // Price $/M. `--sigx` marks the four signal columns that drop first in
+      // a narrow pane; the site drops columns there too.
       const table = h('div', { className: 'osubs-atable', role: 'table' },
         h('div', { className: 'osubs-atrow osubs-atrow--head', role: 'row' },
           h('span', { className: 'osubs-atcell osubs-atcell--rank', role: 'columnheader' }, sortButton('rank', t.arenaColRank)),
           h('span', { className: 'osubs-atcell osubs-atcell--model', role: 'columnheader' }, t.arenaColModel),
           h('span', { className: 'osubs-atcell osubs-atcell--score', role: 'columnheader' }, sortButton('value', t.arenaColNet, true)),
-          h('span', { className: 'osubs-atcell osubs-atcell--score osubs-atcell--success', role: 'columnheader' }, sortButton('success', t.arenaColSuccess, true)),
-          h('span', { className: 'osubs-atcell osubs-atcell--score', role: 'columnheader' }, sortButton('costUsd', t.arenaColCost, true))),
+          h('span', { className: 'osubs-atcell osubs-atcell--sig', role: 'columnheader' }, sortButton('success', t.arenaColSuccess, true)),
+          h('span', { className: 'osubs-atcell osubs-atcell--sig osubs-atcell--sigx', role: 'columnheader' }, sortButton('praise', t.arenaColPraise, true)),
+          h('span', { className: 'osubs-atcell osubs-atcell--sig osubs-atcell--sigx', role: 'columnheader' }, sortButton('steer', t.arenaColSteer, true)),
+          h('span', { className: 'osubs-atcell osubs-atcell--sig osubs-atcell--sigx', role: 'columnheader' }, sortButton('bash', t.arenaColBash, true)),
+          h('span', { className: 'osubs-atcell osubs-atcell--sig osubs-atcell--sigx', role: 'columnheader' }, sortButton('halluc', t.arenaColHalluc, true)),
+          h('span', { className: 'osubs-atcell osubs-atcell--num', role: 'columnheader' }, sortButton('sessions', t.arenaColSessions, true)),
+          h('span', { className: 'osubs-atcell osubs-atcell--cost', role: 'columnheader' }, sortButton('costUsd', t.arenaColCost, true)),
+          h('span', { className: 'osubs-atcell osubs-atcell--num', role: 'columnheader' }, sortButton('tokensM', t.arenaColTokens, true)),
+          h('span', { className: 'osubs-atcell osubs-atcell--num osubs-atcell--price', role: 'columnheader' }, sortButton('priceIn', t.arenaColPrice, true))),
         sorted.length === 0 && h('div', { className: 'osubs-atrow osubs-atrow--empty' }, h('span', { className: 'osubs-mempty' }, t.arenaNoMatch)),
         sorted.map((row) => h('div', { className: 'osubs-atrow', role: 'row', key: `${row.rank}-${row.model}` },
           h('span', { className: 'osubs-atcell osubs-atcell--rank', role: 'cell' }, h(ArenaRank, { row, t })),
@@ -837,16 +873,33 @@
             h('span', { className: 'osubs-ascore' },
               h(ArenaScore, { value: row.value, ci: row.ci }),
               h(ArenaScoreBar, { value: row.value, ci: row.ci ?? 0, scale, t }))),
-          h('span', { className: 'osubs-atcell osubs-atcell--score osubs-atcell--success', role: 'cell' },
-            h(ArenaScore, { value: row.success, ci: row.successCi, invert: false })),
+          h('span', { className: 'osubs-atcell osubs-atcell--sig', role: 'cell' },
+            h(ArenaScore, { value: row.success, ci: row.successCi })),
+          h('span', { className: 'osubs-atcell osubs-atcell--sig osubs-atcell--sigx', role: 'cell' },
+            h(ArenaScore, { value: row.praise, ci: row.praiseCi })),
+          h('span', { className: 'osubs-atcell osubs-atcell--sig osubs-atcell--sigx', role: 'cell' },
+            h(ArenaScore, { value: row.steer, ci: row.steerCi })),
+          h('span', { className: 'osubs-atcell osubs-atcell--sig osubs-atcell--sigx', role: 'cell' },
+            h(ArenaScore, { value: row.bash, ci: row.bashCi })),
+          h('span', { className: 'osubs-atcell osubs-atcell--sig osubs-atcell--sigx', role: 'cell' },
+            h(ArenaScore, { value: row.halluc, ci: row.hallucCi, invert: true })),
+          h('span', { className: 'osubs-atcell osubs-atcell--num', role: 'cell', title: t.arenaColSessions },
+            h('span', { className: 'osubs-acost' }, Number(row.sessions || 0).toLocaleString(localeOf()))),
           h('span', { className: 'osubs-atcell osubs-atcell--cost', role: 'cell' },
             row.costUsd != null
               ? h('span', { className: 'osubs-acost', title: t.arenaColCost }, arenaUsd(row.costUsd))
-              : h('span', { className: 'osubs-acost osubs-a mute' }, '—')))))
+              : h('span', { className: 'osubs-acost osubs-a mute' }, t.arenaNoValue)),
+          h('span', { className: 'osubs-atcell osubs-atcell--num', role: 'cell', title: t.arenaColTokens },
+            row.tokensM != null
+              ? h('span', { className: 'osubs-acost' }, arenaTok(row.tokensM * 1e6))
+              : h('span', { className: 'osubs-acost osubs-a mute' }, t.arenaNoValue)),
+          h('span', { className: 'osubs-atcell osubs-atcell--num osubs-atcell--price', role: 'cell', title: t.arenaColPrice },
+            h('span', { className: 'osubs-acost' }, arenaPrice(row, t))))))
 
-      return h(Fragment || 'div', null, h('section', { className: 'osubs-arena', ref: shareRef },
-        head,
-        (error || data?.error) && h('p', { className: 'osubs-hint' }, error || fill(t.arenaStale, data?.error ?? '')),
+      return h(Fragment || 'div', null, h('section', { className: 'osubs-arena', ref: shareRef, 'aria-busy': busy },
+        head, browserHint,
+        (error || (!browserBusy && (data?.error || data?.blocked || data?.archived))) && h('p', { className: 'osubs-hint' },
+          error || (data?.blocked ? t.arenaBlocked : data?.error ? fill(t.arenaStale, data.error) : t.arenaArchived)),
         h('div', { className: 'osubs-atools', 'data-noshot': '' },
           h('div', { className: 'osubs-seg', role: 'group' }, [['rank', t.arenaViewRank], ['pareto', t.arenaViewPareto]].map(([id, label]) => h(Button, {
             key: id, size: 'sm', variant: viewMode === id ? 'primary' : undefined,

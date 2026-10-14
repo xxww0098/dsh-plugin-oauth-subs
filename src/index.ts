@@ -38,6 +38,7 @@ import { donateQr } from './utils/donate.js'
 import { readUsage } from './utils/usage.js'
 import { usageRowCost, usageRowCosts } from './utils/usage-cost.js'
 import { ARENA_CACHE_FILE, createArenaSource } from './utils/arena.js'
+import { fetchArenaWithChrome } from './utils/arena-browser.js'
 
 const USAGE_MEMO_MS = 5 * 60_000
 const HOST_DEEPSEEK = new Set(['deepseek-official', 'deepseek-account'])
@@ -329,8 +330,15 @@ export function apply(ctx, config: any = {}) {
   }
   // 榜单 tab: arena.ai agent leaderboard, file-cached in the data dir on a
   // 1 h TTL (upstream moves once a day); `fresh` (the page's 刷新) re-fetches.
-  const arena = createArenaSource({ cachePath: join(dataDir, ARENA_CACHE_FILE) })
-  controller.arena = (payload: any = {}) => arena.read(payload?.fresh === true)
+  const arena = createArenaSource({ cachePath: join(dataDir, ARENA_CACHE_FILE), browserFetch: signal => fetchArenaWithChrome({ signal }) })
+  controller.arena = (payload: any = {}) => {
+    if (payload?.browser !== undefined) {
+      if (!['start', 'status', 'cancel'].includes(payload.browser)) throw new Error('Invalid Arena browser action')
+      return arena.browser(payload.browser)
+    }
+    return arena.read(payload?.fresh === true)
+  }
+  ctx.effect(() => () => arena.dispose(), 'dsh-plugin-oauth-subs: Arena browser verification')
 
   // This plugin's routes, keyed by family, plus the host's own DeepSeek
   // providers (`deepseek-official` / `deepseek-account`, built into DSH's

@@ -1239,6 +1239,19 @@
     ],
     "devin": [
         {
+            "id": "swe-1.6-slow",
+            "name": "SWE-1.6 Slow",
+            "contextWindow": 200000,
+            "maxTokens": 128000,
+            "input": [
+                "text",
+                "image"
+            ],
+            "reasoningEfforts": false,
+            "variants": {},
+            "defaultUid": "swe-1-6-slow"
+        },
+        {
             "id": "claude-haiku-5-5",
             "name": "Claude Haiku 5.5",
             "contextWindow": 1000000,
@@ -2856,10 +2869,28 @@
     ],
     "cline": [
         {
+            "id": "google/gemini-4-argon",
+            "name": "Gemini 4 Argon",
+            "contextWindow": 1048576,
+            "maxTokens": 65536,
+            "input": [
+                "text",
+                "image"
+            ],
+            "reasoningEfforts": {
+                "minimal": "minimal",
+                "low": "low",
+                "medium": "medium",
+                "high": "high",
+                "xhigh": "xhigh",
+                "max": "xhigh"
+            }
+        },
+        {
             "id": "cline-pass/deepseek-v4.1-flash",
             "name": "DeepSeek V4.1 Flash (ClinePass)",
             "contextWindow": 1048576,
-            "maxTokens": 943718,
+            "maxTokens": 393216,
             "input": [
                 "text",
                 "image"
@@ -2987,7 +3018,7 @@
             "id": "cline-pass/glm-5.3-flash",
             "name": "GLM 5.3 Flash (ClinePass)",
             "contextWindow": 1048576,
-            "maxTokens": 943717,
+            "maxTokens": 943718,
             "input": [
                 "text",
                 "image"
@@ -3574,6 +3605,35 @@
         "cogito-2.1:671b"
     ],
     "command-code": [
+        {
+            "id": "google/gemini-4-argon",
+            "name": "Gemini 4 Argon",
+            "contextWindow": 1000000,
+            "input": [
+                "text",
+                "image"
+            ],
+            "reasoningEfforts": {
+                "low": "low",
+                "medium": "medium",
+                "high": "high"
+            }
+        },
+        {
+            "id": "meta/muse-wonder-1.0",
+            "name": "Muse Wonder",
+            "contextWindow": 1048576,
+            "input": [
+                "text",
+                "image"
+            ],
+            "reasoningEfforts": {
+                "low": "low",
+                "medium": "medium",
+                "high": "high",
+                "xhigh": "xhigh"
+            }
+        },
         {
             "id": "claude-sonnet-5-5",
             "name": "Claude Sonnet 5.5",
@@ -4673,6 +4733,27 @@
         }
     ],
     "opencode-go-flash": [
+        {
+            "id": "cat-jam-free",
+            "name": "Cat Jam Free",
+            "contextWindow": 262144,
+            "maxTokens": 131072,
+            "input": [
+                "text"
+            ],
+            "reasoningEfforts": {
+                "low": "low",
+                "medium": "medium",
+                "high": "high",
+                "xhigh": "xhigh",
+                "max": "max"
+            },
+            "compat": {
+                "supportsStore": false,
+                "supportsDeveloperRole": false,
+                "maxTokensField": "max_tokens"
+            }
+        },
         {
             "id": "step-5-preview-free",
             "name": "Step 5 Preview Free",

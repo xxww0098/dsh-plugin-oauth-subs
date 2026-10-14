@@ -94,7 +94,9 @@ HTTP 头：`content-type: application/connect+proto`（chat）/ `application/pro
 
 行在 [`src/catalog/models.json`](../../catalog/models.json) 的 `"devin"` 键；行格式、来源与 `npm run models` 更新流程见 [`docs/models.md`](../../../docs/models.md)。本节只记本家的取舍与出处。
 
-最近核对：2026-10-08，`ApiServerService/GetCliModelConfigs` 新增 `claude-haiku-5-5`（1M / 128K / text+image；uid `claude-haiku-5-5-{effort}`，`defaultUid` `claude-haiku-5-5-medium`）。价目随 `modelCostData` 的 defaultUid 由 `npm run rates` 写入。
+最近核对：2026-10-14，`ApiServerService/GetCliModelConfigs` 原生载荷 856 个 config（上次 737 的那个形状没变），但**本账号是 Free 档**，其中 853 个 `disabled: true`——投影成 picker 行只剩 `swe-1.6-slow` 一行；注册的 79 行因此全部落进 `?`。这是账号/套餐过滤，不是下架：载荷里每一族都在（`gpt-6-sol` / `claude-opus-5-5` 等整行仍在，只是 `disabled: true`），按 models.md「先排除账号再判下架」**不 `--prune`、不删行**。收新行 `swe-1.6-slow`（SWE-1.6 Slow；uid `swe-1-6-slow`，200000 / 128000，text+image，无 effort 档 → `variants: {}` + `reasoningEfforts: false`，与同族 `swe-1.6` / `swe-1.6-fast` 同形）：它在载荷里 `disabled: false`、`isRecommended: true`，是上游 SWE-1.6 家族的第三个桶。同源 `GetUserStatus`（额度）本账号回 400 `invalid_argument`（Free 档无点数桶），额度卡结论另记。价目源 docs.devin.ai `modelCostData` 没有 `swe-1-6-slow` → 该行无价徽标。
+
+上次核对：2026-10-08，`ApiServerService/GetCliModelConfigs` 新增 `claude-haiku-5-5`（1M / 128K / text+image；uid `claude-haiku-5-5-{effort}`，`defaultUid` `claude-haiku-5-5-medium`）。价目随 `modelCostData` 的 defaultUid 由 `npm run rates` 写入。
 
 上次核对：2026-10-05，价目源 [docs.devin.ai/desktop/models.md](https://docs.devin.ai/desktop/models.md) 的 `modelCostData`（PRO 档）重对：`gpt-5-6-sol-*` 全族从 $1.2/$6/$0.12/$1.5 换成标准价 $4/$20/$0.4/$5（priority uid 仍 $8/$40/$0.8/$10）。目录行与 `npm run models` 无变化，价目由 `npm run rates` 写入；上一轮的 1.2/6 是上游促销价，Cursor docs 表同款也是 $4/$20。
 

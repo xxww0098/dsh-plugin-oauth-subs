@@ -394,9 +394,10 @@ test('static Devin floor mirrors the live GetCliModelConfigs picker rows', () =>
   resetDevinCatalog()
   try {
     // 2026-10-08: GetCliModelConfigs added claude-haiku-5-5 -> 79.
-    assert.equal(DEVIN_MODELS.length, 79)
+    // 2026-10-14: SWE-1.6 Slow (swe-1.6-slow) -> 80.
+    assert.equal(DEVIN_MODELS.length, 80)
     const ids = new Set(DEVIN_MODELS.map((row) => row.id))
-    assert.equal(ids.size, 79)
+    assert.equal(ids.size, 80)
     // Families the previous 17-row floor did not cover.
     for (const id of [
       'claude-opus-4.5', 'claude-opus-4.6-1m', 'claude-opus-4.8-fast', 'claude-opus-5-5',

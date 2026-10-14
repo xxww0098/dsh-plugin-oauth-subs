@@ -70,11 +70,12 @@ test('fast model prices match the upstream kD display-rates row', () => {
 })
 
 test('non-gateway rows carry provider-lane prices (lD) and tier info', () => {
-  // lD anthropic rows: sonnet-5-5 in $2 / out $10 / cache-hit $.20, writes priced.
+  // Single billing-id table, anthropic rows: sonnet-5-5 in $2 / out $10 / cache-hit $.10
+  // (1.82.1 lowered it from $.20), writes priced.
   const sonnet = catalogRate('command-code/claude-sonnet-5-5')
   assert.deepEqual(
     { in: sonnet.in, out: sonnet.out, cacheRead: sonnet.cacheRead, cacheWrite: sonnet.cacheWrite, cacheWrite1h: sonnet.cacheWrite1h },
-    { in: 2, out: 10, cacheRead: 0.2, cacheWrite: 2.5, cacheWrite1h: 4 },
+    { in: 2, out: 10, cacheRead: 0.1, cacheWrite: 2.5, cacheWrite1h: 4 },
   )
   // lD openai rows keep their over-threshold context tier (272K).
   const astra = catalogRate('command-code/gpt-6-astra')
@@ -94,7 +95,7 @@ test('catalogRate resolves <family>/<id> and refuses unknown ids', () => {
   assert.equal(catalogRate('command-code/not-a-model'), undefined)
   // The same model id is priced per family, never shared across families.
   assert.notDeepEqual(catalogRate('kiro/gpt-5.6-sol'), catalogRate('command-code/gpt-5.6-sol'))
-  assert.equal(Object.keys(catalogRateTable('command-code')).length, 87)
+  assert.equal(Object.keys(catalogRateTable('command-code')).length, 89)
 })
 
 test('describeCatalog puts a price on rows of every family, including runtime -fast twins', () => {

@@ -70,7 +70,9 @@ DSH chat/completions  →  POST daily-cloudcode-pa.googleapis.com/v1internal:gen
 
 行在 [`src/catalog/models.json`](../../catalog/models.json) 的 `"antigravity"` 键；行格式、来源与 `npm run models` 更新流程见 [`docs/models.md`](../../../docs/models.md)。本节只记本家的取舍与出处。
 
-最近核对：2026-10-04，[router-for-me/CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) `main` 的 `antigravity` 数组，并用本机 `fetchAvailableModels` 对过线 id。注册表新增 `claude-opus-5-5-high` / `claude-sonnet-5-5-high`（1M / 128K / text+image，无 `thinking.levels` → `low`/`high`），已收入目录。同一天活列表（33 个 id）仍只有 4.6、没有 5.5；4.6 继续留着，不因注册表缺行而删。价目是 models.dev `anthropic` 的 `claude-opus-5-5` / `claude-sonnet-5-5`（线 id 去掉 `-high`）。
+最近核对：2026-10-14，[router-for-me/CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) `main` 的 `antigravity` 数组仍是 11 行，新增 `gemini-4-argon-high`（`Gemini 4 Argon`，`context_length` 1048576，`thinking.levels` low/medium/high；源的 `max_completion_tokens` 也是 1048576，与其它 Gemini 行的 65536 不同）——**不收**：同日本机活 `fetchAvailableModels`（23 行）里 Argon 只以 `gemini-4-argon-disabled` + `disabled: true` 出现，是上游暂存、尚未对选择器放开的行，收进来就是一行点不动的死行。适配器加了 `skip` 规则，dry run 报 `·` 而不是 `+`。同日活列表仍服务 `claude-opus-4-6-thinking` / `claude-sonnet-4-6`（4.6 两行照旧留着）；`gemini-pro-agent` / `gemini-3.1-pro-low` / `gemini-3.6-flash-high` / `gemini-3.7-flash-high` 既不在注册表、也不在今天的活列表里——照「缺行默认只报告」不 `--prune`，留待下次复核。
+
+上次核对：2026-10-04，[router-for-me/CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) `main` 的 `antigravity` 数组，并用本机 `fetchAvailableModels` 对过线 id。注册表新增 `claude-opus-5-5-high` / `claude-sonnet-5-5-high`（1M / 128K / text+image，无 `thinking.levels` → `low`/`high`），已收入目录。同一天活列表（33 个 id）仍只有 4.6、没有 5.5；4.6 继续留着，不因注册表缺行而删。价目是 models.dev `anthropic` 的 `claude-opus-5-5` / `claude-sonnet-5-5`（线 id 去掉 `-high`）。
 
 上次核对：2026-09-23，同一份注册表。
 

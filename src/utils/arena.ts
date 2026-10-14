@@ -8,7 +8,9 @@
  *
  *   - `snapshot` — lastUpdated / totalSessions / modelCount / rows[] with
  *     rank, rankSpread, avgScore{value,ci}, signalScores + signalCi (the
- *     five per-signal columns), sessions, prices, license, modelUrl.
+ *     five per-signal columns: task_outcome_explicit, praise_complaint,
+ *     steering_burden, bash_reliability_no_prereq, tool_hallucination),
+ *     sessions, observations, prices, license, modelUrl.
  *   - `costStats` — entries[] keyed by contenderName with the P50 columns
  *     (medianUsd cost/task, outputMtokPerTask.medianMtok tokens/task).
  *
@@ -16,20 +18,28 @@
  * max(|value|+ci) per column, so the widest whisker exactly touches the
  * track edge (see ArenaPanel). Values are fractions (0.1433 → “14.33%”).
  *
- * Caching: one snapshot a day (lastUpdated is a fixed 12:00 UTC stamp), so
- * the reader memoizes on a 1 h TTL in `arena-cache.json` (data dir) and the
+ * Caching: the reader memoizes on a 1 h TTL in `arena-cache.json` (data dir) and the
  * page keeps the last answer in localStorage. A failed refresh falls back to
  * the stale boards instead of blanking the tab.
+ *
+ * 2026-10-14: the site's Cloudflare now answers `/` and every path carrying a
+ * `leaderboard` segment with a managed challenge for non-browser clients, so
+ * the whole board set can come back gated — the answer then carries `blocked`
+ * and the tab says why (docs/error.md). A gated category is then retried
+ * against the Wayback Machine's public archive, whose captures embed the same
+ * flight payload in `self.__next_f.push([1,"…"])` chunks; a rescued round
+ * carries `archived` instead, and never rolls a category back to an older
+ * snapshot than the cache already holds.
  */
 
+import { gunzipSync } from 'node:zlib'
 import { describeError } from './http.js'
 import { outboundFetch } from './outbound.js'
 import { readPrivateText, writePrivateText } from './private-text.js'
 
 export const ARENA_LEADERBOARD_URL = 'https://arena.ai/leaderboard/agent'
 export const ARENA_CACHE_FILE = 'arena-cache.json'
-// The upstream snapshot moves once a day at 12:00 UTC; an hour keeps repeat
-// opens free while never lagging a daily refresh by more than the TTL.
+// An hour keeps repeat opens free; the upstream snapshot supplies its own date.
 export const ARENA_TTL_MS = 60 * 60_000
 
 /** Category id → route suffix, in the site's own rail order. */
@@ -40,8 +50,7 @@ export const ARENA_CATEGORIES = [
   { id: 'work', path: '/work' },
 ] as const
 
-// Cloudflare fronts the site and answers a bare `node` UA with the challenge
-// page; a browser UA gets the payload (verified with curl, no cookies).
+// These request the RSC representation; a browser UA alone cannot pass a challenge.
 const ARENA_HEADERS = {
   'RSC': '1',
   'accept': 'text/x-component',
@@ -49,7 +58,35 @@ const ARENA_HEADERS = {
   'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36',
 }
 
-export type ArenaFetch = (input: string, init?: Record<string, unknown>) => Promise<{ ok: boolean, status: number, text: () => Promise<string> }>
+// Plain Node requests cannot execute the challenge. Explicit browser verification
+// uses a plugin-owned Chrome; ordinary reads retain the public archive fallback.
+const ARENA_ARCHIVE_WEB = 'https://web.archive.org/web'
+const ARENA_ARCHIVE_CDX = 'https://web.archive.org/cdx/search/cdx'
+
+export type ArenaFetch = (input: string, init?: Record<string, unknown>) => Promise<{
+  ok: boolean
+  status: number
+  headers?: { get(name: string): string | null }
+  text: () => Promise<string>
+  /** Present on real fetch responses; archive reads prefer it to survive gzip. */
+  arrayBuffer?: () => Promise<ArrayBuffer>
+}>
+
+/**
+ * Cloudflare marks a gated route with 403 + `cf-mitigated: challenge`. Named
+ * so a refresh can say the upstream gated it instead of printing a bare 403.
+ */
+export function isArenaChallenge(response: { status: number, headers?: { get(name: string): string | null } }): boolean {
+  return response.status === 403 && response.headers?.get('cf-mitigated') === 'challenge'
+}
+
+/** A failed category because the upstream challenged this client. */
+export class ArenaChallengeError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ArenaChallengeError'
+  }
+}
 
 export interface ArenaRow {
   rank: number
@@ -76,6 +113,10 @@ export interface ArenaRow {
   halluc: number | null
   hallucCi: number | null
   sessions: number
+  /** The site's second rank axis (hidden column by default; null in the payload). */
+  overallRank: number | null
+  /** Raw observation count behind the row (the site keeps it off the table). */
+  observations: number | null
   /** costStats median cost per task, USD. */
   costUsd: number | null
   /** costStats p25 / p95 cost per task, USD — the site's task-length filter. */
@@ -100,15 +141,39 @@ export interface ArenaAnswer {
   boards: Record<string, ArenaBoard>
   /** Present when the answer is (partly) a stale-cache fallback. */
   error?: string
+  /** Every category was challenged: nothing fresh, the upstream gated it all. */
+  blocked?: boolean
+  /** At least one board this round came from the Wayback archive fallback. */
+  archived?: boolean
 }
 
+// The five signal columns, in the site's own columnOrder
+// (signal:task_outcome_explicit … signal:tool_hallucination). The bash signal
+// was renamed on 2026-10-13: `bash_recovery_steps` → `bash_reliability_no_prereq`
+// ("Bash Reliability", weight 0.5), so a payload carrying the old key leaves
+// that column empty.
 const SIGNALS = [
   ['task_outcome_explicit', 'success', 'successCi'],
   ['praise_complaint', 'praise', 'praiseCi'],
   ['steering_burden', 'steer', 'steerCi'],
-  ['bash_recovery_steps', 'bash', 'bashCi'],
+  ['bash_reliability_no_prereq', 'bash', 'bashCi'],
   ['tool_hallucination', 'halluc', 'hallucCi'],
 ] as const
+
+/**
+ * The site's own usability gate, read off its chunk `0pxzy916nkaqk.js`:
+ * `costPerTaskForContender` returns null unless the contender has
+ * `pricedSampleCount / totalSampleCount >= 0.5` **and** `pricedSampleCount
+ * >= 50`; `tokensPerTaskForContender` needs the same half-sample share over
+ * `tokenedSampleCount` (no absolute floor). A gated column renders N/A and
+ * the row cannot place on the Pareto chart — the site's `pricedEntries` is
+ * built from the same getter.
+ */
+function sampleShare(part: unknown, total: unknown): boolean {
+  const p = num(part)
+  const t = num(total)
+  return p !== null && t !== null && t > 0 && p / t >= 0.5
+}
 
 const num = (value: unknown): number | null => (typeof value === 'number' && Number.isFinite(value) ? value : null)
 const str = (value: unknown): string => (typeof value === 'string' ? value : '')
@@ -162,6 +227,9 @@ export function parseArenaBoard(text: string): ArenaBoard {
     const signals = raw?.signalScores ?? {}
     const signalCi = raw?.signalCi ?? {}
     const cost = costByContender.get(raw?.contenderName)
+    const costUsable = sampleShare(cost?.pricedSampleCount, cost?.totalSampleCount) && (num(cost?.pricedSampleCount) ?? 0) >= 50
+    const tokens = cost?.outputMtokPerTask
+    const tokensUsable = sampleShare(tokens?.tokenedSampleCount, tokens?.totalSampleCount)
     const row: any = {
       rank: typeof raw?.rank === 'number' ? raw.rank : index + 1,
       model: str(raw?.model),
@@ -175,12 +243,14 @@ export function parseArenaBoard(text: string): ArenaBoard {
       value: num(raw?.avgScore?.value) ?? 0,
       ci: num(raw?.avgScore?.ci) ?? 0,
       sessions: num(raw?.sessions) ?? 0,
-      costUsd: num(cost?.medianUsd),
-      costUsd25: num(cost?.p25Usd),
-      costUsd95: num(cost?.p95Usd),
-      tokensM: num(cost?.outputMtokPerTask?.medianMtok),
-      tokensM25: num(cost?.outputMtokPerTask?.p25Mtok),
-      tokensM95: num(cost?.outputMtokPerTask?.p95Mtok),
+      overallRank: num(raw?.overallRank),
+      observations: num(raw?.observations),
+      costUsd: costUsable ? num(cost?.medianUsd) : null,
+      costUsd25: costUsable ? num(cost?.p25Usd) : null,
+      costUsd95: costUsable ? num(cost?.p95Usd) : null,
+      tokensM: tokensUsable ? num(tokens?.medianMtok) : null,
+      tokensM25: tokensUsable ? num(tokens?.p25Mtok) : null,
+      tokensM95: tokensUsable ? num(tokens?.p95Mtok) : null,
     }
     for (const [source, valueKey, ciKey] of SIGNALS) {
       row[valueKey] = num(signals[source])
@@ -196,13 +266,110 @@ export function parseArenaBoard(text: string): ArenaBoard {
   }
 }
 
-async function fetchArenaBoard(path: string, fetchImpl: ArenaFetch): Promise<ArenaBoard> {
+/**
+ * Collect the RSC flight stream an archived (or saved) HTML document carries
+ * inline: every `self.__next_f.push([1,"…"])` chunk is a JSON string literal,
+ * so each parses back to raw flight text and the parts join in order. A torn
+ * tail (a capture cut mid-script) skips; the next push still parses.
+ */
+export function extractFlightTextFromHtml(html: string): string {
+  const parts: string[] = []
+  const pushes = /self\.__next_f\.push\(\[1,("(?:[^"\\]|\\.)*")\]\)/g
+  for (let match; (match = pushes.exec(html)); ) {
+    try {
+      parts.push(JSON.parse(match[1]) as string)
+    } catch {
+      // not a JSON string after all; leave it out
+    }
+  }
+  return parts.join('')
+}
+
+/** The newest `statuscode: 200` capture timestamp in a CDX JSON reply, if any. */
+export function newestWaybackCapture(cdxJson: string): string | undefined {
+  let rows: unknown
+  try {
+    rows = JSON.parse(cdxJson)
+  } catch {
+    return undefined
+  }
+  if (!Array.isArray(rows) || rows.length < 2 || !Array.isArray(rows[0])) return undefined
+  const head = rows[0] as unknown[]
+  const at = head.indexOf('timestamp')
+  const code = head.indexOf('statuscode')
+  let best: string | undefined
+  for (const row of rows.slice(1)) {
+    if (!Array.isArray(row)) continue
+    const stamp = at >= 0 ? String(row[at]) : ''
+    if (!/^\d{14}$/.test(stamp)) continue
+    if (code >= 0 && String(row[code]) !== '200') continue
+    if (best === undefined || stamp > best) best = stamp
+  }
+  return best
+}
+
+/**
+ * One category's board out of the Wayback Machine: CDX names the newest 200
+ * capture, then `id_` replay returns the capture's original bytes — gzip-coded
+ * with no `Content-Encoding` header to match, so the magic bytes decide
+ * whether to inflate. The archived document embeds the flight payload in
+ * `__next_f` pushes; `extractFlightTextFromHtml` rejoins them for
+ * `parseArenaBoard`.
+ */
+async function fetchWaybackBoard(path: string, fetchImpl: ArenaFetch): Promise<ArenaBoard> {
+  const label = path || '/overall'
+  const site = `${ARENA_LEADERBOARD_URL}${path}`
+  const cdx = await fetchImpl(`${ARENA_ARCHIVE_CDX}?url=${site.replace('https://', '')}&output=json&filter=statuscode:200&limit=-8`, {
+    signal: AbortSignal.timeout(20_000),
+  })
+  if (!cdx.ok) throw new Error(`arena archive ${label}: CDX HTTP ${cdx.status}`)
+  const stamp = newestWaybackCapture(await cdx.text())
+  if (!stamp) throw new Error(`arena archive ${label}: no capture`)
+  const capture = await fetchImpl(`${ARENA_ARCHIVE_WEB}/${stamp}id_/${site}`, {
+    signal: AbortSignal.timeout(30_000),
+  })
+  if (!capture.ok) throw new Error(`arena archive ${label}: HTTP ${capture.status}`)
+  let bytes = typeof capture.arrayBuffer === 'function'
+    ? new Uint8Array(await capture.arrayBuffer())
+    : new TextEncoder().encode(await capture.text())
+  if (bytes[0] === 0x1f && bytes[1] === 0x8b) bytes = new Uint8Array(gunzipSync(Buffer.from(bytes)))
+  const flightText = extractFlightTextFromHtml(new TextDecoder().decode(bytes))
+  if (!flightText) throw new Error(`arena archive ${label}: flight payload missing`)
+  return parseArenaBoard(flightText)
+}
+
+async function fetchDirectBoard(path: string, fetchImpl: ArenaFetch): Promise<ArenaBoard> {
   const response = await fetchImpl(`${ARENA_LEADERBOARD_URL}${path}?_rsc=1`, {
     headers: ARENA_HEADERS,
     signal: AbortSignal.timeout(20_000),
   })
-  if (!response.ok) throw new Error(`arena ${path || '/overall'}: HTTP ${response.status}`)
+  if (!response.ok) {
+    const label = path || '/overall'
+    if (isArenaChallenge(response)) throw new ArenaChallengeError(`arena ${label}: HTTP ${response.status} (Cloudflare challenge)`)
+    throw new Error(`arena ${label}: HTTP ${response.status}`)
+  }
   return parseArenaBoard(await response.text())
+}
+
+/** One category's board, direct when the site allows it, archived when gated. */
+async function fetchArenaBoard(path: string, fetchImpl: ArenaFetch, previousUpdated: string): Promise<{ board: ArenaBoard, archive: boolean }> {
+  try {
+    return { board: await fetchDirectBoard(path, fetchImpl), archive: false }
+  } catch (error) {
+    if (!(error instanceof ArenaChallengeError)) throw error
+    // Only a challenge falls through: the archive is the gated client's road
+    // to a fresh board, but it must beat the snapshot the cache already
+    // holds — an older capture (the site freezes snapshots for days at a
+    // time) keeps the cache and reports the challenge instead of silently
+    // regressing the tab.
+    try {
+      const board = await fetchWaybackBoard(path, fetchImpl)
+      if (previousUpdated && board.lastUpdated <= previousUpdated) throw error
+      return { board, archive: true }
+    } catch {
+      throw error
+    }
+  }
 }
 
 function normalizeAnswer(raw: any): ArenaAnswer | undefined {
@@ -219,7 +386,13 @@ function normalizeAnswer(raw: any): ArenaAnswer | undefined {
     }
   }
   if (Object.keys(boards).length === 0) return undefined
-  return { at: raw.at, boards, ...(typeof raw.error === 'string' && raw.error ? { error: raw.error } : {}) }
+  return {
+    at: raw.at,
+    boards,
+    ...(typeof raw.error === 'string' && raw.error ? { error: raw.error } : {}),
+    ...(raw.blocked === true ? { blocked: true } : {}),
+    ...(raw.archived === true ? { archived: true } : {}),
+  }
 }
 
 async function readArenaCache(path: string): Promise<ArenaAnswer | undefined> {
@@ -232,6 +405,15 @@ async function readArenaCache(path: string): Promise<ArenaAnswer | undefined> {
 
 export interface ArenaSource {
   read(fresh?: boolean): Promise<ArenaAnswer>
+  browser(action: 'start' | 'status' | 'cancel'): ArenaBrowserState
+  dispose(): void
+}
+
+export interface ArenaBrowserState {
+  busy: boolean
+  answer?: ArenaAnswer
+  error?: string
+  cancelled?: boolean
 }
 
 /**
@@ -243,32 +425,51 @@ export function createArenaSource({
   fetchImpl = outboundFetch as ArenaFetch,
   ttlMs = ARENA_TTL_MS,
   now = Date.now,
+  browserFetch,
 }: {
   cachePath: string
   fetchImpl?: ArenaFetch
   ttlMs?: number
   now?: () => number
+  browserFetch?: (signal: AbortSignal) => Promise<Record<string, ArenaBoard>>
 }): ArenaSource {
   let inflight: Promise<ArenaAnswer> | undefined
+  let browserTask: Promise<ArenaAnswer> | undefined
+  let browserAbort: AbortController | undefined
+  let browserState: ArenaBrowserState = { busy: false }
+  let disposed = false
 
   const refresh = async (): Promise<ArenaAnswer> => {
     const previous = await readArenaCache(cachePath)
     const settled = await Promise.allSettled(
-      ARENA_CATEGORIES.map(async (category) => [category.id, await fetchArenaBoard(category.path, fetchImpl)] as const),
+      ARENA_CATEGORIES.map(async (category) => [category.id, await fetchArenaBoard(category.path, fetchImpl, previous?.boards[category.id]?.lastUpdated ?? '')] as const),
     )
     const boards: Record<string, ArenaBoard> = { ...previous?.boards }
     const failed: string[] = []
+    let challenged = 0
+    let rescued = 0
     for (const result of settled) {
-      if (result.status === 'fulfilled') boards[result.value[0]] = result.value[1]
-      else failed.push(describeError(result.reason))
+      if (result.status === 'fulfilled') {
+        boards[result.value[0]] = result.value[1].board
+        if (result.value[1].archive) rescued += 1
+      } else {
+        failed.push(describeError(result.reason))
+        if (result.reason instanceof ArenaChallengeError) challenged += 1
+      }
     }
     if (Object.keys(boards).length === 0) {
       throw new Error(failed[0] ?? 'arena refresh failed')
     }
+    // Every category gated with nothing rescued: name the upstream block
+    // instead of blaming one category's HTTP status. A rescue flips the answer
+    // to `archived` — the boards are fresh, just archive-fresh.
+    const blocked = challenged > 0 && challenged === settled.length && rescued === 0
     const answer: ArenaAnswer = {
       at: now(),
       boards,
       ...(failed.length > 0 ? { error: failed[0] } : {}),
+      ...(blocked ? { blocked: true } : {}),
+      ...(rescued > 0 && !blocked ? { archived: true } : {}),
     }
     await writePrivateText(cachePath, JSON.stringify(answer) + '\n').catch(() => {})
     return answer
@@ -276,12 +477,53 @@ export function createArenaSource({
 
   return {
     async read(fresh = false) {
+      if (browserTask) return browserTask
       if (!fresh && !inflight) {
         const cached = await readArenaCache(cachePath)
+        if (browserTask) return browserTask
         if (cached && now() - cached.at < ttlMs) return cached
       }
       inflight ??= refresh().finally(() => { inflight = undefined })
       return inflight
+    },
+    browser(action) {
+      if (action === 'cancel') browserAbort?.abort()
+      if (action !== 'start' || browserTask) return browserState
+      if (disposed || !browserFetch) return { busy: false, error: 'Browser verification is unavailable.' }
+      const abort = new AbortController()
+      browserAbort = abort
+      browserState = { busy: true }
+      const task = (async (): Promise<ArenaAnswer> => {
+        const boards = await browserFetch(abort.signal)
+        // Let a refresh already running finish before committing the browser result.
+        await inflight?.catch(() => {})
+        abort.signal.throwIfAborted()
+        const previous = await readArenaCache(cachePath)
+        for (const { id } of ARENA_CATEGORIES) {
+          const board = boards[id]
+          const date = Date.parse(board?.lastUpdated)
+          if (!board || !Array.isArray(board.rows) || !board.rows.length || !Number.isFinite(date)) {
+            throw new Error('Chrome returned an incomplete ' + id + ' board. The cached snapshot was kept.')
+          }
+          if (date < Date.parse(previous?.boards[id]?.lastUpdated ?? '')) {
+            throw new Error('Chrome returned an older ' + id + ' snapshot. The cached snapshot was kept.')
+          }
+        }
+        abort.signal.throwIfAborted()
+        const answer: ArenaAnswer = { at: now(), boards }
+        await writePrivateText(cachePath, JSON.stringify(answer) + '\n')
+        return answer
+      })()
+      browserTask = task
+      void task.then(
+        answer => { browserState = { busy: false, answer } },
+        error => { browserState = { busy: false, ...(abort.signal.aborted ? { cancelled: true } : { error: describeError(error) }) } },
+      ).finally(() => { browserTask = undefined; browserAbort = undefined })
+      return browserState
+    },
+    dispose() {
+      disposed = true
+      browserAbort?.abort()
     },
   }
 }

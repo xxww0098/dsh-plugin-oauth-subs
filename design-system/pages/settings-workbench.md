@@ -183,7 +183,17 @@ Full-width, like 设置. arena.ai's public agent leaderboard, laid out as the
 workbench's own table and fed by the `arena` RPC. Data-source conclusions:
 [`docs/error.md`](../../docs/error.md) 2026-10-09.
 
-- Head, left: 更新于 (upstream snapshot date), sessions, model count, 刷新.
+The 榜单 view uses all available panel width, beyond the shell's usual
+1000px cap. Model names stay fully visible and wrap as needed; the model
+track has a minimum width at every breakpoint. A very narrow table can
+scroll horizontally inside its own border without scrolling the page.
+
+- Head, left: 更新于 (upstream snapshot date), sessions, model count, 刷新,
+  浏览器验证. Verification opens installed Chrome on the plugin machine using
+  the plugin's own Node process. While it runs, refresh/verification disable,
+  取消验证 remains available, and an inline live status asks the user to finish
+  in Chrome. The cached board stays visible; success updates both caches and
+  shows a completion line. Failure keeps the board with a retryable error.
   Head, right: 综合 / 代码 / 对话 / 办公 (arena's four server routes; the
   pick persists).
 - Below: a 排名 / 性价比 view seg (persisted; the site's Ranking/Pareto),
@@ -191,16 +201,28 @@ workbench's own table and fed by the `arena` RPC. Data-source conclusions:
   then 全部 / 闭源 / 开源. Both panes honour category, license and search.
   The seg buttons carry the site's View-as glyphs: Ranking = lucide `list`,
   Pareto = axes + curve (13px, stroke 1.5).
-- **排名 pane** — columns: Rank (number over its min⋯max interval); Model
+- **排名 pane** — the live board's twelve columns in its own order
+  (re-identified 2026-10-14, docs/error.md): Rank (number over its min⋯max
+  interval); Model
   (ink org mark —
   LobeHub mono, initial tile for unmapped orgs — mono model name,
   `org · license` sub line); Net Improvement (▲14.33% over ±2.18%, ok/bad
-  by sign, plus the diverging whisker whose scale is the column's
-  max(|value|+ci)); Confirmed Success (same stack, centred, no bar);
-  Cost/Task (P50) (`$1.75`, right-aligned tabular figure, `—` when
-  unpriced — same costUsd the 性价比 pane plots).
+  by sign, plus the board's only diverging whisker, scaled to the column's
+  max(|value|+ci) — the site's `avgScoreDomain`); the five signals in the
+  site's order — Confirmed Success, Praise vs Complaint, Steerability, Bash
+  Reliability (`bash_reliability_no_prereq`), Tool Hallucination (a positive
+  rate is a green Down) — each the centred value over ±CI, no bar; Sessions
+  (grouped count); Cost/Task (P50) and Output Tokens/Task (P50) (`$5.61` /
+  `111.9K`, `N/A` whenever the board's own sample gate hides the figure:
+  cost needs ≥50 priced samples and half the samples priced, tokens half the
+  samples tokenised); Price $/M (`$4 / $20` via the site's
+  `formatPricePerMillionUsd` — a whole number stays bare, everything else
+  two decimals).
   Column heads sort. Rank is the default. English column labels and model
-  names are the board's content, not chrome.
+  names are the board's content, not chrome (zh shows our own labels). A
+  narrow pane drops columns in retreat order — the four secondary signals
+  with Price, then Sessions/Tokens, then Cost — keeping rank · model · Net
+  Improvement · Confirmed Success.
 - **性价比 pane** (the board's Pareto Frontier) — charted from the same
   cached rows (no extra fetch), drawn to the measured chart spec
   (docs/error.md 2026-10-09): 788×380 svg, 688×280 plot, dashed grid on
@@ -237,12 +259,18 @@ workbench's own table and fed by the `arena` RPC. Data-source conclusions:
   The date is the snapshot's 更新于. During the shot the section leaves
   the fill layout and the active pane unscrolls to full height.
 - Only the active pane scrolls (fill panel, sticky head). The footline is
-  `数据来源 arena.ai ↗ · 快照每日 12:00 UTC 更新`. The link opens the
+  `数据来源 arena.ai ↗ · 快照日期以上游发布为准`. The link opens the
   official board for the category being viewed (`osubs-link`, `flex: none`
   so it never joins the fill layout).
 - The host caches boards in `arena-cache.json` on a 1 h TTL. The page
   keeps the last answer in localStorage, same contract as 用量. A
-  partially failed refresh keeps the stale boards and shows a hint line.
+  partially failed refresh keeps the stale boards and shows a hint line. arena.ai now answers `/` and any `leaderboard` path with a Cloudflare
+  managed challenge to every non-browser client, so a refresh can come back
+  wholly gated (docs/error.md 2026-10-14): the answer carries `blocked` and
+  the hint names the challenge and points to 浏览器验证. Hide this old hint
+  during verification. The verification status and controls stay out of 分享.
+  The host polls a bounded browser job through the existing `arena` RPC;
+  it does not depend on a DSH browser API or embed the challenge in an iframe.
 
 ## 设置
 

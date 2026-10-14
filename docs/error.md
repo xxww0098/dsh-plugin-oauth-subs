@@ -2,6 +2,30 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。每条只写 **现象** / **根因** / **修复** 三行，各 1–2 句；只留 grep 代码得不到的症状、根因与落点，不写过程与清单。
 
+## 2026-10-14：榜单模型列被压到 47px，模型名称只剩前几个字
+
+**现象**：宽窗口的榜单右侧留白，模型显示为「Claude…」「GPT 6…」，无法区分版本与档位；表头和数据行也有列错位。
+**根因**：榜单沿用了 1000px 的工作台宽度上限，模型列允许缩到零，同时强制单行省略；数字列各行独立按内容自动定宽，长表头进一步挤压模型列。
+**修复**：榜单使用全部可用宽度，模型列在各断点保留最小宽度并允许名称换行，数字列用相同宽度对齐；极窄时仅表格内部横向滚动。实际缓存的 53 个模型在 1600/1000/560/400px 窗口检查完整名称、列对齐及页面溢出，其他工作台页面保持原有宽度。
+
+## 2026-10-14：榜单页官方改版——bash 信号改名、表扩到 12 列、成本/Token 加样本门（1:1 复刻）
+
+**现象**：榜单 tab 只画 5 列（排名/模型/净提升/确认成功率/每任务成本 P50），与站上对不上；Bash Reliability 即使补出来也是空值，成本或 Token 在站上显示 `N/A` 的行我们却给出数字。
+**根因**：官方快照起 payload 换了名字与列——bash 信号 `bash_recovery_steps` → `bash_reliability_no_prereq`（weight 0.5）；表从 5 列变 12 列（`columnOrder`：rank · modelDisplayName · avgScore · 五个 `signal:*` · sessions · costP25/P50/P95 · tokensP25/P50/P95 · price，`columnVisibility` 默认关 `overallRank` 与全部 P25/P95）；行新增 `observations`、`overallRank`，costStats 新增 `meanUsd`/`meanMtok`/`pricedSampleCount`/`totalSampleCount`。两条隐藏规则在站点自己的 chunk（`0pxzy916nkaqk.js`）：`costPerTaskForContender` 要 `pricedSampleCount ≥ 50` **且** `pricedSampleCount/totalSampleCount ≥ 0.5`，`tokensPerTaskForContender` 只要 `tokenedSampleCount/totalSampleCount ≥ 0.5`；价格走 `formatPricePerMillionUsd`（整数 `$15`、否则两位小数 `$1.40`、缺 `N/A`）；信号的箭头对 `tool_hallucination` 反向（正值 = 绿色 Down），颜色仍按原始符号（52 行 × 5 信号实测）。
+**修复**：`parseArenaBoard` 读新键并按两条门把 `costUsd*` / `tokensM*` 置空（Pareto 同源，站点的 `pricedEntries` 就是同一 getter），`ArenaScore` 让 `invert` 真的翻箭头，新增 `arenaPriceUsd`（价格专用格式）与 `N/A` 文案；表按站点列序扩到 12 列并给窄面板定退列次序（先撤四个次级信号 + 价格，再撤会话/Token，再撤成本）。活测：浏览器里抓下官方 flight 载荷，52 行 × 12 列 **520 格逐格 diff = 0**（含 4 行成本 `N/A`、5 行价格 `N/A`、1 行 Token `N/A`）。
+
+## 2026-10-14：arena.ai 给 / 与 leaderboard 路径上了 Cloudflare 人机校验，榜单 tab 刷新 403
+
+**现象**：榜单刷新四类全失败，Node 请求返回 `403 cf-mitigated: challenge`，面板回落缓存；普通插件页面跨域 `fetch` 实测为 `TypeError: Failed to fetch`，挑战响应同时带 `X-Frame-Options: SAMEORIGIN`。
+**根因**：挑战需要浏览器页面上下文执行 JS 并持有 clearance，修改 UA 或回放 `__cf_bm` 不能让 Node 通过；Wayback 爬虫也被挡，匿名 Save Page Now 保存 example.com 成功、保存 Arena 失败，因此归档无法持续提供新快照。插件自己的 Node 可以启动独立 Chrome，浏览器能力无需由 DSH 提供，验证页仍不能直接嵌入普通插件 iframe。
+**修复**：榜单 UI 新增「浏览器验证」与取消按钮，`arena` RPC 轮询插件自己的 Node/Chrome 任务（独立临时 profile、私有 pipe、三分钟上限）；四类完整快照通过日期检查后原子更新 0600 文件缓存及 UI/localStorage，失败/取消/更旧或不完整快照保留旧数据，普通刷新不自动开 Chrome。macOS 正式编译 UI/RPC/采集器活测从 1 行旧缓存自动更新至四类快照（`2026-10-13T22:00:00Z`，53/53/52/53 行），落盘与返回结果一致且重建读取器仍可读，未使用 DSH 浏览器能力、未操作验证码；Chrome 关闭/失败/超时/取消、并发刷新和缓存写入失败均有回归测试，细节与限制见 [数据源核查](arena-data-sources.md)。
+
+## 2026-10-14：目录刷新日——codex / command-code 跟版收五行，Devin 免费档把整张目录标成 disabled
+
+**现象**：`npm run models` 干跑：codex 升钉 0.162.1 后 `+0 ~0`；command-code 升钉 1.82.1 后注册表 95→97 行（`google/gemini-4-argon`、`meta/muse-wonder-1.0`）；cline 收 `google/gemini-4-argon`，两行 `maxTokens` 随云目录变（`cline-pass/deepseek-v4.1-flash` 943718→393216、`glm-5.3-flash` 943717→943718）；Go 收 `cat-jam-free`；antigravity 注册表多出 `gemini-4-argon-high`，但同日本机活 `fetchAvailableModels` 只回 `gemini-4-argon-disabled`（`disabled: true`）；devin 79 行全落 `?`——源 856 个 config 里 853 个 `disabled: true`，投影只剩 `swe-1.6-slow` 一行；kimi 的 desktop / web 两个 profile 仍无账号（`SKIPPED`）。
+**根因**：除 devin 外都是上游目录本身的变化（两处跟钉住版本、三处厂商上新）。Devin 的 `?` 是本机账号为 **Free 档**的账号级过滤：`GetCliModelConfigs` 里每一族整行仍在、只是 `disabled: true`，按「先排除账号再判下架」不是下架；antigravity 的 Argon 是上游暂存行（活列表的线 id 带 `-disabled`，对该账号未放开），注册表先列出来不等于订阅能点。
+**修复**：codex 钉 `0.162.1`、command-code 钉 `1.82.1`（注册表 97 − 8 hidden = 89 可见，与公开列表逐行同 id；wire 与 1.79.1 逐字一致；价目表 97→99 条，另 `anthropic:claude-sonnet-5-5` cacheRead $0.2→$0.1）。目录收 5 行：command-code `google/gemini-4-argon` / `meta/muse-wonder-1.0`（effort 与模态按钉住注册表补）、cline `google/gemini-4-argon`、Go `cat-jam-free`（Go 订阅已到期，活测不了方言 → 沿用脚本默认 plain）、devin `swe-1.6-slow`（80 行）；antigravity `gemini-4-argon-high` 写成 `skip` 规则不收，Devin 79 行不 `--prune`，Zen 补两条 skip 规则（`gemini-4-argon` 走 `@ai-sdk/google`、`cat-jam-free` 属免费档）。用户可见：模型页多 5 条新行并带价徽标（`swe-1.6-slow` 无价目源，不出徽标），cline 两行的输出上限与三处价目随源更新（cursor `gemini-3.8-flash` 输出 $3.5→$3.75、cline `cline-pass/deepseek-v4.1-flash` 与 `moonshotai/kimi-k3` 下调）。
+
 ## 2026-10-12：GPT-6.1 Sol 的目录窗口停在收行时的 258K，源已把它自己的窗抬到 500K
 
 **现象**：模型页 `oauth-codex / GPT-6.1 Sol`（以及 `oauth-chatgpt` 同 id 行）的窗口徽标一直是 258K，宿主按 10% 余量到约 232K 就压缩，长会话提前被压。

@@ -19,6 +19,7 @@
 | [`docs/models.md`](docs/models.md) | 模型目录的行格式、来源、`npm run models` 更新流程与合并规则、自定义窗口、费率表 | 改模型、更新目录 |
 | `src/oauth/<id>/README.md`、`src/apikey/<id>/README.md` | 该家的设计源：登录、hop、模型出处、额度、缓存、不要做的事、归因（抄什么 / 不要发明什么） | 改该家任何东西 |
 | [`docs/error.md`](docs/error.md) | 故障与活测结论 | 修 bug、复现问题 |
+| [`docs/arena-data-sources.md`](docs/arena-data-sources.md) | Arena 榜单数据源核查：官方 HF 数据集、Wayback 归档与浏览器验证的实测边界 | 改榜单取数、判断某字段还有没有别的来源 |
 | [`design-system/MASTER.md`](design-system/MASTER.md)、[`design-system/pages/settings-workbench.md`](design-system/pages/settings-workbench.md) | 设置工作台的界面规则 | 改 UI |
 | [`PRODUCT.md`](PRODUCT.md) | 产品定位与用户 | 做产品取舍 |
 

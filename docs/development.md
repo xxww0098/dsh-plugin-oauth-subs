@@ -109,6 +109,14 @@ node -p "require('./node_modules/dsh-plugin-oauth-subs/package.json').version"  
 
 单测绿不等于装对了：从**实际在跑的那份**导入该家族模块，用真实凭据跑一遍。
 
+### Arena 浏览器验证
+
+榜单的「浏览器验证」由插件 Node 进程启动本机已安装的 Google Chrome，不需要宿主浏览器 API。支持 macOS 的系统/用户 Applications、Windows 的 LocalAppData/Program Files、Linux 的标准 Chrome 路径；需要图形会话，远程插件会在插件运行机器上开窗口。使用独立临时 profile 与私有 CDP pipe，不读取现有 Chrome profile、不回放 Cookie；需要人工验证时在新窗口完成，三分钟未完成则超时，取消/卸载插件也会关闭该浏览器并清理 profile。
+
+四类完整快照通过解析及日期检查后才原子写入 `arena-cache.json`（0600）；失败、取消、缺少分类或返回更旧快照时保留缓存。UI 轮询同一个任务并把成功答案写回 localStorage；重复点击合并为一次任务，普通刷新不会自动启动 Chrome。
+
+独立活测 `node --experimental-strip-types scripts/arena-browser-probe.ts`（先构建）加载实际 `lib/ui/client.js`、RPC dispatcher 与 Chrome/缓存模块，打印 loopback 地址；打开后点 榜单 → 浏览器验证。初次运行仅为测试页下载 React 18 UMD 到 `.local/arena-browser-live/`，无需安装 DSH 或改插件依赖；测试缓存也在该目录，`/proof` 检查落盘与返回结果一致且重新创建读取器可读。单测在 `test/arena-browser.test.ts` 与 `test/arena.test.ts`。
+
 已有现成脚本的家族直接跑（只读：不刷新令牌、不写 store，请求极小但真实，会花一点额度）：
 
 ```sh

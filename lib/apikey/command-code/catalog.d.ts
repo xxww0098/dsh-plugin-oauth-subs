@@ -2,12 +2,13 @@
  * Command Code model catalog: the pinned registry, refreshed from the
  * vendor's own list.
  *
- * The registry comes from the CLI bundle (dist/cli.mjs, command-code 1.79.1):
- * its 95 rows less the 8 hidden ones, each carrying the row's own effort
+ * The registry comes from the CLI bundle (dist/cli.mjs, command-code 1.82.1):
+ * its 97 rows less the 8 hidden ones, each carrying the row's own effort
  * list. /alpha/models does not exist — but the Provider API does, and its
  * GET /provider/v1/models answers without a key (live 2026-10-10: 200,
  * {object:'list', data:[…]}, 87 rows whose ids, names and context_length
- * matched this catalog row for row). Community reference
+ * matched the then-pinned 1.79.1 registry row for row; 2026-10-14: 89 rows,
+ * matching the 1.82.1 registry). Community reference
  * @magpie-community/opencode-commandcode-auth reads its picker from that
  * list; this hop takes it as the vendor's answer on membership and window
  * and keeps the pinned registry as the offline floor.

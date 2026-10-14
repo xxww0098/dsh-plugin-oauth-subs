@@ -375,7 +375,7 @@ test('catalogProviders lists only the supplemental Go route; the picker locks it
   assert.equal(go.loggedIn, false)
   assert.equal(go.displayName, 'Subs · OpenCode Go · Chat')
   assert.equal(go.models.length, OPENCODE_GO_EXTRA_MODELS.length)
-  assert.equal(go.models.length, 22)
+  assert.equal(go.models.length, 23)
   assert.equal(OPENCODE_GO_EXTRA_MODELS.find((model) => model.id === 'step-5-preview-free').compat.thinkingFormat, 'deepseek')
   assert.deepEqual(catalog['opencode-go-flash'].models.find((model) => model.id === 'space-bunny').reasoningEfforts.max, 'max')
   assert.equal(catalog['opencode-go-responses'].models.length, 6)

@@ -27,7 +27,7 @@
 | `client_id` | `app_EMoamEEZ73f0CkXaXp7hrann` |
 | authorize | `https://auth.openai.com/oauth/authorize` |
 | token | `https://auth.openai.com/oauth/token` |
-| originator / UA | `codex_cli_rs` / `codex_cli_rs/0.161.0` |
+| originator / UA | `codex_cli_rs` / `codex_cli_rs/0.162.1` |
 | loopback | `localhost:1455`，失败再 `1457`；path `/auth/callback` |
 | 换票 | `application/x-www-form-urlencoded` + PKCE |
 | 刷新 | JSON `{ client_id, grant_type, refresh_token }` |
@@ -83,7 +83,9 @@ Fast：body `service_tier` 从 `fast` 改成 `priority`，并带 `x-codex-routin
 - `fastTier` = `service_tiers` 里有 `priority`。
 - `reasoningEfforts` 取 `supported_reasoning_levels`，但 `minimal` 与 `ultra` 会 400（`ultra` 是 CLI 的多 agent 模式，不是 API effort）；`off` 的 wire 值是 `null`。
 
-最近核对：2026-10-12，只改 `gpt-6.1-sol` 的窗口基线（258K → 500K）。出处是源的 `context_window`：本机 Codex CLI 缓存 `~/.codex/models_cache.json` 镜像 `GET chatgpt.com/backend-api/codex/models` 的同一份清单，2026-10-12 拉取 @ `client_version` 0.162.0 给 `gpt-6.1-sol` `context_window` 500000 / `max_context_window` 872000（同日 `gpt-6-astra` / `gpt-6-luna` 仍是 272000 / 872000）。插件钉的 `CODEX_CLIENT_VERSION` 仍 0.161.0——窗口不随版本门控，本次未升钉；其余行、其余字段不动。
+最近核对：2026-10-14，跟 npm latest 升钉 `CODEX_CLIENT_VERSION` 0.161.0 → 0.162.1（changelog 无模型条目），活目录 @ 0.162.1 探查 7 行、`+0 ~0`、无字段变化。`? gpt-5.5` 源里仍没有——2026-10-08 定向活测 `POST .../codex/responses` 仍 200 `response.completed`，列表过滤不是下架，不删。
+
+上次核对：2026-10-12，只改 `gpt-6.1-sol` 的窗口基线（258K → 500K）。出处是源的 `context_window`：本机 Codex CLI 缓存 `~/.codex/models_cache.json` 镜像 `GET chatgpt.com/backend-api/codex/models` 的同一份清单，2026-10-12 拉取 @ `client_version` 0.162.0 给 `gpt-6.1-sol` `context_window` 500000 / `max_context_window` 872000（同日 `gpt-6-astra` / `gpt-6-luna` 仍是 272000 / 872000）。插件钉的 `CODEX_CLIENT_VERSION` 仍 0.161.0——窗口不随版本门控，本次未升钉；其余行、其余字段不动。
 
 上次核对：2026-10-08，活目录 @ `client_version` 0.161.0（npm latest 0.161.0 当日发布，changelog 无新模型——只是把 GPT-6.1 Sol 设为 CLI 默认档；探查 7 行、无新行、无字段变化，纯跟版。`? gpt-5.5` 源里没有——同日定向活测 `POST .../codex/responses` 仍 200 `response.completed`，chatgpt 家族同样：列表不回 ≠ 下架，不删）。
 
@@ -135,7 +137,7 @@ Fast：body `service_tier` 从 `fast` 改成 `priority`，并带 `x-codex-routin
 
 ## 归因
 
-一线：[openai/codex](https://github.com/openai/codex) tag `rust-v0.161.0`（升钉核对时 npm latest 0.161.0；缓存头按 0.153.4 的源码形状核对）。
+一线：[openai/codex](https://github.com/openai/codex) tag `rust-v0.162.1`（升钉核对时 npm latest 0.162.1；缓存头按 0.153.4 的源码形状核对）。
 
 | 抄 | 出处 | 本 hop |
 |---|---|---|

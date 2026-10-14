@@ -476,6 +476,7 @@
    fill variant (only the table scrolls, the head sticks) — same mechanics
    as the models table, including the double-layer sticky background so
    rows never ghost under the head. */
+.osubs--arena { max-width: none; }
 .osubs-pane-panel--fill > .osubs-arena { flex: 1 1 auto; min-height: 0; }
 .osubs-arena { display: flex; flex-direction: column; gap: var(--osubs-s3); }
 /* Shooting the leaderboard: with the controls [data-noshot]-hidden, the
@@ -487,20 +488,27 @@
 .osubs-atools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex: none; }
 .osubs-asearch { flex: 1 1 150px; max-width: 260px; }
 .osubs-atable {
-  flex: 1 1 auto; min-height: 0; overflow-y: auto;
+  flex: 1 1 auto; min-height: 0; overflow: auto;
   border: 1px solid var(--osubs-line); border-radius: 10px;
 }
 .osubs-atrow {
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr) minmax(190px, 34%) minmax(104px, auto) minmax(72px, auto);
-  align-items: center; gap: 12px;
+  /* The live board's twelve columns (docs/error.md 2026-10-14), compacted for
+     the pane: rank · model · Net Improvement (the diverging bar) · the five
+     signal columns · Sessions · Cost/Task (P50) · Output Tokens/Task (P50) ·
+     Price $/M. A track is dropped with every cell a media query hides — the
+     two counts must stay in step or the row wraps. */
+  grid-template-columns:
+    44px minmax(200px, 1.15fr) minmax(136px, 1fr)
+    repeat(5, 64px) 64px 72px 82px 78px;
+  align-items: center; gap: 10px;
   min-height: 48px; padding: 6px 14px;
 }
 .osubs-atrow + .osubs-atrow { border-top: 1px solid var(--osubs-hair); }
 .osubs-atrow:hover { background: var(--osubs-fill); }
 .osubs-atrow--head {
   position: sticky; top: 0; z-index: 1;
-  min-height: 0; height: 34px;
+  min-height: 34px;
   font-size: 11px; color: var(--osubs-faint);
   background: linear-gradient(var(--osubs-fill), var(--osubs-fill)), var(--dsw-alias-bg-layer-2, Canvas);
 }
@@ -508,7 +516,8 @@
 .osubs-atcell { min-width: 0; }
 .osubs-atcell--rank { text-align: center; }
 .osubs-atcell--score { display: flex; justify-content: flex-end; }
-.osubs-atcell--success { justify-content: center; }
+.osubs-atcell--sig { display: flex; justify-content: center; }
+.osubs-atcell--num { display: flex; justify-content: flex-end; }
 .osubs-atcell--cost { display: flex; justify-content: flex-end; }
 .osubs-acost { font-size: 12px; color: var(--osubs-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .osubs-ahead-btn {
@@ -542,7 +551,7 @@
 .osubs-amodel-n {
   font-family: var(--osubs-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 12.5px;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  white-space: normal; overflow-wrap: anywhere;
 }
 a.osubs-amodel-n { color: inherit; text-decoration: none; }
 a.osubs-amodel-n:hover { color: var(--osubs-accent); text-decoration: underline; }
@@ -555,7 +564,7 @@ a.osubs-amodel-n:hover { color: var(--osubs-accent); text-decoration: underline;
   display: inline-flex; flex-direction: column; align-items: flex-end; flex: none; width: 68px;
   line-height: 1.25; font-variant-numeric: tabular-nums;
 }
-.osubs-atcell--success .osubs-astack { align-items: center; }
+.osubs-atcell--sig .osubs-astack { align-items: center; width: 56px; }
 .osubs-avalue { display: inline-flex; align-items: center; gap: 2px; font-size: 12.5px; }
 .osubs-aarrow { width: 10px; height: 10px; flex: none; }
 .osubs-aok { color: var(--osubs-ok); }
@@ -924,11 +933,26 @@ a.osubs-apname { color: inherit; }
     flex-direction: column; align-items: flex-start; justify-content: center;
   }
 }
-/* Narrow pane: arena's own table drops columns too; keep rank + model + the
-   headline score, let the bar flex smaller. */
+/* Narrow pane: arena's own table drops columns too. Order of retreat: the
+   four secondary signal columns + price, then Sessions/Tokens, then the P50
+   cost; rank + model + Net Improvement + Confirmed Success always stay. */
+@media (max-width: 1180px) {
+  .osubs-atrow {
+    grid-template-columns: 44px minmax(180px, 1fr) minmax(150px, 1fr) 64px 64px 72px 82px;
+    gap: 10px;
+  }
+  .osubs-atcell--sigx, .osubs-atcell--price { display: none; }
+}
+@media (max-width: 900px) {
+  .osubs-atrow {
+    grid-template-columns: 44px minmax(160px, 1fr) minmax(170px, 34%) 96px 72px;
+    gap: 12px;
+  }
+  .osubs-atcell--num { display: none; }
+}
 @media (max-width: 560px) {
-  .osubs-atrow { grid-template-columns: 40px minmax(0, 1fr) minmax(130px, auto) minmax(64px, auto); gap: 8px; padding: 6px 10px; }
-  .osubs-atcell--success { display: none; }
+  .osubs-atrow { grid-template-columns: 40px minmax(120px, 1fr) 130px 64px; gap: 8px; padding: 6px 10px; }
+  .osubs-atcell--cost { display: none; }
 }
 
 .osubs-switch { position: relative; display: inline-flex; flex: none; cursor: pointer; }

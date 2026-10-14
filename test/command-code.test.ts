@@ -180,7 +180,7 @@ test('catalog is Completions at /command-code; efforts stay in the closed set', 
   assert.equal(route.baseURL, 'http://127.0.0.1:8318/command-code')
   assert.equal(route.baseURL.endsWith('/command-code'), true)
   assert.equal(route.models.length, COMMAND_CODE_MODELS.length)
-  assert.equal(COMMAND_CODE_MODELS.length, 87)
+  assert.equal(COMMAND_CODE_MODELS.length, 89)
   for (const model of route.models) {
     for (const key of Object.keys(model.reasoningEfforts ?? {})) {
       assert.match(key, /^(off|minimal|low|medium|high|xhigh|max)$/)
@@ -190,8 +190,8 @@ test('catalog is Completions at /command-code; efforts stay in the closed set', 
     assert.equal(model.contextWindow > 0, true)
   }
   const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://x' })
-  assert.equal(catalog['oauth-command-code'].models.length, 87)
-  assert.equal(commandCodeCatalogModels().length, 87)
+  assert.equal(catalog['oauth-command-code'].models.length, 89)
+  assert.equal(commandCodeCatalogModels().length, 89)
   assert.equal(catalog['oauth-command-code'].models.some((row) => row.id === 'claude-sonnet-5'), true)
 })
 
@@ -361,7 +361,7 @@ test('JSONL events collect into a chat.completion with usage + tool calls', asyn
     fetchFn: async (url, init) => {
       assert.equal(url, COMMAND_CODE_GENERATE_URL)
       assert.equal(init.headers.authorization, `Bearer ${KEY}`)
-      assert.equal(init.headers['x-command-code-version'], '1.79.1')
+      assert.equal(init.headers['x-command-code-version'], '1.82.1')
       assert.equal(init.headers['x-cli-environment'], 'production')
       return jsonl(events)
     },
@@ -785,7 +785,7 @@ test('proxy: models list, completions hop to /alpha/generate, SSE stream, /respo
     const models = await fetch(`http://127.0.0.1:${port}/command-code/v1/models`, { headers: auth })
     assert.equal(models.status, 200)
     const listing = await models.json()
-    assert.equal(listing.data.length, 87)
+    assert.equal(listing.data.length, 89)
     assert.equal(listing.data[0].owned_by, 'command-code')
 
     const ok = await fetch(`http://127.0.0.1:${port}/command-code/v1/chat/completions`, {
@@ -805,7 +805,7 @@ test('proxy: models list, completions hop to /alpha/generate, SSE stream, /respo
     assert.equal(completion.usage.total_tokens, 7)
     assert.equal(seen[0].url, COMMAND_CODE_GENERATE_URL)
     assert.equal(seen[0].headers.authorization, `Bearer ${KEY}`)
-    assert.equal(seen[0].headers['x-command-code-version'], '1.79.1')
+    assert.equal(seen[0].headers['x-command-code-version'], '1.82.1')
     const wire = JSON.parse(seen[0].body)
     assert.equal(wire.params.model, 'claude-sonnet-5')
     assert.equal(wire.params.stream, true)
@@ -848,7 +848,7 @@ test('permanent key: refresh is a no-op and never fails permanently', async () =
   await assert.rejects(() => refreshCommandCode({ accessToken: '' }), /API key/)
   const headers = commandCodeUpstreamHeaders(session)
   assert.equal(headers.authorization, `Bearer ${KEY}`)
-  assert.equal(headers['x-command-code-version'], '1.79.1')
+  assert.equal(headers['x-command-code-version'], '1.82.1')
   assert.equal(headers['x-cli-environment'], 'production')
 })
 
