@@ -29,6 +29,7 @@ import {
   clineIdentityHeaders,
 } from './index.js'
 import { outboundFetch } from '../../utils/outbound.js'
+import { createLiveCatalog } from '../../catalog/live-refresh.js'
 
 export const CLINE_CATALOG_TTL_MS = 10 * 60_000
 
@@ -41,15 +42,14 @@ const BUCKETS: Array<[string, '' | 'free' | 'pass']> = [
   ['clinePass', 'pass'],
 ]
 
-const cached: { models?: any[]; expiresAt: number } = { models: undefined, expiresAt: 0 }
+const live = createLiveCatalog<any>({ fallback: () => [...CLINE_MODELS] })
 
 export function resetClineCatalogCache() {
-  cached.models = undefined
-  cached.expiresAt = 0
+  live.reset()
 }
 
 export function clineCatalogModels() {
-  return cached.models?.length ? [...cached.models] : [...CLINE_MODELS]
+  return live.models()
 }
 
 function slugOf(id) {
@@ -250,28 +250,22 @@ async function readCatalogJson(fetchFn, url, headers, signal) {
   }
 }
 
-export async function refreshClineCatalog(session, options: any = {}) {
-  const ttlMs = options.ttlMs ?? CLINE_CATALOG_TTL_MS
-  if (cached.models?.length && Date.now() < cached.expiresAt) return [...cached.models]
-  try {
-    const fetchFn = options.fetchFn ?? outboundFetch
-    const headers = clineIdentityHeaders()
-    const signal = options.signal
-    const [feed, cloud] = await Promise.all([
-      readCatalogJson(fetchFn, CLINE_RECOMMENDED_MODELS_URL, headers, signal),
-      readCatalogJson(fetchFn, CLINE_MODELS_URL, headers, signal),
-    ])
-    if (feed) {
+export async function refreshClineCatalog(_session, options: any = {}) {
+  return live.refresh({
+    credential: 'public',
+    ttlMs: options.ttlMs ?? CLINE_CATALOG_TTL_MS,
+    now: options.now,
+    fetch: async () => {
+      const fetchFn = options.fetchFn ?? outboundFetch
+      const headers = clineIdentityHeaders()
+      const signal = options.signal
+      const [feed, cloud] = await Promise.all([
+        readCatalogJson(fetchFn, CLINE_RECOMMENDED_MODELS_URL, headers, signal),
+        readCatalogJson(fetchFn, CLINE_MODELS_URL, headers, signal),
+      ])
+      if (!feed) return null
       const parsed = toClinePickerModels(feed, { models: options.models ?? CLINE_MODELS, cloud })
-      if (parsed.length > 0) {
-        cached.models = parsed
-        cached.expiresAt = Date.now() + ttlMs
-        return [...parsed]
-      }
-    }
-  } catch {
-    // Discovery must not block chat or login.
-  }
-  if (cached.models?.length) return [...cached.models]
-  return [...CLINE_MODELS]
+      return parsed.length > 0 ? parsed : null
+    },
+  })
 }

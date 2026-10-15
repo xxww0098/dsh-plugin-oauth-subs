@@ -7,8 +7,10 @@
  */
 export declare const KIRO_CATALOG_TTL_MS: number;
 export declare function resetKiroCatalogCache(): void;
+/** Manual quota re-ask. Published rows stay; a failed fetch must not become the settings write. */
+export declare function reaskKiroCatalog(): void;
 export declare function kiroCatalogTokenHash(token: any): string;
-export declare function kiroCatalogModels(): any[];
+export declare function kiroCatalogModels(): readonly any[];
 /**
  * Live ListAvailableModels is the picker: fallback rows it omits are dropped
  * (they would 400 INVALID_MODEL_ID). Fallback only lends order, pretty names,
@@ -22,4 +24,4 @@ export declare function toKiroPickerModels(live: any, fallback?: readonly any[])
  * asks `KIRO_CONSOLE` for the governance list the static snapshot mirrors.
  */
 export declare function fetchKiroLiveModels(session: any, options?: any): Promise<any>;
-export declare function refreshKiroCatalog(session: any, options?: any): Promise<any[]>;
+export declare function refreshKiroCatalog(session: any, options?: any): Promise<readonly any[]>;

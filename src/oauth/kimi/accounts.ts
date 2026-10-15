@@ -23,6 +23,7 @@ import {
 } from './index.js'
 import { importKimiAuth, KIMI_IMPORT_EMPTY } from './import.js'
 import { kimiCatalogModels } from './catalog.js'
+import { catalogRouteSignature, notifyCatalogDiscovery } from '../catalog-sync.js'
 import { signedOutOf } from '../account-marks.js'
 import type { AuthController } from '../controller.js'
 
@@ -44,10 +45,11 @@ export async function maybeAutoImportKimi(ctl: AuthController) {
   try {
     const result = await importKimiAuth({ env: process.env, allowEnv: false })
     if (result?.session) {
+      const before = catalogRouteSignature(kimiCatalogModels())
       const session = await finishKimiSession(ctl, result.session)
       await saveSession('kimi', session, ctl.authPath)
       await discoverKimi(ctl, session)
-      ctl.onAuthChanged?.('kimi')
+      await notifyCatalogDiscovery(ctl, 'kimi', { wasSignedIn: false, before, models: kimiCatalogModels() })
       void ctl.quota.refresh('kimi')
     }
   } catch (error) {
@@ -102,12 +104,14 @@ export async function rememberKimiIdentity(ctl: AuthController, row, quota) {
 
 export async function completeKimiDevice(ctl: AuthController, attempt) {
   try {
+    const wasSignedIn = (await listStoredSessions('kimi', ctl.authPath)).length > 0
+    const before = catalogRouteSignature(kimiCatalogModels())
     const tokens = await attempt.waitToken()
     const session = await finishKimiSession(ctl, await sessionFromKimiDevice(tokens))
     await saveSession('kimi', session, ctl.authPath)
     ctl.lastError.delete('kimi')
     await discoverKimi(ctl, session)
-    ctl.onAuthChanged?.('kimi')
+    await notifyCatalogDiscovery(ctl, 'kimi', { wasSignedIn, before, models: kimiCatalogModels() })
     void ctl.quota.refresh('kimi')
   } catch (error) {
     if (!(error instanceof Error && error.message === 'login cancelled')) {
@@ -131,6 +135,8 @@ export async function loginKimi(ctl: AuthController) {
 }
 
 export async function useKimiKey(ctl: AuthController, key) {
+  const wasSignedIn = (await listStoredSessions('kimi', ctl.authPath)).length > 0
+  const before = catalogRouteSignature(kimiCatalogModels())
   const session = await finishKimiSession(ctl, kimiSession({
     accessToken: key,
     source: 'paste',
@@ -140,7 +146,7 @@ export async function useKimiKey(ctl: AuthController, key) {
   await saveSession('kimi', session, ctl.authPath)
   ctl.lastError.delete('kimi')
   await discoverKimi(ctl, session)
-  ctl.onAuthChanged?.('kimi')
+  await notifyCatalogDiscovery(ctl, 'kimi', { wasSignedIn, before, models: kimiCatalogModels() })
   void ctl.quota.refresh('kimi')
   return { account: publicSession('kimi', session) }
 }

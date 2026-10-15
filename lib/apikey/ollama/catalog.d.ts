@@ -6,7 +6,7 @@
 export declare const OLLAMA_CATALOG_TTL_MS: number;
 export declare function resetOllamaCatalogCache(): void;
 export declare function ollamaCatalogTokenHash(token: any): string;
-export declare function ollamaCatalogModels(): any[];
+export declare function ollamaCatalogModels(): readonly any[];
 export declare function toOllamaPickerModels(tags: any, { floor }?: any): any[];
 export declare function applyOllamaShowWindows(models: any, options: any): Promise<any>;
-export declare function refreshOllamaCatalog(session: any, options?: any): Promise<any>;
+export declare function refreshOllamaCatalog(session: any, options?: any): Promise<readonly any[]>;

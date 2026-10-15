@@ -70,6 +70,7 @@ import {
   setDevinCatalogModels,
   toDevinPickerModels,
 } from '../lib/oauth/devin/catalog.js'
+import { exerciseLiveCatalog } from './catalog-lifecycle.ts'
 import { devinUserStatus, runDevinChat } from '../lib/oauth/devin/transport.js'
 import { parseDevinUserStatus } from '../lib/oauth/devin/quota.js'
 import { formatPlanLabel } from '../lib/oauth/plan.js'
@@ -1238,4 +1239,34 @@ test('devin: a token-only 401 refreshes the login once, then retries', async () 
   } finally {
     proxy.close()
   }
+})
+
+test('devin catalog refresh keeps account identity without a TTL', async () => {
+  const bodyFor = (kind) => {
+    const label = kind === 'a' ? 'Racea' : 'Raceb'
+    return encodeMessage(1, devinConfig({
+      label,
+      uid: `${label.toLowerCase()}-uid`,
+      familyLabel: label,
+      defaultInFamily: true,
+    }))
+  }
+  await exerciseLiveCatalog({
+    label: 'devin',
+    ttlMs: 0,
+    alwaysFetch: true,
+    dropStaticId: DEVIN_MODELS[0].id,
+    idFor: (kind) => (kind === 'a' ? 'racea' : 'raceb'),
+    reset: resetDevinCatalog,
+    models: devinCatalogModels,
+    refresh: ({ token, now, fetch }) => refreshDevinCatalog(devinSession({ accessToken: token }), {
+      now,
+      fetchFn: async () => {
+        const kind = await fetch()
+        if (kind === 'fail') return new Response('nope', { status: 500 })
+        if (kind === 'empty') return new Response(new Uint8Array(), { status: 200 })
+        return new Response(bodyFor(kind), { status: 200, headers: { 'content-type': 'application/proto' } })
+      },
+    }),
+  })
 })

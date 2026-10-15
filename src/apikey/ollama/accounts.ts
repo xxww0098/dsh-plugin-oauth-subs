@@ -18,6 +18,7 @@ import {
 import { isOllamaOpaqueAccount, ollamaSession, resolveOllamaIdentity } from './index.js'
 import { importOllamaAuth, OLLAMA_IMPORT_EMPTY } from './import.js'
 import { ollamaCatalogModels } from './catalog.js'
+import { catalogRouteSignature, notifyCatalogDiscovery } from '../../oauth/catalog-sync.js'
 import { signedOutOf } from '../../oauth/account-marks.js'
 import type { AuthController } from '../../oauth/controller.js'
 
@@ -39,10 +40,11 @@ export async function maybeAutoImportOllama(ctl: AuthController) {
   try {
     const result = await importOllamaAuth({ env: process.env })
     if (result?.session) {
+      const before = catalogRouteSignature(ollamaCatalogModels())
       const session = await finishOllamaSession(ctl, result.session)
       await saveSession('ollama', session, ctl.authPath)
       await discoverOllama(ctl, session)
-      ctl.onAuthChanged?.('ollama')
+      await notifyCatalogDiscovery(ctl, 'ollama', { wasSignedIn: false, before, models: ollamaCatalogModels() })
       void ctl.quota.refresh('ollama')
     }
   } catch (error) {
@@ -100,6 +102,8 @@ export function loginOllama() {
 }
 
 export async function useOllamaKey(ctl: AuthController, key) {
+  const wasSignedIn = (await listStoredSessions('ollama', ctl.authPath)).length > 0
+  const before = catalogRouteSignature(ollamaCatalogModels())
   const session = await finishOllamaSession(ctl, ollamaSession({
     accessToken: key,
     source: 'paste',
@@ -108,7 +112,7 @@ export async function useOllamaKey(ctl: AuthController, key) {
   await saveSession('ollama', session, ctl.authPath)
   ctl.lastError.delete('ollama')
   await discoverOllama(ctl, session)
-  ctl.onAuthChanged?.('ollama')
+  await notifyCatalogDiscovery(ctl, 'ollama', { wasSignedIn, before, models: ollamaCatalogModels() })
   void ctl.quota.refresh('ollama')
   return { account: publicSession('ollama', session) }
 }

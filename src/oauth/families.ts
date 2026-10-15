@@ -45,7 +45,7 @@ import { loginGlm, useGlmKey } from './glm/accounts.js'
 import { importGlmAuth } from './glm/import.js'
 import { kiroConversationId } from './kiro/cache.js'
 import { fetchKiroQuota } from './kiro/quota.js'
-import { kiroCatalogModels, resetKiroCatalogCache } from './kiro/catalog.js'
+import { kiroCatalogModels, reaskKiroCatalog } from './kiro/catalog.js'
 import {
   completeKiroPaste,
   discoverKiro,
@@ -104,6 +104,7 @@ import { applyCommandCodeCache } from '../apikey/command-code/cache.js'
 import { commandCodeCatalogModels } from '../apikey/command-code/catalog.js'
 import { fetchCommandCodeQuota } from '../apikey/command-code/quota.js'
 import {
+  discoverCommandCode,
   importCommandCode,
   loginCommandCode,
   rememberCommandCodeIdentity,
@@ -133,10 +134,10 @@ export type FamilyResponseObserver = (attempt: {
   requestId?: string, accountId?: string, attempt: number, wireBody: Uint8Array,
 }) => FamilyResponseObservation | undefined
 
-/** refreshQuota: re-read this family's own model list, re-sync when it changed. */
+/** refreshQuota: re-read this family's own model list, re-sync when routing fields changed. */
 export interface FamilyCatalogDiscovery {
-  /** Current catalog rows; ids compared before/after discovery. */
-  models: () => { id: string }[]
+  /** Current catalog rows. The routing signature (id, window, input, effort) is compared before and after. */
+  models: () => readonly { id: string }[]
   /** Kiro only: the catalog follows the egress region, so a manual refresh re-asks. */
   reset?: () => void
   /** Catalog discovery for one stored account's session. */
@@ -352,7 +353,9 @@ const kiroFamily: OAuthFamily = {
       models: kiroCatalogModels,
       // A manual refresh re-asks: the list follows the egress region, and a
       // system VPN change is invisible to the token + proxy cache key.
-      reset: resetKiroCatalogCache,
+      // Expires the slot only. The full wipe is test isolation and would
+      // make a failed re-ask sync the static floor.
+      reset: reaskKiroCatalog,
       run: discoverKiro,
     },
   },
@@ -523,6 +526,10 @@ const commandCodeFamily: OAuthFamily = {
     afterEnsure: rememberCommandCodeIdentity,
     // whoami rides the quota chain and promotes the opaque vault id.
     remember: rememberCommandCodeIdentity,
+    discover: {
+      models: commandCodeCatalogModels,
+      run: discoverCommandCode,
+    },
     relistAccountsAfterRefresh: true,
   },
 }

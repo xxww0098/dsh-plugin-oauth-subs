@@ -10,8 +10,17 @@
 /** Picker row cache (tokenHash + egress keyed, 5 min TTL — see catalog.ts). */
 export declare const cursorCatalogCache: {
     tokenHash: string;
-    models?: any[];
+    models?: readonly any[];
     expiresAt: number;
+};
+/** This family's refresh slot. catalog.ts drives it; reset clears both mirrors. */
+export declare const cursorCatalogLive: {
+    reset(): void;
+    reask(): void;
+    adopt(rows: readonly any[]): void;
+    stored(): readonly any[] | undefined;
+    models(): readonly any[];
+    refresh(request: import("../../catalog/live-refresh.js").LiveRefreshRequest<any>): Promise<readonly any[]>;
 };
 export declare function resetCursorCatalogCache(): void;
 export declare function cursorCatalogModels(): any[];

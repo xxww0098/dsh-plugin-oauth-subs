@@ -20,6 +20,7 @@ import {
   resolveClineIdentity,
 } from './index.js'
 import { clineCatalogModels } from './catalog.js'
+import { catalogRouteSignature, notifyCatalogDiscovery } from '../catalog-sync.js'
 import { CLINE_IMPORT_EMPTY, importClineAuth } from './import.js'
 import { signedOutOf } from '../account-marks.js'
 import type { AuthController } from '../controller.js'
@@ -42,10 +43,11 @@ export async function maybeAutoImportCline(ctl: AuthController) {
   try {
     const result = await importClineAuth({ env: process.env })
     if (result?.session) {
+      const before = catalogRouteSignature(clineCatalogModels())
       const session = await finishClineSession(ctl, result.session)
       await saveSession('cline', session, ctl.authPath)
       await discoverCline(ctl, session)
-      ctl.onAuthChanged?.('cline')
+      await notifyCatalogDiscovery(ctl, 'cline', { wasSignedIn: false, before, models: clineCatalogModels() })
       void ctl.quota.refresh('cline')
     }
   } catch (error) {
@@ -108,12 +110,14 @@ export async function rememberClineIdentity(ctl: AuthController, row, quota) {
  */
 export async function completeClineDevice(ctl: AuthController, attempt) {
   try {
+    const wasSignedIn = (await listStoredSessions('cline', ctl.authPath)).length > 0
+    const before = catalogRouteSignature(clineCatalogModels())
     const tokens = await attempt.waitToken()
     const session = await finishClineSession(ctl, await registerClineTokens(tokens, { fetchFn: ctl.fetchFn }))
     await saveSession('cline', session, ctl.authPath)
     ctl.lastError.delete('cline')
     await discoverCline(ctl, session)
-    ctl.onAuthChanged?.('cline')
+    await notifyCatalogDiscovery(ctl, 'cline', { wasSignedIn, before, models: clineCatalogModels() })
     void ctl.quota.refresh('cline')
   } catch (error) {
     if (!(error instanceof Error && error.message === 'login cancelled')) {

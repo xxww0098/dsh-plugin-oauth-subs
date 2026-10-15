@@ -47,6 +47,7 @@ import { applyClineCache, clineCacheHeaders, clineCacheSessionId, resetClinePins
 import { applyClineMaxCompletionTokens, applyClineStreamUsage, applyClineThinking, clineQuotaFailure, mapClineUsage, unwrapClineEnvelope } from '../lib/oauth/cline/request.js'
 import { UpstreamFailure } from '../lib/oauth/upstream.js'
 import { CLINE_CATALOG_TTL_MS, clineCatalogModels, refreshClineCatalog, resetClineCatalogCache, toClinePickerModels } from '../lib/oauth/cline/catalog.js'
+import { exerciseLiveCatalog } from './catalog-lifecycle.ts'
 import { clineCapUsd, clineCreditUsd, fetchClineQuota, parseClineBalance, parseClinePlan, parseClinePlanLimits, parseClineUsage } from '../lib/oauth/cline/quota.js'
 import { DeviceFlowManager } from '../lib/oauth/grok/device-flow.js'
 import { formatPlanLabel } from '../lib/oauth/plan.js'
@@ -863,4 +864,37 @@ test('controller snapshot shows quota on every cline account; hop is Completions
   } finally {
     await proxy.close()
   }
+})
+
+test('cline catalog refresh keeps one public lifecycle and does not double the two GETs', async () => {
+  const http = { n: 0 }
+  const feed = (kind) => ({
+    recommended: [{ id: kind === 'a' ? 'live/only-a' : 'live/only-b', name: kind === 'a' ? 'A' : 'B' }],
+  })
+  await exerciseLiveCatalog({
+    label: 'cline',
+    ttlMs: CLINE_CATALOG_TTL_MS,
+    shared: true,
+    dropStaticId: CLINE_MODELS[0].id,
+    httpPerRefresh: 2,
+    httpCount: () => http.n,
+    reset: resetClineCatalogCache,
+    models: clineCatalogModels,
+    idFor: (kind) => `live/only-${kind}`,
+    refresh: ({ now, ttlMs, fetch }) => {
+      let pending
+      return refreshClineCatalog(null, {
+        now,
+        ttlMs,
+        fetchFn: async () => {
+          http.n += 1
+          pending ??= fetch()
+          const kind = await pending
+          if (kind === 'fail') return { ok: false, json: async () => ({}) }
+          if (kind === 'empty') return { ok: true, json: async () => ({}) }
+          return { ok: true, json: async () => feed(kind) }
+        },
+      })
+    },
+  })
 })

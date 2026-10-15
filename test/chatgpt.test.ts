@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import {
   CHATGPT_AUTHORIZE_URL,
+  CHATGPT_MODELS,
   CHATGPT_DYNAMIC_CLIENT_ID,
   CHATGPT_JWKS_URL,
   CHATGPT_RESOURCE,
@@ -21,7 +22,8 @@ import {
 } from '../lib/oauth/chatgpt/index.js'
 import { applyChatgptCache, CHATGPT_STABLE_SESSION } from '../lib/oauth/chatgpt/cache.js'
 import { chatgptQuotaFailure, normalizeChatgptResponsesBody } from '../lib/oauth/chatgpt/request.js'
-import { refreshChatgptCatalog, resetChatgptCatalogCache, toChatgptPickerModels } from '../lib/oauth/chatgpt/catalog.js'
+import { CHATGPT_CATALOG_TTL_MS, chatgptCatalogModels, refreshChatgptCatalog, resetChatgptCatalogCache, toChatgptPickerModels } from '../lib/oauth/chatgpt/catalog.js'
+import { exerciseLiveCatalog } from './catalog-lifecycle.ts'
 import { ensureChatgptHostId, isChatgptHostId } from '../lib/oauth/chatgpt/host.js'
 import { AuthController } from '../lib/oauth/controller.js'
 import { buildProviders, familyOfProvider } from '../lib/oauth/models.js'
@@ -334,4 +336,35 @@ test('declined plan use keeps the registration but saves no session', async () =
   assert.equal((await listStoredSessions('chatgpt', authPath)).length, 0)
   const registrations = JSON.parse(await readFile(join(dir, 'chatgpt.json'), 'utf8'))
   assert.ok(registrations.registrations[CLIENT])
+})
+
+test('chatgpt catalog refresh keeps publish order, account identity, and the real TTL', async () => {
+  const listed = (kind) => ({
+    ok: true,
+    json: async () => ({
+      models: [{
+        slug: kind === 'a' ? 'live-only-a' : 'live-only-b',
+        display_name: kind === 'a' ? 'A' : 'B',
+        visibility: 'list',
+        context_window: kind === 'a' ? 100_000 : 200_000,
+      }],
+    }),
+  })
+  await exerciseLiveCatalog({
+    label: 'chatgpt',
+    ttlMs: CHATGPT_CATALOG_TTL_MS,
+    keepStaticId: CHATGPT_MODELS[0].id,
+    reset: resetChatgptCatalogCache,
+    models: chatgptCatalogModels,
+    refresh: ({ token, now, ttlMs, fetch }) => refreshChatgptCatalog({ accessToken: token }, {
+      now,
+      ttlMs,
+      fetchFn: async () => {
+        const kind = await fetch()
+        if (kind === 'fail') return { ok: false, json: async () => ({}) }
+        if (kind === 'empty') return { ok: true, json: async () => ({ models: [] }) }
+        return listed(kind)
+      },
+    }),
+  })
 })

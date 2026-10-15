@@ -967,22 +967,32 @@ test('syncHarnessModels rejects a silent drop after mutate', async () => {
 })
 
 test('cacheRetention long rides only the Completions routes and survives sync', async () => {
-  const all = { codex: true, grok: true, glm: true, kiro: true, antigravity: true, cursor: true, ollama: true, kimi: true, devin: true, cline: true }
-  const providers = buildProviders({ prefix: 'oauth', origin: 'http://127.0.0.1:8318', loggedIn: all })
-  const completions = Object.keys(providers).filter((id) => providers[id].api === HARNESS_COMPLETIONS_API).sort()
-  assert.deepEqual(completions, ['oauth-antigravity', 'oauth-cline', 'oauth-cursor', 'oauth-devin', 'oauth-kimi', 'oauth-kiro', 'oauth-ollama'])
-  for (const [id, value] of Object.entries(providers)) {
-    assert.equal(value.cacheRetention, value.api === HARNESS_COMPLETIONS_API ? 'long' : undefined, id)
+  const loggedIn = Object.fromEntries(FAMILY_IDS.map((id) => [id, true]))
+  const providers = buildProviders({ prefix: 'oauth', origin: 'http://127.0.0.1:8318', loggedIn })
+  const visited = []
+  for (const id of FAMILY_IDS) {
+    const route = providers[`oauth-${id}`]
+    assert.ok(route, `${id} is missing from the production route set`)
+    visited.push(id)
+    const completions = route.api === HARNESS_COMPLETIONS_API
+    assert.equal(route.cacheRetention, completions ? 'long' : undefined, id)
   }
+  assert.deepEqual(visited, [...FAMILY_IDS], 'a family dropped from the production loop fails this test')
+  assert.equal(providers['oauth-chatgpt'].api, HARNESS_RESPONSES_API)
+  assert.equal(providers['oauth-command-code'].api, HARNESS_COMPLETIONS_API)
+  const completions = FAMILY_IDS.filter((id) => providers[`oauth-${id}`].api === HARNESS_COMPLETIONS_API)
+  assert.equal(completions.includes('chatgpt'), false)
+  assert.equal(completions.includes('command-code'), true)
   // OpenCode Go direct routes are not ours to retune.
   const catalog = catalogProviders({ prefix: 'oauth', origin: 'http://127.0.0.1:8318' })
   for (const route of OPENCODE_GO_ROUTES) assert.equal(catalog[route.id].cacheRetention, undefined)
 
   const settings = createPiAiSettings()
-  await syncHarnessModels({ settings, prefix: 'oauth', origin: 'http://127.0.0.1:8318', loggedIn: all })
+  await syncHarnessModels({ settings, prefix: 'oauth', origin: 'http://127.0.0.1:8318', loggedIn })
   const stored = await peekPiAiProviders(settings)
-  for (const id of completions) assert.equal(stored[id].cacheRetention, 'long', id)
+  for (const id of completions) assert.equal(stored[`oauth-${id}`].cacheRetention, 'long', id)
   assert.equal(stored['oauth-codex'].cacheRetention, undefined)
+  assert.equal(stored['oauth-chatgpt'].cacheRetention, undefined)
 })
 
 test('syncHarnessModels rejects a host that drops cacheRetention', async () => {

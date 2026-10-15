@@ -8,19 +8,36 @@
  * catalog.ts would close an import cycle.
  */
 
+import { createHash } from 'node:crypto'
 import { CURSOR_MODELS, CURSOR_PARAM_STYLES } from './index.js'
+import { createLiveCatalog } from '../../catalog/live-refresh.js'
 
 /** Picker row cache (tokenHash + egress keyed, 5 min TTL — see catalog.ts). */
-export const cursorCatalogCache: { tokenHash: string; models?: any[]; expiresAt: number } = {
+export const cursorCatalogCache: { tokenHash: string; models?: readonly any[]; expiresAt: number } = {
   tokenHash: '',
   models: undefined,
   expiresAt: 0,
 }
 
+/** This family's refresh slot. catalog.ts drives it; reset clears both mirrors. */
+export const cursorCatalogLive = createLiveCatalog<any>({
+  fallback: () => [...CURSOR_MODELS],
+  onStore(state) {
+    if (!state) {
+      cursorCatalogCache.tokenHash = ''
+      cursorCatalogCache.models = undefined
+      cursorCatalogCache.expiresAt = 0
+      liveStyles.clear()
+      return
+    }
+    cursorCatalogCache.tokenHash = createHash('sha256').update(state.identity).digest('hex').slice(0, 16)
+    cursorCatalogCache.models = state.rows
+    cursorCatalogCache.expiresAt = state.expiresAt
+  },
+})
+
 export function resetCursorCatalogCache() {
-  cursorCatalogCache.tokenHash = ''
-  cursorCatalogCache.models = undefined
-  cursorCatalogCache.expiresAt = 0
+  cursorCatalogLive.reset()
   liveStyles.clear()
 }
 

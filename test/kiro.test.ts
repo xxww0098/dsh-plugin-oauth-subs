@@ -56,10 +56,13 @@ import {
   openaiToKiro,
 } from '../lib/oauth/kiro/request.js'
 import {
+  KIRO_CATALOG_TTL_MS,
+  kiroCatalogModels,
   refreshKiroCatalog,
   resetKiroCatalogCache,
   toKiroPickerModels,
 } from '../lib/oauth/kiro/catalog.js'
+import { exerciseLiveCatalog } from './catalog-lifecycle.ts'
 
 const RT = `rt_${'x'.repeat(120)}`
 const KEY = 'ksk_live_example1'
@@ -1179,4 +1182,23 @@ test('thinking events do not leak XML into content', () => {
   assert.equal(openai.choices[0].message.reasoning_content, 'step one')
   assert.equal(String(openai.choices[0].message.content).includes('<thinking>'), false)
   assert.equal(JSON.stringify(openai.choices[0].message).includes('<thinking>'), false)
+})
+
+test('kiro catalog refresh drops a result that returns after reset', async () => {
+  await exerciseLiveCatalog({
+    label: 'kiro',
+    ttlMs: KIRO_CATALOG_TTL_MS,
+    dropStaticId: KIRO_MODELS[0].id,
+    reset: resetKiroCatalogCache,
+    models: kiroCatalogModels,
+    refresh: ({ token, now, ttlMs, fetch }) => refreshKiroCatalog({ accessToken: token }, {
+      now,
+      ttlMs,
+      fetchLive: async () => {
+        const kind = await fetch()
+        if (kind === 'fail' || kind === 'empty') return []
+        return [{ modelId: kind === 'a' ? 'live-only-a' : 'live-only-b', modelName: kind === 'a' ? 'A' : 'B' }]
+      },
+    }),
+  })
 })

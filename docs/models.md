@@ -63,8 +63,8 @@
 每个键的一线来源按可信度排：**厂商目录端点 > 钉住客户端自带的列表 > 公开注册表 / 文档**。厂商端点优先，因为它就是订阅后端实际服务的列表，文档会滞后，也常常只列部分模型。当前每个键接的是哪个源，以 `ADAPTERS` 的 `source` 为准；源分三类：
 
 - **登录态端点**：要一份已存账号。多数端点按账号、套餐或出口区域过滤（Kiro 与 Cursor 的列表随出口 IP 变化），所以脚本从某次拉取里看到「缺行」，不等于该模型已下架。先例：某些行只按政策开关出现；额度耗尽的账号所有非基础模型回 `400 model_not_supported`（不是 429，[error](error.md) 2026-09-30），先排除账号/余额再判下架。
-- **公开端点 / 注册表**：不需要登录（Cline feed、Ollama `/api/tags` + `/api/show`、CLIProxyAPI registry、models.dev）。
-- **无端点**（`manual`）：Command Code 只有 CLI bundle 里的注册表，`ollamaRetired` 来自退役公告。这两个键手改，出处照旧记进 README。
+- **公开端点 / 注册表**：不需要登录（Cline feed、Ollama `/api/tags` + `/api/show`、Command Code `GET api.commandcode.ai/provider/v1/models`、CLIProxyAPI registry、models.dev）。
+- **无端点**（`manual`）：`ollamaRetired` 来自退役公告。这个键手改，出处照旧记进 README。
 
 有的端点只给 id（GLM、OpenCode Go / Zen），参数要从第二个源补（Go 用 models.dev `opencode-go` 桶，Zen 用 `opencode` 桶；Zen 的协议不在桶里，取官方端点表）。补不到参数的新 id 报 `unresolved`，不写入——不发明数字。
 

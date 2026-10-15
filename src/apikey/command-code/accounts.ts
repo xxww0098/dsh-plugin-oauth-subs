@@ -23,6 +23,7 @@ import {
 } from './index.js'
 import { COMMAND_CODE_IMPORT_EMPTY, importCommandCodeAuth } from './import.js'
 import { commandCodeCatalogModels } from './catalog.js'
+import { catalogRouteSignature, notifyCatalogDiscovery } from '../../oauth/catalog-sync.js'
 import { signedOutOf } from '../../oauth/account-marks.js'
 import type { AuthController } from '../../oauth/controller.js'
 
@@ -48,9 +49,11 @@ export async function maybeAutoImportCommandCode(ctl: AuthController) {
   try {
     const result = await importCommandCodeAuth({ env: process.env, ...ctl.commandCodeImport })
     if (result?.session) {
+      const before = catalogRouteSignature(commandCodeCatalogModels())
       const session = await finishCommandCodeSession(ctl, result.session)
       await saveSession('command-code', session, ctl.authPath)
-      ctl.onAuthChanged?.('command-code')
+      await discoverCommandCode(ctl, session)
+      await notifyCatalogDiscovery(ctl, 'command-code', { wasSignedIn: false, before, models: commandCodeCatalogModels() })
       void ctl.quota.refresh('command-code')
     }
   } catch (error) {
@@ -116,12 +119,15 @@ export async function rememberCommandCodeIdentity(ctl: AuthController, row, quot
  */
 export async function completeCommandCode(ctl: AuthController, attempt, claim) {
   try {
+    const wasSignedIn = (await listStoredSessions('command-code', ctl.authPath)).length > 0
+    const before = catalogRouteSignature(commandCodeCatalogModels())
     const credentials = await attempt.waitCode()
     if (ctl.claims.get('command-code') !== claim) return
     const session = await finishCommandCodeSession(ctl, commandCodeSessionFromCallback(credentials))
     await saveSession('command-code', session, ctl.authPath)
     ctl.lastError.delete('command-code')
-    ctl.onAuthChanged?.('command-code')
+    await discoverCommandCode(ctl, session)
+    await notifyCatalogDiscovery(ctl, 'command-code', { wasSignedIn, before, models: commandCodeCatalogModels() })
     void ctl.quota.refresh('command-code')
   } catch (error) {
     if (ctl.claims.get('command-code') !== claim) return
@@ -141,6 +147,8 @@ export async function loginCommandCode(ctl: AuthController) {
 }
 
 export async function useCommandCodeKey(ctl: AuthController, key) {
+  const wasSignedIn = (await listStoredSessions('command-code', ctl.authPath)).length > 0
+  const before = catalogRouteSignature(commandCodeCatalogModels())
   const session = await finishCommandCodeSession(ctl, commandCodeSession({
     accessToken: key,
     source: 'paste',
@@ -149,7 +157,8 @@ export async function useCommandCodeKey(ctl: AuthController, key) {
   ctl.flows.pending('command-code')?.cancel()
   await saveSession('command-code', session, ctl.authPath)
   ctl.lastError.delete('command-code')
-  ctl.onAuthChanged?.('command-code')
+  await discoverCommandCode(ctl, session)
+  await notifyCatalogDiscovery(ctl, 'command-code', { wasSignedIn, before, models: commandCodeCatalogModels() })
   void ctl.quota.refresh('command-code')
   return { account: publicSession('command-code', session) }
 }

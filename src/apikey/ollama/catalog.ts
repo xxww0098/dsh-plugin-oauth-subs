@@ -18,19 +18,14 @@ import {
   ollamaPrettyName,
 } from './index.js'
 import { outboundFetch } from '../../utils/outbound.js'
+import { createLiveCatalog } from '../../catalog/live-refresh.js'
 
 export const OLLAMA_CATALOG_TTL_MS = 5 * 60_000
 
-const cached: { tokenHash: string; models: any[] | undefined; expiresAt: number } = {
-  tokenHash: '',
-  models: undefined,
-  expiresAt: 0,
-}
+const live = createLiveCatalog<any>({ fallback: () => [...OLLAMA_MODELS] })
 
 export function resetOllamaCatalogCache() {
-  cached.tokenHash = ''
-  cached.models = undefined
-  cached.expiresAt = 0
+  live.reset()
 }
 
 export function ollamaCatalogTokenHash(token) {
@@ -38,7 +33,7 @@ export function ollamaCatalogTokenHash(token) {
 }
 
 export function ollamaCatalogModels() {
-  return cached.models?.length ? [...cached.models] : [...OLLAMA_MODELS]
+  return live.models()
 }
 
 export function toOllamaPickerModels(tags, { floor = OLLAMA_MODELS }: any = {}) {
@@ -115,34 +110,24 @@ export async function applyOllamaShowWindows(models, options) {
 
 export async function refreshOllamaCatalog(session, options: any = {}) {
   const token = typeof session?.accessToken === 'string' ? session.accessToken.trim() : ''
-  if (!token) return [...OLLAMA_MODELS]
-  const tokenHash = ollamaCatalogTokenHash(token)
-  if (cached.tokenHash === tokenHash && cached.models?.length && Date.now() < cached.expiresAt) {
-    return [...cached.models]
-  }
-  try {
-    const fetchFn = options.fetchFn ?? outboundFetch
-    const response = await fetchFn(OLLAMA_TAGS_URL, {
-      headers: { authorization: `Bearer ${token}` },
-      signal: options.signal,
-    })
-    if (response.ok) {
+  return live.refresh({
+    credential: token,
+    ttlMs: options.ttlMs ?? OLLAMA_CATALOG_TTL_MS,
+    now: options.now,
+    fetch: async () => {
+      const fetchFn = options.fetchFn ?? outboundFetch
+      const response = await fetchFn(OLLAMA_TAGS_URL, {
+        headers: { authorization: `Bearer ${token}` },
+        signal: options.signal,
+      })
+      if (!response?.ok) return null
       const parsed = toOllamaPickerModels(await response.json())
-      if (parsed.length > 0) {
-        const models = await applyOllamaShowWindows(parsed, {
-          fetchFn,
-          token,
-          signal: options.signal,
-        })
-        cached.tokenHash = tokenHash
-        cached.models = models
-        cached.expiresAt = Date.now() + (options.ttlMs ?? OLLAMA_CATALOG_TTL_MS)
-        return models
-      }
-    }
-  } catch {
-    // Discovery must not block chat or login.
-  }
-  if (cached.tokenHash === tokenHash && cached.models?.length) return [...cached.models]
-  return [...OLLAMA_MODELS]
+      if (parsed.length === 0) return null
+      return applyOllamaShowWindows(parsed, {
+        fetchFn,
+        token,
+        signal: options.signal,
+      })
+    },
+  })
 }

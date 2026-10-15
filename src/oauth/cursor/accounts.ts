@@ -16,6 +16,7 @@ import {
 import { cursorAccountFromToken, pickCursorHumanAccount } from './index.js'
 import { CURSOR_IMPORT_EMPTY, importCursorAuth, readCursorVscdbTokens } from './import.js'
 import { cursorCatalogModels } from './catalog.js'
+import { catalogRouteSignature, notifyCatalogDiscovery } from '../catalog-sync.js'
 import { identityDue, signedOutOf } from '../account-marks.js'
 import type { AuthController } from '../controller.js'
 
@@ -109,9 +110,10 @@ export async function maybeAutoImportCursor(ctl: AuthController) {
   try {
     const result = await importCursorAuth(ctl.cursorImport)
     if (result?.session) {
+      const before = catalogRouteSignature(cursorCatalogModels())
       await saveSession('cursor', result.session, ctl.authPath)
       await discoverCursor(ctl, result.session)
-      ctl.onAuthChanged?.('cursor')
+      await notifyCatalogDiscovery(ctl, 'cursor', { wasSignedIn: false, before, models: cursorCatalogModels() })
       void ctl.quota.refresh('cursor')
     }
   } catch (error) {
@@ -134,11 +136,13 @@ export async function importCursor(ctl: AuthController) {
 
 export async function completeCursor(ctl: AuthController, attempt) {
   try {
+    const wasSignedIn = (await listStoredSessions('cursor', ctl.authPath)).length > 0
+    const before = catalogRouteSignature(cursorCatalogModels())
     const session = await attempt.waitToken()
     await saveSession('cursor', session, ctl.authPath)
     ctl.lastError.delete('cursor')
     await discoverCursor(ctl, session)
-    ctl.onAuthChanged?.('cursor')
+    await notifyCatalogDiscovery(ctl, 'cursor', { wasSignedIn, before, models: cursorCatalogModels() })
     void ctl.quota.refresh('cursor')
   } catch (error) {
     if (!(error instanceof Error && error.message === 'login cancelled')) {

@@ -13,17 +13,22 @@ import {
   kimiUpstreamHeaders,
 } from './index.js'
 import { outboundFetch } from '../../utils/outbound.js'
+import { createLiveCatalog } from '../../catalog/live-refresh.js'
 
 export const KIMI_CATALOG_TTL_MS = 5 * 60_000
 
-const cached: { tokenHash: string; models?: any[]; expiresAt: number } = { tokenHash: '', models: undefined, expiresAt: 0 }
+const live = createLiveCatalog<any>({ fallback: () => [...KIMI_MODELS] })
+
+export function resetKimiCatalogCache() {
+  live.reset()
+}
 
 export function kimiCatalogTokenHash(token) {
   return createHash('sha256').update(String(token ?? '')).digest('hex').slice(0, 16)
 }
 
 export function kimiCatalogModels() {
-  return cached.models?.length ? [...cached.models] : [...KIMI_MODELS]
+  return live.models()
 }
 
 function asPositiveInt(value) {
@@ -90,32 +95,22 @@ export function toKimiPickerModels(payload) {
 
 export async function refreshKimiCatalog(session, options: any = {}) {
   const token = typeof session?.accessToken === 'string' ? session.accessToken.trim() : ''
-  if (!token) return [...KIMI_MODELS]
-  const tokenHash = kimiCatalogTokenHash(token)
-  if (cached.tokenHash === tokenHash && cached.models?.length && Date.now() < cached.expiresAt) {
-    return [...cached.models]
-  }
-  try {
-    const fetchFn = options.fetchFn ?? outboundFetch
-    const response = await fetchFn(KIMI_MODELS_URL, {
-      headers: {
-        ...kimiUpstreamHeaders(session),
-        accept: 'application/json',
-      },
-      signal: options.signal,
-    })
-    if (response.ok) {
+  return live.refresh({
+    credential: token,
+    ttlMs: options.ttlMs ?? KIMI_CATALOG_TTL_MS,
+    now: options.now,
+    fetch: async () => {
+      const fetchFn = options.fetchFn ?? outboundFetch
+      const response = await fetchFn(KIMI_MODELS_URL, {
+        headers: {
+          ...kimiUpstreamHeaders(session),
+          accept: 'application/json',
+        },
+        signal: options.signal,
+      })
+      if (!response?.ok) return null
       const parsed = toKimiPickerModels(await response.json())
-      if (parsed.length > 0) {
-        cached.tokenHash = tokenHash
-        cached.models = parsed
-        cached.expiresAt = Date.now() + (options.ttlMs ?? KIMI_CATALOG_TTL_MS)
-        return parsed
-      }
-    }
-  } catch {
-    // Discovery must not block chat or login.
-  }
-  if (cached.tokenHash === tokenHash && cached.models?.length) return [...cached.models]
-  return [...KIMI_MODELS]
+      return parsed.length > 0 ? parsed : null
+    },
+  })
 }

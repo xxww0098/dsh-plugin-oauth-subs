@@ -17,6 +17,7 @@ import {
   revokeChatgpt,
 } from './index.js'
 import { chatgptCatalogModels } from './catalog.js'
+import { catalogRouteSignature, notifyCatalogDiscovery } from '../catalog-sync.js'
 import { chatgptRegistration, chatgptRegistrations, ensureChatgptHostId, rememberChatgptRegistration } from './host.js'
 
 /** Vault key: email for people, plus a short client hash so two workspaces on one email stay apart. */
@@ -93,11 +94,13 @@ export async function completeChatgpt(ctl: AuthController, attempt, claim) {
     if (!chatgptPlanUseGranted(tokens)) {
       throw new Error('ChatGPT sign-in succeeded, but "Use your ChatGPT plan" was not allowed. Sign in again and allow it to use this family.')
     }
+    const wasSignedIn = (await listStoredSessions('chatgpt', ctl.authPath)).length > 0
+    const before = catalogRouteSignature(chatgptCatalogModels())
     const session = { ...chatgptSession(tokens, { clientId, hostId, subject: identity.sub }), accountKey }
     await saveSession('chatgpt', session, ctl.authPath)
     ctl.lastError.delete('chatgpt')
     await discoverChatgpt(ctl, session)
-    ctl.onAuthChanged?.('chatgpt')
+    await notifyCatalogDiscovery(ctl, 'chatgpt', { wasSignedIn, before, models: chatgptCatalogModels() })
     void ctl.quota.refresh('chatgpt')
   } catch (error) {
     if (ctl.claims.get('chatgpt') !== claim) return

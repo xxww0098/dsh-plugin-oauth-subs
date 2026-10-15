@@ -24,6 +24,7 @@ import {
 } from './index.js'
 import { DEVIN_IMPORT_EMPTY, importDevinAuth } from './import.js'
 import { devinCatalogModels } from './catalog.js'
+import { catalogRouteSignature, notifyCatalogDiscovery } from '../catalog-sync.js'
 import { resolveDevinIdentity } from './transport.js'
 import { signedOutOf } from '../account-marks.js'
 import type { AuthController } from '../controller.js'
@@ -48,10 +49,11 @@ export async function maybeAutoImportDevin(ctl: AuthController) {
   try {
     const result = await importDevinAuth({ ...ctl.devinImport })
     if (result?.session) {
+      const before = catalogRouteSignature(devinCatalogModels())
       const session = await finishDevinSession(ctl, result.session)
       await saveSession('devin', session, ctl.authPath)
       await discoverDevin(ctl, session)
-      ctl.onAuthChanged?.('devin')
+      await notifyCatalogDiscovery(ctl, 'devin', { wasSignedIn: false, before, models: devinCatalogModels() })
       void ctl.quota.refresh('devin')
     }
   } catch (error) {
@@ -117,6 +119,8 @@ export async function completeDevinPaste(ctl: AuthController, code, attempt) {
 }
 
 export async function useDevinKey(ctl: AuthController, key) {
+  const wasSignedIn = (await listStoredSessions('devin', ctl.authPath)).length > 0
+  const before = catalogRouteSignature(devinCatalogModels())
   const session = await finishDevinSession(ctl, devinSession({
     accessToken: key,
     source: 'paste',
@@ -126,7 +130,7 @@ export async function useDevinKey(ctl: AuthController, key) {
   await saveSession('devin', session, ctl.authPath)
   ctl.lastError.delete('devin')
   await discoverDevin(ctl, session)
-  ctl.onAuthChanged?.('devin')
+  await notifyCatalogDiscovery(ctl, 'devin', { wasSignedIn, before, models: devinCatalogModels() })
   void ctl.quota.refresh('devin')
   return { account: publicSession('devin', session) }
 }

@@ -43,11 +43,13 @@ import {
   resolveOllamaLocalCredentials,
 } from '../lib/apikey/ollama/import.js'
 import {
+  OLLAMA_CATALOG_TTL_MS,
   ollamaCatalogModels,
   refreshOllamaCatalog,
   resetOllamaCatalogCache,
   toOllamaPickerModels,
 } from '../lib/apikey/ollama/catalog.js'
+import { exerciseLiveCatalog } from './catalog-lifecycle.ts'
 import {
   OLLAMA_STABLE_SESSION,
   applyOllamaCache,
@@ -712,4 +714,33 @@ test('QuotaStore ollama fetches balance+me; missing balance does not crash; no s
   const empty = await idle.refresh('ollama')
   assert.equal(empty.status, 'idle')
   assert.equal(hits, 0)
+})
+
+test('ollama catalog refresh coalesces one tags+show pass per credential', async () => {
+  const http = { n: 0 }
+  await exerciseLiveCatalog({
+    label: 'ollama',
+    ttlMs: OLLAMA_CATALOG_TTL_MS,
+    dropStaticId: OLLAMA_MODELS[0].id,
+    httpPerRefresh: 2,
+    httpCount: () => http.n,
+    reset: resetOllamaCatalogCache,
+    models: ollamaCatalogModels,
+    refresh: ({ token, now, ttlMs, fetch }) => {
+      let pending
+      return refreshOllamaCatalog({ accessToken: token }, {
+        now,
+        ttlMs,
+        fetchFn: async (url) => {
+          http.n += 1
+          if (String(url) === OLLAMA_SHOW_URL) return { ok: true, json: async () => ({}) }
+          pending ??= fetch()
+          const kind = await pending
+          if (kind === 'fail') return { ok: false, json: async () => ({}) }
+          if (kind === 'empty') return { ok: true, json: async () => ({ models: [] }) }
+          return { ok: true, json: async () => ({ models: [{ name: kind === 'a' ? 'live-only-a' : 'live-only-b' }] }) }
+        },
+      })
+    },
+  })
 })

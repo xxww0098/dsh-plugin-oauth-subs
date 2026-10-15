@@ -42,10 +42,10 @@ export type FamilyResponseObserver = (attempt: {
     attempt: number;
     wireBody: Uint8Array;
 }) => FamilyResponseObservation | undefined;
-/** refreshQuota: re-read this family's own model list, re-sync when it changed. */
+/** refreshQuota: re-read this family's own model list, re-sync when routing fields changed. */
 export interface FamilyCatalogDiscovery {
-    /** Current catalog rows; ids compared before/after discovery. */
-    models: () => {
+    /** Current catalog rows. The routing signature (id, window, input, effort) is compared before and after. */
+    models: () => readonly {
         id: string;
     }[];
     /** Kiro only: the catalog follows the egress region, so a manual refresh re-asks. */

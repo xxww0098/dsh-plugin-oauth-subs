@@ -25,6 +25,7 @@ import {
 } from './proto.js'
 import { describeError } from '../../utils/http.js'
 import { outboundFetch } from '../../utils/outbound.js'
+import { createLiveCatalog } from '../../catalog/live-refresh.js'
 
 const EFFORT_WORDS = Object.freeze({
   none: 'off',
@@ -171,10 +172,13 @@ export function toDevinPickerModels(configs, { floor = DEVIN_MODELS }: any = {})
   return rows
 }
 
-let devinCatalogCache
+const live = createLiveCatalog<any>({
+  fallback: () => DEVIN_MODELS,
+  copy: false,
+})
 
 export function devinCatalogModels() {
-  return devinCatalogCache ?? DEVIN_MODELS
+  return live.models()
 }
 
 export function devinModelById(id) {
@@ -218,20 +222,29 @@ export async function devinListModelConfigs(session, { fetchFn = outboundFetch, 
  * Refresh the in-memory catalog. Live rows win when any survive filtering;
  * the static floor stays when the RPC fails or returns nothing usable.
  */
-export async function refreshDevinCatalog(session, { fetchFn = outboundFetch, signal }: any = {}) {
-  const configs = await devinListModelConfigs(session, { fetchFn, signal })
-  const rows = toDevinPickerModels(configs)
-  if (rows.length > 0) devinCatalogCache = rows
-  return devinCatalogModels()
+export async function refreshDevinCatalog(session, options: any = {}) {
+  const token = typeof session?.accessToken === 'string' ? session.accessToken.trim() : ''
+  const fetchFn = options.fetchFn ?? outboundFetch
+  return live.refresh({
+    credential: token || 'devin',
+    now: options.now,
+    reuse: false,
+    fetch: async () => {
+      const configs = await devinListModelConfigs(session, { fetchFn, signal: options.signal })
+      const rows = toDevinPickerModels(configs)
+      return rows.length > 0 ? rows : null
+    },
+  })
 }
 
 export function setDevinCatalogModels(rows) {
-  devinCatalogCache = Array.isArray(rows) && rows.length > 0 ? rows : undefined
+  if (Array.isArray(rows) && rows.length > 0) live.adopt(rows)
+  else live.reset()
   return devinCatalogModels()
 }
 
 export function resetDevinCatalog() {
-  devinCatalogCache = undefined
+  live.reset()
 }
 
 export function describeDevinCatalogError(error) {

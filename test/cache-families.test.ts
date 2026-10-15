@@ -19,6 +19,8 @@ import { isKiroFallback } from '../lib/oauth/kiro/cache.js'
 import { isCursorFallback, resetCursorSystemPins } from '../lib/oauth/cursor/cache.js'
 import { isAntigravityFallback, resetAntigravitySystemPins } from '../lib/oauth/antigravity/cache.js'
 import { devinConversationId, isDevinFallback } from '../lib/oauth/devin/cache.js'
+import { applyCommandCodeCache, deterministicCommandCodeId } from '../lib/apikey/command-code/cache.js'
+import { FAMILY_IDS, HARNESS_COMPLETIONS_API, HARNESS_RESPONSES_API, buildProviders } from '../lib/oauth/models.js'
 import { decodeAgentClientMessage } from '../lib/oauth/cursor/proto.js'
 import { normalizeGrokResponsesBody } from '../lib/oauth/grok/request.js'
 import { readdirSync, readFileSync } from 'node:fs'
@@ -255,6 +257,12 @@ test('every Completions family keys on the host session id and sends no prompt_c
   resetKiroSystemPins()
   resetKimiPins()
   resetClinePins()
+  const loggedIn = Object.fromEntries(FAMILY_IDS.map((id) => [id, true]))
+  const providers = buildProviders({ prefix: 'oauth', origin: 'http://127.0.0.1:8318', loggedIn })
+  const completions = FAMILY_IDS.filter((id) => providers[`oauth-${id}`].api === HARNESS_COMPLETIONS_API)
+  assert.equal(providers['oauth-chatgpt'].api, HARNESS_RESPONSES_API)
+  assert.equal(completions.includes('chatgpt'), false)
+  assert.equal(completions.includes('command-code'), true)
   const families = {
     cursor: () => applyCursorCache(hostBody('composer-2')),
     ollama: () => applyOllamaCache(hostBody('deepseek-v4.1-flash')),
@@ -270,10 +278,22 @@ test('every Completions family keys on the host session id and sends no prompt_c
       const sessionId = antigravitySessionIdOf(hostBody('gemini-3.7-flash-high'))
       return { cacheSessionId: sessionId, payload: openaiToAntigravity(hostBody('gemini-3.7-flash-high'), { projectId: 'p', sessionId }) }
     },
+    'command-code': () => {
+      const { payload, threadId } = applyCommandCodeCache(hostBody('claude-sonnet-5'))
+      return { cacheSessionId: threadId, payload }
+    },
   }
-  for (const [family, run] of Object.entries(families)) {
-    const { payload, cacheSessionId } = run()
-    assert.ok(String(cacheSessionId).includes(HOST_ID), `${family} id ${cacheSessionId}`)
+  assert.deepEqual(Object.keys(families).sort(), [...completions].sort(), 'a Completions family dropped from this loop fails the test')
+  for (const family of completions) {
+    const { payload, cacheSessionId } = families[family]()
+    if (family === 'command-code') {
+      assert.equal(cacheSessionId, deterministicCommandCodeId(HOST_ID))
+      assert.notEqual(cacheSessionId, deterministicCommandCodeId(`${HOST_ID}:other`))
+    } else {
+      assert.ok(String(cacheSessionId).includes(HOST_ID), `${family} id ${cacheSessionId}`)
+    }
+    assert.equal(Object.hasOwn(payload, 'prompt_cache_key'), false, family)
+    assert.equal(Object.hasOwn(payload, 'prompt_cache_retention'), false, family)
     const wire = JSON.stringify(payload)
     assert.equal(wire.includes('prompt_cache_key'), false, family)
     assert.equal(wire.includes('prompt_cache_retention'), false, family)

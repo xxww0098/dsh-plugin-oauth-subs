@@ -25,10 +25,10 @@ export declare function devinLabelVariant(label: any, familyLabel: any): {
  * `variants` + `defaultUid`; `toHarnessModel` projects only the public fields.
  */
 export declare function toDevinPickerModels(configs: any, { floor }?: any): any[];
-export declare function devinCatalogModels(): any;
+export declare function devinCatalogModels(): readonly any[];
 export declare function devinModelById(id: any): any;
 /** Some Devin rows declare efforts; the provider compat key must not 400 them. */
-export declare function devinHasEffort(): any;
+export declare function devinHasEffort(): boolean;
 /**
  * POST ApiServerService/GetCliModelConfigs (unary application/proto, raw body).
  * Returns the decoded ClientModelConfig list; throws on transport errors.
@@ -38,7 +38,7 @@ export declare function devinListModelConfigs(session: any, { fetchFn, signal }?
  * Refresh the in-memory catalog. Live rows win when any survive filtering;
  * the static floor stays when the RPC fails or returns nothing usable.
  */
-export declare function refreshDevinCatalog(session: any, { fetchFn, signal }?: any): Promise<any>;
-export declare function setDevinCatalogModels(rows: any): any;
+export declare function refreshDevinCatalog(session: any, options?: any): Promise<readonly any[]>;
+export declare function setDevinCatalogModels(rows: any): readonly any[];
 export declare function resetDevinCatalog(): void;
 export declare function describeDevinCatalogError(error: any): string;

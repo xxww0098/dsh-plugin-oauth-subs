@@ -5,6 +5,7 @@ import { test } from 'node:test'
 
 import { assertCatalog } from '../lib/catalog/index.js'
 import { mergeCatalogRows } from '../lib/catalog/merge.js'
+import { commandCodeProviderRows, commandCodeSourceModels, mergeCommandCodeProviderModels } from '../lib/apikey/command-code/catalog.js'
 import { fetchKiroLiveModels } from '../lib/oauth/kiro/catalog.js'
 
 /**
@@ -102,4 +103,22 @@ test('kiro discovery asks the requested origin (governance list for the refresh 
   assert.deepEqual(models.map((m) => m.modelId), ['claude-opus-5.5'])
   const listed = seen.filter((href) => href.includes('List-Available-Models'))
   assert.ok(listed.length > 0 && listed.every((href) => new URL(href).searchParams.get('origin') === 'KIRO_CONSOLE'))
+})
+
+test('command code update sees the source list; the picker merge is a separate use of the same rows', () => {
+  const staticRows = [
+    { id: 'kept', name: 'Kept', contextWindow: 1_000, maxTokens: 8 },
+    { id: 'gone', name: 'Gone', contextWindow: 2_000, maxTokens: 8 },
+  ]
+  const live = commandCodeProviderRows({
+    data: [{ id: 'kept', name: 'Kept Live', context_length: 1_500 }],
+  })
+  const source = commandCodeSourceModels(live)
+  const picker = mergeCommandCodeProviderModels(live, { models: staticRows })
+  const report = mergeCatalogRows(staticRows, source)
+  assert.equal(picker.some((row) => row.id === 'gone'), true)
+  assert.deepEqual(report.missing, ['gone'])
+  assert.deepEqual(report.rows.map((row) => row.id), ['kept', 'gone'])
+  assert.deepEqual(mergeCatalogRows(staticRows, source, { prune: true }).removed, ['gone'])
+  assert.deepEqual(mergeCatalogRows(staticRows, picker).missing, [])
 })

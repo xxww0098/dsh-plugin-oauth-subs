@@ -21,6 +21,7 @@
  */
 
 import { outboundFetch } from '../../utils/outbound.js'
+import { createLiveCatalog } from '../../catalog/live-refresh.js'
 import { catalogRateTable, catalogRateTimeOfDay } from '../../catalog/index.js'
 import {
   COMMAND_CODE_MODELS,
@@ -30,16 +31,16 @@ import {
 
 export const COMMAND_CODE_CATALOG_TTL_MS = 10 * 60_000
 
-const cached: { models?: any[]; expiresAt: number } = { models: undefined, expiresAt: 0 }
+const live = createLiveCatalog<any>({ fallback: () => [...COMMAND_CODE_MODELS] })
 
 export function resetCommandCodeCatalogCache() {
-  cached.models = undefined
-  cached.expiresAt = 0
+  live.reset()
 }
 
 /** The live rows when a refresh landed, else the pinned registry. */
 export function commandCodeCatalogModels() {
-  return cached.models?.length ? [...cached.models] : COMMAND_CODE_MODELS
+  const stored = live.stored()
+  return stored?.length ? [...stored] : COMMAND_CODE_MODELS
 }
 
 /**
@@ -68,6 +69,19 @@ export function commandCodeProviderRows(payload) {
     })
   }
   return out
+}
+
+/**
+ * Source membership for the update script: what the vendor list actually
+ * returned, with no static floor filled back in. The picker merge stays
+ * `mergeCommandCodeProviderModels`.
+ */
+export function commandCodeSourceModels(liveRows) {
+  return (liveRows ?? []).map((row) => ({
+    id: row.id,
+    name: row.name,
+    contextWindow: row.contextWindow,
+  }))
 }
 
 /**
@@ -115,16 +129,16 @@ async function readProviderModels(fetchFn, signal) {
  * discover signature. A failed or empty read leaves the pinned registry.
  */
 export async function refreshCommandCodeCatalog(_session, options: any = {}) {
-  const ttlMs = options.ttlMs ?? COMMAND_CODE_CATALOG_TTL_MS
-  if (cached.models?.length && Date.now() < cached.expiresAt) return [...cached.models]
-  const live = await readProviderModels(options.fetchFn ?? outboundFetch, options.signal)
-  if (live.length > 0) {
-    cached.models = mergeCommandCodeProviderModels(live, { models: options.models ?? COMMAND_CODE_MODELS })
-    cached.expiresAt = Date.now() + ttlMs
-    return [...cached.models]
-  }
-  if (cached.models?.length) return [...cached.models]
-  return [...COMMAND_CODE_MODELS]
+  return live.refresh({
+    credential: 'public',
+    ttlMs: options.ttlMs ?? COMMAND_CODE_CATALOG_TTL_MS,
+    now: options.now,
+    fetch: async () => {
+      const listed = await readProviderModels(options.fetchFn ?? outboundFetch, options.signal)
+      if (listed.length === 0) return null
+      return mergeCommandCodeProviderModels(listed, { models: options.models ?? COMMAND_CODE_MODELS })
+    },
+  })
 }
 
 /**

@@ -7,8 +7,9 @@
  */
 
 import { describeError } from '../utils/http.js'
-import { PROVIDER_IDS, publicSession, saveSession } from './store.js'
+import { PROVIDER_IDS, listStoredSessions, publicSession, saveSession } from './store.js'
 import { oauthFamily } from './families.js'
+import { catalogRouteSignature, notifyCatalogDiscovery } from './catalog-sync.js'
 import type { AuthController } from './controller.js'
 
 export async function login(ctl: AuthController, provider, options) {
@@ -25,6 +26,9 @@ export async function completePkce(ctl: AuthController, provider, attempt, claim
   const hooks = oauthFamily(provider)?.login.completePaste
   if (!hooks) return
   try {
+    const wasSignedIn = (await listStoredSessions(provider, ctl.authPath)).length > 0
+    const readModels = () => oauthFamily(provider)?.catalogModels?.()
+    const before = catalogRouteSignature(readModels())
     const code = await attempt.waitCode()
     // Kiro (#167): the portal can pivot an organization login to the IdC
     // device flow; resume settles it through that attempt instead of a code
@@ -36,7 +40,7 @@ export async function completePkce(ctl: AuthController, provider, attempt, claim
     ctl.lastError.delete(provider)
     const discover = hooks.discover ?? oauthFamily(provider)?.quota?.discover?.run
     if (discover) await discover(ctl, session)
-    ctl.onAuthChanged?.(provider)
+    await notifyCatalogDiscovery(ctl, provider, { wasSignedIn, before, models: readModels() })
     void ctl.quota.refresh(provider)
     if (hooks.probe) void hooks.probe(ctl, saved)
   } catch (error) {
@@ -64,6 +68,9 @@ export async function importFrom(ctl: AuthController, provider) {
   if (provider === 'chatgpt') throw new Error('Sign in with ChatGPT has no local session to import; use Continue with ChatGPT')
   const run = oauthFamily(provider)?.login.importLocal
   if (!run) throw new Error(`${provider} has no local session to import`)
+  const wasSignedIn = (await listStoredSessions(provider, ctl.authPath)).length > 0
+  const readModels = () => oauthFamily(provider)?.catalogModels?.()
+  const before = catalogRouteSignature(readModels())
   const result: any = await run(ctl)
   ctl.claim(provider)
   ctl.flows.pending(provider)?.cancel()
@@ -80,7 +87,7 @@ export async function importFrom(ctl: AuthController, provider) {
   ctl.lastError.delete(provider)
   const discover = oauthFamily(provider)?.quota?.discover?.run
   if (discover) await discover(ctl, sessions[0])
-  ctl.onAuthChanged?.(provider)
+  await notifyCatalogDiscovery(ctl, provider, { wasSignedIn, before, models: readModels() })
   void ctl.quota.refresh(provider)
   return {
     source: result.source,

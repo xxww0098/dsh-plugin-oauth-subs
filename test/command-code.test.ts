@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -7,6 +8,8 @@ import { AuthController } from '../lib/oauth/controller.js'
 import { accountIdOf, listStoredSessions, publicSession, saveSession } from '../lib/oauth/store.js'
 import { OAuthFlowManager } from '../lib/oauth/flow.js'
 import { buildProviders, catalogProviders, familyOfProvider, HARNESS_COMPLETIONS_API, ownedProviderIds } from '../lib/oauth/models.js'
+import { mergeCatalogRows } from '../lib/catalog/merge.js'
+import { exerciseLiveCatalog } from './catalog-lifecycle.ts'
 import {
   COMMAND_CODE_API_KEY_ENV,
   COMMAND_CODE_CREDITS_URL,
@@ -34,6 +37,7 @@ import {
   COMMAND_CODE_CATALOG_TTL_MS,
   commandCodeCatalogModels,
   commandCodeProviderRows,
+  commandCodeSourceModels,
   mergeCommandCodeProviderModels,
   refreshCommandCodeCatalog,
   resetCommandCodeCatalogCache,
@@ -858,4 +862,64 @@ test('Command Code UI icon uses official command symbol (⌘), not prompt fallba
   assert.equal(src.includes('M5 4.5l7.5 7.5L5 19.5v-3.3l4.2-4.2L5 7.8V4.5z'), false)
   // Monochrome official mark, no artificial tint in FAMILY_COLOR
   assert.equal(src.includes("'command-code': '#22c55e'"), false)
+})
+
+test('command code catalog refresh is one public lifecycle', async () => {
+  const listed = (kind) => ({
+    ok: true,
+    json: async () => ({
+      data: [{
+        id: kind === 'a' ? 'live-only-a' : 'live-only-b',
+        name: kind === 'a' ? 'A' : 'B',
+        context_length: kind === 'a' ? 100_000 : 200_000,
+      }],
+    }),
+  })
+  await exerciseLiveCatalog({
+    label: 'command-code',
+    ttlMs: COMMAND_CODE_CATALOG_TTL_MS,
+    shared: true,
+    keepStaticId: 'claude-sonnet-5',
+    windows: { a: 100_000, b: 200_000 },
+    reset: resetCommandCodeCatalogCache,
+    models: commandCodeCatalogModels,
+    refresh: ({ now, ttlMs, fetch }) => refreshCommandCodeCatalog(null, {
+      now,
+      ttlMs,
+      fetchFn: async () => {
+        const kind = await fetch()
+        if (kind === 'fail') return { ok: false, json: async () => ({}) }
+        if (kind === 'empty') return { ok: true, json: async () => ({ data: [] }) }
+        return listed(kind)
+      },
+    }),
+  })
+})
+
+test('command code source membership reports a dropped row while the picker keeps it', () => {
+  const staticRows = [
+    { id: 'kept', name: 'Kept', contextWindow: 1_000, maxTokens: 8 },
+    { id: 'gone', name: 'Gone', contextWindow: 2_000, maxTokens: 8 },
+  ]
+  const live = commandCodeProviderRows({
+    data: [{ id: 'kept', name: 'Kept Live', context_length: 1_500 }],
+  })
+  const source = commandCodeSourceModels(live)
+  assert.deepEqual(source.map((row) => row.id), ['kept'])
+  const picker = mergeCommandCodeProviderModels(live, { models: staticRows })
+  assert.equal(picker.some((row) => row.id === 'gone'), true)
+  assert.equal(picker.find((row) => row.id === 'kept').contextWindow, 1_500)
+  const report = mergeCatalogRows(staticRows, source)
+  assert.deepEqual(report.missing, ['gone'])
+  assert.equal(report.rows.some((row) => row.id === 'gone'), true)
+  assert.deepEqual(report.removed, [])
+  const pruned = mergeCatalogRows(staticRows, source, { prune: true })
+  assert.deepEqual(pruned.removed, ['gone'])
+  assert.equal(pruned.rows.some((row) => row.id === 'gone'), false)
+  const docs = readFileSync(new URL('../docs/models.md', import.meta.url), 'utf8')
+  assert.match(docs, /Command Code `GET api\.commandcode\.ai\/provider\/v1\/models`/)
+  const manual = docs.split('\n').find((line) => line.includes('**无端点**'))
+  assert.match(manual, /ollamaRetired/)
+  assert.equal(manual.includes('Command Code'), false)
+  assert.equal(manual.includes('command-code'), false)
 })

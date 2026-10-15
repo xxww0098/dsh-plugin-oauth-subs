@@ -19,7 +19,7 @@
  */
 export declare const CLINE_CATALOG_TTL_MS: number;
 export declare function resetClineCatalogCache(): void;
-export declare function clineCatalogModels(): any[];
+export declare function clineCatalogModels(): readonly any[];
 /**
  * OpenRouter-shaped `/ai/cline/models` rows. `context` on the live payload
  * is 0; the window is `context_length`. A repeated slug is ambiguous and
@@ -39,4 +39,4 @@ export declare function toClinePickerModels(payload: any, options?: {
     models?: readonly any[];
     cloud?: any;
 }): any[];
-export declare function refreshClineCatalog(session: any, options?: any): Promise<any[]>;
+export declare function refreshClineCatalog(_session: any, options?: any): Promise<readonly any[]>;

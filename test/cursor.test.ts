@@ -23,10 +23,12 @@ import {
   inferCursorMaxOutputTokens,
   isCursorInternalModel,
   mergeCursorStaticFloor,
+  CURSOR_CATALOG_TTL_MS,
   refreshCursorCatalog,
   resetCursorCatalogCache,
   toCursorPickerModels,
 } from '../lib/oauth/cursor/catalog.js'
+import { exerciseLiveCatalog } from './catalog-lifecycle.ts'
 import {
   decodeAgentClientMessage,
   decodeAgentServerMessage,
@@ -1571,4 +1573,80 @@ test('cursor catalog cache is keyed on the upstream proxy egress', async () => {
   assert.equal(fetches, 2)
   configureCursorUpstreamProxy(undefined)
   resetCursorCatalogCache()
+})
+
+test('a cursor cache hit restores that account parameter styles', async () => {
+  resetCursorCatalogCache()
+  const now = 1_700_000_000_000
+  let fetches = 0
+  const refresh = (token, family, paramId, value) => {
+    let pending
+    const read = () => {
+      pending ??= Promise.resolve().then(() => {
+        fetches += 1
+      })
+      return pending
+    }
+    return refreshCursorCatalog({ accessToken: token }, {
+      now,
+      ttlMs: CURSOR_CATALOG_TTL_MS,
+      fetchUsable: async () => {
+        await read()
+        return [{ id: family, name: family }]
+      },
+      fetchAvailable: async () => {
+        await read()
+        return [{ name: family, variants: [{ parameters: [{ id: paramId, value }] }] }]
+      },
+    })
+  }
+  await refresh('cursor-style-account-a', 'composer-2', 'reasoning', 'high')
+  assert.equal(cursorCatalogModels().some((model) => model.id === 'composer-2'), true)
+  assert.ok(cursorModelParameters({ model: 'composer-2', reasoning_effort: 'high' }).some((row) => row.id === 'reasoning' && row.value === 'high'))
+  const afterA = fetches
+  await refresh('cursor-style-account-b', 'gpt-5.6-sol', 'effort', 'low')
+  assert.equal(fetches, afterA + 1)
+  assert.equal(cursorCatalogModels().some((model) => model.id === 'gpt-5.6-sol'), true)
+  assert.deepEqual(cursorModelParameters({ model: 'composer-2', reasoning_effort: 'high' }), [])
+  assert.deepEqual(cursorModelParameters({ model: 'gpt-5.6-sol', reasoning_effort: 'low' }), [{ id: 'effort', value: 'low' }])
+  const beforeReturn = fetches
+  await refresh('cursor-style-account-a', 'composer-2', 'reasoning', 'high')
+  assert.equal(fetches, beforeReturn, 'refreshing A inside the TTL does not fetch models again')
+  assert.equal(cursorCatalogModels().some((model) => model.id === 'composer-2'), true)
+  assert.equal(cursorCatalogModels().some((model) => model.id === 'gpt-5.6-sol'), false)
+  assert.ok(cursorModelParameters({ model: 'composer-2', reasoning_effort: 'high' }).some((row) => row.id === 'reasoning' && row.value === 'high'))
+  const sol = cursorModelParameters({ model: 'gpt-5.6-sol', reasoning_effort: 'low' })
+  assert.equal(sol.some((row) => row.id === 'effort'), false)
+  assert.equal(sol.some((row) => row.id === 'reasoning' && row.value === 'low'), true)
+  resetCursorCatalogCache()
+})
+
+test('cursor catalog refresh keeps publish order, egress identity, and the real TTL', async () => {
+  await exerciseLiveCatalog({
+    label: 'cursor',
+    ttlMs: CURSOR_CATALOG_TTL_MS,
+    dropStaticId: CURSOR_MODELS[0].id,
+    reset: resetCursorCatalogCache,
+    models: cursorCatalogModels,
+    refresh: ({ token, now, ttlMs, fetch }) => {
+      let pending
+      const read = () => {
+        pending ??= fetch()
+        return pending
+      }
+      return refreshCursorCatalog({ accessToken: token }, {
+        now,
+        ttlMs,
+        fetchUsable: async () => {
+          const kind = await read()
+          if (kind === 'fail' || kind === 'empty') return []
+          return [{ id: kind === 'a' ? 'live-only-a' : 'live-only-b', name: kind === 'a' ? 'A' : 'B' }]
+        },
+        fetchAvailable: async () => {
+          await read()
+          return []
+        },
+      })
+    },
+  })
 })

@@ -26,16 +26,16 @@ import {
 } from './store.js'
 import { GLM_MODELS } from './glm/index.js'
 import { CursorPollFlowManager } from './cursor/pkce-flow.js'
-import { cursorCatalogModels, refreshCursorCatalog } from './cursor/catalog.js'
-import { ollamaCatalogModels, refreshOllamaCatalog } from '../apikey/ollama/catalog.js'
+import { refreshCursorCatalog } from './cursor/catalog.js'
+import { refreshOllamaCatalog } from '../apikey/ollama/catalog.js'
 import { refreshCommandCode } from '../apikey/command-code/index.js'
 import { catalogPricing, catalogRateTimeOfDay } from '../catalog/index.js'
 import { kiroCatalogModels, refreshKiroCatalog } from './kiro/catalog.js'
 import { configureKimiIdentity } from './kimi/index.js'
-import { kimiCatalogModels, refreshKimiCatalog } from './kimi/catalog.js'
-import { devinCatalogModels, refreshDevinCatalog } from './devin/catalog.js'
-import { clineCatalogModels, refreshClineCatalog } from './cline/catalog.js'
-import { commandCodeCatalogModels, refreshCommandCodeCatalog } from '../apikey/command-code/catalog.js'
+import { refreshKimiCatalog } from './kimi/catalog.js'
+import { refreshDevinCatalog } from './devin/catalog.js'
+import { refreshClineCatalog } from './cline/catalog.js'
+import { refreshCommandCodeCatalog } from '../apikey/command-code/catalog.js'
 import { opencodeGoFilePath, OpencodeGoStore } from '../apikey/opencode-go/store.js'
 import {
   APIKEY_FAMILY_IDS,
@@ -46,7 +46,8 @@ import {
   MODEL_FAMILY_IDS,
 } from './models.js'
 import { ensureOpencodeGoRoute, ensureOpencodeZenRoute, filterProviders, syncHarnessModels } from './harness-sync.js'
-import { familyCatalogInputs } from './families.js'
+import { familyCatalogInputs, OAUTH_FAMILIES } from './families.js'
+import { catalogRouteSignature } from './catalog-sync.js'
 import { ModelSwitch } from './model-switch.js'
 import { buildTokenManagers } from './token-managers.js'
 import { TokenManager } from './tokens.js'
@@ -54,8 +55,8 @@ import { QuotaStore } from './quota.js'
 import { DEFAULT_PROFILE, installRelease, localUpdateInfo } from '../utils/update.js'
 import { readUpdatePrefs, readUpdateState, updatePrefsPath, updateStatePath } from '../utils/update-prefs.js'
 import { outboundFetch } from '../utils/outbound.js'
-import { completeCommandCode, discoverCommandCode, maybeAutoImportCommandCode } from '../apikey/command-code/accounts.js'
-import { discoverOllama, maybeAutoImportOllama } from '../apikey/ollama/accounts.js'
+import { completeCommandCode, maybeAutoImportCommandCode } from '../apikey/command-code/accounts.js'
+import { maybeAutoImportOllama } from '../apikey/ollama/accounts.js'
 import {
   clearOpencodeGo,
   hasOpencodeGoKey,
@@ -67,19 +68,18 @@ import {
 } from '../apikey/opencode-go/accounts.js'
 import { markSignedOut } from './account-marks.js'
 import { accountsWithQuota, consumeReset, ensureAccountQuota, refreshQuota } from './account-quota.js'
-import { completeClineDevice, discoverCline, maybeAutoImportCline } from './cline/accounts.js'
-import { discoverChatgpt, revokeChatgptAccounts } from './chatgpt/accounts.js'
-import { chatgptCatalogModels, refreshChatgptCatalog } from './chatgpt/catalog.js'
+import { completeClineDevice, maybeAutoImportCline } from './cline/accounts.js'
+import { revokeChatgptAccounts } from './chatgpt/accounts.js'
+import { refreshChatgptCatalog } from './chatgpt/catalog.js'
 import {
   completeCursor,
-  discoverCursor,
   maybeAutoImportCursor,
   resolveCursorIdentities,
 } from './cursor/accounts.js'
-import { discoverDevin, maybeAutoImportDevin } from './devin/accounts.js'
+import { maybeAutoImportDevin } from './devin/accounts.js'
 import { completeGlm, resolveGlmIdentities, upgradeGlmLegacyBearers } from './glm/accounts.js'
-import { completeKimiDevice, discoverKimi, maybeAutoImportKimi } from './kimi/accounts.js'
-import { completeKiroIdc, discoverKiro } from './kiro/accounts.js'
+import { completeKimiDevice, maybeAutoImportKimi } from './kimi/accounts.js'
+import { completeKiroIdc } from './kiro/accounts.js'
 import { completeDevice, completePkce, importFrom, login, useKey } from './login.js'
 import {
   checkUpdate,
@@ -187,7 +187,7 @@ export class AuthController {
     // Any login-state change re-arms the throttled identity discovery.
     this.onAuthChanged = (provider) => {
       this.identityTried.clear()
-      onAuthChanged?.(provider)
+      return onAuthChanged?.(provider)
     }
     this.models = models ?? new ModelSwitch()
     this.loginsReady = (async () => {
@@ -352,29 +352,20 @@ export class AuthController {
    * Re-syncs once if any family's picker rows changed.
    */
   async warmCatalogs() {
-    const warmers: Array<[string, any, () => any[], (session: any) => any]> = [
-      ['cursor', this.tokens.cursor, cursorCatalogModels, (session) => discoverCursor(this, session)],
-      ['ollama', this.tokens.ollama, ollamaCatalogModels, (session) => discoverOllama(this, session)],
-      ['kiro', this.tokens.kiro, kiroCatalogModels, (session) => discoverKiro(this, session)],
-      ['kimi', this.tokens.kimi, kimiCatalogModels, (session) => discoverKimi(this, session)],
-      ['devin', this.tokens.devin, devinCatalogModels, (session) => discoverDevin(this, session)],
-      ['cline', this.tokens.cline, clineCatalogModels, (session) => discoverCline(this, session)],
-      ['chatgpt', this.tokens.chatgpt, chatgptCatalogModels, (session) => discoverChatgpt(this, session)],
-      ['command-code', this.tokens['command-code'], commandCodeCatalogModels, (session) => discoverCommandCode(this, session)],
-    ]
-    const idsOf = (read) => read().map((model) => model.id).join('\0')
-    const before = new Map(warmers.map(([family, , read]) => [family, idsOf(read)]))
-    await Promise.all(warmers.map(async ([, tokens, , discover]) => {
+    const families = [...OAUTH_FAMILIES.values()].filter((family) => family.quota?.discover && family.catalogModels)
+    const before = new Map(families.map((family) => [family.id, catalogRouteSignature(family.catalogModels!())]))
+    await Promise.all(families.map(async (family) => {
+      const tokens = this.tokens[family.id]
       if (!tokens) return
       let session
       try {
-        session = await tokens.session()
+        session = await tokens.session(undefined)
       } catch {
         return // not signed in
       }
-      await discover(session)
+      await family.quota!.discover!.run(this, session)
     }))
-    const changed = warmers.some(([family, , read]) => idsOf(read) !== before.get(family))
+    const changed = families.some((family) => catalogRouteSignature(family.catalogModels!()) !== before.get(family.id))
     if (changed && this.settings) await this.sync().catch(() => undefined)
   }
 

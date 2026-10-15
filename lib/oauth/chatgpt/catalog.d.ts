@@ -10,6 +10,6 @@
  */
 export declare const CHATGPT_CATALOG_TTL_MS: number;
 export declare function resetChatgptCatalogCache(): void;
-export declare function chatgptCatalogModels(): any[];
+export declare function chatgptCatalogModels(): readonly any[];
 export declare function toChatgptPickerModels(payload: any): any[];
-export declare function refreshChatgptCatalog(session: any, options?: any): Promise<any[]>;
+export declare function refreshChatgptCatalog(session: any, options?: any): Promise<readonly any[]>;

@@ -493,9 +493,9 @@ const ADAPTERS: Record<string, any> = {
     source: 'GET api.commandcode.ai/provider/v1/models (public)',
     async fetch() {
       const { COMMAND_CODE_MODELS, COMMAND_CODE_PROVIDER_MODELS_URL } = await import('../lib/apikey/command-code/index.js')
-      const { commandCodeProviderRows, mergeCommandCodeProviderModels } = await import('../lib/apikey/command-code/catalog.js')
+      const { commandCodeProviderRows, commandCodeSourceModels } = await import('../lib/apikey/command-code/catalog.js')
       const live = commandCodeProviderRows(await getJson(COMMAND_CODE_PROVIDER_MODELS_URL))
-      return mergeCommandCodeProviderModels(live, { models: COMMAND_CODE_MODELS }).map(pick)
+      return commandCodeSourceModels(live).map(pick)
     },
   },
   ollamaRetired: { manual: 'Ollama Cloud retirements table (ollama/README.md 模型); not a live list' },

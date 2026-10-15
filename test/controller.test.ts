@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
 import { AuthController } from '../lib/oauth/controller.js'
-import { saveSession } from '../lib/oauth/store.js'
+import { accountIdOf, listStoredSessions, saveSession } from '../lib/oauth/store.js'
 import { installedVersion } from '../lib/utils/update.js'
 import { CODEX_USAGE_URL } from '../lib/oauth/codex/index.js'
 import {
@@ -18,7 +18,14 @@ import { ModelSwitch } from '../lib/oauth/model-switch.js'
 import { glmSession } from '../lib/oauth/glm/index.js'
 import { OPENCODE_GO_BUILTIN_ROUTE_ID, OPENCODE_GO_EXTRA_MODELS, OPENCODE_GO_EXTRA_ROUTE, OPENCODE_GO_ROUTES, OPENCODE_ZEN_ROUTES } from '../lib/apikey/opencode-go/models.js'
 import { kiroSession, KIRO_MODELS } from '../lib/oauth/kiro/index.js'
+import { kiroCatalogModels, refreshKiroCatalog, resetKiroCatalogCache } from '../lib/oauth/kiro/catalog.js'
 import { antigravitySession } from '../lib/oauth/antigravity/index.js'
+import { kimiSession } from '../lib/oauth/kimi/index.js'
+import { kimiCatalogModels, refreshKimiCatalog, resetKimiCatalogCache } from '../lib/oauth/kimi/catalog.js'
+import { devinSession } from '../lib/oauth/devin/index.js'
+import { devinCatalogModels, resetDevinCatalog, setDevinCatalogModels } from '../lib/oauth/devin/catalog.js'
+import { commandCodeSession } from '../lib/apikey/command-code/index.js'
+import { commandCodeCatalogModels, refreshCommandCodeCatalog, resetCommandCodeCatalogCache } from '../lib/apikey/command-code/catalog.js'
 
 const KIRO_RT = `rt_${'x'.repeat(120)}`
 
@@ -1248,5 +1255,447 @@ test('runAutoUpdate installs a newer tag and records the outcome', async () => {
   assert.equal(typeof state.at, 'string')
   const snap = await controller.snapshot()
   assert.equal(snap.autoUpdateState.status, 'installed')
+})
+
+function kimiWindow(settings) {
+  return settings.section.providers['oauth-kimi']?.models?.find((model) => model.id === 'kimi-for-coding')?.contextWindow
+}
+
+test('warmup, login, and quota refresh sync a same-id Kimi window change once', async () => {
+  resetKimiCatalogCache()
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-kimi-sync-'))
+  const authPath = join(dir, 'auth.json')
+  await saveSession('kimi', kimiSession({ accessToken: 'sk-kimi-route-sync', source: 'paste' }), authPath)
+  const state = { rows: [{ id: 'kimi-for-coding', context_length: 100_000 }] }
+  let discovers = 0
+  const settings = createPiAiSettings()
+  let controller
+  controller = new AuthController({
+    authPath,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings,
+    fetchFn: async () => new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }),
+    onAuthChanged: () => controller.sync(),
+    kimiDiscover: (session) => {
+      discovers += 1
+      return refreshKimiCatalog(session, {
+        now: 1_700_000_000_000,
+        ttlMs: 0,
+        fetchFn: async () => ({ ok: true, json: async () => ({ data: state.rows }) }),
+      })
+    },
+  })
+  await controller.loginsReady
+  await controller.warmCatalogs()
+  assert.equal(settings.ops.length, 1)
+  assert.equal(kimiWindow(settings), 100_000)
+  const unchanged = settings.ops.length
+  await controller.warmCatalogs()
+  assert.equal(settings.ops.length, unchanged, 'an identical catalog does not write')
+
+  state.rows = [{ id: 'kimi-for-coding', context_length: 200_000 }]
+  await controller.warmCatalogs()
+  assert.equal(settings.ops.length, unchanged + 1)
+  assert.equal(kimiWindow(settings), 200_000)
+
+  state.rows = [{ id: 'kimi-for-coding', context_length: 200_000, supports_image_in: false }]
+  await controller.warmCatalogs()
+  assert.equal(settings.ops.length, unchanged + 2)
+  assert.deepEqual(
+    settings.section.providers['oauth-kimi'].models.find((model) => model.id === 'kimi-for-coding').input,
+    ['text'],
+  )
+
+  state.rows = [{
+    id: 'kimi-for-coding',
+    context_length: 200_000,
+    supports_image_in: false,
+    think_efforts: { support: true, valid_efforts: ['low'], default_effort: 'low' },
+  }]
+  await controller.warmCatalogs()
+  assert.equal(settings.ops.length, unchanged + 3)
+  assert.deepEqual(
+    settings.section.providers['oauth-kimi'].models.find((model) => model.id === 'kimi-for-coding').reasoningEfforts,
+    { off: 'off', minimal: 'low', low: 'low' },
+  )
+
+  const beforeLogin = settings.ops.length
+  const beforeDiscover = discovers
+  state.rows = [{ id: 'kimi-for-coding', context_length: 100_000 }]
+  await controller.useKey('kimi', 'sk-kimi-route-sync-next')
+  assert.equal(discovers, beforeDiscover + 1)
+  assert.equal(settings.ops.length, beforeLogin + 1, 'login discovery writes the new window once')
+  assert.equal(kimiWindow(settings), 100_000)
+  const quiet = settings.ops.length
+  const quietDiscover = discovers
+  await controller.useKey('kimi', 'sk-kimi-route-sync-same')
+  assert.equal(discovers, quietDiscover + 1)
+  assert.equal(settings.ops.length, quiet, 'login with the same routing fields does not write')
+
+  state.rows = [{ id: 'kimi-for-coding', context_length: 200_000 }]
+  const beforeQuota = settings.ops.length
+  await controller.refreshQuota('kimi')
+  assert.equal(settings.ops.length, beforeQuota + 1)
+  assert.equal(kimiWindow(settings), 200_000)
+  const quotaQuiet = settings.ops.length
+  await controller.refreshQuota('kimi')
+  assert.equal(settings.ops.length, quotaQuiet, 'quota refresh with the same catalog does not write')
+  resetKimiCatalogCache()
+})
+
+test('a Kimi window change keeps the user selection, alias, and window override', async () => {
+  resetKimiCatalogCache()
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-kimi-keep-'))
+  const authPath = join(dir, 'auth.json')
+  await saveSession('kimi', kimiSession({ accessToken: 'sk-kimi-keep-selection', source: 'paste' }), authPath)
+  const state = {
+    rows: [
+      { id: 'kimi-for-coding', context_length: 100_000 },
+      { id: 'k3', context_length: 262_144 },
+    ],
+  }
+  const settings = createPiAiSettings()
+  const controller = new AuthController({
+    authPath,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings,
+    fetchFn: async () => new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }),
+    kimiDiscover: (session) => refreshKimiCatalog(session, {
+      now: 1_700_000_000_000,
+      ttlMs: 0,
+      fetchFn: async () => ({ ok: true, json: async () => ({ data: state.rows }) }),
+    }),
+  })
+  await controller.loginsReady
+  await controller.warmCatalogs()
+  const catalog = await controller.catalog()
+  await controller.models.setEnabled(['oauth-kimi/kimi-for-coding'], catalog)
+  await controller.models.setContext('oauth-kimi/kimi-for-coding', 32_768, catalog)
+  state.rows = [
+    { id: 'kimi-for-coding', context_length: 200_000 },
+    { id: 'k3', context_length: 262_144 },
+  ]
+  const before = settings.ops.length
+  await controller.warmCatalogs()
+  assert.equal(settings.ops.length, before + 1)
+  const models = settings.section.providers['oauth-kimi'].models
+  assert.deepEqual(models.map((model) => model.id), ['kimi-for-coding'])
+  assert.equal(models[0].name, 'Kimi/kimi-for-coding')
+  assert.equal(models[0].contextWindow, 32_768)
+  resetKimiCatalogCache()
+})
+
+test('a settings write failure does not fail Kimi discovery', async () => {
+  resetKimiCatalogCache()
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-kimi-sync-fail-'))
+  const authPath = join(dir, 'auth.json')
+  await saveSession('kimi', kimiSession({ accessToken: 'sk-kimi-sync-fails', source: 'paste' }), authPath)
+  const settings = createPiAiSettings()
+  settings.mutate = async () => { throw new Error('disk full') }
+  let controller
+  controller = new AuthController({
+    authPath,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings,
+    fetchFn: async () => new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }),
+    onAuthChanged: () => controller.sync(),
+    kimiDiscover: (session) => refreshKimiCatalog(session, {
+      now: 1_700_000_000_000,
+      ttlMs: 0,
+      fetchFn: async () => ({
+        ok: true,
+        json: async () => ({ data: [{ id: 'kimi-for-coding', context_length: 200_000 }] }),
+      }),
+    }),
+  })
+  await assert.doesNotReject(() => controller.warmCatalogs())
+  await assert.doesNotReject(() => controller.useKey('kimi', 'sk-kimi-sync-fails'))
+  assert.equal(kimiCatalogModels().find((model) => model.id === 'kimi-for-coding').contextWindow, 200_000)
+  resetKimiCatalogCache()
+})
+
+test('the first Kimi login syncs even when the live catalog matches the floor', async () => {
+  resetKimiCatalogCache()
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-kimi-first-'))
+  const settings = createPiAiSettings()
+  let changes = 0
+  let controller
+  controller = new AuthController({
+    authPath: join(dir, 'auth.json'),
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings,
+    fetchFn: async () => new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }),
+    onAuthChanged: () => {
+      changes += 1
+      return controller.sync()
+    },
+    kimiDiscover: async () => kimiCatalogModels(),
+  })
+  await controller.useKey('kimi', 'sk-kimi-first-login')
+  assert.equal(changes, 1)
+  assert.equal(settings.ops.length, 1)
+  await controller.useKey('kimi', 'sk-kimi-first-login-again')
+  assert.equal(changes, 1, 'an already-signed-in login with the same routing fields does not sync')
+  assert.equal(settings.ops.length, 1)
+  resetKimiCatalogCache()
+})
+
+test('a failed Kimi account does not replace another account catalog or rewrite settings', async () => {
+  resetKimiCatalogCache()
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-kimi-other-account-'))
+  const authPath = join(dir, 'auth.json')
+  const sessionA = kimiSession({ accessToken: 'sk-kimi-account-a-token', source: 'paste' })
+  const sessionB = kimiSession({ accessToken: 'sk-kimi-account-b-token', source: 'paste' })
+  await saveSession('kimi', sessionA, authPath)
+  const settings = createPiAiSettings()
+  const controller = new AuthController({
+    authPath,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings,
+    fetchFn: async () => new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }),
+    onAuthChanged: () => controller.sync(),
+    kimiDiscover: (session) => refreshKimiCatalog(session, {
+      now: 1_700_000_000_000,
+      ttlMs: 60_000,
+      fetchFn: async () => {
+        if (session.accessToken === sessionB.accessToken) return { ok: false, json: async () => ({}) }
+        return { ok: true, json: async () => ({ data: [{ id: 'live-only-a', context_length: 200_000 }] }) }
+      },
+    }),
+  })
+  await controller.loginsReady
+  await controller.refreshQuota('kimi', accountIdOf('kimi', sessionA))
+  const published = kimiCatalogModels().find((model) => model.id === 'live-only-a')
+  assert.equal(published.contextWindow, 200_000)
+  assert.equal(
+    settings.section.providers['oauth-kimi'].models.find((model) => model.id === 'live-only-a').contextWindow,
+    200_000,
+  )
+  const written = settings.ops.length
+  await saveSession('kimi', sessionB, authPath)
+  await controller.refreshQuota('kimi', accountIdOf('kimi', sessionB))
+  assert.equal(settings.ops.length, written, 'B failing does not rewrite settings to the static floor')
+  assert.equal(kimiCatalogModels().find((model) => model.id === 'live-only-a').contextWindow, 200_000)
+  resetKimiCatalogCache()
+})
+
+test('a Kimi account with a previous success does not replace another account catalog when it later fails', async () => {
+  resetKimiCatalogCache()
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-kimi-prior-fail-'))
+  const authPath = join(dir, 'auth.json')
+  const sessionA = kimiSession({ accessToken: 'sk-kimi-prior-a-token', source: 'paste' })
+  const sessionB = kimiSession({ accessToken: 'sk-kimi-prior-b-token', source: 'paste' })
+  await saveSession('kimi', sessionB, authPath)
+  const settings = createPiAiSettings()
+  let now = 1_700_000_000_000
+  let failB = false
+  const controller = new AuthController({
+    authPath,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings,
+    fetchFn: async () => new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }),
+    onAuthChanged: () => controller.sync(),
+    kimiDiscover: (session) => refreshKimiCatalog(session, {
+      now,
+      ttlMs: 60_000,
+      fetchFn: async () => {
+        if (session.accessToken === sessionB.accessToken) {
+          if (failB) return { ok: false, json: async () => ({}) }
+          return { ok: true, json: async () => ({ data: [{ id: 'live-only-b', context_length: 100_000 }] }) }
+        }
+        return { ok: true, json: async () => ({ data: [{ id: 'live-only-a', context_length: 200_000 }] }) }
+      },
+    }),
+  })
+  await controller.loginsReady
+  await controller.refreshQuota('kimi', accountIdOf('kimi', sessionB))
+  assert.equal(kimiCatalogModels().find((model) => model.id === 'live-only-b').contextWindow, 100_000)
+  await saveSession('kimi', sessionA, authPath)
+  await controller.refreshQuota('kimi', accountIdOf('kimi', sessionA))
+  assert.equal(kimiCatalogModels().find((model) => model.id === 'live-only-a').contextWindow, 200_000)
+  assert.equal(kimiCatalogModels().some((model) => model.id === 'live-only-b'), false)
+  const written = settings.ops.length
+  assert.ok(written >= 1)
+  now += 60_000
+  failB = true
+  await controller.refreshQuota('kimi', accountIdOf('kimi', sessionB))
+  assert.equal(settings.ops.length, written, 'B failing with its own previous success does not rewrite settings')
+  assert.equal(kimiCatalogModels().find((model) => model.id === 'live-only-a').contextWindow, 200_000)
+  assert.equal(kimiCatalogModels().some((model) => model.id === 'live-only-b'), false)
+  assert.equal(
+    settings.section.providers['oauth-kimi'].models.find((model) => model.id === 'live-only-a').contextWindow,
+    200_000,
+  )
+  resetKimiCatalogCache()
+})
+
+test('a failed Kiro re-ask keeps the published catalog and does not rewrite settings', async () => {
+  resetKiroCatalogCache()
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-kiro-reask-'))
+  const authPath = join(dir, 'auth.json')
+  const sessionA = kiroSession({
+    accessToken: 'kiro-live-a',
+    refreshToken: `a${'r'.repeat(120)}`,
+    authMethod: 'social',
+    account: 'a@kiro.test',
+  })
+  const sessionB = kiroSession({
+    accessToken: 'kiro-live-b',
+    refreshToken: `b${'r'.repeat(120)}`,
+    authMethod: 'social',
+    account: 'b@kiro.test',
+  })
+  await saveSession('kiro', sessionA, authPath)
+  const settings = createPiAiSettings()
+  let failB = true
+  const controller = new AuthController({
+    authPath,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings,
+    fetchFn: async () => new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }),
+    onAuthChanged: () => controller.sync(),
+    kiroDiscover: (session) => refreshKiroCatalog(session, {
+      now: 1_700_000_000_000,
+      ttlMs: 60_000,
+      fetchLive: async () => {
+        if (session.accessToken === sessionB.accessToken) {
+          if (failB) return []
+          return [{ modelId: 'live-only-b', modelName: 'Live Only B' }]
+        }
+        return [{ modelId: 'live-only-a', modelName: 'Live Only A' }]
+      },
+    }),
+  })
+  await controller.loginsReady
+  await controller.refreshQuota('kiro', accountIdOf('kiro', sessionA))
+  assert.equal(kiroCatalogModels().some((model) => model.id === 'live-only-a'), true)
+  assert.equal(kiroCatalogModels().some((model) => model.id === KIRO_MODELS[0].id), false)
+  assert.equal(
+    settings.section.providers['oauth-kiro'].models.some((model) => model.id === 'live-only-a'),
+    true,
+  )
+  const written = settings.ops.length
+  await saveSession('kiro', sessionB, authPath)
+  await controller.refreshQuota('kiro', accountIdOf('kiro', sessionB))
+  assert.equal(settings.ops.length, written, 'a failed Kiro re-ask does not write the static floor')
+  assert.equal(kiroCatalogModels().some((model) => model.id === 'live-only-a'), true)
+  assert.equal(kiroCatalogModels().some((model) => model.id === KIRO_MODELS[0].id), false)
+  failB = false
+  await controller.refreshQuota('kiro', accountIdOf('kiro', sessionB))
+  assert.equal(settings.ops.length, written + 1)
+  assert.equal(kiroCatalogModels().some((model) => model.id === 'live-only-b'), true)
+  assert.equal(kiroCatalogModels().some((model) => model.id === 'live-only-a'), false)
+  resetKiroCatalogCache()
+})
+
+test('Devin login and import sync only when the routing signature changes', async () => {
+  resetDevinCatalog()
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-devin-signature-'))
+  const authPath = join(dir, 'auth.json')
+  await saveSession('devin', devinSession({ accessToken: 'devin-session-token$already', source: 'paste' }), authPath)
+  const floor = devinCatalogModels()[0]
+  let window = 100_000
+  const settings = createPiAiSettings()
+  let controller
+  controller = new AuthController({
+    authPath,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings,
+    fetchFn: async (url) => {
+      if (String(url).includes('/auth/cli/token')) {
+        return new Response(JSON.stringify({ token: 'devin-session-token$pkce-sync' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
+    },
+    onAuthChanged: () => controller.sync(),
+    devinAutoImport: false,
+    devinDiscover: async () => {
+      setDevinCatalogModels([{ ...floor, contextWindow: window }])
+      return devinCatalogModels()
+    },
+  })
+  await controller.loginsReady
+  const login = async () => {
+    const claim = controller.claim('devin')
+    await controller.completePkce('devin', {
+      waitCode: async () => 'devin-code',
+      pkce: { verifier: 'devin-verifier' },
+    }, claim)
+  }
+  await login()
+  assert.equal(settings.ops.length, 1)
+  assert.equal(settings.section.providers['oauth-devin'].models.find((model) => model.id === floor.id).contextWindow, 100_000)
+  const same = settings.ops.length
+  await login()
+  assert.equal(settings.ops.length, same, 'a second Devin login with the same routing fields does not write')
+  window = 200_000
+  await login()
+  assert.equal(settings.ops.length, same + 1)
+  assert.equal(settings.section.providers['oauth-devin'].models.find((model) => model.id === floor.id).contextWindow, 200_000)
+
+  const file = join(dir, 'credentials.toml')
+  await writeFile(file, 'windsurf_api_key = "devin-session-token$import-sync"\n')
+  await chmod(file, 0o600)
+  controller.devinImport = { paths: [file] }
+  const beforeImport = settings.ops.length
+  await controller.importFrom('devin')
+  assert.equal(settings.ops.length, beforeImport, 'an import with the same routing fields does not write')
+  window = 300_000
+  await controller.importFrom('devin')
+  assert.equal(settings.ops.length, beforeImport + 1)
+  assert.equal(settings.section.providers['oauth-devin'].models.find((model) => model.id === floor.id).contextWindow, 300_000)
+  assert.equal((await listStoredSessions('devin', authPath)).length > 0, true)
+  resetDevinCatalog()
+})
+
+test('Command Code login syncs a window change once and skips an unchanged catalog', async () => {
+  resetCommandCodeCatalogCache()
+  const dir = await mkdtemp(join(tmpdir(), 'oauth-command-code-signature-'))
+  const authPath = join(dir, 'auth.json')
+  await saveSession('command-code', commandCodeSession({ accessToken: 'cc-key-already-signed-in', source: 'paste' }), authPath)
+  const id = commandCodeCatalogModels()[0].id
+  let window = commandCodeCatalogModels()[0].contextWindow + 1_000
+  const settings = createPiAiSettings()
+  let controller
+  controller = new AuthController({
+    authPath,
+    prefix: 'oauth',
+    origin: () => 'http://127.0.0.1:8318',
+    settings,
+    fetchFn: async () => new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }),
+    onAuthChanged: () => controller.sync(),
+    commandCodeAutoImport: false,
+    commandCodeDiscover: (session) => refreshCommandCodeCatalog(session, {
+      now: 1_700_000_000_000,
+      ttlMs: 0,
+      fetchFn: async () => ({
+        ok: true,
+        json: async () => ({ data: [{ id, name: 'Live', context_length: window }] }),
+      }),
+    }),
+  })
+  await controller.loginsReady
+  await controller.useKey('command-code', 'cc-key-login-window')
+  assert.equal(settings.ops.length, 1)
+  assert.equal(settings.section.providers['oauth-command-code'].models.find((model) => model.id === id).contextWindow, window)
+  const same = settings.ops.length
+  await controller.useKey('command-code', 'cc-key-login-same')
+  assert.equal(settings.ops.length, same, 'a second Command Code login with the same routing fields does not write')
+  window += 1_000
+  await controller.useKey('command-code', 'cc-key-login-next')
+  assert.equal(settings.ops.length, same + 1)
+  assert.equal(settings.section.providers['oauth-command-code'].models.find((model) => model.id === id).contextWindow, window)
+  resetCommandCodeCatalogCache()
 })
 

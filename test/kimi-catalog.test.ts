@@ -8,8 +8,10 @@ import {
   kimiCatalogTokenHash,
   kimiReasoningEffortsOf,
   refreshKimiCatalog,
+  resetKimiCatalogCache,
   toKimiPickerModels,
 } from '../lib/oauth/kimi/catalog.js'
+import { exerciseLiveCatalog } from './catalog-lifecycle.ts'
 
 test('kimiCatalogTokenHash is the 16-hex sha256 prefix and coerces non-strings', () => {
   const expected = createHash('sha256').update('tok').digest('hex').slice(0, 16)
@@ -93,30 +95,50 @@ test('refreshKimiCatalog without a token returns the offline table untouched', a
   assert.deepEqual(await refreshKimiCatalog({ accessToken: '  ' }), [...KIMI_MODELS])
 })
 
-test('refreshKimiCatalog caches per token hash, TTL, and serves stale on failure', async () => {
+test('refreshKimiCatalog caches per token hash and expires only after the stored TTL', async () => {
+  resetKimiCatalogCache()
   const token = `catalog-cache-${Date.now()}`
+  const now = 1_700_000_000_000
   let body = JSON.stringify({ data: [{ id: 'live-a' }, { id: 'live-b' }] })
   let ok = true
-  const fetchFn = async () => ({ ok, json: async () => JSON.parse(body) })
-  const first = await refreshKimiCatalog({ accessToken: token }, { fetchFn })
+  let calls = 0
+  const fetchFn = async () => {
+    calls += 1
+    return { ok, json: async () => JSON.parse(body) }
+  }
+  const first = await refreshKimiCatalog({ accessToken: token }, { fetchFn, now })
   assert.deepEqual(first.map((m) => m.id), ['live-a', 'live-b'])
   assert.deepEqual(kimiCatalogModels().map((m) => m.id), ['live-a', 'live-b'], 'cache serves later readers')
 
-  // Fresh cache short-circuits: the fetch stub is never consulted.
+  // A negative ttl does not expire an entry that is still inside its stored TTL.
   assert.equal((await refreshKimiCatalog({ accessToken: token }, {
     fetchFn: async () => { throw new Error('must not fetch') },
+    now,
+    ttlMs: -1,
   })).length, 2)
+  assert.equal(calls, 1)
 
-  // After the TTL lapses, a failing hop still serves the stale rows (line 119).
-  await refreshKimiCatalog({ accessToken: token }, { fetchFn, ttlMs: -1 })
+  // Once the clock passes the stored expiry, a failing hop serves the previous
+  // rows and does not mark them fresh again.
   ok = false
   body = 'not json'
-  assert.deepEqual((await refreshKimiCatalog({ accessToken: token }, { fetchFn, ttlMs: -1 })).map((m) => m.id), ['live-a', 'live-b'])
+  assert.deepEqual((await refreshKimiCatalog({ accessToken: token }, {
+    fetchFn,
+    now: now + KIMI_CATALOG_TTL_MS,
+  })).map((m) => m.id), ['live-a', 'live-b'])
+  assert.equal(calls, 2)
+  ok = true
+  body = JSON.stringify({ data: [{ id: 'live-c' }] })
+  assert.deepEqual((await refreshKimiCatalog({ accessToken: token }, {
+    fetchFn,
+    now: now + KIMI_CATALOG_TTL_MS,
+  })).map((m) => m.id), ['live-c'])
+  assert.equal(calls, 3, 'the failed read did not refresh the expiry')
 
   // A different token never reads the first token's cache.
-  ok = true
   body = JSON.stringify({ data: [{ id: 'other' }] })
-  assert.deepEqual((await refreshKimiCatalog({ accessToken: token + '-x' }, { fetchFn })).map((m) => m.id), ['other'])
+  assert.deepEqual((await refreshKimiCatalog({ accessToken: token + '-x' }, { fetchFn, now })).map((m) => m.id), ['other'])
+  resetKimiCatalogCache()
 })
 
 test('refreshKimiCatalog falls back to the offline table on empty, error, or throw', async () => {
@@ -138,4 +160,33 @@ test('refreshKimiCatalog falls back to the offline table on empty, error, or thr
 
 test('KIMI_CATALOG_TTL_MS stays the documented five minutes', () => {
   assert.equal(KIMI_CATALOG_TTL_MS, 5 * 60_000)
+})
+
+test('kimi catalog refresh keeps publish order, account identity, and the real TTL', async () => {
+  const json = (kind) => ({
+    ok: true,
+    json: async () => ({
+      data: [{
+        id: kind === 'a' ? 'live-only-a' : 'live-only-b',
+        context_length: kind === 'a' ? 100_000 : 200_000,
+      }],
+    }),
+  })
+  await exerciseLiveCatalog({
+    label: 'kimi',
+    ttlMs: KIMI_CATALOG_TTL_MS,
+    windows: { a: 100_000, b: 200_000 },
+    reset: resetKimiCatalogCache,
+    models: kimiCatalogModels,
+    refresh: ({ token, now, ttlMs, fetch }) => refreshKimiCatalog({ accessToken: token }, {
+      now,
+      ttlMs,
+      fetchFn: async () => {
+        const kind = await fetch()
+        if (kind === 'fail') return { ok: false, json: async () => ({}) }
+        if (kind === 'empty') return { ok: true, json: async () => ({ data: [] }) }
+        return json(kind)
+      },
+    }),
+  })
 })

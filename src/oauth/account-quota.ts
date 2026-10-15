@@ -8,6 +8,7 @@ import { accountIdOf, getStoredSession, listStoredSessions, PROVIDER_IDS, public
 import { ImportedLoginStale } from './tokens.js'
 import { QUOTA_USED_TTL_MS } from './quota.js'
 import { NO_RESET_CARDS, oauthFamily } from './families.js'
+import { catalogRouteSignature } from './catalog-sync.js'
 import type { AuthController } from './controller.js'
 
 export async function liveAccounts(ctl: AuthController, provider) {
@@ -92,11 +93,10 @@ export async function refreshQuota(ctl: AuthController, provider, accountId?) {
     }
     const discover = hooks?.discover
     if (discover) {
-      const ids = () => discover.models().map((model) => model.id).join('\0')
-      const before = ids()
+      const before = catalogRouteSignature(discover.models())
       discover.reset?.()
       await Promise.all(targets.map((row) => discover.run(ctl, row.session)))
-      if (ctl.settings && ids() !== before) {
+      if (ctl.settings && catalogRouteSignature(discover.models()) !== before) {
         await ctl.sync().catch(() => undefined)
       }
     }

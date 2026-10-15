@@ -22,6 +22,7 @@ import {
 } from './index.js'
 import { isKiroBatchImport, parseKiroImportText } from './import.js'
 import { kiroCatalogModels } from './catalog.js'
+import { catalogRouteSignature, notifyCatalogDiscovery } from '../catalog-sync.js'
 import type { AuthController } from '../controller.js'
 
 export async function discoverKiro(ctl: AuthController, session) {
@@ -105,10 +106,12 @@ export async function loginKiro(ctl: AuthController, payload: any = {}) {
 export async function completeKiroIdc(ctl: AuthController, attempt) {
   try {
     const session = await attempt.waitToken()
+    const wasSignedIn = (await listStoredSessions('kiro', ctl.authPath)).length > 0
+    const before = catalogRouteSignature(kiroCatalogModels())
     await saveSession('kiro', session, ctl.authPath)
     ctl.lastError.delete('kiro')
     await discoverKiro(ctl, session)
-    ctl.onAuthChanged?.('kiro')
+    await notifyCatalogDiscovery(ctl, 'kiro', { wasSignedIn, before, models: kiroCatalogModels() })
     void ctl.quota.refresh('kiro')
   } catch (error) {
     if (!(error instanceof Error && error.message === 'login cancelled')) {
@@ -185,10 +188,12 @@ export async function useKiroKey(ctl: AuthController, key, payload: any = {}) {
       account: payload.account,
     }), { fetchFn: ctl.fetchFn })
   }
+  const wasSignedIn = (await listStoredSessions('kiro', ctl.authPath)).length > 0
+  const before = catalogRouteSignature(kiroCatalogModels())
   await saveSession('kiro', session, ctl.authPath)
   ctl.lastError.delete('kiro')
   await discoverKiro(ctl, session)
-  ctl.onAuthChanged?.('kiro')
+  await notifyCatalogDiscovery(ctl, 'kiro', { wasSignedIn, before, models: kiroCatalogModels() })
   void ctl.quota.refresh('kiro')
   return { method: session.authMethod, account: publicSession('kiro', session), count: 1 }
 }
@@ -217,8 +222,10 @@ export async function saveKiroImports(ctl: AuthController, sessions, { refreshMi
     throw new Error(errors[0] || 'no Kiro credentials imported')
   }
   ctl.lastError.delete('kiro')
+  const wasSignedIn = (await listStoredSessions('kiro', ctl.authPath)).length > saved.length
+  const before = catalogRouteSignature(kiroCatalogModels())
   if (saved[0]) await discoverKiro(ctl, saved[0])
-  ctl.onAuthChanged?.('kiro')
+  await notifyCatalogDiscovery(ctl, 'kiro', { wasSignedIn, before, models: kiroCatalogModels() })
   void ctl.quota.refresh('kiro')
   return {
     method: saved[0]?.authMethod,

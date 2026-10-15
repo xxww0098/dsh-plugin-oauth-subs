@@ -32,6 +32,12 @@ export declare function commandCodeCatalogModels(): readonly any[];
  */
 export declare function commandCodeProviderRows(payload: any): any[];
 /**
+ * Source membership for the update script: what the vendor list actually
+ * returned, with no static floor filled back in. The picker merge stays
+ * `mergeCommandCodeProviderModels`.
+ */
+export declare function commandCodeSourceModels(liveRows: any): any;
+/**
  * The vendor's list over the pinned registry. A known id keeps its curated
  * name, its effort list and its image input — the list carries none of them —
  * and takes the live window (the registry is a snapshot of the pin). An id
@@ -48,7 +54,7 @@ export declare function mergeCommandCodeProviderModels(live: any, { models }?: {
  * credential is sent; the session is taken to match the other families'
  * discover signature. A failed or empty read leaves the pinned registry.
  */
-export declare function refreshCommandCodeCatalog(_session: any, options?: any): Promise<any[]>;
+export declare function refreshCommandCodeCatalog(_session: any, options?: any): Promise<readonly any[]>;
 /**
  * models.json-keyed billing-rate map for the Models-tab price tooltip —
  * '<family>/<model id>' → USD-per-1M-token row straight out of
