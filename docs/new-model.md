@@ -11,7 +11,7 @@
 | 家族 | 钉在哪里 | 升到 |
 |---|---|---|
 | codex | `CODEX_CLIENT_VERSION`（`src/oauth/codex/index.ts`）+ UA | npm `@openai/codex` latest |
-| command-code | npm `command-code` latest → `package/` bundle 重读 `pD`/`kr`/价目表 | npm latest |
+| command-code | npm `command-code` latest → `package/` bundle 重读内嵌目录与 `pricing` | npm latest |
 | 其余 | 走活端点，不钉版本 | — |
 
 版本对了再探测；版本对不上，探查结果不可信。
@@ -32,7 +32,7 @@ npm run models -- <id>[,…]   # 只看某几家（如 cursor,devin）
 
 | 家族 | 原因 | 怎么办 |
 |---|---|---|
-| command-code | `manual`——没有模型端点，目录来自 CLI bundle 注册表 | 升 npm 钉住版本后重读 bundle（`pD` 注册表 + `kr` effort 表 + `kD/lD/…` 价目表），手改 |
+| command-code | 公开 `GET /provider/v1/models` 只报成员和窗口；effort、模态、价在 CLI bundle | 升 npm 钉住版本后重读 bundle 内嵌目录，手改静态楼与价目 |
 | kimi 等 | 当前 profile 没有已存账号 → `SKIPPED` | 换 `--profile` 或登录一个账号再跑 |
 | cursor 等精选键 | 新 id 打 `>` 只报告不写入 | 按该家 README 的精选规则手动挑 |
 | ollamaRetired | 退役清单，不是活目录 | 退役公告时手改 |
@@ -99,13 +99,13 @@ grep -rn "<旧版本号或被改的数值>" src test docs | grep -v lib/    # �
 
 ### command-code 升钉 = 重读 bundle（最大的单块工作）
 
-先读 npm 包自带的 `CHANGELOG.md`（哪版加了什么模型一眼便知），再 `npm pack` 新旧两版对照。bundle 里按**结构指纹**定位，别找变量名——`pD`/`kr`/`Mr` 这类名字每版都换，形状不变：
+先读 npm 包自带的 `CHANGELOG.md`，再 `npm pack` 新旧两版对照。bundle 是单行压缩的 `dist/cli.mjs`，变量名每版都换，按结构指纹找：
 
-- 注册表行：`NAME:{id:"…",inputModalities:[…],reasoningEfforts:[…],contextWindow:N[,maxOutputTokens]}`。hidden 集认成员不认名字：那个装着 `minimax/*-free`、`meituan/LongCat-2.0:free`、`inclusionai/ling-3.0-flash-free`、`tencent/Hy3` 的 `new Set` 就是它（sante / laguna / 新 free 行不在集里，照收）。**定位坑**：按成员串 grep 会先命中一个装着全部已知 id 的大数组（`listKnownModelIds` 用）；真 hidden 集是紧邻 `listSelectableModelIds` 的**短** `new Set`，且首个成员可能是变量引用（`fo` → `MiniMaxAI/MiniMax-M3-Free` 隐藏别名，解析后才知道，对账时算 unique 成员）。**退役信号**：行内出现 `get hidden(){return isXxxEnded()}` 且函数体是 `Date.parse("…Z")` 比较——日期门控退役（pixel-canary 先例 2026-10-01），门一过 CLI 就隐藏，目录随删，不用等 CHANGELOG 措辞。
-- 别按字段顺序写死正则：行里还混着 `provider`/`spec`/`label`/`name`/`description`，`contextWindow` 可写成 `1e6`，直连 provider 的个别行整个没有 `contextWindow`，价目对象还夹着 `provider:"字符串"`/`category`、`contextTiers` 里是嵌套大括号——按字段顺序或 `[^{}]*` 的正则会漏行（2026-09-30 实测：正则 79+31，平衡大括号 87+35）。从 `{id:"…` 起、按平衡大括号收整对象，再按内容（`inputModalities` / `promptCost`）分类；diff 前先把压缩名（`provider:XX,spec:YY`）和 `1e6` 这类数字写法归一化。提取完对账：unique id 数 − hidden 集成员数 = 目录行数，对不上就是又漏了。单行压缩 bundle 上 `grep -c` 数的是行数（恒 1），数出现次数用 `grep -o | wc -l`。
-- 价目表：1.74.1 起是**一张按 billing id 的单表**（`{"<billing id>":{inputCost,outputCost,cacheReadCost[,cacheWriteCost][,cacheWrite1hCost]}}`，`getDisplayRates` 直接查它，不再有 `contextTiers` / `timeOfDay`）；1.73.1 及以前是 `kD` 网关表 + `lD`/`xD/CD/bD/ED/TD/MD` 多张 `{id:"<gateway>:<model>",promptCost,completionCost,cacheWrite5mCost,cacheWrite1hCost,cacheHitCost[,contextTiers]}` 表。**新旧两版全量提取再 diff**，加/删/改价一目了然，比逐行人工核对快一个量级；单表的 billing id 有两种键形（`provider:model` 与 `<Vendor>/<Model>`），与目录行的对应关系手工对（rates.json 的键是目录 id）。
-- wire 是否变了：比对 `/alpha/generate` 前后几百字符，逐字一致（只差压缩名）即可放心升钉。
-- 行级 `maxOutputTokens`（ling 免费行的 32768 等）按本家既定规则**不**写进行（command-code/README.md 模型）。
+- **1.82.3 起目录是内嵌 JSON**，不是 `NAME:{id,…}` 对象表。指纹是 `JSON.parse` 附近的 `schemaVersion:1` 加 `"data":[`。每行有 `id`、`name`、`context_length`、`inputModalities`、`reasoningEfforts`、`hidden`、`pricing`、`maxOutputTokens`。可选性看行上的 `hidden`（`resolveCatalogModelStatus(...).state === "selectable"`），不要再找 hidden `Set`。公开 `GET /provider/v1/models` 的 90 行应与可见行逐 id 相同；它不带 effort 和模态，静态楼这两项仍从内嵌目录补。
+- **1.82.1 及以前**才是 `NAME:{id,inputModalities,reasoningEfforts,contextWindow}` 注册表，外加紧邻 `listSelectableModelIds` 的短 hidden `Set`（按成员串 grep 会先命中 `listKnownModelIds` 的大数组）。日期门 `get hidden(){return isXxxEnded()}` 仍可能在，但 1.82.3 的免费 Ling 退役是行上 `hidden: true`，不是新日期门。
+- 价：1.82.3 起在目录行的 `pricing`（`inputCost` / `outputCost` / `cacheReadCost` / `cacheWriteCost`），`getDisplayRates` 已不在。1.74.1–1.82.1 是 billing id 单表；更早是 `kD`/`lD` 多表。新旧两版全量提取再 diff。billing id 可能带 `provider:` 前缀，rates.json 的键是目录 id。
+- wire 是否变了：比对 `/alpha/generate` 前后的 body（`max_tokens ?? 64e3`、`reasoning_effort`、顶层字段）和请求头名。逐字一致（只差压缩名和版本字面量）即可升钉。
+- 行级 `maxOutputTokens` 按本家既定规则**不**写进行（command-code/README.md 模型）。
 
 ### 落地时容易漏的
 

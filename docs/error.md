@@ -2,6 +2,12 @@
 
 同一根因 / 同一用户可见故障只留一条 `##`（后续跟进并进该条，标题用最晚日期）。每条只写 **现象** / **根因** / **修复** 三行，各 1–2 句；只留 grep 代码得不到的症状、根因与落点，不写过程与清单。
 
+## 2026-10-15：Command Code 1.82.3 退役免费 Ling，Cline 输出上限回摆，Go 的 Argon Contributor 不进目录
+
+**现象**：公开列表不再有 `inclusionai/ling-3.1-flash:free`，多了 `Qwen/Qwen3.8-Max-Prime` 和付费 `inclusionai/ling-3.1-flash`。Cline 云目录把 Pass 版 DeepSeek V4.1 Flash 的输出上限从 393216 抬回 943718，免费 Step 5 的窗从 1000000 改成 1048576。Go 带 key 列表多了 `gemini-4-argon-contributor`；`deepseek-v4-flash` 与 vision-exp 从带 key 列表和 Go 文档同时消失。Zen 文档新增 `deepseek-v4.1-flash-free`。Cursor 出现 `gemini-4-argon` slug，页面没有 Model ID、窗口和价。
+**根因**：1.82.3 把注册表收成内嵌目录，行上 `hidden` 决定可选，价在 `pricing`，`getDisplayRates` 没了。免费 Ling 被标 hidden。Argon Contributor 的官方端点是 `/v1/models/...`（`@ai-sdk/google`），不在本插件的 api 闭集里。Zen 免费档在 OpenCode 外仍是 403。Cursor 的 slug 页没有可抄的参数。
+**修复**：升钉 1.82.3，收两行、删免费 Ling，以及两行已从 Go 文档消失的 DeepSeek。Cline 两处随云目录改。Argon Contributor 和 Zen 免费行只进 skip。Cursor 不收。wire 仍是 `/alpha/generate` 加 `max_tokens ?? 64e3`，只是版本字面量变了。
+
 ## 2026-10-15：PKCE、本机导入和 Command Code 登录在目录没变时仍写设置
 
 **现象**：Kiro 社交登录和 Devin 登录走 `completePkce`，本机导入走 `importFrom`，Command Code 的自动导入、回调完成和粘贴 key 直接 `onAuthChanged`。窗口、输入类型和 effort 都没变，设置仍被写一次。

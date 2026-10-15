@@ -268,7 +268,7 @@ test('live catalog merges recommended + free + clinePass and takes cloud-catalog
   assert.deepEqual(grok.input, ['text', 'image'])
   const step = CLINE_MODELS.find((model) => model.id === 'cline-free/step-5-preview')
   assert.equal(step.name, 'Step 5 Preview (free)')
-  assert.equal(step.contextWindow, 1_000_000)
+  assert.equal(step.contextWindow, 1_048_576)
   assert.equal(step.maxTokens, 64_000)
   const feed = {
     recommended: [{ id: 'anthropic/claude-opus-5.5', name: 'claude-opus-5.5' }, { id: 'new/lab-model', name: 'lab-model' }],

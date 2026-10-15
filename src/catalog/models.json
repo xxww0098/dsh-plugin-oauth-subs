@@ -2890,7 +2890,7 @@
       "id": "cline-pass/deepseek-v4.1-flash",
       "name": "DeepSeek V4.1 Flash (ClinePass)",
       "contextWindow": 1048576,
-      "maxTokens": 393216,
+      "maxTokens": 943718,
       "input": [
         "text",
         "image"
@@ -3106,7 +3106,7 @@
     {
       "id": "cline-free/step-5-preview",
       "name": "Step 5 Preview (free)",
-      "contextWindow": 1000000,
+      "contextWindow": 1048576,
       "maxTokens": 64000,
       "input": [
         "text",
@@ -3605,6 +3605,33 @@
     "cogito-2.1:671b"
   ],
   "command-code": [
+    {
+      "id": "Qwen/Qwen3.8-Max-Prime",
+      "name": "Qwen 3.8 Max Prime",
+      "contextWindow": 1000000,
+      "input": [
+        "text",
+        "image"
+      ],
+      "reasoningEfforts": {
+        "low": "low",
+        "medium": "medium",
+        "xhigh": "xhigh"
+      }
+    },
+    {
+      "id": "inclusionai/ling-3.1-flash",
+      "name": "Ling 3.1 Flash",
+      "contextWindow": 262144,
+      "input": [
+        "text"
+      ],
+      "reasoningEfforts": {
+        "low": "low",
+        "medium": "medium",
+        "high": "high"
+      }
+    },
     {
       "id": "google/gemini-4-argon",
       "name": "Gemini 4 Argon",
@@ -4577,19 +4604,6 @@
       ]
     },
     {
-      "id": "inclusionai/ling-3.1-flash:free",
-      "name": "Ling 3.1 Flash",
-      "contextWindow": 262144,
-      "input": [
-        "text"
-      ],
-      "reasoningEfforts": {
-        "low": "low",
-        "medium": "medium",
-        "high": "high"
-      }
-    },
-    {
       "id": "inclusionai/ling-3.0-flash-sante:free",
       "name": "Ling 3.0 Flash Sante",
       "contextWindow": 262144,
@@ -4872,49 +4886,6 @@
     {
       "id": "deepseek-v4.1-flash",
       "name": "DeepSeek V4.1 Flash",
-      "contextWindow": 1000000,
-      "maxTokens": 384000,
-      "input": [
-        "text",
-        "image"
-      ],
-      "reasoningEfforts": {
-        "low": "low",
-        "high": "high",
-        "max": "max"
-      },
-      "compat": {
-        "supportsStore": false,
-        "supportsDeveloperRole": false,
-        "maxTokensField": "max_tokens",
-        "requiresReasoningContentOnAssistantMessages": true,
-        "thinkingFormat": "deepseek"
-      }
-    },
-    {
-      "id": "deepseek-v4-flash",
-      "name": "DeepSeek V4 Flash",
-      "contextWindow": 1000000,
-      "maxTokens": 384000,
-      "input": [
-        "text"
-      ],
-      "reasoningEfforts": {
-        "low": "low",
-        "high": "high",
-        "max": "max"
-      },
-      "compat": {
-        "supportsStore": false,
-        "supportsDeveloperRole": false,
-        "maxTokensField": "max_tokens",
-        "requiresReasoningContentOnAssistantMessages": true,
-        "thinkingFormat": "deepseek"
-      }
-    },
-    {
-      "id": "deepseek-v4-flash-vision-exp",
-      "name": "DeepSeek V4 Flash Vision Exp",
       "contextWindow": 1000000,
       "maxTokens": 384000,
       "input": [

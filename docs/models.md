@@ -143,7 +143,7 @@ npm run models -- --json           # 机器可读报告
 - **键对齐目录**：`<家族>/<模型 id>`，id 必须命中 `models.json` 行，或是运行时长出的 `<id>-fast` 孪生（Codex `fastTier`、Cursor 活目录 Fast）；加载器按此校验，多一个就抛。
 - **接线**：`controller.ts` 把 `catalogPricing()`（全部家族）喂给 `describeCatalog` 的 `pricing`；共享 `timeOfDay` 由 `pricingTimeOfDay` 一次性带下去。
 - **行字段**：`in` / `out` 必填（主 upstream 的 USD/1M）；源标了缓存命中价才有 `cacheRead`（缺 ≠ 免费，tooltip 不显示该行）；上游对缓存写计费才有 `cacheWrite` / `cacheWrite1h`；峰谷价的行带 `tod.peak` / `tod.offPeak`（共享的时刻表在顶层 `timeOfDay`：生效日、UTC 峰时窗、峰时星期、指定整日按谷价的日期）；`tierThreshold` / `tiers` 描述上下文超阈后的加价档（只收单档）。
-- **出处即上游价目表**，不许发明数字：command-code 抄 CLI bundle 的显示费率表（1.74.1 起是一张按 billing id 的单表，`getDisplayRates` 直接查；`tod.*` 与 `tierThreshold`/`tiers` 是 1.73.1 多表时代的字段，1.74.1 的源不再声明、按「源没有的字段保留目录值」留着，维护者确认取消后再删），升级钉住版本时要重新对表。其余家族由 `npm run rates`（`scripts/rates.ts`）从各家源写入，每家的源与 id 映射写在脚本的 `resolvers` 和家族 README「归因」：
+- **出处即上游价目表**，不许发明数字：command-code 抄 CLI bundle 的显示费率（1.82.3 起在内嵌目录行的 `pricing`，`getDisplayRates` 已不在；1.74.1–1.82.1 是一张按 billing id 的单表；`tod.*` 与 `tierThreshold`/`tiers` 是 1.73.1 多表时代的字段，1.74.1 的源不再声明、按「源没有的字段保留目录值」留着，维护者确认取消后再删），升级钉住版本时要重新对表。其余家族由 `npm run rates`（`scripts/rates.ts`）从各家源写入，每家的源与 id 映射写在脚本的 `resolvers` 和家族 README「归因」：
 
 | 家族 | 价目源 |
 |---|---|

@@ -95,7 +95,7 @@ test('catalogRate resolves <family>/<id> and refuses unknown ids', () => {
   assert.equal(catalogRate('command-code/not-a-model'), undefined)
   // The same model id is priced per family, never shared across families.
   assert.notDeepEqual(catalogRate('kiro/gpt-5.6-sol'), catalogRate('command-code/gpt-5.6-sol'))
-  assert.equal(Object.keys(catalogRateTable('command-code')).length, 89)
+  assert.equal(Object.keys(catalogRateTable('command-code')).length, 90)
 })
 
 test('describeCatalog puts a price on rows of every family, including runtime -fast twins', () => {

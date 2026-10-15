@@ -191,6 +191,11 @@ const OPENCODE_GO_MESSAGES_IDS = new Set([
   'claude-haiku-5-5', 'minimax-m3', 'minimax-m2.7', 'qwen3.8-max', 'qwen3.8-flash', 'qwen3.7-plus',
 ])
 
+// Official Go docs endpoint table (2026-10-15): this id is /v1/models/<id>
+// (@ai-sdk/google), outside the DSH api union. models.dev still has metadata,
+// so without this skip the completions adapter would file it as a new row.
+const OPENCODE_GO_GOOGLE_IDS = new Set(['gemini-4-argon-contributor'])
+
 /** The single OpenCode API key in this profile's vault (Go and Zen share it). */
 function opencodeApiKey() {
   const vault = JSON.parse(readFileSync(`${DATA_DIR}/opencode-go.json`, 'utf8'))
@@ -235,7 +240,7 @@ const OPENCODE_ZEN_FREE_IDS = new Set([
   'muse-spark-1.2-contributor-free', 'muse-spark-1.3-contributor-free',
   'nemotron-3-ultra-free', 'nemotron-3.5-lightning-free', 'space-bunny-free',
   'longcat-2.5-preview-free', 'step-5-preview-free', 'exo-free', 'ling-3.0-flash-fin-free',
-  'cat-jam-free',
+  'cat-jam-free', 'deepseek-v4.1-flash-free',
 ])
 
 /**
@@ -442,6 +447,7 @@ const ADAPTERS: Record<string, any> = {
     skip: [
       { ids: ['deepseek-flash'], why: 'alias of deepseek-v4.1-flash; the picker keeps the docs id (opencode-go/README.md)' },
       { ids: [...OPENCODE_GO_MESSAGES_IDS], why: 'docs endpoint is /v1/messages; completions returns ModelProtocolUnsupported (opencode-go/README.md)' },
+      { ids: [...OPENCODE_GO_GOOGLE_IDS], why: 'docs endpoint is /v1/models/<id> (@ai-sdk/google), outside the DSH api union (opencode-go/README.md)' },
     ],
     // DeepSeek dialect rows need a live test first (README); new rows start plain.
     newRow: (row) => ({ ...row, compat: { ...PLAIN_GO_COMPAT } }),
