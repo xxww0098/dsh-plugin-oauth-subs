@@ -768,7 +768,7 @@
         h('path', { d: 'M4 7l8 8 3-3 4.5 4.5' }))
     }
 
-    function ArenaPanel({ t, data, error, busy, browserBusy, browserNotice, onRefresh, onVerify, onCancelVerify, version, repo }) {
+    function ArenaPanel({ t, data, error, busy, browserBusy, browserNotice, onRefresh, onVerify, onCancelVerify }) {
       const [category, setCategory] = useState(readStoredArenaCategory)
       const [query, setQuery] = useState('')
       const [license, setLicense] = useState('all')
@@ -780,9 +780,12 @@
       const pickCategory = (id) => { setCategory(id); writeStoredArenaCategory(id); setSort({ key: 'rank', dir: 1 }) }
       const board = data?.boards?.[category] ?? null
       const rows = board?.rows ?? null
+      const needsBrowser = browserBusy || !!data?.blocked || !!data?.archived || (!data && !!error)
+      const fallbackShot = !!(data?.blocked || data?.archived || data?.error)
 
-      // 分享 keeps the board content — table (head + the filtered rows) and
-      // the source footline — and drops the controls via [data-noshot].
+      // 分享 keeps the board and its source footline. Controls, verification
+      // status and operational hints drop out via [data-noshot]. The painted
+      // footer keeps the snapshot date and category, not the plugin identity.
       const head = h('header', { className: 'osubs-uhead', 'data-noshot': '' },
         h('span', { className: 'osubs-noshot' },
           board && h('span', { className: 'osubs-note osubs-uhead-note' },
@@ -793,10 +796,10 @@
             size: 'sm', disabled: busy, onClick: onRefresh,
             label: h('span', { className: 'osubs-refresh' + (busy ? ' osubs-refresh--spin' : '') }, h(IconRefresh), t.quotaRefresh),
           }),
-          h(Button, { size: 'sm', disabled: busy, onClick: onVerify, label: browserBusy ? t.arenaBrowserVerifying : t.arenaBrowserVerify }),
+          needsBrowser && h(Button, { size: 'sm', disabled: busy, onClick: onVerify, label: browserBusy ? t.arenaBrowserVerifying : t.arenaBrowserVerify }),
           browserBusy && h(Button, { size: 'sm', onClick: onCancelVerify, label: t.arenaBrowserCancel }),
           h(ShareButton, { t, busy: shot.busy, disabled: !board, onClick: () => { if (board) shot.start(shareRef.current, shotFooter(t, {
-            version, repo,
+            identity: false,
             at: board.lastUpdated || data.at,
             atLabel: fill(t.arenaUpdated, stamp(board.lastUpdated || data.at)),
             scope: `${t.tabArena} · ${t[ARENA_CATEGORIES.find(([id]) => id === category)?.[1] ?? 'arenaCatOverall']}${license !== 'all' ? ` · ${{ proprietary: t.arenaLicenseProprietary, open: t.arenaLicenseOpen }[license]}` : ''}${viewMode === 'pareto' ? ` · ${t.arenaViewPareto}` : ''}`,
@@ -898,7 +901,7 @@
 
       return h(Fragment || 'div', null, h('section', { className: 'osubs-arena', ref: shareRef, 'aria-busy': busy },
         head, browserHint,
-        (error || (!browserBusy && (data?.error || data?.blocked || data?.archived))) && h('p', { className: 'osubs-hint' },
+        (error || (!browserBusy && (data?.error || data?.blocked || data?.archived))) && h('p', { className: 'osubs-hint', 'data-noshot': '' },
           error || (data?.blocked ? t.arenaBlocked : data?.error ? fill(t.arenaStale, data.error) : t.arenaArchived)),
         h('div', { className: 'osubs-atools', 'data-noshot': '' },
           h('div', { className: 'osubs-seg', role: 'group' }, [['rank', t.arenaViewRank], ['pareto', t.arenaViewPareto]].map(([id, label]) => h(Button, {
@@ -919,7 +922,7 @@
             key: id, size: 'sm', variant: license === id ? 'primary' : undefined,
             onClick: () => setLicense(id), label,
           }))),
-          h('span', { className: 'osubs-mcount' }, `${shown.length} / ${rows.length}`)),
+          shown.length !== rows.length ? h('span', { className: 'osubs-mcount' }, `${shown.length} / ${rows.length}`) : null),
         viewMode === 'pareto' ? h(ArenaPareto, { t, rows: sorted }) : table,
         h('p', { className: 'osubs-hint osubs-afoot' },
           t.arenaSource, ' ',
@@ -933,6 +936,7 @@
               h('path', { d: 'M7 17 17 7' }),
               h('path', { d: 'M9 7h8v8' }))),
           ' · ', t.arenaSourceNote,
+          fallbackShot ? h('span', { className: 'osubs-afoot-cache' }, ' · ', t.arenaShotCache) : null,
           // The snapshot's own date is in the header note; this is when we
           // last pulled it, so a stale cache reads differently from a fresh
           // one at a glance.

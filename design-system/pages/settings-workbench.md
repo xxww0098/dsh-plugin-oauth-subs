@@ -156,7 +156,9 @@ width and paints over the line below it (剩余 100% over its own reset
 line). Absolute boxes keep their geometry, and every height stays
 inlined — bars and card chrome depend on it. Footer under a rule: plugin
 + version and repo on the left; 分析日期 (the scan time) and scope ·
-range on the right. Head controls (更新于 / 刷新 / 分享, `.osubs-noshot`)
+range on the right. 榜单 is the exception: its painted footer keeps only
+the snapshot date and scope, because the source footline already names
+arena.ai. Head controls (更新于 / 刷新 / 分享, `.osubs-noshot`)
 stay out of the image.
 
 The click paints before the capture: the flash and the busy button go up
@@ -188,17 +190,23 @@ The 榜单 view uses all available panel width, beyond the shell's usual
 track has a minimum width at every breakpoint. A very narrow table can
 scroll horizontally inside its own border without scrolling the page.
 
-- Head, left: 更新于 (upstream snapshot date), sessions, model count, 刷新,
-  浏览器验证. Verification opens installed Chrome on the plugin machine using
-  the plugin's own Node process. While it runs, refresh/verification disable,
-  取消验证 remains available, and an inline live status asks the user to finish
-  in Chrome. The cached board stays visible; success updates both caches and
-  shows a completion line. Failure keeps the board with a retryable error.
+- Head, left: 更新于 (upstream snapshot date), sessions, model count, 刷新.
+  浏览器验证 is not a permanent sibling of 刷新. It appears only while
+  verification is running, when the answer is blocked or archived, or when a
+  failed load left no board. Verification opens installed Chrome on the plugin
+  machine using the plugin's own Node process. While it runs, refresh and
+  verification disable, 取消验证 remains available, and an inline live status
+  asks the user to finish in Chrome. The cached board stays visible. Success
+  updates both caches and shows a completion line that dismisses after 5
+  seconds. Failure keeps the board with a retryable error and leaves the
+  button available.
   Head, right: 综合 / 代码 / 对话 / 办公 (arena's four server routes; the
   pick persists).
 - Below: a 排名 / 性价比 view seg (persisted; the site's Ranking/Pareto),
   then search (model or org),
   then 全部 / 闭源 / 开源. Both panes honour category, license and search.
+  The `n / total` count appears only when search or license changes the
+  visible row count; an unfiltered board does not repeat the header model count.
   The seg buttons carry the site's View-as glyphs: Ranking = lucide `list`,
   Pareto = axes + curve (13px, stroke 1.5).
 - **排名 pane** — the live board's twelve columns in its own order
@@ -254,12 +262,17 @@ scroll horizontally inside its own border without scrolling the page.
   whole section with `[data-noshot]` controls dropped, so the image carries
   the board: the active pane (sticky head + filtered rows, or the chart +
   frontier list) plus the source footline, over the painted
-  footer. Footer scope reads `榜单 · 分类` (plus license when filtered,
-  plus 性价比 in that view).
-  The date is the snapshot's 更新于. During the shot the section leaves
-  the fill layout and the active pane unscrolls to full height.
+  footer. The painted footer omits plugin name, version and repo. Its scope
+  reads `榜单 · 分类` (plus license when filtered, plus 性价比 in that view).
+  The date is the snapshot's 更新于. Operational hints — challenge
+  instructions, refresh errors, archive explanations, and the verification
+  status — stay out of the image. A fallback board (blocked, archived, or a
+  partial refresh) adds only a short `缓存快照` mark to the footline.
+  During the shot the section leaves the fill layout and the active pane
+  unscrolls to full height.
 - Only the active pane scrolls (fill panel, sticky head). The footline is
-  `数据来源 arena.ai ↗ · 快照日期以上游发布为准`. The link opens the
+  `数据来源 arena.ai ↗ · 快照日期以上游发布为准`, plus `缓存快照` when the
+  board is a fallback. The link opens the
   official board for the category being viewed (`osubs-link`, `flex: none`
   so it never joins the fill layout).
 - The host caches boards in `arena-cache.json` on a 1 h TTL. The page

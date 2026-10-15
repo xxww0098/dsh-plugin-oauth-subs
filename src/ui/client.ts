@@ -168,6 +168,11 @@ window.__ModuleLoader__.load({
         if (arena && Date.now() - arena.at < ARENA_TTL_MS) return
         void loadArena(false)
       }, [view])
+      useEffect(() => {
+        if (!arenaBrowserNotice) return
+        const timer = setTimeout(() => setArenaBrowserNotice(''), 5000)
+        return () => clearTimeout(timer)
+      }, [arenaBrowserNotice])
 
       // One owner for the status snapshot. A refresh, a models write, an
       // update check, and the auto-update click each stamp a turn when they
@@ -585,8 +590,6 @@ window.__ModuleLoader__.load({
             onRefresh: () => { void loadArena(true) },
             onVerify: () => { void loadArena(true, true) },
             onCancelVerify: () => { void callRpc(rpc, 'arena', { browser: 'cancel' }).catch(caught => setArenaError(fill(t.arenaBrowserFailed, String(caught)))) },
-            version: aboutVersionOf(snap?.update, update),
-            repo: aboutRepoOf(snap?.update, update),
           }), view === 'arena', true),
           // 设置 tab: the update card on top, the standalone 代理 card below —
           // two sibling cards in one panel, each its own bordered box.

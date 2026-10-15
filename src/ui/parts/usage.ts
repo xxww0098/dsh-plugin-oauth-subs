@@ -378,7 +378,8 @@
       ctx.fillStyle = shotSurfaceOf(node)
       ctx.fillRect(0, 0, width + pad * 2, total)
       ctx.drawImage(image, pad, pad, width, height)
-      // Footer: a rule, then plugin + version / repo on the left, date / scope on the right.
+      // Footer: a rule, then plugin + version / repo on the left when this
+      // share has an identity, date / scope on the right. Arena omits identity.
       const top = pad + height + 20
       ctx.strokeStyle = style.color
       ctx.globalAlpha = 0.28
@@ -391,14 +392,14 @@
       ctx.textBaseline = 'top'
       ctx.globalAlpha = 1
       ctx.font = `600 13px ${style.fontFamily}`
-      ctx.fillText(footer.title, pad, top + 12)
+      if (footer.title) ctx.fillText(footer.title, pad, top + 12)
       ctx.textAlign = 'right'
       ctx.fillText(footer.date, pad + width, top + 12)
       ctx.globalAlpha = 0.62
       ctx.font = `12px ${style.fontFamily}`
       ctx.fillText(footer.scope, pad + width, top + 32)
       ctx.textAlign = 'left'
-      ctx.fillText(footer.repo, pad, top + 32)
+      if (footer.repo) ctx.fillText(footer.repo, pad, top + 32)
       const png = new Promise<Blob>((resolve, reject) => canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('canvas.toBlob'))), 'image/png'))
       return { svg, png }
     }
@@ -500,10 +501,10 @@
         h('span', { className: 'osubs-thumb-badge' }, copied === null ? t.usageCopyingShort : t.usageCopiedShort))
     }
 
-    /** The footer every shared image carries: plugin + version, repo, date, scope. */
-    const shotFooter = (t, { version, repo, at, scope, atLabel }: any) => ({
-      title: version && version !== '—' ? `${t.pluginAboutTitle} v${version}` : t.pluginAboutTitle,
-      repo: String(repo).replace(/^https?:\/\//, ''),
+    /** Plugin identity is optional: Arena already names its source in the footline. */
+    const shotFooter = (t, { version, repo, at, scope, atLabel, identity = true }: any) => ({
+      title: identity ? (version && version !== '—' ? `${t.pluginAboutTitle} v${version}` : t.pluginAboutTitle) : '',
+      repo: identity ? String(repo).replace(/^https?:\/\//, '') : '',
       date: atLabel ?? fill(t.usageAnalyzed, stamp(at)),
       scope,
     })

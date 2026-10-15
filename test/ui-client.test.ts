@@ -286,7 +286,7 @@ test('Arena view names its source and links to the official board', async () => 
   assert.match(src, /arenaBlocked: 'arena\.ai requires browser verification\. This is the cached snapshot; select Verify in Chrome to update it\.'/)
   assert.match(src, /arenaArchived: '站点直连被人机校验挡住，本轮快照取自 Wayback 公共归档，可能滞后数日。'/)
   assert.match(src, /arenaArchived: 'The direct route is gated by a Cloudflare challenge, so this round came from the Wayback archive and may lag a few days\.'/)
-  assert.match(src, /\(error \|\| \(!browserBusy && \(data\?\.error \|\| data\?\.blocked \|\| data\?\.archived\)\)\) && h\('p', \{ className: 'osubs-hint' \},/)
+  assert.match(src, /\(error \|\| \(!browserBusy && \(data\?\.error \|\| data\?\.blocked \|\| data\?\.archived\)\)\) && h\('p', \{ className: 'osubs-hint', 'data-noshot': '' \},/)
   assert.match(src, /error \|\| \(data\?\.blocked \? t\.arenaBlocked : data\?\.error \? fill\(t\.arenaStale, data\.error\) : t\.arenaArchived\)\)/)
   // The 排名 table carries the site's Cost/Task (P50) column: sortable head,
   // right-aligned money figures, — for unpriced models; narrow panes keep it
@@ -371,21 +371,22 @@ test('Arena browser flow polls to completion, blocks double starts and persists 
   }
   const ui = assembleUi()
   assert.match(ui, /onVerify: \(\) => \{ void loadArena\(true, true\) \}/)
-  assert.match(ui, /onClick: onVerify, label: browserBusy \? t\.arenaBrowserVerifying : t\.arenaBrowserVerify/)
+  assert.match(ui, /needsBrowser && h\(Button, \{ size: 'sm', disabled: busy, onClick: onVerify, label: browserBusy \? t\.arenaBrowserVerifying : t\.arenaBrowserVerify \}\)/)
   assert.match(ui, /onClick: onCancelVerify, label: t\.arenaBrowserCancel/)
 })
 
 test('Arena view shares a long shot of the table through the usage pipeline', async () => {
   const src = assembleUi()
   // The panel rides the same 分享 pipeline as 用量/额度 and gets the footer facts.
-  assert.match(src, /function ArenaPanel\(\{ t, data, error, busy, browserBusy, browserNotice, onRefresh, onVerify, onCancelVerify, version, repo \}\)/)
+  assert.match(src, /function ArenaPanel\(\{ t, data, error, busy, browserBusy, browserNotice, onRefresh, onVerify, onCancelVerify \}\)/)
   assert.match(src, /const shot = useShot\(t\)\n\s+const shareRef = useRef\(null\)/)
   assert.match(src, /h\(ShareButton, \{ t, busy: shot\.busy, disabled: !board/)
   assert.match(src, /shot\.start\(shareRef\.current, shotFooter\(t, \{/)
   assert.match(src, /atLabel: fill\(t\.arenaUpdated, stamp\(board\.lastUpdated \|\| data\.at\)\),/)
   assert.match(src, /scope: `\$\{t\.tabArena\} · \$\{t\[ARENA_CATEGORIES\.find/)
   assert.match(src, /`oauth-subs-arena-\$\{stamp\(Date\.now\(\)\)\.slice\(0, 10\)\}\.png`/)
-  assert.match(src, /version: aboutVersionOf\(snap\?\.update, update\),\n\s+repo: aboutRepoOf\(snap\?\.update, update\),\n\s+\}\), view === 'arena', true\)/)
+  assert.match(src, /identity: false,/)
+  assert.match(src, /onCancelVerify: \(\) => \{ void callRpc\(rpc, 'arena', \{ browser: 'cancel' \}\)\.catch\(caught => setArenaError\(fill\(t\.arenaBrowserFailed, String\(caught\)\)\)\) \},\n\s+\}\), view === 'arena', true\)/)
   // Only board content enters the image: controls drop out via [data-noshot].
   assert.match(src, /h\('header', \{ className: 'osubs-uhead', 'data-noshot': '' \}/)
   assert.match(src, /h\('div', \{ className: 'osubs-atools', 'data-noshot': '' \}/)
@@ -394,6 +395,19 @@ test('Arena view shares a long shot of the table through the usage pipeline', as
   assert.match(src, /\.osubs-arena\.osubs-shooting \.osubs-atable \{ flex: none; overflow: visible; \}/)
   // shotFooter takes an optional date override so arena stamps the snapshot.
   assert.match(src, /date: atLabel \?\? fill\(t\.usageAnalyzed, stamp\(at\)\),/)
+})
+
+test('Arena hides redundant chrome and keeps operational text out of the share', async () => {
+  const src = assembleUi()
+  assert.match(src, /const needsBrowser = browserBusy \|\| !!data\?\.blocked \|\| !!data\?\.archived \|\| \(!data && !!error\)/)
+  assert.match(src, /shown\.length !== rows\.length \? h\('span', \{ className: 'osubs-mcount' \}/)
+  assert.match(src, /fallbackShot \? h\('span', \{ className: 'osubs-afoot-cache' \}, ' · ', t\.arenaShotCache\)/)
+  assert.match(src, /arenaShotCache: '缓存快照'/)
+  assert.match(src, /arenaShotCache: 'Cached snapshot'/)
+  assert.match(src, /setTimeout\(\(\) => setArenaBrowserNotice\(''\), 5000\)/)
+  assert.match(src, /if \(footer\.title\) ctx\.fillText\(footer\.title, pad, top \+ 12\)/)
+  assert.match(src, /if \(footer\.repo\) ctx\.fillText\(footer\.repo, pad, top \+ 32\)/)
+  assert.match(src, /title: identity \? \(version && version !== '—'/)
 })
 
 test('Arena view offers the Pareto frontier chart from cached rows', async () => {

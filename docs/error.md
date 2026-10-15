@@ -32,11 +32,11 @@
 **根因**：官方快照起 payload 换了名字与列——bash 信号 `bash_recovery_steps` → `bash_reliability_no_prereq`（weight 0.5）；表从 5 列变 12 列（`columnOrder`：rank · modelDisplayName · avgScore · 五个 `signal:*` · sessions · costP25/P50/P95 · tokensP25/P50/P95 · price，`columnVisibility` 默认关 `overallRank` 与全部 P25/P95）；行新增 `observations`、`overallRank`，costStats 新增 `meanUsd`/`meanMtok`/`pricedSampleCount`/`totalSampleCount`。两条隐藏规则在站点自己的 chunk（`0pxzy916nkaqk.js`）：`costPerTaskForContender` 要 `pricedSampleCount ≥ 50` **且** `pricedSampleCount/totalSampleCount ≥ 0.5`，`tokensPerTaskForContender` 只要 `tokenedSampleCount/totalSampleCount ≥ 0.5`；价格走 `formatPricePerMillionUsd`（整数 `$15`、否则两位小数 `$1.40`、缺 `N/A`）；信号的箭头对 `tool_hallucination` 反向（正值 = 绿色 Down），颜色仍按原始符号（52 行 × 5 信号实测）。
 **修复**：`parseArenaBoard` 读新键并按两条门把 `costUsd*` / `tokensM*` 置空（Pareto 同源，站点的 `pricedEntries` 就是同一 getter），`ArenaScore` 让 `invert` 真的翻箭头，新增 `arenaPriceUsd`（价格专用格式）与 `N/A` 文案；表按站点列序扩到 12 列并给窄面板定退列次序（先撤四个次级信号 + 价格，再撤会话/Token，再撤成本）。活测：浏览器里抓下官方 flight 载荷，52 行 × 12 列 **520 格逐格 diff = 0**（含 4 行成本 `N/A`、5 行价格 `N/A`、1 行 Token `N/A`）。
 
-## 2026-10-14：arena.ai 给 / 与 leaderboard 路径上了 Cloudflare 人机校验，榜单 tab 刷新 403
+## 2026-10-15：Arena 榜单取数被 Cloudflare 挑战，浏览器采集增加 RSC 快路
 
-**现象**：榜单刷新四类全失败，Node 请求返回 `403 cf-mitigated: challenge`，面板回落缓存；普通插件页面跨域 `fetch` 实测为 `TypeError: Failed to fetch`，挑战响应同时带 `X-Frame-Options: SAMEORIGIN`。
-**根因**：挑战需要浏览器页面上下文执行 JS 并持有 clearance，修改 UA 或回放 `__cf_bm` 不能让 Node 通过；Wayback 爬虫也被挡，匿名 Save Page Now 保存 example.com 成功、保存 Arena 失败，因此归档无法持续提供新快照。插件自己的 Node 可以启动独立 Chrome，浏览器能力无需由 DSH 提供，验证页仍不能直接嵌入普通插件 iframe。
-**修复**：榜单 UI 新增「浏览器验证」与取消按钮，`arena` RPC 轮询插件自己的 Node/Chrome 任务（独立临时 profile、私有 pipe、三分钟上限）；四类完整快照通过日期检查后原子更新 0600 文件缓存及 UI/localStorage，失败/取消/更旧或不完整快照保留旧数据，普通刷新不自动开 Chrome。macOS 正式编译 UI/RPC/采集器活测从 1 行旧缓存自动更新至四类快照（`2026-10-13T22:00:00Z`，53/53/52/53 行），落盘与返回结果一致且重建读取器仍可读，未使用 DSH 浏览器能力、未操作验证码；Chrome 关闭/失败/超时/取消、并发刷新和缓存写入失败均有回归测试，细节与限制见 [数据源核查](arena-data-sources.md)。
+**现象**：普通榜单刷新返回 `403 cf-mitigated: challenge` 并回落缓存，插件页面跨域 fetch / iframe 也不能完成验证；已有浏览器的同源 RSC 可读，不代表新临时 profile 可读，本轮新 profile 的 Code 导航仍停在 Cloudflare 验证。
+**根因**：挑战依赖实际浏览器上下文与 clearance，换 UA、回放 Cookie 或依赖归档不能保证恢复；挑战会临时装饰 URL、改变标题，标题与 readyState 恢复也不等于当前文档已从 403 变为 200。
+**修复**：独立 Chrome 优先同源并发请求四类 RSC，仅受挑战分类导航兼容，按主 frame / 当前 loader / requestId 读取成功响应并复用原解析与缓存提交，不再轮询整页 DOM/HTML。全量 1261 项测试和类型检查通过，但本轮独立活测在 Code 未完成人工验证、三分钟超时，旧缓存未改且测试 Chrome 均退出，尚不宣称新版四榜成功更新；历史成功与本轮限制见 [数据源核查](arena-data-sources.md)。
 
 ## 2026-10-14：目录刷新日——codex / command-code 跟版收五行，Devin 免费档把整张目录标成 disabled
 
